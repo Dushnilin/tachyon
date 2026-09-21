@@ -8,6 +8,7 @@ CLI_UC="$TACHYON_BIN"
 UPDATER="$ROOT_DIR/tachyon/files/usr/lib/components/updater.uc"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
+INSTALLER_UC="$ROOT_DIR/tachyon/files/usr/lib/components/installer.uc"
 WORK_DIR="$(mktemp -d)"
 
 ucode() {
@@ -116,7 +117,7 @@ grep -Fq 'tachyon_status_running_with_timeout()' "$ACTION_UC" ||
   fail "components/action.uc must use bounded Tachyon status checks for component actions"
 grep -Fq 'restore_sing_box_after_failed_package_install' "$ACTION_UC" ||
   fail "stable and tiny sing-box package installs must restore the previous variant after validation failures"
-grep -Fq 'let package_spec = package_name + "=" + package_version;' "$ACTION_UC" ||
+grep -Fq 'let package_spec = package_name + "=" + package_version;' "$INSTALLER_UC" ||
   fail "APK sing-box installs must pin the concrete package version instead of selecting a provider"
 grep -Fq 'Package rollback failed; restored the previous sing-box binary backup' "$ACTION_UC" ||
   fail "package rollback must accept a successfully restored binary backup"
@@ -163,7 +164,7 @@ awk '
 { sub(/\r$/, "") }
 prev2 == "    remove_file(archive_file);" &&
 prev1 == "    stop_tachyon_before_sing_box_change();" &&
-$0 == "    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir);" {
+$0 == "    let new_version = validate_sing_box_extended_binary(tmp_binary, cmp.tmp_dir_path());" {
   safe_validation = 1
 }
 { prev2 = prev1; prev1 = $0 }
@@ -179,7 +180,7 @@ if grep -Fq 'fs.rename(tmp_binary, "/usr/bin/sing-box")' "$ACTION_UC"; then
 fi
 grep -Fq 'let backup_on_tmpfs = previous_variant == "extended-compressed";' "$ACTION_UC" ||
   fail "package sing-box installs must move compressed backups off overlay before opkg space checks"
-grep -Fq 'backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.tachyon-backup"' "$ACTION_UC" ||
+grep -Fq 'backup_binary = backup_on_tmpfs ? cmp.tmp_dir_path() + "/sing-box.tachyon-backup"' "$ACTION_UC" ||
   fail "compressed sing-box backup must use tmpfs while installing a package variant"
 grep -Fq 'return move_file_portable(backup_binary, "/usr/bin/sing-box");' "$ACTION_UC" &&
   fail "portable sing-box restore must preserve executable permissions explicitly"
@@ -190,6 +191,12 @@ package_runtime_lib="$WORK_DIR/package-runtime-lib"
 package_runtime_bin="$WORK_DIR/package-runtime-bin"
 mkdir -p "$package_runtime_lib/components" "$package_runtime_lib/core" "$package_runtime_lib/singbox" "$package_runtime_bin"
 cp "$UPDATER" "$package_runtime_lib/components/updater.uc"
+cp "$TACHYON_LIB/components/helpers.uc" "$package_runtime_lib/components/helpers.uc"
+cp "$TACHYON_LIB/components/versions.uc" "$package_runtime_lib/components/versions.uc"
+cp "$TACHYON_LIB/components/verifier.uc" "$package_runtime_lib/components/verifier.uc"
+cp "$TACHYON_LIB/components/downloader.uc" "$package_runtime_lib/components/downloader.uc"
+cp "$TACHYON_LIB/components/installer.uc" "$package_runtime_lib/components/installer.uc"
+cp "$TACHYON_LIB/components/catalog.uc" "$package_runtime_lib/components/catalog.uc"
 cp "$TACHYON_LIB/core/common.uc" "$package_runtime_lib/core/common.uc"
 cp "$TACHYON_LIB/core/helpers.uc" "$package_runtime_lib/core/helpers.uc"
 cat >"$package_runtime_lib/core/constants.uc" <<'UCODE'
@@ -273,7 +280,8 @@ TACHYON_BIN="$WORK_DIR/missing-tachyon" \
 TACHYON_SERVICE_INIT="$WORK_DIR/missing-init" \
 FAKE_OPKG_LOG="$WORK_DIR/opkg.log" \
 FAKE_OPKG_UPDATED="$WORK_DIR/opkg.updated" \
-ucode -L "$package_runtime_lib" "$ACTION_UC" component-action sing_box install_stable >/dev/null
+ucode -L "$package_runtime_lib" "$ACTION_UC" component-action sing_box install_stable \
+  >"$WORK_DIR/action-1.json" 2>"$WORK_DIR/action-1.err" || true
 set -e
 OPKG_LOG="$WORK_DIR/opkg.log" node - <<'NODE'
 const fs = require('fs');

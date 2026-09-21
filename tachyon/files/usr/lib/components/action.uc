@@ -5,6 +5,12 @@ let helpers = require("core.helpers");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let cmp = require("components.helpers");
+let cmp_ver = require("components.versions");
+let cmp_verify = require("components.verifier");
+let cmp_dl = require("components.downloader");
+let cmp_inst = require("components.installer");
+let cmp_cat = require("components.catalog");
 
 function core_url_module_or_null() {
     try {
@@ -54,7 +60,6 @@ let write_file = common.write_file;
 let bounded_command = common.bounded_command;
 let kill_matching_command = common.kill_matching_command;
 
-let tmp_dir = "";
 let lock_held = false;
 let tachyon_was_running = false;
 let tachyon_stopped_for_sing_box_change = false;
@@ -66,391 +71,51 @@ let tachyon_stopped_for_sing_box_change = false;
 const SING_BOX_BIN = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
 const COMPONENT_BACKUP_BASE_DIR = getenv("TACHYON_COMPONENT_BACKUPS_DIR") || "/etc/tachyon/component-backups";
 
-function get_component_backup_enabled() {
-    let uci_core = require("core.uci");
-    let settings = (uci_core && uci_core.get_all) ? (uci_core.get_all("tachyon", "settings") || {}) : {};
-    let val = as_string(settings.component_backup_enabled || "");
-    return val == "1" || val == "true" || val == "yes" || val == "on";
-}
+function get_component_backup_enabled() { return cmp.get_component_backup_enabled(); }
 
-function check_free_disk_space(target_dir, needed_bytes) {
-    let out = trim(command_output("df -k " + shell_quote(target_dir) + " 2>/dev/null | tail -n 1 | awk '{print $4}'"));
-    let free_kb = int(out);
-    if (free_kb <= 0)
-        return true;
-    let needed_kb = int((needed_bytes || 0) / 1024) + 1024;
-    return free_kb > (needed_kb * 2) && (free_kb - needed_kb) > 4096;
-}
+function check_free_disk_space(target_dir, needed_bytes) { return cmp.check_free_disk_space(target_dir, needed_bytes); }
 
 // ============================================================================
 
-function str_startswith(value, prefix) {
-    value = as_string(value);
-    prefix = as_string(prefix);
-    if (length(prefix) == 0)
-        return true;
-    return length(value) >= length(prefix) && substr(value, 0, length(prefix)) == prefix;
-}
+// Delegated to components/* modules (branch 4 god-module split).
+function str_startswith(value, prefix) { return cmp.str_startswith(value, prefix); }
+function command_env(assignments) { return cmp.command_env(assignments); }
+function command_output_lenient(command) { return cmp.command_output_lenient(command); }
+function command_exists(name) { return cmp.command_exists(name); }
+function read_file(path) { return cmp.read_file(path); }
+function remove_file(path) { return cmp.remove_file(path); }
+function ensure_dir(path) { return cmp.ensure_dir(path); }
+function file_exists(path) { return cmp.file_exists(path); }
+function file_nonempty(path) { return cmp.file_nonempty(path); }
+function path_basename(path) { return cmp.path_basename(path); }
+function now_seconds() { return cmp.now_seconds(); }
+function owner_pid() { return cmp.owner_pid(); }
+function pid_running(pid) { return cmp.pid_running(pid); }
+function log_message(message, level) { return cmp.log_message(message, level); }
+function job_log_time() { return cmp.job_log_time(); }
+function job_log_append(message, level) { return cmp.job_log_append(message, level); }
+function updates_log(message, level) { return cmp.updates_log(message, level); }
+function update_job_phase(phase, message) { return cmp.update_job_phase(phase, message); }
+function job_heartbeat() { return cmp.job_heartbeat(); }
+function free_kb(path) { return cmp.free_kb(path); }
+function preflight_storage_check(component, asset_size_bytes, backup_required) { return cmp.preflight_storage_check(component, asset_size_bytes, backup_required); }
+function preflight_backup_space_check(component) { return cmp.preflight_backup_space_check(component); }
+function normalize_stream_exit(close_status) { return cmp.normalize_stream_exit(close_status); }
+function stream_command_output(command, description) { return cmp.stream_command_output(command, description); }
+function detect_apk_lock(output_text, exit_code) { return cmp.detect_apk_lock(output_text, exit_code); }
+function diagnose_apk_lock_holder() { return cmp.diagnose_apk_lock_holder(); }
+function module_command(args) { return cmp.module_command(args); }
+function module_output(args) { return cmp.module_output(args); }
+function module_success(args) { return cmp.module_success(args); }
+function helper_output(mode, args) { return cmp.helper_output(mode, args); }
+function helper_success(mode, args) { return cmp.helper_success(mode, args); }
+function cleanup_stale_tmp_files() { return cmp.cleanup_stale_tmp_files(); }
+function init_tmp_dir() { return cmp.init_tmp_dir(); }
+function make_tmp_file(prefix) { return cmp.make_tmp_file(prefix); }
+function helper_output_input(input, mode, args) { return cmp.helper_output_input(input, mode, args); }
+function helper_success_input(input, mode, args) { return cmp.helper_success_input(input, mode, args); }
+function cleanup_tmp_dir() { return cmp.cleanup_tmp_dir(); }
 
-function command_env(assignments) {
-    let parts = [];
-    for (let name, value in assignments)
-        push(parts, name + "=" + shell_quote(value));
-    return join(" ", parts);
-}
-
-// Like command_output but keeps stdout regardless of the exit status. popen()'s
-// close() yields a raw wait status, so a command that writes a perfectly good
-// answer and then exits non-zero - or is signalled - loses all of it above.
-function command_output_lenient(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    pipe.close();
-    return data != null ? as_string(data) : "";
-}
-
-function command_exists(name) {
-    return command_success_from_args([ "command", "-v", name ]);
-}
-
-function read_file(path) {
-    let data = fs.readfile(as_string(path));
-    return data == null ? "" : as_string(data);
-}
-
-// The empty catch is the point: every caller means "make sure this path is
-// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
-// so the alternative is a stat() race with no better outcome.
-function remove_file(path) {
-    try {
-        fs.unlink(as_string(path));
-    }
-    catch (e) {
-    }
-}
-
-function ensure_dir(path) {
-    return command_success_from_args([ "mkdir", "-p", as_string(path) ]);
-}
-
-function file_exists(path) {
-    return fs.stat(as_string(path)) != null;
-}
-
-function file_nonempty(path) {
-    return helpers.file_is_usable(path, 0);
-}
-
-function path_basename(path) {
-    let parts = split(as_string(path), "/");
-    return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
-}
-
-function now_seconds() {
-    return int(clock()[0]);
-}
-
-function owner_pid() {
-    let pid = trim(command_output_from_args([ "sh", "-c", "echo $PPID" ]));
-    return match(pid, /^[0-9]+$/) != null ? pid : "0";
-}
-
-function pid_running(pid) {
-    pid = as_string(pid);
-    if (match(pid, /^[0-9]+$/) == null || !command_success_from_args([ "kill", "-0", pid ]))
-        return false;
-    let cmd = fs.readfile("/proc/" + pid + "/cmdline");
-    if (cmd != null && match(cmd, /ucode|tachyon|sh/) == null)
-        return false;
-    return true;
-}
-
-function log_message(message, level) {
-    level = as_string(level || "info");
-    command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
-}
-
-function job_log_time() {
-    let seconds = int(clock()[0]);
-    return sprintf("%02d:%02d:%02d", int(seconds / 3600) % 24, int(seconds / 60) % 60, seconds % 60);
-}
-
-function job_log_append(message, level) {
-    let path = getenv("UPDATES_JOB_LOG");
-    if (path == "")
-        return;
-    let file = fs.open(path, "a");
-    if (!file)
-        return;
-    file.write(sprintf("[%s] [%s] %s\n", job_log_time(), as_string(level), as_string(message)));
-    file.close();
-}
-
-function updates_log(message, level) {
-    level = as_string(level || "info");
-    log_message("Updates: " + as_string(message), level);
-    job_log_append(message, level);
-}
-
-let current_job_phase = "";
-let job_phase_started_at = 0;
-
-function update_job_phase(phase, message) {
-    current_job_phase = as_string(phase);
-    job_phase_started_at = now_seconds();
-    updates_log(message || phase);
-    let state_path = getenv("UPDATES_JOB_STATE_FILE");
-    if (state_path == "")
-        return;
-    try {
-        let data = fs.readfile(state_path);
-        if (data == null)
-            return;
-        let state = json(as_string(data));
-        if (type(state) != "object")
-            return;
-        state.phase = current_job_phase;
-        state.phase_started_at = job_phase_started_at;
-        state.heartbeat_at = now_seconds();
-        state.updated_at = now_seconds();
-        if (as_string(message) != "")
-            state.message = as_string(message);
-        let tmp = state_path + ".hb." + owner_pid();
-        write_file(tmp, sprintf("%J\n", state));
-        fs.rename(tmp, state_path);
-    } catch (e) {}
-}
-
-function job_heartbeat() {
-    let state_path = getenv("UPDATES_JOB_STATE_FILE");
-    if (state_path == "")
-        return;
-    try {
-        let data = fs.readfile(state_path);
-        if (data == null)
-            return;
-        let state = json(as_string(data));
-        if (type(state) != "object" || state.running !== true)
-            return;
-        state.heartbeat_at = now_seconds();
-        state.updated_at = now_seconds();
-        let tmp = state_path + ".hb." + owner_pid();
-        write_file(tmp, sprintf("%J\n", state));
-        fs.rename(tmp, state_path);
-    } catch (e) {}
-}
-
-function free_kb(path) {
-    let out = trim(command_output("df -Pk " + shell_quote(path) + " 2>/dev/null | tail -n 1 | awk '{print $4}'"));
-    return int(out);
-}
-
-function preflight_storage_check(component, asset_size_bytes, backup_required) {
-    let tmp_free = free_kb("/tmp");
-    let needed_tmp_kb = int((asset_size_bytes || 0) / 1024) + 2048;
-    if (backup_required) {
-        let bin_size = 0;
-        if (component == "sing_box" && file_exists(SING_BOX_BIN)) {
-            let st = fs.stat(SING_BOX_BIN);
-            bin_size = (st && st.size) ? st.size : 0;
-        }
-        needed_tmp_kb += int(bin_size / 1024) + 1024;
-    }
-    if (tmp_free > 0 && tmp_free < needed_tmp_kb) {
-        updates_log("Insufficient /tmp space for " + as_string(component) +
-            ": need " + needed_tmp_kb + " KB, have " + tmp_free + " KB", "error");
-        return false;
-    }
-    return true;
-}
-
-function preflight_backup_space_check(component) {
-    if (!get_component_backup_enabled())
-        return true;
-    let st = null;
-    if (component == "sing_box" && file_exists(SING_BOX_BIN))
-        st = fs.stat(SING_BOX_BIN);
-    if (st == null)
-        return true;
-    let size = (st.size) ? st.size : 0;
-    if (size <= 0)
-        return true;
-    if (!check_free_disk_space("/etc", size)) {
-        let avail = free_kb("/overlay") || free_kb("/");
-        updates_log("Cannot create backup: insufficient persistent storage for " + as_string(component) +
-            ". Required: " + int(size / 1024) + " KB, Available: " + avail + " KB. " +
-            "Disable component backup or free storage.", "error");
-        return false;
-    }
-    return true;
-}
-
-function normalize_stream_exit(close_status) {
-    if (close_status == null)
-        return 0;
-    let s = int(close_status);
-    let signal = s & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (s >> 8) & 255;
-}
-
-function stream_command_output(command, description) {
-    updates_log(description);
-    let pipe = fs.popen(command + " 2>&1", "r");
-    if (!pipe) {
-        updates_log(description + ": failed to execute", "error");
-        return 255;
-    }
-    let last_output_at = now_seconds();
-    let last_heartbeat = now_seconds();
-    let exit_code = 0;
-    while (true) {
-        let line = pipe.read("line");
-        if (line == null)
-            break;
-        line = trim(as_string(line));
-        if (line != "")
-            updates_log(line);
-        last_output_at = now_seconds();
-        // Periodic heartbeat during long streaming operations
-        if (now_seconds() - last_heartbeat >= JOB_HEARTBEAT_INTERVAL) {
-            job_heartbeat();
-            last_heartbeat = now_seconds();
-        }
-    }
-    exit_code = normalize_stream_exit(pipe.close());
-    return exit_code;
-}
-
-function detect_apk_lock(output_text, exit_code) {
-    if (exit_code == 227)
-        return true;
-    if (exit_code == 255 && match(output_text, /Could not lock|opkg\.lock|Resource temporarily unavailable/i) != null)
-        return true;
-    return false;
-}
-
-function diagnose_apk_lock_holder() {
-    for (let fd_path in fs.glob("/proc/[0-9]*/fd/*")) {
-        let target = "";
-        try { target = as_string(fs.readlink(fd_path)); } catch (e) { continue; }
-        if (match(target, /apk\/db\/lock|lib\/apk\/db\/lock/) == null)
-            continue;
-        let parts = split(fd_path, "/");
-        if (length(parts) < 3)
-            continue;
-        let pid = as_string(parts[2]);
-        let comm = "";
-        try { comm = trim(as_string(fs.readfile("/proc/" + pid + "/comm"))); } catch (e) {}
-        updates_log("APK lock holder: pid=" + pid + " process=" + (comm != "" ? comm : "unknown"), "warn");
-        return;
-    }
-    updates_log("APK database is locked but holder could not be identified", "warn");
-}
-
-function module_command(args) {
-    let command_args = [ "ucode", "-L", LIB_DIR ];
-    for (let arg in args)
-        push(command_args, arg);
-    return command_from_args(command_args);
-}
-
-function module_output(args) {
-    return command_output(module_command(args));
-}
-
-function module_success(args) {
-    return command_success(module_command(args));
-}
-
-function helper_output(mode, args) {
-    let command_args = [ LIB_DIR + "/components/updater.uc", mode ];
-    for (let arg in (type(args) == "array" ? args : []))
-        push(command_args, arg);
-    return module_output(command_args);
-}
-
-function helper_success(mode, args) {
-    let command_args = [ LIB_DIR + "/components/updater.uc", mode ];
-    for (let arg in (type(args) == "array" ? args : []))
-        push(command_args, arg);
-    return module_success(command_args);
-}
-
-function cleanup_stale_tmp_files() {
-    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "d", "-name", "tachyon-updates.*", "-mmin", "+" + as_string(TMP_STALE_TTL_MINUTES), "-exec", "rm", "-rf", "{}", "+" ]);
-    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "f", "(", "-name", "tachyon-updates-command.*", "-o", "-name", "tachyon-updates-http.*", ")", "-mmin", "+" + as_string(TMP_FILE_STALE_TTL_MINUTES), "-delete" ]);
-}
-
-function init_tmp_dir() {
-    ensure_dir("/var/lock");
-    ensure_dir("/tmp/run");
-    if (tmp_dir != "")
-        return true;
-
-    cleanup_stale_tmp_files();
-    tmp_dir = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-updates.XXXXXX" ]));
-    if (tmp_dir == "") {
-        tmp_dir = "/tmp/tachyon-updates." + owner_pid();
-        if (!ensure_dir(tmp_dir)) {
-            tmp_dir = "";
-            return false;
-        }
-    }
-    return true;
-}
-
-function make_tmp_file(prefix) {
-    init_tmp_dir();
-    let base = tmp_dir != "" ? tmp_dir + "/" + as_string(prefix) + ".XXXXXX" : "/tmp/tachyon-updates-" + as_string(prefix) + ".XXXXXX";
-    let path = trim(command_output_from_args([ "mktemp", base ]));
-    if (path == "") {
-        path = (tmp_dir != "" ? tmp_dir : "/tmp") + "/" + as_string(prefix) + "." + owner_pid() + "." + now_seconds();
-        if (!write_file(path, ""))
-            return "";
-    }
-    return path;
-}
-
-function helper_output_input(input, mode, args) {
-    let input_path = make_tmp_file("helper-input");
-    if (input_path == "")
-        return "";
-    write_file(input_path, as_string(input));
-
-    let command_args = [ LIB_DIR + "/components/updater.uc", mode ];
-    for (let arg in (type(args) == "array" ? args : []))
-        push(command_args, arg);
-    let output = command_output(command_from_args([ "cat", input_path ]) + " | " + module_command(command_args));
-    remove_file(input_path);
-    return output;
-}
-
-function helper_success_input(input, mode, args) {
-    let input_path = make_tmp_file("helper-input");
-    if (input_path == "")
-        return false;
-    write_file(input_path, as_string(input));
-
-    let command_args = [ LIB_DIR + "/components/updater.uc", mode ];
-    for (let arg in (type(args) == "array" ? args : []))
-        push(command_args, arg);
-    let ok = command_success(command_from_args([ "cat", input_path ]) + " | " + module_command(command_args));
-    remove_file(input_path);
-    return ok;
-}
-
-function cleanup_tmp_dir() {
-    if (tmp_dir != "") {
-        command_success_from_args([ "rm", "-rf", tmp_dir ]);
-        tmp_dir = "";
-    }
-    cleanup_stale_tmp_files();
-}
 
 function acquire_component_lock() {
     if (lock_held)
@@ -535,423 +200,52 @@ function action_fail(component, action, message, current_version, latest_version
     exit(1);
 }
 
-function run_logged(description, command, timeout_seconds) {
-    init_tmp_dir();
-    let output_file = make_tmp_file("command");
-    if (output_file == "")
-        output_file = "/tmp/tachyon-updates-command." + owner_pid();
+// Delegated to components/* modules (branch 4 god-module split).
+function run_logged(description, command, timeout_seconds) { return cmp.run_logged(description, command, timeout_seconds); }
+function is_apk() { return cmp.is_apk(); }
 
-    updates_log(description);
-    timeout_seconds = timeout_seconds || 120;
-    let run_cmd = bounded_command(command, timeout_seconds);
-    let status = command_status(run_cmd + " >" + shell_quote(output_file) + " 2>&1");
-    for (let line in split(read_file(output_file), "\n"))
-        if (trim(as_string(line)) != "")
-            updates_log(line);
-    remove_file(output_file);
-    if (status != 0)
-        updates_log(description + " failed with exit code " + status, "warn");
-    return status == 0;
-}
 
-function is_apk() {
-    let forced = getenv("TACHYON_FORCE_PKG_MANAGER");
-    if (forced == "apk")
-        return true;
-    if (forced == "opkg")
-        return false;
-    return command_exists("apk");
-}
+// Delegated to components/installer.uc (branch 4 god-module split).
+function pkg_tx_run_with_lock(description, command, timeout_seconds) { return cmp_inst.pkg_tx_run_with_lock(description, command, timeout_seconds); }
 
-function pkg_tx_run_with_lock(description, command, timeout_seconds) {
-    update_job_phase("waiting_package_lock", "Waiting for package manager lock");
-    let lock_waited = 0;
-    let attempt = 0;
-    let max_lock_attempts = 12;
-    while (attempt < max_lock_attempts) {
-        if (attempt > 0) {
-            if (is_apk()) {
-                updates_log("APK database still locked (" + lock_waited + "s), waiting...");
-            } else {
-                updates_log("opkg lock still held (" + lock_waited + "s), waiting...");
-            }
-            job_heartbeat();
-            command_success("sleep 5");
-            lock_waited += 5;
-            if (lock_waited >= PKG_LOCK_WAIT_MAX_SECONDS) {
-                updates_log("Package manager lock timeout after " + lock_waited + "s", "error");
-                if (is_apk())
-                    diagnose_apk_lock_holder();
-                return { success: false, exit_code: 227, message: "Package manager lock timeout after " + lock_waited + "s" };
-            }
-        }
-        let output_file = make_tmp_file("pkg-tx");
-        if (output_file == "")
-            output_file = "/tmp/tachyon-updates-pkg-tx." + owner_pid();
-        let pipe_cmd = command + " >" + shell_quote(output_file) + " 2>&1";
-        let pipe = fs.popen(pipe_cmd, "r");
-        if (!pipe) {
-            attempt++;
-            continue;
-        }
-        let last_activity = now_seconds();
-        let last_heartbeat = now_seconds();
-        while (true) {
-            let line = pipe.read("line");
-            if (line == null)
-                break;
-            line = trim(as_string(line));
-            if (line != "") {
-                updates_log(line);
-                last_activity = now_seconds();
-            }
-            // Periodic heartbeat during long operations
-            if (now_seconds() - last_heartbeat >= JOB_HEARTBEAT_INTERVAL) {
-                job_heartbeat();
-                last_heartbeat = now_seconds();
-            }
-            if (now_seconds() - last_activity > timeout_seconds) {
-                updates_log("Package operation timed out after " + timeout_seconds + "s of inactivity", "error");
-                pipe.close("kill");
-                remove_file(output_file);
-                return { success: false, exit_code: -1, message: "Package operation timed out" };
-            }
-        }
-        let close_status = pipe.close();
-        let rc = normalize_stream_exit(close_status);
-        remove_file(output_file);
-        if (rc == 0) {
-            update_job_phase("package_transaction", "Package transaction completed");
-            return { success: true, exit_code: 0, message: "" };
-        }
-        let is_locked = detect_apk_lock("", rc);
-        if (attempt == 0 && is_locked)
-            diagnose_apk_lock_holder();
-        if (!is_locked) {
-            return { success: false, exit_code: rc, message: "Package operation failed with exit code " + rc };
-        }
-        attempt++;
-    }
-    return { success: false, exit_code: 227, message: "Package manager lock retry limit exceeded" };
-}
+function pkg_tx_remove(package_name, description) { return cmp_inst.pkg_tx_remove(package_name, description); }
 
-function pkg_tx_remove(package_name, description) {
-    update_job_phase("package_transaction", description || ("Removing " + package_name));
-    let cmd;
-    if (is_apk()) {
-        cmd = command_from_args([ "apk", "del", "--force-broken-world", package_name ]) + " </dev/null";
-    } else {
-        cmd = command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null";
-    }
-    return pkg_tx_run_with_lock(description || ("Removing " + package_name), cmd, PKG_TX_REMOVE_TIMEOUT);
-}
+function pkg_is_installed(package_name) { return cmp.pkg_is_installed(package_name); }
 
-function pkg_is_installed(package_name) {
-    package_name = as_string(package_name);
-    if (is_apk())
-        return command_success_from_args([ "apk", "info", "-e", package_name ]);
-    return module_success([ LIB_DIR + "/core/packages.uc", "opkg-installed", package_name ]);
-}
 
-function pkg_tx_downgrade(package_name, package_version) {
-    package_name = as_string(package_name);
-    package_version = as_string(package_version);
-    update_job_phase("package_transaction", "Downgrading " + package_name + " to " + package_version);
-    let cmd;
-    if (is_apk()) {
-        if (package_version == "")
-            return { success: false, exit_code: 1, message: "Version required for APK downgrade" };
-        let package_spec = package_name + "=" + package_version;
-        if (pkg_is_installed(package_name))
-            cmd = command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_spec ]) + " </dev/null";
-        else
-            cmd = command_from_args([ "apk", "add", package_spec ]) + " </dev/null";
-    } else {
-        cmd = command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null";
-    }
-    return pkg_tx_run_with_lock("Downgrading " + package_name, cmd, PKG_TX_INSTALL_TIMEOUT);
-}
+// Delegated to components/installer.uc (branch 4 god-module split).
+function pkg_tx_downgrade(package_name, package_version) { return cmp_inst.pkg_tx_downgrade(package_name, package_version); }
 
-function installed_package_version(package_name) {
-    package_name = as_string(package_name);
-    if (is_apk()) {
-        if (!pkg_is_installed(package_name))
-            return "";
-        return trim(module_output([ LIB_DIR + "/core/packages.uc", "apk-version", package_name ]));
-    }
-    return trim(module_output([ LIB_DIR + "/core/packages.uc", "opkg-version", package_name ]));
-}
+function installed_package_version(package_name) { return cmp_ver.installed_package_version(package_name); }
+function verify_package_post_install(package_name, expected_version) { return cmp_verify.verify_package_post_install(package_name, expected_version); }
+function opkg_package_version_from_list(package_name, output) { return cmp_ver.opkg_package_version_from_list(package_name, output); }
+function available_package_version(package_name) { return cmp_ver.available_package_version(package_name); }
+function service_proxy_address() { return cmp.service_proxy_address(); }
 
-function verify_package_post_install(package_name, expected_version) {
-    let db_version = installed_package_version(package_name);
-    if (db_version == "") {
-        updates_log("Post-install verification failed: " + package_name + " not found in package database", "error");
-        return false;
-    }
-    if (as_string(expected_version) != "" && db_version != as_string(expected_version)) {
-        updates_log("Post-install version mismatch for " + package_name +
-            ": expected=" + as_string(expected_version) + " actual=" + db_version, "warn");
-    }
-    return true;
-}
+function pkg_list_update_command(proxy_address) { return cmp_inst.pkg_list_update_command(proxy_address); }
 
-function opkg_package_version_from_list(package_name, output) {
-    return trim(helper_output_input(output, "updates-opkg-package-version", [ package_name ]));
-}
+function pkg_install_name_command(package_name, proxy_address) { return cmp_inst.pkg_install_name_command(package_name, proxy_address); }
 
-function available_package_version(package_name) {
-    package_name = as_string(package_name);
-    if (is_apk())
-        return trim(module_output([ LIB_DIR + "/core/packages.uc", "apk-available-version", package_name ]));
-    return opkg_package_version_from_list(package_name, command_output_from_args([ "opkg", "list", package_name ]));
-}
+function pkg_install_name_downgrade(package_name, package_version) { return cmp_inst.pkg_install_name_downgrade(package_name, package_version); }
 
-function service_proxy_address() {
-    if (!file_exists(LIB_DIR + "/singbox/runtime.uc"))
-        return "";
-    if (file_exists(LIB_DIR + "/service/state.uc") &&
-        !module_success([ LIB_DIR + "/service/state.uc", "sing-box-service-running" ]))
-        return "";
-    let addr = trim(module_output([ LIB_DIR + "/singbox/runtime.uc", "service-proxy-address", "components" ]));
-    if (addr == "")
-        addr = trim(module_output([ LIB_DIR + "/singbox/runtime.uc", "service-proxy-address", "lists" ]));
-    return addr;
-}
+function pkg_install_files_command(files, force_reinstall) { return cmp_inst.pkg_install_files_command(files, force_reinstall); }
+function sanitize_apk_world() { return cmp.sanitize_apk_world(); }
 
-function pkg_list_update_command(proxy_address) {
-    if (proxy_address == null)
-        proxy_address = service_proxy_address();
-    let cmd = is_apk() ? "apk update </dev/null" : "opkg update </dev/null";
-    if (as_string(proxy_address) != "") {
-        let p = "http://" + proxy_address;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
-    }
-    return cmd;
-}
+function pkg_tx_update_index(proxy_address) { return cmp_inst.pkg_tx_update_index(proxy_address); }
 
-function pkg_install_name_command(package_name, proxy_address) {
-    if (proxy_address == null)
-        proxy_address = service_proxy_address();
-    let cmd = is_apk() ? command_from_args([ "apk", "add", package_name ]) + " </dev/null" :
-        command_from_args([ "opkg", "install", package_name ]) + " </dev/null";
-    if (as_string(proxy_address) != "") {
-        let p = "http://" + proxy_address;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
-    }
-    return cmd;
-}
+function pkg_tx_install_files(files, force_reinstall) { return cmp_inst.pkg_tx_install_files(files, force_reinstall); }
 
-function pkg_install_name_downgrade(package_name, package_version) {
-    package_name = as_string(package_name);
-    if (is_apk()) {
-        package_version = as_string(package_version);
-        if (package_version == "")
-            return false;
-        let package_spec = package_name + "=" + package_version;
-        if (pkg_is_installed(package_name))
-            return command_success(command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_spec ]) + " </dev/null");
-        return command_success(command_from_args([ "apk", "add", package_spec ]) + " </dev/null");
-    }
+function pkg_tx_install_name(package_name, proxy_address) { return cmp_inst.pkg_tx_install_name(package_name, proxy_address); }
 
-    return command_success(command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null") ||
-        command_success(command_from_args([ "opkg", "install", "--force-downgrade", package_name ]) + " </dev/null");
-}
+function pkg_install_files(files, force_reinstall) { return cmp_inst.pkg_install_files(files, force_reinstall); }
+function run_logged_retrying(description, command) { return cmp.run_logged_retrying(description, command); }
 
-function pkg_install_files_command(files, force_reinstall) {
-    if (is_apk()) {
-        let add_args = [ "apk", "add", "--allow-untrusted" ];
-        for (let file in files)
-            push(add_args, file);
-        return command_from_args(add_args) + " </dev/null";
-    }
-    let args = [ "opkg", "install", "--force-overwrite", "--force-downgrade", "--force-depends" ];
-    if (force_reinstall)
-        push(args, "--force-reinstall");
-    for (let file in files)
-        push(args, file);
-    return command_from_args(args) + " </dev/null";
-}
+function pkg_remove_sing_box_conflict(package_name) { return cmp_inst.pkg_remove_sing_box_conflict(package_name); }
+function run_logged_pkg_remove_sing_box_conflict(package_name, description) { return cmp_inst.run_logged_pkg_remove_sing_box_conflict(package_name, description); }
+function compare_versions(lhs, rhs) { return cmp_ver.compare_versions(lhs, rhs); }
+function status_from_compare(compare_result) { return cmp_ver.status_from_compare(compare_result); }
 
-function sanitize_apk_world() {
-    if (!is_apk() || !file_exists("/etc/apk/world"))
-        return;
-    for (let pkg in [ "sing-box-extended", "sing-box", "sing-box-tiny", "sing-box-lx" ]) {
-        if (!pkg_is_installed(pkg))
-            command_success("sed -i -E " + shell_quote("/^" + pkg + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
-    }
-}
 
-function pkg_tx_update_index(proxy_address) {
-    sanitize_apk_world();
-    let cmd = pkg_list_update_command(proxy_address);
-    update_job_phase("package_index", "Refreshing package index");
-    let rc = stream_command_output(cmd, "Updating package index");
-    if (rc != 0)
-        updates_log("Package index update failed with exit code " + rc, "warn");
-    return rc == 0;
-}
-
-function pkg_tx_install_files(files, force_reinstall) {
-    sanitize_apk_world();
-    update_job_phase("package_transaction", "Installing package files");
-    let args = [];
-    let timeout = PKG_TX_INSTALL_TIMEOUT;
-    if (is_apk()) {
-        push(args, "apk", "add", "--allow-untrusted");
-        for (let f in files)
-            push(args, f);
-    } else {
-        push(args, "opkg", "install", "--force-overwrite", "--force-downgrade", "--force-depends");
-        if (force_reinstall)
-            push(args, "--force-reinstall");
-        for (let f in files)
-            push(args, f);
-    }
-    let proxy = service_proxy_address();
-    let cmd = command_from_args(args) + " </dev/null";
-    if (as_string(proxy) != "") {
-        let p = "http://" + proxy;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
-    }
-    return pkg_tx_run_with_lock("Installing packages", cmd, timeout);
-}
-
-// force_reinstall matters only for opkg: installing an .ipk whose version equals
-// the installed one is a no-op unless --force-reinstall is passed, so a rebuild
-// published under the same tag would silently not be applied. apk always writes
-// the file it is handed, so its argument list stays untouched.
-// IMPORTANT: No fallback to raw tar/apk-extract. Package manager failure means
-// the operation must fail. Direct extraction bypasses package DB, maintainer
-// scripts, and dependency tracking.
-function pkg_tx_install_name(package_name, proxy_address) {
-    sanitize_apk_world();
-    update_job_phase("package_transaction", "Installing " + package_name);
-    let cmd = pkg_install_name_command(package_name, proxy_address);
-    return pkg_tx_run_with_lock("Installing " + package_name, cmd, PKG_TX_DEPS_TIMEOUT);
-}
-
-function pkg_install_files(files, force_reinstall) {
-    init_tmp_dir();
-    let result = pkg_tx_install_files(files, force_reinstall);
-    return result.success;
-}
-
-function run_logged_retrying(description, command) {
-    init_tmp_dir();
-    sanitize_apk_world();
-
-    let output_file = make_tmp_file("command");
-    if (output_file == "")
-        output_file = "/tmp/tachyon-updates-command." + owner_pid();
-
-    let status = 227;
-    let max_attempts = 10;
-    for (let attempt = 0; attempt < max_attempts; attempt++) {
-        if (attempt > 0) {
-            let mgr_name = is_apk() ? "APK" : "opkg";
-            updates_log(description + ": " + mgr_name + " database locked, retrying in 3s (attempt " + (attempt + 1) + "/" + max_attempts + ")");
-            command_success("sleep 3");
-        }
-        let pipe = fs.popen(as_string(command) + " 2>&1 | tee " + shell_quote(output_file) + " | tail -c 16384 > /dev/null", "r");
-        let output_text = "";
-        let last_activity = now_seconds();
-        if (pipe) {
-            while (true) {
-                let line = pipe.read("line");
-                if (line == null)
-                    break;
-                line = trim(as_string(line));
-                if (line != "") {
-                    updates_log(line, attempt > 0 ? "warn" : "info");
-                    last_activity = now_seconds();
-                }
-            }
-            status = normalize_stream_exit(pipe.close());
-        } else {
-            status = 255;
-        }
-        output_text = as_string(read_file(output_file)) || "";
-        let is_locked = (status == 227 || (status == 255 && match(output_text, /Could not lock|opkg\.lock|Resource temporarily unavailable/i) != null)) &&
-            match(output_text, /unable to select packages|no such package/i) == null;
-        if (!is_locked)
-            break;
-    }
-    remove_file(output_file);
-    if (status != 0)
-        updates_log(description + " failed with exit code " + status, "warn");
-    return status == 0;
-}
-
-// Like run_logged but retries on package manager database lock.
-// Uses streaming output instead of buffered file reads.
-function pkg_remove_sing_box_conflict(package_name) {
-    package_name = as_string(package_name);
-    if (is_apk()) {
-        if (file_exists("/etc/apk/world"))
-            command_success("sed -i -E " + shell_quote("/^" + package_name + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
-        if (!pkg_is_installed(package_name))
-            return true;
-        return command_success(command_from_args([ "apk", "del", "--force-broken-world", package_name ]) + " </dev/null");
-    }
-    if (!pkg_is_installed(package_name))
-        return true;
-    return command_success(command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null");
-}
-
-function run_logged_pkg_remove_sing_box_conflict(package_name, description) {
-    if (is_apk() && file_exists("/etc/apk/world"))
-        command_success("sed -i -E " + shell_quote("/^" + package_name + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
-
-    if (!pkg_is_installed(package_name)) {
-        updates_log(description);
-        return true;
-    }
-
-    let command = is_apk() ?
-        command_from_args([ "apk", "del", "--force-broken-world", package_name ]) + " </dev/null" :
-        command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null";
-    return run_logged(description, command, 60);
-}
-
-function compare_versions(lhs, rhs) {
-    lhs = as_string(lhs);
-    rhs = as_string(rhs);
-    if (lhs == "" || rhs == "")
-        return null;
-    if (lhs == rhs)
-        return 0;
-
-    if (is_apk()) {
-        let apk_result = trim(command_output_from_args([ "apk", "version", "-t", lhs, rhs ]));
-        if (apk_result == ">")
-            return 1;
-        if (apk_result == "<")
-            return -1;
-        if (apk_result == "=")
-            return 0;
-    }
-
-    if (command_exists("opkg")) {
-        if (command_success_from_args([ "opkg", "compare-versions", lhs, ">", rhs ]))
-            return 1;
-        if (command_success_from_args([ "opkg", "compare-versions", lhs, "<", rhs ]))
-            return -1;
-        if (command_success_from_args([ "opkg", "compare-versions", lhs, "=", rhs ]))
-            return 0;
-    }
-
-    return module_success([ LIB_DIR + "/core/helpers.uc", "version-at-least", lhs, rhs ]) ? 1 : -1;
-}
-
-function status_from_compare(compare_result) {
-    if (compare_result == -1)
-        return "outdated";
-    if (compare_result == 0)
-        return "latest";
-    if (compare_result == 1)
-        return "dev";
-    return "";
-}
 
 function check_success_compared(component, current_version, latest_version, compare_current_version, compare_latest_version, release_url) {
     let compare_result = compare_versions(compare_current_version, compare_latest_version);
@@ -977,413 +271,65 @@ function check_success(component, current_version, latest_version, release_url) 
     check_success_compared(component, current_version, latest_version, current_version, latest_version, release_url || "");
 }
 
-function read_openwrt_release_value(key) {
-    return trim(helper_output("openwrt-release-value", [ "/etc/openwrt_release", key ]));
-}
+// Delegated to components/* modules (branch 4 god-module split).
+function read_openwrt_release_value(key) { return cmp.read_openwrt_release_value(key); }
 
-function http_get_once(url, output_path, proxy_address, timeout) {
-    url = as_string(url);
-    output_path = as_string(output_path);
-    proxy_address = as_string(proxy_address);
-    timeout = as_string(timeout || "30");
+function http_get_once(url, output_path, proxy_address, timeout) { return cmp_dl.http_get_once(url, output_path, proxy_address, timeout); }
+function http_get(url, timeout) { return cmp_dl.http_get(url, timeout); }
+function download_file_once(url, output_path) { return cmp_dl.download_file_once(url, output_path); }
+function download_with_retry(url, output_path, label) { return cmp_dl.download_with_retry(url, output_path, label); }
+function fetch_github_release_json(owner, repo) { return cmp_dl.fetch_github_release_json(owner, repo); }
+function fetch_github_release_by_tag_json(owner, repo, tag) { return cmp_dl.fetch_github_release_by_tag_json(owner, repo, tag); }
+function fetch_github_tag_commit_sha(owner, repo, tag) { return cmp_dl.fetch_github_tag_commit_sha(owner, repo, tag); }
 
-    if (command_exists("curl")) {
-        let args = [ "curl", "--connect-timeout", "4", "-m", timeout, "-fsSL", "-H", "User-Agent: Tachyon-OpenWrt" ];
-        if (proxy_address != "") {
-            push(args, "-x");
-            push(args, "http://" + proxy_address);
-        }
-        push(args, url);
-        push(args, "-o");
-        push(args, output_path);
-        return command_success_from_args(args);
-    }
+function format_fingerprint_human(fp) { return cmp_verify.format_fingerprint_human(fp); }
 
-    if (command_exists("wget")) {
-        let command = command_from_args([ "wget", "-T", timeout, "-q", "-O", output_path, "-U", "Tachyon-OpenWrt", url ]);
-        if (proxy_address != "")
-            command = command_env({ http_proxy: "http://" + proxy_address, https_proxy: "http://" + proxy_address }) + " " + command;
-        return command_success(command);
-    }
+function fetch_github_releases_json(owner, repo, per_page) { return cmp_dl.fetch_github_releases_json(owner, repo, per_page); }
 
-    return false;
-}
 
-function http_get(url, timeout) {
-    init_tmp_dir();
-    let output_path = make_tmp_file("http");
-    if (output_path == "")
-        return "";
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function latest_tachyon_release_json() { return cmp_cat.latest_tachyon_release_json(); }
 
-    let t = as_string(timeout || "12");
-    let proxy_address = service_proxy_address();
-    if (proxy_address != "") {
-        if (http_get_once(url, output_path, proxy_address, t)) {
-            let data = read_file(output_path);
-            remove_file(output_path);
-            return data;
-        }
-        remove_file(output_path);
-        updates_log("HTTP request via service proxy failed for " + as_string(url) + "; retrying directly", "warn");
-    }
+// Delegated to components/* modules (branch 4 god-module split).
+function fetch_github_release_tag_fallback(owner, repo) { return cmp_dl.fetch_github_release_tag_fallback(owner, repo); }
+function url_exists(url) { return cmp_dl.url_exists(url); }
 
-    if (http_get_once(url, output_path, "", t)) {
-        let data = read_file(output_path);
-        remove_file(output_path);
-        return data;
-    }
 
-    remove_file(output_path);
-    return "";
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function latest_tachyon_version() { return cmp_cat.latest_tachyon_version(); }
 
-function download_file_once(url, output_path) {
-    let proxy_address = service_proxy_address();
-    if (proxy_address != "") {
-        if (http_get_once(url, output_path, proxy_address, "120"))
-            return true;
-        remove_file(output_path);
-        updates_log("Download via service proxy failed for " + as_string(url) + "; retrying directly", "warn");
-    }
-    return http_get_once(url, output_path, "", "120");
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function fetch_tachyon_latest_release_metadata() { return cmp_cat.fetch_tachyon_latest_release_metadata(); }
 
-function download_with_retry(url, output_path, label) {
-    let url_mod = core_url_module_or_null();
-    let candidates = url_mod && type(url_mod.download_candidates) == "function" ? url_mod.download_candidates(url) : [ url ];
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function write_tachyon_latest_version_cache(value, timestamp) { return cmp_cat.write_tachyon_latest_version_cache(value, timestamp); }
 
-    for (let attempt = 0; attempt < length(candidates); attempt++) {
-        let current_url = candidates[attempt];
-        if (attempt == 0) {
-            updates_log("Downloading " + as_string(label) + " (attempt 1/" + as_string(length(candidates)) + ")");
-        } else {
-            updates_log("Retrying " + as_string(label) + " via mirror (attempt " + as_string(attempt + 1) + "/" + as_string(length(candidates)) + ")", "warn");
-        }
-
-        if (download_file_once(current_url, output_path) && file_nonempty(output_path))
-            return true;
-        remove_file(output_path);
-    }
-    return false;
-}
-
-function fetch_github_release_json(owner, repo) {
-    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/latest";
-    let response = http_get(url);
-    if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url);
-        if (response == "" || !helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return response;
-}
-
-function fetch_github_release_by_tag_json(owner, repo, tag) {
-    tag = trim(as_string(tag));
-    if (tag == "")
-        return "";
-    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/tags/" + tag;
-    let response = http_get(url);
-    if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url);
-        if (response == "" || !helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return response;
-}
-
-function fetch_github_tag_commit_sha(owner, repo, tag) {
-    tag = trim(as_string(tag));
-    if (tag == "")
-        return "";
-    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/commits/" + tag;
-    let response = http_get(url);
-    if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url);
-        if (response == "" || !helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return trim(helper_output_input(response, "commit-object-sha", []));
-}
-
-function format_fingerprint_human(fp) {
-    fp = as_string(fp);
-    if (str_startswith(fp, "sha:"))
-        return substr(fp, 4, 7);
-    if (!str_startswith(fp, "build:"))
-        return fp != "" ? fp : "unknown";
-    let body = substr(fp, 6);
-    let pairs = split(body, "|");
-    let upd = "";
-    let size = "";
-    for (let p in pairs) {
-        if (str_startswith(p, "upd="))
-            upd = substr(p, 4);
-        else if (str_startswith(p, "pub=") && upd == "")
-            upd = substr(p, 4);
-        else if (str_startswith(p, "size="))
-            size = substr(p, 5);
-    }
-    let parts = [];
-    if (upd != "") {
-        let d = match(upd, /^([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2})/);
-        if (d && d[1] && d[2])
-            push(parts, d[1] + " " + d[2] + " UTC");
-        else
-            push(parts, upd);
-    }
-    if (size != "") {
-        let kb = int(int(size) / 1024);
-        if (kb > 0)
-            push(parts, kb + " KB");
-    }
-    return length(parts) > 0 ? ("build (" + join(", ", parts) + ")") : fp;
-}
-
-function fetch_github_releases_json(owner, repo, per_page) {
-    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "10");
-    let response = http_get(url, "8");
-    if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url, "8");
-        if (response == "" || !helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return response;
-}
-
-function latest_tachyon_release_json() {
-    let parts = split(TACHYON_RELEASE_REPO, "/");
-    if (length(parts) != 2 || as_string(parts[0]) == "" || as_string(parts[1]) == "")
-        return "";
-    return fetch_github_release_json(parts[0], parts[1]);
-}
-
-function fetch_github_release_tag_fallback(owner, repo) {
-    let url = "https://github.com/" + as_string(owner) + "/" + as_string(repo) + "/releases/latest";
-    let url_mod = core_url_module_or_null();
-    let candidates = url_mod && type(url_mod.download_candidates) == "function" ? url_mod.download_candidates(url) : [ url ];
-    let proxy_addr = service_proxy_address();
-
-    for (let target_url in candidates) {
-        if (command_exists("curl")) {
-            let args = [ "curl", "-sI", "--connect-timeout", "6", "-m", "12" ];
-            if (proxy_addr != "") {
-                push(args, "-x");
-                push(args, "http://" + proxy_addr);
-            }
-            push(args, target_url);
-            let output = command_output_from_args(args);
-            if (output != "") {
-                let loc_idx = index(lc(output), "location:");
-                if (loc_idx >= 0) {
-                    let line = substr(output, loc_idx);
-                    let end_line = index(line, "\r");
-                    if (end_line < 0) end_line = index(line, "\n");
-                    if (end_line >= 0) line = substr(line, 0, end_line);
-                    let tag_idx = rindex(line, "/");
-                    if (tag_idx >= 0) {
-                        let tag = trim(substr(line, tag_idx + 1));
-                        if (tag != "")
-                            return tag;
-                    }
-                }
-            }
-        } else if (command_exists("wget")) {
-            let cmd = command_from_args([ "wget", "-s", "-T", "6", target_url ]);
-            if (proxy_addr != "")
-                cmd = command_env({ http_proxy: "http://" + proxy_addr, https_proxy: "http://" + proxy_addr }) + " " + cmd;
-            let output = command_output("(" + cmd + ") 2>&1");
-            let m = match(output, /Redirected to [^ \t\r\n]*\/releases\/tag\/([^ \t\r\n]+)/);
-            if (m && m[1])
-                return trim(m[1]);
-        }
-    }
-    return "";
-}
-
-function url_exists(url) {
-    let url_mod = core_url_module_or_null();
-    let candidates = url_mod && type(url_mod.download_candidates) == "function" ? url_mod.download_candidates(url) : [ url ];
-    let proxy_addr = service_proxy_address();
-
-    for (let target_url in candidates) {
-        if (command_exists("curl")) {
-            let args = [ "curl", "-sI", "--connect-timeout", "6", "-m", "12" ];
-            if (proxy_addr != "") {
-                push(args, "-x");
-                push(args, "http://" + proxy_addr);
-            }
-            push(args, as_string(target_url));
-            let output = command_output_from_args(args);
-            if (output != "") {
-                let first_line = split(output, "\n")[0] || "";
-                if (index(first_line, " 200 ") > 0 || index(first_line, " 301 ") > 0 || index(first_line, " 302 ") > 0) {
-                    return true;
-                }
-            }
-        } else if (command_exists("wget")) {
-            let cmd = command_from_args([ "wget", "-s", "-T", "6", "-q", as_string(target_url) ]);
-            if (proxy_addr != "")
-                cmd = command_env({ http_proxy: "http://" + proxy_addr, https_proxy: "http://" + proxy_addr }) + " " + cmd;
-            if (command_success(cmd))
-                return true;
-        }
-    }
-    return false;
-}
-
-function latest_tachyon_version() {
-    let response = latest_tachyon_release_json();
-    let version = "";
-    if (response != "") {
-        version = trim(helper_output_input(response, "object-get-default", [ "tag_name", "" ]));
-    }
-    if (version == "") {
-        let parts = split(TACHYON_RELEASE_REPO, "/");
-        if (length(parts) == 2 && parts[0] != "" && parts[1] != "") {
-            version = fetch_github_release_tag_fallback(parts[0], parts[1]);
-        }
-    }
-    return version;
-}
-
-function fetch_tachyon_latest_release_metadata() {
-    let parts = split(TACHYON_RELEASE_REPO, "/");
-    let response = latest_tachyon_release_json();
-    if (response != "") {
-        let metadata = trim(helper_output_input(response, "release-metadata-tsv", []));
-        if (metadata != "")
-            return metadata;
-    }
-
-    if (length(parts) == 2 && as_string(parts[0]) != "" && as_string(parts[1]) != "") {
-        let fallback_tag = fetch_github_release_tag_fallback(parts[0], parts[1]);
-        if (fallback_tag != "")
-            return fallback_tag + "\thttps://github.com/" + parts[0] + "/" + parts[1] + "/releases/tag/" + fallback_tag;
-    }
-
-    return "";
-}
-
-function write_tachyon_latest_version_cache(value, timestamp) {
-    if (as_string(value) == "")
-        return;
-    write_file("/tmp/tachyon.latest-version.cache", as_string(value) + "\n" + as_string(timestamp) + "\n");
-}
-
-function read_tachyon_build_fingerprint() {
-    let fields = split(trim(read_file(TACHYON_BUILD_STATE_FILE)), "\t");
-    if (length(fields) < 2 || trim(as_string(fields[0])) != trim(as_string(TACHYON_VERSION)))
-        return "";
-    return trim(as_string(fields[1]));
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function read_tachyon_build_fingerprint() { return cmp_cat.read_tachyon_build_fingerprint(); }
 
 // A release tag can be rebuilt, so the version alone cannot answer "is the build
 // on disk the build the release publishes now?". The fingerprint recorded at
 // install time answers it, including for releases that carry no commit SHA.
-function write_tachyon_build_fingerprint(version, fingerprint) {
-    if (as_string(version) == "" || as_string(fingerprint) == "")
-        return;
-    let dir = replace(TACHYON_BUILD_STATE_FILE, /\/[^\/]*$/, "");
-    if (dir != "")
-        ensure_dir(dir);
-    write_file(TACHYON_BUILD_STATE_FILE, as_string(version) + "\t" + as_string(fingerprint) + "\n");
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function write_tachyon_build_fingerprint(version, fingerprint) { return cmp_cat.write_tachyon_build_fingerprint(version, fingerprint); }
 
-function record_tachyon_installed_build(version, release_ctx) {
-    let sha = "";
-    let fingerprint = "";
-
-    if (type(release_ctx) == "object") {
-        sha = as_string(release_ctx.source_sha || "");
-        fingerprint = as_string(release_ctx.fingerprint || "");
-    }
-
-    if (sha == "" && fingerprint == "") {
-        let release_json = latest_tachyon_release_json();
-        if (release_json != "") {
-            sha = trim(helper_output_input(release_json, "release-commit-sha", []));
-            if (sha != "" && match(sha, /^[0-9a-fA-F]{7,40}$/) == null)
-                sha = "";
-            fingerprint = trim(helper_output_input(release_json, "release-build-fingerprint", []));
-        }
-    }
-
-    write_tachyon_build_fingerprint(version, fingerprint);
-
-    if (sha == "" && fingerprint == "")
-        return null;
-    let extra = { current_sha: sha, latest_sha: sha };
-    if (fingerprint != "") {
-        extra.current_build = fingerprint;
-        extra.latest_build = fingerprint;
-    }
-    return extra;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function record_tachyon_installed_build(version, release_ctx) { return cmp_cat.record_tachyon_installed_build(version, release_ctx); }
 
 // Called after a successful install/reinstall. Uses the release context from the
 // operation rather than re-fetching latest release metadata. This is critical
 // for install_version where the installed tag may differ from the latest release.
 // release_ctx is an optional object with {source_sha, fingerprint} from the resolved release.
-function retry_resolve(description, fn) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        if (fn())
-            return true;
-        updates_log(as_string(description) + " failed (" + attempt + "/3)", "warn");
-        command_success_from_args([ "sleep", "2" ]);
-    }
-    return false;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function retry_resolve(description, fn) { return cmp_cat.retry_resolve(description, fn); }
 
-function ensure_package_tool(tool_name, package_name, component, action) {
-    if (command_exists(tool_name))
-        return true;
-    run_logged("Updating package lists before installing " + as_string(package_name), pkg_list_update_command(), 30);
-    return run_logged("Installing bootstrap package " + as_string(package_name), pkg_install_name_command(package_name), 60);
-}
+// Delegated to components/installer.uc (branch 4 god-module split).
+function ensure_package_tool(tool_name, package_name, component, action) { return cmp_inst.ensure_package_tool(tool_name, package_name, component, action); }
+function ensure_sing_box_dependencies() { return cmp_inst.ensure_sing_box_dependencies(); }
 
-function ensure_sing_box_dependencies() {
-    let kmods = [ "kmod-inet-diag", "kmod-netlink-diag", "kmod-tun", "kmod-nft-tproxy", "kmod-nft-nat", "ca-bundle" ];
-    let missing = [];
-    for (let kmod in kmods) {
-        if (!pkg_is_installed(kmod)) {
-            if (kmod == "kmod-tun" && file_exists("/dev/net/tun"))
-                continue;
-            push(missing, kmod);
-        }
-    }
 
-    if (length(missing) > 0) {
-        updates_log("Installing missing dependencies for sing-box: " + join(", ", missing));
-        run_logged("Updating package lists for sing-box dependencies", pkg_list_update_command(), 30);
-
-        for (let kmod in missing) {
-            if (!run_logged("Installing dependency " + kmod, pkg_install_name_command(kmod), 60)) {
-                if (kmod == "kmod-tun" && file_exists("/dev/net/tun"))
-                    continue;
-                updates_log("Could not install " + kmod + " (may be built-in or custom firmware)", "warn");
-            }
-        }
-    }
-
-    command_success_from_args([ "modprobe", "tun" ]);
-    command_success_from_args([ "modprobe", "inet_diag" ]);
-    command_success_from_args([ "modprobe", "netlink_diag" ]);
-    command_success_from_args([ "modprobe", "nft_tproxy" ]);
-    command_success_from_args([ "modprobe", "nft_nat" ]);
-    if (!file_exists("/dev/net/tun")) {
-        command_success_from_args([ "mkdir", "-p", "/dev/net" ]);
-        command_success_from_args([ "mknod", "/dev/net/tun", "c", "10", "200" ]);
-        command_success_from_args([ "chmod", "0666", "/dev/net/tun" ]);
-    }
-    return true;
-}
-
-function clear_version_caches() {
-    remove_file("/tmp/tachyon.latest-version.cache");
-    remove_file(SYSTEM_INFO_CACHE_FILE);
-    remove_file("/tmp/tachyon/system-info.json");
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function clear_version_caches() { return cmp_cat.clear_version_caches(); }
 
 function managed_sing_box_service_installed() {
     let data = fs.readfile("/etc/init.d/sing-box");
@@ -1556,38 +502,11 @@ function wait_tachyon_running_after_sing_box_change() {
     return false;
 }
 
-function opkg_arch_list() {
-    return trim(helper_output_input(command_output_from_args([ "opkg", "print-architecture" ]), "updates-opkg-arch-list", []));
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function opkg_arch_list() { return cmp_cat.opkg_arch_list(); }
 
-function resolve_arch_candidates() {
-    let arch_list = "";
-    if (is_apk()) {
-        if (file_exists("/etc/apk/arch"))
-            arch_list += " " + trim(helper_output("file-whitespace-list", [ "/etc/apk/arch" ]));
-        arch_list += " " + trim(command_output_from_args([ "apk", "--print-arch" ]));
-    }
-    else {
-        arch_list = opkg_arch_list();
-    }
-
-    let release_arch = read_openwrt_release_value("DISTRIB_ARCH");
-    if (release_arch != "")
-        arch_list += " " + release_arch;
-    if (!helper_success("string-has-whitespace-field", [ arch_list ]))
-        arch_list = trim(command_output_from_args([ "uname", "-m" ]));
-
-    let resolved = trim(helper_output("updates-arch-candidates", [ arch_list ]));
-    let fields = split(resolved, "\t");
-    if (length(fields) < 2 || as_string(fields[0]) == "" || as_string(fields[1]) == "")
-        return null;
-
-    updates_log("Detected package architecture candidates: " + fields[1]);
-    return {
-        target: as_string(fields[0]),
-        candidates: as_string(fields[1])
-    };
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_arch_candidates() { return cmp_cat.resolve_arch_candidates(); }
 
 function select_inner_package_path(bundle_file, component, arch, ext) {
     return trim(helper_output_input(command_output_from_args([ "unzip", "-l", bundle_file ]), "updates-zip-inner-package-path", [ component, arch, ext ]));
@@ -1597,103 +516,22 @@ function select_archive_member_path(archive_file, member_name) {
     return trim(helper_output_input(command_output_from_args([ "tar", "-tzf", archive_file ]), "updates-archive-member-path", [ member_name ]));
 }
 
-function extract_arch_package_version(package_name, package_arch) {
-    return trim(helper_output("updates-arch-package-version", [ package_name, package_arch ]));
-}
+// Delegated to components/* modules (branch 4 god-module split).
+function extract_arch_package_version(package_name, package_arch) { return cmp_ver.extract_arch_package_version(package_name, package_arch); }
+function extract_zapret_bundle_version(bundle_name) { return cmp_ver.extract_zapret_bundle_version(bundle_name); }
+function extract_zapret2_bundle_version(bundle_name) { return cmp_ver.extract_zapret2_bundle_version(bundle_name); }
+function normalize_zapret_version(value) { return cmp_ver.normalize_zapret_version(value); }
+function normalize_sing_box_version(value) { return cmp_ver.normalize_sing_box_version(value); }
 
-function extract_zapret_bundle_version(bundle_name) {
-    return trim(helper_output("updates-zapret-bundle-version", [ bundle_name ]));
-}
 
-function extract_zapret2_bundle_version(bundle_name) {
-    return trim(helper_output("updates-zapret2-bundle-version", [ bundle_name ]));
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_zapret_release(arch, tag) { return cmp_cat.resolve_zapret_release(arch, tag); }
 
-function normalize_zapret_version(value) {
-    return trim(helper_output("updates-normalize-zapret-version", [ value ]));
-}
-
-function normalize_sing_box_version(value) {
-    return trim(helper_output("updates-normalize-sing-box-version", [ value ]));
-}
-
-function resolve_zapret_release(arch, tag) {
-    let release_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json("remittor", "zapret-openwrt", tag) :
-        fetch_github_release_json("remittor", "zapret-openwrt");
-    if (release_json != "") {
-        let resolved = trim(helper_output_input(release_json, "release-select-arch-suffix-asset", [ "zip", arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            let version = extract_zapret_bundle_version(fields[1]);
-            if (version == "")
-                version = trim(helper_output("string-remove-suffix", [ fields[1], ".zip" ]));
-            return {
-                arch: fields[0],
-                bundle_name: fields[1],
-                bundle_url: fields[2],
-                release_url: fields[3],
-                version
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let tag_clean = replace(tag, /^v/, "");
-        let tag_with_v = "v" + tag_clean;
-        let bundle_name = "zapret_" + tag_with_v + "_" + arch.candidates + ".zip";
-        return {
-            arch: arch.candidates,
-            bundle_name: bundle_name,
-            bundle_url: "https://github.com/remittor/zapret-openwrt/releases/download/" + tag_with_v + "/" + bundle_name,
-            release_url: "https://github.com/remittor/zapret-openwrt/releases/tag/" + tag_with_v,
-            version: tag
-        };
-    }
-    return { fetch_failed: true };
-}
-
-function resolve_zapret2_release(arch, tag) {
-    let resolved_tag = (tag != null && tag != "") ? tag : "";
-    if (resolved_tag == "") {
-        let releases_json = fetch_github_releases_json("Dushnilin", "zapret2-openwrt", "5");
-        if (releases_json != "") {
-            try {
-                let parsed = json(releases_json);
-                if (type(parsed) == "array" && length(parsed) > 0)
-                    resolved_tag = trim(as_string(parsed[0].tag_name || ""));
-            } catch (e) {}
-        }
-    }
-    if (resolved_tag == "")
-        resolved_tag = fetch_github_release_tag_fallback("Dushnilin", "zapret2-openwrt");
-    if (resolved_tag == "")
-        return { fetch_failed: true };
-    
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let base_dl = "https://github.com/Dushnilin/zapret2-openwrt/releases/download/" + resolved_tag + "/";
-    let release_url = "https://github.com/Dushnilin/zapret2-openwrt/releases/tag/" + resolved_tag;
-    let version = replace(resolved_tag, /^v/, "");
-
-    let candidate_list = split(arch.candidates, " ");
-    for (let candidate in candidate_list) {
-        if (candidate == "") continue;
-        let pkg_name = "zapret2_" + candidate + "." + asset_ext;
-        let url = base_dl + pkg_name;
-        if (url_exists(url)) {
-            return {
-                arch: candidate,
-                package_name: pkg_name,
-                package_url: url,
-                release_url: release_url,
-                version: version
-            };
-        }
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_zapret2_release(arch, tag) { return cmp_cat.resolve_zapret2_release(arch, tag); }
 
 function download_and_extract_zip_package(release, component) {
-    let bundle_file = tmp_dir + "/" + release.bundle_name;
+    let bundle_file = cmp.tmp_dir_path() + "/" + release.bundle_name;
     if (!download_with_retry(release.bundle_url, bundle_file, release.bundle_name))
         return null;
 
@@ -1704,7 +542,7 @@ function download_and_extract_zip_package(release, component) {
         return null;
 
     let package_name = path_basename(inner_package_path);
-    let package_file = tmp_dir + "/" + package_name;
+    let package_file = cmp.tmp_dir_path() + "/" + package_name;
     if (!command_success(command_from_args([ "unzip", "-p", bundle_file, inner_package_path ]) + " >" + shell_quote(package_file)) ||
         !file_nonempty(package_file))
         return null;
@@ -1722,177 +560,20 @@ function download_and_extract_zip_package(release, component) {
     };
 }
 
-function resolve_byedpi_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json("DPITrickster", "ByeDPI-OpenWrt", tag) :
-        fetch_github_releases_json("DPITrickster", "ByeDPI-OpenWrt", "30");
-    if (releases_json != "") {
-        let resolved = trim(helper_output_input(releases_json, "byedpi-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: extract_arch_package_version(fields[1], fields[0])
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "byedpi_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/tag/" + tag,
-            version: tag
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_byedpi_release(arch, tag) { return cmp_cat.resolve_byedpi_release(arch, tag); }
 
-function resolve_wdtt_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let owner = "Dushnilin";
-    let repo = "qwdtt-openwrt";
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json(owner, repo, tag) :
-        fetch_github_releases_json(owner, repo, "30");
-    if (releases_json == "" || releases_json == "[]") {
-        owner = "SpaceNeuroX";
-        releases_json = (tag != null && tag != "") ?
-            fetch_github_release_by_tag_json(owner, repo, tag) :
-            fetch_github_releases_json(owner, repo, "30");
-    }
-    if (releases_json != "" && releases_json != "[]") {
-        let resolved = trim(helper_output_input(releases_json, "wdtt-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: extract_arch_package_version(fields[1], fields[0])
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "wdtt_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
-        let dushnilin_url = "https://github.com/Dushnilin/qwdtt-openwrt/releases/download/" + tag + "/" + pkg_name;
-        let target_owner = url_exists(dushnilin_url) ? "Dushnilin" : "SpaceNeuroX";
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/" + target_owner + "/qwdtt-openwrt/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/" + target_owner + "/qwdtt-openwrt/releases/tag/" + tag,
-            version: tag
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_wdtt_release(arch, tag) { return cmp_cat.resolve_wdtt_release(arch, tag); }
 
-function resolve_olcrtc_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let owner = "Dushnilin";
-    let repo = "openwrt-olcrtc";
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json(owner, repo, tag) :
-        fetch_github_releases_json(owner, repo, "30");
-    if (releases_json == "" || releases_json == "[]") {
-        owner = "alekvol";
-        releases_json = (tag != null && tag != "") ?
-            fetch_github_release_by_tag_json(owner, repo, tag) :
-            fetch_github_releases_json(owner, repo, "30");
-    }
-    if (releases_json != "" && releases_json != "[]") {
-        let resolved = trim(helper_output_input(releases_json, "olcrtc-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: extract_arch_package_version(fields[1], fields[0])
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "olcrtc_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
-        let dushnilin_url = "https://github.com/Dushnilin/openwrt-olcrtc/releases/download/" + tag + "/" + pkg_name;
-        let target_owner = url_exists(dushnilin_url) ? "Dushnilin" : "alekvol";
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/" + target_owner + "/openwrt-olcrtc/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/" + target_owner + "/openwrt-olcrtc/releases/tag/" + tag,
-            version: tag
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_olcrtc_release(arch, tag) { return cmp_cat.resolve_olcrtc_release(arch, tag); }
 
-function resolve_fptn_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let owner = "Dushnilin";
-    let repo = "fptn";
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json(owner, repo, tag) :
-        fetch_github_releases_json(owner, repo, "30");
-    if (releases_json == "" || releases_json == "[]") {
-        owner = "fptn-project";
-        releases_json = (tag != null && tag != "") ?
-            fetch_github_release_by_tag_json(owner, repo, tag) :
-            fetch_github_releases_json(owner, repo, "30");
-    }
-    if (releases_json != "" && releases_json != "[]") {
-        let resolved = trim(helper_output_input(releases_json, "fptn-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            let ver = extract_arch_package_version(fields[1], fields[0]);
-            let m = match(ver, /^([0-9]+\.[0-9]+\.[0-9]+)/);
-            if (m) ver = m[1];
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: ver
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "fptn-client-" + tag_clean + "-openwrt-" + (release_series != "" ? release_series + ".x" : "24.10.x") + "-" + distrib_arch + "." + asset_ext;
-        let dushnilin_url = "https://github.com/Dushnilin/fptn/releases/download/" + tag + "/" + pkg_name;
-        let target_owner = url_exists(dushnilin_url) ? "Dushnilin" : "fptn-project";
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/" + target_owner + "/fptn/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/" + target_owner + "/fptn/releases/tag/" + tag,
-            version: tag_clean
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_fptn_release(arch, tag) { return cmp_cat.resolve_fptn_release(arch, tag); }
 
 function download_direct_package(release) {
-    let package_file = tmp_dir + "/" + release.package_name;
+    let package_file = cmp.tmp_dir_path() + "/" + release.package_name;
     if (!download_with_retry(release.package_url, package_file, release.package_name) || !file_nonempty(package_file))
         return null;
     let version = as_string(release.version || "");
@@ -2257,88 +938,12 @@ function remove_optional_component(component, package_name, label, runtime_modul
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
 }
 
-function extract_sing_box_version_from_output(output) {
-    output = as_string(output);
-    for (let line in split(output, "\n")) {
-        line = trim(line);
-        let fields = split(line, /[ \t\r\n]+/);
-        if (length(fields) >= 3 && lc(fields[0]) == "sing-box" && lc(fields[1]) == "version")
-            return fields[2];
-        if (length(fields) >= 2 && lc(fields[0]) == "version")
-            return fields[1];
-    }
-    return "";
-}
+// Delegated to components/* modules (branch 4 god-module split).
+function extract_sing_box_version_from_output(output) { return cmp_ver.extract_sing_box_version_from_output(output); }
+function read_sing_box_binary_version(binary, library_dir) { return cmp_ver.read_sing_box_binary_version(binary, library_dir); }
+function verify_binary_post_install(binary_path, expected_version, version_cmd_args) { return cmp_verify.verify_binary_post_install(binary_path, expected_version, version_cmd_args); }
+function validate_sing_box_extended_binary(binary, library_dir, compressed) { return cmp_verify.validate_sing_box_extended_binary(binary, library_dir, compressed); }
 
-function read_sing_box_binary_version(binary, library_dir) {
-    binary = as_string(binary);
-    if (binary == "" || !file_exists(binary)) {
-        updates_log("sing-box binary not found at " + binary, "warn");
-        return "";
-    }
-
-    command_success_from_args([ "chmod", "0755", binary ]);
-
-    let command = command_from_args([ binary, "version" ]);
-    let lib_path = as_string(library_dir || "");
-    if (lib_path != "") {
-        if (lib_path == "/usr/lib")
-            lib_path = "/usr/lib:/lib";
-        else
-            lib_path = lib_path + ":/usr/lib:/lib";
-        command = command_env({ LD_LIBRARY_PATH: lib_path }) + " " + command;
-    }
-
-    let raw_output = command_output_lenient("(" + command + ") 2>&1");
-    let version = extract_sing_box_version_from_output(raw_output);
-    if (version == "")
-        version = trim(helper_output_input(raw_output, "stdin-first-line-last-field", []));
-    if (version == "") {
-        let trimmed_raw = trim(raw_output);
-        updates_log("Failed to parse sing-box version from binary " + binary + (trimmed_raw != "" ? "; output: " + trimmed_raw : "; binary produced no output"), "warn");
-    }
-    return version;
-}
-
-function verify_binary_post_install(binary_path, expected_version, version_cmd_args) {
-    if (!file_exists(binary_path)) {
-        updates_log("Post-install verification failed: binary not found at " + binary_path, "error");
-        return false;
-    }
-    if (type(version_cmd_args) == "array" && length(version_cmd_args) > 0) {
-        let actual = read_sing_box_binary_version(binary_path, "");
-        if (actual == "") {
-            updates_log("Post-install verification: cannot read version from " + binary_path, "warn");
-        } else if (as_string(expected_version) != "" && actual != as_string(expected_version)) {
-            updates_log("Post-install binary version mismatch: expected=" + as_string(expected_version) + " actual=" + actual, "warn");
-        }
-    }
-    return true;
-}
-
-function validate_sing_box_extended_binary(binary, library_dir, compressed) {
-    let version = read_sing_box_binary_version(binary, library_dir || "");
-    if (version != "")
-        return version;
-    if (compressed) {
-        let is_elf = false;
-        try {
-            let f = fs.open(binary, "r");
-            if (f) {
-                let header = f.read("4");
-                f.close();
-                is_elf = (header == "\x7fELF");
-            }
-        }
-        catch (e) {}
-        if (is_elf) {
-            updates_log("Compressed binary validated via ELF header check: " + binary, "info");
-            return "compressed";
-        }
-        updates_log("Compressed binary is not a valid ELF executable: " + binary, "warn");
-    }
-    return "";
-}
 
 function move_file_portable(source_path, target_path) {
     if (fs.rename(source_path, target_path))
@@ -2647,7 +1252,7 @@ function restore_sing_box_extended_package_variant() {
     let release = resolve_sing_box_extended_release(false);
     if (release == null)
         return false;
-    let package_file = tmp_dir + "/" + release.asset_name;
+    let package_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         return false;
     prepare_sing_box_package_service_install();
@@ -2811,7 +1416,7 @@ function install_sing_box_extended_package(action, target_tag) {
 
     ensure_sing_box_dependencies();
 
-    let package_file = tmp_dir + "/" + release.asset_name;
+    let package_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download sing-box-extended package", current_version, latest_version);
 
@@ -2825,13 +1430,13 @@ function install_sing_box_extended_package(action, target_tag) {
     let cronet_touched = false;
     if (current_variant == "extended" || current_variant == "extended-compressed") {
         if (file_exists("/usr/bin/sing-box")) {
-            backup_binary = tmp_dir + "/sing-box.tachyon-backup";
+            backup_binary = cmp.tmp_dir_path() + "/sing-box.tachyon-backup";
             if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
                 action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
         }
         if (file_exists("/usr/lib/libcronet.so")) {
             cronet_touched = true;
-            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+            backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
                 action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -2849,7 +1454,7 @@ function install_sing_box_extended_package(action, target_tag) {
     }
 
     if (backup_binary == "" && file_exists("/usr/bin/sing-box")) {
-        backup_binary = tmp_dir + "/sing-box.tachyon-backup";
+        backup_binary = cmp.tmp_dir_path() + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup existing sing-box binary", current_version, latest_version);
@@ -2857,7 +1462,7 @@ function install_sing_box_extended_package(action, target_tag) {
     }
     if (!cronet_touched && file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+        backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -2927,7 +1532,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
 
     ensure_sing_box_dependencies();
 
-    let archive_file = tmp_dir + "/" + release.asset_name;
+    let archive_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download " + label, current_version, latest_version);
 
@@ -2937,8 +1542,8 @@ function install_sing_box_extended(action, compressed, target_tag) {
         action_fail("sing_box", action, "sing-box binary was not found in the downloaded archive", current_version, latest_version);
     }
     let cronet_path = select_archive_member_path(archive_file, "libcronet.so");
-    let extract_error = tmp_dir + "/sing-box-extract.err";
-    let tmp_binary = tmp_dir + "/sing-box.compressed." + owner_pid();
+    let extract_error = cmp.tmp_dir_path() + "/sing-box-extract.err";
+    let tmp_binary = cmp.tmp_dir_path() + "/sing-box.compressed." + owner_pid();
     let tmp_cronet = "";
     if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", binary_path ]) + " >" + shell_quote(tmp_binary) + " 2>" + shell_quote(extract_error)) ||
         !file_nonempty(tmp_binary) ||
@@ -2952,7 +1557,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     }
 
     if (cronet_path != "") {
-        tmp_cronet = tmp_dir + "/libcronet.so";
+        tmp_cronet = cmp.tmp_dir_path() + "/libcronet.so";
         if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", cronet_path ]) + " >" + shell_quote(tmp_cronet) + " 2>" + shell_quote(extract_error)) ||
             !file_nonempty(tmp_cronet) ||
             !command_success_from_args([ "chmod", "0644", tmp_cronet ])) {
@@ -2968,7 +1573,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
 
     remove_file(archive_file);
     stop_tachyon_before_sing_box_change();
-    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir, compressed);
+    let new_version = validate_sing_box_extended_binary(tmp_binary, cmp.tmp_dir_path(), compressed);
     if (new_version == "") {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
@@ -2981,7 +1586,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     if (file_exists("/usr/bin/sing-box")) {
         backup_binary = move_validated_file_to_backup_or_discard(
             "/usr/bin/sing-box",
-            tmp_dir + "/sing-box.tachyon-backup",
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup",
             "current sing-box binary"
         );
         if (backup_binary == null) {
@@ -2994,7 +1599,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     if (cronet_path != "") {
         cronet_touched = true;
         if (file_exists("/usr/lib/libcronet.so")) {
-            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+            backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
                 remove_file(tmp_binary);
@@ -3092,7 +1697,7 @@ function install_sing_box_lx(action, target_tag) {
 
     ensure_sing_box_dependencies();
 
-    let archive_file = tmp_dir + "/" + release.asset_name;
+    let archive_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download " + label, current_version, latest_version);
 
@@ -3102,8 +1707,8 @@ function install_sing_box_lx(action, target_tag) {
         action_fail("sing_box", action, "sing-box binary was not found in the downloaded archive", current_version, latest_version);
     }
     let cronet_path = select_archive_member_path(archive_file, "libcronet.so");
-    let extract_error = tmp_dir + "/sing-box-extract.err";
-    let tmp_binary = tmp_dir + "/sing-box.compressed." + owner_pid();
+    let extract_error = cmp.tmp_dir_path() + "/sing-box-extract.err";
+    let tmp_binary = cmp.tmp_dir_path() + "/sing-box.compressed." + owner_pid();
     let tmp_cronet = "";
     if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", binary_path ]) + " >" + shell_quote(tmp_binary) + " 2>" + shell_quote(extract_error)) ||
         !file_nonempty(tmp_binary) ||
@@ -3117,7 +1722,7 @@ function install_sing_box_lx(action, target_tag) {
     }
 
     if (cronet_path != "") {
-        tmp_cronet = tmp_dir + "/libcronet.so";
+        tmp_cronet = cmp.tmp_dir_path() + "/libcronet.so";
         if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", cronet_path ]) + " >" + shell_quote(tmp_cronet) + " 2>" + shell_quote(extract_error)) ||
             !file_nonempty(tmp_cronet) ||
             !command_success_from_args([ "chmod", "0644", tmp_cronet ])) {
@@ -3133,7 +1738,7 @@ function install_sing_box_lx(action, target_tag) {
 
     remove_file(archive_file);
     stop_tachyon_before_sing_box_change();
-    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir);
+    let new_version = validate_sing_box_extended_binary(tmp_binary, cmp.tmp_dir_path());
     if (new_version == "") {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
@@ -3146,7 +1751,7 @@ function install_sing_box_lx(action, target_tag) {
     if (file_exists("/usr/bin/sing-box")) {
         backup_binary = move_validated_file_to_backup_or_discard(
             "/usr/bin/sing-box",
-            tmp_dir + "/sing-box.tachyon-backup",
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup",
             "current sing-box binary"
         );
         if (backup_binary == null) {
@@ -3159,7 +1764,7 @@ function install_sing_box_lx(action, target_tag) {
     if (cronet_path != "") {
         cronet_touched = true;
         if (file_exists("/usr/lib/libcronet.so")) {
-            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+            backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
                 remove_file(tmp_binary);
@@ -3286,15 +1891,15 @@ function install_package_sing_box(action, tiny) {
     let cronet_touched = false;
     let backup_on_tmpfs = previous_variant == "extended-compressed";
     if (file_exists("/usr/bin/sing-box")) {
-        backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.tachyon-backup" :
-            tmp_dir + "/sing-box.tachyon-backup";
+        backup_binary = backup_on_tmpfs ? cmp.tmp_dir_path() + "/sing-box.tachyon-backup" :
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
             action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
     }
     if (file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = backup_on_tmpfs ? tmp_dir + "/libcronet.so.tachyon-backup" :
-            tmp_dir + "/libcronet.so.tachyon-backup";
+        backup_cronet = backup_on_tmpfs ? cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup" :
+            cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_backup(backup_binary);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -3416,54 +2021,8 @@ function check_tachyon() {
     action_success("tachyon", "check_update", "Installed version is newer than release", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
 }
 
-function resolve_tachyon_release(latest_version) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let i18n_required = pkg_is_installed("luci-i18n-tachyon-ru") ? "1" : "0";
-    let release_json = latest_tachyon_release_json();
-    let source_sha = "";
-    let fingerprint = "";
-
-    if (release_json != "") {
-        source_sha = trim(helper_output_input(release_json, "release-commit-sha", []));
-        if (source_sha != "" && match(source_sha, /^[0-9a-fA-F]{7,40}$/) == null)
-            source_sha = "";
-        fingerprint = trim(helper_output_input(release_json, "release-build-fingerprint", []));
-
-        let plan = trim(helper_output_input(release_json, "tachyon-release-plan", [ latest_version, asset_ext, i18n_required ]));
-        let fields = split(plan, "\t");
-        if (length(fields) >= 7 && as_string(fields[1]) != "" && as_string(fields[2]) != "" && as_string(fields[3]) != "" && as_string(fields[4]) != "") {
-            return {
-                release_url: fields[0],
-                backend_name: fields[1],
-                backend_url: fields[2],
-                app_name: fields[3],
-                app_url: fields[4],
-                i18n_name: fields[5],
-                i18n_url: fields[6],
-                source_sha: source_sha,
-                fingerprint: fingerprint
-            };
-        }
-    }
-
-    let ver_clean = replace(as_string(latest_version), /^v/, "");
-    let backend_name = "tachyon_" + ver_clean + "." + asset_ext;
-    let app_name = "luci-app-tachyon_" + ver_clean + "." + asset_ext;
-    let i18n_name = "luci-i18n-tachyon-ru_" + ver_clean + "." + asset_ext;
-    let base_dl = "https://github.com/" + TACHYON_RELEASE_REPO + "/releases/download/" + latest_version + "/";
-
-    return {
-        release_url: "https://github.com/" + TACHYON_RELEASE_REPO + "/releases/tag/" + latest_version,
-        backend_name: backend_name,
-        backend_url: base_dl + backend_name,
-        app_name: app_name,
-        app_url: base_dl + app_name,
-        i18n_name: i18n_required == "1" ? i18n_name : "",
-        i18n_url: i18n_required == "1" ? (base_dl + i18n_name) : "",
-        source_sha: source_sha,
-        fingerprint: fingerprint
-    };
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_tachyon_release(latest_version) { return cmp_cat.resolve_tachyon_release(latest_version); }
 
 function reinstall_tachyon() {
     let latest_version = latest_tachyon_version();
@@ -3479,9 +2038,9 @@ function reinstall_tachyon() {
     if (release == null)
         action_fail("tachyon", "reinstall", "Failed to resolve Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    let backend_file = tmp_dir + "/" + release.backend_name;
-    let app_file = tmp_dir + "/" + release.app_name;
-    let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let backend_file = cmp.tmp_dir_path() + "/" + release.backend_name;
+    let app_file = cmp.tmp_dir_path() + "/" + release.app_name;
+    let i18n_file = release.i18n_url != "" ? cmp.tmp_dir_path() + "/" + release.i18n_name : "";
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
@@ -3530,9 +2089,9 @@ function install_tachyon() {
     if (release == null)
         action_fail("tachyon", "install", "Failed to resolve Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    let backend_file = tmp_dir + "/" + release.backend_name;
-    let app_file = tmp_dir + "/" + release.app_name;
-    let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let backend_file = cmp.tmp_dir_path() + "/" + release.backend_name;
+    let app_file = cmp.tmp_dir_path() + "/" + release.app_name;
+    let i18n_file = release.i18n_url != "" ? cmp.tmp_dir_path() + "/" + release.i18n_name : "";
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
@@ -3577,9 +2136,9 @@ function install_tachyon_version(target_tag) {
     if (release == null)
         action_fail("tachyon", "install_version", "Failed to resolve Tachyon release packages for " + target_tag, TACHYON_VERSION, target_tag);
 
-    let backend_file = tmp_dir + "/" + release.backend_name;
-    let app_file = tmp_dir + "/" + release.app_name;
-    let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let backend_file = cmp.tmp_dir_path() + "/" + release.backend_name;
+    let app_file = cmp.tmp_dir_path() + "/" + release.app_name;
+    let i18n_file = release.i18n_url != "" ? cmp.tmp_dir_path() + "/" + release.i18n_name : "";
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
