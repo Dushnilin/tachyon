@@ -641,9 +641,17 @@ function section_name(section) {
 }
 
 function log_message(message, level, tag) {
-    level = as_string(level || "info");
-    tag = as_string(tag || "tachyon");
-    command_success_from_args([ "logger", "-t", tag, "[" + level + "] " + as_string(message) ]);
+    // Delegate to unified structured logging module.
+    // Maintains backward-compatible signature: log_message(message, level, tag)
+    try {
+        let logging = require("core.logging");
+        return logging.log_message(message, level, tag);
+    } catch (e) {
+        // Fallback if logging module cannot be loaded
+        level = as_string(level || "info");
+        tag = as_string(tag || "tachyon");
+        command_success_from_args([ "logger", "-t", tag, "[" + level + "] " + as_string(message) ]);
+    }
 }
 
 return {
