@@ -8,6 +8,7 @@ shellcheck-v0.10.0/
 AGENTS.md
 CLAUDE.md
 opencode.json
+REFACTORING_PROGRESS.md
 
 sandbox/
 dist/
