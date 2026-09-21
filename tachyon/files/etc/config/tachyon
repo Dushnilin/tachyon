@@ -51,6 +51,10 @@ config settings 'settings'
         option dns_local_cache '0'
         option dns_cache_size '10000'
         option log_level 'warn'
+        # Routing engine: sing-box (default) or steer / steer-extended.
+        # Switching engines parks configuration the target cannot express
+        # (settings.engine_unsupported_<engine>) so a switch back restores it.
+        option engine 'sing-box'
         option exclude_ntp '0'
         option shutdown_correctly '0'
         option smart_detect '0'

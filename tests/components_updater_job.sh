@@ -199,6 +199,7 @@ cp "$TACHYON_LIB/components/installer.uc" "$package_runtime_lib/components/insta
 cp "$TACHYON_LIB/components/catalog.uc" "$package_runtime_lib/components/catalog.uc"
 cp "$TACHYON_LIB/core/common.uc" "$package_runtime_lib/core/common.uc"
 cp "$TACHYON_LIB/core/helpers.uc" "$package_runtime_lib/core/helpers.uc"
+cp "$TACHYON_LIB/core/engine.uc" "$package_runtime_lib/core/engine.uc"
 cat >"$package_runtime_lib/core/constants.uc" <<'UCODE'
 function module_exports() {
   return {};
