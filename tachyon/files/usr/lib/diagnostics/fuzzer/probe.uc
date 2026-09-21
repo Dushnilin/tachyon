@@ -281,7 +281,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
         // Ensure ciadpi direct outbound connections bypass Sing-Box TProxy
         system("nft add table inet tachyon_fuzzer 2>/dev/null");
         system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
         
         let passed_count = 0;
         let max_speed = 0;
@@ -442,10 +442,10 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
         let fwmark_flag = "";
         if (is_z2) {
             if (index(args_str, "--fwmark") < 0)
-                fwmark_flag = sprintf("--fwmark=%s ", FUZZER_FWMARK);
+                fwmark_flag = sprintf("--fwmark=%s ", binaries.FUZZER_FWMARK);
         } else {
             if (index(args_str, "--dpi-desync-fwmark") < 0)
-                fwmark_flag = sprintf("--dpi-desync-fwmark=%s ", FUZZER_FWMARK);
+                fwmark_flag = sprintf("--dpi-desync-fwmark=%s ", binaries.FUZZER_FWMARK);
         }
         
         let argv = fuzzer_runner.build_zapret_argv(bin, qnum, fwmark_flag, lua_init_flags, blob_flags, filter_prefix, tok_res.tokens);
