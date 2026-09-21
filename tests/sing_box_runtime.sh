@@ -1424,24 +1424,34 @@ assert(route_rule(p2p_isolate, r => contains(r.network, "tcp") && contains(r.net
 
 let lists = cfg("domain-ip-rulesets");
 assert(no_internal_fields(lists), "internal runtime fields stripped from generated config");
-let local_ruleset = null;
-for (let rule_set in lists.route.rule_set || [])
-    if (rule_set.tag == "proxy-lists-ruleset")
-        local_ruleset = rule_set;
-assert(local_ruleset && local_ruleset.type == "local" && local_ruleset.format == "source", "domain_ip_lists local ruleset");
-assert(route_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset") && length(as_array(r.rule_set)) >= 2) != null, "domain_ip_lists and rule_set_with_subnets route");
-assert(dns_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset")) != null, "domain_ip_lists fakeip DNS rule");
 
-let generated_list = json(fs.readfile(dir + "/domain-ip-rulesets.json.rulesets/proxy-lists-ruleset.json"));
+// Mixed domain+IP lists are now split into separate -domains and -subnets rulesets
+let dom_ruleset = null;
+let sub_ruleset = null;
+for (let rule_set in lists.route.rule_set || []) {
+    if (rule_set.tag == "proxy-lists-ruleset-domains")
+        dom_ruleset = rule_set;
+    if (rule_set.tag == "proxy-lists-ruleset-subnets")
+        sub_ruleset = rule_set;
+}
+assert(dom_ruleset && dom_ruleset.type == "local" && dom_ruleset.format == "source", "domain_ip_lists split domains ruleset");
+assert(sub_ruleset && sub_ruleset.type == "local" && sub_ruleset.format == "source", "domain_ip_lists split subnets ruleset");
+assert(route_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset-domains") && contains(r.rule_set, "proxy-lists-ruleset-subnets")) != null, "domain_ip_lists split rulesets in route");
+assert(dns_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset-domains")) != null, "domain_ip_lists domains fakeip DNS rule");
+assert(dns_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset-subnets")) == null, "domain_ip_lists subnets NOT in DNS rules");
+
+let dom_file = json(fs.readfile(dir + "/domain-ip-rulesets.json.rulesets/proxy-lists-ruleset-domains.json"));
+let sub_file = json(fs.readfile(dir + "/domain-ip-rulesets.json.rulesets/proxy-lists-ruleset-subnets.json"));
 let has_domain = false;
 let has_ip = false;
-for (let rule in generated_list.rules || []) {
+for (let rule in dom_file.rules || [])
     if (contains(rule.domain_suffix, "example.net"))
         has_domain = true;
+for (let rule in sub_file.rules || [])
     if (contains(rule.ip_cidr, "203.0.113.0/24"))
         has_ip = true;
-}
-assert(has_domain && has_ip, "generated domain/IP source ruleset contents");
+assert(has_domain, "split domains ruleset contains example.net");
+assert(has_ip, "split subnets ruleset contains 203.0.113.0/24");
 
 let subscription_group = cfg("subscription-group");
 let provider_group = outbound(subscription_group, "Provider Group");
