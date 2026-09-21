@@ -531,7 +531,7 @@ function resolve_zapret_release(arch, tag) { return cmp_cat.resolve_zapret_relea
 function resolve_zapret2_release(arch, tag) { return cmp_cat.resolve_zapret2_release(arch, tag); }
 
 function download_and_extract_zip_package(release, component) {
-    let bundle_file = tmp_dir + "/" + release.bundle_name;
+    let bundle_file = cmp.tmp_dir_path() + "/" + release.bundle_name;
     if (!download_with_retry(release.bundle_url, bundle_file, release.bundle_name))
         return null;
 
@@ -542,7 +542,7 @@ function download_and_extract_zip_package(release, component) {
         return null;
 
     let package_name = path_basename(inner_package_path);
-    let package_file = tmp_dir + "/" + package_name;
+    let package_file = cmp.tmp_dir_path() + "/" + package_name;
     if (!command_success(command_from_args([ "unzip", "-p", bundle_file, inner_package_path ]) + " >" + shell_quote(package_file)) ||
         !file_nonempty(package_file))
         return null;
@@ -573,7 +573,7 @@ function resolve_olcrtc_release(arch, tag) { return cmp_cat.resolve_olcrtc_relea
 function resolve_fptn_release(arch, tag) { return cmp_cat.resolve_fptn_release(arch, tag); }
 
 function download_direct_package(release) {
-    let package_file = tmp_dir + "/" + release.package_name;
+    let package_file = cmp.tmp_dir_path() + "/" + release.package_name;
     if (!download_with_retry(release.package_url, package_file, release.package_name) || !file_nonempty(package_file))
         return null;
     let version = as_string(release.version || "");
@@ -1252,7 +1252,7 @@ function restore_sing_box_extended_package_variant() {
     let release = resolve_sing_box_extended_release(false);
     if (release == null)
         return false;
-    let package_file = tmp_dir + "/" + release.asset_name;
+    let package_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         return false;
     prepare_sing_box_package_service_install();
@@ -1416,7 +1416,7 @@ function install_sing_box_extended_package(action, target_tag) {
 
     ensure_sing_box_dependencies();
 
-    let package_file = tmp_dir + "/" + release.asset_name;
+    let package_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download sing-box-extended package", current_version, latest_version);
 
@@ -1430,13 +1430,13 @@ function install_sing_box_extended_package(action, target_tag) {
     let cronet_touched = false;
     if (current_variant == "extended" || current_variant == "extended-compressed") {
         if (file_exists("/usr/bin/sing-box")) {
-            backup_binary = tmp_dir + "/sing-box.tachyon-backup";
+            backup_binary = cmp.tmp_dir_path() + "/sing-box.tachyon-backup";
             if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
                 action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
         }
         if (file_exists("/usr/lib/libcronet.so")) {
             cronet_touched = true;
-            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+            backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
                 action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -1454,7 +1454,7 @@ function install_sing_box_extended_package(action, target_tag) {
     }
 
     if (backup_binary == "" && file_exists("/usr/bin/sing-box")) {
-        backup_binary = tmp_dir + "/sing-box.tachyon-backup";
+        backup_binary = cmp.tmp_dir_path() + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup existing sing-box binary", current_version, latest_version);
@@ -1462,7 +1462,7 @@ function install_sing_box_extended_package(action, target_tag) {
     }
     if (!cronet_touched && file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+        backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -1532,7 +1532,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
 
     ensure_sing_box_dependencies();
 
-    let archive_file = tmp_dir + "/" + release.asset_name;
+    let archive_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download " + label, current_version, latest_version);
 
@@ -1542,8 +1542,8 @@ function install_sing_box_extended(action, compressed, target_tag) {
         action_fail("sing_box", action, "sing-box binary was not found in the downloaded archive", current_version, latest_version);
     }
     let cronet_path = select_archive_member_path(archive_file, "libcronet.so");
-    let extract_error = tmp_dir + "/sing-box-extract.err";
-    let tmp_binary = tmp_dir + "/sing-box.compressed." + owner_pid();
+    let extract_error = cmp.tmp_dir_path() + "/sing-box-extract.err";
+    let tmp_binary = cmp.tmp_dir_path() + "/sing-box.compressed." + owner_pid();
     let tmp_cronet = "";
     if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", binary_path ]) + " >" + shell_quote(tmp_binary) + " 2>" + shell_quote(extract_error)) ||
         !file_nonempty(tmp_binary) ||
@@ -1557,7 +1557,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     }
 
     if (cronet_path != "") {
-        tmp_cronet = tmp_dir + "/libcronet.so";
+        tmp_cronet = cmp.tmp_dir_path() + "/libcronet.so";
         if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", cronet_path ]) + " >" + shell_quote(tmp_cronet) + " 2>" + shell_quote(extract_error)) ||
             !file_nonempty(tmp_cronet) ||
             !command_success_from_args([ "chmod", "0644", tmp_cronet ])) {
@@ -1573,7 +1573,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
 
     remove_file(archive_file);
     stop_tachyon_before_sing_box_change();
-    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir, compressed);
+    let new_version = validate_sing_box_extended_binary(tmp_binary, cmp.tmp_dir_path(), compressed);
     if (new_version == "") {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
@@ -1586,7 +1586,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     if (file_exists("/usr/bin/sing-box")) {
         backup_binary = move_validated_file_to_backup_or_discard(
             "/usr/bin/sing-box",
-            tmp_dir + "/sing-box.tachyon-backup",
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup",
             "current sing-box binary"
         );
         if (backup_binary == null) {
@@ -1599,7 +1599,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     if (cronet_path != "") {
         cronet_touched = true;
         if (file_exists("/usr/lib/libcronet.so")) {
-            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+            backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
                 remove_file(tmp_binary);
@@ -1697,7 +1697,7 @@ function install_sing_box_lx(action, target_tag) {
 
     ensure_sing_box_dependencies();
 
-    let archive_file = tmp_dir + "/" + release.asset_name;
+    let archive_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download " + label, current_version, latest_version);
 
@@ -1707,8 +1707,8 @@ function install_sing_box_lx(action, target_tag) {
         action_fail("sing_box", action, "sing-box binary was not found in the downloaded archive", current_version, latest_version);
     }
     let cronet_path = select_archive_member_path(archive_file, "libcronet.so");
-    let extract_error = tmp_dir + "/sing-box-extract.err";
-    let tmp_binary = tmp_dir + "/sing-box.compressed." + owner_pid();
+    let extract_error = cmp.tmp_dir_path() + "/sing-box-extract.err";
+    let tmp_binary = cmp.tmp_dir_path() + "/sing-box.compressed." + owner_pid();
     let tmp_cronet = "";
     if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", binary_path ]) + " >" + shell_quote(tmp_binary) + " 2>" + shell_quote(extract_error)) ||
         !file_nonempty(tmp_binary) ||
@@ -1722,7 +1722,7 @@ function install_sing_box_lx(action, target_tag) {
     }
 
     if (cronet_path != "") {
-        tmp_cronet = tmp_dir + "/libcronet.so";
+        tmp_cronet = cmp.tmp_dir_path() + "/libcronet.so";
         if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", cronet_path ]) + " >" + shell_quote(tmp_cronet) + " 2>" + shell_quote(extract_error)) ||
             !file_nonempty(tmp_cronet) ||
             !command_success_from_args([ "chmod", "0644", tmp_cronet ])) {
@@ -1738,7 +1738,7 @@ function install_sing_box_lx(action, target_tag) {
 
     remove_file(archive_file);
     stop_tachyon_before_sing_box_change();
-    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir);
+    let new_version = validate_sing_box_extended_binary(tmp_binary, cmp.tmp_dir_path());
     if (new_version == "") {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
@@ -1751,7 +1751,7 @@ function install_sing_box_lx(action, target_tag) {
     if (file_exists("/usr/bin/sing-box")) {
         backup_binary = move_validated_file_to_backup_or_discard(
             "/usr/bin/sing-box",
-            tmp_dir + "/sing-box.tachyon-backup",
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup",
             "current sing-box binary"
         );
         if (backup_binary == null) {
@@ -1764,7 +1764,7 @@ function install_sing_box_lx(action, target_tag) {
     if (cronet_path != "") {
         cronet_touched = true;
         if (file_exists("/usr/lib/libcronet.so")) {
-            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
+            backup_cronet = cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
                 remove_file(tmp_binary);
@@ -1891,15 +1891,15 @@ function install_package_sing_box(action, tiny) {
     let cronet_touched = false;
     let backup_on_tmpfs = previous_variant == "extended-compressed";
     if (file_exists("/usr/bin/sing-box")) {
-        backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.tachyon-backup" :
-            tmp_dir + "/sing-box.tachyon-backup";
+        backup_binary = backup_on_tmpfs ? cmp.tmp_dir_path() + "/sing-box.tachyon-backup" :
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
             action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
     }
     if (file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = backup_on_tmpfs ? tmp_dir + "/libcronet.so.tachyon-backup" :
-            tmp_dir + "/libcronet.so.tachyon-backup";
+        backup_cronet = backup_on_tmpfs ? cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup" :
+            cmp.tmp_dir_path() + "/libcronet.so.tachyon-backup";
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_backup(backup_binary);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -2038,9 +2038,9 @@ function reinstall_tachyon() {
     if (release == null)
         action_fail("tachyon", "reinstall", "Failed to resolve Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    let backend_file = tmp_dir + "/" + release.backend_name;
-    let app_file = tmp_dir + "/" + release.app_name;
-    let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let backend_file = cmp.tmp_dir_path() + "/" + release.backend_name;
+    let app_file = cmp.tmp_dir_path() + "/" + release.app_name;
+    let i18n_file = release.i18n_url != "" ? cmp.tmp_dir_path() + "/" + release.i18n_name : "";
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
@@ -2089,9 +2089,9 @@ function install_tachyon() {
     if (release == null)
         action_fail("tachyon", "install", "Failed to resolve Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    let backend_file = tmp_dir + "/" + release.backend_name;
-    let app_file = tmp_dir + "/" + release.app_name;
-    let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let backend_file = cmp.tmp_dir_path() + "/" + release.backend_name;
+    let app_file = cmp.tmp_dir_path() + "/" + release.app_name;
+    let i18n_file = release.i18n_url != "" ? cmp.tmp_dir_path() + "/" + release.i18n_name : "";
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
@@ -2136,9 +2136,9 @@ function install_tachyon_version(target_tag) {
     if (release == null)
         action_fail("tachyon", "install_version", "Failed to resolve Tachyon release packages for " + target_tag, TACHYON_VERSION, target_tag);
 
-    let backend_file = tmp_dir + "/" + release.backend_name;
-    let app_file = tmp_dir + "/" + release.app_name;
-    let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let backend_file = cmp.tmp_dir_path() + "/" + release.backend_name;
+    let app_file = cmp.tmp_dir_path() + "/" + release.app_name;
+    let i18n_file = release.i18n_url != "" ? cmp.tmp_dir_path() + "/" + release.i18n_name : "";
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))

@@ -372,6 +372,10 @@ function helper_success_input(input, mode, args) {
     return ok;
 }
 
+function tmp_dir_path() {
+    return tmp_dir;
+}
+
 function cleanup_tmp_dir() {
     if (tmp_dir != "") {
         command_success_from_args([ "rm", "-rf", tmp_dir ]);
@@ -602,6 +606,7 @@ function module_exports() {
         helper_output_input,
         helper_success_input,
         cleanup_tmp_dir,
+        tmp_dir_path,
         run_logged,
         normalize_stream_exit,
         detect_apk_lock,

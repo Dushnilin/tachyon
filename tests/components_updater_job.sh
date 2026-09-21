@@ -164,7 +164,7 @@ awk '
 { sub(/\r$/, "") }
 prev2 == "    remove_file(archive_file);" &&
 prev1 == "    stop_tachyon_before_sing_box_change();" &&
-$0 == "    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir);" {
+$0 == "    let new_version = validate_sing_box_extended_binary(tmp_binary, cmp.tmp_dir_path());" {
   safe_validation = 1
 }
 { prev2 = prev1; prev1 = $0 }
@@ -180,7 +180,7 @@ if grep -Fq 'fs.rename(tmp_binary, "/usr/bin/sing-box")' "$ACTION_UC"; then
 fi
 grep -Fq 'let backup_on_tmpfs = previous_variant == "extended-compressed";' "$ACTION_UC" ||
   fail "package sing-box installs must move compressed backups off overlay before opkg space checks"
-grep -Fq 'backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.tachyon-backup"' "$ACTION_UC" ||
+grep -Fq 'backup_binary = backup_on_tmpfs ? cmp.tmp_dir_path() + "/sing-box.tachyon-backup"' "$ACTION_UC" ||
   fail "compressed sing-box backup must use tmpfs while installing a package variant"
 grep -Fq 'return move_file_portable(backup_binary, "/usr/bin/sing-box");' "$ACTION_UC" &&
   fail "portable sing-box restore must preserve executable permissions explicitly"
@@ -280,7 +280,8 @@ TACHYON_BIN="$WORK_DIR/missing-tachyon" \
 TACHYON_SERVICE_INIT="$WORK_DIR/missing-init" \
 FAKE_OPKG_LOG="$WORK_DIR/opkg.log" \
 FAKE_OPKG_UPDATED="$WORK_DIR/opkg.updated" \
-ucode -L "$package_runtime_lib" "$ACTION_UC" component-action sing_box install_stable >/dev/null
+ucode -L "$package_runtime_lib" "$ACTION_UC" component-action sing_box install_stable \
+  >"$WORK_DIR/action-1.json" 2>"$WORK_DIR/action-1.err" || true
 set -e
 OPKG_LOG="$WORK_DIR/opkg.log" node - <<'NODE'
 const fs = require('fs');
