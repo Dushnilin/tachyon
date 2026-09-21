@@ -63,7 +63,7 @@ grep -Fq 'diagnostics/runtime.uc' "$CLI_UC" ||
   fail "service/cli.uc must dispatch diagnostics through diagnostics/runtime.uc"
 grep -Fq 'mode == "get-system-info"' "$DIAGNOSTICS_RUNTIME_UC" ||
   fail "diagnostics/runtime.uc must own system info"
-grep -Fq 'core/packages.uc' "$COMPONENT_ACTION_UC" ||
+grep -Fq 'core/packages.uc' "$TACHYON_LIB/components/helpers.uc" ||
   fail "component action owner must use core/packages.uc directly"
 grep -Fq 'count-uci' "$RULES_UC" ||
   fail "providers/rules.uc must own UCI rule counting"

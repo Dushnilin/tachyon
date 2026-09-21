@@ -55,14 +55,15 @@ grep -Fq '"*.log"' "$UPDATES_UC" ||
   fail "the age-based orphan cleanup must cover *.log"
 
 # The progress line must reach both syslog and the job log file.
-updates_log="$(sed -n '/^function updates_log/,/^}/p' "$ACTION_UC" | code_only)"
-[ -n "$updates_log" ] || fail "components/action.uc must define updates_log"
+HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/helpers.uc"
+updates_log="$(sed -n '/^function updates_log/,/^}/p' "$HELPERS_UC" | code_only)"
+[ -n "$updates_log" ] || fail "components/helpers.uc must define updates_log"
 grep -Fq 'log_message(' <<<"$updates_log" ||
   fail "updates_log must keep writing to syslog"
 grep -Fq 'job_log_append(' <<<"$updates_log" ||
   fail "updates_log must append to the job log file"
-grep -Fq 'getenv("UPDATES_JOB_LOG")' "$ACTION_UC" ||
-  fail "action.uc must read the UPDATES_JOB_LOG env var"
+grep -Fq 'getenv("UPDATES_JOB_LOG")' "$HELPERS_UC" ||
+  fail "helpers.uc must read the UPDATES_JOB_LOG env var"
 
 # The CLI must expose the log mode.
 grep -Fq 'component_action_log' "$TACHYON_BIN" ||

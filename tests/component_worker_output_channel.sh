@@ -12,6 +12,8 @@ set -eo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
+VERSIONS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/versions.uc"
+HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/helpers.uc"
 SINGBOX_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc"
 
 fail() {
@@ -64,8 +66,8 @@ grep -Fq '"*.out.stderr"' "$UPDATES_UC" ||
 # empty string, declared a working binary broken and rolled the install back with
 # exit_code 129 (128+SIGHUP).
 
-probe="$(sed -n '/^function read_sing_box_binary_version/,/^}/p' "$ACTION_UC" | code_only)"
-[ -n "$probe" ] || fail "components/action.uc must define read_sing_box_binary_version"
+probe="$(sed -n '/^function read_sing_box_binary_version/,/^}/p' "$VERSIONS_UC" | code_only)"
+[ -n "$probe" ] || fail "components/versions.uc must define read_sing_box_binary_version"
 grep -Fq 'command_output_lenient(' <<<"$probe" ||
   fail "read_sing_box_binary_version must keep stdout regardless of exit status"
 if grep -Eq '[^_]command_output\(' <<<"$probe"; then
@@ -78,13 +80,16 @@ grep -Fq 'command_output_lenient(' <<<"$version_output" ||
   fail "sing_box_version_output must keep stdout regardless of exit status"
 
 # ucode does not hoist: the helper must be declared before every call site.
-for file in "$ACTION_UC" "$SINGBOX_UC"; do
+# Within the split module layout the declaration lives in components/helpers.uc
+# and consumers bind it via require, so only files that own a copy are checked.
+for file in "$SINGBOX_UC" "$HELPERS_UC"; do
   decl="$(grep -n '^function command_output_lenient' "$file" | head -1 | cut -d: -f1)"
   [ -n "$decl" ] || fail "$file must declare command_output_lenient"
-  # Every mention that is not the declaration itself is a call site.
-  first_use="$(sed 's://.*::' "$file" | grep -n 'command_output_lenient(' |
-    grep -v ':function ' | head -1 | cut -d: -f1)"
-  [ -n "$first_use" ] || fail "$file declares command_output_lenient but never calls it"
+  # Every mention that is not the declaration itself is a call site. The
+  # no-matches case (declare-only file) must not trip pipefail.
+  first_use="$(sed 's://.*::' "$file" | { grep -n 'command_output_lenient(' || true; } |
+    { grep -v ':function ' || true; } | head -1 | cut -d: -f1 || true)"
+  [ -n "$first_use" ] || continue
   [ "$decl" -lt "$first_use" ] ||
     fail "$file declares command_output_lenient at line $decl but calls it at $first_use; ucode does not hoist"
 done
