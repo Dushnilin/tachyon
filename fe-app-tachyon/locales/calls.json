@@ -613,7 +613,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15759",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15825",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23148",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23164",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:126",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:52",
       "src/tachyon/tabs/updates/initController.ts:2334"
@@ -1444,7 +1444,7 @@
     "key": "Apply",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14520",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23010",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23011",
       "src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1657",
       "src/tachyon/tabs/updates/initController.ts:2150"
     ]
@@ -6843,7 +6843,7 @@
     "key": "installed",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15781",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23031",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23047",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:76",
       "src/tachyon/tabs/updates/initController.ts:2190"
     ]
@@ -10870,7 +10870,7 @@
     "key": "Remove",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22250",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23056",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23072",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8983",
       "src/tachyon/tabs/updates/initController.ts:1214",
       "src/tachyon/tabs/updates/initController.ts:2215"
@@ -11307,7 +11307,7 @@
     "key": "Routing Engine",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15847",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23077",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23093",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:151",
       "src/tachyon/tabs/updates/initController.ts:2240"
     ]
@@ -12958,8 +12958,8 @@
     "call": "Steer",
     "key": "Steer",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23117",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23120",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23133",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23136",
       "src/tachyon/tabs/updates/initController.ts:2296",
       "src/tachyon/tabs/updates/initController.ts:2299"
     ]
@@ -13287,7 +13287,7 @@
     "key": "Switch failed",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15819",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23143",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23159",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:119",
       "src/tachyon/tabs/updates/initController.ts:2329"
     ]
@@ -13957,7 +13957,7 @@
     "key": "These features will be parked and restored when you switch back",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15812",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23136",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23152",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:111",
       "src/tachyon/tabs/updates/initController.ts:2321"
     ]

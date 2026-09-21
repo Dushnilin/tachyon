@@ -1483,7 +1483,8 @@ function get_status() {
     // the steer init script and its own nftables table.
     if (active_engine_is_steer()) {
         let running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ? 1 : 0;
-        let enabled = file_executable("/etc/rc.d/S99steer") ? 1 : 0;
+        // steer uses START=94, so the enable symlink is S94steer.
+        let enabled = command_success_from_args([ "sh", "-c", "ls /etc/rc.d/S*steer >/dev/null 2>&1" ]) ? 1 : 0;
         let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
         write_service_status(running, enabled, dns_configured);
         return 0;

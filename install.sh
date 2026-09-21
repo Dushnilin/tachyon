@@ -37,7 +37,6 @@ DRY_RUN=0
 VERBOSE=0
 QUIET=0
 SKIP_SING_BOX=0
-STEER_INSTALL_OVERRIDE=""
 ZRAM_INSTALL_OVERRIDE=""
 REPAIR_MODE=0
 REINSTALL_MODE=0
@@ -111,8 +110,6 @@ Usage: $0 [options]
       --tag X.Y.Z       Install an exact published release
       --channel NAME    stable (default) or beta
       --skip-sing-box   Do not install sing-box when none is present
-      --steer           Install the steer routing engine (optional second core)
-      --no-steer        Do not offer the steer routing engine
       --zram            Install zram-swap
       --no-zram         Never install zram-swap
       --version         Print installer version
@@ -132,8 +129,6 @@ parse_args() {
             --repair) REPAIR_MODE=1; REINSTALL_MODE=1 ;;
             --reinstall) REINSTALL_MODE=1 ;;
             --skip-sing-box|--no-sing-box) SKIP_SING_BOX=1 ;;
-            --steer) STEER_INSTALL_OVERRIDE="yes" ;;
-            --no-steer) STEER_INSTALL_OVERRIDE="no" ;;
             --zram) ZRAM_INSTALL_OVERRIDE="yes" ;;
             --no-zram) ZRAM_INSTALL_OVERRIDE="no" ;;
             --tag)
@@ -769,40 +764,6 @@ install_selected_sing_box() {
     run_logged_timeout sing-box "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action sing_box "$_action"
 }
 
-steer_is_present() {
-    command_exists steer || pkg_is_installed steer || pkg_is_installed steer-extended
-}
-
-# steer is an optional second routing engine. Offer it unless the user opted
-# out; never install silently over a deliberate "no".
-select_steer_installation() {
-    STEER_INSTALL_REQUESTED=0
-    case "$STEER_INSTALL_OVERRIDE" in
-        yes) STEER_INSTALL_REQUESTED=1; return 0 ;;
-        no) return 0 ;;
-    esac
-    steer_is_present && return 0
-    if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then return 0; fi
-    printf '\nInstall the steer routing engine as an optional second core? [y/N]: '
-    read -r _answer || true
-    case "$_answer" in y|Y|yes|YES) STEER_INSTALL_REQUESTED=1 ;; esac
-}
-
-install_selected_steer() {
-    [ "$STEER_INSTALL_REQUESTED" -eq 1 ] || return 0
-    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install steer-extended"; return 0; }
-    [ -x /usr/bin/tachyon ] || return 1
-    msg "Installing steer (extended)"
-    # steer-extended carries its own VLESS/Reality client, which is what the
-    # engine switch expects for a vless outbound; fall back to the base package
-    # when the extended build has no asset for this architecture.
-    if run_logged_timeout steer "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action steer-extended install; then
-        return 0
-    fi
-    warn "steer-extended install failed; trying the base steer package"
-    run_logged_timeout steer "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action steer install
-}
-
 restore_service_intent() {
     [ "$DRY_RUN" -eq 1 ] && return 0
     [ -x /etc/init.d/tachyon ] || return 1
@@ -875,7 +836,6 @@ print_plan() {
     msg "Release: ${TACHYON_RELEASE_TAG} (${PKG_MANAGER})"
     [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && msg "Russian LuCI translation: yes" || msg "Russian LuCI translation: no"
     [ -n "$SING_BOX_INSTALL_VARIANT" ] && msg "sing-box: $SING_BOX_INSTALL_VARIANT" || msg "sing-box: keep existing / skip"
-    [ "$STEER_INSTALL_REQUESTED" -eq 1 ] && msg "steer engine: install (extended)" || msg "steer engine: keep existing / skip"
     [ "$ZRAM_INSTALL_REQUESTED" -eq 1 ] && msg "zram-swap: install" || true
 }
 
@@ -902,7 +862,6 @@ main() {
     ensure_bootstrap_ucode_runtime || fail "Could not bootstrap ucode runtime"
     detect_language_and_i18n
     select_sing_box_installation
-    select_steer_installation
     decide_zram
     record_service_state
 
@@ -917,7 +876,6 @@ main() {
     install_core_transaction || fail "Tachyon package transaction failed"
     install_zram_if_requested
     install_selected_sing_box || fail "sing-box installation failed"
-    install_selected_steer || warn "steer installation failed (optional engine; continuing)"
     restore_service_intent || fail "Could not restore Tachyon service state"
     healthcheck || fail "Installed Tachyon did not pass healthcheck"
     commit_transaction
