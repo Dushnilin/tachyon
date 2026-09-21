@@ -15,7 +15,7 @@
 ## BRANCH 1: refactor/process-identity
 
 **Ветка:** `refactor/process-identity`
-**Статус:** DONE (pushed, awaiting merge)
+**Статус:** DONE — замержено в main (PR #63)
 **Зависит от:** —
 **Файлы:** `core/process.uc` (новый), `core/exec.uc` (обновлён), `service/state.uc` (обновлён), `tests/process_identity.sh`
 
@@ -33,7 +33,7 @@
 ## BRANCH 2: refactor/structured-logging
 
 **Ветка:** `refactor/structured-logging`
-**Статус:** IN PROGRESS
+**Статус:** DONE — замержено в main (PR #64)
 **Зависит от:** —
 **Файлы:** `core/logging.uc` (новый), `core/common.uc` (обновлён), `tests/logging_module.sh`
 
@@ -42,13 +42,13 @@
 - [x] core/logging.uc selftest (6 assertions)
 - [x] core/common.uc делегирует log_message → logging.uc
 - [x] Тест tests/logging_module.sh
+- [x] Все тесты зелёные (165/165 в Docker + CI)
+- [x] Коммит + ветка готова к мержу
 - [ ] Миграция остальных модулей (post-merge, постепенно)
-- [ ] Все тесты зелёные (требуется ucode на Linux)
-- [ ] Коммит + ветка готова к мержу
 
 ---
 
-## BRANCH 3: refactor/packages-lock — TODO
+## BRANCH 3: refactor/packages-lock — DONE — замержено в main (PR #65)
 ## BRANCH 4: refactor/god-module-components — TODO
 ## BRANCH 5: refactor/god-module-diagnostics — TODO
 ## BRANCH 6: refactor/god-module-fuzzer — TODO
