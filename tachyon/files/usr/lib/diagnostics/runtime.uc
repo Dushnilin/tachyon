@@ -350,6 +350,22 @@ function module_output(module_path, args) {
     return result.status == 0 ? result.output : "";
 }
 
+// Active routing engine. Defaults to sing-box when the engine module or its
+// configuration is unreadable, so existing behaviour is preserved.
+function active_engine_name() {
+    try {
+        return require("core.engine").get_active();
+    }
+    catch (e) {
+        return "sing-box";
+    }
+}
+
+function active_engine_is_steer() {
+    let name = active_engine_name();
+    return name == "steer" || name == "steer-extended";
+}
+
 function module_output_stdin(module_path, args, input) {
     let result = module_capture_stdin(module_path, args, input);
     return result.status == 0 ? result.output : "";
@@ -695,6 +711,12 @@ function check_inbounds_config() {
 }
 
 function check_inbounds() {
+    // Server inbounds are sing-box runtime objects; steer has no inbound
+    // management, so this check reports not_applicable there.
+    if (active_engine_is_steer()) {
+        write_json({ not_applicable: 1, engine: active_engine_name(), items: [], enabled_count: 0, requires_public_wan: 0 });
+        return 0;
+    }
     let cfg = settings();
     let sing_box_config_path = option(cfg, "config_path", "");
     let wan_ip = get_wan_ip_addresses();
@@ -1811,6 +1833,12 @@ function sing_box_standard_ports_listening_fixture() {
 }
 
 function check_sing_box() {
+    // These checks describe sing-box state; on steer they are not applicable
+    // rather than failing, so the dashboard shows an honest answer.
+    if (active_engine_is_steer()) {
+        write_json({ not_applicable: 1, engine: active_engine_name() });
+        return 0;
+    }
     let sing_box_installed = 0;
     let sing_box_version_ok = 0;
     let sing_box_extended = 0;
@@ -1859,6 +1887,11 @@ function check_sing_box() {
 }
 
 function check_fakeip() {
+    // fakeip is served by sing-box's DNS inbound; steer has its own resolver.
+    if (active_engine_is_steer()) {
+        write_json({ not_applicable: 1, engine: active_engine_name() });
+        return 0;
+    }
     let fakeip_address = "";
     let fakeip6_address = "";
     for (let line in split(command_output_from_args([

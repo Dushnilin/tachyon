@@ -3335,6 +3335,39 @@ function reload_singbox_after_list_update() {
     return true;
 }
 
+function list_update_steer_catalog(settings) {
+    // steer reads plain-text lists, not sing-box rule-sets. When steer is the
+    // active engine, refresh the plain-text catalog it points at.
+    let active = "sing-box";
+    try {
+        active = require("core.engine").get_active();
+    }
+    catch (e) {
+        active = "sing-box";
+    }
+    if (active == "sing-box")
+        return true;
+
+    let catalog;
+    try {
+        catalog = require("steer.lists");
+    }
+    catch (e) {
+        log_message("steer list catalog module unavailable: " + as_string(e), "warn");
+        return true;
+    }
+
+    let wanted_categories = list_option_values(settings, "steer_list_categories");
+    let wanted_domains = list_option_values(settings, "steer_list_domains");
+    let result = catalog.sync({ categories: wanted_categories, domains: wanted_domains });
+    if (!result.ok) {
+        log_message("steer list catalog refresh failed: " + as_string(result.reason), "warn");
+        return false;
+    }
+    log_message("steer list catalog refreshed (" + length(result.prefixes) + " prefix lists, " + length(result.domains) + " domain lists)", "info");
+    return true;
+}
+
 function list_update() {
     log_message("Starting lists update", "info");
     if (!list_update_pid_begin())
@@ -3370,6 +3403,11 @@ function list_update() {
     for (let section in sections)
         if (!update_remote_plain_rulesets_from_rule(section, settings))
             ok = false;
+
+    // steer needs its own plain-text list catalog; refresh it alongside the
+    // sing-box lists so a later engine switch has current files.
+    if (!list_update_steer_catalog(settings))
+        ok = false;
 
     // Фаза 2: применение к nft (захватываем лок reload, чтобы не конфликтовать
     // с reload-firewall, который пересоздаёт таблицы и сеты nftables)

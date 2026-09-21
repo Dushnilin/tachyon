@@ -55,6 +55,10 @@ config settings 'settings'
         # Switching engines parks configuration the target cannot express
         # (settings.engine_unsupported_<engine>) so a switch back restores it.
         option engine 'sing-box'
+        # steer plain-text list catalog selection (see steer/lists.uc). Empty
+        # means "catalog defaults".
+        #list steer_list_categories 'telegram'
+        #list steer_list_domains 'porn'
         option exclude_ntp '0'
         option shutdown_correctly '0'
         option smart_detect '0'
