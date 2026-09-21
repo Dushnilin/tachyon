@@ -7,9 +7,14 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let uci_core = require("core.uci");
+let rag = require("diagnostics.rag");
 let history = require("diagnostics.fuzzer.history");
 let strategies = require("diagnostics.fuzzer.strategies");
+let probe = require("diagnostics.fuzzer.probe");
 let binaries = require("diagnostics.fuzzer.binaries");
+
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -111,7 +116,7 @@ function parse_llm_json(raw_text) {
 }
 
 function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
-    let current = get_fuzzer_state();
+    let current = history.get_fuzzer_state();
     if (current.running) {
         print(sprintf("%J\n", { success: false, error: "Fuzzer is currently running a benchmark" }));
         return;
@@ -120,19 +125,22 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
     engine = lc(as_string(engine || "zapret2"));
     target = trim(as_string(target || "youtube_suite"));
     user_prompt = trim(as_string(user_prompt || ""));
-    let target_url = resolve_target_url(target, custom_url);
+    let target_url = binaries.resolve_target_url(target, custom_url);
 
-    let baseline = run_probe(engine, "", target, custom_url);
-
-    let query_text = sprintf("%s %s %s", engine, target, user_prompt);
-    let rag_docs = rag.retrieve(query_text, 4);
+    let baseline = probe.run_probe(engine, "", target, custom_url);
 
     let uci = uci_core.cursor();
-    let ai_sec = uci.get_all(CONFIG_NAME, "ai") || {};
+    let ai_sec = uci != null ? (uci.get_all(CONFIG_NAME, "ai") || {}) : {};
     let provider = ai_sec.provider || "openai";
     let api_key = ai_sec.api_key || "";
     let ai_custom_url = ai_sec.custom_url || "";
     let model_override = ai_sec.model || "";
+
+    // RAG retrieval uses the same provider credentials as the LLM call; the
+    // old call passed the top_k into the provider slot, so retrieval silently
+    // failed and the knowledge-base fragments were always empty.
+    let query_text = sprintf("%s %s %s", engine, target, user_prompt);
+    let rag_docs = rag.retrieve(query_text, provider, api_key, ai_custom_url, model_override, 4);
 
     let prompt = sprintf(
         "You are an expert DPI Bypass Engineer specializing in OpenWrt, Zapret, Zapret2 (nfqws2), and ByeDPI (ciadpi).\n" +

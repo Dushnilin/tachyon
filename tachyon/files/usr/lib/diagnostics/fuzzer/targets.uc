@@ -16,7 +16,7 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
 function detect_dpi_type(target_key, custom_url) {
-    let urls_list = resolve_target_urls_list(target_key, custom_url);
+    let urls_list = binaries.resolve_target_urls_list(target_key, custom_url);
     let target_url = urls_list[0] ? urls_list[0].url : "https://www.google.com";
     let dns_flags = binaries.get_fuzzer_curl_dns_flags();
 
@@ -187,8 +187,6 @@ function module_exports() {
     return {
         TARGET_SUITES,
         TARGET_URLS,
-        resolve_target_url,
-        resolve_target_urls_list,
         detect_dpi_type,
         rerank_strategies_by_dpi
     };
