@@ -10,8 +10,10 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let uci_core = require("core.uci");
 let engine = require("core.engine");
 let engine_state = require("components.engine_state");
+let steer_generator = require("steer.generator");
 
 let as_string = common.as_string;
 let command_from_args = common.command_from_args;
@@ -140,6 +142,40 @@ function switch_engine(target, opts) {
 // ============================================================================
 // steer contract pass-through
 // ============================================================================
+// steer spec generation
+// ============================================================================
+
+function read_sections() {
+    let sections = [];
+    let cursor = null;
+    try {
+        cursor = require("uci").cursor();
+    }
+    catch (e) {
+        cursor = null;
+    }
+    if (cursor == null)
+        return sections;
+    try {
+        cursor.foreach(CONFIG_NAME, "section", function(section) {
+            if (type(section) == "object")
+                push(sections, section);
+        });
+    }
+    catch (e) {
+    }
+    return sections;
+}
+
+function build_steer_spec() {
+    let settings = uci_core.get_all(CONFIG_NAME, "settings") || {};
+    return steer_generator.build_spec(read_sections(), settings);
+}
+
+// Generate the spec and validate it with the engine itself before writing, so
+// a spec the installed steer cannot compile never reaches the disk.
+
+// ============================================================================
 //
 // The control layer must not keep a second data model of the engine's state.
 // These helpers run steer and return its output verbatim, so the UI and the
@@ -189,6 +225,39 @@ function steer_explain(target) {
 // ============================================================================
 // CLI
 // ============================================================================
+
+function generate_steer_spec(opts) {
+    opts = type(opts) == "object" ? opts : {};
+    let spec = build_steer_spec();
+    let text = steer_generator.serialize_spec(spec);
+    let path = engine.STEER_SPEC_FILE;
+
+    if (opts.dry_run)
+        return { ok: true, reason: "dry_run", path, spec, text };
+
+    let dir = replace(path, /\/[^\/]*$/, "");
+    if (dir != "")
+        common.ensure_dir(dir);
+
+    let tmp = path + ".tachyon." + as_string(int(clock()[0])) + "." + as_string(int(clock()[1]));
+    if (!common.write_file(tmp, text))
+        return { ok: false, reason: "write_failed", path };
+    if (!fs.rename(tmp, path)) {
+        common.remove_file(tmp);
+        return { ok: false, reason: "rename_failed", path };
+    }
+
+    // Validate with the engine when it is present; a compile failure must not
+    // leave a broken spec active.
+    if (engine.binary_present(engine.ENGINE_STEER)) {
+        let check = steer_apply(true);
+        if (!check.ok) {
+            return { ok: false, reason: "spec_rejected", path, output: check.output };
+        }
+    }
+
+    return { ok: true, reason: "", path, spec };
+}
 
 function print_json(value) {
     print(sprintf("%J\n", value));
@@ -310,7 +379,21 @@ function main() {
         return result.ok ? 0 : 1;
     }
 
-    warn("Usage: service/engine_runtime.uc <engine-info|engine-features|engine-plan|engine-switch|engine-switch-back|engine-start|engine-stop|engine-reload|engine-status|engine-apply|engine-diag|engine-explain> ...\n");
+    if (mode == "engine-generate") {
+        let result = generate_steer_spec({ dry_run: ARGV[1] == "--dry-run" });
+        if (result.ok && ARGV[1] == "--dry-run")
+            print(result.text);
+        else
+            print_json({
+                ok: result.ok,
+                reason: result.reason,
+                path: result.path,
+                output: result.output || ""
+            });
+        return result.ok ? 0 : 1;
+    }
+
+    warn("Usage: service/engine_runtime.uc <engine-info|engine-features|engine-plan|engine-switch|engine-switch-back|engine-start|engine-stop|engine-reload|engine-status|engine-apply|engine-generate|engine-diag|engine-explain> ...\n");
     return 2;
 }
 
@@ -323,6 +406,8 @@ if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
         stop_active,
         reload_active,
         switch_engine,
+        build_steer_spec,
+        generate_steer_spec,
         steer_run,
         steer_apply,
         steer_status,

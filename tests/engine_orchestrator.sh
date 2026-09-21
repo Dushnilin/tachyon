@@ -144,6 +144,46 @@ assert_match "parked payload restores" 'restored=main' "$out"
 # Module selftests
 # ---------------------------------------------------------------------------
 
+printf '%s\n' '--- steer spec generator ---'
+out="$(run_uc '
+let g = require("steer.generator");
+let sections = [
+    { ".name": "main", ".type": "section", "action": "connection", "enabled": "1",
+      "label": "Main", "outbound_interfaces": [ "wg0", "awg0" ],
+      "domain": [ "example.org" ], "remote_subnet_lists": [ "/etc/tachyon/lists/x.lst" ] },
+    { ".name": "kids", ".type": "section", "action": "bypass", "enabled": "1",
+      "label": "Kids", "client_addresses": [ "192.168.1.50" ], "domain": [ "kids.example" ] },
+    { ".name": "unsupported", ".type": "section", "action": "wdtt", "enabled": "1" }
+];
+let spec = g.build_spec(sections, { "source_network_interfaces": [ "br-lan", "tailscale0" ] });
+print("schema=" + spec.schema + "\n");
+print("lan=" + join(",", spec.lan_devices) + "\n");
+print("out_main=" + spec.outputs.Main.kind + "\n");
+print("out_main_devices=" + join(",", spec.outputs.Main.devices) + "\n");
+print("has_direct=" + (spec.outputs.direct != null) + "\n");
+print("channels=" + length(spec.channels) + "\n");
+print("ch0_out=" + spec.channels[0].out + "\n");
+print("ch0_domains=" + join(",", spec.channels[0].match.domains_files) + "\n");
+print("ch0_prefixes=" + join(",", spec.channels[0].match.prefixes_files) + "\n");
+print("ch1_from=" + join(",", spec.channels[1].from) + "\n");
+print("ch1_out=" + spec.channels[1].out + "\n");
+print("no_wdtt=" + (spec.outputs.Unsupported == null && spec.outputs.unsupported == null) + "\n");
+print("name_safe=" + g.safe_name("My Server / NL") + "\n");
+')"
+assert_match "spec schema 1" 'schema=1' "$out"
+assert_match "lan devices from settings" 'lan=br-lan,tailscale0' "$out"
+assert_match "interface output built" 'out_main=interface' "$out"
+assert_match "device preference order kept" 'out_main_devices=wg0,awg0' "$out"
+assert_match "direct output always present" 'has_direct=true' "$out"
+assert_match "two channels generated" 'channels=2' "$out"
+assert_match "first channel targets Main" 'ch0_out=Main' "$out"
+assert_match "domain refs mapped" 'ch0_domains=example.org' "$out"
+assert_match "subnet refs mapped" 'ch0_prefixes=/etc/tachyon/lists/x.lst' "$out"
+assert_match "client filter mapped" 'ch1_from=192.168.1.50' "$out"
+assert_match "bypass channel goes direct" 'ch1_out=direct' "$out"
+assert_match "unsupported section skipped" 'no_wdtt=true' "$out"
+assert_match "unsafe names sanitized" 'name_safe=My_Server___NL' "$out"
+
 printf '%s\n' '--- steer contract facts ---'
 out="$(run_uc '
 let e = require("core.engine");
