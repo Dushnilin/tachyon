@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-21 12:43+0300\n"
-"PO-Revision-Date: 2026-09-21 12:43+0300\n"
+"POT-Creation-Date: 2026-09-21 14:28+0300\n"
+"PO-Revision-Date: 2026-09-21 14:28+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -218,6 +218,9 @@ msgstr "Режим действия"
 msgid "Actions"
 msgstr "Действия"
 
+msgid "active"
+msgstr ""
+
 msgid "Active"
 msgstr "Активные"
 
@@ -235,6 +238,9 @@ msgstr "Активные клиенты"
 
 msgid "Active Connections"
 msgstr "Активные соединения"
+
+msgid "Active engine"
+msgstr ""
 
 msgid "Active Hours Mode"
 msgstr "Режим часов активности"
@@ -2057,6 +2063,9 @@ msgstr "Не удалось получить стратегии фаззера"
 msgid "Failed to install version"
 msgstr "Не удалось установить версию"
 
+msgid "Failed to load engine information."
+msgstr ""
+
 msgid "Failed to load history"
 msgstr "Не удалось загрузить историю"
 
@@ -2627,6 +2636,9 @@ msgstr "Установить"
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
+msgid "installed"
+msgstr ""
+
 msgid "Installed"
 msgstr "Установлен"
 
@@ -3146,6 +3158,9 @@ msgstr "Загрузка списка устройств LAN..."
 msgid "Loading connections"
 msgstr "Загрузка подключений"
 
+msgid "Loading engine information..."
+msgstr ""
+
 msgid "Loading service list..."
 msgstr "Получение списка сервисов..."
 
@@ -3499,6 +3514,9 @@ msgstr "Не обнаружено"
 
 msgid "Not implement yet"
 msgstr "Ещё не реализовано"
+
+msgid "not installed"
+msgstr ""
 
 msgid "Not installed"
 msgstr "Не установлено"
@@ -4328,6 +4346,9 @@ msgstr "Серверы маршрутизированного DNS"
 msgid "Router Traffic Target Section"
 msgstr "Секция для трафика роутера"
 
+msgid "Routing Engine"
+msgstr ""
+
 msgid "Routing mode"
 msgstr "Режим маршрутизации"
 
@@ -5087,8 +5108,14 @@ msgstr "Поддержать проект на CloudTips"
 msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
+msgid "Switch"
+msgstr ""
+
 msgid "Switch DNS to DoH"
 msgstr "Переключить DNS на DoH"
+
+msgid "Switch failed"
+msgstr ""
 
 msgid "Switch to auto-selection"
 msgstr "Вернуть автовыбор"
@@ -5113,6 +5140,9 @@ msgstr "Таблица существует"
 
 msgid "Tachyon"
 msgstr "Tachyon"
+
+msgid "Tachyon can drive more than one routing engine. Switching preserves configuration the target engine cannot express, so you can switch back without losing settings."
+msgstr ""
 
 msgid "Tachyon Core"
 msgstr "Ядро Tachyon"
@@ -5335,6 +5365,9 @@ msgstr "Есть правила использующие Zapret"
 
 msgid "There are rules using Zapret2"
 msgstr "Есть правила, использующие Zapret2"
+
+msgid "These features will be parked and restored when you switch back"
+msgstr ""
 
 msgid "Thinking..."
 msgstr "Думаю..."
