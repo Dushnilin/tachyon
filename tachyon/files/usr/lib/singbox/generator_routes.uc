@@ -1268,12 +1268,8 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_que
         } else if (dns_query_rule_set_tags != null) {
             push(dns_query_rule_set_tags, tag_name);
         }
-    } else if (source_rulesets.has_ip_matchers(ruleset_path)) {
-        if (is_1_14 && dns_response_rule_set_tags != null)
-            push(dns_response_rule_set_tags, tag_name);
-        else if (!is_1_14 && dns_query_rule_set_tags != null)
-            push(dns_query_rule_set_tags, tag_name);
     }
+    // IP-only rulesets must not be routed to fakeip in DNS rules
 }
 
 function legacy_condition_values(section, key) {
@@ -2001,9 +1997,7 @@ function add_combined_route_for_section(config, section) {
         push(rule_set_tags, ensured.tag);
         if (ensured.kind == "domains")
             push(dns_query_rule_set_tags, ensured.tag);
-        else if (ensured.kind == "subnets" || ensured.kind == "mixed")
-            push(dns_response_rule_set_tags, ensured.tag);
-        else
+        else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
 
         if (include_community_subnets) {
@@ -2022,7 +2016,7 @@ function add_combined_route_for_section(config, section) {
         push(rule_set_tags, ensured.tag);
         if (ensured.kind == "domains")
             push(dns_query_rule_set_tags, ensured.tag);
-        else
+        else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
     }
     for (let reference in connections.rule_sets_with_subnets(section)) {
@@ -2030,7 +2024,10 @@ function add_combined_route_for_section(config, section) {
         if (ensured == null)
             continue;
         push(rule_set_tags, ensured.tag);
-        push(dns_response_rule_set_tags, ensured.tag);
+        if (ensured.kind == "domains")
+            push(dns_query_rule_set_tags, ensured.tag);
+        else if (ensured.kind == "mixed")
+            push(dns_response_rule_set_tags, ensured.tag);
     }
     add_domain_ip_list_ruleset(
         config,
