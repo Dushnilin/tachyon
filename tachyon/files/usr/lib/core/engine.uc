@@ -189,9 +189,18 @@ function supports(engine, feature) {
 // Given a list of configuration features in use, return the ones the target
 // engine cannot express. These are what the switch must preserve for the way
 // back rather than delete.
+// `features` is either a list of feature names or a map { feature: payload }.
+function feature_names(features) {
+    if (type(features) == "array")
+        return features;
+    if (type(features) == "object")
+        return keys(features);
+    return [];
+}
+
 function unsupported_features(engine, features) {
     let out = [];
-    for (let feature in (type(features) == "array" ? features : [])) {
+    for (let feature in feature_names(features)) {
         if (!supports(engine, feature))
             push(out, feature);
     }

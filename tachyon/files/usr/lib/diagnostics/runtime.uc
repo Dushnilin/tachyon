@@ -1418,6 +1418,44 @@ function get_sing_box_status() {
     return 0;
 }
 
+// Engine-aware service status for the dashboard. On sing-box it is the same
+// answer as get_sing_box_status; on steer it reports the steer service and the
+// active engine, so the UI does not show a false "sing-box stopped".
+function get_engine_status() {
+    let active = "sing-box";
+    try {
+        active = require("core.engine").get_active();
+    }
+    catch (e) {
+        active = "sing-box";
+    }
+
+    if (active == "sing-box")
+        return get_sing_box_status();
+
+    let running = 0;
+    let enabled = 0;
+    try {
+        let engine_runtime = require("service.engine_runtime");
+        let info = require("core.engine").detect(active);
+        running = info.installed && file_executable("/etc/rc.d/S99steer") ? 1 : 0;
+        enabled = file_executable("/etc/rc.d/S99steer") ? 1 : 0;
+    }
+    catch (e) {
+        running = 0;
+        enabled = 0;
+    }
+    let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
+    write_json({
+        running,
+        enabled,
+        engine: active,
+        status: service_status_label(running, enabled),
+        dns_configured
+    });
+    return 0;
+}
+
 function get_status() {
     let running = module_success(SERVICE_STATE_UC, [
         "tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE
@@ -5555,6 +5593,8 @@ else if (mode == "get-subscription-metadata")
     exit(get_subscription_metadata(ARGV[1]));
 else if (mode == "get-sing-box-status")
     exit(get_sing_box_status());
+else if (mode == "get-engine-status")
+    exit(get_engine_status());
 else if (mode == "get-zapret-status")
     exit(module_passthrough(ZAPRET_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-zapret2-status")

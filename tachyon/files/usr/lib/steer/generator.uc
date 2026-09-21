@@ -181,14 +181,22 @@ function build_outputs(sections, settings) {
 // Channels
 // ============================================================================
 
-function channel_match(section) {
+function channel_match(section, catalog) {
     let match_obj = {};
+    catalog = type(catalog) == "object" ? catalog : {};
 
     let domains = [];
     for (let value in list_option(section, "domain"))
         push(domains, value);
     for (let value in list_option(section, "remote_domain_lists"))
         push(domains, value);
+    // Catalog-backed domain lists: community/category ids resolve to files in
+    // the steer list directory (see steer/lists.uc).
+    for (let value in list_option(section, "community_lists")) {
+        let mapped = catalog[value];
+        if (mapped != null)
+            push(domains, mapped);
+    }
     if (length(domains) > 0)
         match_obj.domains_files = domains;
 
@@ -197,6 +205,11 @@ function channel_match(section) {
         push(prefixes, value);
     for (let value in list_option(section, "remote_subnet_lists"))
         push(prefixes, value);
+    for (let value in list_option(section, "community_subnets")) {
+        let mapped = catalog[value];
+        if (mapped != null)
+            push(prefixes, mapped);
+    }
     if (length(prefixes) > 0)
         match_obj.prefixes_files = prefixes;
 
@@ -214,14 +227,14 @@ function channel_from(section) {
     return from;
 }
 
-function build_channels(sections) {
+function build_channels(sections, catalog) {
     let channels = [];
 
     for (let section in sections) {
         if (!is_enabled(section) || !is_rule_section(section) || !section_supported(section))
             continue;
 
-        let match_obj = channel_match(section);
+        let match_obj = channel_match(section, catalog);
         if (length(keys(match_obj)) == 0)
             continue;
 
@@ -250,7 +263,7 @@ function build_channels(sections) {
 // Spec assembly
 // ============================================================================
 
-function build_spec(sections, settings) {
+function build_spec(sections, settings, catalog) {
     settings = settings || {};
     let lan_devices = list_option(settings, "source_network_interfaces");
     if (length(lan_devices) == 0)
@@ -260,7 +273,7 @@ function build_spec(sections, settings) {
         schema: SPEC_SCHEMA,
         lan_devices,
         outputs: build_outputs(sections, settings),
-        channels: build_channels(sections)
+        channels: build_channels(sections, catalog)
     };
 }
 

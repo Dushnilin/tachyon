@@ -113,27 +113,28 @@ function option_features(settings, features) {
         push(features, "obs.custom_service_script");
 }
 
-// Collect the distinct feature list the current configuration needs.
-function current_features() {
-    let features = [];
-    let seen = {};
+// Collect the distinct feature list the current configuration needs, together
+// with the section names that carry each feature. The names are what parking
+// stores, so switching back can point at exactly the sections that were parked.
+function current_feature_map() {
+    let features = {};
+    let settings = uci_core.get_all(CONFIG_NAME, "settings") || {};
 
-    function add(feature) {
+    function add(feature, section_name) {
         feature = as_string(feature);
-        if (feature == "" || seen[feature] != null)
+        if (feature == "")
             return;
-        seen[feature] = true;
-        push(features, feature);
+        if (features[feature] == null)
+            features[feature] = [];
+        if (section_name != null && section_name != "")
+            push(features[feature], as_string(section_name));
     }
 
-    let settings = uci_core.get_all(CONFIG_NAME, "settings") || {};
     let opt_features = [];
     option_features(settings, opt_features);
     for (let feature in opt_features)
-        add(feature);
+        add(feature, "");
 
-    // The uci module only exists on OpenWrt (and in fixtures via core.uci).
-    // Anywhere else the settings-derived list above is all we have.
     let cursor = null;
     try {
         cursor = require("uci").cursor();
@@ -146,30 +147,34 @@ function current_features() {
 
     try {
         cursor.foreach(CONFIG_NAME, "section", function(section) {
+            let name = as_string(section[".name"] || "");
             if (!bool_option_default(section, "enabled", true))
                 return;
-            let feature = section_feature(section);
-            if (feature != "")
-                add(feature);
+            add(section_feature(section), name);
 
             if (list_length(section.remote_domain_lists) > 0 || list_length(section.domain) > 0)
-                add("routing.domain_lists");
+                add("routing.domain_lists", name);
             if (list_length(section.remote_subnet_lists) > 0 || list_length(section.subnet) > 0)
-                add("routing.ip_lists");
+                add("routing.ip_lists", name);
         });
         cursor.foreach(CONFIG_NAME, "server", function(section) {
-            add("sections.server");
+            add("sections.server", as_string(section[".name"] || ""));
         });
         cursor.foreach(CONFIG_NAME, "provider", function(section) {
-            add("sections.provider");
+            add("sections.provider", as_string(section[".name"] || ""));
         });
     }
     catch (e) {
-        // Partial list is fine: the switch will simply park less. Errors are
-        // already reported by uci to the system log.
+        // Partial map is fine: the switch parks less, and uci already logged.
     }
 
     return features;
+}
+
+// Collect the distinct feature list the current configuration needs.
+function current_features() {
+    let map = current_feature_map();
+    return keys(map);
 }
 
 // ============================================================================
@@ -206,8 +211,10 @@ function apply_switch(target, opts) {
     let active = engine.get_active();
 
     let validation = validate_target(target, opts.allow_install);
-    let features = current_features();
-    let plan = engine.plan_switch(target, features);
+    // The feature map carries the section names behind each feature, so the
+    // parked snapshot can name exactly what was set aside.
+    let feature_map = current_feature_map();
+    let plan = engine.plan_switch(target, feature_map);
 
     if (!validation.ok) {
         return {
@@ -264,6 +271,7 @@ function module_exports() {
     return {
         section_feature,
         current_features,
+        current_feature_map,
         validate_target,
         apply_switch,
         switch_back,

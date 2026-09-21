@@ -239,6 +239,7 @@ function command_spec(command) {
         get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
         get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
         get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],
+        get_engine_status: [ "diagnostics/runtime.uc", "get-engine-status", 0 ],
         get_zapret_status: [ "diagnostics/runtime.uc", "get-zapret-status", 0 ],
         get_zapret2_status: [ "diagnostics/runtime.uc", "get-zapret2-status", 0 ],
         get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],

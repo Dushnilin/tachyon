@@ -140,9 +140,58 @@ print("restored=" + back["sections.subscription"] + "\n");
 ')"
 assert_match "parked payload restores" 'restored=main' "$out"
 
+printf '%s\n' '--- feature map carries section names ---'
+out="$(run_uc '
+let e = require("core.engine");
+let map = { "sections.subscription": [ "sub_main", "sub_backup" ], "routing.domain_lists": [ "main" ] };
+let plan = e.plan_switch("steer", map);
+print("parked_names=" + join(",", plan.parked["sections.subscription"]) + "\n");
+print("has_domains=" + (plan.parked["routing.domain_lists"] != null) + "\n");
+')"
+assert_match "parked payload names sections" 'parked_names=sub_main,sub_backup' "$out"
+assert_match "compatible feature not parked" 'has_domains=false' "$out"
+
 # ---------------------------------------------------------------------------
 # Module selftests
 # ---------------------------------------------------------------------------
+
+printf '%s\n' '--- steer list catalog ---'
+out="$(run_uc '
+let l = require("steer.lists");
+let manifest = l.parse_manifest("{ \"base_url\": \"https://x/lists\", \"categories\": [ {\"id\":\"telegram\",\"file\":\"telegram.lst\",\"default_on\":true}, {\"id\":\"netflix\",\"file\":\"netflix.lst\",\"default_on\":false} ], \"domain_lists\": [ {\"id\":\"porn\",\"file\":\"domains/porn.lst\",\"default_on\":false}, {\"id\":\"news\",\"file\":\"domains/news.lst\",\"default_on\":true} ] }");
+print("parsed=" + (manifest != null) + "\n");
+let cats = l.select_categories(manifest, []);
+print("default_cats=" + join(",", map(cats, function(e){ return e.id; })) + "\n");
+let chosen = l.select_categories(manifest, [ "netflix" ]);
+print("chosen_cats=" + join(",", map(chosen, function(e){ return e.id; })) + "\n");
+let doms = l.select_domain_lists(manifest, []);
+print("default_doms=" + join(",", map(doms, function(e){ return e.id; })) + "\n");
+let probe = { file: "telegram.lst" };
+print("url=" + l.category_url(manifest, probe) + "\n");
+print("bad=" + (l.parse_manifest("not json") == null) + "\n");
+')"
+assert_match "manifest parses" 'parsed=true' "$out"
+assert_match "default categories selected" 'default_cats=telegram' "$out"
+assert_match "explicit category selected" 'chosen_cats=netflix' "$out"
+assert_match "default domain lists selected" 'default_doms=news' "$out"
+assert_match "category url built" 'url=https://x/lists/telegram.lst' "$out"
+assert_match "bad manifest rejected" 'bad=true' "$out"
+
+printf '%s\n' '--- catalog ids map into channels ---'
+out="$(run_uc '
+let g = require("steer.generator");
+let catalog = { "telegram": "/etc/steer/lists/telegram.lst", "porn": "/etc/steer/lists/domains/porn.lst" };
+let sections = [
+    { ".name": "tg", ".type": "section", "action": "connection", "enabled": "1", "label": "TG",
+      "outbound_interfaces": [ "wg0" ],
+      "community_lists": [ "porn" ], "community_subnets": [ "telegram" ] }
+];
+let spec = g.build_spec(sections, {}, catalog);
+print("domains=" + join(",", spec.channels[0].match.domains_files) + "\n");
+print("prefixes=" + join(",", spec.channels[0].match.prefixes_files) + "\n");
+')"
+assert_match "community domain list mapped" 'domains=/etc/steer/lists/domains/porn.lst' "$out"
+assert_match "community subnet list mapped" 'prefixes=/etc/steer/lists/telegram.lst' "$out"
 
 printf '%s\n' '--- steer spec generator ---'
 out="$(run_uc '
