@@ -31,6 +31,50 @@ const CATALOG_MANIFEST_URL = CATALOG_BASE + "/categories.json";
 // steer keep.d entry covers lists/custom, so downloaded lists live here.
 const STEER_LISTS_DIR = getenv("TACHYON_STEER_LISTS_DIR") || "/etc/steer/lists";
 const STEER_DOMAINS_DIR = STEER_LISTS_DIR + "/domains";
+const STEER_SUB_FILE = getenv("TACHYON_STEER_SUB_FILE") || "/etc/steer/sub.txt";
+// Tachyon caches parsed subscription outbounds here; the `links` map holds the
+// original share links (vless:// etc), which is exactly what steer's sub.txt
+// expects.
+const SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") ||
+    (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/section-cache";
+
+// Write the section's VLESS/Reality nodes to steer's subscription file.
+// Returns the destination path on success, "" when the section has no usable
+// subscription nodes. steer-extended reads this file for `kind: vless` outputs.
+function write_subscription_file(section_name) {
+    section_name = as_string(section_name);
+    if (section_name == "")
+        return "";
+    let cache_path = SECTION_CACHE_DIR + "/" + section_name + ".json";
+    let data = fs.readfile(cache_path);
+    if (data == null)
+        return "";
+    let parsed = null;
+    try {
+        parsed = json(as_string(data));
+    }
+    catch (e) {
+        return "";
+    }
+    if (type(parsed) != "object" || type(parsed.links) != "object")
+        return "";
+
+    let lines = [];
+    for (let name, link in parsed.links) {
+        link = trim(as_string(link));
+        if (match(link, /^vless:\/\//) != null)
+            push(lines, link);
+    }
+    if (length(lines) == 0)
+        return "";
+
+    let dir = replace(STEER_SUB_FILE, /\/[^\/]*$/, "");
+    if (dir != "")
+        common.ensure_dir(dir);
+    if (!common.write_file(STEER_SUB_FILE, join("\n", lines) + "\n"))
+        return "";
+    return STEER_SUB_FILE;
+}
 
 // ============================================================================
 // Manifest
@@ -377,6 +421,8 @@ function module_exports() {
         select_domain_lists,
         category_url,
         materialize_section_lists,
+        write_subscription_file,
+        STEER_SUB_FILE,
         SECTION_LISTS_DIR,
         download_list,
         sync

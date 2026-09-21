@@ -175,7 +175,20 @@ function build_steer_spec() {
     steer_generator.set_list_materializer(function(section, catalog) {
         return steer_lists.materialize_section_lists(section, catalog);
     });
-    return steer_generator.build_spec(read_sections(), settings);
+
+    // Proxy sections backed by a subscription get a steer vless output pointing
+    // at sub.txt, written from the subscription cache. Without this the section
+    // would fall back to a direct output and its traffic would not be tunnelled.
+    let sections = read_sections();
+    for (let section in sections) {
+        if (type(section) != "object")
+            continue;
+        let sub_file = steer_lists.write_subscription_file(as_string(section[".name"] || ""));
+        if (sub_file != "")
+            section.steer_sub_file = sub_file;
+    }
+
+    return steer_generator.build_spec(sections, settings);
 }
 
 // Generate the spec and validate it with the engine itself before writing, so
