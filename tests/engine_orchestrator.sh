@@ -262,6 +262,59 @@ assert_match "engine-plan targets steer" '"to_engine": *"steer"' "$out"
 out="$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/service/engine_runtime.uc" engine-diag 2>&1 || true)"
 assert_match "engine-diag refuses without engine" 'engine_not_installed|not installed|No such file' "$out"
 
+printf '%s\n' '--- switch refuses when engine is not installed ---'
+out="$(TACHYON_UCI_STATE_FILE="$WORK_DIR/uci3.state" run_uc '
+let s = require("components.engine_state");
+let result = s.apply_switch("steer", {});
+print("ok=" + result.ok + "\n");
+print("reason=" + result.reason + "\n");
+print("installable=" + result.installable + "\n");
+')"
+assert_match "switch refused" 'ok=false' "$out"
+assert_match "reason is engine_not_installed" 'reason=engine_not_installed' "$out"
+assert_match "switch offers install" 'installable=true' "$out"
+
+printf '%s\n' '--- switch with allow-install parks and flips ---'
+out="$(TACHYON_UCI_STATE_FILE="$WORK_DIR/uci4.state" run_uc '
+let s = require("components.engine_state");
+let e = require("core.engine");
+let result = s.apply_switch("steer", { allow_install: true });
+print("ok=" + result.ok + "\n");
+print("from=" + result.from_engine + "\n");
+print("to=" + result.to_engine + "\n");
+print("active=" + e.get_active() + "\n");
+print("previous=" + e.get_previous() + "\n");
+')"
+assert_match "switch succeeds with allow-install" 'ok=true' "$out"
+assert_match "switch records from engine" 'from=sing-box' "$out"
+assert_match "switch records to engine" 'to=steer' "$out"
+assert_match "active engine flipped" 'active=steer' "$out"
+assert_match "previous engine recorded" 'previous=sing-box' "$out"
+
+printf '%s\n' '--- switch back restores previous ---'
+out="$(TACHYON_UCI_STATE_FILE="$WORK_DIR/uci5.state" run_uc '
+let s = require("components.engine_state");
+let e = require("core.engine");
+s.apply_switch("steer", { allow_install: true });
+let back = s.switch_back({ allow_install: true });
+print("ok=" + back.ok + "\n");
+print("active=" + e.get_active() + "\n");
+print("previous=" + e.get_previous() + "\n");
+')"
+assert_match "switch back succeeds" 'ok=true' "$out"
+assert_match "active engine restored" 'active=sing-box' "$out"
+assert_match "previous now points at steer" 'previous=steer' "$out"
+
+printf '%s\n' '--- switch back without previous is refused ---'
+out="$(TACHYON_UCI_STATE_FILE="$WORK_DIR/uci6.state" run_uc '
+let s = require("components.engine_state");
+let result = s.switch_back({});
+print("ok=" + result.ok + "\n");
+print("reason=" + result.reason + "\n");
+')"
+assert_match "switch back refused" 'ok=false' "$out"
+assert_match "no previous engine reported" 'reason=no_previous_engine' "$out"
+
 printf '%s\n' '--- lifecycle engine branches ---'
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 grep -Fq 'start_steer_main' "$LIFECYCLE_UC" ||
