@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-21 19:52+0300\n"
-"PO-Revision-Date: 2026-09-21 19:52+0300\n"
+"POT-Creation-Date: 2026-09-21 20:40+0300\n"
+"PO-Revision-Date: 2026-09-21 20:40+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2527,9 +2527,6 @@ msgstr "ℹ️ Прямое подключение (WAN): Публичный IP 
 
 msgid "ℹ️ ISP DNS detected: DNS queries are handled by your local Internet Service Provider. If you use selective routing, this is standard behavior for direct connections."
 msgstr "ℹ️ Обнаружен DNS провайдера: DNS-запросы обрабатываются вашим интернет-провайдером. При выборочной маршрутизации это стандартное поведение для прямого трафика."
-
-msgid "idle"
-msgstr "простой"
 
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
@@ -6109,6 +6106,9 @@ msgstr "Правила маршрутизации sing-box для Zapret2 не �
 
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "idle"
+msgstr "простой"
 
 msgid "Alternative routing engine with its own VLESS/Reality client."
 msgstr "Альтернативный движок маршрутизации со своим клиентом VLESS/Reality."

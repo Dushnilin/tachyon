@@ -24,7 +24,7 @@ import {
   renderSingBoxVariantBadge,
 } from '../../helpers/singBoxVariant';
 import { shouldApplyCompletedComponentActionResult } from './componentActionCompletion';
-import { engineLabel } from '../../helpers/engine';
+import { engineLabel, parkedFeatures } from '../../helpers/engine';
 import {
   shouldPreserveCompletedCheckResultOnNextMount,
   shouldExposeCheckResults,
@@ -2090,30 +2090,11 @@ function renderEngineCard(): Node {
   const extended = info?.engines.find((e) => e.engine === 'steer-extended');
   const baseInstalled = Boolean(base?.installed);
   const extendedInstalled = Boolean(extended?.installed);
-  const steerInstalled = baseInstalled || extendedInstalled;
-
-  const sectionTitle = (text: string) =>
-    E(
-      'div',
-      {
-        style:
-          'font-size: 11px; text-transform: uppercase; opacity: 0.6; margin: 4px 0 2px;',
-      },
-      text,
-    );
 
   const row = (children: Node[]) =>
     E('div', { style: 'display: flex; flex-wrap: wrap; gap: 8px;' }, children);
 
-  const activeBadge = (engine: string, variant: string) =>
-    active === engine
-      ? E('span', { style: 'font-size: 12px; opacity: 0.8;' }, _('active'))
-      : variant === ''
-        ? E('span', { style: 'font-size: 12px; opacity: 0.4;' }, _('idle'))
-        : null;
-
-  // ── sing-box ────────────────────────────────────────────────────────────
-  const singBoxRow: Node[] = [];
+  // sing-box variant availability, derived from the generated variant fields.
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
   const singBoxStable =
     singBoxInstalled &&
@@ -2126,12 +2107,7 @@ function renderEngineCard(): Node {
 
   const singBoxVariant = (
     label: string,
-    key:
-      | 'singBoxInstallStable'
-      | 'singBoxInstallTiny'
-      | 'singBoxInstallExtended'
-      | 'singBoxInstallExtendedCompressed'
-      | 'singBoxInstallLx',
+    key: string,
     action: Tachyon.ComponentAction,
     alreadyInstalled: boolean,
   ): Node | null => {
@@ -2146,93 +2122,100 @@ function renderEngineCard(): Node {
     });
   };
 
-  if (singBoxInstalled) {
-    const badge = activeBadge('sing-box', systemInfo.sing_box_version || '');
-    if (badge) singBoxRow.push(badge);
-  }
-  [
-    singBoxVariant(
-      'Stable',
-      'singBoxInstallStable',
-      'install_stable',
-      singBoxStable,
-    ),
-    singBoxVariant('Tiny', 'singBoxInstallTiny', 'install_tiny', singBoxTiny),
-    singBoxVariant(
-      'Extended',
-      'singBoxInstallExtended',
-      'install_extended',
-      singBoxExtended,
-    ),
-    singBoxVariant(
-      'Extended compressed',
-      'singBoxInstallExtendedCompressed',
-      'install_extended_compressed',
-      Boolean(systemInfo.sing_box_extended) &&
-        Boolean(systemInfo.sing_box_compressed),
-    ),
-    singBoxVariant('Leadaxe (lx)', 'singBoxInstallLx', 'install_lx', singBoxLx),
-  ].forEach((node) => node && singBoxRow.push(node));
+  // Engine picker: only engines that are installed can be selected, since the
+  // switch would otherwise point the device at something that is not there.
+  const selectableEngines: { id: string; label: string }[] = [];
+  if (singBoxInstalled) selectableEngines.push({ id: 'sing-box', label: 'sing-box' });
+  if (baseInstalled) selectableEngines.push({ id: 'steer', label: 'Steer' });
+  if (extendedInstalled)
+    selectableEngines.push({ id: 'steer-extended', label: 'Steer extended' });
 
-  // ── steer ───────────────────────────────────────────────────────────────
-  const steerRow: Node[] = [];
-  if (steerInstalled) {
-    const activeSteer =
-      active === 'steer' || active === 'steer-extended'
-        ? activeBadge(active, 'installed')
-        : null;
-    if (activeSteer) steerRow.push(activeSteer);
-  }
-  if (!baseInstalled || active !== 'steer') {
-    steerRow.push(
-      renderButton({
-        text: 'Steer',
-        classNames: ['cbi-button-action'],
-        disabled: installing,
-        onClick: () => void runSteerAction('steer', 'install'),
-      }),
-    );
-  }
-  if (!extendedInstalled || active !== 'steer-extended') {
-    steerRow.push(
-      renderButton({
-        text: 'Steer extended',
-        classNames: ['cbi-button-action'],
-        disabled: installing,
-        onClick: () => void runSteerAction('steer-extended', 'install'),
-      }),
-    );
-  }
-  if (steerInstalled) {
-    steerRow.push(
+  const picker = E('select', {
+    class: 'cbi-input-select',
+    style: 'min-width: 200px;',
+  }) as HTMLSelectElement;
+  selectableEngines.forEach((entry) => {
+    const option = E('option', { value: entry.id }, entry.label);
+    (option as HTMLOptionElement).selected = entry.id === active;
+    picker.appendChild(option);
+  });
+
+  const warning = E('div', {
+    style:
+      'font-size: 12px; color: var(--text-color-medium, #b58900); margin-top: 6px; display: none;',
+  });
+
+  const applyButton = renderButton({
+    text: _('Apply'),
+    classNames: ['cbi-button-action'],
+    disabled: installing || selectableEngines.length < 2,
+    onClick: () =>
+      void applyEngineSelection(picker.value, active, warning),
+  });
+
+  // Variant buttons for the engine currently selected in the picker.
+  const selectedEngine = picker.value || active;
+  const variantRow: Node[] = [];
+
+  if (selectedEngine === 'sing-box') {
+    [
+      singBoxVariant('Stable', 'singBoxInstallStable', 'install_stable', singBoxStable),
+      singBoxVariant('Tiny', 'singBoxInstallTiny', 'install_tiny', singBoxTiny),
+      singBoxVariant('Extended', 'singBoxInstallExtended', 'install_extended', singBoxExtended),
+      singBoxVariant(
+        'Extended compressed',
+        'singBoxInstallExtendedCompressed',
+        'install_extended_compressed',
+        Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed),
+      ),
+      singBoxVariant('Leadaxe (lx)', 'singBoxInstallLx', 'install_lx', singBoxLx),
+    ].forEach((node) => node && variantRow.push(node));
+    if (variantRow.length === 0) {
+      variantRow.push(E('span', { style: 'opacity: 0.7;' }, _('installed')));
+    }
+  } else {
+    if (selectedEngine !== 'steer') {
+      variantRow.push(
+        renderButton({
+          text: 'Steer',
+          classNames: ['cbi-button-action'],
+          disabled: installing,
+          onClick: () => void runSteerAction('steer', 'install'),
+        }),
+      );
+    }
+    if (selectedEngine !== 'steer-extended') {
+      variantRow.push(
+        renderButton({
+          text: 'Steer extended',
+          classNames: ['cbi-button-action'],
+          disabled: installing,
+          onClick: () => void runSteerAction('steer-extended', 'install'),
+        }),
+      );
+    }
+    variantRow.push(
       renderButton({
         text: _('Remove'),
         classNames: ['cbi-button-negative'],
         disabled: installing,
-        onClick: () =>
-          void runSteerAction(
-            extendedInstalled ? 'steer-extended' : 'steer',
-            'remove',
-          ),
+        onClick: () => void runSteerAction(selectedEngine, 'remove'),
       }),
     );
   }
 
+  // Repaint the variant row when the picker changes, without a network call.
+  picker.addEventListener('change', () => renderUpdatesComponents());
+
   const body: Node[] = [
-    sectionTitle('sing-box'),
-    E(
-      'div',
-      { style: 'font-size: 12px; opacity: 0.8;' },
-      formatSingBoxVersion(systemInfo),
-    ),
-    row(singBoxRow.length > 0 ? singBoxRow : [E('span', {}, _('installed'))]),
-    sectionTitle('steer'),
-    E(
-      'div',
-      { style: 'font-size: 12px; opacity: 0.8;' },
-      steerInstalled ? _('installed') : _('Not installed'),
-    ),
-    row(steerRow.length > 0 ? steerRow : [E('span', {}, '')]),
+    E('div', { style: 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+      picker,
+      applyButton,
+    ]),
+    warning,
+    ...(variantRow.length > 0
+      ? [row(variantRow)]
+      : []),
   ];
 
   return E('div', { class: 'tachyon_updates-page__component' }, [
@@ -2306,6 +2289,35 @@ async function runSteerAction(
     steerBusy = false;
     renderUpdatesComponents();
   }
+}
+
+async function applyEngineSelection(
+  engine: string,
+  current: string,
+  warning: HTMLElement,
+): Promise<void> {
+  if (engine === current) {
+    return;
+  }
+
+  const planResponse = await TachyonShellMethods.getEnginePlan(engine);
+  const parked = planResponse.success ? parkedFeatures(planResponse.data) : [];
+  if (parked.length > 0) {
+    warning.style.display = 'block';
+    warning.textContent = `${_('These features will be parked and restored when you switch back')}: ${parked.join(', ')}`;
+  } else {
+    warning.style.display = 'none';
+  }
+
+  const result = await TachyonShellMethods.switchEngine(engine, true);
+  if (!result.success || !result.data.ok) {
+    warning.style.display = 'block';
+    warning.textContent = `${_('Switch failed')}: ${result.success ? result.data.reason : result.error}`;
+    return;
+  }
+  await refreshEngineInfo();
+  renderUpdatesComponents();
+  showToast(`${_('Active engine')}: ${engineLabel(engine)}`, 'success');
 }
 
 function renderUpdatesComponents() {

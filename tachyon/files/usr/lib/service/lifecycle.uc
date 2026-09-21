@@ -1207,6 +1207,21 @@ function start() {
 
     mark_pending_reload_if_config_changed(startup_config_fingerprint, "config_changed_during_start");
 
+    // The stable-start verification below is sing-box specific. When steer
+    // drives routing, its own init script already reported success, so asking
+    // for a stable sing-box would always fail and roll the start back.
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    if (active_engine != "sing-box") {
+        module_status(STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
+        return 0;
+    }
+
     status = module_status(STATE_UC, [
         "wait-sing-box-service-stable",
         as_string(SING_BOX_START_STABLE_MIN_AGE),

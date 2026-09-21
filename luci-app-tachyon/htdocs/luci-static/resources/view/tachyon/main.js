@@ -22972,17 +22972,7 @@ function renderEngineCard() {
   const extended = info?.engines.find((e) => e.engine === "steer-extended");
   const baseInstalled = Boolean(base?.installed);
   const extendedInstalled = Boolean(extended?.installed);
-  const steerInstalled = baseInstalled || extendedInstalled;
-  const sectionTitle = (text) => E(
-    "div",
-    {
-      style: "font-size: 11px; text-transform: uppercase; opacity: 0.6; margin: 4px 0 2px;"
-    },
-    text
-  );
   const row = (children) => E("div", { style: "display: flex; flex-wrap: wrap; gap: 8px;" }, children);
-  const activeBadge = (engine, variant) => active === engine ? E("span", { style: "font-size: 12px; opacity: 0.8;" }, _("active")) : variant === "" ? E("span", { style: "font-size: 12px; opacity: 0.4;" }, _("idle")) : null;
-  const singBoxRow = [];
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
   const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny;
   const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
@@ -22999,85 +22989,85 @@ function renderEngineCard() {
       onClick: () => void runComponentAction("sing_box", action, key)
     });
   };
-  if (singBoxInstalled) {
-    const badge = activeBadge("sing-box", systemInfo.sing_box_version || "");
-    if (badge) singBoxRow.push(badge);
-  }
-  [
-    singBoxVariant(
-      "Stable",
-      "singBoxInstallStable",
-      "install_stable",
-      singBoxStable
-    ),
-    singBoxVariant("Tiny", "singBoxInstallTiny", "install_tiny", singBoxTiny),
-    singBoxVariant(
-      "Extended",
-      "singBoxInstallExtended",
-      "install_extended",
-      singBoxExtended
-    ),
-    singBoxVariant(
-      "Extended compressed",
-      "singBoxInstallExtendedCompressed",
-      "install_extended_compressed",
-      Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed)
-    ),
-    singBoxVariant("Leadaxe (lx)", "singBoxInstallLx", "install_lx", singBoxLx)
-  ].forEach((node) => node && singBoxRow.push(node));
-  const steerRow = [];
-  if (steerInstalled) {
-    const activeSteer = active === "steer" || active === "steer-extended" ? activeBadge(active, "installed") : null;
-    if (activeSteer) steerRow.push(activeSteer);
-  }
-  if (!baseInstalled || active !== "steer") {
-    steerRow.push(
-      renderButton({
-        text: "Steer",
-        classNames: ["cbi-button-action"],
-        disabled: installing,
-        onClick: () => void runSteerAction("steer", "install")
-      })
-    );
-  }
-  if (!extendedInstalled || active !== "steer-extended") {
-    steerRow.push(
-      renderButton({
-        text: "Steer extended",
-        classNames: ["cbi-button-action"],
-        disabled: installing,
-        onClick: () => void runSteerAction("steer-extended", "install")
-      })
-    );
-  }
-  if (steerInstalled) {
-    steerRow.push(
+  const selectableEngines = [];
+  if (singBoxInstalled) selectableEngines.push({ id: "sing-box", label: "sing-box" });
+  if (baseInstalled) selectableEngines.push({ id: "steer", label: "Steer" });
+  if (extendedInstalled)
+    selectableEngines.push({ id: "steer-extended", label: "Steer extended" });
+  const picker = E("select", {
+    class: "cbi-input-select",
+    style: "min-width: 200px;"
+  });
+  selectableEngines.forEach((entry) => {
+    const option = E("option", { value: entry.id }, entry.label);
+    option.selected = entry.id === active;
+    picker.appendChild(option);
+  });
+  const warning = E("div", {
+    style: "font-size: 12px; color: var(--text-color-medium, #b58900); margin-top: 6px; display: none;"
+  });
+  const applyButton = renderButton({
+    text: _("Apply"),
+    classNames: ["cbi-button-action"],
+    disabled: installing || selectableEngines.length < 2,
+    onClick: () => void applyEngineSelection(picker.value, active, warning)
+  });
+  const selectedEngine = picker.value || active;
+  const variantRow = [];
+  if (selectedEngine === "sing-box") {
+    [
+      singBoxVariant("Stable", "singBoxInstallStable", "install_stable", singBoxStable),
+      singBoxVariant("Tiny", "singBoxInstallTiny", "install_tiny", singBoxTiny),
+      singBoxVariant("Extended", "singBoxInstallExtended", "install_extended", singBoxExtended),
+      singBoxVariant(
+        "Extended compressed",
+        "singBoxInstallExtendedCompressed",
+        "install_extended_compressed",
+        Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed)
+      ),
+      singBoxVariant("Leadaxe (lx)", "singBoxInstallLx", "install_lx", singBoxLx)
+    ].forEach((node) => node && variantRow.push(node));
+    if (variantRow.length === 0) {
+      variantRow.push(E("span", { style: "opacity: 0.7;" }, _("installed")));
+    }
+  } else {
+    if (selectedEngine !== "steer") {
+      variantRow.push(
+        renderButton({
+          text: "Steer",
+          classNames: ["cbi-button-action"],
+          disabled: installing,
+          onClick: () => void runSteerAction("steer", "install")
+        })
+      );
+    }
+    if (selectedEngine !== "steer-extended") {
+      variantRow.push(
+        renderButton({
+          text: "Steer extended",
+          classNames: ["cbi-button-action"],
+          disabled: installing,
+          onClick: () => void runSteerAction("steer-extended", "install")
+        })
+      );
+    }
+    variantRow.push(
       renderButton({
         text: _("Remove"),
         classNames: ["cbi-button-negative"],
         disabled: installing,
-        onClick: () => void runSteerAction(
-          extendedInstalled ? "steer-extended" : "steer",
-          "remove"
-        )
+        onClick: () => void runSteerAction(selectedEngine, "remove")
       })
     );
   }
+  picker.addEventListener("change", () => renderUpdatesComponents());
   const body = [
-    sectionTitle("sing-box"),
-    E(
-      "div",
-      { style: "font-size: 12px; opacity: 0.8;" },
-      formatSingBoxVersion(systemInfo)
-    ),
-    row(singBoxRow.length > 0 ? singBoxRow : [E("span", {}, _("installed"))]),
-    sectionTitle("steer"),
-    E(
-      "div",
-      { style: "font-size: 12px; opacity: 0.8;" },
-      steerInstalled ? _("installed") : _("Not installed")
-    ),
-    row(steerRow.length > 0 ? steerRow : [E("span", {}, "")])
+    E("div", { style: "display: flex; gap: 8px; flex-wrap: wrap;" }, [
+      picker,
+      applyButton
+    ]),
+    warning,
+    ...variantRow.length > 0 ? [row(variantRow)] : []
   ];
   return E("div", { class: "tachyon_updates-page__component" }, [
     E("div", { class: "tachyon_updates-page__component__header" }, [
@@ -23134,6 +23124,28 @@ async function runSteerAction(component, action) {
     steerBusy = false;
     renderUpdatesComponents();
   }
+}
+async function applyEngineSelection(engine, current, warning) {
+  if (engine === current) {
+    return;
+  }
+  const planResponse = await TachyonShellMethods.getEnginePlan(engine);
+  const parked = planResponse.success ? parkedFeatures(planResponse.data) : [];
+  if (parked.length > 0) {
+    warning.style.display = "block";
+    warning.textContent = `${_("These features will be parked and restored when you switch back")}: ${parked.join(", ")}`;
+  } else {
+    warning.style.display = "none";
+  }
+  const result = await TachyonShellMethods.switchEngine(engine, true);
+  if (!result.success || !result.data.ok) {
+    warning.style.display = "block";
+    warning.textContent = `${_("Switch failed")}: ${result.success ? result.data.reason : result.error}`;
+    return;
+  }
+  await refreshEngineInfo();
+  renderUpdatesComponents();
+  showToast(`${_("Active engine")}: ${engineLabel(engine)}`, "success");
 }
 function renderUpdatesComponents() {
   const container = document.getElementById("tachyon_updates-components");
