@@ -148,6 +148,7 @@ const CAPABILITIES = {
         "outbound.interface",
         "outbound.direct",
         "obs.wireguard_over_tcp",
+        "dns.upstream",
     ],
     "steer-extended": [
         "routing.domain_lists",
@@ -164,6 +165,7 @@ const CAPABILITIES = {
         "outbound.vless_reality",
         "obs.wireguard_over_tcp",
         "tunnel.tun",
+        "dns.upstream",
     ],
 };
 

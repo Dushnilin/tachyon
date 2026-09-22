@@ -127,6 +127,7 @@ const PARENTAL_QUOTA_UC = LIB_DIR + "/service/parental_quota.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
+const STEER_DNS_UC = LIB_DIR + "/steer/dns.uc";
 
 let start_subscription_update_lock_held = false;
 let subscription_caches_prepared = getenv("TACHYON_SUBSCRIPTION_CACHES_PREPARED") || "0";
@@ -864,6 +865,20 @@ function prepare_community_rulesets() {
     }
 }
 
+// Whether the active routing engine is steer or steer-extended. Used to skip
+// the sing-box-only start work (config validation, dnsmasq pointing at the
+// sing-box DNS inbound) that must never run on a steer device.
+function active_engine_is_steer() {
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    return active_engine != "sing-box";
+}
+
 // Start the steer engine. Tachyon's job here is to make sure sing-box is not
 // running and holding the same dataplane, generate the spec from the current
 // configuration, and let the steer init script bring the engine up.
@@ -892,6 +907,13 @@ function start_steer_main(active_engine) {
         return 1;
     }
 
+    // Start the DNS upstream resolver (smartdns) BEFORE steer dnsd so that
+    // steer init.d can read the upstream port from the port file and pass it
+    // as --upstream-port. If smartdns is not installed this is a safe no-op.
+    let dns_status = module_status(STEER_DNS_UC, [ "start-runtime" ]);
+    if (dns_status != 0)
+        log_message("steer DNS upstream start failed (non-fatal, steer dnsd will use port 53)", "warn");
+
     let started = engine_runtime.run_init(active_engine, "start");
     if (!started.ok) {
         log_message("Failed to start the " + active_engine + " engine", "fatal");
@@ -918,22 +940,17 @@ function start_main() {
 
     log_message("Starting Tachyon", "info");
 
+    // steer owns the dataplane through its own nftables table and policy
+    // routing. Tachyon's sing-box nft rules and sing-box itself must stay out
+    // of the way, so the steer branch never touches NFT_UC or sing-box. The
+    // engine check comes first: the sing-box config validator would abort the
+    // start on a steer-only device before the steer branch is ever reached.
+    if (active_engine_is_steer())
+        return start_steer_main(require("core.engine").get_active());
+
     status = validate_start_config();
     if (status != 0)
         return status;
-
-    // steer owns the dataplane through its own nftables table and policy
-    // routing. Tachyon's sing-box nft rules and sing-box itself must stay out
-    // of the way, so the steer branch never touches NFT_UC or sing-box.
-    let active_engine = "sing-box";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "sing-box";
-    }
-    if (active_engine != "sing-box")
-        return start_steer_main(active_engine);
 
     startup_config_fingerprint = external_config_fingerprint();
 
@@ -980,7 +997,7 @@ function start_main() {
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
-    for (let comp_svc in [ "forkop", "podkop", "netshift" ]) {
+    for (let comp_svc in [ "forkop", "podkop", "netshift", "steer" ]) {
         if (fs.stat("/etc/init.d/" + comp_svc) != null) {
             command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
         }
@@ -1060,7 +1077,17 @@ function start_impl() {
     if (status != 0)
         return status;
 
-    if (!setting_bool("dont_touch_dhcp", false)) {
+    // On steer the sing-box DNS inbound does not run, so dnsmasq must not be
+    // pointed at it: restore the default resolver and let steer's nft redirect
+    // + dnsd handle client DNS.
+    if (active_engine_is_steer()) {
+        if (dnsmasq_has_tachyon_managed_state()) {
+            status = dnsmasq_restore(true);
+            if (status != 0)
+                return status;
+        }
+    }
+    else if (!setting_bool("dont_touch_dhcp", false)) {
         status = dnsmasq_configure(false);
         if (status != 0)
             return status;
@@ -1104,19 +1131,18 @@ function stop_main() {
 
     log_message("Stopping Tachyon", "info");
 
-    // Stop the steer engine first when it is the active one; its init script
-    // removes its own nftables table and policy routing.
-    let active_engine = "sing-box";
-    try {
-        active_engine = require("core.engine").get_active();
+    // Stop the steer engine if present; its init script removes its own
+    // nftables table and policy routing. Stopping it unconditionally ensures
+    // that switching steer -> sing-box cleanly shuts down steer before sing-box
+    // takes over the dataplane.
+    if (fs.stat("/etc/init.d/steer") != null) {
+        command_status_from_args([ "/etc/init.d/steer", "stop" ]);
     }
-    catch (e) {
-        active_engine = "sing-box";
-    }
-    if (active_engine != "sing-box") {
-        let engine_runtime = require("service.engine_runtime");
-        engine_runtime.run_init(active_engine, "stop");
-    }
+
+    // Stop the steer DNS upstream (smartdns). Must happen after steer dnsd is
+    // gone (init stop above) so the port file removal is safe and no new queries
+    // arrive at the shutting-down smartdns instance.
+    module_success(STEER_DNS_UC, [ "stop-runtime" ]);
 
     if (!module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]))
         log_message("DNS failover stop failed (non-fatal)", "warn");
@@ -1164,10 +1190,12 @@ function stop_main() {
     if (module_success(STATE_UC, [ "sing-box-is-foreign" ]))
         log_message("Sing-box PID provenance mismatch: the running sing-box was not started by Tachyon; stopping it anyway", "warn");
 
-    let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
-    command_success_from_args([ "killall", "-q", "-9", "sing-box" ]);
-    if (sing_box_status != 0)
-        status = sing_box_status;
+    if (fs.stat("/etc/init.d/sing-box") != null) {
+        let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
+        command_success_from_args([ "killall", "-q", "-9", "sing-box" ]);
+        if (!active_engine_is_steer() && sing_box_status != 0)
+            status = sing_box_status;
+    }
 
     module_success(STATE_UC, [ "cleanup-provenance" ]);
 
@@ -1309,6 +1337,12 @@ function restart_runtime_for_reload() {
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
+    }
+
+    if (active_engine_is_steer()) {
+        restore_selector_state(selector_state);
+        remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+        return 0;
     }
 
     status = module_status(STATE_UC, [
@@ -1781,6 +1815,11 @@ function restart() {
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
+    }
+
+    if (active_engine_is_steer()) {
+        restore_selector_state(selector_state);
+        return 0;
     }
 
     status = module_status(STATE_UC, [

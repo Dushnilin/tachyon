@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-21 23:46+0300\n"
-"PO-Revision-Date: 2026-09-21 23:46+0300\n"
+"POT-Creation-Date: 2026-09-22 22:19+0300\n"
+"PO-Revision-Date: 2026-09-22 22:19+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2633,6 +2633,9 @@ msgstr "Инициализация проверки утечек IP и DNS с р
 msgid "Install"
 msgstr "Установить"
 
+msgid "Install & Switch"
+msgstr ""
+
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
@@ -3502,6 +3505,9 @@ msgstr "Узлы"
 
 msgid "None"
 msgstr "Нет"
+
+msgid "Not applicable for current engine"
+msgstr ""
 
 msgid "Not configured"
 msgstr "Не настроено"
@@ -4946,6 +4952,9 @@ msgstr "Отдельная служба Zapret2 активна"
 msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
 
+msgid "standard"
+msgstr "базовая"
+
 msgid "Standard"
 msgstr "Стандартный"
 
@@ -4993,6 +5002,18 @@ msgstr "Статус / Набор"
 
 msgid "Steer"
 msgstr "Steer"
+
+msgid "Steer autostart enabled"
+msgstr ""
+
+msgid "Steer installed"
+msgstr ""
+
+msgid "Steer process running"
+msgstr ""
+
+msgid "Steer service exist"
+msgstr ""
 
 msgid "Stop"
 msgstr "Стоп"
@@ -5377,6 +5398,9 @@ msgstr "Думаю..."
 
 msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
 msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
+
+msgid "This engine is not installed yet. Choose a variant below to install it:"
+msgstr ""
 
 msgid "This field is required"
 msgstr "Это поле обязательно"
@@ -7039,3 +7063,6 @@ msgstr "Блокировать: "
 
 msgid "Traffic from these IP addresses will never be routed through this section, even if other conditions match."
 msgstr "Трафик от этих IP-адресов никогда не будет маршрутизирован через эту секцию, даже если другие условия совпадают."
+
+msgid "base"
+msgstr "базовая"

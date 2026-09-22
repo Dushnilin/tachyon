@@ -3040,6 +3040,7 @@ var Tachyon;
     AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
     AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
     AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
+    AvailableMethods2["CHECK_STEER"] = "check_steer";
     AvailableMethods2["CHECK_INBOUNDS"] = "check_inbounds";
     AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
     AvailableMethods2["GET_ENGINE_STATUS"] = "get_engine_status";
@@ -3349,11 +3350,20 @@ var TachyonShellMethods = {
   checkSingBox: async () => callBaseMethod(
     Tachyon.AvailableMethods.CHECK_SING_BOX
   ),
+  checkSteer: async () => callBaseMethod(
+    Tachyon.AvailableMethods.CHECK_STEER
+  ),
   checkInbounds: async () => callBaseMethod(
     Tachyon.AvailableMethods.CHECK_INBOUNDS
   ),
   getSingBoxStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
+  ),
+  getEngineStatus: async () => callBaseMethod(
+    Tachyon.AvailableMethods.GET_ENGINE_STATUS,
     [],
     "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
@@ -3487,12 +3497,6 @@ var TachyonShellMethods = {
   checkSingBoxLogs: async () => callBaseMethod(Tachyon.AvailableMethods.CHECK_SING_BOX_LOGS),
   getSystemInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SYSTEM_INFO
-  ),
-  getEngineStatus: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_ENGINE_STATUS,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
   ),
   getEngineInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.ENGINE_INFO,
@@ -5339,6 +5343,8 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
   const fallbackCodes = uniqueCodes([
     ...urlTestCodes,
     ...priorityCodes,
+    ...Array.from(cachedProxyLinks.keys()),
+    ...Array.from(manualLinkByCode.keys()),
     ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
     ...priorityEntries.flatMap(({ entry }) => entry?.value.all || [])
   ]);
@@ -5352,14 +5358,25 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
     const priorityConfig = priorityConfigByCode.get(code);
-    if (!item && !urlTestConfig && !priorityConfig) {
+    const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || "";
+    if (!item && !urlTestConfig && !priorityConfig && !link) {
       return [];
     }
-    const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || "";
+    const effectiveItem = item || (link ? {
+      code,
+      value: {
+        name: outboundMetadata?.names?.[code] || code,
+        type: outboundMetadata?.transports?.[code] || "VLESS",
+        udp: true,
+        history: [],
+        all: [],
+        now: ""
+      }
+    } : void 0);
     const canCopyLink = isCopyableProxyLink(link);
     const resolved = resolveOutboundNameAndPrefix({
       code,
-      entry: item,
+      entry: effectiveItem,
       link,
       outboundMetadata,
       preferMetadata: cachedProxyLinks.has(code),
@@ -5407,7 +5424,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
     )?.latency || priorityInfo?.outbounds.find(
       (m) => m.selected || m.code === priorityInfo.selectedCode
     )?.latency || 0;
-    const itemDelay = Number(item?.value.history?.[0]?.delay);
+    const itemDelay = Number(effectiveItem?.value.history?.[0]?.delay);
     const validItemDelay = Number.isFinite(itemDelay) && itemDelay > 0 ? itemDelay : 0;
     const latency = validItemDelay || (activeMemberLatency > 0 ? activeMemberLatency : 0);
     const isGroupType = Boolean(
@@ -5419,13 +5436,13 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
         displayName,
         prefix,
         latency,
-        type: priorityConfig ? "Priority" : item?.value.type || "URLTest",
+        type: priorityConfig ? "Priority" : effectiveItem?.value.type || "URLTest",
         transport: isGroupType ? void 0 : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),
         selected: isSelected,
         link,
         canCopyLink,
         country: showDetectedCountries ? outboundMetadata?.countries?.[code] : void 0,
-        runtimeAvailable: item ? void 0 : false,
+        runtimeAvailable: effectiveItem ? void 0 : false,
         urlTestInfo,
         priorityInfo
       }
@@ -5544,18 +5561,16 @@ async function getDashboardSections(options = {}) {
   const includeSubscriptionCopyState = options.includeSubscriptionCopyState ?? true;
   const configSections = hydrateConfigSections(await getConfigSections());
   const clashProxies = await getClashApiProxies(configSections);
-  if (!clashProxies.success || !clashProxies.data?.proxies) {
+  if ((!clashProxies.success || !clashProxies.data?.proxies) && configSections.length === 0) {
     return {
       success: false,
       data: []
     };
   }
-  const proxies = Object.entries(clashProxies.data.proxies).map(
-    ([key, value]) => ({
-      code: key,
-      value
-    })
-  );
+  const proxies = clashProxies.success && clashProxies.data?.proxies ? Object.entries(clashProxies.data.proxies).map(([key, value]) => ({
+    code: key,
+    value
+  })) : [];
   const serviceStatusCache = /* @__PURE__ */ new Map();
   const getServiceStatus = (serviceType) => {
     if (!serviceStatusCache.has(serviceType)) {
@@ -5698,7 +5713,8 @@ async function getDashboardSections(options = {}) {
           cachedProxyLinks
         );
         const hideNa = shouldHideNaServers(configSections);
-        const filteredOutbounds = hideNa ? outbounds.filter((o) => !isNaOutbound(o)) : outbounds;
+        const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
+        const filteredOutbounds = hideNa && hasTestedServers ? outbounds.filter((o) => !isNaOutbound(o)) : outbounds;
         return {
           withTagSelect: true,
           code: selector?.code || sectionName,
@@ -5944,6 +5960,7 @@ function getCheckTitle(name) {
 var DIAGNOSTICS_CHECKS = /* @__PURE__ */ ((DIAGNOSTICS_CHECKS2) => {
   DIAGNOSTICS_CHECKS2["DNS"] = "DNS";
   DIAGNOSTICS_CHECKS2["SINGBOX"] = "SINGBOX";
+  DIAGNOSTICS_CHECKS2["STEER"] = "STEER";
   DIAGNOSTICS_CHECKS2["NFT"] = "NFT";
   DIAGNOSTICS_CHECKS2["ZAPRET"] = "ZAPRET";
   DIAGNOSTICS_CHECKS2["ZAPRET2"] = "ZAPRET2";
@@ -5963,6 +5980,11 @@ var DIAGNOSTICS_CHECKS_MAP = {
     order: 2,
     title: getCheckTitle("Sing-box"),
     code: "SINGBOX" /* SINGBOX */
+  },
+  ["STEER" /* STEER */]: {
+    order: 2,
+    title: getCheckTitle("Steer"),
+    code: "STEER" /* STEER */
   },
   ["NFT" /* NFT */]: {
     order: 4,
@@ -6002,6 +6024,13 @@ var DIAGNOSTICS_CHECKS_MAP = {
 };
 
 // src/tachyon/tabs/diagnostic/diagnostic.store.ts
+function isSteerEngine(engine) {
+  return engine === "steer" || engine === "steer-extended";
+}
+function getEngineCheckCode(engine) {
+  if (isSteerEngine(engine)) return "STEER" /* STEER */;
+  return "SINGBOX" /* SINGBOX */;
+}
 function createDiagnosticCheck(code, description) {
   const meta = DIAGNOSTICS_CHECKS_MAP[code];
   return {
@@ -6014,7 +6043,8 @@ function createDiagnosticCheck(code, description) {
   };
 }
 function getDiagnosticsChecks(description, options = {}) {
-  const checks = ["DNS" /* DNS */, "SINGBOX" /* SINGBOX */];
+  const engineCheck = getEngineCheckCode(options.activeEngine);
+  const checks = ["DNS" /* DNS */, engineCheck];
   if (options.includeInbounds === true) {
     checks.push("INBOUNDS" /* INBOUNDS */);
   }
@@ -6054,6 +6084,13 @@ var initialDiagnosticStore = {
     sing_box_repo_url: "",
     sing_box_backup_version: "",
     sing_box_backup_time: 0,
+    steer_version: "loading",
+    steer_installed: 0,
+    steer_extended: 0,
+    steer_repo_url: "https://github.com/xyzmean/steer",
+    steer_backup_version: "",
+    steer_backup_time: 0,
+    active_engine: "sing-box",
     zapret_version: "loading",
     zapret_installed: 0,
     zapret_backup_version: "",
@@ -6174,6 +6211,10 @@ var initialDiagnosticStore = {
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
     tailscaleRollback: { loading: false },
+    steerCheck: { loading: false },
+    steerInstall: { loading: false },
+    steerRemove: { loading: false },
+    steerRollback: { loading: false },
     directBypassEnable: { loading: false },
     directBypassDisable: { loading: false },
     torrserverDirectEnable: { loading: false },
@@ -6189,6 +6230,8 @@ var initialDiagnosticStore = {
     olcrtc: { status: null, latest_version: "", release_url: "" },
     fptn: { status: null, latest_version: "", release_url: "" },
     tailscale: { status: null, latest_version: "", release_url: "" },
+    steer: { status: null, latest_version: "", release_url: "" },
+    "steer-extended": { status: null, latest_version: "", release_url: "" },
     direct_bypass: { status: null, latest_version: "", release_url: "" },
     torrserver_direct: { status: null, latest_version: "", release_url: "" }
   }
@@ -6288,6 +6331,7 @@ var initialStore = {
     current: "",
     all: []
   },
+  activeEngine: "sing-box",
   bandwidthWidget: {
     loading: true,
     failed: false,
@@ -6583,6 +6627,16 @@ var componentActionKeyMap = {
   "tailscale:install_version": "tailscaleInstall",
   "tailscale:remove": "tailscaleRemove",
   "tailscale:rollback": "tailscaleRollback",
+  "steer:check_update": "steerCheck",
+  "steer:install": "steerInstall",
+  "steer:install_version": "steerInstall",
+  "steer:remove": "steerRemove",
+  "steer:rollback": "steerRollback",
+  "steer-extended:check_update": "steerCheck",
+  "steer-extended:install": "steerInstall",
+  "steer-extended:install_version": "steerInstall",
+  "steer-extended:remove": "steerRemove",
+  "steer-extended:rollback": "steerRollback",
   "direct_bypass:enable": "directBypassEnable",
   "direct_bypass:disable": "directBypassDisable",
   "torrserver_direct:enable": "torrserverDirectEnable",
@@ -6603,9 +6657,24 @@ function isVersionPlaceholder(version) {
   }
   return typeof _ === "function" && normalized === _("unknown").toLowerCase() || typeof _ === "function" && normalized === _("Not installed").toLowerCase();
 }
+function isNotInstalled(version) {
+  const normalized = String(version || "").trim().toLowerCase();
+  return !normalized || normalized === "not installed" || typeof _ === "function" && normalized === _("Not installed").toLowerCase();
+}
+function formatSteerVersion(value) {
+  const version = String(value.steer_version || "");
+  if (!version || isNotInstalled(version) || value.steer_installed === 0) {
+    return _("Not installed");
+  }
+  if (isVersionPlaceholder(version)) {
+    return version;
+  }
+  const variant = value.steer_extended ? _("extended") : _("standard");
+  return variant ? `${version} (${variant})` : version;
+}
 function formatSingBoxVersion(value) {
   const version = String(value.sing_box_version || "");
-  if (!version || version === "not installed") {
+  if (!version || isNotInstalled(version)) {
     return _("Not installed");
   }
   if (isVersionPlaceholder(version)) {
@@ -6769,6 +6838,10 @@ function getEmptyUpdatesActions() {
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
     tailscaleRollback: { loading: false },
+    steerCheck: { loading: false },
+    steerInstall: { loading: false },
+    steerRemove: { loading: false },
+    steerRollback: { loading: false },
     directBypassEnable: { loading: false },
     directBypassDisable: { loading: false },
     torrserverDirectEnable: { loading: false },
@@ -6835,7 +6908,8 @@ function applyServiceState(uiState) {
         dnsmasqCacheSize: uiState.service.dnsmasq ? uiState.service.dnsmasq.cache_size : void 0
       }
     },
-    diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo)
+    diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
+    ...uiState.active_engine ? { activeEngine: uiState.active_engine } : {}
   });
 }
 function applyActionState(actions = {}) {
@@ -7453,10 +7527,11 @@ async function fetchServicesInfo() {
   if (uiState) {
     return uiState;
   }
-  const [tachyonResult, singboxResult, watchdogResult] = await Promise.allSettled([
+  const [tachyonResult, singboxResult, watchdogResult, engineResult] = await Promise.allSettled([
     TachyonShellMethods.getStatus(),
     TachyonShellMethods.getSingBoxStatus(),
-    TachyonShellMethods.getWatchdogStatus()
+    TachyonShellMethods.getWatchdogStatus(),
+    TachyonShellMethods.getEngineStatus()
   ]);
   if (requestId !== latestServicesInfoRequestId) {
     return;
@@ -7467,13 +7542,20 @@ async function fetchServicesInfo() {
     "getWatchdogStatus",
     watchdogResult
   );
+  const engineStatus = getSettledMethodResponse(
+    "getEngineStatus",
+    engineResult
+  );
+  const activeEngine = engineStatus.success ? engineStatus.data.engine : "sing-box";
+  const isSteer = activeEngine === "steer" || activeEngine === "steer-extended";
+  const singboxFailed = !singbox.success && !isSteer;
   const previousData = store.get().servicesInfoWidget.data;
   store.set({
     servicesInfoWidget: {
       loading: false,
-      failed: !tachyon.success || !singbox.success,
+      failed: !tachyon.success || singboxFailed,
       data: {
-        singbox: singbox.success ? singbox.data.running : previousData.singbox,
+        singbox: singbox.success ? singbox.data.running : isSteer && engineStatus.success ? 1 : previousData.singbox,
         singboxMemoryMb: singbox.success ? singbox.data.memory_rss_mb : previousData.singboxMemoryMb,
         tachyonRunning: tachyon.success ? tachyon.data.running : previousData.tachyonRunning,
         tachyonEnabled: tachyon.success ? tachyon.data.enabled : previousData.tachyonEnabled,
@@ -7487,7 +7569,8 @@ async function fetchServicesInfo() {
         dnsmasqLocalCacheEnabled: previousData.dnsmasqLocalCacheEnabled,
         dnsmasqCacheSize: previousData.dnsmasqCacheSize
       }
-    }
+    },
+    activeEngine
   });
   return void 0;
 }
@@ -7595,6 +7678,7 @@ function toggleSectionExpanded(sectionCode) {
   void renderConnectionsWidget();
 }
 var SECTIONS_REFRESH_INTERVAL_MS = 15e3;
+var CONNECTIONS_POLL_INTERVAL_MS = 3e3;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";
 var LATENCY_TEST_BUTTON_LABEL_CLASS = "dashboard-sections-grid-item-test-latency__label";
 var sectionsRefreshTimer = null;
@@ -7935,7 +8019,9 @@ async function connectToClashSockets(dataUpdatesId) {
   if (!dashboardMounted || mountId !== dashboardMountId || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
     return;
   }
-  if (!canUseDirectClashApi()) {
+  const activeEngine = store.get().activeEngine;
+  const isSteer = activeEngine === "steer" || activeEngine === "steer-extended";
+  if (isSteer || !canUseDirectClashApi()) {
     directSocketsFailed = true;
     logger.info(
       "[DASHBOARD]",
@@ -8051,7 +8137,7 @@ function startDashboardDataUpdates() {
   void fetchConnections();
   connectionsRefreshTimer = setInterval(() => {
     void fetchConnections();
-  }, SECTIONS_REFRESH_INTERVAL_MS);
+  }, CONNECTIONS_POLL_INTERVAL_MS);
 }
 function syncDashboardServiceAvailability() {
   const availability = getDashboardServiceAvailability();
@@ -9147,8 +9233,10 @@ function renderStoreWidget(containerId, storeKey, title, getItems, debugName) {
   container.replaceChildren(renderedWidget);
 }
 async function fetchConnections() {
+  const activeEngine = store.get().activeEngine;
+  const isSteer = activeEngine === "steer" || activeEngine === "steer-extended";
   const shouldFetchHostnames = expandedSections.has("active_clients");
-  const needsFallbackPolling = directSocketsFailed || !canUseDirectClashApi();
+  const needsFallbackPolling = directSocketsFailed || !canUseDirectClashApi() || isSteer;
   if (!needsFallbackPolling && !shouldFetchHostnames) {
     return;
   }
@@ -9180,6 +9268,14 @@ async function fetchConnections() {
               loading: false,
               failed: false,
               data: { up, down }
+            }
+          });
+        } else {
+          store.set({
+            bandwidthWidget: {
+              loading: false,
+              failed: false,
+              data: { up: 0, down: 0 }
             }
           });
         }
@@ -9288,7 +9384,7 @@ async function renderServicesInfoWidget() {
           }
         },
         {
-          key: "Sing-box",
+          key: store.get().activeEngine === "sing-box" ? "Sing-box" : "Steer",
           value: data.singbox ? data.singboxMemoryMb ? `✓ (${data.singboxMemoryMb} MB)` : "✓" : "✗",
           attributes: {
             class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
@@ -10643,6 +10739,80 @@ async function runSingBoxCheck() {
   }
 }
 
+// src/tachyon/tabs/diagnostic/checks/runSteerCheck.ts
+async function runSteerCheck() {
+  const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.STEER;
+  updateCheckStore({
+    order,
+    code,
+    title,
+    description: _("Checking, please wait"),
+    state: "loading",
+    items: []
+  });
+  const steerChecks = await TachyonShellMethods.checkSteer();
+  if (!steerChecks.success) {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _("Cannot receive checks result"),
+      state: "error",
+      items: []
+    });
+    throw new Error("Steer checks failed");
+  }
+  const data = steerChecks.data;
+  if (data.not_applicable) {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _("Not applicable for current engine"),
+      state: "skipped",
+      items: []
+    });
+    return;
+  }
+  const allGood = Boolean(data.steer_installed) && Boolean(data.steer_service_exist) && Boolean(data.steer_autostart_enabled) && Boolean(data.steer_process_running);
+  const atLeastOneGood = Boolean(data.steer_installed) || Boolean(data.steer_service_exist) || Boolean(data.steer_autostart_enabled) || Boolean(data.steer_process_running);
+  const { state, description } = getMeta({ atLeastOneGood, allGood });
+  const versionSuffix = data.steer_version ? ` ${data.steer_version}` : "";
+  const variantLabel = data.steer_extended ? ` (${_("extended")})` : "";
+  updateCheckStore({
+    order,
+    code,
+    title,
+    description,
+    state,
+    items: [
+      {
+        state: data.steer_installed ? "success" : "error",
+        key: _("Steer installed") + versionSuffix + variantLabel,
+        value: ""
+      },
+      {
+        state: data.steer_service_exist ? "success" : "error",
+        key: _("Steer service exist"),
+        value: ""
+      },
+      {
+        state: data.steer_autostart_enabled ? "success" : "error",
+        key: _("Steer autostart enabled"),
+        value: ""
+      },
+      {
+        state: data.steer_process_running ? "success" : "error",
+        key: _("Steer process running"),
+        value: ""
+      }
+    ]
+  });
+  if (!atLeastOneGood || !data.steer_process_running) {
+    throw new Error("Steer checks failed");
+  }
+}
+
 // src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts
 function serverPrefix(item) {
   return `${item.label}:`;
@@ -10855,6 +11025,17 @@ async function runNftCheck() {
     throw new Error("Nftables checks failed");
   }
   const data = nftablesChecks.data;
+  if (data.not_applicable) {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _("Not applicable for current engine"),
+      state: "skipped",
+      items: []
+    });
+    return;
+  }
   const allGood = Boolean(data.table_exist) && Boolean(data.rules_mangle_exist) && Boolean(data.rules_mangle_counters) && Boolean(data.rules_mangle_output_exist) && Boolean(data.rules_mangle_output_counters) && Boolean(data.rules_proxy_exist) && Boolean(data.rules_proxy_counters) && !data.rules_other_mark_exist;
   const atLeastOneGood = Boolean(data.table_exist) || Boolean(data.rules_mangle_exist) || Boolean(data.rules_mangle_counters) || Boolean(data.rules_mangle_output_exist) || Boolean(data.rules_mangle_output_counters) || Boolean(data.rules_proxy_exist) || Boolean(data.rules_proxy_counters) || !data.rules_other_mark_exist;
   const { state, description } = getMeta({ atLeastOneGood, allGood });
@@ -16469,7 +16650,7 @@ function isDiagnosticsProviderOptions(value) {
   if (!isRecord(value)) {
     return false;
   }
-  return isOptionalBoolean(value.includeZapret) && isOptionalBoolean(value.includeZapret2) && isOptionalBoolean(value.includeByedpi) && isOptionalBoolean(value.includeInbounds);
+  return (value.activeEngine === void 0 || typeof value.activeEngine === "string") && isOptionalBoolean(value.includeZapret) && isOptionalBoolean(value.includeZapret2) && isOptionalBoolean(value.includeByedpi) && isOptionalBoolean(value.includeInbounds);
 }
 function isDiagnosticCheckItem(value) {
   return isRecord(value) && CHECK_ITEM_STATES.includes(String(value.state)) && typeof value.key === "string" && typeof value.value === "string";
@@ -16744,7 +16925,9 @@ function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function getDiagnosticsProviderOptions(systemInfo = store.get().diagnosticsSystemInfo) {
+  const activeEngine = store.get().activeEngine || "sing-box";
   return {
+    activeEngine,
     includeZapret: Boolean(systemInfo.zapret_installed),
     includeZapret2: Boolean(systemInfo.zapret2_installed),
     includeByedpi: Boolean(systemInfo.byedpi_installed),
@@ -18190,6 +18373,8 @@ function renderDiagnosticAvailableActionsWidget() {
 function renderDiagnosticSystemInfoWidget() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticSystemInfoWidget");
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
+  const activeEngine = diagnosticsSystemInfo.active_engine || store.get().activeEngine || "sing-box";
+  const isSteer = activeEngine === "steer" || activeEngine === "steer-extended";
   const container = document.getElementById(
     "tachyon_diagnostic-page-system-info"
   );
@@ -18204,12 +18389,38 @@ function renderDiagnosticSystemInfoWidget() {
     {
       key: "Luci App",
       value: normalizeCompiledVersion(TACHYON_LUCI_APP_VERSION)
-    },
-    {
-      key: "Sing-box",
-      value: formatSingBoxVersion(diagnosticsSystemInfo)
     }
   ];
+  const singBoxInstalled = !isNotInstalled(
+    diagnosticsSystemInfo.sing_box_version
+  );
+  const steerInstalled = Boolean(diagnosticsSystemInfo.steer_installed);
+  if (isSteer) {
+    items.push({
+      key: "Steer",
+      value: formatSteerVersion(diagnosticsSystemInfo),
+      tag: { label: _("active"), kind: "success" }
+    });
+  } else {
+    items.push({
+      key: "Sing-box",
+      value: formatSingBoxVersion(diagnosticsSystemInfo),
+      tag: { label: _("active"), kind: "success" }
+    });
+  }
+  if (isSteer && singBoxInstalled) {
+    items.push({
+      key: "Sing-box",
+      value: formatSingBoxVersion(diagnosticsSystemInfo),
+      tag: { label: _("installed"), kind: "warning" }
+    });
+  } else if (!isSteer && steerInstalled) {
+    items.push({
+      key: "Steer",
+      value: formatSteerVersion(diagnosticsSystemInfo),
+      tag: { label: _("installed"), kind: "warning" }
+    });
+  }
   if (diagnosticsSystemInfo.zapret_installed) {
     items.push({
       key: "Zapret",
@@ -18293,9 +18504,10 @@ function setDiagnosticCheckLoading(code) {
   });
 }
 function getDiagnosticRunners(providerOptions) {
+  const engineRunner = isSteerEngine(providerOptions.activeEngine) ? { code: "STEER" /* STEER */, run: runSteerCheck } : { code: "SINGBOX" /* SINGBOX */, run: runSingBoxCheck };
   return [
     { code: "DNS" /* DNS */, run: runDnsCheck },
-    { code: "SINGBOX" /* SINGBOX */, run: runSingBoxCheck },
+    engineRunner,
     ...providerOptions.includeInbounds ? [{ code: "INBOUNDS" /* INBOUNDS */, run: runInboundsCheck }] : [],
     { code: "NFT" /* NFT */, run: runNftCheck },
     ...providerOptions.includeZapret ? [{ code: "ZAPRET" /* ZAPRET */, run: runZapretCheck }] : [],
@@ -18829,6 +19041,10 @@ var directConnectionsSocketFailedAt = 0;
 var DIRECT_SOCKET_COOLDOWN_MS = 6e4;
 function canUseConnectionsSocket() {
   if (Date.now() - directConnectionsSocketFailedAt < DIRECT_SOCKET_COOLDOWN_MS) {
+    return false;
+  }
+  const activeEngine = store.get().activeEngine;
+  if (activeEngine === "steer" || activeEngine === "steer-extended") {
     return false;
   }
   return canUseDirectClashApi();
@@ -21426,6 +21642,10 @@ function getComponentCardTitle(component) {
       return "FPTN";
     case "tailscale":
       return "Tailscale";
+    case "steer":
+      return "Steer";
+    case "steer-extended":
+      return "Steer extended";
     default:
       return String(component);
   }
@@ -21451,6 +21671,9 @@ function getComponentCurrentVersion(component) {
       return sys.fptn_version;
     case "tailscale":
       return sys.tailscale_version;
+    case "steer":
+    case "steer-extended":
+      return sys.steer_version;
     default:
       return void 0;
   }
@@ -21486,7 +21709,7 @@ if (typeof window !== "undefined") {
     pageUnloading2 = false;
   });
 }
-function isNotInstalled(version) {
+function isNotInstalled2(version) {
   return !version || version === "not installed";
 }
 function shouldShowInstallAfterCheck(component) {
@@ -21777,6 +22000,17 @@ function patchSystemInfoAfterMutation(result) {
     } else {
       nextSystemInfo.fptn_installed = 1;
       nextSystemInfo.fptn_version = version;
+    }
+  }
+  if (result.component === "steer" || result.component === "steer-extended") {
+    if (result.action === "remove") {
+      nextSystemInfo.steer_installed = 0;
+      nextSystemInfo.steer_version = "not installed";
+      nextSystemInfo.steer_extended = 0;
+    } else {
+      nextSystemInfo.steer_installed = 1;
+      nextSystemInfo.steer_version = version;
+      nextSystemInfo.steer_extended = result.component === "steer-extended" ? 1 : 0;
     }
   }
   if (result.component === "direct_bypass") {
@@ -22181,12 +22415,15 @@ function getComponentInstallKey(component) {
       return "olcrtcInstall";
     case "tailscale":
       return "tailscaleInstall";
+    case "steer":
+    case "steer-extended":
+      return "steerInstall";
     default:
       return "tachyonInstall";
   }
 }
 function getComponentInstallAction(component) {
-  const isInstalled = !isNotInstalled(getComponentCurrentVersion(component));
+  const isInstalled = !isNotInstalled2(getComponentCurrentVersion(component));
   const key = getComponentInstallKey(component);
   return getInstallAction(component, key, isInstalled);
 }
@@ -22219,6 +22456,9 @@ function getComponentBackupVersion(component) {
       return sys.fptn_backup_version || "";
     case "tailscale":
       return sys.tailscale_backup_version || "";
+    case "steer":
+    case "steer-extended":
+      return sys.steer_backup_version || "";
     default:
       return "";
   }
@@ -22269,6 +22509,8 @@ var COMPONENT_REPO_URLS = {
   olcrtc: "https://github.com/Dushnilin/openwrt-olcrtc",
   fptn: "https://github.com/Dushnilin/fptn",
   tailscale: "https://openwrt.org/packages/pkgdata/tailscale",
+  steer: "https://github.com/xyzmean/steer",
+  "steer-extended": "https://github.com/xyzmean/steer",
   direct_bypass: "",
   torrserver_direct: ""
 };
@@ -22284,7 +22526,7 @@ function getComponentCards() {
   const olcrtcInstalled = Boolean(systemInfo.olcrtc_installed);
   const fptnInstalled = Boolean(systemInfo.fptn_installed);
   const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
-  const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
+  const singBoxInstalled = !isNotInstalled2(systemInfo.sing_box_version);
   const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny;
   const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_compressed && !systemInfo.sing_box_lx;
   const singBoxExtendedCompressed = Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed);
@@ -22960,63 +23202,143 @@ async function refreshEngineInfo() {
   const response = await TachyonShellMethods.getEngineInfo();
   engineInfoCache = response.success ? response.data : null;
 }
+var selectedEngineOverride = null;
 function renderEngineCard() {
   const info = engineInfoCache;
   const systemInfo = normalizeSingBoxVariantFields(
     store.get().diagnosticsSystemInfo
   );
+  const updatesActions = store.get().updatesActions;
+  const anyActionLoading = isAnyActionLoading();
   const active = info?.active || "sing-box";
   const installing = steerBusy;
   const singBoxLoading = isSystemInfoLoading();
   const base = info?.engines.find((e) => e.engine === "steer");
   const extended = info?.engines.find((e) => e.engine === "steer-extended");
-  const baseInstalled = Boolean(base?.installed);
-  const extendedInstalled = Boolean(extended?.installed);
-  const row = (children) => E("div", { style: "display: flex; flex-wrap: wrap; gap: 8px;" }, children);
-  const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
+  const baseInstalled = Boolean(base?.installed || systemInfo.steer_installed);
+  const extendedInstalled = Boolean(
+    extended?.installed || systemInfo.steer_installed && systemInfo.steer_extended
+  );
+  const singBoxInstalled = !isNotInstalled2(systemInfo.sing_box_version);
   const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny;
   const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
-  const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_lx;
+  const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_compressed && !systemInfo.sing_box_lx;
+  const singBoxExtendedCompressed = Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed);
   const singBoxLx = Boolean(systemInfo.sing_box_lx);
-  const singBoxVariant = (label, key, action, alreadyInstalled) => {
-    if (alreadyInstalled) {
-      return null;
+  const isSingBoxActive = active === "sing-box";
+  const engineTitle = _("Routing Engine");
+  const engineVersion = isSingBoxActive ? singBoxLoading ? _("Loading...") : formatSingBoxVersion(systemInfo) : systemInfo.steer_version || (baseInstalled || extendedInstalled ? _("Installed") : _("Not installed"));
+  let engineBadgeNode = null;
+  if (isSingBoxActive) {
+    engineBadgeNode = singBoxLoading ? null : renderSingBoxVariantBadge(systemInfo);
+  } else if (extendedInstalled) {
+    engineBadgeNode = E(
+      "span",
+      { class: "tachyon_updates-page__component__badge" },
+      "Extended"
+    );
+  } else if (baseInstalled) {
+    engineBadgeNode = E(
+      "span",
+      { class: "tachyon_updates-page__component__badge" },
+      "Base"
+    );
+  }
+  const engineRepoUrl = isSingBoxActive ? systemInfo.sing_box_repo_url || (singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box) : systemInfo.steer_repo_url || COMPONENT_REPO_URLS.steer;
+  const headerChildren = [
+    E("b", { class: "tachyon_updates-page__component__title" }, engineTitle)
+  ];
+  if (engineBadgeNode) {
+    headerChildren.push(engineBadgeNode);
+  }
+  headerChildren.push(
+    E(
+      "span",
+      { class: "tachyon_updates-page__component__header-version" },
+      engineVersion
+    )
+  );
+  if (engineRepoUrl) {
+    headerChildren.push(
+      E(
+        "a",
+        {
+          class: "tachyon_updates-page__component__repo-link",
+          href: engineRepoUrl,
+          target: "_blank",
+          rel: "noopener noreferrer",
+          title: engineRepoUrl
+        },
+        renderGlobeIcon24()
+      )
+    );
+  }
+  const header = E(
+    "div",
+    { class: "tachyon_updates-page__component__header" },
+    headerChildren
+  );
+  const selectedEngine = selectedEngineOverride || active;
+  const selectableEngines = [
+    {
+      id: "sing-box",
+      label: `sing-box${singBoxInstalled ? "" : ` (${_("not installed")})`}`,
+      installed: singBoxInstalled
+    },
+    {
+      id: "steer",
+      label: `Steer${baseInstalled ? "" : ` (${_("not installed")})`}`,
+      installed: baseInstalled
+    },
+    {
+      id: "steer-extended",
+      label: `Steer extended${extendedInstalled ? "" : ` (${_("not installed")})`}`,
+      installed: extendedInstalled
     }
-    return renderButton({
-      text: label,
-      classNames: ["cbi-button-action"],
-      disabled: singBoxLoading,
-      onClick: () => void runComponentAction("sing_box", action, key)
-    });
-  };
-  const selectableEngines = [];
-  if (singBoxInstalled)
-    selectableEngines.push({ id: "sing-box", label: "sing-box" });
-  if (baseInstalled) selectableEngines.push({ id: "steer", label: "Steer" });
-  if (extendedInstalled)
-    selectableEngines.push({ id: "steer-extended", label: "Steer extended" });
+  ];
   const picker = E("select", {
     class: "cbi-input-select",
     style: "min-width: 200px;"
   });
   selectableEngines.forEach((entry) => {
     const option = E("option", { value: entry.id }, entry.label);
-    option.selected = entry.id === active;
+    option.selected = entry.id === selectedEngine;
     picker.appendChild(option);
   });
   const warning = E("div", {
     style: "font-size: 12px; color: var(--text-color-medium, #b58900); margin-top: 6px; display: none;"
   });
+  const selectedEntry = selectableEngines.find((e) => e.id === selectedEngine);
+  const isSelectedInstalled = Boolean(selectedEntry?.installed);
+  const selectedEngineDescriptor = info?.engines.find(
+    (e) => e.engine === selectedEngine
+  );
+  const isSelectedInstallable = !isSelectedInstalled && selectedEngineDescriptor?.known === true;
+  const canApply = isSelectedInstalled || isSelectedInstallable;
+  const isAlreadyActive = selectedEngine === active;
   const applyButton = renderButton({
-    text: _("Apply"),
+    text: isSelectedInstalled ? _("Apply") : _("Install & Switch"),
     classNames: ["cbi-button-action"],
-    disabled: installing || selectableEngines.length < 2,
+    disabled: installing || singBoxLoading || !canApply || isAlreadyActive,
     onClick: () => void applyEngineSelection(picker.value, active, warning)
   });
-  const selectedEngine = picker.value || active;
-  const variantRow = [];
+  picker.addEventListener("change", (e) => {
+    selectedEngineOverride = e.target.value;
+    renderUpdatesComponents();
+  });
+  const variantButtons = [];
   if (selectedEngine === "sing-box") {
-    [
+    const singBoxVariant = (label, key, action, alreadyInstalled) => {
+      const loading2 = Boolean(updatesActions[key]?.loading);
+      return renderButton({
+        text: alreadyInstalled ? `✓ ${label}` : label,
+        classNames: alreadyInstalled ? ["cbi-button-neutral"] : ["cbi-button-action"],
+        loading: loading2,
+        disabled: alreadyInstalled || singBoxLoading || anyActionLoading && !loading2 || steerBusy,
+        onClick: () => void runComponentAction("sing_box", action, key)
+      });
+    };
+    variantButtons.push(
       singBoxVariant(
         "Stable",
         "singBoxInstallStable",
@@ -23034,7 +23356,7 @@ function renderEngineCard() {
         "Extended compressed",
         "singBoxInstallExtendedCompressed",
         "install_extended_compressed",
-        Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed)
+        singBoxExtendedCompressed
       ),
       singBoxVariant(
         "Leadaxe (lx)",
@@ -23042,63 +23364,101 @@ function renderEngineCard() {
         "install_lx",
         singBoxLx
       )
-    ].forEach((node) => node && variantRow.push(node));
-    if (variantRow.length === 0) {
-      variantRow.push(E("span", { style: "opacity: 0.7;" }, _("installed")));
-    }
+    );
   } else {
-    if (selectedEngine !== "steer") {
-      variantRow.push(
+    const steerVariant = (label, comp, alreadyInstalled) => {
+      const key = getComponentInstallKey(comp);
+      const loading2 = Boolean(updatesActions[key]?.loading);
+      return renderButton({
+        text: alreadyInstalled ? `✓ ${label}` : label,
+        classNames: alreadyInstalled ? ["cbi-button-neutral"] : ["cbi-button-action"],
+        loading: loading2,
+        disabled: alreadyInstalled || installing || singBoxLoading || anyActionLoading && !loading2,
+        onClick: () => void runSteerAction(comp, "install")
+      });
+    };
+    variantButtons.push(
+      steerVariant(
+        "Steer (Base)",
+        "steer",
+        baseInstalled && !extendedInstalled
+      ),
+      steerVariant("Steer extended", "steer-extended", extendedInstalled)
+    );
+    if (baseInstalled || extendedInstalled) {
+      variantButtons.push(
         renderButton({
-          text: "Steer",
-          classNames: ["cbi-button-action"],
-          disabled: installing,
-          onClick: () => void runSteerAction("steer", "install")
+          text: _("Remove"),
+          classNames: ["cbi-button-remove"],
+          loading: Boolean(updatesActions.steerRemove?.loading),
+          disabled: installing || anyActionLoading,
+          onClick: () => void runSteerAction(selectedEngine, "remove")
         })
       );
     }
-    if (selectedEngine !== "steer-extended") {
-      variantRow.push(
-        renderButton({
-          text: "Steer extended",
-          classNames: ["cbi-button-action"],
-          disabled: installing,
-          onClick: () => void runSteerAction("steer-extended", "install")
-        })
-      );
-    }
-    variantRow.push(
-      renderButton({
-        text: _("Remove"),
-        classNames: ["cbi-button-negative"],
-        disabled: installing,
-        onClick: () => void runSteerAction(selectedEngine, "remove")
-      })
+  }
+  const actionElements = [
+    E(
+      "div",
+      {
+        class: "tachyon_updates-page__component__actions-main",
+        style: "margin-bottom: 8px; gap: 8px; align-items: center;"
+      },
+      [picker, applyButton]
+    ),
+    warning
+  ];
+  if (!isSelectedInstalled) {
+    actionElements.push(
+      E(
+        "div",
+        {
+          style: "font-size: 12px; color: var(--text-color-medium, #888); margin-bottom: 8px;"
+        },
+        _(
+          "This engine is not installed yet. Choose a variant below to install it:"
+        )
+      )
     );
   }
-  picker.addEventListener("change", () => renderUpdatesComponents());
-  const body = [
-    E("div", { style: "display: flex; gap: 8px; flex-wrap: wrap;" }, [
-      picker,
-      applyButton
-    ]),
-    warning,
-    ...variantRow.length > 0 ? [row(variantRow)] : []
-  ];
-  return E("div", { class: "tachyon_updates-page__component" }, [
-    E("div", { class: "tachyon_updates-page__component__header" }, [
+  actionElements.push(
+    E("div", { class: "tachyon_updates-page__component__variants" }, [
       E(
-        "b",
-        { class: "tachyon_updates-page__component__title" },
-        _("Routing Engine")
+        "div",
+        { class: "tachyon_updates-page__component__variants-title" },
+        _("Install another build:")
       ),
       E(
-        "span",
-        { class: "tachyon_updates-page__component__header-version" },
-        engineLabel(active)
+        "div",
+        { class: "tachyon_updates-page__component__variants-buttons" },
+        variantButtons
       )
-    ]),
-    ...body
+    ])
+  );
+  const targetVersionComponent = selectedEngine === "sing-box" ? "sing_box" : selectedEngine === "steer-extended" ? "steer-extended" : "steer";
+  const isPickerOpen = activeVersionPickerComponent === targetVersionComponent;
+  const versionsButton = renderButton({
+    text: isPickerOpen ? _("Hide versions") : _("Versions"),
+    loading: isPickerOpen && versionPickerLoading,
+    disabled: singBoxLoading || anyActionLoading || steerBusy,
+    onClick: () => void toggleVersionPicker(targetVersionComponent)
+  });
+  actionElements.push(
+    E("div", { class: "tachyon_updates-page__component__versions" }, [
+      versionsButton
+    ])
+  );
+  if (isPickerOpen) {
+    actionElements.push(renderVersionPickerDropdown(targetVersionComponent));
+  }
+  const actionsContainer = E(
+    "div",
+    { class: "tachyon_updates-page__component__actions" },
+    actionElements
+  );
+  return E("div", { class: "tachyon_updates-page__component" }, [
+    header,
+    actionsContainer
   ]);
 }
 var steerBusy = false;
