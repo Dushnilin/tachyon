@@ -1244,9 +1244,62 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_que
         return;
 
     let tag_name = domain_ip_list_ruleset_tag(section_name);
+    let has_domains = source_rulesets.has_domain_matchers(ruleset_path);
+    let has_ips = source_rulesets.has_ip_matchers(ruleset_path);
+
+    if (config.route.rule_set == null)
+        config.route.rule_set = [];
+
+    // If ruleset has BOTH domains and IP subnets, split them so domains can go to DNS without
+    // causing sing-box 1.14+ to require match_response: true, which erroneously issues FakeIP for pure-IP matches.
+    if (has_domains && has_ips) {
+        let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
+        let dom_path = folder + "/" + tag_name + "-domains.json";
+        let sub_path = folder + "/" + tag_name + "-subnets.json";
+        let dom_tag = tag_name + "-domains";
+        let sub_tag = tag_name + "-subnets";
+
+        let raw = common.read_json_file(ruleset_path);
+        if (raw && type(raw.rules) == "array") {
+            let dom_rules = [];
+            let sub_rules = [];
+            for (let r in raw.rules) {
+                if (r.domain != null || r.domain_suffix != null || r.domain_keyword != null || r.domain_regex != null)
+                    push(dom_rules, r);
+                if (r.ip_cidr != null)
+                    push(sub_rules, r);
+            }
+            common.write_json_file(dom_path, { version: raw.version || 3, rules: dom_rules });
+            common.write_json_file(sub_path, { version: raw.version || 3, rules: sub_rules });
+
+            if (!ruleset_registered(config, dom_tag)) {
+                push(config.route.rule_set, {
+                    type: "local",
+                    tag: dom_tag,
+                    format: "source",
+                    path: dom_path
+                });
+            }
+            if (!ruleset_registered(config, sub_tag)) {
+                push(config.route.rule_set, {
+                    type: "local",
+                    tag: sub_tag,
+                    format: "source",
+                    path: sub_path
+                });
+            }
+
+            push(rule_set_tags, dom_tag);
+            if (!domains_only)
+                push(rule_set_tags, sub_tag);
+
+            if (dns_query_rule_set_tags != null)
+                push(dns_query_rule_set_tags, dom_tag);
+            return;
+        }
+    }
+
     if (!ruleset_registered(config, tag_name)) {
-        if (config.route.rule_set == null)
-            config.route.rule_set = [];
         push(config.route.rule_set, {
             type: "local",
             tag: tag_name,
@@ -1258,18 +1311,8 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_que
     if (!domains_only)
         push(rule_set_tags, tag_name);
 
-    let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
-    if (source_rulesets.has_domain_matchers(ruleset_path)) {
-        if (is_1_14 && source_rulesets.has_ip_matchers(ruleset_path)) {
-            if (dns_response_rule_set_tags != null)
-                push(dns_response_rule_set_tags, tag_name);
-            else if (dns_query_rule_set_tags != null)
-                push(dns_query_rule_set_tags, tag_name);
-        } else if (dns_query_rule_set_tags != null) {
-            push(dns_query_rule_set_tags, tag_name);
-        }
-    }
-    // IP-only rulesets must not be routed to fakeip in DNS rules
+    if (has_domains && dns_query_rule_set_tags != null)
+        push(dns_query_rule_set_tags, tag_name);
 }
 
 function legacy_condition_values(section, key) {
