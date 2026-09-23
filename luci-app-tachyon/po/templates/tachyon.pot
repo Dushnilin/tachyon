@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-23 16:49+0300\n"
-"PO-Revision-Date: 2026-09-23 16:49+0300\n"
+"POT-Creation-Date: 2026-09-23 16:58+0300\n"
+"PO-Revision-Date: 2026-09-23 16:58+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -5471,14 +5471,14 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11270
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11360
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:119
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:98
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:99
 msgid "NFQUEUE range is available"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11270
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11360
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:118
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:97
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:98
 msgid "NFQUEUE range overlaps with another rule"
 msgstr ""
 
@@ -5640,7 +5640,7 @@ msgid "No rules use ByeDPI"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11260
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:80
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:81
 msgid "No rules use Zapret"
 msgstr ""
 
@@ -7950,17 +7950,17 @@ msgid "Standalone service is active alongside Tachyon; policy or port conflicts 
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11280
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:112
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:113
 msgid "Standalone Zapret is active together with Tachyon Zapret rules"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11280
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:113
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:114
 msgid "Standalone Zapret service is active"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11280
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:114
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:115
 msgid "Standalone Zapret service is inactive"
 msgstr ""
 
@@ -8439,17 +8439,17 @@ msgid "Tachyon-managed ciadpi runtime is ready"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:88
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:89
 msgid "Tachyon-managed nfqws runtime is not ready"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:91
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:92
 msgid "Tachyon-managed nfqws runtime is not running"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:87
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:88
 msgid "Tachyon-managed nfqws runtime is ready"
 msgstr ""
 
@@ -8696,7 +8696,7 @@ msgid "There are rules using ByeDPI"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11260
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:79
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:80
 msgid "There are rules using Zapret"
 msgstr ""
 
@@ -9103,7 +9103,7 @@ msgid "Unexpected Tachyon-managed ciadpi runtime is running"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:90
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:91
 msgid "Unexpected Tachyon-managed nfqws runtime is running"
 msgstr ""
 
@@ -9844,32 +9844,32 @@ msgid "Zapret hostlist templates are not supported here because Tachyon does not
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11255
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:72
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:73
 msgid "Zapret package is installed"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11255
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:73
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:74
 msgid "Zapret package is not installed"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11250
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:65
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:66
 msgid "Zapret provider binary is available"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11250
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:66
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:67
 msgid "Zapret provider binary is not available"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11275
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:104
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:105
 msgid "Zapret sing-box outbound is configured"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11275
-#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:105
+#: src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:106
 msgid "Zapret sing-box outbound is not configured"
 msgstr ""
 

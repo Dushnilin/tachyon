@@ -8824,7 +8824,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11270",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11360",
       "src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:119",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:98"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:99"
     ]
   },
   {
@@ -8834,7 +8834,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11270",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11360",
       "src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:118",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:97"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:98"
     ]
   },
   {
@@ -9095,7 +9095,7 @@
     "key": "No rules use Zapret",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11260",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:80"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:81"
     ]
   },
   {
@@ -12854,7 +12854,7 @@
     "key": "Standalone Zapret is active together with Tachyon Zapret rules",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11280",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:112"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:113"
     ]
   },
   {
@@ -12862,7 +12862,7 @@
     "key": "Standalone Zapret service is active",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11280",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:113"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:114"
     ]
   },
   {
@@ -12870,7 +12870,7 @@
     "key": "Standalone Zapret service is inactive",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11280",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:114"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:115"
     ]
   },
   {
@@ -13640,7 +13640,7 @@
     "key": "Tachyon-managed nfqws runtime is not ready",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:88"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:89"
     ]
   },
   {
@@ -13648,7 +13648,7 @@
     "key": "Tachyon-managed nfqws runtime is not running",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:91"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:92"
     ]
   },
   {
@@ -13656,7 +13656,7 @@
     "key": "Tachyon-managed nfqws runtime is ready",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:87"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:88"
     ]
   },
   {
@@ -14053,7 +14053,7 @@
     "key": "There are rules using Zapret",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11260",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:79"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:80"
     ]
   },
   {
@@ -14721,7 +14721,7 @@
     "key": "Unexpected Tachyon-managed nfqws runtime is running",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11265",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:90"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:91"
     ]
   },
   {
@@ -15882,7 +15882,7 @@
     "key": "Zapret package is installed",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11255",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:72"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:73"
     ]
   },
   {
@@ -15890,7 +15890,7 @@
     "key": "Zapret package is not installed",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11255",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:73"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:74"
     ]
   },
   {
@@ -15898,7 +15898,7 @@
     "key": "Zapret provider binary is available",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11250",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:65"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:66"
     ]
   },
   {
@@ -15906,7 +15906,7 @@
     "key": "Zapret provider binary is not available",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11250",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:66"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:67"
     ]
   },
   {
@@ -15914,7 +15914,7 @@
     "key": "Zapret sing-box outbound is configured",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11275",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:104"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:105"
     ]
   },
   {
@@ -15922,7 +15922,7 @@
     "key": "Zapret sing-box outbound is not configured",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11275",
-      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:105"
+      "src/tachyon/tabs/diagnostic/checks/runZapretCheck.ts:106"
     ]
   },
   {

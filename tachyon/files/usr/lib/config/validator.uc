@@ -2374,6 +2374,13 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         if (extended_only_label != null &&
             !(sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version)))
             fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but this feature requires the sing-box-extended binary (not supported by sing-box-lx or stock sing-box). Install sing-box-extended or change the action. Aborted.", "fatal");
+
+        // OpenVPN was added in sing-box 1.14.0. Older extended builds (e.g.
+        // 1.13.x-extended-2.x.x) don't know the endpoint type and abort with
+        // "unknown endpoint type: openvpn". Gate on version so the user gets a
+        // clear error instead of a cryptic sing-box fatal.
+        if (action == "openvpn" && !common.sing_box_supports_openvpn(sing_box_version))
+            fail_requirement("Section '" + name + "' uses OpenVPN, but the installed sing-box version (" + as_string(sing_box_version) + ") does not support it. OpenVPN requires sing-box 1.14.0 or newer. Update sing-box-extended in the Updates tab or change the action. Aborted.", "fatal");
     }
 
     for (let server in sections_by_type("server")) {

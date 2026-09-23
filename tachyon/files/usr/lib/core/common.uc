@@ -250,6 +250,24 @@ function extended_awg_schema_has_junk_signatures(version) {
     return patch <= 0;
 }
 
+// OpenVPN endpoint support was added in sing-box 1.14.0 (upstream, and
+// sing-box-extended that tracks it). Versions below 1.14.0 abort with
+// "unknown endpoint type: openvpn" when they encounter the endpoint.
+function sing_box_supports_openvpn(version) {
+    // Version string examples:
+    //   "1.14.1-extended-2.7.2"  ->  core 1.14.1  -> supported
+    //   "1.13.16-extended-2.6.0" ->  core 1.13.16 -> NOT supported
+    //   "1.14.0"                 ->  core 1.14.0  -> supported
+    let m = match(as_string(version), /^([0-9]+)\.([0-9]+)\./);
+    if (m == null)
+        return false; // unknown format - assume not supported
+    let major = int(m[1], 10);
+    let minor = int(m[2], 10);
+    if (major > 1) return true;
+    if (major < 1) return false;
+    return minor >= 14;
+}
+
 
 function bytes_to_hex(value) {
     value = as_string(value);
@@ -681,6 +699,7 @@ return {
     int_or_range_option,
     bytes_to_hex,
     extended_awg_schema_has_junk_signatures,
+    sing_box_supports_openvpn,
     awg_tag_chain,
     mtproto_secret_canonical,
     shell_quote,
