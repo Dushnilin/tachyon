@@ -1,7 +1,7 @@
 import { DIAGNOSTICS_CHECKS_MAP } from './constants';
 import { TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
-import { IDiagnosticsChecksItem } from '../../../services';
+import { IDiagnosticsChecksItem, store } from '../../../services';
 import { getCheckItemsMeta } from './getCheckItemsMeta';
 
 export async function runZapretCheck() {
@@ -49,24 +49,25 @@ export async function runZapretCheck() {
     !hasZapretRules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
 
+  // Zapret not installed and no rules use it — hide the card entirely
+  if (!providerAvailable && !hasZapretRules) {
+    store.set({
+      diagnosticsChecks: store.get().diagnosticsChecks.filter((c) => c.code !== code),
+    });
+    return;
+  }
+
+
   const items: Array<IDiagnosticsChecksItem> = [
     {
-      state: providerAvailable
-        ? 'success'
-        : hasZapretRules
-          ? 'error'
-          : 'warning',
+      state: providerAvailable ? 'success' : 'error',
       key: providerAvailable
         ? _('Zapret provider binary is available')
         : _('Zapret provider binary is not available'),
       value: data.provider_path || '',
     },
     {
-      state: packageInstalled
-        ? 'success'
-        : hasZapretRules
-          ? 'error'
-          : 'warning',
+      state: packageInstalled ? 'success' : 'error',
       key: packageInstalled
         ? _('Zapret package is installed')
         : _('Zapret package is not installed'),

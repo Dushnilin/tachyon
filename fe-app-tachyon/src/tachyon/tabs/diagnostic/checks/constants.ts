@@ -3,6 +3,7 @@ import { getCheckTitle } from '../helpers/getCheckTitle';
 export enum DIAGNOSTICS_CHECKS {
   DNS = 'DNS',
   SINGBOX = 'SINGBOX',
+  STEER = 'STEER',
   NFT = 'NFT',
   ZAPRET = 'ZAPRET',
   ZAPRET2 = 'ZAPRET2',
@@ -25,6 +26,11 @@ export const DIAGNOSTICS_CHECKS_MAP: Record<
     order: 2,
     title: getCheckTitle('Sing-box'),
     code: DIAGNOSTICS_CHECKS.SINGBOX,
+  },
+  [DIAGNOSTICS_CHECKS.STEER]: {
+    order: 2,
+    title: getCheckTitle('Steer'),
+    code: DIAGNOSTICS_CHECKS.STEER,
   },
   [DIAGNOSTICS_CHECKS.NFT]: {
     order: 4,

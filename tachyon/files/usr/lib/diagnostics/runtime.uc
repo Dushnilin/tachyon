@@ -35,6 +35,9 @@ const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || constants.NFT
 const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || constants.NFT_DISCORD_SET_NAME || "tachyon_discord_subnets";
 const NFT_LOCALV4_SET_NAME = getenv("NFT_LOCALV4_SET_NAME") || constants.NFT_LOCALV4_SET_NAME || "localv4";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || constants.SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
+const STEER_DNS_ADDRESS = getenv("STEER_DNS_ADDRESS") || "127.0.0.1";
+const STEER_DNS_PORT = getenv("STEER_DNS_PORT") || "5300";
+const STEER_NFT_TABLE = getenv("STEER_NFT_TABLE") || "steer";
 const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || constants.SB_TPROXY_INBOUND6_ADDRESS || "::1";
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
 const SB_CLASH_API_CONTROLLER_PORT = getenv("SB_CLASH_API_CONTROLLER_PORT") || constants.SB_CLASH_API_CONTROLLER_PORT || "9090";
@@ -902,6 +905,12 @@ function domain_lists_contain_cloud_provider() {
 }
 
 function check_nft() {
+    // Steer uses its own `inet steer` table, not the sing-box TachyonTable.
+    // Reporting not_applicable avoids false errors in the diagnostics UI.
+    if (active_engine_is_steer()) {
+        write_json({ not_applicable: 1, engine: active_engine_name() });
+        return 0;
+    }
     if (!command_exists("nft")) {
         nolog("nft is not installed");
         return 1;
@@ -1253,6 +1262,15 @@ function build_system_info() {
     let fptn_installed = provider_installed(FPTN_RUNTIME_UC) ? 1 : 0;
     let fptn_supported = (fptn_installed == 1 || is_fptn_supported()) ? 1 : 0;
     let fptn_version = fptn_installed ? provider_version(FPTN_RUNTIME_UC) : "not installed";
+    let steer_installed = file_executable("/usr/sbin/steer") ? 1 : 0;
+    let steer_version = "not installed";
+    let steer_extended = 0;
+    if (steer_installed) {
+        let steer_out = trim(command_output_from_args([ "/usr/sbin/steer", "version" ]));
+        let m = match(steer_out, /steer\s+([0-9a-zA-Z\.\-]+)/);
+        steer_version = m ? m[1] : (steer_out != "" ? steer_out : "installed");
+        steer_extended = (match(steer_out, /расширенная|extended/i) != null || pkg_is_installed("steer-extended")) ? 1 : 0;
+    }
     let device_model = first_line_value("/tmp/sysinfo/model", "unknown");
 
     let direct_bypass_enabled = bool_option(settings(), "direct_bypass_enabled", false) ? 1 : 0;
@@ -1301,6 +1319,7 @@ function build_system_info() {
         tachyon_commit_sha: constants.TACHYON_COMMIT_SHA && !match(constants.TACHYON_COMMIT_SHA, /COMPILED/) ? constants.TACHYON_COMMIT_SHA : "",
         tachyon_latest_version: tachyon_latest_version || "unknown",
         luci_app_version,
+        active_engine: active_engine_name(),
         sing_box_version,
         sing_box_extended: flags.extended,
         sing_box_tiny: flags.tiny,
@@ -1339,6 +1358,10 @@ function build_system_info() {
         fptn_supported,
         fptn_backup_version: fptn_meta ? as_string(fptn_meta.version) : "",
         fptn_backup_time: fptn_meta ? int(fptn_meta.timestamp || 0) : 0,
+        steer_version,
+        steer_installed,
+        steer_extended,
+        steer_repo_url: "https://github.com/xyzmean/steer",
         direct_bypass_enabled,
         direct_bypass_address,
         direct_bypass_port,
@@ -1457,23 +1480,40 @@ function get_engine_status() {
 
     let running = 0;
     let enabled = 0;
+    let channels = [];
     try {
         let engine_runtime = require("service.engine_runtime");
         let info = require("core.engine").detect(active);
-        running = info.installed && file_executable("/etc/rc.d/S99steer") ? 1 : 0;
-        enabled = file_executable("/etc/rc.d/S99steer") ? 1 : 0;
+        // steer registers with START=94, so the enable symlink is S94steer
+        // (get_status below has the same check). Liveness comes from the init
+        // script itself, not from the symlink: an enabled-but-dead service
+        // must not be reported as running.
+        enabled = command_success_from_args([ "sh", "-c", "ls /etc/rc.d/S*steer >/dev/null 2>&1" ]) ? 1 : 0;
+        running = info.installed && command_success_from_args([ "/etc/init.d/steer", "status" ]) ? 1 : 0;
+        if (running) {
+            let status_raw = fs.readfile("/var/lib/steer/status.json");
+            if (status_raw == null || status_raw == "") {
+                status_raw = command_output_from_args([ "/usr/sbin/steer", "status" ]);
+            }
+            if (status_raw != null && status_raw != "") {
+                let parsed = json(status_raw);
+                if (parsed && type(parsed.channels) == "array")
+                    channels = parsed.channels;
+            }
+        }
     }
     catch (e) {
         running = 0;
         enabled = 0;
     }
-    let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
+    let dns_configured = 1;
     write_json({
         running,
         enabled,
         engine: active,
         status: service_status_label(running, enabled),
-        dns_configured
+        dns_configured,
+        channels
     });
     return 0;
 }
@@ -1485,7 +1525,7 @@ function get_status() {
         let running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ? 1 : 0;
         // steer uses START=94, so the enable symlink is S94steer.
         let enabled = command_success_from_args([ "sh", "-c", "ls /etc/rc.d/S*steer >/dev/null 2>&1" ]) ? 1 : 0;
-        let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
+        let dns_configured = 1;
         write_service_status(running, enabled, dns_configured);
         return 0;
     }
@@ -1681,11 +1721,17 @@ function check_dns_available() {
     let dhcp_config_status = 1;
 
     let active_dns_args = [ "dig" ];
-    if (runtime_dns.failover_enabled(cfg)) {
-        push(active_dns_args, "-p");
-        push(active_dns_args, as_string(runtime_dns.health_port("active", 0)));
+    if (active_engine_is_steer()) {
+        // Steer DNS listens on 127.0.0.1:5300 (redirected from br-lan:53 via nft)
+        push(active_dns_args, "-p", STEER_DNS_PORT);
+        push(active_dns_args, "@" + STEER_DNS_ADDRESS);
+    } else {
+        if (runtime_dns.failover_enabled(cfg)) {
+            push(active_dns_args, "-p");
+            push(active_dns_args, as_string(runtime_dns.health_port("active", 0)));
+        }
+        push(active_dns_args, "@" + SB_DNS_INBOUND_ADDRESS);
     }
-    push(active_dns_args, "@" + SB_DNS_INBOUND_ADDRESS);
     push(active_dns_args, domain);
     push(active_dns_args, "A");
     push(active_dns_args, "+short");
@@ -1724,8 +1770,19 @@ function check_dns_available() {
         }
     }
 
-    if (!module_success(DNS_APPLY_UC, [ "default-config-complete" ]))
+    // Steer does not reconfigure dnsmasq the way sing-box does (noresolv=1, tachyon_server=...).
+    // Instead it just uses the system dnsmasq as-is with DNS redirect via nftables.
+    // So for steer we check: DHCP option 6 is set (clients use router as DNS server).
+    if (active_engine_is_steer()) {
+        // uci_core.get returns a space-joined string for list values
+        let dhcp_opt_lan = uci_core.get("dhcp.lan.dhcp_option");
+        let dhcp_opt_global = uci_core.get("dhcp.@dnsmasq[0].dhcp_option");
+        let combined = (dhcp_opt_lan || "") + " " + (dhcp_opt_global || "");
+        // option 6 = DNS server; check if any "6,<ip>" entry is present
+        dhcp_config_status = (index(combined, "6,") >= 0) ? 1 : 0;
+    } else if (!module_success(DNS_APPLY_UC, [ "default-config-complete" ])) {
         dhcp_config_status = 0;
+    }
 
     let display_dns_server = replace(status_output([ "mask-dns-server", dns_server ], null), /[\r\n]+$/g, "");
     write_json({
@@ -1758,7 +1815,58 @@ function nft_table_has_other_mark_rules(family, table_name) {
     return status_success([ "stdin-contains", "meta mark set" ], output);
 }
 
+function nft_steer_chain_has_rules(chain) {
+    let output = command_output_from_args([ "nft", "list", "chain", "inet", STEER_NFT_TABLE, chain ]);
+    // chain has rules if there is at least one non-comment, non-policy line with content
+    return output != null && length(split(trim(output), "\n")) > 3;
+}
+
 function check_nft_rules() {
+    // When steer is active, check the `inet steer` table instead of TachyonTable.
+    if (active_engine_is_steer()) {
+        let table_exist = command_success_from_args([ "nft", "list", "table", "inet", STEER_NFT_TABLE ]) ? 1 : 0;
+        let rules_mangle_exist = 0;
+        let rules_mangle_counters = 0;
+        let rules_mangle_output_exist = 0;
+        let rules_mangle_output_counters = 0;
+        let rules_proxy_exist = 0;
+        let rules_proxy_counters = 0;
+        let rules_other_mark_exist = 0;
+
+        if (table_exist) {
+            // prerouting_mark = equivalent of mangle (marks lan->proxy traffic)
+            if (command_success_from_args([ "nft", "list", "chain", "inet", STEER_NFT_TABLE, "prerouting_mark" ])) {
+                rules_mangle_exist = 1;
+                let out = command_output_from_args([ "nft", "list", "chain", "inet", STEER_NFT_TABLE, "prerouting_mark" ]);
+                rules_mangle_counters = (out != null && index(out, "counter") >= 0) ? 1 : 0;
+            }
+            // postrouting_down = equivalent of mangle_output (marks return traffic)
+            if (command_success_from_args([ "nft", "list", "chain", "inet", STEER_NFT_TABLE, "postrouting_down" ])) {
+                rules_mangle_output_exist = 1;
+                let out = command_output_from_args([ "nft", "list", "chain", "inet", STEER_NFT_TABLE, "postrouting_down" ]);
+                rules_mangle_output_counters = (out != null && index(out, "counter") >= 0) ? 1 : 0;
+            }
+            // prerouting_dns = DNS redirect chain (steer-specific, replaces proxy chain role)
+            if (command_success_from_args([ "nft", "list", "chain", "inet", STEER_NFT_TABLE, "prerouting_dns" ])) {
+                rules_proxy_exist = 1;
+                let out = command_output_from_args([ "nft", "list", "chain", "inet", STEER_NFT_TABLE, "prerouting_dns" ]);
+                rules_proxy_counters = (out != null && index(out, "counter") >= 0) ? 1 : 0;
+            }
+        }
+
+        write_json({
+            table_exist,
+            rules_mangle_exist,
+            rules_mangle_counters,
+            rules_mangle_output_exist,
+            rules_mangle_output_counters,
+            rules_proxy_exist,
+            rules_proxy_counters,
+            rules_other_mark_exist,
+            engine: active_engine_name()
+        });
+        return 0;
+    }
     command_status("sh -c " + shell_quote(
         "curl -m 3 -s " + shell_quote("https://" + CHECK_PROXY_IP_DOMAIN + "/check") + " >/dev/null 2>&1 & pid1=$!; " +
         "curl -m 3 -s " + shell_quote("https://" + FAKEIP_TEST_DOMAIN + "/check") + " >/dev/null 2>&1 & pid2=$!; " +
@@ -1843,6 +1951,61 @@ function sing_box_standard_ports_listening_fixture() {
     exit(sing_box_standard_ports_listening(read_stdin()) ? 0 : 1);
 }
 
+function check_steer() {
+    // These checks describe steer state; on sing-box they are not applicable.
+    if (!active_engine_is_steer()) {
+        write_json({ not_applicable: 1, engine: active_engine_name() });
+        return 0;
+    }
+
+    let steer_installed = 0;
+    let steer_version = "";
+    let steer_service_exist = 0;
+    let steer_autostart_enabled = 0;
+    let steer_process_running = 0;
+    let steer_extended = 0;
+
+    let steer_bin = "/usr/sbin/steer";
+    if (file_executable(steer_bin)) {
+        steer_installed = 1;
+        let ver = trim(command_output(command_from_args([steer_bin, "version"]) + " 2>/dev/null"));
+        if (ver == "")
+            ver = trim(command_output(command_from_args([steer_bin, "--version"]) + " 2>/dev/null"));
+        steer_version = ver != "" ? ver : "";
+
+        // Detect extended build: check version string, active engine ID, or binary size heuristic
+        let stat = fs.stat(steer_bin);
+        if ((stat != null && stat.size > 8 * 1024 * 1024) ||
+            match(steer_version, /расширенная|extended/i) != null ||
+            active_engine_name() == "steer-extended")
+            steer_extended = 1;
+    }
+
+    if (file_exists("/etc/init.d/steer")) {
+        steer_service_exist = 1;
+        // Steer uses START=94, enabled if S94steer symlink is present in /etc/rc.d/
+        steer_autostart_enabled = command_success_from_args(
+            ["sh", "-c", "ls /etc/rc.d/S*steer >/dev/null 2>&1"]
+        ) ? 1 : 0;
+    }
+
+    if (steer_installed && file_exists("/etc/init.d/steer")) {
+        steer_process_running = command_success_from_args(
+            ["/etc/init.d/steer", "status"]
+        ) ? 1 : 0;
+    }
+
+    write_json({
+        steer_installed,
+        steer_version,
+        steer_extended,
+        steer_service_exist,
+        steer_autostart_enabled,
+        steer_process_running
+    });
+    return 0;
+}
+
 function check_sing_box() {
     // These checks describe sing-box state; on steer they are not applicable
     // rather than failing, so the dashboard shows an honest answer.
@@ -1898,9 +2061,28 @@ function check_sing_box() {
 }
 
 function check_fakeip() {
-    // fakeip is served by sing-box's DNS inbound; steer has its own resolver.
+    // Steer has its own FakeIP resolver on 127.0.0.1:5300.
+    // Query it and verify the response is in the steer FakeIP range (198.18.0.0/15).
     if (active_engine_is_steer()) {
-        write_json({ not_applicable: 1, engine: active_engine_name() });
+        let fakeip_address = "";
+        let fakeip6_address = "";
+        for (let line in split(command_output_from_args([
+            "dig", "+short", "-p", STEER_DNS_PORT, "@" + STEER_DNS_ADDRESS,
+            FAKEIP_TEST_DOMAIN, "A", "+timeout=2", "+tries=1"
+        ]), "\n")) {
+            line = trim(as_string(line));
+            if (valid_ipv4(line)) {
+                fakeip_address = line;
+                break;
+            }
+        }
+        write_json({
+            fakeip: match(fakeip_address, /^198\.(18|19)\./) != null,
+            IP: fakeip_address,
+            IPv4: fakeip_address,
+            IPv6: fakeip6_address,
+            engine: active_engine_name()
+        });
         return 0;
     }
     let fakeip_address = "";
@@ -2010,7 +2192,733 @@ function save_persistent_selector_choice(group_tag, proxy_tag) {
     return common.write_json_file(path, state, 2);
 }
 
+const STEER_LATENCY_CACHE_FILE = "/var/run/tachyon/steer-latencies.json";
+
+function steer_get_cached_latencies() {
+    let data = common.read_json_file(STEER_LATENCY_CACHE_FILE);
+    return type(data) == "object" ? data : {};
+}
+
+function steer_set_cached_latency(tag, delay) {
+    let data = steer_get_cached_latencies();
+    data[as_string(tag)] = int(delay);
+    common.write_json_file(STEER_LATENCY_CACHE_FILE, data);
+}
+
+function steer_set_cached_latencies_bulk(entries) {
+    let data = steer_get_cached_latencies();
+    for (let tag, delay in entries)
+        data[as_string(tag)] = int(delay);
+    common.write_json_file(STEER_LATENCY_CACHE_FILE, data);
+}
+
+function steer_lookup_latency(latencies, tag, ctx) {
+    if (type(latencies) != "object" || tag == null) return null;
+    tag = as_string(tag);
+    if (latencies[tag] != null) return latencies[tag];
+
+    if (ctx) {
+        if (ctx.names && ctx.names[tag] != null && latencies[ctx.names[tag]] != null)
+            return latencies[ctx.names[tag]];
+        if (ctx.tag_to_idx && ctx.tag_to_idx[tag] != null) {
+            let idx = ctx.tag_to_idx[tag];
+            if (latencies["proxy-" + idx] != null)
+                return latencies["proxy-" + idx];
+            if (ctx.idx_to_tag && ctx.idx_to_tag[idx] != null && latencies[ctx.idx_to_tag[idx]] != null)
+                return latencies[ctx.idx_to_tag[idx]];
+        }
+    }
+
+    let m = match(tag, /proxy-(\d+)/);
+    if (m && latencies["proxy-" + m[1]] != null)
+        return latencies["proxy-" + m[1]];
+
+    let unprefixed = replace(tag, /^.*?\s+/, "");
+    if (unprefixed != tag && latencies[unprefixed] != null)
+        return latencies[unprefixed];
+
+    for (let k, v in latencies) {
+        if (substr(k, -length(tag)) == tag)
+            return v;
+    }
+    return null;
+}
+
+const STEER_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") ||
+    (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/section-cache";
+const STEER_SUBS_DIR = getenv("TACHYON_STEER_SUBS_DIR") || "/etc/steer/subs";
+
+function steer_build_section_context(section_name) {
+    section_name = as_string(section_name);
+    if (section_name == "") return null;
+
+    let cache_file = STEER_SECTION_CACHE_DIR + "/" + section_name + ".json";
+    let cache_data = common.read_json_file(cache_file);
+    if (type(cache_data) != "object")
+        return null;
+
+    let links = cache_data.links || {};
+    let metadata = cache_data.outboundMetadata || {};
+    let names = metadata.names || {};
+    let transports = metadata.transports || {};
+    let hidden = cache_data.hiddenOutboundTags || {};
+    let urltest_groups = cache_data.urltestGroups || {};
+
+    let tag_to_idx = {};
+    let idx_to_tag = {};
+    let vless_idx = 0;
+    // Numbering MUST match steer/lists.uc write_subscription_file(): urltest
+    // group outbounds first, then non-hidden links, then the rest — vless-probe
+    // --node N addresses nodes by their position in the sub file.
+    let ordered_tags = [];
+    if (type(cache_data.urltestGroups) == "object") {
+        for (let grp_id, grp in cache_data.urltestGroups) {
+            if (type(grp) == "object" && type(grp.outbounds) == "array") {
+                for (let ob in grp.outbounds) {
+                    let link = links[ob];
+                    if (link != null && match(trim(as_string(link)), /^vless:\/\//) != null && index(ordered_tags, ob) < 0)
+                        push(ordered_tags, ob);
+                }
+            }
+        }
+    }
+    let hidden_ordered = type(hidden) == "object" ? hidden : {};
+    for (let name, link in links) {
+        if (index(ordered_tags, name) >= 0 || hidden_ordered[name]) continue;
+        link = trim(as_string(link));
+        if (match(link, /^vless:\/\//) != null)
+            push(ordered_tags, name);
+    }
+    for (let name, link in links) {
+        if (index(ordered_tags, name) >= 0) continue;
+        link = trim(as_string(link));
+        if (match(link, /^vless:\/\//) != null)
+            push(ordered_tags, name);
+    }
+    for (let name in ordered_tags) {
+        tag_to_idx[name] = vless_idx;
+        idx_to_tag[vless_idx] = name;
+        let unprefixed = replace(name, /^.*?\s+/, "");
+        if (unprefixed != name && tag_to_idx[unprefixed] == null)
+            tag_to_idx[unprefixed] = vless_idx;
+        vless_idx++;
+    }
+
+    // This section's vless output reads its own sub file (see lists.uc);
+    // fall back to the shared legacy path when the per-section file is absent.
+    let sub_file = STEER_SUBS_DIR + "/" + replace(section_name, /[^A-Za-z0-9_.-]/g, "_") + ".txt";
+    if (fs.stat(sub_file) == null)
+        sub_file = "/etc/steer/sub.txt";
+
+    return {
+        sname: section_name,
+        cache_data: cache_data,
+        links: links,
+        names: names,
+        transports: transports,
+        hidden: hidden,
+        urltest_groups: urltest_groups,
+        tag_to_idx: tag_to_idx,
+        idx_to_tag: idx_to_tag,
+        vless_count: vless_idx,
+        sub_file: sub_file
+    };
+}
+
 function clash_api(action, arg1, arg2, arg3) {
+    if (active_engine_is_steer()) {
+        if (action == "get_proxies") {
+            let proxies = {};
+            let latencies = steer_get_cached_latencies();
+            let sections = uci_core.section_objects(CONFIG_NAME, "section");
+            let persistent_state = common.read_json_file(getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json");
+            if (type(persistent_state) != "object")
+                persistent_state = {};
+
+            for (let sec in sections) {
+                let sname = as_string(sec[".name"]);
+                if (sname == "") continue;
+                let ctx = steer_build_section_context(sname);
+                if (!ctx) continue;
+
+                for (let tag, link in ctx.links) {
+                    let delay = steer_lookup_latency(latencies, tag, ctx);
+                    let hist = [];
+                    if (delay != null && int(delay) > 0)
+                        push(hist, { delay: int(delay), time: "2026-09-22T13:00:00Z" });
+                    proxies[tag] = {
+                        name: ctx.names[tag] || tag,
+                        type: ctx.transports[tag] || "Vless",
+                        udp: true,
+                        history: hist
+                    };
+                }
+
+                let group_ids = [];
+                for (let grp_id, grp in ctx.urltest_groups) {
+                    push(group_ids, grp_id);
+                    let grp_delay = steer_lookup_latency(latencies, grp_id, ctx);
+                    let chosen_child = "";
+                    for (let child in grp.outbounds) {
+                        if (chosen_child == "") chosen_child = child;
+                        let cd = steer_lookup_latency(latencies, child, ctx);
+                        if (cd != null && int(cd) > 0) {
+                            if (grp_delay == null || int(cd) < int(grp_delay)) {
+                                grp_delay = int(cd);
+                                chosen_child = child;
+                            }
+                        }
+                    }
+                    let hist = [];
+                    if (grp_delay != null && int(grp_delay) > 0)
+                        push(hist, { delay: int(grp_delay), time: "2026-09-22T13:00:00Z" });
+                    proxies[grp_id] = {
+                        name: grp.displayName || ctx.names[grp_id] || grp_id,
+                        type: "URLTest",
+                        all: grp.outbounds,
+                        now: chosen_child,
+                        history: hist
+                    };
+                    if (grp.displayName && grp.displayName != grp_id)
+                        proxies[grp.displayName] = proxies[grp_id];
+                }
+
+                let selector_all = [];
+                for (let gid in group_ids) {
+                    if (index(gid, "-urltest-") >= 0)
+                        push(selector_all, gid);
+                }
+                for (let gid in group_ids) {
+                    if (index(gid, "-urltest-") < 0)
+                        push(selector_all, gid);
+                }
+                for (let tag, link in ctx.links) {
+                    if (!ctx.hidden[tag])
+                        push(selector_all, tag);
+                }
+                if (length(selector_all) == 0) {
+                    for (let tag, link in ctx.links)
+                        push(selector_all, tag);
+                }
+
+                let saved_choice = as_string(persistent_state[sname] || "");
+                let uci_node = uci_core.get(CONFIG_NAME + "." + sname + ".node");
+                let now_tag = "";
+
+                if (saved_choice != "" && proxies[saved_choice] != null) {
+                    now_tag = saved_choice;
+                } else if (uci_node == "auto" || uci_node == "urltest" || uci_node == null || uci_node == "") {
+                    now_tag = length(selector_all) > 0 ? selector_all[0] : "";
+                } else if (proxies[uci_node] != null) {
+                    now_tag = uci_node;
+                } else {
+                    let m = match(uci_node, /proxy-(\d+)/);
+                    let idx = m ? int(m[1]) : int(uci_node);
+                    if (ctx.idx_to_tag[idx] != null)
+                        now_tag = ctx.idx_to_tag[idx];
+                    else
+                        now_tag = length(selector_all) > 0 ? selector_all[0] : "";
+                }
+
+                let sec_delay = latencies[now_tag] || (proxies[now_tag] && proxies[now_tag].history && length(proxies[now_tag].history) > 0 ? proxies[now_tag].history[0].delay : null);
+                let sec_hist = [];
+                if (sec_delay != null && int(sec_delay) > 0)
+                    push(sec_hist, { delay: int(sec_delay), time: "2026-09-22T13:00:00Z" });
+
+                proxies[sname] = {
+                    name: sname,
+                    type: "Selector",
+                    now: now_tag,
+                    all: selector_all,
+                    history: sec_hist
+                };
+                proxies[sname + "-out"] = proxies[sname];
+            }
+            print(sprintf("%J\n", { proxies: proxies }));
+            return 0;
+        }
+
+        if (action == "get_connections") {
+            let total_down = 0;
+            let total_up = 0;
+            let st_raw = fs.readfile("/var/lib/steer/status.json");
+            let mark_to_output = {};
+            if (st_raw) {
+                let st_json = json(st_raw);
+                if (st_json) {
+                    if (type(st_json.channels) == "array") {
+                        for (let ch in st_json.channels) {
+                            if (ch.out != "direct") {
+                                total_up += (int(ch.bytes) || 0);
+                                total_down += (int(ch.down_bytes) || 0);
+                            }
+                        }
+                    }
+                    if (type(st_json.outputs) == "object") {
+                        for (let oname, odata in st_json.outputs) {
+                            if (odata.mark) {
+                                let mv = int(odata.mark);
+                                if (mv > 0) mark_to_output[mv] = oname;
+                            }
+                        }
+                    }
+                }
+            }
+            let rx = fs.readfile("/sys/class/net/Main/statistics/rx_bytes");
+            let tx = fs.readfile("/sys/class/net/Main/statistics/tx_bytes");
+            if (rx != null) {
+                let rx_val = int(trim(as_string(rx))) || 0;
+                if (rx_val > total_down) total_down = rx_val;
+            }
+            if (tx != null) {
+                let tx_val = int(trim(as_string(tx))) || 0;
+                if (tx_val > total_up) total_up = tx_val;
+            }
+
+            let mem_bytes = 6291456;
+            let proc_dir = fs.opendir("/proc");
+            if (proc_dir) {
+                let ent;
+                let steer_kb = 0;
+                while ((ent = proc_dir.read()) != null) {
+                    if (match(ent, /^[0-9]+$/)) {
+                        let comm = trim(as_string(fs.readfile("/proc/" + ent + "/comm")));
+                        if (comm == "steer") {
+                            let status = fs.readfile("/proc/" + ent + "/status");
+                            if (status) {
+                                let m = match(status, /VmRSS:[ \t]+([0-9]+)/);
+                                if (m) steer_kb += int(m[1]);
+                            }
+                        }
+                    }
+                }
+                proc_dir.close();
+                if (steer_kb > 0)
+                    mem_bytes = steer_kb * 1024;
+            }
+
+            let fakeip_map = {};
+            let fip_file = fs.open("/var/lib/steer/fakeip.state", "r");
+            if (fip_file) {
+                let fline;
+                while ((fline = fip_file.read("line")) != null) {
+                    let parts = split(trim(fline), /[ \t]+/);
+                    if (length(parts) >= 2) {
+                        let dom = parts[0];
+                        for (let pi = 1; pi < length(parts); pi++)
+                            fakeip_map[parts[pi]] = dom;
+                    }
+                }
+                fip_file.close();
+            }
+
+            let conns = [];
+            let ct_file = fs.open("/proc/net/nf_conntrack", "r");
+            if (ct_file) {
+                let line;
+                while (true) {
+                    line = ct_file.read("line");
+                    if (line == null) break;
+                    let m = match(line, /ipv[46]\s+\d+\s+([a-zA-Z0-9]+)\s+.*?src=(\d+\.\d+\.\d+\.\d+)\s+dst=(\d+\.\d+\.\d+\.\d+)\s+sport=(\d+)\s+dport=(\d+)\s+packets=\d+\s+bytes=(\d+).*?bytes=(\d+)/);
+                    if (m) {
+                        let src_ip = m[2];
+                        if (match(src_ip, /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/) && src_ip != "127.0.0.1") {
+                            let proto = lc(m[1]);
+                            let dst_ip = m[3];
+                            let src_port = m[4];
+                            let dst_port = m[5];
+                            let up_bytes = int(m[6]) || 0;
+                            let down_bytes = int(m[7]) || 0;
+
+                            let mm = match(line, /mark=(\d+)/);
+                            let conn_mark = mm ? int(mm[1]) : 0;
+                            let route_name = "";
+                            for (let mv, oname in mark_to_output) {
+                                if ((conn_mark & mv) == mv) {
+                                    route_name = oname;
+                                    break;
+                                }
+                            }
+                            if (route_name == "") {
+                                if (match(dst_ip, /^(192\.168\.|10\.|127\.|172\.(1[6-9]|2\d|3[01])\.)/))
+                                    route_name = "direct";
+                                else
+                                    route_name = "Main";
+                            }
+
+                            let host = fakeip_map[dst_ip] || "";
+                            let cid = sprintf("%s-%s-%s-%s-%s", proto, src_ip, src_port, dst_ip, dst_port);
+
+                            push(conns, {
+                                id: cid,
+                                metadata: {
+                                    network: proto,
+                                    type: "Inner",
+                                    sourceIP: src_ip,
+                                    sourcePort: src_port,
+                                    destinationIP: dst_ip,
+                                    destinationPort: dst_port,
+                                    host: host
+                                },
+                                upload: up_bytes,
+                                download: down_bytes,
+                                chains: [ route_name ],
+                                rule: route_name
+                            });
+                            if (length(conns) >= 250) break;
+                        }
+                    }
+                }
+                ct_file.close();
+            }
+
+            if (length(conns) == 0) {
+                let conntrack_str = fs.readfile("/proc/sys/net/netfilter/nf_conntrack_count");
+                let conn_count = conntrack_str != null ? (int(trim(as_string(conntrack_str))) || 0) : 0;
+                let emit_count = conn_count > 100 ? 100 : conn_count;
+                for (let i = 0; i < emit_count; i++) {
+                    push(conns, { id: sprintf("c-%d", i) });
+                }
+            }
+
+            print(sprintf("%J\n", {
+                downloadTotal: total_down,
+                uploadTotal: total_up,
+                memory: mem_bytes,
+                connections: conns
+            }));
+            return 0;
+        }
+
+        if (action == "get_proxy_latency") {
+            if (as_string(arg1) == "")
+                return clash_json_error("proxy_tag required");
+            let target_tag = as_string(arg1);
+            let timeout_sec = int((int(arg2 || "3000") + 999) / 1000);
+            if (timeout_sec < 1) timeout_sec = 1;
+
+            let tag_to_idx = {};
+            let probe_ctx = null;
+            let all_urltest_groups = {};
+            let sections = uci_core.section_objects(CONFIG_NAME, "section");
+            for (let sec in sections) {
+                let sname = as_string(sec[".name"]);
+                let ctx = steer_build_section_context(sname);
+                if (ctx) {
+                    for (let t, idx in ctx.tag_to_idx)
+                        tag_to_idx[t] = idx;
+                    for (let gid, grp in ctx.urltest_groups) {
+                        all_urltest_groups[gid] = grp;
+                        if (grp.displayName) all_urltest_groups[grp.displayName] = grp;
+                    }
+                    // Remember the section that owns this tag: its own sub file
+                    // and node numbering are what vless-probe must use.
+                    if (probe_ctx == null && (ctx.tag_to_idx[target_tag] != null || all_urltest_groups[target_tag] != null))
+                        probe_ctx = ctx;
+                }
+            }
+
+            let node_idx = null;
+            if (all_urltest_groups[target_tag] != null) {
+                let grp = all_urltest_groups[target_tag];
+                let latencies = steer_get_cached_latencies();
+                for (let child in grp.outbounds) {
+                    if (latencies[child] != null && int(latencies[child]) > 0) {
+                        if (node_idx == null || int(latencies[child]) < int(latencies[tag_to_idx[node_idx] || ""]))
+                            node_idx = tag_to_idx[child];
+                    }
+                }
+                if (node_idx == null) {
+                    for (let child in grp.outbounds) {
+                        if (tag_to_idx[child] != null) {
+                            node_idx = tag_to_idx[child];
+                            break;
+                        }
+                    }
+                }
+            } else {
+                node_idx = tag_to_idx[target_tag];
+                if (node_idx == null) {
+                    let m = match(target_tag, /proxy-(\d+)/);
+                    if (m) node_idx = int(m[1]);
+                }
+            }
+
+            if (node_idx == null)
+                node_idx = int(target_tag);
+
+            let sub_file = probe_ctx != null ? probe_ctx.sub_file : "/etc/steer/sub.txt";
+            let probe_out = trim(command_output_from_args([ "/usr/sbin/steer", "vless-probe", sub_file, "--node", as_string(node_idx), "--timeout", as_string(timeout_sec) ]));
+            let probe_json = parse_json_or_null(probe_out);
+            let res_item = (type(probe_json) == "object" && type(probe_json.results) == "array" && length(probe_json.results) > 0) ? probe_json.results[0] : probe_json;
+            let ok = (type(res_item) == "object" && res_item.ok);
+            let handshake = ok ? int(res_item.handshake_ms || 0) : 0;
+            let ttfb = ok ? int(res_item.ttfb_ms || 0) : 0;
+            let delay = ok ? (handshake > 0 ? handshake + (ttfb > 0 ? ttfb : 0) : (ttfb > 0 ? ttfb : 1)) : 0;
+
+            steer_set_cached_latency(target_tag, delay);
+            steer_set_cached_latency("proxy-" + node_idx, delay);
+            print(sprintf("%J\n", { delay: delay }));
+            return 0;
+        }
+
+        if (action == "get_group_latency") {
+            // Clash contract: probe every member of the group and answer with a
+            // {tag: delay} map (runSectionsCheck reads values, not a scalar).
+            let group = as_string(arg1);
+            let timeout_sec = int((int(arg2 || "5000") + 999) / 1000);
+            if (timeout_sec < 1) timeout_sec = 1;
+
+            let group_children = [];
+            let probe_ctx = null;
+            let sections = uci_core.section_objects(CONFIG_NAME, "section");
+            for (let sec in sections) {
+                let sname = as_string(sec[".name"]);
+                let ctx = steer_build_section_context(sname);
+                if (!ctx) continue;
+
+                // Section selector itself: test every node in this section
+                if (sname == group || sname + "-out" == group || group == "selector") {
+                    for (let tag, link in ctx.links)
+                        push(group_children, tag);
+                    probe_ctx = ctx;
+                    break;
+                }
+
+                let grp = null;
+                if (type(ctx.urltest_groups) == "object") {
+                    if (ctx.urltest_groups[group] != null)
+                        grp = ctx.urltest_groups[group];
+                    else {
+                        for (let gid, gdata in ctx.urltest_groups) {
+                            if (gdata.displayName == group || gid == group) {
+                                grp = gdata;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (grp != null && type(grp.outbounds) == "array") {
+                    for (let child in grp.outbounds)
+                        push(group_children, child);
+                    if (probe_ctx == null)
+                        probe_ctx = ctx;
+                    break;
+                }
+            }
+            if (length(group_children) == 0 && probe_ctx == null) {
+                for (let sec in sections) {
+                    let ctx = steer_build_section_context(as_string(sec[".name"]));
+                    if (ctx && ctx.links) {
+                        for (let tag, link in ctx.links)
+                            push(group_children, tag);
+                        if (probe_ctx == null)
+                            probe_ctx = ctx;
+                    }
+                }
+            }
+
+            let result = {};
+            let sub_file = probe_ctx != null ? probe_ctx.sub_file : "/etc/steer/sub.txt";
+            let latencies = steer_get_cached_latencies();
+            let best_tag = null;
+            let best_delay = null;
+            for (let tag in group_children) {
+                let node_idx = probe_ctx != null ? probe_ctx.tag_to_idx[tag] : null;
+                if (node_idx == null) {
+                    let m = match(as_string(tag), /proxy-(\d+)/);
+                    if (m) node_idx = int(m[1]);
+                }
+                let delay = 0;
+                if (node_idx != null) {
+                    let probe_out = trim(command_output_from_args([ "/usr/sbin/steer", "vless-probe", sub_file, "--node", as_string(node_idx), "--timeout", as_string(timeout_sec) ]));
+                    let probe_json = parse_json_or_null(probe_out);
+                    let res_item = (type(probe_json) == "object" && type(probe_json.results) == "array" && length(probe_json.results) > 0) ? probe_json.results[0] : probe_json;
+                    let ok = (type(res_item) == "object" && res_item.ok);
+                    let handshake = ok ? int(res_item.handshake_ms || 0) : 0;
+                    let ttfb = ok ? int(res_item.ttfb_ms || 0) : 0;
+                    delay = ok ? (handshake > 0 ? handshake + (ttfb > 0 ? ttfb : 0) : (ttfb > 0 ? ttfb : 1)) : 0;
+                    steer_set_cached_latency(as_string(tag), delay);
+                    steer_set_cached_latency("proxy-" + as_string(node_idx), delay);
+                }
+                result[as_string(tag)] = delay;
+                if (delay > 0 && (best_delay == null || delay < best_delay)) {
+                    best_delay = delay;
+                    best_tag = as_string(tag);
+                }
+            }
+
+            // The group row itself shows the best member delay.
+            if (best_delay != null)
+                steer_set_cached_latency(group, best_delay);
+            print(sprintf("%J\n", result));
+            return 0;
+        }
+
+        if (action == "get_proxy_latencies") {
+            if (as_string(arg1) == "")
+                return clash_json_error("proxy_tags_json required");
+            let tags_list = [];
+            let parsed = json(as_string(arg1));
+            if (type(parsed) == "array") {
+                tags_list = parsed;
+            } else {
+                let tags = status_capture([ "clash-proxy-tags-lines", arg1 ], null);
+                if (tags.status == 0) {
+                    for (let pt in split(tags.output, "\n")) {
+                        pt = trim(as_string(pt));
+                        if (pt != "") push(tags_list, pt);
+                    }
+                }
+            }
+
+            let count = 0;
+            let failed = 0;
+            let progress_path = as_string(arg3);
+            let total = length(tags_list);
+            if (progress_path != "")
+                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+
+            let timeout_sec = int((int(arg2 || "3000") + 999) / 1000);
+            if (timeout_sec < 1) timeout_sec = 1;
+
+            let tag_to_idx = {};
+            let tag_to_sub = {};
+            let sections = uci_core.section_objects(CONFIG_NAME, "section");
+            for (let sec in sections) {
+                let sname = as_string(sec[".name"]);
+                let ctx = steer_build_section_context(sname);
+                if (ctx) {
+                    for (let t, idx in ctx.tag_to_idx) {
+                        tag_to_idx[t] = idx;
+                        tag_to_sub[t] = ctx.sub_file;
+                    }
+                }
+            }
+
+            for (let target_tag in tags_list) {
+                let node_idx = tag_to_idx[target_tag];
+                if (node_idx == null) {
+                    let m = match(target_tag, /proxy-(\d+)/);
+                    node_idx = m ? int(m[1]) : int(target_tag);
+                }
+                if (node_idx != null) {
+                    let probe_out = trim(command_output_from_args([ "/usr/sbin/steer", "vless-probe", tag_to_sub[target_tag] || "/etc/steer/sub.txt", "--node", as_string(node_idx), "--timeout", as_string(timeout_sec) ]));
+                    let probe_json = parse_json_or_null(probe_out);
+                    let res_item = (type(probe_json) == "object" && type(probe_json.results) == "array" && length(probe_json.results) > 0) ? probe_json.results[0] : probe_json;
+                    let ok = (type(res_item) == "object" && res_item.ok);
+                    let handshake = ok ? int(res_item.handshake_ms || 0) : 0;
+                    let ttfb = ok ? int(res_item.ttfb_ms || 0) : 0;
+                    let delay = ok ? (handshake > 0 ? handshake + (ttfb > 0 ? ttfb : 0) : (ttfb > 0 ? ttfb : 1)) : 0;
+                    if (!ok) failed++;
+                    steer_set_cached_latency(target_tag, delay);
+                    steer_set_cached_latency("proxy-" + node_idx, delay);
+                } else {
+                    failed++;
+                }
+                count++;
+                if (progress_path != "")
+                    module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+            }
+            print(sprintf("%J\n", { status: 0 }));
+            return 0;
+        }
+
+        if (action == "set_group_proxy") {
+            if (as_string(arg1) == "" || as_string(arg2) == "")
+                return clash_json_error("group_tag and proxy_tag required");
+
+            let raw_group = as_string(arg1);
+            let target_group = replace(raw_group, /-out$/, "");
+            let target_proxy = as_string(arg2);
+            let ctx = steer_build_section_context(target_group);
+
+            let matched_urltest = ctx && ctx.urltest_groups ? ctx.urltest_groups[target_proxy] : null;
+            if (matched_urltest == null && ctx && ctx.urltest_groups) {
+                for (let gid, grp in ctx.urltest_groups) {
+                    if (grp.displayName == target_proxy) {
+                        matched_urltest = grp;
+                        break;
+                    }
+                }
+            }
+
+            if (matched_urltest != null) {
+                let node_indices = [];
+                for (let child in matched_urltest.outbounds) {
+                    if (ctx.tag_to_idx[child] != null)
+                        push(node_indices, ctx.tag_to_idx[child]);
+                }
+                uci_core.set(CONFIG_NAME + "." + target_group + ".node", "auto");
+                if (length(node_indices) > 0) {
+                    if (length(node_indices) > 16)
+                        node_indices = slice(node_indices, 0, 16);
+                    uci_core.set(CONFIG_NAME + "." + target_group + ".nodes", join(" ", node_indices));
+                }
+                else
+                    uci_core.delete(CONFIG_NAME + "." + target_group + ".nodes");
+            } else if (target_proxy == "⚡ Auto (URL Test)" || target_proxy == "auto") {
+                uci_core.set(CONFIG_NAME + "." + target_group + ".node", "auto");
+                uci_core.delete(CONFIG_NAME + "." + target_group + ".nodes");
+            } else {
+                let node_idx = ctx && ctx.tag_to_idx ? ctx.tag_to_idx[target_proxy] : null;
+                if (node_idx == null) {
+                    let m = match(target_proxy, /proxy-(\d+)/);
+                    node_idx = m ? int(m[1]) : int(target_proxy);
+                }
+                uci_core.set(CONFIG_NAME + "." + target_group + ".node", as_string(node_idx));
+                uci_core.delete(CONFIG_NAME + "." + target_group + ".nodes");
+            }
+
+            uci_core.commit(CONFIG_NAME);
+            // The node list is read by the vless process from the spec at
+            // startup: regenerate the spec, then restart only the vless
+            // instances (procd re-runs them with the fresh spec). A full
+            // `/etc/init.d/steer restart` would also kill dnsd and drop the
+            // rules — seconds of DNS outage on every node switch.
+            command_status("ucode -L " + LIB_DIR + " " + LIB_DIR + "/service/engine_runtime.uc engine-generate >/dev/null 2>&1");
+            let restarted_vless = false;
+            let spec_raw = fs.readfile("/etc/steer/spec.json");
+            if (spec_raw != null) {
+                let spec = parse_json_or_null(spec_raw);
+                if (type(spec) == "object" && type(spec.outputs) == "object") {
+                    for (let out_name, out in spec.outputs) {
+                        if (type(out) == "object" && out.kind == "vless") {
+                            command_status("ubus call service signal '" + sprintf('{"name":"steer","instance":"vless_%s","signal":15}', out_name) + "' >/dev/null 2>&1");
+                            restarted_vless = true;
+                        }
+                    }
+                }
+            }
+            if (!restarted_vless)
+                command_status("/etc/init.d/steer restart >/dev/null 2>&1");
+            command_status("conntrack -F >/dev/null 2>&1 || true");
+            save_persistent_selector_choice(target_group, target_proxy);
+            save_persistent_selector_choice(target_group + "-out", target_proxy);
+            let result = status_capture([ "clash-set-group-proxy-result", target_group, target_proxy ], "\n204");
+            if (result.output != "")
+                print(result.output);
+            return result.status;
+        }
+
+        if (action == "restore_selector_state") {
+            let path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
+            let state = common.read_json_file(path);
+            if (type(state) == "object") {
+                for (let group, selected in state) {
+                    clash_api("set_group_proxy", group, selected);
+                }
+            }
+            return 0;
+        }
+
+        if (action == "close_connection" || action == "close_all_connections") {
+            command_status("conntrack -F >/dev/null 2>&1 || true");
+            print("\n204");
+            return 0;
+        }
+    }
+
     let base_url = clash_api_url();
     let test_url = latency_test_url();
     let auth = clash_auth_args();
@@ -2418,6 +3326,11 @@ function is_adguardhome_primary_dns(cfg) {
 function tachyon_is_running() {
     let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
     if (wd_pid != "" && fs.stat("/proc/" + wd_pid) != null) return true;
+    let eng = "sing-box";
+    try { eng = require("core.engine").get_active(); } catch (e) {}
+    if (eng == "steer" || eng == "steer-extended") {
+        return find_process_pid("steer") != "" || command_success_from_args([ "/etc/init.d/steer", "status" ]);
+    }
     return find_process_pid("sing-box") != "";
 }
 
@@ -2430,6 +3343,13 @@ function is_degraded() {
 }
 
 function kill_our_core_processes() {
+    let eng = "sing-box";
+    try { eng = require("core.engine").get_active(); } catch (e) {}
+    if (eng == "steer" || eng == "steer-extended") {
+        command_status("/etc/init.d/steer stop >/dev/null 2>&1");
+        command_status("killall -9 steer >/dev/null 2>&1");
+        return;
+    }
     command_status("/etc/init.d/sing-box stop >/dev/null 2>&1");
     command_status("killall -9 sing-box >/dev/null 2>&1");
 }
@@ -2739,9 +3659,15 @@ function run_doctor_checks_impl(repair) {
         return { report: join("\n", report) + "\n", issues, fixed, checks };
     }
 
-    let binary_name = "sing-box";
-    let init_script = "/etc/init.d/sing-box";
-    let config_file_path = "/etc/sing-box/config.json";
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    } catch (e) {}
+    let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
+
+    let binary_name = is_steer ? "steer" : "sing-box";
+    let init_script = is_steer ? "/etc/init.d/steer" : "/etc/init.d/sing-box";
+    let config_file_path = is_steer ? "/etc/steer/spec.json" : "/etc/sing-box/config.json";
 
     // 1. Process Check
     let has_sections = false;
@@ -2757,14 +3683,14 @@ function run_doctor_checks_impl(repair) {
 
     let pid = find_process_pid(binary_name);
     if (pid != "") {
-        doc_check("✅", binary_name + " process", "running", "");
-    } else if (!has_sections) {
+        doc_check("✅", (is_steer ? active_engine : binary_name) + " process", "running (PID " + pid + ")", "");
+    } else if (!has_sections && !is_steer) {
         doc_check("ℹ️", binary_name + " process", "not started", "→ Настройте подключение в LuCI — ядро запустится автоматически");
     } else {
         issues++;
         if (!DOCTOR_REPAIR_MODE) {
             doc_plan("kill conflicting processes; " + init_script + " start");
-            doc_check("⚠️", binary_name + " process", "stopped", "→ WILL FIX (doctor --fix): запуск после очистки конфликтующих портов");
+            doc_check("⚠️", (is_steer ? active_engine : binary_name) + " process", "stopped", "→ WILL FIX (doctor --fix): запуск службы " + active_engine);
         } else {
             kill_our_core_processes();
             command_status("sleep 1");
@@ -2772,16 +3698,40 @@ function run_doctor_checks_impl(repair) {
             command_status("sleep 3");
             pid = find_process_pid(binary_name);
             if (pid != "") {
-                doc_check("❌", binary_name + " process", "stopped", "→ FIXED: запущен после очистки конфликтующих портов");
+                doc_check("❌", (is_steer ? active_engine : binary_name) + " process", "stopped", "→ FIXED: запущен");
                 fixed++;
             } else {
-                doc_check("❌", binary_name + " process", "stopped", "→ не удалось запустить — проверьте логи");
+                doc_check("❌", (is_steer ? active_engine : binary_name) + " process", "stopped", "→ не удалось запустить — проверьте логи");
             }
         }
     }
 
     // 2. Configuration Check
-    if (fs.stat(config_file_path) != null) {
+    if (is_steer) {
+        if (fs.stat(config_file_path) != null) {
+            let check_res = command_status("/usr/sbin/steer apply --dry-run >/dev/null 2>&1");
+            if (check_res == 0) {
+                doc_check("✅", active_engine + " spec", "valid", "");
+            } else {
+                issues++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("regenerate steer spec (/usr/bin/tachyon reload)");
+                    doc_check("⚠️", active_engine + " spec", "invalid", "→ WILL FIX (doctor --fix): перегенерация спеки");
+                } else {
+                    command_status("ucode -L " + LIB_DIR + " " + LIB_DIR + "/service/engine_runtime.uc engine-apply >/dev/null 2>&1");
+                    let check_res2 = command_status("/usr/sbin/steer apply --dry-run >/dev/null 2>&1");
+                    if (check_res2 == 0) {
+                        doc_check("❌", active_engine + " spec", "invalid", "→ FIXED: спека восстановлена");
+                        fixed++;
+                    } else {
+                        doc_check("❌", active_engine + " spec", "invalid", "→ не удалось восстановить спеку");
+                    }
+                }
+            }
+        } else {
+            doc_check("ℹ️", active_engine + " spec", "not yet created", "");
+        }
+    } else if (fs.stat(config_file_path) != null) {
         let check_res = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
         if (check_res == 0) {
             doc_check("✅", binary_name + " config", "valid", "");
@@ -2851,74 +3801,120 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 3. Nftables Table Check
-    let routing_mode = cfg.routing_mode || "nftables";
-    if (routing_mode == "nftables") {
-        let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
-        if (index(out_nft, "tproxy") >= 0) {
-            doc_check("✅", "nftables table", "present", "");
+    if (is_steer) {
+        let out_nft = command_capture("nft list table inet steer 2>/dev/null").output;
+        if (index(out_nft, "table inet steer") >= 0) {
+            doc_check("✅", "nftables table (inet steer)", "present", "");
         } else {
-            if (is_degraded_flag) {
-                doc_check("⚠️", "nftables table", "missing or incomplete", "→ GRACEFUL DEGRADATION: Proxy offline");
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("/usr/sbin/steer apply");
+                doc_check("⚠️", "nftables table (inet steer)", "missing", "→ WILL FIX (doctor --fix): применение правил steer");
             } else {
-                issues++;
-                if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("delete nft table + /usr/bin/tachyon restart");
-                    doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил");
+                command_status("/usr/sbin/steer apply >/dev/null 2>&1");
+                let out_check = command_capture("nft list table inet steer 2>/dev/null").output;
+                if (index(out_check, "table inet steer") >= 0) {
+                    doc_check("❌", "nftables table (inet steer)", "missing", "→ FIXED: правила steer применены");
+                    fixed++;
                 } else {
-                    command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
-                    let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-                    let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
-                    if (index(out_nft_check, "tproxy") >= 0) {
-                        doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
-                        fixed++;
-                    } else {
-                        doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила");
-                    }
+                    doc_check("❌", "nftables table (inet steer)", "missing", "→ не удалось применить правила steer");
                 }
             }
         }
 
-        // 4. IP Rule Check
-        let ip_rule_out = command_capture("ip rule list").output;
-        if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
-            doc_check("✅", "ip rule (fwmark)", "present", "");
-        } else {
-            issues++;
-            if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("/usr/bin/tachyon restart");
-                doc_check("⚠️", "ip rule", "missing", "→ WILL FIX (doctor --fix): восстановление маршрута");
-            } else {
-                let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-                let ip_rule_check = command_capture("ip rule list").output;
-                if (index(ip_rule_check, "fwmark") >= 0 && index(ip_rule_check, "lookup " + RT_TABLE_NAME) >= 0) {
-                    doc_check("❌", "ip rule", "missing", "→ FIXED: маршрут восстановлен");
-                    fixed++;
-                } else {
-                    doc_check("❌", "ip rule", "missing", "→ не удалось восстановить ip rule");
+        // Steer Diag Check
+        let diag_str = trim(command_capture("/usr/sbin/steer diag 2>/dev/null").output);
+        if (diag_str != "") {
+            try {
+                let diag_res = json(diag_str);
+                if (type(diag_res) == "object" && type(diag_res.checks) == "array") {
+                    for (let c in diag_res.checks) {
+                        let icon = c.verdict == "ok" ? "✅" : (c.verdict == "note" ? "ℹ️" : "⚠️");
+                        if (c.verdict == "fail") {
+                            if (c.id == "zapret" && !provider_installed(ZAPRET_RUNTIME_UC)) {
+                                icon = "ℹ️";
+                            } else {
+                                issues++;
+                            }
+                        }
+                        doc_check(icon, "steer diag: " + c.id, c.what, c.why ? "→ " + c.why : "");
+                    }
                 }
-            }
+            } catch (e) {}
         }
     } else {
-        let ip_link_out = command_capture("ip link show tun0").output;
-        if (index(ip_link_out, "tun0") >= 0) {
-            doc_check("✅", "tun0 interface", "up", "");
-        } else {
-            issues++;
-            command_status(init_script + " restart >/dev/null 2>&1");
-            command_status("sleep 3");
-            let ip_link_check = command_capture("ip link show tun0").output;
-            if (index(ip_link_check, "tun0") >= 0) {
-                doc_check("❌", "tun0 interface", "missing", "→ FIXED: интерфейс tun0 поднят после перезапуска службы");
-                fixed++;
+        let routing_mode = cfg.routing_mode || "nftables";
+        if (routing_mode == "nftables") {
+            let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
+            if (index(out_nft, "tproxy") >= 0) {
+                doc_check("✅", "nftables table", "present", "");
             } else {
-                doc_check("❌", "tun0 interface", "missing", "→ не удалось поднять tun0");
+                if (is_degraded_flag) {
+                    doc_check("⚠️", "nftables table", "missing or incomplete", "→ GRACEFUL DEGRADATION: Proxy offline");
+                } else {
+                    issues++;
+                    if (!DOCTOR_REPAIR_MODE) {
+                        doc_plan("delete nft table + /usr/bin/tachyon restart");
+                        doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил");
+                    } else {
+                        command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
+                        let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                        let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
+                        if (index(out_nft_check, "tproxy") >= 0) {
+                            doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
+                            fixed++;
+                        } else {
+                            doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила");
+                        }
+                    }
+                }
+            }
+
+            // 4. IP Rule Check
+            let ip_rule_out = command_capture("ip rule list").output;
+            if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
+                doc_check("✅", "ip rule (fwmark)", "present", "");
+            } else {
+                issues++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("/usr/bin/tachyon restart");
+                    doc_check("⚠️", "ip rule", "missing", "→ WILL FIX (doctor --fix): восстановление маршрута");
+                } else {
+                    let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                    let ip_rule_check = command_capture("ip rule list").output;
+                    if (index(ip_rule_check, "fwmark") >= 0 && index(ip_rule_check, "lookup " + RT_TABLE_NAME) >= 0) {
+                        doc_check("❌", "ip rule", "missing", "→ FIXED: маршрут восстановлен");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "ip rule", "missing", "→ не удалось восстановить ip rule");
+                    }
+                }
+            }
+        } else {
+            let ip_link_out = command_capture("ip link show tun0").output;
+            if (index(ip_link_out, "tun0") >= 0) {
+                doc_check("✅", "tun0 interface", "up", "");
+            } else {
+                issues++;
+                command_status(init_script + " restart >/dev/null 2>&1");
+                command_status("sleep 3");
+                let ip_link_check = command_capture("ip link show tun0").output;
+                if (index(ip_link_check, "tun0") >= 0) {
+                    doc_check("❌", "tun0 interface", "missing", "→ FIXED: интерфейс tun0 поднят после перезапуска службы");
+                    fixed++;
+                } else {
+                    doc_check("❌", "tun0 interface", "missing", "→ не удалось поднять tun0");
+                }
             }
         }
     }
 
     // 4e. Dnsmasq Redirection Check
     let agh_primary = is_adguardhome_primary_dns(cfg);
-    if (agh_primary) {
+    if (is_steer) {
+        doc_check("✅", "dnsmasq server", "direct (steer handles DNS interception via inet steer)", "");
+        doc_check("✅", "dnsmasq params", "OK (managed by steer)", "");
+    } else if (agh_primary) {
         doc_check("✅", "dnsmasq server (Direct)", "bypassed (AdGuardHome on :53, dnsmasq DHCP-only)", "");
     } else if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
         doc_check("✅", "dnsmasq server (Direct)", SB_DNS_INBOUND_ADDRESS, "");
@@ -2943,39 +3939,41 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 4b. Dnsmasq Params Check
-    if (agh_primary) {
-        doc_check("✅", "dnsmasq params", "bypassed (DHCP-only mode, port 0)", "");
-    } else {
-        let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-        let localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
-        let rebind_protection = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-        if (noresolv == "1" && localuse == "1" && rebind_protection == "0") {
-            doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
+    // 4b. Dnsmasq Params Check (sing-box only)
+    if (!is_steer) {
+        if (agh_primary) {
+            doc_check("✅", "dnsmasq params", "bypassed (DHCP-only mode, port 0)", "");
         } else {
-            issues++;
-            // noresolv/localuse are required for the sing-box DNS redirect to
-            // work; rebind_protection=0 is a deliberate compatibility downgrade
-            // for FakeIP answers — it must never be applied silently by a
-            // diagnostic pass.
-            if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("uci set dhcp noresolv=1 localuse=1 rebind_protection=0 + dnsmasq restart");
-                doc_check("⚠️", "dnsmasq params", "incorrect", "→ WILL FIX (doctor --fix): noresolv=1, localuse=1, rebind_protection=0");
+            let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+            let localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
+            let rebind_protection = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+            if (noresolv == "1" && localuse == "1" && rebind_protection == "0") {
+                doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
             } else {
-                doc_set("dhcp.@dnsmasq[0].noresolv", "1");
-                doc_set("dhcp.@dnsmasq[0].localuse", "1");
-                doc_set("dhcp.@dnsmasq[0].rebind_protection", "0");
-                doc_commit("dhcp");
-                command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-                command_status("sleep 1");
-                let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-                let localuse2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
-                let rebind_protection2 = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-                if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
-                    doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
-                    fixed++;
+                issues++;
+                // noresolv/localuse are required for the sing-box DNS redirect to
+                // work; rebind_protection=0 is a deliberate compatibility downgrade
+                // for FakeIP answers — it must never be applied silently by a
+                // diagnostic pass.
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("uci set dhcp noresolv=1 localuse=1 rebind_protection=0 + dnsmasq restart");
+                    doc_check("⚠️", "dnsmasq params", "incorrect", "→ WILL FIX (doctor --fix): noresolv=1, localuse=1, rebind_protection=0");
                 } else {
-                    doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
+                    doc_set("dhcp.@dnsmasq[0].noresolv", "1");
+                    doc_set("dhcp.@dnsmasq[0].localuse", "1");
+                    doc_set("dhcp.@dnsmasq[0].rebind_protection", "0");
+                    doc_commit("dhcp");
+                    command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+                    command_status("sleep 1");
+                    let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+                    let localuse2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
+                    let rebind_protection2 = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+                    if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
+                        doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
+                    }
                 }
             }
         }
@@ -3264,24 +4262,28 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 6. Clash API Check
-    let clash_addr = clash_api_url();
-    let curl_clash = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
-    if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
-        doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
+    if (is_steer) {
+        doc_check("➖", "Clash API", "not applicable for steer", "");
     } else {
-        issues++;
-        if (pid != "") {
-            command_status(init_script + " restart >/dev/null 2>&1");
-            command_status("sleep 3");
-            let curl_clash2 = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
-            if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
-                doc_check("❌", "Clash API", "unreachable", "→ FIXED: sing-box перезапущен");
-                fixed++;
-            } else {
-                doc_check("❌", "Clash API", "unreachable", "→ sing-box не отвечает на Clash API");
-            }
+        let clash_addr = clash_api_url();
+        let curl_clash = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
+        if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
+            doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
         } else {
-            doc_check("⚠️", "Clash API", "unreachable", "→ sing-box не запущен");
+            issues++;
+            if (pid != "") {
+                command_status(init_script + " restart >/dev/null 2>&1");
+                command_status("sleep 3");
+                let curl_clash2 = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
+                if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
+                    doc_check("❌", "Clash API", "unreachable", "→ FIXED: sing-box перезапущен");
+                    fixed++;
+                } else {
+                    doc_check("❌", "Clash API", "unreachable", "→ sing-box не отвечает на Clash API");
+                }
+            } else {
+                doc_check("⚠️", "Clash API", "unreachable", "→ sing-box не запущен");
+            }
         }
     }
 
@@ -3291,7 +4293,7 @@ function run_doctor_checks_impl(repair) {
     // correctly, the failure is outside Tachyon (server down, ISP filtering
     // the UDP endpoint). Surfacing this as its own check stops the classic
     // "Tachyon broke my AWG" misattribution.
-    if (pid != "") {
+    if (!is_steer && pid != "") {
         let wg_log = lc(command_capture("logread -l 400 2>/dev/null | grep -i 'outbound/wireguard' | tail -n 8").output);
         let wg_failures = index(wg_log, "operation timed out") >= 0 ||
             (index(wg_log, "handshake") >= 0 && index(wg_log, "timeout") >= 0);
@@ -5593,6 +6595,8 @@ else if (mode == "check-nft-rules")
     exit(check_nft_rules());
 else if (mode == "check-sing-box")
     exit(check_sing_box());
+else if (mode == "check-steer")
+    exit(check_steer());
 else if (mode == "sing-box-standard-ports-listening-fixture")
     sing_box_standard_ports_listening_fixture();
 else if (mode == "check-inbounds-config")

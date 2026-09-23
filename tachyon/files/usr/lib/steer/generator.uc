@@ -23,7 +23,7 @@ let engine = require("core.engine");
 
 let as_string = common.as_string;
 
-const SPEC_SCHEMA = 1;
+const SPEC_SCHEMA = 2;
 const DEFAULT_LAN_DEVICES = [ "br-lan" ];
 const DEFAULT_ON_FAIL = "drop";
 
@@ -89,6 +89,8 @@ function is_rule_section(section) {
         return true;
     if (action == "direct_bypass" || action == "torrserver_direct")
         return true;
+    if (action == "zapret" || action == "zapret2")
+        return true;
     return false;
 }
 
@@ -116,6 +118,19 @@ function section_supported(section) {
 // Outputs
 // ============================================================================
 
+// Resolved through the zapret2 provider's candidate list (fs.stat fallbacks),
+// never hardcoded: the nfqws2 binary lands at different paths per build
+// (/opt/zapret2/nfq2/nfqws2, /opt/zapret2/nfqws2, /usr/bin/nfqws2, ...).
+function resolved_zapret_bin(is_z2) {
+    try {
+        let provider = require(is_z2 ? "providers.zapret2.common" : "providers.zapret.common").config({});
+        if (provider != null && as_string(provider.binary) != "")
+            return as_string(provider.binary);
+    }
+    catch (e) {}
+    return is_z2 ? "/opt/zapret2/nfq2/nfqws2" : "/opt/zapret/nfq/nfqws";
+}
+
 // Build the outputs map. Proxy sections become interface/vless outputs when the
 // device or subscription is known; everything else falls back to a direct
 // output so channels referencing it still compile.
@@ -133,13 +148,14 @@ function build_outputs(sections, settings) {
         let name = safe_name(option(section, "label", option(section, ".name", "proxy")));
         let device = as_string(option(section, "outbound_interface", ""));
         let devices = list_option(section, "outbound_interfaces");
+        let on_fail = as_string(option(section, "on_fail", DEFAULT_ON_FAIL));
         if (device != "" && length(devices) == 0)
             devices = [ device ];
         if (length(devices) > 0) {
             outputs[name] = {
                 kind: "interface",
                 devices,
-                on_fail: DEFAULT_ON_FAIL
+                on_fail
             };
             continue;
         }
@@ -151,8 +167,36 @@ function build_outputs(sections, settings) {
             outputs[name] = {
                 kind: "vless",
                 sub_file,
-                on_fail: DEFAULT_ON_FAIL
+                on_fail
             };
+            let node = option(section, "node", null);
+            let nodes = list_option(section, "nodes");
+            let sort_by_latency = bool_option(section, "sort_by_latency", false);
+            let parsed_node = (node != null && node != "") ? int(node) : null;
+            let is_valid_num = (parsed_node != null && parsed_node != "NaN");
+            let is_auto = (node == "auto" || node == "urltest" || !is_valid_num || (sort_by_latency && !is_valid_num));
+            if (is_auto || length(nodes) > 0) {
+                outputs[name].prefer = "latency";
+                outputs[name].latency_interval_s = 300;
+                outputs[name].latency_tolerance_ms = 50;
+                if (length(nodes) > 0) {
+                    let nodes_int = [];
+                    for (let n in nodes) {
+                        let ni = int(n);
+                        if (ni != null && ni != "NaN")
+                            push(nodes_int, ni);
+                    }
+                    if (length(nodes_int) > 0)
+                        outputs[name].nodes = length(nodes_int) > 16 ? slice(nodes_int, 0, 16) : nodes_int;
+                } else if (is_auto) {
+                    let auto_nodes = [];
+                    for (let i = 0; i < 16; i++)
+                        push(auto_nodes, i);
+                    outputs[name].nodes = auto_nodes;
+                }
+            } else if (is_valid_num) {
+                outputs[name].node = parsed_node;
+            }
             continue;
         }
 
@@ -164,14 +208,20 @@ function build_outputs(sections, settings) {
     for (let section in sections) {
         if (!is_enabled(section) || !is_zapret_section(section))
             continue;
+        let action = as_string(option(section, "action", ""));
         let name = safe_name(option(section, "label", option(section, ".name", "zapret")));
         let opts_file = as_string(option(section, "steer_opts_file", ""));
-        outputs[name] = {
+        if (opts_file == "")
+            opts_file = "/etc/steer/zapret/" + name + ".opts";
+        let out_entry = {
             kind: "zapret",
-            on_fail: "direct"
+            on_fail: "direct",
+            opts_file: opts_file
         };
-        if (opts_file != "")
-            outputs[name].opts_file = opts_file;
+        // zapret2 uses nfqws2 (supports Lua strategies); store the resolved
+        // binary path in the spec so steer-nfqws picks the right executable.
+        out_entry.nfqws_bin = resolved_zapret_bin(action == "zapret2");
+        outputs[name] = out_entry;
     }
 
     return outputs;
@@ -213,18 +263,77 @@ function channel_match(section, catalog) {
     if (length(prefixes) > 0)
         match_obj.prefixes_files = prefixes;
 
+    let proto = lc(as_string(option(section, "proto", option(section, "protocol", ""))));
+    if (proto == "tcp" || proto == "udp")
+        match_obj.proto = proto;
+    else if (proto == "both" || proto == "all")
+        match_obj.proto = "both";
+
+    let ports_val = option(section, "ports", option(section, "destination_ports", null));
+    if (ports_val != null && (match_obj.domains_files != null || match_obj.prefixes_files != null)) {
+        // steer: ports narrow the match, they are never the match itself — a
+        // channel without an address/domain list (or any) is rejected. Ports
+        // are strings ("443", "50000-65535"), max 16 entries, no overlaps.
+        let ports = [];
+        let items = type(ports_val) == "array" ? ports_val : split(as_string(ports_val), /[ \t\r\n,]+/);
+        for (let p in items) {
+            p = trim(as_string(p));
+            if (p != "")
+                push(ports, p);
+            if (length(ports) >= 16)
+                break;
+        }
+        if (length(ports) > 0)
+            match_obj.ports = ports;
+    }
+
     return match_obj;
 }
 
-function channel_from(section) {
-    let from = [];
-    for (let value in list_option(section, "source_network_interfaces"))
-        push(from, value);
-    for (let value in list_option(section, "client_addresses"))
-        push(from, value);
-    for (let value in list_option(section, "mac_addresses"))
-        push(from, value);
-    return from;
+// steer rejects a `from` that mixes addresses and MACs (nft cannot express the
+// OR), and scope=device accepts only single hosts: a bare address, an address
+// with /32, or a MAC. Subnets, ranges and interface names must not land there.
+function is_mac_value(value) {
+    return match(as_string(value), /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/) != null;
+}
+
+function is_single_host_value(value) {
+    value = as_string(value);
+    if (value == "")
+        return false;
+    if (is_mac_value(value) || index(value, ":") >= 0)
+        return true;
+    if (index(value, "-") >= 0)
+        return false;
+    let slash = index(value, "/");
+    if (slash >= 0)
+        return substr(value, slash) == "/32";
+    return match(value, /^[0-9.]+$/) != null;
+}
+
+// Client filters of one section, split the way steer wants them: MACs and
+// addresses never share a channel. Interface names are dropped — steer has no
+// per-channel interface match (lan_devices covers capture globally).
+function channel_clients(section) {
+    let macs = [];
+    let addrs = [];
+    for (let value in list_option(section, "client_addresses")) {
+        value = as_string(value);
+        if (is_mac_value(value))
+            push(macs, value);
+        else if (value != "")
+            push(addrs, value);
+    }
+    for (let value in list_option(section, "mac_addresses")) {
+        value = as_string(value);
+        if (is_mac_value(value) && index(macs, value) < 0)
+            push(macs, value);
+    }
+    let addrs_single = true;
+    for (let value in addrs)
+        if (!is_single_host_value(value))
+            addrs_single = false;
+    return { macs, addrs, addrs_single };
 }
 
 function build_channels(sections, catalog) {
@@ -235,25 +344,51 @@ function build_channels(sections, catalog) {
             continue;
 
         let match_obj = channel_match(section, catalog);
-        if (length(keys(match_obj)) == 0)
+        let clients = channel_clients(section);
+        if (length(keys(match_obj)) == 0 && length(clients.macs) == 0 && length(clients.addrs) == 0)
             continue;
 
         let action = as_string(option(section, "action", ""));
-        let out_name = safe_name(option(section, "label", option(section, ".name", "channel")));
+        let out_name = safe_name(option(section, "outbound", option(section, "label", option(section, ".name", "channel"))));
         if (action == "bypass" || action == "hosts" || action == "direct_bypass" || action == "torrserver_direct")
             out_name = "direct";
+        else if (action == "zapret" || action == "zapret2")
+            out_name = safe_name(option(section, "label", option(section, ".name", "zapret")));
 
-        let channel = {
-            name: as_string(option(section, "label", option(section, ".name", "channel"))),
-            match: match_obj,
-            out: out_name
-        };
+        let label = as_string(option(section, "label", option(section, ".name", "channel")));
 
-        let from = channel_from(section);
-        if (length(from) > 0)
-            channel.from = from;
+        // zapret/zapret2 channels use the default fakeip mode.
+        // steer 1.5.7+ deprecated mode=realip; fakeip now correctly routes
+        // DPI-bypass traffic through nftables marks without needing realip.
 
-        push(channels, channel);
+        // Addresses: one channel. scope=device (priority over global rules) only
+        // when every entry is a single host — steer rejects subnets there.
+        if (length(clients.addrs) > 0 || length(keys(match_obj)) > 0) {
+            let channel = {
+                name: label,
+                match: match_obj,
+                out: out_name
+            };
+            if (length(clients.addrs) > 0) {
+                channel.from = clients.addrs;
+                if (clients.addrs_single)
+                    channel.scope = "device";
+            }
+            push(channels, channel);
+        }
+
+        // MACs: steer forbids mixing them with addresses in one `from`, so they
+        // go into a separate channel ("заведите два канала" — contract).
+        if (length(clients.macs) > 0) {
+            let mac_channel = {
+                name: label + " (MAC)",
+                match: match_obj,
+                from: clients.macs,
+                scope: "device",
+                out: out_name
+            };
+            push(channels, mac_channel);
+        }
     }
 
     return channels;
@@ -271,6 +406,7 @@ function build_spec(sections, settings, catalog) {
 
     return {
         schema: SPEC_SCHEMA,
+        dns_redirect: bool_option(settings, "dns_redirect", true),
         lan_devices,
         outputs: build_outputs(sections, settings),
         channels: build_channels(sections, catalog)

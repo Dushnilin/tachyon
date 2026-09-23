@@ -53,6 +53,10 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
     tailscaleRollback: { loading: false },
+    steerCheck: { loading: false },
+    steerInstall: { loading: false },
+    steerRemove: { loading: false },
+    steerRollback: { loading: false },
     directBypassEnable: { loading: false },
     directBypassDisable: { loading: false },
     torrserverDirectEnable: { loading: false },
@@ -145,6 +149,7 @@ function applyServiceState(uiState: Tachyon.UiState) {
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
+    ...(uiState.active_engine ? { activeEngine: uiState.active_engine } : {}),
   });
 }
 

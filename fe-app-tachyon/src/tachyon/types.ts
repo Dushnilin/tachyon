@@ -63,6 +63,7 @@ export namespace Tachyon {
     GET_OUTBOUND_METADATA = 'get_outbound_metadata',
     GET_SUBSCRIPTION_METADATA = 'get_subscription_metadata',
     CHECK_SING_BOX = 'check_sing_box',
+    CHECK_STEER = 'check_steer',
     CHECK_INBOUNDS = 'check_inbounds',
     GET_SING_BOX_STATUS = 'get_sing_box_status',
     GET_ENGINE_STATUS = 'get_engine_status',
@@ -576,6 +577,15 @@ export namespace Tachyon {
     sing_box_ports_listening: 0 | 1;
   }
 
+  export interface SteerCheckResult {
+    steer_installed: 0 | 1;
+    steer_version: string;
+    steer_extended: 0 | 1;
+    steer_service_exist: 0 | 1;
+    steer_autostart_enabled: 0 | 1;
+    steer_process_running: 0 | 1;
+  }
+
   export interface InboundCheckItem {
     section: string;
     label: string;
@@ -646,6 +656,14 @@ export namespace Tachyon {
     memory_rss_mb?: number;
   }
 
+  export interface GetEngineStatus {
+    running: number;
+    enabled: number;
+    engine: string;
+    status: string;
+    dns_configured?: number;
+  }
+
   export interface EngineDescriptor {
     engine: string;
     known: boolean;
@@ -696,6 +714,11 @@ export namespace Tachyon {
     sing_box_lx?: 0 | 1;
     sing_box_tailscale: 0 | 1;
     sing_box_repo_url?: string;
+    steer_version?: string;
+    steer_installed?: 0 | 1;
+    steer_extended?: 0 | 1;
+    steer_repo_url?: string;
+    active_engine?: string;
     zapret_version: string;
     zapret_installed: 0 | 1;
     zapret2_version: string;
@@ -790,6 +813,7 @@ export namespace Tachyon {
   }
 
   export interface UiState {
+    active_engine?: string;
     service: {
       tachyon: GetStatus;
       sing_box: GetSingBoxStatus;
@@ -816,6 +840,8 @@ export namespace Tachyon {
   export type ComponentName =
     | 'tachyon'
     | 'sing_box'
+    | 'steer'
+    | 'steer-extended'
     | 'zapret'
     | 'zapret2'
     | 'byedpi'

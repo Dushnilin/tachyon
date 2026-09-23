@@ -267,7 +267,7 @@ print("ch1_out=" + spec.channels[1].out + "\n");
 print("no_wdtt=" + (spec.outputs.Unsupported == null && spec.outputs.unsupported == null) + "\n");
 print("name_safe=" + g.safe_name("My Server / NL") + "\n");
 ')"
-assert_match "spec schema 1" 'schema=1' "$out"
+assert_match "spec schema 2" 'schema=2' "$out"
 assert_match "lan devices from settings" 'lan=br-lan,tailscale0' "$out"
 assert_match "interface output built" 'out_main=interface' "$out"
 assert_match "device preference order kept" 'out_main_devices=wg0,awg0' "$out"
@@ -280,6 +280,175 @@ assert_match "client filter mapped" 'ch1_from=192.168.1.50' "$out"
 assert_match "bypass channel goes direct" 'ch1_out=direct' "$out"
 assert_match "unsupported section skipped" 'no_wdtt=true' "$out"
 assert_match "unsafe names sanitized" 'name_safe=My_Server___NL' "$out"
+
+printf '%s\n' '--- steer generator contract compliance ---'
+out="$(run_uc '
+let g = require("steer.generator");
+let sections = [
+    { ".name": "z2", ".type": "section", "action": "zapret2", "enabled": "1", "label": "Z2",
+      "user_domains": [ "youtube.com" ], "ports": "443, 50000-65535", "proto": "udp" },
+    { ".name": "macs", ".type": "section", "action": "connection", "enabled": "1",
+      "label": "MacHosts", "outbound_interfaces": [ "wg0" ],
+      "client_addresses": [ "AA:BB:CC:DD:EE:F0", "192.168.1.50/32" ],
+      "mac_addresses": [ "11:22:33:44:55:66" ] },
+    { ".name": "iface", ".type": "section", "action": "connection", "enabled": "1",
+      "label": "Iface", "outbound_interfaces": [ "wg0" ],
+      "client_addresses": [ "AA:BB:CC:DD:EE:F1" ] }
+];
+g.set_list_materializer(function(section, catalog) {
+    let d = [];
+    for (let v in (section.user_domains || [])) push(d, v);
+    return { domains: length(d) ? "/tmp/" + section[".name"] + ".domains" : "", prefixes: "" };
+});
+let spec = g.build_spec(sections, {});
+let zc = null;
+for (let i = 0; i < length(spec.channels); i++)
+    if (spec.channels[i].out == "Z2" && spec.channels[i].match.proto != null)
+        zc = spec.channels[i];
+print("z2_proto=" + (zc != null ? zc.match.proto : "none") + "\n");
+print("z2_ports=" + (zc != null ? join("|", zc.match.ports) : "none") + "\n");
+print("z2_realip=" + (zc != null && zc.match.mode == "realip" ? "1" : "0") + "\n");
+let mac_chans = 0;
+let dev_scoped = 0;
+let mixed = 0;
+for (let i = 0; i < length(spec.channels); i++) {
+    let ch = spec.channels[i];
+    if (ch.from == null) continue;
+    let macs = 0;
+    for (let v in ch.from) if (match(v, /:/) != null) macs++;
+    if (macs > 0) {
+        mac_chans++;
+        if (macs != length(ch.from)) mixed++;
+    }
+    if (ch.scope == "device") dev_scoped++;
+}
+print("mac_channels=" + mac_chans + "\n");
+print("mixed_from=" + mixed + "\n");
+print("dev_scoped=" + dev_scoped + "\n");
+' 2>&1)"
+assert_match "zapret2 proto mapped" 'z2_proto=udp' "$out"
+assert_match "ports written as strings" 'z2_ports=443|50000-65535' "$out"
+assert_match "realip mode inside match" 'z2_realip=1' "$out"
+assert_match "mac channel separated" 'mac_channels=2' "$out"
+assert_match "addresses and macs never mixed" 'mixed_from=0' "$out"
+assert_match "single hosts get device scope" 'dev_scoped=3' "$out"
+
+printf '%s\n' '--- steer per-section subscription files ---'
+SUB_CACHE_DIR="$WORK_DIR/section-cache"
+mkdir -p "$SUB_CACHE_DIR"
+cat >"$SUB_CACHE_DIR/sec_a.json" <<'EOF'
+{ "links": { "proxy-0": "vless://a@example.com:443?type=tcp", "proxy-1": "vless://b@example.com:443?type=tcp" } }
+EOF
+cat >"$SUB_CACHE_DIR/sec_b.json" <<'EOF'
+{ "links": { "proxy-0": "vless://c@other.example:443?type=tcp" } }
+EOF
+out="$(TACHYON_STEER_SUBS_DIR="$WORK_DIR/steer-subs" TACHYON_SECTION_CACHE_DIR="$SUB_CACHE_DIR" run_uc '
+let l = require("steer.lists");
+let a = l.write_subscription_file("sec_a");
+let b = l.write_subscription_file("sec_b");
+print("a=" + a + "\n");
+print("b=" + b + "\n");
+print("distinct=" + (a != b && a != "" && b != "") + "\n");
+' 2>&1)"
+assert_match "section A sub file" "a=$WORK_DIR/steer-subs/sec_a.txt" "$out"
+assert_match "section B sub file" "b=$WORK_DIR/steer-subs/sec_b.txt" "$out"
+assert_match "two sections do not overwrite each other" 'distinct=true' "$out"
+grep -q 'vless://a@' "$WORK_DIR/steer-subs/sec_a.txt" && pass=$((pass + 1)) || fail_test "section A sub file content"
+
+printf '%s\n' '--- steer section cache rebuild (singbox pipeline replacement) ---'
+TMP_SUB_DIR="$WORK_DIR/subs-tmp"
+mkdir -p "$TMP_SUB_DIR"
+cat >"$TMP_SUB_DIR/sc-subscription-1.json" <<'EOF'
+{ "outbounds": [
+  { "type": "urltest", "tag": "auto-group", "remark": "Auto", "outbounds": ["NL-1", "DE-1"], "url": "https://www.gstatic.com/generate_204" },
+  { "type": "vless", "tag": "NL-1", "remark": "Amsterdam", "server": "nl.example.com", "server_port": 443,
+    "uuid": "14f2e88d-f48e-4ce8-bdc7-f46107be5ff0", "tls": { "enabled": true, "reality": { "enabled": true } } },
+  { "type": "vless", "tag": "DE-1", "remark": "Berlin", "server": "de.example.com", "server_port": 443,
+    "uuid": "14f2e88d-f48e-4ce8-bdc7-f46107be5ff0", "tls": { "enabled": true } },
+  { "type": "selector", "tag": "groups", "outbounds": ["auto-group"] }
+] }
+EOF
+SC_DIR="$WORK_DIR/section-cache-own"
+mkdir -p "$SC_DIR"
+cat >"$SC_DIR/sc.json" <<'EOF'
+{ "subscriptionMetadata": [ { "title": "TestSub", "traffic": { "used": 1 } } ] }
+EOF
+out="$(TACHYON_CONFIG_NAME="tachyon" TACHYON_SECTION_CACHE_DIR="$SC_DIR" TMP_SUBSCRIPTION_FOLDER="$TMP_SUB_DIR" run_uc '
+let fs = require("fs");
+let sc = require("steer.section_cache");
+let built = sc.build_section_cache({ ".name": "sc", "subscription_urls": [ "https://example.com/sub" ] });
+print("built=" + built + "\n");
+let cache = json(fs.readfile("'"$SC_DIR"'/sc.json"));
+print("links=" + length(keys(cache.links)) + "\n");
+print("nl_link=" + (match((cache.links["NL-1"] || ""), /^vless:\/\//) != null) + "\n");
+print("group_children=" + join(",", cache.urltestGroups["auto-group"].outbounds) + "\n");
+print("meta_kept=" + (cache.subscriptionMetadata[0].title == "TestSub") + "\n");
+print("names=" + (cache.outboundMetadata.names["NL-1"] == "Amsterdam") + "\n");
+' 2>&1)"
+assert_match "section cache built" 'built=true' "$out"
+assert_match "vless links recorded" 'links=2' "$out"
+assert_match "vless link serialized" 'nl_link=true' "$out"
+assert_match "urltest group remembered" 'group_children=NL-1,DE-1' "$out"
+assert_match "subscription metadata preserved" 'meta_kept=true' "$out"
+assert_match "display names remembered" 'names=true' "$out"
+
+printf '%s\n' '--- zapret2 default strategy fallback ---'
+rm -f /etc/steer/zapret/DZ.opts 2>/dev/null || true
+out="$(TACHYON_STEER_LISTS_DIR="$WORK_DIR/steer-empty" run_uc '
+let l = require("steer.lists");
+l.materialize_section_lists({ ".name": "dz", "action": "zapret2", "label": "DZ" }, {});
+print("done\n");
+' 2>&1)"
+if [ -f /etc/steer/zapret/DZ.opts ]; then
+    grep -q 'filter-tcp' /etc/steer/zapret/DZ.opts && pass=$((pass + 1)) || fail_test "default zapret2 strategy not used for empty nfqws2_opt"
+else
+    fail_test "zapret2 default opts file not written"
+fi
+
+printf '%s\n' '--- zapret2 opts carry the full effective command line ---'
+rm -f /etc/steer/zapret/DISC.opts 2>/dev/null || true
+mkdir -p "$WORK_DIR/fakefiles/fake"
+printf 'fake-tls' > "$WORK_DIR/fakefiles/fake/tls_clienthello_www_google_com.bin"
+printf 'fake-stun' > "$WORK_DIR/fakefiles/fake/stun.bin"
+DISC_STRAT='--filter-tcp=443 --payload=tls_client_hello --lua-desync=fake:blob=tls_google:tcp_md5 --new --filter-udp=443 --lua-desync=fake:blob=discord_udp'
+out="$(TACHYON_LIB="$TACHYON_LIB" ZAPRET2_PROVIDER_FILES_DIR="$WORK_DIR/fakefiles" TACHYON_STEER_LISTS_DIR="$WORK_DIR/steer-empty" run_uc '
+let l = require("steer.lists");
+l.materialize_section_lists({ ".name": "disc", "action": "zapret2", "label": "DISC",
+    "nfqws2_opt": "'"$DISC_STRAT"'" }, {});
+print("done\n");
+' 2>&1)"
+if [ -f /etc/steer/zapret/DISC.opts ]; then
+    grep -q -- '--lua-init=@' /etc/steer/zapret/DISC.opts ||
+        fail_test "opts missing --lua-init: lua strategies cannot load their runtime"
+    grep -q -- '--blob=tls_google:@' /etc/steer/zapret/DISC.opts ||
+        fail_test "opts missing resolved --blob for tls_google"
+    grep -q -- '--blob=discord_udp:@' /etc/steer/zapret/DISC.opts ||
+        fail_test "opts missing resolved --blob for discord_udp"
+    grep -q -- '--fwmark' /etc/steer/zapret/DISC.opts &&
+        fail_test "opts must not carry the provider fwmark (wrapper uses steer mark)" || true
+    grep -q -- "$DISC_STRAT" /etc/steer/zapret/DISC.opts ||
+        fail_test "opts missing the user strategy"
+    pass=$((pass + 1))
+else
+    fail_test "zapret2 opts file not written for section strategy"
+fi
+
+printf '%s\n' '--- spec nfqws_bin resolved from the provider ---'
+out="$(run_uc '
+let g = require("steer.generator");
+let sections = [ { ".name": "z2b", ".type": "section", "action": "zapret2", "enabled": "1", "label": "Z2B",
+    "user_domains": [ "youtube.com" ] } ];
+g.set_list_materializer(function(section, catalog) {
+    return { domains: "/tmp/z2b.domains", prefixes: "" };
+});
+let spec = g.build_spec(sections, {});
+print("bin=" + spec.outputs.Z2B.nfqws_bin + "\n");
+' 2>&1)"
+case "$out" in
+    bin=/opt/zapret2/nfq2/nfqws2|bin=/opt/zapret2/nfq/nfqws2|bin=/opt/zapret2/nfqws2|bin=/usr/bin/nfqws2)
+        pass=$((pass + 1)) ;;
+    *) fail_test "nfqws_bin not resolved from the provider candidate list: $out" ;;
+esac
 
 printf '%s\n' '--- steer contract facts ---'
 out="$(run_uc '
@@ -295,7 +464,7 @@ assert_match "steer spec path" 'spec=/etc/steer/spec.json' "$out"
 assert_match "steer state dir" 'state=/var/lib/steer' "$out"
 assert_match "steer nft table isolated" 'table=inet steer' "$out"
 assert_match "steer contract commands listed" 'cmds=7' "$out"
-assert_match "steer keep paths listed" 'keep=4' "$out"
+assert_match "steer keep paths listed" 'keep=5' "$out"
 assert_match "contract not ready without engine" 'ready=false' "$out"
 
 printf '%s\n' '--- CLI info surface ---'
@@ -382,6 +551,41 @@ grep -Fq 'generate_steer_spec' <<<"$reload_branch" ||
     fail_test "steer reload must regenerate the spec"
 pass=$((pass + 1))
 
+printf '%s\n' '--- sing-box-only start work must not run on steer ---'
+# The engine branch must come before the sing-box config validator: the
+# validator would abort the start on a steer-only device.
+start_main_body="$(sed -n '/^function start_main/,/^}/p' "$LIFECYCLE_UC")"
+validator_line="$(grep -n 'validate_start_config' <<<"$start_main_body" | head -1 | cut -d: -f1)"
+engine_branch_line="$(grep -n 'active_engine_is_steer' <<<"$start_main_body" | head -1 | cut -d: -f1)"
+if [ -z "$validator_line" ] || [ -z "$engine_branch_line" ]; then
+    fail_test "start_main must call validate_start_config and check the engine"
+elif [ "$engine_branch_line" -ge "$validator_line" ]; then
+    fail_test "engine branch must be checked before the sing-box validator"
+fi
+pass=$((pass + 1))
+# On steer dnsmasq must be restored, never configured for the sing-box DNS.
+start_impl_body="$(sed -n '/^function start_impl/,/^}/p' "$LIFECYCLE_UC")"
+grep -Fq 'active_engine_is_steer' <<<"$start_impl_body" ||
+    fail_test "start_impl must branch dnsmasq handling per engine"
+pass=$((pass + 1))
+
+printf '%s\n' '--- switch goes through the full lifecycle ---'
+# switch_engine must restart the service (lifecycle handles the dataplane
+# cleanup, spec generation and per-engine start), not stop/start engines inline.
+ENGINE_RUNTIME_UC="$TACHYON_LIB/service/engine_runtime.uc"
+switch_body="$(sed -n '/^function switch_engine/,/^}/p' "$ENGINE_RUNTIME_UC")"
+grep -Fq 'restart_tachyon_service' <<<"$switch_body" ||
+    fail_test "switch_engine must restart the service via the lifecycle"
+grep -Fq 'start_failed_rolled_back' <<<"$switch_body" ||
+    fail_test "switch_engine must roll the config back when the restart fails"
+if grep -Eq 'stop_other_engines|run_init' <<<"$switch_body"; then
+    fail_test "switch_engine must not stop/start engines inline"
+fi
+restart_fn="$(sed -n '/^function restart_tachyon_service/,/^}/p' "$ENGINE_RUNTIME_UC")"
+grep -Fq '"restart"' <<<"$restart_fn" ||
+    fail_test "restart_tachyon_service must call the init script restart"
+pass=$((pass + 1))
+
 printf '%s\n' '--- engine status is engine-aware ---'
 RUNTIME_UC="$TACHYON_LIB/diagnostics/runtime.uc"
 grep -Fq 'function get_engine_status' "$RUNTIME_UC" ||
@@ -390,6 +594,43 @@ grep -Fq 'get-engine-status' "$RUNTIME_UC" ||
     fail_test "diagnostics/runtime.uc must dispatch get-engine-status"
 grep -Fq 'get_engine_status:' "$TACHYON_BIN" ||
     fail_test "tachyon entrypoint must expose get_engine_status"
+# steer uses START=94: a hardcoded S99steer check always reports stopped.
+if grep -Fq 'S99steer' "$RUNTIME_UC"; then
+    fail_test "get_engine_status must not hardcode S99steer (steer is START=94)"
+fi
+grep -Fq 'rc.d/S*steer' "$RUNTIME_UC" ||
+    fail_test "get_engine_status must detect the steer enable symlink"
+pass=$((pass + 1))
+
+printf '%s\n' '--- restart and reload lifecycle steer guards ---'
+restart_body="$(sed -n '/^function restart(/,/^}/p' "$LIFECYCLE_UC")"
+grep -Fq 'active_engine_is_steer' <<<"$restart_body" ||
+    fail_test "restart() must check active_engine_is_steer"
+restart_sb_wait="$(grep -n 'wait-sing-box-service-stable' <<<"$restart_body" | head -1 | cut -d: -f1)"
+restart_steer_guard="$(grep -n 'active_engine_is_steer' <<<"$restart_body" | head -1 | cut -d: -f1)"
+if [ -z "$restart_sb_wait" ] || [ -z "$restart_steer_guard" ]; then
+    fail_test "restart must have steer guard and sing-box wait"
+elif [ "$restart_steer_guard" -ge "$restart_sb_wait" ]; then
+    fail_test "restart must guard against waiting for sing-box when steer is active"
+fi
+
+reload_restart_body="$(sed -n '/^function restart_runtime_for_reload/,/^}/p' "$LIFECYCLE_UC")"
+grep -Fq 'active_engine_is_steer' <<<"$reload_restart_body" ||
+    fail_test "restart_runtime_for_reload() must check active_engine_is_steer"
+
+stop_main_body="$(sed -n '/^function stop_main/,/^}/p' "$LIFECYCLE_UC")"
+grep -Fq '/etc/init.d/steer' <<<"$stop_main_body" ||
+    fail_test "stop_main must stop steer service"
+
+UI_UC="$TACHYON_LIB/service/ui.uc"
+ui_running_body="$(sed -n '/^function tachyon_running/,/^}/p' "$UI_UC")"
+grep -Fq 'active_engine != "sing-box"' <<<"$ui_running_body" ||
+    fail_test "ui.uc tachyon_running must be engine-aware"
+
+EVENT_CTRL_UC="$TACHYON_LIB/service/event_controller.uc"
+probe_sb_body="$(sed -n '/^    function probe_singbox/,/^    }/p' "$EVENT_CTRL_UC")"
+grep -Fq 'active_engine != "sing-box"' <<<"$probe_sb_body" ||
+    fail_test "event_controller probe_singbox must be engine-aware"
 pass=$((pass + 1))
 
 printf '\n--- engine_orchestrator.sh summary ---\n'

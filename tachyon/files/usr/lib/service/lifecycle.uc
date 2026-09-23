@@ -896,6 +896,17 @@ function start_steer_main(active_engine) {
         log_message("Watchdog start-runtime failed (status " + as_string(wd_status) + ")", "warn");
 
     let engine_runtime = require("service.engine_runtime");
+
+    // The subscription cache lives in /var/run (tmpfs) and is empty after a
+    // reboot. The steer spec embeds the vless sub files built from that cache,
+    // so without this step vless outputs lose their nodes after every reboot
+    // and fall back to direct. Not fatal on steer: the engine starts either
+    // way, and the subscription update cycle will retry later.
+    module_status(SUBSCRIPTION_CACHE_UC, [ "ensure-runtime-dirs" ]);
+    if (module_status(SUBSCRIPTION_CACHE_UC, [ "prepare-caches", "startup", "0", "0" ]) != 0)
+        log_message("Subscription caches are not ready; vless outputs may fall back to direct until the next subscription update", "warn");
+    prepare_community_rulesets();
+
     let generated = engine_runtime.generate_steer_spec({});
     if (!generated.ok) {
         log_message("Failed to generate the steer spec: " + as_string(generated.reason), "fatal");
@@ -920,10 +931,31 @@ function start_steer_main(active_engine) {
         return 1;
     }
 
-    // DPI-bypass providers and other optional runtimes work alongside the
-    // routing engine: they are independent processes, not part of sing-box.
-    module_success(ZAPRET_UC, [ "start-runtime" ]);
-    module_success(ZAPRET2_UC, [ "start-runtime" ]);
+    // Spawn the nfqws handlers for the engine's zapret outputs. Older steer
+    // init scripts (1.5.x) do not manage them — the engine builds the queue
+    // rules but nobody listens, so bypassed traffic goes out unprocessed. The
+    // service steps aside when the steer init handles zapret on its own.
+    if (fs.stat("/etc/init.d/tachyon-steer-zapret") != null) {
+        if (command_status_from_args([ "/etc/init.d/tachyon-steer-zapret", "start" ]) != 0)
+            log_message("steer zapret handler service failed to start (non-fatal)", "warn");
+    }
+
+    // The steer package ships its own /usr/sbin/steer-nfqws, which replaces our
+    // nfqws2-aware wrapper at every steer (re)install/upgrade. Without the
+    // wrapper's nfqws2 detection all zapret2 strategies die with "no
+    // /opt/zapret/nfq/nfqws" or run through the wrong binary. Restore our
+    // master copy when the packaged stub is back.
+    let nfqws_wrapper = LIB_DIR + "/../../usr/sbin/steer-nfqws";
+    if (fs.stat(nfqws_wrapper) != null) {
+        let current = trim(as_string(command_output_from_args([ "head", "-n", "3", "/usr/sbin/steer-nfqws" ])));
+        if (index(current, "Tachyon") < 0 && index(current, "tachyon") < 0)
+            command_status("cp " + shell_quote(nfqws_wrapper) + " /usr/sbin/steer-nfqws && chmod 755 /usr/sbin/steer-nfqws");
+    }
+
+    // On steer, zapret/zapret2 sections are handled directly by steer as
+    // kind: zapret outputs running steer-nfqws. Standalone runtimes on
+    // queues 4200/4300 would collide and hijack packets.
+    // Other optional runtimes (byedpi, wdtt, etc.) remain independent:
     module_success(BYEDPI_UC, [ "start-runtime" ]);
     module_success(WDTT_UC, [ "start-runtime" ]);
     module_success(OLCRTC_UC, [ "start-runtime" ]);
@@ -1134,7 +1166,10 @@ function stop_main() {
     // Stop the steer engine if present; its init script removes its own
     // nftables table and policy routing. Stopping it unconditionally ensures
     // that switching steer -> sing-box cleanly shuts down steer before sing-box
-    // takes over the dataplane.
+    // takes over the dataplane. The zapret handler service must go first: its
+    // processes hold the engine's nfqueue sockets.
+    if (fs.stat("/etc/init.d/tachyon-steer-zapret") != null)
+        command_status_from_args([ "/etc/init.d/tachyon-steer-zapret", "stop" ]);
     if (fs.stat("/etc/init.d/steer") != null) {
         command_status_from_args([ "/etc/init.d/steer", "stop" ]);
     }
@@ -1513,6 +1548,14 @@ function reload_steer(active_engine, reason, initial_fingerprint) {
         return 0;
     }
 
+    // A config change can add or replace a subscription section; its cache does
+    // not exist yet, and the spec generator needs it to write the vless sub
+    // file. "runtime" phase refreshes only due/missing caches. Non-fatal: the
+    // previous spec keeps running if the refresh fails.
+    module_status(SUBSCRIPTION_CACHE_UC, [ "ensure-runtime-dirs" ]);
+    if (module_status(SUBSCRIPTION_CACHE_UC, [ "prepare-caches", "runtime", "0", "0" ]) != 0)
+        log_message("Subscription cache refresh failed on reload; keeping the previous node lists", "warn");
+
     let engine_runtime = require("service.engine_runtime");
     let generated = engine_runtime.generate_steer_spec({});
     if (!generated.ok) {
@@ -1526,6 +1569,17 @@ function reload_steer(active_engine, reason, initial_fingerprint) {
     if (!reloaded.ok) {
         log_message("Failed to reload the " + active_engine + " engine", "error");
         return finish_reload_status(1, initial_fingerprint);
+    }
+
+    // The steer-nfqws wrapper re-reads the opts file only when its process
+    // starts, and the engine's init reload never touches those handlers: a
+    // strategy changed in the config would keep running with the old keys, and
+    // a zapret output added or removed would have no handler at all. Restarting
+    // the handler service re-enumerates the outputs from the current spec and
+    // re-reads every strategy in one step (tunnels and dnsd stay up).
+    if (fs.stat("/etc/init.d/tachyon-steer-zapret") != null) {
+        if (command_status_from_args([ "/etc/init.d/tachyon-steer-zapret", "restart" ]) != 0)
+            log_message("steer zapret handler service restart failed (non-fatal)", "warn");
     }
 
     return finish_reload_status(0, initial_fingerprint);

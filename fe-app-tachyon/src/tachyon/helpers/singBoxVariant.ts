@@ -35,10 +35,42 @@ function isVersionPlaceholder(version?: string) {
   );
 }
 
+export function isNotInstalled(version?: string) {
+  const normalized = String(version || '')
+    .trim()
+    .toLowerCase();
+  return (
+    !normalized ||
+    normalized === 'not installed' ||
+    (typeof _ === 'function' && normalized === _('Not installed').toLowerCase())
+  );
+}
+
+export type SteerVariantFields = {
+  steer_version?: string;
+  steer_extended?: number;
+  steer_installed?: number;
+};
+
+export function formatSteerVersion(value: SteerVariantFields) {
+  const version = String(value.steer_version || '');
+
+  if (!version || isNotInstalled(version) || value.steer_installed === 0) {
+    return _('Not installed');
+  }
+
+  if (isVersionPlaceholder(version)) {
+    return version;
+  }
+
+  const variant = value.steer_extended ? _('extended') : _('standard');
+  return variant ? `${version} (${variant})` : version;
+}
+
 export function formatSingBoxVersion(value: SingBoxVariantFields) {
   const version = String(value.sing_box_version || '');
 
-  if (!version || version === 'not installed') {
+  if (!version || isNotInstalled(version)) {
     return _('Not installed');
   }
 

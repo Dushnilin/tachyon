@@ -8,6 +8,7 @@ import { notifyActionFailure } from '../../helpers/notifyActionFailure';
 import { capSetSize } from '../../helpers/capCollectionSize';
 import { runDnsCheck } from './checks/runDnsCheck';
 import { runSingBoxCheck } from './checks/runSingBoxCheck';
+import { runSteerCheck } from './checks/runSteerCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
 import { runNftCheck } from './checks/runNftCheck';
 import { runFakeIPCheck } from './checks/runFakeIPCheck';
@@ -19,6 +20,7 @@ import {
   DiagnosticsProviderOptions,
   getDiagnosticsChecks,
   getLoadingDiagnosticsChecks,
+  isSteerEngine,
 } from './diagnostic.store';
 import {
   logger,
@@ -65,6 +67,8 @@ import {
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import {
   formatSingBoxVersion,
+  formatSteerVersion,
+  isNotInstalled,
   normalizeSingBoxVariantFields,
 } from '../../helpers/singBoxVariant';
 import {
@@ -112,7 +116,11 @@ function getDiagnosticsProviderOptions(
     | 'server_inbounds_enabled_count'
   > = store.get().diagnosticsSystemInfo,
 ): DiagnosticsProviderOptions {
+  // activeEngine comes from store.activeEngine (set by fetchServicesInfo via getEngineStatus).
+  // diagnosticsSystemInfo has no engine field — it only tracks component versions.
+  const activeEngine = store.get().activeEngine || 'sing-box';
   return {
+    activeEngine,
     includeZapret: Boolean(systemInfo.zapret_installed),
     includeZapret2: Boolean(systemInfo.zapret2_installed),
     includeByedpi: Boolean(systemInfo.byedpi_installed),
@@ -1962,12 +1970,24 @@ function renderDiagnosticAvailableActionsWidget() {
 function renderDiagnosticSystemInfoWidget() {
   logger.debug('[DIAGNOSTIC]', 'renderDiagnosticSystemInfoWidget');
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
+  const activeEngine =
+    diagnosticsSystemInfo.active_engine ||
+    store.get().activeEngine ||
+    'sing-box';
+  const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
 
   const container = document.getElementById(
     'tachyon_diagnostic-page-system-info',
   );
 
-  const items = [
+  const items: Array<{
+    key: string;
+    value: string;
+    tag?: {
+      label: string;
+      kind: 'neutral' | 'warning' | 'success';
+    };
+  }> = [
     {
       key: 'Tachyon',
       value: normalizeCompiledVersion(
@@ -1979,11 +1999,44 @@ function renderDiagnosticSystemInfoWidget() {
       key: 'Luci App',
       value: normalizeCompiledVersion(TACHYON_LUCI_APP_VERSION),
     },
-    {
+  ];
+
+  const singBoxInstalled = !isNotInstalled(
+    diagnosticsSystemInfo.sing_box_version,
+  );
+  const steerInstalled = Boolean(diagnosticsSystemInfo.steer_installed);
+
+  // Only one engine is installed at a time — engines are swapped, not co-installed.
+  // Show only the active engine in system info.
+  if (isSteer) {
+    items.push({
+      key: 'Steer',
+      value: formatSteerVersion(diagnosticsSystemInfo),
+      tag: { label: _('active'), kind: 'success' as const },
+    });
+  } else {
+    items.push({
       key: 'Sing-box',
       value: formatSingBoxVersion(diagnosticsSystemInfo),
-    },
-  ];
+      tag: { label: _('active'), kind: 'success' as const },
+    });
+  }
+
+  // Fallback: if both happen to be installed (transitional state during swap),
+  // show the inactive one without the active tag so the user knows to clean up.
+  if (isSteer && singBoxInstalled) {
+    items.push({
+      key: 'Sing-box',
+      value: formatSingBoxVersion(diagnosticsSystemInfo),
+      tag: { label: _('installed'), kind: 'warning' as const },
+    });
+  } else if (!isSteer && steerInstalled) {
+    items.push({
+      key: 'Steer',
+      value: formatSteerVersion(diagnosticsSystemInfo),
+      tag: { label: _('installed'), kind: 'warning' as const },
+    });
+  }
 
   if (diagnosticsSystemInfo.zapret_installed) {
     items.push({
@@ -2095,9 +2148,14 @@ function setDiagnosticCheckLoading(code: DIAGNOSTICS_CHECKS) {
 function getDiagnosticRunners(
   providerOptions: DiagnosticsProviderOptions,
 ): DiagnosticRunner[] {
+  // Select the engine-specific runner. Add Mihomo/Xray cases here when needed.
+  const engineRunner = isSteerEngine(providerOptions.activeEngine)
+    ? { code: DIAGNOSTICS_CHECKS.STEER, run: runSteerCheck }
+    : { code: DIAGNOSTICS_CHECKS.SINGBOX, run: runSingBoxCheck };
+
   return [
     { code: DIAGNOSTICS_CHECKS.DNS, run: runDnsCheck },
-    { code: DIAGNOSTICS_CHECKS.SINGBOX, run: runSingBoxCheck },
+    engineRunner,
     ...(providerOptions.includeInbounds
       ? [{ code: DIAGNOSTICS_CHECKS.INBOUNDS, run: runInboundsCheck }]
       : []),

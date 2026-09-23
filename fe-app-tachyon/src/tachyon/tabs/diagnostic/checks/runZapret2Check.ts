@@ -6,7 +6,6 @@ import { getCheckItemsMeta } from './getCheckItemsMeta';
 import { store } from '../../../services';
 import { isSteerEngine } from '../diagnostic.store';
 
-
 export async function runZapret2Check() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.ZAPRET2;
 
@@ -101,15 +100,16 @@ export async function runZapret2Check() {
     },
     {
       state: nfqwsRuntimeState,
-      key: isSteer && hasZapret2Rules && !tachyonRuntimeReady
-        ? _('NFQWS Tachyon not ready (managed by Steer)')
-        : hasZapret2Rules
-          ? tachyonRuntimeReady
-            ? _('Tachyon-managed nfqws2 runtime is ready')
-            : _('Tachyon-managed nfqws2 runtime is not ready')
-          : unexpectedRuntime
-            ? _('Unexpected Tachyon-managed nfqws2 runtime is running')
-            : _('Tachyon-managed nfqws2 runtime is not running'),
+      key:
+        isSteer && hasZapret2Rules && !tachyonRuntimeReady
+          ? _('NFQWS Tachyon not ready (managed by Steer)')
+          : hasZapret2Rules
+            ? tachyonRuntimeReady
+              ? _('Tachyon-managed nfqws2 runtime is ready')
+              : _('Tachyon-managed nfqws2 runtime is not ready')
+            : unexpectedRuntime
+              ? _('Unexpected Tachyon-managed nfqws2 runtime is running')
+              : _('Tachyon-managed nfqws2 runtime is not running'),
       value: hasZapret2Rules ? `${runningProcesses}/${expectedProcesses}` : '',
     },
     {

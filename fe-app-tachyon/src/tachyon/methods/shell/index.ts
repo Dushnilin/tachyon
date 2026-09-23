@@ -277,6 +277,10 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.SingBoxCheckResult>(
       Tachyon.AvailableMethods.CHECK_SING_BOX,
     ),
+  checkSteer: async () =>
+    callBaseMethod<Tachyon.SteerCheckResult>(
+      Tachyon.AvailableMethods.CHECK_STEER,
+    ),
   checkInbounds: async () =>
     callBaseMethod<Tachyon.InboundsCheckResult>(
       Tachyon.AvailableMethods.CHECK_INBOUNDS,
@@ -284,6 +288,13 @@ export const TachyonShellMethods = {
   getSingBoxStatus: async () =>
     callBaseMethod<Tachyon.GetSingBoxStatus>(
       Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
+    ),
+  getEngineStatus: async () =>
+    callBaseMethod<Tachyon.GetEngineStatus>(
+      Tachyon.AvailableMethods.GET_ENGINE_STATUS,
       [],
       '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
@@ -454,13 +465,6 @@ export const TachyonShellMethods = {
   getSystemInfo: async () =>
     callBaseMethod<Tachyon.GetSystemInfo>(
       Tachyon.AvailableMethods.GET_SYSTEM_INFO,
-    ),
-  getEngineStatus: async () =>
-    callBaseMethod<Tachyon.EngineStatus>(
-      Tachyon.AvailableMethods.GET_ENGINE_STATUS,
-      [],
-      '/usr/bin/tachyon',
-      { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
     ),
   getEngineInfo: async () =>
     callBaseMethod<Tachyon.EngineInfo>(

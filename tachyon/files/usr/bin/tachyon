@@ -86,6 +86,7 @@ function show_help() {
     print("    check_nft               Check NFT rules\n");
     print("    check_nft_rules         Check NFT rules status\n");
     print("    check_sing_box          Check sing-box installation and status\n");
+    print("    check_steer             Check steer installation and status\n");
     print("    check_inbounds_config   Check whether enabled server inbounds are configured\n");
     print("    check_inbounds          Check server inbounds from the Servers tab\n");
     print("    check_logs              Show Tachyon logs from system journal\n");
@@ -219,6 +220,7 @@ function command_spec(command) {
         check_nft: [ "diagnostics/runtime.uc", "check-nft", 0 ],
         check_nft_rules: [ "diagnostics/runtime.uc", "check-nft-rules", 0 ],
         check_sing_box: [ "diagnostics/runtime.uc", "check-sing-box", 0 ],
+        check_steer: [ "diagnostics/runtime.uc", "check-steer", 0 ],
         check_inbounds_config: [ "diagnostics/runtime.uc", "check-inbounds-config", 0 ],
         check_inbounds: [ "diagnostics/runtime.uc", "check-inbounds", 0 ],
         check_logs: [ "diagnostics/runtime.uc", "check-logs", 0 ],

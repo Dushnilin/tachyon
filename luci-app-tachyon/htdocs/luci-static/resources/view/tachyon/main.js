@@ -11238,14 +11238,20 @@ async function runZapretCheck() {
   const tachyonRuntimeReady = !hasZapretRules || runningProcesses === expectedProcesses && supervisorProcesses === expectedProcesses;
   const unexpectedRuntime = !hasZapretRules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
+  if (!providerAvailable && !hasZapretRules) {
+    store.set({
+      diagnosticsChecks: store.get().diagnosticsChecks.filter((c) => c.code !== code)
+    });
+    return;
+  }
   const items = [
     {
-      state: providerAvailable ? "success" : hasZapretRules ? "error" : "warning",
+      state: providerAvailable ? "success" : "error",
       key: providerAvailable ? _("Zapret provider binary is available") : _("Zapret provider binary is not available"),
       value: data.provider_path || ""
     },
     {
-      state: packageInstalled ? "success" : hasZapretRules ? "error" : "warning",
+      state: packageInstalled ? "success" : "error",
       key: packageInstalled ? _("Zapret package is installed") : _("Zapret package is not installed"),
       value: ""
     },
@@ -23235,30 +23241,54 @@ function renderEngineCard() {
   if (isSingBoxActive) {
     engineBadgeNode = singBoxLoading ? null : renderSingBoxVariantBadge(systemInfo);
   } else if (extendedInstalled) {
-    engineBadgeNode = E("span", { class: "tachyon_updates-page__component__badge" }, "Extended");
+    engineBadgeNode = E(
+      "span",
+      { class: "tachyon_updates-page__component__badge" },
+      "Extended"
+    );
   } else if (baseInstalled) {
-    engineBadgeNode = E("span", { class: "tachyon_updates-page__component__badge" }, "Base");
+    engineBadgeNode = E(
+      "span",
+      { class: "tachyon_updates-page__component__badge" },
+      "Base"
+    );
   }
   const engineRepoUrl = isSingBoxActive ? systemInfo.sing_box_repo_url || (singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box) : systemInfo.steer_repo_url || COMPONENT_REPO_URLS.steer;
   const headerChildren = [
-    E("b", { class: "tachyon_updates-page__component__title" }, _("Routing Engine"))
+    E(
+      "b",
+      { class: "tachyon_updates-page__component__title" },
+      _("Routing Engine")
+    )
   ];
   if (engineBadgeNode) headerChildren.push(engineBadgeNode);
   headerChildren.push(
-    E("span", { class: "tachyon_updates-page__component__header-version" }, engineVersion)
+    E(
+      "span",
+      { class: "tachyon_updates-page__component__header-version" },
+      engineVersion
+    )
   );
   if (engineRepoUrl) {
     headerChildren.push(
-      E("a", {
-        class: "tachyon_updates-page__component__repo-link",
-        href: engineRepoUrl,
-        target: "_blank",
-        rel: "noopener noreferrer",
-        title: engineRepoUrl
-      }, renderGlobeIcon24())
+      E(
+        "a",
+        {
+          class: "tachyon_updates-page__component__repo-link",
+          href: engineRepoUrl,
+          target: "_blank",
+          rel: "noopener noreferrer",
+          title: engineRepoUrl
+        },
+        renderGlobeIcon24()
+      )
     );
   }
-  const header = E("div", { class: "tachyon_updates-page__component__header" }, headerChildren);
+  const header = E(
+    "div",
+    { class: "tachyon_updates-page__component__header" },
+    headerChildren
+  );
   const checkComponent = isSingBoxActive ? "sing_box" : active === "steer-extended" ? "steer-extended" : "steer";
   const checkResult = getVisibleCheckResult(checkComponent);
   const detailsChildren = [];
@@ -23269,69 +23299,159 @@ function renderEngineCard() {
       labelText = _("Update is available:");
       const v = checkResult.latest_version || engineVersion;
       if (checkResult.release_url) {
-        latestValueNodes.push(E("a", {
-          class: "tachyon_updates-page__component__release-version-link",
-          href: checkResult.release_url,
-          target: "_blank",
-          rel: "noopener noreferrer"
-        }, v || _("Open")));
+        latestValueNodes.push(
+          E(
+            "a",
+            {
+              class: "tachyon_updates-page__component__release-version-link",
+              href: checkResult.release_url,
+              target: "_blank",
+              rel: "noopener noreferrer"
+            },
+            v || _("Open")
+          )
+        );
       } else if (v) {
         latestValueNodes.push(document.createTextNode(v));
       }
     } else if (checkResult.status === "outdated_same_release") {
       labelText = _("Update is available for current release");
-      const build = describeSameReleaseBuild({ currentSha: checkResult.current_sha, latestSha: checkResult.latest_sha });
-      latestValueNodes.push(E("span", {
-        class: "tachyon_updates-page__component__sha-info",
-        title: _("Installed build → Available build")
-      }, build.kind === "sha" ? build.text : _("Rebuilt release")));
+      const build = describeSameReleaseBuild({
+        currentSha: checkResult.current_sha,
+        latestSha: checkResult.latest_sha
+      });
+      latestValueNodes.push(
+        E(
+          "span",
+          {
+            class: "tachyon_updates-page__component__sha-info",
+            title: _("Installed build → Available build")
+          },
+          build.kind === "sha" ? build.text : _("Rebuilt release")
+        )
+      );
     } else if (checkResult.status === "latest") {
       labelText = _("Latest version is installed");
     } else if (checkResult.status === "dev") {
       labelText = `${_("Installed version is newer than release")}. ${_("Latest version:")}`;
       const v = checkResult.latest_version || getLatestVersion(checkComponent);
       if (checkResult.release_url) {
-        latestValueNodes.push(E("a", {
-          class: "tachyon_updates-page__component__release-version-link",
-          href: checkResult.release_url,
-          target: "_blank",
-          rel: "noopener noreferrer"
-        }, v || _("Open")));
+        latestValueNodes.push(
+          E(
+            "a",
+            {
+              class: "tachyon_updates-page__component__release-version-link",
+              href: checkResult.release_url,
+              target: "_blank",
+              rel: "noopener noreferrer"
+            },
+            v || _("Open")
+          )
+        );
       } else if (v) {
         latestValueNodes.push(document.createTextNode(v));
       }
     }
     if (labelText) {
       const rowChildren = [
-        E("span", { class: "tachyon_updates-page__component__info-label" }, labelText)
+        E(
+          "span",
+          { class: "tachyon_updates-page__component__info-label" },
+          labelText
+        )
       ];
       if (latestValueNodes.length > 0) {
-        rowChildren.push(E("span", {
-          class: "tachyon_updates-page__component__info-value tachyon_updates-page__component__info-value--latest"
-        }, latestValueNodes));
+        rowChildren.push(
+          E(
+            "span",
+            {
+              class: "tachyon_updates-page__component__info-value tachyon_updates-page__component__info-value--latest"
+            },
+            latestValueNodes
+          )
+        );
       }
-      detailsChildren.push(E("div", { class: "tachyon_updates-page__component__info-row" }, rowChildren));
+      detailsChildren.push(
+        E(
+          "div",
+          { class: "tachyon_updates-page__component__info-row" },
+          rowChildren
+        )
+      );
     }
   }
-  const detailsContainer = detailsChildren.length > 0 ? E("div", { class: "tachyon_updates-page__component__details" }, detailsChildren) : null;
+  const detailsContainer = detailsChildren.length > 0 ? E(
+    "div",
+    { class: "tachyon_updates-page__component__details" },
+    detailsChildren
+  ) : null;
   const currentSingBoxVariant = singBoxTiny ? "sing-box-tiny" : singBoxExtendedCompressed ? "sing-box-extended-compressed" : singBoxLx ? "sing-box-lx" : singBoxExtended ? "sing-box-extended" : "sing-box-stable";
   const selectableVariants = [
-    { id: "sing-box-stable", label: "sing-box (Stable)", group: "sing-box", installed: singBoxInstalled && singBoxStable, active: isSingBoxActive && singBoxStable },
-    { id: "sing-box-tiny", label: "sing-box (Tiny)", group: "sing-box", installed: singBoxInstalled && singBoxTiny, active: isSingBoxActive && singBoxTiny },
-    { id: "sing-box-extended", label: "sing-box (Extended)", group: "sing-box", installed: singBoxInstalled && singBoxExtended, active: isSingBoxActive && singBoxExtended },
-    { id: "sing-box-extended-compressed", label: "sing-box (Extended compressed)", group: "sing-box", installed: singBoxInstalled && singBoxExtendedCompressed, active: isSingBoxActive && singBoxExtendedCompressed },
-    { id: "sing-box-lx", label: "sing-box (Leadaxe)", group: "sing-box", installed: singBoxInstalled && singBoxLx, active: isSingBoxActive && singBoxLx },
-    { id: "steer", label: "Steer (Base)", group: "steer", installed: baseInstalled && !extendedInstalled, active: active === "steer" },
-    { id: "steer-extended", label: "Steer extended", group: "steer", installed: extendedInstalled, active: active === "steer-extended" }
+    {
+      id: "sing-box-stable",
+      label: "sing-box (Stable)",
+      group: "sing-box",
+      installed: singBoxInstalled && singBoxStable,
+      active: isSingBoxActive && singBoxStable
+    },
+    {
+      id: "sing-box-tiny",
+      label: "sing-box (Tiny)",
+      group: "sing-box",
+      installed: singBoxInstalled && singBoxTiny,
+      active: isSingBoxActive && singBoxTiny
+    },
+    {
+      id: "sing-box-extended",
+      label: "sing-box (Extended)",
+      group: "sing-box",
+      installed: singBoxInstalled && singBoxExtended,
+      active: isSingBoxActive && singBoxExtended
+    },
+    {
+      id: "sing-box-extended-compressed",
+      label: "sing-box (Extended compressed)",
+      group: "sing-box",
+      installed: singBoxInstalled && singBoxExtendedCompressed,
+      active: isSingBoxActive && singBoxExtendedCompressed
+    },
+    {
+      id: "sing-box-lx",
+      label: "sing-box (Leadaxe)",
+      group: "sing-box",
+      installed: singBoxInstalled && singBoxLx,
+      active: isSingBoxActive && singBoxLx
+    },
+    {
+      id: "steer",
+      label: "Steer (Base)",
+      group: "steer",
+      installed: baseInstalled && !extendedInstalled,
+      active: active === "steer"
+    },
+    {
+      id: "steer-extended",
+      label: "Steer extended",
+      group: "steer",
+      installed: extendedInstalled,
+      active: active === "steer-extended"
+    }
   ];
   const defaultSelectedId = selectedEngineOverride || (isSingBoxActive ? currentSingBoxVariant : active);
   const selectedVariant = selectableVariants.find((v) => v.id === defaultSelectedId) ?? selectableVariants[0];
-  const picker = E("select", { class: "cbi-input-select", style: "min-width: 210px;" });
+  const picker = E("select", {
+    class: "cbi-input-select",
+    style: "min-width: 210px;"
+  });
   const sbGroup = E("optgroup", { label: "sing-box" });
   const stGroup = E("optgroup", { label: "Steer" });
   selectableVariants.forEach((entry) => {
     const suffix = entry.active ? " ✓" : !entry.installed ? ` (${_("not installed")})` : "";
-    const opt = E("option", { value: entry.id }, `${entry.label}${suffix}`);
+    const opt = E(
+      "option",
+      { value: entry.id },
+      `${entry.label}${suffix}`
+    );
     opt.selected = entry.id === selectedVariant.id;
     (entry.group === "sing-box" ? sbGroup : stGroup).appendChild(opt);
   });
@@ -23341,7 +23461,9 @@ function renderEngineCard() {
     selectedEngineOverride = e.target.value;
     renderUpdatesComponents();
   });
-  const warning = E("div", { style: "font-size:12px;color:var(--text-color-medium,#b58900);margin-top:6px;display:none;" });
+  const warning = E("div", {
+    style: "font-size:12px;color:var(--text-color-medium,#b58900);margin-top:6px;display:none;"
+  });
   function getVariantEngine(id) {
     if (id === "steer") return "steer";
     if (id === "steer-extended") return "steer-extended";
@@ -23374,7 +23496,11 @@ function renderEngineCard() {
       const engineId = getVariantEngine(selectedVariant.id);
       if (isSelectedSingBox) {
         if (!isSelectedInstalled) {
-          void runComponentAction("sing_box", getVariantInstallAction(selectedVariant.id), "singBoxInstall");
+          void runComponentAction(
+            "sing_box",
+            getVariantInstallAction(selectedVariant.id),
+            "singBoxInstall"
+          );
         } else if (engineId !== active) {
           void applyEngineSelection(engineId, active, warning);
         }
@@ -23394,7 +23520,9 @@ function renderEngineCard() {
     component: checkComponent,
     action: "check_update"
   };
-  const checkUpdateLoading = Boolean(updatesActions[checkUpdateAction.key]?.loading);
+  const checkUpdateLoading = Boolean(
+    updatesActions[checkUpdateAction.key]?.loading
+  );
   const checkUpdateButton = renderButton({
     text: checkUpdateAction.text,
     icon: checkUpdateAction.icon,
@@ -23425,24 +23553,38 @@ function renderEngineCard() {
   const primaryRow = [picker, applyButton, checkUpdateButton];
   if (updateButton) primaryRow.push(updateButton);
   actionElements.push(
-    E("div", {
-      class: "tachyon_updates-page__component__actions-main",
-      style: "margin-bottom:8px;gap:8px;align-items:center;flex-wrap:wrap;"
-    }, primaryRow),
+    E(
+      "div",
+      {
+        class: "tachyon_updates-page__component__actions-main",
+        style: "margin-bottom:8px;gap:8px;align-items:center;flex-wrap:wrap;"
+      },
+      primaryRow
+    ),
     warning
   );
   if (isSelectedSteer && (baseInstalled || extendedInstalled)) {
     const removeLoading = Boolean(updatesActions.steerRemove?.loading);
     actionElements.push(
-      E("div", { class: "tachyon_updates-page__component__actions-main", style: "margin-top:4px;" }, [
-        renderButton({
-          text: _("Remove"),
-          classNames: ["cbi-button-remove"],
-          loading: removeLoading,
-          disabled: installing || anyActionLoading,
-          onClick: () => void runSteerAction(getVariantEngine(selectedVariant.id), "remove")
-        })
-      ])
+      E(
+        "div",
+        {
+          class: "tachyon_updates-page__component__actions-main",
+          style: "margin-top:4px;"
+        },
+        [
+          renderButton({
+            text: _("Remove"),
+            classNames: ["cbi-button-remove"],
+            loading: removeLoading,
+            disabled: installing || anyActionLoading,
+            onClick: () => void runSteerAction(
+              getVariantEngine(selectedVariant.id),
+              "remove"
+            )
+          })
+        ]
+      )
     );
   }
   const isPickerOpen = activeVersionPickerComponent === checkComponent;
@@ -23459,12 +23601,16 @@ function renderEngineCard() {
   if (isPickerOpen) {
     actionElements.push(renderVersionPickerDropdown(checkComponent));
   }
-  const actionsContainer = E("div", {
-    class: [
-      "tachyon_updates-page__component__actions",
-      detailsContainer ? "tachyon_updates-page__component__actions--with-details" : ""
-    ].filter(Boolean).join(" ")
-  }, actionElements);
+  const actionsContainer = E(
+    "div",
+    {
+      class: [
+        "tachyon_updates-page__component__actions",
+        detailsContainer ? "tachyon_updates-page__component__actions--with-details" : ""
+      ].filter(Boolean).join(" ")
+    },
+    actionElements
+  );
   const cardChildren = [header];
   if (detailsContainer) cardChildren.push(detailsContainer);
   cardChildren.push(actionsContainer);

@@ -921,6 +921,9 @@ function install_steer(action, target_tag, extended) {
         pkg_remove_sing_box_conflict("steer");
 
     clear_version_caches();
+    // Let the lifecycle pick the package up: it generates the steer spec and
+    // (re)starts the engine when steer is the active one.
+    restart_tachyon_after_successful_change();
     action_success(component, action, label + " package has been installed", release.version, release.version, 1, "latest", release.release_url || "");
 }
 
@@ -2250,6 +2253,8 @@ function normalize_component_name(component) {
     component = as_string(component);
     if (component == "sing-box" || component == "singbox")
         return "sing_box";
+    if (component == "steer-extended" || component == "steer_extended" || component == "steer")
+        return "steer";
     if (component == "fptn-client" || component == "fptn_client")
         return "fptn";
     if (component == "tachyon")
@@ -2588,6 +2593,8 @@ function list_component_releases(component, count) {
         owner = "Dushnilin"; repo = "openwrt-olcrtc";
     } else if (component == "fptn") {
         owner = "Dushnilin"; repo = "fptn";
+    } else if (component == "steer" || component == "steer-extended" || component == "steer_extended") {
+        owner = "xyzmean"; repo = "steer";
     } else {
         print("[]\n"); return;
     }
@@ -2640,6 +2647,10 @@ function install_component_version(component, tag) {
         install_tachyon_version(tag);
     } else if (component == "sing_box") {
         dispatch_sing_box("install", tag);
+    } else if (component == "steer" || component == "steer-extended" || component == "steer_extended") {
+        let is_ext = (component == "steer-extended" || component == "steer_extended" ||
+                      engine.get_active() == "steer-extended" || engine.steer_has_extended_build());
+        install_steer("install", tag, is_ext);
     } else if (component == "zapret") {
         install_zapret("install", tag);
     } else if (component == "zapret2") {

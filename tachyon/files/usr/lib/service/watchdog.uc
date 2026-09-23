@@ -688,12 +688,28 @@ function safe_proxy_restart(reason, force_level) {
     let lock_path = shell_quote(PROXY_RESTART_LOCK);
 
     if (level == ESCALATION_LIGHT) {
-        log_message("Restarting sing-box service only (" + reason + ")", "warn");
-        // Sequential stop/start rather than `restart`: lifecycle.uc drives the
-        // service the same way, and a stop that fails must not be followed by a
-        // start that races it.
-        bg_system("/etc/init.d/sing-box stop >/dev/null 2>&1; " +
-            "/etc/init.d/sing-box start >/dev/null 2>&1; rm -f " + lock_path);
+        let active_engine = "sing-box";
+        try {
+            active_engine = require("core.engine").get_active();
+        } catch (e) {}
+
+        let init_script = "/etc/init.d/sing-box";
+        if (active_engine == "steer" || active_engine == "steer-extended") {
+            init_script = "/etc/init.d/steer";
+        }
+
+        if (active_engine != "sing-box") {
+            log_message("Restarting " + active_engine + " service only (" + reason + ")", "warn");
+            bg_system(init_script + " stop >/dev/null 2>&1; " +
+                init_script + " start >/dev/null 2>&1; rm -f " + lock_path);
+        } else {
+            log_message("Restarting sing-box service only (" + reason + ")", "warn");
+            // Sequential stop/start rather than `restart`: lifecycle.uc drives the
+            // service the same way, and a stop that fails must not be followed by a
+            // start that races it.
+            bg_system("/etc/init.d/sing-box stop >/dev/null 2>&1; " +
+                "/etc/init.d/sing-box start >/dev/null 2>&1; rm -f " + lock_path);
+        }
     } else {
         log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
         // The lock is released after the restart, not alongside it. This line used
@@ -724,6 +740,13 @@ function safe_reload_firewall() {
 // side effects stay identical.
 
 function heal_nftables(ev) {
+    let active_engine = "sing-box";
+    try { active_engine = require("core.engine").get_active(); } catch (e) {}
+    if (active_engine == "steer" || active_engine == "steer-extended") {
+        ai_heal_report("nftables", "Таблица правил nftables inet steer восстановлена", "Выполнен вызов steer apply", "fixed");
+        bg_system("/usr/sbin/steer apply >/dev/null 2>&1");
+        return;
+    }
     ai_heal_report(
         "nftables",
         "Таблица правил nftables очищена или повреждена",

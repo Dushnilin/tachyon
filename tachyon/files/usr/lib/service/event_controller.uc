@@ -474,7 +474,11 @@ function controller(bus, opts) {
 
     // ── Push source: ubus ─────────────────────────────────────────────────────
     self.handle_ubus_service_stop = function(name, reason) {
-        if (as_string(name) != "sing-box") return false;
+        let active_engine = "sing-box";
+        try {
+            active_engine = require("core.engine").get_active();
+        } catch (e) {}
+        if (as_string(name) != active_engine) return false;
         bus.emit(EV.SINGBOX_STOPPED, { reason: as_string(reason) });
         return true;
     };
@@ -548,6 +552,19 @@ function controller(bus, opts) {
         if (ctx.is_paused) return;
         if (ctx.reload_in_progress) return;
         if (ctx.list_update_running) return;
+
+        let active_engine = "sing-box";
+        try {
+            active_engine = require("core.engine").get_active();
+        } catch (e) {}
+
+        if (active_engine != "sing-box") {
+            let steer_running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ||
+                                command_success_from_args([ "pgrep", "-f", "steer" ]);
+            if (!steer_running)
+                bus.emit(EV.SINGBOX_STOPPED, { reason: "steer service stopped" });
+            return;
+        }
 
         let pid = ctx.singbox_pid;
         if (pid != "" && ctx.singbox_running) return;
@@ -770,6 +787,19 @@ function controller(bus, opts) {
         if (ctx.list_update_running) return;
         if (ctx.reload_in_progress) return;
 
+        let active_engine = "sing-box";
+        try {
+            active_engine = require("core.engine").get_active();
+        } catch (e) {}
+
+        if (active_engine != "sing-box") {
+            let steer_nft = command_output_from_args(["sh", "-c", "nft list table inet steer 2>/dev/null; exit 0"]);
+            if (index(steer_nft, "table inet steer") < 0) {
+                bus.emit(EV.NFT_MISSING, { table: "inet steer" });
+            }
+            return;
+        }
+
         let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
         let routing_mode = ctx.settings.routing_mode || "nftables";
         let out_nft = command_output_from_args(["sh", "-c",
@@ -795,6 +825,12 @@ function controller(bus, opts) {
         if (setting("recovery_bypass", "0") == "1") return;
         if (fs.stat("/var/run/tachyon/native_internet_restored") != null) return;
         if (ctx.reload_in_progress) return;
+
+        let active_engine = "sing-box";
+        try {
+            active_engine = require("core.engine").get_active();
+        } catch (e) {}
+        if (active_engine != "sing-box") return;
 
         let pid = ctx.singbox_pid;
         if (pid == "" || !ctx.singbox_running) return;

@@ -72,6 +72,10 @@ const ENGINE_CONFIG = {
 // expects and does not invent a second data model.
 const STEER_SPEC_FILE = "/etc/steer/spec.json";
 const STEER_SUB_FILE = "/etc/steer/sub.txt";
+// Per-section subscription files live here (one sub file per vless output so
+// two subscription sections never overwrite each other's node lists). The
+// package keep.d already covers subs/.
+const STEER_SUBS_DIR = "/etc/steer/subs";
 const STEER_LISTS_DIR = "/etc/steer/lists";
 const STEER_CUSTOM_LISTS_DIR = "/etc/steer/lists/custom";
 const STEER_STATE_DIR = "/var/lib/steer";
@@ -94,6 +98,7 @@ const STEER_REQUIRED_COMMANDS = [
 const STEER_KEEP_PATHS = [
     STEER_SPEC_FILE,
     STEER_SUB_FILE,
+    STEER_SUBS_DIR,
     STEER_CUSTOM_LISTS_DIR,
     STEER_STATE_DIR,
 ];

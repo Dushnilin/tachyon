@@ -94,6 +94,10 @@ function canUseConnectionsSocket(): boolean {
   ) {
     return false;
   }
+  const activeEngine = store.get().activeEngine;
+  if (activeEngine === 'steer' || activeEngine === 'steer-extended') {
+    return false;
+  }
   return canUseDirectClashApi();
 }
 let connectionsUpdatesId = 0;

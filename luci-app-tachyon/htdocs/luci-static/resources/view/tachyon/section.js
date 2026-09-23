@@ -11596,6 +11596,7 @@ function isCloudflareSharedCidr(cidr) {
 }
 
 let _subnetListCache = {};
+let _communityDomainsCache = {};
 
 async function readSubnetListFile(service) {
   if (!service) return [];
@@ -11604,6 +11605,8 @@ async function readSubnetListFile(service) {
   const paths = [
     `/tmp/sing-box/rulesets/community-subnets-${service}.lst`,
     `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
+    // steer cache: decoded from .srs by steer srs-read
+    `/etc/steer/lists/cache/${service}.prefixes`,
   ];
 
   for (const p of paths) {
@@ -11805,39 +11808,70 @@ async function findCachedSrsFile(secName, community) {
 
 async function matchCommunityList(secName, community, query, type) {
   const srsPath = await findCachedSrsFile(secName, community);
-  if (!srsPath) return false;
 
-  const checkMatch = (res) => {
-    if (!res || res.code !== 0) return false;
-    const output = (res.stdout || "") + (res.stderr || "");
-    return output.trim() !== "";
-  };
+  if (srsPath) {
+    const checkMatch = (res) => {
+      if (!res || res.code !== 0) return false;
+      const output = (res.stdout || "") + (res.stderr || "");
+      return output.trim() !== "";
+    };
 
-  // Try /usr/bin/sing-box first
-  let res = await fs
-    .exec("/usr/bin/sing-box", [
-      "rule-set",
-      "match",
-      srsPath,
-      query,
-      "-f",
-      "binary",
-    ])
-    .catch(() => null);
-  if (checkMatch(res)) return true;
+    // Try /usr/bin/sing-box first
+    let res = await fs
+      .exec("/usr/bin/sing-box", [
+        "rule-set",
+        "match",
+        srsPath,
+        query,
+        "-f",
+        "binary",
+      ])
+      .catch(() => null);
+    if (checkMatch(res)) return true;
 
-  // Fallback to /usr/sbin/sing-box
-  res = await fs
-    .exec("/usr/sbin/sing-box", [
-      "rule-set",
-      "match",
-      srsPath,
-      query,
-      "-f",
-      "binary",
-    ])
-    .catch(() => null);
-  if (checkMatch(res)) return true;
+    // Fallback to /usr/sbin/sing-box
+    res = await fs
+      .exec("/usr/sbin/sing-box", [
+        "rule-set",
+        "match",
+        srsPath,
+        query,
+        "-f",
+        "binary",
+      ])
+      .catch(() => null);
+    if (checkMatch(res)) return true;
+  }
+
+  // Steer fallback: when steer is active engine, sing-box may not be installed.
+  // Read the decoded domain cache that steer srs-read produces.
+  if (type === "domain") {
+    if (!_communityDomainsCache[community]) {
+      const cachePath = `/etc/steer/lists/cache/${community}.domains`;
+      try {
+        let content = await fs.read(cachePath).catch(() => null);
+        if (!content) {
+          const res2 = await fs.exec("/bin/cat", [cachePath]).catch(() => null);
+          if (res2 && res2.code === 0 && res2.stdout) content = res2.stdout;
+        }
+        if (content) {
+          _communityDomainsCache[community] = content
+            .split("\n")
+            .map((l) => l.trim().replace(/\r/g, ""))
+            .filter((l) => l && !l.startsWith("#"));
+        } else {
+          _communityDomainsCache[community] = [];
+        }
+      } catch (e) {
+        _communityDomainsCache[community] = [];
+      }
+    }
+    const domainList = _communityDomainsCache[community] || [];
+    if (domainList.length > 0) {
+      const matched = matchDomainInList(query, domainList);
+      if (matched) return true;
+    }
+  }
 
   return false;
 }

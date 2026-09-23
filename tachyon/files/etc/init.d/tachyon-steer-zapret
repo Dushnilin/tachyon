@@ -1,0 +1,82 @@
+#!/bin/sh /etc/rc.common
+# tachyon-steer-zapret — spawns the nfqws/nfqws2 handlers for the steer engine's
+# kind: zapret outputs.
+#
+# WHY THIS EXISTS. The steer package's init script only manages vless/dnsd/
+# failover instances on some versions (1.5.x): the zapret handlers are expected
+# to be spawned by the control layer (splify2 does exactly this). The engine
+# still builds the queue rules — `steer zapret-instances` prints the queue and
+# opts file per output — but nobody listens on them, and traffic matched to a
+# zapret output is bypassed or dropped unprocessed. Tachyon is the control
+# layer, so it spawns the handlers itself.
+#
+# The wrapper (/usr/sbin/steer-nfqws) re-reads the opts file on every start, so
+# a strategy change is one `/etc/init.d/tachyon-steer-zapret restart` away.
+#
+# When a newer steer init script manages its own zapret handlers this service
+# steps aside: two handlers on one queue would rip packets apart.
+START=95
+STOP=10
+USE_PROCD=1
+
+STEER_BIN=/usr/sbin/steer
+WRAPPER=/usr/sbin/steer-nfqws
+
+steer_init_manages_zapret() {
+    # Newer steer init scripts reference the wrapper themselves.
+    [ -r /etc/init.d/steer ] && grep -q "steer-nfqws" /etc/init.d/steer 2>/dev/null
+}
+
+start_service() {
+    steer_init_manages_zapret && return 0
+    [ -x "$WRAPPER" ] || return 0
+    [ -x "$STEER_BIN" ] || return 0
+
+    # steer diag checks for /opt/zapret/nfq/nfqws to confirm DPI bypass is installed.
+    # When running zapret2 (at /opt/zapret2/nfq2/nfqws2), create a compatibility symlink
+    # so diag reports ok. /opt is tmpfs — recreated on every boot, hence done here.
+    if [ -x /opt/zapret2/nfq2/nfqws2 ] && [ ! -e /opt/zapret/nfq/nfqws ]; then
+        mkdir -p /opt/zapret/nfq 2>/dev/null
+        ln -sf /opt/zapret2/nfq2/nfqws2 /opt/zapret/nfq/nfqws 2>/dev/null
+    fi
+
+    zp="$("$STEER_BIN" zapret-instances 2>/dev/null)"
+    [ -n "$zp" ] || return 0
+
+    # No pipeline: ash runs `... | while read` in a subshell and
+    # procd_open_instance state would never make it out.
+    zp_ifs="$IFS"
+    zp_tab="$(printf '\t')"
+    IFS='
+'
+    for zrow in $zp; do
+        IFS="$zp_ifs"
+        zname="${zrow%%${zp_tab}*}"
+        zrest="${zrow#*${zp_tab}}"
+        zqueue="${zrest%%${zp_tab}*}"
+        zopts="${zrest#*${zp_tab}}"
+        if [ -n "$zname" ] && [ -n "$zqueue" ]; then
+            procd_open_instance "zapret_$zname"
+            procd_set_param command "$WRAPPER" "$zqueue" "$zopts"
+            procd_set_param respawn 3600 5 0
+            procd_set_param stdout 1
+            procd_set_param stderr 1
+            procd_close_instance
+        fi
+        IFS='
+'
+    done
+    IFS="$zp_ifs"
+}
+
+stop_service() {
+    # procd tears down the instances declared by start_service on its own.
+    return 0
+}
+
+reload_service() {
+    # Re-enumerate the outputs from the current spec and restart the handlers:
+    # the wrapper re-reads the strategy file at every start, so this applies a
+    # changed strategy and picks up added/removed zapret outputs in one step.
+    start_service
+}

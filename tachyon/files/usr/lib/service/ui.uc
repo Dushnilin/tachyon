@@ -835,6 +835,18 @@ function sing_box_running() {
 }
 
 function tachyon_running() {
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    if (active_engine != "sing-box") {
+        let engine_runtime = require("service.engine_runtime");
+        return engine_runtime.run_init(active_engine, "status").ok;
+    }
+
     return module_success(LIB_DIR + "/service/state.uc", [
         "tachyon-stably-running",
         RT_TABLE_NAME,
@@ -845,6 +857,16 @@ function tachyon_running() {
 }
 
 function dns_configured() {
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    if (active_engine != "sing-box")
+        return true;
+
     return index(uci_core.get("dhcp.@dnsmasq[0].server"), SB_DNS_INBOUND_ADDRESS) >= 0;
 }
 
@@ -1131,8 +1153,30 @@ function current_ui_state_json() {
     let capabilities = capability_flags();
     let tachyon_is_running = tachyon_running() ? 1 : 0;
     let tachyon_is_enabled = service_enabled() ? 1 : 0;
-    let sing_box_is_running = tachyon_is_running ? 1 : (sing_box_running() ? 1 : 0);
-    let sing_box_is_enabled = sing_box_enabled() ? 1 : 0;
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
+
+    let sing_box_is_running = 0;
+    let sing_box_is_enabled = 0;
+    let sing_box_rss = 0;
+
+    if (is_steer) {
+        let engine_runtime = require("service.engine_runtime");
+        sing_box_is_running = engine_runtime.run_init(active_engine, "status").ok ? 1 : 0;
+        sing_box_is_enabled = tachyon_is_enabled;
+        sing_box_rss = sing_box_is_running ? process_memory_rss_mb("steer") : 0;
+    } else {
+        sing_box_is_running = tachyon_is_running ? 1 : (sing_box_running() ? 1 : 0);
+        sing_box_is_enabled = sing_box_enabled() ? 1 : 0;
+        sing_box_rss = sing_box_is_running ? process_memory_rss_mb("sing-box") : 0;
+    }
+
     let tachyon_status = service_status_text(tachyon_is_running, tachyon_is_enabled);
     let sing_box_status = service_status_text(sing_box_is_running, sing_box_is_enabled);
     let active_action = active_service_action_value();
@@ -1146,7 +1190,6 @@ function current_ui_state_json() {
     else if (active_action == "reload")
         tachyon_status = "reloading";
 
-    let sing_box_rss = sing_box_is_running ? process_memory_rss_mb("sing-box") : 0;
     let zapret2_rss = file_executable(ZAPRET2_PROVIDER_NFQWS2_BIN) ? process_memory_rss_mb("nfqws2") : 0;
     let dnsmasq_pids = get_process_pids("dnsmasq");
     let dnsmasq_is_running = length(dnsmasq_pids) > 0 ? 1 : 0;
@@ -1156,6 +1199,7 @@ function current_ui_state_json() {
     let dns_cache_size = dns_local_cache ? int(uci_core.get(CONFIG_NAME + ".settings.dns_cache_size") || 10000) : 0;
 
     write_json({
+        active_engine: active_engine,
         service: {
             tachyon: {
                 running: tachyon_is_running,

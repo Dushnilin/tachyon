@@ -69,6 +69,7 @@ import { getServiceAvailability } from '../../helpers/serviceAvailability';
 import { capSetSize, capMapSize } from '../../helpers/capCollectionSize';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 15000;
+const CONNECTIONS_POLL_INTERVAL_MS = 3000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
 const LATENCY_TEST_BUTTON_LABEL_CLASS =
   'dashboard-sections-grid-item-test-latency__label';
@@ -528,7 +529,10 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
-  if (!canUseDirectClashApi()) {
+  const activeEngine = store.get().activeEngine;
+  const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
+
+  if (isSteer || !canUseDirectClashApi()) {
     directSocketsFailed = true;
     logger.info(
       '[DASHBOARD]',
@@ -677,7 +681,7 @@ function startDashboardDataUpdates() {
   void fetchConnections();
   connectionsRefreshTimer = setInterval(() => {
     void fetchConnections();
-  }, SECTIONS_REFRESH_INTERVAL_MS);
+  }, CONNECTIONS_POLL_INTERVAL_MS);
 }
 
 function syncDashboardServiceAvailability() {
@@ -2066,8 +2070,12 @@ function renderStoreWidget(
 }
 
 async function fetchConnections() {
+  const activeEngine = store.get().activeEngine;
+  const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
+
   const shouldFetchHostnames = expandedSections.has('active_clients');
-  const needsFallbackPolling = directSocketsFailed || !canUseDirectClashApi();
+  const needsFallbackPolling =
+    directSocketsFailed || !canUseDirectClashApi() || isSteer;
   if (!needsFallbackPolling && !shouldFetchHostnames) {
     return;
   }
@@ -2105,6 +2113,14 @@ async function fetchConnections() {
               loading: false,
               failed: false,
               data: { up, down },
+            },
+          });
+        } else {
+          store.set({
+            bandwidthWidget: {
+              loading: false,
+              failed: false,
+              data: { up: 0, down: 0 },
             },
           });
         }
@@ -2228,7 +2244,7 @@ async function renderServicesInfoWidget() {
           },
         },
         {
-          key: 'Sing-box',
+          key: store.get().activeEngine === 'sing-box' ? 'Sing-box' : 'Steer',
           value: data.singbox
             ? data.singboxMemoryMb
               ? `\u2713 (${data.singboxMemoryMb} MB)`

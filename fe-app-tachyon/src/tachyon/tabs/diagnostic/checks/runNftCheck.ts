@@ -35,6 +35,19 @@ export async function runNftCheck() {
 
   const data = nftablesChecks.data;
 
+  // Backend returns not_applicable when steer is the active engine
+  if ((data as { not_applicable?: number }).not_applicable) {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _('Not applicable for current engine'),
+      state: 'skipped',
+      items: [],
+    });
+    return;
+  }
+
   const allGood =
     Boolean(data.table_exist) &&
     Boolean(data.rules_mangle_exist) &&

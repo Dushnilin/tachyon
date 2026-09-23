@@ -38,7 +38,7 @@ function run_init(engine_id, action) {
     let init = init_script(engine_id);
     if (init == "" || !file_exists(init))
         return { ok: false, reason: "no_init_script", engine: engine_id, action };
-    let status = command_status_from_args([ init, action ]);
+    let status = command_status("(" + command_from_args([ init, action ]) + ") >/dev/null 2>&1");
     return { ok: status == 0, status, engine: engine_id, action };
 }
 
@@ -97,8 +97,24 @@ function reload_active(reason) {
     return { ok: result.ok, engine: active, status: result.status, reason: as_string(reason || "") };
 }
 
-// Full switch: apply the config switch, then stop the old engine and start the
-// new one. Returns a JSON-serialisable result for the CLI/UI.
+// Restart the whole service through its init script, so the lifecycle handles
+// the dataplane cleanup and the per-engine start path. Declared before its
+// callers: ucode resolves call targets when the callee is defined.
+function restart_tachyon_service() {
+    let init = "/etc/init.d/" + CONFIG_NAME;
+    if (!file_exists(init))
+        return { ok: false, status: -1 };
+    let status = command_status_from_args([ init, "restart" ]);
+    return { ok: status == 0, status };
+}
+
+// Full switch: apply the config switch, then restart the service so the whole
+// lifecycle runs for the new engine. A restart (not an inline stop/start) is
+// deliberate: only the lifecycle cleans up the old engine's dataplane
+// (Tachyon nft table, ip rules, dnsmasq), generates the steer spec and starts
+// the provider runtimes. An inline stop/start leaves sing-box nft rules and
+// dnsmasq entries behind, and steer would start with a missing or stale spec.
+// Returns a JSON-serialisable result for the CLI/UI.
 function switch_engine(target, opts) {
     opts = type(opts) == "object" ? opts : {};
     let before = engine.get_active();
@@ -114,19 +130,18 @@ function switch_engine(target, opts) {
         return plan;
 
     let new_engine = engine.get_active();
-    let stopped = stop_other_engines(new_engine);
-    let started = run_init(new_engine, "start");
-    if (!started.ok && init_script_present(new_engine)) {
+    let restarted = restart_tachyon_service();
+    if (!restarted.ok) {
         // Roll the configuration back so the device keeps running the engine
-        // that still exists on disk.
+        // that still exists on disk, and bring the service back up with it.
         engine_state.apply_switch(before, {});
-        run_init(before, "start");
+        restart_tachyon_service();
         return {
             ok: false,
             reason: "start_failed_rolled_back",
             from_engine: before,
             to_engine: new_engine,
-            stopped_others: stopped
+            service_status: restarted.status
         };
     }
 
@@ -134,8 +149,7 @@ function switch_engine(target, opts) {
         ok: true,
         from_engine: before,
         to_engine: new_engine,
-        plan,
-        stopped_others: stopped
+        plan
     };
 }
 
@@ -175,6 +189,19 @@ function build_steer_spec() {
     steer_generator.set_list_materializer(function(section, catalog) {
         return steer_lists.materialize_section_lists(section, catalog);
     });
+
+    // The section cache (links map the sub files are built from) is normally a
+    // side product of sing-box config generation, which never runs on steer.
+    // Rebuild it from the normalized subscription sources first; without this
+    // vless outputs lose their nodes. Non-fatal: an empty cache degrades to the
+    // previous sub file rather than aborting the switch.
+    try {
+        require("steer.section_cache").build_section_caches();
+    }
+    catch (e) {
+        command_status("logger -t tachyon '[warn] steer section cache rebuild failed: " +
+            replace(as_string(e), /'/g, "") + "'");
+    }
 
     // Proxy sections backed by a subscription get a steer vless output pointing
     // at sub.txt, written from the subscription cache. Without this the section
@@ -241,6 +268,60 @@ function steer_explain(target) {
     return steer_run("explain", [ target ]);
 }
 
+function sync_steer_firewall_zones(spec) {
+    if (type(spec) != "object" || type(spec.outputs) != "object")
+        return;
+
+    let devices = [];
+    for (let out_name, out in spec.outputs) {
+        if (type(out) != "object")
+            continue;
+        if (out.kind == "vless") {
+            let dev = as_string(out.device || out_name);
+            if (dev != "" && dev != "direct")
+                push(devices, dev);
+        }
+        else if (out.kind == "interface") {
+            if (type(out.devices) == "array") {
+                for (let d in out.devices) {
+                    let dev = as_string(d);
+                    if (dev != "") push(devices, dev);
+                }
+            }
+            else if (as_string(out.device) != "") {
+                push(devices, as_string(out.device));
+            }
+        }
+    }
+
+    if (length(devices) == 0)
+        return;
+
+    let dev_args = join(" ", devices);
+    let cmd = "sh -c '" +
+        "idx=\"\"; for z in $(uci show firewall 2>/dev/null | sed -n \"s/^firewall\\.\\([^.=]*\\)=zone$/\\1/p\"); do " +
+        "  if [ \"$(uci -q get firewall.$z.name)\" = \"steer_out\" ]; then idx=\"$z\"; break; fi; done; " +
+        "if [ -z \"$idx\" ]; then " +
+        "  uci -q add firewall zone >/dev/null; " +
+        "  uci -q set firewall.@zone[-1].name=\"steer_out\"; " +
+        "  uci -q set firewall.@zone[-1].input=\"REJECT\"; " +
+        "  uci -q set firewall.@zone[-1].output=\"ACCEPT\"; " +
+        "  uci -q set firewall.@zone[-1].forward=\"ACCEPT\"; " +
+        "  uci -q set firewall.@zone[-1].masq=\"1\"; " +
+        "  uci -q set firewall.@zone[-1].mtu_fix=\"1\"; " +
+        "  idx=\"@zone[-1]\"; " +
+        "  uci -q add firewall forwarding >/dev/null; " +
+        "  uci -q set firewall.@forwarding[-1].src=\"lan\"; " +
+        "  uci -q set firewall.@forwarding[-1].dest=\"steer_out\"; " +
+        "fi; " +
+        "for d in " + dev_args + "; do " +
+        "  uci -q add_list firewall.$idx.device=\"$d\"; " +
+        "done; " +
+        "uci -q commit firewall && /etc/init.d/firewall reload >/dev/null 2>&1 || true" +
+        "'";
+    command_status(cmd);
+}
+
 // ============================================================================
 // CLI
 // ============================================================================
@@ -274,6 +355,8 @@ function generate_steer_spec(opts) {
             return { ok: false, reason: "spec_rejected", path, output: check.output };
         }
     }
+
+    sync_steer_firewall_zones(spec);
 
     return { ok: true, reason: "", path, spec };
 }
@@ -426,6 +509,7 @@ if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
         stop_active,
         reload_active,
         switch_engine,
+        restart_tachyon_service,
         build_steer_spec,
         generate_steer_spec,
         steer_run,

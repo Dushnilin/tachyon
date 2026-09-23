@@ -46,9 +46,11 @@ expected_shell_scripts="$(
     'luci-app-tachyon/root/etc/uci-defaults/50_luci-tachyon' \
     'tachyon/files/etc/hotplug.d/iface/99-tachyon-wan-monitor' \
     'tachyon/files/etc/init.d/tachyon' \
+    'tachyon/files/etc/init.d/tachyon-steer-zapret' \
     'tachyon/files/etc/init.d/tachyon-torrserver-direct' \
     'tachyon/files/usr/lib/cgi-bin/tachyon-agent' \
-    'tachyon/files/usr/lib/firewall.include' |
+    'tachyon/files/usr/lib/firewall.include' \
+    'tachyon/files/usr/sbin/steer-nfqws' |
     LC_ALL=C sort
 )"
 

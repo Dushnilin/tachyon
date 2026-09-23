@@ -42,6 +42,8 @@ function isDiagnosticsProviderOptions(
   }
 
   return (
+    (value.activeEngine === undefined ||
+      typeof value.activeEngine === 'string') &&
     isOptionalBoolean(value.includeZapret) &&
     isOptionalBoolean(value.includeZapret2) &&
     isOptionalBoolean(value.includeByedpi) &&

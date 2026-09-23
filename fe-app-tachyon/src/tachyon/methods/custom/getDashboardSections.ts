@@ -34,6 +34,9 @@ type DashboardSectionCache = {
   subscriptionMetadata?:
     | Tachyon.SubscriptionMetadata
     | Tachyon.SubscriptionMetadata[];
+  // Tags that belong to a URLTest/selector group and should not be shown
+  // as standalone nodes in the UI (mirrors hiddenOutboundTags in sing-box).
+  hiddenOutboundTags?: Record<string, boolean>;
 };
 
 type UrlTestCacheGroup = {
@@ -1279,6 +1282,8 @@ function buildProxyGroupOutbounds(
   const fallbackCodes = uniqueCodes([
     ...urlTestCodes,
     ...priorityCodes,
+    ...Array.from(cachedProxyLinks.keys()),
+    ...Array.from(manualLinkByCode.keys()),
     ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
     ...priorityEntries.flatMap(({ entry }) => entry?.value.all || []),
   ]);
@@ -1298,16 +1303,32 @@ function buildProxyGroupOutbounds(
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
     const priorityConfig = priorityConfigByCode.get(code);
+    const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || '';
 
-    if (!item && !urlTestConfig && !priorityConfig) {
+    if (!item && !urlTestConfig && !priorityConfig && !link) {
       return [];
     }
 
-    const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || '';
+    const effectiveItem =
+      item ||
+      (link
+        ? ({
+            code,
+            value: {
+              name: outboundMetadata?.names?.[code] || code,
+              type: outboundMetadata?.transports?.[code] || 'VLESS',
+              udp: true,
+              history: [],
+              all: [],
+              now: '',
+            },
+          } as ClashProxyEntry)
+        : undefined);
+
     const canCopyLink = isCopyableProxyLink(link);
     const resolved = resolveOutboundNameAndPrefix({
       code,
-      entry: item,
+      entry: effectiveItem,
       link,
       outboundMetadata,
       preferMetadata: cachedProxyLinks.has(code),
@@ -1383,7 +1404,7 @@ function buildProxyGroupOutbounds(
       )?.latency ||
       0;
 
-    const itemDelay = Number(item?.value.history?.[0]?.delay);
+    const itemDelay = Number(effectiveItem?.value.history?.[0]?.delay);
     const validItemDelay =
       Number.isFinite(itemDelay) && itemDelay > 0 ? itemDelay : 0;
     const latency =
@@ -1399,7 +1420,9 @@ function buildProxyGroupOutbounds(
         displayName,
         prefix,
         latency,
-        type: priorityConfig ? 'Priority' : item?.value.type || 'URLTest',
+        type: priorityConfig
+          ? 'Priority'
+          : effectiveItem?.value.type || 'URLTest',
         transport: isGroupType
           ? undefined
           : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),
@@ -1409,7 +1432,7 @@ function buildProxyGroupOutbounds(
         country: showDetectedCountries
           ? outboundMetadata?.countries?.[code]
           : undefined,
-        runtimeAvailable: item ? undefined : false,
+        runtimeAvailable: effectiveItem ? undefined : false,
         urlTestInfo,
         priorityInfo,
       },
@@ -1592,10 +1615,15 @@ function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
   };
 }
 
-function getCachedProxyLinks(dashboardCache?: DashboardSectionCache) {
+function getCachedProxyLinks(
+  dashboardCache?: DashboardSectionCache,
+  includeHidden = false,
+) {
+  const hidden = dashboardCache?.hiddenOutboundTags ?? {};
   return new Map(
-    Object.entries(objectMap(dashboardCache?.links)).filter(([, link]) =>
-      isCopyableProxyLink(link),
+    Object.entries(objectMap(dashboardCache?.links)).filter(
+      ([code, link]) =>
+        isCopyableProxyLink(link) && (includeHidden || !hidden[code]),
     ),
   );
 }
@@ -1608,19 +1636,23 @@ export async function getDashboardSections(
   const configSections = hydrateConfigSections(await getConfigSections());
   const clashProxies = await getClashApiProxies(configSections);
 
-  if (!clashProxies.success || !clashProxies.data?.proxies) {
+  if (
+    (!clashProxies.success || !clashProxies.data?.proxies) &&
+    configSections.length === 0
+  ) {
     return {
       success: false,
       data: [],
     };
   }
 
-  const proxies = Object.entries(clashProxies.data.proxies).map(
-    ([key, value]) => ({
-      code: key,
-      value,
-    }),
-  );
+  const proxies =
+    clashProxies.success && clashProxies.data?.proxies
+      ? Object.entries(clashProxies.data.proxies).map(([key, value]) => ({
+          code: key,
+          value,
+        }))
+      : [];
   const serviceStatusCache = new Map<
     string,
     Promise<Tachyon.ServiceStatus | undefined>
@@ -1784,9 +1816,11 @@ export async function getDashboardSections(
             );
 
           const hideNa = shouldHideNaServers(configSections);
-          const filteredOutbounds = hideNa
-            ? outbounds.filter((o) => !isNaOutbound(o))
-            : outbounds;
+          const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
+          const filteredOutbounds =
+            hideNa && hasTestedServers
+              ? outbounds.filter((o) => !isNaOutbound(o))
+              : outbounds;
 
           return {
             withTagSelect: true,

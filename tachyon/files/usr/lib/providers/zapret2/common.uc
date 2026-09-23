@@ -27,7 +27,16 @@ const KNOWN_BLOB_FILES = {
     quic_yt1: { file: "quic_initial_rr1---sn-xguxaxjvh-n8me_googlevideo_com_kyber_1.bin", size: 1230 },
     quic_vk: { file: "quic_initial_vk_com.bin", size: 1357 },
     stun_fake: { file: "stun.bin", size: 100 },
-    discord_udp: { file: "stun.bin", size: 100 }
+    discord_udp: { file: "stun.bin", size: 100 },
+    // fake_discord — blob name used in nfqws2 Lua Discord strategies
+    // (--lua-desync=fake:blob=fake_discord). Maps to the discord IP-discovery payload.
+    fake_discord: { file: "discord-ip-discovery-with-port.bin", size: 100 },
+    // Explicit discord IP-discovery variants used in newer strategy strings.
+    discord_ip_discovery: { file: "discord-ip-discovery-with-port.bin", size: 100 },
+    discord_ip_discovery_with_port: { file: "discord-ip-discovery-with-port.bin", size: 100 },
+    discord_ip_discovery_without_port: { file: "discord-ip-discovery-without-port.bin", size: 100 },
+    // fake_default_quic — used in YouTube/QUIC strats: --lua-desync=fake:blob=fake_default_quic
+    fake_default_quic: { file: "quic_initial_www_google_com.bin", size: 1200 },
 };
 
 function get_blob_dir() {
@@ -66,13 +75,20 @@ function resolve_blobs(args_str) {
         if ((index(args_str, "blob=" + name) >= 0 || index(args_str, "seqovl_pattern=" + name) >= 0) &&
             index(args_str, "--blob=" + name + ":") < 0) {
             let actual_path = null;
-            for (let d in candidate_dirs) {
-                if (!d || fs.stat(d) == null) continue;
-                let p = d + "/" + info.file;
-                if (fs.stat(p) != null) {
-                    actual_path = p;
-                    break;
+            // Try primary file first, then fallback.
+            let files_to_try = [ info.file ];
+            if (info.file_fallback)
+                push(files_to_try, info.file_fallback);
+            for (let fname in files_to_try) {
+                for (let d in candidate_dirs) {
+                    if (!d || fs.stat(d) == null) continue;
+                    let p = d + "/" + fname;
+                    if (fs.stat(p) != null) {
+                        actual_path = p;
+                        break;
+                    }
                 }
+                if (actual_path != null) break;
             }
             if (actual_path != null) {
                 push(result, sprintf("--blob=%s:@%s", name, actual_path));
@@ -81,6 +97,7 @@ function resolve_blobs(args_str) {
     }
     return result;
 }
+
 
 function safe_str(val) {
     if (type(as_string) == "function")
@@ -92,9 +109,17 @@ function safe_str(val) {
 
 function prepare_strategy_args(raw_opt) {
     let raw_str = safe_str(raw_opt);
-    let extra_args = resolve_blobs(raw_str);
+    // When a strategy uses --lua-init, Lua scripts register blobs via the
+    // nfqws2 Lua API (e.g. nfqws.blob_register). Adding --blob=NAME:@FILE CLI
+    // args on top causes "duplicate blob name" errors. Only run resolve_blobs
+    // for non-Lua strategies that use --dpi-desync=fake:blob=NAME directly.
+    let extra_args = (index(raw_str, "--lua-init") < 0) ? resolve_blobs(raw_str) : [];
     let filter_prefix = [];
-    if (index(raw_str, "--filter-tcp") < 0 && index(raw_str, "--filter-l7") < 0 && index(raw_str, "--filter-udp") < 0) {
+    let first_profile = raw_str;
+    let new_idx = index(raw_str, "--new");
+    if (new_idx >= 0)
+        first_profile = substr(raw_str, 0, new_idx);
+    if (index(first_profile, "--filter-tcp") < 0 && index(first_profile, "--filter-l7") < 0 && index(first_profile, "--filter-udp") < 0) {
         push(filter_prefix, "--filter-tcp=443");
         push(filter_prefix, "--filter-l7=tls");
         push(filter_prefix, "--payload=tls_client_hello");
@@ -104,6 +129,7 @@ function prepare_strategy_args(raw_opt) {
     for (let f in filter_prefix) push(words, f);
     return words;
 }
+
 
 function config(ctx) {
     let runtime_constants = (ctx && ctx.constants) || constants;
