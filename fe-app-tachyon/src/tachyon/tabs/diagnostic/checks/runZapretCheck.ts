@@ -52,11 +52,12 @@ export async function runZapretCheck() {
   // Zapret not installed and no rules use it — hide the card entirely
   if (!providerAvailable && !hasZapretRules) {
     store.set({
-      diagnosticsChecks: store.get().diagnosticsChecks.filter((c) => c.code !== code),
+      diagnosticsChecks: store
+        .get()
+        .diagnosticsChecks.filter((c) => c.code !== code),
     });
     return;
   }
-
 
   const items: Array<IDiagnosticsChecksItem> = [
     {

@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   getZapret2Status: vi.fn(),
   getByedpiStatus: vi.fn(),
   updateCheckStore: vi.fn(),
+  storeGet: vi.fn(() => ({ diagnosticsChecks: [] })),
+  storeSet: vi.fn(),
 }));
 
 vi.mock('../../../../methods', () => ({
@@ -17,6 +19,14 @@ vi.mock('../../../../methods', () => ({
 
 vi.mock('../updateCheckStore', () => ({
   updateCheckStore: mocks.updateCheckStore,
+}));
+
+// Prevent TabService from instantiating MutationObserver in jsdom-less environment.
+// runZapretCheck/runZapret2Check import `store` from services which triggers TabService init.
+vi.mock('../../../../services/tab.service', () => ({
+  TabService: {
+    getInstance: () => ({ isActive: () => true }),
+  },
 }));
 
 import { runByedpiCheck } from '../runByedpiCheck';
@@ -138,11 +148,11 @@ describe('provider diagnostics checks', () => {
         }),
         expect.objectContaining({
           state: 'success',
-          key: 'Zapret2 sing-box outbound is configured',
+          key: 'Zapret2 outbound is configured',
         }),
         expect.objectContaining({
           state: 'success',
-          key: 'Zapret2 sing-box route rules are configured',
+          key: 'Zapret2 routing rules are configured',
         }),
       ]),
     );
@@ -171,11 +181,11 @@ describe('provider diagnostics checks', () => {
       expect.arrayContaining([
         expect.objectContaining({
           state: 'success',
-          key: 'Zapret2 sing-box outbound is configured',
+          key: 'Zapret2 outbound is configured',
         }),
         expect.objectContaining({
           state: 'error',
-          key: 'Zapret2 sing-box route rules are not configured',
+          key: 'Zapret2 routing rules are not configured',
         }),
       ]),
     );

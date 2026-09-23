@@ -1787,28 +1787,55 @@ function add_openvpn_endpoint(config, section) {
     if (server == "")
         ctx.runtime_generate_unsupported("OpenVPN section '" + section[".name"] + "' missing openvpn_server");
     let endpoint = {
-        type: "openvpn",
+        type: "openvpn-client",
         tag,
         name: tag,
         system: true,
         servers: [{
             server,
-            server_port: int_option(section, "openvpn_server_port", "1194")
-        }],
-        proto: option(section, "openvpn_proto", "udp")
+            server_port: int_option(section, "openvpn_server_port", "1194"),
+            network: option(section, "openvpn_proto", "udp")
+        }]
     };
     let cipher = option(section, "openvpn_cipher", "");
     if (cipher != "") endpoint.cipher = cipher;
     let auth = option(section, "openvpn_auth", "");
     if (auth != "") endpoint.auth = auth;
+
+    let tls = {};
     let ca   = option(section, "openvpn_ca", "");
-    if (ca != "")   endpoint.ca = ca;
+    if (ca != "") {
+        if (index(ca, "\n") == -1 && index(ca, "/") == 0)
+            tls.certificate_path = ca;
+        else
+            tls.certificate = [ ca ];
+    }
     let cert = option(section, "openvpn_cert", "");
-    if (cert != "") endpoint.cert = cert;
+    if (cert != "") {
+        if (index(cert, "\n") == -1 && index(cert, "/") == 0)
+            tls.client_certificate_path = cert;
+        else
+            tls.client_certificate = [ cert ];
+    }
     let key  = option(section, "openvpn_key", "");
-    if (key != "")  endpoint.key = key;
+    if (key != "") {
+        if (index(key, "\n") == -1 && index(key, "/") == 0)
+            tls.client_key_path = key;
+        else
+            tls.client_key = [ key ];
+    }
     let tls_auth = option(section, "openvpn_tls_auth", "");
-    if (tls_auth != "") endpoint.tls_auth = tls_auth;
+    if (tls_auth != "") {
+        let cw = { type: "tls_auth" };
+        if (index(tls_auth, "\n") == -1 && index(tls_auth, "/") == 0)
+            cw.key_path = tls_auth;
+        else
+            cw.key = [ tls_auth ];
+        tls.control_wrap = cw;
+    }
+    if (length(keys(tls)) > 0)
+        endpoint.tls = tls;
+
     push(config.endpoints, endpoint);
 }
 
