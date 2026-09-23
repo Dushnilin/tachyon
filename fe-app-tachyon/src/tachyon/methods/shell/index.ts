@@ -480,20 +480,6 @@ export const TachyonShellMethods = {
       '/usr/bin/tachyon',
       { timeout: UI_ACTION_RPC_TIMEOUT_MS },
     ),
-  switchEngine: async (engine: string, allowInstall = false) =>
-    callBaseMethod<Tachyon.EngineSwitchPlan>(
-      Tachyon.AvailableMethods.ENGINE_SWITCH,
-      [engine, ...(allowInstall ? ['--allow-install'] : [])],
-      '/usr/bin/tachyon',
-      { timeout: UI_ACTION_RPC_TIMEOUT_MS },
-    ),
-  switchEngineBack: async () =>
-    callBaseMethod<Tachyon.EngineSwitchPlan>(
-      Tachyon.AvailableMethods.ENGINE_SWITCH_BACK,
-      [],
-      '/usr/bin/tachyon',
-      { timeout: UI_ACTION_RPC_TIMEOUT_MS },
-    ),
   getServerCapabilities: async () =>
     callBaseMethod<Tachyon.GetServerCapabilities>(
       Tachyon.AvailableMethods.GET_SERVER_CAPABILITIES,

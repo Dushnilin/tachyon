@@ -104,8 +104,23 @@ export async function ensureSystemInfo({
       logger.error('[SYSTEM_INFO]', 'ensureSystemInfo failed', error);
     }
 
-    if (requestId === latestSystemInfoRequestId && !silent) {
+    if (requestId === latestSystemInfoRequestId) {
       const latestSystemInfo = store.get().diagnosticsSystemInfo;
+
+      if (silent) {
+        if (latestSystemInfo.loading) {
+          const nextSystemInfo = { ...latestSystemInfo, loading: false };
+
+          store.set({
+            diagnosticsSystemInfo: nextSystemInfo,
+          });
+
+          return nextSystemInfo;
+        }
+
+        return latestSystemInfo;
+      }
+
       const nextSystemInfo = {
         ...UNKNOWN_SYSTEM_INFO,
         loading: false,

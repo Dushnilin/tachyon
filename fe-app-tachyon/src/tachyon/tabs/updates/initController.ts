@@ -242,9 +242,7 @@ function isAnyActionLoading() {
 }
 
 function isSystemInfoLoading() {
-  const systemInfo = store.get().diagnosticsSystemInfo;
-
-  return systemInfo.loading || !systemInfo.loaded;
+  return store.get().diagnosticsSystemInfo.loading;
 }
 
 function setActionLoading(
@@ -1015,10 +1013,12 @@ async function handleComponentAction(button: ComponentActionButton) {
     if (!startResponse.success) {
       if (isComponentActionAlreadyRunningError(startResponse.error)) {
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 800));
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         setActionLoading(button.key, false);
@@ -1031,10 +1031,12 @@ async function handleComponentAction(button: ComponentActionButton) {
 
       if (isTransientRpcError(startResponse.error)) {
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 800));
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         setActionLoading(button.key, false);
@@ -1050,6 +1052,7 @@ async function handleComponentAction(button: ComponentActionButton) {
 
     jobId = startResponse.data.job_id;
     if (followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
+      setActionLoading(button.key, false);
       return;
     }
 
@@ -2204,7 +2207,7 @@ function renderEngineCard(): Node {
     E(
       'span',
       { class: 'tachyon_updates-page__component__header-version' },
-      engineVersion,
+      `${engineLabel(active)} ${engineVersion}`,
     ),
   );
   if (engineRepoUrl) {
@@ -2425,10 +2428,10 @@ function renderEngineCard(): Node {
 
   selectableVariants.forEach((entry) => {
     const suffix = entry.active
-      ? ' ✓'
-      : !entry.installed
-        ? ` (${_('not installed')})`
-        : '';
+      ? ` ✓ (${_('active')})`
+      : entry.installed
+        ? ` (${_('installed')})`
+        : ` (${_('not installed')})`;
     const opt = E(
       'option',
       { value: entry.id },
@@ -2665,15 +2668,14 @@ async function runEngineFlow(
   }
   renderUpdatesComponents();
 
-  let modalController = getActiveProgressModalController();
-  if (!modalController) {
-    modalController = showUpdateProgressModal(modalOptions);
-  }
-
   const ownedJobIds: string[] = [];
-  let delegated = false;
 
   try {
+    let modalController = getActiveProgressModalController();
+    if (!modalController) {
+      modalController = showUpdateProgressModal(modalOptions);
+    }
+
     for (const job of jobs) {
       const startResponse = await TachyonShellMethods.componentActionStart(
         job.component,
@@ -2695,7 +2697,6 @@ async function runEngineFlow(
             targetVersion: job.extra,
           };
           if (await followAlreadyRunningComponentAction(button)) {
-            delegated = true;
             return;
           }
         }
@@ -2704,7 +2705,6 @@ async function runEngineFlow(
 
       const jobId = startResponse.data.job_id;
       if (followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
-        delegated = true;
         return;
       }
 
@@ -2785,13 +2785,11 @@ async function runEngineFlow(
     for (const jobId of ownedJobIds) {
       followedComponentJobs.delete(jobId);
     }
-    if (!delegated) {
-      for (const job of jobs) {
-        setActionLoading(job.key, false);
-      }
-      steerBusy = false;
-      renderUpdatesComponents();
+    for (const job of jobs) {
+      setActionLoading(job.key, false);
     }
+    steerBusy = false;
+    renderUpdatesComponents();
   }
 }
 

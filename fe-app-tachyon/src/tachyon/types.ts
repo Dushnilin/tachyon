@@ -70,8 +70,6 @@ export namespace Tachyon {
     ENGINE_INFO = 'engine_info',
     ENGINE_FEATURES = 'engine_features',
     ENGINE_PLAN = 'engine_plan',
-    ENGINE_SWITCH = 'engine_switch',
-    ENGINE_SWITCH_BACK = 'engine_switch_back',
     GET_ZAPRET_STATUS = 'get_zapret_status',
     GET_TAILSCALE_PEERS = 'get_tailscale_peers',
     GET_ZAPRET2_STATUS = 'get_zapret2_status',

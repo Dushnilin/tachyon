@@ -2253,8 +2253,8 @@ function normalize_component_name(component) {
     component = as_string(component);
     if (component == "sing-box" || component == "singbox")
         return "sing_box";
-    if (component == "steer-extended" || component == "steer_extended" || component == "steer")
-        return "steer";
+    if (component == "steer_extended")
+        return "steer-extended";
     if (component == "fptn-client" || component == "fptn_client")
         return "fptn";
     if (component == "tachyon")

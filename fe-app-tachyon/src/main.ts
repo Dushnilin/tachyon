@@ -33,7 +33,6 @@ export { DiagnosticTab } from './tachyon/tabs/diagnostic';
 export { MonitoringTab } from './tachyon/tabs/monitoring';
 export { UpdatesTab } from './tachyon/tabs/updates';
 export { renderDnsBenchmarkModal } from './tachyon/tabs/diagnostic/partials';
-export { renderEngineSwitchModal } from './tachyon/tabs/diagnostic/partials';
 export {
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,

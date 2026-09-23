@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-23 00:18+0300\n"
-"PO-Revision-Date: 2026-09-23 00:18+0300\n"
+"POT-Creation-Date: 2026-09-23 01:20+0300\n"
+"PO-Revision-Date: 2026-09-23 01:20+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2063,9 +2063,6 @@ msgstr "Не удалось получить стратегии фаззера"
 msgid "Failed to install version"
 msgstr "Не удалось установить версию"
 
-msgid "Failed to load engine information."
-msgstr "Не удалось загрузить информацию о движке."
-
 msgid "Failed to load history"
 msgstr "Не удалось загрузить историю"
 
@@ -3166,9 +3163,6 @@ msgstr "Загрузка списка устройств LAN..."
 
 msgid "Loading connections"
 msgstr "Загрузка подключений"
-
-msgid "Loading engine information..."
-msgstr "Загрузка информации о движке..."
 
 msgid "Loading service list..."
 msgstr "Получение списка сервисов..."
@@ -5135,14 +5129,8 @@ msgstr "Поддержать проект на CloudTips"
 msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
-msgid "Switch"
-msgstr "Переключить"
-
 msgid "Switch DNS to DoH"
 msgstr "Переключить DNS на DoH"
-
-msgid "Switch failed"
-msgstr "Не удалось переключить"
 
 msgid "Switch to auto-selection"
 msgstr "Вернуть автовыбор"
@@ -5167,9 +5155,6 @@ msgstr "Таблица существует"
 
 msgid "Tachyon"
 msgstr "Tachyon"
-
-msgid "Tachyon can drive more than one routing engine. Switching preserves configuration the target engine cannot express, so you can switch back without losing settings."
-msgstr "Tachyon может использовать несколько движков маршрутизации. При переключении сохраняется конфигурация, которую целевой движок не умеет выразить, поэтому можно вернуться без потери настроек."
 
 msgid "Tachyon Core"
 msgstr "Ядро Tachyon"
@@ -6130,6 +6115,21 @@ msgstr ""
 
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "Failed to load engine information."
+msgstr "Не удалось загрузить информацию о движке."
+
+msgid "Loading engine information..."
+msgstr "Загрузка информации о движке..."
+
+msgid "Switch"
+msgstr "Переключить"
+
+msgid "Switch failed"
+msgstr "Не удалось переключить"
+
+msgid "Tachyon can drive more than one routing engine. Switching preserves configuration the target engine cannot express, so you can switch back without losing settings."
+msgstr "Tachyon может использовать несколько движков маршрутизации. При переключении сохраняется конфигурация, которую целевой движок не умеет выразить, поэтому можно вернуться без потери настроек."
 
 msgid "Sing-box FakeIP DNS does not work"
 msgstr "FakeIP DNS sing-box не работает"

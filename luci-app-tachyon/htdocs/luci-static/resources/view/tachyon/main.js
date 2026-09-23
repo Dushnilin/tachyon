@@ -3047,8 +3047,6 @@ var Tachyon;
     AvailableMethods2["ENGINE_INFO"] = "engine_info";
     AvailableMethods2["ENGINE_FEATURES"] = "engine_features";
     AvailableMethods2["ENGINE_PLAN"] = "engine_plan";
-    AvailableMethods2["ENGINE_SWITCH"] = "engine_switch";
-    AvailableMethods2["ENGINE_SWITCH_BACK"] = "engine_switch_back";
     AvailableMethods2["GET_ZAPRET_STATUS"] = "get_zapret_status";
     AvailableMethods2["GET_TAILSCALE_PEERS"] = "get_tailscale_peers";
     AvailableMethods2["GET_ZAPRET2_STATUS"] = "get_zapret2_status";
@@ -3507,18 +3505,6 @@ var TachyonShellMethods = {
   getEnginePlan: async (engine) => callBaseMethod(
     Tachyon.AvailableMethods.ENGINE_PLAN,
     [engine],
-    "/usr/bin/tachyon",
-    { timeout: UI_ACTION_RPC_TIMEOUT_MS }
-  ),
-  switchEngine: async (engine, allowInstall = false) => callBaseMethod(
-    Tachyon.AvailableMethods.ENGINE_SWITCH,
-    [engine, ...allowInstall ? ["--allow-install"] : []],
-    "/usr/bin/tachyon",
-    { timeout: UI_ACTION_RPC_TIMEOUT_MS }
-  ),
-  switchEngineBack: async () => callBaseMethod(
-    Tachyon.AvailableMethods.ENGINE_SWITCH_BACK,
-    [],
     "/usr/bin/tachyon",
     { timeout: UI_ACTION_RPC_TIMEOUT_MS }
   ),
@@ -11558,8 +11544,18 @@ async function ensureSystemInfo({
     } catch (error) {
       logger.error("[SYSTEM_INFO]", "ensureSystemInfo failed", error);
     }
-    if (requestId === latestSystemInfoRequestId && !silent) {
+    if (requestId === latestSystemInfoRequestId) {
       const latestSystemInfo = store.get().diagnosticsSystemInfo;
+      if (silent) {
+        if (latestSystemInfo.loading) {
+          const nextSystemInfo2 = { ...latestSystemInfo, loading: false };
+          store.set({
+            diagnosticsSystemInfo: nextSystemInfo2
+          });
+          return nextSystemInfo2;
+        }
+        return latestSystemInfo;
+      }
       const nextSystemInfo = {
         ...UNKNOWN_SYSTEM_INFO,
         loading: false,
@@ -15895,152 +15891,6 @@ function renderLeakCheckModal() {
   ]);
   ui.showModal(`🛡️ ${_("Tachyon IP & DNS Leak Detection")}`, modalContent);
   startTest();
-}
-
-// src/tachyon/helpers/engine.ts
-function engineLabel(engine) {
-  switch (engine) {
-    case "steer":
-      return "steer";
-    case "steer-extended":
-      return "steer-extended";
-    case "sing-box":
-      return "sing-box";
-    default:
-      return engine || "sing-box";
-  }
-}
-function parkedFeatures(plan) {
-  if (!plan || !plan.plan || !Array.isArray(plan.plan.unsupported)) {
-    return [];
-  }
-  return plan.plan.unsupported;
-}
-
-// src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts
-function renderEngineSwitchModal() {
-  const switching = false;
-  const statusLabel = E(
-    "div",
-    {
-      style: "font-size: 13px; font-weight: 500; margin-bottom: 10px; color: var(--text-color-medium, #6c757d);"
-    },
-    _("Loading engine information...")
-  );
-  const enginesContainer = E("div", {
-    style: "display: flex; flex-direction: column; gap: 8px;"
-  });
-  const warningsContainer = E("div", {
-    style: "margin-top: 12px; font-size: 12px; color: var(--text-color-medium, #b58900); display: none;"
-  });
-  const closeBtn = renderButton({
-    text: _("Close"),
-    classNames: ["cbi-button-neutral"],
-    onClick: () => {
-      if (ui.hideModal) ui.hideModal();
-    }
-  });
-  const refresh = async () => {
-    const response = await TachyonShellMethods.getEngineInfo();
-    if (!response.success) {
-      statusLabel.textContent = _("Failed to load engine information.");
-      return;
-    }
-    const info = response.data;
-    if (!info || !Array.isArray(info.engines)) {
-      statusLabel.textContent = _("Failed to load engine information.");
-      return;
-    }
-    statusLabel.textContent = `${_("Active engine")}: ${engineLabel(info.active)}`;
-    enginesContainer.textContent = "";
-    for (const entry of info.engines) {
-      if (!entry.known) {
-        continue;
-      }
-      const isActive = entry.engine === info.active;
-      const row = E(
-        "div",
-        {
-          style: "display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px;"
-        },
-        [
-          E("div", { style: "display: flex; flex-direction: column;" }, [
-            E(
-              "span",
-              { style: "font-weight: 600;" },
-              engineLabel(entry.engine)
-            ),
-            E(
-              "span",
-              { style: "font-size: 11px; opacity: 0.7;" },
-              entry.installed ? _("installed") : _("not installed")
-            )
-          ])
-        ]
-      );
-      if (isActive) {
-        row.appendChild(
-          E("span", { style: "font-size: 12px; opacity: 0.8;" }, _("active"))
-        );
-      } else {
-        row.appendChild(
-          renderButton({
-            text: _("Switch"),
-            classNames: ["cbi-button-action"],
-            disabled: switching,
-            onClick: () => switchTo(entry.engine, info.active)
-          })
-        );
-      }
-      enginesContainer.appendChild(row);
-    }
-  };
-  const switchTo = async (engine, _from) => {
-    if (switching) {
-      return;
-    }
-    const planResponse = await TachyonShellMethods.getEnginePlan(engine);
-    const plan = planResponse.success ? planResponse.data : null;
-    const parked = parkedFeatures(plan);
-    if (parked.length > 0) {
-      warningsContainer.style.display = "block";
-      warningsContainer.textContent = `${_("These features will be parked and restored when you switch back")}: ${parked.join(", ")}`;
-    } else {
-      warningsContainer.style.display = "none";
-    }
-    const result = await TachyonShellMethods.switchEngine(engine, true);
-    if (!result.success || !result.data.ok) {
-      warningsContainer.style.display = "block";
-      warningsContainer.textContent = `${_("Switch failed")}: ${result.success ? result.data.reason : result.error}`;
-      return;
-    }
-    await refresh();
-    ui.addNotification(
-      _("Tachyon"),
-      E("p", {}, `${_("Active engine")}: ${engineLabel(engine)}`)
-    );
-  };
-  const modalContent = E("div", { style: "padding: 8px;" }, [
-    E(
-      "p",
-      { style: "font-size: 13px; opacity: 0.85; margin-bottom: 12px;" },
-      _(
-        "Tachyon can drive more than one routing engine. Switching preserves configuration the target engine cannot express, so you can switch back without losing settings."
-      )
-    ),
-    statusLabel,
-    enginesContainer,
-    warningsContainer,
-    E(
-      "div",
-      {
-        style: "display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.1)); padding-top: 12px;"
-      },
-      [closeBtn]
-    )
-  ]);
-  ui.showModal(`⚙️ ${_("Routing Engine")}`, modalContent);
-  void refresh();
 }
 
 // src/helpers/normalizeCompiledVersion.ts
@@ -21121,6 +20971,26 @@ function shouldApplyCompletedComponentActionResult(result, notify) {
   return result.action !== "check_update" || notify;
 }
 
+// src/tachyon/helpers/engine.ts
+function engineLabel(engine) {
+  switch (engine) {
+    case "steer":
+      return "steer";
+    case "steer-extended":
+      return "steer-extended";
+    case "sing-box":
+      return "sing-box";
+    default:
+      return engine || "sing-box";
+  }
+}
+function parkedFeatures(plan) {
+  if (!plan || !plan.plan || !Array.isArray(plan.plan.unsupported)) {
+    return [];
+  }
+  return plan.plan.unsupported;
+}
+
 // src/tachyon/tabs/updates/checkResultLifecycle.ts
 function shouldPreserveCompletedCheckResultOnNextMount({
   action,
@@ -21759,8 +21629,7 @@ function isAnyActionLoading() {
   return Object.values(store.get().updatesActions).some((item) => item.loading);
 }
 function isSystemInfoLoading() {
-  const systemInfo = store.get().diagnosticsSystemInfo;
-  return systemInfo.loading || !systemInfo.loaded;
+  return store.get().diagnosticsSystemInfo.loading;
 }
 function setActionLoading(action, loading2, local = false) {
   if (local || !loading2) {
@@ -22330,10 +22199,12 @@ async function handleComponentAction(button) {
     if (!startResponse.success) {
       if (isComponentActionAlreadyRunningError(startResponse.error)) {
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 800));
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         setActionLoading(button.key, false);
@@ -22345,10 +22216,12 @@ async function handleComponentAction(button) {
       }
       if (isTransientRpcError(startResponse.error)) {
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 800));
         if (await followAlreadyRunningComponentAction(button)) {
+          setActionLoading(button.key, false);
           return;
         }
         setActionLoading(button.key, false);
@@ -22362,6 +22235,7 @@ async function handleComponentAction(button) {
     }
     jobId = startResponse.data.job_id;
     if (followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
+      setActionLoading(button.key, false);
       return;
     }
     followedComponentJobs.add(jobId);
@@ -23276,7 +23150,7 @@ function renderEngineCard() {
     E(
       "span",
       { class: "tachyon_updates-page__component__header-version" },
-      engineVersion
+      `${engineLabel(active)} ${engineVersion}`
     )
   );
   if (engineRepoUrl) {
@@ -23456,7 +23330,7 @@ function renderEngineCard() {
   const sbGroup = E("optgroup", { label: "sing-box" });
   const stGroup = E("optgroup", { label: "Steer" });
   selectableVariants.forEach((entry) => {
-    const suffix = entry.active ? " ✓" : !entry.installed ? ` (${_("not installed")})` : "";
+    const suffix = entry.active ? ` ✓ (${_("active")})` : entry.installed ? ` (${_("installed")})` : ` (${_("not installed")})`;
     const opt = E(
       "option",
       { value: entry.id },
@@ -23637,13 +23511,12 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
     setActionLoading(job.key, true, true);
   }
   renderUpdatesComponents();
-  let modalController = getActiveProgressModalController();
-  if (!modalController) {
-    modalController = showUpdateProgressModal(modalOptions);
-  }
   const ownedJobIds = [];
-  let delegated = false;
   try {
+    let modalController = getActiveProgressModalController();
+    if (!modalController) {
+      modalController = showUpdateProgressModal(modalOptions);
+    }
     for (const job of jobs) {
       const startResponse = await TachyonShellMethods.componentActionStart(
         job.component,
@@ -23661,7 +23534,6 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
             targetVersion: job.extra
           };
           if (await followAlreadyRunningComponentAction(button)) {
-            delegated = true;
             return;
           }
         }
@@ -23669,7 +23541,6 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
       }
       const jobId = startResponse.data.job_id;
       if (followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
-        delegated = true;
         return;
       }
       followedComponentJobs.add(jobId);
@@ -23736,13 +23607,11 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
     for (const jobId of ownedJobIds) {
       followedComponentJobs.delete(jobId);
     }
-    if (!delegated) {
-      for (const job of jobs) {
-        setActionLoading(job.key, false);
-      }
-      steerBusy = false;
-      renderUpdatesComponents();
+    for (const job of jobs) {
+      setActionLoading(job.key, false);
     }
+    steerBusy = false;
+    renderUpdatesComponents();
   }
 }
 async function runComponentAction(component, action, _key) {
@@ -24644,7 +24513,6 @@ return baseclass.extend({
   injectGlobalStyles,
   parseValueList,
   renderDnsBenchmarkModal,
-  renderEngineSwitchModal,
   showToast,
   store,
   validateDNS,
