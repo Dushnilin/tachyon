@@ -48,7 +48,9 @@ assert_true() {
 
 assert_match() {
     local label="$1" pattern="$2" actual="$3"
-    if echo "$actual" | grep -qE "$pattern"; then
+    # No grep -q here: under `set -o pipefail` a -q match can close the pipe
+    # before echo finishes writing, and the resulting EPIPE flips this branch.
+    if echo "$actual" | grep -E "$pattern" >/dev/null; then
         pass=$((pass + 1))
     else
         fail_test "$label: expected pattern '$pattern', got '$actual'"
@@ -328,7 +330,7 @@ print("dev_scoped=" + dev_scoped + "\n");
 ' 2>&1)"
 assert_match "zapret2 proto mapped" 'z2_proto=udp' "$out"
 assert_match "ports written as strings" 'z2_ports=443|50000-65535' "$out"
-assert_match "realip mode inside match" 'z2_realip=1' "$out"
+assert_match "default fakeip mode (realip deprecated by steer 1.5.7+)" 'z2_realip=0' "$out"
 assert_match "mac channel separated" 'mac_channels=2' "$out"
 assert_match "addresses and macs never mixed" 'mixed_from=0' "$out"
 assert_match "single hosts get device scope" 'dev_scoped=3' "$out"
@@ -393,40 +395,43 @@ assert_match "subscription metadata preserved" 'meta_kept=true' "$out"
 assert_match "display names remembered" 'names=true' "$out"
 
 printf '%s\n' '--- zapret2 default strategy fallback ---'
-rm -f /etc/steer/zapret/DZ.opts 2>/dev/null || true
-out="$(TACHYON_STEER_LISTS_DIR="$WORK_DIR/steer-empty" run_uc '
+ZAPRET_DIR="$WORK_DIR/steer-zapret"
+rm -rf "$ZAPRET_DIR"
+mkdir -p "$ZAPRET_DIR"
+out="$(TACHYON_STEER_ZAPRET_DIR="$ZAPRET_DIR" TACHYON_STEER_LISTS_DIR="$WORK_DIR/steer-empty" run_uc '
 let l = require("steer.lists");
 l.materialize_section_lists({ ".name": "dz", "action": "zapret2", "label": "DZ" }, {});
 print("done\n");
 ' 2>&1)"
-if [ -f /etc/steer/zapret/DZ.opts ]; then
-    grep -q 'filter-tcp' /etc/steer/zapret/DZ.opts && pass=$((pass + 1)) || fail_test "default zapret2 strategy not used for empty nfqws2_opt"
+if [ -f "$ZAPRET_DIR/DZ.opts" ]; then
+    grep -q 'filter-tcp' "$ZAPRET_DIR/DZ.opts" && pass=$((pass + 1)) || fail_test "default zapret2 strategy not used for empty nfqws2_opt"
 else
     fail_test "zapret2 default opts file not written"
 fi
 
 printf '%s\n' '--- zapret2 opts carry the full effective command line ---'
-rm -f /etc/steer/zapret/DISC.opts 2>/dev/null || true
+rm -rf "$ZAPRET_DIR"
+mkdir -p "$ZAPRET_DIR"
 mkdir -p "$WORK_DIR/fakefiles/fake"
 printf 'fake-tls' > "$WORK_DIR/fakefiles/fake/tls_clienthello_www_google_com.bin"
 printf 'fake-stun' > "$WORK_DIR/fakefiles/fake/stun.bin"
 DISC_STRAT='--filter-tcp=443 --payload=tls_client_hello --lua-desync=fake:blob=tls_google:tcp_md5 --new --filter-udp=443 --lua-desync=fake:blob=discord_udp'
-out="$(TACHYON_LIB="$TACHYON_LIB" ZAPRET2_PROVIDER_FILES_DIR="$WORK_DIR/fakefiles" TACHYON_STEER_LISTS_DIR="$WORK_DIR/steer-empty" run_uc '
+out="$(TACHYON_LIB="$TACHYON_LIB" TACHYON_STEER_ZAPRET_DIR="$ZAPRET_DIR" ZAPRET2_PROVIDER_FILES_DIR="$WORK_DIR/fakefiles" TACHYON_STEER_LISTS_DIR="$WORK_DIR/steer-empty" run_uc '
 let l = require("steer.lists");
 l.materialize_section_lists({ ".name": "disc", "action": "zapret2", "label": "DISC",
     "nfqws2_opt": "'"$DISC_STRAT"'" }, {});
 print("done\n");
 ' 2>&1)"
-if [ -f /etc/steer/zapret/DISC.opts ]; then
-    grep -q -- '--lua-init=@' /etc/steer/zapret/DISC.opts ||
+if [ -f "$ZAPRET_DIR/DISC.opts" ]; then
+    grep -q -- '--lua-init=@' "$ZAPRET_DIR/DISC.opts" ||
         fail_test "opts missing --lua-init: lua strategies cannot load their runtime"
-    grep -q -- '--blob=tls_google:@' /etc/steer/zapret/DISC.opts ||
+    grep -q -- '--blob=tls_google:@' "$ZAPRET_DIR/DISC.opts" ||
         fail_test "opts missing resolved --blob for tls_google"
-    grep -q -- '--blob=discord_udp:@' /etc/steer/zapret/DISC.opts ||
+    grep -q -- '--blob=discord_udp:@' "$ZAPRET_DIR/DISC.opts" ||
         fail_test "opts missing resolved --blob for discord_udp"
-    grep -q -- '--fwmark' /etc/steer/zapret/DISC.opts &&
+    grep -q -- '--fwmark' "$ZAPRET_DIR/DISC.opts" &&
         fail_test "opts must not carry the provider fwmark (wrapper uses steer mark)" || true
-    grep -q -- "$DISC_STRAT" /etc/steer/zapret/DISC.opts ||
+    grep -q -- "$DISC_STRAT" "$ZAPRET_DIR/DISC.opts" ||
         fail_test "opts missing the user strategy"
     pass=$((pass + 1))
 else
@@ -456,6 +461,7 @@ let e = require("core.engine");
 print("spec=" + e.STEER_SPEC_FILE + "\n");
 print("state=" + e.STEER_STATE_DIR + "\n");
 print("table=" + e.STEER_NFT_TABLE + "\n");
+print("zdir=" + e.STEER_ZAPRET_DIR + "\n");
 print("cmds=" + length(e.STEER_REQUIRED_COMMANDS) + "\n");
 print("keep=" + length(e.STEER_KEEP_PATHS) + "\n");
 print("ready=" + e.steer_contract_ready() + "\n");
@@ -463,6 +469,7 @@ print("ready=" + e.steer_contract_ready() + "\n");
 assert_match "steer spec path" 'spec=/etc/steer/spec.json' "$out"
 assert_match "steer state dir" 'state=/var/lib/steer' "$out"
 assert_match "steer nft table isolated" 'table=inet steer' "$out"
+assert_match "steer zapret opts dir" 'zdir=/etc/steer/zapret' "$out"
 assert_match "steer contract commands listed" 'cmds=7' "$out"
 assert_match "steer keep paths listed" 'keep=5' "$out"
 assert_match "contract not ready without engine" 'ready=false' "$out"

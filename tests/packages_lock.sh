@@ -218,8 +218,9 @@ fi
 
 printf '%s\n' '--- runtime: CLI lock-holder ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/packages.uc" lock-holder 2>&1)
-# Should return null or JSON
-if echo "$RESULT" | grep -qE 'null|"pid"'; then
+# Should return null or JSON (no grep -q: -q can close the pipe early under
+# pipefail and turn a match into an EPIPE failure)
+if echo "$RESULT" | grep -E 'null|"pid"' >/dev/null; then
     pass=$((pass + 1))
 else
     fail_test "CLI lock-holder should return null or JSON: $RESULT"

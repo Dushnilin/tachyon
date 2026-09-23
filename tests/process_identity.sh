@@ -59,7 +59,9 @@ assert_false() {
 
 assert_match() {
     local label="$1" pattern="$2" actual="$3"
-    if echo "$actual" | grep -qE "$pattern"; then
+    # No grep -q: under `set -o pipefail` an early -q match can close the pipe
+    # before echo finishes writing, and the EPIPE flips this branch.
+    if echo "$actual" | grep -E "$pattern" >/dev/null; then
         pass=$((pass + 1))
     else
         fail_test "$label: expected pattern '$pattern', got '$actual'"

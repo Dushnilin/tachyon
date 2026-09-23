@@ -212,7 +212,7 @@ function build_outputs(sections, settings) {
         let name = safe_name(option(section, "label", option(section, ".name", "zapret")));
         let opts_file = as_string(option(section, "steer_opts_file", ""));
         if (opts_file == "")
-            opts_file = "/etc/steer/zapret/" + name + ".opts";
+            opts_file = engine.STEER_ZAPRET_DIR + "/" + name + ".opts";
         let out_entry = {
             kind: "zapret",
             on_fail: "direct",

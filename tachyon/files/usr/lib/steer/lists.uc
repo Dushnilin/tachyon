@@ -18,6 +18,7 @@ let fs = require("fs");
 let common = require("core.common");
 let helpers = require("components.helpers");
 let downloader = require("components.downloader");
+let engine = require("core.engine");
 
 let as_string = common.as_string;
 let file_exists = common.file_exists;
@@ -632,7 +633,7 @@ function materialize_section_lists(section, catalog) {
     if (is_zapret_section(section)) {
         let lines = zapret_opts_lines(section);
         if (length(lines) > 0) {
-            let zapret_dir = "/etc/steer/zapret";
+            let zapret_dir = engine.STEER_ZAPRET_DIR;
             common.ensure_dir(zapret_dir);
             let opts_path = zapret_dir + "/" + label_name + ".opts";
             common.write_file(opts_path, join("\n", lines) + "\n");

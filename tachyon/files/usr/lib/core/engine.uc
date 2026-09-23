@@ -78,6 +78,10 @@ const STEER_SUB_FILE = "/etc/steer/sub.txt";
 const STEER_SUBS_DIR = "/etc/steer/subs";
 const STEER_LISTS_DIR = "/etc/steer/lists";
 const STEER_CUSTOM_LISTS_DIR = "/etc/steer/lists/custom";
+// Per-channel nfqws strategy files consumed by steer-nfqws via the opts_file
+// field in spec.json. Overridable so the test suite can point it at a scratch
+// directory instead of requiring root.
+const STEER_ZAPRET_DIR = getenv("TACHYON_STEER_ZAPRET_DIR") || "/etc/steer/zapret";
 const STEER_STATE_DIR = "/var/lib/steer";
 const STEER_KEEP_D = "/lib/upgrade/keep.d/steer";
 // The engine owns its own nftables table and marks, so it never collides with
@@ -448,6 +452,7 @@ function module_exports() {
         STEER_SUB_FILE,
         STEER_LISTS_DIR,
         STEER_CUSTOM_LISTS_DIR,
+        STEER_ZAPRET_DIR,
         STEER_STATE_DIR,
         STEER_KEEP_D,
         STEER_NFT_TABLE,
