@@ -492,6 +492,28 @@ function subscription_cache_is_usable(path) {
     return subscription_parser().validate_subscription(path);
 }
 
+function usable_subscription_outbound_count(path) {
+    let value = read_json(path);
+    if (type(value) != "object" || type(value.outbounds) != "array")
+        return 0;
+
+    let parser = subscription_parser();
+    let count = 0;
+    for (let outbound in value.outbounds) {
+        if (type(outbound) != "object")
+            continue;
+        if (parser.outbound_is_unsupported_stub(outbound))
+            continue;
+        count++;
+    }
+    return count;
+}
+
+function subscription_shrink_guard_triggers(old_path, new_path) {
+    return usable_subscription_outbound_count(old_path) >= 6 &&
+        usable_subscription_outbound_count(new_path) <= 2;
+}
+
 function source_json_path(dir, source_section) {
     return as_string(dir) + "/" + as_string(source_section) + ".json";
 }
@@ -1849,6 +1871,32 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
             return 2;
         }
 
+        if (file_nonempty(subscription_json_path) && subscription_shrink_guard_triggers(subscription_json_path, normalized_tmpfile)) {
+            let old_usable = usable_subscription_outbound_count(subscription_json_path);
+            let new_usable = usable_subscription_outbound_count(normalized_tmpfile);
+            log_message(
+                "Subscription source " + source_index + " for rule '" + section_name_value +
+                    "' shrank from " + old_usable + " to " + new_usable +
+                    " usable proxy entries; keeping the previous cache",
+                "warn"
+            );
+            write_text_if_changed(subscription_url_cache_path, subscription_url);
+            write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
+            write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
+            write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
+            persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
+                log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
+            if (metadata_output_path != "")
+                unlink_path(metadata_output_path);
+            copy_persistent_metadata_output(cache_section, metadata_output_path);
+            unlink_path(raw_tmpfile);
+            unlink_path(headers_tmpfile);
+            unlink_path(normalized_tmpfile);
+            unlink_path(metadata_tmpfile);
+            log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "unchanged");
+            return 2;
+        }
+
         if (!move_file(normalized_tmpfile, subscription_json_path)) {
             if (metadata_output_path != "")
                 unlink_path(metadata_output_path);
@@ -2761,6 +2809,12 @@ else if (mode == "deferred-bootstrap-worker") {
 }
 else if (mode == "json-length") {
     json_length(ARGV[1]);
+}
+else if (mode == "usable-outbound-count") {
+    print(usable_subscription_outbound_count(ARGV[1]), "\n");
+}
+else if (mode == "shrink-guard-triggers") {
+    exit(subscription_shrink_guard_triggers(ARGV[1], ARGV[2]) ? 0 : 1);
 }
 else if (mode == "subscription-import-stats") {
     print(subscription_import_stats_text(ARGV[1]), "\n");
