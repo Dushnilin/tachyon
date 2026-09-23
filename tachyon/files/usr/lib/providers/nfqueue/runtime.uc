@@ -102,7 +102,14 @@ function queue_range_end(cfg) {
 
 function provider_available(cfg) {
     let stat = fs.stat(cfg.provider_bin);
-    return stat != null && stat.mode != null && (int(stat.mode) & 73) != 0;
+    if (stat == null || stat.mode == null || (int(stat.mode) & 73) == 0)
+        return false;
+    if (cfg.kind == "zapret") {
+        let link_target = fs.readlink(cfg.provider_bin);
+        if (link_target != null && (index(link_target, "nfqws2") >= 0 || index(link_target, "zapret2") >= 0))
+            return false;
+    }
+    return true;
 }
 
 function package_installed(cfg) {
@@ -124,8 +131,12 @@ function first_line_version_field(value) {
 
 function package_version(cfg) {
     let version = package_version_from_manager(cfg);
-    if (version == "" && provider_available(cfg))
-        version = first_line_version_field(command_output_from_args([ cfg.provider_bin, "--version" ]));
+    if (version == "" && provider_available(cfg)) {
+        let raw = command_output_from_args([ cfg.provider_bin, "--version" ]);
+        if (cfg.kind == "zapret" && (index(raw, "zapret2") >= 0 || index(raw, "nfqws2") >= 0))
+            return "";
+        version = first_line_version_field(raw);
+    }
     return version;
 }
 
@@ -521,6 +532,42 @@ function external_queue_overlap(cfg) {
     return command_success(command);
 }
 
+// Count processes running under steer-nfqws management for a given binary.
+// Steer does not write Tachyon pid-files, so live_pid_count() returns 0 even
+// when steer-nfqws has started the provider workers successfully. We detect
+// this by scanning /proc for live processes whose exe path matches the binary.
+function steer_process_count(provider_bin) {
+    let count = 0;
+    let proc_dir = fs.opendir("/proc");
+    if (!proc_dir)
+        return 0;
+    let entry;
+    while ((entry = proc_dir.read()) != null) {
+        // Skip non-numeric entries (not a PID directory)
+        if (!match(entry, /^[0-9]+$/))
+            continue;
+        let exe_path = "/proc/" + entry + "/exe";
+        let link = null;
+        try { link = fs.readlink(exe_path); } catch (e) {}
+        if (link == provider_bin)
+            count++;
+    }
+    proc_dir.close();
+    return count;
+}
+
+// Returns true when the steer engine is active and is managing zapret/zapret2
+// queues for this provider (i.e. the "inet steer" nftables table has a
+// zapret_queue chain — created by steer-nfqws on apply).
+function steer_manages_provider(cfg) {
+    let output = command_output("nft list table inet steer 2>/dev/null | head -5");
+    // If "inet steer" table exists at all, steer is active.
+    // We rely on the queue range: if steer has enqueued traffic in the cfg
+    // queue range the chain exists. A quick heuristic: if the table exists
+    // AND the provider binary is running under steer, steer is in charge.
+    return trim(as_string(output)) != "" && steer_process_count(cfg.provider_bin) > 0;
+}
+
 function status_json(cfg) {
     let sections = enabled_sections(cfg);
     let configured = length(sections) > 0;
@@ -533,6 +580,20 @@ function status_json(cfg) {
     let expected = length(sections);
     let running = live_pid_count(cfg.child_pid_dir);
     let supervisors = live_pid_count(cfg.pid_dir);
+
+    // If Tachyon-managed pid-files show 0 processes but steer-nfqws is
+    // actually running the provider, use the real process count from /proc
+    // so that ready = true and the Dashboard shows "Running".
+    let steer_managed = false;
+    if (configured && running == 0 && supervisors == 0 && steer_manages_provider(cfg)) {
+        let steer_count = steer_process_count(cfg.provider_bin);
+        if (steer_count > 0) {
+            running = steer_count;
+            supervisors = steer_count;
+            steer_managed = true;
+        }
+    }
+
     let standalone_enabled = standalone_service_enabled(cfg);
     let standalone_running = standalone_service_running(cfg);
     let standalone_config = standalone_uci_config_present(cfg);
@@ -549,6 +610,7 @@ function status_json(cfg) {
         config_state.routes_configured &&
         expected > 0 &&
         running == expected;
+
 
     let message = cfg.status_label + " provider status is normal";
     if (configured && !provider)

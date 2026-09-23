@@ -31,7 +31,11 @@ const CATALOG_MANIFEST_URL = CATALOG_BASE + "/categories.json";
 // steer keep.d entry covers lists/custom, so downloaded lists live here.
 const STEER_LISTS_DIR = getenv("TACHYON_STEER_LISTS_DIR") || "/etc/steer/lists";
 const STEER_DOMAINS_DIR = STEER_LISTS_DIR + "/domains";
-const STEER_SUB_FILE = getenv("TACHYON_STEER_SUB_FILE") || "/etc/steer/sub.txt";
+// Per-section subscription files. The single /etc/steer/sub.txt would be
+// overwritten by every subscription section in turn, so with two or more
+// sections all vless outputs ended up reading the same (last) node list. The
+// steer keep.d covers the subs/ directory, so the files survive sysupgrade.
+const STEER_SUBS_DIR = getenv("TACHYON_STEER_SUBS_DIR") || "/etc/steer/subs";
 // Tachyon caches parsed subscription outbounds here; the `links` map holds the
 // original share links (vless:// etc), which is exactly what steer's sub.txt
 // expects.
@@ -59,21 +63,53 @@ function write_subscription_file(section_name) {
     if (type(parsed) != "object" || type(parsed.links) != "object")
         return "";
 
+    // 1. If urltestGroups exist, use only the FIRST group's outbounds.
+    // Secondary groups are transport variants (grpc, TLS, etc.) for internal
+    // subscription URLTest selection — steer selects by latency itself and
+    // does not need the duplicate flavour variants.
     let lines = [];
-    for (let name, link in parsed.links) {
-        link = trim(as_string(link));
-        if (match(link, /^vless:\/\//) != null)
-            push(lines, link);
+    let seen = {};
+    if (type(parsed.urltestGroups) == "object") {
+        let grp_ids = keys(parsed.urltestGroups);
+        if (length(grp_ids) > 0) {
+            let grp = parsed.urltestGroups[grp_ids[0]];
+            if (type(grp) == "object" && type(grp.outbounds) == "array") {
+                for (let ob in grp.outbounds) {
+                    let link = parsed.links[ob];
+                    if (link != null && match(trim(as_string(link)), /^vless:\/\//) != null && !seen[ob]) {
+                        push(lines, trim(as_string(link)));
+                        seen[ob] = true;
+                    }
+                }
+            }
+        }
     }
+
+    // 2. Non-hidden links that were not already added from the urltest group.
+    let hidden = type(parsed.hiddenOutboundTags) == "object" ? parsed.hiddenOutboundTags : {};
+    for (let name, link in parsed.links) {
+        if (seen[name] || hidden[name]) continue;
+        link = trim(as_string(link));
+        if (match(link, /^vless:\/\//) != null) {
+            push(lines, link);
+            seen[name] = true;
+        }
+    }
+
+
     if (length(lines) == 0)
         return "";
 
-    let dir = replace(STEER_SUB_FILE, /\/[^\/]*$/, "");
+    let safe = replace(section_name, /[^A-Za-z0-9_.-]/g, "_");
+    if (safe == "")
+        safe = "subscription";
+    let sub_file = STEER_SUBS_DIR + "/" + safe + ".txt";
+    let dir = replace(sub_file, /\/[^\/]*$/, "");
     if (dir != "")
         common.ensure_dir(dir);
-    if (!common.write_file(STEER_SUB_FILE, join("\n", lines) + "\n"))
+    if (!common.write_file(sub_file, join("\n", lines) + "\n"))
         return "";
-    return STEER_SUB_FILE;
+    return sub_file;
 }
 
 // ============================================================================
@@ -206,7 +242,7 @@ function text_list_values(value) {
     value = trim(as_string(value));
     if (value == "")
         return [];
-    return split(value, /[,\s]+/);
+    return split(value, /[ \t\r\n,]+/);
 }
 
 function list_option(section, key) {
@@ -278,12 +314,6 @@ function community_text_url(name) {
 
     if (name == "supercell")
         return "";
-    if (name == "ads_hagezi_pro")
-        return "";
-
-    // Service categories live in Categories/ for lists like
-    // block/porn/news/anime, and in Services/ for youtube/tiktok/etc.
-    // Try Categories first; callers fall back to Services on a failed fetch.
     return ITDOGINFO_BASE + "/Categories/" + name + ".lst";
 }
 
@@ -292,17 +322,243 @@ function community_text_url_alt(name) {
     return ITDOGINFO_BASE + "/Services/" + name + ".lst";
 }
 
+const RULESETS_DIR = "/etc/tachyon/rulesets";
+const CACHE_LISTS_DIR = STEER_LISTS_DIR + "/cache";
+
+function is_zapret_section(section) {
+    let action = as_string(option(section, "action", ""));
+    return action == "zapret" || action == "zapret2";
+}
+
+// Provider default strategy for a zapret/zapret2 section (used when the section
+// carries no user strategy of its own).
+function default_zapret_strategy(section) {
+    let is_z2 = as_string(option(section, "action", "")) == "zapret2";
+    let option_name = is_z2 ? "ZAPRET2_DEFAULT_NFQWS2_OPT" : "ZAPRET_DEFAULT_NFQWS_OPT";
+    let value = getenv(option_name);
+    if (trim(as_string(value)) == "") {
+        try {
+            let constants = require("core.constants");
+            value = constants[option_name];
+        }
+        catch (e) {
+            value = "";
+        }
+    }
+    return trim(as_string(value));
+}
+
+// The opts file for the steer-nfqws wrapper must contain the FULL effective
+// command line, not just the user strategy. The sing-box path starts the binary
+// with provider base args around the strategy:
+//   --lua-init=@zapret-lib.lua ...   (without them --lua-desync strategies have
+//                                     no Lua runtime and silently do nothing)
+//   --blob=<name>:@<file>            (external fake blobs, e.g. discord_udp)
+//   --filter-tcp=443 --filter-l7=tls (default filter when strategy has none)
+// Only the fwmark arg is dropped: the wrapper marks packets with steer's own
+// ZAPRET_OWN_MARK, not the sing-box desync mark.
+function zapret_opts_lines(section) {
+    let is_z2 = as_string(option(section, "action", "")) == "zapret2";
+    let provider = null;
+    try {
+        provider = require(is_z2 ? "providers.zapret2.common" : "providers.zapret.common").config({});
+    }
+    catch (e) {
+        provider = null;
+    }
+
+    let strategy_option = provider != null ? provider.strategy_option : (is_z2 ? "nfqws2_opt" : "nfqws_opt");
+    let zapret_opt = trim(as_string(option(section, strategy_option, "")));
+    if (zapret_opt == "")
+        zapret_opt = provider != null ? trim(as_string(provider.default_strategy)) : default_zapret_strategy(section);
+    if (zapret_opt == "")
+        return [];
+
+    let lines = [];
+    // If the strategy string already embeds --lua-init references (e.g. saved
+    // from fuzzer runs that inlined them), skip adding them from base_args to
+    // avoid duplicating the Lua scripts in the opts file. steer-nfqws passes
+    // every non-comment line as a separate argument, so duplicates would cause
+    // nfqws2 to load the same Lua file twice and emit confusing errors.
+    let strategy_has_lua = (index(zapret_opt, "--lua-init") >= 0);
+
+    if (provider != null) {
+        for (let arg in (provider.base_args || [])) {
+            arg = as_string(arg);
+            // Drop fwmark: steer-nfqws uses its own ZAPRET_OWN_MARK.
+            if (index(arg, "--fwmark") == 0 || index(arg, "--dpi-desync-fwmark") == 0)
+                continue;
+            // Skip lua-init from base_args when already present in strategy.
+            if (strategy_has_lua && index(arg, "--lua-init") == 0)
+                continue;
+            if (trim(arg) != "")
+                push(lines, arg);
+        }
+        if (type(provider.prepare_strategy_args) == "function") {
+            for (let arg in provider.prepare_strategy_args(zapret_opt)) {
+                arg = trim(as_string(arg));
+                if (arg != "")
+                    push(lines, arg);
+            }
+        }
+    }
+    push(lines, zapret_opt);
+    return lines;
+}
+
+function parse_raw_lines(raw_val) {
+    let result = [];
+    if (raw_val == null) return result;
+    let items = type(raw_val) == "array" ? raw_val : [ raw_val ];
+    for (let item in items) {
+        for (let line in split(as_string(item), "\n")) {
+            line = trim(line);
+            if (line == "" || substr(line, 0, 2) == "//" || substr(line, 0, 1) == "#" || substr(line, 0, 1) == ";")
+                continue;
+            let comment_idx = index(line, "//");
+            if (comment_idx > 0)
+                line = trim(substr(line, 0, comment_idx));
+            comment_idx = index(line, " #");
+            if (comment_idx > 0)
+                line = trim(substr(line, 0, comment_idx));
+            if (line != "")
+                push(result, line);
+        }
+    }
+    return result;
+}
+
+function load_local_ruleset(name, domains, prefixes) {
+    name = as_string(name);
+    if (name == "") return false;
+
+    let loaded = false;
+    let srs_file = RULESETS_DIR + "/community-" + name + ".srs";
+    let json_file = RULESETS_DIR + "/community-" + name + ".json";
+    let subnets_file = RULESETS_DIR + "/community-subnets-" + name + ".lst";
+
+    if (file_exists(srs_file)) {
+        common.ensure_dir(CACHE_LISTS_DIR);
+        let c_dom = CACHE_LISTS_DIR + "/" + name + ".domains";
+        let c_pfx = CACHE_LISTS_DIR + "/" + name + ".prefixes";
+        let c_meta = CACHE_LISTS_DIR + "/" + name + ".meta";
+
+        if (!file_exists(c_dom) || !file_exists(c_pfx)) {
+            system(sprintf("steer srs-read %s --out %s --prefixes-out %s --meta-out %s >/dev/null 2>&1",
+                srs_file, c_dom, c_pfx, c_meta));
+        }
+
+        let d_content = fs.readfile(c_dom);
+        if (d_content != null) {
+            for (let line in split(as_string(d_content), "\n")) {
+                line = trim(line);
+                if (line != "" && substr(line, 0, 1) != "#") {
+                    domains[line] = true;
+                    loaded = true;
+                }
+            }
+        }
+
+        let p_content = fs.readfile(c_pfx);
+        if (p_content != null) {
+            for (let line in split(as_string(p_content), "\n")) {
+                line = trim(line);
+                if (line != "" && substr(line, 0, 1) != "#" && looks_like_prefix(line)) {
+                    prefixes[line] = true;
+                    loaded = true;
+                }
+            }
+        }
+    }
+    if (!loaded && file_exists(json_file)) {
+        try {
+            let j_data = json(as_string(fs.readfile(json_file)));
+            if (type(j_data) == "object" && type(j_data.rules) == "array") {
+                for (let rule in j_data.rules) {
+                    if (type(rule) != "object") continue;
+                    for (let d in (rule.domain_suffix || [])) {
+                        d = trim(as_string(d));
+                        if (d != "") domains[d] = true;
+                    }
+                    for (let d in (rule.domain || [])) {
+                        d = trim(as_string(d));
+                        if (d != "") domains[d] = true;
+                    }
+                    let pfx_list = rule.ip_cidr;
+                    if (type(pfx_list) == "string") pfx_list = [ pfx_list ];
+                    for (let p in (pfx_list || [])) {
+                        p = trim(as_string(p));
+                        if (looks_like_prefix(p)) prefixes[p] = true;
+                    }
+                }
+                loaded = true;
+            }
+        } catch (e) {}
+    }
+
+    if (file_exists(subnets_file)) {
+        let s_content = fs.readfile(subnets_file);
+        if (s_content != null) {
+            for (let line in split(as_string(s_content), "\n")) {
+                line = trim(line);
+                if (line != "" && substr(line, 0, 1) != "#" && looks_like_prefix(line))
+                    prefixes[line] = true;
+            }
+            loaded = true;
+        }
+    }
+
+    return loaded;
+}
 
 function materialize_section_lists(section, catalog) {
     catalog = type(catalog) == "object" ? catalog : {};
-    let name = as_string(section[".name"] || section.label || "channel");
-    let dir = section_dir(name);
+    // section_name is used for the channel list directory (stable, matches spec channels).
+    let section_name = as_string(section[".name"] || section.label || "channel");
+    // label_name mirrors generator.uc: label first, then .name — used for opts files so
+    // the path matches what the spec generator embeds in spec.json.
+    let label_name = as_string(section.label || section[".name"] || "channel");
+    let name = section_name;
+    let dir = section_dir(section_name);
     common.ensure_dir(dir);
 
     let domains = {};
     let prefixes = {};
 
-    // Inline user domains.
+    // User custom domains (option domain / list domain)
+    for (let line in parse_raw_lines(section.domain)) {
+        let clean = replace(line, /^(full:|domain:|domain_suffix:)/, "");
+        if (looks_like_prefix(clean)) {
+            prefixes[clean] = true;
+        } else if (match(line, /^keyword:/) != null) {
+            let kw = trim(replace(line, /^keyword:/, ""));
+            if (kw != "") domains["*" + kw + "*"] = true;
+        } else if (looks_like_domain(clean)) {
+            domains[clean] = true;
+        }
+    }
+
+    // User domain suffixes
+    for (let line in parse_raw_lines(section.domain_suffix)) {
+        let clean = replace(line, /^(full:|domain:|domain_suffix:)/, "");
+        if (looks_like_domain(clean))
+            domains[clean] = true;
+    }
+
+    // User domain keywords
+    for (let line in parse_raw_lines(section.domain_keyword)) {
+        let kw = trim(replace(line, /^keyword:/, ""));
+        if (kw != "")
+            domains["*" + kw + "*"] = true;
+    }
+
+    // User IP CIDRs (option ip_cidr / list ip_cidr)
+    for (let line in parse_raw_lines(section.ip_cidr)) {
+        if (looks_like_prefix(line))
+            prefixes[line] = true;
+    }
+
+    // Inline user domains and subnets
     for (let value in list_option(section, "user_domains"))
         domains[trim(as_string(value))] = true;
     for (let value in text_list_values(option(section, "user_domains_text", "")))
@@ -324,9 +580,12 @@ function materialize_section_lists(section, catalog) {
         }
     }
 
-    // Community ids: prefer an explicit catalog file, otherwise fetch the
-    // upstream plain-text list (steer cannot read .srs).
+    // Community ids: prefer local compiled rulesets (.srs / .json / .lst),
+    // then explicit catalog file, otherwise fetch upstream plain-text.
     for (let value in list_option(section, "community_lists")) {
+        if (load_local_ruleset(value, domains, prefixes))
+            continue;
+
         let mapped = catalog[value];
         let text = "";
         if (mapped != null)
@@ -347,25 +606,46 @@ function materialize_section_lists(section, catalog) {
                 domains[line] = true;
         }
     }
-    for (let value in list_option(section, "community_subnets")) {
-        let mapped = catalog[value];
-        let text = "";
-        if (mapped != null)
-            text = read_reference(mapped);
-        if (trim(as_string(text)) == "") {
-            let url = community_text_url(value);
-            if (url != "")
-                text = downloader.http_get(url);
+
+    let subnets_enabled = option(section, "community_subnets", null);
+    if (subnets_enabled == "1" || subnets_enabled == 1 || subnets_enabled == true) {
+        for (let value in list_option(section, "community_lists")) {
+            let subnets_file = RULESETS_DIR + "/community-subnets-" + as_string(value) + ".lst";
+            if (file_exists(subnets_file)) {
+                let s_content = fs.readfile(subnets_file);
+                if (s_content != null) {
+                    for (let line in split(as_string(s_content), "\n")) {
+                        line = trim(line);
+                        if (line != "" && substr(line, 0, 1) != "#" && looks_like_prefix(line))
+                            prefixes[line] = true;
+                    }
+                }
+            }
         }
-        for (let line in split(as_string(text), "\n")) {
-            line = trim(line);
-            if (line == "" || substr(line, 0, 1) == "#")
-                continue;
-            if (looks_like_prefix(line))
-                prefixes[line] = true;
-            else if (looks_like_domain(line))
-                domains[line] = true;
+    }
+
+    // Write zapret options if applicable.
+    // Use label_name (= label || .name) so the filename matches what generator.uc
+    // embeds in spec.json (generator also prefers label over .name).
+    // The file carries the full effective command line (lua runtime, blobs,
+    // filters, strategy) — steer-nfqws reads it fresh on every start.
+    if (is_zapret_section(section)) {
+        let lines = zapret_opts_lines(section);
+        if (length(lines) > 0) {
+            let zapret_dir = "/etc/steer/zapret";
+            common.ensure_dir(zapret_dir);
+            let opts_path = zapret_dir + "/" + label_name + ".opts";
+            common.write_file(opts_path, join("\n", lines) + "\n");
         }
+    }
+
+    // Inject the diagnostics FakeIP test domain into proxy-section channel lists
+    // so that steer dnsd returns a 198.18.x.x fake address during health checks.
+    // This only applies to proxy sections (connection/subscription/provider) —
+    // bypass/direct/zapret sections should not leak this domain into their lists.
+    let section_action = as_string(option(section, "action", ""));
+    if (section_action == "connection" || section_action == "subscription" || section_action == "provider") {
+        domains["fakeip.podkop.fyi"] = true;
     }
 
     let result = { domains: "", prefixes: "" };
@@ -422,7 +702,7 @@ function module_exports() {
         category_url,
         materialize_section_lists,
         write_subscription_file,
-        STEER_SUB_FILE,
+        STEER_SUBS_DIR,
         SECTION_LISTS_DIR,
         download_list,
         sync

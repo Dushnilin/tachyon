@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-22 22:19+0300\n"
-"PO-Revision-Date: 2026-09-22 22:19+0300\n"
+"POT-Creation-Date: 2026-09-23 19:44+0300\n"
+"PO-Revision-Date: 2026-09-23 19:44+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2171,6 +2171,12 @@ msgstr "FakeIP и контрольная проверка используют �
 msgid "FakeIP and control checks use the same public IP"
 msgstr "FakeIP и контрольная проверка используют один публичный IP"
 
+msgid "FakeIP DNS does not work"
+msgstr ""
+
+msgid "FakeIP DNS works"
+msgstr ""
+
 msgid "FakeIP works; public IP comparison is inconclusive"
 msgstr "FakeIP работает; сравнение публичных IP не дает однозначного результата"
 
@@ -3388,6 +3394,9 @@ msgstr "Стратегия NFQWS"
 
 msgid "NFQWS strategy cannot be empty"
 msgstr "Стратегия NFQWS не может быть пустой"
+
+msgid "NFQWS Tachyon not ready (managed by Steer)"
+msgstr ""
 
 msgid "NFQWS2 Strategy"
 msgstr "Стратегия NFQWS2"
@@ -4808,12 +4817,6 @@ msgstr "Автостарт sing-box отключен"
 msgid "sing-box endpoint (userspace, default)"
 msgstr "Endpoint в sing-box (userspace, по умолчанию)"
 
-msgid "Sing-box FakeIP DNS does not work"
-msgstr "FakeIP DNS sing-box не работает"
-
-msgid "Sing-box FakeIP DNS works"
-msgstr "FakeIP DNS sing-box работает"
-
 msgid "Sing-box installed"
 msgstr "Sing-box установлен"
 
@@ -5398,9 +5401,6 @@ msgstr "Думаю..."
 
 msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
 msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
-
-msgid "This engine is not installed yet. Choose a variant below to install it:"
-msgstr ""
 
 msgid "This field is required"
 msgstr "Это поле обязательно"
@@ -6104,6 +6104,12 @@ msgstr "Zapret2"
 msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
 msgstr "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."
 
+msgid "Zapret2 outbound is configured"
+msgstr ""
+
+msgid "Zapret2 outbound is not configured"
+msgstr ""
+
 msgid "Zapret2 package is installed"
 msgstr "Пакет Zapret2 установлен"
 
@@ -6116,6 +6122,24 @@ msgstr "Бинарник провайдера Zapret2 доступен"
 msgid "Zapret2 provider binary is not available"
 msgstr "Бинарник провайдера Zapret2 недоступен"
 
+msgid "Zapret2 routing rules are configured"
+msgstr ""
+
+msgid "Zapret2 routing rules are not configured"
+msgstr ""
+
+msgid "Zero config mesh VPN daemon"
+msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "Sing-box FakeIP DNS does not work"
+msgstr "FakeIP DNS sing-box не работает"
+
+msgid "Sing-box FakeIP DNS works"
+msgstr "FakeIP DNS sing-box работает"
+
+msgid "This engine is not installed yet. Choose a variant below to install it:"
+msgstr ""
+
 msgid "Zapret2 sing-box outbound is configured"
 msgstr "sing-box outbound для Zapret2 настроен"
 
@@ -6127,9 +6151,6 @@ msgstr "Правила маршрутизации sing-box для Zapret2 нас
 
 msgid "Zapret2 sing-box route rules are not configured"
 msgstr "Правила маршрутизации sing-box для Zapret2 не настроены"
-
-msgid "Zero config mesh VPN daemon"
-msgstr "Mesh VPN-демон с нулевой конфигурацией"
 
 msgid "idle"
 msgstr "простой"
