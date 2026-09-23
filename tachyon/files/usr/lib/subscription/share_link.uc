@@ -76,6 +76,17 @@ function add_query(params, key, value) {
         push(params, uri_encode(key) + "=" + uri_encode(value));
 }
 
+function add_cert_pin_query(params, tls) {
+    if (type(tls) != "object" || type(tls.certificate_sha256) != "array" || length(tls.certificate_sha256) == 0)
+        return;
+    let decoded = b64dec(as_string(tls.certificate_sha256[0] || ""));
+    if (decoded == null)
+        return;
+    let hex = common.bytes_to_hex(decoded);
+    if (hex != "")
+        add_query(params, "pcs", hex);
+}
+
 function add_xhttp_extra_query(params, transport) {
     let extra = {};
     for (let item in [
@@ -148,6 +159,7 @@ function add_tls_query(params, outbound, trojan_default_tls) {
         add_query(params, "fp", tls.utls.fingerprint);
     if (type(tls.alpn) == "array" && length(tls.alpn) > 0)
         add_query(params, "alpn", join(",", tls.alpn));
+    add_cert_pin_query(params, tls);
 }
 
 function add_transport_query(params, outbound) {
@@ -263,6 +275,7 @@ function serialize_http(outbound) {
             add_query(params, "sni", tls.server_name);
         if (tls.insecure === true)
             add_query(params, "insecure", "1");
+        add_cert_pin_query(params, tls);
     }
 
     return scheme + "://" + auth + host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
@@ -285,6 +298,7 @@ function serialize_hysteria2(outbound) {
             add_query(params, "insecure", "1");
         if (type(tls.alpn) == "array" && length(tls.alpn) > 0)
             add_query(params, "alpn", join(",", tls.alpn));
+        add_cert_pin_query(params, tls);
     }
     if (type(outbound.obfs) == "object") {
         add_query(params, "obfs", outbound.obfs.type);
@@ -312,6 +326,7 @@ function serialize_tuic(outbound) {
             add_query(params, "insecure", "1");
         if (type(tls.alpn) == "array" && length(tls.alpn) > 0)
             add_query(params, "alpn", join(",", tls.alpn));
+        add_cert_pin_query(params, tls);
     }
     let cc = as_string(outbound.congestion_control || "");
     if (cc != "" && cc != "bbr")

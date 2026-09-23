@@ -926,10 +926,33 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         // hot-reload fix, issue #15, prefer_ip, tolerate_time_skewness), strip it
         // from all inbounds and retry. Loops to handle multiple unknown fields
         // across retries (e.g. prefer_ip then tolerate_time_skewness).
+        let cert_pin_m = match(check_result.reason, /certificate_sha256/) != null;
         let user_field_m = match(check_result.reason, /inbounds\[\d+\]\.users\[\d+\]\.(\w+): json: unknown field/);
         let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
         let stripped = false;
-        if (user_field_m) {
+        if (cert_pin_m) {
+            log_message("Installed sing-box rejected tls.certificate_sha256 (requires sing-box 1.15.0+); stripping certificate pins and retrying", "warn");
+            let cfg_text = as_string(fs.readfile(temp_config) || "");
+            let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+            let found = false;
+            if (type(cfg) == "object") {
+                for (let list in [ cfg.outbounds, cfg.endpoints ]) {
+                    if (type(list) != "array")
+                        continue;
+                    for (let item in list) {
+                        if (type(item) == "object" && type(item.tls) == "object" && item.tls.certificate_sha256 != null) {
+                            delete item.tls.certificate_sha256;
+                            found = true;
+                        }
+                    }
+                }
+            }
+            if (found) {
+                write_file(temp_config, sprintf("%J", cfg));
+                stripped = true;
+            }
+        }
+        else if (user_field_m) {
             let unknown_field = user_field_m[1];
             log_message("Installed sing-box does not support inbound user field '" + unknown_field + "'; retrying without it", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");

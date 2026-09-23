@@ -268,6 +268,12 @@ function sing_box_supports_openvpn(version) {
     return minor >= 14;
 }
 
+function certificate_pin_base64(value) {
+    value = lc(trim(as_string(value)));
+    if (match(value, /^[0-9a-f]{64}$/) == null)
+        return "";
+    return b64enc(hexdec(value));
+}
 
 function bytes_to_hex(value) {
     value = as_string(value);
@@ -700,6 +706,7 @@ return {
     bytes_to_hex,
     extended_awg_schema_has_junk_signatures,
     sing_box_supports_openvpn,
+    certificate_pin_base64,
     awg_tag_chain,
     mtproto_secret_canonical,
     shell_quote,

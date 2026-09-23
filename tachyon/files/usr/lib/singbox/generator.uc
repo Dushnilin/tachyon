@@ -1383,6 +1383,24 @@ function add_excluded_clients_route_rule(config, settings) {
     });
 }
 
+function strip_certificate_pins_if_unsupported(config) {
+    if (is_sb_1_15_plus_detected())
+        return;
+    let stripped = false;
+    for (let list in [ config.outbounds, config.endpoints ]) {
+        if (type(list) != "array")
+            continue;
+        for (let item in list) {
+            if (type(item) == "object" && type(item.tls) == "object" && item.tls.certificate_sha256 != null) {
+                delete item.tls.certificate_sha256;
+                stripped = true;
+            }
+        }
+    }
+    if (stripped)
+        warn("tls.certificate_sha256 requires sing-box 1.15.0+ (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored\n");
+}
+
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     ctx.runtime_ruleset_folder = runtime_ruleset_folder;
@@ -1457,6 +1475,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     assert_unique_outbound_tags(config);
     strip_internal_fields(config);
+    strip_certificate_pins_if_unsupported(config);
     if (!atomic_write_json_file(output_path, config)) {
         warn("failed to write ", output_path, "\n");
         exit(1);

@@ -480,6 +480,9 @@ function apply_link_tls(outbound, scheme, query) {
         tls.server_name = as_string(query.sni);
     if (bool_query(query.allowInsecure || query.insecure || ""))
         tls.insecure = true;
+    let certificate_pin = common.certificate_pin_base64(as_string(query.pcs || ""));
+    if (certificate_pin != "")
+        tls.certificate_sha256 = [ certificate_pin ];
 
     let alpn = tls_alpn_array(query.alpn, query.type);
     if (length(alpn) > 0)

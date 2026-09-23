@@ -676,6 +676,7 @@ function add_tls(url, security, default_tls) {
     let fingerprint = normalize_utls_fingerprint(query.fp || "");
     let public_key = query.pbk || "";
     let short_id = query.sid || "";
+    let certificate_pin = common.certificate_pin_base64(query.pcs || "");
 
     if (security == "reality" && public_key == "")
         return [null, false];
@@ -686,7 +687,7 @@ function add_tls(url, security, default_tls) {
     if (security == "tls" || security == "xtls" || security == "reality")
         tls_enabled = true;
     else if (security == null || security == "")
-        tls_enabled = default_tls || sni != "" || length(alpn) > 0 || fingerprint != "" || public_key != "";
+        tls_enabled = default_tls || sni != "" || length(alpn) > 0 || fingerprint != "" || public_key != "" || certificate_pin != "";
 
     if (!tls_enabled)
         return [null, true];
@@ -707,6 +708,8 @@ function add_tls(url, security, default_tls) {
         if (short_id != "")
             tls.reality.short_id = short_id;
     }
+    if (certificate_pin != "")
+        tls.certificate_sha256 = [ certificate_pin ];
 
     return [tls, true];
 }
@@ -989,6 +992,9 @@ function process_http(raw, url) {
             tls.server_name = url.query.sni;
         if (is_true(url.query.allowInsecure || url.query.insecure))
             tls.insecure = true;
+        let certificate_pin = common.certificate_pin_base64(url.query.pcs || "");
+        if (certificate_pin != "")
+            tls.certificate_sha256 = [ certificate_pin ];
         outbound.tls = tls;
     }
     return outbound;
@@ -1104,6 +1110,9 @@ function process_hysteria2(raw, url) {
         tls.insecure = true;
     if ((url.query.alpn || "") != "")
         tls.alpn = split_csv(url.query.alpn);
+    let certificate_pin = common.certificate_pin_base64(url.query.pcs || "");
+    if (certificate_pin != "")
+        tls.certificate_sha256 = [ certificate_pin ];
 
     let outbound = {
         type: "hysteria2",
@@ -1157,6 +1166,9 @@ function process_tuic(raw, url) {
         tls.insecure = true;
     if ((url.query.alpn || "") != "")
         tls.alpn = split_csv(url.query.alpn);
+    let certificate_pin = common.certificate_pin_base64(url.query.pcs || "");
+    if (certificate_pin != "")
+        tls.certificate_sha256 = [ certificate_pin ];
 
     let outbound = {
         type: "tuic",
