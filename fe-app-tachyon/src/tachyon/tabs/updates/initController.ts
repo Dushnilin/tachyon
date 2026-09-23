@@ -83,6 +83,8 @@ function getComponentCardTitle(component: Tachyon.ComponentName): string {
       return 'Steer';
     case 'steer-extended':
       return 'Steer extended';
+    case 'engine':
+      return _('Routing Engine');
     default:
       return String(component);
   }
@@ -266,6 +268,7 @@ function setActionLoading(
 
 function beginComponentAction(button: ComponentActionButton) {
   if (isAnyActionLoading()) {
+    showToast(_('Another component action is already running'), 'error');
     return false;
   }
 
@@ -1136,6 +1139,8 @@ function getComponentInstallKey(
     case 'steer':
     case 'steer-extended':
       return 'steerInstall';
+    case 'engine':
+      return 'engineSwitch';
     default:
       return 'tachyonInstall';
   }
@@ -1266,6 +1271,7 @@ const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   'steer-extended': 'https://github.com/xyzmean/steer',
   direct_bypass: '',
   torrserver_direct: '',
+  engine: '',
 };
 
 function getComponentCards(): ComponentCard[] {
@@ -2629,58 +2635,233 @@ function renderEngineCard(): Node {
 
 let steerBusy = false;
 
-// Run a sing-box variant action from the engine card. Mirrors the component
-// action handling used by the component cards (async job + state refresh).
+interface EngineFlowJob {
+  component: Tachyon.ComponentName;
+  action: Tachyon.ComponentAction;
+  key: UpdatesActionKey;
+  /** Extra arg for componentActionStart (target version or engine name). */
+  extra?: string;
+}
+
+/**
+ * Run one or more component-action jobs under a single progress modal with log
+ * polling. Used by the engine card: Install & Switch chains install + engine
+ * switch, Apply runs only the switch. The modal stays open across jobs and is
+ * completed once at the end (or on the first failure).
+ */
+async function runEngineFlow(
+  jobs: EngineFlowJob[],
+  modalOptions: Parameters<typeof showUpdateProgressModal>[0],
+  successMessage: string,
+): Promise<void> {
+  if (isAnyActionLoading()) {
+    showToast(_('Another component action is already running'), 'error');
+    return;
+  }
+
+  steerBusy = true;
+  for (const job of jobs) {
+    setActionLoading(job.key, true, true);
+  }
+  renderUpdatesComponents();
+
+  let modalController = getActiveProgressModalController();
+  if (!modalController) {
+    modalController = showUpdateProgressModal(modalOptions);
+  }
+
+  const ownedJobIds: string[] = [];
+  let delegated = false;
+
+  try {
+    for (const job of jobs) {
+      const startResponse = await TachyonShellMethods.componentActionStart(
+        job.component,
+        job.action,
+        job.extra,
+      );
+
+      if (!startResponse.success) {
+        if (
+          isComponentActionAlreadyRunningError(startResponse.error) ||
+          isTransientRpcError(startResponse.error)
+        ) {
+          const button: ComponentActionButton = {
+            key: job.key,
+            text: job.action,
+            icon: renderRotateCcwIcon24,
+            component: job.component,
+            action: job.action,
+            targetVersion: job.extra,
+          };
+          if (await followAlreadyRunningComponentAction(button)) {
+            delegated = true;
+            return;
+          }
+        }
+        throw new Error(startResponse.error);
+      }
+
+      const jobId = startResponse.data.job_id;
+      if (followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
+        delegated = true;
+        return;
+      }
+
+      followedComponentJobs.add(jobId);
+      ownedJobIds.push(jobId);
+      setActiveProgressModalJobId(jobId);
+      markUiActionOwned('component', jobId);
+      modalController.startLogTracking(jobId);
+
+      const response = await TachyonShellMethods.waitComponentActionJob(
+        jobId,
+        job.component,
+        job.action,
+        job.extra,
+        (phase: string, message?: string) => {
+          modalController.updatePhase(phase, message);
+        },
+      );
+
+      const succeeded = response.success && response.data.success;
+      if (!succeeded) {
+        const message = response.success
+          ? response.data.message || _('Failed to execute')
+          : response.error || _('Failed to execute');
+
+        if (isTransientRpcError(message)) {
+          void refreshComponentActionState();
+          return;
+        }
+
+        handledComponentJobs.add(jobId);
+        capSetSize(handledComponentJobs);
+        saveHandledJobToSession(jobId);
+        await ackComponentActionJob(jobId);
+        showToast(message, 'error');
+        modalController.completeError(message);
+        return;
+      }
+
+      handledComponentJobs.add(jobId);
+      capSetSize(handledComponentJobs);
+      saveHandledJobToSession(jobId);
+      await ackComponentActionJob(jobId);
+
+      if (job.component !== 'engine') {
+        patchSystemInfoAfterMutation(response.data);
+        if (
+          job.action === 'install' ||
+          job.action === 'reinstall' ||
+          job.action.startsWith('install_')
+        ) {
+          setCheckResult(
+            job.component,
+            'latest',
+            response.data.latest_version || '',
+          );
+        } else {
+          resetCheckResult(job.component);
+        }
+      }
+    }
+
+    await refreshEngineInfo();
+    await refreshSystemInfoAfterMutation();
+    showToast(successMessage, 'success');
+    modalController.completeSuccess(successMessage);
+  } catch (error) {
+    logger.error('[UPDATES]', 'runEngineFlow failed', error);
+    if (!pageUnloading) {
+      const message = getErrorMessage(error, _('Failed to execute'));
+      if (!isTransientRpcError(message)) {
+        showToast(message, 'error');
+      }
+      getActiveProgressModalController()?.completeError(message);
+      await refreshComponentActionState();
+    }
+  } finally {
+    for (const jobId of ownedJobIds) {
+      followedComponentJobs.delete(jobId);
+    }
+    if (!delegated) {
+      for (const job of jobs) {
+        setActionLoading(job.key, false);
+      }
+      steerBusy = false;
+      renderUpdatesComponents();
+    }
+  }
+}
+
+// Run a sing-box variant action from the engine card: install the selected
+// variant, then make sing-box the active engine so Install & Switch is one click.
 async function runComponentAction(
   component: Tachyon.ComponentName,
   action: Tachyon.ComponentAction,
   _key: string,
 ): Promise<void> {
-  steerBusy = true;
-  renderUpdatesComponents();
-  try {
-    await TachyonShellMethods.componentActionStart(component, action);
-    showToast(`${component}: ${action}`, 'success');
-  } catch (error) {
-    showToast(
-      `${component}: ${error instanceof Error ? error.message : String(error)}`,
-      'error',
-    );
-  } finally {
-    steerBusy = false;
-    renderUpdatesComponents();
-  }
+  const engineTarget = 'sing-box';
+  const installKey =
+    getComponentActionKey(component, action) ??
+    getComponentInstallKey(component);
+  await runEngineFlow(
+    [
+      { component, action, key: installKey },
+      {
+        component: 'engine',
+        action: 'switch',
+        key: 'engineSwitch',
+        extra: engineTarget,
+      },
+    ],
+    {
+      component,
+      action,
+      componentTitle: getComponentCardTitle(component),
+      currentVersion: getComponentCurrentVersion(component),
+    },
+    `${_('Active engine')}: ${engineLabel(engineTarget)}`,
+  );
 }
 
-// Install/update/remove a steer variant, then make it the active engine so the
+// Install/update a steer variant, then make it the active engine so the
 // user's choice takes effect without a second step.
 async function runSteerAction(
   component: string,
   action: string,
 ): Promise<void> {
-  steerBusy = true;
-  renderUpdatesComponents();
-  try {
-    await TachyonShellMethods.componentActionStart(
-      component as Tachyon.ComponentName,
-      action as Tachyon.ComponentAction,
-    );
-    // After installing a variant, make it the active engine so the user's
-    // choice takes effect without a second step.
-    if (action === 'install') {
-      await TachyonShellMethods.switchEngine(component, true);
-    }
-    await refreshEngineInfo();
-    showToast(`${_('Steer')}: ${action}`, 'success');
-  } catch (error) {
-    showToast(
-      `${_('Steer')}: ${error instanceof Error ? error.message : String(error)}`,
-      'error',
-    );
-  } finally {
-    steerBusy = false;
-    renderUpdatesComponents();
+  const jobs: EngineFlowJob[] = [
+    {
+      component: component as Tachyon.ComponentName,
+      action: action as Tachyon.ComponentAction,
+      key: action === 'remove' ? 'steerRemove' : 'steerInstall',
+    },
+  ];
+  if (action === 'install') {
+    jobs.push({
+      component: 'engine',
+      action: 'switch',
+      key: 'engineSwitch',
+      extra: component,
+    });
   }
+
+  await runEngineFlow(
+    jobs,
+    {
+      component: component as Tachyon.ComponentName,
+      action: action as Tachyon.ComponentAction,
+      componentTitle: getComponentCardTitle(component as Tachyon.ComponentName),
+      currentVersion: getComponentCurrentVersion(
+        component as Tachyon.ComponentName,
+      ),
+    },
+    action === 'install'
+      ? `${_('Active engine')}: ${engineLabel(component)}`
+      : `${_('Steer')}: ${action}`,
+  );
 }
 
 async function applyEngineSelection(
@@ -2701,15 +2882,24 @@ async function applyEngineSelection(
     warning.style.display = 'none';
   }
 
-  const result = await TachyonShellMethods.switchEngine(engine, true);
-  if (!result.success || !result.data.ok) {
-    warning.style.display = 'block';
-    warning.textContent = `${_('Switch failed')}: ${result.success ? result.data.reason : result.error}`;
-    return;
-  }
-  await refreshEngineInfo();
-  renderUpdatesComponents();
-  showToast(`${_('Active engine')}: ${engineLabel(engine)}`, 'success');
+  await runEngineFlow(
+    [
+      {
+        component: 'engine',
+        action: 'switch',
+        key: 'engineSwitch',
+        extra: engine,
+      },
+    ],
+    {
+      component: 'engine',
+      action: 'switch',
+      componentTitle: _('Routing Engine'),
+      currentVersion: engineLabel(current),
+      targetVersion: engineLabel(engine),
+    },
+    `${_('Active engine')}: ${engineLabel(engine)}`,
+  );
 }
 
 function renderUpdatesComponents() {

@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck shell=dash
 
-INSTALLER_VERSION="3.0.0"
+INSTALLER_VERSION="3.1.0"
 REPO_OWNER="Dushnilin"
 REPO_NAME="tachyon"
 
@@ -468,6 +468,15 @@ else if (mode == "size") {
     for (let a in (r.assets || [])) if (a.name == wanted) { print("" + int(a.size || 0), "\n"); exit(0); }
     exit(4);
 }
+else if (mode == "tags") {
+    if (type(v) != "array") exit(1);
+    for (let rel in v) {
+        if (type(rel) != "object" || rel.draft) continue;
+        if (channel != "beta" && rel.prerelease) continue;
+        let t = "" + (rel.tag_name || "");
+        if (valid(t)) print(t, "\n");
+    }
+}
 else exit(1);
 EOF_UCODE
     printf '%s\n' "$_helper"
@@ -492,6 +501,59 @@ fetch_release_json() {
     fi
     [ -n "$_json" ] || return 1
     printf '%s' "$_json"
+}
+
+fetch_release_tag_list() {
+    _url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=15"
+    _json="$(http_get "$_url" 2>/dev/null || true)"
+    if [ -z "$_json" ]; then
+        _json="$(http_get "https://gh-proxy.com/$_url" 2>/dev/null || true)"
+    fi
+    [ -n "$_json" ] || return 1
+    printf '%s' "$_json" | release_helper tags "$RELEASE_CHANNEL" 2>/dev/null
+}
+
+installer_is_interactive() {
+    [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]
+}
+
+select_release_version() {
+    [ -n "$RELEASE_TAG_REQUESTED" ] && return 0
+    installer_is_interactive || return 0
+    _tags="$(fetch_release_tag_list || true)"
+    [ -n "$_tags" ] || return 0
+    _count=0
+    for _t in $_tags; do _count=$((_count + 1)); done
+    [ "$_count" -gt 1 ] || return 0
+    printf '\nSelect Tachyon release:\n'
+    _i=1
+    for _t in $_tags; do
+        if [ "$_i" -eq 1 ]; then
+            printf '  %s) %s (recommended)\n' "$_i" "$_t"
+        else
+            printf '  %s) %s\n' "$_i" "$_t"
+        fi
+        _i=$((_i + 1))
+    done
+    printf 'Choice [1]: '
+    read -r _answer || _answer=""
+    case "$_answer" in
+        "") _answer=1 ;;
+        *[!0-9]*) warn "Unknown choice; using latest"; return 0 ;;
+    esac
+    if [ "$_answer" -ge 1 ] && [ "$_answer" -le "$_count" ]; then
+        _i=1
+        for _t in $_tags; do
+            if [ "$_i" -eq "$_answer" ]; then
+                RELEASE_TAG_REQUESTED="$_t"
+                msg "Selected release: $RELEASE_TAG_REQUESTED"
+                return 0
+            fi
+            _i=$((_i + 1))
+        done
+    fi
+    warn "Choice out of range; using latest"
+    return 0
 }
 
 resolve_release() {
@@ -569,10 +631,18 @@ select_sing_box_installation() {
     SING_BOX_INSTALL_VARIANT=""
     sing_box_is_present && return 0
     [ "$SKIP_SING_BOX" -eq 1 ] && return 0
-    if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then SING_BOX_INSTALL_VARIANT="stable"; return 0; fi
-    printf '\nSelect sing-box build:\n  1) stable (recommended)\n  2) extended (xHTTP)\n  3) skip\nChoice [1]: '
-    read -r _answer || _answer=1
-    case "${_answer:-1}" in 1) SING_BOX_INSTALL_VARIANT="stable" ;; 2) SING_BOX_INSTALL_VARIANT="extended" ;; 3) SING_BOX_INSTALL_VARIANT="" ;; *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable" ;; esac
+    if ! installer_is_interactive; then SING_BOX_INSTALL_VARIANT="stable"; return 0; fi
+    printf '\nSelect sing-box build:\n  1) stable (recommended)\n  2) tiny (low memory)\n  3) extended (xHTTP)\n  4) extended-compressed (xHTTP, smaller)\n  5) lx\n  6) skip\nChoice [1]: '
+    read -r _answer || _answer=""
+    case "${_answer:-1}" in
+        1) SING_BOX_INSTALL_VARIANT="stable" ;;
+        2) SING_BOX_INSTALL_VARIANT="tiny" ;;
+        3) SING_BOX_INSTALL_VARIANT="extended" ;;
+        4) SING_BOX_INSTALL_VARIANT="extended-compressed" ;;
+        5) SING_BOX_INSTALL_VARIANT="lx" ;;
+        6) SING_BOX_INSTALL_VARIANT="" ;;
+        *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable" ;;
+    esac
 }
 
 decide_zram() {
@@ -757,7 +827,10 @@ install_selected_sing_box() {
     [ -x /usr/bin/tachyon ] || return 1
     case "$SING_BOX_INSTALL_VARIANT" in
         stable) _action="install_stable" ;;
+        tiny) _action="install_tiny" ;;
         extended) _action="install_extended" ;;
+        extended-compressed) _action="install_extended_compressed" ;;
+        lx) _action="install_lx" ;;
         *) return 1 ;;
     esac
     msg "Installing sing-box ($SING_BOX_INSTALL_VARIANT)"
@@ -864,6 +937,7 @@ main() {
     select_sing_box_installation
     decide_zram
     record_service_state
+    select_release_version
 
     resolve_release || fail "Could not resolve Tachyon release"
     check_tmp_for_downloads || fail "Temporary storage preflight failed"

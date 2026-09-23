@@ -240,6 +240,7 @@ export const initialDiagnosticStore: Pick<
     directBypassDisable: { loading: false },
     torrserverDirectEnable: { loading: false },
     torrserverDirectDisable: { loading: false },
+    engineSwitch: { loading: false },
   },
   updatesChecks: {
     tachyon: { status: null, latest_version: '', release_url: '' },
@@ -255,5 +256,6 @@ export const initialDiagnosticStore: Pick<
     'steer-extended': { status: null, latest_version: '', release_url: '' },
     direct_bypass: { status: null, latest_version: '', release_url: '' },
     torrserver_direct: { status: null, latest_version: '', release_url: '' },
+    engine: { status: null, latest_version: '', release_url: '' },
   },
 };

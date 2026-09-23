@@ -61,6 +61,7 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     directBypassDisable: { loading: false },
     torrserverDirectEnable: { loading: false },
     torrserverDirectDisable: { loading: false },
+    engineSwitch: { loading: false },
   };
 }
 

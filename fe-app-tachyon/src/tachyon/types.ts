@@ -850,7 +850,8 @@ export namespace Tachyon {
     | 'fptn'
     | 'tailscale'
     | 'direct_bypass'
-    | 'torrserver_direct';
+    | 'torrserver_direct'
+    | 'engine';
 
   export type ComponentAction =
     | 'check_update'
@@ -865,7 +866,8 @@ export namespace Tachyon {
     | 'install_tiny'
     | 'install_stable'
     | 'enable'
-    | 'disable';
+    | 'disable'
+    | 'switch';
 
   export interface ComponentActionResult {
     success: boolean;

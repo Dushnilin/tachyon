@@ -67,6 +67,7 @@ const componentActionKeyMap: Record<string, UpdatesActionKey> = {
   'direct_bypass:disable': 'directBypassDisable',
   'torrserver_direct:enable': 'torrserverDirectEnable',
   'torrserver_direct:disable': 'torrserverDirectDisable',
+  'engine:switch': 'engineSwitch',
 };
 
 export function getComponentActionKey(

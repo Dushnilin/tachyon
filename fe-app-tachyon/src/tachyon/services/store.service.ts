@@ -322,6 +322,7 @@ export interface StoreType {
     directBypassDisable: { loading: boolean };
     torrserverDirectEnable: { loading: boolean };
     torrserverDirectDisable: { loading: boolean };
+    engineSwitch: { loading: boolean };
   };
   updatesChecks: Record<
     Tachyon.ComponentName,

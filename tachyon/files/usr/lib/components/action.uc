@@ -2748,6 +2748,17 @@ function set_torrserver_direct(action) {
     );
 }
 
+function switch_engine_component(target) {
+    target = engine.normalize_engine(target);
+    updates_log("Switching routing engine to " + target);
+    let engine_rt = require("service.engine_runtime");
+    let result = engine_rt.switch_engine(target, { allow_install: true });
+    if (!result.ok)
+        action_fail("engine", "switch", "Engine switch failed: " + as_string(result.reason || "unknown"), "", "", as_string(result.reason || ""));
+    updates_log("Routing engine is now " + as_string(result.to_engine));
+    action_success("engine", "switch", "Switched to " + result.to_engine, result.from_engine, result.to_engine, 1, "latest", "");
+}
+
 function component_action(component, action, extra) {
     component = normalize_component_name(component);
     action = as_string(action);
@@ -2774,7 +2785,12 @@ function component_action(component, action, extra) {
         return;
     }
 
-    if (action != "check_update" && action != "remove" && component != "direct_bypass" && component != "torrserver_direct") {
+    if (component == "engine" && action == "switch") {
+        switch_engine_component(extra);
+        return;
+    }
+
+    if (action != "check_update" && action != "remove" && component != "direct_bypass" && component != "torrserver_direct" && component != "engine") {
         create_component_backup(component);
     }
 
