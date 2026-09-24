@@ -332,6 +332,15 @@ function dnsmasq_restore_default_instance() {
     restore_dnsmasq_config_option("addn_hosts", "tachyon_addn_hosts", "");
 }
 
+function restore_resolv_conf_symlink() {
+    let resolv_link = "";
+    try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
+    if (resolv_link != "/tmp/resolv.conf" && resolv_link != "../tmp/resolv.conf") {
+        fs.unlink("/etc/resolv.conf");
+        try { fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf"); } catch(e) {}
+    }
+}
+
 // Resolves sing-box multi-fallback PID detection across pidfiles, ubus procd, and pidof
 function sing_box_running_pid() {
     for (let path in [ "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
@@ -407,6 +416,7 @@ function dnsmasq_configure(force) {
     uci_commit("dhcp");
 
     save_dnsmasq_snapshot();
+    restore_resolv_conf_symlink();
 
     return reload_dnsmasq();
 }
@@ -440,6 +450,63 @@ function dnsmasq_restore(force, quiet) {
     dnsmasq_restore_default_instance();
     uci_commit("dhcp");
     cleanup_dnsmasq_snapshot();
+    restore_resolv_conf_symlink();
+
+    return reload_dnsmasq();
+}
+
+function dnsmasq_configure_steer() {
+    if (!uci_available())
+        return true;
+
+    if (dnsmasq_management_disabled()) {
+        log("dnsmasq steer configuration skipped: dont_touch_dhcp is enabled", "info");
+        return true;
+    }
+
+    log("Configuring dnsmasq for steer routing engine", "info");
+    dnsmasq_cleanup_legacy_instance();
+    dnsmasq_restore_default_instance();
+
+    let server_list = dnsmasq_default_servers();
+    let clean_servers = [];
+    for (let s in words(server_list)) {
+        if (s != SB_DNS_INBOUND_ADDRESS && !starts_with(s, SB_DNS_INBOUND_ADDRESS + "#"))
+            push(clean_servers, s);
+    }
+
+    uci_set("dhcp.@dnsmasq[0].noresolv", "0");
+
+    let cachesize = uci_get("dhcp.@dnsmasq[0].cachesize");
+    if (cachesize == "0" || cachesize == "")
+        uci_set("dhcp.@dnsmasq[0].cachesize", "1000");
+
+    uci_delete("dhcp.@dnsmasq[0].server");
+
+    let smartdns_port = trim(as_string(fs.readfile("/var/run/tachyon/steer-dns-upstream-port") || ""));
+    if (smartdns_port == "" && run("test -x /usr/sbin/smartdns"))
+        smartdns_port = "5354";
+
+    if (smartdns_port != "")
+        uci_add_list("dhcp.@dnsmasq[0].server", "127.0.0.1#" + smartdns_port);
+
+    let has_other_upstream = false;
+    for (let s in clean_servers) {
+        if (s != ("127.0.0.1#" + smartdns_port)) {
+            uci_add_list("dhcp.@dnsmasq[0].server", s);
+            has_other_upstream = true;
+        }
+    }
+
+    if (!has_other_upstream) {
+        let b_srv = trim(as_string(uci_get(CONFIG_NAME + ".settings.bootstrap_dns_server") || ""));
+        if (b_srv == "") b_srv = "77.88.8.8";
+        uci_add_list("dhcp.@dnsmasq[0].server", b_srv);
+    }
+
+    uci_commit("dhcp");
+    cleanup_dnsmasq_snapshot();
+    restore_resolv_conf_symlink();
 
     return reload_dnsmasq();
 }
@@ -471,6 +538,8 @@ let mode = ARGV[0] || "";
 
 if (mode == "configure")
     exit(dnsmasq_configure(ARGV[1]) ? 0 : 1);
+else if (mode == "configure-steer")
+    exit(dnsmasq_configure_steer() ? 0 : 1);
 else if (mode == "restore")
     exit(dnsmasq_restore(ARGV[1]) ? 0 : 1);
 else if (mode == "failsafe-restore")
@@ -488,5 +557,5 @@ else if (mode == "cleanup-snapshot") {
     exit(0);
 }
 
-warn("Usage: dns/apply.uc <configure|restore|failsafe-restore|has-tachyon-dns|has-managed-state|default-config-complete|save-snapshot|cleanup-snapshot>\n");
+warn("Usage: dns/apply.uc <configure|configure-steer|restore|failsafe-restore|has-tachyon-dns|has-managed-state|default-config-complete|save-snapshot|cleanup-snapshot>\n");
 exit(1);

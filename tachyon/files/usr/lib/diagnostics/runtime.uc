@@ -4018,8 +4018,39 @@ function run_doctor_checks_impl(repair) {
     // 4e. Dnsmasq Redirection Check
     let agh_primary = is_adguardhome_primary_dns(cfg);
     if (is_steer) {
-        doc_check("✅", "dnsmasq server", "direct (steer handles DNS interception via inet steer)", "");
-        doc_check("✅", "dnsmasq params", "OK (managed by steer)", "");
+        let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+        let server_list = uci_core.get("dhcp.@dnsmasq[0].server");
+        let has_bad_server = false;
+        let servers = [];
+        if (type(server_list) == "array") servers = server_list;
+        else if (type(server_list) == "string" && server_list != "") servers = [ server_list ];
+        for (let s in servers) {
+            if (index(s, "127.0.0.42") >= 0) has_bad_server = true;
+        }
+
+        let resolver_ok = dns_check_router_resolver_available("example.com");
+
+        if (noresolv != "1" && !has_bad_server && resolver_ok) {
+            doc_check("✅", "dnsmasq server", "direct (steer handles DNS interception via inet steer)", "");
+            doc_check("✅", "dnsmasq params", "OK (noresolv=" + (noresolv || "0") + ", steer active)", "");
+        } else {
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("dns/apply.uc configure-steer");
+                doc_check("⚠️", "dnsmasq params", "incorrect for steer", "→ WILL FIX (doctor --fix): configure dnsmasq for steer");
+            } else {
+                module_status(DNS_APPLY_UC, [ "configure-steer" ]);
+                command_status("sleep 1");
+                let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+                let resolver_ok2 = dns_check_router_resolver_available("example.com");
+                if (noresolv2 != "1" && resolver_ok2) {
+                    doc_check("❌", "dnsmasq params", "incorrect for steer", "→ FIXED: dnsmasq настроен для steer (noresolv=0, апстримы восстановлены)");
+                    fixed++;
+                } else {
+                    doc_check("❌", "dnsmasq params", "incorrect for steer", "→ не удалось настроить dnsmasq для steer");
+                }
+            }
+        }
     } else if (agh_primary) {
         doc_check("✅", "dnsmasq server (Direct)", "bypassed (AdGuardHome on :53, dnsmasq DHCP-only)", "");
     } else if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
@@ -5447,9 +5478,16 @@ function verify_system() {
     }
 
     // Live checks — what a client on the LAN experiences right now.
-    let sb_pid = find_process_pid("sing-box");
-    add("sing-box process", sb_pid != "" ? "pass" : "fail",
-        sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
+    let is_steer_active = active_engine_is_steer();
+    if (is_steer_active) {
+        let steer_pid = find_process_pid("steer");
+        add("steer process", steer_pid != "" ? "pass" : "fail",
+            steer_pid != "" ? "running (pid " + steer_pid + ")" : "not running");
+    } else {
+        let sb_pid = find_process_pid("sing-box");
+        add("sing-box process", sb_pid != "" ? "pass" : "fail",
+            sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
+    }
 
     let lan_dns = dns_check_resolve_host("google.com", "127.0.0.1", 3);
     if (lan_dns == "") lan_dns = dns_check_resolve_host("cloudflare.com", "127.0.0.1", 3);
@@ -5463,10 +5501,17 @@ function verify_system() {
     add("Upstream DNS", up_dns != "" ? "pass" : "fail",
         up_dns != "" ? "resolved successfully" : "no answer from upstream resolvers");
 
-    let sb_dns = dns_check_through_singbox("google.com");
-    if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
-    add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
-        sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
+    if (is_steer_active) {
+        let steer_dns_ok = command_success_from_args([ "dig", "-p", STEER_DNS_PORT, "@" + STEER_DNS_ADDRESS, "example.com", "A", "+short", "+timeout=2", "+tries=1" ]);
+        add("Proxy DNS via steer", steer_dns_ok ? "pass" : "fail",
+            steer_dns_ok ? "resolved via " + STEER_DNS_ADDRESS + ":" + STEER_DNS_PORT : "steer dnsd not answering");
+    } else {
+        let sb_dns = dns_check_through_singbox("google.com");
+        if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
+        let sb_pid = find_process_pid("sing-box");
+        add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
+            sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
+    }
 
     // HTTP through the service mixed proxy — only present when download_via_proxy
     // is enabled; otherwise the tproxy/tun path is covered by the checks above.
@@ -5535,10 +5580,16 @@ function apply_quick_fix(codes_str) {
         let status = false;
         let msg = "";
 
-        if (c == "start_singbox") {
-            let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
-            status = (rc == 0);
-            msg = status ? "sing-box restarted" : "sing-box restart failed (exit " + rc + ")";
+        if (c == "start_singbox" || c == "start_steer") {
+            if (active_engine_is_steer()) {
+                let rc = command_status("/etc/init.d/steer restart >/dev/null 2>&1");
+                status = (rc == 0);
+                msg = status ? "steer restarted" : "steer restart failed (exit " + rc + ")";
+            } else {
+                let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+                status = (rc == 0);
+                msg = status ? "sing-box restarted" : "sing-box restart failed (exit " + rc + ")";
+            }
         } else if (c == "rebuild_rules") {
             let rc = command_status("/etc/init.d/tachyon reload >/dev/null 2>&1");
             status = (rc == 0);
@@ -5555,10 +5606,17 @@ function apply_quick_fix(codes_str) {
             let rc = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "Watchdog started" : "Watchdog start failed (exit " + rc + ")";
-        } else if (c == "restart_singbox_dns") {
-            let rc = command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
-            status = (rc == 0);
-            msg = status ? "sing-box DNS restarted" : "sing-box DNS restart failed (exit " + rc + ")";
+        } else if (c == "restart_singbox_dns" || c == "restart_steer_dns") {
+            if (active_engine_is_steer()) {
+                command_status("/etc/init.d/steer reload_dnsd >/dev/null 2>&1");
+                let rc = command_status("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
+                status = (rc == 0);
+                msg = status ? "steer dnsd and dnsmasq reloaded" : "reload failed";
+            } else {
+                let rc = command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+                status = (rc == 0);
+                msg = status ? "sing-box DNS restarted" : "sing-box DNS restart failed (exit " + rc + ")";
+            }
         } else if (c == "fix_uci_config") {
             status = uci_backup_restore();
             if (!status) {
@@ -5947,19 +6005,21 @@ function local_rule_doctor(pre_res, pre_verify) {
     }
 
     // ── 1. End-to-end live verification & root-cause correlation ──
+    let is_steer_active = active_engine_is_steer();
+    let engine_proc_name = is_steer_active ? "steer process" : "sing-box process";
     let wan_failed = false;
-    let singbox_failed = false;
+    let engine_failed = false;
     for (let c in verify.checks) {
         if (c.status == "fail") {
             if (c.name == "WAN interface" || c.name == "Default gateway")
                 wan_failed = true;
-            if (c.name == "sing-box process")
-                singbox_failed = true;
+            if (c.name == engine_proc_name)
+                engine_failed = true;
         }
     }
 
     let wan_cause = null;
-    let singbox_cause = null;
+    let engine_cause = null;
 
     if (wan_failed) {
         wan_cause = {
@@ -5970,27 +6030,31 @@ function local_rule_doctor(pre_res, pre_verify) {
         };
         push(causes, wan_cause);
         add_fix("fix_wan_interface");
-    } else if (singbox_failed) {
-        singbox_cause = {
+    } else if (engine_failed) {
+        let engine_label = is_steer_active ? "steer" : "sing-box";
+        let engine_fix = is_steer_active ? "start_steer" : "start_singbox";
+        engine_cause = {
             probability: 95,
-            cause: lang == "en" ? "sing-box process is stopped or non-functional" : "Процесс sing-box остановлен или не функционирует",
-            fix: "start_singbox",
+            cause: lang == "en" ? (engine_label + " process is stopped or non-functional") : ("Процесс " + engine_label + " остановлен или не функционирует"),
+            fix: engine_fix,
             symptoms: []
         };
-        push(causes, singbox_cause);
-        add_fix("start_singbox");
+        push(causes, engine_cause);
+        add_fix(engine_fix);
     }
 
     for (let c in verify.checks) {
         if (c.status != "fail") continue;
-        if (c.name == "sing-box process") {
-            if (!singbox_cause && !wan_cause) {
+        if (c.name == engine_proc_name) {
+            if (!engine_cause && !wan_cause) {
+                let engine_label = is_steer_active ? "steer" : "sing-box";
+                let engine_fix = is_steer_active ? "start_steer" : "start_singbox";
                 push(causes, {
                     probability: 95,
-                    cause: lang == "en" ? "sing-box process is stopped or non-functional" : "Процесс sing-box остановлен или не функционирует",
-                    fix: "start_singbox"
+                    cause: lang == "en" ? (engine_label + " process is stopped or non-functional") : ("Процесс " + engine_label + " остановлен или не функционирует"),
+                    fix: engine_fix
                 });
-                add_fix("start_singbox");
+                add_fix(engine_fix);
             }
         } else if (c.name == "LAN DNS via dnsmasq") {
             push(causes, {
@@ -5999,19 +6063,23 @@ function local_rule_doctor(pre_res, pre_verify) {
                 fix: "fix_dnsmasq"
             });
             add_fix("fix_dnsmasq");
-        } else if (c.name == "Proxy DNS via sing-box") {
+        } else if (c.name == "Proxy DNS via steer" || c.name == "Proxy DNS via sing-box") {
             if (wan_cause) {
                 push(wan_cause.symptoms, lang == "en" ? "Proxy DNS unavailable (WAN down)" : "Прокси-DNS недоступен (нет связи с WAN)");
-            } else if (singbox_cause) {
-                push(singbox_cause.symptoms, lang == "en" ? "Proxy DNS not answering (sing-box stopped)" : "Прокси-DNS не отвечает (sing-box остановлен)");
+            } else if (engine_cause) {
+                let engine_label = is_steer_active ? "steer" : "sing-box";
+                push(engine_cause.symptoms, lang == "en" ? ("Proxy DNS not answering (" + engine_label + " stopped)") : ("Прокси-DNS не отвечает (" + engine_label + " остановлен)"));
             } else {
+                let fix_action = is_steer_active ? "restart_steer_dns" : "clear_dns_cache";
                 push(causes, {
                     probability: 85,
-                    cause: lang == "en" ? "Proxy DNS via sing-box failed to respond" : "Прокси-DNS через sing-box (127.0.0.42) не отвечает",
-                    fix: "clear_dns_cache"
+                    cause: is_steer_active ?
+                        (lang == "en" ? "Proxy DNS via steer failed to respond" : "Прокси-DNS через steer (:5300) не отвечает") :
+                        (lang == "en" ? "Proxy DNS via sing-box failed to respond" : "Прокси-DNS через sing-box (127.0.0.42) не отвечает"),
+                    fix: fix_action
                 });
-                add_fix("clear_dns_cache");
-                if (cfg.dns_type != "doh") {
+                add_fix(fix_action);
+                if (!is_steer_active && cfg.dns_type != "doh") {
                     add_fix("switch_to_doh");
                 }
             }
@@ -6186,10 +6254,12 @@ function local_rule_doctor(pre_res, pre_verify) {
         }
     }
 
+    let is_steer_active = active_engine_is_steer();
+    let engine_name = is_steer_active ? "steer" : "sing-box";
     let nodes = [
         { name: "WAN", status: "OK" },
         { name: "DNS", status: "OK" },
-        { name: "sing-box", status: "OK" },
+        { name: engine_name, status: "OK" },
         { name: "nftables", status: "OK" }
     ];
     for (let c in verify.checks) {
@@ -6198,7 +6268,7 @@ function local_rule_doctor(pre_res, pre_verify) {
                 nodes[0].status = "FAIL";
             } else if (index(c.name, "DNS") >= 0) {
                 nodes[1].status = "FAIL";
-            } else if (index(c.name, "sing-box") >= 0) {
+            } else if (index(c.name, engine_name) >= 0) {
                 nodes[2].status = "FAIL";
             }
         }

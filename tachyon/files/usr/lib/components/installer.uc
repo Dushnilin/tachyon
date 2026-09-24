@@ -90,6 +90,8 @@ function pkg_install_name_downgrade(package_name, package_version) {
 function pkg_install_files_command(files, force_reinstall) {
     if (is_apk()) {
         let add_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite" ];
+        if (force_reinstall)
+            push(add_args, "--force-reinstall");
         for (let file in files)
             push(add_args, file);
         return command_from_args(add_args) + " </dev/null";
@@ -128,15 +130,13 @@ function pkg_tx_run_with_lock(description, command, timeout_seconds) {
                 return { success: false, exit_code: 227, message: "Package manager lock timeout after " + lock_waited + "s" };
             }
         }
-        let output_file = make_tmp_file("pkg-tx");
-        if (output_file == "")
-            output_file = "/tmp/tachyon-updates-pkg-tx." + owner_pid();
-        let pipe_cmd = command + " >" + shell_quote(output_file) + " 2>&1";
+        let pipe_cmd = command + " 2>&1";
         let pipe = fs.popen(pipe_cmd, "r");
         if (!pipe) {
             attempt++;
             continue;
         }
+        let output_lines = [];
         let last_activity = now_seconds();
         let last_heartbeat = now_seconds();
         while (true) {
@@ -146,6 +146,9 @@ function pkg_tx_run_with_lock(description, command, timeout_seconds) {
             line = trim(as_string(line));
             if (line != "") {
                 updates_log(line);
+                push(output_lines, line);
+                if (length(output_lines) > 200)
+                    shift(output_lines);
                 last_activity = now_seconds();
             }
             // Periodic heartbeat during long operations
@@ -155,23 +158,25 @@ function pkg_tx_run_with_lock(description, command, timeout_seconds) {
             }
             if (now_seconds() - last_activity > timeout_seconds) {
                 updates_log("Package operation timed out after " + timeout_seconds + "s of inactivity", "error");
-                pipe.close("kill");
-                remove_file(output_file);
+                pipe.close();
                 return { success: false, exit_code: -1, message: "Package operation timed out" };
             }
         }
         let close_status = pipe.close();
         let rc = normalize_stream_exit(close_status);
-        remove_file(output_file);
         if (rc == 0) {
             update_job_phase("package_transaction", "Package transaction completed");
             return { success: true, exit_code: 0, message: "" };
         }
-        let is_locked = detect_apk_lock("", rc);
+        let output_text = join("\n", output_lines);
+        let is_locked = detect_apk_lock(output_text, rc);
         if (attempt == 0 && is_locked)
             diagnose_apk_lock_holder();
         if (!is_locked) {
-            return { success: false, exit_code: rc, message: "Package operation failed with exit code " + rc };
+            let err_msg = "Package operation failed with exit code " + rc;
+            if (length(output_lines) > 0)
+                err_msg += ": " + output_lines[length(output_lines) - 1];
+            return { success: false, exit_code: rc, message: err_msg };
         }
         attempt++;
     }
@@ -224,7 +229,9 @@ function pkg_tx_install_files(files, force_reinstall) {
     let args = [];
     let timeout = PKG_TX_INSTALL_TIMEOUT;
     if (is_apk()) {
-        push(args, "apk", "add", "--allow-untrusted");
+        push(args, "apk", "add", "--allow-untrusted", "--force-overwrite");
+        if (force_reinstall)
+            push(args, "--force-reinstall");
         for (let f in files)
             push(args, f);
     } else {

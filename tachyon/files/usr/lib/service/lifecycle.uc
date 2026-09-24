@@ -533,6 +533,10 @@ function dnsmasq_configure(force) {
     return dns_apply_status(args);
 }
 
+function dnsmasq_configure_steer() {
+    return dns_apply_status([ "configure-steer" ]);
+}
+
 function dnsmasq_restore(force) {
     let args = [ "restore" ];
     if (force)
@@ -1056,7 +1060,7 @@ function start_main() {
         return status;
     }
 
-    let sb_pid = module_output(STATE_UC, [ "sing-box-service-pid-runtime" ]);
+    let sb_pid = module_output(STATE_UC, [ "sing-box-service-runtime-pid" ]);
     if (match(trim(sb_pid), /^[0-9]+$/) != null)
         module_success(STATE_UC, [ "write-provenance", trim(sb_pid) ]);
 
@@ -1112,14 +1116,12 @@ function start_impl() {
         return status;
 
     // On steer the sing-box DNS inbound does not run, so dnsmasq must not be
-    // pointed at it: restore the default resolver and let steer's nft redirect
-    // + dnsd handle client DNS.
+    // pointed at it: configure dnsmasq for steer (noresolv=0, smartdns/bootstrap
+    // upstreams, no 127.0.0.42).
     if (active_engine_is_steer()) {
-        if (dnsmasq_has_tachyon_managed_state()) {
-            status = dnsmasq_restore(true);
-            if (status != 0)
-                return status;
-        }
+        status = dnsmasq_configure_steer();
+        if (status != 0)
+            return status;
     }
     else if (!setting_bool("dont_touch_dhcp", false)) {
         status = dnsmasq_configure(false);
@@ -1808,7 +1810,7 @@ function reload(reason) {
     module_status(NFT_UC, [ "nft-sync-router-output-intercept", NFT_TABLE_NAME, NFT_LOCALV4_SET_NAME, NFT_OUTBOUND_MARK ]);
 
     if (plan.needs_dnsmasq_configure == 1) {
-        status = dnsmasq_configure(true);
+        status = active_engine_is_steer() ? dnsmasq_configure_steer() : dnsmasq_configure(true);
         if (status != 0)
             return abort_reload(status, true);
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);

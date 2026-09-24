@@ -2214,7 +2214,7 @@ else if (mode == "stdin-first-field")
     stdin_first_field();
 else if (mode == "sing-box-service-pid")
     sing_box_service_pid();
-else if (mode == "sing-box-service-runtime-pid") {
+else if (mode == "sing-box-service-runtime-pid" || mode == "sing-box-service-pid-runtime") {
     let pid = sing_box_service_pid_runtime();
     if (pid <= 0)
         exit(1);

@@ -704,10 +704,24 @@ function controller(bus, opts) {
             return;
         }
 
-        let pid = ctx.singbox_pid;
-        if (pid == "" || !ctx.singbox_running) {
-            clear_dns_streak();
-            return;
+        let active_engine = "sing-box";
+        try {
+            active_engine = require("core.engine").get_active();
+        } catch (e) {}
+
+        if (active_engine == "steer" || active_engine == "steer-extended") {
+            let steer_running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ||
+                                command_success_from_args([ "pgrep", "-f", "steer" ]);
+            if (!steer_running) {
+                clear_dns_streak();
+                return;
+            }
+        } else {
+            let pid = ctx.singbox_pid;
+            if (pid == "" || !ctx.singbox_running) {
+                clear_dns_streak();
+                return;
+            }
         }
 
         // Adaptive interval pacing: honor ai_dns_interval (default 60s)
