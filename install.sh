@@ -30,6 +30,9 @@ TACHYON_WAS_ENABLED=0
 INSTALLER_LANG="en"
 TACHYON_I18N_REQUESTED=0
 SING_BOX_INSTALL_VARIANT=""
+ENGINE_INSTALL_CHOICE=""
+ENGINE_INSTALL_REQUESTED=""
+SING_BOX_VARIANT_REQUESTED=""
 ZRAM_INSTALL_REQUESTED=0
 
 ASSUME_YES=0
@@ -109,7 +112,12 @@ Usage: $0 [options]
       --reinstall       Force reinstall of the selected release
       --tag X.Y.Z       Install an exact published release
       --channel NAME    stable (default) or beta
-      --skip-sing-box   Do not install sing-box when none is present
+      --engine NAME     Routing engine: sing-box (default), steer, steer-extended
+      --steer           Install steer engine
+      --steer-extended  Install steer-extended engine
+      --sing-box-variant VAR  sing-box build: stable, tiny, extended, extended-compressed, lx
+      --skip-sing-box   Do not install routing engine when none is present
+      --skip-engine     Alias for --skip-sing-box
       --zram            Install zram-swap
       --no-zram         Never install zram-swap
       --version         Print installer version
@@ -128,7 +136,26 @@ parse_args() {
             -q|--quiet) QUIET=1 ;;
             --repair) REPAIR_MODE=1; REINSTALL_MODE=1 ;;
             --reinstall) REINSTALL_MODE=1 ;;
-            --skip-sing-box|--no-sing-box) SKIP_SING_BOX=1 ;;
+            --engine)
+                shift
+                [ "$#" -gt 0 ] || { err "--engine requires name (sing-box, steer, steer-extended)"; return 2; }
+                case "$1" in
+                    sing-box|sing_box) ENGINE_INSTALL_REQUESTED="sing-box" ;;
+                    steer) ENGINE_INSTALL_REQUESTED="steer" ;;
+                    steer-extended|steer_extended) ENGINE_INSTALL_REQUESTED="steer-extended" ;;
+                    none|skip) SKIP_SING_BOX=1 ;;
+                    *) err "Unsupported engine: $1 (allowed: sing-box, steer, steer-extended, none)"; return 2 ;;
+                esac
+                ;;
+            --steer) ENGINE_INSTALL_REQUESTED="steer" ;;
+            --steer-extended) ENGINE_INSTALL_REQUESTED="steer-extended" ;;
+            --sing-box-variant)
+                shift
+                [ "$#" -gt 0 ] || { err "--sing-box-variant requires variant name"; return 2; }
+                ENGINE_INSTALL_REQUESTED="sing-box"
+                SING_BOX_VARIANT_REQUESTED="$1"
+                ;;
+            --skip-engine|--skip-sing-box|--no-sing-box) SKIP_SING_BOX=1 ;;
             --zram) ZRAM_INSTALL_OVERRIDE="yes" ;;
             --no-zram) ZRAM_INSTALL_OVERRIDE="no" ;;
             --tag)
@@ -627,21 +654,48 @@ sing_box_is_present() {
     command_exists sing-box || pkg_is_installed sing-box || pkg_is_installed sing-box-extended || pkg_is_installed sing-box-tiny || pkg_is_installed sing-box-lx
 }
 
+steer_is_present() {
+    command_exists steer || pkg_is_installed steer || pkg_is_installed steer-extended
+}
+
+engine_is_present() {
+    sing_box_is_present || steer_is_present
+}
+
 select_sing_box_installation() {
     SING_BOX_INSTALL_VARIANT=""
-    sing_box_is_present && return 0
+    ENGINE_INSTALL_CHOICE=""
     [ "$SKIP_SING_BOX" -eq 1 ] && return 0
-    if ! installer_is_interactive; then SING_BOX_INSTALL_VARIANT="stable"; return 0; fi
-    printf '\nSelect sing-box build:\n  1) stable (recommended)\n  2) tiny (low memory)\n  3) extended (xHTTP)\n  4) extended-compressed (xHTTP, smaller)\n  5) lx\n  6) skip\nChoice [1]: '
+    if [ -n "$ENGINE_INSTALL_REQUESTED" ]; then
+        case "$ENGINE_INSTALL_REQUESTED" in
+            steer) ENGINE_INSTALL_CHOICE="steer"; return 0 ;;
+            steer-extended) ENGINE_INSTALL_CHOICE="steer-extended"; return 0 ;;
+            sing-box) ENGINE_INSTALL_CHOICE="sing-box"; SING_BOX_INSTALL_VARIANT="${SING_BOX_VARIANT_REQUESTED:-stable}"; return 0 ;;
+        esac
+    fi
+    engine_is_present && return 0
+    if ! installer_is_interactive; then ENGINE_INSTALL_CHOICE="sing-box"; SING_BOX_INSTALL_VARIANT="stable"; return 0; fi
+    printf '\nSelect proxy / routing engine build:\n'
+    printf '  1) sing-box stable (recommended)\n'
+    printf '  2) sing-box tiny (low memory)\n'
+    printf '  3) sing-box extended (xHTTP)\n'
+    printf '  4) sing-box extended-compressed (xHTTP, smaller)\n'
+    printf '  5) sing-box lx\n'
+    printf '  6) steer (lightweight Go engine, SmartDNS)\n'
+    printf '  7) steer-extended (steer + xHTTP)\n'
+    printf '  8) skip\n'
+    printf 'Choice [1]: '
     read -r _answer || _answer=""
     case "${_answer:-1}" in
-        1) SING_BOX_INSTALL_VARIANT="stable" ;;
-        2) SING_BOX_INSTALL_VARIANT="tiny" ;;
-        3) SING_BOX_INSTALL_VARIANT="extended" ;;
-        4) SING_BOX_INSTALL_VARIANT="extended-compressed" ;;
-        5) SING_BOX_INSTALL_VARIANT="lx" ;;
-        6) SING_BOX_INSTALL_VARIANT="" ;;
-        *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable" ;;
+        1) SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        2) SING_BOX_INSTALL_VARIANT="tiny"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        3) SING_BOX_INSTALL_VARIANT="extended"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        4) SING_BOX_INSTALL_VARIANT="extended-compressed"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        5) SING_BOX_INSTALL_VARIANT="lx"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        6) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="steer" ;;
+        7) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="steer-extended" ;;
+        8) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="" ;;
+        *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
     esac
 }
 
@@ -831,19 +885,43 @@ install_zram_if_requested() {
 }
 
 install_selected_sing_box() {
-    [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
-    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install sing-box variant $SING_BOX_INSTALL_VARIANT"; return 0; }
+    [ -n "$ENGINE_INSTALL_CHOICE" ] || [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
     [ -x /usr/bin/tachyon ] || return 1
-    case "$SING_BOX_INSTALL_VARIANT" in
-        stable) _action="install_stable" ;;
-        tiny) _action="install_tiny" ;;
-        extended) _action="install_extended" ;;
-        extended-compressed) _action="install_extended_compressed" ;;
-        lx) _action="install_lx" ;;
-        *) return 1 ;;
+    case "$ENGINE_INSTALL_CHOICE" in
+        steer)
+            [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install steer engine"; return 0; }
+            msg "Installing steer engine"
+            run_logged_timeout steer "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action steer install || return 1
+            uci set tachyon.settings.engine='steer' 2>/dev/null || true
+            uci commit tachyon 2>/dev/null || true
+            return 0
+            ;;
+        steer-extended)
+            [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install steer-extended engine"; return 0; }
+            msg "Installing steer-extended engine"
+            run_logged_timeout steer-extended "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action steer-extended install || return 1
+            uci set tachyon.settings.engine='steer-extended' 2>/dev/null || true
+            uci commit tachyon 2>/dev/null || true
+            return 0
+            ;;
+        *)
+            [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
+            [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install sing-box variant $SING_BOX_INSTALL_VARIANT"; return 0; }
+            case "$SING_BOX_INSTALL_VARIANT" in
+                stable) _action="install_stable" ;;
+                tiny) _action="install_tiny" ;;
+                extended) _action="install_extended" ;;
+                extended-compressed) _action="install_extended_compressed" ;;
+                lx) _action="install_lx" ;;
+                *) return 1 ;;
+            esac
+            msg "Installing sing-box ($SING_BOX_INSTALL_VARIANT)"
+            run_logged_timeout sing-box "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action sing_box "$_action" || return 1
+            uci set tachyon.settings.engine='sing-box' 2>/dev/null || true
+            uci commit tachyon 2>/dev/null || true
+            return 0
+            ;;
     esac
-    msg "Installing sing-box ($SING_BOX_INSTALL_VARIANT)"
-    run_logged_timeout sing-box "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action sing_box "$_action"
 }
 
 restore_service_intent() {
@@ -917,7 +995,13 @@ system_preflight() {
 print_plan() {
     msg "Release: ${TACHYON_RELEASE_TAG} (${PKG_MANAGER})"
     [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && msg "Russian LuCI translation: yes" || msg "Russian LuCI translation: no"
-    [ -n "$SING_BOX_INSTALL_VARIANT" ] && msg "sing-box: $SING_BOX_INSTALL_VARIANT" || msg "sing-box: keep existing / skip"
+    case "$ENGINE_INSTALL_CHOICE" in
+        steer) msg "Engine: steer" ;;
+        steer-extended) msg "Engine: steer-extended" ;;
+        *)
+            [ -n "$SING_BOX_INSTALL_VARIANT" ] && msg "sing-box: $SING_BOX_INSTALL_VARIANT" || msg "Engine: keep existing / skip"
+            ;;
+    esac
     [ "$ZRAM_INSTALL_REQUESTED" -eq 1 ] && msg "zram-swap: install" || true
 }
 

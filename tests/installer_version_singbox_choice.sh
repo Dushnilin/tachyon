@@ -93,10 +93,26 @@ IN
 [ "$SING_BOX_INSTALL_VARIANT" = "stable" ] ||
   fail "empty sing-box choice must default to stable (got: ${SING_BOX_INSTALL_VARIANT:-empty})"
 
+ENGINE_INSTALL_CHOICE=""
+select_sing_box_installation <<'IN' >/dev/null 2>&1 || true
+6
+IN
+[ "$ENGINE_INSTALL_CHOICE" = "steer" ] ||
+  fail "menu choice 6 must select steer (got: ${ENGINE_INSTALL_CHOICE:-empty})"
+
+ENGINE_INSTALL_CHOICE=""
+select_sing_box_installation <<'IN' >/dev/null 2>&1 || true
+7
+IN
+[ "$ENGINE_INSTALL_CHOICE" = "steer-extended" ] ||
+  fail "menu choice 7 must select steer-extended (got: ${ENGINE_INSTALL_CHOICE:-empty})"
+
 SING_BOX_INSTALL_VARIANT="keep"
+ENGINE_INSTALL_CHOICE="keep"
 SKIP_SING_BOX=1
 select_sing_box_installation
 [ -z "$SING_BOX_INSTALL_VARIANT" ] || fail "--skip-sing-box must leave no variant selected"
+[ -z "$ENGINE_INSTALL_CHOICE" ] || fail "--skip-sing-box must leave no engine selected"
 SKIP_SING_BOX=0
 
 fetch_release_tag_list() { printf '1.4.0\n1.3.2\n1.3.1\n'; }

@@ -807,6 +807,13 @@ function heal_uncached_rulesets_detour() {
 // Threshold 3 is the original ai_heal_dns() streak: two isolated failures are
 // noise, three in a row is a stall. The streak reset after acting prevents the
 // in-flight restart from tripping the same threshold on the next tick.
+function heal_dns_stall_steer() {
+    log_message("Watchdog: DNS stalled after 3 attempts on steer, reloading steer dnsd and dnsmasq", "warn");
+    system("/etc/init.d/steer reload_dnsd >/dev/null 2>&1");
+    system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
+    ai_heal_report("dns", "DNS resolution stalled on steer", "Перезапущены steer dnsd и dnsmasq", "fixed");
+}
+
 function heal_dns_stall(ev) {
     if (settings().recovery_bypass == "1") return;
     if (int(ev.payload.streak) < 3) return;
@@ -820,10 +827,7 @@ function heal_dns_stall(ev) {
     } catch (e) {}
 
     if (active_engine == "steer" || active_engine == "steer-extended") {
-        log_message("Watchdog: DNS stalled after 3 attempts on steer, reloading steer dnsd and dnsmasq", "warn");
-        system("/etc/init.d/steer reload_dnsd >/dev/null 2>&1");
-        system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
-        ai_heal_report("dns", "DNS resolution stalled on steer", "Перезапущены steer dnsd и dnsmasq", "fixed");
+        heal_dns_stall_steer();
         return;
     }
 
@@ -1071,6 +1075,39 @@ function heal_proxy_health(ev) {
 // ─── DNS Continuous Check ─────────────────────────────────────────────────────
 // The second DNS subscriber: restores dnsmasq's own configuration rather than
 // restarting the proxy, so it is complementary to heal_dns_stall().
+function heal_dns_continuous_steer() {
+    let current_noresolv = trim(as_string(uci.get("dhcp", "@dnsmasq[0]", "noresolv") || ""));
+    let servers = uci.get("dhcp", "@dnsmasq[0]", "server") || [];
+    if (type(servers) == "string") servers = [ servers ];
+    let has_bad_server = false;
+    let has_good_server = false;
+    for (let s in servers) {
+        if (index(s, "127.0.0.42") >= 0) has_bad_server = true;
+        else if (s != "") has_good_server = true;
+    }
+
+    if (current_noresolv == "0" && !has_bad_server && has_good_server) {
+        controller.reset_dns_consecutive();
+        ai_heal_report(
+            "dns_continuous",
+            "DNS resolution failed 3 times consecutively on steer",
+            "dnsmasq уже настроен (noresolv=0), перезагрузка не требуется",
+            "skipped"
+        );
+        return;
+    }
+
+    let rc = system("ucode -L " + common.shell_quote(LIB_DIR) + " " + common.shell_quote(LIB_DIR + "/dns/apply.uc") + " configure-steer >/dev/null 2>&1");
+    controller.reset_dns_consecutive();
+
+    ai_heal_report(
+        "dns_continuous",
+        "DNS resolution failed 3 times consecutively on steer",
+        "Настройка dnsmasq для steer (noresolv=0, удаление 127.0.0.42) и перезагрузка",
+        rc == 0 ? "fixed" : "failed"
+    );
+}
+
 function heal_dns_continuous(ev) {
     if (settings().ai_dns_continuous_enabled == "0") return;
     if (int(ev.payload.consecutive) < 3) return;
@@ -1081,39 +1118,8 @@ function heal_dns_continuous(ev) {
         active_engine = require("core.engine").get_active();
     } catch (e) {}
 
-    if (active_engine == "steer" || active_engine == "steer-extended") {
-        let current_noresolv = trim(as_string(uci_core.get("dhcp.@dnsmasq[0].noresolv") || ""));
-        let servers = uci_core.get("dhcp.@dnsmasq[0].server") || [];
-        if (type(servers) == "string") servers = [ servers ];
-        let has_bad_server = false;
-        let has_good_server = false;
-        for (let s in servers) {
-            if (index(s, "127.0.0.42") >= 0) has_bad_server = true;
-            else if (s != "") has_good_server = true;
-        }
-
-        if (current_noresolv == "0" && !has_bad_server && has_good_server) {
-            controller.reset_dns_consecutive();
-            ai_heal_report(
-                "dns_continuous",
-                "DNS resolution failed 3 times consecutively on steer",
-                "dnsmasq уже настроен (noresolv=0), перезагрузка не требуется",
-                "skipped"
-            );
-            return;
-        }
-
-        let rc = system("ucode -L " + common.shell_quote(LIB_DIR) + " " + common.shell_quote(LIB_DIR + "/dns/apply.uc") + " configure-steer >/dev/null 2>&1");
-        controller.reset_dns_consecutive();
-
-        ai_heal_report(
-            "dns_continuous",
-            "DNS resolution failed 3 times consecutively on steer",
-            "Настройка dnsmasq для steer (noresolv=0, удаление 127.0.0.42) и перезагрузка",
-            rc == 0 ? "fixed" : "failed"
-        );
-        return;
-    }
+    if (active_engine == "steer" || active_engine == "steer-extended")
+        return heal_dns_continuous_steer();
 
     // This repair only ever sets noresolv to the one value it wants, so on the
     // second and later failures it rewrote a setting that already held that
