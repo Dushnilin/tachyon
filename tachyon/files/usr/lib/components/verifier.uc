@@ -107,6 +107,73 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
     return "";
 }
 
+function check_sing_box_config_with_binary(binary, config_path, library_dir) {
+    binary = as_string(binary);
+    if (binary == "" || !helpers.file_exists(binary))
+        return { ok: false, reason: "sing-box binary not found at " + binary };
+
+    config_path = as_string(config_path || "/etc/sing-box/config.json");
+    if (!helpers.file_exists(config_path) || !helpers.file_nonempty(config_path))
+        return { ok: true };
+
+    helpers.init_tmp_dir();
+    let err_file = helpers.make_tmp_file("sb-chk");
+    if (err_file == "")
+        return { ok: true };
+
+    let env_map = {
+        GODEBUG: "madvdontneed=1",
+        GOGC: "30"
+    };
+    let lib_path = as_string(library_dir || "");
+    if (lib_path != "") {
+        if (lib_path == "/usr/lib")
+            lib_path = "/usr/lib:/lib";
+        else
+            lib_path = lib_path + ":/usr/lib:/lib";
+        env_map.LD_LIBRARY_PATH = lib_path;
+    }
+
+    let check_cmd = helpers.command_env(env_map) + " " +
+        common.command_from_args([ binary, "-c", config_path, "check" ]) +
+        " >" + common.shell_quote(err_file) + " 2>&1";
+    let status = common.command_status(check_cmd);
+    if ((status == 247 || status == 137) && fs.stat("/proc/sys/vm/drop_caches") != null) {
+        system("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null");
+        env_map.GOGC = "15";
+        check_cmd = helpers.command_env(env_map) + " " +
+            common.command_from_args([ binary, "-c", config_path, "check" ]) +
+            " >" + common.shell_quote(err_file) + " 2>&1";
+        status = common.command_status(check_cmd);
+    }
+
+    if (status == 0) {
+        helpers.remove_file(err_file);
+        return { ok: true };
+    }
+
+    let raw = helpers.read_file(err_file);
+    helpers.remove_file(err_file);
+
+    let reason = "";
+    for (let line in split(raw, "\n")) {
+        line = trim(line);
+        if (line != "") {
+            reason = line;
+            break;
+        }
+    }
+    if (reason == "") {
+        if (status == 247 || status == 137)
+            reason = "Out of memory (OOM killed, exit status " + status + ")";
+        else
+            reason = "exit status " + status;
+    }
+
+    helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config " + config_path + ": " + reason, "error");
+    return { ok: false, reason: reason };
+}
+
 // Forward-referenced helpers
 
 function module_exports() {
@@ -114,7 +181,8 @@ function module_exports() {
         format_fingerprint_human,
         verify_package_post_install,
         verify_binary_post_install,
-        validate_sing_box_extended_binary
+        validate_sing_box_extended_binary,
+        check_sing_box_config_with_binary
     };
 }
 

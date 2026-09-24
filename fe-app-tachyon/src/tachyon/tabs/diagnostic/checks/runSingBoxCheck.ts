@@ -87,6 +87,17 @@ export async function runSingBoxCheck() {
         key: _('Sing-box listening ports'),
         value: '',
       },
+      {
+        state: !data.sing_box_installed
+          ? 'error'
+          : data.sing_box_cert_pin
+            ? 'success'
+            : 'warning',
+        key: _('TLS certificate pinning (sing-box 1.15+)'),
+        value: data.sing_box_cert_pin
+          ? _('Supported')
+          : _('Ignored (Upgrade to Extended)'),
+      },
     ],
   });
 

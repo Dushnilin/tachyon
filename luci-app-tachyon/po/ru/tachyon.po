@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-24 13:42+0300\n"
-"PO-Revision-Date: 2026-09-24 13:42+0300\n"
+"POT-Creation-Date: 2026-09-24 18:50+0300\n"
+"PO-Revision-Date: 2026-09-24 18:50+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -100,6 +100,9 @@ msgstr "✗ Задушено на 16KB"
 
 msgid "✘ Offline"
 msgstr "✘ Не в сети"
+
+msgid "✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
+msgstr ""
 
 msgid "🌐 Custom Target URL(s)..."
 msgstr "🌐 Произвольный URL (несколько через запятую)..."
@@ -749,6 +752,9 @@ msgstr "Выполняется бенчмарк..."
 msgid "Best Strategy"
 msgstr "Лучшая стратегия"
 
+msgid "Bidirectional (default)"
+msgstr "Двунаправленный (по умолчанию)"
+
 msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P"
 
@@ -1279,6 +1285,9 @@ msgstr "Пользовательский заголовок для инициа�
 
 msgid "Custom header for handshake response"
 msgstr "Пользовательский заголовок для ответа рукопожатия"
+
+msgid "Custom MTU, e.g. 1500 (leave empty for default)"
+msgstr "Пользовательский MTU, например 1500 (оставьте пустым для значения по умолчанию)"
 
 msgid "Custom OpenAI-Compatible API"
 msgstr "Пользовательский OpenAI-совместимый API"
@@ -2075,6 +2084,9 @@ msgstr "Не удалось загрузить версии"
 msgid "Failed to parse file:"
 msgstr "Ошибка разбора файла:"
 
+msgid "Failed to parse OpenVPN config:"
+msgstr ""
+
 msgid "Failed to parse target list."
 msgstr "Ошибка обработки списка целей."
 
@@ -2540,6 +2552,9 @@ msgstr "Если одна проверка завершается ошибкой
 msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭"
 msgstr "Если Tachyon помогает вам и делает работу в сети комфортной, вы можете поддержать проект и автора! ☕ 🧀 🌭"
 
+msgid "Ignored (Upgrade to Extended)"
+msgstr ""
+
 msgid "Immediately upon release"
 msgstr "Сразу при выходе новой версии"
 
@@ -2554,6 +2569,9 @@ msgstr "Импортировать настройки AmneziaWG из файла 
 
 msgid "Import Hosts File"
 msgstr "Импортировать файл Hosts"
+
+msgid "Import OpenVPN settings from .ovpn or .conf file"
+msgstr "Импортировать настройки OpenVPN из файла .ovpn или .conf"
 
 msgid "Import subscription URLTest groups"
 msgstr "Импортировать группы URLTest подписки"
@@ -2632,6 +2650,9 @@ msgstr "Таймаут init (Itime)"
 
 msgid "Initializing router-level IP & DNS leak test..."
 msgstr "Инициализация проверки утечек IP и DNS с роутера..."
+
+msgid "Inline tls-crypt key (mutually exclusive with tls-auth)"
+msgstr "Встроенный ключ tls-crypt (взаимоисключающий с tls-auth)"
 
 msgid "Install"
 msgstr "Установить"
@@ -3071,6 +3092,9 @@ msgstr "Сохраняет FakeIP-кэш между перезагрузками
 msgid "Key"
 msgstr "Ключ"
 
+msgid "Key direction for tls-auth (0 = server, 1 = client, empty = bidirectional)"
+msgstr "Направление ключа для tls-auth (0 = сервер, 1 = клиент, пусто = двунаправленный)"
+
 msgid "Key path"
 msgstr "Путь к ключу"
 
@@ -3145,6 +3169,12 @@ msgstr "Загрузить .conf"
 
 msgid "Load .conf config"
 msgstr "Загрузить конфигурацию .conf"
+
+msgid "Load .ovpn"
+msgstr "Загрузить .ovpn"
+
+msgid "Load .ovpn config"
+msgstr "Загрузить .ovpn конфиг"
 
 msgid "Load Current Records"
 msgstr "Загрузить текущие записи"
@@ -3659,6 +3689,15 @@ msgstr "Откройте настройки приоритета и введит
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
 
+msgid "OpenVPN config loaded. Please enter your username and password below."
+msgstr "Конфиг OpenVPN загружен. Введите логин и пароль ниже."
+
+msgid "OpenVPN configuration loaded successfully!"
+msgstr "Конфигурация OpenVPN успешно загружена!"
+
+msgid "OpenVPN Credentials Required"
+msgstr "Требуются учетные данные OpenVPN"
+
 msgid "Operation completed successfully!"
 msgstr "Операция успешно завершена!"
 
@@ -3763,6 +3802,9 @@ msgstr "Пароль"
 
 msgid "Password cannot be empty"
 msgstr "Пароль не может быть пустым"
+
+msgid "Password for auth-user-pass authentication"
+msgstr "Пароль для авторизации auth-user-pass"
 
 msgid "Paste content or upload a file to preview imported DNS records."
 msgstr "Вставьте содержимое или загрузите файл для предварительного просмотра импортируемых DNS-записей."
@@ -5126,6 +5168,9 @@ msgstr "Поддержать на Boosty"
 msgid "Support on CloudTips"
 msgstr "Поддержать проект на CloudTips"
 
+msgid "Supported"
+msgstr ""
+
 msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
@@ -5450,8 +5495,17 @@ msgstr "tiny"
 msgid "TLS / HTTPS"
 msgstr "TLS / HTTPS"
 
+msgid "TLS Auth Key Direction"
+msgstr "Направление ключа TLS Auth"
+
 msgid "TLS Auth/Crypt Key"
 msgstr "Ключ TLS Auth/Crypt"
+
+msgid "TLS certificate pinning (sing-box 1.15+)"
+msgstr ""
+
+msgid "TLS Crypt Key"
+msgstr "Ключ TLS Crypt"
 
 msgid "TLS SNI"
 msgstr "TLS SNI"
@@ -5572,6 +5626,9 @@ msgstr "Вт"
 
 msgid "Tuesday"
 msgstr "Вторник"
+
+msgid "Tunnel MTU"
+msgstr "MTU туннеля"
 
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
@@ -5851,6 +5908,9 @@ msgstr "Имя пользователя"
 
 msgid "Username cannot be empty"
 msgstr "Имя пользователя не может быть пустым"
+
+msgid "Username for auth-user-pass authentication"
+msgstr "Имя пользователя для авторизации auth-user-pass"
 
 msgid "Valid"
 msgstr "Валидно"
@@ -7087,3 +7147,6 @@ msgstr "Трафик от этих IP-адресов никогда не буд�
 
 msgid "base"
 msgstr "базовая"
+
+msgid "Failed to parse OpenVPN config: "
+msgstr "Не удалось прочитать конфиг OpenVPN: "

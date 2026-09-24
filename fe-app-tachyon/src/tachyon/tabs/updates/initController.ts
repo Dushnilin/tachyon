@@ -479,6 +479,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
     }
 
     if (result.action === 'install_extended_compressed') {
@@ -487,6 +488,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_compressed = 1;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
     }
 
     if (result.action === 'install_lx') {
@@ -495,6 +497,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 1;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
     }
 
     if (result.action === 'install_stable') {
@@ -503,6 +506,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 0;
     }
 
     if (result.action === 'install_tiny') {
@@ -511,6 +515,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 0;
+      nextSystemInfo.sing_box_cert_pin = 0;
     }
   }
 
@@ -2556,6 +2561,19 @@ function renderEngineCard(): Node {
 
   const actionElements: Node[] = [];
 
+  const featureHint = E('div', {
+    style: 'font-size:12px;color:var(--text-color-medium,#666);margin-top:4px;',
+  });
+  if (
+    selectedVariant.id === 'sing-box-extended' ||
+    selectedVariant.id === 'sing-box-extended-compressed' ||
+    selectedVariant.id === 'sing-box-lx'
+  ) {
+    featureHint.textContent = _(
+      '✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x',
+    );
+  }
+
   // Row 1: picker + Apply + Check update [+ Update]
   const primaryRow: Node[] = [picker, applyButton, checkUpdateButton];
   if (updateButton) primaryRow.push(updateButton);
@@ -2569,6 +2587,7 @@ function renderEngineCard(): Node {
       primaryRow,
     ),
     warning,
+    featureHint,
   );
 
   // Remove (steer only)

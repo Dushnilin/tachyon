@@ -879,7 +879,16 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         push(priority_tags, priority.tag);
     }
 
-    selector_outbounds = dashboard_filtered_outbounds(section, selector_tags, state, group_outbounds);
+    let dashboard_candidates = selector_tags;
+    let mode = connections.dashboard_filter_mode(section);
+    if (mode == "include" || mode == "mixed") {
+        let combined = [];
+        for (let t in selector_tags) push(combined, t);
+        for (let t in urltest_candidate_tags) push(combined, t);
+        dashboard_candidates = unique_string_array(combined);
+    }
+
+    selector_outbounds = dashboard_filtered_outbounds(section, dashboard_candidates, state, group_outbounds);
     selector_default = selector_outbounds[0];
     if (length(urltest_tags) > 0 || length(priority_tags) > 0) {
         for (let tag in urltest_tags)
@@ -900,6 +909,11 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
             selector_default = runtime_constants.DIRECT_OUTBOUND_TAG;
             warn("Section " + section_name + ": subscription has no loaded servers yet, using direct fallback until cache is populated\n");
         }
+    }
+
+    if (state && state.hiddenOutboundTags) {
+        for (let tag in selector_outbounds)
+            delete state.hiddenOutboundTags[tag];
     }
 
     let persistent_selector_file = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
@@ -1673,9 +1687,9 @@ function normalize_port_number_value(value) {
 }
 
 function add_dscp_matchers(rule, section) {
-    let dscp_vals = connections.dscp_list(section);
-    if (length(dscp_vals) > 0)
-        rule.dscp = dscp_vals;
+    // DSCP matching is handled exclusively at the firewall/nftables layer (nft/apply.uc).
+    // sing-box route rules do not support a "dscp" field; emitting it causes sing-box
+    // to abort config loading with: route.rules[...].dscp: json: unknown field "dscp".
 }
 
 function add_port_matchers(rule, section) {
@@ -2179,7 +2193,7 @@ function add_combined_route_for_section(config, section) {
             let fallback_rule = create_section_route_rule();
             let has_any_matcher = fallback_rule.source_ip_cidr != null ||
                 fallback_rule.port != null || fallback_rule.port_range != null ||
-                fallback_rule.protocol != null || fallback_rule.dscp != null;
+                fallback_rule.protocol != null;
             if (has_any_matcher)
                 push_section_route_rule(config, fallback_rule, target.outbound, excluded_cidrs);
         }

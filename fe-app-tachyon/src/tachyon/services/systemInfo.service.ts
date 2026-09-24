@@ -17,6 +17,7 @@ const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
   sing_box_compressed: 0,
   sing_box_lx: 0,
   sing_box_tailscale: 1,
+  sing_box_cert_pin: 0,
   sing_box_repo_url: '',
   zapret_version: _('unknown'),
   zapret_installed: 0,

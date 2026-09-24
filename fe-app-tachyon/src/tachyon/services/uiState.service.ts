@@ -116,6 +116,8 @@ function applyServiceState(uiState: Tachyon.UiState) {
   nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
   nextSystemInfo.sing_box_lx = uiState.capabilities.sing_box_lx;
   nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
+  nextSystemInfo.sing_box_cert_pin =
+    uiState.capabilities.sing_box_cert_pin ?? 0;
 
   store.set({
     servicesInfoWidget: {

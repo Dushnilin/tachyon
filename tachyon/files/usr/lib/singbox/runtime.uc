@@ -196,7 +196,8 @@ function sing_box_version() {
         return "";
     if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
         return sing_box_version_state();
-    return first_line_last_field(sing_box_version_output());
+    let v = first_line_last_field(sing_box_version_output());
+    return match(v, /^[vV]?[0-9]+/) ? v : "";
 }
 
 function sing_box_version_is_extended(value) {
@@ -259,6 +260,23 @@ function sing_box_supports_xhttp(version, version_output) {
     if (version_output != "")
         return output_has_build_tag(version_output, "with_xhttp");
     return output_has_build_tag(sing_box_version_output(), "with_xhttp");
+}
+
+function sing_box_supports_cert_pin(version) {
+    version = as_string(version);
+    if (version == "" && command_exists("sing-box")) {
+        if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
+            version = sing_box_version_state();
+        else
+            version = sing_box_version();
+    }
+    let m = match(version, /^v?([0-9]+)\.([0-9]+)/);
+    if (m) {
+        let major = int(m[1]);
+        let minor = int(m[2]);
+        return major > 1 || (major == 1 && minor >= 15);
+    }
+    return false;
 }
 
 function module_command(args) {
@@ -1195,6 +1213,8 @@ else if (mode == "is-tiny")
     exit(sing_box_is_tiny(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "supports-tailscale")
     exit(sing_box_supports_tailscale(ARGV[1], ARGV[2]) ? 0 : 1);
+else if (mode == "supports-cert-pin")
+    exit(sing_box_supports_cert_pin(ARGV[1]) ? 0 : 1);
 else if (mode == "variant")
     print(sing_box_variant(), "\n");
 else {

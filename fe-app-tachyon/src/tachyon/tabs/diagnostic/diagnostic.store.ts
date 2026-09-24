@@ -102,6 +102,7 @@ export const initialDiagnosticStore: Pick<
     sing_box_compressed: 0,
     sing_box_lx: 0,
     sing_box_tailscale: 1,
+    sing_box_cert_pin: 0,
     sing_box_repo_url: '',
     sing_box_backup_version: '',
     sing_box_backup_time: 0,

@@ -5,6 +5,7 @@ type SingBoxVariantFields = {
   sing_box_compressed?: number;
   sing_box_lx?: number;
   sing_box_tailscale?: number;
+  sing_box_cert_pin?: number;
   sing_box_repo_url?: string;
 };
 
@@ -107,6 +108,14 @@ export function normalizeSingBoxVariantFields<T extends SingBoxVariantFields>(
   const singBoxLx =
     singBoxExtended && (Boolean(value.sing_box_lx) || versionLx);
 
+  const m = version.match(/^v?(\d+)\.(\d+)/);
+  const versionSupportsCertPin = m
+    ? parseInt(m[1]!, 10) > 1 ||
+      (parseInt(m[1]!, 10) === 1 && parseInt(m[2]!, 10) >= 15)
+    : false;
+  const singBoxCertPin =
+    Boolean(value.sing_box_cert_pin) || versionSupportsCertPin;
+
   return {
     ...value,
     sing_box_extended: singBoxExtended ? 1 : 0,
@@ -114,6 +123,7 @@ export function normalizeSingBoxVariantFields<T extends SingBoxVariantFields>(
     sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
     sing_box_lx: singBoxLx ? 1 : 0,
     sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0,
+    sing_box_cert_pin: singBoxCertPin ? 1 : 0,
   } as T;
 }
 

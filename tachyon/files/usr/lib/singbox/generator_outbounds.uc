@@ -1789,21 +1789,35 @@ function add_openvpn_endpoint(config, section) {
     let server = option(section, "openvpn_server", "");
     if (server == "")
         ctx.runtime_generate_unsupported("OpenVPN section '" + section[".name"] + "' missing openvpn_server");
+    let port = int_option(section, "openvpn_server_port", "1194");
+    let proto = option(section, "openvpn_proto", "udp");
     let endpoint = {
         type: "openvpn-client",
         tag,
-        name: tag,
-        system: true,
-        servers: [{
-            server,
-            server_port: int_option(section, "openvpn_server_port", "1194"),
-            network: option(section, "openvpn_proto", "udp")
-        }]
+        server,
+        server_port: port,
+        network: proto
     };
+
+    let username = option(section, "openvpn_username", "");
+    if (username != "") endpoint.username = username;
+    let password = option(section, "openvpn_password", "");
+    if (password != "") endpoint.password = password;
+
     let cipher = option(section, "openvpn_cipher", "");
-    if (cipher != "") endpoint.cipher = cipher;
+    if (cipher != "") {
+        endpoint.cipher = cipher;
+        let dc = [ cipher ];
+        if (cipher != "AES-256-GCM") push(dc, "AES-256-GCM");
+        if (cipher != "AES-128-GCM") push(dc, "AES-128-GCM");
+        if (cipher != "CHACHA20-POLY1305") push(dc, "CHACHA20-POLY1305");
+        endpoint.data_ciphers = dc;
+    }
     let auth = option(section, "openvpn_auth", "");
     if (auth != "") endpoint.auth = auth;
+
+    let mtu = int_option(section, "openvpn_mtu", "0");
+    if (mtu > 0) endpoint.mtu = mtu;
 
     let tls = {};
     let ca   = option(section, "openvpn_ca", "");
@@ -1827,15 +1841,41 @@ function add_openvpn_endpoint(config, section) {
         else
             tls.client_key = [ key ];
     }
+
+    let tls_crypt = option(section, "openvpn_tls_crypt", "");
     let tls_auth = option(section, "openvpn_tls_auth", "");
-    if (tls_auth != "") {
+    let direction = option(section, "openvpn_key_direction", "");
+
+    if (tls_crypt != "") {
+        let cw = { type: "tls_crypt" };
+        if (index(tls_crypt, "\n") == -1 && index(tls_crypt, "/") == 0)
+            cw.key_path = tls_crypt;
+        else
+            cw.key = [ tls_crypt ];
+        tls.control_wrap = cw;
+    } else if (tls_auth != "") {
         let cw = { type: "tls_auth" };
         if (index(tls_auth, "\n") == -1 && index(tls_auth, "/") == 0)
             cw.key_path = tls_auth;
         else
             cw.key = [ tls_auth ];
+        if (direction == "0" || direction == "server")
+            cw.direction = "server";
+        else if (direction == "1" || direction == "client")
+            cw.direction = "client";
         tls.control_wrap = cw;
     }
+
+    let detour = outbound_detour_tag_for_section(section);
+    if (detour == "") {
+        let legacy_detour = option(section, "openvpn_detour", "");
+        if (legacy_detour != "")
+            detour = outbound_tag(legacy_detour);
+    }
+    if (detour != "") {
+        endpoint.detour = detour;
+    }
+
     if (length(keys(tls)) > 0)
         endpoint.tls = tls;
 

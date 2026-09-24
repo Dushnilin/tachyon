@@ -809,7 +809,7 @@ download_release() {
 pkg_install_local_bundle() {
     [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install local package transaction: $*"; return 0; }
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk_run apk-transaction "$PACKAGE_TIMEOUT_SECONDS" add --allow-untrusted --force-overwrite "$@"
+        apk_run apk-transaction "$PACKAGE_TIMEOUT_SECONDS" add --allow-untrusted "$@"
     else
         run_logged_timeout opkg-transaction "$PACKAGE_TIMEOUT_SECONDS" opkg install --force-reinstall --force-overwrite --force-downgrade "$@"
     fi

@@ -573,6 +573,7 @@ export namespace Tachyon {
     sing_box_autostart_disabled: 0 | 1;
     sing_box_process_running: 0 | 1;
     sing_box_ports_listening: 0 | 1;
+    sing_box_cert_pin?: 0 | 1;
   }
 
   export interface SteerCheckResult {
@@ -711,6 +712,7 @@ export namespace Tachyon {
     sing_box_compressed: 0 | 1;
     sing_box_lx?: 0 | 1;
     sing_box_tailscale: 0 | 1;
+    sing_box_cert_pin?: 0 | 1;
     sing_box_repo_url?: string;
     steer_version?: string;
     steer_installed?: 0 | 1;
@@ -760,6 +762,7 @@ export namespace Tachyon {
     sing_box_extended: 0 | 1;
     sing_box_tiny: 0 | 1;
     sing_box_tailscale: 0 | 1;
+    sing_box_cert_pin?: 0 | 1;
   }
 
   export interface GetUiCapabilities {
@@ -768,6 +771,7 @@ export namespace Tachyon {
     sing_box_compressed: 0 | 1;
     sing_box_lx: 0 | 1;
     sing_box_tailscale: 0 | 1;
+    sing_box_cert_pin?: 0 | 1;
     zapret_installed: 0 | 1;
     zapret2_installed: 0 | 1;
     byedpi_installed: 0 | 1;

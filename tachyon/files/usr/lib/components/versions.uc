@@ -115,9 +115,9 @@ function extract_sing_box_version_from_output(output) {
     for (let line in split(output, "\n")) {
         line = trim(line);
         let fields = split(line, /[ \t\r\n]+/);
-        if (length(fields) >= 3 && lc(fields[0]) == "sing-box" && lc(fields[1]) == "version")
+        if (length(fields) >= 3 && lc(fields[0]) == "sing-box" && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/))
             return fields[2];
-        if (length(fields) >= 2 && lc(fields[0]) == "version")
+        if (length(fields) >= 2 && lc(fields[0]) == "version" && match(fields[1], /^[vV]?[0-9]+/))
             return fields[1];
     }
     return "";
@@ -144,8 +144,11 @@ function read_sing_box_binary_version(binary, library_dir) {
 
     let raw_output = command_output_lenient("(" + command + ") 2>&1");
     let version = extract_sing_box_version_from_output(raw_output);
-    if (version == "")
-        version = trim(helpers.helper_output_input(raw_output, "stdin-first-line-last-field", []));
+    if (version == "") {
+        let candidate = trim(helpers.helper_output_input(raw_output, "stdin-first-line-last-field", []));
+        if (match(candidate, /^[vV]?[0-9]+/))
+            version = candidate;
+    }
     if (version == "") {
         let trimmed_raw = trim(raw_output);
         helpers.updates_log("Failed to parse sing-box version from binary " + binary + (trimmed_raw != "" ? "; output: " + trimmed_raw : "; binary produced no output"), "warn");

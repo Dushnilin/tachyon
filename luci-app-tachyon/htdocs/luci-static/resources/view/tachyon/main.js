@@ -6058,6 +6058,7 @@ var initialDiagnosticStore = {
     sing_box_compressed: 0,
     sing_box_lx: 0,
     sing_box_tailscale: 1,
+    sing_box_cert_pin: 0,
     sing_box_repo_url: "",
     sing_box_backup_version: "",
     sing_box_backup_time: 0,
@@ -6679,13 +6680,17 @@ function normalizeSingBoxVariantFields(value) {
   const versionLx = version.includes("-lx");
   const singBoxExtended = Boolean(value.sing_box_extended) || versionExtended;
   const singBoxLx = singBoxExtended && (Boolean(value.sing_box_lx) || versionLx);
+  const m = version.match(/^v?(\d+)\.(\d+)/);
+  const versionSupportsCertPin = m ? parseInt(m[1], 10) > 1 || parseInt(m[1], 10) === 1 && parseInt(m[2], 10) >= 15 : false;
+  const singBoxCertPin = Boolean(value.sing_box_cert_pin) || versionSupportsCertPin;
   return {
     ...value,
     sing_box_extended: singBoxExtended ? 1 : 0,
     sing_box_tiny: singBoxExtended ? 0 : value.sing_box_tiny ? 1 : 0,
     sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
     sing_box_lx: singBoxLx ? 1 : 0,
-    sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0
+    sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0,
+    sing_box_cert_pin: singBoxCertPin ? 1 : 0
   };
 }
 function renderSingBoxVariantBadge(value) {
@@ -6869,6 +6874,7 @@ function applyServiceState(uiState) {
   nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
   nextSystemInfo.sing_box_lx = uiState.capabilities.sing_box_lx;
   nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
+  nextSystemInfo.sing_box_cert_pin = uiState.capabilities.sing_box_cert_pin ?? 0;
   store.set({
     servicesInfoWidget: {
       loading: false,
@@ -10712,6 +10718,11 @@ async function runSingBoxCheck() {
         state: data.sing_box_ports_listening ? "success" : "error",
         key: _("Sing-box listening ports"),
         value: ""
+      },
+      {
+        state: !data.sing_box_installed ? "error" : data.sing_box_cert_pin ? "success" : "warning",
+        key: _("TLS certificate pinning (sing-box 1.15+)"),
+        value: data.sing_box_cert_pin ? _("Supported") : _("Ignored (Upgrade to Extended)")
       }
     ]
   });
@@ -11466,6 +11477,7 @@ var UNKNOWN_SYSTEM_INFO = {
   sing_box_compressed: 0,
   sing_box_lx: 0,
   sing_box_tailscale: 1,
+  sing_box_cert_pin: 0,
   sing_box_repo_url: "",
   zapret_version: _("unknown"),
   zapret_installed: 0,
@@ -16973,6 +16985,7 @@ async function fetchDiagnosticsProviderInfo({
         sing_box_compressed: uiState.capabilities.sing_box_compressed,
         sing_box_lx: uiState.capabilities.sing_box_lx,
         sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
+        sing_box_cert_pin: uiState.capabilities.sing_box_cert_pin,
         zapret_installed: uiState.capabilities.zapret_installed,
         zapret2_installed: uiState.capabilities.zapret2_installed,
         byedpi_installed: uiState.capabilities.byedpi_installed,
@@ -21777,6 +21790,7 @@ function patchSystemInfoAfterMutation(result) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
     }
     if (result.action === "install_extended_compressed") {
       nextSystemInfo.sing_box_extended = 1;
@@ -21784,6 +21798,7 @@ function patchSystemInfoAfterMutation(result) {
       nextSystemInfo.sing_box_compressed = 1;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
     }
     if (result.action === "install_lx") {
       nextSystemInfo.sing_box_extended = 1;
@@ -21791,6 +21806,7 @@ function patchSystemInfoAfterMutation(result) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 1;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
     }
     if (result.action === "install_stable") {
       nextSystemInfo.sing_box_extended = 0;
@@ -21798,6 +21814,7 @@ function patchSystemInfoAfterMutation(result) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 0;
     }
     if (result.action === "install_tiny") {
       nextSystemInfo.sing_box_extended = 0;
@@ -21805,6 +21822,7 @@ function patchSystemInfoAfterMutation(result) {
       nextSystemInfo.sing_box_compressed = 0;
       nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 0;
+      nextSystemInfo.sing_box_cert_pin = 0;
     }
   }
   if (result.component === "zapret") {
@@ -23413,6 +23431,14 @@ function renderEngineCard() {
     });
   })() : null;
   const actionElements = [];
+  const featureHint = E("div", {
+    style: "font-size:12px;color:var(--text-color-medium,#666);margin-top:4px;"
+  });
+  if (selectedVariant.id === "sing-box-extended" || selectedVariant.id === "sing-box-extended-compressed" || selectedVariant.id === "sing-box-lx") {
+    featureHint.textContent = _(
+      "✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
+    );
+  }
   const primaryRow = [picker, applyButton, checkUpdateButton];
   if (updateButton) primaryRow.push(updateButton);
   actionElements.push(
@@ -23424,7 +23450,8 @@ function renderEngineCard() {
       },
       primaryRow
     ),
-    warning
+    warning,
+    featureHint
   );
   if (isSelectedSteer && (baseInstalled || extendedInstalled)) {
     const removeLoading = Boolean(updatesActions.steerRemove?.loading);

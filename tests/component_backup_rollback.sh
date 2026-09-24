@@ -90,4 +90,67 @@ ROLLBACK_OUT="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$ACTION_UC" 
 echo "$ROLLBACK_OUT" | grep -Eq '"success":[[:space:]]*true' ||
   fail "rollback with valid backup must return success:true"
 
+# Test 5: Broken active binary does not overwrite existing valid backup
+# Restore valid backup file and metadata
+cp -p "$MOCK_BIN_DIR/sing-box-old" "$MOCK_BACKUPS_DIR/sing_box/sing-box"
+cat > "$MOCK_BACKUPS_DIR/sing_box/metadata.json" <<'EOF_META'
+{
+  "component": "sing_box",
+  "version": "1.9.5",
+  "variant": "extended",
+  "marker": "extended",
+  "timestamp": 1756728000
+}
+EOF_META
+
+# Break the active binary
+cat > "$MOCK_BIN_DIR/sing-box" <<'EOF_BROKEN'
+#!/bin/sh
+echo "FATAL: binary corrupted / segmentation fault" >&2
+exit 1
+EOF_BROKEN
+chmod 0755 "$MOCK_BIN_DIR/sing-box"
+
+# Trigger an action that attempts to backup current active binary
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$ACTION_UC" component-action sing_box trigger_backup_test 2>&1 || true
+
+# Verify backup was NOT overwritten by the broken binary
+BACKUP_VER="$("$MOCK_BACKUPS_DIR/sing_box/sing-box" version 2>/dev/null || true)"
+echo "$BACKUP_VER" | grep -q "1.9.5" ||
+  fail "broken binary must not overwrite valid existing backup"
+
+# Test 6: Pre-flight config check via verifier
+echo '{"inbounds":[]}' > "$MOCK_CONFIG_DIR/config.json"
+
+# 6a: Incompatible/broken binary fails check
+CHECK_FAIL="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
+let v = require("components.verifier");
+let res = v.check_sing_box_config_with_binary("'"$MOCK_BIN_DIR/sing-box"'", "'"$MOCK_CONFIG_DIR/config.json"'", "");
+print(sprintf("%J\n", res));
+')"
+echo "$CHECK_FAIL" | grep -Eq '"ok":[[:space:]]*false' ||
+  fail "broken binary must fail preflight check"
+
+# 6b: Valid binary passes check
+cat > "$MOCK_BIN_DIR/sing-box-good" <<'EOF_GOOD'
+#!/bin/sh
+if [ "$1" = "version" ]; then
+    echo "sing-box version 1.11.0"
+    exit 0
+fi
+if [ "$3" = "check" ] || [ "$4" = "check" ]; then
+    exit 0
+fi
+exit 0
+EOF_GOOD
+chmod 0755 "$MOCK_BIN_DIR/sing-box-good"
+
+CHECK_PASS="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
+let v = require("components.verifier");
+let res = v.check_sing_box_config_with_binary("'"$MOCK_BIN_DIR/sing-box-good"'", "'"$MOCK_CONFIG_DIR/config.json"'", "");
+print(sprintf("%J\n", res));
+')"
+echo "$CHECK_PASS" | grep -Eq '"ok":[[:space:]]*true' ||
+  fail "valid binary must pass preflight check"
+
 printf 'component backup and rollback tests passed\n'

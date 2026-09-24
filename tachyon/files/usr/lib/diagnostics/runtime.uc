@@ -1127,6 +1127,7 @@ function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
     let extended = 0;
     let tiny = 0;
     let tailscale = 0;
+    let cert_pin = 0;
 
     if (sing_box_marker_is("extended") ||
         sing_box_marker_is("extended-compressed") ||
@@ -1148,7 +1149,10 @@ function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
     else if (tiny == 0 && sing_box_component_action_running())
         tailscale = 1;
 
-    return { extended, tiny, tailscale };
+    if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", sing_box_version ]))
+        cert_pin = 1;
+
+    return { extended, tiny, tailscale, cert_pin };
 }
 
 function provider_installed(runtime_uc) {
@@ -1326,6 +1330,7 @@ function build_system_info() {
         sing_box_compressed,
         sing_box_lx,
         sing_box_tailscale: flags.tailscale,
+        sing_box_cert_pin: flags.cert_pin,
         sing_box_repo_url,
         sing_box_backup_version: sb_meta ? as_string(sb_meta.version) : "",
         sing_box_backup_time: sb_meta ? int(sb_meta.timestamp || 0) : 0,
@@ -1408,7 +1413,8 @@ function get_server_capabilities() {
         write_json({
             sing_box_extended: 0,
             sing_box_tiny: 0,
-            sing_box_tailscale: 0
+            sing_box_tailscale: 0,
+            sing_box_cert_pin: 0
         });
         return 0;
     }
@@ -1418,7 +1424,8 @@ function get_server_capabilities() {
     write_json({
         sing_box_extended: flags.extended,
         sing_box_tiny: flags.tiny,
-        sing_box_tailscale: flags.tailscale
+        sing_box_tailscale: flags.tailscale,
+        sing_box_cert_pin: flags.cert_pin
     });
     return 0;
 }
@@ -2010,6 +2017,7 @@ function check_sing_box() {
     let sing_box_installed = 0;
     let sing_box_version_ok = 0;
     let sing_box_extended = 0;
+    let sing_box_cert_pin = 0;
     let sing_box_service_exist = 0;
     let sing_box_autostart_disabled = 0;
     let sing_box_process_running = 0;
@@ -2025,9 +2033,14 @@ function check_sing_box() {
                 sing_box_extended = 1;
             if (module_success(HELPERS_UC, [ "version-at-least", version, "1.12.4" ]))
                 sing_box_version_ok = 1;
+            if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", version ]))
+                sing_box_cert_pin = 1;
         }
-        else if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
+        else if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")) {
             sing_box_extended = 1;
+            if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", "" ]))
+                sing_box_cert_pin = 1;
+        }
     }
 
     if (file_exists("/etc/init.d/sing-box")) {
@@ -2046,6 +2059,7 @@ function check_sing_box() {
         sing_box_installed,
         sing_box_version_ok,
         sing_box_extended,
+        sing_box_cert_pin,
         sing_box_service_exist,
         sing_box_autostart_disabled,
         sing_box_process_running,
@@ -3617,6 +3631,37 @@ function run_recovery_checks() {
     return { report: join("\n", report) + "\n", issues, fixed, checks: [], planned_fixes: DOCTOR_PLANNED_FIXES };
 }
 
+function has_certificate_pins_configured() {
+    let sections = uci_core.section_objects(CONFIG_NAME, "section");
+    for (let sec in sections) {
+        if (sec.enabled == "0" || sec.enabled == "false")
+            continue;
+        let urls = type(sec.proxy_urls) == "array" ? sec.proxy_urls : (sec.proxy_urls ? [ sec.proxy_urls ] : []);
+        if (sec.proxy_url)
+            push(urls, sec.proxy_url);
+        for (let u in urls) {
+            if (index(as_string(u), "pcs=") >= 0)
+                return true;
+        }
+        if (index(as_string(sec.proxy_custom_json || ""), "certificate_sha256") >= 0 ||
+            index(as_string(sec.proxy_custom_json || ""), "pcs=") >= 0)
+            return true;
+    }
+    let sub_files = fs.glob(constants.TMP_SUBSCRIPTION_FOLDER + "/*.json") || [];
+    for (let sf in sub_files) {
+        let content = fs.readfile(sf);
+        if (content && index(content, '"certificate_sha256"') >= 0)
+            return true;
+    }
+    let sec_files = fs.glob(SECTION_CACHE_DIR + "/*/outbounds.json") || [];
+    for (let scf in sec_files) {
+        let content = fs.readfile(scf);
+        if (content && index(content, '"certificate_sha256"') >= 0)
+            return true;
+    }
+    return false;
+}
+
 function run_doctor_checks_impl(repair) {
     DOCTOR_REPAIR_MODE = (repair == true);
     DOCTOR_PLANNED_FIXES = [];
@@ -4909,6 +4954,20 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
+    // 22. TLS Certificate Pinning Capability Check
+    if (has_sections && !is_steer && has_certificate_pins_configured()) {
+        let sb_ver = sing_box_resolved_version();
+        let flags = sing_box_capability_flags(sb_ver.version, sb_ver.output);
+        if (flags.cert_pin == 1) {
+            doc_check("✅", "TLS certificate pinning", "supported & active (sing-box >= 1.15)", "");
+        } else {
+            issues++;
+            doc_check("⚠️", "TLS certificate pinning", "ignored (sing-box < 1.15)",
+                "→ обновите sing-box до sing-box-extended в обновлениях для поддержки pin сертификатов");
+            push(DOCTOR_PLANNED_FIXES, "upgrade_to_singbox_extended");
+        }
+    }
+
     push(report, "");
     if (issues == 0) {
         push(report, "✅ Всё в порядке — проблем не обнаружено");
@@ -5545,6 +5604,10 @@ function apply_quick_fix(codes_str) {
             let rc = command_status("/usr/bin/tachyon discover-awg-mtu 2>/dev/null; /etc/init.d/tachyon reload >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "AWG MTU discovery executed and tunnels reloaded" : "MTU optimization failed (exit " + rc + ")";
+        } else if (c == "upgrade_to_singbox_extended") {
+            let rc = command_status(command_from_args([ "/usr/bin/tachyon", "component_action_async", "sing_box", "install_extended" ]));
+            status = (rc == 0);
+            msg = status ? "Sing-box Extended upgrade initiated" : "Sing-box Extended upgrade trigger failed (exit " + rc + ")";
         } else {
             status = false;
             msg = "Unknown fix code: " + c;
@@ -5603,6 +5666,7 @@ const DOCTOR_FIX_PRIORITIES = {
     "optimize_mtu": 65,
     "rebuild_rules": 70,
     "update_subscriptions": 80,
+    "upgrade_to_singbox_extended": 75,
     "flush_conntrack": 85,
     "optimize_memory": 90,
     "enable_safe_bypass": 95,
@@ -5988,6 +6052,13 @@ function local_rule_doctor(pre_res, pre_verify) {
                 fix: "fix_resolv_symlink"
             });
             add_fix("fix_resolv_symlink");
+        } else if (index(c.name, "certificate pinning") >= 0 || index(c.name, "pinning") >= 0) {
+            push(causes, {
+                probability: 90,
+                cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but installed sing-box does not support certificate_sha256 (requires sing-box 1.15+)" : "Указан TLS pin сертификата для прокси, но установленный sing-box не поддерживает certificate_sha256 (требуется sing-box 1.15+)",
+                fix: "upgrade_to_singbox_extended"
+            });
+            add_fix("upgrade_to_singbox_extended");
         }
     }
 

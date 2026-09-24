@@ -144,4 +144,28 @@ if (type(outbound.tls.certificate_sha256) != "array") exit(2);
 if (outbound.tls.certificate_sha256[0] !== ARGV[1]) exit(3);
 ' "$vless_link" "$B64" || fail "manual vless link applies certificate pin"
 
+# 6. Verify singbox/runtime.uc supports-cert-pin version gates
+ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.0" ||
+  fail "supports-cert-pin must succeed on 1.15.0"
+ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.2" ||
+  fail "supports-cert-pin must succeed on 1.15.2"
+ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "v1.16.1" ||
+  fail "supports-cert-pin must succeed on v1.16.1"
+
+if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.13.0"; then
+  fail "supports-cert-pin must fail on 1.13.0"
+fi
+if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.9"; then
+  fail "supports-cert-pin must fail on 1.14.9"
+fi
+
+# 7. Verify diagnostics reports sing_box_cert_pin capability flag
+server_caps="$(ucode "$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc" get-server-capabilities)"
+printf '%s\n' "$server_caps" > "$WORK_DIR/caps.json"
+assert_contains "$WORK_DIR/caps.json" "sing_box_cert_pin" "capabilities-has-cert-pin"
+
+singbox_chk="$(ucode "$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc" check-sing-box)"
+printf '%s\n' "$singbox_chk" > "$WORK_DIR/sb_chk.json"
+assert_contains "$WORK_DIR/sb_chk.json" "sing_box_cert_pin" "check-sing-box-has-cert-pin"
+
 printf 'subscription certificate pin checks passed\n'

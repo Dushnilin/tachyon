@@ -224,6 +224,7 @@ export interface StoreType {
     sing_box_compressed: number;
     sing_box_lx: number;
     sing_box_tailscale: number;
+    sing_box_cert_pin?: number;
     sing_box_repo_url?: string;
     sing_box_backup_version?: string;
     sing_box_backup_time?: number;

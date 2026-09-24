@@ -377,5 +377,71 @@ assert_array(ut_tcp2.outbounds, [ "dk3" ], "TCP #2 only must select only the sec
 assert_array(ut_both.outbounds, [ "dk1", "dk2", "dk3" ], "Plain name must select all three nodes");
 ' "$WORK_DIR/duplicate-names-config.json" || fail "duplicate outbound name disambiguation failed"
 
-printf 'dashboard server filter checks passed\n'
+# ─── TCH-1020: Subscription nodes in URLTest groups selected via dashboard filter ───
+mkdir -p "$WORK_DIR/tch1020/subscriptions"
+cat >"$WORK_DIR/tch1020/subscriptions/proxy-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    { "type": "urltest", "tag": "PomidorVPN - Group", "remark": "PomidorVPN - Group", "outbounds": [ "us1", "us2", "de1" ], "__tachyon_allow_group": true },
+    { "type": "vless", "tag": "us1", "remark": "🇺🇸США", "server": "1.1.1.1", "server_port": 443, "uuid": "00000000-0000-4000-8000-000000000001" },
+    { "type": "vless", "tag": "us2", "remark": "🇺🇸США 2", "server": "1.1.1.2", "server_port": 443, "uuid": "00000000-0000-4000-8000-000000000002" },
+    { "type": "vless", "tag": "de1", "remark": "🇩🇪Германия", "server": "1.1.1.3", "server_port": 443, "uuid": "00000000-0000-4000-8000-000000000003" }
+  ]
+}
+JSON
+printf '%s\n' 'https://pomidor.example/sub' >"$WORK_DIR/tch1020/subscriptions/proxy-subscription-1.url"
+: >"$WORK_DIR/tch1020/subscriptions/proxy-subscription-1.user_agent"
 
+cat >"$WORK_DIR/tch1020-include.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_server": [ "77.88.8.8" ]
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "subscription_urls": [ "https://pomidor.example/sub" ],
+      "selector_proxy_links": [ "http://1.2.3.4:8080#OperaUS-1-out" ],
+      "dashboard_filter_mode": "include",
+      "dashboard_include_outbounds": [ "🇺🇸США", "🇺🇸США 2", "OperaUS-1-out [HTTP (TCP)]" ]
+    }
+  ]
+}
+JSON
+
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tch1020/subscriptions" \
+  generate_config "$WORK_DIR/tch1020-include.json" "$WORK_DIR/tch1020-include-config.json"
+
+ucode -e '
+let fs = require("fs");
+function fail(msg) { die(msg + "\n"); }
+function outbound_by_tag(cfg, tag) {
+    for (let o in cfg.outbounds || [])
+        if (o && o.tag == tag) return o;
+    return null;
+}
+function assert_array(val, exp, label) {
+    val = val || [];
+    if (length(val) != length(exp)) fail(label + " len mismatch: " + sprintf("%J", val) + " vs " + sprintf("%J", exp));
+    for (let i = 0; i < length(exp); i++)
+        if (val[i] != exp[i]) fail(label + " mismatch: " + sprintf("%J", val));
+}
+let cfg = json(fs.readfile(ARGV[0]));
+let sel = outbound_by_tag(cfg, "proxy-out");
+if (!sel) fail("missing proxy-out selector");
+assert_array(sel.outbounds, [ "proxy-1-out", "us1", "us2" ], "TCH-1020: selector must include selected subscription nodes and manual http link");
+
+let cache = json(fs.readfile(ARGV[1]));
+if (!cache) fail("missing section cache");
+if (cache.hiddenOutboundTags["us1"]) fail("us1 must not be marked hidden in section cache");
+if (cache.hiddenOutboundTags["us2"]) fail("us2 must not be marked hidden in section cache");
+if (cache.hiddenOutboundTags["proxy-1-out"]) fail("proxy-1-out must not be marked hidden in section cache");
+if (!cache.hiddenOutboundTags["de1"]) fail("unselected subscription node de1 must remain marked hidden in section cache");
+' "$WORK_DIR/tch1020-include-config.json" "$WORK_DIR/tch1020-include-config.json.section-cache/proxy.json" || fail "TCH-1020 regression check failed"
+
+printf 'dashboard server filter checks passed\n'

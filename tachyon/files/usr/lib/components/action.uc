@@ -422,7 +422,7 @@ function tachyon_status_running_with_timeout() {
         return false;
 
     let command = command_from_args([ BIN_PATH, "get_status" ]) + " >" + shell_quote(output_file) + " 2>/dev/null & pid=$!; " +
-        "( sleep 6; kill $pid 2>/dev/null || true ) & watcher=$!; " +
+        "( sleep 15; kill $pid 2>/dev/null || true ) & watcher=$!; " +
         "wait $pid 2>/dev/null; rc=$?; kill $watcher 2>/dev/null || true; wait $watcher 2>/dev/null || true; exit $rc";
     let ok = command_status("sh -c " + shell_quote(command)) == 0 &&
         match(read_file(output_file), /"running"[ \t]*:[ \t]*1/) != null;
@@ -491,7 +491,7 @@ function wait_tachyon_running_after_sing_box_change() {
         return false;
 
     let waited = 0;
-    while (waited < 60) {
+    while (waited < 120) {
         if (tachyon_status_running_with_timeout()) {
             command_success_from_args([ "sleep", "8" ]);
             if (tachyon_status_running_with_timeout())
@@ -998,6 +998,7 @@ function extract_sing_box_version_from_output(output) { return cmp_ver.extract_s
 function read_sing_box_binary_version(binary, library_dir) { return cmp_ver.read_sing_box_binary_version(binary, library_dir); }
 function verify_binary_post_install(binary_path, expected_version, version_cmd_args) { return cmp_verify.verify_binary_post_install(binary_path, expected_version, version_cmd_args); }
 function validate_sing_box_extended_binary(binary, library_dir, compressed) { return cmp_verify.validate_sing_box_extended_binary(binary, library_dir, compressed); }
+function check_sing_box_config_with_binary(binary, config_path, library_dir) { return cmp_verify.check_sing_box_config_with_binary(binary, config_path, library_dir); }
 
 
 function move_file_portable(source_path, target_path) {
@@ -1538,6 +1539,13 @@ function install_sing_box_extended_package(action, target_tag) {
         action_fail("sing_box", action, "Installed sing-box-extended package failed validation and previous sing-box variant could not be restored", current_version, latest_version);
     }
 
+    let config_check = check_sing_box_config_with_binary("/usr/bin/sing-box", "/etc/sing-box/config.json", "/usr/lib");
+    if (!config_check.ok) {
+        if (restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched))
+            action_fail("sing_box", action, "Installed sing-box-extended package is incompatible with current configuration: " + config_check.reason + "; previous sing-box variant was restored", current_version, latest_version);
+        action_fail("sing_box", action, "Installed sing-box-extended package is incompatible with current configuration: " + config_check.reason + " and previous sing-box variant could not be restored", current_version, latest_version);
+    }
+
     write_sing_box_variant_state("extended", new_version);
     if (target_tag != null && target_tag != "")
         write_file("/etc/tachyon/sing-box-version", target_tag + "\n");
@@ -1632,7 +1640,16 @@ function install_sing_box_extended(action, compressed, target_tag) {
     if (new_version == "") {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
+        restart_tachyon_after_successful_change();
         action_fail("sing_box", action, "Downloaded " + label + " failed validation", current_version, latest_version);
+    }
+
+    let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path());
+    if (!config_check.ok) {
+        remove_file(tmp_binary);
+        remove_file(tmp_cronet);
+        restart_tachyon_after_successful_change();
+        action_fail("sing_box", action, "Downloaded " + label + " is incompatible with current configuration: " + config_check.reason, current_version, latest_version);
     }
 
     let backup_binary = "";
@@ -1797,7 +1814,16 @@ function install_sing_box_lx(action, target_tag) {
     if (new_version == "") {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
+        restart_tachyon_after_successful_change();
         action_fail("sing_box", action, "Downloaded " + label + " failed validation", current_version, latest_version);
+    }
+
+    let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path());
+    if (!config_check.ok) {
+        remove_file(tmp_binary);
+        remove_file(tmp_cronet);
+        restart_tachyon_after_successful_change();
+        action_fail("sing_box", action, "Downloaded " + label + " is incompatible with current configuration: " + config_check.reason, current_version, latest_version);
     }
 
     let backup_binary = "";
@@ -1973,6 +1999,12 @@ function install_package_sing_box(action, tiny) {
     if (sing_box_runtime_success("is-extended", [ new_version ]))
         fail_package_sing_box_install(action, tiny, "package was installed, but the active binary is still sing-box-extended", new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
+
+    let config_check = check_sing_box_config_with_binary("/usr/bin/sing-box", "/etc/sing-box/config.json", "");
+    if (!config_check.ok)
+        fail_package_sing_box_install(action, tiny, "installed package is incompatible with current configuration: " + config_check.reason, new_version, latest_version,
+            package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
+
     write_sing_box_variant_state(tiny ? "tiny" : "stable", new_version);
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change())
@@ -2329,17 +2361,41 @@ function create_component_backup(component) {
 
         ensure_dir(bdir);
         let backup_bin = bdir + "/sing-box";
-        remove_file(backup_bin);
-        if (!command_success_from_args([ "cp", "-p", SING_BOX_BIN, backup_bin ])) {
-            updates_log("Failed to create sing-box backup copy", "warn");
-            return false;
-        }
 
         let variant = sing_box_runtime_output("variant", []);
         let marker = sing_box_runtime_output("read-variant-marker", []);
         let version = read_sing_box_binary_version(SING_BOX_BIN, "/usr/lib");
         if (version == "")
             version = sing_box_runtime_output("version", []);
+
+        // Protect existing valid backup: do not backup an invalid or broken binary
+        if (version == "" && validate_sing_box_extended_binary(SING_BOX_BIN, "/usr/lib") == "") {
+            if (file_exists(backup_bin) && file_nonempty(backup_bin)) {
+                updates_log("Current sing-box binary is invalid or broken; preserving existing valid backup", "warn");
+                return true;
+            }
+            updates_log("Current sing-box binary is invalid or broken; skipping backup creation", "warn");
+            return true;
+        }
+
+        if (!check_free_disk_space("/etc", size)) {
+            updates_log("Skipping sing-box backup before update: insufficient disk space on /etc", "warn");
+            return false;
+        }
+
+        let staged_backup = backup_bin + ".tmp." + owner_pid();
+        remove_file(staged_backup);
+        if (!command_success_from_args([ "cp", "-p", SING_BOX_BIN, staged_backup ]) ||
+            !file_nonempty(staged_backup)) {
+            remove_file(staged_backup);
+            updates_log("Failed to create sing-box backup copy", "warn");
+            return false;
+        }
+        if (!command_success_from_args([ "mv", "-f", staged_backup, backup_bin ])) {
+            remove_file(staged_backup);
+            updates_log("Failed to finalize sing-box backup copy", "warn");
+            return false;
+        }
 
         if (file_exists("/etc/init.d/sing-box")) {
             command_success_from_args([ "cp", "-p", "/etc/init.d/sing-box", bdir + "/sing-box.init" ]);
@@ -2365,10 +2421,35 @@ function create_component_backup(component) {
             return true;
         let st = fs.stat("/usr/bin/ciadpi");
         let size = (st && st.size) ? st.size : 0;
-        if (!check_free_disk_space("/etc", size)) return false;
-        ensure_dir(bdir);
-        command_success_from_args([ "cp", "-p", "/usr/bin/ciadpi", bdir + "/ciadpi" ]);
+        if (size <= 0)
+            return true;
+
         let version = trim(command_output("/usr/bin/ciadpi --version 2>&1 || true"));
+        ensure_dir(bdir);
+        let backup_bin = bdir + "/ciadpi";
+
+        if (version == "") {
+            if (file_exists(backup_bin) && file_nonempty(backup_bin)) {
+                updates_log("Current byedpi binary is invalid or broken; preserving existing valid backup", "warn");
+                return true;
+            }
+            updates_log("Current byedpi binary is invalid or broken; skipping backup creation", "warn");
+            return true;
+        }
+
+        if (!check_free_disk_space("/etc", size)) return false;
+
+        let staged_backup = backup_bin + ".tmp." + owner_pid();
+        remove_file(staged_backup);
+        if (!command_success_from_args([ "cp", "-p", "/usr/bin/ciadpi", staged_backup ]) ||
+            !file_nonempty(staged_backup)) {
+            remove_file(staged_backup);
+            return false;
+        }
+        if (!command_success_from_args([ "mv", "-f", staged_backup, backup_bin ])) {
+            remove_file(staged_backup);
+            return false;
+        }
         let meta = {
             component: "byedpi",
             version: version,

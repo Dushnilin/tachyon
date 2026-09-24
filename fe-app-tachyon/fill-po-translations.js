@@ -1388,6 +1388,22 @@ const dictionary = {
   "All sources": "Все источники",
   "Built-in": "Встроенные",
   "Strategy preset source": "Источник пресета стратегии",
+  "Load .ovpn config": "Загрузить .ovpn конфиг",
+  "Import OpenVPN settings from .ovpn or .conf file": "Импортировать настройки OpenVPN из файла .ovpn или .conf",
+  "Load .ovpn": "Загрузить .ovpn",
+  "OpenVPN configuration loaded successfully!": "Конфигурация OpenVPN успешно загружена!",
+  "OpenVPN Credentials Required": "Требуются учетные данные OpenVPN",
+  "OpenVPN config loaded. Please enter your username and password below.": "Конфиг OpenVPN загружен. Введите логин и пароль ниже.",
+  "Failed to parse OpenVPN config: ": "Не удалось прочитать конфиг OpenVPN: ",
+  "Username for auth-user-pass authentication": "Имя пользователя для авторизации auth-user-pass",
+  "Password for auth-user-pass authentication": "Пароль для авторизации auth-user-pass",
+  "TLS Crypt Key": "Ключ TLS Crypt",
+  "Inline tls-crypt key (mutually exclusive with tls-auth)": "Встроенный ключ tls-crypt (взаимоисключающий с tls-auth)",
+  "TLS Auth Key Direction": "Направление ключа TLS Auth",
+  "Key direction for tls-auth (0 = server, 1 = client, empty = bidirectional)": "Направление ключа для tls-auth (0 = сервер, 1 = клиент, пусто = двунаправленный)",
+  "Bidirectional (default)": "Двунаправленный (по умолчанию)",
+  "Tunnel MTU": "MTU туннеля",
+  "Custom MTU, e.g. 1500 (leave empty for default)": "Пользовательский MTU, например 1500 (оставьте пустым для значения по умолчанию)",
 };
 
 function escapePoString(str) {

@@ -10289,6 +10289,244 @@ function createSectionContent(section) {
 
   // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
 
+  const parseOpenvpnConfig = (text) => {
+    const result = {
+      server: "",
+      port: "1194",
+      proto: "udp",
+      cipher: "",
+      auth: "",
+      ca: "",
+      cert: "",
+      key: "",
+      tls_auth: "",
+      tls_crypt: "",
+      key_direction: "",
+      username: "",
+      password: "",
+      mtu: "",
+      auth_user_pass_required: false,
+    };
+
+    if (!text || typeof text !== "string") return result;
+
+    const blockRegex = /<([a-zA-Z0-9_-]+)>([\s\S]*?)<\/\1>/gi;
+    let blockMatch;
+    while ((blockMatch = blockRegex.exec(text)) !== null) {
+      const tagName = blockMatch[1].toLowerCase();
+      const tagContent = blockMatch[2].trim();
+      if (tagName === "ca") result.ca = tagContent;
+      else if (tagName === "cert") result.cert = tagContent;
+      else if (tagName === "key") result.key = tagContent;
+      else if (tagName === "tls-auth" || tagName === "tls_auth")
+        result.tls_auth = tagContent;
+      else if (tagName === "tls-crypt" || tagName === "tls_crypt")
+        result.tls_crypt = tagContent;
+      else if (tagName === "auth-user-pass" || tagName === "auth_user_pass") {
+        result.auth_user_pass_required = true;
+        const creds = tagContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (creds.length >= 1) result.username = creds[0];
+        if (creds.length >= 2) result.password = creds[1];
+      }
+    }
+
+    const cleanedText = text.replace(/<([a-zA-Z0-9_-]+)>[\s\S]*?<\/\1>/gi, "");
+    const lines = cleanedText.split(/\r?\n/);
+    for (const rawLine of lines) {
+      let line = rawLine.trim();
+      if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+
+      const commentIdx = line.search(/\s+[#;]/);
+      if (commentIdx >= 0) line = line.slice(0, commentIdx).trim();
+
+      const parts = line.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+
+      if (cmd === "remote") {
+        if (!result.server && parts[1]) {
+          result.server = parts[1];
+          if (parts[2] && /^\d+$/.test(parts[2])) result.port = parts[2];
+          if (parts[3] && /^(udp|tcp)/i.test(parts[3])) {
+            result.proto = parts[3].toLowerCase().startsWith("tcp") ? "tcp" : "udp";
+          }
+        }
+      } else if (cmd === "port" && parts[1] && /^\d+$/.test(parts[1])) {
+        if (!result.server || result.port === "1194") result.port = parts[1];
+      } else if (cmd === "proto" && parts[1]) {
+        result.proto = parts[1].toLowerCase().startsWith("tcp") ? "tcp" : "udp";
+      } else if (cmd === "cipher" && parts[1]) {
+        result.cipher = parts[1].toUpperCase();
+      } else if (cmd === "data-ciphers" && parts[1] && !result.cipher) {
+        const ciphers = parts[1].split(":");
+        if (ciphers.length > 0) result.cipher = ciphers[0].toUpperCase();
+      } else if (cmd === "auth" && parts[1]) {
+        result.auth = parts[1].toUpperCase();
+      } else if (cmd === "key-direction" && parts[1]) {
+        result.key_direction = parts[1];
+      } else if (cmd === "tls-auth" && parts[1]) {
+        if (!result.tls_auth) result.tls_auth = parts[1];
+        if (parts[2]) result.key_direction = parts[2];
+      } else if (cmd === "tls-crypt" && parts[1]) {
+        if (!result.tls_crypt) result.tls_crypt = parts[1];
+      } else if (cmd === "ca" && parts[1] && !result.ca) {
+        result.ca = parts[1];
+      } else if (cmd === "cert" && parts[1] && !result.cert) {
+        result.cert = parts[1];
+      } else if (cmd === "key" && parts[1] && !result.key) {
+        result.key = parts[1];
+      } else if (cmd === "tun-mtu" && parts[1] && /^\d+$/.test(parts[1])) {
+        result.mtu = parts[1];
+      } else if (cmd === "auth-user-pass") {
+        result.auth_user_pass_required = true;
+      }
+    }
+
+    return result;
+  };
+
+  o = section.taboption(
+    "settings",
+    form.Button,
+    "_load_openvpn_conf",
+    _("Load .ovpn config"),
+    _("Import OpenVPN settings from .ovpn or .conf file"),
+  );
+  o.modalonly = true;
+  o.depends("action", "openvpn");
+
+  o.renderWidget = function (section_id) {
+    const fileInput = E("input", {
+      type: "file",
+      accept: ".ovpn,.conf,text/plain,*",
+      style: "display:none",
+    });
+
+    const icon = E("span", {}, ["📂"]);
+    const label = E("span", { class: "twg-label" }, [_("Load .ovpn")]);
+    const btn = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-neutral twg-btn",
+        type: "button",
+        style: "display:inline-flex;align-items:center;gap:8px;",
+      },
+      [icon, label],
+    );
+
+    const setBtn = (state, text) => {
+      btn.className =
+        "btn cbi-button cbi-button-neutral twg-btn" +
+        (state ? " twg-" + state : "");
+      label.textContent = text || _("Load .ovpn");
+    };
+
+    const setVal = (opt, val) => {
+      if (val === undefined || val === null) return;
+      const str = String(val);
+      const el =
+        document.getElementById(
+          `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
+        ) ||
+        document.getElementById(`cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
+      const w =
+        el &&
+        (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
+          ? el
+          : el.querySelector("input:not([type='hidden']),select,textarea"));
+      if (w) {
+        w.value = str;
+        w.dispatchEvent(new Event("input", { bubbles: true }));
+        w.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      uci.set(UCI_PACKAGE, section_id, opt, str);
+    };
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      fileInput.value = "";
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target.result;
+        if (typeof text !== "string") return;
+
+        let parsed;
+        try {
+          parsed = parseOpenvpnConfig(text);
+        } catch (err) {
+          setBtn("error", _("Error"));
+          setTimeout(() => setBtn("", null), 2500);
+          ui.addNotification(
+            _("Error"),
+            E("p", {}, _("Failed to parse OpenVPN config: ") + err.message),
+            "danger",
+          );
+          return;
+        }
+
+        if (parsed.server) setVal("openvpn_server", parsed.server);
+        if (parsed.port) setVal("openvpn_server_port", parsed.port);
+        if (parsed.proto) setVal("openvpn_proto", parsed.proto);
+        if (parsed.cipher) setVal("openvpn_cipher", parsed.cipher);
+        if (parsed.auth) setVal("openvpn_auth", parsed.auth);
+        if (parsed.ca) setVal("openvpn_ca", parsed.ca);
+        if (parsed.cert) setVal("openvpn_cert", parsed.cert);
+        if (parsed.key) setVal("openvpn_key", parsed.key);
+        if (parsed.tls_crypt) {
+          setVal("openvpn_tls_crypt", parsed.tls_crypt);
+          setVal("openvpn_tls_auth", "");
+          uci.unset(UCI_PACKAGE, section_id, "openvpn_tls_auth");
+        } else if (parsed.tls_auth) {
+          setVal("openvpn_tls_auth", parsed.tls_auth);
+          setVal("openvpn_tls_crypt", "");
+          uci.unset(UCI_PACKAGE, section_id, "openvpn_tls_crypt");
+        }
+        if (parsed.key_direction !== undefined && parsed.key_direction !== "") {
+          setVal("openvpn_key_direction", parsed.key_direction);
+        }
+        if (parsed.username) setVal("openvpn_username", parsed.username);
+        if (parsed.password) setVal("openvpn_password", parsed.password);
+        if (parsed.mtu) setVal("openvpn_mtu", parsed.mtu);
+
+        setBtn("success", _("Loaded!"));
+        setTimeout(() => setBtn("", null), 2000);
+
+        if (parsed.auth_user_pass_required && (!parsed.username || !parsed.password)) {
+          ui.addNotification(
+            _("OpenVPN Credentials Required"),
+            E("p", {}, _("OpenVPN config loaded. Please enter your username and password below.")),
+            "info",
+          );
+          const uEl =
+            document.getElementById(`cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`) ||
+            document.getElementById(`widget.cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`);
+          if (uEl) {
+            const input = uEl.querySelector ? uEl.querySelector("input") || uEl : uEl;
+            if (input && input.focus) input.focus();
+          }
+        } else {
+          ui.addNotification(
+            _("Done"),
+            E("p", {}, _("OpenVPN configuration loaded successfully!")),
+            "success",
+          );
+        }
+      };
+
+      reader.onerror = () => {
+        setBtn("error", _("Read error"));
+        setTimeout(() => setBtn("", null), 2500);
+      };
+
+      reader.readAsText(file);
+    });
+
+    btn.addEventListener("click", () => fileInput.click());
+
+    return E("div", { style: "display:contents" }, [fileInput, btn]);
+  };
+
   o = section.taboption(
     "settings",
     form.Value,
@@ -10323,6 +10561,29 @@ function createSectionContent(section) {
   o.value("udp", "UDP");
   o.value("tcp", "TCP");
   o.default = "udp";
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openvpn_username",
+    _("Username"),
+    _("Username for auth-user-pass authentication"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openvpn_password",
+    _("Password"),
+    _("Password for auth-user-pass authentication"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
   o.depends("action", "openvpn");
 
   o = section.taboption(
@@ -10393,6 +10654,46 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.rows = 6;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.TextValue,
+    "openvpn_tls_crypt",
+    _("TLS Crypt Key"),
+    _("Inline tls-crypt key (mutually exclusive with tls-auth)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "openvpn_key_direction",
+    _("TLS Auth Key Direction"),
+    _("Key direction for tls-auth (0 = server, 1 = client, empty = bidirectional)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("", _("Bidirectional (default)"));
+  o.value("0", "0 (server)");
+  o.value("1", "1 (client)");
+  o.default = "";
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openvpn_mtu",
+    _("Tunnel MTU"),
+    _("Custom MTU, e.g. 1500 (leave empty for default)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "1500";
   o.depends("action", "openvpn");
 
   o = section.taboption(
