@@ -3494,7 +3494,10 @@ var TachyonShellMethods = {
   checkLogs: async () => callBaseMethod(Tachyon.AvailableMethods.CHECK_LOGS),
   checkSingBoxLogs: async () => callBaseMethod(Tachyon.AvailableMethods.CHECK_SING_BOX_LOGS),
   getSystemInfo: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_SYSTEM_INFO
+    Tachyon.AvailableMethods.GET_SYSTEM_INFO,
+    [],
+    "/usr/bin/tachyon",
+    { timeout: 25e3 }
   ),
   getEngineInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.ENGINE_INFO,
@@ -11548,6 +11551,14 @@ async function ensureSystemInfo({
     }
     if (requestId === latestSystemInfoRequestId) {
       const latestSystemInfo = store.get().diagnosticsSystemInfo;
+      if (latestSystemInfo.loaded) {
+        if (latestSystemInfo.loading) {
+          const nextSystemInfo2 = { ...latestSystemInfo, loading: false };
+          store.set({ diagnosticsSystemInfo: nextSystemInfo2 });
+          return nextSystemInfo2;
+        }
+        return latestSystemInfo;
+      }
       if (silent) {
         if (latestSystemInfo.loading) {
           const nextSystemInfo2 = { ...latestSystemInfo, loading: false };
@@ -11560,15 +11571,9 @@ async function ensureSystemInfo({
       }
       const nextSystemInfo = {
         ...UNKNOWN_SYSTEM_INFO,
+        ...latestSystemInfo,
         loading: false,
-        loaded: false,
-        providerInfoLoaded: latestSystemInfo.providerInfoLoaded,
-        zapret_installed: latestSystemInfo.zapret_installed,
-        zapret2_installed: latestSystemInfo.zapret2_installed,
-        byedpi_installed: latestSystemInfo.byedpi_installed,
-        wdtt_installed: latestSystemInfo.wdtt_installed,
-        olcrtc_installed: latestSystemInfo.olcrtc_installed,
-        server_inbounds_enabled_count: latestSystemInfo.server_inbounds_enabled_count
+        loaded: false
       };
       store.set({
         diagnosticsSystemInfo: nextSystemInfo

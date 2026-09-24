@@ -274,7 +274,7 @@ function write_olcrtc_yaml_config(section, connection) {
         return false;
     f.write(yaml);
     f.close();
-    return rename(tmp, cfg.config_path) == 0;
+    return fs.rename(tmp, cfg.config_path);
 }
 
 function start_runtime() {

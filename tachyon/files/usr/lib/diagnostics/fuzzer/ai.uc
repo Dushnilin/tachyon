@@ -202,7 +202,7 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
     let valid_strategies = [];
     for (let i = 0; i < length(parsed_json.strategies); i++) {
         let st = parsed_json.strategies[i];
-        if (st && st.args && validate_strategy_args(engine, st.args)) {
+        if (st && st.args && strategies.validate_strategy_args(engine, st.args)) {
             push(valid_strategies, {
                 id: st.id || sprintf("ai_strat_%d", i + 1),
                 name: st.name || sprintf("AI Strategy %d", i + 1),
@@ -223,7 +223,7 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
     }
 
     let custom_file = STATE_DIR + "/fuzzer_ai_strategies.json";
-    ensure_state_dir();
+    history.ensure_state_dir();
     common.write_json_file(custom_file, valid_strategies);
 
     print(sprintf("%J\n", {

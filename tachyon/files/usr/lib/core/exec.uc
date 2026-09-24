@@ -137,7 +137,7 @@ function run(opts) {
 
     // Apply environment overrides
     let env = opts.env;
-    if (type(env) == "object" && object_key_count(env) > 0) {
+    if (type(env) == "object" && length(keys(env)) > 0) {
         cmd = command_env(env) + " " + cmd;
     }
 
@@ -252,7 +252,7 @@ function run_background(opts) {
     // Apply environment overrides: split VAR=value off the front for exec
     let env = opts.env;
     let env_prefix = "";
-    if (type(env) == "object" && object_key_count(env) > 0) {
+    if (type(env) == "object" && length(keys(env)) > 0) {
         env_prefix = command_env(env) + " ";
     }
 

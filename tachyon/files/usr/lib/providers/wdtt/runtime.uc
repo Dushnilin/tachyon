@@ -147,7 +147,7 @@ function write_wdtt_hashes_file(hashes_value) {
         }
     }
     f.close();
-    rename(tmp, path);
+    fs.rename(tmp, path);
     return true;
 }
 

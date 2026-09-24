@@ -2,6 +2,16 @@ let common = require("core.common");
 let fs = require("fs");
 
 let as_string = common.as_string;
+let object_or_empty = common.object_or_empty;
+
+function array_contains(arr, val) {
+    if (type(arr) != "array")
+        return false;
+    for (let item in arr)
+        if (item == val)
+            return true;
+    return false;
+}
 
 const OLCRTC_PROVIDERS = [ "jitsi", "telemost", "wbstream" ];
 const OLCRTC_TRANSPORTS = [ "datachannel", "vp8channel", "seichannel", "videochannel" ];
@@ -93,7 +103,7 @@ function valid_number(value, min, max) {
     if (value == "" || value == null)
         return true;
     let num = int(value);
-    if (num == null || isNaN(num))
+    if (num == null)
         return false;
     return num >= min && num <= max;
 }

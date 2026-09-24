@@ -465,6 +465,9 @@ export const TachyonShellMethods = {
   getSystemInfo: async () =>
     callBaseMethod<Tachyon.GetSystemInfo>(
       Tachyon.AvailableMethods.GET_SYSTEM_INFO,
+      [],
+      '/usr/bin/tachyon',
+      { timeout: 25000 },
     ),
   getEngineInfo: async () =>
     callBaseMethod<Tachyon.EngineInfo>(

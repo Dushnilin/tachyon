@@ -52,6 +52,13 @@ function unique_string_array(values) {
     return result;
 }
 
+function is_true(value) {
+    if (value == null || value == "")
+        return false;
+    let normalized = lc(as_string(value));
+    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
+}
+
 function uci_bin_to_hex(val) {
     if (val == null || val == "") return "";
     let s = as_string(val);

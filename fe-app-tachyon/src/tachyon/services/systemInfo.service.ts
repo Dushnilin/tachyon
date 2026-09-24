@@ -108,6 +108,15 @@ export async function ensureSystemInfo({
     if (requestId === latestSystemInfoRequestId) {
       const latestSystemInfo = store.get().diagnosticsSystemInfo;
 
+      if (latestSystemInfo.loaded) {
+        if (latestSystemInfo.loading) {
+          const nextSystemInfo = { ...latestSystemInfo, loading: false };
+          store.set({ diagnosticsSystemInfo: nextSystemInfo });
+          return nextSystemInfo;
+        }
+        return latestSystemInfo;
+      }
+
       if (silent) {
         if (latestSystemInfo.loading) {
           const nextSystemInfo = { ...latestSystemInfo, loading: false };
@@ -124,16 +133,9 @@ export async function ensureSystemInfo({
 
       const nextSystemInfo = {
         ...UNKNOWN_SYSTEM_INFO,
+        ...latestSystemInfo,
         loading: false,
         loaded: false,
-        providerInfoLoaded: latestSystemInfo.providerInfoLoaded,
-        zapret_installed: latestSystemInfo.zapret_installed,
-        zapret2_installed: latestSystemInfo.zapret2_installed,
-        byedpi_installed: latestSystemInfo.byedpi_installed,
-        wdtt_installed: latestSystemInfo.wdtt_installed,
-        olcrtc_installed: latestSystemInfo.olcrtc_installed,
-        server_inbounds_enabled_count:
-          latestSystemInfo.server_inbounds_enabled_count,
       };
 
       store.set({

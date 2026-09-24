@@ -440,6 +440,15 @@ function uci_get(path) {
     return uci_core.get(path);
 }
 
+function allowed_ips_default_routes(value) {
+    let result = [];
+    for (let allowed in words(value)) {
+        if (allowed == "0.0.0.0/0" || allowed == "::/0")
+            push(result, allowed);
+    }
+    return result;
+}
+
 function uci_show(path) {
     return uci_core.exists(path);
 }
@@ -1033,15 +1042,21 @@ function show_sing_box_version() {
 
 function get_luci_app_version() {
     let path = TACHYON_LUCI_VIEW_DIR + "/main.js";
-    let data = fs.readfile(path);
+    let data = fs.readfile(path, 131072);
     if (data == null)
         return "not installed";
 
-    for (let line in split(as_string(data), "\n")) {
-        let matched = match(line, /^[ \t]*var[ \t]+([^ \t=]+)[ \t]*=[ \t]*"([^"]*)"/);
-        if (matched != null && matched[1] == "TACHYON_LUCI_APP_VERSION")
-            return as_string(matched[2]);
-    }
+    let matched = match(data, /var[ \t]+TACHYON_LUCI_APP_VERSION[ \t]*=[ \t]*"([^"]*)"/);
+    if (matched != null)
+        return as_string(matched[1]);
+
+    let full = fs.readfile(path);
+    if (full == null)
+        return "";
+    matched = match(full, /var[ \t]+TACHYON_LUCI_APP_VERSION[ \t]*=[ \t]*"([^"]*)"/);
+    if (matched != null)
+        return as_string(matched[1]);
+
     return "";
 }
 
@@ -1273,7 +1288,9 @@ function build_system_info() {
         let steer_out = trim(command_output_from_args([ "/usr/sbin/steer", "version" ]));
         let m = match(steer_out, /steer\s+([0-9a-zA-Z\.\-]+)/);
         steer_version = m ? m[1] : (steer_out != "" ? steer_out : "installed");
-        steer_extended = (match(steer_out, /расширенная|extended/i) != null || pkg_is_installed("steer-extended")) ? 1 : 0;
+        steer_extended = (match(steer_out, /расширенная|extended/i) != null ||
+            command_success_from_args([ "/usr/sbin/steer", "help", "vless" ]) ||
+            module_success(PACKAGES_UC, [ "installed", "steer-extended" ])) ? 1 : 0;
     }
     let device_model = first_line_value("/tmp/sysinfo/model", "unknown");
 
@@ -2129,6 +2146,18 @@ function clash_json_output(args) {
     else
         print("{}\n");
     return 0;
+}
+
+function clash_json_data(args, auth) {
+    let full_args = [];
+    for (let item in args) push(full_args, item);
+    for (let item in auth) push(full_args, item);
+    let out = command_output(command_from_args(full_args));
+    try {
+        return json(out);
+    } catch (e) {
+        return null;
+    }
 }
 
 function clash_api_url() {

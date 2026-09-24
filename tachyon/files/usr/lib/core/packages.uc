@@ -323,7 +323,7 @@ function wait_for_lock(opts) {
             log_msg("Package manager lock holder PID " + holder.pid + " is dead (stale lock), waiting for kernel to release", "warn");
         } else {
             log_msg(sprintf("Waiting for %s database lock: owner PID=%s (%s) elapsed=%ds timeout=%ds",
-                upper(pkg), holder.pid, holder.command, elapsed, timeout), "warn");
+                uc(pkg), holder.pid, holder.command, elapsed, timeout), "warn");
         }
         if (on_wait) on_wait(attempt, holder, elapsed);
         command_success([ "sleep", "2" ]);
@@ -336,7 +336,7 @@ function wait_for_lock(opts) {
         if (is_stale_lock(last_holder)) {
             error_msg = sprintf("FAILED: package database lock held by dead process PID=%s after %ds (stale lock)", last_holder.pid, elapsed);
         } else {
-            error_msg = sprintf("FAILED: %s database remained locked for %ds by PID %s (%s)", upper(pkg), elapsed, last_holder.pid, last_holder.command);
+            error_msg = sprintf("FAILED: %s database remained locked for %ds by PID %s (%s)", uc(pkg), elapsed, last_holder.pid, last_holder.command);
         }
     } else {
         error_msg = sprintf("FAILED: package manager lock timeout after %ds (no holder identified)", elapsed);
