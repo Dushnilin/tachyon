@@ -757,7 +757,16 @@ remove_legacy_packages() {
         done
         if [ -n "$_legacy_pkgs" ]; then
             msg "Removing legacy packages:$_legacy_pkgs"
-            apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" del --purge $_legacy_pkgs || warn "Could not remove legacy packages (will retry during install)"
+            apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" del --purge $_legacy_pkgs || warn "Could not remove legacy packages (will scrub world file)"
+        fi
+        # Scrub legacy AND tachyon entries from /etc/apk/world so the upcoming
+        # 'apk add' starts with a clean slate (no stale virtual-provides conflict).
+        # This is safe: 'apk add' will re-add tachyon/luci-app-tachyon after install.
+        if [ -f /etc/apk/world ]; then
+            for _pkg in forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift tachyon luci-app-tachyon; do
+                sed -i "/^${_pkg}\$/d" /etc/apk/world 2>/dev/null || true
+            done
+            debug "APK world file scrubbed of legacy and tachyon entries"
         fi
     else
         for _pkg in forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift; do
@@ -800,7 +809,7 @@ download_release() {
 pkg_install_local_bundle() {
     [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install local package transaction: $*"; return 0; }
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk_run apk-transaction "$PACKAGE_TIMEOUT_SECONDS" add --allow-untrusted "$@"
+        apk_run apk-transaction "$PACKAGE_TIMEOUT_SECONDS" add --allow-untrusted --force-overwrite "$@"
     else
         run_logged_timeout opkg-transaction "$PACKAGE_TIMEOUT_SECONDS" opkg install --force-reinstall --force-overwrite --force-downgrade "$@"
     fi
