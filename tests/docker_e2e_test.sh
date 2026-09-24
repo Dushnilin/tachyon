@@ -96,7 +96,7 @@ if ! "$DOCKER_BIN" image inspect "$TEST_IMAGE:latest" >/dev/null 2>&1; then
     "$DOCKER_BIN" exec "$TEMP_CONTAINER" opkg update && break || sleep 5
   done
   for i in 1 2 3 4 5; do
-    "$DOCKER_BIN" exec "$TEMP_CONTAINER" opkg install ucode ucode-mod-fs ucode-mod-uci curl ca-bundle bind-dig nftables ip-full coreutils-base64 sing-box bash node git git-http openssl-util && break || sleep 5
+    "$DOCKER_BIN" exec "$TEMP_CONTAINER" opkg install ucode ucode-mod-fs ucode-mod-uci curl ca-bundle bind-dig nftables ip-full coreutils-base64 coreutils-timeout sing-box bash node git git-http openssl-util && break || sleep 5
   done
   "$DOCKER_BIN" exec "$TEMP_CONTAINER" git config --global --add safe.directory '*' || true
 

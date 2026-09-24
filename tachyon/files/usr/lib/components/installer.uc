@@ -62,8 +62,8 @@ function pkg_list_update_command(proxy_address) {
 function pkg_install_name_command(package_name, proxy_address) {
     if (proxy_address == null)
         proxy_address = service_proxy_address();
-    let cmd = is_apk() ? command_from_args([ "apk", "add", package_name ]) + " </dev/null" :
-        command_from_args([ "opkg", "install", package_name ]) + " </dev/null";
+    let cmd = is_apk() ? command_from_args([ "apk", "add", "--allow-untrusted", "--force-overwrite", package_name ]) + " </dev/null" :
+        command_from_args([ "opkg", "install", "--force-overwrite", "--force-downgrade", "--force-depends", package_name ]) + " </dev/null";
     if (as_string(proxy_address) != "") {
         let p = "http://" + proxy_address;
         cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
@@ -79,8 +79,8 @@ function pkg_install_name_downgrade(package_name, package_version) {
             return false;
         let package_spec = package_name + "=" + package_version;
         if (pkg_is_installed(package_name))
-            return command_success(command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_spec ]) + " </dev/null");
-        return command_success(command_from_args([ "apk", "add", package_spec ]) + " </dev/null");
+            return command_success(command_from_args([ "apk", "fix", "--force-overwrite", "--reinstall", "--upgrade", package_spec ]) + " </dev/null");
+        return command_success(command_from_args([ "apk", "add", "--allow-untrusted", "--force-overwrite", package_spec ]) + " </dev/null");
     }
 
     return command_success(command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null") ||
@@ -89,7 +89,7 @@ function pkg_install_name_downgrade(package_name, package_version) {
 
 function pkg_install_files_command(files, force_reinstall) {
     if (is_apk()) {
-        let add_args = [ "apk", "add", "--allow-untrusted" ];
+        let add_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite", "--force-reinstall" ];
         for (let file in files)
             push(add_args, file);
         return command_from_args(add_args) + " </dev/null";
@@ -199,9 +199,9 @@ function pkg_tx_downgrade(package_name, package_version) {
             return { success: false, exit_code: 1, message: "Version required for APK downgrade" };
         let package_spec = package_name + "=" + package_version;
         if (pkg_is_installed(package_name))
-            cmd = command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_spec ]) + " </dev/null";
+            cmd = command_from_args([ "apk", "fix", "--force-overwrite", "--reinstall", "--upgrade", package_spec ]) + " </dev/null";
         else
-            cmd = command_from_args([ "apk", "add", package_spec ]) + " </dev/null";
+            cmd = command_from_args([ "apk", "add", "--allow-untrusted", "--force-overwrite", package_spec ]) + " </dev/null";
     } else {
         cmd = command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null";
     }
@@ -224,7 +224,7 @@ function pkg_tx_install_files(files, force_reinstall) {
     let args = [];
     let timeout = PKG_TX_INSTALL_TIMEOUT;
     if (is_apk()) {
-        push(args, "apk", "add", "--allow-untrusted");
+        push(args, "apk", "add", "--allow-untrusted", "--force-overwrite", "--force-reinstall");
         for (let f in files)
             push(args, f);
     } else {

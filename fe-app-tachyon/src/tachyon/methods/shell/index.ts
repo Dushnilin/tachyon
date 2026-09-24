@@ -1232,14 +1232,11 @@ export const TachyonShellMethods = {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
       args,
-      timeout: 10000,
+      timeout: 30000,
     });
-    let parsed: Tachyon.FuzzerStartResponse | null = null;
-    try {
-      parsed = JSON.parse(response.stdout?.trim() || '{}');
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput<Tachyon.FuzzerStartResponse>(
+      response.stdout,
+    );
     if ((response.code ?? 1) === 0 && parsed && parsed.success) {
       return {
         success: true,
@@ -1258,14 +1255,9 @@ export const TachyonShellMethods = {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
       args: [Tachyon.AvailableMethods.FUZZER_STATUS],
-      timeout: 8000,
+      timeout: 15000,
     });
-    let parsed: Tachyon.FuzzerState | null = null;
-    try {
-      parsed = JSON.parse(response.stdout?.trim() || '{}');
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput<Tachyon.FuzzerState>(response.stdout);
     if ((response.code ?? 1) === 0 && parsed) {
       return {
         success: true,
@@ -1282,7 +1274,7 @@ export const TachyonShellMethods = {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
       args: [Tachyon.AvailableMethods.FUZZER_STOP],
-      timeout: 8000,
+      timeout: 15000,
     });
     if ((response.code ?? 1) === 0) {
       return { success: true, data: undefined };
@@ -1306,14 +1298,11 @@ export const TachyonShellMethods = {
         args,
         targetRuleOrGlobal || 'global',
       ],
-      timeout: 10000,
+      timeout: 30000,
     });
-    let parsed: Tachyon.FuzzerApplyResponse | null = null;
-    try {
-      parsed = JSON.parse(response.stdout?.trim() || '{}');
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput<Tachyon.FuzzerApplyResponse>(
+      response.stdout,
+    );
     if ((response.code ?? 1) === 0 && parsed && parsed.success) {
       return {
         success: true,
@@ -1356,16 +1345,9 @@ export const TachyonShellMethods = {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
       args,
-      timeout: 8000,
+      timeout: 15000,
     });
-    let parsed: FuzzerStrategiesData | null = null;
-    try {
-      parsed = JSON.parse(
-        response.stdout?.trim() || '{}',
-      ) as FuzzerStrategiesData;
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput<FuzzerStrategiesData>(response.stdout);
     if ((response.code ?? 1) === 0 && parsed) {
       return {
         success: true,

@@ -119,7 +119,7 @@ function get_zapret2_lua_flags(args_str) {
 
 function has_timeout() {
     if (_has_timeout === null)
-        _has_timeout = (system("command -v timeout >/dev/null 2>&1") == 0);
+        _has_timeout = (system("command -v timeout >/dev/null 2>&1 || [ -x /usr/bin/timeout ]") == 0);
     return _has_timeout;
 }
 

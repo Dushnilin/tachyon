@@ -22,7 +22,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/tachyon
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+ca-bundle +curl +ucode +ucode-mod-fs +ucode-mod-uci +coreutils-base64 +bind-dig +nftables +ip-full
+	DEPENDS:=+ca-bundle +curl +ucode +ucode-mod-fs +ucode-mod-uci +coreutils-base64 +coreutils-timeout +bind-dig +nftables +ip-full
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	PROVIDES:=forkop
 	REPLACES:=forkop
@@ -219,6 +219,7 @@ define Package/tachyon/install
 
 	# Curated DPI bypass strategy presets (zapret4rocket / homeproxy-hiddify / Tachyon)
 	$(INSTALL_DATA) ./files/usr/share/tachyon/dpi-presets.json $(1)/usr/share/tachyon/dpi-presets.json
+	$(INSTALL_BIN) ./files/usr/share/tachyon/steer-nfqws $(1)/usr/share/tachyon/steer-nfqws
 
 	# Smart steer-nfqws wrapper: selects nfqws vs nfqws2 by opts content / spec.json nfqws_bin.
 	# Replaces the steer package's steer-nfqws with an auto-detecting version.

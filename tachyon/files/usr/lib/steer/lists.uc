@@ -64,16 +64,11 @@ function write_subscription_file(section_name) {
     if (type(parsed) != "object" || type(parsed.links) != "object")
         return "";
 
-    // 1. If urltestGroups exist, use only the FIRST group's outbounds.
-    // Secondary groups are transport variants (grpc, TLS, etc.) for internal
-    // subscription URLTest selection — steer selects by latency itself and
-    // does not need the duplicate flavour variants.
+    // 1. URLTest group outbounds in order
     let lines = [];
     let seen = {};
     if (type(parsed.urltestGroups) == "object") {
-        let grp_ids = keys(parsed.urltestGroups);
-        if (length(grp_ids) > 0) {
-            let grp = parsed.urltestGroups[grp_ids[0]];
+        for (let grp_id, grp in parsed.urltestGroups) {
             if (type(grp) == "object" && type(grp.outbounds) == "array") {
                 for (let ob in grp.outbounds) {
                     let link = parsed.links[ob];
@@ -86,10 +81,20 @@ function write_subscription_file(section_name) {
         }
     }
 
-    // 2. Non-hidden links that were not already added from the urltest group.
+    // 2. Non-hidden links that were not already added from the urltest groups.
     let hidden = type(parsed.hiddenOutboundTags) == "object" ? parsed.hiddenOutboundTags : {};
     for (let name, link in parsed.links) {
         if (seen[name] || hidden[name]) continue;
+        link = trim(as_string(link));
+        if (match(link, /^vless:\/\//) != null) {
+            push(lines, link);
+            seen[name] = true;
+        }
+    }
+
+    // 3. Remaining links (hidden detour variants)
+    for (let name, link in parsed.links) {
+        if (seen[name]) continue;
         link = trim(as_string(link));
         if (match(link, /^vless:\/\//) != null) {
             push(lines, link);

@@ -1944,20 +1944,6 @@ export function renderStrategyFuzzerModal(
         'Preparing strategies and isolated nftables queue...',
       );
 
-    // Run DPI detection before starting benchmark
-    try {
-      const dpiRes = await TachyonShellMethods.detectFuzzerDpi(
-        selectedTarget,
-        selectedTarget === 'custom' ? customUrl : undefined,
-      );
-      if (dpiRes.success && dpiRes.data) {
-        currentDpiDetection = dpiRes.data;
-        updateDpiBanner(dpiRes.data);
-      }
-    } catch {
-      // DPI detection is non-critical, continue with benchmark
-    }
-
     const tbody = document.getElementById('tachyon-fuzzer-results-tbody');
     if (tbody) {
       tbody.replaceChildren(

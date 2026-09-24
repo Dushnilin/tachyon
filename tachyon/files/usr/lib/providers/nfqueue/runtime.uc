@@ -497,11 +497,58 @@ function has_route_rule(config, inbound, outbound) {
 }
 
 function runtime_config_status(cfg, sections) {
-    let config_path = option(uci_settings(), "config_path", "");
-    let config = read_json_file(config_path);
     let rules_configured = length(sections) > 0;
     let outbounds_configured = rules_configured;
     let routes_configured = rules_configured;
+
+    let engine_name = option(uci_settings(), "engine", "sing-box");
+    let is_steer = index(engine_name, "steer") == 0;
+    try {
+        let engine = require("core.engine");
+        if (engine && engine.get_active() != "sing-box")
+            is_steer = true;
+    } catch (e) {}
+
+    if (is_steer) {
+        let steer_spec = read_json_file("/etc/steer/spec.json");
+        if (type(steer_spec) == "object") {
+            let outputs = steer_spec.outputs || {};
+            let channels = steer_spec.channels || [];
+            for (let section in sections) {
+                let sname = section_name(section);
+                let label = option(section, "label", sname);
+                let has_out = (outputs[sname] != null || outputs[label] != null);
+                if (!has_out) {
+                    for (let oname, odata in outputs) {
+                        if (oname == sname || oname == label || index(oname, sname) >= 0 || index(oname, label) >= 0) {
+                            has_out = true;
+                            break;
+                        }
+                    }
+                }
+                if (!has_out)
+                    outbounds_configured = false;
+
+                let found_channel = false;
+                for (let ch in channels) {
+                    if (ch.out == sname || ch.out == label || ch.name == sname || ch.name == label) {
+                        found_channel = true;
+                        break;
+                    }
+                }
+                if (!found_channel)
+                    routes_configured = false;
+            }
+            return {
+                rules_configured,
+                outbounds_configured,
+                routes_configured
+            };
+        }
+    }
+
+    let config_path = option(uci_settings(), "config_path", "");
+    let config = read_json_file(config_path);
 
     let index_value = 1;
     for (let section in sections) {

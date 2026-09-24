@@ -1771,15 +1771,9 @@ function check_dns_available() {
     }
 
     // Steer does not reconfigure dnsmasq the way sing-box does (noresolv=1, tachyon_server=...).
-    // Instead it just uses the system dnsmasq as-is with DNS redirect via nftables.
-    // So for steer we check: DHCP option 6 is set (clients use router as DNS server).
+    // Instead it uses system dnsmasq or LAN interfaces with DNS redirect via nftables.
     if (active_engine_is_steer()) {
-        // uci_core.get returns a space-joined string for list values
-        let dhcp_opt_lan = uci_core.get("dhcp.lan.dhcp_option");
-        let dhcp_opt_global = uci_core.get("dhcp.@dnsmasq[0].dhcp_option");
-        let combined = (dhcp_opt_lan || "") + " " + (dhcp_opt_global || "");
-        // option 6 = DNS server; check if any "6,<ip>" entry is present
-        dhcp_config_status = (index(combined, "6,") >= 0) ? 1 : 0;
+        dhcp_config_status = 1;
     } else if (!module_success(DNS_APPLY_UC, [ "default-config-complete" ])) {
         dhcp_config_status = 0;
     }
@@ -2202,6 +2196,9 @@ function steer_get_cached_latencies() {
 function steer_set_cached_latency(tag, delay) {
     let data = steer_get_cached_latencies();
     data[as_string(tag)] = int(delay);
+    let unprefixed = replace(tag, /^.*?\s+/, "");
+    if (unprefixed != tag)
+        data[unprefixed] = int(delay);
     common.write_json_file(STEER_LATENCY_CACHE_FILE, data);
 }
 
@@ -2263,6 +2260,36 @@ function steer_build_section_context(section_name) {
     let transports = metadata.transports || {};
     let hidden = cache_data.hiddenOutboundTags || {};
     let urltest_groups = cache_data.urltestGroups || {};
+    let uci_urltests = uci_core.section_objects(CONFIG_NAME, "urltest");
+    for (let ut in uci_urltests) {
+        if (ut.section == section_name) {
+            let ut_name = ut.name || ut[".name"];
+            let ut_sec_id = section_name + "-urltest-" + ut[".name"] + "-out";
+            let already_exists = false;
+            for (let gid, g in urltest_groups) {
+                if (gid == ut_sec_id || g.displayName == ut_name) {
+                    already_exists = true;
+                    break;
+                }
+            }
+            if (!already_exists) {
+                let ut_id = ut_sec_id;
+                let ut_outbounds = [];
+                for (let tag, link in links) {
+                    if (!hidden[tag])
+                        push(ut_outbounds, tag);
+                }
+                if (length(ut_outbounds) == 0) {
+                    for (let tag, link in links)
+                        push(ut_outbounds, tag);
+                }
+                urltest_groups[ut_id] = {
+                    displayName: ut_name,
+                    outbounds: ut_outbounds
+                };
+            }
+        }
+    }
 
     let tag_to_idx = {};
     let idx_to_tag = {};
@@ -2346,6 +2373,8 @@ function clash_api(action, arg1, arg2, arg3) {
                     let hist = [];
                     if (delay != null && int(delay) > 0)
                         push(hist, { delay: int(delay), time: "2026-09-22T13:00:00Z" });
+                    else if (delay != null && int(delay) == 0 && (latencies[tag] != null || (ctx.tag_to_idx && latencies["proxy-" + ctx.tag_to_idx[tag]] != null)))
+                        push(hist, { delay: 0, time: "2026-09-22T13:00:00Z" });
                     proxies[tag] = {
                         name: ctx.names[tag] || tag,
                         type: ctx.transports[tag] || "Vless",
@@ -2373,14 +2402,12 @@ function clash_api(action, arg1, arg2, arg3) {
                     if (grp_delay != null && int(grp_delay) > 0)
                         push(hist, { delay: int(grp_delay), time: "2026-09-22T13:00:00Z" });
                     proxies[grp_id] = {
-                        name: grp.displayName || ctx.names[grp_id] || grp_id,
+                        name: grp_id,
                         type: "URLTest",
                         all: grp.outbounds,
                         now: chosen_child,
                         history: hist
                     };
-                    if (grp.displayName && grp.displayName != grp_id)
-                        proxies[grp.displayName] = proxies[grp_id];
                 }
 
                 let selector_all = [];
@@ -2425,14 +2452,14 @@ function clash_api(action, arg1, arg2, arg3) {
                 if (sec_delay != null && int(sec_delay) > 0)
                     push(sec_hist, { delay: int(sec_delay), time: "2026-09-22T13:00:00Z" });
 
-                proxies[sname] = {
-                    name: sname,
+                let sel_tag = sname + "-out";
+                proxies[sel_tag] = {
+                    name: sel_tag,
                     type: "Selector",
                     now: now_tag,
                     all: selector_all,
                     history: sec_hist
                 };
-                proxies[sname + "-out"] = proxies[sname];
             }
             print(sprintf("%J\n", { proxies: proxies }));
             return 0;
@@ -2864,7 +2891,12 @@ function clash_api(action, arg1, arg2, arg3) {
                 let node_idx = ctx && ctx.tag_to_idx ? ctx.tag_to_idx[target_proxy] : null;
                 if (node_idx == null) {
                     let m = match(target_proxy, /proxy-(\d+)/);
-                    node_idx = m ? int(m[1]) : int(target_proxy);
+                    if (m)
+                        node_idx = int(m[1]);
+                    else if (match(target_proxy, /^\d+$/))
+                        node_idx = int(target_proxy);
+                    else
+                        node_idx = "auto";
                 }
                 uci_core.set(CONFIG_NAME + "." + target_group + ".node", as_string(node_idx));
                 uci_core.delete(CONFIG_NAME + "." + target_group + ".nodes");

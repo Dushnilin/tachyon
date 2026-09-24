@@ -945,11 +945,13 @@ function start_steer_main(active_engine) {
     // wrapper's nfqws2 detection all zapret2 strategies die with "no
     // /opt/zapret/nfq/nfqws" or run through the wrong binary. Restore our
     // master copy when the packaged stub is back.
-    let nfqws_wrapper = LIB_DIR + "/../../usr/sbin/steer-nfqws";
-    if (fs.stat(nfqws_wrapper) != null) {
-        let current = trim(as_string(command_output_from_args([ "head", "-n", "3", "/usr/sbin/steer-nfqws" ])));
-        if (index(current, "Tachyon") < 0 && index(current, "tachyon") < 0)
-            command_status("cp " + shell_quote(nfqws_wrapper) + " /usr/sbin/steer-nfqws && chmod 755 /usr/sbin/steer-nfqws");
+    let nfqws_wrapper = "/usr/share/tachyon/steer-nfqws";
+    if (fs.stat(nfqws_wrapper) != null && fs.stat("/usr/sbin/steer-nfqws") != null) {
+        let current = fs.readfile("/usr/sbin/steer-nfqws", 256) || "";
+        if (index(current, "Tachyon") < 0 && index(current, "tachyon") < 0) {
+            fs.writefile("/usr/sbin/steer-nfqws", fs.readfile(nfqws_wrapper));
+            fs.chmod("/usr/sbin/steer-nfqws", 0755);
+        }
     }
 
     // On steer, zapret/zapret2 sections are handled directly by steer as

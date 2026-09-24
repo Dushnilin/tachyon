@@ -561,7 +561,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
     cleanup_temp_daemons(state.job_id);
 }
 
-function stop_fuzzer() {
+function stop_fuzzer(quiet) {
     let state = get_fuzzer_state();
     let job_id = state ? state.job_id : null;
     let job_dir = get_job_dir(job_id);
@@ -593,13 +593,14 @@ function stop_fuzzer() {
     }
     save_fuzzer_state(state);
     
-    print(sprintf("%J\n", { success: true, message: "Fuzzer stopped" }));
+    if (!quiet)
+        print(sprintf("%J\n", { success: true, message: "Fuzzer stopped" }));
 }
 
 function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mode, timeout_seconds) {
     let current = get_fuzzer_state();
     if (current.running) {
-        stop_fuzzer();
+        stop_fuzzer(true);
         system("sleep 0.25");
     }
     

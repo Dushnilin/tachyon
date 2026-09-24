@@ -4070,14 +4070,11 @@ var TachyonShellMethods = {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
       args,
-      timeout: 1e4
+      timeout: 3e4
     });
-    let parsed = null;
-    try {
-      parsed = JSON.parse(response.stdout?.trim() || "{}");
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput(
+      response.stdout
+    );
     if ((response.code ?? 1) === 0 && parsed && parsed.success) {
       return {
         success: true,
@@ -4093,14 +4090,9 @@ var TachyonShellMethods = {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
       args: [Tachyon.AvailableMethods.FUZZER_STATUS],
-      timeout: 8e3
+      timeout: 15e3
     });
-    let parsed = null;
-    try {
-      parsed = JSON.parse(response.stdout?.trim() || "{}");
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput(response.stdout);
     if ((response.code ?? 1) === 0 && parsed) {
       return {
         success: true,
@@ -4116,7 +4108,7 @@ var TachyonShellMethods = {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
       args: [Tachyon.AvailableMethods.FUZZER_STOP],
-      timeout: 8e3
+      timeout: 15e3
     });
     if ((response.code ?? 1) === 0) {
       return { success: true, data: void 0 };
@@ -4135,14 +4127,11 @@ var TachyonShellMethods = {
         args,
         targetRuleOrGlobal || "global"
       ],
-      timeout: 1e4
+      timeout: 3e4
     });
-    let parsed = null;
-    try {
-      parsed = JSON.parse(response.stdout?.trim() || "{}");
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput(
+      response.stdout
+    );
     if ((response.code ?? 1) === 0 && parsed && parsed.success) {
       return {
         success: true,
@@ -4160,16 +4149,9 @@ var TachyonShellMethods = {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
       args,
-      timeout: 8e3
+      timeout: 15e3
     });
-    let parsed = null;
-    try {
-      parsed = JSON.parse(
-        response.stdout?.trim() || "{}"
-      );
-    } catch {
-      parsed = null;
-    }
+    const parsed = parseJsonObjectOutput(response.stdout);
     if ((response.code ?? 1) === 0 && parsed) {
       return {
         success: true,
@@ -14945,17 +14927,6 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       currentStratEl.innerText = _(
         "Preparing strategies and isolated nftables queue..."
       );
-    try {
-      const dpiRes = await TachyonShellMethods.detectFuzzerDpi(
-        selectedTarget,
-        selectedTarget === "custom" ? customUrl : void 0
-      );
-      if (dpiRes.success && dpiRes.data) {
-        currentDpiDetection = dpiRes.data;
-        updateDpiBanner(dpiRes.data);
-      }
-    } catch {
-    }
     const tbody = document.getElementById("tachyon-fuzzer-results-tbody");
     if (tbody) {
       tbody.replaceChildren(

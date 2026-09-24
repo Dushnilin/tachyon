@@ -418,7 +418,7 @@ ensure_bootstrap_ucode_runtime() {
 
 ensure_runtime_dependencies() {
     _missing=""
-    for _pkg in ca-bundle curl coreutils-base64 bind-dig nftables ip-full; do
+    for _pkg in ca-bundle curl coreutils-base64 coreutils-timeout bind-dig nftables ip-full; do
         pkg_is_installed "$_pkg" || _missing="$_missing $_pkg"
     done
     [ -z "$_missing" ] && return 0
