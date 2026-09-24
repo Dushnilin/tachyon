@@ -3039,7 +3039,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16315",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2081",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:5757",
-      "src/tachyon/methods/custom/getDashboardSections.ts:1928",
+      "src/tachyon/methods/custom/getDashboardSections.ts:1927",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:348",
       "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:172"
     ]
@@ -9186,7 +9186,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16326",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2081",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:5757",
-      "src/tachyon/methods/custom/getDashboardSections.ts:1931",
+      "src/tachyon/methods/custom/getDashboardSections.ts:1930",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:351",
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46",
       "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:183"
@@ -11573,7 +11573,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3496",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3497",
       "src/tachyon/methods/custom/getDashboardSections.ts:1770",
-      "src/tachyon/methods/custom/getDashboardSections.ts:1926",
+      "src/tachyon/methods/custom/getDashboardSections.ts:1925",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:346",
       "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:166"
     ]
@@ -13103,7 +13103,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:333",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3502",
       "src/tachyon/methods/custom/getDashboardSections.ts:1770",
-      "src/tachyon/methods/custom/getDashboardSections.ts:1930",
+      "src/tachyon/methods/custom/getDashboardSections.ts:1929",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:350",
       "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:178"
     ]
@@ -14764,7 +14764,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:5757",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3519",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:354",
-      "src/tachyon/methods/custom/getDashboardSections.ts:1932",
+      "src/tachyon/methods/custom/getDashboardSections.ts:1931",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:352",
       "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:188"
     ]

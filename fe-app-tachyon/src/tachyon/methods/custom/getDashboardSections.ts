@@ -1824,7 +1824,6 @@ export async function getDashboardSections(
               hiddenOutboundTags,
             );
 
-
           const hideNa = shouldHideNaServers(configSections);
           const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
           const filteredOutbounds =

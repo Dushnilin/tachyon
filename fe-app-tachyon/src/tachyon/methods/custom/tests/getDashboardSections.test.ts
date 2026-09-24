@@ -1436,4 +1436,3 @@ describe('getDashboardSections', () => {
     expect(codes).not.toContain('proxy-hidden-1');
   });
 });
-
