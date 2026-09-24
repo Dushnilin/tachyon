@@ -219,7 +219,8 @@ function build_section_cache(section) {
     // Delete the existing cache BEFORE building so that read_section_metadata()
     // (called inside merge_source_metadata) cannot read stale data from the old
     // Main.json and re-inflate subscriptionMetadata on every rebuild.
-    fs.unlink(runtime_subscription.section_cache_path(section_name));
+    // NOTE: fs.unlink throws on ENOENT — wrap in try/catch (pattern from migration.uc).
+    try { fs.unlink(runtime_subscription.section_cache_path(section_name)); } catch(e) {}
     let taken = {};
 
     let index = 0;
