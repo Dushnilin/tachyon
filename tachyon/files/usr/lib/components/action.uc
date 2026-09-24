@@ -921,10 +921,11 @@ function install_steer(action, target_tag, extended) {
     if (extended && pkg_is_installed("steer"))
         pkg_remove_sing_box_conflict("steer");
 
-    if (fs.stat("/usr/share/tachyon/steer-nfqws") != null && fs.stat("/usr/sbin/steer-nfqws") != null) {
+    let nfqws_wrapper = fs.stat("/usr/share/tachyon/steer-nfqws") != null ? "/usr/share/tachyon/steer-nfqws" : (LIB_DIR + "/../../usr/sbin/steer-nfqws");
+    if (fs.stat(nfqws_wrapper) != null && fs.stat("/usr/sbin/steer-nfqws") != null) {
         let current = fs.readfile("/usr/sbin/steer-nfqws", 256) || "";
         if (index(current, "Tachyon") < 0 && index(current, "tachyon") < 0) {
-            fs.writefile("/usr/sbin/steer-nfqws", fs.readfile("/usr/share/tachyon/steer-nfqws"));
+            fs.writefile("/usr/sbin/steer-nfqws", fs.readfile(nfqws_wrapper));
             fs.chmod("/usr/sbin/steer-nfqws", 0755);
         }
     }
