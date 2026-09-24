@@ -911,15 +911,17 @@ function install_steer(action, target_tag, extended) {
     if (pkg == null)
         action_fail(component, action, "Failed to download " + label + " package");
 
+    // steer and steer-extended conflict in package managers (apk/opkg).
+    // The conflicting variant must be removed BEFORE installing the new one.
+    if (extended && pkg_is_installed("steer"))
+        run_logged_pkg_remove_sing_box_conflict("steer", "Removing steer before steer-extended package installation");
+    else if (!extended && pkg_is_installed("steer-extended"))
+        run_logged_pkg_remove_sing_box_conflict("steer-extended", "Removing steer-extended before steer package installation");
+
     run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), 30);
 
     if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
         action_fail(component, action, "Failed to install " + label + " package");
-
-    // steer-extended supersedes the base package: both own /usr/sbin/steer, so
-    // the base one is removed after a successful extended install.
-    if (extended && pkg_is_installed("steer"))
-        pkg_remove_sing_box_conflict("steer");
 
     let nfqws_wrapper = fs.stat("/usr/share/tachyon/steer-nfqws") != null ? "/usr/share/tachyon/steer-nfqws" : (LIB_DIR + "/../../usr/sbin/steer-nfqws");
     if (fs.stat(nfqws_wrapper) != null && fs.stat("/usr/sbin/steer-nfqws") != null) {

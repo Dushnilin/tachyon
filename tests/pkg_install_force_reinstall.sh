@@ -84,4 +84,9 @@ case "$APK_PLAIN" in
   *) fail "apk install command malformed, got: $APK_PLAIN" ;;
 esac
 
+case "$APK_PLAIN" in
+  *--force-overwrite*) ;;
+  *) fail "apk install must carry --force-overwrite, got: $APK_PLAIN" ;;
+esac
+
 printf 'PASS: pkg install force reinstall\n'

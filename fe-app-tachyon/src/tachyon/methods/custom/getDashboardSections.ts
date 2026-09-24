@@ -1249,6 +1249,7 @@ function buildProxyGroupOutbounds(
   urltestGroups: Record<string, UrlTestCacheGroup> = {},
   priorityGroups: Record<string, PriorityCacheGroup> = {},
   cachedProxyLinks: Map<string, string> = new Map(),
+  hiddenOutboundTags: Record<string, boolean> = {},
 ) {
   const sectionName = section['.name'];
   const configuredPrefixes = getConfiguredSubscriptionPrefixes(section);
@@ -1272,7 +1273,10 @@ function buildProxyGroupOutbounds(
     entry: proxyByCode.get(config.code),
   }));
   const manualLinkByCode = buildManualLinkByCode(section);
-  const selectorCodes = selector?.value?.all ?? [];
+  const rawSelectorCodes = selector?.value?.all ?? [];
+  const selectorCodes = rawSelectorCodes.filter(
+    (code) => !hiddenOutboundTags[code],
+  );
   const urlTestCodes = urlTestConfigs.map((config) => config.code);
   const priorityCodes = priorityConfigs.map((config) => config.code);
   const showDetectedCountries =
@@ -1286,12 +1290,12 @@ function buildProxyGroupOutbounds(
     ...Array.from(manualLinkByCode.keys()),
     ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
     ...priorityEntries.flatMap(({ entry }) => entry?.value.all || []),
-  ]);
+  ]).filter((code) => !hiddenOutboundTags[code]);
   const groupCodes = uniqueCodes([
     ...(selectorCodes.length ? selectorCodes : fallbackCodes),
     ...urlTestCodes,
     ...priorityCodes,
-  ]);
+  ]).filter((code) => !hiddenOutboundTags[code]);
 
   const selectorNow =
     selector?.value?.now ||
@@ -1300,6 +1304,9 @@ function buildProxyGroupOutbounds(
     priorityCodes[0];
 
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
+    if (hiddenOutboundTags[code]) {
+      return [];
+    }
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
     const priorityConfig = priorityConfigByCode.get(code);
@@ -1805,6 +1812,7 @@ export async function getDashboardSections(
             : new Map<string, string>();
           const urltestGroups = getUrlTestGroups(dashboardCache);
           const priorityGroups = getPriorityGroups(dashboardCache);
+          const hiddenOutboundTags = dashboardCache?.hiddenOutboundTags ?? {};
           const { selector, latencyTestCode, latencyTestCodes, outbounds } =
             buildProxyGroupOutbounds(
               section,
@@ -1813,7 +1821,9 @@ export async function getDashboardSections(
               urltestGroups,
               priorityGroups,
               cachedProxyLinks,
+              hiddenOutboundTags,
             );
+
 
           const hideNa = shouldHideNaServers(configSections);
           const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));

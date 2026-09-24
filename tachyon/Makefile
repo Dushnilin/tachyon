@@ -221,11 +221,6 @@ define Package/tachyon/install
 	$(INSTALL_DATA) ./files/usr/share/tachyon/dpi-presets.json $(1)/usr/share/tachyon/dpi-presets.json
 	$(INSTALL_BIN) ./files/usr/sbin/steer-nfqws $(1)/usr/share/tachyon/steer-nfqws
 
-	# Smart steer-nfqws wrapper: selects nfqws vs nfqws2 by opts content / spec.json nfqws_bin.
-	# Replaces the steer package's steer-nfqws with an auto-detecting version.
-	$(INSTALL_DIR) $(1)/usr/sbin
-	$(INSTALL_BIN) ./files/usr/sbin/steer-nfqws $(1)/usr/sbin/steer-nfqws
-
 	# Zapret handler supervisor: steer 1.5.x init scripts do not spawn the
 	# kind: zapret handlers, so Tachyon (the control layer) runs them itself.
 	$(INSTALL_DIR) $(1)/etc/init.d

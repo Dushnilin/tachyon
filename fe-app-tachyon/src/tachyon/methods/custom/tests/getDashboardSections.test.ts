@@ -1388,4 +1388,52 @@ describe('getDashboardSections', () => {
     expect(result.data[0].serviceStatus?.ready).toBe(true);
     expect(result.data[0].outbounds[0].displayName).toBe('Running');
   });
+
+  it('excludes hidden outbound tags from dashboard section cards even if present in selector', async () => {
+    const sec = proxySection();
+    mocks.getConfigSections.mockResolvedValue([sec]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            all: ['main-urltest-out', 'proxy-hidden-1', 'proxy-visible-2'],
+            now: 'main-urltest-out',
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            all: ['proxy-hidden-1', 'proxy-visible-2'],
+            now: 'proxy-visible-2',
+          }),
+          'proxy-hidden-1': proxy('VLESS', {
+            name: 'Hidden Member Node',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 120 }],
+          }),
+          'proxy-visible-2': proxy('VLESS', {
+            name: 'Visible Node',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 200 }],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        hiddenOutboundTags: {
+          'proxy-hidden-1': true,
+        },
+        links: {
+          'proxy-hidden-1': 'vless://hidden',
+          'proxy-visible-2': 'vless://visible',
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const [section] = result.data;
+    const codes = section.outbounds.map((item) => item.code);
+    expect(codes).toContain('main-urltest-out');
+    expect(codes).toContain('proxy-visible-2');
+    expect(codes).not.toContain('proxy-hidden-1');
+  });
 });
+

@@ -275,7 +275,7 @@ build_backend_root() {
   install -m 0644 "$ROOT_DIR/tachyon/files/etc/config/tachyon" "$output_root/etc/config/tachyon"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$output_root/usr/bin/tachyon"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/sbin/steer-nfqws" \
-    "$output_root/usr/sbin/steer-nfqws"
+    "$output_root/usr/share/tachyon/steer-nfqws"
   cp -a "$ROOT_DIR/tachyon/files/usr/lib/." "$output_root/usr/lib/tachyon/"
 
   # Mirror Package/tachyon/install from tachyon/Makefile exactly: the release
@@ -302,7 +302,7 @@ build_backend_root() {
     "$output_root/etc/init.d/tachyon-torrserver-direct" \
     "$output_root/etc/init.d/tachyon-steer-zapret" \
     "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
-    "$output_root/usr/sbin/steer-nfqws" \
+    "$output_root/usr/share/tachyon/steer-nfqws" \
     "$output_root/usr/lib/cgi-bin/tachyon-agent"
   # Contains the Telegram bot token placeholder and receives user secrets.
   chmod 0600 "$output_root/etc/config/tachyon" "$output_root/usr/lib/tachyon/defaults/config"
