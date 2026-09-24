@@ -22,9 +22,6 @@ let connections = require("config.connections");
 let runtime_subscription = require("singbox.subscription");
 let share_link = require("subscription.share_link");
 
-let generator_outbounds = require("singbox.generator_outbounds");
-let generator_routes = require("singbox.generator_routes");
-
 let as_string = common.as_string;
 let array_or_empty = common.array_or_empty;
 
@@ -55,33 +52,43 @@ function build_section_cache(section) {
     if (length(urls) == 0)
         return false;
 
-    let existing_meta = existing_subscription_metadata(section_name);
+    let state = runtime_subscription.new_section_state(section_name);
+    state.subscriptionMetadata = existing_subscription_metadata(section_name);
+    let node_prefix = trim(as_string(section.node_prefix || ""));
 
-    let config = { outbounds: [] };
-    let taken = {};
+    let index = 0;
+    for (let entry in urls) {
+        index++;
+        let source_section = runtime_subscription.source_id(section_name, index);
+        let outbounds = array_or_empty(runtime_subscription.read_source_outbounds(source_section));
 
-    generator_outbounds.init({
-        runtime_supports_xhttp: true,
-        routes: generator_routes,
-        atomic_write_json_file: common.write_json_file,
-        runtime_settings: function() { return uci_core.get_all(CONFIG_NAME, "settings") || {}; },
-        runtime_generate_unsupported: function(msg) {}
-    });
-    generator_routes.init({
-        runtime_settings: function() { return uci_core.get_all(CONFIG_NAME, "settings") || {}; }
-    });
+        for (let i = 0; i < length(outbounds); i++) {
+            let outbound = outbounds[i];
+            if (type(outbound) != "object")
+                continue;
+            let tag = as_string(outbound.tag || outbound.remark || ("server-" + (i + 1)));
+            let display_name = as_string(outbound.remark || outbound.tag || tag);
 
-    generator_outbounds.add_connections_outbound(config, section, taken);
+            if (as_string(outbound.type) == "urltest") {
+                if (length(array_or_empty(outbound.outbounds)) > 0)
+                    runtime_subscription.remember_urltest_group(state, tag, display_name, outbound);
+                continue;
+            }
+            if (as_string(outbound.type) == "selector" || as_string(outbound.type) == "direct" ||
+                as_string(outbound.type) == "block" || as_string(outbound.type) == "dns")
+                continue;
 
-    if (length(existing_meta) > 0) {
-        let cache_path = runtime_subscription.section_cache_path(section_name);
-        let cache_data = common.read_json_file(cache_path);
-        if (type(cache_data) == "object" && (!cache_data.subscriptionMetadata || length(cache_data.subscriptionMetadata) == 0)) {
-            cache_data.subscriptionMetadata = existing_meta;
-            common.write_json_file(cache_path, cache_data);
+            let source_link = as_string(outbound.share_link || "");
+            if (!share_link.is_copyable_link(source_link))
+                source_link = share_link.serialize_outbound_link(outbound);
+            runtime_subscription.remember_source_outbound(state, tag, display_name, outbound, source_link, node_prefix);
         }
     }
 
+    if (length(keys(state.links)) == 0 && length(keys(state.urltestGroups)) == 0)
+        return false;
+
+    common.write_json_file(runtime_subscription.section_cache_path(section_name), state);
     return true;
 }
 

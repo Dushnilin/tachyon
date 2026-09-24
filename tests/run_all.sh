@@ -26,7 +26,7 @@ fi
 test_files=()
 for f in tests/*.sh; do
   case "$f" in
-    tests/run_all.sh | tests/ucode_syntax_lint.sh | tests/docker_e2e_test.sh | tests/container_entrypoint.sh)
+    tests/run_all.sh | tests/ucode_syntax_lint.sh | tests/docker_e2e_test.sh | tests/container_entrypoint.sh | tests/inside_docker.sh)
       continue
       ;;
   esac
