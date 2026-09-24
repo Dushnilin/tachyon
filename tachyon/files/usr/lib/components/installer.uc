@@ -90,8 +90,6 @@ function pkg_install_name_downgrade(package_name, package_version) {
 function pkg_install_files_command(files, force_reinstall) {
     if (is_apk()) {
         let add_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite" ];
-        if (force_reinstall)
-            push(add_args, "--force-reinstall");
         for (let file in files)
             push(add_args, file);
         return command_from_args(add_args) + " </dev/null";
