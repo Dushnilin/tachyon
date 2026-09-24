@@ -2168,10 +2168,25 @@ function clash_api_url() {
 }
 
 function clash_auth_args() {
-    let cfg = settings();
-    if (!bool_option(cfg, "enable_yacd_wan_access", false))
-        return [];
-    return [ "--header", "Authorization: Bearer " + option(cfg, "yacd_secret_key", "") ];
+    let secret = "";
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let sb_secret = sb_cfg.experimental?.clash_api?.secret;
+            if (sb_secret && sb_secret != "")
+                secret = sb_secret;
+        } catch (e) {}
+    }
+    if (secret == "") {
+        let cfg = settings();
+        let uci_secret = option(cfg, "yacd_secret_key", "");
+        if (uci_secret != "")
+            secret = uci_secret;
+    }
+    if (secret != "")
+        return [ "--header", "Authorization: Bearer " + secret ];
+    return [];
 }
 
 function clash_urlencode(value) {

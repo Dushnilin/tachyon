@@ -1645,7 +1645,7 @@ function latency_boot_sweep() {
     let clash_url = get_clash_url("");
     let clash_ok = false;
     for (let i = 0; i < 15; i++) {
-        if (command_status(sprintf("curl -s -o /dev/null -w '%%{http_code}' %s 2>/dev/null | grep -q '200\\|404'", shell_quote(clash_url))) == 0) {
+        if (command_status(sprintf("curl -s -o /dev/null -w '%%{http_code}' %s 2>/dev/null | grep -q '200\\|404\\|401'", shell_quote(clash_url))) == 0) {
             clash_ok = true;
             break;
         }

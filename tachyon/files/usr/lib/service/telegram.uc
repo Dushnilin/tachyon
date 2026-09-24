@@ -11,6 +11,7 @@ let i18n = require("service.i18n");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "TachyonTable";
 const PID_FILE = "/var/run/tachyon_telegram.pid";
 const OFFSET_FILE = "/var/run/tachyon_telegram_offset";
@@ -221,12 +222,7 @@ function get_proxy_args() {
         let bot_section = cfg.bot_proxy_section ? trim(cfg.bot_proxy_section) : "";
         if (bot_section != "") {
             let tag = bot_section + "-out";
-            command_capture(command_from_args([
-                "curl", "-s", "-X", "PUT",
-                "-H", "Content-Type: application/json",
-                "-d", sprintf("%J", { name: tag }),
-                "http://127.0.0.1:9090/proxies/GLOBAL"
-            ]));
+            api.clash_request("PUT", "proxies/GLOBAL", { name: tag });
         }
         return [ "--proxy", "http://" + ep ];
     }
@@ -1648,8 +1644,8 @@ function exec_support_bundle(token, chat_id) {
 }
 
 function exec_close_connections(token, chat_id) {
-    let out = command_capture(command_from_args(["curl", "-s", "-X", "DELETE", "http://127.0.0.1:9090/connections"]));
-    if (out && out.status == 0)
+    let out = api.clash_request("DELETE", "connections", null);
+    if (out != null)
         send_message(token, chat_id, "✅ <b>" + t("conn_closed_msg") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
     else
         send_message(token, chat_id, "❌ <b>" + t("conn_close_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
@@ -1739,11 +1735,10 @@ function exec_check_updates(token, chat_id, msg_id) {
 }
 
 function view_instances(token, chat_id, msg_id) {
-    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:9090/proxies"]));
+    let data = api.get_clash_proxies_data();
     let text = "🖧 <b>Live Server Instances</b>\n\n";
-    if (res && res.status == 0 && res.output) {
+    if (data && data.proxies) {
         try {
-            let data = json(res.output);
             let proxies = data.proxies;
             let count = 0;
             for (let name in proxies) {
@@ -1933,7 +1928,7 @@ function view_logs(token, chat_id, msg_id, level, count) {
 
 function view_system_info(token, chat_id, msg_id) {
     let text = "ℹ️ <b>" + t("info_title") + "</b>\n\n";
-    let res = command_capture(command_from_args(["/usr/lib/tachyon/diagnostics/runtime.uc", "get-system-info"]));
+    let res = command_capture(command_from_args([BIN_PATH, "get_system_info"]));
     if (res && res.status == 0 && res.output) {
         try {
             let info = json(res.output);
@@ -2388,7 +2383,7 @@ function exec_export_config(token, chat_id, msg_id) {
     else send_message(token, chat_id, wait_text, "HTML");
 
     let export_path = "/tmp/tachyon_export_" + time() + ".json";
-    let res = command_capture(command_from_args(["/usr/lib/tachyon/diagnostics/runtime.uc", "show-config"]));
+    let res = command_capture(command_from_args([BIN_PATH, "show_config"]));
     if (res && res.status == 0 && res.output) {
         fs.writefile(export_path, res.output);
         send_document(token, chat_id, export_path);
@@ -3254,17 +3249,10 @@ function send_daily_digest(token, admin_ids) {
     let up = m ? m[1] : t("status_unknown");
     text += "⏱ " + t("daily_uptime") + ": " + up + "\n";
     
-    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:9090/traffic"]));
-    if (res && res.status == 0 && res.output) {
-        try {
-            let tr = json(res.output);
-            text += "🔻 " + t("daily_rx") + ": " + format_bytes(tr.down) + "/s\n";
-            text += "🔺 " + t("daily_tx") + ": " + format_bytes(tr.up) + "/s\n";
-        }
-        catch (e) {
-            // Traffic counters are decoration on a status message; a clash API
-            // that answers with something unparseable just omits two lines.
-        }
+    let tr = api.get_clash_traffic ? api.get_clash_traffic() : null;
+    if (tr && tr.down != null && tr.up != null) {
+        text += "🔻 " + t("daily_rx") + ": " + format_bytes(tr.down) + "/s\n";
+        text += "🔺 " + t("daily_tx") + ": " + format_bytes(tr.up) + "/s\n";
     }
     
     let admins = split(admin_ids, /,/);
@@ -3416,6 +3404,7 @@ function worker() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
 
+    write_heartbeat();
     t = i18n.bind(cfg.language);
     register_bot_commands(cfg.bot_token);
 
@@ -3447,6 +3436,7 @@ function worker() {
             cfg = settings();
             if (cfg.enabled != "1") break;
             t = i18n.bind(cfg.language);
+            write_heartbeat();
             let res = process_updates(cfg.bot_token, cfg.admin_ids);
 
             if (res === false) {
@@ -3529,6 +3519,7 @@ function stop_runtime() {
     command_success_from_args([ "sh", "-c", "pgrep -f 'telegram.uc worker$' 2>/dev/null | xargs kill 2>/dev/null; true" ]);
     // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     try { fs.unlink(PID_FILE); } catch(e) {}
+    try { fs.unlink(HEARTBEAT_FILE); } catch(e) {}
     return 0;
 }
 
@@ -3537,6 +3528,7 @@ function start_runtime() {
     stop_runtime();
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
     
+    write_heartbeat();
     let command = common.background_command_with_pid(
         command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]),
         ">/var/log/tachyon_telegram.log", ">" + shell_quote(PID_FILE));

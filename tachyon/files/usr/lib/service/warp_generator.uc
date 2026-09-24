@@ -34,6 +34,20 @@ function get_clash_base_url() {
     return "http://" + host;
 }
 
+function get_clash_auth_header() {
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let secret = sb_cfg.experimental?.clash_api?.secret;
+            if (secret && secret != "")
+                return "-H 'Authorization: Bearer " + secret + "' ";
+        }
+        catch (e) {}
+    }
+    return "";
+}
+
 // Convert <b 0x...> ucode binary literals to plain hex string with guaranteed even length
 function to_hex(s) {
     s = replace(as_string(s), /<b 0x/g, "");
@@ -257,7 +271,7 @@ function call_api(method, url, auth_header, body_file) {
 // Query current proxy selection from Clash API for automatic rate limit rotation if proxy is used
 let original_server = "";
 let available_servers = [];
-let clash_data_str = exec_output("curl -s -m 5 " + get_clash_base_url() + "/proxies/MAIN-out");
+let clash_data_str = exec_output("curl -s -m 5 " + get_clash_auth_header() + get_clash_base_url() + "/proxies/MAIN-out");
 if (clash_data_str != "") {
     try {
         let parsed = json(clash_data_str);
@@ -274,7 +288,7 @@ function restore_original_server() {
         let body = { name: original_server };
         let tmp_file = "/tmp/restore_clash.json";
         fs.writefile(tmp_file, sprintf("%J", body));
-        exec_output("curl -s -m 5 -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
+        exec_output("curl -s -m 5 -X PUT " + get_clash_auth_header() + "-H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
         fs.unlink(tmp_file);
     }
 }
@@ -283,7 +297,7 @@ function switch_server(srv_name) {
     let body = { name: srv_name };
     let tmp_file = "/tmp/switch_clash.json";
     fs.writefile(tmp_file, sprintf("%J", body));
-    exec_output("curl -s -m 5 -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
+    exec_output("curl -s -m 5 -X PUT " + get_clash_auth_header() + "-H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
     fs.unlink(tmp_file);
     exec_output("sleep 1");
 }

@@ -40,6 +40,31 @@ function get_clash_url(endpoint) {
     return "http://" + host + "/" + endpoint;
 }
 
+function get_clash_secret() {
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let secret = sb_cfg.experimental?.clash_api?.secret;
+            if (secret && secret != "")
+                return secret;
+        }
+        catch (e) {}
+    }
+    let uci_secret = uci_core.get(CONFIG_NAME, "settings", "yacd_secret_key");
+    if (uci_secret && uci_secret != "")
+        return uci_secret;
+    return "";
+}
+
+function get_clash_auth_args() {
+    let secret = get_clash_secret();
+    if (secret != "")
+        return [ "-H", "Authorization: Bearer " + secret ];
+    return [];
+}
+
+
 // ─── API Functions ───────────────────────────────────────────────────────────
 
 function get_pause_remaining() {
@@ -58,7 +83,9 @@ function process_running_by_pidfile(pidfile) {
 }
 
 function get_clash_proxies_data() {
-    let args = [ "curl", "-s", "-m", "5", "--connect-timeout", "3", get_clash_url("proxies") ];
+    let args = [ "curl", "-s", "-m", "5", "--connect-timeout", "3" ];
+    for (let h in get_clash_auth_args()) push(args, h);
+    push(args, get_clash_url("proxies"));
     let res = command_capture(command_from_args(args));
     if (res && res.status == 0 && res.output != "") {
         try {
@@ -180,6 +207,7 @@ function clash_request(method, endpoint, payload) {
     let res = null;
     try {
         let args = [ "curl", "-s", "-m", "5", "--connect-timeout", "3", "-X", method ];
+        for (let h in get_clash_auth_args()) push(args, h);
         if (payload) {
             fs.writefile(payload_path, sprintf("%J", payload));
             push(args, "-H", "Content-Type: application/json", "-d", "@" + payload_path);
@@ -198,8 +226,11 @@ function clash_request(method, endpoint, payload) {
         try { fs.unlink(payload_path); } catch(err) {}
     }
     
-    if (!res || res.status != 0 || res.output == "") {
+    if (!res || res.status != 0) {
         return null;
+    }
+    if (res.output == "") {
+        return { success: true };
     }
     
     try {
@@ -211,7 +242,9 @@ function clash_request(method, endpoint, payload) {
 }
 
 function get_clash_connections() {
-    let args = [ "curl", "-s", "-m", "5", "--connect-timeout", "3", get_clash_url("connections") ];
+    let args = [ "curl", "-s", "-m", "5", "--connect-timeout", "3" ];
+    for (let h in get_clash_auth_args()) push(args, h);
+    push(args, get_clash_url("connections"));
     let res = command_capture(command_from_args(args));
     if (res && res.status == 0 && res.output != "") {
         try {
@@ -225,11 +258,27 @@ function get_clash_connections() {
     return null;
 }
 
+function get_clash_traffic() {
+    let args = [ "curl", "-s", "-m", "2", "--connect-timeout", "2" ];
+    for (let h in get_clash_auth_args()) push(args, h);
+    push(args, get_clash_url("traffic"));
+    let res = command_capture(command_from_args(args));
+    if (res && res.status == 0 && res.output != "") {
+        try {
+            let first_line = split(trim(res.output), "\n")[0];
+            return json(first_line);
+        }
+        catch (e) {}
+    }
+    return null;
+}
+
 function http_probe(use_proxy) {
+    let proxy_ep = common.get_mixed_proxy_endpoint ? common.get_mixed_proxy_endpoint() : ("127.0.0.1:" + common.get_mixed_port());
     // curl exits 0 for any completed HTTP exchange, including 4xx/5xx, so the
     // status code has to be inspected explicitly.
     let cmd = "curl -I -s -o /dev/null -m 8 --connect-timeout 4 -w '%{http_code}' " +
-              (use_proxy ? "--proxy http://127.0.0.1:" + common.get_mixed_port() + " " : "") +
+              (use_proxy ? "--proxy http://" + proxy_ep + " " : "") +
               "https://www.google.com";
     let res = command_capture(cmd);
     if (!res || res.status != 0) return false;
@@ -242,13 +291,14 @@ function check_connection() {
 }
 
 function run_speedtest() {
+    let proxy_ep = common.get_mixed_proxy_endpoint ? common.get_mixed_proxy_endpoint() : ("127.0.0.1:" + common.get_mixed_port());
     // Direct speedtest
     let res_direct = command_capture("curl -s -m 15 --connect-timeout 6 -w '%{speed_download}' -o /dev/null https://speed.cloudflare.com/__down?bytes=5242880");
     let direct_speed = (res_direct && res_direct.status == 0) ? double(res_direct.output || 0) : 0;
     let direct_mbps = (direct_speed * 8) / 1000000;
 
     // Proxy speedtest
-    let res_proxy = command_capture("curl -s -m 15 --connect-timeout 6 --proxy http://127.0.0.1:" + common.get_mixed_port() + " -w '%{speed_download}' -o /dev/null https://speed.cloudflare.com/__down?bytes=5242880");
+    let res_proxy = command_capture("curl -s -m 15 --connect-timeout 6 --proxy http://" + proxy_ep + " -w '%{speed_download}' -o /dev/null https://speed.cloudflare.com/__down?bytes=5242880");
     let proxy_speed = (res_proxy && res_proxy.status == 0) ? double(res_proxy.output || 0) : 0;
     let proxy_mbps = (proxy_speed * 8) / 1000000;
 
@@ -397,6 +447,10 @@ function toggle_section(sec_name) {
     return true;
 }
 return {
+    get_clash_url,
+    get_clash_secret,
+    get_clash_auth_args,
+    get_clash_traffic,
     get_pause_remaining,
     process_running_by_pidfile,
     get_system_status,

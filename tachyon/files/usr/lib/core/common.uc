@@ -616,6 +616,25 @@ function get_mixed_port() {
     return info ? info.port : 4534;
 }
 
+function get_lan_ip() {
+    let out = trim(as_string(command_output("uci -q get network.lan.ipaddr 2>/dev/null") || ""));
+    if (out != "")
+        return out;
+    return "192.168.1.1";
+}
+
+function get_mixed_proxy_endpoint() {
+    let info = get_mixed_inbound_info();
+    if (info && info.host && info.port) {
+        let host = info.host;
+        if (host == "0.0.0.0" || host == "::" || host == "")
+            host = "127.0.0.1";
+        return host + ":" + info.port;
+    }
+    return get_lan_ip() + ":" + get_mixed_port();
+}
+
+
 function hex_digit_value(value) {
     let pos = index("0123456789abcdef", lc(as_string(value)));
     return pos >= 0 ? pos : null;
@@ -731,6 +750,8 @@ return {
     parent_dir,
     get_mixed_inbound_info,
     get_mixed_port,
+    get_lan_ip,
+    get_mixed_proxy_endpoint,
     timeout_prefix,
     bounded_command,
     kill_matching_command,

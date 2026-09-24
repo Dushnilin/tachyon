@@ -1492,13 +1492,39 @@ function get_clash_url(endpoint) {
     return "http://" + host + "/" + endpoint;
 }
 
+function get_clash_secret() {
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let secret = sb_cfg.experimental?.clash_api?.secret;
+            if (secret && secret != "")
+                return secret;
+        } catch (e) {}
+    }
+    let uci_secret = uci_core.get(CONFIG_NAME, "settings", "yacd_secret_key");
+    if (uci_secret && uci_secret != "")
+        return uci_secret;
+    return "";
+}
+
+function get_clash_auth_args() {
+    let secret = get_clash_secret();
+    if (secret != "")
+        return [ "-H", "Authorization: Bearer " + secret ];
+    return [];
+}
+
 // The 5s throttle that used to live here is now the controller's emit_once
 // window on urltest.switched, so a burst of log lines still costs one poll.
 function notify_urltest_switch(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.enabled != "1" || tcfg.notify_crash == "0") return;
 
-    let p_res = command_capture(command_from_args(["curl", "-s", get_clash_url("proxies")]));
+    let args = [ "curl", "-s", "-m", "5" ];
+    for (let h in get_clash_auth_args()) push(args, h);
+    push(args, get_clash_url("proxies"));
+    let p_res = command_capture(command_from_args(args));
     if (p_res && p_res.status == 0 && p_res.output) {
         try {
             let p_data = json(p_res.output);
@@ -2120,14 +2146,19 @@ function check_telegram_worker() {
     if (as_string(tcfg.enabled || "0") != "1")
         return;
 
+    let pid = trim(fs.readfile(TELEGRAM_PID_FILE) || "");
+    let is_running = (pid != "" && process_running(pid, "ucode"));
+
     let heartbeat = trim(fs.readfile(TELEGRAM_HEARTBEAT_FILE) || "");
     if (heartbeat == "") {
-        // No stamp at all: either the worker never got a successful poll or
-        // the file was wiped by a reboot. Only act when the pid is gone too,
-        // otherwise give the worker one poll cycle to succeed.
-        let pid = trim(fs.readfile(TELEGRAM_PID_FILE) || "");
-        if (pid == "" || !process_running(pid, "ucode"))
-            telegram_worker_restart();
+        // No stamp at all: either the worker was never started or the file was wiped.
+        // If pid is running, check if it was recently launched (grace period 180s).
+        if (is_running) {
+            let pst = fs.stat("/proc/" + pid);
+            if (pst && (time() - int(pst.mtime || 0) < 180))
+                return;
+        }
+        telegram_worker_restart();
         return;
     }
 
@@ -2135,8 +2166,12 @@ function check_telegram_worker() {
     if (age <= 300)
         return;
 
-    let pid = trim(fs.readfile(TELEGRAM_PID_FILE) || "");
-    if (pid != "" && process_running(pid, "ucode")) {
+    if (is_running) {
+        // Check startup grace period: if the process is younger than 180s, give it time
+        let pst = fs.stat("/proc/" + pid);
+        if (pst && (time() - int(pst.mtime || 0) < 180))
+            return;
+
         log_message(sprintf("Telegram worker pid %s is running but its heartbeat is %d s old; restarting.", pid, age), "warn");
         command_status("/usr/bin/tachyon telegram_stop >/dev/null 2>&1");
     }
