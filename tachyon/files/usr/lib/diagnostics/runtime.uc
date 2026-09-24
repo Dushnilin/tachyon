@@ -6254,7 +6254,6 @@ function local_rule_doctor(pre_res, pre_verify) {
         }
     }
 
-    let is_steer_active = active_engine_is_steer();
     let engine_name = is_steer_active ? "steer" : "sing-box";
     let nodes = [
         { name: "WAN", status: "OK" },
