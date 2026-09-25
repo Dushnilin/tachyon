@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 450" width="100%" height="100%">
+  <title>Tachyon - Next-Gen Network Orchestration &amp; Anti-Censorship Core</title>
   <defs>
     <!-- Background Space Gradients -->
     <radialGradient id="bg-space" cx="50%" cy="30%" r="80%">
@@ -223,18 +224,18 @@
       </g>
       <!-- Pill 2 -->
       <g transform="translate(145, 0)">
-        <rect width="125" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
-        <text x="10" y="17" class="hud-value" fill="#818CF8">🛡️ sing-box v1.11</text>
+        <rect width="130" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
+        <text x="10" y="17" class="hud-value" fill="#818CF8">🛡️ Multi-Engine</text>
       </g>
       <!-- Pill 3 -->
-      <g transform="translate(280, 0)">
+      <g transform="translate(285, 0)">
         <rect width="160" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
         <text x="10" y="17" class="hud-value" fill="#C084FC">🚀 Zapret v2 (nfqws2)</text>
       </g>
       <!-- Pill 4 -->
-      <g transform="translate(450, 0)">
+      <g transform="translate(455, 0)">
         <rect width="135" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
-        <text x="10" y="17" class="hud-value" fill="#10B981">🤖 AI Doctor v2.5</text>
+        <text x="10" y="17" class="hud-value" fill="#10B981">🤖 AI Doctor v3</text>
       </g>
     </g>
   </g>
@@ -243,14 +244,14 @@
   <!-- BOTTOM ROW: 4 COPIED ARCHITECTURAL PILLARS (Glassmorphism Cards) -->
   <!-- ================================================================= -->
   <g transform="translate(60, 325)">
-    <!-- Card 1: sing-box -->
+    <!-- Card 1: Multi-Engine (sing-box / Steer) -->
     <g transform="translate(0, 0)">
       <rect width="255" height="95" rx="10" fill="url(#card-grad)" stroke="#38BDF8" stroke-opacity="0.25" stroke-width="1" class="hud-card"/>
       <circle cx="28" cy="28" r="14" fill="#0284C7" fill-opacity="0.2"/>
       <text x="21" y="34" font-size="16">🛡️</text>
-      <text x="50" y="32" class="card-h">sing-box Core</text>
-      <text x="16" y="58" class="card-p">VLESS Reality, Hysteria2, WireGuard,</text>
-      <text x="16" y="76" class="card-p">Shadowsocks &amp; Smart Policy Routing</text>
+      <text x="50" y="32" class="card-h">Multi-Engine Core</text>
+      <text x="16" y="58" class="card-p">sing-box, Steer &amp; OpenVPN,</text>
+      <text x="16" y="76" class="card-p">VLESS Reality, Hysteria2 &amp; AWG</text>
     </g>
 
     <!-- Card 2: Zapret2 / ByeDPI -->
@@ -270,7 +271,7 @@
       <text x="21" y="34" font-size="16">🤖</text>
       <text x="50" y="32" class="card-h">AI Doctor &amp; Agent API</text>
       <text x="16" y="58" class="card-p">Автономное самолечение, Quick Fix,</text>
-      <text x="16" y="76" class="card-p">OpenAPI 3.0 &amp; REST Agent API</text>
+      <text x="16" y="76" class="card-p">OpenAPI 3.0 &amp; MCP Server</text>
     </g>
 
     <!-- Card 4: Telegram & LuCI UI -->

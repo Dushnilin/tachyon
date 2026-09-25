@@ -51,6 +51,8 @@ function cursor() {
             return section ? section["" + option_name] : null;
         },
         get_all: function(package_name, section_name) {
+            if (section_name == null || "" + section_name == "")
+                return package_state(package_name);
             return package_state(package_name)["" + section_name] || null;
         },
         set: function(package_name, section_name, option_name, value) {

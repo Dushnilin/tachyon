@@ -21,7 +21,7 @@
 
 **Tachyon** is an advanced, autonomous network routing, proxy orchestration, and anti-censorship engine designed specifically for **OpenWrt** routers (fully supporting **OpenWrt 23.05, 24.10, 25.x, and SNAPSHOT** builds). Direct fork of **[Forkop by @ushan0v](https://github.com/ushan0v/forkop)** (formerly **Podkop Plus**).
 
-Tachyon combines the power of **sing-box**, high-speed **FPTN** (Fast Packet Tunnel Network), local hardware DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive combinatorial **DPI Strategy Fuzzer**, a hardened **Telegram control bot**, and a cutting-edge **AI Stack** (autonomous **AI Doctor v2.5**, offline local diagnostics, **HTTP REST Agent API / OpenAPI 3.0**, and **Model Context Protocol (MCP)** server for autonomous AI agents).
+Tachyon combines multi-engine routing (**sing-box**, lightweight **Steer**, and hybrid **Steer-Extended**), native **OpenVPN (.ovpn)** client integration, high-speed **FPTN** (Fast Packet Tunnel Network), local hardware DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive combinatorial **DPI Strategy Fuzzer v2**, a hardened **Telegram control bot**, and a cutting-edge **AI Stack** (autonomous **AI Doctor v3.0**, offline local diagnostics, **HTTP REST Agent API / OpenAPI 3.0**, and **Model Context Protocol (MCP)** server for autonomous AI agents).
 
 The entire backend logic is written in **ucode** — OpenWrt's native, high-performance C scripting language — delivering instant response times with minimal RAM footprint (starting from 128 MB RAM devices).
 
@@ -42,8 +42,8 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 2. **Zapret v1 (`nfqws`)**: Basic TCP/UDP packet desynchronization (`fake`, `disorder`, `split2`) directly on router without VPS.
 3. **Zapret v2 (`nfqws2`)**: Advanced multi-vector DPI evasion (`multisplit`, `seqovl`, `wsize`, PAWS `tcp_ts`, authentic `blobs`) for YouTube 4K, Discord, and streaming.
 4. **ByeDPI (`ciadpi`)**: Local SOCKS5 desync engine with HTTP/TLS SNI payload fragmentation.
-5. **Encrypted Proxy & Tunnel (sing-box / FPTN)**: Censored endpoints and private traffic are routed through modern secure protocols (VLESS Reality, Hysteria2, WireGuard, AmneziaWG) and high-speed **FPTN** tunnel (`tun-fptn` over WebSocket/TLS with web traffic masquerading).
-6. **Smart DNS Pipeline**: Isolated DNS processing via FakeIP (`198.18.0.0/15`), DoH/DoT/DoQ with anti-hijack transparent redirection and automated failover (DNS Failover).
+5. **Multi-Engine Tunneling & Proxying (sing-box / Steer / FPTN / OpenVPN)**: Censored endpoints and private traffic are routed through modern secure protocols (VLESS Reality, Hysteria2, WireGuard, AmneziaWG, OpenVPN) or high-speed **FPTN** tunnel (`tun-fptn` over WebSocket/TLS with web traffic masquerading). On resource-constrained hardware, **Steer** / **Steer-Extended** takes over with ultra-low memory footprint.
+6. **Smart DNS Pipeline**: Isolated DNS processing via FakeIP (`198.18.0.0/15`), DoH/DoT/DoQ with anti-hijack transparent redirection, SmartDNS/`steer-dnsd` integration, and automated failover (DNS Failover).
 
 <p align="center">
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
@@ -51,151 +51,139 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 
 ## 🔥 Core Features & Subsystems
 
-### 🛡️ 1. Multi-Protocol Proxying & Smart DNS Stack
-* **sing-box Engine (v1.11+)**: Native support for modern proxy protocols — **VLESS (Reality / gRPC / WS)**, **VMess**, **Shadowsocks**, **Trojan**, **Hysteria2**, and **WireGuard / AmneziaWG**.
+### 🧭 1. Multi-Engine Architecture
+* **Flexible Routing Engine Selection**:
+  * **sing-box Engine**: Full-featured routing and proxy powerhouse supporting all modern protocols, selective routing rules, and FakeIP.
+  * **Steer Engine**: Ultra-lightweight routing engine running native `steer` alongside SmartDNS / local DNS resolver (`steer-dnsd`), optimal for routers with limited RAM.
+  * **Steer-Extended Engine**: Hybrid orchestration running Steer + Zapret hardware DPI desync (`nfqws`/`nfqws2`) — pure wire-speed DPI bypass without running heavy Go-based proxy processes.
+* **1-Click Engine Switching**:
+  * Visual Routing Engine card in LuCI and CLI (`tachyon engine_set <name>`) with live progress modal.
+  * Automatic reconfiguration of DNS (`smartdns`, `steer-dnsd`, `dnsmasq`), network interfaces, and Netfilter tables during engine migration.
+* **List Materialization & Subscription Export (`sub.txt`)**:
+  * Automated plain-text `sub.txt` list generation from subscription cache for Steer VLESS outbounds.
+  * Direct downloading and compilation of `.lst`/`.txt` plain domain/IP lists into native `rule_set`.
+
+---
+
+### 🛡️ 2. Multi-Protocol Proxying & Advanced Subscriptions
+* **sing-box Engine (v1.11 - v1.14+)**:
+  * Native support for modern proxy protocols: **VLESS (Reality / gRPC / WS)**, **VMess**, **Shadowsocks**, **Trojan**, **Hysteria2**, and **WireGuard / AmneziaWG (AWG 3.1)**.
+  * **Native OpenVPN Endpoint & `.ovpn` File Upload**: Complete built-in OpenVPN client in sing-box (>= 1.14.0) with direct `.ovpn` configuration file upload and validation via LuCI.
 * **High-Speed FPTN Engine (`fptn-client-cli`)**:
-  * Native integration of Fast Packet Tunnel Network: L3 packet tunneling over WebSocket/TLS with effective HTTPS camouflage to bypass restrictive protocol blocks.
-  * Dedicated `tun-fptn` interface, isolated routing table (`4249`), and seamless selective routing via nftables rules.
-  * Full managed component lifecycle: router platform autodetection, download and installation from official releases via LuCI, commit-level updates, and safe rollback support.
-* **Cloudflare WARP & AmneziaWG Generator (`generate_warp`)**: Instant generation of working WireGuard and AmneziaWG profiles directly on the router.
-* **Multi-Dimensional Selective Routing**: 
-  * **By Domains & IP Subnets**: Route only target traffic through proxies or desync engines.
-  * **By Client Devices (MAC / IP)**: Per-device routing rules for Smart TVs, smartphones, PCs, and gaming consoles.
-  * **By GeoIP & Countries**: Flexible inclusion/exclusion list controls based on destination country.
-* **Automated Subscription Updates**: Background fetching, parsing, and node rotation from remote subscription URLs with automated latency (RTT) testing and server groups (URL-Test, Failover).
-* **🌐 Smart DNS & Failover Pipeline**:
-  * **FakeIP Pool (`198.18.0.0/15`)**: Near-instant connection establishment without waiting for remote DNS responses.
-  * **Modern DNS Protocol Support**: DoH (DNS over HTTPS), DoT (DNS over TLS), DoQ (DNS over QUIC), and DNS over HTTP/3.
-  * **Autonomous DNS Failover Daemon (`dns_failover.uc`)**: Continuous upstream health probing with seamless automatic fallback to secondary resolvers upon failure.
-  * **Anti-DNS Hijack**: Transparent kernel-level interception of UDP/TCP port 53 via nftables, preventing ISP spoofing.
-  * **Interactive DNS Benchmark (`tachyon dns_benchmark`)**: Measure response times and censorship resistance of popular public resolvers with auto-tuning (`dns_autotune`).
-* **🌐 Hosts Sections & DNS Overrides (Hosts Engine)**:
-  * **Static DNS Overriding (`dns_hosts`)**: Direct mapping of domains to static IP addresses in sing-box DNS and dnsmasq without modifying `/etc/hosts`.
-  * **Remote Hosts Lists Ingestion (`hosts_list_urls`)**: Automatic background downloading and parsing of external host lists and blocklists (AdAway, StevenBlack, custom blocklists).
-  * **Unified Cache (`combined.txt`)**: High-performance deduplication, merging, and global caching of multiple remote host sources into a single lightweight cache.
-  * **GitHub Mirror Failover**: Resilient downloads that automatically retry via mirrors (`cdn.jsdelivr.net`, `gh-proxy.com`, `ghproxy.net`) if direct access to github.com is blocked or throttled.
+  * L3 packet tunneling over WebSocket/TLS with effective HTTPS camouflage to bypass restrictive protocol blocks (`tun-fptn`, routing table `4249`).
+* **Advanced Subscription Engine & Happ Crypt4**:
+  * **Happ Crypt4 Decryption**: Decrypt proprietary and encrypted provider subscriptions.
+  * **Dual HWID Header Emulation**: Clean client profile fingerprinting for upstream subscription servers.
+  * **TLS Certificate SHA-256 Pinning**: Node certificate SHA-256 hash validation (`pcs`).
+  * **Anti-Collapse Shrink Guard**: Prevents working node cache loss when upstream providers return temporary empty or invalid responses.
+* **Cloudflare WARP & AmneziaWG Generator (`generate_warp`)**.
+* **Multi-Dimensional Selective Routing**: by domains, IP subnets, client MAC/IP addresses, and destination country (GeoIP).
 
-<p align="center">
-  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
-</p>
+---
 
-### 🚀 2. God-Tier DPI Bypass Strategy Generator & Fuzzer (DPI Fuzzer Engine)
-* **Autonomous Combinatorial Fuzzing**: Built-in intelligent benchmarking engine accessible via LuCI Web UI and CLI (`tachyon fuzzer_start`), testing and optimizing desync strategies for **Zapret2 (`nfqws2`)**, **Zapret v1 (`nfqws`)**, and **ByeDPI (`ciadpi`)**.
-* **PAWS TCP Timestamp Spoofing (`tcp_ts=-600000:tcp_ts_up`)**:
-  Innovative DPI desync technique utilizing stale TCP timestamps. Fake ClientHello packets are sent with timestamps shifted 10 minutes into the past: the destination web server silently drops them under RFC 7323 PAWS, while the middlebox/DPI desynchronizes and allows legitimate traffic through.
-* **Authentic Binary Dumps (Blobs)**:
-  Native support for realistic ClientHello, QUIC, and STUN payloads (`tls_max`, `tls_google`, `tls_gosuslugi`, `tls_sber`, `tls_iana`, `tls_vk`, `quic_google`, `stun_fake`, `discord_udp`). The fuzzer automatically discovers payloads on the router and injects arguments into the daemon.
-* **Exact Sequence Overlap (SeqOvl Pattern Overlap)**:
-  Byte-accurate sequence overlapping strategies (`seqovl=664:seqovl_pattern=tls_max`, `seqovl=681:seqovl_pattern=tls_google`) that glue allowed SNIs over target SNIs inside the DPI reassembly window.
-* **TCP SYN Data Injection (`--lua-desync=syndata`) & Compressed Lua Scripts**:
-  Payload injection directly inside the TCP SYN handshake paired with `multidisorder` and `multisplit`, alongside automated decompression of `.lua.gz` scripts.
-* **Massive Library of Validated Strategies**:
-  * **286+ combinatorial Zapret2 strategies** (YouTube 4K Kyber, GoogleVideo CDN streams, Discord Full-Stack voice + RTC UDP, Fakedsplit, Fakeddisorder, Hostfakesplit, and Low-TTL 3–8 matrix with `badseq`, `md5sig`, `badack`, `datanoack`).
-  * 130 strategies for Zapret v1 and 65 for ByeDPI.
-* **Pre-configured Target Suites**: Ready-to-use benchmark suites for `youtube_suite`, `discord_suite`, `twitch_suite` (HLS Usher), `twitter_suite`, and `chatgpt_suite`.
-* **Isolated Netfilter Queue (`0x00200000`)**: Test traffic is isolated into a dedicated Netfilter queue without interfering with standard home LAN routing or TProxy.
-* **1-Click Strategy Application (`🏆 Best Match`)**: Instantly commit the winning strategy directly into UCI configuration with a single click.
+### 🌐 3. Smart DNS, DoH/DoT Stack & Leak Protection
+* **FakeIP Pool (`198.18.0.0/15`)**: Near-instant connection establishment without waiting for remote DNS responses.
+* **Modern DNS Protocols**: DoH (HTTPS), DoT (TLS), DoQ (QUIC), and DNS over HTTP/3.
+* **Autonomous DNS Failover (`dns_failover.uc`)**: Continuous upstream probing and zero-downtime failover to backup resolvers.
+* **Anti-DNS Hijack**: Transparent kernel-level interception of UDP/TCP port 53 via nftables.
+* **DNS Leak Checker**: Built-in verification testing for unencrypted DNS interception by local ISPs.
+* **Multi-WAN & Tailscale Network Isolation**: Automatic exemption of VPN tunnels and Tailscale interfaces (`100.64.0.0/10`) from public WAN alarms, preventing false positives.
+* **Hosts Sections & Blocklists (Hosts Engine)**: Static DNS overrides (`dns_hosts`), remote blocklist fetching (AdAway, StevenBlack, Antizapret) with automatic GitHub mirror fallback (`jsdelivr`, `gh-proxy`).
+* **Interactive DNS Benchmark (`tachyon dns_benchmark`)** with auto-tuning (`dns_autotune`).
 
-<p align="center">
-  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
-</p>
+---
 
-### 🤖 3. AI Doctor, REST Agent API & MCP Server (AI Stack v2.5)
+### ⚡ 4. God-Tier DPI Bypass Strategy Generator & Fuzzer (DPI Fuzzer v2)
+* **Modular Fuzzer Architecture (`fuzzer/*`)**: Decomposed into profiling, runner, benchmarking, and strategy modules.
+* **Next-Gen Fuzzing (Probe v2 & Stable Scoring)**: Two-stage verification preventing false positives on unstable networks.
+* **Curated Strategy Presets from zapret4rocket & homeproxy-hiddify**: Real-world proven strategies against active ISP blocks.
+* **Flowseal Strategy Support**: Integrated Flowseal desync patterns for resilient DPI evasion.
+* **Custom Multi-Domain Targets**: Test strategies simultaneously across user-specified target domains.
+* **PAWS TCP Timestamp Spoofing (`tcp_ts=-600000:tcp_ts_up`)**: RFC 7323 desync with stale TCP timestamps.
+* **Authentic Binary Dumps (Blobs)**: `tls_max`, `tls_google`, `tls_gosuslugi`, `tls_sber`, `quic_google`, `discord_udp`, etc.
+* **Exact Sequence Overlap (SeqOvl Pattern Overlap)** & **TCP SYN Data (`syndata`)**.
+* **286+ Zapret2 strategies, 130 for Zapret v1, 65 for ByeDPI**.
+* **Isolated Netfilter Queue (`0x00200000`) & 1-Click Application (`🏆 Best Match`)**.
 
+---
+
+### 🤖 5. AI Doctor v3.0, REST Agent API & MCP Server (AI Stack)
 <div align="center">
 
 ![AI Doctor Monitor](assets/readme/ai_doctor_showcase.svg)
 
 </div>
 
-* **Tachyon AI Doctor (v2.5)**: Deep AI diagnostic engine supporting modern LLMs (**OpenAI**, **Anthropic Claude**, **DeepSeek**, or local models via OpenRouter / Ollama).
-  * **Deep Contextual Intelligence**: Feeds real-time service health, Watchdog failure history (OOM events, error streaks), and compressed system logs into the LLM prompt.
-  * **Multi-Fix Execution Chains**: Generates multi-action repair sequences with dedicated UI buttons per fix or a single "Fix All" action.
-* **🩺 Offline Local Rule Doctor**:
-  * **13 Built-in Quick Fix Codes**: Automated repairs for sing-box, nftables, dnsmasq, resolv.conf, DNS cache clearing, subscription refreshing, and network stack restarts.
-  * **NTP Time Synchronization (`fix_system_time`)**: Automatic detection and recovery from system clock desync.
-  * **Conntrack Table Flush (`flush_conntrack`)**: Clears connection tracking tables during network storms.
-  * **DNS Dead-lock Repair (`fix_bootstrap_dns`)**: Prevents circular deadlock on sing-box primary bootstrap resolvers.
-  * **Tunnel MTU Optimization (`optimize_mtu`)**: Automatic MTU tuning for WireGuard / AmneziaWG tunnels.
-* **🚨 Emergency Native Internet Fallback**:
-  * Instant 1-click restore of clean WAN internet via UI or `tachyon restore_native_internet` CLI command without rebooting the router.
-* **🔌 Model Context Protocol (MCP) Server**:
-  * Built-in MCP standard implementation (`tachyon mcp`) over JSON-RPC 2.0 stdio: connect your router directly to Claude Desktop, Cursor, Antigravity, and autonomous AI agents as an executable network tool.
-* **🌐 HTTP REST Agent API (OpenAPI 3.0)**:
-  * Full programmatic REST API (`/cgi-bin/tachyon-agent/`) for external monitoring, rule management, and orchestration.
+* **Tachyon AI Doctor (v3.0)**: Deep modular architecture (`doctor.uc`, `repairs.uc`, `system_info.uc`, `routing.uc`, `dns.uc`).
+  * Diagnostics powered by leading LLMs (**OpenAI**, **Claude**, **DeepSeek**) or local models via OpenRouter / Ollama.
+  * **Symptom Collapsing**: Intelligently deduplicates and groups cascading failures into root causes.
+* **14 Built-in Quick Fix Codes**:
+  * Automated repair for sing-box, Steer, nftables, dnsmasq, and resolv.conf.
+  * Provider restart (`restart_providers`), DNS cache flush (`flush_dns`).
+  * System time synchronization (`fix_system_time`).
+  * Conntrack table flush (`flush_conntrack`).
+  * Primary DNS circular deadlock resolution (`fix_bootstrap_dns`).
+* **Conflict-Resilient Rollback**: Automatically rolls back to the last known healthy state when syntax or configuration errors occur in dnsmasq or nftables.
+* **🚨 Emergency Internet Fallback** (`tachyon restore_native_internet`).
+* **🔌 Model Context Protocol (MCP) Server (`tachyon mcp`)**: Standard JSON-RPC 2.0 stdio server enabling direct connection to Claude Desktop, Cursor, and Antigravity.
+* **🌐 HTTP REST Agent API (OpenAPI 3.0)**: Bearer token authentication, async reload to avoid client HTTP timeouts, and CGI gateway symlink (`/cgi-bin/tachyon-api`).
 
-<p align="center">
-  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
-</p>
+---
 
-### 📱 4. Interactive Telegram Control Bot
-
+### 📱 6. Interactive Telegram Control Bot
 <div align="center">
 
 ![Telegram Bot Showcase](assets/readme/telegram_bot_showcase.svg)
 
 </div>
 
-A resilient, feature-rich control center right inside your messenger:
-* **Live Rule Management**: View active routing lists and instantly add new domains or IP subnets on the fly.
-* **Interactive Section Editor**: Enable, disable, and configure routing rules with inline keyboard actions.
-* **Server Selection & Latency**: Switch active proxy nodes with live RTT ping measurements and 64-byte payload limit protection (`cb_data`).
-* **Real-time Connection Monitor (`/connections`)**: Inspect active client connections with paginated views and an emergency session termination button (`/close_connections`).
-* **Quiet Hours (`/qh`)**: Configure alert mute windows to suppress notifications during nighttime hours.
-* **Device Access Control**: View active DHCP clients and block/unblock internet access by MAC address.
-* **Resilient Dual Transport**: Automatic fallback to direct WAN if proxy route stalls, segregated curl timeouts (12s commands / 35s polling), and HTML tag auto-closing.
-* **Diagnostics & Commands**: `/doctor`, `/ai_doctor`, `/heal`, `/speed`, `/ping`, `/test`, `/logs`, `/info`, `/export_config`, `/restart`, `/lang`.
+* **Clash API Authentication**: Authenticated management via Secret Token.
+* **Extended Telemetry (`/info`)** and on-the-fly section/node routing control.
+* **Live Connection Monitor (`/connections`)** with paginated output and emergency reset button (`/close_connections`).
+* **Dedicated Worker Process**: Grace period for heartbeats, zombie prevention, and process deduplication.
+* **Quiet Hours (`/qh`)** and LAN device access management by MAC address.
+* **Commands**: `/doctor`, `/ai_doctor`, `/heal`, `/speed`, `/ping`, `/test`, `/logs`, `/info`, `/export_config`, `/restart`, `/lang`.
 
-<p align="center">
-  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
-</p>
+---
 
-### 🛡️ 5. Watchdog — Protection, Self-Healing & Snapshots
-
+### 🛡️ 7. Watchdog, Process Identity & Transactional Stability
 <div align="center">
 
 ![Watchdog Showcase](assets/readme/watchdog_showcase.svg)
 
 </div>
 
-Watchdog is the heart of Tachyon's stability, running every 5–15 seconds without external dependencies:
-* **Atomic Operations & UCI Backups**: Configuration writes via `tmp` + `mv` prevent file corruption during sudden power losses.
-* **Restart-Loop Protection**: Maximum 3 restarts per 10 minutes (`safe_proxy_restart()`), `PROXY_RESTART_LOCK` mutex, and DNS query loop cooldowns.
-* **Memory Optimization (OOM Watchdog)**: Dynamic `GOMEMLIMIT` adjustment under memory pressure with automated Telegram alerts.
-* **Seamless Hot-Reload**: Rule updates and server switches apply softly without dropping active TCP connections (Discord calls, gaming, and downloads remain uninterrupted).
-* **Configuration Snapshots & Rollback**: Create named snapshots (`snapshot_save <name>`), list them, and safely roll back in case of error (`snapshot_restore <file>`).
-* **WAN & Gateway Recovery**: Active interface monitoring and automated route recovery during ISP outages.
+* **Process Identity & PID Provenance (`core/process.uc`)**: Validates `pid`, `starttime`, and `boot_id` before signals are sent, preventing accidental termination of recycled system PIDs.
+* **Transactional Package Manager (`core/packages.uc`)**: Stale lock cleanup, ELF header verification of UPX-compressed binaries, and automated APK `world` file scrubbing to eliminate `PROVIDES/REPLACES` upgrade conflicts.
+* **Unified Structured Logger (`core/logging.uc`)**: Rotated and structured JSON/syslog logging.
+* **Restart-Loop Protection**: Capped at 3 restarts per 10 minutes with `PROXY_RESTART_LOCK` mutex.
+* **Memory Optimization (OOM Watchdog)**: Dynamic `GOMEMLIMIT` scaling with Telegram alerts.
+* **Seamless Hot-Reload** & **Configuration Snapshots & Rollback** (`snapshot_save` / `snapshot_restore`).
 
-<p align="center">
-  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
-</p>
+---
 
-### 👶 6. Parental Controls, Quotas & Smart QoS
-* **Per-Device Access Scheduling**: Define allowed internet hours and days of the week individually for each smartphone, tablet, or Smart TV.
-* **Bandwidth & Data Quotas**: Enforce ingress and egress volume caps per device with automated cron-based quota resets (`parental_quota.uc`).
-* **Smart QoS & Priority Daemon**:
-  * DSCP packet classification in nftables prioritizing latency-sensitive traffic (VoIP, Discord, Zoom, gaming).
-  * Elimination of bufferbloat under saturated connection speeds during heavy torrenting or game downloads.
-* **Instant Device Isolation**: 1-click internet disable/enable for any LAN client from LuCI or Telegram.
+### 👶 8. Parental Controls, Quotas & Smart QoS
+* **Per-Device Access Scheduling** (specific hours and days of week).
+* **Bandwidth & Data Quotas**: Device volume caps with automated cron resets (`parental_quota.uc`).
+* **Smart QoS & Priority Daemon**: DSCP packet tagging in nftables prioritizing latency-critical flows (voice, Discord, gaming) and eliminating Bufferbloat.
+* **Instant Device Isolation**: 1-click internet cut-off for LAN clients.
 
-<p align="center">
-  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
-</p>
+---
 
-### 🖥️ 7. Modern LuCI Web Interface (TypeScript)
-
+### 🖥️ 9. Modern LuCI Web Interface (TypeScript)
 <div align="center">
 
 ![LuCI Web UI Showcase](assets/readme/luci_web_showcase.svg)
 
 </div>
 
-* Native integration into OpenWrt's LuCI dashboard.
-* **Interactive Dashboard**: Real-time latency tracking, subscription manager, rule editor, client manager, and component controls.
-* **Embedded Strategy Fuzzer Modal**: Real-time progress bar, green endpoint status badges (`HTTP 204` / `HTTP 200`), target availability indicator (`3/3 endpoints OK`), and `🏆 Best Match` detection.
-* **Streaming Terminal Modal**: Real-time console logs for component installations and updates without UI freezes.
-* **Dynamic Repository Links**: Component cards link directly to the installed variant's GitHub repository (extended, tiny, lx, stable).
-* **Commit-Level Update Tracking**: Alerts for newer commits within the same release tag with safe version rollback support (`component_rollback`).
+* **Real-Time Memory Telemetry**: Exact RAM usage by Tachyon components and dnsmasq cache estimate on the dashboard.
+* **Step-by-Step Update Indicators**: Interactive visual progress for list/subscription updates instead of raw log streams.
+* **1-Click Section Clone ("Copy")**: Rapid duplication of complex routing sections.
+* **Multi-Engine Switching**: Seamless switcher between `sing-box`, `steer`, and `steer-extended` with progress modal.
+* **Built-in `.ovpn` File Uploader** for OpenVPN sections.
+* **Integrated Strategy Fuzzer Modal** with live progress bars, HTTP codes, and `🏆 Best Match`.
+* **Streaming Terminal Modal** for component installation and rollbacks.
 
 <p align="center">
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
@@ -210,6 +198,12 @@ Watchdog is the heart of Tachyon's stability, running every 5–15 seconds witho
 </div>
 
 ```bash
+# === Multi-Engine Routing Controls ===
+tachyon engine_list                             # List available routing engines (sing-box, steer, steer-extended)
+tachyon engine_get                              # Show current active engine
+tachyon engine_set <sing-box|steer|steer-extended> # Switch engine with automated reconfiguration
+tachyon engine_status                           # Full active engine runtime status (JSON)
+
 # === DPI Strategy Fuzzer & Benchmarks ===
 tachyon fuzzer_start youtube_suite zapret2      # Start YouTube bypass benchmark on Zapret2
 tachyon fuzzer_start discord_suite zapret2      # Start Discord benchmark (voice + UDP RTC)
@@ -234,7 +228,7 @@ tachyon restore_native_internet                 # Stop proxy and cleanly restore
 
 # === Telegram Bot Management ===
 tachyon telegram_status                         # Check Telegram bot daemon running state
-tachyon telegram_diagnose                       # Run 8-step Telegram connection diagnostics (JSON)
+tachyon telegram_diagnose                       # Run Telegram connection diagnostics (JSON)
 tachyon telegram_start                          # Start Telegram bot worker
 tachyon telegram_stop                           # Stop Telegram bot worker
 
@@ -260,8 +254,8 @@ tachyon generate_reality_keypair                # Generate public/private keypai
 
 # === AI Integration (MCP & HTTP REST API) ===
 tachyon mcp                                     # Start Model Context Protocol server (stdio)
-curl http://192.168.1.1/cgi-bin/tachyon-agent/health
-curl http://192.168.1.1/cgi-bin/tachyon-agent/openapi.json
+curl http://192.168.1.1/cgi-bin/tachyon-api/health
+curl http://192.168.1.1/cgi-bin/tachyon-api/openapi.json
 ```
 
 <p align="center">
@@ -331,6 +325,7 @@ Tachyon stands on the shoulders of incredible open-source projects:
 * 🍴 **[Forkop (ushan0v)](https://github.com/ushan0v/forkop)** — Direct parent repository (formerly Podkop Plus).
 * 🐕 **[Podkop (itdoginfo)](https://github.com/itdoginfo/podkop)** — The original project that inspired the architecture.
 * 📦 **[sing-box](https://github.com/SagerNet/sing-box)** — Universal proxy engine.
+* 🧭 **[steer (xyzmean)](https://github.com/xyzmean/steer)** — Ultra-lightweight network routing and selective policy engine for OpenWrt.
 * 🚀 **[zapret (bol-van)](https://github.com/bol-van/zapret2)** — DPI desync framework (`nfqws` / `nfqws2`).
 * 🌐 **[ByeDPI](https://github.com/hrbrmstr/byedpi)** — Local SOCKS desync proxy.
 * 🛡️ **[FPTN (fptn-project)](https://github.com/fptn-project/fptn)** — High-speed VPN & packet tunnel over WebSocket/TLS with DPI evasion.
