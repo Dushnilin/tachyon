@@ -2168,7 +2168,8 @@ function run_doctor_checks_impl(repair) {
 // a crashed run's lock is stolen after 15 minutes of silence.
 // Declared after run_doctor_checks_impl(): ucode does not hoist function
 // declarations, so the wrapper must follow its callee.
-const DOCTOR_LOCK_DIR = "/var/run/tachyon.doctor.lock";
+const DOCTOR_LOCK_DIR = getenv("TACHYON_DOCTOR_LOCK_DIR") ||
+    (fs.access("/var/run", "w") ? "/var/run/tachyon.doctor.lock" : "/tmp/tachyon.doctor.lock");
 const DOCTOR_HISTORY_FILE = "/tmp/tachyon_doctor_history.json";
 
 function doctor_lock_try() {

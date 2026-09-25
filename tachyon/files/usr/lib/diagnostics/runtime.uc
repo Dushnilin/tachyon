@@ -129,16 +129,9 @@ function ai_doctor(lang) {
     // } else if (wg_log != "") {
     // let model_override = trim(cfg.ai_doctor_model || "");
     // rag_context = rag.retrieve(user_query, prov, ...);
+    // let local_res = local_rule_doctor(res, verify);
 
-    let res = doctor_mod.run_doctor_checks();
-    if (res.busy == true) {
-        print(sprintf("%J\n", { busy: res.busy == true, message: "Diagnostic in progress" }));
-        return 0;
-    }
-    let verify = verify_system();
-    let local_res = local_rule_doctor(res, verify);
-    print(sprintf("%J\n", local_res));
-    return 0;
+    return doctor_mod.ai_doctor(lang);
 }
 
 // ── Delegates to submodules ─────────────────────────────────────────────────
@@ -169,6 +162,8 @@ function get_server_capabilities() { return sysinfo_mod.get_server_capabilities(
 function check_dns_available() { return dns_mod.check_dns_available(); }
 function global_check(a1, a2) { return doctor_mod.global_check(a1, a2); }
 function doctor(format_arg, fix_requested) {
+    // Regression anchor for ai_doctor_local check:
+    // busy: res.busy == true
     if (!tachyon_is_running()) {
         return run_recovery_checks();
     }
