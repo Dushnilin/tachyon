@@ -19,7 +19,7 @@
 
 ## ⚡ О проекте
 
-**Tachyon** — это высокопроизводительное, автономное и бескомпромиссное решение для оркестрации сетевого трафика, проксирования и обхода цензуры на роутерах под управлением **OpenWrt** (полная совместимость с **OpenWrt 23.05, 24.10, 25.x и SNAPSHOT**). Прямой форк проекта **[Forkop от @ushan0v](https://github.com/ushan0v/forkop)** (ранее **Podkop Plus**).
+**Tachyon** — это высокопроизводительное, автономное и бескомпромиссное решение для оркестрации сетевого трафика, проксирования и обхода цензуры на роутерах под управлением **OpenWrt** (полная совместимость с **OpenWrt 23.05, 24.10, 25.x и SNAPSHOT**). Прямой форк проектов **[Forkop от @ushan0v](https://github.com/ushan0v/forkop)** (ранее **Podkop Plus**) и **[Steer от @xyzmean](https://github.com/xyzmean/steer)**.
 
 Tachyon объединяет мульти-движковую маршрутизацию (**sing-box**, легковесный **Steer** и гибридный **Steer-Extended**), нативную поддержку **OpenVPN (.ovpn)**, высокоскоростной протокол **FPTN** (Fast Packet Tunnel Network), средства локального аппаратного обхода DPI (**Zapret v1 / Zapret v2 / ByeDPI**), интерактивный комбинаторный **DPI Strategy Fuzzer v2**, защищённый **Telegram-бот управления**, а также инновационный **AI Stack** (автономный **AI Doctor v3.0**, офлайн-диагностику, **HTTP REST Agent API / OpenAPI 3.0** и **MCP Server** для подключения ИИ-агентов).
 
@@ -324,8 +324,8 @@ Tachyon опирается на фундаментальные разработ�
 
 * 🍴 **[Forkop (ushan0v)](https://github.com/ushan0v/forkop)** — прямой родительский проект (ранее Podkop Plus).
 * 🐕 **[Podkop (itdoginfo)](https://github.com/itdoginfo/podkop)** — оригинальный проект, заложивший основу архитектуры.
+* 🧭 **[steer (xyzmean)](https://github.com/xyzmean/steer)** — оригинальный проект легковесной policy-based маршрутизации и обхода блокировок для OpenWrt, интегрированный в Multi-Engine ядро Tachyon.
 * 📦 **[sing-box](https://github.com/SagerNet/sing-box)** — универсальная прокси-платформа.
-* 🧭 **[steer (xyzmean)](https://github.com/xyzmean/steer)** — ультралегковесный маршрутизатор сетевого трафика и селективного обхода блокировок для OpenWrt.
 * 🚀 **[zapret (bol-van)](https://github.com/bol-van/zapret2)** — средства локального обхода DPI (`nfqws` / `nfqws2`).
 * 🌐 **[ByeDPI](https://github.com/hrbrmstr/byedpi)** — локальный SOCKS-прокси для десинка пакетов.
 * 🛡️ **[FPTN (fptn-project)](https://github.com/fptn-project/fptn)** — высокоскоростной VPN/туннель пакетов через WebSocket/TLS с обходом блокировок.

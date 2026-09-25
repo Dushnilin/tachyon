@@ -4,6 +4,7 @@ set -eo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIAGNOSTICS="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/status.uc"
 DIAGNOSTICS_RUNTIME="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc"
+DIAGNOSTICS_SYSTEM_INFO="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/system_info.uc"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CLI_UC="$TACHYON_BIN"
@@ -53,12 +54,12 @@ grep -Fq 'get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ]' "
   fail "service/cli.uc must dispatch get_system_info through diagnostics/runtime.uc"
 [ "$(TACHYON_VERSION=runtime-test ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" show-version)" = "runtime-test" ] ||
   fail "diagnostics/runtime.uc show-version mode failed"
-if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "show"|uci", "-q"' "$DIAGNOSTICS_RUNTIME" >/dev/null 2>&1; then
-  fail "diagnostics/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
+if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "show"|uci", "-q"' "$DIAGNOSTICS_RUNTIME" "$DIAGNOSTICS_SYSTEM_INFO" >/dev/null 2>&1; then
+  fail "diagnostics runtime/system_info must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
-grep -Fq '"tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE' "$DIAGNOSTICS_RUNTIME" ||
+grep -Fq '"tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE' "$DIAGNOSTICS_SYSTEM_INFO" ||
   fail "diagnostics Tachyon status must use stable runtime state to avoid crash-loop flicker"
-grep -Fq '"sing-box-service-stable",' "$DIAGNOSTICS_RUNTIME" ||
+grep -Fq '"sing-box-service-stable",' "$DIAGNOSTICS_SYSTEM_INFO" ||
   fail "diagnostics sing-box status must use stable runtime state to avoid crash-loop flicker"
 
 capabilities="$(

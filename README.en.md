@@ -19,7 +19,7 @@
 
 ## ⚡ About Tachyon
 
-**Tachyon** is an advanced, autonomous network routing, proxy orchestration, and anti-censorship engine designed specifically for **OpenWrt** routers (fully supporting **OpenWrt 23.05, 24.10, 25.x, and SNAPSHOT** builds). Direct fork of **[Forkop by @ushan0v](https://github.com/ushan0v/forkop)** (formerly **Podkop Plus**).
+**Tachyon** is an advanced, autonomous network routing, proxy orchestration, and anti-censorship engine designed specifically for **OpenWrt** routers (fully supporting **OpenWrt 23.05, 24.10, 25.x, and SNAPSHOT** builds). Direct fork and evolution of **[Forkop by @ushan0v](https://github.com/ushan0v/forkop)** (formerly **Podkop Plus**) and **[Steer by @xyzmean](https://github.com/xyzmean/steer)**.
 
 Tachyon combines multi-engine routing (**sing-box**, lightweight **Steer**, and hybrid **Steer-Extended**), native **OpenVPN (.ovpn)** client integration, high-speed **FPTN** (Fast Packet Tunnel Network), local hardware DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive combinatorial **DPI Strategy Fuzzer v2**, a hardened **Telegram control bot**, and a cutting-edge **AI Stack** (autonomous **AI Doctor v3.0**, offline local diagnostics, **HTTP REST Agent API / OpenAPI 3.0**, and **Model Context Protocol (MCP)** server for autonomous AI agents).
 
@@ -324,8 +324,8 @@ Tachyon stands on the shoulders of incredible open-source projects:
 
 * 🍴 **[Forkop (ushan0v)](https://github.com/ushan0v/forkop)** — Direct parent repository (formerly Podkop Plus).
 * 🐕 **[Podkop (itdoginfo)](https://github.com/itdoginfo/podkop)** — The original project that inspired the architecture.
+* 🧭 **[steer (xyzmean)](https://github.com/xyzmean/steer)** — Original lightweight policy-based routing and bypass project for OpenWrt, integrated into the Multi-Engine core.
 * 📦 **[sing-box](https://github.com/SagerNet/sing-box)** — Universal proxy engine.
-* 🧭 **[steer (xyzmean)](https://github.com/xyzmean/steer)** — Ultra-lightweight network routing and selective policy engine for OpenWrt.
 * 🚀 **[zapret (bol-van)](https://github.com/bol-van/zapret2)** — DPI desync framework (`nfqws` / `nfqws2`).
 * 🌐 **[ByeDPI](https://github.com/hrbrmstr/byedpi)** — Local SOCKS desync proxy.
 * 🛡️ **[FPTN (fptn-project)](https://github.com/fptn-project/fptn)** — High-speed VPN & packet tunnel over WebSocket/TLS with DPI evasion.
