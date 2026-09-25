@@ -152,6 +152,40 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
         return { ok: true };
     }
 
+    let candidate_cfg = helpers.make_tmp_file("sb-cand");
+    let version_file = helpers.make_tmp_file("sb-cand-ver");
+    if (candidate_cfg != "" && version_file != "") {
+        let ver = trim(common.command_output_from_args([ binary, "version" ]));
+        let ver_m = match(ver, /sing-box version ([^\s]+)/);
+        let ver_str = ver_m ? ver_m[1] : "";
+        fs.writefile(version_file, ver_str + "\n");
+        let gen_env = {
+            SB_VERSION_STATE_FILE: version_file
+        };
+        if (lib_path != "")
+            gen_env.LD_LIBRARY_PATH = lib_path;
+        let gen_cmd = helpers.command_env(gen_env) + " " +
+            common.command_from_args([
+                "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/singbox/generator.uc",
+                "generate-config", candidate_cfg, "127.0.0.1", "0", "0", ""
+            ]) + " >/dev/null 2>&1";
+        if (common.command_status(gen_cmd) == 0 && helpers.file_nonempty(candidate_cfg)) {
+            let cand_check_cmd = helpers.command_env(env_map) + " " +
+                common.command_from_args([ binary, "-c", candidate_cfg, "check" ]) +
+                " >" + common.shell_quote(err_file) + " 2>&1";
+            let cand_status = common.command_status(cand_check_cmd);
+            helpers.remove_file(candidate_cfg);
+            helpers.remove_file(version_file);
+            if (cand_status == 0) {
+                helpers.remove_file(err_file);
+                return { ok: true };
+            }
+        } else {
+            helpers.remove_file(candidate_cfg);
+            helpers.remove_file(version_file);
+        }
+    }
+
     let raw = helpers.read_file(err_file);
     helpers.remove_file(err_file);
 
