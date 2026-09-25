@@ -78,11 +78,11 @@ function pkg_install_name_downgrade(package_name, package_version) {
         if (package_version == "")
             return false;
         let package_spec = package_name + "=" + package_version;
-        let cmd = command_from_args([ "apk", "add", "--force-overwrite", "--force-reinstall", "--upgrade", package_spec ]) + " </dev/null";
-        if (run_logged("Installing " + package_spec, cmd, 60))
-            return true;
-        let fallback_cmd = command_from_args([ "apk", "add", "--force-overwrite", "--force-reinstall", "--upgrade", package_name ]) + " </dev/null";
-        return run_logged("Installing " + package_name, fallback_cmd, 60);
+        if (pkg_is_installed(package_name)) {
+            command_success(command_from_args([ "apk", "add", package_spec ]) + " </dev/null");
+            return command_success(command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_name ]) + " </dev/null");
+        }
+        return command_success(command_from_args([ "apk", "add", package_spec ]) + " </dev/null");
     }
 
     return command_success(command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null") ||
@@ -203,7 +203,10 @@ function pkg_tx_downgrade(package_name, package_version) {
         if (package_version == "")
             return { success: false, exit_code: 1, message: "Version required for APK downgrade" };
         let package_spec = package_name + "=" + package_version;
-        cmd = command_from_args([ "apk", "add", "--force-overwrite", "--force-reinstall", "--upgrade", package_spec ]) + " </dev/null";
+        if (pkg_is_installed(package_name))
+            cmd = command_from_args([ "apk", "add", package_spec ]) + " </dev/null && " + command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_name ]) + " </dev/null";
+        else
+            cmd = command_from_args([ "apk", "add", package_spec ]) + " </dev/null";
     } else {
         cmd = command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null";
     }
