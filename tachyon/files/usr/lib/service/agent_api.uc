@@ -72,10 +72,7 @@ function parse_json_safe(raw) {
 }
 
 function get_agent_token() {
-    let c = uci.cursor();
-    if (!c) return "";
-    c.load(CONFIG_NAME);
-    return as_string(c.get(CONFIG_NAME + ".settings.agent_api_token") || "");
+    return as_string(uci.get(CONFIG_NAME + ".settings.agent_api_token") || "");
 }
 
 // Byte-wise comparison without early exit so response timing does not leak
@@ -388,7 +385,7 @@ function handle_restart(body) {
 }
 
 function handle_reload() {
-    system("/usr/bin/tachyon reload > /dev/null 2>&1");
+    system(common.background_command("/usr/bin/tachyon reload"));
     ok({ message: "Reload initiated" });
 }
 
@@ -429,7 +426,7 @@ function handle_section_toggle(body) {
         return;
     }
     uci.commit(CONFIG_NAME);
-    system("/usr/bin/tachyon reload > /dev/null 2>&1");
+    system(common.background_command("/usr/bin/tachyon reload"));
 
     ok({
         message: "Section '" + section + "' is now " + (new_val == "1" ? "enabled" : "disabled"),
@@ -453,7 +450,7 @@ function handle_domain_add(body) {
         return;
     }
     uci.commit(CONFIG_NAME);
-    system("/usr/bin/tachyon reload > /dev/null 2>&1");
+    system(common.background_command("/usr/bin/tachyon reload"));
 
     ok({ message: "Domain '" + domain + "' added to section '" + section + "'" });
 }

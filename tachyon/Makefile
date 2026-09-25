@@ -88,6 +88,11 @@ done
 rm -f /var/run/tachyon/upgrade_state 2>/dev/null || true
 chmod 600 /etc/config/tachyon 2>/dev/null || true
 chown root:root /etc/config/tachyon 2>/dev/null || true
+
+# Install AI Agent API CGI handler into uhttpd's cgi-bin
+if [ -d /www/cgi-bin ]; then
+	ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true
+fi
 exit 0
 endef
 
@@ -150,8 +155,7 @@ chown root:root /etc/config/tachyon
 
 # Install AI Agent API CGI handler into uhttpd's cgi-bin
 if [ -d /www/cgi-bin ]; then
-	cp /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true
-	chmod 755 /www/cgi-bin/tachyon-agent 2>/dev/null || true
+	ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true
 fi
 
 # Neutralize legacy unshielded postrm scripts on disk if upgrading from 1.3.21/1.3.22
@@ -212,6 +216,8 @@ define Package/tachyon/install
 	# AI Agent API CGI handler (executable shell wrapper for uhttpd)
 	$(INSTALL_DIR) $(1)/usr/lib/cgi-bin
 	$(INSTALL_BIN) ./files/usr/lib/cgi-bin/tachyon-agent $(1)/usr/lib/cgi-bin/tachyon-agent
+	$(INSTALL_DIR) $(1)/www/cgi-bin
+	ln -sf /usr/lib/cgi-bin/tachyon-agent $(1)/www/cgi-bin/tachyon-agent
 
 	# Service Check profiles (community-defined service probe targets)
 	$(INSTALL_DIR) $(1)/usr/share/tachyon
