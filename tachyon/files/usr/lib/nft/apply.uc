@@ -1557,6 +1557,51 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "parental_forward", [ "ip", "saddr", "@tachyon_quota_block_ip", "counter", "drop", "comment", "\"tachyon-quota-ip\"" ]))
         return false;
 
+    let excluded_clients_list = [];
+    append_array(excluded_clients_list, list_option(uci_settings(), "excluded_clients"));
+    append_array(excluded_clients_list, list_option(uci_settings(), "excluded_ips"));
+    if (length(excluded_clients_list) > 0) {
+        let exc_v4 = [];
+        let exc_v6 = [];
+        let exc_mac = [];
+        for (let item in excluded_clients_list) {
+            let val = trim(as_string(item));
+            if (val == "") continue;
+            let is_mac = match(val, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+            if (is_mac) {
+                push(exc_mac, lc(replace(val, "-", ":")));
+                for (let res_ip in core_ip.resolve_mac_to_ips(val)) {
+                    if (core_ip.ip_family(res_ip) == 4) push(exc_v4, res_ip);
+                    else if (core_ip.ip_family(res_ip) == 6) push(exc_v6, res_ip);
+                }
+            } else if (core_ip.ip_family(val) == 4 || (core_ip.valid_ip_cidr(val) && index(val, ":") == -1)) {
+                push(exc_v4, val);
+            } else if (core_ip.ip_family(val) == 6 || (core_ip.valid_ip_cidr(val) && index(val, ":") != -1)) {
+                push(exc_v6, val);
+            }
+        }
+        for (let mac in exc_mac) {
+            if (!nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "counter", "return" ]))
+                return false;
+            if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "counter", "return" ]))
+                return false;
+        }
+        if (length(exc_v4) > 0) {
+            if (!nft_create_ipv4_set(table, "tachyon_excluded") ||
+                !nft_add_set_elements(table, "tachyon_excluded", join(",", exc_v4)) ||
+                !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@tachyon_excluded", "counter", "return" ]) ||
+                !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@tachyon_excluded", "counter", "return" ]))
+                return false;
+        }
+        if (length(exc_v6) > 0) {
+            if (!nft_create_ipv6_set(table, "tachyon_excluded6") ||
+                !nft_add_set_elements(table, "tachyon_excluded6", join(",", exc_v6)) ||
+                !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@tachyon_excluded6", "counter", "return" ]) ||
+                !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@tachyon_excluded6", "counter", "return" ]))
+                return false;
+        }
+    }
+
     if (!nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@" + DNS_SOURCE_SET, "tcp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||
         !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@" + DNS_SOURCE_SET, "udp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||
         !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@" + DNS_SOURCE6_SET, "tcp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||
@@ -1608,51 +1653,6 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
             !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "udp", "dport", "5349", "counter", "drop" ]) ||
             !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "udp", "dport", "19302", "counter", "drop" ]))
             return false;
-    }
-
-    let excluded_clients_list = [];
-    append_array(excluded_clients_list, list_option(uci_settings(), "excluded_clients"));
-    append_array(excluded_clients_list, list_option(uci_settings(), "excluded_ips"));
-    if (length(excluded_clients_list) > 0) {
-        let exc_v4 = [];
-        let exc_v6 = [];
-        let exc_mac = [];
-        for (let item in excluded_clients_list) {
-            let val = trim(as_string(item));
-            if (val == "") continue;
-            let is_mac = match(val, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
-            if (is_mac) {
-                push(exc_mac, lc(replace(val, "-", ":")));
-                for (let res_ip in core_ip.resolve_mac_to_ips(val)) {
-                    if (core_ip.ip_family(res_ip) == 4) push(exc_v4, res_ip);
-                    else if (core_ip.ip_family(res_ip) == 6) push(exc_v6, res_ip);
-                }
-            } else if (core_ip.ip_family(val) == 4 || (core_ip.valid_ip_cidr(val) && index(val, ":") == -1)) {
-                push(exc_v4, val);
-            } else if (core_ip.ip_family(val) == 6 || (core_ip.valid_ip_cidr(val) && index(val, ":") != -1)) {
-                push(exc_v6, val);
-            }
-        }
-        for (let mac in exc_mac) {
-            if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "counter", "return" ]))
-                return false;
-            if (!nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "counter", "return" ]))
-                return false;
-        }
-        if (length(exc_v4) > 0) {
-            if (!nft_create_ipv4_set(table, "tachyon_excluded") ||
-                !nft_add_set_elements(table, "tachyon_excluded", join(",", exc_v4)) ||
-                !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@tachyon_excluded", "counter", "return" ]) ||
-                !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@tachyon_excluded", "counter", "return" ]))
-                return false;
-        }
-        if (length(exc_v6) > 0) {
-            if (!nft_create_ipv6_set(table, "tachyon_excluded6") ||
-                !nft_add_set_elements(table, "tachyon_excluded6", join(",", exc_v6)) ||
-                !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@tachyon_excluded6", "counter", "return" ]) ||
-                !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@tachyon_excluded6", "counter", "return" ]))
-                return false;
-        }
     }
 
     if (!nft_add_rule(table, "mangle", [ "jump", "priority_rules" ]) ||
@@ -3136,27 +3136,6 @@ function source_aware_dns_values(sections, deferred_sections) {
                     push(values, value);
                 }
             }
-        }
-    }
-
-    let settings = uci_settings();
-    let exc_items = [];
-    append_array(exc_items, list_option(settings, "excluded_clients"));
-    append_array(exc_items, list_option(settings, "excluded_ips"));
-    for (let item in exc_items) {
-        let val = trim(as_string(item));
-        if (val == "") continue;
-        let is_mac = match(val, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
-        if (is_mac) {
-            for (let res_ip in core_ip.resolve_mac_to_ips(val)) {
-                if (!seen[res_ip]) {
-                    seen[res_ip] = true;
-                    push(values, res_ip);
-                }
-            }
-        } else if (!seen[val]) {
-            seen[val] = true;
-            push(values, val);
         }
     }
 

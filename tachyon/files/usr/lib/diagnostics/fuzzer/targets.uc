@@ -15,32 +15,21 @@ let probe = require("diagnostics.fuzzer.probe");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
-function detect_dpi_type(target_key, custom_url) {
-    let urls_list = binaries.resolve_target_urls_list(target_key, custom_url);
-    let target_url = urls_list[0] ? urls_list[0].url : "https://www.google.com";
-    let dns_flags = binaries.get_fuzzer_curl_dns_flags();
-
-    let result = {
-        type: "unknown",
-        confidence: 0,
-        details: "",
-        recommended_engines: [],
-        probe_metrics: { http_code: 0, handshake_ms: 0, ttfb_ms: 0, speed_kbps: 0, error: "" }
-    };
-
-    // Direct probe with bypass of Sing-box TProxy.
-    // Pre-clean: delete any stale fuzzer table so chain/rule adds don't conflict.
-    binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
-    system("nft add table inet tachyon_fuzzer 2>/dev/null");
-    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
+function probe_single_target_dpi(target_item, dns_flags) {
+    let target_url = target_item.url;
+    let p_kind = target_item.probe_kind || "tls_http";
+    let extra_flags = "";
+    if (p_kind == "streaming") {
+        extra_flags = "-r 0-65535 ";
+    }
 
     let target_flags = binaries.get_resolved_host_flags(target_url);
     if (target_flags == "") target_flags = dns_flags;
 
     let curl_cmd = binaries.wrap_probe_cmd(
         sprintf(
-            "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
+            "curl %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
+            extra_flags,
             target_flags,
             shell_quote(target_url)
         ),
@@ -55,7 +44,7 @@ function detect_dpi_type(target_key, custom_url) {
 
     let metrics = {};
     probe.parse_curl_output(output, metrics);
-    result.probe_metrics = {
+    let probe_metrics = {
         http_code: metrics.http_code || 0,
         handshake_ms: metrics.handshake_ms || 0,
         ttfb_ms: metrics.ttfb_ms || 0,
@@ -80,17 +69,23 @@ function detect_dpi_type(target_key, custom_url) {
         dns_blocked = true;
     }
 
-    // Analyze failure patterns
     let http_code = metrics.http_code || 0;
     let handshake = metrics.handshake_ms || 0;
     let ttfb = metrics.ttfb_ms || 0;
     let error_str = metrics.error || "";
 
-    // 1. Check if target is directly accessible first
+    let result = {
+        type: "unknown",
+        confidence: 0,
+        details: "",
+        recommended_engines: [],
+        probe_metrics: probe_metrics
+    };
+
     if ((http_code >= 200 && http_code < 400) || (http_code >= 401 && http_code <= 405)) {
         result.type = "none";
         result.confidence = 95;
-        result.details = sprintf("Target directly accessible — no DPI blocking detected (HTTP %d, TTFB %dms)", http_code, ttfb);
+        result.details = sprintf("Target %s accessible directly (HTTP %d, TTFB %dms)", domain, http_code, ttfb);
         result.recommended_engines = [];
     } else if (dns_blocked && http_code == 0 && handshake == 0) {
         result.type = "dns_block";
@@ -110,31 +105,78 @@ function detect_dpi_type(target_key, custom_url) {
     } else if (index(error_str, "Connection reset") >= 0 || index(error_str, "ECONNRESET") >= 0) {
         result.type = "rst";
         result.confidence = 85;
-        result.details = sprintf("TCP RST received from DPI — active TCP reset injection detected");
+        result.details = sprintf("TCP RST received from DPI for %s — active TCP reset injection detected", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (http_code == 0 || index(error_str, "Connection refused") >= 0 || index(error_str, "ECONNREFUSED") >= 0) {
         result.type = "rst";
         result.confidence = 70;
-        result.details = sprintf("Connection refused — likely RST or blackhole by DPI");
+        result.details = sprintf("Connection refused for %s — likely RST or blackhole by DPI", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (handshake > 2000) {
         result.type = "throttle";
         result.confidence = 75;
-        result.details = sprintf("Very slow TLS handshake (%dms) — likely DPI deep inspection causing delay", handshake);
+        result.details = sprintf("Very slow TLS handshake (%dms) on %s — likely DPI deep inspection causing delay", handshake, domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (ttfb > 3000 && http_code >= 200 && http_code < 400) {
         result.type = "throttle";
         result.confidence = 65;
-        result.details = sprintf("High TTFB (%dms) despite successful connection — likely bandwidth throttling", ttfb);
+        result.details = sprintf("High TTFB (%dms) despite successful connection on %s — likely bandwidth throttling", ttfb, domain);
         result.recommended_engines = ["zapret2", "byedpi"];
     } else {
         result.type = "unknown";
         result.confidence = 30;
-        result.details = sprintf("Inconclusive — HTTP %d, error: %s", http_code, error_str != "" ? error_str : "none");
+        result.details = sprintf("Inconclusive for %s — HTTP %d, error: %s", domain, http_code, error_str != "" ? error_str : "none");
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     }
 
     return result;
+}
+
+function detect_dpi_type(target_key, custom_url) {
+    let urls_list = binaries.resolve_target_urls_list(target_key, custom_url);
+    if (!urls_list || length(urls_list) == 0)
+        urls_list = [ { name: "Default", url: "https://www.google.com", required: true } ];
+    let dns_flags = binaries.get_fuzzer_curl_dns_flags();
+
+    // Direct probe with bypass of Sing-box TProxy.
+    // Pre-clean: delete any stale fuzzer table so chain/rule adds don't conflict.
+    binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
+    system("nft add table inet tachyon_fuzzer 2>/dev/null");
+    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
+    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
+
+    let first_accessible_result = null;
+    let blocked_result = null;
+
+    for (let item in urls_list) {
+        let res = probe_single_target_dpi(item, dns_flags);
+        if (res.type != "none") {
+            blocked_result = res;
+            break;
+        } else if (!first_accessible_result) {
+            first_accessible_result = res;
+        }
+    }
+
+    binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
+
+    if (blocked_result)
+        return blocked_result;
+
+    if (first_accessible_result) {
+        first_accessible_result.details = sprintf("Target directly accessible — no DPI blocking detected (HTTP %d, TTFB %dms)",
+            first_accessible_result.probe_metrics.http_code,
+            first_accessible_result.probe_metrics.ttfb_ms);
+        return first_accessible_result;
+    }
+
+    return {
+        type: "unknown",
+        confidence: 0,
+        details: "Unable to probe target URLs",
+        recommended_engines: ["zapret2", "zapret", "byedpi"],
+        probe_metrics: { http_code: 0, handshake_ms: 0, ttfb_ms: 0, speed_kbps: 0, error: "" }
+    };
 }
 
 // ── Strategy Priority Reranking (based on DPI type) ─────────────────────────
