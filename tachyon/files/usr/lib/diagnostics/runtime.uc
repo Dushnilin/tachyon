@@ -91,16 +91,7 @@ function get_engine_status() {
 }
 
 function get_status() {
-    let running = module_success(SERVICE_STATE_UC, [
-        "tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE
-    ]);
-    let enabled = module_success(SERVICE_STATE_UC, [ "tachyon-enabled" ]);
-    let sing_box_running = module_success(SERVICE_STATE_UC, [
-        "sing-box-service-stable",
-        RUNTIME_STABLE_MIN_AGE
-    ]);
-    let dns_configured = (sing_box_running && dns_mod.dnsmasq_has_tachyon_dns()) ? 1 : 0;
-    return sysinfo_mod.write_service_status(running ? 1 : 0, enabled ? 1 : 0, dns_configured);
+    return sysinfo_mod.get_status();
 }
 
 function tachyon_is_running() {

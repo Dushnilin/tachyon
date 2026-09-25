@@ -35,6 +35,14 @@ function path_parts(path) {
     };
 }
 
+function normalize_uci_path(p1, p2, p3) {
+    if (p2 != null && p3 != null)
+        return as_string(p1) + "." + as_string(p2) + "." + as_string(p3);
+    if (p2 != null)
+        return as_string(p1) + "." + as_string(p2);
+    return as_string(p1);
+}
+
 function anonymous_section_selector(section) {
     let matched = match(as_string(section), /^@([A-Za-z0-9_-]+)\[([0-9]+)\]$/);
     if (!matched)
@@ -232,6 +240,30 @@ function state_sections(package_name, type_name) {
 
 function state_get_all(package_name, section_name) {
     package_name = as_string(package_name);
+    if (section_name == null || as_string(section_name) == "") {
+        let all = {};
+        let prefix = package_name + ".";
+        for (let line in state_lines()) {
+            if (line == "")
+                continue;
+            let equals = index(line, "=");
+            if (equals < 0)
+                continue;
+            let key = substr(line, 0, equals);
+            if (substr(key, 0, length(prefix)) != prefix)
+                continue;
+            let rest = substr(key, length(prefix));
+            let dot = index(rest, ".");
+            let sec = dot >= 0 ? substr(rest, 0, dot) : rest;
+            if (sec != "" && all[sec] == null) {
+                let sec_data = state_get_all(package_name, sec);
+                if (sec_data != null)
+                    all[sec] = sec_data;
+            }
+        }
+        return length(keys(all)) > 0 ? all : null;
+    }
+
     section_name = as_string(section_name);
 
     let result = {};
@@ -328,8 +360,8 @@ function value_to_list(value) {
     return words(value);
 }
 
-function get(path) {
-    path = as_string(path);
+function get(p1, p2, p3) {
+    let path = normalize_uci_path(p1, p2, p3);
     if (fixture_enabled())
         return state_get(path);
 
@@ -356,6 +388,8 @@ function get_all(package_name, section_name) {
 
     try {
         load(package_name);
+        if (section_name == null || as_string(section_name) == "")
+            return c.get_all(as_string(package_name));
         section_name = resolve_section_name(c, package_name, section_name);
         if (section_name == "")
             return null;
@@ -366,8 +400,8 @@ function get_all(package_name, section_name) {
     }
 }
 
-function exists(path) {
-    path = as_string(path);
+function exists(p1, p2, p3) {
+    let path = normalize_uci_path(p1, p2, p3);
     if (fixture_enabled())
         return state_exists(path);
 
@@ -386,8 +420,8 @@ function exists(path) {
     return c.get(parts.package, parts.section, parts.option) != null;
 }
 
-function delete_path(path) {
-    path = as_string(path);
+function delete_path(p1, p2, p3) {
+    let path = normalize_uci_path(p1, p2, p3);
     if (fixture_enabled())
         return state_delete(path);
 
@@ -455,8 +489,20 @@ function add(package_name, type_name) {
     }
 }
 
-function set(path, value) {
-    path = as_string(path);
+function set(p1, p2, p3, p4) {
+    let path;
+    let value;
+    if (p4 != null) {
+        path = normalize_uci_path(p1, p2, p3);
+        value = p4;
+    } else if (p3 != null) {
+        path = normalize_uci_path(p1, p2);
+        value = p3;
+    } else {
+        path = as_string(p1);
+        value = p2;
+    }
+
     if (fixture_enabled())
         return state_set(path, value_to_string(value));
 
@@ -479,8 +525,17 @@ function set(path, value) {
     }
 }
 
-function add_list(path, value) {
-    path = as_string(path);
+function add_list(p1, p2, p3, p4) {
+    let path;
+    let value;
+    if (p4 != null) {
+        path = normalize_uci_path(p1, p2, p3);
+        value = p4;
+    } else {
+        path = as_string(p1);
+        value = p2;
+    }
+
     if (fixture_enabled())
         return state_add_list(path, value);
 
@@ -505,8 +560,17 @@ function add_list(path, value) {
     }
 }
 
-function del_list(path, value) {
-    path = as_string(path);
+function del_list(p1, p2, p3, p4) {
+    let path;
+    let value;
+    if (p4 != null) {
+        path = normalize_uci_path(p1, p2, p3);
+        value = p4;
+    } else {
+        path = as_string(p1);
+        value = p2;
+    }
+
     if (fixture_enabled())
         return state_del_list(path, value);
 

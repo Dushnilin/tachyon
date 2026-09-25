@@ -147,6 +147,13 @@ assert_true(uci.del_list("dhcp.@dnsmasq[0].server", "127.0.0.42"), "anonymous de
 assert_equal(uci.get("dhcp.cfg01411c.server"), "1.1.1.1", "anonymous del_list must affect resolved section");
 
 assert_true(uci.delete("dhcp.@dnsmasq[9].server") == false, "missing anonymous section must fail writes");
+
+assert_equal(uci.get("dhcp", "@dnsmasq[0]", "server"), "1.1.1.1", "3-arg get");
+assert_true(uci.set("dhcp", "@dnsmasq[0]", "noresolv", "0"), "4-arg set");
+assert_equal(uci.get("dhcp.cfg01411c.noresolv"), "0", "4-arg set verified");
+let all_dhcp = uci.get_all("dhcp");
+assert_true(type(all_dhcp) == "object", "1-arg get_all returns object");
+assert_true(all_dhcp.cfg01411c != null, "1-arg get_all contains cfg01411c");
 UCODE
 
 ucode -L "$UCODE_LIB" -L "$WORK_DIR" "$WORK_DIR/check.uc" ||

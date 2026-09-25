@@ -185,7 +185,7 @@ function uci_show(path) {
 function uci_config_valid() {
     let data = fs.readfile(TACHYON_CONFIG);
     if (data == null || data == "") return false;
-    let res = command_status("uci -c /etc/config valid " + CONFIG_NAME + " >/dev/null 2>&1");
+    let res = command_status("uci -q -s -c /etc/config show " + CONFIG_NAME + " >/dev/null 2>&1");
     return res == 0;
 }
 
@@ -1474,7 +1474,7 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 5b. DNS Resolution through sing-box
-    if (has_sections) {
+    if (has_sections && !is_steer) {
         if (dns_check_through_singbox("google.com")) {
             doc_check("✅", "sing-box DNS", "resolving via " + SB_DNS_INBOUND_ADDRESS, "");
         } else {
