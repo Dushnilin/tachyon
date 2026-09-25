@@ -50,6 +50,15 @@ assert_true() {
 }
 
 # ---------------------------------------------------------------------------
+# Test setup: isolated state directory
+# ---------------------------------------------------------------------------
+
+TEST_STATE_DIR="$(mktemp -d /tmp/tachyon_tx_test_XXXXXX 2>/dev/null || mktemp -d)"
+cleanup() { rm -rf "$TEST_STATE_DIR"; }
+trap cleanup EXIT
+export TACHYON_RUNTIME_STATE_DIR="$TEST_STATE_DIR"
+
+# ---------------------------------------------------------------------------
 # Run module selftest
 # ---------------------------------------------------------------------------
 
@@ -59,15 +68,6 @@ if $TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/transaction.uc" selftest;
 else
     fail_test "transaction.uc selftest failed"
 fi
-
-# ---------------------------------------------------------------------------
-# Test setup: isolated state directory
-# ---------------------------------------------------------------------------
-
-TEST_STATE_DIR="$(mktemp -d /tmp/tachyon_tx_test_XXXXXX 2>/dev/null || mktemp -d)"
-cleanup() { rm -rf "$TEST_STATE_DIR"; }
-trap cleanup EXIT
-export TACHYON_RUNTIME_STATE_DIR="$TEST_STATE_DIR"
 
 # ---------------------------------------------------------------------------
 # Test 1: Phase and status constants

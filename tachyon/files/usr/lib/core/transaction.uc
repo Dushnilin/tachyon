@@ -77,8 +77,15 @@ const VALID_TRANSITIONS = {
     [PHASE_FAILED]:          []
 };
 
-const STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
-const TX_BASE_DIR = STATE_DIR + "/tx";
+function get_state_dir() {
+    let s = getenv("TACHYON_RUNTIME_STATE_DIR");
+    if (s != null && s != "")
+        return s;
+    if (fs.access("/var/run", "w"))
+        return "/var/run/tachyon";
+    return "/tmp/tachyon";
+}
+
 const GC_MAX_AGE_SECONDS = int(getenv("TACHYON_TX_GC_MAX_AGE") || "86400"); // 24h
 const STALE_TTL_SECONDS = int(getenv("TACHYON_TX_STALE_TTL") || "1800");   // 30m
 
@@ -114,7 +121,7 @@ function ensure_dir(path) {
 }
 
 function ensure_base_dirs() {
-    let state = getenv("TACHYON_RUNTIME_STATE_DIR") || STATE_DIR;
+    let state = get_state_dir();
     let tx_base = state + "/tx";
     ensure_dir(tx_base);
 }
@@ -270,7 +277,7 @@ function read_tx(tx_id) {
     tx_id = as_string(tx_id);
     if (tx_id == "")
         return null;
-    let state = getenv("TACHYON_RUNTIME_STATE_DIR") || STATE_DIR;
+    let state = get_state_dir();
     let manifest_path = state + "/tx/" + tx_id + "/tx.json";
     let data = read_json_file(manifest_path);
     if (!data || type(data) != "object")
@@ -694,7 +701,7 @@ function create(name, opts) {
     let options = (type(opts) == "object") ? opts : {};
     let tx_id = as_string(options.id || generate_tx_id(name));
 
-    let state_dir = getenv("TACHYON_RUNTIME_STATE_DIR") || STATE_DIR;
+    let state_dir = get_state_dir();
     let tx_dir = state_dir + "/tx/" + tx_id;
     ensure_dir(tx_dir + "/snapshots");
 
@@ -777,7 +784,7 @@ function query(tx_id) {
 function list(filter_opts) {
     ensure_base_dirs();
     let opts = (type(filter_opts) == "object") ? filter_opts : {};
-    let state_dir = getenv("TACHYON_RUNTIME_STATE_DIR") || STATE_DIR;
+    let state_dir = get_state_dir();
     let tx_base = state_dir + "/tx";
     let entries = fs.lsdir(tx_base) || [];
     let result = [];
@@ -820,7 +827,7 @@ function gc(max_age_seconds) {
     let cleaned = 0;
     let recovered = 0;
 
-    let state_dir = getenv("TACHYON_RUNTIME_STATE_DIR") || STATE_DIR;
+    let state_dir = get_state_dir();
     let tx_base = state_dir + "/tx";
     let entries = fs.lsdir(tx_base) || [];
 
