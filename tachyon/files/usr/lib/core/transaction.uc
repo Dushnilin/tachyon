@@ -693,6 +693,7 @@ function attach_tx_methods(tx) {
     tx.register_compensation = (type, data, fn) => register_compensation(tx, type, data, fn);
     tx.rollback = (reason) => rollback(tx, reason);
     tx.commit = () => commit(tx);
+    tx.log = (level, msg) => tx_log(tx, level, msg);
     return tx;
 }
 
