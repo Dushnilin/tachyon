@@ -285,6 +285,8 @@ build_backend_root() {
     "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/lib/cgi-bin/tachyon-agent" \
     "$output_root/usr/lib/cgi-bin/tachyon-agent"
+  install -d -m 0755 "$output_root/www/cgi-bin"
+  ln -sf /usr/lib/cgi-bin/tachyon-agent "$output_root/www/cgi-bin/tachyon-agent"
   install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/servicecheck_profiles.json" \
     "$output_root/usr/share/tachyon/servicecheck_profiles.json"
 
@@ -454,8 +456,7 @@ fi
 chmod 600 /etc/config/tachyon 2>/dev/null || true
 chown root:root /etc/config/tachyon 2>/dev/null || true
 if [ -d /www/cgi-bin ]; then
-	cp /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true
-	chmod 755 /www/cgi-bin/tachyon-agent 2>/dev/null || true
+	ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true
 fi
 
 # Neutralize legacy unshielded postrm scripts on disk if upgrading from 1.3.21/1.3.22
@@ -821,6 +822,7 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     system("rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true");
     system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable; do nft delete table inet $tbl >/dev/null 2>&1 || true; done");
     system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop /usr/lib/lua/luci/i18n/netshift.* /www/luci-static/resources/i18n/netshift.* /usr/share/luci/menu.d/luci-app-netshift.json /usr/share/rpcd/acl.d/luci-app-netshift.json /etc/uci-defaults/50_luci-netshift 2>/dev/null || true");
+    system("if [ -d /www/cgi-bin ]; then ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true; fi");
     if (system("test -f /etc/config/netshift") == 0) {
         system("mv /etc/config/netshift /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
