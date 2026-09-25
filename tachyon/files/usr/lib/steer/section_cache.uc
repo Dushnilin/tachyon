@@ -20,6 +20,7 @@ let common = require("core.common");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 let runtime_subscription = require("singbox.subscription");
+let generator_routes = require("singbox.generator_routes");
 let share_link = require("subscription.share_link");
 
 let as_string = common.as_string;
@@ -310,6 +311,18 @@ function build_section_cache(section) {
                 state.hiddenOutboundTags[outbound.tag] = true;
             }
         }
+    }
+
+    let candidate_tags = keys(state.links);
+    let section_excluded = generator_routes.section_excluded_candidate_tags ?
+        generator_routes.section_excluded_candidate_tags(section, candidate_tags, state) : [];
+    let group_candidate_tags = length(section_excluded) > 0
+        ? generator_routes.urltest_exclude_outbounds(candidate_tags, section_excluded)
+        : candidate_tags;
+
+    let dummy_cfg = { outbounds: [] };
+    for (let urltest_id in connections.urltests(section)) {
+        generator_routes.add_urltest_outbound(dummy_cfg, section, urltest_id, group_candidate_tags, state);
     }
 
     if (length(keys(state.links)) == 0 && length(keys(state.urltestGroups)) == 0)

@@ -18,6 +18,7 @@
 // spec object. Writing and validating the file is the caller's job.
 //
 
+let fs = require("fs");
 let common = require("core.common");
 let engine = require("core.engine");
 
@@ -179,21 +180,122 @@ function build_outputs(sections, settings) {
                 outputs[name].prefer = "latency";
                 outputs[name].latency_interval_s = 300;
                 outputs[name].latency_tolerance_ms = 50;
-                if (length(nodes) > 0) {
-                    let nodes_int = [];
+
+                let lat_file = getenv("TACHYON_STEER_LATENCY_CACHE_FILE") || "/var/run/tachyon/steer-latencies.json";
+                let lat_data = {};
+                let lat_raw = fs.readfile(lat_file);
+                if (lat_raw != null) {
+                    let parsed_lat = json(lat_raw);
+                    if (type(parsed_lat) == "object")
+                        lat_data = parsed_lat;
+                }
+
+                let sec_cache_dir = getenv("TACHYON_SECTION_CACHE_DIR") || "/var/run/tachyon/section-cache";
+                let sec_cache_raw = fs.readfile(sec_cache_dir + "/" + name + ".json");
+                let sec_cache = sec_cache_raw ? json(sec_cache_raw) : null;
+
+                let candidate_pool = [];
+                let sel_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
+                let sel_raw = fs.readfile(sel_path);
+                let sel_data = (sel_raw != null) ? json(sel_raw) : {};
+                let active_sel = type(sel_data) == "object" ? (sel_data[name] || sel_data[name + "-out"]) : null;
+
+                if (sec_cache && type(sec_cache.links) == "object") {
+                    let tag_to_idx = {};
+                    let vless_idx = 0;
+                    let ordered_tags = [];
+                    if (type(sec_cache.urltestGroups) == "object") {
+                        for (let grp_id, grp in sec_cache.urltestGroups) {
+                            if (type(grp) == "object" && type(grp.outbounds) == "array") {
+                                for (let ob in grp.outbounds) {
+                                    let link = sec_cache.links[ob];
+                                    if (link != null && match(trim(as_string(link)), /^vless:\/\//) != null && index(ordered_tags, ob) < 0)
+                                        push(ordered_tags, ob);
+                                }
+                            }
+                        }
+                    }
+                    let hidden_ordered = type(sec_cache.hiddenOutboundTags) == "object" ? sec_cache.hiddenOutboundTags : {};
+                    for (let tname, link in sec_cache.links) {
+                        if (index(ordered_tags, tname) >= 0 || hidden_ordered[tname]) continue;
+                        link = trim(as_string(link));
+                        if (match(link, /^vless:\/\//) != null)
+                            push(ordered_tags, tname);
+                    }
+                    for (let tname, link in sec_cache.links) {
+                        if (index(ordered_tags, tname) >= 0) continue;
+                        link = trim(as_string(link));
+                        if (match(link, /^vless:\/\//) != null)
+                            push(ordered_tags, tname);
+                    }
+                    for (let tname in ordered_tags) {
+                        tag_to_idx[tname] = vless_idx;
+                        vless_idx++;
+                    }
+
+                    let target_grp = null;
+                    if (active_sel != null && type(sec_cache.urltestGroups) == "object") {
+                        target_grp = sec_cache.urltestGroups[active_sel];
+                        if (!target_grp) {
+                            for (let gid, gdata in sec_cache.urltestGroups) {
+                                if (gid == active_sel || gdata.displayName == active_sel) {
+                                    target_grp = gdata;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (target_grp && type(target_grp.outbounds) == "array" && length(target_grp.outbounds) > 0) {
+                        for (let ob in target_grp.outbounds) {
+                            if (tag_to_idx[ob] != null)
+                                push(candidate_pool, tag_to_idx[ob]);
+                        }
+                    }
+                }
+
+                if (length(candidate_pool) == 0 && length(nodes) > 0) {
                     for (let n in nodes) {
                         let ni = int(n);
                         if (ni != null && ni != "NaN")
-                            push(nodes_int, ni);
+                            push(candidate_pool, ni);
                     }
-                    if (length(nodes_int) > 0)
-                        outputs[name].nodes = length(nodes_int) > 16 ? slice(nodes_int, 0, 16) : nodes_int;
-                } else if (is_auto) {
-                    let auto_nodes = [];
-                    for (let i = 0; i < 16; i++)
-                        push(auto_nodes, i);
-                    outputs[name].nodes = auto_nodes;
                 }
+
+                if (length(candidate_pool) == 0 && is_auto) {
+                    let sub_raw = fs.readfile(sub_file);
+                    if (sub_raw != null) {
+                        let lines = split(trim(sub_raw), "\n");
+                        for (let i = 0; i < length(lines); i++) {
+                            if (trim(lines[i]) != "")
+                                push(candidate_pool, i);
+                        }
+                    } else {
+                        for (let i = 0; i < 16; i++)
+                            push(candidate_pool, i);
+                    }
+                }
+
+                let sorted_pool = sort(candidate_pool, function(a, b) {
+                    let da = lat_data["proxy-" + a];
+                    let db = lat_data["proxy-" + b];
+                    let sa = (da != null && int(da) > 0) ? int(da) : (da == null ? 5000000 + a : 9000000 + a);
+                    let sb = (db != null && int(db) > 0) ? int(db) : (db == null ? 5000000 + b : 9000000 + b);
+                    return sa - sb;
+                });
+
+                let unique_nodes = [];
+                let seen = {};
+                for (let ni in sorted_pool) {
+                    if (!seen[ni]) {
+                        push(unique_nodes, ni);
+                        seen[ni] = true;
+                    }
+                }
+                if (length(unique_nodes) > 16)
+                    unique_nodes = slice(unique_nodes, 0, 16);
+                if (length(unique_nodes) > 0)
+                    outputs[name].nodes = unique_nodes;
             } else if (is_valid_num) {
                 outputs[name].node = parsed_node;
             }

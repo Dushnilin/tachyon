@@ -2692,5 +2692,8 @@ return {
     apply_section_geoip_filter,
     apply_excluded_source_ips,
     is_valid_detour,
-    load_community_subnet_cidrs
+    load_community_subnet_cidrs,
+    section_excluded_candidate_tags,
+    urltest_exclude_outbounds,
+    urltest_filtered_outbounds
 };

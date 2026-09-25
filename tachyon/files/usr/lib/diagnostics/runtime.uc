@@ -2252,51 +2252,159 @@ function steer_get_cached_latencies() {
 }
 
 function steer_set_cached_latency(tag, delay) {
+    if (tag == null || tag == "" || tag == "proxy-NaN" || index(tag, "NaN") >= 0)
+        return;
+    let d = int(delay);
+    if (d == null || d == "NaN")
+        return;
     let data = steer_get_cached_latencies();
-    data[as_string(tag)] = int(delay);
-    let unprefixed = replace(tag, /^.*?\s+/, "");
-    if (unprefixed != tag)
-        data[unprefixed] = int(delay);
+    data[as_string(tag)] = d;
+    if (index(tag, "-out") < 0 && index(tag, "-urltest-") < 0) {
+        let unprefixed = replace(tag, /^.*?\s+/, "");
+        if (unprefixed != tag && unprefixed != "")
+            data[unprefixed] = d;
+    }
     common.write_json_file(STEER_LATENCY_CACHE_FILE, data);
 }
 
 function steer_set_cached_latencies_bulk(entries) {
     let data = steer_get_cached_latencies();
-    for (let tag, delay in entries)
-        data[as_string(tag)] = int(delay);
+    for (let tag, delay in entries) {
+        if (tag != null && tag != "" && tag != "proxy-NaN" && index(tag, "NaN") < 0) {
+            let d = int(delay);
+            if (d != null && d != "NaN")
+                data[as_string(tag)] = d;
+        }
+    }
     common.write_json_file(STEER_LATENCY_CACHE_FILE, data);
 }
 
 function steer_lookup_latency(latencies, tag, ctx) {
     if (type(latencies) != "object" || tag == null) return null;
     tag = as_string(tag);
-    if (latencies[tag] != null) return latencies[tag];
+    if (latencies[tag] != null && int(latencies[tag]) > 0) return int(latencies[tag]);
 
     if (ctx) {
-        if (ctx.names && ctx.names[tag] != null && latencies[ctx.names[tag]] != null)
-            return latencies[ctx.names[tag]];
+        if (ctx.names && ctx.names[tag] != null && latencies[ctx.names[tag]] != null && int(latencies[ctx.names[tag]]) > 0)
+            return int(latencies[ctx.names[tag]]);
         if (ctx.tag_to_idx && ctx.tag_to_idx[tag] != null) {
             let idx = ctx.tag_to_idx[tag];
-            if (latencies["proxy-" + idx] != null)
-                return latencies["proxy-" + idx];
-            if (ctx.idx_to_tag && ctx.idx_to_tag[idx] != null && latencies[ctx.idx_to_tag[idx]] != null)
-                return latencies[ctx.idx_to_tag[idx]];
+            if (latencies["proxy-" + idx] != null && int(latencies["proxy-" + idx]) > 0)
+                return int(latencies["proxy-" + idx]);
+            if (ctx.idx_to_tag && ctx.idx_to_tag[idx] != null && latencies[ctx.idx_to_tag[idx]] != null && int(latencies[ctx.idx_to_tag[idx]]) > 0)
+                return int(latencies[ctx.idx_to_tag[idx]]);
         }
     }
 
     let m = match(tag, /proxy-(\d+)/);
-    if (m && latencies["proxy-" + m[1]] != null)
-        return latencies["proxy-" + m[1]];
+    if (m && latencies["proxy-" + m[1]] != null && int(latencies["proxy-" + m[1]]) > 0)
+        return int(latencies["proxy-" + m[1]]);
 
     let unprefixed = replace(tag, /^.*?\s+/, "");
-    if (unprefixed != tag && latencies[unprefixed] != null)
-        return latencies[unprefixed];
+    if (unprefixed != tag && latencies[unprefixed] != null && int(latencies[unprefixed]) > 0)
+        return int(latencies[unprefixed]);
 
     for (let k, v in latencies) {
-        if (substr(k, -length(tag)) == tag)
-            return v;
+        if (substr(k, -length(tag)) == tag && int(v) > 0)
+            return int(v);
     }
     return null;
+}
+
+function steer_reload_vless_workers(target_sec_name) {
+    let restarted = false;
+    let spec_raw = fs.readfile("/etc/steer/spec.json");
+    if (spec_raw != null) {
+        let spec = parse_json_or_null(spec_raw);
+        if (type(spec) == "object" && type(spec.outputs) == "object") {
+            for (let out_name, out in spec.outputs) {
+                if (type(out) == "object" && out.kind == "vless") {
+                    if (target_sec_name == null || target_sec_name == "" || out_name == target_sec_name) {
+                        command_status("ubus call service signal '" + sprintf('{"name":"steer","instance":"vless_%s","signal":15}', out_name) + "' >/dev/null 2>&1");
+                        restarted = true;
+                    }
+                }
+            }
+        }
+    }
+    if (!restarted)
+        command_status("/etc/init.d/steer restart >/dev/null 2>&1");
+    command_status("conntrack -F >/dev/null 2>&1 || true");
+    return restarted;
+}
+
+function steer_apply_best_nodes(sname, best_node_idx, candidate_indices) {
+    if (sname == null || sname == "") return false;
+    let spec_path = "/etc/steer/spec.json";
+    let spec_raw = fs.readfile(spec_path);
+    if (spec_raw == null) return false;
+    let spec = parse_json_or_null(spec_raw);
+    if (type(spec) != "object" || type(spec.outputs) != "object" || type(spec.outputs[sname]) != "object")
+        return false;
+
+    let out = spec.outputs[sname];
+    if (out.kind != "vless") return false;
+
+    let lat_data = steer_get_cached_latencies();
+    let pool = [];
+    if (type(candidate_indices) == "array" && length(candidate_indices) > 0) {
+        pool = candidate_indices;
+    } else if (type(out.nodes) == "array" && length(out.nodes) > 0) {
+        pool = out.nodes;
+    }
+
+    if (length(pool) == 0 && best_node_idx != null)
+        pool = [ best_node_idx ];
+
+    let sorted = sort(pool, function(a, b) {
+        if (best_node_idx != null) {
+            if (a == best_node_idx && b != best_node_idx) return -1;
+            if (b == best_node_idx && a != best_node_idx) return 1;
+        }
+        let da = lat_data["proxy-" + a];
+        let db = lat_data["proxy-" + b];
+        let sa = (da != null && int(da) > 0) ? int(da) : (da == null ? 5000000 + a : 9000000 + a);
+        let sb = (db != null && int(db) > 0) ? int(db) : (db == null ? 5000000 + b : 9000000 + b);
+        return sa - sb;
+    });
+
+    let unique_nodes = [];
+    let seen_idx = {};
+    for (let ni in sorted) {
+        let nint = int(ni);
+        if (nint != null && nint != "NaN" && !seen_idx[nint]) {
+            push(unique_nodes, nint);
+            seen_idx[nint] = true;
+        }
+    }
+    if (length(unique_nodes) > 16)
+        unique_nodes = slice(unique_nodes, 0, 16);
+
+    if (length(unique_nodes) == 0) return false;
+
+    let current_nodes = type(out.nodes) == "array" ? out.nodes : [];
+    let changed = (length(current_nodes) != length(unique_nodes));
+    if (!changed) {
+        for (let i = 0; i < length(unique_nodes); i++) {
+            if (current_nodes[i] != unique_nodes[i]) {
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    if (!changed) return false;
+
+    out.nodes = unique_nodes;
+    let tmp_path = spec_path + ".tachyon." + as_string(time());
+    if (common.write_json_file(tmp_path, spec, 2)) {
+        if (fs.rename(tmp_path, spec_path)) {
+            steer_reload_vless_workers(sname);
+            return true;
+        }
+        common.remove_file(tmp_path);
+    }
+    return false;
 }
 
 const STEER_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") ||
@@ -2444,21 +2552,22 @@ function clash_api(action, arg1, arg2, arg3) {
                 let group_ids = [];
                 for (let grp_id, grp in ctx.urltest_groups) {
                     push(group_ids, grp_id);
-                    let grp_delay = steer_lookup_latency(latencies, grp_id, ctx);
-                    let chosen_child = "";
+                    let best_child_delay = null;
+                    let chosen_child = (type(grp.outbounds) == "array" && length(grp.outbounds) > 0) ? grp.outbounds[0] : "";
                     for (let child in grp.outbounds) {
-                        if (chosen_child == "") chosen_child = child;
                         let cd = steer_lookup_latency(latencies, child, ctx);
                         if (cd != null && int(cd) > 0) {
-                            if (grp_delay == null || int(cd) < int(grp_delay)) {
-                                grp_delay = int(cd);
+                            if (best_child_delay == null || int(cd) < int(best_child_delay)) {
+                                best_child_delay = int(cd);
                                 chosen_child = child;
                             }
                         }
                     }
+                    let explicit_grp_delay = steer_lookup_latency(latencies, grp_id, ctx);
+                    let effective_grp_delay = best_child_delay != null ? best_child_delay : (explicit_grp_delay != null ? int(explicit_grp_delay) : 0);
                     let hist = [];
-                    if (grp_delay != null && int(grp_delay) > 0)
-                        push(hist, { delay: int(grp_delay), time: "2026-09-22T13:00:00Z" });
+                    if (effective_grp_delay > 0)
+                        push(hist, { delay: effective_grp_delay, time: "2026-09-22T13:00:00Z" });
                     proxies[grp_id] = {
                         name: grp_id,
                         type: "URLTest",
@@ -2505,7 +2614,9 @@ function clash_api(action, arg1, arg2, arg3) {
                         now_tag = length(selector_all) > 0 ? selector_all[0] : "";
                 }
 
-                let sec_delay = latencies[now_tag] || (proxies[now_tag] && proxies[now_tag].history && length(proxies[now_tag].history) > 0 ? proxies[now_tag].history[0].delay : null);
+                let sec_delay = (proxies[now_tag] && type(proxies[now_tag].history) == "array" && length(proxies[now_tag].history) > 0)
+                    ? proxies[now_tag].history[0].delay
+                    : steer_lookup_latency(latencies, now_tag, ctx);
                 let sec_hist = [];
                 if (sec_delay != null && int(sec_delay) > 0)
                     push(sec_hist, { delay: int(sec_delay), time: "2026-09-22T13:00:00Z" });
@@ -2518,6 +2629,22 @@ function clash_api(action, arg1, arg2, arg3) {
                     all: selector_all,
                     history: sec_hist
                 };
+
+                if (uci_node == "auto" || uci_node == "urltest" || uci_node == null || uci_node == "") {
+                    let target_candidate_indices = [];
+                    let best_node_to_apply = null;
+                    if (proxies[now_tag] != null && proxies[now_tag].type == "URLTest") {
+                        let active_grp = proxies[now_tag];
+                        for (let child in active_grp.all) {
+                            if (ctx.tag_to_idx[child] != null)
+                                push(target_candidate_indices, ctx.tag_to_idx[child]);
+                        }
+                        if (active_grp.now != null && ctx.tag_to_idx[active_grp.now] != null)
+                            best_node_to_apply = ctx.tag_to_idx[active_grp.now];
+                    }
+                    if (best_node_to_apply != null)
+                        steer_apply_best_nodes(sname, best_node_to_apply, target_candidate_indices);
+                }
             }
             print(sprintf("%J\n", { proxies: proxies }));
             return 0;
@@ -2834,8 +2961,24 @@ function clash_api(action, arg1, arg2, arg3) {
             }
 
             // The group row itself shows the best member delay.
-            if (best_delay != null)
+            if (best_delay != null) {
                 steer_set_cached_latency(group, best_delay);
+                if (probe_ctx != null && probe_ctx.sname != null)
+                    steer_set_cached_latency(probe_ctx.sname + "-out", best_delay);
+            }
+
+            if (best_tag != null && probe_ctx != null && probe_ctx.sname != null) {
+                let candidate_indices = [];
+                for (let tag in group_children) {
+                    if (probe_ctx.tag_to_idx[tag] != null)
+                        push(candidate_indices, probe_ctx.tag_to_idx[tag]);
+                }
+                let best_node_idx = probe_ctx.tag_to_idx[best_tag];
+                let uci_node = uci_core.get(CONFIG_NAME + "." + probe_ctx.sname + ".node");
+                if (uci_node == "auto" || uci_node == "urltest" || uci_node == null || uci_node == "") {
+                    steer_apply_best_nodes(probe_ctx.sname, best_node_idx, candidate_indices);
+                }
+            }
             print(sprintf("%J\n", result));
             return 0;
         }
@@ -2857,23 +3000,15 @@ function clash_api(action, arg1, arg2, arg3) {
                 }
             }
 
-            let count = 0;
-            let failed = 0;
-            let progress_path = as_string(arg3);
-            let total = length(tags_list);
-            if (progress_path != "")
-                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
-
-            let timeout_sec = int((int(arg2 || "3000") + 999) / 1000);
-            if (timeout_sec < 1) timeout_sec = 1;
-
             let tag_to_idx = {};
             let tag_to_sub = {};
             let sections = uci_core.section_objects(CONFIG_NAME, "section");
+            let section_contexts = {};
             for (let sec in sections) {
                 let sname = as_string(sec[".name"]);
                 let ctx = steer_build_section_context(sname);
                 if (ctx) {
+                    section_contexts[sname] = ctx;
                     for (let t, idx in ctx.tag_to_idx) {
                         tag_to_idx[t] = idx;
                         tag_to_sub[t] = ctx.sub_file;
@@ -2881,14 +3016,61 @@ function clash_api(action, arg1, arg2, arg3) {
                 }
             }
 
+            let expanded_tags = [];
             for (let target_tag in tags_list) {
+                let is_group = false;
+                for (let sname, ctx in section_contexts) {
+                    if (sname == target_tag || sname + "-out" == target_tag || target_tag == "selector") {
+                        is_group = true;
+                        for (let ctag, link in ctx.links) {
+                            if (index(expanded_tags, ctag) < 0)
+                                push(expanded_tags, ctag);
+                        }
+                        break;
+                    }
+                    if (type(ctx.urltest_groups) == "object") {
+                        let grp = ctx.urltest_groups[target_tag];
+                        if (!grp) {
+                            for (let gid, gdata in ctx.urltest_groups) {
+                                if (gid == target_tag || gdata.displayName == target_tag) {
+                                    grp = gdata;
+                                    break;
+                                }
+                            }
+                        }
+                        if (grp && type(grp.outbounds) == "array") {
+                            is_group = true;
+                            for (let ctag in grp.outbounds) {
+                                if (index(expanded_tags, ctag) < 0)
+                                    push(expanded_tags, ctag);
+                            }
+                            break;
+                        }
+                    }
+                }
+                if (!is_group && index(expanded_tags, target_tag) < 0)
+                    push(expanded_tags, target_tag);
+            }
+
+            let count = 0;
+            let failed = 0;
+            let progress_path = as_string(arg3);
+            let total = length(expanded_tags);
+            if (progress_path != "")
+                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+
+            let timeout_sec = int((int(arg2 || "3000") + 999) / 1000);
+            if (timeout_sec < 1) timeout_sec = 1;
+
+            for (let target_tag in expanded_tags) {
                 let node_idx = tag_to_idx[target_tag];
+                let sub_file = tag_to_sub[target_tag] || "/etc/steer/sub.txt";
                 if (node_idx == null) {
                     let m = match(target_tag, /proxy-(\d+)/);
                     node_idx = m ? int(m[1]) : int(target_tag);
                 }
                 if (node_idx != null) {
-                    let probe_out = trim(command_output_from_args([ "/usr/sbin/steer", "vless-probe", tag_to_sub[target_tag] || "/etc/steer/sub.txt", "--node", as_string(node_idx), "--timeout", as_string(timeout_sec) ]));
+                    let probe_out = trim(command_output_from_args([ "/usr/sbin/steer", "vless-probe", sub_file, "--node", as_string(node_idx), "--timeout", as_string(timeout_sec) ]));
                     let probe_json = parse_json_or_null(probe_out);
                     let res_item = (type(probe_json) == "object" && type(probe_json.results) == "array" && length(probe_json.results) > 0) ? probe_json.results[0] : probe_json;
                     let ok = (type(res_item) == "object" && res_item.ok);
@@ -2905,6 +3087,50 @@ function clash_api(action, arg1, arg2, arg3) {
                 if (progress_path != "")
                     module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
             }
+
+            let fresh_latencies = steer_get_cached_latencies();
+            for (let sname, ctx in section_contexts) {
+                let uci_node = uci_core.get(CONFIG_NAME + "." + sname + ".node");
+                let sec_best_delay = null;
+                let sec_best_node_idx = null;
+                let sec_candidate_indices = [];
+
+                if (type(ctx.urltest_groups) == "object") {
+                    for (let grp_id, grp in ctx.urltest_groups) {
+                        let grp_min = null;
+                        let grp_best_idx = null;
+                        for (let child in grp.outbounds) {
+                            let cd = steer_lookup_latency(fresh_latencies, child, ctx);
+                            let cidx = ctx.tag_to_idx[child];
+                            if (cidx != null && index(sec_candidate_indices, cidx) < 0)
+                                push(sec_candidate_indices, cidx);
+                            if (cd != null && int(cd) > 0) {
+                                if (grp_min == null || int(cd) < grp_min) {
+                                    grp_min = int(cd);
+                                    grp_best_idx = cidx;
+                                }
+                            }
+                        }
+                        if (grp_min != null) {
+                            steer_set_cached_latency(grp_id, grp_min);
+                            if (grp.displayName)
+                                steer_set_cached_latency(grp.displayName, grp_min);
+                            if (sec_best_delay == null || grp_min < sec_best_delay) {
+                                sec_best_delay = grp_min;
+                                sec_best_node_idx = grp_best_idx;
+                            }
+                        }
+                    }
+                }
+
+                if (sec_best_delay != null)
+                    steer_set_cached_latency(sname + "-out", sec_best_delay);
+
+                if (sec_best_node_idx != null && (uci_node == "auto" || uci_node == "urltest" || uci_node == null || uci_node == "")) {
+                    steer_apply_best_nodes(sname, sec_best_node_idx, sec_candidate_indices);
+                }
+            }
+
             print(sprintf("%J\n", { status: 0 }));
             return 0;
         }
@@ -2935,11 +3161,8 @@ function clash_api(action, arg1, arg2, arg3) {
                         push(node_indices, ctx.tag_to_idx[child]);
                 }
                 uci_core.set(CONFIG_NAME + "." + target_group + ".node", "auto");
-                if (length(node_indices) > 0) {
-                    if (length(node_indices) > 16)
-                        node_indices = slice(node_indices, 0, 16);
+                if (length(node_indices) > 0)
                     uci_core.set(CONFIG_NAME + "." + target_group + ".nodes", join(" ", node_indices));
-                }
                 else
                     uci_core.delete(CONFIG_NAME + "." + target_group + ".nodes");
             } else if (target_proxy == "⚡ Auto (URL Test)" || target_proxy == "auto") {
