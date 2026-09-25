@@ -208,7 +208,7 @@
     "key": "✔ Online",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9433",
-      "src/tachyon/tabs/dashboard/initController.ts:2333"
+      "src/tachyon/tabs/dashboard/initController.ts:2337"
     ]
   },
   {
@@ -224,7 +224,7 @@
     "key": "✘ Offline",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9433",
-      "src/tachyon/tabs/dashboard/initController.ts:2333"
+      "src/tachyon/tabs/dashboard/initController.ts:2337"
     ]
   },
   {
@@ -2294,7 +2294,7 @@
     "key": "Cache",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9391",
-      "src/tachyon/tabs/dashboard/initController.ts:2281"
+      "src/tachyon/tabs/dashboard/initController.ts:2285"
     ]
   },
   {
@@ -9910,7 +9910,7 @@
     "key": "Other peers",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9475",
-      "src/tachyon/tabs/dashboard/initController.ts:2392"
+      "src/tachyon/tabs/dashboard/initController.ts:2396"
     ]
   },
   {
@@ -13162,7 +13162,7 @@
     "key": "State",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9457",
-      "src/tachyon/tabs/dashboard/initController.ts:2371"
+      "src/tachyon/tabs/dashboard/initController.ts:2375"
     ]
   },
   {
@@ -13820,7 +13820,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9452",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2685",
-      "src/tachyon/tabs/dashboard/initController.ts:2361"
+      "src/tachyon/tabs/dashboard/initController.ts:2365"
     ]
   },
   {
@@ -14295,7 +14295,7 @@
     "key": "This router",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9465",
-      "src/tachyon/tabs/dashboard/initController.ts:2382"
+      "src/tachyon/tabs/dashboard/initController.ts:2386"
     ]
   },
   {

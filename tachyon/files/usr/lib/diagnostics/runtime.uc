@@ -85,9 +85,16 @@ function get_engine_status() {
         let enabled = length(fs.glob("/etc/rc.d/S*steer")) > 0;
         let running = command_status("pgrep -f '(^|/)steer([[:space:]]|$)' >/dev/null 2>&1") == 0;
         let installed = fs.stat("/usr/bin/steer") != null;
-        return sysinfo_mod.write_service_status(running ? 1 : 0, enabled ? 1 : 0, 1);
+        common.write_json({
+            running: running ? 1 : 0,
+            enabled: enabled ? 1 : 0,
+            engine: active_name,
+            status: sysinfo_mod.service_status_label(running ? 1 : 0, enabled ? 1 : 0),
+            dns_configured: 1
+        });
+        return 0;
     }
-    return sysinfo_mod.get_sing_box_status();
+    return sysinfo_mod.get_engine_status();
 }
 
 function get_status() {

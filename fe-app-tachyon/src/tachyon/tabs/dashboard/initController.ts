@@ -2244,7 +2244,11 @@ async function renderServicesInfoWidget() {
           },
         },
         {
-          key: store.get().activeEngine === 'sing-box' ? 'Sing-box' : 'Steer',
+          key:
+            store.get().activeEngine === 'steer' ||
+            store.get().activeEngine === 'steer-extended'
+              ? 'Steer'
+              : 'Sing-box',
           value: data.singbox
             ? data.singboxMemoryMb
               ? `\u2713 (${data.singboxMemoryMb} MB)`

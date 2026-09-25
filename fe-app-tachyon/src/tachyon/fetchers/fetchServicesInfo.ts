@@ -61,9 +61,11 @@ export async function fetchServicesInfo() {
   // dashboard as failed just because S99sing-box is absent, and report the
   // active engine's own liveness in the singbox slot so the widget shows the
   // routing engine that actually runs.
-  const activeEngine = engineStatus.success
-    ? (engineStatus.data as Tachyon.GetEngineStatus).engine
-    : 'sing-box';
+  const activeEngine =
+    engineStatus.success &&
+    (engineStatus.data as Tachyon.GetEngineStatus).engine
+      ? (engineStatus.data as Tachyon.GetEngineStatus).engine
+      : 'sing-box';
   const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
   const singboxFailed = !singbox.success && !isSteer;
 

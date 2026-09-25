@@ -714,8 +714,22 @@ function get_engine_status() {
         active = "sing-box";
     }
 
-    if (active == "sing-box")
-        return get_sing_box_status();
+    if (active == "sing-box") {
+        let running = module_success(SERVICE_STATE_UC, [
+            "sing-box-service-stable",
+            RUNTIME_STABLE_MIN_AGE
+        ]) ? 1 : 0;
+        let enabled = file_executable("/etc/rc.d/S99sing-box") ? 1 : 0;
+        let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
+        write_json({
+            running,
+            enabled,
+            engine: "sing-box",
+            status: service_status_label(running, enabled),
+            dns_configured
+        });
+        return 0;
+    }
 
     let running = 0;
     let enabled = 0;

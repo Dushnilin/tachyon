@@ -7530,7 +7530,7 @@ async function fetchServicesInfo() {
     "getEngineStatus",
     engineResult
   );
-  const activeEngine = engineStatus.success ? engineStatus.data.engine : "sing-box";
+  const activeEngine = engineStatus.success && engineStatus.data.engine ? engineStatus.data.engine : "sing-box";
   const isSteer = activeEngine === "steer" || activeEngine === "steer-extended";
   const singboxFailed = !singbox.success && !isSteer;
   const previousData = store.get().servicesInfoWidget.data;
@@ -9368,7 +9368,7 @@ async function renderServicesInfoWidget() {
           }
         },
         {
-          key: store.get().activeEngine === "sing-box" ? "Sing-box" : "Steer",
+          key: store.get().activeEngine === "steer" || store.get().activeEngine === "steer-extended" ? "Steer" : "Sing-box",
           value: data.singbox ? data.singboxMemoryMb ? `✓ (${data.singboxMemoryMb} MB)` : "✓" : "✗",
           attributes: {
             class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
