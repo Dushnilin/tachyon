@@ -434,6 +434,7 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
       "dashboard_include_protocols": [ "vless" ],
       "dashboard_include_transports": [ "ws" ],
       "dashboard_include_securities": [ "reality" ],
+      "dashboard_include_ports": [ "443" ],
       "dashboard_include_groups": [ "urltest" ],
       "dashboard_exclude_countries": [ "RU" ],
       "dashboard_exclude_outbounds": [ "node-b" ],
@@ -442,6 +443,7 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
       "dashboard_exclude_protocols": [ "http" ],
       "dashboard_exclude_transports": [ "tcp" ],
       "dashboard_exclude_securities": [ "none" ],
+      "dashboard_exclude_ports": [ "8080" ],
       "dashboard_exclude_groups": [ "urltest" ],
       "subscription_urls": [ "https://example.com/sub.txt" ],
       "subscription_url_settings": "{\"https://example.com/sub.txt\":{\"prefix_nodes\":\"1\",\"node_prefix\":\"Example\"}}",
@@ -614,7 +616,7 @@ proxy
 [rule.proxy1.priority_groups]
 [ ]
 [rule.proxy1.dashboard_filter]
-{ "filter_mode": "mixed", "detect_server_country": "country_is", "include_countries": [ "NL" ], "include_outbounds": [ "node-a" ], "include_regex": [ "^A" ], "include_proxy_parameters": "1", "include_protocols": [ "vless" ], "include_transports": [ "ws" ], "include_securities": [ "reality" ], "include_groups": [ "urltest" ], "exclude_countries": [ "RU" ], "exclude_outbounds": [ "node-b" ], "exclude_regex": [ "backup" ], "exclude_proxy_parameters": "1", "exclude_protocols": [ "http" ], "exclude_transports": [ "tcp" ], "exclude_securities": [ "none" ], "exclude_groups": [ "urltest" ] }
+{ "filter_mode": "mixed", "detect_server_country": "country_is", "include_countries": [ "NL" ], "include_outbounds": [ "node-a" ], "include_regex": [ "^A" ], "include_proxy_parameters": "1", "include_protocols": [ "vless" ], "include_transports": [ "ws" ], "include_securities": [ "reality" ], "include_ports": [ "443" ], "include_groups": [ "urltest" ], "exclude_countries": [ "RU" ], "exclude_outbounds": [ "node-b" ], "exclude_regex": [ "backup" ], "exclude_proxy_parameters": "1", "exclude_protocols": [ "http" ], "exclude_transports": [ "tcp" ], "exclude_securities": [ "none" ], "exclude_ports": [ "8080" ], "exclude_groups": [ "urltest" ] }
 [rule.proxy1.urltest_enabled]
 1
 [rule.proxy1.detect_server_country]
@@ -706,7 +708,7 @@ outbound
 [rule.out1.priority_groups]
 [ ]
 [rule.out1.dashboard_filter]
-{ "filter_mode": "disabled", "detect_server_country": "flag_emoji", "include_countries": [ ], "include_outbounds": [ ], "include_regex": [ ], "include_proxy_parameters": "0", "include_protocols": [ ], "include_transports": [ ], "include_securities": [ ], "include_groups": [ ], "exclude_countries": [ ], "exclude_outbounds": [ ], "exclude_regex": [ ], "exclude_proxy_parameters": "0", "exclude_protocols": [ ], "exclude_transports": [ ], "exclude_securities": [ ], "exclude_groups": [ ] }
+{ "filter_mode": "disabled", "detect_server_country": "flag_emoji", "include_countries": [ ], "include_outbounds": [ ], "include_regex": [ ], "include_proxy_parameters": "0", "include_protocols": [ ], "include_transports": [ ], "include_securities": [ ], "include_ports": [ ], "include_groups": [ ], "exclude_countries": [ ], "exclude_outbounds": [ ], "exclude_regex": [ ], "exclude_proxy_parameters": "0", "exclude_protocols": [ ], "exclude_transports": [ ], "exclude_securities": [ ], "exclude_ports": [ ], "exclude_groups": [ ] }
 [rule.out1.urltest_enabled]
 0
 [rule.out1.detect_server_country]
@@ -826,7 +828,7 @@ wg0
 [rule.vpn1.priority_groups]
 [ ]
 [rule.vpn1.dashboard_filter]
-{ "filter_mode": "disabled", "detect_server_country": "flag_emoji", "include_countries": [ ], "include_outbounds": [ ], "include_regex": [ ], "include_proxy_parameters": "0", "include_protocols": [ ], "include_transports": [ ], "include_securities": [ ], "include_groups": [ ], "exclude_countries": [ ], "exclude_outbounds": [ ], "exclude_regex": [ ], "exclude_proxy_parameters": "0", "exclude_protocols": [ ], "exclude_transports": [ ], "exclude_securities": [ ], "exclude_groups": [ ] }
+{ "filter_mode": "disabled", "detect_server_country": "flag_emoji", "include_countries": [ ], "include_outbounds": [ ], "include_regex": [ ], "include_proxy_parameters": "0", "include_protocols": [ ], "include_transports": [ ], "include_securities": [ ], "include_ports": [ ], "include_groups": [ ], "exclude_countries": [ ], "exclude_outbounds": [ ], "exclude_regex": [ ], "exclude_proxy_parameters": "0", "exclude_protocols": [ ], "exclude_transports": [ ], "exclude_securities": [ ], "exclude_ports": [ ], "exclude_groups": [ ] }
 [rule.vpn1.urltest_enabled]
 0
 [rule.vpn1.detect_server_country]

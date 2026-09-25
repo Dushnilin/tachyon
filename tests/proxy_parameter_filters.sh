@@ -68,7 +68,9 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "include_securities": [ "tls", "reality", "none" ],
       "exclude_regex": [ "Alpha" ],
       "exclude_proxy_parameters": "1",
-      "exclude_securities": [ "reality" ]
+      "exclude_securities": [ "reality" ],
+      "include_ports": [ "443" ],
+      "exclude_ports": [ "8080" ]
     },
     {
       ".name": "parameters_only",
@@ -80,6 +82,15 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "include_protocols": [ "http" ],
       "include_transports": [ "tcp" ],
       "include_securities": [ "none" ]
+    },
+    {
+      ".name": "port_range_filter",
+      ".type": "urltest",
+      "section": "proxy",
+      "name": "Port range filter",
+      "filter_mode": "include",
+      "include_proxy_parameters": "1",
+      "include_ports": [ "8000-9000" ]
     }
   ],
   "priority_group": [
@@ -101,7 +112,8 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "include_proxy_parameters": "1",
       "include_protocols": [ "vmess" ],
       "include_transports": [ "grpc" ],
-      "include_securities": [ "none" ]
+      "include_securities": [ "none" ],
+      "include_ports": [ "443" ]
     },
     {
       ".name": "pl_mixed",
@@ -127,7 +139,8 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "include_proxy_parameters": "1",
       "include_protocols": [ "trojan" ],
       "include_transports": [ "xhttp" ],
-      "include_securities": [ "tls" ]
+      "include_securities": [ "tls" ],
+      "include_ports": [ "400-500" ]
     },
     {
       ".name": "pl_remaining",
@@ -165,6 +178,7 @@ let config = json(fs.readfile(ARGV[0]));
 let cache = json(fs.readfile(ARGV[1]));
 assert_array(outbound_by_tag(config, "proxy-urltest-and_filter-out").outbounds, [ "Gamma" ], "URLTest AND/OR filter");
 assert_array(outbound_by_tag(config, "proxy-urltest-parameters_only-out").outbounds, [ "Echo" ], "URLTest parameter-only filter");
+assert_array(outbound_by_tag(config, "proxy-urltest-port_range_filter-out").outbounds, [ "Echo" ], "URLTest port-range filter");
 assert_array(outbound_by_tag(config, "proxy-priority-pg_parameters-out").outbounds,
     [ "Gamma", "Delta", "Alpha", "Beta", "Echo" ], "Priority parameter filters");
 let priority_levels = ((cache.priorityGroups || {})["proxy-priority-pg_parameters-out"] || {}).levels || [];
@@ -177,6 +191,8 @@ if (metadata.transports.Alpha != "tcp" || metadata.transports.Beta != "ws" || me
     fail("transport metadata was not normalized");
 if (metadata.securities.Alpha != "tls" || metadata.securities.Beta != "reality" || metadata.securities.Gamma != "none")
     fail("security metadata was not normalized");
+if (metadata.ports.Alpha != "443" || metadata.ports.Echo != "8080")
+    fail("port metadata was not normalized");
 ' "$WORK_DIR/config.json" "$WORK_DIR/config.json.section-cache/proxy.json" ||
   fail "URLTest and Priority proxy parameter filtering"
 
@@ -189,6 +205,39 @@ JS
 
 if validate_fixture "$WORK_DIR/invalid.json" >/dev/null 2>&1; then
   fail "invalid proxy protocol should be rejected"
+fi
+
+node - "$WORK_DIR/fixture.json" "$WORK_DIR/invalid_port.json" <<'JS'
+const fs = require('fs');
+const fixture = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+fixture.urltest[0].include_ports = ['70000'];
+fs.writeFileSync(process.argv[3], JSON.stringify(fixture));
+JS
+
+if validate_fixture "$WORK_DIR/invalid_port.json" >/dev/null 2>&1; then
+  fail "port 70000 should be rejected"
+fi
+
+node - "$WORK_DIR/fixture.json" "$WORK_DIR/invalid_port_range.json" <<'JS'
+const fs = require('fs');
+const fixture = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+fixture.urltest[0].include_ports = ['500-100'];
+fs.writeFileSync(process.argv[3], JSON.stringify(fixture));
+JS
+
+if validate_fixture "$WORK_DIR/invalid_port_range.json" >/dev/null 2>&1; then
+  fail "inverted port range 500-100 should be rejected"
+fi
+
+node - "$WORK_DIR/fixture.json" "$WORK_DIR/invalid_port_zero.json" <<'JS'
+const fs = require('fs');
+const fixture = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+fixture.urltest[0].include_ports = ['0'];
+fs.writeFileSync(process.argv[3], JSON.stringify(fixture));
+JS
+
+if validate_fixture "$WORK_DIR/invalid_port_zero.json" >/dev/null 2>&1; then
+  fail "port 0 should be rejected"
 fi
 
 printf 'proxy parameter filter regression tests passed\n'

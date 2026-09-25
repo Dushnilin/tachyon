@@ -326,21 +326,54 @@ function tag_attribute_filter_matches(tag, metadata, selected_values) {
     return false;
 }
 
-function proxy_parameter_filter_matches_all(tag, metadata, protocols, transports, securities) {
+function port_matches_condition(port_num, condition) {
+    condition = trim(as_string(condition));
+    if (condition == "")
+        return false;
+    let dash = index(condition, "-");
+    if (dash < 0)
+        return int(condition) == port_num;
+    let start = int(substr(condition, 0, dash));
+    let end = int(substr(condition, dash + 1));
+    if (start == null || end == null)
+        return false;
+    return port_num >= start && port_num <= end;
+}
+
+function tag_port_filter_matches(tag, ports_metadata, selected_ports) {
+    if (length(array_or_empty(selected_ports)) == 0)
+        return true;
+    let port_str = as_string(object_or_empty(ports_metadata)[tag] || "");
+    if (port_str == "")
+        return false;
+    let port_num = int(port_str);
+    if (port_num == null || port_num <= 0)
+        return false;
+    for (let selected in selected_ports) {
+        if (port_matches_condition(port_num, selected))
+            return true;
+    }
+    return false;
+}
+
+function proxy_parameter_filter_matches_all(tag, metadata, protocols, transports, securities, ports) {
     metadata = object_or_empty(metadata);
     return tag_attribute_filter_matches(tag, metadata.protocols, protocols) &&
         tag_attribute_filter_matches(tag, metadata.transports, transports) &&
-        tag_attribute_filter_matches(tag, metadata.securities, securities);
+        tag_attribute_filter_matches(tag, metadata.securities, securities) &&
+        tag_port_filter_matches(tag, metadata.ports, ports);
 }
 
-function proxy_parameter_filter_matches_any(tag, metadata, protocols, transports, securities) {
+function proxy_parameter_filter_matches_any(tag, metadata, protocols, transports, securities, ports) {
     metadata = object_or_empty(metadata);
     return (length(array_or_empty(protocols)) > 0 &&
             tag_attribute_filter_matches(tag, metadata.protocols, protocols)) ||
         (length(array_or_empty(transports)) > 0 &&
             tag_attribute_filter_matches(tag, metadata.transports, transports)) ||
         (length(array_or_empty(securities)) > 0 &&
-            tag_attribute_filter_matches(tag, metadata.securities, securities));
+            tag_attribute_filter_matches(tag, metadata.securities, securities)) ||
+        (length(array_or_empty(ports)) > 0 &&
+            tag_port_filter_matches(tag, metadata.ports, ports));
 }
 
 function name_or_country_filter_configured(name_filter, regexes, country_filter) {
@@ -354,7 +387,7 @@ function urltest_all_candidate_outbounds(urltest_candidate_tags) {
 }
 
 function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, countries, name_filter, regexes, country_filter,
-    metadata, proxy_parameters_enabled, proxy_parameters_operator, protocols, transports, securities, additional_matches) {
+    metadata, proxy_parameters_enabled, proxy_parameters_operator, protocols, transports, securities, ports, additional_matches) {
     names = object_or_empty(names);
     countries = object_or_empty(countries);
     country_filter = runtime_urltest.normalized_country_list(country_filter);
@@ -376,7 +409,7 @@ function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, cou
         let matches = additional_set[tag] || base_matches;
         if (proxy_parameters_enabled && proxy_parameters_operator == "or") {
             matches = additional_set[tag] || base_matches || proxy_parameter_filter_matches_any(
-                tag, metadata, protocols, transports, securities
+                tag, metadata, protocols, transports, securities, ports
             );
         }
         else if (proxy_parameters_enabled) {
@@ -384,7 +417,7 @@ function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, cou
                 base_matches = true;
             matches = additional_set[tag] ||
                 (base_matches && proxy_parameter_filter_matches_all(
-                    tag, metadata, protocols, transports, securities
+                    tag, metadata, protocols, transports, securities, ports
                 ));
         }
 
@@ -407,9 +440,9 @@ function urltest_exclude_outbounds(all_outbounds, excluded_outbounds) {
 
 function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, countries, metadata,
     include_names, include_regex, include_countries,
-    include_proxy_parameters, include_protocols, include_transports, include_securities,
+    include_proxy_parameters, include_protocols, include_transports, include_securities, include_ports,
     exclude_names, exclude_regex, exclude_countries,
-    exclude_proxy_parameters, exclude_protocols, exclude_transports, exclude_securities,
+    exclude_proxy_parameters, exclude_protocols, exclude_transports, exclude_securities, exclude_ports,
     include_additional_matches, exclude_additional_matches,
     hidden_tags) {
     let all_outbounds = urltest_all_candidate_outbounds(urltest_candidate_tags);
@@ -442,6 +475,7 @@ function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, 
         include_protocols,
         include_transports,
         include_securities,
+        include_ports,
         include_additional_matches
     );
     let exclude_outbounds = urltest_matching_candidate_outbounds(
@@ -457,6 +491,7 @@ function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, 
         exclude_protocols,
         exclude_transports,
         exclude_securities,
+        exclude_ports,
         exclude_additional_matches
     );
 
@@ -483,6 +518,7 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
         connections.urltest_include_protocols(section, urltest_id),
         connections.urltest_include_transports(section, urltest_id),
         connections.urltest_include_securities(section, urltest_id),
+        connections.urltest_include_ports(section, urltest_id),
         connections.urltest_exclude_outbounds(section, urltest_id),
         connections.urltest_exclude_regex(section, urltest_id),
         connections.urltest_exclude_countries(section, urltest_id),
@@ -490,6 +526,7 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
         connections.urltest_exclude_protocols(section, urltest_id),
         connections.urltest_exclude_transports(section, urltest_id),
         connections.urltest_exclude_securities(section, urltest_id),
+        connections.urltest_exclude_ports(section, urltest_id),
         null,
         null,
         state ? state.hiddenOutboundTags : null
@@ -529,6 +566,7 @@ function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate
         connections.priority_level_include_protocols(group_id, level_id),
         connections.priority_level_include_transports(group_id, level_id),
         connections.priority_level_include_securities(group_id, level_id),
+        connections.priority_level_include_ports(group_id, level_id),
         connections.priority_level_exclude_outbounds(group_id, level_id),
         connections.priority_level_exclude_regex(group_id, level_id),
         connections.priority_level_exclude_countries(group_id, level_id),
@@ -536,6 +574,7 @@ function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate
         connections.priority_level_exclude_protocols(group_id, level_id),
         connections.priority_level_exclude_transports(group_id, level_id),
         connections.priority_level_exclude_securities(group_id, level_id),
+        connections.priority_level_exclude_ports(group_id, level_id),
         null,
         null,
         state ? state.hiddenOutboundTags : null
@@ -591,6 +630,7 @@ function dashboard_filtered_outbounds(section, selector_tags, state, group_outbo
         connections.dashboard_include_protocols(section),
         connections.dashboard_include_transports(section),
         connections.dashboard_include_securities(section),
+        connections.dashboard_include_ports(section),
         connections.dashboard_exclude_outbounds(section),
         connections.dashboard_exclude_regex(section),
         connections.dashboard_exclude_countries(section),
@@ -598,6 +638,7 @@ function dashboard_filtered_outbounds(section, selector_tags, state, group_outbo
         connections.dashboard_exclude_protocols(section),
         connections.dashboard_exclude_transports(section),
         connections.dashboard_exclude_securities(section),
+        connections.dashboard_exclude_ports(section),
         selected_group_outbounds(connections.dashboard_include_groups(section), group_outbounds),
         selected_group_outbounds(connections.dashboard_exclude_groups(section), group_outbounds)
     );

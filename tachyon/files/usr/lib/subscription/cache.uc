@@ -1172,6 +1172,7 @@ function normalize_cache(cache, section, format_version) {
     cache.outboundMetadata.protocols = object_or_empty(cache.outboundMetadata.protocols);
     cache.outboundMetadata.securities = object_or_empty(cache.outboundMetadata.securities);
     cache.outboundMetadata.prefixes = object_or_empty(cache.outboundMetadata.prefixes);
+    cache.outboundMetadata.ports = object_or_empty(cache.outboundMetadata.ports);
     cache.servers = object_or_empty(cache.servers);
     cache.urltestCandidateTags = array_or_empty(cache.urltestCandidateTags);
     cache.urltestGroups = object_or_empty(cache.urltestGroups);
@@ -1203,7 +1204,8 @@ function write_outbound_metadata(cache_dir, format_version, section, names_path,
         transports: object_or_empty(previous_metadata.transports),
         protocols: object_or_empty(previous_metadata.protocols),
         securities: object_or_empty(previous_metadata.securities),
-        prefixes: object_or_empty(previous_metadata.prefixes)
+        prefixes: object_or_empty(previous_metadata.prefixes),
+        ports: object_or_empty(previous_metadata.ports)
     };
     cache.servers = object_or_empty(read_json(servers_path));
     save_cache(cache_dir, section, format_version, cache);

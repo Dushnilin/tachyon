@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-25 16:21+0300\n"
-"PO-Revision-Date: 2026-09-25 16:21+0300\n"
+"POT-Creation-Date: 2026-09-25 17:48+0300\n"
+"PO-Revision-Date: 2026-09-25 17:48+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -19,6 +19,9 @@ msgstr ""
 
 msgid "-- Select --"
 msgstr "-- Выбрать --"
+
+msgid "-- Select or type port/range --"
+msgstr ""
 
 msgid ".lst Lists"
 msgstr "Списки .lst"
@@ -1592,6 +1595,9 @@ msgstr "Не тестировать серверы из этих стран."
 msgid "Do not test servers whose names match the expression."
 msgstr "Не тестировать серверы, чьи имена соответствуют выражению."
 
+msgid "Do not test servers with one of the selected ports or port ranges."
+msgstr ""
+
 msgid "Do not test servers with one of the selected protocols."
 msgstr "Не тестировать серверы с одним из выбранных протоколов."
 
@@ -1948,6 +1954,9 @@ msgstr "Исключить выбранные страны"
 
 msgid "Exclude servers"
 msgstr "Исключить серверы"
+
+msgid "Exclude servers with one of the selected ports or port ranges from this level."
+msgstr ""
 
 msgid "Exclude servers with one of the selected protocols from this level."
 msgstr "Исключить серверы с одним из выбранных протоколов с этого уровня."
@@ -2461,6 +2470,9 @@ msgstr "Скрыть серверы, настроенные в секции, н�
 
 msgid "Hide servers whose names match the expression."
 msgstr "Скрыть серверы, чьи имена соответствуют выражению."
+
+msgid "Hide servers with one of the selected ports or port ranges."
+msgstr ""
 
 msgid "Hide servers with one of the selected protocols."
 msgstr "Скрыть серверы с одним из выбранных протоколов."
@@ -3362,6 +3374,9 @@ msgstr "Должен быть список числовых ID через зап
 msgid "Must be a number in the range of 0 - 10000"
 msgstr "Должно быть числом в диапазоне 0 - 10000"
 
+msgid "Must be a port (1 - 65535) or port range (e.g. 1000-2000)"
+msgstr ""
+
 msgid "My Strategies"
 msgstr "Мои стратегии"
 
@@ -3665,6 +3680,9 @@ msgstr "Только выбранные кроме исключений"
 msgid "Only servers whose names match the expression."
 msgstr "Только серверы, чьи имена соответствуют выражению."
 
+msgid "Only servers with one of the selected ports or port ranges."
+msgstr ""
+
 msgid "Only servers with one of the selected protocols."
 msgstr "Только серверы с одним из выбранных протоколов."
 
@@ -3913,6 +3931,9 @@ msgstr "Интервал опроса (секунды)"
 
 msgid "Polling interval must be at least 1 second"
 msgstr "Интервал опроса должен быть не менее 1 секунды"
+
+msgid "Port"
+msgstr ""
 
 msgid "Port cannot be empty"
 msgstr "Порт не может быть пустым"
@@ -4814,6 +4835,9 @@ msgstr "Показывать метаданные на дашборде"
 msgid "Show only selected servers."
 msgstr "Показать только выбранные серверы."
 
+msgid "Show only servers with one of the selected ports or port ranges."
+msgstr ""
+
 msgid "Show only servers with one of the selected protocols."
 msgstr "Показывать только серверы с одним из выбранных протоколов."
 
@@ -5362,6 +5386,9 @@ msgstr "Проверить задержку ноды"
 
 msgid "Test only selected servers."
 msgstr "Тестировать только выбранные серверы."
+
+msgid "Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000)."
+msgstr ""
 
 msgid "Test only servers with one of the selected protocols."
 msgstr "Тестировать только серверы с одним из выбранных протоколов."

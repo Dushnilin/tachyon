@@ -221,6 +221,12 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     }
     state.outboundMetadata.securities[tag_name] = security;
 
+    if (!state.outboundMetadata.ports)
+        state.outboundMetadata.ports = {};
+    let port = outbound.server_port != null ? outbound.server_port : outbound.port;
+    if (port != null && port != "")
+        state.outboundMetadata.ports[tag_name] = as_string(port);
+
     let server = as_string(outbound.server || "");
     if (server != "")
         state.servers[tag_name] = server;
@@ -341,7 +347,8 @@ function new_section_state(section_name) {
             protocols: {},
             transports: {},
             securities: {},
-            prefixes: {}
+            prefixes: {},
+            ports: {}
         },
         servers: {},
         urltestCandidateTags: [],

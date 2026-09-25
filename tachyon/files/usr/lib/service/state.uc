@@ -1161,6 +1161,7 @@ function dashboard_filter_signature(section) {
         include_protocols: connections.dashboard_include_protocols(section),
         include_transports: connections.dashboard_include_transports(section),
         include_securities: connections.dashboard_include_securities(section),
+        include_ports: connections.dashboard_include_ports(section),
         include_groups: connections.dashboard_include_groups(section),
         exclude_countries: connections.dashboard_exclude_countries(section),
         exclude_outbounds: connections.dashboard_exclude_outbounds(section),
@@ -1169,6 +1170,7 @@ function dashboard_filter_signature(section) {
         exclude_protocols: connections.dashboard_exclude_protocols(section),
         exclude_transports: connections.dashboard_exclude_transports(section),
         exclude_securities: connections.dashboard_exclude_securities(section),
+        exclude_ports: connections.dashboard_exclude_ports(section),
         exclude_groups: connections.dashboard_exclude_groups(section)
     });
 }

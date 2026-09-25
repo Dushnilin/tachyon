@@ -393,6 +393,7 @@ export namespace Tachyon {
     dashboard_include_protocols?: string[];
     dashboard_include_transports?: string[];
     dashboard_include_securities?: string[];
+    dashboard_include_ports?: string[];
     dashboard_include_groups?: string[];
     dashboard_exclude_countries?: string[];
     dashboard_exclude_outbounds?: string[];
@@ -401,6 +402,7 @@ export namespace Tachyon {
     dashboard_exclude_protocols?: string[];
     dashboard_exclude_transports?: string[];
     dashboard_exclude_securities?: string[];
+    dashboard_exclude_ports?: string[];
     dashboard_exclude_groups?: string[];
     dashboard_hide_na_servers?: '0' | '1';
     urltest_proxy_links?: string[];

@@ -1038,7 +1038,7 @@ function validate_proxy_parameter_value(value, allowed, parameter, section) {
     fail_validation("Invalid proxy " + parameter + " '" + value + "' in rule '" + section + "'. Aborted.");
 }
 
-function validate_proxy_parameter_filters(protocols, transports, securities, section) {
+function validate_proxy_parameter_filters(protocols, transports, securities, ports, section) {
     for (let value in protocols)
         validate_proxy_parameter_value(value,
             [ "awg", "direct", "http", "hysteria2", "shadowsocks", "socks", "trojan", "tuic", "vless", "vmess" ],
@@ -1049,6 +1049,8 @@ function validate_proxy_parameter_filters(protocols, transports, securities, sec
             "transport", section);
     for (let value in securities)
         validate_proxy_parameter_value(value, [ "none", "tls", "reality" ], "security", section);
+    for (let value in ports)
+        validate_port_condition_value(value, section);
 }
 
 function validate_urltest_regex_value(value, section) {
@@ -1130,6 +1132,7 @@ function validate_priority_group(section, group_id) {
                     connections.priority_level_include_protocols(group_id, level_id),
                     connections.priority_level_include_transports(group_id, level_id),
                     connections.priority_level_include_securities(group_id, level_id),
+                    connections.priority_level_include_ports(group_id, level_id),
                     name
                 );
         }
@@ -1143,6 +1146,7 @@ function validate_priority_group(section, group_id) {
                     connections.priority_level_exclude_protocols(group_id, level_id),
                     connections.priority_level_exclude_transports(group_id, level_id),
                     connections.priority_level_exclude_securities(group_id, level_id),
+                    connections.priority_level_exclude_ports(group_id, level_id),
                     name
                 );
         }
@@ -1180,6 +1184,7 @@ function validate_dashboard_filter(section) {
                 connections.dashboard_include_protocols(section),
                 connections.dashboard_include_transports(section),
                 connections.dashboard_include_securities(section),
+                connections.dashboard_include_ports(section),
                 name
             );
     }
@@ -1194,6 +1199,7 @@ function validate_dashboard_filter(section) {
                 connections.dashboard_exclude_protocols(section),
                 connections.dashboard_exclude_transports(section),
                 connections.dashboard_exclude_securities(section),
+                connections.dashboard_exclude_ports(section),
                 name
             );
     }
@@ -1578,6 +1584,7 @@ function validate_rule(section, sections, context) {
                         connections.urltest_include_protocols(section, urltest_id),
                         connections.urltest_include_transports(section, urltest_id),
                         connections.urltest_include_securities(section, urltest_id),
+                        connections.urltest_include_ports(section, urltest_id),
                         name
                     );
             }
@@ -1591,6 +1598,7 @@ function validate_rule(section, sections, context) {
                         connections.urltest_exclude_protocols(section, urltest_id),
                         connections.urltest_exclude_transports(section, urltest_id),
                         connections.urltest_exclude_securities(section, urltest_id),
+                        connections.urltest_exclude_ports(section, urltest_id),
                         name
                     );
             }

@@ -140,6 +140,10 @@ fs.writeFileSync(path.join(outputDir, 'invalid-group.json'), JSON.stringify(inva
 const invalidMode = JSON.parse(JSON.stringify(source));
 invalidMode.section[0].dashboard_filter_mode = 'unknown';
 fs.writeFileSync(path.join(outputDir, 'invalid-mode.json'), JSON.stringify(invalidMode));
+
+const invalidPort = JSON.parse(JSON.stringify(source));
+invalidPort.section[0].dashboard_include_ports = ['70000'];
+fs.writeFileSync(path.join(outputDir, 'invalid-port.json'), JSON.stringify(invalidPort));
 JS
 
 for mode in disabled include exclude mixed; do
@@ -153,6 +157,10 @@ fi
 
 if validate_fixture "$WORK_DIR/invalid-mode.json" >/dev/null 2>&1; then
   fail "unknown dashboard filter mode should be rejected"
+fi
+
+if validate_fixture "$WORK_DIR/invalid-port.json" >/dev/null 2>&1; then
+  fail "invalid dashboard port should be rejected"
 fi
 
 ucode -e '

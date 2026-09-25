@@ -2418,6 +2418,50 @@ function proxySecurityChoices() {
   ];
 }
 
+function proxyPortChoices() {
+  return [
+    ["443", "443 (HTTPS)"],
+    ["80", "80 (HTTP)"],
+    ["8443", "8443"],
+    ["2053", "2053 (Cloudflare)"],
+    ["2083", "2083 (Cloudflare)"],
+    ["2087", "2087 (Cloudflare)"],
+    ["2096", "2096 (Cloudflare)"],
+    ["8080", "8080"],
+  ];
+}
+
+function validateProxyPortCondition(sectionId, value) {
+  if (!value || `${value}`.trim().length === 0) {
+    return true;
+  }
+  const text = `${value}`.trim();
+  const dash = text.indexOf("-");
+  if (dash < 0) {
+    const num = parseInt(text, 10);
+    if (/^[0-9]+$/.test(text) && !isNaN(num) && num >= 1 && num <= 65535) {
+      return true;
+    }
+  } else {
+    const s1 = text.substring(0, dash).trim();
+    const s2 = text.substring(dash + 1).trim();
+    const n1 = parseInt(s1, 10);
+    const n2 = parseInt(s2, 10);
+    if (
+      /^[0-9]+$/.test(s1) &&
+      /^[0-9]+$/.test(s2) &&
+      !isNaN(n1) &&
+      !isNaN(n2) &&
+      n1 >= 1 &&
+      n2 <= 65535 &&
+      n1 <= n2
+    ) {
+      return true;
+    }
+  }
+  return _("Must be a port (1 - 65535) or port range (e.g. 1000-2000)");
+}
+
 function addProxyParameterFilterOptions(itemSection, options) {
   const prefix = options.prefix;
   const dependencies = options.dependencies;
@@ -2438,20 +2482,30 @@ function addProxyParameterFilterOptions(itemSection, options) {
       _("Protocol"),
       options.protocolDescription,
       proxyProtocolChoices(),
+      null,
     ],
     [
       "transports",
       _("Transport"),
       options.transportDescription,
       proxyTransportChoices(),
+      null,
     ],
     [
       "securities",
       _("Security"),
       options.securityDescription,
       proxySecurityChoices(),
+      null,
     ],
-  ].forEach(([suffix, label, description, choices]) => {
+    [
+      "ports",
+      _("Port"),
+      options.portDescription,
+      proxyPortChoices(),
+      validateProxyPortCondition,
+    ],
+  ].forEach(([suffix, label, description, choices, validator]) => {
     const list = itemSection.option(
       form.DynamicList,
       `${prefix}_${suffix}`,
@@ -2466,8 +2520,15 @@ function addProxyParameterFilterOptions(itemSection, options) {
       ),
     );
     list.rmempty = true;
-    choices.forEach(([value, choiceLabel]) => list.value(value, choiceLabel));
-    list.placeholder = _("-- Select --");
+    if (choices) {
+      choices.forEach(([value, choiceLabel]) => list.value(value, choiceLabel));
+    }
+    if (validator) {
+      list.validate = function (_section_id, value) {
+        return validator(null, value);
+      };
+    }
+    list.placeholder = _("-- Select or type port/range --");
   });
 }
 
@@ -2635,6 +2696,7 @@ function urlTestSettingsKeys() {
     "include_protocols",
     "include_transports",
     "include_securities",
+    "include_ports",
     "exclude_countries",
     "exclude_outbounds",
     "exclude_regex",
@@ -2642,6 +2704,7 @@ function urlTestSettingsKeys() {
     "exclude_protocols",
     "exclude_transports",
     "exclude_securities",
+    "exclude_ports",
   ];
 }
 
@@ -2730,6 +2793,7 @@ function priorityLevelSettingsKeys() {
     "include_protocols",
     "include_transports",
     "include_securities",
+    "include_ports",
     "exclude_countries",
     "exclude_outbounds",
     "exclude_regex",
@@ -2737,6 +2801,7 @@ function priorityLevelSettingsKeys() {
     "exclude_protocols",
     "exclude_transports",
     "exclude_securities",
+    "exclude_ports",
   ];
 }
 
@@ -3159,6 +3224,9 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     securityDescription: _(
       "Test only servers with one of the selected security types.",
     ),
+    portDescription: _(
+      "Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000).",
+    ),
   };
   const excludeProxyParameterOptions = {
     prefix: "exclude",
@@ -3175,6 +3243,9 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     ),
     securityDescription: _(
       "Do not test servers with one of the selected security types.",
+    ),
+    portDescription: _(
+      "Do not test servers with one of the selected ports or port ranges.",
     ),
   };
 
@@ -3372,6 +3443,9 @@ function addPriorityLevelItemOptions(itemSection, options = {}) {
     securityDescription: _(
       "Only servers with one of the selected security types.",
     ),
+    portDescription: _(
+      "Only servers with one of the selected ports or port ranges.",
+    ),
   };
   const excludeProxyParameterOptions = {
     prefix: "exclude",
@@ -3391,6 +3465,9 @@ function addPriorityLevelItemOptions(itemSection, options = {}) {
     ),
     securityDescription: _(
       "Exclude servers with one of the selected security types from this level.",
+    ),
+    portDescription: _(
+      "Exclude servers with one of the selected ports or port ranges from this level.",
     ),
   };
 
@@ -3785,6 +3862,9 @@ function addDashboardServerFilterOptions(section) {
     securityDescription: _(
       "Show only servers with one of the selected security types.",
     ),
+    portDescription: _(
+      "Show only servers with one of the selected ports or port ranges.",
+    ),
   };
   const excludeProxyParameterOptions = {
     prefix: "dashboard_exclude",
@@ -3802,6 +3882,9 @@ function addDashboardServerFilterOptions(section) {
     ),
     securityDescription: _(
       "Hide servers with one of the selected security types.",
+    ),
+    portDescription: _(
+      "Hide servers with one of the selected ports or port ranges.",
     ),
   };
 

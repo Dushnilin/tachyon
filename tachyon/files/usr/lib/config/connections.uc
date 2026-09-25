@@ -502,6 +502,10 @@ function dashboard_include_securities(section) {
     return list_value(section, "dashboard_include_securities");
 }
 
+function dashboard_include_ports(section) {
+    return list_value(section, "dashboard_include_ports");
+}
+
 function dashboard_include_groups(section) {
     return list_value(section, "dashboard_include_groups");
 }
@@ -532,6 +536,10 @@ function dashboard_exclude_transports(section) {
 
 function dashboard_exclude_securities(section) {
     return list_value(section, "dashboard_exclude_securities");
+}
+
+function dashboard_exclude_ports(section) {
+    return list_value(section, "dashboard_exclude_ports");
 }
 
 function dashboard_exclude_groups(section) {
@@ -1224,6 +1232,11 @@ function urltest_include_securities(section, value) {
     return child != null ? child_list(child, "include_securities", []) : [];
 }
 
+function urltest_include_ports(section, value) {
+    let child = urltest_child(section, value);
+    return child != null ? child_list(child, "include_ports", []) : [];
+}
+
 function urltest_exclude_countries(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
@@ -1266,6 +1279,11 @@ function urltest_exclude_transports(section, value) {
 function urltest_exclude_securities(section, value) {
     let child = urltest_child(section, value);
     return child != null ? child_list(child, "exclude_securities", []) : [];
+}
+
+function urltest_exclude_ports(section, value) {
+    let child = urltest_child(section, value);
+    return child != null ? child_list(child, "exclude_ports", []) : [];
 }
 
 function priority_group_display_name(section, value) {
@@ -1373,6 +1391,11 @@ function priority_level_include_securities(group_id, value) {
     return child != null ? child_list(child, "include_securities", []) : [];
 }
 
+function priority_level_include_ports(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list(child, "include_ports", []) : [];
+}
+
 function priority_level_exclude_countries(group_id, value) {
     let child = priority_level_child(group_id, value);
     return child != null ? child_list(child, "exclude_countries", []) : [];
@@ -1406,6 +1429,11 @@ function priority_level_exclude_transports(group_id, value) {
 function priority_level_exclude_securities(group_id, value) {
     let child = priority_level_child(group_id, value);
     return child != null ? child_list(child, "exclude_securities", []) : [];
+}
+
+function priority_level_exclude_ports(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list(child, "exclude_ports", []) : [];
 }
 
 function priority_level_countries(group_id, value) {
@@ -1626,6 +1654,7 @@ return {
     dashboard_include_protocols,
     dashboard_include_transports,
     dashboard_include_securities,
+    dashboard_include_ports,
     dashboard_include_groups,
     dashboard_exclude_countries,
     dashboard_exclude_outbounds,
@@ -1634,6 +1663,7 @@ return {
     dashboard_exclude_protocols,
     dashboard_exclude_transports,
     dashboard_exclude_securities,
+    dashboard_exclude_ports,
     dashboard_exclude_groups,
     community_lists,
     rule_sets,
@@ -1691,6 +1721,7 @@ return {
     urltest_include_protocols,
     urltest_include_transports,
     urltest_include_securities,
+    urltest_include_ports,
     urltest_exclude_countries,
     urltest_exclude_outbounds,
     urltest_exclude_regex,
@@ -1698,6 +1729,7 @@ return {
     urltest_exclude_protocols,
     urltest_exclude_transports,
     urltest_exclude_securities,
+    urltest_exclude_ports,
     priority_groups,
     priority_group_settings,
     priority_levels,
@@ -1722,6 +1754,7 @@ return {
     priority_level_include_protocols,
     priority_level_include_transports,
     priority_level_include_securities,
+    priority_level_include_ports,
     priority_level_exclude_countries,
     priority_level_exclude_outbounds,
     priority_level_exclude_regex,
@@ -1729,6 +1762,7 @@ return {
     priority_level_exclude_protocols,
     priority_level_exclude_transports,
     priority_level_exclude_securities,
+    priority_level_exclude_ports,
     priority_level_countries,
     priority_level_outbounds,
     priority_level_regex,
