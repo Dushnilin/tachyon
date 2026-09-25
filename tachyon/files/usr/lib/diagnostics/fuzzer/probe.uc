@@ -286,7 +286,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
         let passed_count = 0;
         let max_speed = 0;
         let sum_data_bytes = 0;
-        let all_data_verified = true;
+        let any_data_verified = false;
         let last_http = 0;
         let last_dpi_verdict = "available";
         let required_failed = false;
@@ -348,12 +348,11 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             if (single_res.success) {
                 passed_count++;
                 sum_data_bytes += single_res.data_bytes || 0;
-                if (!single_res.data_verified) all_data_verified = false;
+                if (single_res.data_verified) any_data_verified = true;
                 if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
                 last_http = single_res.http_code;
                 last_dpi_verdict = single_res.dpi_verdict || "available";
             } else {
-                all_data_verified = false;
                 if (last_http == 0) last_http = single_res.http_code;
                 if (single_res.error && result.error == "") result.error = single_res.error;
                 last_dpi_verdict = single_res.dpi_verdict || "failed";
@@ -377,12 +376,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
                 result.error = sprintf("Required endpoint failed (%d of %d endpoints passed)", passed_count, total_urls);
             }
         } else {
+            let is_data_verified = (total_urls == 1) ? (result.sub_probes[0] && result.sub_probes[0].data_verified) : any_data_verified;
             result.success = true;
             result.http_code = last_http > 0 ? last_http : 200;
             result.speed_kbps = max_speed;
-            result.data_bytes = int(sum_data_bytes / (1.0 * total_urls));
-            result.data_verified = all_data_verified;
-            result.dpi_verdict = all_data_verified ? "verified_32k" : last_dpi_verdict;
+            result.data_bytes = sum_data_bytes;
+            result.data_verified = is_data_verified;
+            result.dpi_verdict = is_data_verified ? "verified_32k" : last_dpi_verdict;
             result.error = "";
 
             let total_w = 0;
@@ -497,7 +497,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
         let passed_count = 0;
         let max_speed = 0;
         let sum_data_bytes = 0;
-        let all_data_verified = true;
+        let any_data_verified = false;
         let last_http = 0;
         let last_dpi_verdict = "available";
         let dns_flags = binaries.get_fuzzer_curl_dns_flags();
@@ -563,12 +563,11 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             if (single_res.success) {
                 passed_count++;
                 sum_data_bytes += single_res.data_bytes || 0;
-                if (!single_res.data_verified) all_data_verified = false;
+                if (single_res.data_verified) any_data_verified = true;
                 if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
                 last_http = single_res.http_code;
                 last_dpi_verdict = single_res.dpi_verdict || "available";
             } else {
-                all_data_verified = false;
                 if (last_http == 0) last_http = single_res.http_code;
                 if (single_res.error && result.error == "") result.error = single_res.error;
                 last_dpi_verdict = single_res.dpi_verdict || "failed";
@@ -592,12 +591,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
                 result.error = sprintf("Required endpoint failed (%d of %d endpoints passed)", passed_count, total_urls);
             }
         } else {
+            let is_data_verified = (total_urls == 1) ? (result.sub_probes[0] && result.sub_probes[0].data_verified) : any_data_verified;
             result.success = true;
             result.http_code = last_http > 0 ? last_http : 200;
             result.speed_kbps = max_speed;
-            result.data_bytes = int(sum_data_bytes / (1.0 * total_urls));
-            result.data_verified = all_data_verified;
-            result.dpi_verdict = all_data_verified ? "verified_32k" : last_dpi_verdict;
+            result.data_bytes = sum_data_bytes;
+            result.data_verified = is_data_verified;
+            result.dpi_verdict = is_data_verified ? "verified_32k" : last_dpi_verdict;
             result.error = "";
 
             let total_w = 0;

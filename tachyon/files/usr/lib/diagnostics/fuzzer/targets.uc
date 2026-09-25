@@ -70,7 +70,7 @@ function detect_dpi_type(target_key, custom_url) {
     let dm = match(domain, /https?:\/\/([^/]+)/);
     if (dm && dm[1]) domain = dm[1];
 
-    let dns_cmd = binaries.wrap_probe_cmd(sprintf("nslookup %s 2>&1", shell_quote(domain)), 4);
+    let dns_cmd = binaries.wrap_probe_cmd(sprintf("nslookup %s 77.88.8.8 2>&1 || nslookup %s 2>&1", shell_quote(domain), shell_quote(domain)), 4);
     let dns_pipe = fs.popen(dns_cmd, "r");
     let dns_out = dns_pipe ? dns_pipe.read("all") : "";
     if (dns_pipe) dns_pipe.close();
@@ -86,46 +86,47 @@ function detect_dpi_type(target_key, custom_url) {
     let ttfb = metrics.ttfb_ms || 0;
     let error_str = metrics.error || "";
 
-    if (dns_blocked) {
+    // 1. Check if target is directly accessible first
+    if ((http_code >= 200 && http_code < 400) || (http_code >= 401 && http_code <= 405)) {
+        result.type = "none";
+        result.confidence = 95;
+        result.details = sprintf("Target directly accessible — no DPI blocking detected (HTTP %d, TTFB %dms)", http_code, ttfb);
+        result.recommended_engines = [];
+    } else if (dns_blocked && http_code == 0 && handshake == 0) {
         result.type = "dns_block";
         result.confidence = 90;
         result.details = sprintf("DNS resolution failed for %s — likely DNS-level blocking or hijacking", domain);
-        result.recommended_engines = ["byedpi", "zapret2"];
+        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (metrics.dpi_verdict == "throttled_16k" || (http_code == 200 && metrics.data_bytes >= 10240 && metrics.data_bytes <= 28672)) {
         result.type = "throttle";
         result.confidence = 95;
         result.details = sprintf("16KB DPI throttling detected on %s — handshake succeeded but stream dropped at ~16KB data transfer", domain);
-        result.recommended_engines = ["byedpi", "zapret2"];
+        result.recommended_engines = ["zapret2", "byedpi"];
     } else if ((http_code == 0 && handshake == 0) && (index(error_str, "timed out") >= 0 || index(error_str, "Connection timed out") >= 0 || index(error_str, "ETIMEDOUT") >= 0)) {
-        result.type = "ip_block";
-        result.confidence = 95;
-        result.details = sprintf("TCP connect timed out before TLS handshake for %s — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead.", domain);
-        result.recommended_engines = [];
+        result.type = "drop";
+        result.confidence = 90;
+        result.details = sprintf("TCP connect timed out for %s — TSPU / DPI packet drop (blackhole) detected. Can be bypassed using syndata, multisplit, or PAWS spoofing.", domain);
+        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (index(error_str, "Connection reset") >= 0 || index(error_str, "ECONNRESET") >= 0) {
         result.type = "rst";
         result.confidence = 85;
         result.details = sprintf("TCP RST received from DPI — active TCP reset injection detected");
-        result.recommended_engines = ["zapret2", "zapret"];
+        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (http_code == 0 || index(error_str, "Connection refused") >= 0 || index(error_str, "ECONNREFUSED") >= 0) {
         result.type = "rst";
         result.confidence = 70;
         result.details = sprintf("Connection refused — likely RST or blackhole by DPI");
-        result.recommended_engines = ["zapret2", "zapret"];
+        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (handshake > 2000) {
         result.type = "throttle";
         result.confidence = 75;
         result.details = sprintf("Very slow TLS handshake (%dms) — likely DPI deep inspection causing delay", handshake);
-        result.recommended_engines = ["zapret2", "zapret"];
+        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (ttfb > 3000 && http_code >= 200 && http_code < 400) {
         result.type = "throttle";
         result.confidence = 65;
         result.details = sprintf("High TTFB (%dms) despite successful connection — likely bandwidth throttling", ttfb);
         result.recommended_engines = ["zapret2", "byedpi"];
-    } else if ((http_code >= 200 && http_code < 400) || (http_code >= 401 && http_code <= 405)) {
-        result.type = "none";
-        result.confidence = 95;
-        result.details = sprintf("Target accessible — no DPI blocking detected (HTTP %d, TTFB %dms)", http_code, ttfb);
-        result.recommended_engines = [];
     } else {
         result.type = "unknown";
         result.confidence = 30;
@@ -143,11 +144,13 @@ function rerank_strategies_by_dpi(strategies, dpi_type) {
 
     let priority_ids = [];
     if (dpi_type.type == "rst") {
-        priority_ids = ["badseq", "md5sig", "multisplit", "disorder"];
+        priority_ids = ["badseq", "md5sig", "multisplit", "disorder", "syndata", "paws"];
+    } else if (dpi_type.type == "drop" || dpi_type.type == "ip_block") {
+        priority_ids = ["syndata", "multisplit", "multidisorder", "paws", "seqovl", "fake", "badseq", "disorder"];
     } else if (dpi_type.type == "throttle") {
-        priority_ids = ["multisplit", "seqovl", "wsize", "split2"];
+        priority_ids = ["multisplit", "seqovl", "wsize", "split2", "paws", "syndata"];
     } else if (dpi_type.type == "dns_block") {
-        priority_ids = ["fake", "ttl=3", "ttl=4", "sniext"];
+        priority_ids = ["fake", "ttl=3", "ttl=4", "sniext", "multisplit"];
     }
 
     if (length(priority_ids) == 0)

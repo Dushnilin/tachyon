@@ -1602,15 +1602,18 @@ function get_strategies_for_engine(engine, mode, target) {
         return combo;
     }
     
+    let has_z2 = binaries.get_zapret2_bin() != null;
+    let has_z1 = binaries.get_zapret_bin() != null;
+    let has_bd = binaries.get_byedpi_bin() != null;
+
     let base = [];
     if (engine == "zapret2") base = STRATEGIES_ZAPRET2;
     else if (engine == "zapret") { base = []; for (let s in STRATEGIES_ZAPRET) push(base, s); for (let s in STRATEGIES_FLOWSEAL) push(base, s); }
     else if (engine == "byedpi") base = STRATEGIES_BYEDPI;
     else if (engine == "all") {
-        for (let s in STRATEGIES_ZAPRET2) push(base, s);
-        for (let s in STRATEGIES_ZAPRET) push(base, s);
-        for (let s in STRATEGIES_FLOWSEAL) push(base, s);
-        for (let s in STRATEGIES_BYEDPI) push(base, s);
+        if (has_z2) for (let s in STRATEGIES_ZAPRET2) push(base, s);
+        if (has_z1) { for (let s in STRATEGIES_ZAPRET) push(base, s); for (let s in STRATEGIES_FLOWSEAL) push(base, s); }
+        if (has_bd) for (let s in STRATEGIES_BYEDPI) push(base, s);
     }
     
     let result = [];
@@ -1645,7 +1648,14 @@ function get_strategies_for_engine(engine, mode, target) {
 
     // Curated presets from external sources (zapret4rocket, homeproxy-hiddify)
     let presets = load_builtin_presets();
-    let preset_engines = engine == "all" ? [ "zapret2", "zapret", "byedpi" ] : [ engine ];
+    let preset_engines = [];
+    if (engine == "all") {
+        if (has_z2) push(preset_engines, "zapret2");
+        if (has_z1) push(preset_engines, "zapret");
+        if (has_bd) push(preset_engines, "byedpi");
+    } else {
+        push(preset_engines, engine);
+    }
     for (let eng in preset_engines) {
         let list = presets[eng];
         if (type(list) != "array")

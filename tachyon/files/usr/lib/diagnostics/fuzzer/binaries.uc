@@ -163,6 +163,21 @@ function wrap_probe_cmd(cmd, sec, pid_file) {
     return sprintf(_WATCHDOG_SUBSHELL, cmd, sec);
 }
 
+function is_valid_public_ip(ip) {
+    if (!ip || type(ip) != "string") return false;
+    let m = match(ip, /^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$/);
+    if (!m) return false;
+    let o1 = int(m[1]), o2 = int(m[2]), o3 = int(m[3]), o4 = int(m[4]);
+    if (o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255) return false;
+    if (o1 == 0 || o1 == 10 || o1 == 127 || o1 >= 224) return false;
+    if (o1 == 100 && o2 >= 64 && o2 <= 127) return false;
+    if (o1 == 169 && o2 == 254) return false;
+    if (o1 == 172 && o2 >= 16 && o2 <= 31) return false;
+    if (o1 == 192 && o2 == 168) return false;
+    if (o1 == 198 && (o2 == 18 || o2 == 19)) return false;
+    return true;
+}
+
 function get_fuzzer_curl_dns_flags() {
     if (_fuzzer_curl_dns_flags !== null)
         return _fuzzer_curl_dns_flags;
@@ -175,8 +190,8 @@ function get_fuzzer_curl_dns_flags() {
         _fuzzer_curl_dns_flags = "--doh-url https://8.8.8.8/dns-query ";
         return _fuzzer_curl_dns_flags;
     }
-    if (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0) {
-        _fuzzer_curl_dns_flags = "--dns-servers 8.8.8.8,1.1.1.1 ";
+    if (system("curl --dns-servers 77.88.8.8,8.8.8.8,1.1.1.1 -V >/dev/null 2>&1") == 0) {
+        _fuzzer_curl_dns_flags = "--dns-servers 77.88.8.8,8.8.8.8,1.1.1.1 ";
         return _fuzzer_curl_dns_flags;
     }
     _fuzzer_curl_dns_flags = "";
@@ -194,34 +209,19 @@ function get_resolved_host_flags(url) {
 
     let safe_host = shell_quote(host);
     let ip = null;
-    // 1. Try Cloudflare DoH JSON
-    let p = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' 'https://1.1.1.1/dns-query?name=%s&type=A'", safe_host), "r");
-    let out = p ? p.read("all") : "";
-    if (p) p.close();
-    if (out && out != "") {
-        try {
-            let data = json(out);
-            if (data && data.Answer) {
-                for (let ans in data.Answer) {
-                    if (ans.type == 1 && ans.data && match(ans.data, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
-                        ip = ans.data;
-                        break;
-                    }
-                }
-            }
-        } catch (e) {}
-    }
-    // 2. Try Google DoH JSON if Cloudflare failed
-    if (!ip) {
-        let gp = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' 'https://8.8.8.8/dns-query?name=%s&type=A'", safe_host), "r");
-        let gout = gp ? gp.read("all") : "";
-        if (gp) gp.close();
-        if (gout && gout != "") {
+
+    // 1. Try Cloudflare DoH JSON (1.1.1.1 / 1.0.0.1)
+    let cf_endpoints = [ "https://1.1.1.1/dns-query", "https://1.0.0.1/dns-query" ];
+    for (let ep in cf_endpoints) {
+        let p = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' '%s?name=%s&type=A'", ep, safe_host), "r");
+        let out = p ? p.read("all") : "";
+        if (p) p.close();
+        if (out && out != "") {
             try {
-                let gdata = json(gout);
-                if (gdata && gdata.Answer) {
-                    for (let ans in gdata.Answer) {
-                        if (ans.type == 1 && ans.data && match(ans.data, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+                let data = json(out);
+                if (data && data.Answer) {
+                    for (let ans in data.Answer) {
+                        if (ans.type == 1 && is_valid_public_ip(ans.data)) {
                             ip = ans.data;
                             break;
                         }
@@ -229,25 +229,55 @@ function get_resolved_host_flags(url) {
                 }
             } catch (e) {}
         }
+        if (ip) break;
     }
-    // 3. Fallback: nslookup via 1.1.1.1 or system
+
+    // 2. Try Google DoH JSON (8.8.8.8 / 8.8.4.4) via /resolve endpoint
     if (!ip) {
-        let np = fs.popen(sprintf("nslookup %s 1.1.1.1 2>/dev/null", safe_host), "r");
-        let nout = np ? np.read("all") : "";
-        if (np) np.close();
-        if (nout && nout != "") {
-            let lines = split(nout, "\n");
-            let name_seen = false;
-            for (let line in lines) {
-                if (index(line, "Name:") >= 0) { name_seen = true; continue; }
-                if (name_seen) {
-                    let nm = match(line, /Address:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-                    if (nm && nm[1]) {
-                        ip = nm[1];
-                        break;
+        let google_endpoints = [ "https://8.8.8.8/resolve", "https://8.8.4.4/resolve" ];
+        for (let gep in google_endpoints) {
+            let gp = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 '%s?name=%s&type=A'", gep, safe_host), "r");
+            let gout = gp ? gp.read("all") : "";
+            if (gp) gp.close();
+            if (gout && gout != "") {
+                try {
+                    let gdata = json(gout);
+                    if (gdata && gdata.Answer) {
+                        for (let ans in gdata.Answer) {
+                            if (ans.type == 1 && is_valid_public_ip(ans.data)) {
+                                ip = ans.data;
+                                break;
+                            }
+                        }
+                    }
+                } catch (e) {}
+            }
+            if (ip) break;
+        }
+    }
+
+    // 3. Fallback: nslookup via external public DNS (77.88.8.8 or 1.1.1.1)
+    if (!ip) {
+        let dns_servers = [ "77.88.8.8", "1.1.1.1" ];
+        for (let srv in dns_servers) {
+            let np = fs.popen(sprintf("nslookup %s %s 2>/dev/null", safe_host, srv), "r");
+            let nout = np ? np.read("all") : "";
+            if (np) np.close();
+            if (nout && nout != "") {
+                let lines = split(nout, "\n");
+                let name_seen = false;
+                for (let line in lines) {
+                    if (index(line, "Name:") >= 0) { name_seen = true; continue; }
+                    if (name_seen) {
+                        let nm = match(line, /Address:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                        if (nm && is_valid_public_ip(nm[1])) {
+                            ip = nm[1];
+                            break;
+                        }
                     }
                 }
             }
+            if (ip) break;
         }
     }
 
@@ -542,6 +572,7 @@ function module_exports() {
         wrap_cmd_timeout,
         run_bounded,
         wrap_probe_cmd,
+        is_valid_public_ip,
         get_fuzzer_curl_dns_flags,
         get_resolved_host_flags,
         get_zapret2_blob_dir,

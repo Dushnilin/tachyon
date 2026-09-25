@@ -604,6 +604,24 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
         system("sleep 0.25");
     }
     
+    engine = lc(as_string(engine || "zapret2"));
+    if (engine == "zapret2" && !get_zapret2_bin()) {
+        print(sprintf("%J\n", { success: false, error: "Zapret v2 binary is not installed on the router" }));
+        return;
+    }
+    if (engine == "zapret" && !get_zapret_bin()) {
+        print(sprintf("%J\n", { success: false, error: "Zapret v1 binary is not installed on the router" }));
+        return;
+    }
+    if (engine == "byedpi" && !get_byedpi_bin()) {
+        print(sprintf("%J\n", { success: false, error: "ByeDPI binary is not installed on the router" }));
+        return;
+    }
+    if (engine == "all" && !get_zapret2_bin() && !get_zapret_bin() && !get_byedpi_bin()) {
+        print(sprintf("%J\n", { success: false, error: "No DPI bypass engines are installed on the router" }));
+        return;
+    }
+
     if (custom_url && custom_url != "") {
         let urls = split(custom_url, /[,\n]+/);
         for (let u in urls) {
