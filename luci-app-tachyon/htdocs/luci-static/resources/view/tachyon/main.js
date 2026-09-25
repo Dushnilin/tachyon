@@ -2990,9 +2990,14 @@ async function callBaseMethod(method, args = [], command = "/usr/bin/tachyon", o
     }
     if (response.stdout) {
       try {
+        let text = response.stdout.trim();
+        const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+        if (jsonMatch) {
+          text = jsonMatch[0];
+        }
         return {
           success: true,
-          data: JSON.parse(response.stdout)
+          data: JSON.parse(text)
         };
       } catch (_e) {
         return {
@@ -10170,7 +10175,7 @@ var styles = `
 
 .tachyon_dashboard-page__urltest-details {
     box-sizing: border-box;
-    width: min(760px, calc(100vw - 56px));
+    width: 100%;
     max-width: 100%;
     padding-top: 10px;
 }
@@ -11009,6 +11014,17 @@ async function runNftCheck() {
     throw new Error("Nftables checks failed");
   }
   const data = nftablesChecks.data;
+  if (!data || typeof data !== "object") {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _("Cannot receive checks result"),
+      state: "error",
+      items: []
+    });
+    throw new Error("Nftables checks returned invalid data");
+  }
   if (data.not_applicable) {
     updateCheckStore({
       order,
@@ -24430,15 +24446,54 @@ ${PartialStyles}
     }
 }
 
-/* Tachyon modals: comfortable width on desktop, full-width overlay on small screens */
-.modal:has([class*="tachyon"]),
-.cbi-modal:has([class*="tachyon"]),
+/* Tachyon modal sizing by content type */
+
+/* Compact modals: UrlTest details, priority info, server info */
+.modal:has(.tachyon_dashboard-page__urltest-details),
+.cbi-modal:has(.tachyon_dashboard-page__urltest-details),
 .modal:has(.fkp-server-info-modal),
 .cbi-modal:has(.fkp-server-info-modal),
 .modal .fkp-server-info-modal,
 .cbi-modal .fkp-server-info-modal {
+    width: min(94vw, 680px) !important;
+    max-width: min(94vw, 680px) !important;
+    box-sizing: border-box;
+    margin: 10px auto;
+}
+
+/* Medium modals: Support, Service check, DNS benchmark, Updates, AI Chat */
+.modal:has(.tachyon-support-modal),
+.cbi-modal:has(.tachyon-support-modal),
+.modal:has(.tachyon-service-check-modal),
+.cbi-modal:has(.tachyon-service-check-modal),
+.modal:has(.tachyon-dns-benchmark-modal),
+.cbi-modal:has(.tachyon-dns-benchmark-modal),
+.modal:has(.tachyon-update-progress-modal),
+.cbi-modal:has(.tachyon-update-progress-modal),
+.modal:has(.tachyon-ai-chat-modal),
+.cbi-modal:has(.tachyon-ai-chat-modal) {
+    width: min(94vw, 840px) !important;
+    max-width: min(94vw, 840px) !important;
+    box-sizing: border-box;
+    margin: 10px auto;
+}
+
+/* Wide modals: Strategy Fuzzer, Leak detection */
+.modal:has(.tachyon-strategy-fuzzer-modal),
+.cbi-modal:has(.tachyon-strategy-fuzzer-modal),
+.modal:has(.tachyon-leak-check-modal),
+.cbi-modal:has(.tachyon-leak-check-modal) {
     width: min(96vw, 1200px) !important;
     max-width: min(96vw, 1200px) !important;
+    box-sizing: border-box;
+    margin: 10px auto;
+}
+
+/* General Tachyon modals: comfortable width on desktop, full-width on mobile */
+.modal:has([class*="tachyon"]),
+.cbi-modal:has([class*="tachyon"]) {
+    width: min(94vw, 820px) !important;
+    max-width: min(94vw, 820px) !important;
     box-sizing: border-box;
     margin: 10px auto;
 }

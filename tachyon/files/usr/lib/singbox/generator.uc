@@ -855,17 +855,34 @@ function add_subscription_download_service_mixed_proxies(config, sections) {
 }
 
 function add_service_mixed_proxy(config, settings, sections) {
-    if (!download_via_proxy_any_enabled(settings, sections))
-        return;
+    let has_any_proxy = false;
+    let default_proxy_tag = "";
+    for (let s in sections) {
+        let action = s.action || "";
+        if (s.enabled != "0" && (action == "connection" || action == "subscription" || action == "provider")) {
+            has_any_proxy = true;
+            if (default_proxy_tag == "")
+                default_proxy_tag = outbound_tag(s[".name"]);
+        }
+    }
 
-    add_global_download_service_mixed_proxy(config, settings, "lists");
-    add_global_download_service_mixed_proxy(config, settings, "components");
-    add_subscription_download_service_mixed_proxies(config, sections);
+    if (download_via_proxy_any_enabled(settings, sections)) {
+        add_global_download_service_mixed_proxy(config, settings, "lists");
+        add_global_download_service_mixed_proxy(config, settings, "components");
+        add_subscription_download_service_mixed_proxies(config, sections);
 
-    if (download_via_proxy_enabled(settings, "lists") && download_detour_tag(settings, "lists") == "")
-        runtime_generate_unsupported("download lists via proxy section is not set");
-    if (download_via_proxy_enabled(settings, "components") && download_detour_tag(settings, "components") == "")
-        runtime_generate_unsupported("download components via proxy section is not set");
+        if (download_via_proxy_enabled(settings, "lists") && download_detour_tag(settings, "lists") == "")
+            runtime_generate_unsupported("download lists via proxy section is not set");
+        if (download_via_proxy_enabled(settings, "components") && download_detour_tag(settings, "components") == "")
+            runtime_generate_unsupported("download components via proxy section is not set");
+    } else if (has_any_proxy && default_proxy_tag != "") {
+        add_service_mixed_proxy_inbound(
+            config,
+            runtime_constants.SERVICE_MIXED_INBOUND_TAG,
+            runtime_constants.SERVICE_MIXED_INBOUND_PORT,
+            default_proxy_tag
+        );
+    }
 }
 
 function router_traffic_section(settings) {

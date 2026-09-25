@@ -913,7 +913,8 @@ function start_steer_main(active_engine) {
 
     let generated = engine_runtime.generate_steer_spec({});
     if (!generated.ok) {
-        log_message("Failed to generate the steer spec: " + as_string(generated.reason), "fatal");
+        let detail = generated.output ? (": " + trim(as_string(generated.output))) : "";
+        log_message("Failed to generate the steer spec: " + as_string(generated.reason) + detail, "fatal");
         return 1;
     }
 
@@ -1563,7 +1564,8 @@ function reload_steer(active_engine, reason, initial_fingerprint) {
     let engine_runtime = require("service.engine_runtime");
     let generated = engine_runtime.generate_steer_spec({});
     if (!generated.ok) {
-        log_message("Failed to generate the steer spec: " + as_string(generated.reason), "error");
+        let detail = generated.output ? (": " + trim(as_string(generated.output))) : "";
+        log_message("Failed to generate the steer spec: " + as_string(generated.reason) + detail, "error");
         return finish_reload_status(1, initial_fingerprint);
     }
 

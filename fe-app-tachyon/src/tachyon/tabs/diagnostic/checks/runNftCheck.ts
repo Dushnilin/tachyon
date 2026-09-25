@@ -34,6 +34,17 @@ export async function runNftCheck() {
   }
 
   const data = nftablesChecks.data;
+  if (!data || typeof data !== 'object') {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _('Cannot receive checks result'),
+      state: 'error',
+      items: [],
+    });
+    throw new Error('Nftables checks returned invalid data');
+  }
 
   // Backend returns not_applicable when steer is the active engine
   if ((data as { not_applicable?: number }).not_applicable) {

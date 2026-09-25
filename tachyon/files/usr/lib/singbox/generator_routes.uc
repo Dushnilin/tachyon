@@ -1601,7 +1601,7 @@ function add_dns_action_rules_for_section(config, section) {
         for (let i = 0; i < length(section_servers); i++)
             push(server_tags, dns_action_server_tag(section_name, i + 1));
     }
-    let server_tag = single_or_array(server_tags);
+    let server_tag = length(server_tags) > 0 ? server_tags[0] : dns_action_server_tag(section_name);
     let has_inline_domains = length(domain) > 0 || length(domain_suffix) > 0 ||
         length(domain_keyword) > 0 || length(domain_regex) > 0;
 

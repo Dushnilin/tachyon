@@ -32,9 +32,14 @@ export async function callBaseMethod<T>(
 
     if (response.stdout) {
       try {
+        let text = response.stdout.trim();
+        const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+        if (jsonMatch) {
+          text = jsonMatch[0];
+        }
         return {
           success: true,
-          data: JSON.parse(response.stdout) as T,
+          data: JSON.parse(text) as T,
         };
       } catch (_e) {
         return {

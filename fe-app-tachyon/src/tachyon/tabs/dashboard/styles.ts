@@ -573,7 +573,7 @@ export const styles = `
 
 .tachyon_dashboard-page__urltest-details {
     box-sizing: border-box;
-    width: min(760px, calc(100vw - 56px));
+    width: 100%;
     max-width: 100%;
     padding-top: 10px;
 }

@@ -299,11 +299,19 @@ function build_outputs(sections, settings) {
             } else if (is_valid_num) {
                 outputs[name].node = parsed_node;
             }
+
+            let sec_name = safe_name(section[".name"]);
+            if (sec_name != "" && sec_name != name && !outputs[sec_name])
+                outputs[sec_name] = outputs[name];
             continue;
         }
 
         // Nothing steer can point at: park via a direct output placeholder.
         outputs[name] = { kind: "direct" };
+        let sec_name = safe_name(section[".name"]);
+        if (sec_name != "" && sec_name != name && !outputs[sec_name])
+            outputs[sec_name] = outputs[name];
+        continue;
     }
 
     // Zapret sections become kind: zapret outputs; steer runs nfqws itself.
@@ -312,6 +320,7 @@ function build_outputs(sections, settings) {
             continue;
         let action = as_string(option(section, "action", ""));
         let name = safe_name(option(section, "label", option(section, ".name", "zapret")));
+        let sec_name = safe_name(section[".name"]);
         let opts_file = as_string(option(section, "steer_opts_file", ""));
         if (opts_file == "")
             opts_file = engine.STEER_ZAPRET_DIR + "/" + name + ".opts";
@@ -324,6 +333,8 @@ function build_outputs(sections, settings) {
         // binary path in the spec so steer-nfqws picks the right executable.
         out_entry.nfqws_bin = resolved_zapret_bin(action == "zapret2");
         outputs[name] = out_entry;
+        if (sec_name != "" && sec_name != name && !outputs[sec_name])
+            outputs[sec_name] = out_entry;
     }
 
     return outputs;
@@ -438,7 +449,7 @@ function channel_clients(section) {
     return { macs, addrs, addrs_single };
 }
 
-function build_channels(sections, catalog) {
+function build_channels(sections, catalog, outputs) {
     let channels = [];
 
     for (let section in sections) {
@@ -447,15 +458,40 @@ function build_channels(sections, catalog) {
 
         let match_obj = channel_match(section, catalog);
         let clients = channel_clients(section);
-        if (length(keys(match_obj)) == 0 && length(clients.macs) == 0 && length(clients.addrs) == 0)
+        let has_files = (match_obj.domains_files != null && length(match_obj.domains_files) > 0) ||
+                        (match_obj.prefixes_files != null && length(match_obj.prefixes_files) > 0);
+        let has_clients = length(clients.macs) > 0 || length(clients.addrs) > 0;
+        if (!has_files && !has_clients)
             continue;
 
         let action = as_string(option(section, "action", ""));
         let out_name = safe_name(option(section, "outbound", option(section, "label", option(section, ".name", "channel"))));
         if (action == "bypass" || action == "hosts" || action == "direct_bypass" || action == "torrserver_direct")
             out_name = "direct";
-        else if (action == "zapret" || action == "zapret2")
-            out_name = safe_name(option(section, "label", option(section, ".name", "zapret")));
+        else if (action == "zapret" || action == "zapret2") {
+            let z_name = safe_name(option(section, "label", option(section, ".name", "zapret")));
+            let z_sec = safe_name(section[".name"]);
+            if (outputs && outputs[z_name])
+                out_name = z_name;
+            else if (outputs && outputs[z_sec])
+                out_name = z_sec;
+            else
+                out_name = "direct";
+        } else if (outputs) {
+            if (!outputs[out_name]) {
+                let sec_fallback = safe_name(section[".name"]);
+                let lbl_fallback = safe_name(option(section, "label", ""));
+                let ob_fallback = safe_name(option(section, "outbound", ""));
+                if (outputs[sec_fallback])
+                    out_name = sec_fallback;
+                else if (outputs[lbl_fallback])
+                    out_name = lbl_fallback;
+                else if (outputs[ob_fallback])
+                    out_name = ob_fallback;
+                else
+                    out_name = "direct";
+            }
+        }
 
         let label = as_string(option(section, "label", option(section, ".name", "channel")));
 
@@ -506,12 +542,13 @@ function build_spec(sections, settings, catalog) {
     if (length(lan_devices) == 0)
         lan_devices = DEFAULT_LAN_DEVICES;
 
+    let outputs = build_outputs(sections, settings);
     return {
         schema: SPEC_SCHEMA,
         dns_redirect: bool_option(settings, "dns_redirect", true),
         lan_devices,
-        outputs: build_outputs(sections, settings),
-        channels: build_channels(sections, catalog)
+        outputs,
+        channels: build_channels(sections, catalog, outputs)
     };
 }
 

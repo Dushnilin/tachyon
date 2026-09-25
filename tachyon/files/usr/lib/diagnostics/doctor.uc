@@ -2318,13 +2318,24 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         api_url = "https://openrouter.ai/api/v1/chat/completions";
         model = model_override || "openai/gpt-4o-mini";
     } else if (provider == "ollama") {
-        api_url = custom_url != "" ? custom_url : "http://192.168.1.100:11434/v1/chat/completions";
+        if (custom_url != "") {
+            custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
+            api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
+        } else {
+            api_url = "http://192.168.1.100:11434/v1/chat/completions";
+        }
         model = model_override || "llama3:latest";
     } else if (provider == "lmstudio") {
-        api_url = custom_url != "" ? custom_url : "http://192.168.1.100:1234/v1/chat/completions";
+        if (custom_url != "") {
+            custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
+            api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
+        } else {
+            api_url = "http://192.168.1.100:1234/v1/chat/completions";
+        }
         model = model_override || "local-model";
     } else if (provider == "custom" && custom_url != "") {
-        api_url = custom_url;
+        custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
+        api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
         model = model_override || "gpt-4o-mini";
     } else {
         api_url = "https://api.openai.com/v1/chat/completions";

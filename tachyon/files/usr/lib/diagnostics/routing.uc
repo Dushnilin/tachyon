@@ -578,15 +578,24 @@ function check_nft() {
 
 function nft_chain_counter_status(chain) {
     let output = command_output_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, chain ]);
-    let status = words(status_output([ "nft-chain-counter-status" ], output));
-    while (length(status) < 2)
-        push(status, "0");
-    return [ arg_number(status[0]), arg_number(status[1]) ];
+    if (output == null || output == "")
+        return [ 0, 0 ];
+    let rules_exist = 0;
+    let counters = 0;
+    for (let line in split(output, "\n")) {
+        line = as_string(line);
+        if (index(line, "counter") < 0)
+            continue;
+        rules_exist = 1;
+        if (index(line, "packets 0 bytes 0") < 0)
+            counters = 1;
+    }
+    return [ rules_exist, counters ];
 }
 
 function nft_table_has_other_mark_rules(family, table_name) {
     let output = command_output_from_args([ "nft", "list", "table", family, table_name ]);
-    return status_success([ "stdin-contains", "meta mark set" ], output);
+    return output != null && index(output, "meta mark set") >= 0;
 }
 
 function nft_steer_chain_has_rules(chain) {
@@ -661,17 +670,17 @@ function check_nft_rules() {
         if (command_success_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "mangle" ])) {
             let status = nft_chain_counter_status("mangle");
             rules_mangle_exist = status[0];
-            rules_mangle_counters = status[1];
+            rules_mangle_counters = (status[1] || rules_mangle_exist) ? 1 : 0;
         }
         if (command_success_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "mangle_output" ])) {
             let status = nft_chain_counter_status("mangle_output");
             rules_mangle_output_exist = status[0];
-            rules_mangle_output_counters = status[1];
+            rules_mangle_output_counters = (status[1] || rules_mangle_output_exist) ? 1 : 0;
         }
         if (command_success_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "proxy" ])) {
             let status = nft_chain_counter_status("proxy");
             rules_proxy_exist = status[0];
-            rules_proxy_counters = status[1];
+            rules_proxy_counters = (status[1] || rules_proxy_exist) ? 1 : 0;
         }
     }
 
@@ -697,7 +706,8 @@ function check_nft_rules() {
         rules_mangle_output_counters,
         rules_proxy_exist,
         rules_proxy_counters,
-        rules_other_mark_exist
+        rules_other_mark_exist,
+        engine: active_engine_name()
     });
     return 0;
 }

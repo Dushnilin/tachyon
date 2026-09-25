@@ -1076,8 +1076,8 @@ function heal_proxy_health(ev) {
 // The second DNS subscriber: restores dnsmasq's own configuration rather than
 // restarting the proxy, so it is complementary to heal_dns_stall().
 function heal_dns_continuous_steer() {
-    let current_noresolv = trim(as_string(uci.get("dhcp", "@dnsmasq[0]", "noresolv") || ""));
-    let servers = uci.get("dhcp", "@dnsmasq[0]", "server") || [];
+    let current_noresolv = trim(as_string(uci_core.get("dhcp", "@dnsmasq[0]", "noresolv") || ""));
+    let servers = uci_core.get("dhcp", "@dnsmasq[0]", "server") || [];
     if (type(servers) == "string") servers = [ servers ];
     let has_bad_server = false;
     let has_good_server = false;

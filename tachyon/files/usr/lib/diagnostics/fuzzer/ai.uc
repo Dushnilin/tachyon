@@ -63,8 +63,9 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         default_model = "local-model";
     }
 
+    base_url = trim(as_string(base_url));
     base_url = replace(base_url, /\/+$/, "");
-    let api_url = base_url + "/chat/completions";
+    let api_url = match(base_url, /\/chat\/completions$/) ? base_url : (base_url + "/chat/completions");
     let model = model_override != "" ? model_override : default_model;
     let body = {
         model,

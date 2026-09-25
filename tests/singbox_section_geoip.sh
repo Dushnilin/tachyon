@@ -107,6 +107,8 @@ let sec_both_found = false;
 for (let r in rules) {
     if (r.domain == "ip.podkop.fyi" || (type(r.domain) == "array" && index(r.domain, "ip.podkop.fyi") >= 0))
         continue;
+    if (r.inbound == "service-mixed-in" || (type(r.inbound) == "array" && index(r.inbound, "service-mixed-in") >= 0))
+        continue;
 
     // 1. Check sec_yt: Should be a logical rule combining domain_suffix and inverted geoip/geosite rule_set
     if (r.outbound == "sec_yt-out") {
