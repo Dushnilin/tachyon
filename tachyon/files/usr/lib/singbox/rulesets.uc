@@ -55,8 +55,12 @@ const COMMUNITY_SERVICES = {
 // Classification of community rule-sets based on upstream rule-set generation.
 // Upstream allow-domains (itdoginfo/allow-domains convert.py) compiles:
 // - general lists (russia_inside, russia_outside, ukraine_inside) and category lists as domain-only ("domains");
-// - SUBNET_SERVICES (discord, meta, twitter, telegram, cloudflare, hetzner, ovh, digitalocean, cloudfront, roblox, google_meet)
+// - SUBNET_SERVICES (discord, meta, twitter, telegram, roblox, google_meet)
 //   as mixed containing both domain_suffix and ip_cidr ("mixed");
+// - infrastructure / CDN provider lists (cloudflare, cloudfront, hetzner, ovh, digitalocean) as IP subnets ("subnets").
+//   In sing-box 1.14+, these must NOT be placed into DNS response rules (match_response: true) because doing so
+//   causes arbitrary third-party domains hosted behind these CDNs/providers (e.g. mtpro.xyz) to be issued a FakeIP,
+//   discarding the real IP and breaking routing to direct. They are routed purely by destination IP in route.rules.
 // - geoip_* lists from MetaCubeX/meta-rules-dat contain only ip_cidr ("subnets");
 // - geosite_* lists from MetaCubeX/meta-rules-dat contain only domains ("domains");
 // - external lists (github, twitch, ads_hagezi_pro, supercell) are domain-only ("domains").
@@ -68,13 +72,16 @@ const COMMUNITY_SUBNET_SERVICES = {
     meta: true,
     twitter: true,
     telegram: true,
-    cloudflare: true,
-    hetzner: true,
-    ovh: true,
-    digitalocean: true,
-    cloudfront: true,
     roblox: true,
     google_meet: true
+};
+
+const COMMUNITY_INFRASTRUCTURE_SERVICES = {
+    cloudflare: true,
+    cloudfront: true,
+    hetzner: true,
+    ovh: true,
+    digitalocean: true
 };
 
 const COMMUNITY_DOMAIN_SERVICES = {
@@ -115,6 +122,8 @@ function community_kind(name) {
         return "subnets";
     if (match(name, /^geosite_[a-z]{2}$/) != null)
         return "domains";
+    if (COMMUNITY_INFRASTRUCTURE_SERVICES[name] === true)
+        return "subnets";
     if (COMMUNITY_SUBNET_SERVICES[name] === true)
         return "mixed";
     if (COMMUNITY_DOMAIN_SERVICES[name] === true)
@@ -254,6 +263,7 @@ function module_exports() {
         COMMUNITY_SERVICES,
         COMMUNITY_SUBNET_SERVICES,
         COMMUNITY_DOMAIN_SERVICES,
+        COMMUNITY_INFRASTRUCTURE_SERVICES,
         is_community,
         community_url,
         community_kind,

@@ -587,4 +587,88 @@ if [ -n "$SB_BIN" ]; then
   fi
 fi
 
+# 11. Test Cloudflare (infrastructure subnet) list on sing-box 1.14+
+# Cloudflare is an infrastructure/CDN provider whose subnets host third-party websites (e.g. mtpro.xyz).
+# In sing-box 1.14+, it MUST NOT generate evaluate or match_response rules targeting fakeip-server,
+# which would hijack DNS responses for third-party domains and route them to direct.
+# Instead, it must route via destination IP in route.rules.
+cat > "$WORK_DIR/fixture_cloudflare.json" << 'EOF'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "dns_type": "udp",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "sec_cf",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\",\"tag\":\"sec_cf-out\"}" ],
+      "community_lists": [ "cloudflare" ]
+    }
+  ]
+}
+EOF
+
+output_cf="$WORK_DIR/out_cf.json"
+mkdir -p "$output_cf.section-cache" "$output_cf.rulesets"
+SB_VERSION_STATE_FILE="$WORK_DIR/sb_v14" \
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture_cloudflare.json" "$output_cf" "127.0.0.1" "0" "1"
+
+ucode -e '
+let fs = require("fs");
+let cfg = json(fs.readfile(ARGV[0]));
+
+// DNS rules must NOT contain evaluate rule for cloudflare
+// DNS rules must NOT contain match_response for cloudflare
+for (let r in cfg.dns.rules || []) {
+    if (r.rule_set != null) {
+        let rs = type(r.rule_set) == "array" ? r.rule_set : [ r.rule_set ];
+        for (let s in rs) {
+            if (s != null && index(s, "cloudflare") >= 0) {
+                warn("cloudflare ruleset must NOT be in dns.rules!\n");
+                exit(1);
+            }
+        }
+    }
+    if (r.action == "evaluate") {
+        warn("evaluate DNS rule must not be created for pure subnet/CDN list!\n");
+        exit(2);
+    }
+}
+
+// route.rules MUST route cloudflare traffic to sec_cf-out via rule_set and/or ip_cidr
+let found_route = false;
+for (let r in cfg.route.rules || []) {
+    if (r.outbound == "sec_cf-out") {
+        let has_ruleset = false;
+        let rs = type(r.rule_set) == "array" ? r.rule_set : [ r.rule_set ];
+        for (let s in rs) {
+            if (index(s, "cloudflare") >= 0) has_ruleset = true;
+        }
+        let has_cidrs = (type(r.ip_cidr) == "array" && length(r.ip_cidr) > 0) || (type(r.ip_cidr) == "string" && r.ip_cidr != "");
+        if (has_ruleset || has_cidrs)
+            found_route = true;
+    }
+}
+
+if (!found_route) {
+    warn("sec_cf-out route rule with cloudflare ruleset or ip_cidr not found!\n");
+    exit(3);
+}
+' "$output_cf" || fail "cloudflare CDN subnet routing verification failed"
+
+if [ -n "$SB_BIN" ]; then
+  INSTALLED_SB_VER="$("$SB_BIN" version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+' | head -n1 || echo '0.0')"
+  if [ "$(printf '%s\n1.14\n' "$INSTALLED_SB_VER" | sort -V | head -n1)" = "1.14" ]; then
+    "$SB_BIN" check -c "$output_cf" || fail "sing-box 1.14 check failed on cloudflare config!"
+  fi
+fi
+
 echo "sing-box 1.14 DNS rules tests passed"

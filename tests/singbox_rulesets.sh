@@ -76,6 +76,12 @@ assert_eq domains \
 assert_eq subnets \
   "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind geoip_ru)" \
   "geoip_ru community kind"
+assert_eq subnets \
+  "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind cloudflare)" \
+  "cloudflare community kind"
+assert_eq subnets \
+  "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind cloudfront)" \
+  "cloudfront community kind"
 assert_eq unknown \
   "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind unknown_service)" \
   "unknown_service community kind"

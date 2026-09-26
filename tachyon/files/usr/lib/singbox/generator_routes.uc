@@ -2066,6 +2066,9 @@ function load_community_subnet_cidrs(community, filter_mode) {
             return core_ip.DISCORD_DEDICATED_SUBNETS || [ "162.159.128.0/21" ];
     }
 
+    if (service == "cloudflare" && length(cidrs) == 0)
+        return core_ip.CLOUDFLARE_SHARED_CIDRS || [];
+
     return [];
 }
 
