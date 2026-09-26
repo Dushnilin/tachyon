@@ -97,25 +97,25 @@ function probe_single_target_dpi(target_item, dns_flags) {
         result.confidence = 95;
         result.details = sprintf("Target %s accessible directly (HTTP %d, TTFB %dms)", domain, http_code, ttfb);
         result.recommended_engines = [];
-    } else if (dns_blocked && http_code == 0 && handshake == 0) {
+    } else if (index(error_str, "Connection reset") >= 0 || index(error_str, "ECONNRESET") >= 0 || index(error_str, "exit 35") >= 0 || metrics.dpi_verdict == "rst") {
+        result.type = "rst";
+        result.confidence = 90;
+        result.details = sprintf("TCP RST received from DPI for %s — active TCP reset injection detected", domain);
+        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
+    } else if (dns_blocked && http_code == 0 && handshake == 0 && (!target_flags || target_flags == "")) {
         result.type = "dns_block";
         result.confidence = 90;
         result.details = sprintf("DNS resolution failed for %s — likely DNS-level blocking or hijacking", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
-    } else if ((http_code == 0 && handshake == 0) && (index(error_str, "timed out") >= 0 || index(error_str, "Connection timed out") >= 0 || index(error_str, "ETIMEDOUT") >= 0)) {
+    } else if ((http_code == 0 && handshake == 0) && (index(error_str, "timed out") >= 0 || index(error_str, "Connection timed out") >= 0 || index(error_str, "ETIMEDOUT") >= 0 || index(error_str, "exit 28") >= 0)) {
         result.type = "drop";
         result.confidence = 90;
         result.details = sprintf("TCP connect timed out for %s — TSPU / DPI packet drop (blackhole) detected. Can be bypassed using syndata, multisplit, or PAWS spoofing.", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
-    } else if (index(error_str, "Connection reset") >= 0 || index(error_str, "ECONNRESET") >= 0) {
-        result.type = "rst";
-        result.confidence = 85;
-        result.details = sprintf("TCP RST received from DPI for %s — active TCP reset injection detected", domain);
-        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (http_code == 0 || index(error_str, "Connection refused") >= 0 || index(error_str, "ECONNREFUSED") >= 0) {
         result.type = "rst";
         result.confidence = 70;
-        result.details = sprintf("Connection refused for %s — likely RST or blackhole by DPI", domain);
+        result.details = sprintf("Connection refused or dropped for %s — likely RST or blackhole by DPI", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (handshake > 2000) {
         result.type = "throttle";

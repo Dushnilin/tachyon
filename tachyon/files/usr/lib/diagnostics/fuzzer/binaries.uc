@@ -281,6 +281,17 @@ function get_resolved_host_flags(url) {
         }
     }
 
+    // 4. Fallback for googlevideo.com CDN nodes that are not in public DNS:
+    // resolve redirector.googlevideo.com IP so curl connects directly to Google's video infrastructure
+    // while preserving the regional SNI in ClientHello that triggers TSPU DPI rules.
+    if (!ip && (index(host, ".googlevideo.com") >= 0 || host == "googlevideo.com") && host != "redirector.googlevideo.com") {
+        let red_flags = get_resolved_host_flags("https://redirector.googlevideo.com/");
+        let m_ip = match(red_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+        if (m_ip && m_ip[1]) {
+            ip = m_ip[1];
+        }
+    }
+
     if (ip) {
         let flags = sprintf("--resolve %s:443:%s --resolve %s:80:%s ", host, ip, host, ip);
         _fuzzer_host_cache[host] = flags;
