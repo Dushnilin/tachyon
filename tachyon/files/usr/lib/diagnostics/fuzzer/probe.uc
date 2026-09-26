@@ -25,6 +25,11 @@ function kill_pid_file(path) {
     fuzzer_runner.kill_pid_file(path);
 }
 
+function is_pid_alive(pid) {
+    if (!pid || int(pid) <= 0) return false;
+    return system(sprintf("kill -0 %d >/dev/null 2>&1", int(pid))) == 0;
+}
+
 function cleanup_temp_daemons(job_id) {
     if (job_id) {
         let job_dir = history.get_job_dir(job_id);
@@ -249,10 +254,11 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
         try { fs.unlink(stderr_log); } catch (e) {}
         
         let argv = fuzzer_runner.build_byedpi_argv(bin, BYEDPI_PORT, tok_res.tokens);
-        let spawn_cmd = "cd /tmp && " + common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
+        let spawn_cmd = common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
         system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
         
         let pid_running = false;
+        let daemon_pid = 0;
         for (let wait_i = 0; wait_i < 15; wait_i++) {
             system("sleep 0.1");
             let pid_str = fs.readfile(pid_path);
@@ -260,6 +266,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
                 let pid = trim(as_string(pid_str));
                 if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
                     pid_running = true;
+                    daemon_pid = int(pid);
                     break;
                 }
             }
@@ -363,7 +370,17 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             }
         }
         
+        let daemon_alive_at_end = is_pid_alive(daemon_pid);
         cleanup_temp_daemons(job_id);
+
+        if (!daemon_alive_at_end) {
+            result.success = false;
+            result.score = 0;
+            result.data_verified = false;
+            result.dpi_verdict = "daemon_crashed";
+            result.error = "Fuzzer test daemon ciadpi crashed or exited prematurely";
+            return result;
+        }
         
         if (required_failed || passed_count == 0) {
             result.success = false;
@@ -448,11 +465,18 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
                 fwmark_flag = sprintf("--dpi-desync-fwmark=%s ", binaries.FUZZER_FWMARK);
         }
         
+        if (!binaries.setup_fuzzer_direct_nftables(qnum, is_udp)) {
+            result.error = "nftables setup failed: fuzzer queue rule could not be installed";
+            cleanup_temp_daemons(job_id);
+            return result;
+        }
+
         let argv = fuzzer_runner.build_zapret_argv(bin, qnum, fwmark_flag, lua_init_flags, blob_flags, filter_prefix, tok_res.tokens);
-        let spawn_cmd = "cd /tmp && " + common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
+        let spawn_cmd = common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
         system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
         
         let pid_running = false;
+        let daemon_pid = 0;
         for (let wait_i = 0; wait_i < 15; wait_i++) {
             system("sleep 0.1");
             let pid_str = fs.readfile(pid_path);
@@ -460,6 +484,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
                 let pid = trim(as_string(pid_str));
                 if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
                     pid_running = true;
+                    daemon_pid = int(pid);
                     break;
                 }
             }
@@ -484,12 +509,6 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             } else {
                 result.error = sprintf("Daemon %s failed to start (invalid arguments or missing Lua library)", is_z2 ? "nfqws2" : "nfqws");
             }
-            cleanup_temp_daemons(job_id);
-            return result;
-        }
-        
-        if (!binaries.setup_fuzzer_direct_nftables(qnum, is_udp)) {
-            result.error = "nftables setup failed: fuzzer queue rule could not be installed";
             cleanup_temp_daemons(job_id);
             return result;
         }
@@ -578,7 +597,17 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             }
         }
         
+        let daemon_alive_at_end = is_pid_alive(daemon_pid);
         cleanup_temp_daemons(job_id);
+
+        if (!daemon_alive_at_end) {
+            result.success = false;
+            result.score = 0;
+            result.data_verified = false;
+            result.dpi_verdict = "daemon_crashed";
+            result.error = sprintf("Fuzzer test daemon %s crashed or exited prematurely", is_z2 ? "nfqws2" : "nfqws");
+            return result;
+        }
         
         if (required_failed || passed_count == 0) {
             result.success = false;

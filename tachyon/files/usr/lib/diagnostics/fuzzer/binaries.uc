@@ -210,8 +210,8 @@ function get_resolved_host_flags(url) {
     let safe_host = shell_quote(host);
     let ip = null;
 
-    // 1. Try Cloudflare DoH JSON (1.1.1.1 / 1.0.0.1)
-    let cf_endpoints = [ "https://1.1.1.1/dns-query", "https://1.0.0.1/dns-query" ];
+    // 1. Try Cloudflare & Quad9 DoH JSON (1.1.1.1 / 1.0.0.1 / 9.9.9.9)
+    let cf_endpoints = [ "https://1.1.1.1/dns-query", "https://1.0.0.1/dns-query", "https://9.9.9.9/dns-query" ];
     for (let ep in cf_endpoints) {
         let p = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' '%s?name=%s&type=A'", ep, safe_host), "r");
         let out = p ? p.read("all") : "";
@@ -232,9 +232,9 @@ function get_resolved_host_flags(url) {
         if (ip) break;
     }
 
-    // 2. Try Google DoH JSON (8.8.8.8 / 8.8.4.4) via /resolve endpoint
+    // 2. Try Google DoH JSON (dns.google / 8.8.8.8 / 8.8.4.4) via /resolve endpoint
     if (!ip) {
-        let google_endpoints = [ "https://8.8.8.8/resolve", "https://8.8.4.4/resolve" ];
+        let google_endpoints = [ "https://dns.google/resolve", "https://8.8.8.8/resolve", "https://8.8.4.4/resolve" ];
         for (let gep in google_endpoints) {
             let gp = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 '%s?name=%s&type=A'", gep, safe_host), "r");
             let gout = gp ? gp.read("all") : "";
@@ -376,7 +376,7 @@ function setup_fuzzer_direct_nftables(qnum, is_udp) {
                 if (length(cols) >= 2) {
                     let q = int(cols[0]);
                     let p = int(cols[1]);
-                    if ((q == NFQUEUE_QNUM_ZAPRET || q == NFQUEUE_QNUM_ZAPRET2) && p > 0) {
+                    if ((q == qnum || q == NFQUEUE_QNUM_ZAPRET || q == NFQUEUE_QNUM_ZAPRET2) && p > 0) {
                         found = true;
                         system(sprintf("kill -9 %d >/dev/null 2>&1", p));
                     }
@@ -419,9 +419,9 @@ function setup_fuzzer_direct_nftables(qnum, is_udp) {
     system("nft 'add rule inet tachyon_fuzzer output ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
     system("nft 'add rule inet tachyon_fuzzer output ip6 daddr { 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844 } counter return' 2>/dev/null");
     if (is_udp) {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto { tcp, udp } th dport { 80, 443, 2053, 2083, 2087, 2096, 8443, 19294-19344, 50000-65535 } counter queue num %d bypass' 2>/dev/null", qnum));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto { tcp, udp } th dport { 80, 443, 2053, 2083, 2087, 2096, 8443, 19294-19344, 50000-65535 } counter queue num %d' 2>/dev/null", qnum));
     } else {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d bypass' 2>/dev/null", qnum));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d' 2>/dev/null", qnum));
     }
     // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with FUZZER_OUTBOUND_MARK (direct outbound mark)
     // This guarantees that TachyonTable's mangle_output immediately returns and test traffic goes DIRECT to WAN without Sing-box TProxy
@@ -447,17 +447,17 @@ const TARGET_SUITES = {
     youtube_suite: {
         name: "YouTube Full Suite (Web + Static CDN + Stream)",
         urls: [
-            { name: "Web Interface", url: "https://www.youtube.com", weight: 25, required: true, probe_kind: "tls_http" },
-            { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 25, required: false, probe_kind: "tls_http" },
-            { name: "GoogleVideo Stream CDN", url: "https://rr1---sn-xguxaxjvh-n8me.googlevideo.com/generate_204", weight: 50, required: true, probe_kind: "streaming" }
+            { name: "Web Interface", url: "https://www.youtube.com/", weight: 35, required: true, probe_kind: "tls_http" },
+            { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 15, required: false, probe_kind: "tls_http" },
+            { name: "GoogleVideo Stream CDN", url: "https://redirector.googlevideo.com/report_mapping", weight: 50, required: true, probe_kind: "streaming" }
         ]
     },
     discord_suite: {
-        name: "Discord Full Suite (API + WSS Gateway + CDN)",
+        name: "Discord Full Suite (Web Portal + API + Voice)",
         urls: [
-            { name: "API Gateway", url: "https://discord.com/api/v9/gateway", weight: 40, required: true, probe_kind: "tls_http" },
-            { name: "Global Assets CDN", url: "https://cdn.discordapp.com/generate_204", weight: 30, required: false, probe_kind: "tls_http" },
-            { name: "Discord Web Portal", url: "https://discord.com/login", weight: 30, required: true, probe_kind: "tls_http" }
+            { name: "Discord Web Portal", url: "https://discord.com/", weight: 50, required: true, probe_kind: "tls_http" },
+            { name: "Discord Gateway", url: "https://gateway.discord.gg/", weight: 25, required: true, probe_kind: "tls_http" },
+            { name: "Discord Assets CDN", url: "https://media.discordapp.net/", weight: 25, required: false, probe_kind: "tls_http" }
         ]
     },
     twitch_suite: {
@@ -507,11 +507,11 @@ const TARGET_SUITES = {
 };
 
 const TARGET_URLS = {
-    youtube_suite: "https://rr1---sn-xguxaxjvh-n8me.googlevideo.com/generate_204",
-    youtube: "https://rr1---sn-xguxaxjvh-n8me.googlevideo.com/generate_204",
-    youtube_web: "https://www.youtube.com",
-    discord_suite: "https://discord.com/api/v9/gateway",
-    discord: "https://discord.com/api/v9/gateway",
+    youtube_suite: "https://redirector.googlevideo.com/report_mapping",
+    youtube: "https://redirector.googlevideo.com/report_mapping",
+    youtube_web: "https://www.youtube.com/",
+    discord_suite: "https://discord.com/",
+    discord: "https://discord.com/",
     twitch_suite: "https://www.twitch.tv",
     twitch: "https://www.twitch.tv",
     twitter_suite: "https://x.com",
