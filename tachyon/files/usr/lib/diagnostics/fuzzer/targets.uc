@@ -65,7 +65,8 @@ function probe_single_target_dpi(target_item, dns_flags) {
     if (dns_pipe) dns_pipe.close();
 
     let dns_blocked = false;
-    if (index(dns_out, "NXDOMAIN") >= 0 || index(dns_out, "can't resolve") >= 0 || index(dns_out, "** server can't find") >= 0) {
+    if (index(dns_out, "NXDOMAIN") >= 0 || index(dns_out, "can't resolve") >= 0 || index(dns_out, "** server can't find") >= 0 ||
+        match(dns_out, /Address:[ \t]+(127\.|0\.0\.0\.0|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/)) {
         dns_blocked = true;
     }
 
@@ -92,25 +93,53 @@ function probe_single_target_dpi(target_item, dns_flags) {
         result.confidence = 85;
         result.details = sprintf("Server rejected corrupted/fake packets on %s (HTTP 400 Bad Request)", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
-    } else if ((http_code >= 200 && http_code < 400) || (http_code >= 401 && http_code <= 405)) {
-        result.type = "none";
-        result.confidence = 95;
-        result.details = sprintf("Target %s accessible directly (HTTP %d, TTFB %dms)", domain, http_code, ttfb);
-        result.recommended_engines = [];
+    } else if (ttfb > 3000 && http_code >= 200 && http_code < 400) {
+        result.type = "throttle";
+        result.confidence = 75;
+        result.details = sprintf("High TTFB (%dms) despite successful connection on %s — likely bandwidth throttling by DPI", ttfb, domain);
+        result.recommended_engines = ["zapret2", "byedpi"];
+    } else if (http_code >= 200 && http_code < 400) {
+        if (p_kind == "streaming" && metrics.data_bytes < 1024) {
+            result.type = "throttle";
+            result.confidence = 80;
+            result.details = sprintf("Streaming probe on %s received insufficient data (%d bytes) — likely DPI throttling/drop", domain, metrics.data_bytes);
+            result.recommended_engines = ["zapret2", "zapret", "byedpi"];
+        } else {
+            result.type = "none";
+            result.confidence = 95;
+            result.details = sprintf("Target %s accessible directly (HTTP %d, TTFB %dms)", domain, http_code, ttfb);
+            result.recommended_engines = [];
+        }
+    } else if (http_code >= 400 && http_code <= 499) {
+        if (p_kind == "streaming") {
+            result.type = "drop";
+            result.confidence = 85;
+            result.details = sprintf("Streaming endpoint %s returned HTTP %d — stream media blocked or redirected", domain, http_code);
+            result.recommended_engines = ["zapret2", "zapret", "byedpi"];
+        } else {
+            result.type = "rst";
+            result.confidence = 60;
+            result.details = sprintf("Target %s returned client error HTTP %d — possible DPI filtering or access restriction", domain, http_code);
+            result.recommended_engines = ["zapret2", "zapret", "byedpi"];
+        }
     } else if (index(error_str, "Connection reset") >= 0 || index(error_str, "ECONNRESET") >= 0 || index(error_str, "exit 35") >= 0 || metrics.dpi_verdict == "rst") {
         result.type = "rst";
         result.confidence = 90;
         result.details = sprintf("TCP RST received from DPI for %s — active TCP reset injection detected", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
-    } else if (dns_blocked && http_code == 0 && handshake == 0 && (!target_flags || target_flags == "")) {
+    } else if (dns_blocked && http_code == 0 && (!target_flags || target_flags == "")) {
         result.type = "dns_block";
         result.confidence = 90;
-        result.details = sprintf("DNS resolution failed for %s — likely DNS-level blocking or hijacking", domain);
+        result.details = sprintf("DNS resolution failed or hijacked for %s — likely DNS-level blocking by ISP/DPI", domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
-    } else if ((http_code == 0 && handshake == 0) && (index(error_str, "timed out") >= 0 || index(error_str, "Connection timed out") >= 0 || index(error_str, "ETIMEDOUT") >= 0 || index(error_str, "exit 28") >= 0)) {
+    } else if (http_code == 0 && (index(error_str, "timed out") >= 0 || index(error_str, "Connection timed out") >= 0 || index(error_str, "ETIMEDOUT") >= 0 || index(error_str, "exit 28") >= 0)) {
         result.type = "drop";
-        result.confidence = 90;
-        result.details = sprintf("TCP connect timed out for %s — TSPU / DPI packet drop (blackhole) detected. Can be bypassed using syndata, multisplit, or PAWS spoofing.", domain);
+        result.confidence = 95;
+        if (handshake > 0) {
+            result.details = sprintf("TLS ClientHello dropped for %s (handshake %dms, timed out waiting for server response) — TSPU SNI filtering drop detected", domain, handshake);
+        } else {
+            result.details = sprintf("TCP connect timed out for %s — TSPU / DPI packet drop (blackhole) detected. Can be bypassed using syndata, multisplit, or PAWS spoofing.", domain);
+        }
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
     } else if (http_code == 0 || index(error_str, "Connection refused") >= 0 || index(error_str, "ECONNREFUSED") >= 0) {
         result.type = "rst";
@@ -122,11 +151,6 @@ function probe_single_target_dpi(target_item, dns_flags) {
         result.confidence = 75;
         result.details = sprintf("Very slow TLS handshake (%dms) on %s — likely DPI deep inspection causing delay", handshake, domain);
         result.recommended_engines = ["zapret2", "zapret", "byedpi"];
-    } else if (ttfb > 3000 && http_code >= 200 && http_code < 400) {
-        result.type = "throttle";
-        result.confidence = 65;
-        result.details = sprintf("High TTFB (%dms) despite successful connection on %s — likely bandwidth throttling", ttfb, domain);
-        result.recommended_engines = ["zapret2", "byedpi"];
     } else {
         result.type = "unknown";
         result.confidence = 30;
@@ -236,8 +260,9 @@ function rerank_strategies_by_dpi(strategies, dpi_type) {
 
 function module_exports() {
     return {
-        TARGET_SUITES,
-        TARGET_URLS,
+        TARGET_SUITES: binaries.TARGET_SUITES,
+        TARGET_URLS: binaries.TARGET_URLS,
+        probe_single_target_dpi,
         detect_dpi_type,
         rerank_strategies_by_dpi
     };

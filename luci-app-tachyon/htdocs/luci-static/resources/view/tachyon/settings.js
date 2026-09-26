@@ -3072,7 +3072,7 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_model",
     _("AI Model"),
     _(
-      "Model name to use. Leave empty to use default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat / llama3:latest).",
+      "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2).",
     ),
   );
   o.depends("enable_ai_doctor", "1");

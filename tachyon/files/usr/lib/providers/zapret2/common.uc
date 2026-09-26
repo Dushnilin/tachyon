@@ -151,7 +151,9 @@ function config(ctx) {
     ];
 
     let base_args = [
-        "--fwmark=" + desync_mark
+        "--fwmark=" + desync_mark,
+        "--bind-fix4",
+        "--bind-fix6"
     ];
     let lua_scripts = [
         "zapret-lib.lua",

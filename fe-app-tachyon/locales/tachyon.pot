@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 07:35+0300\n"
-"PO-Revision-Date: 2026-09-26 07:35+0300\n"
+"POT-Creation-Date: 2026-09-26 11:03+0300\n"
+"PO-Revision-Date: 2026-09-26 11:03+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -5407,7 +5407,7 @@ msgid "Mode"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3074
-msgid "Model name to use. Leave empty to use default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat / llama3:latest)."
+msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:34

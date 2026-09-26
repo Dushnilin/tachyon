@@ -204,7 +204,9 @@ function resolve_rule_for_section(section, route_rule) {
             resolve_rule[key] = route_rule[key];
     }
     resolve_rule.action = "resolve";
-    resolve_rule.server = runtime_constants.DNS_SERVER_TAG;
+    resolve_rule.server = (action == "zapret" || action == "zapret2")
+        ? runtime_constants.BOOTSTRAP_DNS_SERVER_TAG
+        : runtime_constants.DNS_SERVER_TAG;
 
     return { rule: resolve_rule };
 }

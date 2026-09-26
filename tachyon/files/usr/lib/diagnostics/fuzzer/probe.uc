@@ -186,7 +186,7 @@ function parse_curl_output(output, result) {
         return result;
     }
     
-    // Any valid HTTP response from origin (including 401/403/404/405 when hitting endpoints without auth headers)
+    // Any valid HTTP response from origin (including 401/403/404/405 when hitting endpoints without auth headers / session tokens)
     if ((http_code >= 200 && http_code < 400) || http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405) {
         result.success = true;
         let base_score = (http_code >= 200 && http_code < 400) ? 100 : 85;

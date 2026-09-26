@@ -15,40 +15,71 @@ let probe = require("diagnostics.fuzzer.probe");
 let binaries = require("diagnostics.fuzzer.binaries");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const STATE_DIR = history.STATE_DIR || getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
+let last_llm_error = "";
 
 function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
+    last_llm_error = "";
     provider = lc(trim(as_string(provider || "openai")));
     model_override = trim(as_string(model_override || ""));
+    api_key = trim(as_string(api_key || ""));
+    custom_url = trim(as_string(custom_url || ""));
+
+    let is_local = (provider == "ollama" || provider == "lmstudio" || (provider == "custom" && api_key == ""));
+    if (!is_local && api_key == "") {
+        last_llm_error = sprintf("API key is not configured for provider '%s'. Set it in Settings -> AI & Watchdog.", provider);
+        return null;
+    }
 
     if (provider == "anthropic" || provider == "claude") {
-        let api_url = "https://api.anthropic.com/v1/messages";
-        let model = model_override != "" ? model_override : "claude-3-5-haiku-20241022";
+        let api_url = custom_url != "" ? custom_url : "https://api.anthropic.com/v1/messages";
+        let model = model_override != "" ? model_override : "claude-haiku-4-5-20251001";
         let body = {
             model,
             max_tokens: 1000,
             messages: [{ role: "user", content: prompt_text }]
         };
-        let cmd = sprintf(
-            "curl -s -m 35 --connect-timeout 10 -X POST -H 'x-api-key: %s' -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' -d %s %s 2>/dev/null",
-            shell_quote(api_key),
-            shell_quote(sprintf("%J", body)),
-            shell_quote(api_url)
-        );
-        let pipe = fs.popen(cmd, "r");
-        let output = pipe ? pipe.read("all") : "";
-        if (pipe) pipe.close();
-        let parsed = history.safe_json_parse(output);
+        let payload_path = "/tmp/llm_payload_fuzzer.json";
+        common.write_json_file(payload_path, body);
+
+        let curl_args = [
+            "curl", "-s", "--connect-timeout", "10", "-m", "35", "-X", "POST",
+            "-H", "x-api-key: " + api_key,
+            "-H", "anthropic-version: 2023-06-01",
+            "-H", "content-type: application/json",
+            "-d", "@" + payload_path,
+            api_url
+        ];
+        let result = common.command_capture(common.command_from_args(curl_args));
+        common.remove_file(payload_path);
+
+        if (!result || result.status != 0 || result.output == "") {
+            let rc = result ? result.status : -1;
+            last_llm_error = sprintf("Network request failed (curl exit code %d) connecting to %s", rc, api_url);
+            return null;
+        }
+
+        let parsed = history.safe_json_parse(result.output);
         if (parsed && parsed.content && type(parsed.content) == "array" && length(parsed.content) > 0) {
             return parsed.content[0].text;
+        }
+
+        if (parsed && parsed.error) {
+            let msg = (type(parsed.error) == "object" && parsed.error.message) ? parsed.error.message : as_string(parsed.error);
+            last_llm_error = sprintf("Anthropic API error: %s", msg);
+        } else if (parsed && parsed.message) {
+            last_llm_error = sprintf("Anthropic API error: %s", parsed.message);
+        } else {
+            last_llm_error = sprintf("Anthropic API returned unexpected response: %s", substr(trim(result.output), 0, 200));
         }
         return null;
     }
 
     let base_url = "https://api.openai.com/v1";
-    let default_model = "gpt-4o-mini";
+    let default_model = "gpt-6-luna";
     if (provider == "deepseek") {
         base_url = "https://api.deepseek.com/v1";
         default_model = "deepseek-chat";
@@ -56,10 +87,10 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         base_url = "https://openrouter.ai/api/v1";
         default_model = "deepseek/deepseek-chat";
     } else if (provider == "ollama") {
-        base_url = custom_url && custom_url != "" ? custom_url : "http://127.0.0.1:11434/v1";
+        base_url = custom_url != "" ? custom_url : "http://127.0.0.1:11434/v1";
         default_model = "llama3.2";
     } else if (provider == "lmstudio" || provider == "custom") {
-        base_url = custom_url && custom_url != "" ? custom_url : "http://127.0.0.1:1234/v1";
+        base_url = custom_url != "" ? custom_url : "http://127.0.0.1:1234/v1";
         default_model = "local-model";
     }
 
@@ -76,22 +107,51 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         temperature: 0.3
     };
 
-    let auth_header = api_key != "" ? sprintf("-H 'Authorization: Bearer %s'", api_key) : "";
-    let cmd = sprintf(
-        "curl -s -m 35 --connect-timeout 10 -X POST %s -H 'Content-Type: application/json' -d %s %s 2>/dev/null",
-        auth_header,
-        shell_quote(sprintf("%J", body)),
-        shell_quote(api_url)
-    );
-    let pipe = fs.popen(cmd, "r");
-    let output = pipe ? pipe.read("all") : "";
-    if (pipe) pipe.close();
-    let parsed = history.safe_json_parse(output);
+    let payload_path = "/tmp/llm_payload_fuzzer.json";
+    common.write_json_file(payload_path, body);
+
+    let curl_args = [
+        "curl", "-s", "--connect-timeout", "10", "-m", "35", "-X", "POST",
+        "-H", "Content-Type: application/json"
+    ];
+    if (api_key != "") {
+        push(curl_args, "-H");
+        push(curl_args, "Authorization: Bearer " + api_key);
+    }
+    if (provider == "openrouter") {
+        push(curl_args, "-H");
+        push(curl_args, "HTTP-Referer: https://github.com/Dushnilin/tachyon");
+        push(curl_args, "-H");
+        push(curl_args, "X-Title: Tachyon DPI Fuzzer");
+    }
+    push(curl_args, "-d");
+    push(curl_args, "@" + payload_path);
+    push(curl_args, api_url);
+
+    let result = common.command_capture(common.command_from_args(curl_args));
+    common.remove_file(payload_path);
+
+    if (!result || result.status != 0 || result.output == "") {
+        let rc = result ? result.status : -1;
+        last_llm_error = sprintf("Network request failed (curl exit code %d) connecting to %s", rc, api_url);
+        return null;
+    }
+
+    let parsed = history.safe_json_parse(result.output);
     if (parsed && parsed.choices && type(parsed.choices) == "array" && length(parsed.choices) > 0) {
         let msg = parsed.choices[0].message;
         if (msg && msg.content) {
             return msg.content;
         }
+    }
+
+    if (parsed && parsed.error) {
+        let msg = (type(parsed.error) == "object" && parsed.error.message) ? parsed.error.message : as_string(parsed.error);
+        last_llm_error = sprintf("%s API error: %s", provider, msg);
+    } else if (parsed && parsed.message) {
+        last_llm_error = sprintf("%s API error: %s", provider, parsed.message);
+    } else {
+        last_llm_error = sprintf("%s API returned unexpected response: %s", provider, substr(trim(result.output), 0, 200));
     }
     return null;
 }
@@ -131,11 +191,12 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
     let baseline = probe.run_probe(engine, "", target, custom_url);
 
     let uci = uci_core.cursor();
+    let cfg = uci != null ? (uci.get_all(CONFIG_NAME, "settings") || {}) : {};
     let ai_sec = uci != null ? (uci.get_all(CONFIG_NAME, "ai") || {}) : {};
-    let provider = ai_sec.provider || "openai";
-    let api_key = ai_sec.api_key || "";
-    let ai_custom_url = ai_sec.custom_url || "";
-    let model_override = ai_sec.model || "";
+    let provider = cfg.ai_doctor_provider || ai_sec.provider || "openai";
+    let api_key = cfg.ai_doctor_api_key || ai_sec.api_key || "";
+    let ai_custom_url = cfg.ai_doctor_custom_url || ai_sec.custom_url || "";
+    let model_override = cfg.ai_doctor_model || ai_sec.model || "";
 
     // RAG retrieval uses the same provider credentials as the LLM call; the
     // old call passed the top_k into the provider slot, so retrieval silently
@@ -183,9 +244,12 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
 
     let raw_reply = query_llm(provider, api_key, ai_custom_url, prompt, model_override);
     if (!raw_reply) {
+        let err_msg = (last_llm_error && last_llm_error != "")
+            ? last_llm_error
+            : "Failed to receive response from AI provider. Check API key and network connectivity.";
         print(sprintf("%J\n", {
             success: false,
-            error: "Failed to receive response from AI provider. Check API key and network connectivity."
+            error: err_msg
         }));
         return;
     }
@@ -242,7 +306,8 @@ function module_exports() {
     return {
         query_llm,
         parse_llm_json,
-        synthesize_ai_strategies
+        synthesize_ai_strategies,
+        get_last_error: function() { return last_llm_error; }
     };
 }
 

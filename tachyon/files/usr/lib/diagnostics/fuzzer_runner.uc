@@ -113,11 +113,30 @@ function build_zapret_argv(bin, qnum, fwmark_flag, lua_init_flags, blob_flags, f
     append_flags(blob_flags);
     append_flags(filter_prefix);
 
+    let has_bind_fix4 = false;
+    let has_bind_fix6 = false;
+    for (let a in argv) {
+        if (a == "--bind-fix4") has_bind_fix4 = true;
+        if (a == "--bind-fix6") has_bind_fix6 = true;
+    }
+
     for (let tok in tokens) {
         if (tok == "--daemon" || index(tok, "--pidfile") == 0)
             continue;
+        if (tok == "--bind-fix4") has_bind_fix4 = true;
+        if (tok == "--bind-fix6") has_bind_fix6 = true;
+        let m_lua = match(tok, /^--lua-init=@(.+)$/);
+        if (m_lua && m_lua[1]) {
+            let lp = m_lua[1];
+            if (fs.stat(lp) == null && fs.stat(lp + ".gz") != null) {
+                tok = "--lua-init=@" + lp + ".gz";
+            }
+        }
         push(argv, tok);
     }
+
+    if (!has_bind_fix4) push(argv, "--bind-fix4");
+    if (!has_bind_fix6) push(argv, "--bind-fix6");
 
     return argv;
 }

@@ -2268,7 +2268,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
 
     if (provider == "anthropic" || provider == "claude") {
         let api_url = "https://api.anthropic.com/v1/messages";
-        let model = model_override || "claude-3-5-haiku-20241022";
+        let model = model_override || "claude-haiku-4-5-20251001";
         let payload = {
             model: model,
             max_tokens: 1024,
@@ -2309,14 +2309,14 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     }
 
     let api_url = "https://api.openai.com/v1/chat/completions";
-    let model = model_override || "gpt-4o-mini";
+    let model = model_override || "gpt-6-luna";
     
     if (provider == "deepseek") {
         api_url = "https://api.deepseek.com/chat/completions";
         model = model_override || "deepseek-chat";
     } else if (provider == "openrouter") {
         api_url = "https://openrouter.ai/api/v1/chat/completions";
-        model = model_override || "openai/gpt-4o-mini";
+        model = model_override || "deepseek/deepseek-chat";
     } else if (provider == "ollama") {
         if (custom_url != "") {
             custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
@@ -2324,7 +2324,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         } else {
             api_url = "http://192.168.1.100:11434/v1/chat/completions";
         }
-        model = model_override || "llama3:latest";
+        model = model_override || "llama3.2";
     } else if (provider == "lmstudio") {
         if (custom_url != "") {
             custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
@@ -2336,10 +2336,10 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     } else if (provider == "custom" && custom_url != "") {
         custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
         api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
-        model = model_override || "gpt-4o-mini";
+        model = model_override || "gpt-6-luna";
     } else {
         api_url = "https://api.openai.com/v1/chat/completions";
-        model = model_override || "gpt-4o-mini";
+        model = model_override || "gpt-6-luna";
     }
 
     let payload = {

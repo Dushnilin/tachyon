@@ -51,7 +51,11 @@ function config(ctx) {
         hostlist_dir: getenv("ZAPRET_HOSTLIST_DIR") || runtime_constants.ZAPRET_HOSTLIST_DIR,
         status_label: "zapret",
         check_prefix: "zapret",
-        base_args: [ "--dpi-desync-fwmark=" + (getenv("ZAPRET_DESYNC_MARK") || runtime_constants.ZAPRET_DESYNC_MARK) ]
+        base_args: [
+            "--dpi-desync-fwmark=" + (getenv("ZAPRET_DESYNC_MARK") || runtime_constants.ZAPRET_DESYNC_MARK),
+            "--bind-fix4",
+            "--bind-fix6"
+        ]
     };
 }
 

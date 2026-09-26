@@ -181,17 +181,17 @@ function is_valid_public_ip(ip) {
 function get_fuzzer_curl_dns_flags() {
     if (_fuzzer_curl_dns_flags !== null)
         return _fuzzer_curl_dns_flags;
-    let t_pre = get_timeout_prefix(2);
-    if (system(sprintf("%scurl -so /dev/null --doh-url https://1.1.1.1/dns-query --connect-timeout 2 -m 2 https://1.1.1.1/ 2>/dev/null", t_pre)) == 0) {
-        _fuzzer_curl_dns_flags = "--doh-url https://1.1.1.1/dns-query ";
-        return _fuzzer_curl_dns_flags;
-    }
-    if (system(sprintf("%scurl -so /dev/null --doh-url https://8.8.8.8/dns-query --connect-timeout 2 -m 2 https://8.8.8.8/ 2>/dev/null", t_pre)) == 0) {
-        _fuzzer_curl_dns_flags = "--doh-url https://8.8.8.8/dns-query ";
-        return _fuzzer_curl_dns_flags;
-    }
-    if (system("curl --dns-servers 77.88.8.8,8.8.8.8,1.1.1.1 -V >/dev/null 2>&1") == 0) {
-        _fuzzer_curl_dns_flags = "--dns-servers 77.88.8.8,8.8.8.8,1.1.1.1 ";
+    let uci_bootstrap = "77.88.8.8";
+    try {
+        let p_boot = fs.popen("uci -q get tachyon.settings.bootstrap_dns_server 2>/dev/null", "r");
+        let b_val = p_boot ? trim(p_boot.read("all")) : "";
+        if (p_boot) p_boot.close();
+        if (b_val != "" && is_valid_public_ip(b_val))
+            uci_bootstrap = b_val;
+    } catch (e) {}
+
+    if (system(sprintf("curl --dns-servers %s,77.88.8.8 -V >/dev/null 2>&1", uci_bootstrap)) == 0) {
+        _fuzzer_curl_dns_flags = sprintf("--dns-servers %s,77.88.8.8 ", uci_bootstrap);
         return _fuzzer_curl_dns_flags;
     }
     _fuzzer_curl_dns_flags = "";
@@ -207,43 +207,104 @@ function get_resolved_host_flags(url) {
     if (exists(_fuzzer_host_cache, host))
         return _fuzzer_host_cache[host];
 
+    // For googlevideo.com, query report_mapping to discover client's real local GGC caching cluster
+    if (index(host, "googlevideo.com") >= 0) {
+        let t_pre = get_timeout_prefix(3);
+        let p_map = fs.popen(sprintf("%scurl -s --connect-timeout 2 -m 3 https://redirector.googlevideo.com/report_mapping 2>/dev/null", t_pre), "r");
+        let map_out = p_map ? p_map.read("all") : "";
+        if (p_map) p_map.close();
+        if (map_out) {
+            let m_ggc = match(map_out, /^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)[ \t]*=>/);
+            if (m_ggc && m_ggc[1] && is_valid_public_ip(m_ggc[1])) {
+                let ggc_ip = m_ggc[1];
+                let flag = sprintf("--resolve %s:443:%s ", host, ggc_ip);
+                _fuzzer_host_cache[host] = flag;
+                return flag;
+            }
+        }
+    }
+
     let safe_host = shell_quote(host);
     let ip = null;
 
-    // 1. Try Cloudflare & Quad9 DoH JSON (1.1.1.1 / 1.0.0.1 / 9.9.9.9)
-    let cf_endpoints = [ "https://1.1.1.1/dns-query", "https://1.0.0.1/dns-query", "https://9.9.9.9/dns-query" ];
-    for (let ep in cf_endpoints) {
-        let p = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' '%s?name=%s&type=A'", ep, safe_host), "r");
-        let out = p ? p.read("all") : "";
-        if (p) p.close();
-        if (out && out != "") {
-            try {
-                let data = json(out);
-                if (data && data.Answer) {
-                    for (let ans in data.Answer) {
-                        if (ans.type == 1 && is_valid_public_ip(ans.data)) {
-                            ip = ans.data;
-                            break;
-                        }
+    // 1. Primary: query "наш DNS" (router bootstrap DNS & ISP upstream DNS) via UDP 53
+    // MUST NEVER query 127.0.0.1 or ::1 to prevent resolving into FakeIP (198.18.x.x)
+    let dns_candidates = [];
+    let seen_dns = {};
+
+    // Check UCI tachyon bootstrap DNS server (e.g. 77.88.8.8)
+    let uci_bootstrap = null;
+    try {
+        let p_boot = fs.popen("uci -q get tachyon.settings.bootstrap_dns_server 2>/dev/null", "r");
+        let b_val = p_boot ? trim(p_boot.read("all")) : "";
+        if (p_boot) p_boot.close();
+        if (b_val != "" && is_valid_public_ip(b_val))
+            uci_bootstrap = b_val;
+    } catch (e) {}
+    if (uci_bootstrap) {
+        push(dns_candidates, uci_bootstrap);
+        seen_dns[uci_bootstrap] = true;
+    }
+
+    // Check ISP nameservers from resolv.conf.auto
+    try {
+        let resolv_auto = fs.readfile("/tmp/resolv.conf.d/resolv.conf.auto");
+        if (resolv_auto) {
+            for (let line in split(resolv_auto, "\n")) {
+                let m_ns = match(trim(line), /^nameserver[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                if (m_ns && m_ns[1] && is_valid_public_ip(m_ns[1]) && !seen_dns[m_ns[1]]) {
+                    push(dns_candidates, m_ns[1]);
+                    seen_dns[m_ns[1]] = true;
+                }
+            }
+        }
+    } catch (e) {}
+
+    // Add dependable fallback public nameservers
+    for (let srv in [ "77.88.8.8", "8.8.8.8", "1.1.1.1" ]) {
+        if (!seen_dns[srv]) {
+            push(dns_candidates, srv);
+            seen_dns[srv] = true;
+        }
+    }
+
+    for (let srv in dns_candidates) {
+        let np = fs.popen(sprintf("nslookup %s %s 2>/dev/null", safe_host, srv), "r");
+        let nout = np ? np.read("all") : "";
+        if (np) np.close();
+        if (nout && nout != "") {
+            let lines = split(nout, "\n");
+            let name_seen = false;
+            for (let line in lines) {
+                if (index(line, "Name:") >= 0) { name_seen = true; continue; }
+                if (name_seen) {
+                    let nm = match(line, /Address:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                    if (nm && is_valid_public_ip(nm[1])) {
+                        ip = nm[1];
+                        break;
                     }
                 }
-            } catch (e) {}
+            }
         }
         if (ip) break;
     }
 
-    // 2. Try Google DoH JSON (dns.google / 8.8.8.8 / 8.8.4.4) via /resolve endpoint
+    // 2. Fallback: Google & Cloudflare DoH JSON (if UDP 53 was intercepted by ISP)
     if (!ip) {
-        let google_endpoints = [ "https://dns.google/resolve", "https://8.8.8.8/resolve", "https://8.8.4.4/resolve" ];
-        for (let gep in google_endpoints) {
-            let gp = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 '%s?name=%s&type=A'", gep, safe_host), "r");
-            let gout = gp ? gp.read("all") : "";
-            if (gp) gp.close();
-            if (gout && gout != "") {
+        let doh_endpoints = [
+            "https://dns.google/resolve",
+            "https://77.88.8.8/dns-query",
+            "https://1.1.1.1/dns-query"
+        ];
+        for (let ep in doh_endpoints) {
+            let p = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' '%s?name=%s&type=A'", ep, safe_host), "r");
+            let out = p ? p.read("all") : "";
+            if (p) p.close();
+            if (out && out != "") {
                 try {
-                    let gdata = json(gout);
-                    if (gdata && gdata.Answer) {
-                        for (let ans in gdata.Answer) {
+                    let data = json(out);
+                    if (data && data.Answer) {
+                        for (let ans in data.Answer) {
                             if (ans.type == 1 && is_valid_public_ip(ans.data)) {
                                 ip = ans.data;
                                 break;
@@ -256,37 +317,13 @@ function get_resolved_host_flags(url) {
         }
     }
 
-    // 3. Fallback: nslookup via external public DNS (77.88.8.8 or 1.1.1.1)
-    if (!ip) {
-        let dns_servers = [ "77.88.8.8", "1.1.1.1" ];
-        for (let srv in dns_servers) {
-            let np = fs.popen(sprintf("nslookup %s %s 2>/dev/null", safe_host, srv), "r");
-            let nout = np ? np.read("all") : "";
-            if (np) np.close();
-            if (nout && nout != "") {
-                let lines = split(nout, "\n");
-                let name_seen = false;
-                for (let line in lines) {
-                    if (index(line, "Name:") >= 0) { name_seen = true; continue; }
-                    if (name_seen) {
-                        let nm = match(line, /Address:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-                        if (nm && is_valid_public_ip(nm[1])) {
-                            ip = nm[1];
-                            break;
-                        }
-                    }
-                }
-            }
-            if (ip) break;
-        }
-    }
-
     // 4. Fallback for googlevideo.com CDN nodes that are not in public DNS:
-    // resolve redirector.googlevideo.com IP so curl connects directly to Google's video infrastructure
+    // resolve googlevideo.com or www.youtube.com IP so curl connects directly to Google's video infrastructure
     // while preserving the regional SNI in ClientHello that triggers TSPU DPI rules.
-    if (!ip && (index(host, ".googlevideo.com") >= 0 || host == "googlevideo.com") && host != "redirector.googlevideo.com") {
-        let red_flags = get_resolved_host_flags("https://redirector.googlevideo.com/");
-        let m_ip = match(red_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+    if (!ip && (index(host, ".googlevideo.com") >= 0 || host == "googlevideo.com")) {
+        let gv_flags = get_resolved_host_flags("https://googlevideo.com/");
+        if (gv_flags == "") gv_flags = get_resolved_host_flags("https://www.youtube.com/");
+        let m_ip = match(gv_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
         if (m_ip && m_ip[1]) {
             ip = m_ip[1];
         }
@@ -414,6 +451,13 @@ function setup_fuzzer_direct_nftables(qnum, is_udp) {
     try { fs.unlink(nft_err_file); } catch (e) {}
 
     // ── Build ruleset ────────────────────────────────────────────────────────
+    // Priority -401: notrack before defrag/conntrack so desync packets (0x40000000 / 0x20000000)
+    // are not marked 'ct state invalid' and dropped by OpenWrt fw4 !fw4: Prevent NAT leakage
+    system("nft 'add chain inet tachyon_fuzzer predefrag { type filter hook output priority -401 ; policy accept; }' 2>/dev/null");
+    system("nft 'add rule inet tachyon_fuzzer predefrag meta mark & 0x60000000 != 0 notrack counter' 2>/dev/null");
+    system("nft 'add chain inet tachyon_fuzzer predefrag_pre { type filter hook prerouting priority -401 ; policy accept; }' 2>/dev/null");
+    system("nft 'add rule inet tachyon_fuzzer predefrag_pre meta mark & 0x60000000 != 0 notrack counter' 2>/dev/null");
+
     system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; policy accept; }' 2>/dev/null");
     system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
     system("nft 'add rule inet tachyon_fuzzer output ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
@@ -445,11 +489,11 @@ function setup_fuzzer_direct_nftables(qnum, is_udp) {
 
 const TARGET_SUITES = {
     youtube_suite: {
-        name: "YouTube Full Suite (Web + Static CDN + Stream)",
+        name: "YouTube Full Suite (Stream + CDN + Web)",
         urls: [
-            { name: "Web Interface", url: "https://www.youtube.com/", weight: 35, required: true, probe_kind: "tls_http" },
+            { name: "GoogleVideo Stream CDN", url: "https://redirector.googlevideo.com/videoplayback", weight: 60, required: true, probe_kind: "streaming" },
             { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 15, required: false, probe_kind: "tls_http" },
-            { name: "GoogleVideo Stream CDN", url: "https://redirector.googlevideo.com/report_mapping", weight: 50, required: true, probe_kind: "streaming" }
+            { name: "Web Interface", url: "https://www.youtube.com/", weight: 25, required: true, probe_kind: "tls_http" }
         ]
     },
     discord_suite: {
@@ -507,8 +551,8 @@ const TARGET_SUITES = {
 };
 
 const TARGET_URLS = {
-    youtube_suite: "https://redirector.googlevideo.com/report_mapping",
-    youtube: "https://redirector.googlevideo.com/report_mapping",
+    youtube_suite: "https://rr1.googlevideo.com/videoplayback",
+    youtube: "https://rr1.googlevideo.com/videoplayback",
     youtube_web: "https://www.youtube.com/",
     discord_suite: "https://discord.com/",
     discord: "https://discord.com/",

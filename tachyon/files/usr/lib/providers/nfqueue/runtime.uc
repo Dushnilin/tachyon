@@ -75,7 +75,20 @@ function strategy_words(value) {
     value = replace(value, / +/g, " ");
     value = replace(value, /^ /, "");
     value = replace(value, / $/, "");
-    return value == "" ? [] : split(value, " ");
+    if (value == "") return [];
+    let words = split(value, " ");
+    let result = [];
+    for (let word in words) {
+        let m_lua = match(word, /^--lua-init=@(.+)$/);
+        if (m_lua && m_lua[1]) {
+            let lp = m_lua[1];
+            if (fs.stat(lp) == null && fs.stat(lp + ".gz") != null) {
+                word = "--lua-init=@" + lp + ".gz";
+            }
+        }
+        push(result, word);
+    }
+    return result;
 }
 
 function enabled_sections(cfg) {
