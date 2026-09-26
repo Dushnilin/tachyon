@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 08:32+0300\n"
-"PO-Revision-Date: 2026-09-26 08:32+0300\n"
+"POT-Creation-Date: 2026-09-26 09:16+0300\n"
+"PO-Revision-Date: 2026-09-26 09:16+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -913,6 +913,9 @@ msgstr "Camou"
 
 msgid "Cancel"
 msgstr "Отмена"
+
+msgid "Cannot apply"
+msgstr ""
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -2399,9 +2402,6 @@ msgstr "Глобальная проверка"
 msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
 
-msgid "Global Default"
-msgstr "Глобально по умолчанию"
-
 msgid "GOOD"
 msgstr "ХОРОШО"
 
@@ -3458,6 +3458,9 @@ msgstr "Активные устройства в локальной сети н�
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
+msgid "No applicable rule sections found for this engine"
+msgstr ""
+
 msgid "No benchmark data yet. Click \"Start Benchmark\" to begin."
 msgstr "Данные тестирования отсутствуют. Нажмите \"Запустить тест\" для начала."
 
@@ -3920,6 +3923,9 @@ msgstr "Привязка изоляции P2P к портам торрент-к�
 msgid "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers."
 msgstr "Обычные UDP DNS-серверы, используемые как резерв при недоступности всех основных DNS. Всегда работают без шифрования (без DoH/DoT). Пример: 1.1.1.1, 8.8.8.8. В отличие от аварийного DNS провайдера, это выбранные вами серверы."
 
+msgid "Please select an applicable rule section to apply this strategy"
+msgstr ""
+
 msgid "Please specify strategy name and arguments"
 msgstr "Пожалуйста, укажите имя стратегии и аргументы"
 
@@ -4063,9 +4069,6 @@ msgstr "Версия протокола: 2.0 (стандартные целоч�
 
 msgid "Provider"
 msgstr "Провайдер"
-
-msgid "Provider Default (global fallback)"
-msgstr "Провайдер по умолчанию (глобальный фоллбэк)"
 
 msgid "Provider status is normal"
 msgstr "Состояние службы в норме"
@@ -5116,6 +5119,9 @@ msgstr "Имя стратегии"
 
 msgid "Strategy preset source"
 msgstr "Источник пресета стратегии"
+
+msgid "strategy to section configured for"
+msgstr ""
 
 msgid "Strict (🔒)"
 msgstr "Строгий (🔒)"
@@ -6202,6 +6208,12 @@ msgstr ""
 
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "Global Default"
+msgstr "Глобально по умолчанию"
+
+msgid "Provider Default (global fallback)"
+msgstr "Провайдер по умолчанию (глобальный фоллбэк)"
 
 msgid "Failed to load engine information."
 msgstr "Не удалось загрузить информацию о движке."

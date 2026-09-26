@@ -13415,6 +13415,55 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   const selectStyle = "width: 100%; height: 36px; font-size: 13px;";
   const labelStyle = "font-size: 11px; font-weight: 600; color: var(--text-color-secondary, rgba(255,255,255,0.65)); letter-spacing: 0.02em;";
   const groupStyle = "display: flex; flex-direction: column; gap: 5px;";
+  const ruleSelect = E("select", {
+    class: "cbi-input-select",
+    style: selectStyle
+  });
+  const getApplicableRules = (engine) => {
+    return normalizedRules.filter((r) => {
+      if (!r.action) return true;
+      if (engine === "all") {
+        return ["zapret2", "zapret", "byedpi"].includes(r.action);
+      }
+      return r.action === engine;
+    });
+  };
+  const populateRuleSelect = () => {
+    const applicable = getApplicableRules(selectedEngine);
+    ruleSelect.replaceChildren();
+    if (applicable.length === 0) {
+      const emptyOpt = E(
+        "option",
+        { value: "", disabled: true, selected: true },
+        _("No applicable rule sections found for this engine")
+      );
+      ruleSelect.appendChild(emptyOpt);
+      selectedRuleSection = "";
+    } else {
+      let matchedCurrent = false;
+      applicable.forEach((r, idx) => {
+        const actionTag = r.action ? ` [${r.action}]` : "";
+        const isSelected = selectedRuleSection ? r.id === selectedRuleSection : idx === 0;
+        if (isSelected) matchedCurrent = true;
+        const opt = E(
+          "option",
+          { value: r.id, selected: isSelected },
+          `${r.label}${actionTag}`
+        );
+        ruleSelect.appendChild(opt);
+      });
+      if (!matchedCurrent && applicable.length > 0) {
+        selectedRuleSection = applicable[0].id;
+        ruleSelect.value = selectedRuleSection;
+      } else if (matchedCurrent) {
+        ruleSelect.value = selectedRuleSection;
+      }
+    }
+  };
+  populateRuleSelect();
+  ruleSelect.addEventListener("change", () => {
+    selectedRuleSection = ruleSelect.value;
+  });
   const engineSelect = E(
     "select",
     { class: "cbi-input-select", style: selectStyle },
@@ -13427,6 +13476,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   );
   engineSelect.addEventListener("change", () => {
     selectedEngine = engineSelect.value;
+    populateRuleSelect();
   });
   const engineGroup = E("div", { style: groupStyle }, [
     E("label", { style: labelStyle }, _("DPI Engine")),
@@ -13540,24 +13590,6 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     E("label", { style: labelStyle }, _("Benchmark Timeout")),
     timeoutSelect
   ]);
-  const ruleSelect = E(
-    "select",
-    { class: "cbi-input-select", style: selectStyle },
-    [
-      E(
-        "option",
-        { value: "", selected: true },
-        _("Provider Default (global fallback)")
-      ),
-      ...normalizedRules.map((r) => {
-        const actionTag = r.action ? ` [${r.action}]` : "";
-        return E("option", { value: r.id }, `${r.label}${actionTag}`);
-      })
-    ]
-  );
-  ruleSelect.addEventListener("change", () => {
-    selectedRuleSection = ruleSelect.value;
-  });
   const ruleGroup = E("div", { style: groupStyle }, [
     E("label", { style: labelStyle }, _("Apply Strategy To")),
     ruleSelect
@@ -14821,11 +14853,11 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           lastRenderedFinishedAt = finishedAt;
         }
         if (!isRunning && !stoppedManually) {
-          if (autoApplyEnabled && currentState?.progress_pct === 100 && !currentState?.aborted && !currentState?.error && currentState?.best_strategy && currentState.job_id && autoAppliedJobId !== currentState.job_id) {
+          if (autoApplyEnabled && Boolean(selectedRuleSection) && currentState?.progress_pct === 100 && !currentState?.aborted && !currentState?.error && currentState?.best_strategy && currentState.job_id && autoAppliedJobId !== currentState.job_id) {
             autoAppliedJobId = currentState.job_id;
             try {
               const applyRes = await TachyonShellMethods.autoApplyFuzzerStrategy(
-                selectedRuleSection || void 0
+                selectedRuleSection
               );
               if (applyRes.success) {
                 showToast(
@@ -15061,13 +15093,30 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     }
   };
   const handleApplySingle = async (item) => {
+    if (!selectedRuleSection) {
+      showToast(
+        _("Please select an applicable rule section to apply this strategy"),
+        "error"
+      );
+      return;
+    }
+    const targetRule = normalizedRules.find(
+      (r) => r.id === selectedRuleSection
+    );
+    if (targetRule && targetRule.action && targetRule.action !== item.engine) {
+      showToast(
+        `${_("Cannot apply")} ${item.engine} ${_("strategy to section configured for")} ${targetRule.action}`,
+        "error"
+      );
+      return;
+    }
     const res = await TachyonShellMethods.applyFuzzerStrategy(
       item.engine,
       item.args,
       selectedRuleSection
     );
     if (res.success) {
-      const targetLabel = normalizedRules.find((r) => r.id === selectedRuleSection)?.label || selectedRuleSection || _("Global Default");
+      const targetLabel = targetRule?.label || selectedRuleSection;
       if (typeof ui?.addNotification === "function") {
         ui.addNotification(
           _("Tachyon"),
@@ -15089,10 +15138,18 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         window.location.reload();
       }
     } else {
-      showToast(_("Failed to apply strategy"), "error");
+      const errMsg = !res.success && res.error ? `: ${res.error}` : "";
+      showToast(`${_("Failed to apply strategy")}${errMsg}`, "error");
     }
   };
   const handleApplyBest = async () => {
+    if (!selectedRuleSection) {
+      showToast(
+        _("Please select an applicable rule section to apply this strategy"),
+        "error"
+      );
+      return;
+    }
     const best = currentState?.best_strategy || currentState?.results?.find((r) => r.success);
     if (!best) {
       showToast(_("No working strategy to apply"), "error");

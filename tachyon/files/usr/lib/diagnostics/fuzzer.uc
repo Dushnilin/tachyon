@@ -717,6 +717,14 @@ function apply_strategy(engine, args_val, target_rule) {
         print(sprintf("%J\n", { success: false, error: "Empty strategy arguments" }));
         return;
     }
+
+    if (target_rule == "" || target_rule == "global" || target_rule == "default") {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "Global provider cannot be modified directly; strategies can only be applied to a specific rule section."
+        }));
+        return;
+    }
     
     if (!fuzzer_runner.validate_strategy_args(engine, args_val)) {
         print(sprintf("%J\n", { success: false, error: "Cannot apply invalid or insecure strategy arguments" }));
@@ -726,30 +734,30 @@ function apply_strategy(engine, args_val, target_rule) {
     args_val = normalize_strategy_for_uci(engine, args_val);
     
     let uci = uci_core.cursor();
-    let applied = false;
-    
-    if (target_rule != "" && target_rule != "global") {
-        if (engine == "zapret2")
-            uci.set(CONFIG_NAME, target_rule, "nfqws2_opt", args_val);
-        else if (engine == "zapret")
-            uci.set(CONFIG_NAME, target_rule, "nfqws_opt", args_val);
-        else if (engine == "byedpi")
-            uci.set(CONFIG_NAME, target_rule, "byedpi_cmd_opts", args_val);
-        applied = true;
-    } else {
-        let provider_sec = engine;
-        let sec_obj = uci.get_all(CONFIG_NAME, provider_sec);
-        if (sec_obj == null) {
-            uci.set(CONFIG_NAME, provider_sec, "provider");
-        }
-        uci.set(CONFIG_NAME, provider_sec, "enabled", "1");
-        if (engine == "zapret2")
-            uci.set(CONFIG_NAME, provider_sec, "nfqws2_opt", args_val);
-        else if (engine == "zapret")
-            uci.set(CONFIG_NAME, provider_sec, "nfqws_opt", args_val);
-        else if (engine == "byedpi")
-            uci.set(CONFIG_NAME, provider_sec, "byedpi_cmd_opts", args_val);
-        applied = true;
+    let sec_obj = uci.get_all(CONFIG_NAME, target_rule);
+    if (!sec_obj) {
+        print(sprintf("%J\n", { success: false, error: "Target rule section '" + target_rule + "' not found" }));
+        return;
+    }
+
+    let sec_action = as_string(sec_obj.action || "");
+    if (sec_action != "" && sec_action != engine) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: sprintf("Cannot apply %s strategy to section '%s' configured for %s", engine, target_rule, sec_action)
+        }));
+        return;
+    }
+
+    if (engine == "zapret2")
+        uci.set(CONFIG_NAME, target_rule, "nfqws2_opt", args_val);
+    else if (engine == "zapret")
+        uci.set(CONFIG_NAME, target_rule, "nfqws_opt", args_val);
+    else if (engine == "byedpi")
+        uci.set(CONFIG_NAME, target_rule, "byedpi_cmd_opts", args_val);
+    else {
+        print(sprintf("%J\n", { success: false, error: "Unsupported engine: " + engine }));
+        return;
     }
     
     uci.commit(CONFIG_NAME);
@@ -758,7 +766,7 @@ function apply_strategy(engine, args_val, target_rule) {
     print(sprintf("%J\n", {
         success: true,
         engine,
-        applied_to: target_rule != "" ? target_rule : "global",
+        applied_to: target_rule,
         args: args_val
     }));
 }

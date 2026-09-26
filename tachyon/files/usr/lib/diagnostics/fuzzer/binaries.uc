@@ -438,7 +438,7 @@ const TARGET_SUITES = {
         urls: [
             { name: "Web Interface", url: "https://www.youtube.com", weight: 25, required: true, probe_kind: "tls_http" },
             { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 25, required: false, probe_kind: "tls_http" },
-            { name: "GoogleVideo Stream CDN", url: "https://redirector.googlevideo.com/generate_204", weight: 50, required: true, probe_kind: "streaming" }
+            { name: "GoogleVideo Stream CDN", url: "https://rr1---sn-xguxaxjvh-n8me.googlevideo.com/generate_204", weight: 50, required: true, probe_kind: "streaming" }
         ]
     },
     discord_suite: {
@@ -496,8 +496,8 @@ const TARGET_SUITES = {
 };
 
 const TARGET_URLS = {
-    youtube_suite: "https://www.youtube.com",
-    youtube: "https://www.youtube.com",
+    youtube_suite: "https://rr1---sn-xguxaxjvh-n8me.googlevideo.com/generate_204",
+    youtube: "https://rr1---sn-xguxaxjvh-n8me.googlevideo.com/generate_204",
     youtube_web: "https://www.youtube.com",
     discord_suite: "https://discord.com/api/v9/gateway",
     discord: "https://discord.com/api/v9/gateway",

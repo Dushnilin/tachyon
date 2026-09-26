@@ -324,4 +324,23 @@ if (!Array.isArray(val.byedpi) || val.byedpi.length < 5) {
 console.log("Adaptive strategies generated: Zapret2=" + val.zapret2.length + ", Zapret=" + val.zapret.length + ", ByeDPI=" + val.byedpi.length);
 NODE
 
+# 10. Check that apply rejects global provider and requires valid target section
+apply_empty="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake" "" 2>/dev/null || true)"
+JSON_VALUE="$apply_empty" node <<'NODE'
+const val = JSON.parse(process.env.JSON_VALUE);
+if (val.success !== false) {
+  console.error("Fuzzer apply with empty target section should fail, got:", val);
+  process.exit(1);
+}
+NODE
+
+apply_global="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake" "global" 2>/dev/null || true)"
+JSON_VALUE="$apply_global" node <<'NODE'
+const val = JSON.parse(process.env.JSON_VALUE);
+if (val.success !== false) {
+  console.error("Fuzzer apply with 'global' target section should fail, got:", val);
+  process.exit(1);
+}
+NODE
+
 printf 'PASS: fuzzer_strategy_cli\n'

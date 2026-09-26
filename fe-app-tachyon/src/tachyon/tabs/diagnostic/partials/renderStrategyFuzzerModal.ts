@@ -159,6 +159,64 @@ export function renderStrategyFuzzerModal(
     'font-size: 11px; font-weight: 600; color: var(--text-color-secondary, rgba(255,255,255,0.65)); letter-spacing: 0.02em;';
   const groupStyle = 'display: flex; flex-direction: column; gap: 5px;';
 
+  // Rule Apply Target Select & Dynamic Filter
+  const ruleSelect = E('select', {
+    class: 'cbi-input-select',
+    style: selectStyle,
+  });
+
+  const getApplicableRules = (engine: Tachyon.FuzzerEngine) => {
+    return normalizedRules.filter((r) => {
+      if (!r.action) return true;
+      if (engine === 'all') {
+        return ['zapret2', 'zapret', 'byedpi'].includes(r.action);
+      }
+      return r.action === engine;
+    });
+  };
+
+  const populateRuleSelect = () => {
+    const applicable = getApplicableRules(selectedEngine);
+    (ruleSelect as HTMLSelectElement).replaceChildren();
+
+    if (applicable.length === 0) {
+      const emptyOpt = E(
+        'option',
+        { value: '', disabled: true, selected: true },
+        _('No applicable rule sections found for this engine'),
+      );
+      ruleSelect.appendChild(emptyOpt);
+      selectedRuleSection = '';
+    } else {
+      let matchedCurrent = false;
+      applicable.forEach((r, idx) => {
+        const actionTag = r.action ? ` [${r.action}]` : '';
+        const isSelected = selectedRuleSection
+          ? r.id === selectedRuleSection
+          : idx === 0;
+        if (isSelected) matchedCurrent = true;
+        const opt = E(
+          'option',
+          { value: r.id, selected: isSelected },
+          `${r.label}${actionTag}`,
+        );
+        ruleSelect.appendChild(opt);
+      });
+      if (!matchedCurrent && applicable.length > 0) {
+        selectedRuleSection = applicable[0].id;
+        (ruleSelect as HTMLSelectElement).value = selectedRuleSection;
+      } else if (matchedCurrent) {
+        (ruleSelect as HTMLSelectElement).value = selectedRuleSection;
+      }
+    }
+  };
+
+  populateRuleSelect();
+
+  ruleSelect.addEventListener('change', () => {
+    selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
+  });
+
   // 1. Engine Select
   const engineSelect = E(
     'select',
@@ -173,6 +231,7 @@ export function renderStrategyFuzzerModal(
   engineSelect.addEventListener('change', () => {
     selectedEngine = (engineSelect as HTMLSelectElement)
       .value as Tachyon.FuzzerEngine;
+    populateRuleSelect();
   });
 
   const engineGroup = E('div', { style: groupStyle }, [
@@ -305,26 +364,7 @@ export function renderStrategyFuzzerModal(
     timeoutSelect,
   ]);
 
-  // 5. Rule Apply Target Select
-  const ruleSelect = E(
-    'select',
-    { class: 'cbi-input-select', style: selectStyle },
-    [
-      E(
-        'option',
-        { value: '', selected: true },
-        _('Provider Default (global fallback)'),
-      ),
-      ...normalizedRules.map((r) => {
-        const actionTag = r.action ? ` [${r.action}]` : '';
-        return E('option', { value: r.id }, `${r.label}${actionTag}`);
-      }),
-    ],
-  );
-  ruleSelect.addEventListener('change', () => {
-    selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
-  });
-
+  // 5. Rule Apply Target Group
   const ruleGroup = E('div', { style: groupStyle }, [
     E('label', { style: labelStyle }, _('Apply Strategy To')),
     ruleSelect,
@@ -1781,6 +1821,7 @@ export function renderStrategyFuzzerModal(
           // Auto-apply best strategy only if benchmark completed 100%, without abort, and not already applied for this job
           if (
             autoApplyEnabled &&
+            Boolean(selectedRuleSection) &&
             currentState?.progress_pct === 100 &&
             !currentState?.aborted &&
             !currentState?.error &&
@@ -1792,7 +1833,7 @@ export function renderStrategyFuzzerModal(
             try {
               const applyRes =
                 await TachyonShellMethods.autoApplyFuzzerStrategy(
-                  selectedRuleSection || undefined,
+                  selectedRuleSection,
                 );
               if (applyRes.success) {
                 showToast(
@@ -2061,16 +2102,32 @@ export function renderStrategyFuzzerModal(
   };
 
   const handleApplySingle = async (item: Tachyon.FuzzerStrategyResult) => {
+    if (!selectedRuleSection) {
+      showToast(
+        _('Please select an applicable rule section to apply this strategy'),
+        'error',
+      );
+      return;
+    }
+
+    const targetRule = normalizedRules.find(
+      (r) => r.id === selectedRuleSection,
+    );
+    if (targetRule && targetRule.action && targetRule.action !== item.engine) {
+      showToast(
+        `${_('Cannot apply')} ${item.engine} ${_('strategy to section configured for')} ${targetRule.action}`,
+        'error',
+      );
+      return;
+    }
+
     const res = await TachyonShellMethods.applyFuzzerStrategy(
       item.engine,
       item.args,
       selectedRuleSection,
     );
     if (res.success) {
-      const targetLabel =
-        normalizedRules.find((r) => r.id === selectedRuleSection)?.label ||
-        selectedRuleSection ||
-        _('Global Default');
+      const targetLabel = targetRule?.label || selectedRuleSection;
       if (typeof ui?.addNotification === 'function') {
         ui.addNotification(
           _('Tachyon'),
@@ -2095,11 +2152,19 @@ export function renderStrategyFuzzerModal(
         window.location.reload();
       }
     } else {
-      showToast(_('Failed to apply strategy'), 'error');
+      const errMsg = !res.success && res.error ? `: ${res.error}` : '';
+      showToast(`${_('Failed to apply strategy')}${errMsg}`, 'error');
     }
   };
 
   const handleApplyBest = async () => {
+    if (!selectedRuleSection) {
+      showToast(
+        _('Please select an applicable rule section to apply this strategy'),
+        'error',
+      );
+      return;
+    }
     const best =
       currentState?.best_strategy ||
       currentState?.results?.find((r) => r.success);

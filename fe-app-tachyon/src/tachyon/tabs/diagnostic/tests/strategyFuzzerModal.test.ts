@@ -182,4 +182,21 @@ describe('renderStrategyFuzzerModal', () => {
       expect.anything(),
     );
   });
+
+  it('excludes global provider fallback and filters rules applicable to the engine', () => {
+    renderStrategyFuzzerModal([
+      { id: 'youtube_sec', label: 'YouTube Rule', action: 'zapret2' },
+      { id: 'discord_sec', label: 'Discord Rule', action: 'zapret2' },
+      { id: 'other_sec', label: 'Other Rule', action: 'singbox' },
+    ]);
+
+    expect(mocks.showModal).toHaveBeenCalledTimes(1);
+    const modalEl = mocks.showModal.mock.calls[0][1];
+    expect(modalEl).toBeDefined();
+
+    // Check that Provider Default is NOT anywhere in the rendered modal
+    const renderedText = JSON.stringify(modalEl);
+    expect(renderedText).not.toContain('Provider Default (global fallback)');
+    expect(renderedText).not.toContain('глобальный фоллбэк');
+  });
 });
