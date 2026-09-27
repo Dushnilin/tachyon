@@ -184,6 +184,16 @@ function validate_nfqws_strategy_json(opt) { return sysinfo_mod.validate_nfqws_s
 function validate_nfqws2_strategy_json(opt) { return sysinfo_mod.validate_nfqws2_strategy_json(opt); }
 function validate_byedpi_strategy_json(opt) { return sysinfo_mod.validate_byedpi_strategy_json(opt); }
 function resolve_domain_cli(dom) { return dns_mod.resolve_domain_cli(dom); }
+function route_explain(client, target, port, proto, format) {
+    let route_explain_mod = require("diagnostics.route_explain");
+    let report = route_explain_mod.explain_route(client, target, port, proto);
+    if (format == "json" || format == "--json") {
+        print(sprintf("%J\n", report));
+    } else {
+        print(route_explain_mod.format_text_report(report));
+    }
+    return report.success ? 0 : 1;
+}
 
 // ── CLI Dispatch ────────────────────────────────────────────────────────────
 let mode = ARGV[0] || "";
@@ -308,6 +318,8 @@ else if (mode == "validate-byedpi-strategy-json")
     exit(validate_byedpi_strategy_json(ARGV[1] || ""));
 else if (mode == "resolve-domain")
     exit(resolve_domain_cli(ARGV[1] || ""));
+else if (mode == "route-explain" || mode == "route_explain")
+    exit(route_explain(ARGV[1] || "", ARGV[2] || "", ARGV[3] || 0, ARGV[4] || "tcp", ARGV[5] || "text"));
 else {
     warn("Usage: diagnostics/runtime.uc <operation> ...\n");
     exit(1);

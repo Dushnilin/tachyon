@@ -227,6 +227,40 @@ function handle_snapshot() {
     });
 }
 
+function parse_query_params(path_str) {
+    let params = {};
+    let q_idx = index(path_str, "?");
+    let qs = q_idx >= 0 ? substr(path_str, q_idx + 1) : as_string(getenv("QUERY_STRING") || "");
+    if (qs != "") {
+        for (let pair in split(qs, "&")) {
+            let eq = index(pair, "=");
+            if (eq > 0) {
+                let k = substr(pair, 0, eq);
+                let v = substr(pair, eq + 1);
+                params[k] = v;
+            }
+        }
+    }
+    return params;
+}
+
+function handle_route_explain(path_str, body) {
+    let qp = parse_query_params(path_str);
+    let client = as_string(body.client || qp.client || "");
+    let target = as_string(body.target || qp.target || "");
+    let port = int(body.port || qp.port || 0);
+    let proto = as_string(body.proto || qp.proto || "tcp");
+
+    if (target == "") {
+        err("target is required (e.g. domain or IP)", 400);
+        return;
+    }
+
+    let route_explain_mod = require("diagnostics.route_explain");
+    let report = route_explain_mod.explain_route(client, target, port, proto);
+    ok(report);
+}
+
 function handle_tools() {
     ok({
         schema_version: "1.0",
@@ -343,6 +377,22 @@ function handle_tools() {
                     properties: {
                         section: { type: "string", description: "Section .name" },
                         domain:  { type: "string", description: "Domain to add" }
+                    }
+                }
+            },
+            {
+                name:         "tachyon_route_explain",
+                description:  "Explain why and how traffic from a client to a target domain/IP is routed or bypassed (nftables, DNS, policy routing, sing-box/steer outbound).",
+                method:       "GET",
+                path:         "/tachyon/agent/v1/route/explain",
+                input_schema: {
+                    type:       "object",
+                    required:   ["target"],
+                    properties: {
+                        target: { type: "string", description: "Destination host, domain or IP (e.g. instagram.com, 1.1.1.1)" },
+                        client: { type: "string", description: "LAN Client IP or MAC address (optional)" },
+                        port:   { type: "integer", description: "Destination port (optional, default: 443)" },
+                        proto:  { type: "string", enum: ["tcp", "udp"], description: "Protocol (default: tcp)" }
                     }
                 }
             }
@@ -676,10 +726,14 @@ if (method == "GET") {
         handle_ai_doctor_last();
     else if (route == "/openapi.json" || route == "/openapi.json/")
         handle_openapi();
+    else if (index(route, "/route/explain") == 0)
+        handle_route_explain(path_arg, body);
     else
         err("Unknown endpoint: GET " + route, 404);
 } else if (method == "POST") {
-    if (!check_write_auth(bearer)) {
+    if (index(route, "/route/explain") == 0) {
+        handle_route_explain(path_arg, body);
+    } else if (!check_write_auth(bearer)) {
         err("Unauthorized. Configure agent_api_token in UCI and use Bearer token.", 401);
     } else {
         if (route == "/heal" || route == "/heal/")
