@@ -196,6 +196,18 @@ let TOOLS = [
             }
         },
         annotations: { readOnlyHint: false, destructiveHint: true }
+    },
+    {
+        name: "tachyon_config_plan",
+        description: "Dry-run plan & preflight validation for candidate configuration changes without applying them (detects port collisions, invalid syntax, DNS loops, affected subsystems, and diff).",
+        inputSchema: {
+            type: "object",
+            properties: {
+                candidate: { type: "object", description: "Candidate configuration object or section dictionary" },
+                candidate_raw: { type: "string", description: "Candidate configuration as raw UCI text" }
+            }
+        },
+        annotations: { readOnlyHint: true }
     }
 ];
 
@@ -641,6 +653,13 @@ function execute_apply_fix(args) {
     return json_result({ message: "Fix command executed", codes: codes });
 }
 
+function execute_config_plan(args) {
+    let candidate = args.candidate || args.candidate_raw || null;
+    let config_plan_mod = require("service.config_plan");
+    let res = config_plan_mod.plan(candidate);
+    return json_result(res);
+}
+
 function execute_tool(name, args) {
     try {
         switch (name) {
@@ -670,6 +689,8 @@ function execute_tool(name, args) {
             return execute_ai_doctor();
         case "tachyon_apply_fix":
             return execute_apply_fix(args);
+        case "tachyon_config_plan":
+            return execute_config_plan(args);
         default:
             return { content: [{ type: "text", text: "Unknown tool: " + name }], isError: true };
         }

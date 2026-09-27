@@ -452,6 +452,11 @@ function route_explain(client, target, port, proto) {
     return route_explain_mod.explain_route(client, target, port, proto);
 }
 
+function get_config_plan(candidate, options) {
+    let config_plan_mod = require("service.config_plan");
+    return config_plan_mod.plan(candidate, options);
+}
+
 return {
     get_clash_url,
     get_clash_secret,
@@ -476,5 +481,6 @@ return {
     get_servers,
     reload_tachyon,
     toggle_section,
-    route_explain
+    route_explain,
+    get_config_plan
 };
