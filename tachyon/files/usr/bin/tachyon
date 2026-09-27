@@ -201,6 +201,14 @@ function show_help() {
     print("    known_good_check        Probe observation window and auto-promote if ready\n");
     print("    support_bundle [path] [--json] [--no-archive]\n");
     print("                            Generate sanitized support bundle archive\n");
+    print("    job_list [--all] [--json]\n");
+    print("                            List background jobs\n");
+    print("    job_query <job_id>      Query status and details of a background job\n");
+    print("    job_cancel <job_id> [--force] [reason]\n");
+    print("                            Cancel running background job (cooperative or force)\n");
+    print("    job_request_cancel <job_id> [reason]\n");
+    print("                            Request graceful cancellation of a background job\n");
+    print("    job_gc                  Garbage-collect completed/stale jobs\n");
 }
 
 function command_spec(command) {
@@ -392,7 +400,17 @@ function command_spec(command) {
         known_good_check: [ "service/known_good.uc", "check", 0 ],
         "known-good-check": [ "service/known_good.uc", "check", 0 ],
         support_bundle: [ "service/support_bundle.uc", "create", 3 ],
-        "support-bundle": [ "service/support_bundle.uc", "create", 3 ]
+        "support-bundle": [ "service/support_bundle.uc", "create", 3 ],
+        job_list: [ "core/jobs.uc", "list", 2 ],
+        "job-list": [ "core/jobs.uc", "list", 2 ],
+        job_query: [ "core/jobs.uc", "query", 1 ],
+        "job-query": [ "core/jobs.uc", "query", 1 ],
+        job_cancel: [ "core/jobs.uc", "cancel", 2 ],
+        "job-cancel": [ "core/jobs.uc", "cancel", 2 ],
+        job_request_cancel: [ "core/jobs.uc", "request-cancel", 2 ],
+        "job-request-cancel": [ "core/jobs.uc", "request-cancel", 2 ],
+        job_gc: [ "core/jobs.uc", "gc", 0 ],
+        "job-gc": [ "core/jobs.uc", "gc", 0 ]
     };
 
     return commands[as_string(command)];
