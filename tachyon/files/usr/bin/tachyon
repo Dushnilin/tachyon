@@ -130,6 +130,7 @@ function show_help() {
     print("    engine_generate [--dry-run] Generate the steer spec.json from Tachyon config\n");
     print("    engine_diag             Active engine diagnostics (steer diag)\n");
     print("    engine_explain <target> Which channel/output a name or address takes (steer)\n");
+    print("    route_explain <client> <target> [port] [proto] Explain routing decision pipeline\n");
     print("    get_server_capabilities Get server UI capabilities in JSON format\n");
     print("    get_ui_capabilities     Get lightweight UI capabilities in JSON format\n");
     print("    get_ui_state            Get lightweight UI service/action state in JSON format\n");
@@ -361,7 +362,9 @@ function command_spec(command) {
         escalation_status: [ "service/watchdog.uc", "escalation-status", 0 ],
         emergency_status: [ "service/watchdog.uc", "emergency-status", 0 ],
         emergency_reset: [ "service/watchdog.uc", "emergency-reset", 0 ],
-        emergency_trigger: [ "service/watchdog.uc", "emergency-trigger", 1 ]
+        emergency_trigger: [ "service/watchdog.uc", "emergency-trigger", 1 ],
+        route_explain: [ "diagnostics/route_explain.uc", "explain", 4 ],
+        "route-explain": [ "diagnostics/route_explain.uc", "explain", 4 ]
     };
 
     return commands[as_string(command)];

@@ -446,6 +446,12 @@ function toggle_section(sec_name) {
     reload_tachyon();
     return true;
 }
+
+function route_explain(client, target, port, proto) {
+    let route_explain_mod = require("diagnostics.route_explain");
+    return route_explain_mod.explain_route(client, target, port, proto);
+}
+
 return {
     get_clash_url,
     get_clash_secret,
@@ -469,5 +475,6 @@ return {
     get_sections,
     get_servers,
     reload_tachyon,
-    toggle_section
+    toggle_section,
+    route_explain
 };
