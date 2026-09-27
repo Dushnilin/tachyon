@@ -114,7 +114,10 @@ export function normalizeSingBoxVariantFields<T extends SingBoxVariantFields>(
       (parseInt(m[1]!, 10) === 1 && parseInt(m[2]!, 10) >= 15)
     : false;
   const singBoxCertPin =
-    Boolean(value.sing_box_cert_pin) || versionSupportsCertPin;
+    Boolean(value.sing_box_cert_pin) ||
+    versionLx ||
+    Boolean(singBoxLx) ||
+    versionSupportsCertPin;
 
   return {
     ...value,

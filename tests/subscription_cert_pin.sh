@@ -151,6 +151,17 @@ ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.
   fail "supports-cert-pin must succeed on 1.15.2"
 ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "v1.16.1" ||
   fail "supports-cert-pin must succeed on v1.16.1"
+ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.2-lx.4" ||
+  fail "supports-cert-pin must succeed on 1.14.2-lx.4"
+ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.0-lx.32" ||
+  fail "supports-cert-pin must succeed on 1.14.0-lx.32"
+ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "sing-box-lx" ||
+  fail "supports-cert-pin must succeed on sing-box-lx"
+
+printf 'lx\n' > "$WORK_DIR/variant_lx"
+SB_VARIANT_STATE_FILE="$WORK_DIR/variant_lx" \
+ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.2" ||
+  fail "supports-cert-pin must succeed on 1.14.2 when variant is lx"
 
 if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.13.0"; then
   fail "supports-cert-pin must fail on 1.13.0"
@@ -159,7 +170,38 @@ if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin 
   fail "supports-cert-pin must fail on 1.14.9"
 fi
 
-# 7. Verify diagnostics reports sing_box_cert_pin capability flag
+# 7. Verify generator preserves certificate_sha256 for sing-box-lx (Issue #77)
+GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/generator.uc"
+
+ucode "$GENERATOR_UC" is-cert-pin-supported "1.14.2-lx.4" ||
+  fail "generator is-cert-pin-supported must succeed on 1.14.2-lx.4"
+ucode "$GENERATOR_UC" is-cert-pin-supported "1.15.0" ||
+  fail "generator is-cert-pin-supported must succeed on 1.15.0"
+if ucode "$GENERATOR_UC" is-cert-pin-supported "1.14.2"; then
+  fail "generator is-cert-pin-supported must fail on stock 1.14.2"
+fi
+
+TEST_CFG='{"outbounds":[{"type":"vless","tag":"pinned-node","tls":{"enabled":true,"server_name":"example.com","certificate_sha256":["abc"]}}]}'
+
+printf '1.14.2-lx.4\n' > "$WORK_DIR/ver_lx"
+lx_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_lx" ucode "$GENERATOR_UC" strip-cert-pins)"
+if ! grep -Fq "certificate_sha256" <<<"$lx_stripped"; then
+  fail "generator must NOT strip certificate_sha256 for sing-box-lx version"
+fi
+
+printf '1.14.2\n' > "$WORK_DIR/ver_stock"
+stock_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_stock" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
+if grep -Fq "certificate_sha256" <<<"$stock_stripped"; then
+  fail "generator must strip certificate_sha256 for stock sing-box 1.14.2"
+fi
+
+printf 'lx\n' > "$WORK_DIR/variant_lx"
+var_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_stock" SB_VARIANT_STATE_FILE="$WORK_DIR/variant_lx" ucode "$GENERATOR_UC" strip-cert-pins)"
+if ! grep -Fq "certificate_sha256" <<<"$var_stripped"; then
+  fail "generator must NOT strip certificate_sha256 when variant is lx"
+fi
+
+# 8. Verify diagnostics reports sing_box_cert_pin capability flag
 server_caps="$(ucode "$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc" get-server-capabilities)"
 printf '%s\n' "$server_caps" > "$WORK_DIR/caps.json"
 assert_contains "$WORK_DIR/caps.json" "sing_box_cert_pin" "capabilities-has-cert-pin"

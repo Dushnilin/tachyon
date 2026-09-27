@@ -2181,7 +2181,8 @@ function sing_box_version_is_extended(version) {
 }
 
 function sing_box_version_is_lx(version) {
-    return index(as_string(version), "-lx") >= 0;
+    let s = as_string(version);
+    return s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0;
 }
 
 function sing_box_is_extended(ctx, version) {
@@ -2194,6 +2195,8 @@ function sing_box_is_extended(ctx, version) {
 }
 
 function sing_box_is_lx(ctx, version) {
+    if (sing_box_version_is_lx(version))
+        return true;
     if (as_string(version) == "" && command_exists("sing-box") && sing_box_lx_marker_set(ctx))
         return true;
 
