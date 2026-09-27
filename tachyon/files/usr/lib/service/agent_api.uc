@@ -261,6 +261,14 @@ function handle_route_explain(path_str, body) {
     ok(report);
 }
 
+function handle_config_plan(path_str, body) {
+    let qp = parse_query_params(path_str);
+    let candidate = body.candidate || body.candidate_source || body.candidate_raw || qp.candidate || null;
+    let config_plan_mod = require("service.config_plan");
+    let plan_res = config_plan_mod.plan(candidate);
+    ok(plan_res);
+}
+
 function handle_tools() {
     ok({
         schema_version: "1.0",
@@ -393,6 +401,19 @@ function handle_tools() {
                         client: { type: "string", description: "LAN Client IP or MAC address (optional)" },
                         port:   { type: "integer", description: "Destination port (optional, default: 443)" },
                         proto:  { type: "string", enum: ["tcp", "udp"], description: "Protocol (default: tcp)" }
+                    }
+                }
+            },
+            {
+                name:         "tachyon_config_plan",
+                description:  "Dry-run plan & preflight validation for candidate configuration changes without applying them (detects port collisions, invalid syntax, DNS loops, affected subsystems, and diff).",
+                method:       "POST",
+                path:         "/tachyon/agent/v1/config/plan",
+                input_schema: {
+                    type:       "object",
+                    properties: {
+                        candidate:     { type: "object", description: "Candidate configuration object or section dictionary" },
+                        candidate_raw: { type: "string", description: "Candidate configuration as raw UCI text" }
                     }
                 }
             }
@@ -649,6 +670,32 @@ function handle_openapi() {
                     },
                     responses: { "200": { description: "UCI update result" } }
                 }
+            },
+            "/config/plan": {
+                get: {
+                    summary: "Preview and dry-run plan for pending or candidate configuration",
+                    operationId: "getConfigPlan",
+                    responses: { "200": { description: "Configuration plan and validation report" } }
+                },
+                post: {
+                    summary: "Dry-run validate and preview candidate configuration",
+                    operationId: "postConfigPlan",
+                    requestBody: {
+                        required: false,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        candidate:     { type: "object" },
+                                        candidate_raw: { type: "string" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { "200": { description: "Configuration plan and validation report" } }
+                }
             }
         },
         components: {
@@ -728,11 +775,15 @@ if (method == "GET") {
         handle_openapi();
     else if (index(route, "/route/explain") == 0)
         handle_route_explain(path_arg, body);
+    else if (index(route, "/config/plan") == 0)
+        handle_config_plan(path_arg, body);
     else
         err("Unknown endpoint: GET " + route, 404);
 } else if (method == "POST") {
     if (index(route, "/route/explain") == 0) {
         handle_route_explain(path_arg, body);
+    } else if (index(route, "/config/plan") == 0) {
+        handle_config_plan(path_arg, body);
     } else if (!check_write_auth(bearer)) {
         err("Unauthorized. Configure agent_api_token in UCI and use Bearer token.", 401);
     } else {
