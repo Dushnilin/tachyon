@@ -357,7 +357,11 @@ function command_spec(command) {
         "resolve-domain": [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
         reconcile: [ "service/reconciler.uc", "apply", 0 ],
         reconcile_plan: [ "service/reconciler.uc", "plan", 0 ],
-        reconcile_status: [ "service/reconciler.uc", "status", 0 ]
+        reconcile_status: [ "service/reconciler.uc", "status", 0 ],
+        escalation_status: [ "service/watchdog.uc", "escalation-status", 0 ],
+        emergency_status: [ "service/watchdog.uc", "emergency-status", 0 ],
+        emergency_reset: [ "service/watchdog.uc", "emergency-reset", 0 ],
+        emergency_trigger: [ "service/watchdog.uc", "emergency-trigger", 1 ]
     };
 
     return commands[as_string(command)];

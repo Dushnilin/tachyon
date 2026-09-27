@@ -8,6 +8,11 @@ let connections = require("config.connections");
 let events = require("core.events");
 let event_controller = require("service.event_controller");
 
+let reconciler = null;
+try {
+    reconciler = require("service.reconciler");
+} catch (e) {}
+
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = "/var/run/tachyon_watchdog.pid";
@@ -482,8 +487,16 @@ function suppressed_by_root_cause(healer) {
 const ESCALATION_LIGHT = "light";
 const ESCALATION_HEAVY = "heavy";
 
+const LADDER_L0_OBSERVE   = 0;
+const LADDER_L1_RETRY     = 1;
+const LADDER_L2_REPAIR    = 2;
+const LADDER_L3_RELOAD    = 3;
+const LADDER_L4_RESTART   = 4;
+const LADDER_L5_EMERGENCY = 5;
+
 // reason → the rung its NEXT attempt should use.
 let escalation_level = {};
+let escalation_ladder = {};
 
 function next_escalation(reason) {
     return escalation_level[reason] == ESCALATION_HEAVY ? ESCALATION_HEAVY : ESCALATION_LIGHT;
@@ -494,10 +507,35 @@ function next_escalation(reason) {
 // light so a later, unrelated fault is not met with a full restart.
 function note_escalation_outcome(reason, outcome) {
     if (reason == null || reason == "") return;
-    if (outcome == "failed")
+    if (outcome == "failed") {
         escalation_level[reason] = ESCALATION_HEAVY;
-    else if (outcome == "fixed")
+        let cur = int(escalation_ladder[reason] != null ? escalation_ladder[reason] : LADDER_L3_RELOAD);
+        if (cur < LADDER_L5_EMERGENCY)
+            escalation_ladder[reason] = cur + 1;
+        else
+            escalation_ladder[reason] = LADDER_L5_EMERGENCY;
+    } else if (outcome == "fixed") {
         delete escalation_level[reason];
+        delete escalation_ladder[reason];
+    }
+}
+
+function next_ladder_level(reason) {
+    if (reason == null || reason == "") return LADDER_L2_REPAIR;
+    let lvl = escalation_ladder[reason];
+    return lvl != null ? int(lvl) : LADDER_L2_REPAIR;
+}
+
+function set_ladder_level(reason, level) {
+    if (reason == null || reason == "") return;
+    let lvl = int(level);
+    if (lvl < LADDER_L0_OBSERVE) lvl = LADDER_L0_OBSERVE;
+    if (lvl > LADDER_L5_EMERGENCY) lvl = LADDER_L5_EMERGENCY;
+    escalation_ladder[reason] = lvl;
+    if (lvl >= LADDER_L4_RESTART)
+        escalation_level[reason] = ESCALATION_HEAVY;
+    else
+        escalation_level[reason] = ESCALATION_LIGHT;
 }
 
 // ─── Recovery watch: registration ─────────────────────────────────────────────
@@ -529,6 +567,14 @@ function watch_recovery(key, incident, reason) {
 
 
 // ─── AI Watchdog Self-Healing Matrix ──────────────────────────────────────────
+const EMERGENCY_STATE_FILE = "/etc/tachyon/emergency_state.json";
+const EMERGENCY_STATE_TMP = "/tmp/tachyon_emergency_state.json";
+let emergency_failsafe_active = false;
+
+function is_emergency_failsafe_active() {
+    return emergency_failsafe_active || fs.stat(EMERGENCY_STATE_FILE) != null || fs.stat(EMERGENCY_STATE_TMP) != null;
+}
+
 let ai_incidents_count = 0;
 let last_ai_incident = null;
 
@@ -540,8 +586,10 @@ function ai_export_status() {
     let st = controller.state || {};
     let status_obj = {
         timestamp: time(),
-        status: is_healthy ? "healthy" : "repaired",
+        status: is_emergency_failsafe_active() ? "emergency_failsafe" : (is_healthy ? "healthy" : "repaired"),
         ai_active: true,
+        emergency_failsafe: is_emergency_failsafe_active(),
+        escalation_ladder: escalation_ladder,
         incidents_resolved_total: ai_incidents_count,
         last_incident: last_ai_incident,
         wan_fail_streak: int(st.wan_fail_streak || 0),
@@ -599,6 +647,60 @@ function ai_heal_report(event_type, description, resolution, outcome) {
     ai_export_status();
 }
 
+// ─── Emergency Failsafe Actions (L5) ──────────────────────────────────────────
+function clear_emergency_failsafe() {
+    emergency_failsafe_active = false;
+    remove_file(EMERGENCY_STATE_FILE);
+    remove_file(EMERGENCY_STATE_TMP);
+    log_message("Watchdog: Emergency failsafe cleared", "info");
+}
+
+function trigger_emergency_failsafe(reason, details) {
+    if (emergency_failsafe_active) return;
+    emergency_failsafe_active = true;
+    let now = time();
+    let emergency_data = {
+        active: true,
+        timestamp: now,
+        reason: as_string(reason || "unknown"),
+        details: as_string(details || ""),
+        action: "direct_wan_bypass"
+    };
+
+    common.write_json_file(EMERGENCY_STATE_TMP, emergency_data);
+    try {
+        common.write_json_file(EMERGENCY_STATE_FILE, emergency_data);
+    } catch (e) {}
+
+    log_message(sprintf("🚨 [Watchdog Emergency] Level 5 failsafe triggered (%s): %s. Restoring direct WAN and DNS.", reason, as_string(details)), "err");
+
+    // 1. Restore standard direct DNS resolution via dns/apply.uc or direct uci
+    let dns_cmd = "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/dns/apply.uc") + " failsafe-restore >/dev/null 2>&1";
+    let dns_restored = system(dns_cmd);
+    if (dns_restored != 0) {
+        system("/sbin/uci -q set dhcp.@dnsmasq[0].noresolv='0' >/dev/null 2>&1; /sbin/uci commit dhcp >/dev/null 2>&1; /etc/init.d/dnsmasq restart >/dev/null 2>&1");
+    }
+
+    // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy
+    system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
+
+    // 3. Dispatch telegram alert
+    let tg_msg = sprintf("🚨 *[Tachyon Аварийный Failsafe]*\n⚠️ Все уровни восстановления исчерпаны (%s)!\nВключен аварийный прямой доступ в сеть (Failsafe Direct) для предотвращения отключения интернета.", reason);
+    send_telegram_notification(tg_msg, "emergency_failsafe_" + as_string(reason), 1800);
+
+    // 4. Report via ai_heal_report
+    ai_heal_report("emergency_failsafe", sprintf("Все уровни восстановления исчерпаны (%s)", reason), "Аварийный обход (Failsafe Direct) активирован", "failed");
+}
+
+function execute_reconciler_subsystem(subsystem, dry_run) {
+    if (reconciler == null) {
+        try { reconciler = require("service.reconciler"); } catch (e) {}
+    }
+    if (reconciler == null || type(reconciler.reconcile) != "function")
+        return { ok: false, error: "reconciler unavailable" };
+    return reconciler.reconcile({ subsystem: subsystem, dry_run: dry_run == true });
+}
+
 // ─── Recovery watch: settling ─────────────────────────────────────────────────
 // The registration half lives above heal_singbox_stopped, its first caller.
 // Settling has to live here instead, below ai_heal_report — ucode captures a
@@ -615,6 +717,10 @@ function settle_recovery(key, outcome) {
     // Before reporting: feed the outcome back into the ladder, so the next
     // attempt on this reason knows whether the lighter rung was enough.
     note_escalation_outcome(watch.reason, outcome);
+
+    if (outcome == "failed" && next_ladder_level(watch.reason) >= LADDER_L5_EMERGENCY) {
+        trigger_emergency_failsafe(watch.reason, "Recovery watch expired at L4 restart");
+    }
 
     let incident = watch.incident;
     ai_heal_report(incident.type, incident.description, incident.resolution, outcome);
@@ -666,6 +772,9 @@ function safe_proxy_restart(reason, force_level) {
     // not going to be fixed by a fourth.
     if (proxy_restart_count >= 3) {
         log_message("Proxy restart rate limit: " + as_string(proxy_restart_count) + " in 10 min, skipping (" + reason + ")", "warn");
+        if (force_level != ESCALATION_LIGHT) {
+            trigger_emergency_failsafe(reason, "Proxy restart rate limit reached (3 in 10 min)");
+        }
         return false;
     }
     if (fs.stat(PROXY_RESTART_LOCK) != null) {
@@ -733,6 +842,55 @@ function safe_reload_firewall() {
     bg_system("/usr/bin/tachyon reload_firewall");
 }
 
+// ─── Escalation Executor (L0–L5) ──────────────────────────────────────────────
+function execute_escalation_level(key, subsystem, reason, incident) {
+    let lvl = next_ladder_level(reason);
+
+    // Level 2: Surgical reconciler repair
+    if (lvl <= LADDER_L2_REPAIR && subsystem != null && subsystem != "") {
+        log_message(sprintf("Watchdog: Attempting L2 granular repair for '%s' (%s)", subsystem, reason), "info");
+        let rec_res = execute_reconciler_subsystem(subsystem, false);
+        if (rec_res != null && rec_res.ok) {
+            log_message(sprintf("Watchdog: L2 repair for '%s' succeeded", subsystem), "info");
+            if (key != null && incident != null) {
+                watch_recovery(key, incident, reason);
+            }
+            return true;
+        }
+        log_message(sprintf("Watchdog: L2 repair for '%s' failed, escalating to L3/L4", subsystem), "warn");
+        note_escalation_outcome(reason, "failed");
+        lvl = next_ladder_level(reason);
+    }
+
+    // Level 3: Soft restart / reload
+    if (lvl == LADDER_L3_RELOAD) {
+        log_message(sprintf("Watchdog: Escalating to L3 soft reload for '%s'", reason), "warn");
+        let restarted = safe_proxy_restart(reason, ESCALATION_LIGHT);
+        if (restarted && key != null && incident != null) {
+            watch_recovery(key, incident, reason);
+        }
+        return restarted;
+    }
+
+    // Level 4: Full stack restart
+    if (lvl == LADDER_L4_RESTART) {
+        log_message(sprintf("Watchdog: Escalating to L4 full restart for '%s'", reason), "warn");
+        let restarted = safe_proxy_restart(reason, ESCALATION_HEAVY);
+        if (restarted && key != null && incident != null) {
+            watch_recovery(key, incident, reason);
+        }
+        return restarted;
+    }
+
+    // Level 5: Emergency failsafe
+    if (lvl >= LADDER_L5_EMERGENCY) {
+        trigger_emergency_failsafe(reason, "Max escalation level reached");
+        return false;
+    }
+
+    return false;
+}
+
 // ─── Repairs ──────────────────────────────────────────────────────────────────
 // Each function below is the *action* half of a former ai_heal_* function: the
 // detection it used to perform now happens in the controller and arrives as a
@@ -747,6 +905,17 @@ function heal_nftables(ev) {
         bg_system("/usr/sbin/steer apply >/dev/null 2>&1");
         return;
     }
+    // L2 granular repair via Reconciler
+    let rec_res = execute_reconciler_subsystem("nftables", false);
+    if (rec_res != null && rec_res.ok) {
+        ai_heal_report(
+            "nftables",
+            "Таблица правил nftables очищена или повреждена",
+            "Выполнена быстрая регенерация правил TachyonTable и цепочки TPROXY через Reconciler",
+            "fixed"
+        );
+        return;
+    }
     ai_heal_report(
         "nftables",
         "Таблица правил nftables очищена или повреждена",
@@ -757,6 +926,16 @@ function heal_nftables(ev) {
 }
 
 function heal_qos(ev) {
+    let rec_res = execute_reconciler_subsystem("nftables", false);
+    if (rec_res != null && rec_res.ok) {
+        ai_heal_report(
+            "qos_priority",
+            "Правила Игрового & Голосового QoS Ускорителя не найдены в nftables",
+            "Применены высокоприоритетные метки DSCP EF (0x2e) для Voice/RTC и DSCP AF41 (0x22) для Gaming через Reconciler",
+            "fixed"
+        );
+        return;
+    }
     ai_heal_report(
         "qos_priority",
         "Правила Игрового & Голосового QoS Ускорителя не найдены в nftables",
@@ -927,6 +1106,16 @@ function heal_community_subnet_sets(ev) {
         log_message("Community subnet set " + set_name + " is empty — will repopulate", "warn");
 
     ai_heal_subnet_cache();
+    let rec_res = execute_reconciler_subsystem("nftables", false);
+    if (rec_res != null && rec_res.ok) {
+        ai_heal_report(
+            "nft_community_sets",
+            "Пустые nftables sets подсетей (community) — данные не были загружены при reload",
+            "Восстановлены nftables sets из persistent кеша через Reconciler",
+            "fixed"
+        );
+        return;
+    }
     ai_heal_report(
         "nft_community_sets",
         "Пустые nftables sets подсетей (community) — данные не были загружены при reload",
@@ -940,6 +1129,17 @@ function heal_community_subnet_sets(ev) {
 // ─── TPROXY port liveness ─────────────────────────────────────────────────────
 function heal_tproxy_port(ev) {
     if (settings().recovery_bypass == "1") return;
+
+    let rec_res = execute_reconciler_subsystem("nftables", false);
+    if (rec_res != null && rec_res.ok) {
+        ai_heal_report(
+            "tproxy_port",
+            sprintf("TPROXY порт %d не слушает — правила перехвата трафика не работают", int(ev.payload.port)),
+            "Восстановлены TPROXY правила через Reconciler",
+            "fixed"
+        );
+        return;
+    }
 
     ai_heal_report(
         "tproxy_port",
@@ -1176,6 +1376,14 @@ function heal_nfqueue_stopped(ev) {
     let zapret2_uc = LIB_DIR + "/providers/zapret2/runtime.uc";
     let zapret_uc = LIB_DIR + "/providers/zapret/runtime.uc";
     let revived = false;
+
+    // Try granular reconciler repair for daemons
+    let rec_res = execute_reconciler_subsystem("daemons", false);
+    if (rec_res != null && rec_res.ok) {
+        ai_heal_report("nfqueue_health", sprintf("Respawned workers for %s via Reconciler (%d/%d alive)", dir, running, expected), "Workers respawned directly via Reconciler", "fixed");
+        settle_recovery("nfqueue", "fixed");
+        return;
+    }
 
     if (index(dir, "zapret2") >= 0 && fs.stat(zapret2_uc) != null) {
         log_message("Auto-healing zapret2 workers via start-runtime", "warn");
@@ -2346,11 +2554,13 @@ function print_ai_status_full() {
         }
     }
 
-    let status = last_ai_incident != null && (now - last_ai_incident.timestamp < 300) ? "repaired" : "healthy";
+    let status = is_emergency_failsafe_active() ? "emergency_failsafe" : (last_ai_incident != null && (now - last_ai_incident.timestamp < 300) ? "repaired" : "healthy");
 
     let result = {
         status: status,
         ai_active: true,
+        emergency_failsafe: is_emergency_failsafe_active(),
+        escalation_ladder: escalation_ladder,
         uptime_s: sb_uptime,
         memory_mb: mem_mb,
         proxy_ok: proxy_ok,
@@ -2404,7 +2614,32 @@ else if (mode == "smart-detect-proxy-sections") {
     print(join(" ", secs) + "\n");
     exit(0);
 }
+else if (mode == "escalation-status") {
+    print(sprintf("%J\n", {
+        levels: escalation_ladder,
+        legacy: escalation_level,
+        emergency_active: is_emergency_failsafe_active()
+    }));
+    exit(0);
+}
+else if (mode == "emergency-status") {
+    let state = common.read_json_file(EMERGENCY_STATE_FILE);
+    if (!state) state = common.read_json_file(EMERGENCY_STATE_TMP);
+    print(sprintf("%J\n", state || { active: false }));
+    exit(0);
+}
+else if (mode == "emergency-reset") {
+    clear_emergency_failsafe();
+    print("Emergency failsafe reset successfully\n");
+    exit(0);
+}
+else if (mode == "emergency-trigger") {
+    let reason = ARGV[1] || "manual_operator_request";
+    trigger_emergency_failsafe(reason, "Manually invoked via CLI");
+    print("Emergency failsafe triggered\n");
+    exit(0);
+}
 else {
-    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|worker|status|ai-heal|ai-status|ai-status-full|smart-detect-extract-domain|smart-detect-proxy-sections> ...\n");
+    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|worker|status|ai-heal|ai-status|ai-status-full|smart-detect-extract-domain|smart-detect-proxy-sections|escalation-status|emergency-status|emergency-reset|emergency-trigger> ...\n");
     exit(1);
 }
