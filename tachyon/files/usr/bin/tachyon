@@ -354,7 +354,10 @@ function command_spec(command) {
         import_settings: [ "config/migration.uc", "import-settings", 1 ],
         "import-settings": [ "config/migration.uc", "import-settings", 1 ],
         resolve_domain: [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
-        "resolve-domain": [ "diagnostics/runtime.uc", "resolve-domain", 1 ]
+        "resolve-domain": [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
+        reconcile: [ "service/reconciler.uc", "apply", 0 ],
+        reconcile_plan: [ "service/reconciler.uc", "plan", 0 ],
+        reconcile_status: [ "service/reconciler.uc", "status", 0 ]
     };
 
     return commands[as_string(command)];
@@ -408,6 +411,23 @@ function main() {
         for (let i = start_idx + 1; i < length(ARGV); i++)
             push(user_args, ARGV[i]);
         return run_agent(user_args);
+    }
+
+    // reconciler command passes all subcommand and flags verbatim
+    if (command == "reconciler") {
+        let module = module_path("service/reconciler.uc");
+        if (!file_readable(module)) {
+            warn("Error: service/reconciler.uc is missing\n");
+            return 1;
+        }
+        let args = [ "ucode", "-L", LIB_DIR, "--", module ];
+        if (start_idx + 1 < length(ARGV)) {
+            for (let i = start_idx + 1; i < length(ARGV); i++)
+                push(args, ARGV[i]);
+        } else {
+            push(args, "apply");
+        }
+        return normalize_status(system(command_from_args(args)));
     }
 
     let spec = command_spec(command);
