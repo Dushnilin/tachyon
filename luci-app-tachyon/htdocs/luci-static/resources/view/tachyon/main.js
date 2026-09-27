@@ -7490,6 +7490,611 @@ function shouldNotifyOwnedUiAction(kind, jobId) {
   return uiActionNotifications.shouldNotify(kind, jobId);
 }
 
+// src/tachyon/services/jobClient.ts
+function isJobTerminal(job) {
+  return ["success", "failure", "cancelled", "timed_out"].includes(job.phase);
+}
+function parseJsonStdout(stdout, fallback) {
+  if (!stdout) return fallback;
+  try {
+    let text = stdout.trim();
+    const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (match) {
+      text = match[0];
+    }
+    return JSON.parse(text);
+  } catch (err) {
+    logger.warn("[JOB_CLIENT] Failed to parse JSON stdout:", err);
+    return fallback;
+  }
+}
+var JobClient = class {
+  constructor(binaryPath = "/usr/bin/tachyon") {
+    this.binaryPath = binaryPath;
+  }
+  async list(options) {
+    const args = ["job_list", "--json"];
+    if (options?.all) {
+      args.push("--all");
+    }
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args,
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        logger.error(
+          "[JOB_CLIENT] list failed with code",
+          res.code,
+          res.stderr
+        );
+        return [];
+      }
+      return parseJsonStdout(res.stdout, []);
+    } catch (err) {
+      logger.error("[JOB_CLIENT] list exception:", err);
+      return [];
+    }
+  }
+  async query(jobId) {
+    if (!jobId) return null;
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["job_query", jobId],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        return null;
+      }
+      const job = parseJsonStdout(res.stdout, null);
+      return job && job.id ? job : null;
+    } catch (err) {
+      logger.error("[JOB_CLIENT] query exception:", err);
+      return null;
+    }
+  }
+  async cancel(jobId, options) {
+    if (!jobId) {
+      return { ok: false, message: "Missing job ID" };
+    }
+    const args = ["job_cancel", jobId];
+    if (options?.force) {
+      args.push("--force");
+    }
+    if (options?.reason) {
+      args.push(options.reason);
+    }
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args,
+        timeout: 1e4
+      });
+      const parsed = parseJsonStdout(res.stdout, {});
+      const ok = (res.code ?? 0) === 0 || parsed.ok === true;
+      return {
+        ok,
+        message: typeof parsed.message === "string" ? parsed.message : res.stderr || void 0,
+        forced: Boolean(parsed.forced ?? options?.force),
+        deferred: Boolean(parsed.deferred)
+      };
+    } catch (err) {
+      logger.error("[JOB_CLIENT] cancel exception:", err);
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+  async requestCancel(jobId, reason) {
+    if (!jobId) {
+      return { ok: false, requested: false, message: "Missing job ID" };
+    }
+    const args = ["job_request_cancel", jobId];
+    if (reason) {
+      args.push(reason);
+    }
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args,
+        timeout: 1e4
+      });
+      const parsed = parseJsonStdout(res.stdout, {});
+      const ok = (res.code ?? 0) === 0 || parsed.ok === true;
+      return {
+        ok,
+        requested: Boolean(parsed.requested ?? ok),
+        message: typeof parsed.message === "string" ? parsed.message : res.stderr || void 0
+      };
+    } catch (err) {
+      logger.error("[JOB_CLIENT] requestCancel exception:", err);
+      return {
+        ok: false,
+        requested: false,
+        message: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+  async gc() {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["job_gc"],
+        timeout: 1e4
+      });
+      const parsed = parseJsonStdout(res.stdout, {});
+      const ok = (res.code ?? 0) === 0;
+      return {
+        ok,
+        removed: typeof parsed.removed === "number" ? parsed.removed : void 0
+      };
+    } catch (err) {
+      logger.error("[JOB_CLIENT] gc exception:", err);
+      return { ok: false };
+    }
+  }
+  async watch(jobId, options = {}) {
+    const {
+      pollIntervalMs = 500,
+      timeoutMs = 6e4,
+      signal,
+      onProgress
+    } = options;
+    const startTime = Date.now();
+    return new Promise((resolve, reject) => {
+      let isSettled = false;
+      let timer = null;
+      const cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (signal) {
+          signal.removeEventListener("abort", onAbort);
+        }
+      };
+      const onAbort = () => {
+        if (isSettled) return;
+        isSettled = true;
+        cleanup();
+        reject(new Error("Job watch aborted by caller"));
+      };
+      if (signal) {
+        if (signal.aborted) {
+          reject(new Error("Job watch aborted by caller"));
+          return;
+        }
+        signal.addEventListener("abort", onAbort);
+      }
+      const poll = async () => {
+        if (isSettled) return;
+        if (Date.now() - startTime > timeoutMs) {
+          isSettled = true;
+          cleanup();
+          reject(
+            new Error(
+              `Job watch timed out after ${timeoutMs}ms for job: ${jobId}`
+            )
+          );
+          return;
+        }
+        try {
+          const job = await this.query(jobId);
+          if (!job) {
+            isSettled = true;
+            cleanup();
+            reject(new Error(`Job ${jobId} not found`));
+            return;
+          }
+          if (onProgress) {
+            try {
+              onProgress(job);
+            } catch (err) {
+              logger.warn("[JOB_CLIENT] onProgress handler threw error:", err);
+            }
+          }
+          if (isJobTerminal(job)) {
+            isSettled = true;
+            cleanup();
+            resolve(job);
+            return;
+          }
+          if (!isSettled) {
+            timer = setTimeout(poll, pollIntervalMs);
+          }
+        } catch (err) {
+          isSettled = true;
+          cleanup();
+          reject(err);
+        }
+      };
+      void poll();
+    });
+  }
+};
+var jobClient = new JobClient();
+
+// src/tachyon/services/eventClient.ts
+function parseJsonStdout2(stdout, fallback) {
+  if (!stdout) return fallback;
+  try {
+    let text = stdout.trim();
+    const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (match) {
+      text = match[0];
+    }
+    return JSON.parse(text);
+  } catch (err) {
+    logger.warn("[EVENT_CLIENT] Failed to parse JSON stdout:", err);
+    return fallback;
+  }
+}
+var EventClient = class {
+  constructor(binaryPath = "/usr/bin/tachyon") {
+    this.binaryPath = binaryPath;
+  }
+  async query(filter = {}) {
+    try {
+      const filterJson = JSON.stringify(filter);
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["event_query", filterJson],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        logger.error(
+          "[EVENT_CLIENT] query failed with code",
+          res.code,
+          res.stderr
+        );
+        return [];
+      }
+      return parseJsonStdout2(res.stdout, []);
+    } catch (err) {
+      logger.error("[EVENT_CLIENT] query exception:", err);
+      return [];
+    }
+  }
+  async tail(count = 10) {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["event_tail", String(count)],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        logger.error(
+          "[EVENT_CLIENT] tail failed with code",
+          res.code,
+          res.stderr
+        );
+        return [];
+      }
+      return parseJsonStdout2(res.stdout, []);
+    } catch (err) {
+      logger.error("[EVENT_CLIENT] tail exception:", err);
+      return [];
+    }
+  }
+  async stats() {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["event_stats"],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        logger.error(
+          "[EVENT_CLIENT] stats failed with code",
+          res.code,
+          res.stderr
+        );
+        return { count: 0, bytes: 0 };
+      }
+      return parseJsonStdout2(res.stdout, {
+        count: 0,
+        bytes: 0
+      });
+    } catch (err) {
+      logger.error("[EVENT_CLIENT] stats exception:", err);
+      return { count: 0, bytes: 0 };
+    }
+  }
+  async clear() {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["event_clear"],
+        timeout: 1e4
+      });
+      return (res.code ?? 0) === 0;
+    } catch (err) {
+      logger.error("[EVENT_CLIENT] clear exception:", err);
+      return false;
+    }
+  }
+  async record(event, data = {}, meta = {}) {
+    if (!event) return null;
+    const dataJson = JSON.stringify(data);
+    const severity = meta.severity || "info";
+    const source = meta.source || "tachyon";
+    const message = meta.message || "";
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["event_record", event, dataJson, severity, source, message],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        logger.error(
+          "[EVENT_CLIENT] record failed with code",
+          res.code,
+          res.stderr
+        );
+        return null;
+      }
+      return parseJsonStdout2(res.stdout, null);
+    } catch (err) {
+      logger.error("[EVENT_CLIENT] record exception:", err);
+      return null;
+    }
+  }
+  poll(options) {
+    const { onEvent, onError, filter = {}, intervalMs = 2e3 } = options;
+    let stopped = false;
+    let timer = null;
+    let lastSeenTs = filter.since_ts ?? Math.floor(Date.now() / 1e3);
+    const seenIds = /* @__PURE__ */ new Set();
+    const pollStep = async () => {
+      if (stopped) return;
+      try {
+        const events = await this.query({
+          ...filter,
+          since_ts: lastSeenTs
+        });
+        if (!stopped && events.length > 0) {
+          for (const ev of events) {
+            const key = ev.id || `${ev.ts}_${ev.event}_${ev.source}`;
+            if (!seenIds.has(key)) {
+              seenIds.add(key);
+              if (ev.ts > lastSeenTs) {
+                lastSeenTs = ev.ts;
+              }
+              try {
+                onEvent(ev);
+              } catch (err) {
+                logger.warn("[EVENT_CLIENT] onEvent handler error:", err);
+              }
+            }
+          }
+          if (seenIds.size > 2e3) {
+            const toRemove = seenIds.size - 1e3;
+            let count = 0;
+            for (const id of seenIds) {
+              seenIds.delete(id);
+              count++;
+              if (count >= toRemove) break;
+            }
+          }
+        }
+      } catch (err) {
+        if (!stopped && onError) {
+          try {
+            onError(err);
+          } catch (_e) {
+          }
+        }
+      } finally {
+        if (!stopped) {
+          timer = setTimeout(pollStep, intervalMs);
+        }
+      }
+    };
+    timer = setTimeout(pollStep, intervalMs);
+    return () => {
+      stopped = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      seenIds.clear();
+    };
+  }
+};
+var eventClient = new EventClient();
+
+// src/tachyon/services/runtimeClient.ts
+function parseJsonStdout3(stdout, fallback) {
+  if (!stdout) return fallback;
+  try {
+    let text = stdout.trim();
+    const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (match) {
+      text = match[0];
+    }
+    return JSON.parse(text);
+  } catch (err) {
+    logger.warn("[RUNTIME_CLIENT] Failed to parse JSON stdout:", err);
+    return fallback;
+  }
+}
+var RuntimeClient = class {
+  constructor(binaryPath = "/usr/bin/tachyon") {
+    this.binaryPath = binaryPath;
+  }
+  // --- UI State Management ---
+  async getUiState(options) {
+    return refreshRuntimeUiState(options);
+  }
+  getCachedUiState() {
+    return getCachedRuntimeUiState();
+  }
+  subscribeUiState(listener) {
+    return subscribeRuntimeUiState(listener);
+  }
+  async getUiCapabilities() {
+    try {
+      const res = await TachyonShellMethods.getUiCapabilities();
+      return res.success ? res.data : void 0;
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] getUiCapabilities error:", err);
+      return void 0;
+    }
+  }
+  // --- Engine & Diagnostics ---
+  async getEngineRuntime() {
+    try {
+      const res = await TachyonShellMethods.getEngineStatus();
+      return res.success ? res.data : void 0;
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] getEngineRuntime error:", err);
+      return void 0;
+    }
+  }
+  async getSingBoxStatus() {
+    try {
+      const res = await TachyonShellMethods.getSingBoxStatus();
+      return res.success ? res.data : void 0;
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] getSingBoxStatus error:", err);
+      return void 0;
+    }
+  }
+  // --- Last Known Good (LKG) State ---
+  async getKnownGoodStatus() {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["known_good", "--json"],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        logger.error("[RUNTIME_CLIENT] known_good status failed:", res.stderr);
+        return null;
+      }
+      return parseJsonStdout3(res.stdout, null);
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] getKnownGoodStatus error:", err);
+      return null;
+    }
+  }
+  async promoteKnownGood(reason = "ui_manual_bless") {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["known_good_promote", reason],
+        timeout: 1e4
+      });
+      return (res.code ?? 0) === 0;
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] promoteKnownGood error:", err);
+      return false;
+    }
+  }
+  async rollbackKnownGood(reason = "ui_manual_rollback") {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["known_good_restore", reason],
+        timeout: 15e3
+      });
+      return (res.code ?? 0) === 0;
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] rollbackKnownGood error:", err);
+      return false;
+    }
+  }
+  // --- Watchdog Escalation & Emergency ---
+  async getEscalationStatus() {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["escalation_status"],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        return null;
+      }
+      return parseJsonStdout3(res.stdout, null);
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] getEscalationStatus error:", err);
+      return null;
+    }
+  }
+  async getEmergencyStatus() {
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["emergency_status"],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        return null;
+      }
+      return parseJsonStdout3(res.stdout, null);
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] getEmergencyStatus error:", err);
+      return null;
+    }
+  }
+  // --- DNS & Routing Inspection ---
+  async resolveDomain(domain) {
+    if (!domain) return null;
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: ["resolve_domain", domain],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        return {
+          domain,
+          resolved: false,
+          error: res.stderr || "Resolution failed"
+        };
+      }
+      return parseJsonStdout3(res.stdout, {
+        domain,
+        resolved: false
+      });
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] resolveDomain error:", err);
+      return {
+        domain,
+        resolved: false,
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+  async explainRoute(client, target, port = 443, proto = "tcp") {
+    if (!target) return null;
+    try {
+      const res = await executeShellCommand({
+        command: this.binaryPath,
+        args: [
+          "route_explain",
+          client || "0.0.0.0",
+          target,
+          String(port),
+          proto
+        ],
+        timeout: 1e4
+      });
+      if ((res.code ?? 0) !== 0) {
+        return null;
+      }
+      return parseJsonStdout3(res.stdout, null);
+    } catch (err) {
+      logger.error("[RUNTIME_CLIENT] explainRoute error:", err);
+      return null;
+    }
+  }
+};
+var runtimeClient = new RuntimeClient();
+
 // src/tachyon/fetchers/fetchServicesInfo.ts
 var latestServicesInfoRequestId = 0;
 function getSettledMethodResponse(scope, result) {

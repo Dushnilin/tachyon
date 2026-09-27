@@ -663,7 +663,8 @@ else if (mode == "query") {
     exit(0);
 }
 else if (mode == "tail") {
-    let count = ARGV[1] != null ? int(ARGV[1]) : 10;
+    let parsed_count = (ARGV[1] != null && ARGV[1] != "") ? int(ARGV[1]) : 10;
+    let count = (parsed_count != null && parsed_count > 0) ? parsed_count : 10;
     let j = journal();
     let entries = j.tail(count);
     print(sprintf("%J\n", entries));

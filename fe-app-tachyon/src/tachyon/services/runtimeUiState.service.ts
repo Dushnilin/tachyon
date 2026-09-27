@@ -12,7 +12,7 @@ const RUNTIME_UI_STATE_ACTIVE_SLOW_THRESHOLD_MS = 4_000;
 // back off to one request per 60s while hidden (a force refresh on
 // visibilitychange covers the moment the tab comes back).
 const RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS = 60_000;
-type RuntimeUiStateListener = (uiState: Tachyon.UiState) => void;
+export type RuntimeUiStateListener = (uiState: Tachyon.UiState) => void;
 
 let runtimeUiStateRefreshPromise: Promise<Tachyon.UiState | undefined> | null =
   null;

@@ -6,3 +6,6 @@ export * from './logger.service';
 export * from './runtimeUiState.service';
 export * from './uiActionNotification.service';
 export * from './localActionOverlay.service';
+export * from './jobClient';
+export * from './eventClient';
+export * from './runtimeClient';

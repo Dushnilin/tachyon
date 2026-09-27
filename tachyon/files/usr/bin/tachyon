@@ -209,6 +209,13 @@ function show_help() {
     print("    job_request_cancel <job_id> [reason]\n");
     print("                            Request graceful cancellation of a background job\n");
     print("    job_gc                  Garbage-collect completed/stale jobs\n");
+    print("    event_query [filter_json]\n");
+    print("                            Query event journal entries by JSON filter\n");
+    print("    event_tail [count]      Tail the last N entries from the event journal\n");
+    print("    event_stats             Show event journal storage statistics\n");
+    print("    event_clear             Clear all entries from the event journal\n");
+    print("    event_record <name> [data_json] [severity] [source] [msg]\n");
+    print("                            Record a new event to the journal\n");
 }
 
 function command_spec(command) {
@@ -401,16 +408,26 @@ function command_spec(command) {
         "known-good-check": [ "service/known_good.uc", "check", 0 ],
         support_bundle: [ "service/support_bundle.uc", "create", 3 ],
         "support-bundle": [ "service/support_bundle.uc", "create", 3 ],
-        job_list: [ "core/jobs.uc", "list", 2 ],
-        "job-list": [ "core/jobs.uc", "list", 2 ],
+        job_list: [ "core/jobs.uc", "list", 0 ],
+        "job-list": [ "core/jobs.uc", "list", 0 ],
         job_query: [ "core/jobs.uc", "query", 1 ],
         "job-query": [ "core/jobs.uc", "query", 1 ],
-        job_cancel: [ "core/jobs.uc", "cancel", 2 ],
-        "job-cancel": [ "core/jobs.uc", "cancel", 2 ],
-        job_request_cancel: [ "core/jobs.uc", "request-cancel", 2 ],
-        "job-request-cancel": [ "core/jobs.uc", "request-cancel", 2 ],
+        job_cancel: [ "core/jobs.uc", "cancel", 1 ],
+        "job-cancel": [ "core/jobs.uc", "cancel", 1 ],
+        job_request_cancel: [ "core/jobs.uc", "request-cancel", 1 ],
+        "job-request-cancel": [ "core/jobs.uc", "request-cancel", 1 ],
         job_gc: [ "core/jobs.uc", "gc", 0 ],
-        "job-gc": [ "core/jobs.uc", "gc", 0 ]
+        "job-gc": [ "core/jobs.uc", "gc", 0 ],
+        event_query: [ "core/events.uc", "query", 0 ],
+        "event-query": [ "core/events.uc", "query", 0 ],
+        event_tail: [ "core/events.uc", "tail", 0 ],
+        "event-tail": [ "core/events.uc", "tail", 0 ],
+        event_stats: [ "core/events.uc", "stats", 0 ],
+        "event-stats": [ "core/events.uc", "stats", 0 ],
+        event_clear: [ "core/events.uc", "clear", 0 ],
+        "event-clear": [ "core/events.uc", "clear", 0 ],
+        event_record: [ "core/events.uc", "record", 1 ],
+        "event-record": [ "core/events.uc", "record", 1 ]
     };
 
     return commands[as_string(command)];
