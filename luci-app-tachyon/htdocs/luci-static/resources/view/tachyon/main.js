@@ -6679,7 +6679,7 @@ function normalizeSingBoxVariantFields(value) {
   const singBoxLx = singBoxExtended && (Boolean(value.sing_box_lx) || versionLx);
   const m = version.match(/^v?(\d+)\.(\d+)/);
   const versionSupportsCertPin = m ? parseInt(m[1], 10) > 1 || parseInt(m[1], 10) === 1 && parseInt(m[2], 10) >= 15 : false;
-  const singBoxCertPin = Boolean(value.sing_box_cert_pin) || versionSupportsCertPin;
+  const singBoxCertPin = Boolean(value.sing_box_cert_pin) || versionLx || Boolean(singBoxLx) || versionSupportsCertPin;
   return {
     ...value,
     sing_box_extended: singBoxExtended ? 1 : 0,

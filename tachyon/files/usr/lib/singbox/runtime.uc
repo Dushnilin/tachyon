@@ -205,12 +205,13 @@ function sing_box_version_is_extended(value) {
 }
 
 function sing_box_version_is_lx(value) {
-    return index(as_string(value), "-lx") >= 0;
+    let s = as_string(value);
+    return s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0;
 }
 
 function sing_box_is_extended(value) {
     value = as_string(value);
-    if (value == "" && command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx")))
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx"))
         return true;
 
     value = value != "" ? value : sing_box_version();
@@ -219,7 +220,9 @@ function sing_box_is_extended(value) {
 
 function sing_box_is_lx(value) {
     value = as_string(value);
-    if (value == "" && command_exists("sing-box") && sing_box_marker_is("lx"))
+    if (sing_box_version_is_lx(value))
+        return true;
+    if (sing_box_marker_is("lx"))
         return true;
 
     return sing_box_version_is_lx(value != "" ? value : sing_box_version());
@@ -240,7 +243,7 @@ function sing_box_supports_tailscale(version, version_output) {
     version = as_string(version);
     version_output = as_string(version_output);
 
-    if (command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")))
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
         return true;
     if (sing_box_is_extended(version) || sing_box_is_lx(version))
         return true;
@@ -253,7 +256,7 @@ function sing_box_supports_xhttp(version, version_output) {
     version = as_string(version);
     version_output = as_string(version_output);
 
-    if (command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")))
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
         return true;
     if (sing_box_is_extended(version) || sing_box_is_lx(version))
         return true;
@@ -264,12 +267,16 @@ function sing_box_supports_xhttp(version, version_output) {
 
 function sing_box_supports_cert_pin(version) {
     version = as_string(version);
+    if (sing_box_marker_is("lx"))
+        return true;
     if (version == "" && command_exists("sing-box")) {
-        if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
+        if (sing_box_marker_is("extended-compressed"))
             version = sing_box_version_state();
         else
             version = sing_box_version();
     }
+    if (sing_box_is_lx(version))
+        return true;
     let m = match(version, /^v?([0-9]+)\.([0-9]+)/);
     if (m) {
         let major = int(m[1]);
@@ -949,7 +956,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
         let stripped = false;
         if (cert_pin_m) {
-            log_message("Installed sing-box rejected tls.certificate_sha256 (requires sing-box 1.15.0+); stripping certificate pins and retrying", "warn");
+            log_message("Installed sing-box rejected tls.certificate_sha256 (requires sing-box 1.15.0+ or sing-box-lx); stripping certificate pins and retrying", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");
             let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
             let found = false;

@@ -495,6 +495,27 @@ function is_sb_1_15_plus_detected(sb_version_val) {
     return false;
 }
 
+function is_sing_box_lx_detected(sb_version_val) {
+    if (sb_version_val == null || sb_version_val == "")
+        sb_version_val = detect_sing_box_version();
+    let s = as_string(sb_version_val);
+    if (s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0)
+        return true;
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
+    return sb_variant_val == "lx" || sb_variant_val == "sing-box-lx";
+}
+
+function is_certificate_sha256_supported(sb_version_val) {
+    if (sb_version_val == null || sb_version_val == "")
+        sb_version_val = detect_sing_box_version();
+    if (is_sing_box_lx_detected(sb_version_val))
+        return true;
+    if (is_sb_1_15_plus_detected(sb_version_val))
+        return true;
+    return false;
+}
+
 function base_config(settings, service_address, runtime_context) {
     runtime_context = object_or_empty(runtime_context);
     let log_level = option(settings, "log_level", "warn");
@@ -1401,7 +1422,7 @@ function add_excluded_clients_route_rule(config, settings) {
 }
 
 function strip_certificate_pins_if_unsupported(config) {
-    if (is_sb_1_15_plus_detected())
+    if (is_certificate_sha256_supported())
         return;
     let stripped = false;
     for (let list in [ config.outbounds, config.endpoints ]) {
@@ -1415,7 +1436,7 @@ function strip_certificate_pins_if_unsupported(config) {
         }
     }
     if (stripped)
-        warn("tls.certificate_sha256 requires sing-box 1.15.0+ (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored\n");
+        warn("tls.certificate_sha256 requires sing-box 1.15.0+ or sing-box-lx (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored\n");
 }
 
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
@@ -1622,6 +1643,8 @@ ctx.download_detour_tag = download_detour_tag;
 ctx.atomic_write_json_file = atomic_write_json_file;
 ctx.is_sb_1_14_plus = is_sb_1_14_plus_detected;
 ctx.is_sb_1_15_plus = is_sb_1_15_plus_detected;
+ctx.is_sing_box_lx = is_sing_box_lx_detected;
+ctx.is_certificate_sha256_supported = is_certificate_sha256_supported;
 
 generator_outbounds.init(ctx);
 generator_routes.init(ctx);
@@ -1670,6 +1693,15 @@ else if (mode == "urltest-filter")
     urltest_filter(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 else if (mode == "object-nonempty")
     exit(object_nonempty_stdin() ? 0 : 1);
+else if (mode == "is-cert-pin-supported")
+    exit(is_certificate_sha256_supported(ARGV[1]) ? 0 : 1);
+else if (mode == "strip-cert-pins") {
+    let cfg = json(fs.readfile("/dev/stdin"));
+    if (type(cfg) == "object") {
+        strip_certificate_pins_if_unsupported(cfg);
+        print(sprintf("%J\n", cfg));
+    }
+}
 else {
     warn("Usage: singbox/generator.uc <operation> ...\n");
     exit(1);

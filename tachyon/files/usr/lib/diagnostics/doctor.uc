@@ -2142,11 +2142,11 @@ function run_doctor_checks_impl(repair) {
         let sb_ver = sing_box_resolved_version();
         let flags = sing_box_capability_flags(sb_ver.version, sb_ver.output);
         if (flags.cert_pin == 1) {
-            doc_check("✅", "TLS certificate pinning", "supported & active (sing-box >= 1.15)", "");
+            doc_check("✅", "TLS certificate pinning", "supported & active (sing-box >= 1.15 or sing-box-lx)", "");
         } else {
             issues++;
-            doc_check("⚠️", "TLS certificate pinning", "ignored (sing-box < 1.15)",
-                "→ обновите sing-box до sing-box-extended в обновлениях для поддержки pin сертификатов");
+            doc_check("⚠️", "TLS certificate pinning", "ignored (sing-box < 1.15 and not sing-box-lx)",
+                "→ обновите sing-box до sing-box-extended или sing-box-lx в обновлениях для поддержки pin сертификатов");
             push(DOCTOR_PLANNED_FIXES, "upgrade_to_singbox_extended");
         }
     }
@@ -3136,7 +3136,7 @@ function local_rule_doctor(pre_res, pre_verify) {
         } else if (index(c.name, "certificate pinning") >= 0 || index(c.name, "pinning") >= 0) {
             push(causes, {
                 probability: 90,
-                cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but installed sing-box does not support certificate_sha256 (requires sing-box 1.15+)" : "Указан TLS pin сертификата для прокси, но установленный sing-box не поддерживает certificate_sha256 (требуется sing-box 1.15+)",
+                cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but installed sing-box does not support certificate_sha256 (requires sing-box 1.15+ or sing-box-lx)" : "Указан TLS pin сертификата для прокси, но установленный sing-box не поддерживает certificate_sha256 (требуется sing-box 1.15+ или sing-box-lx)",
                 fix: "upgrade_to_singbox_extended"
             });
             add_fix("upgrade_to_singbox_extended");
