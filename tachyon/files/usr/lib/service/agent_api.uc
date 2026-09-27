@@ -301,6 +301,25 @@ function handle_known_good_check() {
     ok(kg_mod.check_observation());
 }
 
+function handle_support_bundle(body) {
+    let sb_mod = require("service.support_bundle");
+    if (!sb_mod) {
+        err("Failed to load support_bundle module", 500);
+        return;
+    }
+    let target = body ? as_string(body.target_path || body.path || "") : "";
+    if (target == "") target = null;
+    let opts = {
+        no_archive: body ? (body.no_archive == true) : false
+    };
+    let res = sb_mod.create_bundle(target, opts);
+    if (!res.ok) {
+        err(res.error || "Failed to create support bundle", 500);
+        return;
+    }
+    ok(res);
+}
+
 function handle_tools() {
     ok({
         schema_version: "1.0",
@@ -460,6 +479,19 @@ function handle_tools() {
                         action: { type: "string", enum: ["status", "promote", "rollback", "check"], description: "Action to perform (default: status)" },
                         reason: { type: "string", description: "Reason for promotion or rollback" },
                         force:  { type: "boolean", description: "Force rollback even if active config hash matches" }
+                    }
+                }
+            },
+            {
+                name:         "tachyon_support_bundle",
+                description:  "Generate a sanitized diagnostic support bundle archive (.tar.gz) containing redacted logs, configurations, networking status, and system metrics.",
+                method:       "POST",
+                path:         "/tachyon/agent/v1/support-bundle",
+                input_schema: {
+                    type:       "object",
+                    properties: {
+                        target_path: { type: "string", description: "Target archive path on filesystem (optional, default: /tmp/tachyon-support-bundle-YYYYMMDD-HHMMSS.tar.gz)" },
+                        no_archive:  { type: "boolean", description: "Collect files without packaging into .tar.gz (optional)" }
                     }
                 }
             }
@@ -755,6 +787,32 @@ function handle_openapi() {
                     security: [{ BearerAuth: [] }],
                     responses: { "200": { description: "Operation result" } }
                 }
+            },
+            "/support-bundle": {
+                get: {
+                    summary: "Generate sanitized diagnostic support bundle",
+                    operationId: "getSupportBundle",
+                    responses: { "200": { description: "Support bundle creation result" } }
+                },
+                post: {
+                    summary: "Generate sanitized diagnostic support bundle with options",
+                    operationId: "postSupportBundle",
+                    requestBody: {
+                        required: false,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        target_path: { type: "string" },
+                                        no_archive:  { type: "boolean" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { "200": { description: "Support bundle creation result" } }
+                }
             }
         },
         components: {
@@ -840,6 +898,8 @@ if (method == "GET") {
         handle_known_good_status();
     else if (route == "/known-good/check" || route == "/known-good/check/")
         handle_known_good_check();
+    else if (route == "/support-bundle" || route == "/support-bundle/" || route == "/support_bundle" || route == "/support_bundle/")
+        handle_support_bundle(body);
     else
         err("Unknown endpoint: GET " + route, 404);
 } else if (method == "POST") {
@@ -847,6 +907,8 @@ if (method == "GET") {
         handle_route_explain(path_arg, body);
     } else if (index(route, "/config/plan") == 0) {
         handle_config_plan(path_arg, body);
+    } else if (route == "/support-bundle" || route == "/support-bundle/" || route == "/support_bundle" || route == "/support_bundle/") {
+        handle_support_bundle(body);
     } else if ((route == "/known-good" || route == "/known-good/" || route == "/known_good" || route == "/known_good/") && (body.action == "status" || body.action == "check")) {
         if (body.action == "check")
             handle_known_good_check();

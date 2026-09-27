@@ -657,19 +657,16 @@ function exec_backup(token, chat_id) {
 
 function exec_support_bundle(token, chat_id) {
     send_message(token, chat_id, "⏳ <b>" + t("support_bundle_collecting") + "</b>", "HTML");
-    system(command_from_args([ "ip", "route" ]) + " > /etc/.tachyon/ip_route.txt");
-    system(command_from_args([ "logread" ]) + " > /etc/.tachyon/logread.txt");
-    let file_path = "/etc/.tachyon/support_bundle.tar.gz";
-    command_status(command_from_args([ "tar", "-czf", file_path, "/etc/config/tachyon", "/var/etc/tachyon", "/etc/config/network", "/etc/config/firewall", "/tmp/dhcp.leases", "/etc/.tachyon/ip_route.txt", "/etc/.tachyon/logread.txt" ]) + " 2>/dev/null");
+    let sb_mod = require("service.support_bundle");
+    let res = sb_mod ? sb_mod.create_bundle() : { ok: false, error: "Module unavailable" };
     
-    if (fs.stat(file_path)) {
-        send_document(token, chat_id, file_path);
-        fs.unlink(file_path);
+    if (res.ok && res.bundle_path && fs.stat(res.bundle_path)) {
+        send_document(token, chat_id, res.bundle_path);
+        try { fs.unlink(res.bundle_path); } catch(e) {}
     } else {
-        send_message(token, chat_id, "❌ <b>" + t("support_bundle_error") + "</b>", "HTML");
+        let err_msg = res.error ? (": " + escape_html(res.error)) : "";
+        send_message(token, chat_id, "❌ <b>" + t("support_bundle_error") + err_msg + "</b>", "HTML");
     }
-    // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
-    try { fs.unlink("/etc/.tachyon/ip_route.txt"); fs.unlink("/etc/.tachyon/logread.txt"); } catch(e) {}
 }
 
 function exec_close_connections(token, chat_id) {

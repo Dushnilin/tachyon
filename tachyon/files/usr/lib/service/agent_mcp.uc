@@ -220,6 +220,18 @@ let TOOLS = [
                 force:  { type: "boolean", description: "Force rollback even if active config hash matches" }
             }
         }
+    },
+    {
+        name: "tachyon_support_bundle",
+        description: "Generate a sanitized diagnostic support bundle archive (.tar.gz) containing redacted logs, configurations, networking status, and system metrics.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                target_path: { type: "string", description: "Target archive path on filesystem (optional, default: /tmp/tachyon-support-bundle-YYYYMMDD-HHMMSS.tar.gz)" },
+                no_archive:  { type: "boolean", description: "Collect files without packaging into .tar.gz (optional)" }
+            }
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false }
     }
 ];
 
@@ -688,6 +700,21 @@ function execute_known_good(args) {
     return json_result(kg_mod.get_status());
 }
 
+function execute_support_bundle(args) {
+    args = args || {};
+    let sb_mod = require("service.support_bundle");
+    let target = as_string(args.target_path || args.path || "");
+    if (target == "") target = null;
+    let opts = {
+        no_archive: args.no_archive == true
+    };
+    let res = sb_mod.create_bundle(target, opts);
+    if (!res.ok) {
+        return error_result(res.error || "Failed to create support bundle");
+    }
+    return json_result(res);
+}
+
 function execute_tool(name, args) {
     try {
         switch (name) {
@@ -721,6 +748,8 @@ function execute_tool(name, args) {
             return execute_config_plan(args);
         case "tachyon_known_good":
             return execute_known_good(args);
+        case "tachyon_support_bundle":
+            return execute_support_bundle(args);
         default:
             return { content: [{ type: "text", text: "Unknown tool: " + name }], isError: true };
         }

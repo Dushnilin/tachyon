@@ -477,6 +477,11 @@ function check_known_good_observation() {
     return kg_mod.check_observation();
 }
 
+function create_support_bundle(target_path, options) {
+    let sb_mod = require("service.support_bundle");
+    return sb_mod.create_bundle(target_path, options);
+}
+
 return {
     get_clash_url,
     get_clash_secret,
@@ -506,5 +511,6 @@ return {
     get_known_good_status,
     promote_known_good,
     rollback_known_good,
-    check_known_good_observation
+    check_known_good_observation,
+    create_support_bundle
 };
