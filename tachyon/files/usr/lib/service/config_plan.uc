@@ -870,6 +870,22 @@ function selftest() {
     return failed == 0 ? 0 : 1;
 }
 
+function module_exports() {
+    return {
+        plan,
+        compute_uci_diff,
+        analyze_subsystem_impact,
+        validate_uci_semantics,
+        load_candidate_uci,
+        parse_uci_text_to_dict,
+        format_text_plan,
+        selftest
+    };
+}
+
+if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
+    return module_exports();
+
 // ─── CLI Entrypoint ───────────────────────────────────────────────────────────
 
 let mode = ARGV[0] || "";
@@ -910,13 +926,4 @@ if (mode == "selftest") {
     }
 }
 
-return {
-    plan,
-    compute_uci_diff,
-    analyze_subsystem_impact,
-    validate_uci_semantics,
-    load_candidate_uci,
-    parse_uci_text_to_dict,
-    format_text_plan,
-    selftest
-};
+return module_exports();

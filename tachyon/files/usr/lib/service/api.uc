@@ -457,6 +457,26 @@ function get_config_plan(candidate, options) {
     return config_plan_mod.plan(candidate, options);
 }
 
+function get_known_good_status() {
+    let kg_mod = require("service.known_good");
+    return kg_mod.get_status();
+}
+
+function promote_known_good(reason, metrics) {
+    let kg_mod = require("service.known_good");
+    return kg_mod.promote(reason, metrics);
+}
+
+function rollback_known_good(reason, options) {
+    let kg_mod = require("service.known_good");
+    return kg_mod.rollback_to_known_good(reason, options);
+}
+
+function check_known_good_observation() {
+    let kg_mod = require("service.known_good");
+    return kg_mod.check_observation();
+}
+
 return {
     get_clash_url,
     get_clash_secret,
@@ -482,5 +502,9 @@ return {
     reload_tachyon,
     toggle_section,
     route_explain,
-    get_config_plan
+    get_config_plan,
+    get_known_good_status,
+    promote_known_good,
+    rollback_known_good,
+    check_known_good_observation
 };

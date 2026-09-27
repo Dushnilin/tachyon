@@ -13,6 +13,11 @@ try {
     reconciler = require("service.reconciler");
 } catch (e) {}
 
+let known_good = null;
+try {
+    known_good = require("service.known_good");
+} catch (e) {}
+
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = "/var/run/tachyon_watchdog.pid";
@@ -719,7 +724,19 @@ function settle_recovery(key, outcome) {
     note_escalation_outcome(watch.reason, outcome);
 
     if (outcome == "failed" && next_ladder_level(watch.reason) >= LADDER_L5_EMERGENCY) {
-        trigger_emergency_failsafe(watch.reason, "Recovery watch expired at L4 restart");
+        let rolled_back = false;
+        if (known_good && known_good.rollback_to_known_good) {
+            try {
+                let rb = known_good.rollback_to_known_good("watchdog_recovery_failed_" + as_string(watch.reason));
+                if (rb && rb.ok) {
+                    rolled_back = true;
+                    log_message(sprintf("Watchdog: successfully restored Last Known Good config before failsafe (reason=%s)", as_string(watch.reason)), "warn");
+                }
+            } catch (e) {}
+        }
+        if (!rolled_back) {
+            trigger_emergency_failsafe(watch.reason, "Recovery watch expired at L4 restart");
+        }
     }
 
     let incident = watch.incident;
@@ -884,7 +901,19 @@ function execute_escalation_level(key, subsystem, reason, incident) {
 
     // Level 5: Emergency failsafe
     if (lvl >= LADDER_L5_EMERGENCY) {
-        trigger_emergency_failsafe(reason, "Max escalation level reached");
+        let rolled_back = false;
+        if (known_good && known_good.rollback_to_known_good) {
+            try {
+                let rb = known_good.rollback_to_known_good("watchdog_l5_escalation_" + as_string(reason));
+                if (rb && rb.ok) {
+                    rolled_back = true;
+                    log_message(sprintf("Watchdog: successfully restored Last Known Good config at L5 (reason=%s)", as_string(reason)), "warn");
+                }
+            } catch (e) {}
+        }
+        if (!rolled_back) {
+            trigger_emergency_failsafe(reason, "Max escalation level reached");
+        }
         return false;
     }
 
@@ -2216,11 +2245,18 @@ function worker() {
         safe_call(settle_expired_recoveries, "settle_expired_recoveries");
     }
 
+    function check_known_good_observation() {
+        if (known_good && known_good.check_observation) {
+            try { known_good.check_observation(); } catch (e) {}
+        }
+    }
+
     function perform_normal_checks() {
         controller.probe_normal(current_ctx);
         safe_call(smart_detect_process_pending, "smart_detect_process_pending");
         safe_call(export_metrics, "export_metrics");
         safe_call(ai_export_status, "ai_export_status");
+        safe_call(check_known_good_observation, "check_known_good_observation");
     }
 
 // ── Mixed proxy port (4534) self-healing ─────────────────────────────────────

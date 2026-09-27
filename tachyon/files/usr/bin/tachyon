@@ -193,6 +193,12 @@ function show_help() {
     print("    leak_check_status <id>  Poll async leak check status\n");
     print("    check_ip_leak           Check IP leak status (JSON)\n");
     print("    check_dns_leak          Check DNS leak status via bash.ws (JSON)\n");
+    print("    known_good [--json]     Show Last Known Good status and manifest\n");
+    print("    known_good_promote [reason]\n");
+    print("                            Promote active configuration to Last Known Good\n");
+    print("    known_good_restore [reason]\n");
+    print("                            Rollback configuration to Last Known Good\n");
+    print("    known_good_check        Probe observation window and auto-promote if ready\n");
 }
 
 function command_spec(command) {
@@ -370,7 +376,19 @@ function command_spec(command) {
         config_plan: [ "service/config_plan.uc", "plan", 2 ],
         "config-plan": [ "service/config_plan.uc", "plan", 2 ],
         config_validate: [ "service/config_plan.uc", "validate", 1 ],
-        "config-validate": [ "service/config_plan.uc", "validate", 1 ]
+        "config-validate": [ "service/config_plan.uc", "validate", 1 ],
+        known_good: [ "service/known_good.uc", "status", 2 ],
+        "known-good": [ "service/known_good.uc", "status", 2 ],
+        known_good_status: [ "service/known_good.uc", "status", 2 ],
+        "known-good-status": [ "service/known_good.uc", "status", 2 ],
+        known_good_promote: [ "service/known_good.uc", "promote", 1 ],
+        "known-good-promote": [ "service/known_good.uc", "promote", 1 ],
+        known_good_restore: [ "service/known_good.uc", "restore", 1 ],
+        "known-good-restore": [ "service/known_good.uc", "restore", 1 ],
+        known_good_rollback: [ "service/known_good.uc", "rollback", 1 ],
+        "known-good-rollback": [ "service/known_good.uc", "rollback", 1 ],
+        known_good_check: [ "service/known_good.uc", "check", 0 ],
+        "known-good-check": [ "service/known_good.uc", "check", 0 ]
     };
 
     return commands[as_string(command)];
@@ -440,6 +458,29 @@ function main() {
         } else {
             push(args, "apply");
         }
+        return normalize_status(system(command_from_args(args)));
+    }
+
+    // known_good command passes all subcommand and flags verbatim
+    if (command == "known_good" || command == "known-good") {
+        let module = module_path("service/known_good.uc");
+        if (!file_readable(module)) {
+            warn("Error: service/known_good.uc is missing\n");
+            return 1;
+        }
+        let args = [ "ucode", "-L", LIB_DIR, "--", module ];
+        let has_subcommand = false;
+        if (start_idx + 1 < length(ARGV)) {
+            let first_arg = ARGV[start_idx + 1];
+            if (substr(first_arg, 0, 1) != "-") {
+                has_subcommand = true;
+            }
+        }
+        if (!has_subcommand) {
+            push(args, "status");
+        }
+        for (let i = start_idx + 1; i < length(ARGV); i++)
+            push(args, ARGV[i]);
         return normalize_status(system(command_from_args(args)));
     }
 
