@@ -208,6 +208,18 @@ let TOOLS = [
             }
         },
         annotations: { readOnlyHint: true }
+    },
+    {
+        name: "tachyon_known_good",
+        description: "Inspect, promote, rollback, or check Last Known Good (LKG) configuration state and observation window.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                action: { type: "string", enum: ["status", "promote", "rollback", "check"], description: "Action to perform (default: status)" },
+                reason: { type: "string", description: "Reason for promotion or rollback" },
+                force:  { type: "boolean", description: "Force rollback even if active config hash matches" }
+            }
+        }
     }
 ];
 
@@ -660,6 +672,22 @@ function execute_config_plan(args) {
     return json_result(res);
 }
 
+function execute_known_good(args) {
+    args = args || {};
+    let kg_mod = require("service.known_good");
+    let action = args.action || "status";
+    if (action == "promote") {
+        return json_result(kg_mod.promote(args.reason || "mcp_promote", args.metrics || {}));
+    }
+    if (action == "rollback" || action == "restore") {
+        return json_result(kg_mod.rollback_to_known_good(args.reason || "mcp_rollback", { force: args.force == true }));
+    }
+    if (action == "check") {
+        return json_result(kg_mod.check_observation());
+    }
+    return json_result(kg_mod.get_status());
+}
+
 function execute_tool(name, args) {
     try {
         switch (name) {
@@ -691,6 +719,8 @@ function execute_tool(name, args) {
             return execute_apply_fix(args);
         case "tachyon_config_plan":
             return execute_config_plan(args);
+        case "tachyon_known_good":
+            return execute_known_good(args);
         default:
             return { content: [{ type: "text", text: "Unknown tool: " + name }], isError: true };
         }

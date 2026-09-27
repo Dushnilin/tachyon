@@ -269,6 +269,38 @@ function handle_config_plan(path_str, body) {
     ok(plan_res);
 }
 
+function handle_known_good_status() {
+    let kg_mod = require("service.known_good");
+    ok(kg_mod.get_status());
+}
+
+function handle_known_good_promote(body) {
+    let kg_mod = require("service.known_good");
+    let reason = body.reason || "agent_api_promote";
+    let res = kg_mod.promote(reason, body.metrics || {});
+    if (res.ok || res.success) {
+        ok(res);
+    } else {
+        err(res.error || "Failed to promote known good configuration", 400);
+    }
+}
+
+function handle_known_good_rollback(body) {
+    let kg_mod = require("service.known_good");
+    let reason = body.reason || "agent_api_rollback";
+    let res = kg_mod.rollback_to_known_good(reason, { force: body.force == true, reload: body.reload != false });
+    if (res.ok || res.success) {
+        ok(res);
+    } else {
+        err(res.error || "Failed to rollback to known good configuration", 400);
+    }
+}
+
+function handle_known_good_check() {
+    let kg_mod = require("service.known_good");
+    ok(kg_mod.check_observation());
+}
+
 function handle_tools() {
     ok({
         schema_version: "1.0",
@@ -414,6 +446,20 @@ function handle_tools() {
                     properties: {
                         candidate:     { type: "object", description: "Candidate configuration object or section dictionary" },
                         candidate_raw: { type: "string", description: "Candidate configuration as raw UCI text" }
+                    }
+                }
+            },
+            {
+                name:         "tachyon_known_good",
+                description:  "Inspect, promote, rollback, or check Last Known Good (LKG) configuration state and observation window.",
+                method:       "POST",
+                path:         "/tachyon/agent/v1/known-good",
+                input_schema: {
+                    type:       "object",
+                    properties: {
+                        action: { type: "string", enum: ["status", "promote", "rollback", "check"], description: "Action to perform (default: status)" },
+                        reason: { type: "string", description: "Reason for promotion or rollback" },
+                        force:  { type: "boolean", description: "Force rollback even if active config hash matches" }
                     }
                 }
             }
@@ -696,6 +742,19 @@ function handle_openapi() {
                     },
                     responses: { "200": { description: "Configuration plan and validation report" } }
                 }
+            },
+            "/known-good": {
+                get: {
+                    summary: "Get Last Known Good state and observation status",
+                    operationId: "getKnownGoodStatus",
+                    responses: { "200": { description: "Known good status report" } }
+                },
+                post: {
+                    summary: "Manage Last Known Good state (promote, rollback, check)",
+                    operationId: "postKnownGood",
+                    security: [{ BearerAuth: [] }],
+                    responses: { "200": { description: "Operation result" } }
+                }
             }
         },
         components: {
@@ -777,6 +836,10 @@ if (method == "GET") {
         handle_route_explain(path_arg, body);
     else if (index(route, "/config/plan") == 0)
         handle_config_plan(path_arg, body);
+    else if (route == "/known-good" || route == "/known-good/" || route == "/known_good" || route == "/known_good/")
+        handle_known_good_status();
+    else if (route == "/known-good/check" || route == "/known-good/check/")
+        handle_known_good_check();
     else
         err("Unknown endpoint: GET " + route, 404);
 } else if (method == "POST") {
@@ -784,6 +847,11 @@ if (method == "GET") {
         handle_route_explain(path_arg, body);
     } else if (index(route, "/config/plan") == 0) {
         handle_config_plan(path_arg, body);
+    } else if ((route == "/known-good" || route == "/known-good/" || route == "/known_good" || route == "/known_good/") && (body.action == "status" || body.action == "check")) {
+        if (body.action == "check")
+            handle_known_good_check();
+        else
+            handle_known_good_status();
     } else if (!check_write_auth(bearer)) {
         err("Unauthorized. Configure agent_api_token in UCI and use Bearer token.", 401);
     } else {
@@ -801,6 +869,21 @@ if (method == "GET") {
             handle_domain_add(body);
         else if (route == "/ai-doctor/fix" || route == "/ai-doctor/fix/")
             handle_ai_doctor_fix(body);
+        else if (route == "/known-good/promote" || route == "/known-good/promote/")
+            handle_known_good_promote(body);
+        else if (route == "/known-good/rollback" || route == "/known-good/rollback/")
+            handle_known_good_rollback(body);
+        else if (route == "/known-good" || route == "/known-good/" || route == "/known_good" || route == "/known_good/") {
+            let action = body.action || "status";
+            if (action == "promote")
+                handle_known_good_promote(body);
+            else if (action == "rollback" || action == "restore")
+                handle_known_good_rollback(body);
+            else if (action == "check")
+                handle_known_good_check();
+            else
+                handle_known_good_status();
+        }
         else
             err("Unknown endpoint: POST " + route, 404);
     }

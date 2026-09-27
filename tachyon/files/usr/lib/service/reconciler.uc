@@ -60,6 +60,9 @@ try { transaction = require("core.transaction"); } catch (e) {}
 let engine_core = null;
 try { engine_core = require("core.engine"); } catch (e) {}
 
+let known_good = null;
+try { known_good = require("service.known_good"); } catch (e) {}
+
 // ---------------------------------------------------------------------------
 // Constants & Definitions
 // ---------------------------------------------------------------------------
@@ -987,6 +990,9 @@ function reconcile(opts) {
     let initial_plan = plan(opts);
     if (initial_plan.clean) {
         log("Reconciler: system state is fully clean, no remediation needed", "debug");
+        if (known_good && known_good.check_observation) {
+            try { known_good.check_observation(); } catch (e) {}
+        }
         return {
             ok: true,
             changed: false,
@@ -1058,14 +1064,47 @@ function reconcile(opts) {
     let final_plan = plan(opts);
     let success = length(failed) == 0 && (target_subsystem != "" || final_plan.clean);
 
-    log(sprintf("Reconciler: finished reconciliation. Repaired: [%s], Failed: [%s], Remaining drifts: %d",
-        join(", ", repaired), join(", ", failed), final_plan.drift_count), success ? "info" : "warn");
+    let rolled_back = false;
+    let rollback_result = null;
+    if (!success && known_good && known_good.rollback_to_known_good && opts.allow_rollback != false) {
+        let has_critical_failure = false;
+        for (let f in failed) {
+            if (f == SUBSYSTEM_ENGINE || f == SUBSYSTEM_NFTABLES || f == SUBSYSTEM_ROUTING) {
+                has_critical_failure = true;
+                break;
+            }
+        }
+        if (has_critical_failure) {
+            log("Reconciler: critical subsystem repair failed, attempting rollback to Last Known Good...", "warn");
+            try {
+                rollback_result = known_good.rollback_to_known_good("reconcile_repair_failed");
+                if (rollback_result && rollback_result.ok) {
+                    rolled_back = true;
+                    log("Reconciler: successfully rolled back to Last Known Good configuration", "info");
+                } else if (rollback_result) {
+                    log(sprintf("Reconciler: rollback not executed: %s", rollback_result.error || rollback_result.reason || "unknown"), "warn");
+                }
+            } catch (e) {
+                log(sprintf("Reconciler: exception during rollback: %s", as_string(e)), "warn");
+            }
+        }
+    }
+
+    if (success && final_plan.clean && known_good && known_good.check_observation) {
+        try { known_good.check_observation(); } catch (e) {}
+    }
+
+    log(sprintf("Reconciler: finished reconciliation. Repaired: [%s], Failed: [%s], Remaining drifts: %d%s",
+        join(", ", repaired), join(", ", failed), final_plan.drift_count,
+        rolled_back ? " (rolled back to LKG)" : ""), success ? "info" : "warn");
 
     return {
         ok: success,
-        changed: length(repaired) > 0,
+        changed: length(repaired) > 0 || rolled_back,
         repaired: repaired,
         failed: failed,
+        rolled_back: rolled_back,
+        rollback_result: rollback_result,
         remaining_drifts: final_plan.drifts
     };
 }
