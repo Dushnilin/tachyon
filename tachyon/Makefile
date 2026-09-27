@@ -232,6 +232,10 @@ define Package/tachyon/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/tachyon-steer-zapret $(1)/etc/init.d/tachyon-steer-zapret
 
+	# Official release signing public keys
+	$(INSTALL_DIR) $(1)/etc/tachyon/keys
+	$(INSTALL_DATA) ./files/etc/tachyon/keys/* $(1)/etc/tachyon/keys/
+
 	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' \
 		-e 's/__COMPILED_COMMIT_SHA__/$(shell git -C $(TOPDIR)/../ rev-parse --short HEAD 2>/dev/null || echo unknown)/g' \
 		$(1)/usr/lib/tachyon/core/constants.uc
