@@ -199,6 +199,8 @@ function show_help() {
     print("    known_good_restore [reason]\n");
     print("                            Rollback configuration to Last Known Good\n");
     print("    known_good_check        Probe observation window and auto-promote if ready\n");
+    print("    support_bundle [path] [--json] [--no-archive]\n");
+    print("                            Generate sanitized support bundle archive\n");
 }
 
 function command_spec(command) {
@@ -388,7 +390,9 @@ function command_spec(command) {
         known_good_rollback: [ "service/known_good.uc", "rollback", 1 ],
         "known-good-rollback": [ "service/known_good.uc", "rollback", 1 ],
         known_good_check: [ "service/known_good.uc", "check", 0 ],
-        "known-good-check": [ "service/known_good.uc", "check", 0 ]
+        "known-good-check": [ "service/known_good.uc", "check", 0 ],
+        support_bundle: [ "service/support_bundle.uc", "create", 3 ],
+        "support-bundle": [ "service/support_bundle.uc", "create", 3 ]
     };
 
     return commands[as_string(command)];
@@ -478,6 +482,29 @@ function main() {
         }
         if (!has_subcommand) {
             push(args, "status");
+        }
+        for (let i = start_idx + 1; i < length(ARGV); i++)
+            push(args, ARGV[i]);
+        return normalize_status(system(command_from_args(args)));
+    }
+
+    // support_bundle command passes all subcommand and flags verbatim
+    if (command == "support_bundle" || command == "support-bundle") {
+        let module = module_path("service/support_bundle.uc");
+        if (!file_readable(module)) {
+            warn("Error: service/support_bundle.uc is missing\n");
+            return 1;
+        }
+        let args = [ "ucode", "-L", LIB_DIR, "--", module ];
+        let has_subcommand = false;
+        if (start_idx + 1 < length(ARGV)) {
+            let first_arg = ARGV[start_idx + 1];
+            if (substr(first_arg, 0, 1) != "-" && (first_arg == "create" || first_arg == "selftest")) {
+                has_subcommand = true;
+            }
+        }
+        if (!has_subcommand) {
+            push(args, "create");
         }
         for (let i = start_idx + 1; i < length(ARGV); i++)
             push(args, ARGV[i]);
