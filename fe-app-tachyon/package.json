@@ -4,7 +4,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "contracts:generate": "node ../tools/generate_rpc_contract.js",
+    "contracts:generate": "node ../tools/generate_rpc_contract.js && prettier --write src/contracts/generated/rpcContract.ts",
     "format": "prettier --write src",
     "format:js": "prettier --write ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon",
     "lint": "eslint src --ext .ts,.tsx",
