@@ -96,8 +96,9 @@ fi
 # 5. Native Tailscale has no sing-box endpoint/route rule: the item must still
 # report runtime_ok=1 (TCH-1037), while the same empty runtime without the
 # native flag must keep reporting a failure.
+# NB: no negative argument values here — ucode's CLI parses "-1" as an option.
 native_out="$(ucode -L "$TACHYON_LIB" "$STATUS_UC" inbound-item-json '{}' 'ts' 'Head' 'tailscale' 'native' \
-  'server-Head-in' '0.0.0.0' '' '' '' 'tailscale' 'tcp' '-1' '0' '-1' '0' '' '1' '-1' '-1' '-1' '1')"
+  'server-Head-in' '0.0.0.0' '' '' '' 'tailscale' 'tcp' '0' '0' '0' '0' '' '1' '0' '0' '0' '1')"
 printf '%s' "$native_out" | ucode -e '
 let fs = require("fs");
 let d = json(fs.readfile("/dev/stdin"));
@@ -108,7 +109,7 @@ if (d.routing_mode != "native")
 ' || fail "native Tailscale inbound item check failed"
 
 non_native_out="$(ucode -L "$TACHYON_LIB" "$STATUS_UC" inbound-item-json '{}' 'ts' 'Head' 'tailscale' 'rules' \
-  'server-Head-in' '0.0.0.0' '' '' '' 'tailscale' 'tcp' '-1' '0' '-1' '0' '' '0' '-1' '-1' '-1' '0')"
+  'server-Head-in' '0.0.0.0' '' '' '' 'tailscale' 'tcp' '0' '0' '0' '0' '' '0' '0' '0' '0' '0')"
 printf '%s' "$non_native_out" | ucode -e '
 let fs = require("fs");
 let d = json(fs.readfile("/dev/stdin"));
