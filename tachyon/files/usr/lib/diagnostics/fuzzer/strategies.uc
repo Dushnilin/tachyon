@@ -1772,6 +1772,7 @@ function module_exports() {
         BUILTIN_PRESETS_FILE,
         USER_PRESETS_FILE,
         PRESETS_MIRRORS,
+        validate_strategy_args,
         presets_file_candidates,
         load_presets_file,
         normalize_preset_entry,
