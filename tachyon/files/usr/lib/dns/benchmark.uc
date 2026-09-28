@@ -29,6 +29,7 @@ const CANDIDATE_SERVERS = [
     // --- Yandex DNS ---
     { id: "yandex_udp", provider: "Yandex", type: "udp", address: "77.88.8.8", ip: "77.88.8.8", tag: "Primary" },
     { id: "yandex_udp2", provider: "Yandex", type: "udp", address: "77.88.8.1", ip: "77.88.8.1", tag: "Secondary" },
+    { id: "yandex_doh", provider: "Yandex", type: "doh", address: "https://common.dot.dns.yandex.net/dns-query", ip: "77.88.8.8", tag: "DoH Unfiltered" },
 
     // --- Cloudflare DNS ---
     { id: "cloudflare_udp", provider: "Cloudflare", type: "udp", address: "1.1.1.1", ip: "1.1.1.1", tag: "Primary" },
@@ -62,7 +63,26 @@ const CANDIDATE_SERVERS = [
 
     // --- OpenDNS ---
     { id: "opendns_udp", provider: "OpenDNS", type: "udp", address: "208.67.222.222", ip: "208.67.222.222", tag: "Standard" },
-    { id: "opendns_doh", provider: "OpenDNS", type: "doh", address: "https://doh.opendns.com/dns-query", ip: "208.67.222.222", tag: "DoH Encrypted" }
+    { id: "opendns_doh", provider: "OpenDNS", type: "doh", address: "https://doh.opendns.com/dns-query", ip: "208.67.222.222", tag: "DoH Encrypted" },
+
+    // Дополнительные публичные DoH: https://dnsspeedtest.online/.
+    // Family/AdBlock-профили не добавляем; имена CDN разрешаются через bootstrap DNS.
+    { id: "alidns_doh", provider: "AliDNS", type: "doh", address: "https://dns.alidns.com/dns-query", ip: "", tag: "DoH" },
+    { id: "dnssb_doh", provider: "DNS.SB", type: "doh", address: "https://doh.dns.sb/dns-query", ip: "185.222.222.222", tag: "DoH" },
+    { id: "dnspod_doh", provider: "DNSPod", type: "doh", address: "https://dns.pub/dns-query", ip: "", tag: "DoH" },
+    { id: "nextdns_doh", provider: "NextDNS", type: "doh", address: "https://dns.nextdns.io", ip: "", tag: "DoH Unconfigured" },
+    { id: "dns4eu_doh", provider: "DNS4EU", type: "doh", address: "https://unfiltered.joindns4.eu/dns-query", ip: "86.54.11.100", tag: "DoH Unfiltered" },
+    { id: "360_doh", provider: "360 DNS", type: "doh", address: "https://doh.360.cn/dns-query", ip: "", tag: "DoH" },
+    { id: "canadian_shield_doh", provider: "CIRA Canadian Shield", type: "doh", address: "https://private.canadianshield.cira.ca/dns-query", ip: "", tag: "DoH Private" },
+    { id: "digitale_gesellschaft_doh", provider: "Digitale Gesellschaft", type: "doh", address: "https://dns.digitale-gesellschaft.ch/dns-query", ip: "", tag: "DoH" },
+    { id: "restena_doh", provider: "Restena", type: "doh", address: "https://dnspub.restena.lu/dns-query", ip: "", tag: "DoH" },
+    { id: "iij_doh", provider: "IIJ", type: "doh", address: "https://public.dns.iij.jp/dns-query", ip: "", tag: "DoH" },
+    { id: "libredns_doh", provider: "LibreDNS", type: "doh", address: "https://doh.libredns.gr/dns-query", ip: "", tag: "DoH" },
+    { id: "switch_doh", provider: "SWITCH", type: "doh", address: "https://dns.switch.ch/dns-query", ip: "", tag: "DoH" },
+    { id: "applied_privacy_doh", provider: "Applied Privacy", type: "doh", address: "https://doh.applied-privacy.net/query", ip: "", tag: "DoH" },
+    { id: "uncensoreddns_doh", provider: "UncensoredDNS", type: "doh", address: "https://anycast.uncensoreddns.org/dns-query", ip: "", tag: "DoH" },
+    { id: "rethinkdns_doh", provider: "RethinkDNS", type: "doh", address: "https://sky.rethinkdns.com/dns-query", ip: "", tag: "DoH" },
+    { id: "xfinity_doh", provider: "Comcast Xfinity", type: "doh", address: "https://doh.xfinity.com/dns-query", ip: "", tag: "DoH" }
 ];
 
 const TEST_DOMAINS = [
@@ -664,7 +684,12 @@ function start_async() {
     let existing = read_state();
     if (existing && existing.running === true) {
         let age = now_seconds() - (existing.started_at || 0);
-        if (age < 90) {
+        // Расширенный список может тестироваться дольше 90 секунд.
+        let pid = int(trim(as_string(fs.readfile(BENCHMARK_PID_FILE))));
+        let cmdline = pid > 0 ? as_string(fs.readfile('/proc/' + pid + '/cmdline')) : '';
+        let worker_running = index(cmdline, LIB_DIR + '/dns/benchmark.uc') >= 0 &&
+            index(split(cmdline, sprintf('%c', 0)), 'worker') >= 0;
+        if (worker_running || age < 90) {
             print(sprintf("%J\n", { success: true, message: "DNS benchmark is already running", state: existing }));
             return 0;
         }

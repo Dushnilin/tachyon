@@ -6,8 +6,23 @@ TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 BENCHMARK="$TACHYON_LIB/dns/benchmark.uc"
 BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 WORK_DIR="$(mktemp -d)"
+GUARD_WORKER_PID=""
 
 cleanup() {
+  if [ -n "$GUARD_WORKER_PID" ]; then
+    kill "$GUARD_WORKER_PID" 2>/dev/null || true
+    wait "$GUARD_WORKER_PID" 2>/dev/null || true
+  fi
+  # При регрессии start_async() может создать второй worker тестового fixture.
+  local pid_file="$WORK_DIR/guard-state/dns-benchmark.pid"
+  local spawned_pid=""
+  if [ -f "$pid_file" ]; then
+    spawned_pid="$(cat "$pid_file")"
+    if [[ "$spawned_pid" =~ ^[0-9]+$ ]] &&
+      grep -aqF "$WORK_DIR/guard-lib/dns/benchmark.uc" "/proc/$spawned_pid/cmdline" 2>/dev/null; then
+      kill "$spawned_pid" 2>/dev/null || true
+    fi
+  fi
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -35,8 +50,23 @@ let has_udp = false;
 let has_doh = false;
 let has_yandex = false;
 let has_cf = false;
+let ids = {};
+let addresses = {};
 
 for (let c in candidates) {
+    if (type(c.id) != "string" || c.id == "" || ids[c.id] ||
+        type(c.address) != "string" || c.address == "" || addresses[c.address]) {
+        print("ERR: candidate IDs and addresses must be nonempty and unique\n");
+        exit(4);
+    }
+    if ((c.type != "udp" && c.type != "doh") ||
+        (c.type == "doh" && !match(c.address, /^https:\/\/[^\/]+/)) ||
+        type(c.ip) != "string") {
+        print("ERR: invalid candidate transport, DoH URL or fallback IP\n");
+        exit(5);
+    }
+    ids[c.id] = true;
+    addresses[c.address] = true;
     if (c.type == "udp") has_udp = true;
     if (c.type == "doh") has_doh = true;
     if (c.provider == "Yandex") has_yandex = true;
@@ -133,5 +163,45 @@ grep -Fq "dns_benchmark_async" "$BIN" || fail "/usr/bin/tachyon must register dn
 grep -Fq "dns_benchmark_status" "$BIN" || fail "/usr/bin/tachyon must register dns_benchmark_status"
 grep -Fq "dns_benchmark_stop" "$BIN" || fail "/usr/bin/tachyon must register dns_benchmark_stop"
 grep -Fq "dns_benchmark_apply" "$BIN" || fail "/usr/bin/tachyon must register dns_benchmark_apply"
+
+# ─── 5. Долгий активный worker не должен запускаться повторно ───────────────
+# Fixture работает отдельным процессом; DNS/UCI/сервисы в этом тесте не трогаем.
+mkdir -p "$WORK_DIR/guard-lib/dns" "$WORK_DIR/guard-state"
+printf 'sleep(60000);\n' >"$WORK_DIR/guard-lib/dns/benchmark.uc"
+ucode "$WORK_DIR/guard-lib/dns/benchmark.uc" worker &
+GUARD_WORKER_PID=$!
+
+ready=false
+for ((i = 0; i < 100; i++)); do
+  if grep -aqF "$WORK_DIR/guard-lib/dns/benchmark.uc" "/proc/$GUARD_WORKER_PID/cmdline"; then
+    ready=true
+    break
+  fi
+  sleep 0.01
+done
+[ "$ready" = true ] || fail "guard worker fixture did not start"
+
+TACHYON_UI_STATE_DIR="$WORK_DIR/guard-state" ucode -e '
+let fs = require("fs");
+fs.writefile(getenv("TACHYON_UI_STATE_DIR") + "/dns-benchmark-state.json",
+    sprintf("%J", { running: true, started_at: clock()[0] - 180, progress: 55, results: [] }));
+'
+printf '%s' "$GUARD_WORKER_PID" >"$WORK_DIR/guard-state/dns-benchmark.pid"
+cp "$WORK_DIR/guard-state/dns-benchmark-state.json" "$WORK_DIR/guard-state.before"
+cp "$WORK_DIR/guard-state/dns-benchmark.pid" "$WORK_DIR/guard-pid.before"
+
+TACHYON_LIB="$WORK_DIR/guard-lib" TACHYON_UI_STATE_DIR="$WORK_DIR/guard-state" \
+  ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$BENCHMARK" benchmark_async >"$WORK_DIR/guard-response.json"
+ucode -e '
+let fs = require("fs");
+let response = json(fs.readfile(ARGV[0]));
+if (response.success != true || response.message != "DNS benchmark is already running" ||
+    response.state.progress != 55)
+    exit(1);
+' "$WORK_DIR/guard-response.json" || fail "active worker older than 90 seconds must be reused"
+cmp -s "$WORK_DIR/guard-state.before" "$WORK_DIR/guard-state/dns-benchmark-state.json" ||
+  fail "duplicate start must preserve benchmark state"
+cmp -s "$WORK_DIR/guard-pid.before" "$WORK_DIR/guard-state/dns-benchmark.pid" ||
+  fail "duplicate start must preserve worker PID"
 
 printf 'PASS: dns_benchmark\n'
