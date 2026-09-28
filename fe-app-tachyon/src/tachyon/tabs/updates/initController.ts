@@ -1,6 +1,5 @@
 import { onMount, preserveScrollForPage } from '../../../helpers';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
-import { TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT } from '../../../constants';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { capSetSize } from '../../helpers/capCollectionSize';
 import { showToast } from '../../../helpers/showToast';
@@ -58,93 +57,35 @@ import {
   safeReloadPage,
   saveHandledJobToSession,
 } from './sessionJobs';
-
-function getComponentCardTitle(component: Tachyon.ComponentName): string {
-  switch (component) {
-    case 'tachyon':
-      return 'Tachyon';
-    case 'sing_box':
-      return 'Sing-box';
-    case 'zapret':
-      return 'Zapret';
-    case 'zapret2':
-      return 'Zapret2';
-    case 'byedpi':
-      return 'ByeDPI';
-    case 'wdtt':
-      return 'WDTT';
-    case 'olcrtc':
-      return 'OlcRTC';
-    case 'fptn':
-      return 'FPTN';
-    case 'tailscale':
-      return 'Tailscale';
-    case 'steer':
-      return 'Steer';
-    case 'steer-extended':
-      return 'Steer extended';
-    case 'engine':
-      return _('Routing Engine');
-    default:
-      return String(component);
-  }
-}
+import {
+  getCheckToastMessage,
+  getErrorMessage,
+  getExpectedLatestVersionForAction as getExpectedLatestVersionHelper,
+  isComponentActionAlreadyRunningError,
+  notifyActionProvidersAvailabilityChanged,
+  type UpdateStatus,
+} from './notifications';
+import { computeSystemInfoMutation } from './mutations';
+import {
+  COMPONENT_REPO_URLS,
+  getCheckAction,
+  getComponentBackupVersion as getComponentBackupVersionHelper,
+  getComponentCardTitle,
+  getComponentCurrentVersion as getComponentCurrentVersionHelper,
+  getComponentInstallKey,
+  getInstallAction,
+  getRollbackAction,
+  type ComponentActionButton,
+  type ComponentCard,
+} from './cardDefinitions';
 
 function getComponentCurrentVersion(
   component: Tachyon.ComponentName,
 ): string | undefined {
-  const sys = store.get().diagnosticsSystemInfo;
-  switch (component) {
-    case 'tachyon':
-      return sys.tachyon_version;
-    case 'sing_box':
-      return sys.sing_box_version;
-    case 'zapret':
-      return sys.zapret_version;
-    case 'zapret2':
-      return sys.zapret2_version;
-    case 'byedpi':
-      return sys.byedpi_version;
-    case 'wdtt':
-      return sys.wdtt_version;
-    case 'olcrtc':
-      return sys.olcrtc_version;
-    case 'fptn':
-      return sys.fptn_version;
-    case 'tailscale':
-      return sys.tailscale_version;
-    case 'steer':
-    case 'steer-extended':
-      return sys.steer_version;
-    default:
-      return undefined;
-  }
-}
-
-type UpdateStatus = StoreType['updatesChecks'][Tachyon.ComponentName]['status'];
-
-interface ComponentActionButton {
-  key: UpdatesActionKey;
-  text: string;
-  icon: () => SVGSVGElement;
-  component: Tachyon.ComponentName;
-  action: Tachyon.ComponentAction;
-  targetVersion?: string;
-  disabled?: boolean;
-}
-
-interface ComponentCard {
-  component: Tachyon.ComponentName;
-  column: 0 | 1 | 2;
-  title: string;
-  version: string;
-  latestVersion?: string;
-  releaseUrl?: string;
-  repoUrl?: string;
-  actions: ComponentActionButton[];
-  badgeNode?: Node | null;
-  supportsVersions?: boolean;
-  copyValue?: string;
+  return getComponentCurrentVersionHelper(
+    component,
+    store.get().diagnosticsSystemInfo,
+  );
 }
 
 let updatesLifecycleRegistered = false;
@@ -356,10 +297,6 @@ function loadComponentUpdateCheckCache({ force = false } = {}) {
   return promise;
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 async function ackComponentActionJob(jobId: string) {
   try {
     const response = await TachyonShellMethods.uiActionAck('component', jobId);
@@ -373,55 +310,11 @@ async function ackComponentActionJob(jobId: string) {
 }
 
 function getExpectedLatestVersionForAction(button: ComponentActionButton) {
-  if (button.targetVersion) {
-    return button.targetVersion;
-  }
-  if (
-    button.component !== 'tachyon' ||
-    (button.action !== 'install' && button.action !== 'reinstall')
-  ) {
-    return undefined;
-  }
-
-  return (
-    store.get().updatesChecks[button.component].latest_version || undefined
-  );
-}
-
-function getCheckToastMessage(status: UpdateStatus) {
-  if (status === 'outdated' || status === 'outdated_same_release') {
-    return _('Update is available');
-  }
-
-  if (status === 'dev') {
-    return _('Installed version is newer than release');
-  }
-
-  return _('Latest version is installed');
+  return getExpectedLatestVersionHelper(button, store.get().updatesChecks);
 }
 
 async function refreshSystemInfoAfterMutation() {
   await ensureSystemInfo({ force: true, silent: true });
-}
-
-function notifyActionProvidersAvailabilityChanged(
-  systemInfo: StoreType['diagnosticsSystemInfo'],
-) {
-  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') {
-    return;
-  }
-
-  window.dispatchEvent(
-    new CustomEvent(TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT, {
-      detail: {
-        zapretInstalled: Boolean(systemInfo.zapret_installed),
-        zapret2Installed: Boolean(systemInfo.zapret2_installed),
-        byedpiInstalled: Boolean(systemInfo.byedpi_installed),
-        wdttInstalled: Boolean(systemInfo.wdtt_installed),
-        olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
-      },
-    }),
-  );
 }
 
 const RELOAD_POLL_INTERVAL_MS = 1000;
@@ -458,177 +351,17 @@ function reloadPageAfterTachyonUpdate(jobId?: string) {
 }
 
 function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
-  const systemInfo = store.get().diagnosticsSystemInfo;
-  const nextSystemInfo = { ...systemInfo, loading: false, loaded: true };
-  const version =
-    result.current_version || result.latest_version || _('unknown');
-
-  if (
-    result.component === 'tachyon' &&
-    (result.action === 'install' || result.action === 'reinstall')
-  ) {
-    nextSystemInfo.tachyon_version = version;
-  }
-
-  if (result.component === 'sing_box') {
-    nextSystemInfo.sing_box_version = version;
-
-    if (result.action === 'install_extended') {
-      nextSystemInfo.sing_box_extended = 1;
-      nextSystemInfo.sing_box_tiny = 0;
-      nextSystemInfo.sing_box_compressed = 0;
-      nextSystemInfo.sing_box_lx = 0;
-      nextSystemInfo.sing_box_tailscale = 1;
-      nextSystemInfo.sing_box_cert_pin = 1;
-    }
-
-    if (result.action === 'install_extended_compressed') {
-      nextSystemInfo.sing_box_extended = 1;
-      nextSystemInfo.sing_box_tiny = 0;
-      nextSystemInfo.sing_box_compressed = 1;
-      nextSystemInfo.sing_box_lx = 0;
-      nextSystemInfo.sing_box_tailscale = 1;
-      nextSystemInfo.sing_box_cert_pin = 1;
-    }
-
-    if (result.action === 'install_lx') {
-      nextSystemInfo.sing_box_extended = 1;
-      nextSystemInfo.sing_box_tiny = 0;
-      nextSystemInfo.sing_box_compressed = 0;
-      nextSystemInfo.sing_box_lx = 1;
-      nextSystemInfo.sing_box_tailscale = 1;
-      nextSystemInfo.sing_box_cert_pin = 1;
-    }
-
-    if (result.action === 'install_stable') {
-      nextSystemInfo.sing_box_extended = 0;
-      nextSystemInfo.sing_box_tiny = 0;
-      nextSystemInfo.sing_box_compressed = 0;
-      nextSystemInfo.sing_box_lx = 0;
-      nextSystemInfo.sing_box_tailscale = 1;
-      nextSystemInfo.sing_box_cert_pin = 0;
-    }
-
-    if (result.action === 'install_tiny') {
-      nextSystemInfo.sing_box_extended = 0;
-      nextSystemInfo.sing_box_tiny = 1;
-      nextSystemInfo.sing_box_compressed = 0;
-      nextSystemInfo.sing_box_lx = 0;
-      nextSystemInfo.sing_box_tailscale = 0;
-      nextSystemInfo.sing_box_cert_pin = 0;
-    }
-  }
-
-  if (result.component === 'zapret') {
-    nextSystemInfo.providerInfoLoaded = true;
-
-    if (result.action === 'remove') {
-      nextSystemInfo.zapret_installed = 0;
-      nextSystemInfo.zapret_version = 'not installed';
-    } else {
-      nextSystemInfo.zapret_installed = 1;
-      nextSystemInfo.zapret_version = version;
-    }
-  }
-
-  if (result.component === 'zapret2') {
-    nextSystemInfo.providerInfoLoaded = true;
-
-    if (result.action === 'remove') {
-      nextSystemInfo.zapret2_installed = 0;
-      nextSystemInfo.zapret2_version = 'not installed';
-    } else {
-      nextSystemInfo.zapret2_installed = 1;
-      nextSystemInfo.zapret2_version = version;
-    }
-  }
-
-  if (result.component === 'byedpi') {
-    nextSystemInfo.providerInfoLoaded = true;
-
-    if (result.action === 'remove') {
-      nextSystemInfo.byedpi_installed = 0;
-      nextSystemInfo.byedpi_version = 'not installed';
-    } else {
-      nextSystemInfo.byedpi_installed = 1;
-      nextSystemInfo.byedpi_version = version;
-    }
-  }
-
-  if (result.component === 'wdtt') {
-    nextSystemInfo.providerInfoLoaded = true;
-
-    if (result.action === 'remove') {
-      nextSystemInfo.wdtt_installed = 0;
-      nextSystemInfo.wdtt_version = 'not installed';
-    } else {
-      nextSystemInfo.wdtt_installed = 1;
-      nextSystemInfo.wdtt_version = version;
-    }
-  }
-
-  if (result.component === 'olcrtc') {
-    nextSystemInfo.providerInfoLoaded = true;
-
-    if (result.action === 'remove') {
-      nextSystemInfo.olcrtc_installed = 0;
-      nextSystemInfo.olcrtc_version = 'not installed';
-    } else {
-      nextSystemInfo.olcrtc_installed = 1;
-      nextSystemInfo.olcrtc_version = version;
-    }
-  }
-
-  if (result.component === 'fptn') {
-    nextSystemInfo.providerInfoLoaded = true;
-
-    if (result.action === 'remove') {
-      nextSystemInfo.fptn_installed = 0;
-      nextSystemInfo.fptn_version = 'not installed';
-    } else {
-      nextSystemInfo.fptn_installed = 1;
-      nextSystemInfo.fptn_version = version;
-    }
-  }
-
-  if (result.component === 'steer' || result.component === 'steer-extended') {
-    if (result.action === 'remove') {
-      nextSystemInfo.steer_installed = 0;
-      nextSystemInfo.steer_version = 'not installed';
-      nextSystemInfo.steer_extended = 0;
-    } else {
-      nextSystemInfo.steer_installed = 1;
-      nextSystemInfo.steer_version = version;
-      nextSystemInfo.steer_extended =
-        result.component === 'steer-extended' ? 1 : 0;
-    }
-  }
-
-  if (result.component === 'direct_bypass') {
-    nextSystemInfo.direct_bypass_enabled = result.action === 'enable' ? 1 : 0;
-  }
-  if (result.component === 'torrserver_direct') {
-    nextSystemInfo.torrserver_direct_enabled =
-      result.action === 'enable' ? 1 : 0;
-    nextSystemInfo.torrserver_direct_active =
-      result.action === 'enable' ? 1 : 0;
-  }
-
-  const normalizedSystemInfo = normalizeSingBoxVariantFields(nextSystemInfo);
+  const { nextSystemInfo, notifyActionProviders } = computeSystemInfoMutation(
+    store.get().diagnosticsSystemInfo,
+    result,
+  );
 
   store.set({
-    diagnosticsSystemInfo: normalizedSystemInfo,
+    diagnosticsSystemInfo: nextSystemInfo,
   });
 
-  if (
-    result.component === 'zapret' ||
-    result.component === 'zapret2' ||
-    result.component === 'byedpi' ||
-    result.component === 'wdtt' ||
-    result.component === 'olcrtc' ||
-    result.component === 'fptn'
-  ) {
-    notifyActionProvidersAvailabilityChanged(normalizedSystemInfo);
+  if (notifyActionProviders) {
+    notifyActionProvidersAvailabilityChanged(nextSystemInfo);
   }
 }
 
@@ -907,12 +640,6 @@ async function followAlreadyRunningComponentAction(
   return true;
 }
 
-function isComponentActionAlreadyRunningError(message: string | undefined) {
-  return Boolean(
-    message && message.includes('Another component action is already running'),
-  );
-}
-
 function handleComponentUiState(uiState: Tachyon.UiState) {
   for (const state of uiState.actions.component || []) {
     const jobId = state.job_id;
@@ -1097,63 +824,6 @@ async function handleComponentAction(button: ComponentActionButton) {
   }
 }
 
-function getCheckAction(
-  component: Tachyon.ComponentName,
-  key: UpdatesActionKey,
-): ComponentActionButton {
-  return {
-    key,
-    text: _('Check update'),
-    icon: renderSearchIcon24,
-    component,
-    action: 'check_update',
-  };
-}
-
-function getInstallAction(
-  component: Tachyon.ComponentName,
-  key: UpdatesActionKey,
-  installed: boolean,
-): ComponentActionButton {
-  return {
-    key,
-    text: installed ? _('Update') : _('Install'),
-    icon: installed ? renderRotateCcwIcon24 : renderDownloadIcon24,
-    component,
-    action: 'install',
-  };
-}
-
-function getComponentInstallKey(
-  component: Tachyon.ComponentName,
-): UpdatesActionKey {
-  switch (component) {
-    case 'tachyon':
-      return 'tachyonInstall';
-    case 'sing_box':
-      return 'singBoxInstall';
-    case 'zapret':
-      return 'zapretInstall';
-    case 'zapret2':
-      return 'zapret2Install';
-    case 'byedpi':
-      return 'byedpiInstall';
-    case 'wdtt':
-      return 'wdttInstall';
-    case 'olcrtc':
-      return 'olcrtcInstall';
-    case 'tailscale':
-      return 'tailscaleInstall';
-    case 'steer':
-    case 'steer-extended':
-      return 'steerInstall';
-    case 'engine':
-      return 'engineSwitch';
-    default:
-      return 'tachyonInstall';
-  }
-}
-
 function getComponentInstallAction(
   component: Tachyon.ComponentName,
 ): ComponentActionButton {
@@ -1180,44 +850,10 @@ function getInstalledUpdateActions(
 }
 
 function getComponentBackupVersion(component: Tachyon.ComponentName): string {
-  const sys = store.get().diagnosticsSystemInfo;
-  switch (component) {
-    case 'sing_box':
-      return sys.sing_box_backup_version || '';
-    case 'zapret':
-      return sys.zapret_backup_version || '';
-    case 'zapret2':
-      return sys.zapret2_backup_version || '';
-    case 'byedpi':
-      return sys.byedpi_backup_version || '';
-    case 'wdtt':
-      return sys.wdtt_backup_version || '';
-    case 'olcrtc':
-      return sys.olcrtc_backup_version || '';
-    case 'fptn':
-      return sys.fptn_backup_version || '';
-    case 'tailscale':
-      return sys.tailscale_backup_version || '';
-    case 'steer':
-    case 'steer-extended':
-      return sys.steer_backup_version || '';
-    default:
-      return '';
-  }
-}
-
-function getRollbackAction(
-  component: Tachyon.ComponentName,
-  key: UpdatesActionKey,
-  backupVersion: string,
-): ComponentActionButton {
-  return {
-    key,
-    text: backupVersion ? `${_('Rollback')} (${backupVersion})` : _('Rollback'),
-    icon: renderRotateCcwIcon24,
+  return getComponentBackupVersionHelper(
     component,
-    action: 'rollback',
-  };
+    store.get().diagnosticsSystemInfo,
+  );
 }
 
 function getOptionalComponentActions({
@@ -1264,23 +900,6 @@ function getOptionalComponentActions({
 
   return actions;
 }
-
-const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
-  tachyon: 'https://github.com/Dushnilin/tachyon',
-  sing_box: 'https://github.com/SagerNet/sing-box',
-  zapret: 'https://github.com/remittor/zapret-openwrt',
-  zapret2: 'https://github.com/Dushnilin/zapret2-openwrt',
-  byedpi: 'https://github.com/DPITrickster/ByeDPI-OpenWrt',
-  wdtt: 'https://github.com/Dushnilin/qwdtt-openwrt',
-  olcrtc: 'https://github.com/Dushnilin/openwrt-olcrtc',
-  fptn: 'https://github.com/Dushnilin/fptn',
-  tailscale: 'https://openwrt.org/packages/pkgdata/tailscale',
-  steer: 'https://github.com/xyzmean/steer',
-  'steer-extended': 'https://github.com/xyzmean/steer',
-  direct_bypass: '',
-  torrserver_direct: '',
-  engine: '',
-};
 
 function getComponentCards(): ComponentCard[] {
   const systemInfo = normalizeSingBoxVariantFields(

@@ -1,5 +1,4 @@
 import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
-import { prettyBytes } from '../../../helpers/prettyBytes';
 import { showToast } from '../../../helpers/showToast';
 import {
   renderPauseIcon24,
@@ -8,10 +7,8 @@ import {
   renderXIcon24,
 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
-import { getOutboundTagBySection } from '../../runtimeTags';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { logger, socket, store, StoreType } from '../../services';
-import { Tachyon } from '../../types';
 import {
   getCachedRuntimeUiState,
   refreshRuntimeUiState,
@@ -21,53 +18,31 @@ import {
   getServiceAvailability,
   type ServiceAvailability,
 } from '../../helpers/serviceAvailability';
-
-type MonitoringTabId = 'active' | 'closed';
-
-type LocalDeviceChoices = Record<string, string>;
+import {
+  type MonitoringTabId,
+  type LocalDeviceChoices,
+  type ClashConnectionsPayload,
+  type MonitoredConnection,
+  normalizeConnectionsPayload,
+  buildRouteDisplayNames,
+  getRouteDisplayNameByTag,
+  getRouteDisplayNames,
+  getRoute,
+  getNetwork,
+  getTargetCellParts,
+  getSourceCellParts,
+  getDeviceFilterLabel,
+  getConnectionSourceIp,
+  sortConnections,
+  filterVisibleConnections,
+  formatConnectionDuration,
+  formatBytes,
+} from './filters';
+import { handleMonitoringValueCopy } from './clipboard';
+import { normalizeString } from './formatters';
 
 interface MonitoringControllerDependencies {
   loadLocalDeviceChoices?: () => Promise<LocalDeviceChoices>;
-}
-
-interface ClashConnectionMetadata {
-  destinationIP?: string;
-  destinationPort?: string | number;
-  host?: string;
-  network?: string;
-  processPath?: string;
-  sourceIP?: string;
-  sourcePort?: string | number;
-  type?: string;
-}
-
-interface ClashConnection {
-  chains?: string[];
-  download?: number;
-  id?: string;
-  metadata?: ClashConnectionMetadata;
-  rule?: string;
-  rulePayload?: string;
-  start?: string;
-  upload?: number;
-}
-
-interface ClashConnectionsPayload {
-  connections?: ClashConnection[];
-}
-
-interface MonitoredConnection extends ClashConnection {
-  id: string;
-  closedAt?: number;
-  lastSeenAt: number;
-}
-
-function normalizeConnectionsPayload(value: unknown): ClashConnectionsPayload {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as ClashConnectionsPayload;
 }
 
 const RENDER_INTERVAL_MS = 500;
@@ -110,9 +85,6 @@ let selectedDeviceFilter = ALL_FILTER_VALUE;
 let selectedRouteFilter = ALL_FILTER_VALUE;
 let searchQuery = '';
 let localDeviceChoices: LocalDeviceChoices = {};
-let routeDisplayNames: Record<string, string> = {};
-let routeSections: Array<{ sectionName: string; displayName: string }> = [];
-let serverDisplayNames: Record<string, string> = {};
 let lastDeviceFilterSignature = '';
 let lastRouteFilterSignature = '';
 let loading = true;
@@ -126,408 +98,29 @@ const activeConnections = new Map<string, MonitoredConnection>();
 const closedConnections = new Map<string, MonitoredConnection>();
 const closingConnectionIds = new Set<string>();
 
-function normalizeString(value?: string | number | null): string {
-  return value == null ? '' : String(value).trim();
-}
-
-function getListValues(value?: string[] | string) {
-  if (!value) {
-    return [];
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeString(item)).filter(Boolean);
-  }
-
-  return normalizeString(value)
-    .split(/\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function getUrlTestIds(section: Tachyon.ConfigSection) {
-  const values = getListValues(section.urltests);
-  return values.length
-    ? values
-    : section.urltest_enabled === '1'
-      ? ['urltest']
-      : [];
-}
-
-function getUrlTestTag(sectionName: string, id: string) {
-  return getOutboundTagBySection(
-    id === 'urltest'
-      ? `${sectionName}-urltest`
-      : `${sectionName}-urltest-${id}`,
-  );
-}
-
-function formatEndpoint(address?: string, port?: string | number): string {
-  const normalizedAddress = normalizeString(address);
-  const normalizedPort = normalizeString(port);
-
-  if (!normalizedAddress) {
-    return '-';
-  }
-
-  if (!normalizedPort) {
-    return normalizedAddress;
-  }
-
-  if (normalizedPort === '443') {
-    return normalizedAddress;
-  }
-
-  if (normalizedAddress.includes(':') && !normalizedAddress.startsWith('[')) {
-    return `[${normalizedAddress}]:${normalizedPort}`;
-  }
-
-  return `${normalizedAddress}:${normalizedPort}`;
-}
-
-function getDisplayName(section: Tachyon.ConfigSection) {
-  return (
-    normalizeString(section.label) ||
-    normalizeString(section.name) ||
-    section['.name']
-  );
-}
-
-function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]) {
-  const map: Record<string, string> = {
-    'bypass-out': 'Bypass',
-    'direct-out': 'direct',
-    'tachyon-failover': 'Failover',
-  };
-  const serverMap: Record<string, string> = {};
-  const routeSectionItems: Array<{ sectionName: string; displayName: string }> =
-    [];
-  const urltestsBySection = new Map<string, string[]>();
-
-  sections
-    .filter((section) => section['.type'] === 'urltest')
-    .forEach((section) => {
-      const owner = normalizeString(section.section);
-      const id = normalizeString(section.id) || section['.name'];
-      if (!owner || !id) {
-        return;
-      }
-
-      urltestsBySection.set(owner, [
-        ...(urltestsBySection.get(owner) || []),
-        id,
-      ]);
-    });
-
-  sections
-    .filter((section) => section['.type'] === 'section')
-    .filter((section) => section.enabled !== '0')
-    .forEach((section) => {
-      const sectionName = section['.name'];
-      const displayName = getDisplayName(section);
-
-      if (!sectionName || !displayName) {
-        return;
-      }
-
-      routeSectionItems.push({ sectionName, displayName });
-      map[getOutboundTagBySection(sectionName)] = displayName;
-      const urltestIds =
-        urltestsBySection.get(sectionName) || getUrlTestIds(section);
-      urltestIds.forEach((id) => {
-        map[getUrlTestTag(sectionName, id)] = displayName;
-      });
-    });
-
-  sections
-    .filter((section) => section['.type'] === 'server')
-    .filter((section) => section.enabled !== '0')
-    .forEach((section) => {
-      const sectionName = section['.name'];
-      const displayName = getDisplayName(section);
-
-      if (!sectionName || !displayName) {
-        return;
-      }
-
-      serverMap[`server-${sectionName}-in`] = displayName;
-    });
-
-  routeDisplayNames = map;
-  serverDisplayNames = serverMap;
-  routeSections = routeSectionItems.sort(
-    (a, b) => b.sectionName.length - a.sectionName.length,
-  );
-}
-
-function getRouteDisplayNameByTag(tag: string): string {
-  if (!tag) {
-    return '';
-  }
-
-  if (routeDisplayNames[tag]) {
-    return routeDisplayNames[tag];
-  }
-
-  const manualSection = routeSections.find(({ sectionName }) => {
-    if (tag === sectionName) {
-      return true;
-    }
-    return tag.startsWith(`${sectionName}-`) && tag.endsWith('-out');
-  });
-
-  return manualSection?.displayName || '';
-}
-
-function getRouteTagFromRule(rule?: string): string {
-  const match = normalizeString(rule).match(/=>\s*route\(([^)]+)\)/);
-  return normalizeString(match?.[1]).replace(/^['"]|['"]$/g, '');
-}
-
-function parseStartedAt(connection: MonitoredConnection): number {
-  const startedAt = Date.parse(connection.start || '');
-  return Number.isFinite(startedAt) ? startedAt : connection.lastSeenAt;
-}
-
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const pad = (value: number) => String(value).padStart(2, '0');
-
-  if (hours > 0) {
-    return `${hours}:${pad(minutes)}:${pad(seconds)}`;
-  }
-
-  return `${minutes}:${pad(seconds)}`;
-}
-
-function formatConnectionDuration(connection: MonitoredConnection): string {
-  const startedAt = parseStartedAt(connection);
-  const finishedAt = connection.closedAt || monitoringPausedAt || Date.now();
-
-  return formatDuration(finishedAt - startedAt);
-}
-
-function formatBytes(value?: number): string {
-  return prettyBytes(Number.isFinite(value) ? Number(value) : 0);
-}
-
-function getConnectionSourceIp(connection: ClashConnection): string {
-  return normalizeString(connection.metadata?.sourceIP);
-}
-
-function getConnectionInboundTag(connection: ClashConnection): string {
-  const metadataType = normalizeString(connection.metadata?.type);
-  const metadataTypeParts = metadataType.split('/');
-  const metadataTag = normalizeString(
-    metadataTypeParts.length > 1
-      ? metadataTypeParts[metadataTypeParts.length - 1]
-      : metadataType,
-  );
-
-  if (metadataTag) {
-    return metadataTag;
-  }
-
-  const ruleInbound = normalizeString(connection.rule).match(
-    /(?:^|\s)inbound=([^\s]+)/,
-  );
-
-  return normalizeString(ruleInbound?.[1]);
-}
-
-function getServerDisplayNameByInboundTag(tag: string): string {
-  return normalizeString(serverDisplayNames[tag]);
-}
-
-function getDeviceName(ip: string): string {
-  const raw = normalizeString(localDeviceChoices[ip]);
-  if (!raw) return '';
-  const match = raw.match(/^(?:IP|MAC):\s*[^\s—]+\s*—\s*(.+)$/i);
-  if (match && match[1]) {
-    return match[1].trim();
-  }
-  if (!raw.startsWith('IP:') && !raw.startsWith('MAC:') && raw !== ip) {
-    return raw;
-  }
-  return '';
-}
-
-function getServerSourceNameByIp(ip: string): string {
-  if (!ip) {
-    return '';
-  }
-
-  const connections = [
+function getLocalDeviceFilterLabel(ip: string): string {
+  const allConnections = [
     ...Array.from(activeConnections.values()),
     ...Array.from(closedConnections.values()),
   ];
-
-  for (const connection of connections) {
-    if (getConnectionSourceIp(connection) !== ip) {
-      continue;
-    }
-
-    const serverName = getServerDisplayNameByInboundTag(
-      getConnectionInboundTag(connection),
-    );
-
-    if (serverName) {
-      return serverName;
-    }
-  }
-
-  return '';
+  return getDeviceFilterLabel(ip, allConnections, localDeviceChoices);
 }
 
-function getDeviceFilterLabel(ip: string): string {
-  const serverName = getServerSourceNameByIp(ip);
-  if (serverName) {
-    return serverName;
-  }
-
-  const deviceName = getDeviceName(ip);
-  return deviceName ? `${deviceName} (${ip})` : ip;
-}
-
-function getSourceCellParts(connection: MonitoredConnection) {
-  const ip = getConnectionSourceIp(connection);
-  const inboundTag = getConnectionInboundTag(connection);
-  const serverName = getServerDisplayNameByInboundTag(inboundTag);
-
-  if (serverName) {
-    return {
-      primary: serverName,
-      ip: '',
-      copyValue: serverName,
-      searchValue: [serverName, ip, inboundTag].filter(Boolean).join(' '),
-    };
-  }
-
-  const deviceName = getDeviceName(ip);
-
-  if (deviceName) {
-    return {
-      primary: deviceName,
-      ip: ip,
-      copyValue: `${deviceName} (${ip})`,
-      searchValue: `${deviceName} ${ip}`,
-    };
-  }
-
-  return {
-    primary: ip || '-',
-    ip: '',
-    copyValue: ip || '-',
-    searchValue: ip,
-  };
-}
-
-function getTargetCellParts(connection: MonitoredConnection): {
-  primary: string;
-  searchValue: string;
-} {
-  const metadata = connection.metadata || {};
-  const host = normalizeString(metadata.host);
-  const destinationIp = normalizeString(metadata.destinationIP);
-  const port = metadata.destinationPort;
-  const primaryTarget = host || destinationIp;
-  const primary = primaryTarget ? formatEndpoint(primaryTarget, port) : '-';
-
-  return {
-    primary,
-    searchValue: [primary, host, destinationIp].filter(Boolean).join(' '),
-  };
-}
-
-function getRoute(connection: MonitoredConnection): string {
-  const chains = Array.isArray(connection.chains) ? connection.chains : [];
-  const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
-  const fallbackRouteTag = getRouteTagFromRule(connection.rule);
-  const route =
-    getRouteDisplayNameByTag(routeTag || '') ||
-    getRouteDisplayNameByTag(fallbackRouteTag) ||
-    normalizeString(routeTag) ||
-    normalizeString(fallbackRouteTag);
-
-  return route || '-';
-}
-
-function getNetwork(connection: MonitoredConnection): string {
-  return normalizeString(connection.metadata?.network).toLowerCase() || '-';
-}
-
-function sortConnections(
-  connections: MonitoredConnection[],
-  tab: MonitoringTabId,
-): MonitoredConnection[] {
-  return [...connections].sort((a, b) => {
-    if (tab === 'closed') {
-      return (b.closedAt || 0) - (a.closedAt || 0);
-    }
-
-    return parseStartedAt(b) - parseStartedAt(a);
-  });
-}
-
-function getConnectionsForActiveTab(): MonitoredConnection[] {
-  const source =
-    activeTab === 'active'
-      ? Array.from(activeConnections.values())
-      : Array.from(closedConnections.values());
-
-  return sortConnections(source, activeTab);
-}
-
-function normalizeSearchValue(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-function getSearchValues(connection: MonitoredConnection): string[] {
-  const target = getTargetCellParts(connection);
-  const source = getSourceCellParts(connection);
-
-  return [
-    connection.id,
-    target.primary,
-    getNetwork(connection),
-    getRoute(connection),
-    formatConnectionDuration(connection),
-    formatBytes(connection.download),
-    formatBytes(connection.upload),
-    source.primary,
-    source.copyValue,
-    source.searchValue,
-  ].filter(Boolean);
+function getLocalSourceCellParts(connection: MonitoredConnection) {
+  return getSourceCellParts(connection, [], localDeviceChoices);
 }
 
 function getVisibleConnections(): MonitoredConnection[] {
-  const normalizedSearch = normalizeSearchValue(searchQuery);
-
-  return getConnectionsForActiveTab().filter((connection) => {
-    const sourceIp = getConnectionSourceIp(connection);
-    const isMatchingDevice =
-      selectedDeviceFilter === ALL_FILTER_VALUE ||
-      sourceIp === selectedDeviceFilter;
-
-    let isMatchingRoute = selectedRouteFilter === ALL_FILTER_VALUE;
-    if (!isMatchingRoute && getRoute(connection) === selectedRouteFilter) {
-      isMatchingRoute = true;
-    }
-
-    if (!isMatchingDevice || !isMatchingRoute) {
-      return false;
-    }
-
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    return getSearchValues(connection).some((value) =>
-      normalizeSearchValue(value).includes(normalizedSearch),
-    );
+  return filterVisibleConnections({
+    deviceFilter: selectedDeviceFilter,
+    routeFilter: selectedRouteFilter,
+    searchQuery,
+    tab: activeTab,
+    activeConnections: Array.from(activeConnections.values()),
+    closedConnections: Array.from(closedConnections.values()),
+    localDeviceChoices,
+    allFilterValue: ALL_FILTER_VALUE,
+    pausedAt: monitoringPausedAt,
   });
 }
 
@@ -623,8 +216,8 @@ function getKnownSourceIps(): string[] {
   });
 
   return Array.from(ips).sort((a, b) => {
-    const byLabel = getDeviceFilterLabel(a).localeCompare(
-      getDeviceFilterLabel(b),
+    const byLabel = getLocalDeviceFilterLabel(a).localeCompare(
+      getLocalDeviceFilterLabel(b),
     );
     return byLabel || a.localeCompare(b);
   });
@@ -637,7 +230,7 @@ function renderRouteFilterOptions() {
   if (!select) return;
 
   const uniqueRoutes = new Set<string>();
-  Object.values(routeDisplayNames).forEach((name) => {
+  Object.values(getRouteDisplayNames()).forEach((name) => {
     if (name) uniqueRoutes.add(name);
   });
 
@@ -687,7 +280,7 @@ function renderDeviceFilterOptions() {
 
   const signature = [
     selectedDeviceFilter,
-    ...sourceIps.map((ip) => `${ip}:${getDeviceFilterLabel(ip)}`),
+    ...sourceIps.map((ip) => `${ip}:${getLocalDeviceFilterLabel(ip)}`),
   ].join('|');
   if (signature === lastDeviceFilterSignature) {
     select.value = selectedDeviceFilter;
@@ -699,7 +292,7 @@ function renderDeviceFilterOptions() {
   const options = [
     E('option', { value: ALL_FILTER_VALUE }, _('All')),
     ...sourceIps.map((ip) =>
-      E('option', { value: ip }, getDeviceFilterLabel(ip)),
+      E('option', { value: ip }, getLocalDeviceFilterLabel(ip)),
     ),
   ];
 
@@ -868,7 +461,7 @@ function renderTableCell(label: string, children: (Node | string)[]) {
 
 function renderConnectionRow(connection: MonitoredConnection) {
   const target = getTargetCellParts(connection);
-  const source = getSourceCellParts(connection);
+  const source = getLocalSourceCellParts(connection);
   const isClosing = closingConnectionIds.has(connection.id);
   const closeButton =
     activeTab === 'active'
@@ -1058,7 +651,7 @@ function renderConnections(options: { force?: boolean } = {}) {
 // avoids re-creating hundreds of nodes on every render tick.
 function getConnectionRowSignature(connection: MonitoredConnection): string {
   const target = getTargetCellParts(connection);
-  const source = getSourceCellParts(connection);
+  const source = getLocalSourceCellParts(connection);
 
   return [
     target.primary,
@@ -1208,199 +801,6 @@ function setMonitoringPaused(paused: boolean) {
   }
 
   renderConnections();
-}
-
-function isElementOverflowing(element: HTMLElement): boolean {
-  return element.scrollWidth > element.clientWidth + 1;
-}
-
-function getMonitoringValueOverflowElements(
-  element: HTMLElement,
-): HTMLElement[] {
-  return [
-    element,
-    ...Array.from(element.querySelectorAll<HTMLElement>('*')),
-  ].filter(isElementOverflowing);
-}
-
-function getElementCopyText(element: HTMLElement, fallback: string): string {
-  return (
-    element.getAttribute('data-copy-value') || element.textContent || fallback
-  );
-}
-
-function compactMonitoringText(value: string): string {
-  return value
-    .replace(/\u2026/g, '')
-    .trim()
-    .replace(/\s+/g, '');
-}
-
-function getMonitoringValueTextElements(element: HTMLElement): HTMLElement[] {
-  const children = Array.from(element.children).filter(
-    (child): child is HTMLElement => child instanceof HTMLElement,
-  );
-
-  if (children.length === 0) {
-    return [element];
-  }
-
-  const textElements = children
-    .flatMap(getMonitoringValueTextElements)
-    .filter((child) => compactMonitoringText(getElementCopyText(child, '')));
-
-  return textElements.length > 0 ? textElements : [element];
-}
-
-function estimateVisibleMonitoringTextLength(
-  element: HTMLElement,
-  fallbackText: string,
-): number {
-  const text = compactMonitoringText(getElementCopyText(element, fallbackText));
-
-  if (!text) {
-    return 0;
-  }
-
-  if (!isElementOverflowing(element)) {
-    return text.length;
-  }
-
-  return Math.floor(
-    (element.clientWidth / Math.max(element.scrollWidth, 1)) * text.length,
-  );
-}
-
-function getEstimatedVisibleMonitoringTextLength(
-  element: HTMLElement,
-  fallbackText: string,
-): number {
-  const textElements = getMonitoringValueTextElements(element);
-
-  if (textElements.length === 1 && textElements[0] === element) {
-    return estimateVisibleMonitoringTextLength(element, fallbackText);
-  }
-
-  return textElements.reduce(
-    (total, textElement) =>
-      total + estimateVisibleMonitoringTextLength(textElement, fallbackText),
-    0,
-  );
-}
-
-function isCompactTextSubsequence(needle: string, haystack: string): boolean {
-  let haystackIndex = 0;
-
-  for (let needleIndex = 0; needleIndex < needle.length; needleIndex += 1) {
-    haystackIndex = haystack.indexOf(needle[needleIndex], haystackIndex);
-
-    if (haystackIndex === -1) {
-      return false;
-    }
-
-    haystackIndex += 1;
-  }
-
-  return true;
-}
-
-function getSelectionValueElements(selection: Selection): HTMLElement[] {
-  const root = document.getElementById('monitoring-status');
-  if (!root) {
-    return [];
-  }
-
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(
-      '.tachyon_monitoring-page__value[data-copy-value]',
-    ),
-  ).filter((element) => {
-    for (let index = 0; index < selection.rangeCount; index += 1) {
-      try {
-        if (selection.getRangeAt(index).intersectsNode(element)) {
-          return true;
-        }
-      } catch (_error) {
-        return false;
-      }
-    }
-
-    return false;
-  });
-}
-
-function shouldCopyFullMonitoringValue(
-  element: HTMLElement,
-  selectedText: string,
-  fullText: string,
-): boolean {
-  const normalizedSelectedText = selectedText.replace(/\u2026/g, '').trim();
-  const normalizedFullText = fullText.trim();
-  const compactSelectedText = compactMonitoringText(selectedText);
-  const compactFullText = compactMonitoringText(fullText);
-  const overflowElements = getMonitoringValueOverflowElements(element);
-  const hasCompositeText = getMonitoringValueTextElements(element).length > 1;
-
-  if (!normalizedSelectedText || !normalizedFullText) {
-    return false;
-  }
-
-  if (normalizedSelectedText === normalizedFullText) {
-    return true;
-  }
-
-  if (overflowElements.length === 0) {
-    return false;
-  }
-
-  if (hasCompositeText) {
-    const selectedPrefix = compactSelectedText.slice(
-      0,
-      Math.min(4, compactSelectedText.length),
-    );
-
-    if (
-      !compactFullText.startsWith(selectedPrefix) ||
-      !isCompactTextSubsequence(compactSelectedText, compactFullText)
-    ) {
-      return false;
-    }
-  } else if (!compactFullText.startsWith(compactSelectedText)) {
-    return false;
-  }
-
-  const estimatedVisibleChars = getEstimatedVisibleMonitoringTextLength(
-    element,
-    normalizedFullText,
-  );
-
-  return compactSelectedText.length >= Math.max(4, estimatedVisibleChars - 2);
-}
-
-function handleMonitoringValueCopy(event: ClipboardEvent) {
-  const selection = window.getSelection?.();
-  if (!selection || selection.isCollapsed) {
-    return;
-  }
-
-  const valueElements = getSelectionValueElements(selection);
-  if (valueElements.length !== 1) {
-    return;
-  }
-
-  const valueElement = valueElements[0];
-  const fullText =
-    valueElement.getAttribute('data-copy-value') ||
-    valueElement.textContent ||
-    '';
-  const selectedText = selection.toString();
-
-  if (!shouldCopyFullMonitoringValue(valueElement, selectedText, fullText)) {
-    return;
-  }
-
-  event.clipboardData?.setData('text/plain', fullText);
-  event.preventDefault();
 }
 
 async function closeConnection(connectionId: string) {

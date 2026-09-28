@@ -883,6 +883,102 @@
         "type": "object",
         "description": "Restoration confirmation"
       }
+    },
+    {
+      "name": "get_server_stats",
+      "cli_command": "server_stats",
+      "category": "diagnostics",
+      "acl": "read",
+      "description": "Get aggregated server health metrics, latencies, and candidate summary",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "Server statistics summary"
+      }
+    },
+    {
+      "name": "probe_servers",
+      "cli_command": "server_probe_all",
+      "category": "diagnostics",
+      "acl": "diagnostic",
+      "description": "Actively probe servers for latency and availability",
+      "async": false,
+      "timeout_ms": 30000,
+      "params": [
+        {
+          "name": "section",
+          "type": "string",
+          "required": false,
+          "description": "Target section name or all"
+        },
+        {
+          "name": "timeout_ms",
+          "type": "number",
+          "required": false,
+          "description": "Probe timeout in ms"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "Probe results"
+      }
+    },
+    {
+      "name": "get_best_servers",
+      "cli_command": "server_best",
+      "category": "diagnostics",
+      "acl": "read",
+      "description": "Get ranked best server candidates for auto-tuning & failover",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [
+        {
+          "name": "section",
+          "type": "string",
+          "required": false,
+          "description": "Target section"
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "description": "Number of candidates"
+        }
+      ],
+      "returns": {
+        "type": "array",
+        "description": "Ranked server entries"
+      }
+    },
+    {
+      "name": "get_stability_report",
+      "cli_command": "stability_report",
+      "category": "diagnostics",
+      "acl": "read",
+      "description": "Generate comprehensive stability report including uptimes, flaps, pressure, and incident history",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "Full stability diagnostics report"
+      }
+    },
+    {
+      "name": "get_stability_status",
+      "cli_command": "stability_status",
+      "category": "diagnostics",
+      "acl": "read",
+      "description": "Get lightweight stability status and health score",
+      "async": false,
+      "timeout_ms": 3000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "Lightweight stability status"
+      }
     }
   ]
 }

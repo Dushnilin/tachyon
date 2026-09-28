@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-27 23:39+0300\n"
-"PO-Revision-Date: 2026-09-27 23:39+0300\n"
+"POT-Creation-Date: 2026-09-28 09:05+0300\n"
+"PO-Revision-Date: 2026-09-28 09:05+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -110,11 +110,17 @@ msgstr ""
 msgid "🌐 Custom Target URL(s)..."
 msgstr "🌐 Произвольный URL (несколько через запятую)..."
 
+msgid "🌐 Server Fleet & Rankings"
+msgstr ""
+
 msgid "🎬 YouTube Full Suite (Web + 4K Stream + CDN)"
 msgstr "🎬 YouTube (Веб + 4K видеопоток + CDN)"
 
 msgid "🏆 Apply Best Match"
 msgstr "🏆 Применить наилучшую"
+
+msgid "🏥 System Health & Daemons"
+msgstr ""
 
 msgid "🏴‍☠️ RuTracker Suite"
 msgstr "🏴‍☠️ RuTracker (HTTP + HTTPS)"
@@ -127,6 +133,9 @@ msgstr "💬 Discord (Шлюз + Голос + CDN)"
 
 msgid "💾 Save Custom Patterns"
 msgstr "💾 Сохранить пользовательские паттерны"
+
+msgid "📜 Incidents & Timeline"
+msgstr ""
 
 msgid "📸 Instagram / Meta (Web + CDN)"
 msgstr "📸 Instagram / Meta (Веб + CDN)"
@@ -440,6 +449,9 @@ msgstr "Все серверы"
 msgid "All services"
 msgstr "Все сервисы"
 
+msgid "All system invariants satisfied. No flaps, memory leaks, or crashes detected."
+msgstr ""
+
 msgid "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions."
 msgstr "Весь трафик от этих IP-адресов будет маршрутизирован через секцию безусловно, игнорируя все остальные условия."
 
@@ -715,6 +727,9 @@ msgstr "Доступно"
 
 msgid "Available actions"
 msgstr "Доступные действия"
+
+msgid "Available memory:"
+msgstr ""
 
 msgid "Avg. latency"
 msgstr "Ср. задержка"
@@ -1154,6 +1169,9 @@ msgstr "уверенность"
 msgid "Config File Path"
 msgstr "Путь к файлу конфигурации"
 
+msgid "Config rollbacks:"
+msgstr ""
+
 msgid "Config Snapshots"
 msgstr "Снапшоты конфигурации"
 
@@ -1364,6 +1382,9 @@ msgstr "Адрес по умолчанию для проверки доступ�
 msgid "Default Tab on Startup"
 msgstr "Вкладка по умолчанию при входе"
 
+msgid "Degraded"
+msgstr ""
+
 msgid "Delay in milliseconds before reloading Tachyon after interface UP"
 msgstr "Задержка в миллисекундах перед перезагрузкой Tachyon после поднятия интерфейса"
 
@@ -1498,6 +1519,9 @@ msgstr "Интервал проверки DNS"
 
 msgid "DNS Check Interval (s)"
 msgstr "Интервал проверки DNS (с)"
+
+msgid "DNS failovers:"
+msgstr ""
 
 msgid "DNS Failures Before Switching"
 msgstr "Ошибок DNS до переключения"
@@ -1883,6 +1907,9 @@ msgstr "Безопасный поиск (SafeSearch) и строгий режи�
 msgid "Engine"
 msgstr "Движок"
 
+msgid "Engine crashes:"
+msgstr ""
+
 msgid "Enter a complete sing-box inbound object"
 msgstr "Введите полный JSON объект inbound для sing-box"
 
@@ -1936,6 +1963,9 @@ msgstr "Ошибка обновления списков:"
 
 msgid "Estimated RAM usage (max):"
 msgstr "Ориентировочный объём RAM (макс.):"
+
+msgid "Event bus journal and syslog monitoring report clean operation."
+msgstr ""
 
 msgid "Every day"
 msgstr "Каждый день"
@@ -2006,6 +2036,9 @@ msgstr "Внешние файлы конфигурации nfqws2 обходят
 msgid "Extracting"
 msgstr "Распаковка"
 
+msgid "failed"
+msgstr ""
+
 msgid "FAILED"
 msgstr "СБОЙ"
 
@@ -2059,6 +2092,9 @@ msgstr "Не удалось выполнить проверку утечек IP 
 
 msgid "Failed to fetch releases"
 msgstr "Не удалось получить список релизов"
+
+msgid "Failed to fetch stability report"
+msgstr ""
 
 msgid "Failed to generate bug report"
 msgstr "Не удалось создать отчёт об ошибке"
@@ -2180,6 +2216,9 @@ msgstr "Не удалось обновить подписки"
 msgid "Failover failure threshold"
 msgstr "Порог срабатывания failover"
 
+msgid "Failovers & Restarts"
+msgstr ""
+
 msgid "FAIR"
 msgstr "СРЕДНЕ"
 
@@ -2243,6 +2282,9 @@ msgstr "Интервал поиска более быстрого сервера
 msgid "Fastest"
 msgstr "Самый быстрый"
 
+msgid "FDs"
+msgstr ""
+
 msgid "Filter by service:"
 msgstr "Фильтр по сервису:"
 
@@ -2272,6 +2314,9 @@ msgstr "Исправьте выделенные поля и сохраните �
 
 msgid "Fixed"
 msgstr "Исправлено"
+
+msgid "Fleet Latency"
+msgstr ""
 
 msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
@@ -2428,6 +2473,9 @@ msgstr "Таймаут рукопожатия"
 
 msgid "Header Protection Key"
 msgstr "Ключ защиты заголовка"
+
+msgid "Healthy"
+msgstr ""
 
 msgid "Hello! I am Tachyon AI Assistant. How can I help you today? Ask me about domain blocks, diagnostics, or router settings."
 msgstr "Привет! Я ИИ-ассистент Tachyon. Чем могу помочь? Задайте вопрос о блокировках, диагностике или настройках роутера."
@@ -3023,6 +3071,9 @@ msgstr "Япония (jp)"
 msgid "Jitsi"
 msgstr "Jitsi"
 
+msgid "Jitter"
+msgstr ""
+
 msgid "JSON outbound"
 msgstr "JSON outbound"
 
@@ -3209,6 +3260,9 @@ msgstr "Загрузка подключений"
 msgid "Loading service list..."
 msgstr "Получение списка сервисов..."
 
+msgid "Loading stability metrics..."
+msgstr ""
+
 msgid "Loading versions..."
 msgstr "Загрузка версий..."
 
@@ -3250,6 +3304,9 @@ msgstr "Основной DNS-сервер. Если выбрано нескол�
 
 msgid "Main overview and status widgets"
 msgstr "Главный обзор и виджеты статуса"
+
+msgid "Managed Daemons Status"
+msgstr ""
 
 msgid "Manual"
 msgstr "Вручную"
@@ -3310,6 +3367,9 @@ msgstr "Использование памяти"
 
 msgid "Menu & Navigation"
 msgstr "Меню и навигация"
+
+msgid "Message"
+msgstr ""
 
 msgid "Messengers"
 msgstr "Мессенджеры"
@@ -3482,6 +3542,9 @@ msgstr "Нет закрытых подключений"
 msgid "No conflict detected"
 msgstr "Конфликт не обнаружен"
 
+msgid "No critical incidents or crashes recorded in the journal."
+msgstr ""
+
 msgid "No Custom Rules Matched"
 msgstr "Нет совпадений с пользовательскими правилами"
 
@@ -3542,6 +3605,9 @@ msgstr "Снапшотов пока нет"
 msgid "No strategies match the active filter."
 msgstr "Нет стратегий, соответствующих выбранному фильтру."
 
+msgid "No tested servers recorded yet. Click \"Probe All Servers\" to evaluate node latency and reliability."
+msgstr ""
+
 msgid "No versions found"
 msgstr "Версии не найдены"
 
@@ -3553,6 +3619,9 @@ msgstr "Список узлов пуст"
 
 msgid "Nodes"
 msgstr "Узлы"
+
+msgid "Nodes OK"
+msgstr ""
 
 msgid "None"
 msgstr "Нет"
@@ -3670,6 +3739,9 @@ msgstr "Ollama (локальный ПК / сервер)"
 
 msgid "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."
 msgstr "Одна запись на строку: <code>example.com 192.168.1.100</code> или <code>192.168.1.100 example.com</code>. Строки, начинающиеся с <code>#</code>, игнорируются."
+
+msgid "online"
+msgstr ""
 
 msgid "Only from the specified countries."
 msgstr "Только из указанных стран."
@@ -3914,6 +3986,9 @@ msgstr "Питомцы / IoT (🐾)"
 msgid "Phone (📱)"
 msgstr "Смартфон (📱)"
 
+msgid "PID"
+msgstr ""
+
 msgid "Pin on dashboard"
 msgstr "Закрепить на дашборде"
 
@@ -4037,6 +4112,18 @@ msgstr "Настройки приоритета"
 msgid "Private Key"
 msgstr "Приватный ключ"
 
+msgid "Probe"
+msgstr ""
+
+msgid "Probe All Servers"
+msgstr ""
+
+msgid "Probed"
+msgstr ""
+
+msgid "Probing all..."
+msgstr ""
+
 msgid "Profile"
 msgstr "Профиль"
 
@@ -4133,8 +4220,20 @@ msgstr "Быстрый перевод картами РФ или через СБ
 msgid "RAG Knowledge Base + Live ISP Probe Context"
 msgstr "База знаний RAG + результаты живого зондирования провайдера"
 
+msgid "RAM (RSS)"
+msgstr ""
+
+msgid "RAM & Resource Pressure"
+msgstr ""
+
+msgid "RAM usage:"
+msgstr ""
+
 msgid "Random Trailers"
 msgstr "Случайные трейлеры (Random Trailers)"
+
+msgid "Rank"
+msgstr ""
 
 msgid "Rating"
 msgstr "Оценка"
@@ -4214,6 +4313,9 @@ msgstr "Обновить"
 msgid "Refresh Device List"
 msgstr "Обновить список устройств"
 
+msgid "Refresh Report"
+msgstr ""
+
 msgid "Refreshing package index"
 msgstr "Обновление индекса пакетов"
 
@@ -4276,6 +4378,9 @@ msgstr "Сбросить Bootstrap DNS"
 
 msgid "Reset Settings"
 msgstr "Сбросить настройки"
+
+msgid "Reset Stats"
+msgstr ""
 
 msgid "Resetting…"
 msgstr "Сброс…"
@@ -4760,6 +4865,9 @@ msgstr "Информация о сервере"
 msgid "Server name"
 msgstr "Имя сервера"
 
+msgid "Server Name"
+msgstr ""
+
 msgid "Server name / SNI"
 msgstr "Имя сервера / SNI"
 
@@ -4778,8 +4886,14 @@ msgstr "Порт сервера"
 msgid "Server Private Key"
 msgstr "Приватный ключ сервера"
 
+msgid "Server probe failed"
+msgstr ""
+
 msgid "Server Public Key"
 msgstr "Публичный ключ сервера"
+
+msgid "Server stats reset successfully"
+msgstr ""
 
 msgid "Server unavailable"
 msgstr "Сервер недоступен"
@@ -4790,11 +4904,17 @@ msgstr "VPN IP-адрес и подсеть сервера (например, 10
 msgid "server_port must be a number from 1 to 65535"
 msgstr "server_port должен быть числом от 1 до 65535"
 
+msgid "servers"
+msgstr ""
+
 msgid "Servers"
 msgstr "Серверы"
 
 msgid "Servers on dashboard"
 msgstr "Серверы на дашборде"
+
+msgid "Service"
+msgstr ""
 
 msgid "Service / Target"
 msgstr "Сервис / Цель"
@@ -4825,6 +4945,9 @@ msgstr "Настройки"
 
 msgid "Settings have been reset to defaults. The page will reload."
 msgstr "Настройки сброшены к значениям по умолчанию. Страница будет перезагружена."
+
+msgid "Severity"
+msgstr ""
 
 msgid "Shared CDN / Anycast Warning"
 msgstr "Предупреждение: общий диапазон CDN / Anycast"
@@ -4978,6 +5101,12 @@ msgstr "SSH"
 
 msgid "stability (3x)"
 msgstr "стабильность (3x)"
+
+msgid "Stability & Fleet Report"
+msgstr ""
+
+msgid "Stability penalties detected on active system:"
+msgstr ""
 
 msgid "Stage 1: Exploration Scan"
 msgstr "Этап 1: Разведочное сканирование"
@@ -5216,11 +5345,23 @@ msgstr "Синхронизировать время (NTP)"
 msgid "System diagnostics, AI Doctor and logs"
 msgstr "Системная диагностика, ИИ-Доктор и логи"
 
+msgid "System FDs allocated:"
+msgstr ""
+
 msgid "System info"
 msgstr "Системная информация"
 
 msgid "System information"
 msgstr "Системная информация"
+
+msgid "System Stability & Server Fleet Report"
+msgstr ""
+
+msgid "System Stability Index"
+msgstr ""
+
+msgid "System uptime"
+msgstr ""
 
 msgid "Tab Order & Visibility"
 msgstr "Порядок и видимость вкладок"
@@ -5573,6 +5714,9 @@ msgstr "Суммарное разрешенное время работы в с�
 msgid "Total lines:"
 msgstr "Всего строк:"
 
+msgid "Total servers"
+msgstr ""
+
 msgid "Total targets"
 msgstr "Всего целей"
 
@@ -5777,6 +5921,12 @@ msgstr "Нестабильно"
 msgid "Unsupported security mode for this protocol"
 msgstr "Неподдерживаемый режим безопасности для этого протокола"
 
+msgid "Untested"
+msgstr ""
+
+msgid "Untested fleet"
+msgstr ""
+
 msgid "Up to 10 snapshots are kept; the oldest ones are removed automatically."
 msgstr "Хранится до 10 снапшотов; самые старые удаляются автоматически."
 
@@ -5839,6 +5989,9 @@ msgstr "Режим DNS Upstream"
 
 msgid "Upstream Provider / ASN"
 msgstr "Восходящий провайдер / ASN"
+
+msgid "Uptime"
+msgstr ""
 
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://"
 msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2:// или tuic://"
@@ -6014,6 +6167,9 @@ msgstr "Ожидание TorrServer"
 msgid "WAN"
 msgstr "WAN"
 
+msgid "WAN network flaps:"
+msgstr ""
+
 msgid "WAN public IP"
 msgstr "Публичный WAN IP"
 
@@ -6031,6 +6187,9 @@ msgstr "Приватный ключ WARP"
 
 msgid "Watchdog probes every Connection section; when the active one fails several checks in a row, traffic switches to a healthy backup and Telegram is notified. Requires a config reload to take effect."
 msgstr "Watchdog проверяет каждую Connection-секцию; если активная падает несколько проверок подряд, трафик переключается на живую резервную, а Telegram получает уведомление. Нужен reload конфигурации."
+
+msgid "Watchdog recoveries:"
+msgstr ""
 
 msgid "Watchdog Status"
 msgstr "Статус Watchdog"

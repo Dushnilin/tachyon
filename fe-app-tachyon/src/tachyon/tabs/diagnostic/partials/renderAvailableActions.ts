@@ -36,6 +36,7 @@ interface IRenderAvailableActionsProps {
   generateBugReport: ActionProps;
   checkServices: ActionProps;
   testLeaks?: ActionProps;
+  stabilityReport?: ActionProps;
 }
 
 export function renderAvailableActions({
@@ -55,6 +56,7 @@ export function renderAvailableActions({
   generateBugReport,
   checkServices,
   testLeaks,
+  stabilityReport,
 }: IRenderAvailableActionsProps) {
   return E('div', { class: 'tachyon_diagnostic-page__right-bar__actions' }, [
     E('b', {}, _('Available actions')),
@@ -184,6 +186,16 @@ export function renderAvailableActions({
         text: _('IP & DNS Leak Test'),
         loading: testLeaks!.loading,
         disabled: testLeaks!.disabled,
+      }),
+    ]),
+    ...insertIf(!!stabilityReport?.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: stabilityReport!.onClick,
+        icon: renderCircleCheckBigIcon24,
+        text: _('Stability & Fleet Report'),
+        loading: stabilityReport!.loading,
+        disabled: stabilityReport!.disabled,
       }),
     ]),
     ...insertIf(viewLogs.visible, [
