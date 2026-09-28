@@ -260,7 +260,7 @@ run_with_deadline() {
     (
         sleep "$_seconds"
         kill_tree "$_cmd_pid"
-    ) &
+    ) >/dev/null 2>&1 &
     _watch_pid=$!
     wait "$_cmd_pid"
     _rc=$?
@@ -298,8 +298,8 @@ run_logged_timeout() {
 }
 
 detect_fetcher() {
-    if command_exists wget; then FETCHER="wget"; return 0; fi
     if command_exists curl; then FETCHER="curl"; return 0; fi
+    if command_exists wget; then FETCHER="wget"; return 0; fi
     err "wget or curl is required"
     return 1
 }
@@ -557,6 +557,7 @@ installer_is_interactive() {
 select_release_version() {
     [ -n "$RELEASE_TAG_REQUESTED" ] && return 0
     installer_is_interactive || return 0
+    msg "Fetching release list"
     _tags="$(fetch_release_tag_list || true)"
     [ -n "$_tags" ] || return 0
     _count=0
@@ -1087,26 +1088,35 @@ main() {
     banner
 
     sync_time
+    msg "Checking system requirements"
     system_preflight || fail "System preflight failed"
 
+    msg "Bootstrapping ucode runtime"
     ensure_bootstrap_ucode_runtime || fail "Could not bootstrap ucode runtime"
+    msg "Detecting language and engine configuration"
     detect_language_and_i18n
     select_sing_box_installation
     decide_zram
     record_service_state
     select_release_version
 
+    msg "Resolving release metadata"
     resolve_release || fail "Could not resolve Tachyon release"
     check_tmp_for_downloads || fail "Temporary storage preflight failed"
     print_plan
+    msg "Downloading release files"
     download_release || fail "Release download or verification failed"
 
+    msg "Checking runtime dependencies"
     ensure_runtime_dependencies || fail "Could not install Tachyon dependencies"
+    msg "Creating recovery snapshot"
     snapshot_state || fail "Could not create recovery snapshot"
+    msg "Preparing package transaction"
     prepare_transaction || fail "Could not prepare package transaction"
     install_core_transaction || fail "Tachyon package transaction failed"
     install_zram_if_requested
     install_selected_sing_box || fail "sing-box installation failed"
+    msg "Restoring service state"
     restore_service_intent || fail "Could not restore Tachyon service state"
     healthcheck || fail "Installed Tachyon did not pass healthcheck"
     commit_transaction
@@ -1115,7 +1125,7 @@ main() {
     _elapsed=$((_end - START_TIME)); [ "$_elapsed" -ge 0 ] 2>/dev/null || _elapsed=0
     ok "Tachyon ${TACHYON_RELEASE_TAG} installed successfully in ${_elapsed}s"
     msg "Log: $LOG_FILE"
-    [ -n "$SNAPSHOT_DIR" ] && msg "Recovery snapshot: $SNAPSHOT_DIR"
+    [ -n "$SNAPSHOT_DIR" ] && msg "Recovery snapshot: $SNAPSHOT_DIR" || true
 }
 
 if [ "${TACHYON_INSTALLER_TEST:-0}" != "1" ]; then
