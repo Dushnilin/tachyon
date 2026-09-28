@@ -22,3 +22,4 @@ uc.out
 filtered-bin/
 build-*.log
 build-out/
+*.lmo
