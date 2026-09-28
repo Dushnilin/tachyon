@@ -1035,6 +1035,9 @@ cleanup() {
 on_hup() { exit 129; }
 on_int() { exit 130; }
 on_term() { exit 143; }
+# stdout/stderr closed (ssh/session drop): ignore further SIGPIPE and run
+# EXIT cleanup instead of dying mid-transaction with a stale lock
+on_pipe() { trap '' PIPE; exit 141; }
 
 fail() {
     err "$1"
@@ -1075,6 +1078,7 @@ main() {
     trap on_hup HUP
     trap on_int INT
     trap on_term TERM
+    trap on_pipe PIPE
 
     parse_args "$@" || exit $?
     START_TIME="$(date +%s 2>/dev/null || echo 0)"
