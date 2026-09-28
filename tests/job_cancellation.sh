@@ -258,6 +258,14 @@ assert_eq "cancelled" "$STEPS_PHASE" "final state must be cancelled"
 echo "=== Test 7: CLI dispatch via tachyon binary ==="
 chmod +x "$TACHYON_BIN"
 
+run_tachyon() {
+  if [ -x "$TACHYON_BIN" ] && "$TACHYON_BIN" >/dev/null 2>&1; then
+    "$TACHYON_BIN" "$@"
+  else
+    ucode -- "$TACHYON_BIN" "$@"
+  fi
+}
+
 # Create a job to manipulate via CLI
 CLI_JOB_ID=$(ucode -e '
   let jobs = require("core.jobs");
@@ -268,29 +276,29 @@ CLI_JOB_ID=$(ucode -e '
 ')
 
 # 7a: job_list includes the job
-LIST_OUT=$("$TACHYON_BIN" job_list --all)
+LIST_OUT=$(run_tachyon job_list --all)
 echo "$LIST_OUT" | grep -q "$CLI_JOB_ID" || fail "CLI job_list should include $CLI_JOB_ID"
 
 # 7b: job_query returns valid JSON
-QUERY_OUT=$("$TACHYON_BIN" job_query "$CLI_JOB_ID")
+QUERY_OUT=$(run_tachyon job_query "$CLI_JOB_ID")
 echo "$QUERY_OUT" | grep -q "\"id\": \"$CLI_JOB_ID\"" || fail "CLI job_query should return job details"
 
 # 7c: job_request_cancel signals cancellation
-REQ_OUT=$("$TACHYON_BIN" job_request_cancel "$CLI_JOB_ID" "Testing CLI request-cancel")
+REQ_OUT=$(run_tachyon job_request_cancel "$CLI_JOB_ID" "Testing CLI request-cancel")
 echo "$REQ_OUT" | grep -q '"ok": true' || fail "CLI job_request_cancel should succeed"
 
-QUERY_OUT_AFTER=$("$TACHYON_BIN" job_query "$CLI_JOB_ID")
+QUERY_OUT_AFTER=$(run_tachyon job_query "$CLI_JOB_ID")
 echo "$QUERY_OUT_AFTER" | grep -q '"cancel_requested": true' || fail "job should have cancel_requested=true"
 
 # 7d: job_cancel with --force
-CANCEL_OUT=$("$TACHYON_BIN" job_cancel "$CLI_JOB_ID" --force "Force stop test")
+CANCEL_OUT=$(run_tachyon job_cancel "$CLI_JOB_ID" --force "Force stop test")
 echo "$CANCEL_OUT" | grep -q '"ok": true' || fail "CLI job_cancel should succeed"
 
-QUERY_OUT_FINAL=$("$TACHYON_BIN" job_query "$CLI_JOB_ID")
+QUERY_OUT_FINAL=$(run_tachyon job_query "$CLI_JOB_ID")
 echo "$QUERY_OUT_FINAL" | grep -q '"phase": "cancelled"' || fail "job should be in cancelled phase"
 
 # 7e: job_gc runs without error
-GC_OUT=$("$TACHYON_BIN" job_gc)
+GC_OUT=$(run_tachyon job_gc)
 echo "$GC_OUT" | grep -q "Removed" || fail "job_gc should report removed jobs count"
 
 echo "job_cancellation.sh: ALL TESTS PASSED SUCCESSFULLY"
