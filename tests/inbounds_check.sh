@@ -93,4 +93,27 @@ if ! echo "$render_vless_out" | grep -Fq "[WARN] WAN IP is not public"; then
   fail "VLESS with private WAN IP should produce [WARN] in render_global_inbounds_check: $render_vless_out"
 fi
 
+# 5. Native Tailscale has no sing-box endpoint/route rule: the item must still
+# report runtime_ok=1 (TCH-1037), while the same empty runtime without the
+# native flag must keep reporting a failure.
+native_out="$(ucode -L "$TACHYON_LIB" "$STATUS_UC" inbound-item-json '{}' 'ts' 'Head' 'tailscale' 'native' \
+  'server-Head-in' '0.0.0.0' '' '' '' 'tailscale' 'tcp' '-1' '0' '-1' '0' '' '1' '-1' '-1' '-1' '1')"
+printf '%s' "$native_out" | ucode -e '
+let fs = require("fs");
+let d = json(fs.readfile("/dev/stdin"));
+if (int(d.runtime_ok) != 1)
+    die("native tailscale item must report runtime_ok=1: " + sprintf("%J", d) + "\n");
+if (d.routing_mode != "native")
+    die("native tailscale item must keep routing_mode=native: " + sprintf("%J", d) + "\n");
+' || fail "native Tailscale inbound item check failed"
+
+non_native_out="$(ucode -L "$TACHYON_LIB" "$STATUS_UC" inbound-item-json '{}' 'ts' 'Head' 'tailscale' 'rules' \
+  'server-Head-in' '0.0.0.0' '' '' '' 'tailscale' 'tcp' '-1' '0' '-1' '0' '' '0' '-1' '-1' '-1' '0')"
+printf '%s' "$non_native_out" | ucode -e '
+let fs = require("fs");
+let d = json(fs.readfile("/dev/stdin"));
+if (int(d.runtime_ok) != 0)
+    die("missing non-native tailscale endpoint must still report runtime_ok=0: " + sprintf("%J", d) + "\n");
+' || fail "non-native Tailscale inbound item regression"
+
 printf 'inbounds check diagnostics tests passed\n'

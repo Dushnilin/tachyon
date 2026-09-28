@@ -1059,6 +1059,13 @@ function write_inbound_item_json(args) {
     let runtime_type = object_value(runtime, "type");
     let runtime_listen = object_value(runtime, "listen");
     let runtime_port_text = object_value(runtime, "listen_port") || "0";
+    // args[21]: native Tailscale (tailscaled outside sing-box) — no endpoint
+    // or route rule is generated for it; absence is the healthy state.
+    let native_mode = as_string(args[21]) == "1";
+    if (native_mode) {
+        runtime_exists = "1";
+        runtime_type = expected_type;
+    }
 
     write_json({
         section,

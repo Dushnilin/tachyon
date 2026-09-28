@@ -325,6 +325,27 @@ function build_section_cache(section) {
         generator_routes.add_urltest_outbound(dummy_cfg, section, urltest_id, group_candidate_tags, state);
     }
 
+    // Mirror add_proxy_selector's dashboard unhide (generator_routes.uc): nodes
+    // picked in the dashboard include/mixed filter must not stay flagged
+    // hidden in the cache, or the LuCI dashboard drops exactly the nodes the
+    // user selected (TCH-1036 / TCH-1021). Other modes hide nothing extra:
+    // selector members are never hidden-flagged in the first place.
+    if (state && state.hiddenOutboundTags && length(keys(state.hiddenOutboundTags)) > 0) {
+        let mode = connections.dashboard_filter_mode(section);
+        if (mode == "include" || mode == "mixed") {
+            // Candidates = every standalone node, hidden ones included: on the
+            // sing-box path urltest_candidate_tags collects all non-group nodes
+            // before the hidden check, which is what lets a dashboard selection
+            // unhide a subscription group member.
+            let dashboard_candidates = keys(state.links);
+            let matched = generator_routes.dashboard_filtered_outbounds
+                ? generator_routes.dashboard_filtered_outbounds(section, dashboard_candidates, state, {})
+                : dashboard_candidates;
+            for (let t in matched)
+                delete state.hiddenOutboundTags[t];
+        }
+    }
+
     if (length(keys(state.links)) == 0 && length(keys(state.urltestGroups)) == 0)
         return false;
 

@@ -176,6 +176,21 @@ function active_engine_is_steer() {
     return name == "steer" || name == "steer-extended";
 }
 
+// Native Tailscale (tailscale_mode=native) runs tailscaled outside sing-box:
+// servers.uc:567 skips the endpoint, tailscaled manages its own nft rules.
+// Diagnostics must not flag the absence of those as errors.
+function native_tailscale_enabled() {
+    for (let section in uci_sections("server")) {
+        if (as_string(section["enabled"]) == "0" || as_string(section["enabled"]) == "false")
+            continue;
+        if (as_string(section["protocol"] || "") != "tailscale")
+            continue;
+        if (as_string(section["tailscale_mode"] || "singbox") == "native")
+            return true;
+    }
+    return false;
+}
+
 function parse_json_or_null(text) {
     return network_mod.parse_json_or_null(text);
 }
@@ -350,6 +365,7 @@ function check_inbounds() {
     let items = [];
     let enabled_count = 0;
     let requires_public_wan = 0;
+    let native_tailscale = native_tailscale_enabled();
 
     for (let section in uci_sections("server")) {
         if (!bool_option(section, "enabled", false))
@@ -371,6 +387,12 @@ function check_inbounds() {
         let runtime_json = protocol == "tailscale"
             ? module_output(PROVIDERS_STATUS_UC, [ "endpoint-summary", sing_box_config_path, inbound_tag ])
             : module_output(PROVIDERS_STATUS_UC, [ "inbound-summary", sing_box_config_path, inbound_tag ]);
+        // Native mode: tailscaled runs outside sing-box, no endpoint is
+        // generated (servers.uc add_server) and no route rule is expected.
+        if (protocol == "tailscale" && native_tailscale) {
+            runtime_json = "";
+            routing_mode = "native";
+        }
 
         let listening = -1;
         let firewall_required = 0;
@@ -388,9 +410,11 @@ function check_inbounds() {
             }
         }
 
-        let routes_configured = module_success(PROVIDERS_STATUS_UC, [
-            "has-route-rule-for-inbound", sing_box_config_path, inbound_tag
-        ]) ? 1 : 0;
+        let routes_configured = protocol == "tailscale" && native_tailscale
+            ? 1
+            : (module_success(PROVIDERS_STATUS_UC, [
+                "has-route-rule-for-inbound", sing_box_config_path, inbound_tag
+            ]) ? 1 : 0);
 
         let public_host_ips = protocol == "json_inbound" ? "" : resolve_public_host_ips(public_host);
         let flags = words(public_host_flags(public_host, public_host_ips, wan_ip, wan_public));
@@ -419,7 +443,8 @@ function check_inbounds() {
             routes_configured,
             flags[0],
             flags[1],
-            flags[2]
+            flags[2],
+            (protocol == "tailscale" && native_tailscale) ? "1" : "0"
         ], null);
         let item = parse_json_or_null(item_json);
         push(items, type(item) == "object" ? item : {});
@@ -691,6 +716,10 @@ function check_nft_rules() {
         let family = fields[1];
         let table_name = fields[2];
         if (table_name == NFT_TABLE_NAME)
+            continue;
+        // Native Tailscale: tailscaled (and Tachyon's own exit-node/firewall
+        // rules) live in their own table — their marking rules are expected.
+        if (table_name == "tachyon_tailscale" && native_tailscale_enabled())
             continue;
         if (nft_table_has_other_mark_rules(family, table_name)) {
             rules_other_mark_exist = 1;

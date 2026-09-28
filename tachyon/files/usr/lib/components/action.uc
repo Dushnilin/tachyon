@@ -27,6 +27,7 @@ const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || constants.TACHYON_SERVICE
 const TACHYON_VERSION = getenv("TACHYON_VERSION") || constants.TACHYON_VERSION || "";
 const TACHYON_COMMIT_SHA = getenv("TACHYON_COMMIT_SHA") || constants.TACHYON_COMMIT_SHA || "";
 const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "Dushnilin/tachyon";
+const TACHYON_CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
 // Persistent, not RUNTIME_STATE_DIR: the fingerprint describes the build that is
@@ -1936,6 +1937,19 @@ function install_package_sing_box(action, tiny) {
     let latest_version = available_package_version(package_name);
     if (latest_version == "")
         latest_version = installed_package_version(package_name);
+
+    // Stable/tiny binaries cannot serve an MTProto (mtproxy) inbound — only
+    // the extended family can. Fail before stopping the service and swapping
+    // binaries, instead of installing, failing the config check and rolling
+    // back (TCH-1031: user saw a churn cycle ending in "previous variant
+    // restored"). check_update only reports availability, so it is exempt.
+    if (action != "check_update" && !sing_box_runtime_success("is-extended", [ binary_version ])) {
+        for (let server in uci_core.section_objects(TACHYON_CONFIG_NAME, "server")) {
+            let srv_enabled = as_string(server["enabled"] || "1") != "0";
+            if (srv_enabled && common.option(server, "protocol", "vless") == "mtproto")
+                action_fail("sing_box", action, label + " cannot be installed: the MTProto server '" + as_string(server[".name"]) + "' requires sing-box-extended. Keep sing-box-extended or disable the server first", current_version, latest_version);
+        }
+    }
 
     if (action == "check_update") {
         if (latest_version == "") {

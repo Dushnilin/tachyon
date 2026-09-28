@@ -2383,8 +2383,12 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         let extended_only_label = extended_only_labels[as_string(action)];
         // NB: sing_box_is_extended() also matches sing-box-lx, so exclude it here.
         if (extended_only_label != null &&
-            !(sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version)))
-            fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but this feature requires the sing-box-extended binary (not supported by sing-box-lx or stock sing-box). Install sing-box-extended or change the action. Aborted.", "fatal");
+            !(sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version))) {
+            let lx_note = sing_box_is_lx(ctx, sing_box_version)
+                ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
+                : "";
+            fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended or change the action. Aborted.", "fatal");
+        }
 
         // OpenVPN was added in sing-box 1.14.0. Older extended builds (e.g.
         // 1.13.x-extended-2.x.x) don't know the endpoint type and abort with

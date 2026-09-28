@@ -2707,6 +2707,7 @@ return {
     add_urltest_outbound,
     add_priority_group_outbound,
     add_proxy_selector,
+    dashboard_filtered_outbounds,
     ensure_community_ruleset,
     domain_ip_list_ruleset_tag,
     domain_ip_list_ruleset_path,
