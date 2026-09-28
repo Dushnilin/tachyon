@@ -1943,7 +1943,7 @@ function install_package_sing_box(action, tiny) {
     // binaries, instead of installing, failing the config check and rolling
     // back (TCH-1031: user saw a churn cycle ending in "previous variant
     // restored"). check_update only reports availability, so it is exempt.
-    if (action != "check_update" && !sing_box_runtime_success("is-extended", [ binary_version ])) {
+    if (action != "check_update" && uci_core.available() && !sing_box_runtime_success("is-extended", [ binary_version ])) {
         for (let server in uci_core.section_objects(TACHYON_CONFIG_NAME, "server")) {
             let srv_enabled = as_string(server["enabled"] || "1") != "0";
             if (srv_enabled && common.option(server, "protocol", "vless") == "mtproto")
