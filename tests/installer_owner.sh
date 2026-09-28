@@ -61,7 +61,7 @@ export TMP_DIR="$WORK_DIR"
 
 grep -Fq 'run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO-' "$INSTALLER" ||
   fail "installer wget metadata requests must have portable connect and total timeouts"
-grep -Fq 'run_with_deadline "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O' "$INSTALLER" ||
+grep -Fq 'run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O' "$INSTALLER" ||
   fail "installer wget downloads must have portable connect and total timeouts"
 if grep -n -E 'wget.*[[:space:]]-t([[:space:]]|$)' "$INSTALLER" >/dev/null; then
   fail "installer wget commands must not use the unsupported OpenWrt -t option"

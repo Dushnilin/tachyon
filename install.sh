@@ -269,12 +269,85 @@ run_with_deadline() {
     return "$_rc"
 }
 
+# Live console streaming of captured command output: LOG_FILE still gets the
+# full replay after the command, the console sees each line as it arrives
+# instead of staying silent for the whole deadline window.
+_NL='
+'
+
+_stream_poll() {
+    _sf="$1"
+    _ssize="$(wc -c <"$_sf" 2>/dev/null)" || _ssize=0
+    case "$_ssize" in ''|*[!0-9]*) _ssize=0 ;; esac
+    [ "$_ssize" -gt "$_spos" ] 2>/dev/null || return 0
+    _sbuf="$_sbuf$(tail -c +$((_spos + 1)) "$_sf" 2>/dev/null)"
+    _spos="$_ssize"
+    while :; do
+        case "$_sbuf" in
+            *"$_NL"*) ;;
+            *) break ;;
+        esac
+        _sline="${_sbuf%%"$_NL"*}"
+        _sbuf="${_sbuf#*"$_NL"}"
+        [ "$QUIET" -eq 1 ] || printf '  [%s] [%s] %s\n' "$(ts_elapsed)" "$_stag" "$_sline"
+    done
+    return 0
+}
+
+stream_console_lines() {
+    _sf="$1"; _stag="$2"; _sstop="$3"; _SPARENT="${4:-}"
+    _spos=0
+    _sbuf=""
+    _sidle=0
+    while :; do
+        [ -e "$_sstop" ] && break
+        if [ -n "$_SPARENT" ]; then
+            kill -0 "$_SPARENT" 2>/dev/null || break
+        fi
+        _spre="$_spos"
+        _stream_poll "$_sf"
+        if [ "$_spos" -eq "$_spre" ]; then
+            _sidle=$((_sidle + 1))
+            if [ "$_sidle" -ge 10 ] && [ $((_sidle % 10)) -eq 0 ] && [ "$QUIET" -ne 1 ]; then
+                printf '  [%s] [%s] … still running (%ss)\n' "$(ts_elapsed)" "$_stag" "$_sidle"
+            fi
+        else
+            _sidle=0
+        fi
+        sleep 1
+    done
+    _stream_poll "$_sf"
+    if [ -n "$_sbuf" ] && [ "$QUIET" -ne 1 ]; then
+        printf '  [%s] [%s] %s\n' "$(ts_elapsed)" "$_stag" "$_sbuf"
+    fi
+    return 0
+}
+
+start_console_stream() {
+    _STREAM_STOP="$1.stf"
+    rm -f "$_STREAM_STOP"
+    stream_console_lines "$1" "$2" "$_STREAM_STOP" "$$" &
+    _STREAM_PID=$!
+}
+
+stop_console_stream() {
+    [ -n "${_STREAM_PID:-}" ] || return 0
+    : >"$_STREAM_STOP" 2>/dev/null || true
+    wait "$_STREAM_PID" 2>/dev/null || true
+    _STREAM_PID=""
+    rm -f "$_STREAM_STOP" 2>/dev/null || true
+    return 0
+}
+
 run_logged() {
     _tag="$1"; shift
-    _out="$TMP_DIR/cmd.$$.log"
+    _out="$TMP_DIR/cmd.$.log"
     log_line "EXEC  [$_tag] $*"
+    : >"$_out"
+    start_console_stream "$_out" "$_tag"
     "$@" >"$_out" 2>&1
     _rc=$?
+    stop_console_stream
     if [ -s "$_out" ]; then
         while IFS= read -r _line; do log_line "  [$_tag] $_line"; done <"$_out"
     fi
@@ -285,10 +358,13 @@ run_logged() {
 
 run_logged_timeout() {
     _tag="$1"; _seconds="$2"; shift 2
-    _out="$TMP_DIR/cmd.$$.log"
+    _out="$TMP_DIR/cmd.$.log"
     log_line "EXEC  [$_tag] (deadline ${_seconds}s) $*"
+    : >"$_out"
+    start_console_stream "$_out" "$_tag"
     run_with_deadline "$_seconds" "$@" >"$_out" 2>&1
     _rc=$?
+    stop_console_stream
     if [ -s "$_out" ]; then
         while IFS= read -r _line; do log_line "  [$_tag] $_line"; done <"$_out"
     fi
@@ -316,8 +392,8 @@ http_get() {
 download_file_once() {
     _url="$1"; _dst="$2"
     case "$FETCHER" in
-        wget) run_with_deadline "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dst" "$_url" ;;
-        curl) curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_url" -o "$_dst" ;;
+        wget) run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dst" "$_url" ;;
+        curl) run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_url" -o "$_dst" ;;
         *) return 1 ;;
     esac
 }
@@ -430,6 +506,7 @@ pkg_update_index() {
 pkg_install_names() {
     [ "$#" -gt 0 ] || return 0
     if [ "$DRY_RUN" -eq 1 ]; then msg "[dry-run] would install dependencies: $*"; return 0; fi
+    msg "Installing packages: $*"
     if [ "$PKG_IS_APK" -eq 1 ]; then
         apk_run apk-add "$PACKAGE_TIMEOUT_SECONDS" add "$@"
     else
@@ -611,6 +688,7 @@ version_ge() {
 
 resolve_release() {
     _ext="ipk"; [ "$PKG_IS_APK" -eq 1 ] && _ext="apk"
+    msg "Querying GitHub release API"
     TACHYON_RELEASE_JSON="$(fetch_release_json)" || return 1
     TACHYON_RELEASE_TAG="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper tag "$RELEASE_CHANNEL" 2>/dev/null || true)"
     [ -n "$TACHYON_RELEASE_TAG" ] || { err "Could not resolve a valid release tag"; return 1; }
@@ -779,7 +857,7 @@ restore_snapshot() {
     fi
     if [ "$TACHYON_WAS_INSTALLED" -eq 1 ] && [ -x /usr/bin/tachyon ]; then
         [ "$TACHYON_WAS_ENABLED" -eq 1 ] && /etc/init.d/tachyon enable >/dev/null 2>&1 || /etc/init.d/tachyon disable >/dev/null 2>&1 || true
-        [ "$TACHYON_WAS_RUNNING" -eq 1 ] && run_with_deadline 45 /usr/bin/tachyon start >/dev/null 2>&1 || true
+        [ "$TACHYON_WAS_RUNNING" -eq 1 ] && run_logged_timeout tachyon-rollback-start 120 /usr/bin/tachyon start || true
     fi
 }
 
@@ -821,8 +899,13 @@ release_tachyon_init_lock() {
 prepare_transaction() {
     [ "$DRY_RUN" -eq 1 ] && return 0
     if [ -x /usr/bin/tachyon ]; then
-        run_with_deadline 45 /usr/bin/tachyon stop >/dev/null 2>&1 || true
+        msg "Stopping running Tachyon services"
+        _t0="$(date +%s 2>/dev/null || echo 0)"
+        run_logged_timeout tachyon-stop 45 /usr/bin/tachyon stop || true
+        _t1="$(date +%s 2>/dev/null || echo 0)"
+        ok "Tachyon services stopped in $((_t1 - _t0))s"
     fi
+    msg "Checking for legacy packages (forkop/podkop/netshift)"
     remove_legacy_packages
     release_tachyon_init_lock
 }
@@ -830,8 +913,11 @@ prepare_transaction() {
 remove_legacy_packages() {
     _legacy_pkgs=""
     if [ "$PKG_IS_APK" -eq 1 ]; then
+        # Exact installed-name match: 'apk info -e forkop' resolves virtuals to
+        # their provider, so with tachyon's PROVIDES:=forkop it would always
+        # report legacy forkop as installed and trigger a no-op purge.
         for _pkg in forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift; do
-            if apk info -e "$_pkg" >/dev/null 2>&1; then
+            if grep -q "^P:${_pkg}\$" /lib/apk/db/installed 2>/dev/null; then
                 _legacy_pkgs="$_legacy_pkgs $_pkg"
             fi
         done
@@ -994,28 +1080,45 @@ restore_service_intent() {
     [ -x /etc/init.d/tachyon ] || return 1
     if [ "$TACHYON_WAS_INSTALLED" -eq 1 ]; then
         if [ "$TACHYON_WAS_ENABLED" -eq 1 ]; then /etc/init.d/tachyon enable >/dev/null 2>&1 || true; else /etc/init.d/tachyon disable >/dev/null 2>&1 || true; fi
-        if [ "$TACHYON_WAS_RUNNING" -eq 1 ]; then run_with_deadline 60 /usr/bin/tachyon start >/dev/null 2>&1 || return 1; else run_with_deadline 45 /usr/bin/tachyon stop >/dev/null 2>&1 || true; fi
+        if [ "$TACHYON_WAS_RUNNING" -eq 1 ]; then
+            msg "Starting Tachyon service (DNS, nft rules, sing-box — usually 20-40s)"
+            _t0="$(date +%s 2>/dev/null || echo 0)"
+            run_logged_timeout tachyon-start 120 /usr/bin/tachyon start || return 1
+            _t1="$(date +%s 2>/dev/null || echo 0)"
+            ok "Tachyon service started in $((_t1 - _t0))s"
+        else
+            msg "Tachyon was stopped before install; keeping it stopped"
+            run_logged_timeout tachyon-stop 45 /usr/bin/tachyon stop || true
+        fi
     else
+        msg "First Tachyon launch (DNS, nft rules, sing-box — usually 20-40s)"
         /etc/init.d/tachyon enable >/dev/null 2>&1 || true
-        run_with_deadline 60 /usr/bin/tachyon start >/dev/null 2>&1 || true
+        _t0="$(date +%s 2>/dev/null || echo 0)"
+        run_logged_timeout tachyon-start 120 /usr/bin/tachyon start || true
+        _t1="$(date +%s 2>/dev/null || echo 0)"
+        ok "Tachyon service started in $((_t1 - _t0))s"
     fi
 }
 
 healthcheck() {
     [ "$DRY_RUN" -eq 1 ] && return 0
     msg "Running installation healthcheck"
+    msg "Verifying package registration"
     pkg_is_installed tachyon || { err "tachyon package is not registered"; return 1; }
     pkg_is_installed luci-app-tachyon || { err "luci-app-tachyon package is not registered"; return 1; }
+    msg "Verifying runtime files and configuration"
     [ -x /usr/bin/tachyon ] || { err "/usr/bin/tachyon is missing"; return 1; }
     [ -r /usr/lib/tachyon/core/constants.uc ] || { err "Tachyon runtime is incomplete"; return 1; }
     [ -f /usr/share/luci/menu.d/luci-app-tachyon.json ] || { err "LuCI menu file is missing"; return 1; }
     [ -r /etc/config/tachyon ] || { err "Tachyon UCI config is missing"; return 1; }
     chmod 0600 /etc/config/tachyon 2>/dev/null || true
+    msg "Verifying installed version matches $TACHYON_RELEASE_TAG"
     _version="$(/usr/bin/tachyon get_system_info 2>/dev/null | sed -n 's/.*"tachyon_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
     if [ -n "$_version" ] && [ "$_version" != "$TACHYON_RELEASE_TAG" ]; then
         err "Installed runtime reports version $_version, expected $TACHYON_RELEASE_TAG"
         return 1
     fi
+    msg "Verifying ucode runtime load"
     ucode -L /usr/lib/tachyon -e 'require("core.common");' >/dev/null 2>&1 || { err "ucode cannot load Tachyon runtime"; return 1; }
     ok "Healthcheck passed"
 }
