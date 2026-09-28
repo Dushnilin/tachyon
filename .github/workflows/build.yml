@@ -56,9 +56,6 @@ jobs:
 
       - name: Build release artifacts
         shell: bash
-        env:
-          TACHYON_SIGNING_KEY: ${{ secrets.TACHYON_SIGNING_KEY }}
-          TACHYON_REQUIRE_SIGNATURE: "1"
         run: |
           VERSION="${{ needs.preparation.outputs.version }}"
           bash ./build.sh "$VERSION" "$PWD/filtered-bin/release"

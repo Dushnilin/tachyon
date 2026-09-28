@@ -59,11 +59,9 @@ grep -Fq '/fd/1000' "$INSTALLER" || fail "procd fd1000 lock-holder cleanup missi
 grep -Fq 'is_protected_pid' "$INSTALLER" || fail "installer must protect its own process ancestry"
 grep -Fq '99-tachyon-wan|flock 1000|/etc/init.d/tachyon' "$INSTALLER" || fail "legacy init-lock waiter cleanup missing"
 
-for pattern in 'tachyon_' 'luci-app-tachyon_' 'luci-i18n-tachyon-ru_' 'sha256sums.txt' 'sha256sums.txt.minisig'; do
+for pattern in 'tachyon_' 'luci-app-tachyon_' 'luci-i18n-tachyon-ru_' 'sha256sums.txt'; do
   grep -Fq "$pattern" "$INSTALLER" || fail "release asset contract missing: $pattern"
 done
-grep -Fq 'verify_release_signature' "$INSTALLER" || fail "verify_release_signature missing"
-grep -Fq 'Release signature verification failed' "$INSTALLER" || fail "signature failure handling missing"
 grep -Fq 'Checksum mismatch' "$INSTALLER" || fail "checksum failure path missing"
 
 if grep -qi 'jsdelivr' "$INSTALLER"; then

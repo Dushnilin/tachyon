@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck shell=dash
 
-INSTALLER_VERSION="3.2.0"
+INSTALLER_VERSION="3.3.0"
 REPO_OWNER="Dushnilin"
 REPO_NAME="tachyon"
 
@@ -45,13 +45,6 @@ REPAIR_MODE=0
 REINSTALL_MODE=0
 RELEASE_TAG_REQUESTED=""
 RELEASE_CHANNEL="stable"
-REQUIRE_SIGNATURE=1
-ALLOW_UNSIGNED=0
-# Releases before this tag were published without sha256sums.txt.minisig;
-# requiring a signature for them would make them uninstallable.
-MIN_SIGNED_RELEASE="1.4.3"
-RELEASE_PUBKEY_OVERRIDE=""
-
 TACHYON_RELEASE_JSON=""
 TACHYON_RELEASE_TAG=""
 TACHYON_BACKEND_URL=""
@@ -65,8 +58,6 @@ TACHYON_I18N_NAME=""
 TACHYON_I18N_FILE=""
 TACHYON_SHA256_URL=""
 TACHYON_SHA256_FILE=""
-TACHYON_MINISIG_URL=""
-TACHYON_MINISIG_FILE=""
 TACHYON_DOWNLOAD_BYTES=0
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
@@ -79,33 +70,42 @@ else
     C_RESET=""; C_BOLD=""; C_RED=""; C_GREEN=""; C_YELLOW=""; C_CYAN=""
 fi
 
+INSTALL_START_TS="$(date +%s 2>/dev/null || echo 0)"
+
+ts_elapsed() {
+    _now="$(date +%s 2>/dev/null || echo "$INSTALL_START_TS")"
+    _el=$((_now - INSTALL_START_TS))
+    [ "$_el" -ge 0 ] 2>/dev/null || _el=0
+    printf '+%02d:%02d' $((_el / 60)) $((_el % 60))
+}
+
 log_line() {
-    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '-------------------')" "$1" >>"$LOG_FILE" 2>/dev/null || true
+    printf '[%s +%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '-------------------')" "$(ts_elapsed)" "$1" >>"$LOG_FILE" 2>/dev/null || true
 }
 
 msg() {
     log_line "INFO  $1"
-    [ "$QUIET" -eq 1 ] || printf '  %s%s%s\n' "$C_CYAN" "$1" "$C_RESET"
+    [ "$QUIET" -eq 1 ] || printf '  [%s] %s%s%s\n' "$(ts_elapsed)" "$C_CYAN" "$1" "$C_RESET"
 }
 
 ok() {
     log_line "OK    $1"
-    [ "$QUIET" -eq 1 ] || printf '  %s%s✓%s %s\n' "$C_GREEN" "$C_BOLD" "$C_RESET" "$1"
+    [ "$QUIET" -eq 1 ] || printf '  [%s] %s%s✓%s %s\n' "$(ts_elapsed)" "$C_GREEN" "$C_BOLD" "$C_RESET" "$1"
 }
 
 warn() {
     log_line "WARN  $1"
-    printf '  %s%s⚠%s %s\n' "$C_YELLOW" "$C_BOLD" "$C_RESET" "$1" >&2
+    printf '  [%s] %s%s⚠%s %s\n' "$(ts_elapsed)" "$C_YELLOW" "$C_BOLD" "$C_RESET" "$1" >&2
 }
 
 err() {
     log_line "ERROR $1"
-    printf '  %s%s✗%s %s\n' "$C_RED" "$C_BOLD" "$C_RESET" "$1" >&2
+    printf '  [%s] %s%s✗%s %s\n' "$(ts_elapsed)" "$C_RED" "$C_BOLD" "$C_RESET" "$1" >&2
 }
 
 debug() {
     log_line "DEBUG $1"
-    [ "$VERBOSE" -eq 1 ] && printf '  [debug] %s\n' "$1" >&2 || true
+    [ "$VERBOSE" -eq 1 ] && printf '  [%s] [debug] %s\n' "$(ts_elapsed)" "$1" >&2 || true
 }
 
 usage() {
@@ -130,9 +130,6 @@ Usage: $0 [options]
       --skip-engine     Alias for --skip-sing-box
       --zram            Install zram-swap
       --no-zram         Never install zram-swap
-      --require-signature  Enforce Ed25519 signature verification (default; enforced from release $MIN_SIGNED_RELEASE)
-      --allow-unsigned     Allow installation if signature is missing or verification fails
-      --pubkey FILE        Path to custom release public key
       --version         Print installer version
   -h, --help            Show this help
 
@@ -149,13 +146,6 @@ parse_args() {
             -q|--quiet) QUIET=1 ;;
             --repair) REPAIR_MODE=1; REINSTALL_MODE=1 ;;
             --reinstall) REINSTALL_MODE=1 ;;
-            --require-signature) REQUIRE_SIGNATURE=1; ALLOW_UNSIGNED=0 ;;
-            --allow-unsigned) ALLOW_UNSIGNED=1; REQUIRE_SIGNATURE=0 ;;
-            --pubkey)
-                shift
-                [ "$#" -gt 0 ] || { err "--pubkey requires file path"; return 2; }
-                RELEASE_PUBKEY_OVERRIDE="$1"
-                ;;
             --engine)
                 shift
                 [ "$#" -gt 0 ] || { err "--engine requires name (sing-box, steer, steer-extended)"; return 2; }
@@ -493,7 +483,6 @@ function pick_release(v, channel) {
     return null;
 }
 function asset_name(kind, ext, ver) {
-    if (kind == "minisig") return "sha256sums.txt.minisig";
     if (kind == "sha256") return "sha256sums.txt";
     if (kind == "backend") return "tachyon_" + ver + "." + ext;
     if (kind == "app") return "luci-app-tachyon_" + ver + "." + ext;
@@ -628,7 +617,6 @@ resolve_release() {
         err "Resolved release $TACHYON_RELEASE_TAG does not match requested $RELEASE_TAG_REQUESTED"
         return 1
     fi
-    TACHYON_MINISIG_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" minisig 2>/dev/null || true)"
     TACHYON_SHA256_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" sha256 txt 2>/dev/null || true)"
     TACHYON_BACKEND_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" backend "$_ext" 2>/dev/null || true)"
     TACHYON_APP_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" app "$_ext" 2>/dev/null || true)"
@@ -636,18 +624,6 @@ resolve_release() {
         err "Release $TACHYON_RELEASE_TAG is missing required $_ext assets"
         return 1
     }
-    if [ -z "$TACHYON_MINISIG_URL" ]; then
-        if [ "$REQUIRE_SIGNATURE" -eq 1 ] && [ "$ALLOW_UNSIGNED" -eq 0 ]; then
-            if ! version_ge "$TACHYON_RELEASE_TAG" "$MIN_SIGNED_RELEASE"; then
-                warn "Release $TACHYON_RELEASE_TAG predates signed releases; proceeding without signature"
-            else
-                err "Release $TACHYON_RELEASE_TAG is missing release signature (sha256sums.txt.minisig)"
-                return 1
-            fi
-        else
-            warn "Release $TACHYON_RELEASE_TAG is missing signature; proceeding because --allow-unsigned was given"
-        fi
-    fi
     TACHYON_BACKEND_NAME="$(basename "$TACHYON_BACKEND_URL")"
     TACHYON_APP_NAME="$(basename "$TACHYON_APP_URL")"
     if [ "$TACHYON_I18N_REQUESTED" -eq 1 ]; then
@@ -884,134 +860,14 @@ remove_legacy_packages() {
     fi
 }
 
-get_release_pubkey_file() {
-    if [ -n "$RELEASE_PUBKEY_OVERRIDE" ] && [ -r "$RELEASE_PUBKEY_OVERRIDE" ]; then
-        printf '%s\n' "$RELEASE_PUBKEY_OVERRIDE"
-        return 0
-    fi
-    if [ -r /etc/tachyon/keys/tachyon-release.pub ]; then
-        printf '/etc/tachyon/keys/tachyon-release.pub\n'
-        return 0
-    fi
-    _pub="$TMP_DIR/tachyon-release.pub"
-    if [ ! -f "$_pub" ]; then
-        printf '%s\n%s\n' \
-            'untrusted comment: tachyon release public key' \
-            'RWQwrDoHVm3FACJBTEaT7aoPTegroGFErY52sAVZW1vDqoJ0g6uH1V2F' >"$_pub"
-    fi
-    printf '%s\n' "$_pub"
-}
-
-verify_release_signature() {
-    _manifest="$1"
-    _sigfile="$2"
-    _pubkey="$(get_release_pubkey_file)"
-
-    [ -r "$_manifest" ] || { err "Manifest file missing: $_manifest"; return 1; }
-    [ -r "$_sigfile" ] || { err "Signature file missing: $_sigfile"; return 1; }
-    [ -r "$_pubkey" ] || { err "Public key missing: $_pubkey"; return 1; }
-
-    _verifier=""
-    if [ -n "${TACHYON_USIGN_BIN:-}" ] && [ -x "$TACHYON_USIGN_BIN" ]; then
-        _verifier="custom"
-    elif command_exists usign; then
-        _verifier="usign"
-    elif command_exists minisign; then
-        _verifier="minisign"
-    elif command_exists signify; then
-        _verifier="signify"
-    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/tests/lib/usign_emu.js" ] && command_exists node; then
-        _verifier="usign_emu"
-    elif [ -f "./tests/lib/usign_emu.js" ] && command_exists node; then
-        _verifier="usign_emu_cwd"
-    elif [ -f "/work/tests/lib/usign_emu.js" ] && command_exists node; then
-        _verifier="usign_emu_work"
-    else
-        ensure_package usign >/dev/null 2>&1 || true
-        if command_exists usign; then
-            _verifier="usign"
-        fi
-    fi
-
-    if [ -z "$_verifier" ]; then
-        if [ "$ALLOW_UNSIGNED" -eq 1 ]; then
-            warn "No signature verifier tool (usign/minisign) found; skipping due to --allow-unsigned"
-            return 0
-        fi
-        err "No signature verification utility (usign/minisign) available on router"
-        return 1
-    fi
-
-    _eff_sig="$_sigfile"
-    if [ "$_verifier" = "usign" ] || [ "$_verifier" = "signify" ] || [ "$_verifier" = "custom" ]; then
-        _lines="$(wc -l < "$_sigfile" 2>/dev/null || echo 0)"
-        if [ "$_lines" -eq 4 ]; then
-            _eff_sig="$TMP_DIR/manifest_2line.sig"
-            head -n 2 "$_sigfile" > "$_eff_sig"
-        fi
-    fi
-
-    _rc=1
-    case "$_verifier" in
-        usign)
-            usign -V -q -p "$_pubkey" -m "$_manifest" -x "$_eff_sig" >/dev/null 2>&1 && _rc=0 || _rc=1
-            ;;
-        minisign)
-            minisign -V -q -p "$_pubkey" -m "$_manifest" -x "$_sigfile" >/dev/null 2>&1 && _rc=0 || _rc=1
-            ;;
-        signify)
-            signify -V -q -p "$_pubkey" -m "$_manifest" -x "$_eff_sig" >/dev/null 2>&1 && _rc=0 || _rc=1
-            ;;
-        usign_emu)
-            node "$SCRIPT_DIR/tests/lib/usign_emu.js" -V -p "$_pubkey" -m "$_manifest" -x "$_sigfile" >/dev/null 2>&1 && _rc=0 || _rc=1
-            ;;
-        usign_emu_cwd)
-            node "./tests/lib/usign_emu.js" -V -p "$_pubkey" -m "$_manifest" -x "$_sigfile" >/dev/null 2>&1 && _rc=0 || _rc=1
-            ;;
-        usign_emu_work)
-            node "/work/tests/lib/usign_emu.js" -V -p "$_pubkey" -m "$_manifest" -x "$_sigfile" >/dev/null 2>&1 && _rc=0 || _rc=1
-            ;;
-        custom)
-            "$TACHYON_USIGN_BIN" -V -q -p "$_pubkey" -m "$_manifest" -x "$_eff_sig" >/dev/null 2>&1 && _rc=0 || _rc=1
-            ;;
-    esac
-
-    if [ "$_rc" -ne 0 ]; then
-        err "Release signature verification failed for $(basename "$_manifest")"
-        return 1
-    fi
-    ok "Release signature verified"
-    return 0
-}
-
 download_release() {
     TACHYON_SHA256_FILE="$TMP_DIR/sha256sums.txt"
-    TACHYON_MINISIG_FILE="$TMP_DIR/sha256sums.txt.minisig"
     TACHYON_BACKEND_FILE="$TMP_DIR/$TACHYON_BACKEND_NAME"
     TACHYON_APP_FILE="$TMP_DIR/$TACHYON_APP_NAME"
     [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would download and verify $TACHYON_RELEASE_TAG"; return 0; }
 
-    # Phase 1: Download manifest and release signature
+    # Phase 1: Download manifest
     download_with_retry "$TACHYON_SHA256_URL" "$TACHYON_SHA256_FILE" sha256sums.txt || return 1
-    if [ -n "$TACHYON_MINISIG_URL" ]; then
-        download_with_retry "$TACHYON_MINISIG_URL" "$TACHYON_MINISIG_FILE" sha256sums.txt.minisig || return 1
-        verify_release_signature "$TACHYON_SHA256_FILE" "$TACHYON_MINISIG_FILE" || {
-            err "Release signature verification failed - aborting download for security"
-            return 1
-        }
-    else
-        if [ "$REQUIRE_SIGNATURE" -eq 1 ] && [ "$ALLOW_UNSIGNED" -eq 0 ]; then
-            if ! version_ge "$TACHYON_RELEASE_TAG" "$MIN_SIGNED_RELEASE"; then
-                warn "Release $TACHYON_RELEASE_TAG predates signed releases; continuing without signature verification"
-            else
-                err "Release signature missing but required; aborting"
-                return 1
-            fi
-        else
-            warn "Release signature verification bypassed"
-        fi
-    fi
-
     # Phase 2: Download package payloads after manifest integrity is proven
     download_with_retry "$TACHYON_BACKEND_URL" "$TACHYON_BACKEND_FILE" "$TACHYON_BACKEND_NAME" || return 1
     download_with_retry "$TACHYON_APP_URL" "$TACHYON_APP_FILE" "$TACHYON_APP_NAME" || return 1
@@ -1154,8 +1010,6 @@ healthcheck() {
     [ -f /usr/share/luci/menu.d/luci-app-tachyon.json ] || { err "LuCI menu file is missing"; return 1; }
     [ -r /etc/config/tachyon ] || { err "Tachyon UCI config is missing"; return 1; }
     chmod 0600 /etc/config/tachyon 2>/dev/null || true
-    [ -r /etc/tachyon/keys/tachyon-release.pub ] || { err "Release public key /etc/tachyon/keys/tachyon-release.pub is missing"; return 1; }
-    chmod 0644 /etc/tachyon/keys/tachyon-release.pub 2>/dev/null || true
     _version="$(/usr/bin/tachyon get_system_info 2>/dev/null | sed -n 's/.*"tachyon_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
     if [ -n "$_version" ] && [ "$_version" != "$TACHYON_RELEASE_TAG" ]; then
         err "Installed runtime reports version $_version, expected $TACHYON_RELEASE_TAG"

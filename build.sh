@@ -290,11 +290,6 @@ build_backend_root() {
   install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/servicecheck_profiles.json" \
     "$output_root/usr/share/tachyon/servicecheck_profiles.json"
 
-  make_dir "$output_root/etc/tachyon/keys"
-  if [[ -d "$ROOT_DIR/tachyon/files/etc/tachyon/keys" ]]; then
-    cp -a "$ROOT_DIR/tachyon/files/etc/tachyon/keys/." "$output_root/etc/tachyon/keys/"
-  fi
-
   local commit_sha="${GIT_COMMIT_SHA:-}"
   if [[ -z "$commit_sha" || "$commit_sha" == "unknown" ]]; then
     commit_sha="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
@@ -1199,10 +1194,6 @@ sync_artifacts_to_windows() {
   if [ -f "$output_dir/sha256sums.txt" ]; then
     cp -f "$output_dir/sha256sums.txt" "$WINDOWS_ARTIFACTS_DIR/"
   fi
-  if [ -f "$output_dir/sha256sums.txt.minisig" ]; then
-    cp -f "$output_dir/sha256sums.txt.minisig" "$WINDOWS_ARTIFACTS_DIR/"
-  fi
-
   echo "Synced artifacts to Windows path: $WINDOWS_ARTIFACTS_DIR" >&2
 }
 
@@ -1216,107 +1207,6 @@ print_summary() {
   fi
   echo "Artifacts:"
   find "$output_dir" -maxdepth 1 -type f \( -name '*.ipk' -o -name '*.apk' -o -name 'sha256sums*' \) | sort
-}
-
-sign_release_manifest() {
-  local output_dir="$1"
-  local apk_sdk="${2:-}"
-  local ipk_sdk="${3:-}"
-  local manifest="$output_dir/sha256sums.txt"
-  local signature="$output_dir/sha256sums.txt.minisig"
-  local pubkey_file="${TACHYON_RELEASE_PUBKEY_FILE:-$ROOT_DIR/tachyon/files/etc/tachyon/keys/tachyon-release.pub}"
-  local secret_key_file="${TACHYON_SIGNING_KEY_FILE:-}"
-  local temp_key_file=""
-  local usign_tool=""
-  local usign_is_node=0
-
-  [[ -f "$manifest" ]] || return 0
-
-  # 1. Resolve signing tool
-  if [[ -n "$apk_sdk" && -x "$apk_sdk/staging_dir/host/bin/usign" ]]; then
-    usign_tool="$apk_sdk/staging_dir/host/bin/usign"
-  elif [[ -n "$ipk_sdk" && -x "$ipk_sdk/staging_dir/host/bin/usign" ]]; then
-    usign_tool="$ipk_sdk/staging_dir/host/bin/usign"
-  elif command -v usign >/dev/null 2>&1; then
-    usign_tool="$(command -v usign)"
-  elif command -v signify >/dev/null 2>&1; then
-    usign_tool="$(command -v signify)"
-  elif command -v minisign >/dev/null 2>&1; then
-    usign_tool="$(command -v minisign)"
-  elif command -v node >/dev/null 2>&1 && [[ -f "$ROOT_DIR/tests/lib/usign_emu.js" ]]; then
-    usign_tool="$ROOT_DIR/tests/lib/usign_emu.js"
-    usign_is_node=1
-  fi
-
-  # 2. Resolve secret key
-  if [[ -n "${TACHYON_SIGNING_KEY:-}" ]]; then
-    temp_key_file="$(mktemp "$WORK_DIR/signing_key.XXXXXX")"
-    chmod 0600 "$temp_key_file"
-    printf '%s\n' "$TACHYON_SIGNING_KEY" > "$temp_key_file"
-    secret_key_file="$temp_key_file"
-  fi
-
-  if [[ -z "$secret_key_file" || ! -f "$secret_key_file" ]]; then
-    if [[ "${TACHYON_REQUIRE_SIGNATURE:-0}" == "1" ]]; then
-      echo "Error: Release signature is required (TACHYON_REQUIRE_SIGNATURE=1), but no secret key provided." >&2
-      rm -f "$temp_key_file"
-      return 1
-    fi
-    echo "Notice: No signing key provided (TACHYON_SIGNING_KEY/TACHYON_SIGNING_KEY_FILE). sha256sums.txt.minisig will not be generated." >&2
-    rm -f "$temp_key_file"
-    return 0
-  fi
-
-  if [[ -z "$usign_tool" ]]; then
-    echo "Error: Neither usign, signify, minisign nor node available to sign release manifest." >&2
-    rm -f "$temp_key_file"
-    return 1
-  fi
-
-  echo "Signing release manifest with $(basename "$usign_tool")..." >&2
-  rm -f "$signature"
-
-  if [[ "$usign_is_node" -eq 1 ]]; then
-    node "$usign_tool" -S -m "$manifest" -s "$secret_key_file" -x "$signature"
-  elif [[ "$(basename "$usign_tool")" == "minisign"* ]]; then
-    "$usign_tool" -S -m "$manifest" -s "$secret_key_file" -x "$signature" -t "trusted comment: tachyon release ${RELEASE_VERSION}"
-  else
-    "$usign_tool" -S -m "$manifest" -s "$secret_key_file" -x "$signature"
-  fi
-
-  if [[ ! -s "$signature" ]]; then
-    echo "Error: Signing failed; signature file $signature is missing or empty" >&2
-    rm -f "$temp_key_file"
-    return 1
-  fi
-
-  # 3. Verify newly generated signature against release pubkey if available
-  if [[ -f "$pubkey_file" ]]; then
-    echo "Verifying generated signature against $pubkey_file..." >&2
-    local verified=0
-    if [[ "$usign_is_node" -eq 1 ]]; then
-      node "$usign_tool" -V -q -m "$manifest" -p "$pubkey_file" -x "$signature" >/dev/null 2>&1 && verified=1 || true
-    elif [[ "$(basename "$usign_tool")" == "minisign"* ]]; then
-      "$usign_tool" -Vm "$manifest" -p "$pubkey_file" -x "$signature" >/dev/null 2>&1 && verified=1 || true
-    else
-      local tmp_slice="$WORK_DIR/sig_slice.$$.sig"
-      head -n 2 "$signature" > "$tmp_slice" 2>/dev/null || cp "$signature" "$tmp_slice"
-      "$usign_tool" -V -q -m "$manifest" -p "$pubkey_file" -x "$tmp_slice" >/dev/null 2>&1 && verified=1 || true
-      rm -f "$tmp_slice"
-    fi
-
-    if [[ "$verified" -ne 1 ]]; then
-      echo "Error: Verification of newly generated signature against $pubkey_file failed!" >&2
-      rm -f "$temp_key_file" "$signature"
-      return 1
-    fi
-    echo "Release signature successfully created and verified: sha256sums.txt.minisig" >&2
-  else
-    echo "Release signature created: sha256sums.txt.minisig (verified skipped: pubkey not found)" >&2
-  fi
-
-  rm -f "$temp_key_file"
-  return 0
 }
 
 main() {
@@ -1447,7 +1337,7 @@ main() {
 
   (
     cd "$output_dir" || exit 1
-    rm -f sha256sums.txt sha256sums.txt.minisig
+    rm -f sha256sums.txt
     for f in *; do
       if [ -f "$f" ]; then
         sha256sum "$f" >> sha256sums.txt
@@ -1455,7 +1345,6 @@ main() {
     done
   )
 
-  sign_release_manifest "$output_dir" "$apk_sdk_dir" "$ipk_sdk_dir"
 
   cleanup_work_dir
   sync_artifacts_to_windows "$output_dir"
