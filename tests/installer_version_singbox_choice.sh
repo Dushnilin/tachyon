@@ -9,7 +9,7 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 [ -r "$INSTALLER" ] || fail "install.sh is missing"
 sh -n "$INSTALLER" || fail "install.sh must be valid POSIX shell"
 
-grep -Fq 'INSTALLER_VERSION="3.1.0"' "$INSTALLER" || fail "installer version must be 3.1.0"
+grep -Fq 'INSTALLER_VERSION="3.2.0"' "$INSTALLER" || fail "installer version must be 3.2.0"
 
 grep -Fq 'select_release_version' "$INSTALLER" || fail "interactive release selection missing"
 grep -Fq 'fetch_release_tag_list' "$INSTALLER" || fail "release tag list helper missing"
