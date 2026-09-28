@@ -212,7 +212,7 @@ function collect_metadata() {
     let meta = {
         bundle_generated_at: time(),
         bundle_version: "1.0",
-        tachyon_version: constants.TACHYON_VERSION || "1.4.2",
+        tachyon_version: constants.TACHYON_VERSION || "1.4.3",
         hostname: command_output("uname -n"),
         kernel: command_output("uname -a"),
         architecture: command_output("uname -m"),

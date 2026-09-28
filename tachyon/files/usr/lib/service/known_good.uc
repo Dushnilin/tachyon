@@ -355,7 +355,7 @@ function promote(reason, metrics) {
 
     // 4. Write manifest
     let manifest = {
-        version: constants.TACHYON_VERSION || "1.4.2",
+        version: constants.TACHYON_VERSION || "1.4.3",
         promoted_at: time(),
         promotion_reason: reason || "manual_bless",
         config_hash: hash,

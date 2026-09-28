@@ -23,7 +23,7 @@ assert_contains() {
 [ -r "$PUBKEY_FILE" ] || test_fail "Release public key $PUBKEY_FILE is missing"
 pubkey_content="$(cat "$PUBKEY_FILE")"
 assert_contains "$pubkey_content" "untrusted comment: tachyon release public key" "pubkey header"
-assert_contains "$pubkey_content" "RWSvrejmGGwvTwKe3zHe+DIiACxF8D3nUgR4xxcrxuQyIP6qafE52cdL" "pubkey payload"
+assert_contains "$pubkey_content" "RWQwrDoHVm3FACJBTEaT7aoPTegroGFErY52sAVZW1vDqoJ0g6uH1V2F" "pubkey payload"
 
 # 2. Check build.sh packaging logic copies the key
 grep -Fq 'tachyon/files/etc/tachyon/keys' "$ROOT_DIR/build.sh" || test_fail "build.sh must package etc/tachyon/keys"
@@ -214,6 +214,35 @@ rm -rf "${TMP_DIR:?}"/*
 if ! download_release >/dev/null 2>&1; then
   test_fail "download_release failed when --allow-unsigned was specified"
 fi
+
+# Test 4.11: releases predating MIN_SIGNED_RELEASE install without signature
+TACHYON_RELEASE_TAG="1.4.2"
+TACHYON_MINISIG_URL=""
+REQUIRE_SIGNATURE=1
+ALLOW_UNSIGNED=0
+(
+  cd "$MOCK_DIR"
+  sha256sum "tachyon_1.5.0.apk" "luci-app-tachyon_1.5.0.apk" > "sha256sums.txt"
+)
+rm -rf "${TMP_DIR:?}"/*
+if ! download_release >/dev/null 2>&1; then
+  test_fail "download_release failed on legacy release without signature"
+fi
+
+# Test 4.12: releases from MIN_SIGNED_RELEASE onward still require signature
+TACHYON_RELEASE_TAG="1.4.3"
+rm -rf "${TMP_DIR:?}"/*
+if download_release >/dev/null 2>&1; then
+  test_fail "download_release did not fail hard on missing signature for signed era"
+fi
+
+# Test 4.13: version gate comparison edges
+version_ge "1.4.3" "1.4.3" || test_fail "version_ge: 1.4.3 >= 1.4.3 must hold"
+version_ge "1.4.10" "1.4.3" || test_fail "version_ge: 1.4.10 >= 1.4.3 must hold (numeric, not lexicographic)"
+version_ge "2.0.0" "1.4.3" || test_fail "version_ge: 2.0.0 >= 1.4.3 must hold"
+version_ge "1.4.2" "1.4.3" && test_fail "version_ge: 1.4.2 >= 1.4.3 must be false"
+version_ge "1.3.9" "1.4.3" && test_fail "version_ge: 1.3.9 >= 1.4.3 must be false"
+version_ge "v1.4.3" "1.4.3" || test_fail "version_ge: leading v must be tolerated"
 
 # Test 5: CLI argument parsing for signature flags
 parse_args --require-signature

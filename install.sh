@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck shell=dash
 
-INSTALLER_VERSION="3.1.0"
+INSTALLER_VERSION="3.2.0"
 REPO_OWNER="Dushnilin"
 REPO_NAME="tachyon"
 
@@ -47,6 +47,9 @@ RELEASE_TAG_REQUESTED=""
 RELEASE_CHANNEL="stable"
 REQUIRE_SIGNATURE=1
 ALLOW_UNSIGNED=0
+# Releases before this tag were published without sha256sums.txt.minisig;
+# requiring a signature for them would make them uninstallable.
+MIN_SIGNED_RELEASE="1.4.3"
 RELEASE_PUBKEY_OVERRIDE=""
 
 TACHYON_RELEASE_JSON=""
@@ -127,7 +130,7 @@ Usage: $0 [options]
       --skip-engine     Alias for --skip-sing-box
       --zram            Install zram-swap
       --no-zram         Never install zram-swap
-      --require-signature  Enforce cryptographic Ed25519 signature verification (default)
+      --require-signature  Enforce Ed25519 signature verification (default; enforced from release $MIN_SIGNED_RELEASE)
       --allow-unsigned     Allow installation if signature is missing or verification fails
       --pubkey FILE        Path to custom release public key
       --version         Print installer version
@@ -601,6 +604,21 @@ select_release_version() {
     return 0
 }
 
+# Numeric comparison of dotted release tags: succeeds when $1 >= $2.
+version_ge() {
+    _vg_a="${1#v}"; _vg_b="${2#v}"; _vg_i=0
+    while [ "$_vg_i" -lt 3 ]; do
+        _vg_pa="${_vg_a%%.*}"; [ "$_vg_pa" = "$_vg_a" ] && _vg_a="" || _vg_a="${_vg_a#*.}"
+        _vg_pb="${_vg_b%%.*}"; [ "$_vg_pb" = "$_vg_b" ] && _vg_b="" || _vg_b="${_vg_b#*.}"
+        case "$_vg_pa" in ''|*[!0-9]*) _vg_pa=0 ;; esac
+        case "$_vg_pb" in ''|*[!0-9]*) _vg_pb=0 ;; esac
+        [ "$_vg_pa" -gt "$_vg_pb" ] && return 0
+        [ "$_vg_pa" -lt "$_vg_pb" ] && return 1
+        _vg_i=$((_vg_i + 1))
+    done
+    return 0
+}
+
 resolve_release() {
     _ext="ipk"; [ "$PKG_IS_APK" -eq 1 ] && _ext="apk"
     TACHYON_RELEASE_JSON="$(fetch_release_json)" || return 1
@@ -620,8 +638,12 @@ resolve_release() {
     }
     if [ -z "$TACHYON_MINISIG_URL" ]; then
         if [ "$REQUIRE_SIGNATURE" -eq 1 ] && [ "$ALLOW_UNSIGNED" -eq 0 ]; then
-            err "Release $TACHYON_RELEASE_TAG is missing release signature (sha256sums.txt.minisig)"
-            return 1
+            if ! version_ge "$TACHYON_RELEASE_TAG" "$MIN_SIGNED_RELEASE"; then
+                warn "Release $TACHYON_RELEASE_TAG predates signed releases; proceeding without signature"
+            else
+                err "Release $TACHYON_RELEASE_TAG is missing release signature (sha256sums.txt.minisig)"
+                return 1
+            fi
         else
             warn "Release $TACHYON_RELEASE_TAG is missing signature; proceeding because --allow-unsigned was given"
         fi
@@ -875,7 +897,7 @@ get_release_pubkey_file() {
     if [ ! -f "$_pub" ]; then
         printf '%s\n%s\n' \
             'untrusted comment: tachyon release public key' \
-            'RWSvrejmGGwvTwKe3zHe+DIiACxF8D3nUgR4xxcrxuQyIP6qafE52cdL' >"$_pub"
+            'RWQwrDoHVm3FACJBTEaT7aoPTegroGFErY52sAVZW1vDqoJ0g6uH1V2F' >"$_pub"
     fi
     printf '%s\n' "$_pub"
 }
@@ -979,10 +1001,15 @@ download_release() {
         }
     else
         if [ "$REQUIRE_SIGNATURE" -eq 1 ] && [ "$ALLOW_UNSIGNED" -eq 0 ]; then
-            err "Release signature missing but required; aborting"
-            return 1
+            if ! version_ge "$TACHYON_RELEASE_TAG" "$MIN_SIGNED_RELEASE"; then
+                warn "Release $TACHYON_RELEASE_TAG predates signed releases; continuing without signature verification"
+            else
+                err "Release signature missing but required; aborting"
+                return 1
+            fi
+        else
+            warn "Release signature verification bypassed"
         fi
-        warn "Release signature verification bypassed"
     fi
 
     # Phase 2: Download package payloads after manifest integrity is proven
