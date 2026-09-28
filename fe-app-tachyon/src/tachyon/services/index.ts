@@ -9,3 +9,5 @@ export * from './localActionOverlay.service';
 export * from './jobClient';
 export * from './eventClient';
 export * from './runtimeClient';
+export * from './serverStatsClient';
+export * from './stabilityClient';

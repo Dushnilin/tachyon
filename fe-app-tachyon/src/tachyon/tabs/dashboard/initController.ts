@@ -33,25 +33,22 @@ import {
 } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
+import { getExpandedSections, toggleSectionExpansion } from './actions';
+import { aggregateClientConnections } from './connections';
+import {
+  computeTrafficRates,
+  createInitialTrafficRatesState,
+  TrafficRatesState,
+} from './metrics';
 
-const DASHBOARD_EXPANDED_SECTIONS_KEY = 'tachyon_dashboard_expanded_sections';
-const expandedSections = new Set<string>(
-  JSON.parse(localStorage.getItem(DASHBOARD_EXPANDED_SECTIONS_KEY) || '[]'),
-);
+let expandedSections = getExpandedSections();
 
 function toggleSectionExpanded(sectionCode: string) {
-  if (expandedSections.has(sectionCode)) {
-    expandedSections.delete(sectionCode);
-  } else {
-    expandedSections.add(sectionCode);
-    if (sectionCode === 'active_clients') {
-      void fetchConnections();
-    }
+  const result = toggleSectionExpansion(expandedSections, sectionCode);
+  expandedSections = result.nextSections;
+  if (result.expanded && sectionCode === 'active_clients') {
+    void fetchConnections();
   }
-  localStorage.setItem(
-    DASHBOARD_EXPANDED_SECTIONS_KEY,
-    JSON.stringify(Array.from(expandedSections)),
-  );
   void renderSectionsWidget();
   void renderConnectionsWidget();
 }
@@ -84,9 +81,7 @@ let dashboardDataUpdatesId = 0;
 let connectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let currentConnections: IConnection[] = [];
 let directSocketsFailed = false;
-let lastTrafficPollTime = 0;
-let lastUploadTotal = 0;
-let lastDownloadTotal = 0;
+let trafficRatesState: TrafficRatesState = createInitialTrafficRatesState();
 let pageUnloading = false;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
@@ -2098,37 +2093,20 @@ async function fetchConnections() {
           : 0;
 
         const now = Date.now();
-        if (lastTrafficPollTime > 0) {
-          const dt = Math.max(0.5, (now - lastTrafficPollTime) / 1000);
-          const up = Math.max(
-            0,
-            Math.round((uploadTotal - lastUploadTotal) / dt),
-          );
-          const down = Math.max(
-            0,
-            Math.round((downloadTotal - lastDownloadTotal) / dt),
-          );
-          store.set({
-            bandwidthWidget: {
-              loading: false,
-              failed: false,
-              data: { up, down },
-            },
-          });
-        } else {
-          store.set({
-            bandwidthWidget: {
-              loading: false,
-              failed: false,
-              data: { up: 0, down: 0 },
-            },
-          });
-        }
-        lastTrafficPollTime = now;
-        lastUploadTotal = uploadTotal;
-        lastDownloadTotal = downloadTotal;
+        const { rates, nextState } = computeTrafficRates(
+          uploadTotal,
+          downloadTotal,
+          now,
+          trafficRatesState,
+        );
+        trafficRatesState = nextState;
 
         store.set({
+          bandwidthWidget: {
+            loading: false,
+            failed: false,
+            data: rates,
+          },
           trafficTotalWidget: {
             loading: false,
             failed: false,
@@ -2143,25 +2121,9 @@ async function fetchConnections() {
       }
 
       if (shouldFetchHostnames && Array.isArray(payload.connections)) {
-        const connectionsList = payload.connections;
-        const map = new Map<string, IConnection>();
-        for (const conn of connectionsList) {
-          const ip = conn.metadata?.sourceIP;
-          if (!ip) continue;
-          const up = Number(conn.upload) || 0;
-          const down = Number(conn.download) || 0;
-          if (map.has(ip)) {
-            const existing = map.get(ip)!;
-            existing.count++;
-            existing.upload += up;
-            existing.download += down;
-          } else {
-            const name = hostnames.get(ip);
-            map.set(ip, { ip, count: 1, upload: up, download: down, name });
-          }
-        }
-        currentConnections = Array.from(map.values()).sort(
-          (a, b) => b.download + b.upload - (a.download + a.upload),
+        currentConnections = aggregateClientConnections(
+          payload.connections,
+          hostnames,
         );
       }
     }
@@ -2486,9 +2448,7 @@ function onPageUnmount() {
   dashboardVisibilityPaused = false;
 
   directSocketsFailed = false;
-  lastTrafficPollTime = 0;
-  lastUploadTotal = 0;
-  lastDownloadTotal = 0;
+  trafficRatesState = createInitialTrafficRatesState();
 
   stopDashboardDataUpdates();
   stopActionStateWatcher();

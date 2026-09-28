@@ -216,6 +216,16 @@ function show_help() {
     print("    event_clear             Clear all entries from the event journal\n");
     print("    event_record <name> [data_json] [severity] [source] [msg]\n");
     print("                            Record a new event to the journal\n");
+    print("    server_stats [summary|status]\n");
+    print("                            Show aggregated server metrics and latency summary\n");
+    print("    server_probe <tag> [timeout_ms]\n");
+    print("                            Probe latency and status of a single proxy server\n");
+    print("    server_probe_all [section] [timeout_ms]\n");
+    print("                            Probe all servers in a section or fleet\n");
+    print("    server_best [section] [limit]\n");
+    print("                            List top optimal servers for auto-tuning & failover\n");
+    print("    stability_report        Generate comprehensive system stability and health report (JSON)\n");
+    print("    stability_status        Show lightweight system stability status (JSON)\n");
 }
 
 function command_spec(command) {
@@ -427,7 +437,23 @@ function command_spec(command) {
         event_clear: [ "core/events.uc", "clear", 0 ],
         "event-clear": [ "core/events.uc", "clear", 0 ],
         event_record: [ "core/events.uc", "record", 1 ],
-        "event-record": [ "core/events.uc", "record", 1 ]
+        "event-record": [ "core/events.uc", "record", 1 ],
+        server_stats: [ "diagnostics/server_stats.uc", "summary", 0 ],
+        "server-stats": [ "diagnostics/server_stats.uc", "summary", 0 ],
+        server_probe: [ "diagnostics/server_stats.uc", "probe", 2 ],
+        "server-probe": [ "diagnostics/server_stats.uc", "probe", 2 ],
+        server_probe_all: [ "diagnostics/server_stats.uc", "probe_all", 2 ],
+        "server-probe-all": [ "diagnostics/server_stats.uc", "probe_all", 2 ],
+        server_best: [ "diagnostics/server_stats.uc", "best", 2 ],
+        "server-best": [ "diagnostics/server_stats.uc", "best", 2 ],
+        server_query: [ "diagnostics/server_stats.uc", "query", 1 ],
+        "server-query": [ "diagnostics/server_stats.uc", "query", 1 ],
+        server_stats_reset: [ "diagnostics/server_stats.uc", "reset", 0 ],
+        "server-stats-reset": [ "diagnostics/server_stats.uc", "reset", 0 ],
+        stability_report: [ "diagnostics/stability.uc", "report", 0 ],
+        "stability-report": [ "diagnostics/stability.uc", "report", 0 ],
+        stability_status: [ "diagnostics/stability.uc", "status", 0 ],
+        "stability-status": [ "diagnostics/stability.uc", "status", 0 ]
     };
 
     return commands[as_string(command)];

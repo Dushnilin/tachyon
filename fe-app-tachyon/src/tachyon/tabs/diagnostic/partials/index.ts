@@ -7,3 +7,5 @@ export * from './renderStrategyFuzzerModal';
 export * from './renderSystemInfo';
 export * from './renderDnsBenchmarkModal';
 export * from './renderLeakCheckModal';
+export * from './renderStabilityModal';
+export * from './renderAiDoctorModal';
