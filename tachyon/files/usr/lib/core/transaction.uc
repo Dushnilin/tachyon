@@ -821,6 +821,14 @@ function recover(tx_id) {
     return rollback(tx, "External recovery initiated for abandoned or failed transaction");
 }
 
+// Announced separately so the destructive branches have one place to report
+// through, and routed through tx_log so it lands in core.logging like every
+// other line from this module. Declared above its callers because ucode binds
+// the name when the statement runs, not when the function is called.
+function tx_gc_log(message) {
+    tx_log(null, "warn", "GC: " + message);
+}
+
 function gc(max_age_seconds) {
     ensure_base_dirs();
     let max_age = (max_age_seconds != null) ? int(max_age_seconds) : GC_MAX_AGE_SECONDS;
@@ -839,6 +847,11 @@ function gc(max_age_seconds) {
         let manifest_path = tx_dir + "/tx.json";
         let state = read_json_file(manifest_path);
         if (!state) {
+            // Destructive on untrusted input, so it says so. A manifest that
+            // will not parse means the transaction cannot be rolled back - and
+            // the snapshots go with it - so the operator has to hear it from
+            // the journal rather than notice a missing capability later.
+            tx_gc_log("removing " + tx_dir + " - manifest unreadable, rollback impossible");
             system("rm -rf " + shell_quote(tx_dir) + " 2>/dev/null");
             cleaned++;
             continue;
