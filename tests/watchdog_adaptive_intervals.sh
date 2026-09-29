@@ -37,6 +37,19 @@ grep -Fq 'controller.probe_normal(current_ctx)' "$WATCHDOG_UC" ||
 grep -Fq 'controller.probe_slow(current_ctx)' "$WATCHDOG_UC" ||
   fail "watchdog.uc perform_slow_checks must pass current_ctx to probe_slow"
 
+# Both watchdog loops must be paced. The uloop tick and the legacy fallback
+# loop each guard the fast/normal/slow tiers, so the slow tier (mixed-proxy
+# port, section failover, tailscale, telegram) cannot fire every 15s on a
+# device whose ucode lacks the uloop module. The unguarded fallback reached
+# the mixed-port restart threshold in 16s instead of the documented ~10 min.
+for guard in \
+  'now - last_fast_check >= 15' \
+  'now - last_normal_check >= 120' \
+  'now - last_slow_check >= 300'; do
+  count="$(grep -Fc "$guard" "$WATCHDOG_UC" || true)"
+  assert_eq "$count" "2" "watchdog.uc must pace '$guard' in both the uloop and fallback loops"
+done
+
 # Event controller exports and methods
 grep -Fq 'create_tick_context' "$CONTROLLER_UC" ||
   fail "event_controller.uc must define create_tick_context"

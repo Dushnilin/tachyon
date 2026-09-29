@@ -2510,14 +2510,38 @@ function check_section_failover() {
         signal("SIGINT", function(sig) { log_message("SIGINT received, shutting down", "info"); stop_runtime(); exit(0); });
         uloop.run();
     } else {
-        log_message("uloop not available. Running Watchdog in legacy fallback loop mode.", "warn");
+        log_message("uloop not available. Running Watchdog in legacy fallback loop mode (fast: 15s, normal: adaptive, slow: 300s).", "warn");
         signal("SIGTERM", function(sig) { log_message("SIGTERM received, shutting down", "info"); stop_runtime(); exit(0); });
         signal("SIGINT", function(sig) { log_message("SIGINT received, shutting down", "info"); stop_runtime(); exit(0); });
+        // The fallback loop must keep the same pacing as the uloop tick. It
+        // used to run all three tiers every 15s, so the slow tier (mixed-proxy
+        // port, section failover, tailscale, telegram) fired 20x too often and
+        // the mixed-port streak reached its restart threshold in 16s instead of
+        // the documented ~10 min — a restart loop on any device whose ucode
+        // lacks the uloop module.
         while (true) {
-            current_ctx = controller.create_tick_context ? controller.create_tick_context() : null;
-            perform_fast_checks();
-            perform_normal_checks();
-            perform_slow_checks();
+            let now = time();
+
+            if (now - last_fast_check >= 15) {
+                last_fast_check = now;
+                current_ctx = controller.create_tick_context ? controller.create_tick_context() : null;
+                perform_fast_checks();
+            }
+            if (now - last_normal_check >= 120 && now - last_normal_check >= controller.adaptive_normal_interval()) {
+                last_normal_check = now;
+                current_ctx = current_ctx || (controller.create_tick_context ? controller.create_tick_context() : null);
+                perform_normal_checks();
+            }
+            if (now - last_slow_check >= 300) {
+                last_slow_check = now;
+                current_ctx = current_ctx || (controller.create_tick_context ? controller.create_tick_context() : null);
+                perform_slow_checks();
+            }
+
+            if (current_ctx && controller.clear_tick_context)
+                controller.clear_tick_context();
+            current_ctx = null;
+
             sleep(15000);
         }
     }
