@@ -58,8 +58,8 @@ jobs:
         id: locale_extract
         run: |
           npm run locales:extract-calls
-          if ! git diff --exit-code -- locales/calls.json; then
-            echo "::error::Translation call index is stale. Run 'npm run locales:extract-calls' locally."
+          if git ls-files --error-unmatch locales/calls.json >/dev/null 2>&1; then
+            echo "::error::locales/calls.json is a generated call index and must not be tracked. It is produced by 'npm run locales:extract-calls', which the pre-commit hook and this job both run before anything reads it."
             exit 1
           fi
 

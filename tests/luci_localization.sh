@@ -7,7 +7,6 @@ SOURCE_PO="$ROOT_DIR/fe-app-tachyon/locales/tachyon.ru.po"
 PACKAGE_PO="$ROOT_DIR/luci-app-tachyon/po/ru/tachyon.po"
 SOURCE_POT="$ROOT_DIR/fe-app-tachyon/locales/tachyon.pot"
 PACKAGE_POT="$ROOT_DIR/luci-app-tachyon/po/templates/tachyon.pot"
-CALLS_JSON="$ROOT_DIR/fe-app-tachyon/locales/calls.json"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2

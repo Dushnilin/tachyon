@@ -3,6 +3,9 @@ fe-app-tachyon/.yarn/
 fe-app-tachyon/.env
 fe-app-tachyon/.vitest/
 fe-app-tachyon/coverage/
+# Call index: regenerated from the sources by `npm run locales:extract-calls`,
+# which the pre-commit hook and CI both run before anything reads it.
+fe-app-tachyon/locales/calls.json
 .DS_Store
 shellcheck-v0.10.0/
 AGENTS.md
