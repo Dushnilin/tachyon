@@ -47,6 +47,7 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let write_json_file = common.write_json_file;
 let read_json_file = common.read_json_file;
+try { logging = require("core.logging"); } catch (e) {}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -899,6 +900,16 @@ function list_all() {
 // ---------------------------------------------------------------------------
 
 // Remove jobs that are in terminal state and older than GC_MAX_AGE_SECONDS.
+// Announced separately so the destructive branches have one place to report
+// through, and routed through core.logging rather than shelling out.
+// Declared above its callers because ucode binds the name when the statement
+// runs, not when the function is called.
+function jobs_gc_log(message) {
+    if (logging && type(logging.write) == "function") {
+        logging.write({ level: "warn", subsystem: "core.jobs", operation: "gc", message: message });
+    }
+}
+
 function gc() {
     ensure_dirs();
     let entries = fs.glob(JOBS_DIR + "/*.json");
@@ -914,8 +925,19 @@ function gc() {
         if (slash >= 0) basename = substr(full_path, slash + 1);
         let job_id = substr(basename, 0, length(basename) - 5);
         let state = read_job_state(job_id);
-        if (state == null)
+        if (state == null) {
+            // A state file that will not parse is the ordinary result of a
+            // full disk or a power cut mid-write. It is already invisible to
+            // list_all(), so nothing else will ever reclaim it - skipping it
+            // here would leave it on disk across reboots forever. Say so before
+            // removing it, since the job it described can no longer be
+            // cancelled or rolled back once it is gone.
+            jobs_gc_log("removing unreadable job state " + job_id);
+            try { fs.unlink(job_state_path(job_id)); } catch (e) {}
+            try { fs.unlink(job_log_path(job_id)); } catch (e) {}
+            removed++;
             continue;
+        }
 
         let is_terminal = (state.phase == PHASE_SUCCESS ||
                           state.phase == PHASE_FAILED ||
