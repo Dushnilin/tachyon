@@ -378,6 +378,64 @@ function download_detour_tag(settings, purpose) {
     return section_name == "" ? "" : outbound_tag(section_name);
 }
 
+// A proxy endpoint's own hostname must never be answered from FakeIP. If a
+// connection section routes a suffix that also covers the endpoint (section
+// domain_suffix "example.net" plus outbound server "cdn.example.net"), the
+// internal DNS lookup for that endpoint matched the section rule, got a
+// 198.18.0.0/15 address, and sing-box then dialled the FakeIP and timed out.
+// The list is rebuilt from the generated config on every run, so it follows
+// endpoint changes in the subscription without a manual exclusion.
+function collect_proxy_endpoint_domains(config) {
+    let seen = {};
+    let domains = [];
+
+    let collect = function(item) {
+        if (type(item) != "object")
+            return;
+        let server = trim(as_string(item.server || ""));
+        if (server == "" || !match(server, /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9-]+)+$/))
+            return;
+        let key = lc(server);
+        if (seen[key] == true)
+            return;
+        seen[key] = true;
+        push(domains, key);
+    };
+
+    for (let item in array_or_empty(config.outbounds))
+        collect(item);
+    for (let item in array_or_empty(config.endpoints))
+        collect(item);
+
+    return domains;
+}
+
+function add_proxy_endpoint_dns_rule(config) {
+    if (config.__proxy_endpoint_dns_rule == true)
+        return;
+
+    let domains = collect_proxy_endpoint_domains(config);
+    if (length(domains) == 0)
+        return;
+    if (config.dns == null)
+        config.dns = {};
+    if (config.dns.rules == null)
+        config.dns.rules = [];
+
+    // Prepended, not appended: a section's FakeIP rule must never win for the
+    // hostname sing-box is about to dial. Built with an explicit loop because
+    // `+` coerces two arrays into a string in ucode.
+    let merged = [{
+        domain: domains,
+        action: "route",
+        server: runtime_constants.BOOTSTRAP_DNS_SERVER_TAG
+    }];
+    for (let rule in array_or_empty(config.dns.rules))
+        push(merged, rule);
+    config.dns.rules = merged;
+    config.__proxy_endpoint_dns_rule = true;
+}
+
 function ruleset_tag(section_name, name, kind) {
     kind = as_string(kind);
     return kind == ""
@@ -1487,6 +1545,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     }
 
     add_server_routes(config, servers, sections);
+    add_proxy_endpoint_dns_rule(config);
     add_source_aware_dns_fallback(config, source_aware_dns);
     add_excluded_clients_dns_rule(config, settings);
     add_excluded_clients_route_rule(config, settings);
