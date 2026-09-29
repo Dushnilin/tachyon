@@ -442,14 +442,19 @@ function run_logged(description, command, timeout_seconds) {
     return status == 0;
 }
 
+// ucode reports a child's result as the plain exit code, and a signal death as a
+// negative number - it does not hand back a shell wait status. Decoding it as
+// one was wrong for every non-zero result: 124 (what coreutils-timeout returns
+// when it runs out of time) read as "killed by signal 124" and was reported as
+// 252, so an expired command looked like an unexplained failure. A genuine
+// signal death arrives negative and is the only case where 128+N applies.
 function normalize_stream_exit(close_status) {
     if (close_status == null)
         return 0;
     let s = int(close_status);
-    let signal = s & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (s >> 8) & 255;
+    if (s < 0)
+        return 128 + (-s);
+    return s;
 }
 
 function detect_apk_lock(output_text, exit_code) {

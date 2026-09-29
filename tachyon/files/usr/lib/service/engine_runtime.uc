@@ -118,6 +118,22 @@ function restart_tachyon_service() {
 function switch_engine(target, opts) {
     opts = type(opts) == "object" ? opts : {};
     let before = engine.get_active();
+
+    // Refuse to switch onto a build that predates the subcommands we drive.
+    // engine.uc grew steer_contract_ready() for exactly this and it was never
+    // called from anywhere, so the only way to find out was a failed apply much
+    // later. The check is cheap and steer 1.5.8 satisfies it.
+    if ((target == "steer" || target == "steer-extended" || target == "steer_extended") &&
+        engine.binary_present(engine.ENGINE_STEER) && !engine.steer_contract_ready()) {
+        return {
+            ok: false,
+            success: false,
+            error: "The installed steer build is older than this version of Tachyon requires " +
+                   "(missing subcommands). Update steer or switch back to sing-box.",
+            reason: "steer_contract_too_old"
+        };
+    }
+
     let plan = engine_state.apply_switch(target, {
         allow_install: opts.allow_install == "1" || opts.allow_install === true,
         dry_run: opts.dry_run == "1" || opts.dry_run === true

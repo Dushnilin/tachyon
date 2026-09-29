@@ -24,6 +24,16 @@ let engine = require("core.engine");
 
 let as_string = common.as_string;
 
+// Whether the installed steer build has the vless client. Set per build_spec()
+// call; read by build_outputs, which is a separate function.
+let steer_vless_supported = true;
+let steer_vless_override = null;
+
+// Test seam: the generator decides what to emit, the engine module knows what is
+// installed. An explicit answer wins over detection, so a caller driving
+// build_spec directly does not need a steer binary on the machine.
+function set_vless_supported(value) { steer_vless_override = value == true; }
+
 const SPEC_SCHEMA = 2;
 const DEFAULT_LAN_DEVICES = [ "br-lan" ];
 const DEFAULT_ON_FAIL = "drop";
@@ -164,7 +174,7 @@ function build_outputs(sections, settings) {
         // A section with a subscription can be driven through steer's own
         // vless client; the file is written by Tachyon's subscription updater.
         let sub_file = as_string(option(section, "steer_sub_file", ""));
-        if (sub_file != "") {
+        if (sub_file != "" && steer_vless_supported) {
             outputs[name] = {
                 kind: "vless",
                 sub_file,
@@ -538,11 +548,44 @@ function build_channels(sections, catalog, outputs) {
 
 function build_spec(sections, settings, catalog) {
     settings = settings || {};
+    // Does the installed engine actually have the vless client? A stock steer
+    // build does not, and it rejects the whole spec with "kind vless requires
+    // the steer-extended package" - not just that one output, so a single
+    // subscription section took every other section down with it.
+    //
+    // Detection lives in the engine module because it knows the binary path;
+    // the generator stays testable by being told the answer.
+    steer_vless_supported = (steer_vless_override != null)
+        ? steer_vless_override
+        : true;
+    if (steer_vless_override == null) {
+        try {
+            let engine_mod = require("engine");
+            if (engine_mod && type(engine_mod.steer_has_extended_build) == "function")
+                steer_vless_supported = engine_mod.steer_has_extended_build();
+        }
+        catch (e) {
+            // Engine not present yet: assume the richer build so the spec still
+            // carries the section, and let apply fail loudly if that is wrong.
+        }
+    }
+
     let lan_devices = list_option(settings, "source_network_interfaces");
     if (length(lan_devices) == 0)
         lan_devices = DEFAULT_LAN_DEVICES;
 
     let outputs = build_outputs(sections, settings);
+    if (!steer_vless_supported && outputs != null) {
+        let dropped = [];
+        for (let name in outputs)
+            if (type(outputs[name]) == "object" && outputs[name].kind == "vless") {
+                delete outputs[name];
+                push(dropped, name);
+            }
+        if (length(dropped) > 0)
+            warn("steer: installed build has no vless client, sections left without a tunnelled output: " +
+                join(", ", dropped) + ". Install the steer-extended package to route them through a proxy.\n");
+    }
     return {
         schema: SPEC_SCHEMA,
         dns_redirect: bool_option(settings, "dns_redirect", true),
@@ -571,6 +614,7 @@ function module_exports() {
         build_outputs,
         build_channels,
         build_spec,
+        set_vless_supported,
         serialize_spec,
         set_list_materializer
     };

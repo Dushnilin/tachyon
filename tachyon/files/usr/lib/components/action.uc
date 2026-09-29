@@ -27,6 +27,15 @@ const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || constants.TACHYON_SERVICE
 const TACHYON_VERSION = getenv("TACHYON_VERSION") || constants.TACHYON_VERSION || "";
 const TACHYON_COMMIT_SHA = getenv("TACHYON_COMMIT_SHA") || constants.TACHYON_COMMIT_SHA || "";
 const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "Dushnilin/tachyon";
+
+// Budgets for the package-manager steps, named so they are tuned in one place.
+// The 30s index refresh was measured far too small: a cold `apk update` on a
+// router whose feed list includes mirrors that answer with errors has to
+// download and retry every index, and the run was cut off mid-way. Because
+// coreutils-timeout exits 124 and the result was being reported as 252, the log
+// showed an unexplained failure rather than an expired command.
+const PKG_LIST_UPDATE_TIMEOUT = int(getenv("TACHYON_PKG_LIST_UPDATE_TIMEOUT") || "180");
+const PKG_INSTALL_TIMEOUT = int(getenv("TACHYON_PKG_INSTALL_TIMEOUT") || "300");
 const TACHYON_CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
@@ -635,7 +644,7 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     if (pkg == null)
         action_fail(component, action, "Failed to download " + label + " package", current_version, release.version, "", release.release_url || "");
 
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
     disable_standalone_service(component);
@@ -700,9 +709,9 @@ function install_zapret2(action, target_tag) {
         uci_core.commit("zapret2");
     }
 
-    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
     for (let p in [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfq/nfqws2", "/opt/zapret2/nfqws2", "/usr/bin/nfqws2" ]) {
@@ -751,9 +760,9 @@ function install_byedpi(action, target_tag) {
     if (pkg == null)
         action_fail("byedpi", action, "Failed to download ByeDPI package");
 
-    run_logged("Updating package lists before ByeDPI package installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before ByeDPI package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+    if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
         action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
 
     disable_standalone_service("byedpi");
@@ -791,9 +800,9 @@ function install_wdtt(action, target_tag) {
     if (pkg == null)
         action_fail("wdtt", action, "Failed to download WDTT package");
 
-    run_logged("Updating package lists before WDTT package installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before WDTT package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing WDTT package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+    if (!run_logged("Installing WDTT package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
         action_fail("wdtt", action, "Failed to install WDTT package", current_version, pkg.version);
 
     disable_standalone_service("wdtt");
@@ -831,9 +840,9 @@ function install_olcrtc(action, target_tag) {
     if (pkg == null)
         action_fail("olcrtc", action, "Failed to download OlcRTC package");
 
-    run_logged("Updating package lists before OlcRTC package installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before OlcRTC package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing OlcRTC package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+    if (!run_logged("Installing OlcRTC package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
         action_fail("olcrtc", action, "Failed to install OlcRTC package", current_version, pkg.version);
 
     disable_standalone_service("olcrtc");
@@ -871,9 +880,9 @@ function install_fptn(action, target_tag) {
     if (pkg == null)
         action_fail("fptn", action, "Failed to download FPTN package");
 
-    run_logged("Updating package lists before FPTN package installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before FPTN package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing FPTN package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+    if (!run_logged("Installing FPTN package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
         action_fail("fptn", action, "Failed to install FPTN package", current_version, pkg.version);
 
     disable_standalone_service("fptn");
@@ -919,9 +928,9 @@ function install_steer(action, target_tag, extended) {
     else if (!extended && pkg_is_installed("steer-extended"))
         run_logged_pkg_remove_sing_box_conflict("steer-extended", "Removing steer-extended before steer package installation");
 
-    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package");
 
     let nfqws_wrapper = fs.stat("/usr/share/tachyon/steer-nfqws") != null ? "/usr/share/tachyon/steer-nfqws" : (LIB_DIR + "/../../usr/sbin/steer-nfqws");
@@ -948,11 +957,11 @@ function install_tailscale(action) {
 
     if (action == "check_update") {
         if (!pkg_is_installed("tailscale")) {
-            run_logged("Refreshing package index", pkg_list_update_command(), 30);
+            run_logged("Refreshing package index", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
             let available_version = available_package_version("tailscale");
             action_success(component, action, label + " is not installed", "", available_version, 0, "", TAILSCALE_PACKAGE_URL);
         }
-        run_logged("Refreshing package index", pkg_list_update_command(), 30);
+        run_logged("Refreshing package index", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
         check_success(component, installed_package_version("tailscale"), available_package_version("tailscale"), TAILSCALE_PACKAGE_URL);
     }
 
@@ -1477,7 +1486,7 @@ function install_sing_box_extended_package(action, target_tag) {
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download sing-box-extended package", current_version, latest_version);
 
-    run_logged("Updating package lists before sing-box-extended package installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before sing-box-extended package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
     stop_tachyon_before_sing_box_change();
     prepare_sing_box_package_service_install();
@@ -1526,7 +1535,7 @@ function install_sing_box_extended_package(action, target_tag) {
         }
     }
 
-    if (!run_logged("Installing sing-box-extended package " + release.asset_name, pkg_install_files_command([ package_file ], true), 90)) {
+    if (!run_logged("Installing sing-box-extended package " + release.asset_name, pkg_install_files_command([ package_file ], true), PKG_INSTALL_TIMEOUT)) {
         restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
         action_fail("sing_box", action, "Failed to install sing-box-extended package", current_version, latest_version);
     }
@@ -1969,7 +1978,7 @@ function install_package_sing_box(action, tiny) {
 
     ensure_sing_box_dependencies();
 
-    run_logged("Updating package lists before " + package_name + " installation", pkg_list_update_command(), 30);
+    run_logged("Updating package lists before " + package_name + " installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
     latest_version = available_package_version(package_name);
     if (latest_version == "")
         latest_version = installed_package_version(package_name);
