@@ -139,6 +139,40 @@ describe('renderUpdateProgressModal', () => {
     vi.useRealTimers();
   });
 
+  it('cancels the pending check auto-close when the modal is reused for the update', async () => {
+    vi.useFakeTimers();
+    mockUi.showModal.mockReset();
+    mockUi.hideModal.mockReset();
+
+    const { TachyonShellMethods } = await import('../../../methods');
+    const { showUpdateProgressModal } = await import(
+      '../partials/renderUpdateProgressModal'
+    );
+
+    vi.spyOn(TachyonShellMethods, 'componentActionLog').mockResolvedValue({
+      success: true,
+      data: { success: true, log: '', offset: 0 },
+    } as never);
+
+    // A check modal with no install button auto-closes 1200ms after success.
+    const controller = showUpdateProgressModal({
+      component: 'sing_box',
+      action: 'check_update',
+      componentTitle: 'sing-box',
+    });
+    controller.completeSuccess('Update is available');
+
+    // The user starts the update from that same modal before the pending
+    // close fires, so the window must survive the original deadline.
+    controller.startLogTracking('job-456');
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(mockUi.hideModal).not.toHaveBeenCalled();
+
+    controller.close();
+    expect(mockUi.hideModal).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('polls the operation log while the job runs and stops after completion', async () => {
     vi.useFakeTimers();
     mockUi.showModal.mockReset();

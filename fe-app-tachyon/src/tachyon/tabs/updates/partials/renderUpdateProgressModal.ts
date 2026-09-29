@@ -217,6 +217,19 @@ export function showUpdateProgressModal(
       clearInterval(timerInterval);
       timerInterval = null;
     }
+    clearAutoCloseTimer();
+  }
+
+  // A check modal auto-closes shortly after the check reports. The same modal
+  // is then reused for the update the user just started from it, and nothing
+  // cancelled that pending close, so the window vanished mid-update.
+  let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearAutoCloseTimer() {
+    if (autoCloseTimer) {
+      clearTimeout(autoCloseTimer);
+      autoCloseTimer = null;
+    }
   }
 
   let logTrackingJobId: string | null = null;
@@ -494,7 +507,8 @@ export function showUpdateProgressModal(
             : 0;
         const autoCloseMs = opts?.autoCloseMs ?? defaultAutoCloseMs;
         if (autoCloseMs > 0) {
-          setTimeout(() => {
+          autoCloseTimer = setTimeout(() => {
+            autoCloseTimer = null;
             if (
               activeModalController === controller ||
               activeModalController === null
@@ -546,6 +560,10 @@ export function showUpdateProgressModal(
       );
     },
     startLogTracking: (jobId: string) => {
+      // A new job on this modal: whatever the previous one scheduled to close
+      // it no longer applies.
+      clearAutoCloseTimer();
+
       if (!jobId || logTrackingJobId === jobId) {
         return;
       }

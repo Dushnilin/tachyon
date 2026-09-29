@@ -83,6 +83,7 @@ import {
 import {
   formatMaskedSingBoxConfig,
   maskGlobalCheckText,
+  maskLogText,
   stringifySingBoxConfig,
 } from './helpers/maskDiagnostics';
 
@@ -139,6 +140,19 @@ function getNotRunningDiagnosticsChecks() {
 }
 
 function resetDiagnosticsChecks() {
+  // A run in flight owns this list. The service-action follower resets it when
+  // its job finishes, which can happen while diagnostics are still running:
+  // that wiped the results the loop had already produced, and the loop never
+  // revisits a finished index, so the early checks stayed "not checked".
+  if (
+    !shouldResetDiagnosticsChecks({
+      resetChecks: true,
+      diagnosticsRunLoading: store.get().diagnosticsRunAction.loading,
+    })
+  ) {
+    return;
+  }
+
   store.set({
     diagnosticsChecks: getNotRunningDiagnosticsChecks(),
   });
@@ -1080,7 +1094,7 @@ async function handleGenerateBugReport() {
         : 'Failed to fetch sing-box logs',
     ].join('\n');
 
-    const maskedReport = maskGlobalCheckText(rawReport);
+    const maskedReport = maskLogText(maskGlobalCheckText(rawReport));
 
     // Download as a text file instead of using clipboard, because navigator.clipboard
     // is undefined in insecure contexts (HTTP) which is common for router web interfaces.
@@ -1585,6 +1599,15 @@ async function loadInitialDiagnosticData() {
 }
 
 function restorePersistedDiagnosticRun() {
+  // A run in flight has already persisted its progress, so this snapshot is
+  // always present while `runChecks` is running. Resuming it would bypass the
+  // loading guard in runChecks and start a second loop over the same checks,
+  // and the stale `nextRunnerIndex` would reset the cards the live loop has
+  // already finished.
+  if (store.get().diagnosticsRunAction.loading) {
+    return false;
+  }
+
   const persistedRun = readPersistedDiagnosticRun();
 
   if (!persistedRun) {

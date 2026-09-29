@@ -18877,8 +18877,22 @@ var TACHYON_MASK_AFTER_TOKEN_SPACE = [
   "option private_key",
   "option awg_private_key",
   "option bot_token",
+  "option agent_api_token",
   "option admin_ids",
-  "option url"
+  "option url",
+  "option warp_private_key",
+  "option warp_access_token",
+  "option masque_private_key",
+  "option masque_access_token",
+  "option openvpn_password",
+  "option openvpn_key",
+  "option openvpn_cert",
+  "option openvpn_ca",
+  "option user_agent",
+  "option hwid_token",
+  "option anytls_sni",
+  "option sni",
+  "option transport_path"
 ];
 function isRecord2(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -18981,6 +18995,20 @@ function maskGlobalCheckText(text = "") {
     return maskedLine;
   }).join("\n");
 }
+var LOG_URL = /[a-z][a-z0-9+.-]*:\/\/\S+/gi;
+var LOG_HOST = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9-]+)*\\.[a-z][a-z0-9-]*|\\d{1,3}(?:\\.\\d{1,3}){3}|localhost";
+var LOG_HOST_PORT = new RegExp(`(${LOG_HOST})(:\\d{1,5})`, "gi");
+var LOG_SYSLOG_TAG = "(?:daemon|user|kern|kernel|local\\d*|auth|authpriv|cron|mail|news|syslog|ftp)\\.(?:emerg|alert|crit|err|error|warn|warning|notice|info|debug)\\b";
+var LOG_BARE_HOST = new RegExp(
+  `(?<![/\\w.-])(?!${LOG_SYSLOG_TAG})(${LOG_HOST})(?![/\\w-])`,
+  "gi"
+);
+function maskLogLine(line) {
+  return line.replace(LOG_URL, "*******").replace(LOG_HOST_PORT, "*******$2").replace(LOG_BARE_HOST, "*******");
+}
+function maskLogText(text = "") {
+  return `${text}`.split("\n").map(maskLogLine).join("\n");
+}
 
 // src/tachyon/tabs/diagnostic/initController.ts
 var SERVICE_STATUS_REFRESH_INTERVAL_MS = 2e3;
@@ -19015,6 +19043,12 @@ function getNotRunningDiagnosticsChecks() {
   );
 }
 function resetDiagnosticsChecks() {
+  if (!shouldResetDiagnosticsChecks({
+    resetChecks: true,
+    diagnosticsRunLoading: store.get().diagnosticsRunAction.loading
+  })) {
+    return;
+  }
   store.set({
     diagnosticsChecks: getNotRunningDiagnosticsChecks()
   });
@@ -19731,7 +19765,7 @@ async function handleGenerateBugReport() {
       "--- SING-BOX LOGS ---",
       singboxLogsResult.code === 0 ? filterUdpErrors(singboxLogsResult.stdout) : "Failed to fetch sing-box logs"
     ].join("\n");
-    const maskedReport = maskGlobalCheckText(rawReport);
+    const maskedReport = maskLogText(maskGlobalCheckText(rawReport));
     const blob = new Blob([maskedReport], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -20132,6 +20166,9 @@ async function loadInitialDiagnosticData() {
   }
 }
 function restorePersistedDiagnosticRun() {
+  if (store.get().diagnosticsRunAction.loading) {
+    return false;
+  }
   const persistedRun = readPersistedDiagnosticRun();
   if (!persistedRun) {
     return false;
@@ -22955,6 +22992,14 @@ function showUpdateProgressModal(options) {
       clearInterval(timerInterval);
       timerInterval = null;
     }
+    clearAutoCloseTimer();
+  }
+  let autoCloseTimer = null;
+  function clearAutoCloseTimer() {
+    if (autoCloseTimer) {
+      clearTimeout(autoCloseTimer);
+      autoCloseTimer = null;
+    }
   }
   let logTrackingJobId = null;
   let logTrackingOffset = 0;
@@ -23166,7 +23211,8 @@ function showUpdateProgressModal(options) {
         const defaultAutoCloseMs = opts?.onInstall ? 0 : isCheckAction ? 1200 : 0;
         const autoCloseMs = opts?.autoCloseMs ?? defaultAutoCloseMs;
         if (autoCloseMs > 0) {
-          setTimeout(() => {
+          autoCloseTimer = setTimeout(() => {
+            autoCloseTimer = null;
             if (activeModalController === controller || activeModalController === null) {
               controller.close();
             }
@@ -23201,6 +23247,7 @@ function showUpdateProgressModal(options) {
       );
     },
     startLogTracking: (jobId) => {
+      clearAutoCloseTimer();
       if (!jobId || logTrackingJobId === jobId) {
         return;
       }

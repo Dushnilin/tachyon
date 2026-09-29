@@ -91,8 +91,22 @@ const TACHYON_MASK_AFTER_TOKEN_SPACE = [
   'option private_key',
   'option awg_private_key',
   'option bot_token',
+  'option agent_api_token',
   'option admin_ids',
   'option url',
+  'option warp_private_key',
+  'option warp_access_token',
+  'option masque_private_key',
+  'option masque_access_token',
+  'option openvpn_password',
+  'option openvpn_key',
+  'option openvpn_cert',
+  'option openvpn_ca',
+  'option user_agent',
+  'option hwid_token',
+  'option anytls_sni',
+  'option sni',
+  'option transport_path',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -240,4 +254,38 @@ export function maskGlobalCheckText(text: string = '') {
       return maskedLine;
     })
     .join('\n');
+}
+
+// Hostnames, addresses and URLs in syslog lines identify the user's provider
+// infrastructure (a node shows up as `host:port` in every sing-box dial/TLS
+// line) and the sites they browse. maskGlobalCheckText cannot help there: it
+// only rewrites UCI `option`/`list` tokens, and log lines have none.
+const LOG_URL = /[a-z][a-z0-9+.-]*:\/\/\S+/gi;
+// A host is a dotted name whose last label starts with a letter, a dotted
+// quad, or localhost. The alphabetic TLD is what keeps version strings
+// (1.14.2-lx.8) and clock times (10:00:27) intact.
+const LOG_HOST =
+  '[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9-]+)*\\.[a-z][a-z0-9-]*|\\d{1,3}(?:\\.\\d{1,3}){3}|localhost';
+const LOG_HOST_PORT = new RegExp(`(${LOG_HOST})(:\\d{1,5})`, 'gi');
+// `<facility>.<priority>` is syslog framing, not a host: `daemon.err` and
+// `user.notice` name the facility and severity that produced the line, which is
+// exactly the part a bug report needs. Refusing the match at the start of the
+// token is enough — the lookbehind already rejects every later start position,
+// so the tag cannot be re-entered one character in.
+const LOG_SYSLOG_TAG =
+  '(?:daemon|user|kern|kernel|local\\d*|auth|authpriv|cron|mail|news|syslog|ftp)\\.(?:emerg|alert|crit|err|error|warn|warning|notice|info|debug)\\b';
+const LOG_BARE_HOST = new RegExp(
+  `(?<![/\\w.-])(?!${LOG_SYSLOG_TAG})(${LOG_HOST})(?![/\\w-])`,
+  'gi',
+);
+
+function maskLogLine(line: string) {
+  return line
+    .replace(LOG_URL, '*******')
+    .replace(LOG_HOST_PORT, '*******$2')
+    .replace(LOG_BARE_HOST, '*******');
+}
+
+export function maskLogText(text: string = '') {
+  return `${text}`.split('\n').map(maskLogLine).join('\n');
 }
