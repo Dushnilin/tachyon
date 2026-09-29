@@ -151,25 +151,26 @@ ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.
   fail "supports-cert-pin must succeed on 1.15.2"
 ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "v1.16.1" ||
   fail "supports-cert-pin must succeed on v1.16.1"
-# sing-box-lx has no tls.certificate_sha256 field at all: its pin option is
-# certificate_public_key_sha256, which hashes the certificate public key and
-# therefore cannot carry a pcs (full-certificate SHA-256) value. Emitting
-# certificate_sha256 for lx made sing-box abort with "unknown field" and the
-# runtime fallback then dropped every pin (issue #79).
+# These lx versions are all below 1.15, which is the only reason the pin field is
+# missing - not anything about lx. Checked against the real 1.14.2-lx.8 binary:
+# it rejects certificate_sha256 with "unknown field" exactly as stock 1.14.2 does.
 if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.2-lx.4"; then
-  fail "supports-cert-pin must fail on 1.14.2-lx.4 (lx has no certificate_sha256)"
+  fail "supports-cert-pin must fail on 1.14.2-lx.4 (predates the 1.15.0 field)"
 fi
 if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.0-lx.32"; then
-  fail "supports-cert-pin must fail on 1.14.0-lx.32 (lx has no certificate_sha256)"
+  fail "supports-cert-pin must fail on 1.14.0-lx.32 (predates the 1.15.0 field)"
 fi
 if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "sing-box-lx"; then
-  fail "supports-cert-pin must fail on sing-box-lx (lx has no certificate_sha256)"
+  fail "supports-cert-pin must fail on a bare variant name with no version to judge"
 fi
 
+# The variant marker must NOT decide this. lx on 1.14.2 is unsupported because
+# of its version, same as stock, and lx on 1.15 is supported, same as stock. A
+# build-level exclusion would strip pins from every future lx release.
 printf 'lx\n' > "$WORK_DIR/variant_lx"
 if SB_VARIANT_STATE_FILE="$WORK_DIR/variant_lx" \
-  ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.2"; then
-  fail "supports-cert-pin must fail on 1.14.2 when the variant marker is lx"
+  ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.0"; then :; else
+  fail "supports-cert-pin must succeed on 1.15.0 even when the variant marker says lx - the field is gated by version, not by build (issue #79)"
 fi
 
 if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.13.0"; then
@@ -209,6 +210,51 @@ printf '1.15.0\n' > "$WORK_DIR/ver_new"
 new_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_new" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
 if ! grep -Fq "certificate_sha256" <<<"$new_stripped"; then
   fail "generator must keep certificate_sha256 on sing-box 1.15+"
+fi
+
+# 7b. The field is gated by version, not by build.
+#
+# This started as a claim that sing-box-lx is a special case. It is not, and
+# checking the real binaries settles it: stock 1.14.2 and 1.14.2-lx.8 both
+# reject tls.certificate_sha256 with "unknown field", and both accept
+# certificate_public_key_sha256. The official docs say certificate_sha256 was
+# added upstream in 1.15.0 and is the SHA-256 of the whole DER certificate,
+# while certificate_public_key_sha256 (1.13.0) hashes the public key - a
+# different value, so it cannot stand in for a pcs.
+#
+# sing-box-lx tracks upstream, so excluding it by name would have cost it the
+# feature for good once it passed 1.15. The rule is the version, so that is what
+# is pinned here: the two must agree, and neither may special-case lx.
+printf '%-16s %-11s %-11s\n' variant generator runtime
+for variant in 1.15.0 1.15.2 v1.16.1 1.14.2 1.14.2-lx.8 1.14.0-lx.32 1.15.0-lx.1 1.16.0-lx.3; do
+  if ucode "$GENERATOR_UC" is-cert-pin-supported "$variant" 2>/dev/null; then gen=supported; else gen=unsupported; fi
+  if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "$variant" 2>/dev/null; then rt=supported; else rt=unsupported; fi
+  printf '%-16s %-11s %-11s\n' "$variant" "$gen" "$rt"
+  [ "$gen" = "$rt" ] ||
+    fail "generator and runtime disagree about $variant: generator=$gen runtime=$rt - the generator would emit a field the runtime then strips (issue #79)"
+done
+
+# lx must be judged by its version like anything else. A build-level exclusion
+# would strip pins from an lx that has the field, which is exactly the state lx
+# will be in once it tracks upstream past 1.15.
+if ! ucode "$GENERATOR_UC" is-cert-pin-supported "1.15.0-lx.1" 2>/dev/null; then
+  fail "generator excludes sing-box-lx 1.15 by build name - certificate_sha256 is an upstream 1.15.0 field and lx tracks upstream, so that would strip pins from an lx that has the field"
+fi
+if ! ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.0-lx.1" 2>/dev/null; then
+  fail "runtime excludes sing-box-lx 1.15 by build name - same reason"
+fi
+
+# And below 1.15 the pin is dropped, on lx exactly as on stock, because there is
+# no field to put it in anywhere.
+printf '1.15.0-lx.1\n' > "$WORK_DIR/ver_lx_new"
+lx_new_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_lx_new" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
+if ! grep -Fq "certificate_sha256" <<<"$lx_new_stripped"; then
+  fail "generator must keep certificate_sha256 on sing-box-lx 1.15 - the field is an upstream 1.15.0 field and lx tracks upstream"
+fi
+printf '1.14.2-lx.8\n' > "$WORK_DIR/ver_lx_old"
+lx_old_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_lx_old" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
+if grep -Fq "certificate_sha256" <<<"$lx_old_stripped"; then
+  fail "generator must strip certificate_sha256 below 1.15 on any build, lx included"
 fi
 
 # 8. Verify diagnostics reports sing_box_cert_pin capability flag

@@ -89,4 +89,47 @@ for key in null_ident empty nonpid array; do
   echo "$out" | grep -q "^$key=no$" || fail "malformed identity accepted ($key): $out"
 done
 
+# --- EPERM is not death -----------------------------------------------------
+# The whole module is about refusing to call a dead process alive. The inverse
+# mistake is just as damaging: kill -0 fails with EPERM on a process that is
+# alive but owned by another user, and that arrives as the same exit code 1 as
+# a genuinely absent process. Reading it as "gone" makes the job reaper roll back
+# work that is still running.
+#
+# Reproduced by dropping privileges, because that is the only way to get EPERM -
+# the CI runner does exactly this and it is how this was found.
+if command -v setpriv >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
+  eperm_out="$(setpriv --reuid=65534 --regid=65534 --clear-groups \
+    sh -c "ucode -L '$LIB_DIR' -e '
+let proc = require(\"core.process\");
+let ident = proc.make_identity(\"1\", \"sh\");
+print(\"alive=\" + (proc.pid_alive_raw(\"1\") ? \"yes\" : \"no\") + \"\\n\");
+print(\"matches=\" + (proc.identity_matches(ident, \"1\") ? \"yes\" : \"no\") + \"\\n\");
+'" 2>&1)"
+  grep -q '^alive=yes$' <<< "$eperm_out" \
+    || fail "a live process owned by another user was called dead (EPERM read as death): $eperm_out"
+  grep -q '^matches=yes$' <<< "$eperm_out" \
+    || fail "a live process owned by another user did not match its own identity: $eperm_out"
+fi
+
+# And the invariant that catches it without needing privileges: for every pid
+# still present under /proc, a liveness probe must agree that it is alive.
+# Re-checked before reporting, because the suite runs in parallel and short-lived
+# pids exit between listing /proc and probing them - that race is not a defect.
+out="$(with_process '
+let fs = require("fs");
+let proc = require("core.process");
+let bad = [];
+for (let entry in fs.glob("/proc/*")) {
+    let m = match(entry, /\/([0-9]+)$/);
+    if (m == null) continue;
+    if (proc.pid_alive_raw(m[1])) continue;
+    if (fs.access("/proc/" + m[1], "f") != true) continue;
+    push(bad, m[1]);
+}
+print("mismatches=" + join(",", bad) + "\n");
+')"
+grep -q '^mismatches=$' <<< "$out" \
+  || fail "pid_alive_raw() disagreed with /proc about a live process: $out"
+
 printf 'fault: PID reuse checks passed\n'

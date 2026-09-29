@@ -577,12 +577,17 @@ function is_sing_box_lx_detected(sb_version_val) {
 function is_certificate_sha256_supported(sb_version_val) {
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
-    // NB: sing-box-lx is deliberately NOT counted here. It has no
-    // tls.certificate_sha256 at all — its pin field is
-    // certificate_public_key_sha256, which hashes the certificate PUBLIC KEY,
-    // not the certificate itself, so it cannot carry a pcs value. Emitting
-    // certificate_sha256 for lx made sing-box abort with "unknown field", after
-    // which the runtime fallback silently stripped every pin (issue #79).
+    // Purely a question of sing-box version, and nothing else. certificate_sha256
+    // (SHA-256 over the whole DER certificate, which is what a pcs value is) was
+    // added upstream in 1.15.0; before that the only pin field was
+    // certificate_public_key_sha256, which hashes the certificate PUBLIC KEY and
+    // is therefore a different value - it cannot stand in for a pcs.
+    //
+    // Verified against the real binaries: stock 1.14.2 and 1.14.2-lx.8 both
+    // reject certificate_sha256 with "unknown field" and both accept
+    // certificate_public_key_sha256. sing-box-lx is not a special case here, it
+    // just tracks upstream: exclude it by build and lx loses the field for good
+    // once it reaches 1.15.
     if (is_sb_1_15_plus_detected(sb_version_val))
         return true;
     return false;
@@ -1526,7 +1531,7 @@ function strip_certificate_pins_if_unsupported(config) {
         }
     }
     if (stripped)
-        warn("tls.certificate_sha256 requires sing-box 1.15.0+ (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored — sing-box-lx has no such field, it only supports certificate_public_key_sha256\n");
+        warn("tls.certificate_sha256 requires sing-box 1.15.0+ (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored - older sing-box only has certificate_public_key_sha256, which pins a different value (the public key, not the certificate)\n");
 }
 
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {

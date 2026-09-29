@@ -53,6 +53,21 @@ printf 'PASS: Contract JSON parsed and validated\n'
 
 # 2. Generator script runs and outputs valid TypeScript
 if command -v node >/dev/null 2>&1; then
+  # The generator overwrites the committed file with its raw output, and what is
+  # committed is that output after prettier. Restoring it afterwards keeps the
+  # test from leaving a formatting-only diff behind on every run, which is noise
+  # that hides real changes to the generated contract.
+  GENERATED_BACKUP=""
+  [ -f "$GENERATED_TS" ] && GENERATED_BACKUP="$(mktemp)"
+  [ -n "$GENERATED_BACKUP" ] && cp "$GENERATED_TS" "$GENERATED_BACKUP"
+  restore_generated() {
+    if [ -n "$GENERATED_BACKUP" ] && [ -f "$GENERATED_BACKUP" ]; then
+      cp "$GENERATED_BACKUP" "$GENERATED_TS"
+      rm -f "$GENERATED_BACKUP"
+    fi
+  }
+  trap restore_generated EXIT HUP INT TERM
+
   node "$GENERATOR_SCRIPT" || fail "tools/generate_rpc_contract.js failed"
   assert "[ -f '$GENERATED_TS' ]" "Generated TypeScript file exists"
   assert "[ -s '$GENERATED_TS' ]" "Generated TypeScript file is non-empty"

@@ -2145,8 +2145,8 @@ function run_doctor_checks_impl(repair) {
             doc_check("✅", "TLS certificate pinning", "supported & active (sing-box >= 1.15)", "");
         } else {
             issues++;
-            doc_check("⚠️", "TLS certificate pinning", "ignored (sing-box < 1.15; sing-box-lx has no certificate_sha256 field)",
-                "→ обновите sing-box до версии 1.15+ для поддержки pin сертификата (в sing-box-lx доступен только pin публичного ключа)");
+            doc_check("⚠️", "TLS certificate pinning", "ignored (installed sing-box predates 1.15)",
+                "→ обновите sing-box до версии 1.15+ для поддержки pin сертификата (в более старых версиях есть только pin публичного ключа — это другое значение)");
             push(DOCTOR_PLANNED_FIXES, "upgrade_to_singbox_extended");
         }
     }
@@ -3136,7 +3136,7 @@ function local_rule_doctor(pre_res, pre_verify) {
         } else if (index(c.name, "certificate pinning") >= 0 || index(c.name, "pinning") >= 0) {
             push(causes, {
                 probability: 90,
-                cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but installed sing-box does not support certificate_sha256 (requires sing-box 1.15+; sing-box-lx has no certificate_sha256 field)" : "Указан TLS pin сертификата для прокси, но установленный sing-box не поддерживает certificate_sha256 (требуется sing-box 1.15+; в sing-box-lx такого поля нет)",
+                cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but the installed sing-box predates the certificate_sha256 field (added in sing-box 1.15.0)" : "Указан TLS pin сертификата для прокси, но установленный sing-box не поддерживает certificate_sha256 (поле появилось в sing-box 1.15.0)",
                 fix: "upgrade_to_singbox_extended"
             });
             add_fix("upgrade_to_singbox_extended");

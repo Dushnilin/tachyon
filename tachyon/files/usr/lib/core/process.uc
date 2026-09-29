@@ -26,6 +26,7 @@ let shell_quote = common.shell_quote;
 // ---------------------------------------------------------------------------
 
 const PROC_STAT_FORMAT = "/proc/%s/stat";
+const PROC_DIR_FORMAT = "/proc/%s";
 const PROC_CMDLINE_FORMAT = "/proc/%s/cmdline";
 const PROC_EXE_FORMAT = "/proc/%s/exe";
 const PROC_COMM_FORMAT = "/proc/%s/comm";
@@ -154,13 +155,16 @@ function pid_alive_raw(pid) {
     pid = as_string(pid);
     if (match(pid, /^[0-9]+$/) == null)
         return false;
-    let status = int(system("kill -0 " + shell_quote(pid) + " 2>/dev/null"));
-    if (status == -1)
-        return false;
-    let signal = status & 127;
-    if (signal != 0)
-        return false;
-    return ((status >> 8) & 255) == 0;
+    if (int(system("kill -0 " + shell_quote(pid) + " 2>/dev/null")) == 0)
+        return true;
+    // kill -0 fails both when the process is gone (ESRCH) and when it exists but
+    // belongs to another user (EPERM), and both arrive as the same exit code 1,
+    // so the status alone cannot tell them apart. Reading every failure as "gone"
+    // is the exact inverse of the PID-recycling hazard this module exists to
+    // stop: it declares a LIVE worker dead, and the job reaper then rolls back
+    // work that is still running. /proc needs no permission to stat the directory
+    // entry, so it settles the question.
+    return fs.access(sprintf(PROC_DIR_FORMAT, pid), "f") == true;
 }
 
 // Check if a PID is alive AND belongs to a Tachyon-managed process.

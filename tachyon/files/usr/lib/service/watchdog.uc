@@ -442,6 +442,7 @@ let ubus = null;
 // Optional modules: absent in the Docker test image and on a router without
 // libubus, where the watchdog degrades to the polling path below.
 try { uloop = require("uloop"); } catch (e) {}
+try { jobs = require("core.jobs"); } catch (e) {}
 try { ubus = require("ubus"); } catch (e) {}
 
 // ─── Event bus and observation controller ─────────────────────────────────────
@@ -2635,8 +2636,23 @@ function check_section_failover() {
         safe_call(check_telegram_worker, "check_telegram_worker");
         safe_call(check_tailscale_worker, "check_tailscale_worker");
         safe_call(check_section_failover, "check_section_failover");
+        safe_call(reap_dead_jobs, "reap_dead_jobs");
     }
-    let last_keepalive_write = 0;
+    // A background worker that was killed never reports its own failure, so
+// nothing else moves its job out of running: the operation shows as running
+// forever and the compensations queued for it never run. The job engine knows
+// how to spot this - it records pid, starttime and boot_id precisely so a
+// recycled pid cannot masquerade as the original worker - but nothing ever
+// asked it to look. Five minutes is well inside the shortest job deadline.
+function reap_dead_jobs() {
+    if (jobs == null || type(jobs.gc) != "function")
+        return;
+    let removed = jobs.gc();
+    if (removed > 0)
+        log_message(sprintf("Reaped %d stale job state file(s)", removed), "info");
+}
+
+let last_keepalive_write = 0;
     if (uloop) {
         let tick;
         tick = function() {

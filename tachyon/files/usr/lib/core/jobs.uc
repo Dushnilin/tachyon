@@ -910,6 +910,33 @@ function jobs_gc_log(message) {
     }
 }
 
+// A worker that dies - OOM, a manual kill, a crash - never reaches fail() or
+// complete(), so nothing else moves the job out of running. Left alone it shows
+// as running forever and its compensations never run, which is the whole thing
+// the rollback stack exists to prevent. Reaped on sight, like a stale
+// transaction, rather than left to be deleted.
+function reap_stale_job(state) {
+    let reason = "worker disappeared before reporting a result";
+    // Only compensations that were written to the state file can run now: a
+    // callback was held in the dead worker's memory, and sanitize_state_for_json
+    // persisted it as a placeholder with nothing executable in it. Marking the
+    // job rolled back without saying so would be the worst outcome - it looks
+    // handled, and the system is left half-applied.
+    let stack = state.rollback_stack || [];
+    let unrunnable = 0;
+    for (let comp in stack)
+        if (type(comp) != "function" && (type(comp) != "object" || comp.fn == null))
+            if (!(type(comp) == "object" &&
+                 (comp.type == "command" || comp.type == "remove_file" || comp.type == "restore_file")))
+                unrunnable++;
+    if (unrunnable > 0)
+        reason += sprintf("; %d in-process compensation(s) could not be run because they died with the worker - check whether the system is left half-applied", unrunnable);
+    jobs_gc_log("reaping stale job " + state.id + ": " + reason);
+    if (length(stack) > 0)
+        execute_rollback(state, reason);
+    fail(state, reason);
+}
+
 function gc() {
     ensure_dirs();
     let entries = fs.glob(JOBS_DIR + "/*.json");
@@ -942,6 +969,12 @@ function gc() {
         let is_terminal = (state.phase == PHASE_SUCCESS ||
                           state.phase == PHASE_FAILED ||
                           state.phase == PHASE_CANCELLED);
+
+        if (!is_terminal && is_stale(state)) {
+            reap_stale_job(state);
+            continue;
+        }
+
         let age = now - (state.updated_at || state.created_at || 0);
 
         if (is_terminal && age > GC_MAX_AGE_SECONDS) {
