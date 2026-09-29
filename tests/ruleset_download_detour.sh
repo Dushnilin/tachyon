@@ -14,7 +14,30 @@ fail() {
   exit 1
 }
 
-# 1. Verify remote rule_set gets download_detour assigned to section's proxy outbound
+# Which download transport a rule-set ends up with depends on the installed
+# core: sing-box 1.14.0 deprecated `download_detour` for `http_client`. These
+# checks are about WHICH outbound the download rides on, so they accept either
+# field; the version matrix itself is covered by
+# tests/singbox_ruleset_download_transport.sh.
+assert_downloads_via() {
+  local output="$1" outbound="$2" label="$3"
+  grep -Fq "\"download_detour\": \"$outbound\"" "$output" && return 0
+  grep -Fq "\"tag\": \"tachyon-download-$outbound\"," "$output" &&
+    grep -Fq "\"detour\": \"$outbound\"" "$output" && return 0
+  fail "$label"
+}
+
+refuses_download_via() {
+  local output="$1" outbound="$2" label="$3"
+  if grep -Fq "\"download_detour\": \"$outbound\"" "$output"; then
+    fail "$label (download_detour)"
+  fi
+  if grep -Fq "\"detour\": \"$outbound\"" "$output"; then
+    fail "$label (http_clients)"
+  fi
+}
+
+# 1. Verify remote rule_set downloads through section's proxy outbound
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
   "settings": {
@@ -43,8 +66,8 @@ mkdir -p "$output.section-cache" "$output.rulesets"
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture.json" "$output" "127.0.0.1" "0" "1"
 
-grep -Fq '"download_detour": "myproxy-out"' "$output" || \
-  fail "remote community ruleset must automatically get download_detour set to section outbound"
+assert_downloads_via "$output" "myproxy-out" \
+  "remote community ruleset must automatically download via the section outbound"
 
 # 2. Verify download_via_proxy fallback selects first enabled proxy section
 cat >"$WORK_DIR/fixture-detour-enabled.json" <<'JSON'
@@ -83,8 +106,8 @@ mkdir -p "$output2.section-cache" "$output2.rulesets"
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture-detour-enabled.json" "$output2" "127.0.0.1" "0" "1"
 
-grep -Fq '"download_detour": "first_proxy-out"' "$output2" || \
-  fail "global download_lists_via_proxy without explicit section must default to first enabled proxy section"
+assert_downloads_via "$output2" "first_proxy-out" \
+  "global download_lists_via_proxy without explicit section must default to first enabled proxy section"
 
 # 3. Verify http_clients and default_http_client handling:
 # Omitted on sing-box < 1.14 (1.12, 1.13, Leadaxe, Extended) to avoid unknown field crash
@@ -170,9 +193,8 @@ mkdir -p "$output_zapret.section-cache" "$output_zapret.rulesets"
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture_zapret.json" "$output_zapret" "127.0.0.1" "0" "1"
 
-if grep -q '"download_detour": "zapret_sec-out"' "$output_zapret"; then
-  fail "zapret-out must never be selected as download_detour due to routing_mark"
-fi
+refuses_download_via "$output_zapret" "zapret_sec-out" \
+  "zapret-out must never be selected as download transport due to routing_mark"
 
 # 5. Verify mieru outbound is rejected as download_detour and http_clients detour
 cat >"$WORK_DIR/fixture_mieru.json" <<'JSON'
@@ -203,9 +225,8 @@ mkdir -p "$output_mieru.section-cache" "$output_mieru.rulesets"
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture_mieru.json" "$output_mieru" "127.0.0.1" "0" "1"
 
-if grep -q '"download_detour": "mieru_sec-out"' "$output_mieru"; then
-  fail "mieru outbound must never be assigned to rule_set download_detour (early startup crash)"
-fi
+refuses_download_via "$output_mieru" "mieru_sec-out" \
+  "mieru outbound must never be assigned as rule_set download transport (early startup crash)"
 
 output_mieru_v14="$WORK_DIR/out_mieru_v14.json"
 mkdir -p "$output_mieru_v14.section-cache" "$output_mieru_v14.rulesets"

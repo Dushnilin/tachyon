@@ -1232,6 +1232,29 @@ function ruleset_url(config, url) {
     return null;
 }
 
+// Which field carries the rule-set download transport depends on the installed
+// core: sing-box 1.14.0 deprecated `download_detour` for `http_client`. What
+// matters here is that the download rides on the expected outbound; the
+// version matrix is covered by tests/singbox_ruleset_download_transport.sh.
+function assert_downloads_via(config, rule_set, outbound_tag, label) {
+    if (rule_set == null) {
+        assert(false, label + " (rule-set missing)");
+        return;
+    }
+    if (rule_set.download_detour == outbound_tag) {
+        return;
+    }
+    let client_tag = rule_set.http_client;
+    if (client_tag == null || client_tag == "") {
+        assert(false, label + " (no download transport)");
+        return;
+    }
+    for (let client in config.http_clients || [])
+        if (client && client.tag == client_tag && client.detour == outbound_tag)
+            return;
+    assert(false, label);
+}
+
 function outbound(config, tag) {
     for (let item in config.outbounds || [])
         if (item && item.tag == tag)
@@ -1397,8 +1420,8 @@ assert(inbound(download, "service-mixed-in") != null, "service mixed inbound");
 assert(route_rule(download, r => r.inbound == "service-mixed-in" && r.outbound == "proxy-out") != null, "service mixed route");
 assert(inbound(download, "service-components-in") != null, "components service mixed inbound");
 assert(route_rule(download, r => r.inbound == "service-components-in" && r.outbound == "components_proxy-out") != null, "components service mixed route");
-assert(ruleset(download, "proxy-discord-community-ruleset").download_detour == "proxy-out", "download_detour on community ruleset");
-assert(ruleset_url(download, "https://example.com/rules.srs").download_detour == "proxy-out", "download_detour on custom remote ruleset");
+assert_downloads_via(download, ruleset(download, "proxy-discord-community-ruleset"), "proxy-out", "community ruleset downloads via proxy-out");
+assert_downloads_via(download, ruleset_url(download, "https://example.com/rules.srs"), "proxy-out", "custom remote ruleset downloads via proxy-out");
 
 let fully = cfg("fully-routed");
 assert(route_rule(fully, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && contains(r.source_ip_cidr, "192.168.1.20/32") && contains(r.source_ip_cidr, "192.168.1.30/32") && contains(r.source_ip_cidr, "2001:db8::20/128")) != null, "fully routed IP route");

@@ -789,6 +789,7 @@ function restore_rulesets_from_cache() {
 function prepare_community_rulesets() {
     let runtime_rulesets_mod = require("singbox.rulesets");
     let core_url_mod = require("core.url");
+    let connections = require("config.connections");
     let tmp_dir = TMP_RULESET_FOLDER;
     let etc_dir = "/etc/tachyon/rulesets";
 
@@ -818,6 +819,19 @@ function prepare_community_rulesets() {
                 if (r != "" && runtime_rulesets_mod.is_community(r))
                     needed[r] = true;
             }
+        }
+        // geoip_country pulls in geoip_<cc> plus geosite_ru, and the generator
+        // references them exactly like community_lists entries. Scanning only
+        // community_lists/rule_sets left them uncached, so any section with
+        // GeoIP produced remote rule-sets that sing-box had to download during
+        // startup — a GitHub hiccup then killed the core with
+        // "initialize rule-set: context deadline exceeded".
+        for (let cc in connections.geoip_country_list(section)) {
+            let ip_list = "geoip_" + cc;
+            if (runtime_rulesets_mod.is_community(ip_list))
+                needed[ip_list] = true;
+            if (cc == "ru" && runtime_rulesets_mod.is_community("geosite_ru"))
+                needed["geosite_ru"] = true;
         }
     }
 

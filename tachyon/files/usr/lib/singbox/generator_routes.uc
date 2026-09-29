@@ -835,6 +835,48 @@ function is_valid_detour(config, tag) {
     return false;
 }
 
+// sing-box 1.14.0 deprecated the remote rule-set `download_detour` field in
+// favour of `http_client`, and removed it in 1.16.0. The replacement names a
+// declared HTTP client, so a detour that the old field carried inline now needs
+// a client of its own. `ruleset-http` already exists in base_config and covers
+// the no-detour case; cores below 1.14 keep `download_detour`, since
+// `http_clients` is an unknown top-level field there and sing-box aborts the
+// whole config on it.
+function download_http_client_tag(config, detour) {
+    if (!ctx.is_sb_1_14_plus || !ctx.is_sb_1_14_plus())
+        return "";
+    if (!is_valid_detour(config, detour))
+        return "ruleset-http";
+
+    let tag = "tachyon-download-" + detour;
+    let registered = false;
+    for (let client in array_or_empty(config.http_clients)) {
+        if (type(client) == "object" && client.tag == tag)
+            registered = true;
+    }
+    if (!registered) {
+        if (config.http_clients == null)
+            config.http_clients = [];
+        push(config.http_clients, { tag: tag, detour: detour });
+    }
+
+    return tag;
+}
+
+// Applies whichever download transport the installed core understands, so the
+// three remote rule-set builders share one call.
+function apply_download_transport(config, rule_set, detour) {
+    let http_client = download_http_client_tag(config, detour);
+    if (http_client != "") {
+        rule_set.http_client = http_client;
+        if (config.route.default_http_client == null || config.route.default_http_client == "")
+            config.route.default_http_client = http_client;
+        return;
+    }
+    if (is_valid_detour(config, detour))
+        rule_set.download_detour = detour;
+}
+
 function section_excluded_candidate_tags(section, candidate_tags, state) {
     let mode = connections.dashboard_filter_mode(section);
     if (mode != "exclude" && mode != "mixed")
@@ -1022,8 +1064,7 @@ function ensure_custom_ruleset(config, reference) {
                     url: runtime_rulesets.community_url(reference)
                 };
                 let detour = ctx.download_detour_tag(ctx.runtime_settings());
-                if (is_valid_detour(config, detour))
-                    rule_set.download_detour = detour;
+                apply_download_transport(config, rule_set, detour);
                 rule_set.update_interval = remote_ruleset_update_interval();
                 push(config.route.rule_set, rule_set);
             }
@@ -1173,8 +1214,7 @@ function ensure_custom_ruleset(config, reference) {
             url: reference
         };
         let detour = ctx.download_detour_tag(ctx.runtime_settings());
-        if (is_valid_detour(config, detour))
-            rule_set.download_detour = detour;
+        apply_download_transport(config, rule_set, detour);
         rule_set.update_interval = remote_ruleset_update_interval();
         if (config.route.rule_set == null)
             config.route.rule_set = [];
@@ -1231,8 +1271,7 @@ function ensure_community_ruleset(config, section_name, community) {
                     detour = sec_out;
                 }
             }
-            if (is_valid_detour(config, detour))
-                rule_set.download_detour = detour;
+            apply_download_transport(config, rule_set, detour);
             push(config.route.rule_set, rule_set);
         }
     }

@@ -1509,10 +1509,17 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     add_content_blocking(config);
 
-    if (type(config.http_clients) == "array" && length(config.http_clients) > 0) {
+    // Only the shared `ruleset-http` client is wired here. Rule-sets that need
+    // their own detour register a dedicated client while the route is built,
+    // and assigning by index would overwrite that detour with the lists one.
+    if (type(config.http_clients) == "array") {
         let detour = download_detour_tag(settings, "lists");
-        if (detour != "" && generator_routes.is_valid_detour(config, detour))
-            config.http_clients[0].detour = detour;
+        if (detour != "" && generator_routes.is_valid_detour(config, detour)) {
+            for (let client in config.http_clients) {
+                if (type(client) == "object" && client.tag == "ruleset-http")
+                    client.detour = detour;
+            }
+        }
     }
 
     assert_unique_outbound_tags(config);
@@ -1699,6 +1706,8 @@ else if (mode == "object-nonempty")
     exit(object_nonempty_stdin() ? 0 : 1);
 else if (mode == "is-cert-pin-supported")
     exit(is_certificate_sha256_supported(ARGV[1]) ? 0 : 1);
+else if (mode == "is-sb-1-14-plus")
+    exit(is_sb_1_14_plus_detected(ARGV[1]) ? 0 : 1);
 else if (mode == "strip-cert-pins") {
     let cfg = json(fs.readfile("/dev/stdin"));
     if (type(cfg) == "object") {
