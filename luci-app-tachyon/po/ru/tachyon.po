@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-29 17:16+0300\n"
-"PO-Revision-Date: 2026-09-29 17:16+0300\n"
+"POT-Creation-Date: 2026-09-29 17:23+0300\n"
+"PO-Revision-Date: 2026-09-29 17:23+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2885,23 +2885,14 @@ msgstr "Неверный порт или диапазон. Используйт�
 msgid "Invalid regular expression"
 msgstr "Неверное регулярное выражение"
 
-msgid "Invalid Shadowsocks URL: decoded credentials must contain method:password"
-msgstr "Неверный URL Shadowsocks: декодированные данные должны содержать method:password"
+msgid "Invalid Shadowsocks URL: credentials must be base64 or method:password"
+msgstr ""
 
 msgid "Invalid Shadowsocks URL: invalid server and port"
 msgstr "Некорректный Shadowsocks URL: некорректные сервер и порт"
 
 msgid "Invalid Shadowsocks URL: missing credentials"
 msgstr "Неверный URL Shadowsocks: отсутствуют учетные данные"
-
-msgid "Invalid Shadowsocks URL: missing method and password separator \":\""
-msgstr "Неверный URL Shadowsocks: отсутствует разделитель метода и пароля \":\""
-
-msgid "Invalid Shadowsocks URL: missing port"
-msgstr "Неверный URL Shadowsocks: отсутствует порт"
-
-msgid "Invalid Shadowsocks URL: missing server"
-msgstr "Неверный URL Shadowsocks: отсутствует сервер"
 
 msgid "Invalid Shadowsocks URL: missing server address"
 msgstr "Неверный URL Shadowsocks: отсутствует адрес сервера"
@@ -2911,9 +2902,6 @@ msgstr "Неверный URL Shadowsocks: не должен содержать �
 
 msgid "Invalid Shadowsocks URL: must start with ss://"
 msgstr "Неверный URL Shadowsocks: должен начинаться с ss://"
-
-msgid "Invalid Shadowsocks URL: parsing failed"
-msgstr "Неверный URL Shadowsocks: ошибка разбора"
 
 msgid "Invalid SOCKS URL: invalid host and port"
 msgstr "Некорректный SOCKS URL: некорректные хост и порт"
@@ -6367,6 +6355,21 @@ msgstr "Правила маршрутизации Zapret2 не настроен�
 
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "Invalid Shadowsocks URL: decoded credentials must contain method:password"
+msgstr "Неверный URL Shadowsocks: декодированные данные должны содержать method:password"
+
+msgid "Invalid Shadowsocks URL: missing method and password separator \":\""
+msgstr "Неверный URL Shadowsocks: отсутствует разделитель метода и пароля \":\""
+
+msgid "Invalid Shadowsocks URL: missing port"
+msgstr "Неверный URL Shadowsocks: отсутствует порт"
+
+msgid "Invalid Shadowsocks URL: missing server"
+msgstr "Неверный URL Shadowsocks: отсутствует сервер"
+
+msgid "Invalid Shadowsocks URL: parsing failed"
+msgstr "Неверный URL Shadowsocks: ошибка разбора"
 
 msgid "Model name to use. Leave empty to use default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat / llama3:latest)."
 msgstr "Имя модели. Оставьте пустым для использования по умолчанию (gpt-4o-mini / claude-3-5-haiku / deepseek-chat / llama3:latest)."

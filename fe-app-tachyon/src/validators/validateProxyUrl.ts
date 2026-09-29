@@ -8,43 +8,44 @@ import { validateHysteria2Url } from './validateHysteriaUrl';
 import { validateTuicUrl } from './validateTuicUrl';
 import { validateHttpProxyUrl } from './validateHttpProxyUrl';
 
-// TODO refactor current validation and add tests
+/**
+ * Scheme dispatch, longest prefix first so that a longer scheme can never be
+ * swallowed by a shorter one. Adding a protocol is one row.
+ */
+const DISPATCH: {
+  prefixes: string[];
+  validate: (url: string) => ValidationResult;
+}[] = [
+  { prefixes: ['ss://'], validate: validateShadowsocksUrl },
+  { prefixes: ['vless://'], validate: validateVlessUrl },
+  { prefixes: ['vmess://'], validate: validateVmessUrl },
+  { prefixes: ['trojan://'], validate: validateTrojanUrl },
+  {
+    prefixes: ['socks4://', 'socks4a://', 'socks5://'],
+    validate: validateSocksUrl,
+  },
+  { prefixes: ['http://', 'https://'], validate: validateHttpProxyUrl },
+  { prefixes: ['hysteria2://', 'hy2://'], validate: validateHysteria2Url },
+  { prefixes: ['tuic://'], validate: validateTuicUrl },
+];
+
+/**
+ * Routes a pasted share link to its scheme validator.
+ *
+ * Input is untrusted. The scheme match is case-sensitive on purpose: share
+ * links are generated in lower case, and accepting "SS://" would let a
+ * lookalike through a filter that only lowercases one side. No prefix here
+ * overlaps another, so ordering only matters for readability.
+ */
 export function validateProxyUrl(url: string): ValidationResult {
   const trimmedUrl = url.trim();
 
-  if (trimmedUrl.startsWith('ss://')) {
-    return validateShadowsocksUrl(trimmedUrl);
-  }
-
-  if (trimmedUrl.startsWith('vless://')) {
-    return validateVlessUrl(trimmedUrl);
-  }
-
-  if (trimmedUrl.startsWith('vmess://')) {
-    return validateVmessUrl(trimmedUrl);
-  }
-
-  if (trimmedUrl.startsWith('trojan://')) {
-    return validateTrojanUrl(trimmedUrl);
-  }
-
-  if (/^socks(4|4a|5):\/\//.test(trimmedUrl)) {
-    return validateSocksUrl(trimmedUrl);
-  }
-
-  if (/^https?:\/\//.test(trimmedUrl)) {
-    return validateHttpProxyUrl(trimmedUrl);
-  }
-
-  if (
-    trimmedUrl.startsWith('hysteria2://') ||
-    trimmedUrl.startsWith('hy2://')
-  ) {
-    return validateHysteria2Url(trimmedUrl);
-  }
-
-  if (trimmedUrl.startsWith('tuic://')) {
-    return validateTuicUrl(trimmedUrl);
+  for (const { prefixes, validate } of DISPATCH) {
+    for (const prefix of prefixes) {
+      if (trimmedUrl.startsWith(prefix)) {
+        return validate(trimmedUrl);
+      }
+    }
   }
 
   return {

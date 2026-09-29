@@ -329,88 +329,68 @@ function validateOutboundJson(value, usedTags = []) {
 
 // src/validators/validateShadowsocksUrl.ts
 function validateShadowsocksUrl(url) {
-  if (!url.startsWith("ss://")) {
+  if (!url || !url.startsWith("ss://")) {
     return {
       valid: false,
       message: _("Invalid Shadowsocks URL: must start with ss://")
     };
   }
-  try {
-    if (!url || /\s/.test(url)) {
-      return {
-        valid: false,
-        message: _("Invalid Shadowsocks URL: must not contain spaces")
-      };
-    }
-    const mainPart = url.includes("?") ? url.split("?")[0] : url.split("#")[0];
-    const encryptedPart = mainPart.split("/")[2]?.split("@")[0];
-    if (!encryptedPart) {
-      return {
-        valid: false,
-        message: _("Invalid Shadowsocks URL: missing credentials")
-      };
-    }
-    try {
-      const decoded = atob(encryptedPart);
-      if (!decoded.includes(":")) {
-        return {
-          valid: false,
-          message: _(
-            "Invalid Shadowsocks URL: decoded credentials must contain method:password"
-          )
-        };
-      }
-    } catch (_e) {
-      if (!encryptedPart.includes(":") && !encryptedPart.includes("-")) {
-        return {
-          valid: false,
-          message: _(
-            'Invalid Shadowsocks URL: missing method and password separator ":"'
-          )
-        };
-      }
-    }
-    const serverPart = url.split("@")[1];
-    if (!serverPart) {
-      return {
-        valid: false,
-        message: _("Invalid Shadowsocks URL: missing server address")
-      };
-    }
-    const parsedHostPort = parseHostPort(serverPart);
-    if (!parsedHostPort) {
-      return {
-        valid: false,
-        message: _("Invalid Shadowsocks URL: invalid server and port")
-      };
-    }
-    const { host: server, port: portAndRest } = parsedHostPort;
-    if (!server) {
-      return {
-        valid: false,
-        message: _("Invalid Shadowsocks URL: missing server")
-      };
-    }
-    const port = portAndRest ? portAndRest.split(/[?#]/)[0] : null;
-    if (!port) {
-      return {
-        valid: false,
-        message: _("Invalid Shadowsocks URL: missing port")
-      };
-    }
-    if (!isValidPort(port)) {
-      return {
-        valid: false,
-        message: _("Invalid port number. Must be between 1 and 65535")
-      };
-    }
-  } catch (_e) {
+  if (/\s/.test(url)) {
     return {
       valid: false,
-      message: _("Invalid Shadowsocks URL: parsing failed")
+      message: _("Invalid Shadowsocks URL: must not contain spaces")
+    };
+  }
+  const authority = url.slice("ss://".length).split(/[?#]/)[0];
+  const at = authority.lastIndexOf("@");
+  if (at < 0) {
+    return {
+      valid: false,
+      message: _("Invalid Shadowsocks URL: missing server address")
+    };
+  }
+  const userinfo = authority.slice(0, at);
+  const hostPort = authority.slice(at + 1);
+  if (userinfo === "") {
+    return {
+      valid: false,
+      message: _("Invalid Shadowsocks URL: missing credentials")
+    };
+  }
+  if (!credentialsLookDecent(userinfo)) {
+    return {
+      valid: false,
+      message: _(
+        "Invalid Shadowsocks URL: credentials must be base64 or method:password"
+      )
+    };
+  }
+  const parsed = parseHostPort(hostPort);
+  if (!parsed) {
+    return {
+      valid: false,
+      message: _("Invalid Shadowsocks URL: invalid server and port")
+    };
+  }
+  if (!isValidPort(parsed.port)) {
+    return {
+      valid: false,
+      message: _("Invalid port number. Must be between 1 and 65535")
     };
   }
   return { valid: true, message: _("Valid") };
+}
+function credentialsLookDecent(userinfo) {
+  if (userinfo.includes(":")) {
+    const method = userinfo.split(":")[0];
+    return method !== "" && /^[A-Za-z0-9_+.-]+$/.test(method);
+  }
+  try {
+    const decoded = atob(userinfo);
+    return decoded.includes(":") && /^[A-Za-z0-9_+.-]+$/.test(decoded.split(":")[0]);
+  } catch {
+    return false;
+  }
 }
 
 // src/helpers/parseQueryString.ts
@@ -1003,31 +983,27 @@ function validateHttpProxyUrl(url) {
 }
 
 // src/validators/validateProxyUrl.ts
+var DISPATCH = [
+  { prefixes: ["ss://"], validate: validateShadowsocksUrl },
+  { prefixes: ["vless://"], validate: validateVlessUrl },
+  { prefixes: ["vmess://"], validate: validateVmessUrl },
+  { prefixes: ["trojan://"], validate: validateTrojanUrl },
+  {
+    prefixes: ["socks4://", "socks4a://", "socks5://"],
+    validate: validateSocksUrl
+  },
+  { prefixes: ["http://", "https://"], validate: validateHttpProxyUrl },
+  { prefixes: ["hysteria2://", "hy2://"], validate: validateHysteria2Url },
+  { prefixes: ["tuic://"], validate: validateTuicUrl }
+];
 function validateProxyUrl(url) {
   const trimmedUrl = url.trim();
-  if (trimmedUrl.startsWith("ss://")) {
-    return validateShadowsocksUrl(trimmedUrl);
-  }
-  if (trimmedUrl.startsWith("vless://")) {
-    return validateVlessUrl(trimmedUrl);
-  }
-  if (trimmedUrl.startsWith("vmess://")) {
-    return validateVmessUrl(trimmedUrl);
-  }
-  if (trimmedUrl.startsWith("trojan://")) {
-    return validateTrojanUrl(trimmedUrl);
-  }
-  if (/^socks(4|4a|5):\/\//.test(trimmedUrl)) {
-    return validateSocksUrl(trimmedUrl);
-  }
-  if (/^https?:\/\//.test(trimmedUrl)) {
-    return validateHttpProxyUrl(trimmedUrl);
-  }
-  if (trimmedUrl.startsWith("hysteria2://") || trimmedUrl.startsWith("hy2://")) {
-    return validateHysteria2Url(trimmedUrl);
-  }
-  if (trimmedUrl.startsWith("tuic://")) {
-    return validateTuicUrl(trimmedUrl);
+  for (const { prefixes, validate } of DISPATCH) {
+    for (const prefix of prefixes) {
+      if (trimmedUrl.startsWith(prefix)) {
+        return validate(trimmedUrl);
+      }
+    }
   }
   return {
     valid: false,
