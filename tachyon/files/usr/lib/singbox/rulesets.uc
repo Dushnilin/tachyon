@@ -55,12 +55,14 @@ const COMMUNITY_SERVICES = {
 // Classification of community rule-sets based on upstream rule-set generation.
 // Upstream allow-domains (itdoginfo/allow-domains convert.py) compiles:
 // - general lists (russia_inside, russia_outside, ukraine_inside) and category lists as domain-only ("domains");
-// - SUBNET_SERVICES (discord, meta, twitter, telegram, roblox, google_meet)
+// - SUBNET_SERVICES (meta, twitter, telegram, roblox, google_meet)
 //   as mixed containing both domain_suffix and ip_cidr ("mixed");
 // - infrastructure / CDN provider lists (cloudflare, cloudfront, hetzner, ovh, digitalocean) as IP subnets ("subnets").
 //   In sing-box 1.14+, these must NOT be placed into DNS response rules (match_response: true) because doing so
 //   causes arbitrary third-party domains hosted behind these CDNs/providers (e.g. mtpro.xyz) to be issued a FakeIP,
 //   discarding the real IP and breaking routing to direct. They are routed purely by destination IP in route.rules.
+// - discord is also treated as subnets: its voice endpoints use Cloudflare Anycast with UDP QUIC (port 443).
+//   FakeIP-ing Discord IP-in-DNS-response causes sing-box to dial tcp for UDP QUIC sessions → i/o timeout.
 // - geoip_* lists from MetaCubeX/meta-rules-dat contain only ip_cidr ("subnets");
 // - geosite_* lists from MetaCubeX/meta-rules-dat contain only domains ("domains");
 // - external lists (github, twitch, ads_hagezi_pro, supercell) are domain-only ("domains").
@@ -68,7 +70,6 @@ const COMMUNITY_SERVICES = {
 // In sing-box 1.14+, referencing a rule-set with ip_cidr in a DNS rule without match_response: true
 // is treated as a deprecated legacy address filter and rejected if query_type is present in DNS configuration.
 const COMMUNITY_SUBNET_SERVICES = {
-    discord: true,
     meta: true,
     twitter: true,
     telegram: true,
@@ -77,6 +78,7 @@ const COMMUNITY_SUBNET_SERVICES = {
 };
 
 const COMMUNITY_INFRASTRUCTURE_SERVICES = {
+    discord: true,
     cloudflare: true,
     cloudfront: true,
     hetzner: true,

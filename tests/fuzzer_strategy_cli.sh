@@ -343,4 +343,29 @@ if (val.success !== false) {
 }
 NODE
 
+# 11. Discord UDP strategies must cover the STUN port range.
+# A field report: Discord voice failed with "no route" while text worked. The
+# running strategy came from the fuzzer and filtered only 19294-19344 and
+# 50000-65535, so the STUN binding on 3478 went out un-desynced, the DPI broke
+# it, and ICE never completed. Tachyon's own shipped preset
+# (z2r_discord_voice_multi_profile) already listed 3478-3481 — the fuzzer
+# strategy had simply drifted away from it.
+JSON_VALUE="$strategies_json" node <<'NODE'
+const val = JSON.parse(process.env.JSON_VALUE);
+const list = (val.zapret2 || []).filter(
+  (s) => /discord/i.test(s.id || '') && (s.args || '').includes('--filter-udp='),
+);
+if (list.length === 0) {
+  console.error('No Discord UDP strategy found to verify');
+  process.exit(1);
+}
+for (const s of list) {
+  if (!s.args.includes('3478')) {
+    console.error(`Strategy ${s.id} filters UDP without the STUN port 3478: ${s.args}`);
+    process.exit(1);
+  }
+}
+console.log(`Verified STUN coverage in ${list.length} Discord UDP strategies.`);
+NODE
+
 printf 'PASS: fuzzer_strategy_cli\n'

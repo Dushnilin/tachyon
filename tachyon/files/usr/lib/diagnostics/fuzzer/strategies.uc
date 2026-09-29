@@ -186,15 +186,15 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_discord_fullstack",
         name: "Discord Full-Stack Multi-Profile",
         engine: "zapret2",
-        args: "--filter-tcp=443 --lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max --new --filter-tcp=2053,2083,2087,2096,8443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=tls_google:repeats=6:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google --new --filter-udp=19294-19344,50000-50100 --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=discord_udp:repeats=6",
+        args: "--filter-tcp=443 --lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max --new --filter-tcp=2053,2083,2087,2096,8443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=tls_google:repeats=6:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google --new --filter-udp=3478-3480,5000-5020,19294-19344,50000-65535 --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=discord_udp:repeats=6",
         description: "Production multi-profile: HTTPS, alternate Cloudflare edge ports, and Discord Voice/STUN UDP."
     },
     {
         id: "z2_discord_udp",
         name: "Discord Voice UDP Desync",
         engine: "zapret2",
-        args: "--filter-udp=19294-19344,50000-65535 --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=discord_udp:repeats=6",
-        description: "UDP fake packet desync for Discord RTC and Voice channels."
+        args: "--filter-udp=3478-3480,5000-5020,19294-19344,50000-65535 --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=discord_udp:repeats=6",
+        description: "UDP fake packet desync for Discord RTC and Voice channels. The port set mirrors what the generator routes to a Discord section: without 3478-3480 the STUN binding never gets a desynced answer and the client reports no route."
     },
     {
         id: "z2_quic_http3_udp",

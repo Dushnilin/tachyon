@@ -61,7 +61,11 @@ assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/g
 assert_eq mixed \
   "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind telegram)" \
   "telegram community kind"
-assert_eq mixed \
+# Discord is infrastructure, like cloudflare: its voice endpoints sit on
+# Cloudflare anycast, so it is routed purely by destination IP. Issuing a
+# FakeIP for a Discord IP makes sing-box dial TCP for UDP QUIC voice sessions
+# and time out, which surfaced as "no route" on voice channels.
+assert_eq subnets \
   "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind discord)" \
   "discord community kind"
 assert_eq domains \
