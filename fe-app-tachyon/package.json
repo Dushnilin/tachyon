@@ -37,7 +37,7 @@
   "overrides": {
     "@humanfs/node": ">=0.16.8",
     "postcss": "8.5.23",
-    "js-yaml": "^5.2.1"
+    "js-yaml": "^5.4.1"
   },
   "optionalDependencies": {
     "@esbuild/win32-x64": "^0.28.2",
