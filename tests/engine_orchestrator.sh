@@ -470,6 +470,57 @@ case "$out" in
     *) fail_test "nfqws_bin not resolved from the provider candidate list: $out" ;;
 esac
 
+# The stat checks in resolved_zapret_bin used to be dead code: the provider takes
+# its path from a constant and never returns empty, so the candidate list was
+# never reached. Verified on a router with only zapret2 installed - a `zapret`
+# (v1) section put /opt/zapret/nfq/nfqws into the spec, a file that does not
+# exist, and steer-nfqws could never start that output.
+printf '%s\n' '--- a zapret v1 section on a zapret2-only device ---'
+v1_out="$(ZAPRET_NFQWS_BIN="$WORK_DIR/no-such-nfqws" run_uc '
+let g = require("steer.generator");
+let sections = [ { ".name": "z1", ".type": "section", "action": "zapret", "enabled": "1", "label": "Z1",
+    "user_domains": [ "example.com" ] } ];
+g.set_list_materializer(function(section, catalog) {
+    return { domains: "/tmp/z1.domains", prefixes: "" };
+});
+let spec = g.build_spec(sections, {});
+print("bin=" + spec.outputs.Z1.nfqws_bin + "\n");
+' 2>&1)"
+
+# A wrong-version binary must never be substituted: v1 opts are not valid for
+# nfqws2. With no v1 binary anywhere, the configured path goes back into the spec
+# and the provider check reports it, rather than silently running nfqws2.
+case "$v1_out" in
+    *nfqws2*) fail_test "a zapret v1 section was pointed at an nfqws2 binary: $v1_out" ;;
+    bin=*)   pass=$((pass + 1)) ;;
+    *)       fail_test "zapret v1 nfqws_bin not resolved at all: $v1_out" ;;
+esac
+
+# With a candidate present, the candidate wins over the missing configured path.
+# Needs to create a file under /opt, so it only asserts where that is possible
+# (the CI container runs as root) and is skipped otherwise.
+if mkdir -p /opt/zapret/nfq 2>/dev/null && : > /opt/zapret/nfq/nfqws 2>/dev/null; then
+    v1_cand="$(ZAPRET_NFQWS_BIN="$WORK_DIR/no-such-nfqws" run_uc '
+    let g = require("steer.generator");
+    let sections = [ { ".name": "z1", ".type": "section", "action": "zapret", "enabled": "1", "label": "Z1",
+        "user_domains": [ "example.com" ] } ];
+    g.set_list_materializer(function(section, catalog) {
+        return { domains: "/tmp/z1.domains", prefixes: "" };
+    });
+    let spec = g.build_spec(sections, {});
+    print("bin=" + spec.outputs.Z1.nfqws_bin + "\n");
+    ' 2>&1)"
+    if [ "$v1_cand" = "bin=/opt/zapret/nfq/nfqws" ]; then
+        pass=$((pass + 1))
+    else
+        fail_test "an existing candidate was not preferred over a missing configured path: $v1_cand"
+    fi
+    rm -f /opt/zapret/nfq/nfqws
+    rmdir /opt/zapret/nfq /opt/zapret 2>/dev/null || true
+else
+    printf '%s\n' '    (skipped: cannot create /opt/zapret/nfq/nfqws here)'
+fi
+
 printf '%s\n' '--- steer contract facts ---'
 out="$(run_uc '
 let e = require("core.engine");

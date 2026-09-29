@@ -129,17 +129,42 @@ function section_supported(section) {
 // Outputs
 // ============================================================================
 
-// Resolved through the zapret2 provider's candidate list (fs.stat fallbacks),
-// never hardcoded: the nfqws2 binary lands at different paths per build
-// (/opt/zapret2/nfq2/nfqws2, /opt/zapret2/nfqws2, /usr/bin/nfqws2, ...).
+// Resolved through the provider, then the candidate list, never hardcoded: the
+// nfqws binary lands at different paths per build (/opt/zapret2/nfq2/nfqws2,
+// /opt/zapret2/nfq/nfqws2, /usr/bin/nfqws2, ...).
+//
+// The stat checks used to be dead code. The provider takes its path from a
+// constant, never throws and never returns an empty binary, so its value was
+// returned unconditionally and the candidate list was never reached. Found on a
+// router with only zapret2 installed: a `zapret` (v1) section put
+// /opt/zapret/nfq/nfqws into the spec, a file that does not exist, and
+// steer-nfqws could never start that output - silently, since the spec is only
+// applied at steer apply time.
+//
+// A wrong-version binary is not substituted on purpose - v1 opts are not valid
+// for nfqws2 - so when nothing matches, the configured path goes back into the
+// spec as-is and the provider check reports the missing binary to the user.
 function resolved_zapret_bin(is_z2) {
+    let preferred = "";
     try {
         let provider = require(is_z2 ? "providers.zapret2.common" : "providers.zapret.common").config({});
-        if (provider != null && as_string(provider.binary) != "")
-            return as_string(provider.binary);
+        if (provider != null && as_string(provider.binary) != "") {
+            preferred = as_string(provider.binary);
+            if (common.file_exists(preferred))
+                return preferred;
+        }
     }
     catch (e) {}
-    return is_z2 ? "/opt/zapret2/nfq2/nfqws2" : "/opt/zapret/nfq/nfqws";
+
+    let candidates = is_z2
+        ? [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfq/nfqws2", "/opt/zapret2/nfqws2", "/usr/bin/nfqws2" ]
+        : [ "/opt/zapret/nfq/nfqws", "/opt/zapret/nfqws", "/usr/bin/nfqws" ];
+    for (let path in candidates)
+        if (common.file_exists(path))
+            return path;
+
+    return (preferred != "") ? preferred
+        : (is_z2 ? "/opt/zapret2/nfq2/nfqws2" : "/opt/zapret/nfq/nfqws");
 }
 
 // Build the outputs map. Proxy sections become interface/vless outputs when the
