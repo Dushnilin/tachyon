@@ -38,7 +38,6 @@ const ENGINE_STEER_EXTENDED = "steer-extended";
 // UCI option names. Kept in one place so migrations and the frontend agree.
 const OPT_ENGINE = "engine";
 const OPT_ENGINE_PREVIOUS = "engine_previous";
-const OPT_ENGINE_UNSUPPORTED = "engine_unsupported_snapshot";
 
 // Engine executable / service locations.
 const ENGINE_BINARIES = {
@@ -291,16 +290,23 @@ function detect(engine) {
         return { engine, known: false, installed: false, note: "unknown engine" };
 
     if (engine == ENGINE_STEER || engine == ENGINE_STEER_EXTENDED) {
-        let extended = steer_has_extended_build();
-        let installed = engine == ENGINE_STEER_EXTENDED ? extended : binary_present(ENGINE_STEER);
+        // "steer" and "steer-extended" name the same binary and the same init
+        // script; the only thing that differs is the build. So installation is
+        // one fact, not two, and the build is reported as its own field instead
+        // of being folded into a note. Previously detect("steer") reported
+        // installed on an extended build and the only hint was a note string.
+        let present = binary_present(ENGINE_STEER);
+        let build = !present ? "none" : (steer_has_extended_build() ? "extended" : "stock");
         return {
             engine,
             known: true,
-            installed,
+            installed: present,
+            build,
+            matches_build: engine == ENGINE_STEER_EXTENDED ? build == "extended" : build != "none",
             binary: ENGINE_BINARIES[engine],
             init: ENGINE_INIT[engine],
             package: ENGINE_PACKAGES[engine],
-            note: engine == ENGINE_STEER && extended ? "extended build installed" : ""
+            note: !present ? "" : (build == "extended" ? "extended build installed" : "stock build installed")
         };
     }
 
@@ -345,42 +351,15 @@ function get_previous() {
 }
 
 // ============================================================================
-// Feature plan: what survives a switch and what gets parked
+// Feature plan: what survives a switch
+//
+// There is no parked snapshot any more. read_parked()/write_parked() persisted
+// a JSON blob per target engine and returned it as `restored`, and nothing ever
+// applied it - the restore they documented was never performed. Parking is a
+// per-section decision the generator makes by skipping what the active engine
+// cannot express, and the sections are never modified, so there is nothing to
+// restore.
 // ============================================================================
-
-// Snapshot key under which parked configuration is stored in UCI. One JSON
-// blob per target engine, so switching back restores exactly what that engine
-// had parked. Stored as a list option to stay within UCI's string model.
-function unsupported_snapshot_key(engine) {
-    return OPT_ENGINE_UNSUPPORTED + "_" + as_string(engine);
-}
-
-function read_parked(target_engine) {
-    let settings = uci_core.get_all("tachyon", "settings") || {};
-    let raw = settings[unsupported_snapshot_key(target_engine)];
-    if (type(raw) == "array")
-        raw = join("", raw);
-    raw = trim(as_string(raw));
-    if (raw == "")
-        return {};
-    try {
-        let parsed = json(raw);
-        return type(parsed) == "object" ? parsed : {};
-    }
-    catch (e) {
-        return {};
-    }
-}
-
-function write_parked(target_engine, data) {
-    let key = unsupported_snapshot_key(target_engine);
-    if (type(data) != "object" || length(keys(data)) == 0) {
-        if (uci_core.exists("tachyon.settings." + key))
-            uci_core.delete_path("tachyon.settings." + key);
-        return true;
-    }
-    return uci_core.set("tachyon.settings." + key, sprintf("%J", data));
-}
 
 // Feature payloads are supplied by the caller as either a plain list of names
 // or an object { feature: payload }. Plain names park a boolean marker so the
@@ -445,9 +424,6 @@ function module_exports() {
         get_active,
         get_previous,
         plan_switch,
-        read_parked,
-        write_parked,
-        unsupported_snapshot_key,
         STEER_SPEC_FILE,
         STEER_SUB_FILE,
         STEER_LISTS_DIR,

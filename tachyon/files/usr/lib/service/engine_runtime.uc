@@ -118,12 +118,33 @@ function restart_tachyon_service() {
 function switch_engine(target, opts) {
     opts = type(opts) == "object" ? opts : {};
     let before = engine.get_active();
+    let normalized = engine.normalize_engine(target);
+
+    // steer and steer-extended are the same binary and the same init script -
+    // they name a build, not a program. Switching between them changes one UCI
+    // string and restarts the service for nothing, while reporting success. Say
+    // so and stop, unless the caller asked to replace the build.
+    if (normalized == before &&
+        engine.engine_binary(normalized) == engine.engine_binary(before) &&
+        engine.init_script_present(normalized) == engine.init_script_present(before) &&
+        !(opts.replace_build === true || opts.replace_build === "1")) {
+        let info = engine.detect(normalized);
+        return {
+            ok: true,
+            no_op: true,
+            reason: "already_active",
+            from_engine: before,
+            to_engine: normalized,
+            build: info.build,
+            message: "Already running on " + normalized + " (" + (info.build || "unknown build") + "); nothing to switch"
+        };
+    }
 
     // Refuse to switch onto a build that predates the subcommands we drive.
     // engine.uc grew steer_contract_ready() for exactly this and it was never
     // called from anywhere, so the only way to find out was a failed apply much
     // later. The check is cheap and steer 1.5.8 satisfies it.
-    if ((target == "steer" || target == "steer-extended" || target == "steer_extended") &&
+    if ((normalized == "steer" || normalized == "steer-extended" || normalized == "steer_extended") &&
         engine.binary_present(engine.ENGINE_STEER) && !engine.steer_contract_ready()) {
         return {
             ok: false,
@@ -134,7 +155,7 @@ function switch_engine(target, opts) {
         };
     }
 
-    let plan = engine_state.apply_switch(target, {
+    let plan = engine_state.apply_switch(normalized, {
         allow_install: opts.allow_install == "1" || opts.allow_install === true,
         dry_run: opts.dry_run == "1" || opts.dry_run === true
     });

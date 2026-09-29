@@ -137,11 +137,26 @@ assert_match "plan parks only incompatible" 'parked_domains=false' "$out"
 printf '%s\n' '--- parked payload round-trips through UCI ---'
 out="$(TACHYON_UCI_STATE_FILE="$WORK_DIR/uci2.state" run_uc '
 let e = require("core.engine");
-e.write_parked("steer", { "sections.subscription": "main" });
-let back = e.read_parked("steer");
-print("restored=" + back["sections.subscription"] + "\n");
+let plan = e.plan_switch("steer", { "sections.subscription": [ "main" ] });
+print("planned=" + join(",", plan.parked["sections.subscription"]) + "\n");
+print("has_snapshot_helpers=" + (type(e.read_parked) == "function" || type(e.write_parked) == "function") + "\n");
 ')"
-assert_match "parked payload restores" 'restored=main' "$out"
+assert_match "unsupported set is planned in memory" 'planned=main' "$out"
+# The parked set is a plan, not a stored snapshot. read_parked()/write_parked()
+# persisted it to UCI and returned it as `restored`, and nothing ever applied
+# that - the restore was documented, named, and never performed. Sections are
+# not modified on disk, so there is nothing to restore and nothing to persist.
+assert_match "no parked-snapshot helpers remain" 'has_snapshot_helpers=false' "$out"
+
+if grep -RqE 'function (read_parked|write_parked|unsupported_snapshot_key)\(' "$TACHYON_LIB"; then
+  printf 'FAIL: parked-snapshot helpers are back but nothing consumes their result\n' >&2
+  exit 1
+fi
+
+if grep -Fq 'restored: restored' "$TACHYON_LIB/components/engine_state.uc"; then
+  printf 'FAIL: apply_switch still returns a restored field that nothing applies\n' >&2
+  exit 1
+fi
 
 printf '%s\n' '--- feature map carries section names ---'
 out="$(run_uc '

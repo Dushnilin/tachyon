@@ -1,16 +1,20 @@
 #!/usr/bin/env ucode
 //
 // Engine state: what the current Tachyon configuration uses, expressed as the
-// engine features from core/engine.uc, plus the switch transaction that parks
-// anything the target engine cannot express and restores it on the way back.
+// engine features from core/engine.uc, plus the switch transaction that reports
+// what the target engine cannot express.
 //
 // The switch is deliberately conservative:
 //   1. PLAN      - compute the feature list and what the target engine cannot do
-//   2. SNAPSHOT  - persist the parked payload in UCI
+//   2. VALIDATE  - target engine must be installed (or the caller opted in)
 //   3. MUTATE    - flip settings.engine / engine_previous
-//   4. VALIDATE  - target engine must be installed (or the caller opted in)
 // A failed validation rolls the mutation back, so the device never ends up
 // pointing at an engine that is not there.
+//
+// Nothing is disabled on disk. Unsupported sections stay in the configuration
+// and the generator skips them for the active engine, so switching back needs no
+// restoration step. An earlier version persisted a snapshot of the parked set
+// and returned a "restored" field; nothing ever consumed it.
 //
 
 let common = require("core.common");
@@ -224,21 +228,22 @@ function apply_switch(target, opts) {
             from_engine: active,
             to_engine: target,
             plan,
-            parked: false,
             validation
         };
     }
 
     if (opts.dry_run)
-        return { ok: true, reason: "dry_run", from_engine: active, to_engine: target, plan, parked: false, validation };
+        return { ok: true, reason: "dry_run", from_engine: active, to_engine: target, plan, validation };
 
-    // Park the incompatible configuration under the target engine's key so a
-    // switch back restores exactly this set.
-    let parked = engine.write_parked(target, plan.parked);
-
-    // Restore anything this engine had parked earlier (e.g. switching back).
-    let restored = engine.read_parked(active);
-
+    // No snapshot is taken and none is needed. Parking is a decision the
+    // generator makes per section - section_supported() in steer/generator.uc
+    // simply skips what the active engine cannot express - and the sections
+    // themselves are never modified, so they come back on their own when the
+    // engine is switched again. This code used to write a JSON snapshot into UCI
+    // under unsupported_snapshot_<engine> and read it back into a `restored`
+    // field that nothing consumed: a restore that was documented, named, and
+    // never performed. Dropping it removes a growing UCI option and a field
+    // that made API consumers believe a restore had happened.
     set_option("engine", target);
     set_option("engine_previous", active);
     commit();
@@ -249,8 +254,6 @@ function apply_switch(target, opts) {
         from_engine: active,
         to_engine: target,
         plan,
-        parked,
-        restored,
         validation
     };
 }

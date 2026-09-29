@@ -690,9 +690,14 @@ export namespace Tachyon {
     loses_features?: boolean;
     plan?: {
       unsupported: string[];
-      parked?: Record<string, unknown>;
     };
     installable?: boolean;
+    // Reported instead of switching when the requested engine is the one already
+    // running with the same binary - steer and steer-extended name a build, not
+    // a program, so switching between them would be a no-op.
+    no_op?: boolean;
+    build?: string;
+    message?: string;
   }
 
   export interface EngineStatus {

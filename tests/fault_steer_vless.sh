@@ -78,4 +78,47 @@ called="$(grep -rl 'steer_contract_ready' "$LIB_DIR" | grep -v '/engine.uc$' || 
 [ -n "$called" ] \
   || fail "steer_contract_ready() is still defined and never called - the engine can be older than our contract and we only find out when apply fails"
 
-printf 'fault: steer vless capability checks passed\n'
+# --- switching between the two steer ids must not be a silent no-op ---------
+# "steer" and "steer-extended" are the same binary and the same init script; they
+# name a build, not a program. Switching between them used to change one UCI
+# string, restart the service for nothing, and report success - so a user
+# selecting a build got a restart and no change, and never learned why.
+out="$(ucode -L "$LIB_DIR" -e '
+let engine = require("core.engine");
+printf("same_binary=%s\n", engine.engine_binary("steer") == engine.engine_binary("steer-extended") ? "yes" : "no");
+printf("same_init=%s\n", engine.init_script_present("steer") == engine.init_script_present("steer-extended") ? "yes" : "no");
+' 2>&1)" || fail "could not read the engine module: $out"
+
+# The ids are interchangeable, which is exactly why the switch has to notice.
+grep -q '^same_binary=yes$' <<< "$out" \
+  || fail "steer and steer-extended no longer resolve to the same binary; the no-op guard below needs revisiting"
+grep -q '^same_init=yes$' <<< "$out" \
+  || fail "steer and steer-extended no longer resolve to the same init script; the no-op guard below needs revisiting"
+
+grep -Fq 'already_active' "$LIB_DIR/service/engine_runtime.uc" \
+  || fail "switching to the engine that is already active with the same binary and init still runs a pointless switch and restart"
+
+grep -Fq 'replace_build' "$LIB_DIR/service/engine_runtime.uc" \
+  || fail "there is no way to tell a deliberate rebuild from an accidental no-op switch"
+
+# --- and the dead restore must stay dead -------------------------------------
+# The snapshot was written to UCI, read back into a `restored` field, and never
+# applied. Sections are not modified on disk - the generator skips them for the
+# active engine - so there is nothing to restore, and the field only made API
+# consumers believe otherwise.
+# Definitions, not mentions: the comments that explain the removal are allowed to
+# name the old functions, and an earlier version of this check tripped over them.
+for dead in 'function read_parked(' 'function write_parked(' 'function unsupported_snapshot_key('; do
+  if grep -RqF "$dead" "$LIB_DIR"; then
+    fail "the parked-snapshot helper ($dead) is back; nothing consumes its result, so the field it feeds only misleads"
+  fi
+done
+if grep -RqE 'restored:[[:space:]]*restored|restored,[[:space:]]*$' "$LIB_DIR/components/engine_state.uc"; then
+  fail "apply_switch still returns a `restored` field that nothing applies"
+fi
+
+# The build must be reported as a fact, not as a note string in a corner.
+grep -Fq 'matches_build' "$LIB_DIR/core/engine.uc" \
+  || fail "detect() does not report whether the installed build is the one that was asked for"
+
+printf 'fault: steer vless capability and switch checks passed\n'
