@@ -81,8 +81,14 @@ assert_eq "$(classify_joined 'group: switch proxy to node-tokyo')" \
 # --- smart detect and URLTest are not exclusive ---
 # handle_log_line() fell through from one branch to the other, so a line that
 # satisfies both must still produce both facts.
-assert_eq "$(classify_joined 'URLTest: direct failed "blocked.example.com:443", switch proxy')" \
+assert_eq "$(classify_joined 'URLTest: outbound/direct[direct-out]: failed to connect to "blocked.example.com:443", switch proxy')" \
   "smartdetect.candidate+urltest.switched" "one line can yield both facts, in order"
+
+# The same fall-through must not turn a section's own failure into a candidate:
+# a real line can mention URLTest and carry a blocked-looking host at the same
+# time, and the outbound tag still decides.
+assert_eq "$(classify_joined 'URLTest: outbound/direct[Zapret2-out]: failed to connect to "blocked.example.com:443", switch proxy')" \
+  "urltest.switched" "section outbound failure yields the URLTest fact only"
 
 # --- extractor parity: the controller must match watchdog byte for byte ---
 # tests/smart_detect_domain_extraction.sh pins the watchdog CLI; this pins the

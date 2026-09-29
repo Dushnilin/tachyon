@@ -259,17 +259,7 @@ function smart_detect_get_proxy_sections() {
 // line carries no usable hostname. Kept separate from log handling so the
 // pattern can be exercised directly by tests.
 function smart_detect_extract_domain(line) {
-    if (line == null) return null;
-    let text = as_string(line);
-    let m = match(text, /"([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/);
-    if (!m) m = match(text, /target[= ]([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})/);
-    if (!m || !m[1]) return null;
-    let domain = m[1];
-    if (length(domain) < 5) return null;
-    if (index(domain, "*") >= 0 || index(domain, "?") >= 0) return null;
-    if (index(domain, "..") >= 0) return null;
-    if (index(domain, "-") == 0 || substr(domain, length(domain) - 1) == "-") return null;
-    return domain;
+    return smart_detect.extract_host(line);
 }
 
 // A domain that resolves nowhere is a DNS fault, not a block: probing it would
@@ -1833,7 +1823,13 @@ function smart_detect_process_pending() {
         return;
     }
     let dns_observation = smart_detect_observe_dns();
-    if (!dns_observation.ready) return;
+    if (!dns_observation.ready) {
+        // Rate-limited by the settle interval itself: this only reaches the log
+        // when candidates are queued and DNS is not yet trustworthy.
+        log_message("Smart Detect: holding " + as_string(length(pending_smart_domains)) +
+            " candidate(s) until the resolver settles", "debug");
+        return;
+    }
     let now = time();
     if (now - smart_detect_last_run < 30) return;
 
@@ -1866,13 +1862,21 @@ function smart_detect_process_pending() {
     if (length(candidate_domains) == 0) return;
 
     let sections = smart_detect_get_proxy_sections();
-    if (length(sections) == 0) return;
+    if (length(sections) == 0) {
+        // Every one of these early exits used to be silent, so a Smart Detect
+        // that never ran was indistinguishable from one with nothing to do.
+        log_message("Smart Detect: no enabled remote proxy section to add domains to", "warn");
+        return;
+    }
 
     // Reuse the controller's cached port value: re-parsing config.json here
     // would duplicate the work event_controller already does (and caches).
     let proxy_addr = "127.0.0.1:" + controller.proxy_port();
     // No http/mixed inbound in the generated config: probing is pointless.
-    if (proxy_addr == "127.0.0.1:") return;
+    if (proxy_addr == "127.0.0.1:") {
+        log_message("Smart Detect: no mixed proxy inbound bound, cannot probe candidates", "warn");
+        return;
+    }
 
     let valid_proxy_map = {};
     for (let s in sections) valid_proxy_map[s] = true;
@@ -2569,6 +2573,14 @@ function check_section_failover() {
         uloop.run();
     } else {
         log_message("uloop not available. Running Watchdog in legacy fallback loop mode (fast: 15s, normal: adaptive, slow: 300s).", "warn");
+        // The syslog listener is registered through uloop (setup_syslog_listener
+        // returns null without it), so everything fed by log lines is dead in
+        // this mode: Smart Detect candidates, OOM detection and URLTest switch
+        // notifications. Probe tiers keep working. Making it visible beats
+        // silently detecting nothing; plumbed properly it needs a non-blocking
+        // read of the log stream, which is its own piece of work.
+        log_message("uloop not available: log-driven detection is inactive " +
+            "(Smart Detect, OOM detection, URLTest switch). Probe-based checks are unaffected.", "warn");
         signal("SIGTERM", function(sig) { log_message("SIGTERM received, shutting down", "info"); stop_runtime(); exit(0); });
         signal("SIGINT", function(sig) { log_message("SIGINT received, shutting down", "info"); stop_runtime(); exit(0); });
         // The fallback loop must keep the same pacing as the uloop tick. It

@@ -115,8 +115,17 @@ echo "$proxy_port_body" | grep -q 'let port = "";' \
 proxy_probe_body="$(sed -n '/function probe_proxy()/,/^    }$/p' "$CONTROLLER_UC")"
 echo "$proxy_probe_body" | grep -q 'if (port == "") return;' \
   || fail "probe_proxy() probes a dead default port when the config has no http/mixed inbound"
-grep -q 'if (proxy_addr == "127.0.0.1:") return;' "$WATCHDOG_UC" \
-  || fail "smart-detect probes the empty proxy address when the config has no http/mixed inbound"
+# The guard is asserted on the smart-detect body rather than as a literal
+# one-liner: it now logs why it bails, so the "if (...) return;" spelling moved
+# into a block. Both halves of the guard are still required.
+smart_detect_body="$(sed -n '/^function smart_detect_process_pending/,/^}$/p' "$WATCHDOG_UC")"
+echo "$smart_detect_body" | grep -q 'proxy_addr == "127.0.0.1:"' \
+  || fail "smart-detect lost the empty-proxy-address guard"
+echo "$smart_detect_body" | awk '
+  /proxy_addr == "127\.0\.0\.1:"/ { guard = NR }
+  guard && /return;/ { found = 1; exit }
+  END { exit found ? 0 : 1 }
+' || fail "smart-detect probes the empty proxy address when the config has no http/mixed inbound"
 
 # ── the consequences actually check ───────────────────────────────────────────
 for healer in heal_dns_stall heal_proxy_connectivity heal_proxy_health heal_dns_continuous; do

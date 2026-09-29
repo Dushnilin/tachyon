@@ -53,6 +53,26 @@ assert_extracts 'direct failed target=blocked.example.net' \
 assert_extracts 'direct failed target blocked2.example.net' \
   blocked2.example.net "target<space> form"
 
+# --- unquoted host: the shape sing-box 1.14 actually emits ---
+# Captured from a live router running sing-box 1.14.2-lx.2. The quoted-host
+# fixtures above never match this format, which is why Smart Detect produced
+# zero candidates on a router where smart_detect=1 and the trigger word was
+# present in the log.
+assert_extracts 'outbound/direct[direct-out]: outbound connection to www.google.com:443' \
+  www.google.com "unquoted outbound open line with port"
+assert_extracts 'outbound/direct[direct-out]: outbound connection to i.ytimg.com:443' \
+  i.ytimg.com "unquoted outbound open line, second label order"
+assert_extracts 'outbound/vless[Main-out]: outbound connection to hdrezka.tv:443' \
+  hdrezka.tv "unquoted open line on a section outbound"
+assert_extracts 'connection: open connection to [1.2.3.4] using outbound/direct[direct-out]: dial tcp blocked.example.com:443: i/o timeout' \
+  blocked.example.com "unquoted host in the dial target"
+
+# --- the failure line of a real block carries only the IP: no host to find ---
+assert_rejects 'ERROR[5731] [249686047 5.1s] connection: open connection to [173.194.221.84,2a00:1450:4010:c0a::54] using outbound/direct[Zapret2-out]: dial tcp 173.194.221.84:7: i/o timeout' \
+  "IP-only failure line yields no domain"
+assert_rejects 'inbound/tproxy[tproxy-in]: inbound packet connection to 198.18.2.165:443' \
+  "FakeIP inbound line yields no domain"
+
 # --- rejections: nothing usable on the line ---
 assert_rejects 'direct failed to connect to 192.168.1.1:443' "bare IPv4 is not a domain"
 assert_rejects 'direct connection failed, no host in line' "no host present"

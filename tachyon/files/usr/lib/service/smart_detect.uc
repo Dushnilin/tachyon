@@ -1,5 +1,11 @@
 // DNS outages, resolver transitions and local curl failures are not evidence
 // that one destination needs a proxy. Shared with regression tests.
+let common = require("core.common");
+let sb_constants = require("singbox.constants");
+
+// Codebase convention: as_string lives in core/common, not in ucode itself.
+let as_string = common.as_string;
+
 const DNS_SETTLE_SECONDS = 30;
 
 function observe_dns(previous, observation, now) {
@@ -32,4 +38,99 @@ function probe_status(args) {
     return status == null ? 255 : (status < 0 ? 128 - int(status) : int(status));
 }
 
-return { observe_dns, probe_kind, probe_status, DNS_SETTLE_SECONDS };
+// ─── sing-box log shapes ──────────────────────────────────────────────────────
+// Captured from a router running sing-box 1.14.2-lx.2. Two facts about that
+// format drive everything below:
+//
+//   * the connection's open line carries the hostname unquoted
+//     ("outbound connection to www.google.com:443"), while the failure line
+//     carries only the resolved IP ("dial tcp 173.194.221.84:7"). The
+//     hostname is therefore only recoverable by correlating the two lines;
+//   * "direct" is the outbound TYPE, not a routing decision. A section backed
+//     by a local DPI bypass logs outbound/direct[<section>-out], so reading
+//     the word as "the bypass path failed" inverted its meaning and turned
+//     every broken section into a blocked-destination report.
+
+// Oldest first: the quoted form only exists on pre-1.14 builds, but it is kept
+// so the fixtures that predate this format keep working.
+const HOST_PATTERNS = [
+    /"([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/,
+    /outbound connection to ([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,}):[0-9]+/,
+    /dial [a-z]+ ([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,}):[0-9]+/,
+    /target[= ]([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})/
+];
+
+// A candidate must end in an alphabetic TLD, which is what keeps bare IPv4
+// literals and IPv6 (colons are outside the character class) out.
+function host_is_usable(host) {
+    if (host == null || length(host) < 5) return false;
+    if (index(host, "*") >= 0 || index(host, "?") >= 0) return false;
+    if (index(host, "..") >= 0) return false;
+    if (index(host, "-") == 0 || substr(host, length(host) - 1) == "-") return false;
+    return true;
+}
+
+function extract_host(line) {
+    if (line == null) return null;
+    let text = as_string(line);
+    for (let pattern in HOST_PATTERNS) {
+        let m = match(text, pattern);
+        if (!m || !m[1]) continue;
+        if (host_is_usable(m[1])) return m[1];
+    }
+    return null;
+}
+
+// The bracketed trace id that ties every line of one connection together.
+const TRACE_PATTERN = /\[([0-9]{6,}) /;
+
+function parse_trace(line) {
+    if (line == null) return null;
+    let m = match(as_string(line), TRACE_PATTERN);
+    return (m && m[1]) ? m[1] : null;
+}
+
+const OUTBOUND_PATTERN = /outbound\/[a-zA-Z0-9-]+\[([^\]\s]+)\]/;
+
+function outbound_tag_of(line) {
+    if (line == null) return null;
+    let m = match(as_string(line), OUTBOUND_PATTERN);
+    return (m && m[1]) ? m[1] : null;
+}
+
+// Only the outbounds that carry unproxied traffic are evidence that a
+// destination is blocked. Everything else belongs to a section and its
+// failure says something about the section, not about the destination.
+const BYPASS_OUTBOUND_TAGS = {
+    [sb_constants.DIRECT_OUTBOUND_TAG]: true,
+    [sb_constants.BYPASS_OUTBOUND_TAG]: true,
+    [sb_constants.DIRECT_BYPASS_OUTBOUND_TAG]: true
+};
+
+function is_bypass_outbound_tag(tag) {
+    return tag != null && BYPASS_OUTBOUND_TAGS[tag] === true;
+}
+
+// The pre-1.14 format names the outbound without a tag ("outbound/direct: ...").
+// With no tag there is nothing to mistake for a section, and the untagged
+// direct outbound is the unproxied path, so it counts as bypass.
+const UNTAGGED_DIRECT_PATTERN = /outbound\/direct[^a-zA-Z0-9-]/;
+
+function failure_outbound_is_bypass(line) {
+    let tag = outbound_tag_of(line);
+    if (tag != null) return is_bypass_outbound_tag(tag);
+    return line != null && match(as_string(line), UNTAGGED_DIRECT_PATTERN) != null;
+}
+
+return {
+    observe_dns,
+    probe_kind,
+    probe_status,
+    extract_host,
+    host_is_usable,
+    parse_trace,
+    outbound_tag_of,
+    is_bypass_outbound_tag,
+    failure_outbound_is_bypass,
+    DNS_SETTLE_SECONDS
+};

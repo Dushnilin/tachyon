@@ -21,8 +21,13 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let helpers = require("core.helpers");
+let smart_detect = require("service.smart_detect");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+
+// Substring every connection's open line contains. Cheaper than running the
+// hostname patterns over every line the keyword pre-filter lets through.
+const OPEN_LINE_MARK = "outbound connection to ";
 
 // Minimum spacing between two increments of the DNS stall streak. Matches the
 // floor of the old adaptive normal tier (120s), which is the rate at which
@@ -327,17 +332,28 @@ function tproxy_port() {
 // line carries no usable hostname. Kept separate from log handling so the
 // pattern can be exercised directly by tests.
 function smart_detect_extract_domain(line) {
-    if (line == null) return null;
-    let text = as_string(line);
-    let m = match(text, /"([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/);
-    if (!m) m = match(text, /target[= ]([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})/);
-    if (!m || !m[1]) return null;
-    let domain = m[1];
-    if (length(domain) < 5) return null;
-    if (index(domain, "*") >= 0 || index(domain, "?") >= 0) return null;
-    if (index(domain, "..") >= 0) return null;
-    if (index(domain, "-") == 0 || substr(domain, length(domain) - 1) == "-") return null;
-    return domain;
+    return smart_detect.extract_host(line);
+}
+
+// Hostnames of connections that are still open, keyed by trace id. sing-box
+// logs the resolved IP on the failure line, so this is the only place the
+// hostname of a failing connection can come from.
+// ponytail: bounded twice over — entries older than TRACE_HOST_TTL are dropped
+// on insert, and a full cache is flushed rather than evicted per entry. A
+// per-entry LRU would buy nothing at this volume (a 5s connect timeout keeps
+// the useful window well under the cap).
+const TRACE_HOST_TTL = 300;
+const TRACE_HOSTS_MAX = 256;
+let trace_hosts = {};
+
+function remember_trace_host(trace, host) {
+    if (trace == null || host == null) return;
+    let now = time();
+    trace_hosts[trace] = { host: host, at: now };
+    if (length(keys(trace_hosts)) > TRACE_HOSTS_MAX) trace_hosts = {};
+    for (let key in keys(trace_hosts)) {
+        if (now - trace_hosts[key].at > TRACE_HOST_TTL) delete trace_hosts[key];
+    }
 }
 
 // Classifies one syslog line into zero or more facts, mirroring the branch
@@ -378,12 +394,29 @@ function classify_log_line(line) {
 
     let facts = [];
 
+    // Remember the hostname of every connection that opens. This has to run
+    // outside the failure branch below: the open line carries the hostname and
+    // no failure wording, while the failure line carries the trace id and the
+    // resolved IP alone. The substring test keeps this off the failure path.
+    if (index(line, OPEN_LINE_MARK) >= 0) {
+        let open_trace = smart_detect.parse_trace(line);
+        let open_host = smart_detect_extract_domain(line);
+        if (open_trace != null && open_host != null) remember_trace_host(open_trace, open_host);
+    }
+
     if ((index(line_lower, "direct") >= 0 || index(line_lower, "DIRECT") >= 0) &&
         (index(line_lower, "failed") >= 0 || index(line_lower, "timeout") >= 0 ||
          index(line_lower, "reset") >= 0)) {
-        let domain = smart_detect_extract_domain(line);
-        if (domain != null)
-            push(facts, { type: EV.SMARTDETECT_CANDIDATE, payload: { domain: domain } });
+        // "direct" is the outbound TYPE. A section backed by a local DPI bypass
+        // logs outbound/direct[<section>-out] and its failure says nothing
+        // about the destination, so only the bypass outbounds count.
+        if (smart_detect.failure_outbound_is_bypass(line)) {
+            let trace = smart_detect.parse_trace(line);
+            let domain = smart_detect_extract_domain(line)
+                || (trace != null && trace_hosts[trace] ? trace_hosts[trace].host : null);
+            if (domain != null)
+                push(facts, { type: EV.SMARTDETECT_CANDIDATE, payload: { domain: domain } });
+        }
     }
 
     if (index(line, "URLTest") >= 0 || index(line_lower, "selected proxy") >= 0 ||
@@ -1419,6 +1452,30 @@ else if (mode == "classify-domain") {
     }
     exit(1);
 }
+else if (mode == "classify-stream") {
+    // Feeds a whole log file through the classifier in arrival order, so the
+    // per-connection state the classifier builds up can be asserted on. The
+    // single-line modes above cannot: each run starts with an empty cache.
+    let handle = fs.open(ARGV[1], "r");
+    if (handle == null) {
+        warn("classify-stream: cannot open " + as_string(ARGV[1]) + "\n");
+        exit(1);
+    }
+    let found = 0;
+    let raw;
+    while ((raw = handle.read("line")) != null) {
+        let line = trim(as_string(raw));
+        if (line == "") continue;
+        for (let fact in classify_log_line(line)) {
+            if (fact.payload.domain != null) {
+                print(fact.payload.domain + "\n");
+                found++;
+            }
+        }
+    }
+    handle.close();
+    exit(found > 0 ? 0 : 1);
+}
 else if (mode == "extract-domain") {
     let extracted = smart_detect_extract_domain(ARGV[1]);
     if (extracted == null) exit(1);
@@ -1431,6 +1488,6 @@ else if (mode == "event-types") {
     exit(0);
 }
 else {
-    warn("Usage: service/event_controller.uc <classify|classify-domain|extract-domain|event-types> ...\n");
+    warn("Usage: service/event_controller.uc <classify|classify-domain|classify-stream|extract-domain|event-types> ...\n");
     exit(1);
 }
