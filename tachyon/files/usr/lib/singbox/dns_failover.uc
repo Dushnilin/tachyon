@@ -169,13 +169,22 @@ function now_seconds() {
     return int(clock()[0]);
 }
 
-function choose_index(kind, state, current_index, timeout_seconds, recovery, strikes, failure_threshold, recovery_threshold) {
+// probe_fn is optional and exists so the test fixture can drive the real
+// decision instead of reimplementing it. Defaults to the live dig probe.
+function choose_index(kind, state, current_index, timeout_seconds, recovery, strikes, failure_threshold, recovery_threshold, probe_fn) {
     let values = kind == "main" ? state.main_servers : state.bootstrap_servers;
-    if (length(values) <= 1)
-        return { index: 0, reason: "single", alive: true };
+    if (length(values) <= 1) {
+        // Nothing to fail over to, but "nothing to switch to" is not the same as
+        // "working": with a single server the caller decides whether to warn the
+        // user from this flag, and a dead resolver reported as alive is a
+        // silent black hole. So probe it, keep the index, and tell the truth.
+        let only = probe_fn || function(i) { return probe_port(kind, i, timeout_seconds); };
+        let ok = only(0);
+        return { index: 0, reason: ok ? "single" : "single_down", alive: ok };
+    }
 
     let is_probe_ok = function(i) {
-        let ok = probe_port(kind, i, timeout_seconds);
+        let ok = (probe_fn || function(n) { return probe_port(kind, n, timeout_seconds); })(i);
         if (ok) {
             strikes[kind][i] = 0;
             if (strikes.recovery_successes && strikes.recovery_successes[kind]) {
@@ -408,29 +417,25 @@ function select_fixture(state_path, alive_path, kind, recovery) {
     let state = common.object_or_empty(common.read_json_file(state_path));
     let alive = common.object_or_empty(common.read_json_file(alive_path));
     let key = kind == "main" ? "main_index" : "bootstrap_index";
-    let values = kind == "main" ? state.main_servers : state.bootstrap_servers;
     let current = int(state[key] || 0);
-    let selected = { index: current, reason: "all_down", alive: false };
-    let probe = function(index_value) { return alive[as_string(index_value)] === true || alive[as_string(index_value)] == 1; };
+    let probe = function(index_value) {
+        return alive[as_string(index_value)] === true || alive[as_string(index_value)] == 1;
+    };
 
-    if (as_string(recovery) == "1" && current > 0) {
-        for (let i = 0; i < current; i++)
-            if (probe(i)) {
-                selected = { index: i, reason: "recovery", alive: true };
-                break;
-            }
-    }
-    else if (probe(current)) {
-        selected = { index: current, reason: "alive", alive: true };
-    }
-    else {
-        for (let i = 0; i < length(values); i++)
-            if (i != current && probe(i)) {
-                selected = { index: i, reason: i < current ? "recovery" : "active_dead", alive: true };
-                break;
-            }
-    }
-    common.write_json(selected);
+    // Drives the production decision. This used to be a second, simplified copy
+    // of the same rule with no strikes and no thresholds, so the fixture could
+    // agree with itself while production did something else - and it did: on a
+    // single server the copy reported all_down where choose_index claimed alive
+    // without probing at all. A fixture that reimplements what it tests is worse
+    // than no fixture, because it looks like coverage.
+    //
+    // Threshold 1 keeps the fixture's old behaviour of acting on a single failed
+    // probe; production uses 3, which is what stops it flapping.
+    let strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
+    common.write_json(choose_index(
+        kind, state, current, 5, as_string(recovery) == "1",
+        strikes, 1, 1, probe
+    ));
 }
 
 let mode = ARGV[0] || "";
