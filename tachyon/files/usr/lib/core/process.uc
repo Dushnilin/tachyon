@@ -222,8 +222,17 @@ function identity_matches(identity, pid) {
     if (match(current_pid, /^[0-9]+$/) == null)
         return false;
 
-    // Fast path: boot_id changed → everything is stale
-    if (identity.boot_id != null && identity.boot_id != boot_id())
+    // An identity without both markers cannot be verified, so it is not
+    // trusted. This used to skip each check when the field was missing, which
+    // quietly degraded the whole guard to "is that pid alive" - exactly the
+    // PID-recycling hazard this module exists to stop. The reachable case is a
+    // state file written by an older version, or a record lost to a partial
+    // write: either way the job then looked alive forever.
+    if (identity.boot_id == null || identity.starttime == null)
+        return false;
+
+    // Fast path: boot_id changed, so everything is stale
+    if (identity.boot_id != boot_id())
         return false;
 
     // Check that the PID is alive
@@ -231,11 +240,9 @@ function identity_matches(identity, pid) {
         return false;
 
     // Check starttime matches (guards against PID recycling)
-    if (identity.starttime != null) {
-        let current_starttime = process_starttime(current_pid);
-        if (current_starttime == null || current_starttime != identity.starttime)
-            return false;
-    }
+    let current_starttime = process_starttime(current_pid);
+    if (current_starttime == null || current_starttime != identity.starttime)
+        return false;
 
     return true;
 }
