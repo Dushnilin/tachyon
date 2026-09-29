@@ -63,16 +63,49 @@ function csv_to_json_array(value) {
     write_compact_string_array(value == "" ? [] : split(value, ","));
 }
 
+// ─── Flash wear guard ─────────────────────────────────────────────────────────
+//
+// On a router the flash is the scarcest resource that actually dies. NAND wears
+// out long before the CPU does, and nearly everything Tachyon regenerates is
+// derived data that comes back byte-identical most of the time: the steer spec,
+// the per-channel domain lists, the zapret opts files, the compiled .srs rulesets,
+// the subscription cache, the sing-box config.
+//
+// Measured on 192.168.1.1: one list update rewrote all 33 .srs rulesets - 2.5 MB
+// - inside four minutes, with identical content, because the copy was
+// unconditional. Nothing about that shows in the UI, and the router just gets a
+// little more worn out every time.
+//
+// Writing identical bytes changes nothing except the wear counter, so compare
+// first and skip. Size is checked before content, so the common "it really
+// changed" case does not pay for a read, and the full compare only runs when the
+// sizes match - which is precisely the case worth catching.
+//
+// The guard lives in the three central writers rather than at ~230 call sites
+// because every regenerator funnels through one of them.
+function content_unchanged(path, data) {
+    let st = fs.stat(as_string(path));
+    if (st == null || int(st.size) != length(as_string(data)))
+        return false;
+    return as_string(fs.readfile(path) || "") == as_string(data);
+}
+
 // The two unlinks below clean up the temporary file after a failed write or
 // rename. Both failure paths already report to the caller through `false`, and
 // an unlink that throws means the temp file was never created — nothing left
 // to clean up.
 function write_json_file(path, value, indent) {
     path = as_string(path);
+    let fmt = (indent != null && indent > 0) ? sprintf("%%.%dJ\n", indent) : "%J\n";
+    let content = sprintf(fmt, value);
+    // Skip before the tmp file: the tmp write plus the rename is two flash
+    // updates for a spec that came back identical, and the whole point of the
+    // atomic write is corruption safety, which an unchanged file cannot lose.
+    if (content_unchanged(path, content))
+        return true;
     let stamp = clock();
     let tmp_path = sprintf("%s.%d.%d.tmp", path, stamp[0], stamp[1]);
-    let fmt = (indent != null && indent > 0) ? sprintf("%%.%dJ\n", indent) : "%J\n";
-    let result = fs.writefile(tmp_path, sprintf(fmt, value));
+    let result = fs.writefile(tmp_path, content);
     if (result == null || (type(result) == "boolean" && !result)) {
         try { fs.unlink(tmp_path); } catch(e) {}
         return false;
@@ -541,6 +574,8 @@ function copy_file(source, target) {
     let data = fs.readfile(source);
     if (data == null)
         return false;
+    if (content_unchanged(target, data))
+        return true;
     let slash = rindex(target, "/");
     if (slash > 0)
         ensure_dir(substr(target, 0, slash));
@@ -552,7 +587,11 @@ function unlink_file(path) {
 }
 
 function write_file(path, value) {
-    return fs.writefile(as_string(path), as_string(value));
+    path = as_string(path);
+    value = as_string(value);
+    if (content_unchanged(path, value))
+        return length(value);
+    return fs.writefile(path, value);
 }
 
 function file_exists(path) {
@@ -746,6 +785,7 @@ return {
     copy_file,
     unlink_file,
     write_file,
+    content_unchanged,
     file_exists,
     parent_dir,
     get_mixed_inbound_info,

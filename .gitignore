@@ -26,3 +26,6 @@ filtered-bin/
 build-*.log
 build-out/
 *.lmo
+
+# Локальные отчёты аудита, не для репозитория
+docs/FLASH_WEAR_REPORT.md
