@@ -232,16 +232,27 @@ function get_direct_dns_servers() {
 /**
  * Generate curl CLI flags for direct WAN routing bypassing Tachyon tproxy.
  */
-function get_direct_curl_flags(wan_iface) {
+function get_direct_curl_argv(wan_iface) {
     let parts = [];
     if (wan_iface != null && wan_iface != "") {
-        push(parts, "--interface " + shell_quote(wan_iface));
+        push(parts, "--interface");
+        push(parts, as_string(wan_iface));
     }
 
     if (curl_supports_so_mark()) {
         let mark = constants.NFT_OUTBOUND_MARK || "0x08000000";
-        push(parts, "--so-mark " + shell_quote(mark));
+        push(parts, "--so-mark");
+        push(parts, as_string(mark));
     }
+
+    return parts;
+}
+
+function get_direct_curl_flags(wan_iface) {
+    let argv = get_direct_curl_argv(wan_iface);
+    let parts = [];
+    for (let i = 0; i < length(argv); i += 2)
+        push(parts, argv[i] + " " + shell_quote(argv[i + 1]));
 
     return join(" ", parts);
 }
@@ -816,6 +827,7 @@ return {
     get_wan_interface,
     get_direct_dns_servers,
     get_direct_curl_flags,
+    get_direct_curl_argv,
     fetch_ip_info,
     check_ip_leak,
     check_dns_leak,

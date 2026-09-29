@@ -61,11 +61,20 @@ function confirm(codes,proxy){
     smart_detect_process_pending();
 }
 
+// A local resolver answering NXDOMAIN while the proxy reaches the domain is a
+// blocked NAME, so it is now evidence rather than a skip - but it still needs
+// the second confirming sample.
 setup([6,6],0);smart_detect_process_pending();
-check(length(added)==0 && length(calls)==1,"DNS failure after successful prelookup never adds VPN");
-check(pending_smart_domains["api.example.com"] && !saved["api.example.com"],"DNS failure deferred without seen cooldown");
-setup([60,60],0);smart_detect_process_pending();
-check(length(added)==0 && length(calls)==1,"certificate error is not blocking evidence");
+check(length(added)==0 && length(calls)==2,"NXDOMAIN is probed, not skipped");
+check(pending_smart_domains["api.example.com"] && !saved["api.example.com"],"NXDOMAIN deferred without seen cooldown");
+confirm([6,6],0);
+check(length(added)==1,"NXDOMAIN with a working proxy is a blocked name");
+// A certificate error is evidence now, so it only stays out of UCI while the
+// proxy leg agrees the domain is broken there too.
+setup([60,60],60);smart_detect_process_pending();
+check(length(added)==0 && length(calls)==2,"certificate error on both paths: no rule");
+setup([60,60],0);confirm([60,60],0);
+check(length(added)==1,"a certificate error the proxy does not have is an interception");
 setup([23,23],0);smart_detect_process_pending();
 check(length(added)==0,"local I/O error is not blocking evidence");
 setup([28,28],0);smart_detect_process_pending();

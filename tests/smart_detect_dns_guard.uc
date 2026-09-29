@@ -28,10 +28,16 @@ let zero = module.observe_dns({}, {signature:"main",busy:false}, 0);
 check(module.observe_dns(zero, {signature:"main",busy:false}, 30).ready, "zero timestamp is a valid observation");
 check(module.probe_kind(0) == "ok", "successful HTTP response");
 for (let code in [5,6]) check(module.probe_kind(code) == "dns", "DNS error " + code);
-for (let code in [7,16,18,28,35,52,55,56,92])
-    check(module.probe_kind(code) == "transport", "transport evidence " + code);
-for (let code in [1,2,3,23,26,27,58,60,77,97,255])
-    check(module.probe_kind(code) == "local", "local/certificate error excluded " + code);
+// TCP-level failures and TLS/certificate failures are both evidence: a reset
+// and a MITM are the two shapes DPI actually takes, and a certificate error is
+// indistinguishable from an interception. The proxy half of the verdict keeps a
+// genuinely broken certificate from being written anywhere.
+for (let code in [7,28,35,52,55,56,58,60,77,83,90,91])
+    check(module.probe_kind(code) == "transport", "blocking evidence " + code);
+// Protocol and framing errors are inconclusive: the origin or a plain
+// intermediary produces them too, and they are never a verdict either way.
+for (let code in [16,18,23,26,27,92,1,2,3,97,255])
+    check(module.probe_kind(code) == "local", "inconclusive " + code);
 for (let code in [0,6,28,60,255])
     check(module.probe_status(["sh","-c","exit " + code]) == code,
         "real process exit status preserved " + code);

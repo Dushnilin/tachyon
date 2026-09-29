@@ -262,12 +262,10 @@ function smart_detect_extract_domain(line) {
     return smart_detect.extract_host(line);
 }
 
-// A domain that resolves nowhere is a DNS fault, not a block: probing it would
-// fail directly and via proxy alike, so treat it as unresolvable and skip.
-function smart_detect_domain_resolves(domain) {
-    return command_success_from_args([ "nslookup", domain, "127.0.0.1" ]) ||
-           command_success_from_args([ "nslookup", domain ]);
-}
+// The nslookup pre-check that used to live here is gone: it skipped any domain
+// the local resolver could not answer, which is precisely what a censored name
+// looks like. The direct probe reports that as a "dns" failure and the verdict
+// decides against the proxy leg instead.
 
 function smart_detect_add_domain(sec_name, domain) {
     let c = uci_core.cursor();
@@ -1848,6 +1846,18 @@ let smart_detect_dns_state = {};
 // costs one confirmation round rather than persisting streaks to flash.
 let smart_detect_streaks = {};
 
+// Reuse the leak check's direct-connection flags so both features agree on
+// what "bypassing Tachyon" means. ponytail: a require that can throw is
+// cheaper than a second implementation of the same flag list.
+function smart_detect_direct_curl_argv() {
+    try {
+        let leak_check = require("diagnostics.leak_check");
+        return leak_check.get_direct_curl_argv(leak_check.get_wan_interface()) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
 function smart_detect_observe_dns() {
     let ctx = controller.create_tick_context();
     let cfg_path = as_string(ctx.settings.config_path || "/etc/sing-box/config.json");
@@ -1973,23 +1983,31 @@ function smart_detect_process_pending() {
     for (let domain in candidate_domains) {
         let item = queued_candidates[domain];
         try {
-        // DNS pre-check: skip if domain doesn't resolve at all (not a block, DNS fault)
-        if (!smart_detect_domain_resolves(domain)) {
-            log_message("Smart Detect: " + domain + " does not resolve via DNS, skipping", "debug");
-            continue;
-        }
-
-        let direct_status = smart_detect.probe_status([
-            "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "4", "--max-time", "6",
-            "https://" + domain
-        ]);
+        // No nslookup pre-check: the direct probe already reports an
+        // unresolvable name as a "dns" failure, and letting that reach the
+        // verdict (instead of skipping the domain outright) is what covers a
+        // resolver that answers NXDOMAIN for a censored name.
+        // The direct probe must also be genuinely direct. With
+        // route_router_traffic enabled, nft redirects the router's own output
+        // into sing-box (nft/apply.uc output_redirect), so a bare curl would be
+        // routed by the section rules - the same path the proxy probe takes,
+        // which leaves nothing to compare against. The so-mark the leak check
+        // already uses is what exempts a packet from that chain.
+        let direct_argv = [
+            "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "4", "--max-time", "6"
+        ];
+        for (let flag in smart_detect_direct_curl_argv())
+            push(direct_argv, flag);
+        push(direct_argv, "https://" + domain);
+        let direct_status = smart_detect.probe_status(direct_argv);
         let direct_kind = smart_detect.probe_kind(direct_status);
 
-        // The proxy probe only means anything once the direct probe has shown
-        // the destination is unreachable; running it otherwise doubles the
-        // probe cost for domains that are plainly fine.
+        // The proxy leg decides, and it is only worth paying for once the direct
+        // leg has shown the destination unreachable. "dns" is included: a local
+        // resolver answering NXDOMAIN for a domain the proxy reaches fine is
+        // blocking the name, which the old resolve pre-check threw away.
         let proxy_kind = "skipped";
-        if (direct_kind == "transport") {
+        if (direct_kind == "transport" || direct_kind == "dns") {
             // Single probe through the shared http/mixed inbound. This inbound
             // follows the global routing rules, so it cannot be aimed at one
             // specific section: the result is the same for every candidate

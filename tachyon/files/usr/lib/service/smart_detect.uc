@@ -31,9 +31,17 @@ function probe_kind(status) {
     status = int(status);
     if (status == 0) return "ok";
     if (status == 5 || status == 6) return "dns";
-    // Connection, body-transfer and TLS-handshake errors may be caused by DPI.
-    // Certificate verification, local I/O and command/config errors may not.
-    return index([7, 16, 18, 28, 35, 52, 55, 56, 92], status) >= 0 ? "transport" : "local";
+    // TCP-level failures: these are what a DPI reset actually looks like.
+    if (index([7, 28, 35, 52, 55, 56], status) >= 0) return "transport";
+    // A failed certificate check is indistinguishable from a MITM, and a MITM
+    // is a block. Treating it as "local" silently dropped exactly the case
+    // this feature exists to catch, so it counts as evidence instead - the
+    // proxy half of the verdict is what keeps a genuinely broken certificate
+    // from being written anywhere.
+    if (index([58, 60, 77, 83, 90, 91], status) >= 0) return "transport";
+    // Protocol and framing errors come from the origin or an intermediary that
+    // is not necessarily a censor, so they stay inconclusive.
+    return "local";
 }
 
 function probe_status(args) {
@@ -116,18 +124,25 @@ function verdict(domain, observation, streak) {
     streak = streak || new_streak();
     observation = observation || {};
     let first_fail = streak.first_fail;
+    let direct = observation.direct;
+    let proxy = observation.proxy;
 
-    // Only a reachable destination is worth remembering as checked; a domain
-    // we could not judge must come back around.
-    if (observation.direct == "ok") return { act: false, seen: true, defer: false };
+    // If the proxy path does not work either, the destination is down or
+    // broken rather than blocked, and no amount of repeating will change that.
+    if (proxy != "ok") return { act: false, seen: false, defer: true, first_fail: null };
 
-    // Not evidence of a block: retry later instead of spending the sample.
-    if (observation.direct != "transport")
-        return { act: false, seen: false, defer: true, first_fail: null };
+    // A destination that answers directly is settled, and remembering it stops
+    // it from being re-probed on every cycle.
+    if (direct == "ok") return { act: false, seen: true, defer: false, first_fail: null };
 
-    // Fails on both paths: the destination is down, not blocked.
-    if (observation.proxy != "ok")
-        return { act: false, seen: false, defer: true, first_fail: null };
+    // A local error says nothing about the destination, so it is retried rather
+    // than spent.
+    if (direct == "local") return { act: false, seen: false, defer: true, first_fail: null };
+
+    // Everything left - "transport" and "dns" alike - is a destination the proxy
+    // reaches and the direct path does not. The dns case matters: a resolver
+    // that answers NXDOMAIN for a domain the proxy resolves fine is censoring
+    // the name, and skipping it outright lost that whole class of block.
 
     // First failure only opens the streak. Without a timestamp there is nothing
     // to measure the confirmation window against, so it stays unconfirmed.
