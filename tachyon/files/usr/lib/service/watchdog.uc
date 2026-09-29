@@ -288,6 +288,69 @@ function smart_detect_add_domain(sec_name, domain) {
     return true;
 }
 
+// Applies a confirmed batch: one UCI commit and one reload for the whole cycle.
+// smart_detect_add_domain used to be called per domain, so a cycle that
+// confirmed N domains restarted sing-box N times, and every restart drops live
+// connections on the router. Returns what was actually written, so the caller
+// only reports domains that really landed.
+function smart_detect_apply_domains(entries) {
+    let c = uci_core.cursor();
+    if (!c || length(entries) == 0) return [];
+    c.load(CONFIG_NAME);
+
+    let written = [];
+    let per_section = {};
+    for (let entry in entries) {
+        let sec_name = trim(as_string(entry.section));
+        let domain = trim(as_string(entry.domain));
+        if (sec_name == "" || domain == "") continue;
+        let sec = c.get_all(CONFIG_NAME, sec_name);
+        if (!sec) continue;
+        let existing = sec.user_domains;
+        if (type(existing) != "array") {
+            existing = (existing && trim(as_string(existing)) != "")
+                ? [trim(as_string(existing))] : [];
+        }
+        let already = false;
+        for (let d in existing) {
+            if (trim(as_string(d)) == domain) already = true;
+        }
+        if (already) continue;
+        // Group per section so list_add never runs twice on the same section
+        // between commits.
+        if (per_section[sec_name] == null) per_section[sec_name] = [];
+        push(per_section[sec_name], domain);
+        push(written, { section: sec_name, domain: domain });
+    }
+
+    if (length(written) == 0) return [];
+
+    for (let sec_name in keys(per_section)) {
+        for (let domain in per_section[sec_name])
+            c.list_add(CONFIG_NAME, sec_name, "user_domains", domain);
+    }
+    c.commit(CONFIG_NAME);
+    command_status("/usr/bin/tachyon reload > /dev/null 2>&1");
+
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+        let lines = [];
+        for (let entry in written) {
+            log_message("Smart Detect: adding " + entry.domain + " to section " + entry.section, "info");
+            push(lines, "`" + entry.domain + "` → *" + entry.section + "*");
+        }
+        send_telegram_notification(
+            "🔍 *Smart Detect*: недоступно напрямую, работает через прокси.\n" +
+            join("\n", lines)
+        );
+    }
+    else {
+        for (let entry in written)
+            log_message("Smart Detect: adding " + entry.domain + " to section " + entry.section, "info");
+    }
+    return written;
+}
+
 
 
 
@@ -1779,6 +1842,12 @@ function notify_urltest_switch(ev) {
 
 let smart_detect_dns_state = {};
 
+// First failing sample per domain. A domain is only written to UCI after it
+// fails again, at least CONFIRM_WINDOW apart, so a single TCP reset cannot
+// rewrite the router's routing. ponytail: in-memory only, so a watchdog restart
+// costs one confirmation round rather than persisting streaks to flash.
+let smart_detect_streaks = {};
+
 function smart_detect_observe_dns() {
     let ctx = controller.create_tick_context();
     let cfg_path = as_string(ctx.settings.config_path || "/etc/sing-box/config.json");
@@ -1896,11 +1965,14 @@ function smart_detect_process_pending() {
         detect_sections = sections;
     }
 
+    // Collect first, write once. smart_detect_add_domain used to commit and
+    // reload per domain, so one cycle that confirmed N domains restarted
+    // sing-box N times and dropped live connections N times with it.
+    let to_add = [];
+
     for (let domain in candidate_domains) {
         let item = queued_candidates[domain];
         try {
-        seen[domain] = now;
-
         // DNS pre-check: skip if domain doesn't resolve at all (not a block, DNS fault)
         if (!smart_detect_domain_resolves(domain)) {
             log_message("Smart Detect: " + domain + " does not resolve via DNS, skipping", "debug");
@@ -1912,25 +1984,55 @@ function smart_detect_process_pending() {
             "https://" + domain
         ]);
         let direct_kind = smart_detect.probe_kind(direct_status);
-        if (direct_kind == "ok") continue;
-        if (direct_kind != "transport") {
-            if (direct_kind == "dns") smart_detect_defer(domain, item, seen, true);
-            log_message("Smart Detect: " + domain + " Direct curl exit " + as_string(direct_status) + " is not destination-block evidence", "debug");
-            continue;
+
+        // The proxy probe only means anything once the direct probe has shown
+        // the destination is unreachable; running it otherwise doubles the
+        // probe cost for domains that are plainly fine.
+        let proxy_kind = "skipped";
+        if (direct_kind == "transport") {
+            // Single probe through the shared http/mixed inbound. This inbound
+            // follows the global routing rules, so it cannot be aimed at one
+            // specific section: the result is the same for every candidate
+            // section. Probe once, then hand the domain to the first section
+            // that accepts it (user-defined order).
+            let proxy_status = smart_detect.probe_status([
+                "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "5", "--max-time", "8",
+                "--proxy", "http://" + proxy_addr,
+                "https://" + domain
+            ]);
+            proxy_kind = proxy_status == 0 ? "ok" : smart_detect.probe_kind(proxy_status);
         }
 
-        // Single probe through the shared http/mixed inbound. This inbound follows
-        // the global routing rules, so it cannot be aimed at one specific section:
-        // the result is the same for every candidate section. Probe once, then hand
-        // the domain to the first section that accepts it (user-defined order).
-        let proxy_status = smart_detect.probe_status([
-            "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "5", "--max-time", "8",
-            "--proxy", "http://" + proxy_addr,
-            "https://" + domain
-        ]);
-        if (proxy_status != 0) {
-            if (smart_detect.probe_kind(proxy_status) == "dns") smart_detect_defer(domain, item, seen, true);
-            log_message("Smart Detect: " + domain + " fails directly and via proxy, skipping", "info");
+        // Hysteresis: one failing sample is a normal TCP reset on a loaded
+        // router, not a verdict. Act only on a confirmed, repeated failure.
+        let decision = smart_detect.verdict(domain, {
+            direct: direct_kind,
+            proxy: proxy_kind,
+            now: now
+        }, smart_detect_streaks[domain]);
+
+        if (decision.defer) {
+            // Re-queue with a fresh timestamp: the domain was not judged, so it
+            // must come back on the next cycle rather than being dropped until
+            // the next matching log line happens to arrive.
+            smart_detect_streaks[domain] = { first_fail: decision.first_fail };
+            pending_smart_domains[domain] = now;
+        }
+
+        if (decision.seen) {
+            // Spent only here, on a conclusive verdict. Stamping before the
+            // probes suppressed a domain examined during a DNS blip for the
+            // whole 24h TTL.
+            seen[domain] = now;
+            delete smart_detect_streaks[domain];
+        }
+
+        if (!decision.act) {
+            if (decision.defer && direct_kind == "transport" && proxy_kind == "ok")
+                log_message("Smart Detect: " + domain + " failed once, waiting for confirmation", "debug");
+            else if (decision.defer)
+                log_message("Smart Detect: " + domain + " direct=" + direct_kind +
+                    " proxy=" + proxy_kind + " is not destination-block evidence", "debug");
             continue;
         }
 
@@ -1941,30 +2043,18 @@ function smart_detect_process_pending() {
             continue;
         }
 
-        let added = false;
         for (let sec_name in detect_sections) {
             sec_name = trim(as_string(sec_name));
             if (sec_name == "") continue;
-
-            log_message("Smart Detect: adding " + domain + " to section " + sec_name, "info");
-            if (smart_detect_add_domain(sec_name, domain)) {
-                let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-                if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
-                    send_telegram_notification(
-                        "🔍 *Smart Detect*: `" + domain + "` недоступен напрямую, работает через прокси.\nДобавлен в секцию *" + sec_name + "*."
-                    );
-                }
-                added = true;
-                break;
-            }
-        }
-        if (!added) {
-            log_message("Smart Detect: domain " + domain + " not handled by any section", "info");
+            push(to_add, { section: sec_name, domain: domain });
+            break;
         }
         } catch (e) {
             log_message("Smart Detect: failed to process " + domain + ": " + as_string(e), "err");
         }
     }
+
+    if (length(to_add) > 0) smart_detect_apply_domains(to_add);
 
     let clean = {};
     let cutoff = now - 86400;

@@ -8,6 +8,11 @@ let as_string = common.as_string;
 
 const DNS_SETTLE_SECONDS = 30;
 
+// A domain must keep failing across two probes before it is acted on, and the
+// two must be far enough apart to be independent samples rather than the same
+// failure observed twice inside one cycle.
+const CONFIRM_WINDOW = 120;
+
 function observe_dns(previous, observation, now) {
     previous = previous || {};
     observation = observation || {};
@@ -98,6 +103,48 @@ function outbound_tag_of(line) {
     return (m && m[1]) ? m[1] : null;
 }
 
+// Consecutive direct-failure samples required before UCI is touched. A single
+// TCP reset is normal on a loaded router; treating it as a block rewrote the
+// user's routing for everyone behind the router.
+const CONFIRM_FAILURES = 2;
+
+function new_streak() {
+    return { first_fail: null, last_seen: 0 };
+}
+
+function verdict(domain, observation, streak) {
+    streak = streak || new_streak();
+    observation = observation || {};
+    let first_fail = streak.first_fail;
+
+    // Only a reachable destination is worth remembering as checked; a domain
+    // we could not judge must come back around.
+    if (observation.direct == "ok") return { act: false, seen: true, defer: false };
+
+    // Not evidence of a block: retry later instead of spending the sample.
+    if (observation.direct != "transport")
+        return { act: false, seen: false, defer: true, first_fail: null };
+
+    // Fails on both paths: the destination is down, not blocked.
+    if (observation.proxy != "ok")
+        return { act: false, seen: false, defer: true, first_fail: null };
+
+    // First failure only opens the streak. Without a timestamp there is nothing
+    // to measure the confirmation window against, so it stays unconfirmed.
+    if (first_fail == null) {
+        return {
+            act: false,
+            seen: false,
+            defer: true,
+            first_fail: observation.now != null ? observation.now : null
+        };
+    }
+    if (observation.now != null && observation.now - first_fail < CONFIRM_WINDOW)
+        return { act: false, seen: false, defer: true, first_fail: first_fail };
+
+    return { act: true, seen: true, defer: false, first_fail: first_fail };
+}
+
 // Only the outbounds that carry unproxied traffic are evidence that a
 // destination is blocked. Everything else belongs to a section and its
 // failure says something about the section, not about the destination.
@@ -132,5 +179,9 @@ return {
     outbound_tag_of,
     is_bypass_outbound_tag,
     failure_outbound_is_bypass,
+    verdict,
+    new_streak,
+    CONFIRM_FAILURES,
+    CONFIRM_WINDOW,
     DNS_SETTLE_SECONDS
 };
