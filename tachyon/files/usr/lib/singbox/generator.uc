@@ -509,8 +509,12 @@ function is_sing_box_lx_detected(sb_version_val) {
 function is_certificate_sha256_supported(sb_version_val) {
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
-    if (is_sing_box_lx_detected(sb_version_val))
-        return true;
+    // NB: sing-box-lx is deliberately NOT counted here. It has no
+    // tls.certificate_sha256 at all — its pin field is
+    // certificate_public_key_sha256, which hashes the certificate PUBLIC KEY,
+    // not the certificate itself, so it cannot carry a pcs value. Emitting
+    // certificate_sha256 for lx made sing-box abort with "unknown field", after
+    // which the runtime fallback silently stripped every pin (issue #79).
     if (is_sb_1_15_plus_detected(sb_version_val))
         return true;
     return false;
@@ -1436,7 +1440,7 @@ function strip_certificate_pins_if_unsupported(config) {
         }
     }
     if (stripped)
-        warn("tls.certificate_sha256 requires sing-box 1.15.0+ or sing-box-lx (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored\n");
+        warn("tls.certificate_sha256 requires sing-box 1.15.0+ (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored — sing-box-lx has no such field, it only supports certificate_public_key_sha256\n");
 }
 
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {

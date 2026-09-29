@@ -267,8 +267,13 @@ function sing_box_supports_xhttp(version, version_output) {
 
 function sing_box_supports_cert_pin(version) {
     version = as_string(version);
+    // sing-box-lx has no tls.certificate_sha256 field; its pin is
+    // certificate_public_key_sha256, which hashes the certificate public key
+    // and therefore cannot carry a pcs (full-certificate SHA-256) value.
+    // Reporting lx as supporting it made the generator emit a field sing-box
+    // rejects, and the runtime fallback then dropped every pin (issue #79).
     if (sing_box_marker_is("lx"))
-        return true;
+        return false;
     if (version == "" && command_exists("sing-box")) {
         if (sing_box_marker_is("extended-compressed"))
             version = sing_box_version_state();
@@ -276,7 +281,7 @@ function sing_box_supports_cert_pin(version) {
             version = sing_box_version();
     }
     if (sing_box_is_lx(version))
-        return true;
+        return false;
     let m = match(version, /^v?([0-9]+)\.([0-9]+)/);
     if (m) {
         let major = int(m[1]);
@@ -956,7 +961,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
         let stripped = false;
         if (cert_pin_m) {
-            log_message("Installed sing-box rejected tls.certificate_sha256 (requires sing-box 1.15.0+ or sing-box-lx); stripping certificate pins and retrying", "warn");
+            log_message("Installed sing-box rejected tls.certificate_sha256 (requires sing-box 1.15.0+; sing-box-lx has no such field); stripping certificate pins and retrying", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");
             let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
             let found = false;
