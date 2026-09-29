@@ -36,11 +36,13 @@ try { events = require("core.events"); } catch (e) {}
 let _override_kg_dir = null;
 let _override_obs_file = null;
 let _override_cfg_path = null;
+let _override_variant_path = null;
 
-function set_test_overrides(kg_dir, obs_file, cfg_path) {
+function set_test_overrides(kg_dir, obs_file, cfg_path, variant_path) {
     _override_kg_dir = kg_dir;
     _override_obs_file = obs_file;
     _override_cfg_path = cfg_path;
+    _override_variant_path = variant_path;
 }
 
 function get_known_good_dir() {
@@ -194,6 +196,13 @@ function get_manifest_path() {
 
 function get_config_backup_path() {
     return get_known_good_dir() + "/config";
+}
+
+function get_variant_target_path() {
+    if (_override_variant_path != null) return _override_variant_path;
+    let p = getenv("SB_VARIANT_STATE_FILE");
+    if (p != null && p != "") return p;
+    return "/etc/tachyon/sing-box-variant";
 }
 
 function get_variant_backup_path() {
@@ -622,9 +631,8 @@ function rollback_to_known_good(reason, options) {
 
     // 3. Restore variant if present
     let variant_backup = get_variant_backup_path();
-    if (fs.stat(variant_backup) != null) {
-        copy_file_atomic(variant_backup, "/etc/tachyon/sing-box-variant");
-    }
+    if (fs.stat(variant_backup) != null)
+        copy_file_atomic(variant_backup, get_variant_target_path());
 
     // 4. Update observation state to rolled_back
     write_json_atomic(get_observation_file(), {
