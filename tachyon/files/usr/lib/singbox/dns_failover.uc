@@ -66,35 +66,62 @@ function duration_seconds(value, fallback) {
     return int((milliseconds + 999) / 1000);
 }
 
+// What the probe saw on its last failed attempt, per kind. Kept so the
+// "servers are unavailable" warning can say *why* instead of leaving a report
+// with nothing to act on (issue #84).
+let PROBE_DETAIL = { bootstrap: "", main: "" };
+
 function probe_timeout(settings_value) {
-    return duration_seconds(settings_value, 2);
+    // 5s, not 2s. The health inbound resolves a DoH server through the proxy
+    // transport, so this budget is really "how long the transport gets to
+    // answer". A 2s one-shot budget reported a merely slow path as a dead
+    // resolver, and since strikes are reset on any success that false failure
+    // still had to repeat before it counted - which is exactly the shape issue
+    // #84 reported.
+    return duration_seconds(settings_value, 5);
+}
+
+// Keeps a probe failure readable: the raw dig output can be several lines and a
+// warning has to stay one line long. Declared before its caller because ucode
+// resolves a call target when the callee is defined, not when the caller is.
+function probe_output_digest(value) {
+    let text = trim(as_string(value == null ? "" : value));
+    if (text == "") return "(empty)";
+    text = replace(text, /\r?\n/, " | ");
+    if (length(text) > 200) text = substr(text, 0, 200) + "...";
+    return text;
 }
 
 function probe_port(kind, index_value, timeout_seconds) {
     let port = as_string(runtime_dns.health_port(kind, index_value));
-    let t_sec = int(timeout_seconds || 2);
+    let t_sec = int(timeout_seconds || 5);
     if (t_sec < 1) t_sec = 1;
-    let bound_sec = t_sec + 2;
+    let bound_sec = t_sec * 2 + 2;
     let prefix = common.timeout_prefix();
     let prefix_str = length(prefix) > 0 ? join(" ", prefix) + " " + as_string(bound_sec) + " " : "";
     let dig_cmd = prefix_str + "dig -p " + port + " @" + runtime_dns.DNS_HEALTH_ADDRESS +
-        " " + CHECK_DOMAIN + " A +short +time=" + as_string(t_sec) + " +timeout=" + as_string(t_sec) + " +tries=1 </dev/null 2>/dev/null";
+        " " + CHECK_DOMAIN + " A +short +time=" + as_string(t_sec) + " +timeout=" + as_string(t_sec) + " +tries=2 </dev/null 2>/dev/null";
     let output = common.command_output(dig_cmd);
     for (let line in split(output, "\n"))
-        if (core_ip.valid_ipv4(trim(as_string(line))))
+        if (core_ip.valid_ipv4(trim(as_string(line)))) {
+            PROBE_DETAIL[kind] = "ok";
             return true;
+        }
+    // Two attempts, because one lost packet is not a dead resolver.
+    PROBE_DETAIL[kind] = "port " + port + " no A for " + CHECK_DOMAIN + " in " +
+        as_string(t_sec) + "s x2; dig said: " + probe_output_digest(output);
     return false;
 }
 
 function probe_canonical_main(timeout_seconds) {
     let port = as_string(runtime_dns.health_port("active", 0));
-    let t_sec = int(timeout_seconds || 2);
+    let t_sec = int(timeout_seconds || 5);
     if (t_sec < 1) t_sec = 1;
-    let bound_sec = t_sec + 2;
+    let bound_sec = t_sec * 2 + 2;
     let prefix = common.timeout_prefix();
     let prefix_str = length(prefix) > 0 ? join(" ", prefix) + " " + as_string(bound_sec) + " " : "";
     let dig_cmd = prefix_str + "dig -p " + port + " @" + runtime_dns.DNS_HEALTH_ADDRESS +
-        " " + CHECK_DOMAIN + " A +short +time=" + as_string(t_sec) + " +timeout=" + as_string(t_sec) + " +tries=1 </dev/null 2>/dev/null";
+        " " + CHECK_DOMAIN + " A +short +time=" + as_string(t_sec) + " +timeout=" + as_string(t_sec) + " +tries=2 </dev/null 2>/dev/null";
     let output = common.command_output(dig_cmd);
     for (let line in split(output, "\n"))
         if (core_ip.valid_ipv4(trim(as_string(line))))
@@ -307,7 +334,8 @@ function worker() {
         if (now >= next_active) {
             let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
             if (!bootstrap.alive && !all_down.bootstrap)
-                log_message("all configured bootstrap DNS servers are unavailable", "warn");
+                log_message("all configured bootstrap DNS servers are unavailable (PROBE_DETAIL: " +
+                    PROBE_DETAIL.bootstrap + ")", "warn");
             all_down.bootstrap = !bootstrap.alive;
 
             if (bootstrap.index != int(state.bootstrap_index)) {
@@ -321,7 +349,8 @@ function worker() {
             else {
                 let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
                 if (!main.alive && !all_down.main)
-                    log_message("all configured main DNS servers are unavailable", "warn");
+                    log_message("all configured main DNS servers are unavailable (PROBE_DETAIL: " +
+                        PROBE_DETAIL.main + ")", "warn");
                 all_down.main = !main.alive;
                 apply_selections(state, { main });
                 next_active = now_seconds() + active_interval;
