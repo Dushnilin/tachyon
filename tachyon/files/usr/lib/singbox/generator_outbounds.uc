@@ -1699,12 +1699,13 @@ function add_warp_endpoint(config, section) {
     }
 
     let detour = option(section, "warp_detour", "");
-    let mtu = int_option(section, "warp_mtu", "1280");
+    // NB: no "mtu" here. sing-box-extended 2.7.x rejects it on the warp
+    // endpoint ("endpoints[0].mtu: json: unknown field \"mtu\"") and aborts the
+    // whole config. warp_mtu stays readable for backwards compatibility.
     let endpoint = {
         type: "warp",
         tag,
         name: tag,
-        mtu: mtu > 0 ? mtu : 1280,
         profile
     };
 
@@ -1772,22 +1773,23 @@ function add_sudoku_outbound(config, section) {
     push(config.outbounds, outbound);
 }
 
-function add_masque_endpoint(config, section) {
+function add_masque_outbound(config, section) {
     let tag = outbound_tag(section[".name"]);
-    let private_key = option(section, "masque_private_key", "");
     let account_id  = option(section, "masque_account_id", "");
     let access_token = option(section, "masque_access_token", "");
-    if (private_key == "")
-        ctx.runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_private_key");
     if (account_id == "")
         ctx.runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_account_id");
     if (access_token == "")
         ctx.runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_access_token");
-    push(config.endpoints, {
+    // sing-box-extended 2.7.x models MASQUE as an outbound with a single
+    // "profile" object; the endpoint + profiles[] form we used to emit is not
+    // known to it ("unknown endpoint type: masque") and aborts the config.
+    // masque_private_key is not part of that profile, so it is not emitted.
+    push(config.outbounds, {
         type: "masque",
         tag,
         name: tag,
-        profiles: [{ id: account_id, auth_token: access_token, private_key }]
+        profile: { id: account_id, auth_token: access_token }
     });
 }
 
@@ -2016,7 +2018,7 @@ return {
     add_snell_outbound,
     add_mieru_outbound,
     add_sudoku_outbound,
-    add_masque_endpoint,
+    add_masque_outbound,
     add_openvpn_endpoint,
     add_zapret_outbound,
     add_zapret2_outbound,

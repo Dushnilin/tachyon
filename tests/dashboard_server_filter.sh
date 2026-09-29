@@ -452,4 +452,37 @@ if (cache.hiddenOutboundTags["proxy-1-out"]) fail("proxy-1-out must not be marke
 if (!cache.hiddenOutboundTags["de1"]) fail("unselected subscription node de1 must remain marked hidden in section cache");
 ' "$WORK_DIR/tch1020-include-config.json" "$WORK_DIR/tch1020-include-config.json.section-cache/proxy.json" || fail "TCH-1020 regression check failed"
 
+# ─── Include filter that matches nothing must not collapse the section ───
+# A stale/renamed entry (e.g. after a node prefix change) used to leave the
+# selector holding only the URLTest group: the section silently lost every
+# server. It now falls back to all loaded servers (TCH-1036 follow-up).
+sed -e 's/"dashboard_include_outbounds": \[ .* \]/"dashboard_include_outbounds": [ "server-that-no-longer-exists" ]/' \
+    "$WORK_DIR/tch1020-include.json" >"$WORK_DIR/stale-filter.json"
+
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tch1020/subscriptions" \
+  generate_config "$WORK_DIR/stale-filter.json" "$WORK_DIR/stale-filter-config.json"
+
+ucode -e '
+let fs = require("fs");
+function fail(msg) { die(msg + "\n"); }
+function outbound_by_tag(cfg, tag) {
+    for (let o in cfg.outbounds || [])
+        if (o && o.tag == tag) return o;
+    return null;
+}
+let cfg = json(fs.readfile(ARGV[0]));
+let sel = outbound_by_tag(cfg, "proxy-out");
+if (!sel) fail("missing proxy-out selector");
+let members = sel.outbounds || [];
+// The group alone means the section collapsed; the manual link proves the
+// fallback restored every loaded server.
+if (length(members) < 2)
+    fail("stale include filter must fall back to all loaded servers, got: " + sprintf("%J", members));
+let has_manual = false;
+for (let m in members)
+    if (m == "proxy-1-out") has_manual = true;
+if (!has_manual)
+    fail("fallback must keep the manual proxy link, got: " + sprintf("%J", members));
+' "$WORK_DIR/stale-filter-config.json" || fail "stale include filter regression"
+
 printf 'dashboard server filter checks passed\n'

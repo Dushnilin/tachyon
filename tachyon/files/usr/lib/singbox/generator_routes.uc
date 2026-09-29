@@ -929,7 +929,18 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         dashboard_candidates = unique_string_array(combined);
     }
 
-    selector_outbounds = dashboard_filtered_outbounds(section, dashboard_candidates, state, group_outbounds);
+    let filtered_outbounds = dashboard_filtered_outbounds(section, dashboard_candidates, state, group_outbounds);
+    // An include/mixed filter that matches nothing used to fall through to the
+    // urltest/priority groups below, silently shrinking the section to just the
+    // groups (TCH-1036). Fall back to every available server instead and say so.
+    if ((mode == "include" || mode == "mixed") && length(filtered_outbounds) == 0 && length(selector_tags) > 0) {
+        warn("Section " + section_name + ": dashboard filter \"" + mode + "\" matched none of the " +
+            length(selector_tags) + " loaded servers (selected names do not match any server; " +
+            "a changed node prefix or a refreshed subscription can invalidate them) — " +
+            "falling back to all available subscription servers\n");
+        filtered_outbounds = selector_tags;
+    }
+    selector_outbounds = filtered_outbounds;
     selector_default = selector_outbounds[0];
     if (length(urltest_tags) > 0 || length(priority_tags) > 0) {
         for (let tag in urltest_tags)
@@ -2347,7 +2358,7 @@ function add_outbound_for_section(config, section, taken, sections) {
     else if (action == "sudoku")
         ctx.outbounds.add_sudoku_outbound(config, section);
     else if (action == "masque")
-        ctx.outbounds.add_masque_endpoint(config, section);
+        ctx.outbounds.add_masque_outbound(config, section);
     else if (action == "openvpn")
         ctx.outbounds.add_openvpn_endpoint(config, section);
     else if (action == "zapret")

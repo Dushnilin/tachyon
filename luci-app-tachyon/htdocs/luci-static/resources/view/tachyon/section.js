@@ -503,6 +503,11 @@ const actionProvidersAvailabilityState = {
 let actionProvidersAvailabilityPromise = null;
 let actionProvidersAvailabilityLoader = null;
 const outboundNameChoicesCache = new Map();
+const outboundNameChoicesFetchedAt = new Map();
+// Server lists change when a subscription is refreshed or the node prefix is
+// edited; without an expiry the filter dropdown kept serving the names that
+// were current when the page was opened.
+const OUTBOUND_NAME_CHOICES_TTL_MS = 30000;
 const outboundNameChoicesInflight = new Map();
 const outboundTypeByNameCache = new Map();
 const outboundNameSourceOptions = new Map();
@@ -921,7 +926,11 @@ function readOutboundMetadataFromSectionCache(section_id) {
 
 function loadOutboundNameChoices(section_id) {
   const targetId = section_id || "Main";
-  if (outboundNameChoicesCache.has(targetId)) {
+  const fetchedAt = outboundNameChoicesFetchedAt.get(targetId) || 0;
+  if (
+    outboundNameChoicesCache.has(targetId) &&
+    Date.now() - fetchedAt < OUTBOUND_NAME_CHOICES_TTL_MS
+  ) {
     return Promise.resolve(outboundNameChoicesCache.get(targetId));
   }
 
@@ -994,8 +1003,10 @@ function loadOutboundNameChoices(section_id) {
       choices.sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
 
       outboundNameChoicesCache.set(targetId, choices);
+      outboundNameChoicesFetchedAt.set(targetId, Date.now());
       if (targetId !== "Main") {
         outboundNameChoicesCache.set("Main", choices);
+        outboundNameChoicesFetchedAt.set("Main", Date.now());
       }
 
       refreshDashboardFilterChoiceWidgets(targetId);
