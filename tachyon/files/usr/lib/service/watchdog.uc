@@ -7,6 +7,7 @@ let helpers = require("core.helpers");
 let connections = require("config.connections");
 let events = require("core.events");
 let event_controller = require("service.event_controller");
+let smart_detect = require("service.smart_detect");
 
 let reconciler = null;
 try {
@@ -1786,12 +1787,53 @@ function notify_urltest_switch(ev) {
     }
 }
 
+let smart_detect_dns_state = {};
+
+function smart_detect_observe_dns() {
+    let ctx = controller.create_tick_context();
+    let cfg_path = as_string(ctx.settings.config_path || "/etc/sing-box/config.json");
+    let runtime = common.read_json_file(cfg_path);
+    let engine = "sing-box";
+    try { engine = require("core.engine").get_active(); } catch (e) {}
+    let is_singbox = engine == "sing-box";
+    let state_path = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") ||
+        (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/dns-failover.json";
+    let failover = common.read_json_file(state_path) || {};
+    let dns = is_singbox ? runtime?.dns : {
+        type: ctx.settings.dns_type, servers: ctx.settings.dns_server,
+        bootstrap: ctx.settings.bootstrap_dns_server, detour: ctx.settings.dns_detour
+    };
+    let signature = dns ? sprintf("%J", {
+        engine, pid: is_singbox ? ctx.singbox_pid : null, dns,
+        main_index: failover.main_index, bootstrap_index: failover.bootstrap_index
+    }) : null;
+    let busy = ctx.is_paused || ctx.reload_in_progress || (is_singbox && !ctx.singbox_running) ||
+        (controller.dns_consecutive_fails && controller.dns_consecutive_fails() > 0);
+    // Candidate files exist throughout a failover's apply/verify transaction.
+    if (is_singbox && length(fs.glob(state_path + ".candidate.*") || [])) busy = true;
+    smart_detect_dns_state = smart_detect.observe_dns(smart_detect_dns_state,
+        { signature, busy }, time());
+    return smart_detect_dns_state;
+}
+
+function smart_detect_defer(domain, queued, seen, dns_error) {
+    delete seen[domain];
+    pending_smart_domains[domain] = queued;
+    if (dns_error) {
+        smart_detect_dns_state.changed_at = time();
+        smart_detect_dns_state.ready = false;
+    }
+}
+
 function smart_detect_process_pending() {
     let cfg = settings();
     if (cfg.smart_detect != "1") {
         pending_smart_domains = {};
+        smart_detect_dns_state = {};
         return;
     }
+    let dns_observation = smart_detect_observe_dns();
+    if (!dns_observation.ready) return;
     let now = time();
     if (now - smart_detect_last_run < 30) return;
 
@@ -1818,6 +1860,7 @@ function smart_detect_process_pending() {
             push(candidate_domains, dom);
         }
     }
+    let queued_candidates = pending_smart_domains;
     pending_smart_domains = {};
 
     if (length(candidate_domains) == 0) return;
@@ -1850,6 +1893,7 @@ function smart_detect_process_pending() {
     }
 
     for (let domain in candidate_domains) {
+        let item = queued_candidates[domain];
         try {
         seen[domain] = now;
 
@@ -1859,23 +1903,37 @@ function smart_detect_process_pending() {
             continue;
         }
 
-        let direct_ok = command_success_from_args([
-            "curl", "-s", "-I", "--connect-timeout", "4", "--max-time", "6",
+        let direct_status = smart_detect.probe_status([
+            "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "4", "--max-time", "6",
             "https://" + domain
         ]);
-        if (direct_ok) continue;
+        let direct_kind = smart_detect.probe_kind(direct_status);
+        if (direct_kind == "ok") continue;
+        if (direct_kind != "transport") {
+            if (direct_kind == "dns") smart_detect_defer(domain, item, seen, true);
+            log_message("Smart Detect: " + domain + " Direct curl exit " + as_string(direct_status) + " is not destination-block evidence", "debug");
+            continue;
+        }
 
         // Single probe through the shared http/mixed inbound. This inbound follows
         // the global routing rules, so it cannot be aimed at one specific section:
         // the result is the same for every candidate section. Probe once, then hand
         // the domain to the first section that accepts it (user-defined order).
-        let proxy_ok = command_success_from_args([
-            "curl", "-s", "-I", "--connect-timeout", "5", "--max-time", "8",
+        let proxy_status = smart_detect.probe_status([
+            "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "5", "--max-time", "8",
             "--proxy", "http://" + proxy_addr,
             "https://" + domain
         ]);
-        if (!proxy_ok) {
+        if (proxy_status != 0) {
+            if (smart_detect.probe_kind(proxy_status) == "dns") smart_detect_defer(domain, item, seen, true);
             log_message("Smart Detect: " + domain + " fails directly and via proxy, skipping", "info");
+            continue;
+        }
+
+        let after_dns = smart_detect_observe_dns();
+        if (!after_dns.ready || after_dns.signature != dns_observation.signature) {
+            smart_detect_defer(domain, item, seen, false);
+            log_message("Smart Detect: " + domain + " deferred after DNS/runtime transition", "debug");
             continue;
         }
 
