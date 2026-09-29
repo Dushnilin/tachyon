@@ -360,6 +360,21 @@ function tachyon_config_masked_line(line) {
     line = mask_option_path(line, "option dns_server '");
     line = mask_option_path(line, "list dns_server '");
     line = mask_after_token(line, "option yacd_secret_key");
+    // Agent gateway / bot credentials. /config is served by the AI agent
+    // gateway on the LAN without a token by default, so anything secret has to
+    // be redacted here (see issue #76).
+    line = mask_after_token_space(line, "option bot_token");
+    line = mask_after_token_space(line, "option agent_api_token");
+    line = mask_after_token_space(line, "option warp_private_key");
+    line = mask_after_token_space(line, "option warp_access_token");
+    line = mask_after_token_space(line, "option masque_private_key");
+    line = mask_after_token_space(line, "option masque_access_token");
+    line = mask_after_token_space(line, "option openvpn_password");
+    line = mask_after_token_space(line, "option openvpn_key");
+    line = mask_after_token_space(line, "option openvpn_cert");
+    line = mask_after_token_space(line, "option openvpn_ca");
+    line = mask_after_token_space(line, "option user_agent");
+    line = mask_after_token_space(line, "option hwid_token");
 
     return line;
 }

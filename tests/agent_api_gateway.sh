@@ -2,7 +2,8 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-AGENT_API_UC="$ROOT_DIR/tachyon/files/usr/lib/service/agent_api.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+AGENT_API_UC="$TACHYON_LIB/service/agent_api.uc"
 MAKEFILE="$ROOT_DIR/tachyon/Makefile"
 BUILD_SH="$ROOT_DIR/build.sh"
 
@@ -23,15 +24,33 @@ fi
 grep -Fq 'system(common.background_command("/usr/bin/tachyon reload"))' "$AGENT_API_UC" ||
   fail "agent_api.uc must use common.background_command for tachyon reload"
 
-# 3. Makefile must install and restore /www/cgi-bin/tachyon-agent symlink
-grep -Fq 'ln -sf /usr/lib/cgi-bin/tachyon-agent $(1)/www/cgi-bin/tachyon-agent' "$MAKEFILE" ||
-  fail "Makefile Package/tachyon/install must package /www/cgi-bin/tachyon-agent symlink"
+# 3. The gateway symlink must be published only when agent_api_token is set.
+#    Issue #76: the handler used to be published on every install/upgrade, so
+#    any LAN client could read /config and got the raw UCI config with the bot
+#    token. Assert the gate instead of the old unconditional symlink.
+if grep -Fq 'ln -sf /usr/lib/cgi-bin/tachyon-agent $(1)/www/cgi-bin/tachyon-agent' "$MAKEFILE"; then
+  fail "Makefile Package/tachyon/install must not package /www/cgi-bin/tachyon-agent unconditionally"
+fi
+
+[ "$(grep -c 'agent_api_token' "$MAKEFILE")" -ge 2 ] ||
+  fail "Makefile postinst/postupgrade must gate the symlink on agent_api_token"
 
 grep -Fq 'ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent' "$MAKEFILE" ||
-  fail "Makefile must restore /www/cgi-bin/tachyon-agent symlink on postinst/postupgrade"
+  fail "Makefile must still be able to create the symlink when the gateway is enabled"
 
-# 4. build.sh must mirror Makefile and package the symlink
-grep -Fq 'ln -sf /usr/lib/cgi-bin/tachyon-agent "$output_root/www/cgi-bin/tachyon-agent"' "$BUILD_SH" ||
-  fail "build.sh build_backend_root must package /www/cgi-bin/tachyon-agent symlink"
+grep -Fq 'rm -f /www/cgi-bin/tachyon-agent' "$MAKEFILE" ||
+  fail "Makefile must remove the gateway symlink when no token is configured"
+
+# 4. build.sh must mirror the Makefile gate
+if grep -Fq 'ln -sf /usr/lib/cgi-bin/tachyon-agent "$output_root/www/cgi-bin/tachyon-agent"' "$BUILD_SH"; then
+  fail "build.sh build_backend_root must not package the symlink unconditionally"
+fi
+
+[ "$(grep -c 'agent_api_token' "$BUILD_SH")" -ge 1 ] ||
+  fail "build.sh must gate the symlink on agent_api_token"
+
+# 5. The service must reconcile the symlink at start/reload (ucode, not init.d)
+grep -Fq 'sync_agent_gateway_symlink' "$TACHYON_LIB/service/initd.uc" ||
+  fail "service/initd.uc must reconcile the agent gateway symlink"
 
 printf 'agent_api gateway tests passed\n'

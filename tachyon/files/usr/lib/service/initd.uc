@@ -582,8 +582,30 @@ function start_verify_timeout(reason, uptime_seconds) {
     return int(uptime_seconds) <= BOOT_START_UPTIME_SECONDS ? BOOT_START_VERIFY_TIMEOUT : "";
 }
 
+// The AI agent gateway is reachable from the whole LAN through uhttpd's
+// cgi-bin, and its read endpoints are open unless a token is configured —
+// /config used to answer with the raw UCI config (issue #76). Publish the
+// symlink only when the user actually enabled the gateway.
+const AGENT_GATEWAY_LINK = "/www/cgi-bin/tachyon-agent";
+const AGENT_GATEWAY_TARGET = "/usr/lib/cgi-bin/tachyon-agent";
+
+function sync_agent_gateway_symlink() {
+    if (fs.stat("/www/cgi-bin") == null)
+        return 0;
+    let token = as_string(uci_core.get(CONFIG_NAME, "settings", "agent_api_token") || "");
+    if (token != "") {
+        if (fs.symlink(AGENT_GATEWAY_TARGET, AGENT_GATEWAY_LINK))
+            return 0;
+        return 1;
+    }
+    if (fs.stat(AGENT_GATEWAY_LINK) == null)
+        return 0;
+    return fs.unlink(AGENT_GATEWAY_LINK) ? 0 : 1;
+}
+
 function start_service(reason, owner_pid) {
     print("Start Tachyon\n");
+    sync_agent_gateway_symlink();
     let plan = start_plan_value(reason, owner_pid, uci_settings(), null);
     if (!plan.bin_ok)
         return 1;
@@ -744,6 +766,7 @@ function reload_finish(reason, job_id, status) {
 }
 
 function reload_service(reason, owner_pid) {
+    sync_agent_gateway_symlink();
     let plan = reload_begin_value(reason, owner_pid, null, null);
     if (plan.action != "run")
         return 0;
