@@ -25,6 +25,11 @@ Welcome to the comprehensive technical knowledge base for **Tachyon**. This dire
 | [**15. Zapret v1 (nfqws) Field Guide**](15_ZAPRET1_NFQWS_FIELD_GUIDE.md) | Complete Zapret v1 CLI specification | NFQUEUE desync modes, split-pos, seqovl, syndata, ipfrag, fooling |
 | [**16. ByeDPI (ciadpi) Reference**](16_BYEDPI_CIADPI_REFERENCE.md) | Complete ByeDPI SOCKS5/TProxy manual | Split, disorder, fake, ttl, auto-mode, oob, tlsrec, ip-frag |
 | [**17. TSPU / DPI Signatures & Counters**](17_TSPU_DPI_SIGNATURES_AND_COUNTERS.md) | TSPU filtering mechanics and counters | GoogleVideo 4K, Discord WebRTC, TLS 1.3 RST, TTL distance calculation |
+| [**18. Job Engine**](18_JOB_ENGINE.md) | Task lifecycle, cooperative cancellation, LIFO compensation | 10 phases, process identity, critical sections, heartbeat, `jobClient` |
+| [**19. Transaction Engine**](19_TRANSACTION_ENGINE.md) | All-or-nothing changes with rollback | PLAN→COMMIT phases, built-in compensators, snapshots, stale detection |
+| [**20. Event Journal & Bus**](20_EVENTS.md) | In-memory bus plus on-disk ring journal | Fact types, subscribers, secret redaction, `correlation_id`, query API |
+| [**21. Reconciler**](21_RECONCILER.md) | Desired vs actual state, surgical repair | 5 subsystems, typed drifts, repair order, `known_good` fallback |
+| [**22. State Model**](22_STATE_MODEL.md) | Where every piece of Tachyon state lives | tmpfs vs flash vs memory, atomicity, `/var/run` inventory, process identity |
 
 ---
 
