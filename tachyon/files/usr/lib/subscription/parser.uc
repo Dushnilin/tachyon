@@ -111,9 +111,15 @@ function xhttp_copy_known_settings(target, source) {
         "scStreamUpServerSecs",
         "sc_stream_up_server_secs",
         "sessionPlacement",
+        "SessionIDPlacement",
+        "sessionIDPlacement",
         "session_placement",
         "sessionKey",
+        "SessionIDKey",
+        "sessionIDKey",
         "session_key",
+        "scMaxBufferedPosts",
+        "sc_max_buffered_posts",
         "seqPlacement",
         "seq_placement",
         "seqKey",
@@ -125,6 +131,7 @@ function xhttp_copy_known_settings(target, source) {
         "uplinkChunkSize",
         "uplink_chunk_size",
         "uplinkHttpMethod",
+        "uplinkHTTPMethod",
         "uplink_http_method",
         "xPaddingObfsMode",
         "x_padding_obfs_mode",
@@ -167,13 +174,29 @@ function xhttp_extra_settings(query) {
     return result;
 }
 
+// Xray/Remnawave spell a few xHTTP settings differently from sing-box:
+// `uplinkHTTPMethod` (capital HTTP), and the session id fields are
+// `SessionIDPlacement` / `sessionIDPlacement` / `SessionIDKey` /
+// `sessionIDKey`. Reading only the sing-box spellings dropped them, so a node
+// that needed them silently lost its session config and timed out.
+// Each alias argument accepts a list; the first present value wins.
+function xhttp_alias_keys(value) {
+    if (type(value) == "array")
+        return value;
+    return value == null || value == "" ? [] : [ value ];
+}
+
 function xhttp_setting_value(query, extra_settings, camel_key, snake_key) {
     query = type(query) == "object" ? query : {};
     extra_settings = type(extra_settings) == "object" ? extra_settings : {};
-    for (let value in [query[camel_key], query[snake_key], extra_settings[camel_key], extra_settings[snake_key]]) {
-        if (xhttp_value_present(value))
-            return value;
-    }
+    for (let key in xhttp_alias_keys(camel_key))
+        for (let value in [ query[key], extra_settings[key] ])
+            if (xhttp_value_present(value))
+                return value;
+    for (let key in xhttp_alias_keys(snake_key))
+        for (let value in [ query[key], extra_settings[key] ])
+            if (xhttp_value_present(value))
+                return value;
     return null;
 }
 
@@ -293,6 +316,12 @@ function xhttp_optional_string(object, key, value) {
         object[key] = value;
 }
 
+function xhttp_optional_positive_integer(object, key, value) {
+    let number = xhttp_positive_integer_value(value);
+    if (number != null)
+        object[key] = number;
+}
+
 function xhttp_optional_enum(object, key, value, allowed) {
     if (!xhttp_value_present(value))
         return;
@@ -309,14 +338,15 @@ function xhttp_apply_v2_settings(result, primary, extra) {
     // XHTTP v2 keys (session/seq placement, uplink-data placement, X-Padding
     // obfuscation). Every field is opt-in per the sing-box-lx contract; the
     // v1 wire shape stays byte-identical when none are present.
-    xhttp_optional_enum(result, "session_placement", xhttp_setting_value(primary, extra, "sessionPlacement", "session_placement"), [ "path", "query", "header", "cookie" ]);
-    xhttp_optional_string(result, "session_key", xhttp_setting_value(primary, extra, "sessionKey", "session_key"));
+    xhttp_optional_enum(result, "session_placement", xhttp_setting_value(primary, extra, [ "sessionPlacement", "SessionIDPlacement", "sessionIDPlacement" ], "session_placement"), [ "path", "query", "header", "cookie" ]);
+    xhttp_optional_string(result, "session_key", xhttp_setting_value(primary, extra, [ "sessionKey", "SessionIDKey", "sessionIDKey" ], "session_key"));
     xhttp_optional_enum(result, "seq_placement", xhttp_setting_value(primary, extra, "seqPlacement", "seq_placement"), [ "path", "query", "header", "cookie" ]);
     xhttp_optional_string(result, "seq_key", xhttp_setting_value(primary, extra, "seqKey", "seq_key"));
     xhttp_optional_enum(result, "uplink_data_placement", xhttp_setting_value(primary, extra, "uplinkDataPlacement", "uplink_data_placement"), [ "body", "auto", "header", "cookie" ]);
     xhttp_optional_string(result, "uplink_data_key", xhttp_setting_value(primary, extra, "uplinkDataKey", "uplink_data_key"));
     xhttp_optional_positive_range(result, "uplink_chunk_size", xhttp_setting_value(primary, extra, "uplinkChunkSize", "uplink_chunk_size"));
-    xhttp_optional_enum(result, "uplink_http_method", xhttp_setting_value(primary, extra, "uplinkHttpMethod", "uplink_http_method"), [ "POST", "GET" ]);
+    xhttp_optional_enum(result, "uplink_http_method", xhttp_setting_value(primary, extra, [ "uplinkHttpMethod", "uplinkHTTPMethod" ], "uplink_http_method"), [ "POST", "GET" ]);
+    xhttp_optional_positive_integer(result, "sc_max_buffered_posts", xhttp_setting_value(primary, extra, "scMaxBufferedPosts", "sc_max_buffered_posts"));
     xhttp_optional_bool(result, "x_padding_obfs_mode", xhttp_setting_value(primary, extra, "xPaddingObfsMode", "x_padding_obfs_mode"));
     xhttp_optional_enum(result, "x_padding_placement", xhttp_setting_value(primary, extra, "xPaddingPlacement", "x_padding_placement"), [ "cookie", "header", "query", "queryInHeader" ]);
     xhttp_optional_string(result, "x_padding_key", xhttp_setting_value(primary, extra, "xPaddingKey", "x_padding_key"));
