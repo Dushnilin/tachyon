@@ -20,6 +20,14 @@ SNAPSHOT_DIR=""
 FETCHER=""
 PKG_MANAGER=""
 PKG_IS_APK=0
+# Indirected so the rollback contract can be tested without touching a real
+# package manager state file.
+APK_WORLD_FILE="${TACHYON_APK_WORLD_FILE:-/etc/apk/world}"
+# Two lists, not one plus a flag: the removal set and the world-scrub set are
+# genuinely different. Duplicating the package names at each call site is how
+# they drift apart, and they had.
+LEGACY_PACKAGES="forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift"
+WORLD_SCRUB_PACKAGES="$LEGACY_PACKAGES tachyon luci-app-tachyon"
 PACKAGE_INDEX_UPDATED=0
 START_TIME="0"
 TX_ACTIVE=0
@@ -853,7 +861,17 @@ restore_snapshot() {
         chmod 0600 /etc/config/tachyon 2>/dev/null || true
     fi
     if [ "$PKG_IS_APK" -eq 1 ] && [ -f "$SNAPSHOT_DIR/apk-world" ]; then
-        cp -a "$SNAPSHOT_DIR/apk-world" /etc/apk/world 2>/dev/null || true
+        cp -a "$SNAPSHOT_DIR/apk-world" "$APK_WORLD_FILE" 2>/dev/null || true
+        # The snapshot predates the legacy removal, so restoring it verbatim
+        # brings back entries for packages this installer uninstalled. apk then
+        # refuses every subsequent operation until the user edits the file by
+        # hand, with no hint that this is why (issue #85).
+        #
+        # Legacy entries only, not the tachyon ones: the legacy packages are
+        # known to be gone, whereas whether tachyon survived a failed install is
+        # not, and dropping a still-installed package out of world would
+        # silently discard the user's choice to have it there.
+        scrub_apk_world "$LEGACY_PACKAGES"
     fi
     if [ "$TACHYON_WAS_INSTALLED" -eq 1 ] && [ -x /usr/bin/tachyon ]; then
         [ "$TACHYON_WAS_ENABLED" -eq 1 ] && /etc/init.d/tachyon enable >/dev/null 2>&1 || /etc/init.d/tachyon disable >/dev/null 2>&1 || true
@@ -896,6 +914,32 @@ release_tachyon_init_lock() {
     [ "$_killed" -eq 0 ] || sleep 1
 }
 
+check_name_resolution() {
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    command_exists nslookup || command_exists drill || return 0
+    _resolved=1
+    for _probe in "github.com" "raw.githubusercontent.com"; do
+        if nslookup "$_probe" >/dev/null 2>&1 || drill "$_probe" >/dev/null 2>&1; then
+            _resolved=0
+            break
+        fi
+    done
+    [ "$_resolved" -eq 0 ] && return 0
+    err "Cannot resolve host names. Everything from here on will fail."
+    if [ -f "$APK_WORLD_FILE" ] && grep -qE '^(podkop|luci-app-podkop|forkop|luci-app-forkop|netshift|luci-app-netshift)$' "$APK_WORLD_FILE" 2>/dev/null; then
+        err "A legacy resolver package is installed (podkop / forkop / netshift)."
+        err "Podkop and its forks serve DNS on 127.0.0.42:53, and if dnsmasq is"
+        err "pointed there manually ('do not touch my DHCP' in OpenWrt DNS settings)"
+        err "then removing them leaves dnsmasq forwarding to nothing."
+        err "Either remove the manual DNS entry in LuCI, or set the dnsmasq server"
+        err "back to your ISP's resolvers, then run the installer again."
+    else
+        err "Point dnsmasq at a reachable resolver, or check the WAN link, then run"
+        err "the installer again."
+    fi
+    return 1
+}
+
 prepare_transaction() {
     [ "$DRY_RUN" -eq 1 ] && return 0
     if [ -x /usr/bin/tachyon ]; then
@@ -905,8 +949,6 @@ prepare_transaction() {
         _t1="$(date +%s 2>/dev/null || echo 0)"
         ok "Tachyon services stopped in $((_t1 - _t0))s"
     fi
-    msg "Checking for legacy packages (forkop/podkop/netshift)"
-    remove_legacy_packages
     release_tachyon_init_lock
 }
 
@@ -916,35 +958,46 @@ remove_legacy_packages() {
         # Exact installed-name match: 'apk info -e forkop' resolves virtuals to
         # their provider, so with tachyon's PROVIDES:=forkop it would always
         # report legacy forkop as installed and trigger a no-op purge.
-        for _pkg in forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift; do
+        for _pkg in $LEGACY_PACKAGES; do
             if grep -q "^P:${_pkg}\$" /lib/apk/db/installed 2>/dev/null; then
                 _legacy_pkgs="$_legacy_pkgs $_pkg"
             fi
         done
         if [ -n "$_legacy_pkgs" ]; then
-            msg "Removing legacy packages:$_legacy_pkgs"
-            apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" del --purge $_legacy_pkgs || warn "Could not remove legacy packages (will scrub world file)"
+            msg "Removing legacy packages (config files kept):$_legacy_pkgs"
+            # No --purge. The legacy config is the input to the migration in
+            # config/migration.uc, and destroying it here left the user with
+            # nothing to fall back on if the migration did not cover their
+            # setup. Removing the package is enough to stop the service.
+            apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" del $_legacy_pkgs || warn "Could not remove legacy packages (will scrub world file)"
         fi
-        # Scrub legacy AND tachyon entries from /etc/apk/world so the upcoming
-        # 'apk add' starts with a clean slate (no stale virtual-provides conflict).
-        # This is safe: 'apk add' will re-add tachyon/luci-app-tachyon after install.
-        if [ -f /etc/apk/world ]; then
-            for _pkg in forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift tachyon luci-app-tachyon; do
-                sed -i "/^${_pkg}\$/d" /etc/apk/world 2>/dev/null || true
-            done
-            debug "APK world file scrubbed of legacy and tachyon entries"
-        fi
+        scrub_apk_world
     else
-        for _pkg in forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift; do
+        for _pkg in $LEGACY_PACKAGES; do
             if opkg status "$_pkg" 2>/dev/null | grep -q '^Status:'; then
                 _legacy_pkgs="$_legacy_pkgs $_pkg"
             fi
         done
         if [ -n "$_legacy_pkgs" ]; then
-            msg "Removing legacy packages:$_legacy_pkgs"
+            msg "Removing legacy packages (config files kept):$_legacy_pkgs"
             opkg remove --force-depends $_legacy_pkgs 2>/dev/null || warn "Could not remove legacy packages"
         fi
     fi
+}
+
+# Drop the listed packages from the world file so a later 'apk add' starts from
+# a clean slate. Also used on the rollback path: the snapshot of the world file
+# is taken before the legacy packages are removed, so restoring it verbatim
+# would name packages this installer had just uninstalled, and every subsequent
+# apk operation would fail with "no such package ... required by world[...]"
+# (issue #85).
+scrub_apk_world() {
+    _scrub_list="${1:-$WORLD_SCRUB_PACKAGES}"
+    [ -f "$APK_WORLD_FILE" ] || return 0
+    for _pkg in $_scrub_list; do
+        sed -i "/^${_pkg}\$/d" "$APK_WORLD_FILE" 2>/dev/null || true
+    done
+    debug "APK world file scrubbed: $_scrub_list"
 }
 
 download_release() {
@@ -1208,6 +1261,7 @@ main() {
     select_release_version
 
     msg "Resolving release metadata"
+    check_name_resolution || fail "Name resolution is broken - see the message above"
     resolve_release || fail "Could not resolve Tachyon release"
     check_tmp_for_downloads || fail "Temporary storage preflight failed"
     print_plan
@@ -1226,6 +1280,14 @@ main() {
     msg "Restoring service state"
     restore_service_intent || fail "Could not restore Tachyon service state"
     healthcheck || fail "Installed Tachyon did not pass healthcheck"
+    # Only now. Podkop binds sing-box's DNS to 127.0.0.42:53 and users point
+    # dnsmasq at it by hand, so removing it first kills the resolver while
+    # Tachy's own DNS is not up yet - everything after that point fails to
+    # resolve and the install dies somewhere unrelated (issue #85). Tachyon's
+    # postinst already stops and disables the legacy services, so keeping the
+    # packages until here costs nothing and closes the window.
+    msg "Checking for legacy packages (forkop/podkop/netshift)"
+    remove_legacy_packages
     commit_transaction
 
     _end="$(date +%s 2>/dev/null || echo 0)"

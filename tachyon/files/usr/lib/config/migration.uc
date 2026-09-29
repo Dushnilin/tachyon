@@ -1987,23 +1987,59 @@ function migrate_fixture(path, source) {
     });
 }
 
+// Config files that are legacy by definition, by name.
+//
+// The name is the only reliable discriminator, and content is not merely
+// unreliable here but structurally incapable. Tachyon is a fork of forkop, so
+// a forkop config carries forkop's OWN config_version and applied_migrations,
+// and a diff of the two default configs shows forkop introducing no option that
+// Tachyon lacks. A forkop install therefore detected as "tachyon" and skipped
+// the migration while reporting success.
+const LEGACY_CONFIG_BASENAMES = {
+    forkop: true,
+    forkop_plus: true,
+    podkop: true,
+    podkop_plus: true,
+    netshift: true
+};
+
 function detect_config_migration_source(path) {
+    path = as_string(path || "");
+
+    // Recognised legacy path means legacy, whatever the contents say. The
+    // scanner already used the name to find this file, so throwing that away
+    // and re-deciding from the text loses the one piece of information that
+    // actually settles it.
+    let slash = rindex(path, "/");
+    let basename = (slash >= 0) ? substr(path, slash + 1) : path;
+    if (LEGACY_CONFIG_BASENAMES[basename])
+        return "podkop";
+
     let content = fs.readfile(path);
     if (content == null || content == "")
         return "tachyon";
 
-    // If configuration version or applied migrations are present, and there are
-    // no legacy config rule or legacy connection/proxy type options, this is native Tachyon
+    // Unknown path (a backup, most likely) and content is genuinely ambiguous:
+    // Tachyon is a fork of forkop, so the two share config_version and the
+    // applied_migrations names. There is no marker that separates them. So keep
+    // the existing heuristic, which prefers "native" when the new-style
+    // markers are present - running the legacy conversion over a current config
+    // is destructive, whereas skipping it is merely unhelpful, and
+    // migrate-podkop is there for the cases that need a forced conversion.
+    //
+    // Note config[ \t]+rule is BOTH a legacy marker and a current Tachyon
+    // section type, so it only counts on the legacy side.
     if ((match(content, /option[ \t]+config_version/) || match(content, /list[ \t]+applied_migrations/)) &&
-        !match(content, /config[ \t]+rule[ \t]+/) &&
         !match(content, /option[ \t]+connection_type/) &&
         !match(content, /option[ \t]+proxy_config_type/)) {
         return "tachyon";
     }
 
-    // True legacy markers for Forkop / Podkop / NetShift
-    if (match(content, /config[ \t]+rule[ \t]+/) ||
-        match(content, /option[ \t]+domain_list_urls/) ||
+    // Only markers Tachyon does NOT support are decisive. `config rule` is
+    // deliberately not one of them: it is both a legacy Podkop section type and
+    // a current Tachyon one, so counting it made a native config with rules
+    // detect as legacy, and the legacy conversion is the destructive direction.
+    if (match(content, /option[ \t]+domain_list_urls/) ||
         match(content, /option[ \t]+subnet_list_urls/) ||
         match(content, /option[ \t]+routing_excluded_ips/) ||
         match(content, /option[ \t]+connection_type/) ||
@@ -2012,7 +2048,8 @@ function detect_config_migration_source(path) {
         match(content, /option[ \t]+subscription_url/) ||
         match(content, /list[ \t]+subscription_url/) ||
         match(content, /option[ \t]+dns_via_outbound/) ||
-        match(content, /option[ \t]+global_proxy/)) {
+        match(content, /option[ \t]+global_proxy/) ||
+        match(content, /option[ \t]+enable_udp_over_tcp/)) {
         return "podkop";
     }
 
@@ -2169,7 +2206,11 @@ function import_settings_cli(source_path) {
     }
     system("chmod 0600 " + shell_quote(target_config) + " 2>/dev/null");
 
-    let source_type = detect_config_migration_source(target_config);
+    // Detect on the file the user actually chose, not on the destination. The
+    // two are the same bytes here, but the destination is always named
+    // "tachyon", and now that the file name decides, asking about it would
+    // report the source's format as Tachyon every time.
+    let source_type = detect_config_migration_source(chosen_path);
     print("  ✓ Detected format: " + (source_type == "podkop" ? "Legacy Forkop / Podkop / NetShift" : "Tachyon") + "\n");
 
     let ok = migrate_runtime(source_type);
