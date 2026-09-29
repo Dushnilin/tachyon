@@ -14,6 +14,8 @@ let runtime_subscription = require("singbox.subscription");
 let runtime_url = require("core.url");
 let runtime_urltest = require("singbox.urltest");
 let source_rulesets = require("routing.rulesets");
+let command_success_from_args = common.command_success_from_args;
+
 let rule_config = require("config.rule");
 let connections = require("config.connections");
 let subscription_share_link = require("subscription.share_link");
@@ -31,6 +33,14 @@ let read_stdin = common.read_stdin;
 let read_stdin_json = common.read_stdin_json;
 let write_json = common.write_json;
 let csv_to_json_array = common.csv_to_json_array;
+
+// Same logger shape as the other singbox modules: syslog only, so generating a
+// config never depends on the logging stack coming up. Declared after the
+// imports above because ucode binds a name when the statement runs.
+function generator_log(message, level) {
+    command_success_from_args([ "logger", "-t", "tachyon",
+        "[" + as_string(level || "info") + "] sing-box generator: " + as_string(message) ]);
+}
 let write_json_file = common.write_json_file;
 let strip_internal_fields = common.strip_internal_fields;
 let array_or_empty = common.array_or_empty;
@@ -583,9 +593,27 @@ function base_config(settings, service_address, runtime_context) {
     let log_level = option(settings, "log_level", "warn");
     let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
     let turbo_cache = bool_option(settings, "dns_turbo_cache", false);
-    let cache_path = option(settings, "cache_path", "/tmp/sing-box/cache.db");
-    if (turbo_cache && (cache_path == "/tmp/sing-box/cache.db" || cache_path == ""))
+    // Persistent by default. The FakeIP pool hands out addresses and the core
+    // keeps the reverse mapping; clients cache the address they were given, so
+    // a mapping that disappears (tmpfs, and therefore every reboot) makes the
+    // next packet for that address die with "missing fakeip record". Only the
+    // client could repair the mismatch, and it will not. Both routers checked
+    // run /usr/share/sing-box/cache.db, so this also matches what is deployed.
+    let cache_path = option(settings, "cache_path", "/usr/share/sing-box/cache.db");
+    if (turbo_cache && (cache_path == "" || cache_path == "/usr/share/sing-box/cache.db" ||
+                        cache_path == "/tmp/sing-box/cache.db"))
         cache_path = "/etc/sing-box/cache.db";
+
+    // Say it out loud rather than degrading quietly: a deliberately volatile
+    // cache is a legitimate choice, it just has a cost the user has to know.
+    let cache_path_on_volatile =
+        cache_path == "" || substr(cache_path, 0, 5) == "/tmp/" ||
+        substr(cache_path, 0, 9) == "/var/run" || substr(cache_path, 0, 8) == "/var/tmp";
+    if (cache_path_on_volatile)
+        generator_log("FakeIP cache " + (cache_path == "" ? "(default)" : cache_path) +
+            " is on volatile storage: every reboot drops the domain mappings, and a" +
+            " client still holding a cached FakeIP address will get" +
+            " \"missing fakeip record\". Set cache_path to a path on the overlay to keep them.", "warn");
     let cache_dir = replace(cache_path, /\/[^\/]+$/, "");
     if (cache_dir != "" && cache_dir != cache_path) {
         try { fs.mkdir(cache_dir, 0755); } catch(e) {}
