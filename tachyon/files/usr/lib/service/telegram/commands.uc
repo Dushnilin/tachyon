@@ -339,7 +339,9 @@ function view_runtime(token, chat_id, msg_id) {
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
-function view_outbounds(token, chat_id, msg_id, group_name) {
+function view_outbounds(token, chat_id, msg_id, group_name, page) {
+    page = int(page || 0);
+    if (page < 0) page = 0;
     let data = api.get_clash_proxies_data();
     if (!data || !data.proxies) {
         let err = t("err_servers_list");
@@ -383,15 +385,25 @@ function view_outbounds(token, chat_id, msg_id, group_name) {
     } else {
         let group_data = data.proxies[group_name];
         if (!group_data) return view_outbounds(token, chat_id, msg_id);
-        
+
         text += t("section_group") + ": <b>" + escape_html(group_name) + "</b>\n\n";
         let active_server = group_data.now || "";
-        
+
         let row = [];
-        let count = 0;
         let servers = group_data.all || [];
-        
-        for (let i = 0; i < length(servers); i++) {
+        // A group can hold hundreds of nodes, and Telegram truncates a message
+        // well before the list ends. Paginate instead: the text and the keyboard
+        // must show the same window, or the tail is unreachable.
+        let total = length(servers);
+        let per_page = 16;
+        let total_pages = int((total + per_page - 1) / per_page);
+        if (total_pages < 1) total_pages = 1;
+        if (page > total_pages - 1) page = total_pages - 1;
+        let start = page * per_page;
+        let end = start + per_page;
+        if (end > total) end = total;
+
+        for (let i = start; i < end; i++) {
             let name = servers[i];
             let proxy = data.proxies[name];
             let delay = "N/A";
@@ -404,21 +416,26 @@ function view_outbounds(token, chat_id, msg_id, group_name) {
             let marker = (name == active_server) ? "🔵" : "•";
             text += marker + " <code>" + escape_html(name) + "</code>: <code>" + delay + "</code>\n";
 
-            if (count < 18) {
-                push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: cb_data([ "/sw", group_name, name ]) });
-                if (length(row) == 2) {
-                    push(keyboard, row);
-                    row = [];
-                }
-                count++;
+            push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: cb_data([ "/sw", group_name, name ]) });
+            if (length(row) == 2) {
+                push(keyboard, row);
+                row = [];
             }
         }
         if (length(row) > 0) push(keyboard, row);
-        
-        if (count == 0) text += "<i>" + t("servers_not_found") + "</i>\n";
+
+        if (total == 0) text += "<i>" + t("servers_not_found") + "</i>\n";
         else text += "\nℹ️ " + t("outbounds_hint");
-        
-        push(keyboard, [{ text: t("btn_refresh"), callback_data: "/outbounds " + group_name }]);
+
+        if (total_pages > 1) {
+            let nav = [];
+            if (page > 0) push(nav, { text: t("nav_prev"), callback_data: "/outbounds " + as_string(page - 1) + " " + group_name });
+            push(nav, { text: as_string(page + 1) + "/" + as_string(total_pages), callback_data: "/noop" });
+            if (end < total) push(nav, { text: t("nav_next"), callback_data: "/outbounds " + as_string(page + 1) + " " + group_name });
+            push(keyboard, nav);
+        }
+
+        push(keyboard, [{ text: t("btn_refresh"), callback_data: "/outbounds " + as_string(page) + " " + group_name }]);
         if (length(groups) > 1) {
             push(keyboard, [{ text: t("btn_back_to_groups"), callback_data: "/outbounds" }]);
         } else {

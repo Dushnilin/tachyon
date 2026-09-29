@@ -609,8 +609,16 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/outbounds" || cmd == "/server" || cmd == "/servers") return view_outbounds(token, chat_id, msg_id);
     if (match(cmd, /^\/(outbounds|server|servers) /)) {
         let parts = split(cmd, " ");
-        let grp = trim(join(" ", slice(parts, 1)));
-        return view_outbounds(token, chat_id, msg_id, grp);
+        let rest = slice(parts, 1);
+        // `/outbounds <page> <group>`; a bare `/outbounds <group>` from an older
+        // message still works, and a group name may itself start with digits.
+        let page = 0;
+        if (length(rest) > 1 && match(trim(rest[0]), /^[0-9]+$/) != null) {
+            page = int(trim(rest[0]));
+            rest = slice(rest, 1);
+        }
+        let grp = trim(join(" ", rest));
+        return view_outbounds(token, chat_id, msg_id, grp, page);
     }
 
     if (cmd == "/fptn_token" || cmd == "/fptn") {
