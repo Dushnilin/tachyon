@@ -329,8 +329,10 @@ function build_outputs(sections, settings) {
         if (!is_enabled(section) || !is_zapret_section(section))
             continue;
         let action = as_string(option(section, "action", ""));
+        // Addressed by label, falling back to the section name - the same rule
+        // the channel builder uses to resolve a target, so a channel always
+        // finds the output it was pointed at.
         let name = safe_name(option(section, "label", option(section, ".name", "zapret")));
-        let sec_name = safe_name(section[".name"]);
         let opts_file = as_string(option(section, "steer_opts_file", ""));
         if (opts_file == "")
             opts_file = engine.STEER_ZAPRET_DIR + "/" + name + ".opts";
@@ -342,9 +344,15 @@ function build_outputs(sections, settings) {
         // zapret2 uses nfqws2 (supports Lua strategies); store the resolved
         // binary path in the spec so steer-nfqws picks the right executable.
         out_entry.nfqws_bin = resolved_zapret_bin(action == "zapret2");
+        // One output, not two. This also emitted the section name alongside the
+        // label, so a section named Zapret2 labelled "Youtube" produced both
+        // "Zapret2" and "Youtube" pointing at the same opts file. Each output
+        // costs the engine its own netfilter queue and a second steer-nfqws
+        // process running identical filters, and the phantom showed up in
+        // `steer outputs` as a target no config section backs. Confirmed on a
+        // router: queues 8302 and 8303 for one section, with the extra one
+        // referenced by nothing.
         outputs[name] = out_entry;
-        if (sec_name != "" && sec_name != name && !outputs[sec_name])
-            outputs[sec_name] = out_entry;
     }
 
     return outputs;

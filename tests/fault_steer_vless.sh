@@ -121,4 +121,35 @@ fi
 grep -Fq 'matches_build' "$LIB_DIR/core/engine.uc" \
   || fail "detect() does not report whether the installed build is the one that was asked for"
 
+# --- one section must not become two outputs -------------------------------
+# Found on a router: a section named Zapret2 with label "Youtube" produced both
+# "Zapret2" and "Youtube" outputs pointing at the same opts file. Each output
+# costs the engine its own netfilter queue and a second steer-nfqws process
+# running identical filters, and the phantom showed up in `steer outputs` as a
+# target no config section backs. The channel builder resolves its target by
+# label, so the label-named output is the one actually in use.
+out="$(ucode -L "$LIB_DIR" -e '
+let gen = require("steer.generator");
+let section = { ".name": "Zapret2", "label": "Youtube", "action": "zapret2", "enabled": "1" };
+gen.set_vless_supported(true);
+let spec = gen.build_spec([ section ], { "source_network_interfaces": [ "br-lan" ] });
+let names = [];
+for (let n in spec.outputs) push(names, n);
+printf("outputs=%s\n", join(",", names));
+' 2>&1)" || fail "could not drive the zapret output path: $out"
+
+grep -q 'outputs=direct,Youtube$' <<< "$out" \
+  || fail "a labelled zapret section did not produce exactly one output: $out"
+
+if grep -q 'Zapret2' <<< "$out"; then
+  fail "the section name was emitted as a second output alongside the label, giving one section two netfilter queues and two steer-nfqws processes running the same filters: $out"
+fi
+
+# The channel target must resolve to the same name, or the output is unreachable.
+# Not asserted here: channels are built from materialised list files, which do
+# not exist outside a router, so the container cannot produce one. Verified on
+# 192.168.1.205 instead - the live spec has channel Youtube_dom with out "Youtube"
+# and no channel pointing at "Zapret2", so the label-named output is the one in
+# use and the section-name form was the redundant one.
+
 printf 'fault: steer vless capability and switch checks passed\n'
