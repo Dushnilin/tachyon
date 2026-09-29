@@ -60,6 +60,10 @@ jobs:
           command -v ucode
           ucode -e 'print("ucode ready\n")'
 
+      - name: Static guards (no new raw shell / system / uci commit)
+        shell: bash
+        run: bash tests/ci_guards.sh
+
       - name: Check ucode syntax
         shell: bash
         run: |
