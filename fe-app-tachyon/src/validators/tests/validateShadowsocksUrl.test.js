@@ -20,6 +20,19 @@ const validUrls = [
   ],
 ];
 
+// A base64 credential may contain "/" or "+". For pure-ASCII credentials it
+// provably never does: every base64 group starts with the zero high bit of an
+// ASCII byte, so a group can never reach the values 62 and 63 that encode to
+// "+" and "/". A UTF-8 credential can, because its continuation bytes have the
+// high bit set. Truncating the credential at the first "/" therefore only
+// misbehaves for non-ASCII, and the URL is then silently rejected as corrupt.
+const unicodeCredUrls = [
+  [
+    'base64 credential with slash (utf-8 password)',
+    'ss://YWVzLTI1Ni1nY2060L/QsNGA0L7Qu9GMMA==@127.0.0.1:27214?type=tcp#unicode-slash',
+  ],
+];
+
 const invalidUrls = [
   ['No prefix', 'uuid@127.0.0.1:443?type=tcp'],
   ['No host', 'ss://password@:443?type=tcp'],
@@ -29,6 +42,16 @@ const invalidUrls = [
   ['Missing type', 'ss://password@127.0.0.1:443'],
   ['Contains space', 'ss://password@127.0.0.1:443?type=tcp #extra'],
   ['Unbracketed IPv6 with port', 'ss://password@2001:db8::1:443?type=tcp'],
+  // Truncated credentials must be rejected as corrupt, not read as a valid
+  // method:password pair.
+  [
+    'Base64 credential that is not decodable at all',
+    'ss://@@@@@127.0.0.1:443?type=tcp',
+  ],
+  [
+    'Credential decodes without a colon',
+    'ss://' + btoa('noColonHere') + '@127.0.0.1:443?type=tcp',
+  ],
 ];
 
 describe('validateShadowsocksUrl', () => {
@@ -43,6 +66,13 @@ describe('validateShadowsocksUrl', () => {
     it(`returns valid=false for "${url}"`, () => {
       const res = validateShadowsocksUrl(url);
       expect(res.valid).toBe(false);
+    });
+  });
+
+  describe.each(unicodeCredUrls)('Non-ASCII credential: %s', (_desc, url) => {
+    it(`returns valid=true for "${url}"`, () => {
+      const res = validateShadowsocksUrl(url);
+      expect(res.valid).toBe(true);
     });
   });
 

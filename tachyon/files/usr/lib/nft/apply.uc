@@ -2813,6 +2813,59 @@ function nft_add_section_source_matchers(section, table, chunk_size_text) {
     return nft_add_csv_chunks_to_family_sets(source_values, table, sets.sources, sets.sources6, "ips", "", chunk_size_text);
 }
 
+// Loads cached community subnet files into nftables. The files are produced by
+// the list update and persisted, so this has to work on a reload where /tmp is
+// empty and only the /etc copy exists.
+//
+// This used to live inside the section_needs_priority_sets() branch. That made
+// community subnets depend on an unrelated condition: a section with
+// community_lists but no ip/port/dscp/source matcher loaded none at all, so the
+// rules referenced a set that stayed empty - and nothing was logged, which is
+// how it reached a user's router as an unexplained empty set. Per-section sets
+// are used when they exist, the shared sets otherwise, exactly like
+// nft_add_community_subnet_file_for_section() does further down.
+function nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set) {
+    if (!bool_option(section, "community_subnets", true))
+        return true;
+
+    let priority = section_needs_priority_sets(section) ? section_priority_sets(section) : null;
+    let v4_set = priority ? priority.subnets : default_arg(common_set, "tachyon_subnets");
+    let v6_set = priority ? priority.subnets6 : default_arg(common6_set, "tachyon_subnets6");
+    let ports_v4 = priority ? priority.ip_ports : ip_port_set;
+    let ports_v6 = priority ? priority.ip_ports6 : ip_port6_set;
+
+    for (let community in connections.community_lists(section)) {
+        let service = as_string(community);
+        if (service == "") continue;
+
+        let candidates = [
+            "/tmp/sing-box/rulesets/community-subnets-" + service + ".lst",
+            "/etc/tachyon/rulesets/community-subnets-" + service + ".lst"
+        ];
+
+        let loaded = false;
+        for (let path in candidates) {
+            if (helpers.file_is_usable(path, 50)) {
+                nft_add_community_subnet_file_to_family_sets(
+                    path, table, v4_set, v6_set, service, "5000", ports_v4, ports_v6);
+                loaded = true;
+                break;
+            }
+        }
+
+        // Out loud, because the failure mode is invisible: the section still
+        // applies cleanly, its rules still point at the set, and only the
+        // routing quietly stops matching anything.
+        if (!loaded)
+            log_warn("community subnets for " + service +
+                " unavailable (no usable " + candidates[0] +
+                " or " + candidates[1] +
+                "); section " + as_string(section[".name"]) +
+                " gets an empty set until the list update runs");
+    }
+    return true;
+}
+
 function nft_populate_runtime_set_for_section(section, deferred_sections, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, mangle_chain_context, inserted_fully_routed_ips, common6_set, ip_port6_set, localv6_set) {
     if (!bool_option(section, "enabled", true))
         return true;
@@ -2837,24 +2890,9 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
             !nft_add_set_elements(table, sets.ports, ports))
             return false;
 
-        // Load cached community subnet files into nftables (populated at list-update and persisted)
-        // Note: call nft_add_file_chunks_to_family_sets directly because ucode does not hoist
-        // function declarations, and nft_add_subnet_file_for_section is defined below this function.
-        if (bool_option(section, "community_subnets", true)) {
-            for (let community in connections.community_lists(section)) {
-                let service = as_string(community);
-                let cached_paths = [
-                    "/tmp/sing-box/rulesets/community-subnets-" + service + ".lst",
-                    "/etc/tachyon/rulesets/community-subnets-" + service + ".lst"
-                ];
-                for (let path in cached_paths) {
-                    if (helpers.file_is_usable(path, 50)) {
-                        nft_add_community_subnet_file_to_family_sets(path, table, sets.subnets, sets.subnets6, service, "5000", sets.ip_ports, sets.ip6_ports);
-                        break;
-                    }
-                }
-            }
-        }
+        // Community subnets are not loaded here. This branch only runs for
+        // sections that have priority matchers; they are loaded
+        // unconditionally by nft_load_community_subnets() further down.
 
         // Load subnets from domain_ip_lists into nftables (local files and compiled rulesets)
         let sec_name = as_string(section[".name"]);
@@ -2970,6 +3008,10 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
         }
     }
 
+
+    // Outside the priority branch on purpose: community subnets must not
+    // depend on whether the section happens to have priority matchers.
+    nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set);
     for (let source_ip in list_option(section, "fully_routed_ips"))
         if (!nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface_set, localv4_set, localv6_set, mark, nft_mangle_chain_text(mangle_chain_context, table), inserted_fully_routed_ips))
             return false;
