@@ -52,6 +52,11 @@ if (mode == "sing-box-service-runtime-pid") {
     print("3285\n");
     exit(0);
 }
+if (mode == "sighup-sing-box-runtime") {
+    // By default, simulate a successful SIGHUP reload. Tests that need
+    // a failing SIGHUP set FAKE_SIGHUP_FAILS=1.
+    exit((getenv("FAKE_SIGHUP_FAILS") == "1") ? 1 : 0);
+}
 if (mode == "acquire-runtime-dir-lock" ||
     mode == "acquire-runtime-dir-lock-wait" ||
     mode == "release-runtime-dir-lock" ||
@@ -132,6 +137,8 @@ run_update "1 0 0 0" "$updated_log"
 node - "$updated_log" <<'JS'
 const fs = require("fs");
 const calls = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n+/);
+
+// Happy path: SIGHUP succeeds, so reload-sing-box-runtime is NOT called.
 const expected = [
   "subscription/cache:update-request",
   "server/service:prepare-all-defaults",
@@ -141,7 +148,7 @@ const expected = [
   "singbox/dns_failover:stop-runtime",
   "singbox/runtime:init-config:0:1:1",
   "singbox/priority:stop-runtime",
-  "service/state:reload-sing-box-runtime",
+  "service/state:sighup-sing-box-runtime",
   "singbox/priority:start-runtime",
   "singbox/dns_failover:start-runtime",
   "service/state:write-current-reload-state-clean",
@@ -158,7 +165,43 @@ for (const item of expected) {
   }
   position = next;
 }
+
+// reload-sing-box-runtime must NOT be called when SIGHUP succeeds.
+if (calls.includes("service/state:reload-sing-box-runtime")) {
+  console.error("reload-sing-box-runtime must not be called when SIGHUP reload succeeds");
+  process.exit(1);
+}
 JS
+
+# --- SIGHUP-fails fallback test ---
+sighup_fail_log="$WORK_DIR/sighup_fail.log"
+FAKE_SIGHUP_FAILS=1 \
+  env \
+    TACHYON_LIB="$FAKE_LIB" \
+    TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/run" \
+    TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/subscription-update.lock" \
+    TACHYON_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock" \
+    TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/run/subscription-update" \
+    TACHYON_SUBSCRIPTION_UPDATE_JOB_DIR="$WORK_DIR/run/subscription-update-jobs" \
+    TACHYON_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/run/subscription-links" \
+    TACHYON_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/run/subscription-metadata" \
+    TACHYON_OUTBOUND_METADATA_DIR="$WORK_DIR/run/outbound-metadata" \
+    TACHYON_SECTION_CACHE_DIR="$WORK_DIR/run/section-cache" \
+    TACHYON_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/run/cache-format" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent/subscription-cache" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/persistent/subscription-cache/cache-format" \
+    TACHYON_PENDING_RELOAD_FILE="$WORK_DIR/run/reload.pending" \
+    TACHYON_RELOAD_STATE_FILE="$WORK_DIR/run/reload-state" \
+    TACHYON_RULE_CONDITION_CACHE_DIR="$WORK_DIR/run/rule-condition-cache" \
+    FAKE_CALL_LOG="$sighup_fail_log" \
+    FAKE_SUBSCRIPTION_UPDATE_SUMMARY="1 0 0 0" \
+    ucode -L "$REAL_LIB" "$UPDATES_UC" subscription-update-if-due
+
+# When SIGHUP fails, reload_sing_box_runtime must be called as the fallback.
+grep -Fq 'service/state:sighup-sing-box-runtime' "$sighup_fail_log" ||
+  fail "sighup-sing-box-runtime must be attempted even when FAKE_SIGHUP_FAILS=1"
+grep -Fq 'service/state:reload-sing-box-runtime' "$sighup_fail_log" ||
+  fail "reload-sing-box-runtime (restart fallback) must be called when SIGHUP fails"
 
 unchanged_log="$WORK_DIR/unchanged.log"
 run_update "0 0 1 0" "$unchanged_log"

@@ -2786,16 +2786,7 @@ function check_section_failover() {
     command_status("/usr/bin/tachyon failover_check >/dev/null 2>&1");
 }
 
-    function perform_slow_checks() {
-        controller.probe_slow(current_ctx);
-        safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
-        safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
-        safe_call(check_telegram_worker, "check_telegram_worker");
-        safe_call(check_tailscale_worker, "check_tailscale_worker");
-        safe_call(check_section_failover, "check_section_failover");
-        safe_call(reap_dead_jobs, "reap_dead_jobs");
-    }
-    // A background worker that was killed never reports its own failure, so
+// A background worker that was killed never reports its own failure, so
 // nothing else moves its job out of running: the operation shows as running
 // forever and the compensations queued for it never run. The job engine knows
 // how to spot this - it records pid, starttime and boot_id precisely so a
@@ -2807,6 +2798,16 @@ function reap_dead_jobs() {
     let removed = jobs.gc();
     if (removed > 0)
         log_message(sprintf("Reaped %d stale job state file(s)", removed), "info");
+}
+
+function perform_slow_checks() {
+    controller.probe_slow(current_ctx);
+    safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
+    safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
+    safe_call(check_telegram_worker, "check_telegram_worker");
+    safe_call(check_tailscale_worker, "check_tailscale_worker");
+    safe_call(check_section_failover, "check_section_failover");
+    safe_call(reap_dead_jobs, "reap_dead_jobs");
 }
 
 let last_keepalive_write = 0;

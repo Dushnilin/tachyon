@@ -455,6 +455,41 @@ function hup_sing_box_runtime() {
         exit(1);
 }
 
+// Send SIGHUP to the running sing-box process and wait for it to stay alive.
+// sing-box 1.10+ reloads its configuration in-place on SIGHUP without tearing
+// down the process, so existing TCP sessions are not disrupted.
+// Returns true if the process accepted the reload and is still healthy;
+// returns false if the process died or was unreachable (caller should restart).
+function try_sighup_reload(pid) {
+    pid = int(pid || 0);
+    if (pid <= 0 || !pid_is_sing_box(pid))
+        return false;
+
+    // Send SIGHUP; ignore the kill exit code — the process may have just
+    // finished a reload and the transient exit-code is unreliable.
+    command_success_from_args([ "kill", "-HUP", as_string(pid) ]);
+
+    // Give sing-box up to 5 s to ingest the new config.  We poll every 500 ms.
+    let deadline = 10;
+    while (deadline > 0) {
+        command_success_from_args([ "sleep", "0.5" ]);
+        deadline--;
+        let current_pid = sing_box_service_pid_runtime();
+        if (current_pid <= 0)
+            return false;   // process died — caller must restart
+        if (current_pid == pid)
+            return true;    // still alive, reload succeeded
+        // PID changed: procd replaced the process (e.g. MTProxy restart path);
+        // treat as success since something is running.
+        if (pid_is_sing_box(current_pid))
+            return true;
+    }
+
+    // Timed out: verify at least that a sing-box is still up.
+    let final_pid = sing_box_service_pid_runtime();
+    return final_pid > 0 && pid_is_sing_box(final_pid);
+}
+
 function process_start_ticks(stat) {
     return process_identity.process_start_ticks(stat);
 }
@@ -615,7 +650,18 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
         return;
     }
 
+    // Try graceful SIGHUP reload first: sing-box 1.10+ reloads config in-place
+    // without terminating the process, so active TCP sessions are preserved.
     let active_pid = sing_box_service_pid_runtime();
+    if (active_pid > 0) {
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading sing-box runtime via SIGHUP (graceful)" ]);
+        if (try_sighup_reload(active_pid)) {
+            command_success_from_args([ "logger", "-t", "tachyon", "[info] sing-box graceful reload succeeded" ]);
+            return;
+        }
+        command_success_from_args([ "logger", "-t", "tachyon", "[warn] sing-box SIGHUP reload failed; falling back to full restart" ]);
+    }
+
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Restarting sing-box runtime" ]);
     if (!command_success_from_args([ "/etc/init.d/sing-box", "restart" ])) {
         command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart sing-box. Aborted." ]);
@@ -2192,6 +2238,8 @@ else if (mode == "release-runtime-dir-lock")
     release_runtime_dir_lock(ARGV[1]);
 else if (mode == "reload-sing-box-runtime")
     reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+else if (mode == "sighup-sing-box-runtime")
+    exit(try_sighup_reload(ARGV[1]) ? 0 : 1);
 else if (mode == "hup-sing-box-runtime")
     hup_sing_box_runtime();
 else if (mode == "clear-reload-state")
