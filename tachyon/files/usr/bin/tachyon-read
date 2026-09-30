@@ -1,0 +1,193 @@
+#!/usr/bin/ucode --
+
+// Read-only entry point for the tachyon command surface.
+//
+// rpcd grants file permissions by path and never inspects arguments, so a session
+// holding only the read role could run every subcommand of /usr/bin/tachyon, including
+// emergency_reset and component_install_version. A binary cannot tell the roles apart: a
+// trimmed LuCI session is the same uid with a smaller ACL and leaves nothing in the
+// environment to detect. The split has to be in the file name, which is what this is.
+//
+// Standalone ucode on purpose, same as /usr/bin/tachyon: ucode resolves modules only
+// with -L and a shebang cannot supply it, so the table below is a copy. tests/shell_inventory.sh
+// forbids turning the main binary into a shell loader for the same reason. The copy is
+// generated from /usr/bin/tachyon and tests/tachyon_acl_role_split.sh fails on drift.
+//
+// Run convention matches /usr/bin/tachyon: ucode -L <lib> -- <module> <fn> [args...]
+
+let fs = require("fs");
+
+function as_string(value) { return value == null ? "" : "" + value; }
+
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+
+// Only read commands appear here. A write command is not merely refused, it is absent,
+// so there is no spec to fall back to.
+let commands = {
+    list_update_status: [ "components/updates.uc", "list-update-status", 0 ],
+    subscription_update_status: [ "components/updates.uc", "subscription-update-status", 1 ],
+    check_proxy: [ "diagnostics/runtime.uc", "check-proxy", 0 ],
+    check_nft: [ "diagnostics/runtime.uc", "check-nft", 0 ],
+    check_nft_rules: [ "diagnostics/runtime.uc", "check-nft-rules", 0 ],
+    check_sing_box: [ "diagnostics/runtime.uc", "check-sing-box", 0 ],
+    check_steer: [ "diagnostics/runtime.uc", "check-steer", 0 ],
+    check_inbounds_config: [ "diagnostics/runtime.uc", "check-inbounds-config", 0 ],
+    check_inbounds: [ "diagnostics/runtime.uc", "check-inbounds", 0 ],
+    check_logs: [ "diagnostics/runtime.uc", "check-logs", 0 ],
+    check_sing_box_logs: [ "diagnostics/runtime.uc", "check-sing-box-logs", 0 ],
+    check_fakeip: [ "diagnostics/runtime.uc", "check-fakeip", 0 ],
+    check_zapret_runtime: [ "diagnostics/runtime.uc", "check-zapret-runtime", 0 ],
+    check_zapret2_runtime: [ "diagnostics/runtime.uc", "check-zapret2-runtime", 0 ],
+    check_byedpi_runtime: [ "diagnostics/runtime.uc", "check-byedpi-runtime", 0 ],
+    check_tor_runtime: [ "diagnostics/runtime.uc", "check-tor-runtime", 0 ],
+    clash_api: [ "diagnostics/runtime.uc", "clash-api", 4 ],
+    show_config: [ "diagnostics/runtime.uc", "show-config", 1 ],
+    show_version: [ "diagnostics/runtime.uc", "show-version", 0 ],
+    show_sing_box_config: [ "diagnostics/runtime.uc", "show-sing-box-config", 1 ],
+    show_sing_box_version: [ "diagnostics/runtime.uc", "show-sing-box-version", 0 ],
+    get_status: [ "diagnostics/runtime.uc", "get-status", 0 ],
+    get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
+    get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
+    get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],
+    get_engine_status: [ "diagnostics/runtime.uc", "get-engine-status", 0 ],
+    get_zapret_status: [ "diagnostics/runtime.uc", "get-zapret-status", 0 ],
+    get_zapret2_status: [ "diagnostics/runtime.uc", "get-zapret2-status", 0 ],
+    get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],
+    get_wdtt_status: [ "diagnostics/runtime.uc", "get-wdtt-status", 0 ],
+    get_olcrtc_status: [ "diagnostics/runtime.uc", "get-olcrtc-status", 0 ],
+    get_fptn_status: [ "diagnostics/runtime.uc", "get-fptn-status", 0 ],
+    get_tailscale_status: [ "diagnostics/runtime.uc", "get-tailscale-status", 0 ],
+    get_tailscale_peers: [ "diagnostics/runtime.uc", "get-tailscale-peers", 0 ],
+    failover_check: [ "service/failover.uc", "check", 0 ],
+    get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ],
+    get_server_capabilities: [ "diagnostics/runtime.uc", "get-server-capabilities", 0 ],
+    get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
+    get_ui_state: [ "service/ui.uc", "get-ui-state", 0 ],
+    service_action_status: [ "service/ui.uc", "service-action-status", 1 ],
+    latency_test_status: [ "service/ui.uc", "latency-test-status", 1 ],
+    get_tls_certificate_sha256: [ "server/service.uc", "tls-certificate-sha256", 1 ],
+    component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
+    component_action_log: [ "components/updates.uc", "component-action-log", 2 ],
+    hosts_list_status: [ "components/hosts.uc", "list-status", 0 ],
+    extract_ruleset: [ "diagnostics/runtime.uc", "extract-ruleset", 1 ],
+    check_dns_available: [ "diagnostics/runtime.uc", "check-dns-available", 0 ],
+    global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
+    service_health_check: [ "diagnostics/runtime.uc", "service-health-check", 2 ],
+    doctor: [ "diagnostics/runtime.uc", "doctor", 1 ],
+    ai_doctor: [ "diagnostics/runtime.uc", "ai-doctor", 1 ],
+    lan_clients: [ "diagnostics/runtime.uc", "lan-clients", 0 ],
+    diagnose_json: [ "diagnostics/runtime.uc", "diagnose-json", 0 ],
+    watchdog: [ "service/watchdog.uc", "", 1 ],
+    ai_status: [ "service/watchdog.uc", "ai-status", 0 ],
+    telegram_status: [ "service/telegram.uc", "status", 0 ],
+    telegram_diagnose: [ "service/telegram.uc", "diagnose", 0 ],
+    validate_nfqws_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws-strategy-json", 1 ],
+    validate_nfqws2_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws2-strategy-json", 1 ],
+    validate_byedpi_strategy_json: [ "diagnostics/runtime.uc", "validate-byedpi-strategy-json", 1 ],
+    leak_check: [ "diagnostics/leak_check.uc", "leak-check", 2 ],
+    check_ip_leak: [ "diagnostics/leak_check.uc", "ip-leak", 0 ],
+    check_dns_leak: [ "diagnostics/leak_check.uc", "dns-leak", 0 ],
+    fuzzer_status: [ "diagnostics/fuzzer.uc", "status", 0 ],
+    fuzzer_strategies: [ "diagnostics/fuzzer.uc", "strategies", 1 ],
+    fuzzer_get_patterns: [ "diagnostics/fuzzer.uc", "get_patterns", 0 ],
+    fuzzer_history: [ "diagnostics/fuzzer.uc", "history", 1 ],
+    fuzzer_presets_info: [ "diagnostics/fuzzer.uc", "presets_info", 0 ],
+    engine_info: [ "service/engine_runtime.uc", "engine-info", 0 ],
+    engine_features: [ "service/engine_runtime.uc", "engine-features", 0 ],
+    engine_plan: [ "service/engine_runtime.uc", "engine-plan", 1 ],
+    engine_status: [ "service/engine_runtime.uc", "engine-status", 0 ],
+    engine_diag: [ "service/engine_runtime.uc", "engine-diag", 0 ],
+    engine_explain: [ "service/engine_runtime.uc", "engine-explain", 1 ],
+    snapshot_list: [ "service/snapshot.uc", "snapshot-list", 0 ],
+    dns_benchmark: [ "dns/benchmark.uc", "benchmark", 1 ],
+    dns_benchmark_status: [ "dns/benchmark.uc", "benchmark_status", 0 ],
+    resolve_domain: [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
+    "resolve-domain": [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
+    reconcile_status: [ "service/reconciler.uc", "status", 0 ],
+    escalation_status: [ "service/watchdog.uc", "escalation-status", 0 ],
+    emergency_status: [ "service/watchdog.uc", "emergency-status", 0 ],
+    route_explain: [ "diagnostics/route_explain.uc", "explain", 4 ],
+    "route-explain": [ "diagnostics/route_explain.uc", "explain", 4 ],
+    config_plan: [ "service/config_plan.uc", "plan", 2 ],
+    "config-plan": [ "service/config_plan.uc", "plan", 2 ],
+    config_validate: [ "service/config_plan.uc", "validate", 1 ],
+    "config-validate": [ "service/config_plan.uc", "validate", 1 ],
+    known_good: [ "service/known_good.uc", "status", 2 ],
+    "known-good": [ "service/known_good.uc", "status", 2 ],
+    known_good_status: [ "service/known_good.uc", "status", 2 ],
+    "known-good-status": [ "service/known_good.uc", "status", 2 ],
+    known_good_check: [ "service/known_good.uc", "check", 0 ],
+    "known-good-check": [ "service/known_good.uc", "check", 0 ],
+    support_bundle: [ "service/support_bundle.uc", "create", 3 ],
+    "support-bundle": [ "service/support_bundle.uc", "create", 3 ],
+    job_list: [ "core/jobs.uc", "list", 0 ],
+    "job-list": [ "core/jobs.uc", "list", 0 ],
+    job_query: [ "core/jobs.uc", "query", 1 ],
+    "job-query": [ "core/jobs.uc", "query", 1 ],
+    event_query: [ "core/events.uc", "query", 0 ],
+    "event-query": [ "core/events.uc", "query", 0 ],
+    event_tail: [ "core/events.uc", "tail", 0 ],
+    "event-tail": [ "core/events.uc", "tail", 0 ],
+    event_stats: [ "core/events.uc", "stats", 0 ],
+    "event-stats": [ "core/events.uc", "stats", 0 ],
+    server_stats: [ "diagnostics/server_stats.uc", "summary", 0 ],
+    "server-stats": [ "diagnostics/server_stats.uc", "summary", 0 ],
+    server_probe: [ "diagnostics/server_stats.uc", "probe", 2 ],
+    "server-probe": [ "diagnostics/server_stats.uc", "probe", 2 ],
+    server_probe_all: [ "diagnostics/server_stats.uc", "probe_all", 2 ],
+    "server-probe-all": [ "diagnostics/server_stats.uc", "probe_all", 2 ],
+    server_best: [ "diagnostics/server_stats.uc", "best", 2 ],
+    "server-best": [ "diagnostics/server_stats.uc", "best", 2 ],
+    server_query: [ "diagnostics/server_stats.uc", "query", 1 ],
+    "server-query": [ "diagnostics/server_stats.uc", "query", 1 ],
+    stability_report: [ "diagnostics/stability.uc", "report", 0 ],
+    "stability-report": [ "diagnostics/stability.uc", "report", 0 ],
+    stability_status: [ "diagnostics/stability.uc", "status", 0 ],
+    "stability-status": [ "diagnostics/stability.uc", "status", 0 ]
+};
+
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
+
+function normalize_status(status) {
+    status = int(status);
+    if (status == -1) return 255;
+    let signal = status & 127;
+    if (signal != 0) return 128 + signal;
+    return (status >> 8) & 255;
+}
+
+function module_path(path) { return LIB_DIR + "/" + as_string(path); }
+
+let start_idx = 0;
+while (start_idx < length(ARGV) && trim(as_string(ARGV[start_idx])) == "") start_idx++;
+let command = as_string(ARGV[start_idx]);
+let user_args = [];
+for (let i = start_idx + 1; i < length(ARGV); i++) push(user_args, as_string(ARGV[i]));
+
+if (command == "") { warn("tachyon-read: a command is required\n"); exit(1); }
+
+let spec = commands[command];
+if (spec == null) {
+    warn("tachyon: '" + command + "' needs the write role\n");
+    exit(1);
+}
+
+let module = module_path(spec[0]);
+if (fs.stat(module) == null) { warn("Error: required file '" + module + "' is missing\n"); exit(1); }
+
+let args = [ "ucode", "-L", LIB_DIR, "--", module, as_string(spec[1]) ];
+let count = int(spec[2] || 0);
+for (let i = 0; i < count; i++) push(args, user_args[i] || "");
+for (let i = count; i < length(user_args); i++) push(args, user_args[i]);
+
+exit(normalize_status(system(command_from_args(args))));

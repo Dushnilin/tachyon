@@ -155,6 +155,13 @@ fi
 
 /usr/bin/tachyon package_postinst
 
+# The rpcd ACL for this binary ships here rather than in luci-app-tachyon, so
+# the policy and the executable it governs are installed in the same package and
+# cannot be updated apart. rpcd caches ACLs, so without this reload the new
+# policy stays inert until rpcd restarts -- and if the new policy is stricter
+# than the running one, the UI is broken until then.
+[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
+
 # Harden config: telegram bot_token must not be world-readable
 chmod 600 /etc/config/tachyon
 chown root:root /etc/config/tachyon
@@ -215,6 +222,8 @@ define Package/tachyon/install
 
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/tachyon $(1)/usr/bin/tachyon
+	# Read-only entry point for the LuCI read role; see tests/tachyon_acl_role_split.sh.
+	$(INSTALL_BIN) ./files/usr/bin/tachyon-read $(1)/usr/bin/tachyon-read
 
 	$(INSTALL_DIR) $(1)/usr/lib/tachyon
 	$(CP) ./files/usr/lib/. $(1)/usr/lib/tachyon/
@@ -240,6 +249,11 @@ define Package/tachyon/install
 
 	# Curated DPI bypass strategy presets (zapret4rocket / homeproxy-hiddify / Tachyon)
 	$(INSTALL_DATA) ./files/usr/share/tachyon/dpi-presets.json $(1)/usr/share/tachyon/dpi-presets.json
+	# rpcd ACL for /usr/bin/tachyon and /usr/bin/tachyon-read. Owned by this
+	# package, not by luci-app-tachyon: the read role must reach only the
+	# read-only entry point, and the two files have to arrive together.
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ./files/usr/share/rpcd/acl.d/luci-app-tachyon.json $(1)/usr/share/rpcd/acl.d/luci-app-tachyon.json
 	$(INSTALL_BIN) ./files/usr/sbin/steer-nfqws $(1)/usr/share/tachyon/steer-nfqws
 
 	# Zapret handler supervisor: steer 1.5.x init scripts do not spawn the
