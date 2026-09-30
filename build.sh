@@ -16,7 +16,7 @@ if [[ "$DEFAULT_BUILD_HOME" == "/root" ]]; then
   DEFAULT_BUILD_HOME="${DEFAULT_BUILD_HOME:-/root}"
 fi
 
-if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if [ "${BASH_SOURCE[0]}" = "$0" ] && [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Expected release version in the form x.y.z" >&2
   exit 1
 fi
@@ -1389,4 +1389,11 @@ main() {
   print_summary "$output_dir"
 }
 
-main "$@"
+# Sourced so tests can call build_backend_root and inspect the staged package
+# tree without paying for the SDK, the frontend build and the archives. The
+# release artifacts are assembled here, and the package contents were once wrong
+# in three ways that no source-level test could see, so the staged tree itself
+# is the thing worth asserting on.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
