@@ -7,6 +7,10 @@ Tachyon provides a dual-layer AI and autonomous resilience stack:
 2. **Cognitive Layer (AI Doctor v2.5)**: Deep diagnostics powered by LLMs (OpenAI, Anthropic Claude, DeepSeek, or local Ollama/OpenRouter models) with contextual prompt enrichment and automated Multi-Fix generation.
 3. **Agent Integration Layer (HTTP REST Agent API & OpenAPI 3.0)**: Programmatic interface for autonomous AI agents (Cursor, Claude Code, AutoGPT, ChatGPT Custom GPTs, N8N, Dify).
 
+### Smart Detect modes
+
+Smart Detect remains a local watchdog function, independent of LLM/RAG. Its `smart_detect_mode` setting selects **Default** (upstream logs/HEAD/120-second confirmation) or opt-in **Plus** (stalled LAN web connections, full GET comparison and PSL main-domain rules). Missing/unknown values use Default. Both preserve the upstream DNS/runtime guard and learned domains. See [Smart Detect modes](../SMART_DETECT.md) for routing behavior, limits and verification.
+
 ---
 
 ## 2. AI Doctor Architecture (v2.5)

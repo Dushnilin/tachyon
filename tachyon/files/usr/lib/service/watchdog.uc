@@ -8,6 +8,7 @@ let connections = require("config.connections");
 let events = require("core.events");
 let event_controller = require("service.event_controller");
 let smart_detect = require("service.smart_detect");
+let smart_plus = require("service.smart_detect_plus");
 
 let reconciler = null;
 try {
@@ -291,7 +292,74 @@ function smart_detect_add_domain(sec_name, domain) {
 // confirmed N domains restarted sing-box N times, and every restart drops live
 // connections on the router. Returns what was actually written, so the caller
 // only reports domains that really landed.
+let smart_plus_reload_pending = false;
+function smart_detect_apply_plus_domains(entries) {
+    let c = uci_core.cursor();
+    if (!c || !length(entries)) return [];
+    c.unload(CONFIG_NAME);
+    c.load(CONFIG_NAME);
+    if (length(c.changes(CONFIG_NAME) || {})) {
+        log_message("Smart Detect Plus: waiting for pending UCI changes", "debug");
+        return [];
+    }
+    // Settings may have changed while synchronous probes were running.
+    if (!smart_plus.capture_enabled(c.get_all(CONFIG_NAME, "settings"))) return [];
+    let written = [];
+    let added = [];
+    let dirty = false;
+    let per_section = {};
+    for (let entry in entries) {
+        let sec = c.get_all(CONFIG_NAME, entry.section);
+        if (!sec) continue;
+        let values = per_section[entry.section] || smart_plus.domain_values(
+            [ ...(type(sec.user_domains) == "array" ? sec.user_domains : [sec.user_domains]), sec.user_domains_text ]);
+        let already = false;
+        for (let d in values)
+            if (smart_plus.normalize_domain(d) == entry.domain) already = true;
+        if (!already) {
+            push(values, entry.domain);
+            push(added, entry);
+        }
+        per_section[entry.section] = values;
+        push(written, entry);
+    }
+    if (!length(written)) return [];
+    for (let name in keys(per_section)) {
+        let sec = c.get_all(CONFIG_NAME, name);
+        if (sprintf("%J", sec.user_domains) == sprintf("%J", per_section[name]) &&
+            sec.user_domains_text == null) continue;
+        if (!c.set(CONFIG_NAME, name, "user_domains", per_section[name])) {
+            c.unload(CONFIG_NAME);
+            return [];
+        }
+        c.delete(CONFIG_NAME, name, "user_domains_text");
+        dirty = true;
+    }
+    if (dirty) {
+        if (!c.commit(CONFIG_NAME)) { c.unload(CONFIG_NAME); return []; }
+        smart_plus_reload_pending = true;
+    }
+    if (smart_plus_reload_pending && smart_detect.probe_status(["/usr/bin/tachyon", "reload"]) != 0) {
+        log_message("Smart Detect Plus: domains saved but reload failed; will retry", "err");
+        return [];
+    }
+    smart_plus_reload_pending = false;
+    for (let entry in added)
+        log_message("Smart Detect Plus: " + entry.domain + " → " + entry.section, "info");
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (length(added) && tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+        let lines = [];
+        for (let entry in added)
+            push(lines, "🔍 *Smart Detect*: `" + (entry.source_domain || entry.domain) +
+                "` недоступен напрямую, работает через прокси.\nДомен `" + entry.domain +
+                "` добавлен в секцию *" + entry.section + "*.");
+        send_telegram_notification(join("\n\n", lines));
+    }
+    return written;
+}
+
 function smart_detect_apply_domains(entries) {
+    if (smart_plus.mode(settings()) == "plus") return smart_detect_apply_plus_domains(entries);
     let c = uci_core.cursor();
     if (!c || length(entries) == 0) return [];
     c.load(CONFIG_NAME);
@@ -469,6 +537,9 @@ let last_oom_recovery_time = 0;
 let last_restart_time = 0;
 let last_reload_time = 0;
 let pending_smart_domains = {};
+let pending_smart_plus = {};
+let smart_plus_last_run = 0;
+let smart_mode_last = null;
 let smart_detect_last_run = 0;
 const PENDING_SMART_DOMAINS_MAX = 500;
 const PENDING_SMART_DOMAINS_TTL = 300;
@@ -1895,11 +1966,75 @@ function smart_detect_defer(domain, queued, seen, dns_error) {
     }
 }
 
+// Plus uses a separate queue/seen file so Default keeps its upstream cooldown.
+function smart_detect_process_plus(cfg) {
+    let now = time();
+    if (now - smart_plus_last_run < 10) return;
+    let before_dns = smart_detect_observe_dns();
+    if (!before_dns.ready) return;
+    let path = "/etc/tachyon/smart_detect_plus_seen.json";
+    let seen = common.read_json_file(path) || {};
+    for (let domain in keys(seen))
+        if (seen[domain] < now - 300) delete seen[domain];
+    for (let domain in keys(pending_smart_plus)) {
+        if (pending_smart_plus[domain].queued < now - 300 || seen[domain])
+            delete pending_smart_plus[domain];
+    }
+    let domains = smart_plus.queue_order(pending_smart_plus, keys(pending_smart_plus));
+    if (!length(domains)) return;
+    let sections = smart_detect_get_proxy_sections();
+    let raw = cfg.smart_detect_sections;
+    let selected = type(raw) == "array" ? raw : (raw ? [raw] : []);
+    let target = null;
+    for (let name in selected)
+        if (index(sections, name) >= 0) { target = name; break; }
+    if (target == null && length(sections)) target = sections[0];
+    let port = controller.proxy_port();
+    if (target == null || port == "") return;
+    smart_plus_last_run = now;
+    let domain = domains[0];
+    let item = pending_smart_plus[domain];
+    delete pending_smart_plus[domain];
+    let decision;
+    try {
+        decision = smart_plus.probe(domain, item, "127.0.0.1:" + port,
+            smart_detect_direct_curl_argv(), smart_detect.probe_status);
+    } catch (e) {
+        log_message("Smart Detect Plus: failed to probe " + domain + ": " + as_string(e), "err");
+        decision = { defer: true };
+    }
+    // Re-observe after all synchronous curl calls, even when Direct recovered.
+    let after_dns = smart_detect_observe_dns();
+    if (!after_dns.ready || after_dns.signature != before_dns.signature)
+        decision = { defer: true };
+    if (decision.act) {
+        let main = smart_plus.main_domain(domain);
+        if (main == null) decision = { seen: true };
+        else if (!length(smart_detect_apply_domains([{ section: target, domain: main, source_domain: domain }])))
+            decision = { defer: true };
+    }
+    if (decision.defer) {
+        item.queued = time();
+        pending_smart_plus[domain] = item;
+        if (decision.dns_error) {
+            smart_detect_dns_state.changed_at = time();
+            smart_detect_dns_state.ready = false;
+        }
+    } else if (decision.seen) seen[domain] = time();
+    fs.mkdir("/etc/tachyon");
+    fs.writefile(path, sprintf("%J", seen));
+}
+
 function smart_detect_process_pending() {
     let cfg = settings();
     if (cfg.smart_detect != "1") {
+        pending_smart_plus = {};
         pending_smart_domains = {};
         smart_detect_dns_state = {};
+        return;
+    }
+    if (smart_plus.mode(cfg) == "plus") {
+        smart_detect_process_plus(cfg);
         return;
     }
     let dns_observation = smart_detect_observe_dns();
@@ -2108,6 +2243,10 @@ function heal_oom(ev) {
 // smart_detect_process_pending(): probing inside the log handler would block
 // the event loop on curl for every failing connection.
 function collect_smart_detect_candidate(ev) {
+    if (smart_plus.mode(settings()) == "plus") {
+        smart_plus.queue_candidate(pending_smart_plus, ev.payload, time(), PENDING_SMART_DOMAINS_MAX);
+        return;
+    }
     if (length(pending_smart_domains) >= PENDING_SMART_DOMAINS_MAX) return;
     pending_smart_domains[ev.payload.domain] = time();
 }
@@ -2422,6 +2561,24 @@ function worker() {
         }
     }
 
+    function perform_smart_plus_checks() {
+        let cfg = settings();
+        if (smart_plus.mode(cfg) != "plus" && smart_mode_last != "plus") return;
+        current_ctx = current_ctx || controller.create_tick_context();
+        controller.set_tick_context(current_ctx);
+        cfg = current_ctx.settings;
+        let mode = cfg.smart_detect == "1" ? smart_plus.mode(cfg) : "disabled";
+        if (smart_mode_last != null && mode != smart_mode_last) {
+            pending_smart_domains = {};
+            pending_smart_plus = {};
+            smart_detect_streaks = {};
+            smart_plus_last_run = 0;
+        }
+        smart_mode_last = mode;
+        controller.probe_smart_detect(current_ctx);
+        if (mode == "plus") safe_call(smart_detect_process_pending, "smart_detect_plus");
+    }
+
     function perform_normal_checks() {
         controller.probe_normal(current_ctx);
         safe_call(smart_detect_process_pending, "smart_detect_process_pending");
@@ -2684,6 +2841,9 @@ let last_keepalive_write = 0;
                 if (controller.clear_tick_context)
                     controller.clear_tick_context();
                 current_ctx = null;
+                perform_smart_plus_checks();
+                controller.clear_tick_context();
+                current_ctx = null;
             } catch (e) {
                 log_message("Error in tick: " + as_string(e), "err");
             }
@@ -2736,6 +2896,9 @@ let last_keepalive_write = 0;
                 controller.clear_tick_context();
             current_ctx = null;
 
+            perform_smart_plus_checks();
+            controller.clear_tick_context();
+            current_ctx = null;
             sleep(15000);
         }
     }

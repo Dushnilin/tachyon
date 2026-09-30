@@ -1692,6 +1692,17 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle_output", [ "jump", "priority_output_rules" ]))
         return false;
 
+    // Unknown web destinations normally bypass sing-box entirely. Smart Detect
+    // needs their progress counters, while the existing route.final stays Direct.
+    // Keep this after exclusions, local/Tailscale bypass and priority rules, and
+    // never intercept router output (including the independent Direct probes).
+    if (bool_option(uci_settings(), "smart_detect", false) &&
+        option(uci_settings(), "smart_detect_mode", "default") == "plus") {
+        if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]) ||
+            !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]))
+            return false;
+    }
+
     if (tailscale_bypass_active()) {
         if (!nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x00ff0000", "!=", "0", "return" ]) ||
             !nft_add_rule(table, "mangle_output", [ "oifname", "tailscale0", "return" ]) ||
@@ -2663,6 +2674,8 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
     body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
+    if (bool_option(settings, "smart_detect", false) && option(settings, "smart_detect_mode", "default") == "plus")
+        body = signature_add_value(body, "settings.smart_detect_plus", "1");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
     body = signature_add_value(body, "settings.game_console_ips", option(settings, "game_console_ips", ""));
     body = signature_add_value(body, "settings.excluded_clients", option(settings, "excluded_clients", ""));

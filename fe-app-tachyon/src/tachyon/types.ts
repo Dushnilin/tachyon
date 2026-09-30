@@ -482,6 +482,7 @@ export namespace Tachyon {
     excluded_ips?: string | string[];
     user_domains?: string | string[];
     smart_detect?: '0' | '1';
+    smart_detect_mode?: 'default' | 'plus';
     smart_detect_section?: string;
     smart_detect_sections?: string | string[];
     dns_turbo_cache?: '0' | '1';

@@ -22,6 +22,7 @@ let uci_core = require("core.uci");
 let common = require("core.common");
 let helpers = require("core.helpers");
 let smart_detect = require("service.smart_detect");
+let smart_plus = require("service.smart_detect_plus");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
@@ -369,11 +370,31 @@ function remember_trace_host(trace, host) {
 //
 // The netlink/nlbwmon discrimination is preserved: misreading a netlink
 // warning as OOM would shrink GOMEMLIMIT for nothing.
-function classify_log_line(line) {
+let plus_trace_hosts = {};
+function classify_plus_log_line(line) {
+    let trace = smart_detect.parse_trace(line);
+    let candidate = smart_plus.log_candidate(line);
+    let text = lc(as_string(line));
+    let destination = match(text, /(outbound connection to|open connection to) ([a-z0-9.-]+):([0-9]+)/);
+    if (trace && destination) {
+        if (length(plus_trace_hosts) >= 256) plus_trace_hosts = {};
+        plus_trace_hosts[trace] = { domain: destination[2], port: destination[3], at: time() };
+    }
+    for (let key in keys(plus_trace_hosts))
+        if (time() - plus_trace_hosts[key].at > 300) delete plus_trace_hosts[key];
+    if (!candidate && trace && plus_trace_hosts[trace]) {
+        let dest = plus_trace_hosts[trace];
+        candidate = smart_plus.log_candidate(line, dest);
+    }
+    return candidate;
+}
+
+function classify_log_line(line, plus_mode) {
     if (!line || line == "") return [];
 
     // Fast keyword pre-filter: skip 95%+ of irrelevant log lines instantly
     if (index(line, "direct") < 0 && index(line, "DIRECT") < 0 &&
+        (!plus_mode || index(line, "Direct") < 0) &&
         index(line, "memory") < 0 && index(line, "oom") < 0 && index(line, "OOM") < 0 &&
         index(line, "URLTest") < 0 && index(line, "proxy") < 0) {
         return [];
@@ -404,7 +425,11 @@ function classify_log_line(line) {
         if (open_trace != null && open_host != null) remember_trace_host(open_trace, open_host);
     }
 
-    if ((index(line_lower, "direct") >= 0 || index(line_lower, "DIRECT") >= 0) &&
+    if (plus_mode) {
+        let candidate = classify_plus_log_line(line);
+        if (candidate) push(facts, { type: EV.SMARTDETECT_CANDIDATE, payload: candidate });
+    }
+    else if ((index(line_lower, "direct") >= 0 || index(line_lower, "DIRECT") >= 0) &&
         (index(line_lower, "failed") >= 0 || index(line_lower, "timeout") >= 0 ||
          index(line_lower, "reset") >= 0)) {
         // "direct" is the outbound TYPE. A section backed by a local DPI bypass
@@ -450,7 +475,8 @@ function controller(bus, opts) {
         last_oom_time: 0,
         healthy_streak: 0,
         subscription_fail_streak: 0,
-        wan_fail_streak: 0
+        wan_fail_streak: 0,
+        smart_detect_connections: {}
     };
 
     let self = { EV: EV, state: state };
@@ -473,7 +499,7 @@ function controller(bus, opts) {
     self.handle_log_line = function(line) {
         let published = [];
 
-        for (let fact in classify_log_line(line)) {
+        for (let fact in classify_log_line(line, smart_plus.mode(settings()) == "plus")) {
             if (fact.type == EV.OOM_DETECTED) {
                 let now = time();
                 // Ignore replay of the historical log buffer that logread -f
@@ -550,6 +576,8 @@ function controller(bus, opts) {
     // and duplicate pid lookups.
     function create_tick_context() {
         let now = time();
+        let cursor = uci_core.cursor();
+        if (cursor) { cursor.unload(CONFIG_NAME); cursor.load(CONFIG_NAME); }
         let cfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
         let reload = is_reload_in_progress();
         let list_upd = is_list_update_running();
@@ -572,6 +600,46 @@ function controller(bus, opts) {
         };
     }
     self.create_tick_context = create_tick_context;
+    let last_smart_detect_poll = 0;
+    function probe_smart_detect_connections() {
+        let ctx = current_tick_ctx || create_tick_context();
+        if (!smart_plus.capture_enabled(ctx.settings) || ctx.is_paused ||
+            ctx.reload_in_progress || !ctx.singbox_running) {
+            state.smart_detect_connections = {};
+            last_smart_detect_poll = 0;
+            return;
+        }
+        if (ctx.now - last_smart_detect_poll < 5) return;
+        last_smart_detect_poll = ctx.now;
+        let cfg = common.read_json_file("/etc/sing-box/config.json");
+        let api = cfg?.experimental?.clash_api;
+        if (!api?.external_controller) return;
+        let addr = replace(as_string(api.external_controller), /^0\.0\.0\.0:/, "127.0.0.1:");
+        addr = replace(addr, /^\[::\]:/, "[::1]:");
+        let path = "/tmp/tachyon-smart-detect-connections.json";
+        fs.writefile(path, "");
+        fs.chmod(path, 0600);
+        // Pass credentials on stdin, never in the shell command or a log line.
+        let pipe = fs.popen(command_from_args([
+            "curl", "-s", "--max-time", "3", "--max-filesize", "2097152",
+            "--config", "-", "--output", path
+        ]) + " 2>/dev/null", "w");
+        if (!pipe) { fs.unlink(path); return; }
+        pipe.write("url = " + sprintf("%J", "http://" + addr + "/connections") + "\n");
+        if (api.secret)
+            pipe.write("header = " + sprintf("%J", "Authorization: Bearer " + api.secret) + "\n");
+        let status = pipe.close();
+        let data = fs.readfile(path);
+        fs.unlink(path);
+        if (status != 0) return;
+        let snapshot = json(data);
+        if (type(snapshot?.connections) != "array") return;
+        let result = smart_plus.stalled_candidates(state.smart_detect_connections, snapshot.connections, ctx.now);
+        state.smart_detect_connections = result.tracked;
+        for (let domain in keys(result.domains))
+            bus.emit(EV.SMARTDETECT_CANDIDATE, { domain, scheme: result.domains[domain], priority: result.priorities[domain], reason: "download stalled" });
+    }
+
     self.set_tick_context = function(ctx) { current_tick_ctx = ctx; };
     self.clear_tick_context = function() { current_tick_ctx = null; };
 
@@ -1326,6 +1394,12 @@ function controller(bus, opts) {
             log("Probe " + name + " failed: " + as_string(e), "err");
         }
     }
+
+    // ucode closures can only capture locals declared above them.
+    self.probe_smart_detect = function(ctx) {
+        current_tick_ctx = ctx || create_tick_context();
+        run_probe(probe_smart_detect_connections, "smart_detect_connections");
+    };
 
     // ── Push source: ubus firewall.reload ─────────────────────────────────────
     // Declared here, after run_probe and the two probes it drives, because a
