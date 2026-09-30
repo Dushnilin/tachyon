@@ -8,6 +8,7 @@ let uci_core = require("core.uci");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const TACHYON_CONFIG = getenv("TACHYON_CONFIG") || constants.TACHYON_CONFIG || "/etc/config/" + CONFIG_NAME;
+const TACHYON_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const UCI_BACKUP_DIR = "/etc/backup";
 const UCI_BACKUP_PATH = UCI_BACKUP_DIR + "/tachyon_config";
 
@@ -166,7 +167,14 @@ function apply_quick_fix(codes_str) {
             status = (rc == 0);
             msg = status ? "DNS cache cleared and dnsmasq restarted" : "DNS cache clear failed (exit " + rc + ")";
         } else if (c == "update_subscriptions") {
-            let rc = command_status(command_from_args([ "/usr/bin/tachyon", "component_action_async", "update_subscriptions", "update" ]));
+            // Neither the component nor the action exists: the dispatcher in
+            // components/action.uc knows no "update_subscriptions", so the worker
+            // always fell through to action_fail. component_action_async still
+            // exits 0 at launch, so doctor printed "Subscription update
+            // triggered" while the worker logged "Unknown component action".
+            // The exit code stays the right thing to check: a busy lock also
+            // returns 0 at launch, so no output field tells them apart either.
+            let rc = command_status(command_from_args([ TACHYON_BIN, "subscription_update_async" ]));
             status = (rc == 0);
             msg = status ? "Subscription update triggered" : "Subscription update trigger failed (exit " + rc + ")";
         } else if (c == "reset_firewall") {
@@ -222,7 +230,7 @@ function apply_quick_fix(codes_str) {
             status = (rc == 0);
             msg = status ? "AWG MTU discovery executed and tunnels reloaded" : "MTU optimization failed (exit " + rc + ")";
         } else if (c == "upgrade_to_singbox_extended") {
-            let rc = command_status(command_from_args([ "/usr/bin/tachyon", "component_action_async", "sing_box", "install_extended" ]));
+            let rc = command_status(command_from_args([ TACHYON_BIN, "component_action_async", "sing_box", "install_extended" ]));
             status = (rc == 0);
             msg = status ? "Sing-box Extended upgrade initiated" : "Sing-box Extended upgrade trigger failed (exit " + rc + ")";
         } else {
