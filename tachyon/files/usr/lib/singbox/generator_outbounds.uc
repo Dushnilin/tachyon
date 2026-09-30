@@ -1143,6 +1143,12 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     if (show_metadata !== false)
         runtime_subscription.merge_source_metadata(state, section_name, source_section, source_index, source_entry);
     let visibility_refs = subscription_visibility_refs(outbounds);
+    // When urltest groups from subscription are disabled, also drop all outbounds
+    // that are exclusively members of those groups (proxy-N nodes). Without their
+    // parent urltest groups these nodes are unreachable and just clutter the selector.
+    let urltest_member_refs = include_urltest_groups === false
+        ? object_or_empty(object_or_empty(visibility_refs).urltest)
+        : {};
     if (include_urltest_groups === false)
         hide_urltest_group_outbounds = false;
     node_prefix = trim(as_string(node_prefix));
@@ -1156,6 +1162,10 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     for (let i = 0; i < length(outbounds); i++) {
         let outbound = outbounds[i];
         if (include_urltest_groups === false && subscription_urltest_group_outbound(outbound))
+            continue;
+        // Drop nodes that are only reachable through disabled urltest groups
+        let outbound_tag = as_string(outbound.tag || "");
+        if (outbound_tag != "" && urltest_member_refs[outbound_tag])
             continue;
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
         if (keyword_filter != null && !subscription_group_outbound(outbound) && !subscription_keyword_name_passes(keyword_filter, display_name))
