@@ -2706,6 +2706,23 @@ function convert_xray_hysteria2(outbound, tag) {
     if (length(alpn) > 0)
         result.tls.alpn = alpn;
 
+    // Xray keeps the hysteria2 obfuscation out of hysteriaSettings and hangs it
+    // off streamSettings.finalmask instead. Dropping it means the salamander
+    // handshake is never sent, the server discards every QUIC packet and the
+    // node reports as unreachable.
+    let mask_entries = type(object_or_empty(stream.finalmask).udp) == "array"
+        ? stream.finalmask.udp
+        : [];
+    for (let entry in mask_entries) {
+        if (type(entry) != "object" || as_string(entry.type || "") != "salamander")
+            continue;
+        let mask_password = as_string(object_or_empty(entry.settings).password || "");
+        if (mask_password != "") {
+            result.obfs = { type: "salamander", password: mask_password };
+            break;
+        }
+    }
+
     return result;
 }
 
