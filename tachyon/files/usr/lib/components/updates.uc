@@ -2244,62 +2244,55 @@ function download_to_file(url, filepath, proxy_address) {
     let core_url_mod = core_url_module_or_null();
     let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ? core_url_mod.download_candidates(url) : [ url ];
 
-    for (let candidate in candidates) {
-        let attempt = 1;
-        while (attempt <= 2) {
-            let ok = false;
-
-            if (command_exists("curl")) {
-                let curl_args = [ "curl", "--connect-timeout", "5", "-m", "10", "-fsSL" ];
-                if (as_string(proxy_address) != "") {
-                    push(curl_args, "-x", "http://" + as_string(proxy_address));
-                } else {
-                    // Bootstrap DNS: use public resolvers in case Tachyon DNS isn't active yet
-                    // (e.g., during startup before sing-box is running)
-                    curl_push_dns_servers(curl_args);
-                }
-                push(curl_args, candidate);
-                push(curl_args, "-o");
-                push(curl_args, filepath);
-                ok = command_success_from_args(curl_args);
+    // download_one: try url via the given proxy (or direct if proxy=="")
+    function download_one(target_url, proxy_addr) {
+        if (command_exists("curl")) {
+            let curl_args = [ "curl", "--connect-timeout", "5", "-m", "10", "-fsSL" ];
+            if (as_string(proxy_addr) != "") {
+                push(curl_args, "-x", "http://" + as_string(proxy_addr));
             } else {
-                let command = command_from_args([ "wget", "-q", "-T", "10", "-O", filepath, candidate ]);
-                if (as_string(proxy_address) != "")
-                    command = "http_proxy=" + shell_quote("http://" + as_string(proxy_address)) +
-                        " https_proxy=" + shell_quote("http://" + as_string(proxy_address)) + " " + command;
-                ok = command_success(command);
+                // Bootstrap DNS: use public resolvers in case Tachyon DNS isn't
+                // active yet (e.g., during startup before sing-box is running)
+                curl_push_dns_servers(curl_args);
             }
+            push(curl_args, target_url, "-o", filepath);
+            return command_success_from_args(curl_args) && file_nonempty(filepath);
+        } else {
+            let command = command_from_args([ "wget", "-q", "-T", "10", "-O", filepath, target_url ]);
+            if (as_string(proxy_addr) != "")
+                command = "http_proxy=" + shell_quote("http://" + as_string(proxy_addr)) +
+                    " https_proxy=" + shell_quote("http://" + as_string(proxy_addr)) + " " + command;
+            return command_success(command) && file_nonempty(filepath);
+        }
+    }
 
-            if (ok && file_nonempty(filepath)) {
-                if (candidate != url)
-                    log_message("Successfully downloaded " + as_string(url) + " via mirror " + candidate, "info");
-                return true;
-            }
+    for (let i = 0; i < length(candidates); i++) {
+        let candidate = candidates[i];
+        let label = i == 0 ? "" : " via mirror " + candidate;
 
-            attempt++;
+        // 1. Direct — always the first attempt for every candidate
+        if (download_one(candidate, "")) {
+            if (candidate != url)
+                log_message("Successfully downloaded " + as_string(url) + label, "info");
+            return true;
         }
 
-        // If a service proxy was configured but all proxy attempts failed (e.g., the
-        // proxy port was not yet ready after a component update restart), retry once
-        // directly using bootstrap DNS. This prevents a temporarily unavailable proxy
-        // from permanently blocking list updates.
-        if (as_string(proxy_address) != "" && command_exists("curl")) {
-            log_message("Download via service proxy failed for " + as_string(candidate) + "; retrying directly with bootstrap DNS", "warn");
-            let fallback_args = [
-                "curl", "--connect-timeout", "5", "-m", "10", "-fsSL"
-            ];
-            curl_push_dns_servers(fallback_args);
-            push(fallback_args, candidate, "-o", filepath);
-            if (command_success_from_args(fallback_args) && file_nonempty(filepath)) {
+        // 2. Through the configured proxy section — only if direct failed
+        if (as_string(proxy_address) != "") {
+            log_message("Download direct failed for " + as_string(candidate) + "; retrying via proxy section", "warn");
+            if (download_one(candidate, proxy_address)) {
                 if (candidate != url)
-                    log_message("Successfully downloaded " + as_string(url) + " via mirror " + candidate + " (direct, proxy unavailable)", "info");
+                    log_message("Successfully downloaded " + as_string(url) + label + " (via proxy section)", "info");
+                else
+                    log_message("Successfully downloaded " + as_string(url) + " via proxy section", "info");
                 return true;
             }
+            log_message("Download via proxy section also failed for " + as_string(candidate), "warn");
         }
     }
 
     if (file_nonempty(filepath)) {
-        log_message("Failed to download " + as_string(url) + " (tried direct and ghproxy mirrors); keeping existing cached file on disk", "warn");
+        log_message("Failed to download " + as_string(url) + " (tried direct and mirrors); keeping existing cached file on disk", "warn");
         return true;
     }
 

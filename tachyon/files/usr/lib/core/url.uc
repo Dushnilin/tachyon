@@ -289,20 +289,28 @@ function download_candidates(value) {
 
     let candidates = [ value ];
     let is_github = index(value, "github.com") >= 0 ||
+                    index(value, "api.github.com") >= 0 ||
                     index(value, "raw.githubusercontent.com") >= 0 ||
                     index(value, "githubusercontent.com") >= 0;
     let is_http = substr(value, 0, 7) == "http://" || substr(value, 0, 8) == "https://";
 
     if (is_github || is_http) {
         let is_release = index(value, "/releases/") >= 0;
+
+        // jsDelivr CDN works for file blobs but not release binaries
         let jsd = !is_release ? github_to_jsdelivr(value) : "";
         if (jsd != "")
             push(candidates, jsd);
 
+        // Reverse proxies / mirrors — ordered by reliability and speed.
+        // For release downloads all of these work; for raw content only the
+        // gh-proxy family does (jsDelivr already handled above).
         let mirrors = [
             "https://gh-proxy.com/",
             "https://ghproxy.net/",
-            "https://mirror.ghproxy.com/"
+            "https://mirror.ghproxy.com/",
+            "https://ghfast.top/",
+            "https://github.moeyy.xyz/",
         ];
         for (let prefix in mirrors) {
             if (index(value, prefix) != 0)

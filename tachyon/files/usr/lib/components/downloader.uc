@@ -68,41 +68,54 @@ function http_get(url, timeout) {
         return "";
 
     let t = as_string(timeout || "12");
+
+    // 1. Direct (always first — fastest and most reliable when reachable)
+    if (http_get_once(url, output_path, "", t)) {
+        let data = read_file(output_path);
+        remove_file(output_path);
+        return data;
+    }
+    remove_file(output_path);
+
+    // 2. Through configured proxy section (if sing-box is running with one)
     let proxy_address = helpers.service_proxy_address();
     if (proxy_address != "") {
+        helpers.updates_log("HTTP direct failed for " + as_string(url) + "; retrying via proxy section", "warn");
         if (http_get_once(url, output_path, proxy_address, t)) {
             let data = read_file(output_path);
             remove_file(output_path);
             return data;
         }
         remove_file(output_path);
-        helpers.updates_log("HTTP request via service proxy failed for " + as_string(url) + "; retrying directly", "warn");
+        helpers.updates_log("HTTP via proxy section also failed for " + as_string(url), "warn");
     }
 
-    if (http_get_once(url, output_path, "", t)) {
-        let data = read_file(output_path);
-        remove_file(output_path);
-        return data;
-    }
-
-    remove_file(output_path);
     return "";
 }
 
 function download_file_once(url, output_path) {
+    // 1. Direct
+    if (http_get_once(url, output_path, "", "120"))
+        return true;
+    remove_file(output_path);
+
+    // 2. Through configured proxy section
     let proxy_address = helpers.service_proxy_address();
     if (proxy_address != "") {
+        helpers.updates_log("Download direct failed for " + as_string(url) + "; retrying via proxy section", "warn");
         if (http_get_once(url, output_path, proxy_address, "120"))
             return true;
         remove_file(output_path);
-        helpers.updates_log("Download via service proxy failed for " + as_string(url) + "; retrying directly", "warn");
+        helpers.updates_log("Download via proxy section also failed for " + as_string(url), "warn");
     }
-    return http_get_once(url, output_path, "", "120");
+
+    return false;
 }
 
 function download_with_retry(url, output_path, label) {
     let url_mod = core_url_module_or_null();
     let candidates = url_mod && type(url_mod.download_candidates) == "function" ? url_mod.download_candidates(url) : [ url ];
+    let proxy_address = helpers.service_proxy_address();
 
     for (let attempt = 0; attempt < length(candidates); attempt++) {
         let current_url = candidates[attempt];
@@ -112,9 +125,19 @@ function download_with_retry(url, output_path, label) {
             helpers.updates_log("Retrying " + as_string(label) + " via mirror (attempt " + as_string(attempt + 1) + "/" + as_string(length(candidates)) + ")", "warn");
         }
 
-        if (download_file_once(current_url, output_path) && file_nonempty(output_path))
+        // Direct first for every candidate
+        if (http_get_once(current_url, output_path, "", "120") && file_nonempty(output_path))
             return true;
         remove_file(output_path);
+
+        // Then through proxy section if available
+        if (proxy_address != "") {
+            if (http_get_once(current_url, output_path, proxy_address, "120") && file_nonempty(output_path)) {
+                helpers.updates_log("Downloaded " + as_string(label) + " via proxy section (" + current_url + ")");
+                return true;
+            }
+            remove_file(output_path);
+        }
     }
     return false;
 }
@@ -123,15 +146,29 @@ function download_with_retry(url, output_path, label) {
 // GitHub API
 // ============================================================================
 
+// Fetch a URL that is expected to return valid JSON checked by github-response-ok.
+// Priority: direct → proxy section → mirrors from url.uc (gh-proxy etc.)
+function fetch_github_json(url, timeout) {
+    let url_mod = core_url_module_or_null();
+    let candidates = url_mod && type(url_mod.download_candidates) == "function"
+        ? url_mod.download_candidates(url) : [ url ];
+
+    for (let i = 0; i < length(candidates); i++) {
+        let candidate = candidates[i];
+        // http_get already does: direct → section; skip to next mirror on failure
+        let response = http_get(candidate, timeout);
+        if (response != "" && helpers.helper_success_input(response, "github-response-ok", [])) {
+            if (i > 0)
+                helpers.updates_log("Fetched GitHub JSON via mirror: " + candidate);
+            return response;
+        }
+    }
+    return "";
+}
+
 function fetch_github_release_json(owner, repo) {
     let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/latest";
-    let response = http_get(url);
-    if (response == "" || !helpers.helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url);
-        if (response == "" || !helpers.helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return response;
+    return fetch_github_json(url, null);
 }
 
 function fetch_github_release_by_tag_json(owner, repo, tag) {
@@ -139,13 +176,7 @@ function fetch_github_release_by_tag_json(owner, repo, tag) {
     if (tag == "")
         return "";
     let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/tags/" + tag;
-    let response = http_get(url);
-    if (response == "" || !helpers.helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url);
-        if (response == "" || !helpers.helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return response;
+    return fetch_github_json(url, null);
 }
 
 function fetch_github_tag_commit_sha(owner, repo, tag) {
@@ -153,24 +184,13 @@ function fetch_github_tag_commit_sha(owner, repo, tag) {
     if (tag == "")
         return "";
     let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/commits/" + tag;
-    let response = http_get(url);
-    if (response == "" || !helpers.helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url);
-        if (response == "" || !helpers.helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return trim(helpers.helper_output_input(response, "commit-object-sha", []));
+    let response = fetch_github_json(url, null);
+    return response != "" ? trim(helpers.helper_output_input(response, "commit-object-sha", [])) : "";
 }
 
 function fetch_github_releases_json(owner, repo, per_page) {
     let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "10");
-    let response = http_get(url, "8");
-    if (response == "" || !helpers.helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url, "8");
-        if (response == "" || !helpers.helper_success_input(response, "github-response-ok", []))
-            return "";
-    }
-    return response;
+    return fetch_github_json(url, "8");
 }
 
 function fetch_github_release_tag_fallback(owner, repo) {
@@ -255,6 +275,7 @@ function module_exports() {
         http_get,
         download_file_once,
         download_with_retry,
+        fetch_github_json,
         fetch_github_release_json,
         fetch_github_release_by_tag_json,
         fetch_github_tag_commit_sha,
