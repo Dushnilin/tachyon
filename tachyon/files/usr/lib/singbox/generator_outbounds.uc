@@ -1145,6 +1145,24 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     let visibility_refs = subscription_visibility_refs(outbounds);
     if (include_urltest_groups === false)
         hide_urltest_group_outbounds = false;
+    // Decide before the loop whether the members can be dropped at all: only
+    // when at least one outbound that is neither a group nor a member of one
+    // survives. This keeps a section whose rules name the members working, and
+    // still declutters large subscriptions.
+    let urltest_member_tags = include_urltest_groups === false
+        ? (visibility_refs.urltest || {})
+        : {};
+    let survivors = 0;
+    for (let candidate in array_or_empty(outbounds)) {
+        if (type(candidate) != "object")
+            continue;
+        if (subscription_urltest_group_outbound(candidate))
+            continue;
+        let candidate_tag = as_string(candidate.tag || "");
+        if (candidate_tag == "" || !(candidate_tag in urltest_member_tags))
+            survivors++;
+    }
+    let drop_urltest_members = include_urltest_groups === false && survivors > 0;
     node_prefix = trim(as_string(node_prefix));
     let keyword_filter = subscription_keyword_filter(section);
     let prepared = [];
@@ -1156,6 +1174,14 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     for (let i = 0; i < length(outbounds); i++) {
         let outbound = outbounds[i];
         if (include_urltest_groups === false && subscription_urltest_group_outbound(outbound))
+            continue;
+        // A node that only a disabled urltest group pointed at is unreachable
+        // and only clutters the selector, so it is dropped. But "unreachable
+        // through a group" is not "unused": a section whose rules name these
+        // nodes has them as its only outbounds, and dropping them leaves the
+        // section with none, which generation reports as a terminal error. The
+        // filter is therefore applied only while something else survives.
+        if (drop_urltest_members && (as_string(outbound.tag || "") in urltest_member_tags))
             continue;
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
         if (keyword_filter != null && !subscription_group_outbound(outbound) && !subscription_keyword_name_passes(keyword_filter, display_name))
