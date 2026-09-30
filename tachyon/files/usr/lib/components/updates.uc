@@ -2097,7 +2097,7 @@ function trigger_component_auto_update(component, target_version) {
     }
 
     log_message("[auto-update] Initiating automatic update for " + component + (target_version != "" ? " to version " + target_version : ""), "info");
-    let res = component_action_async_job(component, "update");
+    let res = component_action_async_job(component, "install");
     if (!res.success) {
         log_message("[auto-update] Failed to start auto-update for " + component + ": " + res.message, "error");
         return false;

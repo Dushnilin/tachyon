@@ -88,7 +88,7 @@ if (action == "check_update") {
     exit(0);
 }
 
-if (action == "update") {
+if (action == "update" || action == "install") {
     let result = {
         success: true,
         component,

@@ -2878,6 +2878,8 @@ function switch_engine_component(target) {
 function component_action(component, action, extra) {
     component = normalize_component_name(component);
     action = as_string(action);
+    if (action == "update")
+        action = "install";
     if (!acquire_component_lock()) {
         if (action == "check_update") {
             updates_log("Component action lock is busy; skipping background check for " + component, "debug");
