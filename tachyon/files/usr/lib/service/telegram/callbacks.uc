@@ -21,6 +21,10 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 let as_string = common.as_string;
 let option = common.option;
 let bool_option = common.bool_option;
+// Same missing binding as runtime.uc after the split in 57c7e2b0: reachable
+// from handle_switch() below, so choosing a node through the proxy group threw
+// instead of persisting the choice.
+let save_persistent_selector_choice = commands.save_persistent_selector_choice;
 let int_option = common.int_option;
 let list_option = common.list_option;
 let shell_quote = common.shell_quote;

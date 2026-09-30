@@ -22,9 +22,30 @@ const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "TachyonTable";
 const PID_FILE = "/var/run/tachyon_telegram.pid";
 const OFFSET_FILE = "/var/run/tachyon_telegram_offset";
 const COMPONENT_UPDATE_CHECK_TIMESTAMP = "/var/run/tachyon/component-update-check.timestamp";
+// Carried over from the monolithic service/telegram.uc by the split in
+// 57c7e2b0. Left behind, the reference below resolved to nothing and ucode
+// raised "left-hand side is not a function" after every successful long-poll,
+// so the worker slept poll_interval seconds between each batch of updates.
+const BLOCKED_POLL_INTERVAL = 60;
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
+
+// The split in 57c7e2b0 left these calls unbound: they live in the sibling
+// submodules but were never pulled into this one, so every reference raised
+// "left-hand side is not a function" at the moment it was reached. The two
+// build_* helpers sat in check_notified_updates(), which the worker runs on
+// every startup, so the loop threw, slept poll_interval seconds and polled
+// again - the bot answered in stutters instead of immediately.
+let build_identity_key = rendering.build_identity_key;
+let build_transition = rendering.build_transition;
+let safe_execute = rendering.safe_execute;
+let view_set_cat = commands.view_set_cat;
+let view_sec_list = commands.view_sec_list;
+let view_test_rule = commands.view_test_rule;
+let view_quiet_hours = commands.view_quiet_hours;
+let handle_fptn_token_update = callbacks.handle_fptn_token_update;
+let handle_sec_sub_add = callbacks.handle_sec_sub_add;
 let object_or_empty = common.object_or_empty;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
@@ -253,7 +274,26 @@ function process_updates(token, admin_ids) {
     let offset = int(trim(fs.readfile(OFFSET_FILE) || "0"));
     let res = tg_request(token, "getUpdates", { offset: offset, timeout: 50 });
     
-    if (!res || !res.ok || !res.result) return false;
+    // A Telegram answer with ok:false is the API talking, not a broken
+    // request. 409 ("terminated by other getUpdates request") and 429 (rate
+    // limited) were counted as poll failures, so the worker doubled poll_interval
+    // on each one until it waited 300 seconds between messages - which is
+    // exactly how the bot presented: answering in stutters. Only res == null, a
+    // request that never produced an answer at all, earns the backoff.
+    if (!res)
+        return false;
+    if (!res.ok || !res.result) {
+        let error_code = int(res.error_code || 0);
+        if (error_code == 429) {
+            let params = object_or_empty(res.parameters);
+            let retry_after = int(params.retry_after || 0);
+            if (retry_after > 0 && retry_after <= 60)
+                sleep(retry_after * 1000);
+        }
+        command_success_from_args(["logger", "-t", "tachyon-telegram",
+            "[info] Telegram declined getUpdates (" + as_string(res.error_code || "?") + " " + as_string(res.description || "") + "), not counted as a poll failure"]);
+        return true;
+    }
     if (length(res.result) == 0) return true;
     
     for (let upd in res.result) {
@@ -442,9 +482,10 @@ function process_updates(token, admin_ids) {
                 else if (state.action == "test_rule") {
                     view_test_rule(token, chat_id, null, trim(msg.text));
                 }
-                else if (state.action == "sub_add") {
-                    handle_sub_add(token, chat_id, msg_id, trim(msg.text));
-                }
+                // No "sub_add" branch: nothing ever set that state, and the
+                // handler it called has never existed - not in the submodules,
+                // not in service/telegram.uc before the split in 57c7e2b0.
+                // Adding a subscription goes through sec_sub_add below.
                 else if (state.action == "sec_sub_add") {
                     let parts = split(trim(msg.text), " ");
                     if (length(parts) >= 2) {
