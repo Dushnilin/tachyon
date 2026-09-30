@@ -11,9 +11,15 @@
 # No component in action.uc accepted "update", so every scheduled or immediate
 # auto-update fell through to action_fail("Unknown component action").
 #
-# Furthermore, tests/component_auto_update.sh had masked this because its mock
-# action.uc fixture accepted `if (action == "update")`, diverging from the real
-# action.uc dispatch table.
+# tests/component_auto_update.sh could not have caught this, but not for the
+# reason its fixture suggests. Narrowing that mock to `if (action == "install")`
+# so it matches the real dispatch table was tried here and the test still passed
+# against the unfixed source: it only asserts that a background job state file
+# appeared, and launch_component_worker() runs the dispatcher asynchronously, so
+# the "Unknown component action" failure lands after every assertion has run. The
+# mock does diverge from the real action.uc; that just was not what hid it. This
+# test reads the production files instead, which is why it can see the contract
+# at all.
 #
 # This test asserts directly against the production source files:
 # 1. updates.uc must invoke component_action_async_job with "install"
