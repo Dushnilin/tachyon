@@ -1,4 +1,7 @@
 let smart_detect=require("service.smart_detect");
+let smart_plus=require("service.smart_detect_plus");
+let pending_smart_plus={};
+let smart_plus_last_run=0;
 let process_status=smart_detect.probe_status;
 let native_require=require;
 let test_engine="sing-box";

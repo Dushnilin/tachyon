@@ -235,6 +235,8 @@ define Package/tachyon/install
 	# Service Check profiles (community-defined service probe targets)
 	$(INSTALL_DIR) $(1)/usr/share/tachyon
 	$(INSTALL_DATA) ./files/usr/share/tachyon/servicecheck_profiles.json $(1)/usr/share/tachyon/servicecheck_profiles.json
+	# Registrable-domain boundaries for Smart Detect Plus (ICANN + PRIVATE, MPL-2.0).
+	$(INSTALL_DATA) ./files/usr/share/tachyon/public-suffix-list.dat $(1)/usr/share/tachyon/public-suffix-list.dat
 
 	# Curated DPI bypass strategy presets (zapret4rocket / homeproxy-hiddify / Tachyon)
 	$(INSTALL_DATA) ./files/usr/share/tachyon/dpi-presets.json $(1)/usr/share/tachyon/dpi-presets.json

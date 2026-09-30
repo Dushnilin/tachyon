@@ -1025,6 +1025,7 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
     body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
+    body = signature_add_value(body, "settings.smart_detect_plus", bool_option(settings, "smart_detect", false) && option(settings, "smart_detect_mode", "default") == "plus" ? "1" : "0");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
     body = signature_add_value(body, "settings.game_console_ips", option(settings, "game_console_ips", ""));
     body = signature_add_value(body, "settings.excluded_clients", option(settings, "excluded_clients", ""));

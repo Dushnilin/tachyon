@@ -3391,6 +3391,51 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
+  // Default is the upstream 1.4.4 detector; Plus is explicitly opt-in.
+  const smartDetectDescriptions = {
+    default: _(
+      "Default: uses sing-box error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe.",
+    ),
+    plus: _(
+      "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection.",
+    ),
+  };
+  o = section.taboption(
+    "services",
+    form.ListValue,
+    "smart_detect_mode",
+    _("Smart Detect mode"),
+    smartDetectDescriptions.default,
+  );
+  o.value("default", _("Default (upstream)"));
+  o.value("plus", _("Plus"));
+  o.default = "default";
+  o.rmempty = false;
+  o.depends("smart_detect", "1");
+  o.cfgvalue = function (section_id) {
+    return uci.get(UCI_PACKAGE, section_id, "smart_detect_mode") === "plus"
+      ? "plus"
+      : "default";
+  };
+  const smartDetectRenderWidget = o.renderWidget;
+  o.renderWidget = function (section_id, option_index, cfgvalue) {
+    this.description =
+      smartDetectDescriptions[cfgvalue === "plus" ? "plus" : "default"];
+    return smartDetectRenderWidget.call(
+      this,
+      section_id,
+      option_index,
+      cfgvalue,
+    );
+  };
+  o.onchange = function (_ev, section_id, value) {
+    this.description =
+      smartDetectDescriptions[value === "plus" ? "plus" : "default"];
+    const field = this.map.findElement("data-field", this.cbid(section_id));
+    const description = field && field.querySelector(".cbi-value-description");
+    if (description) description.textContent = this.description;
+  };
+
   // Smart Detect sections (domain test order)
   const sdSectionsOpt = section.taboption(
     "services",
