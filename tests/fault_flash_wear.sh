@@ -169,47 +169,71 @@ grep -q 'missing=yes' <<< "$out" ||
 # including a full spec.json and every channel list, untouched since the day the
 # engine was switched away from steer. Only the switching code knows the engine
 # just changed, so that is where the cleanup has to live.
-# ponytail: TACHYON_STEER_* overrides exist for tests, and discard_steer_artifacts
-# deliberately ignores them and only touches /etc/steer. That keeps the guard
-# testable without ever pointing a real delete at an arbitrary directory.
+# The spec path is passed in, so this runs in a scratch directory and needs no
+# root. An earlier version wrote to /etc/steer: it passed locally because the
+# local docker image runs as root, and went red in CI on
+# "mkdir: cannot create directory /etc/steer" - the runner is not root.
+STEER_DIR="$WORK_DIR/steer"
 printf '%s\n' '--- steer artifacts are discarded when the engine leaves steer ---'
-rm -rf /etc/steer
-mkdir -p /etc/steer/lists/channels/Main /etc/steer/zapret /etc/steer/subs
-printf '{ "outputs": {} }\n' > /etc/steer/spec.json
-printf 'example.com\n' > /etc/steer/lists/channels/Main/domains.lst
-printf '%s\n' '--filter-tcp' > /etc/steer/zapret/Youtube.opts
-printf 'vless://a@b\n' > /etc/steer/subs/Main.txt
-printf 'package-owned\n' > /etc/steer/keep.d
+rm -rf "$STEER_DIR"
+mkdir -p "$STEER_DIR/lists/channels/Main" "$STEER_DIR/zapret" "$STEER_DIR/subs"
+printf '{ "outputs": {} }\n' > "$STEER_DIR/spec.json"
+printf 'example.com\n' > "$STEER_DIR/lists/channels/Main/domains.lst"
+printf '%s\n' '--filter-tcp' > "$STEER_DIR/zapret/Youtube.opts"
+printf 'vless://a@b\n' > "$STEER_DIR/subs/Main.txt"
+printf 'package-owned\n' > "$STEER_DIR/keep.d"
 
-out="$(TACHYON_CONFIG_NAME=tachyon_steer_purge_test ucode -L "$LIB_DIR" -e '
+out="$(STEER_SPEC="$STEER_DIR/spec.json" STEER_DIR="$STEER_DIR" ucode -L "$LIB_DIR" -e '
 let fs = require("fs");
 let state = require("components.engine_state");
-state.discard_steer_artifacts("sing-box");
+let dir = getenv("STEER_DIR");
+state.discard_steer_artifacts("sing-box", getenv("STEER_SPEC"));
 function mark(p) { return fs.stat(p) == null ? "GONE" : "PRESENT"; }
 printf("spec=%s lists=%s zapret=%s subs=%s keep=%s\n",
-  mark("/etc/steer/spec.json"), mark("/etc/steer/lists"), mark("/etc/steer/zapret"),
-  mark("/etc/steer/subs"), mark("/etc/steer/keep.d"));
+  mark(dir + "/spec.json"), mark(dir + "/lists"), mark(dir + "/zapret"),
+  mark(dir + "/subs"), mark(dir + "/keep.d"));
 ' 2>&1)" || fail "could not drive discard_steer_artifacts: $out"
 
 grep -q 'spec=GONE' <<< "$out" || fail "spec.json survived the switch away from steer: $out"
 grep -q 'lists=GONE' <<< "$out" || fail "the channel list files survived the switch away from steer: $out"
 grep -q 'zapret=GONE' <<< "$out" || fail "the zapret opts files survived the switch away from steer: $out"
-# The steer package owns the rest of /etc/steer. Uninstalling its files is not
-# this function's business, so keep.d has to come out untouched.
+# The steer package owns the rest of the directory. Uninstalling its files is
+# not this function's business, so keep.d has to come out untouched.
 grep -q 'keep=PRESENT' <<< "$out" ||
   fail "discard_steer_artifacts deleted a file the steer package owns: $out"
 
-# Switching *to* steer must keep the artifacts, or the engine would start with
-# nothing to read and fall back to direct.
-rm -rf /etc/steer
-mkdir -p /etc/steer
-printf '{ "outputs": {} }\n' > /etc/steer/spec.json
+# The safety floor: a caller that passes a filesystem root or a single
+# top-level system directory must be refused, not obeyed. Exercised against
+# /tmp because that is the one top-level directory a test may safely point a
+# real delete at: if the guard were broken it would only ever have removed
+# /tmp/lists, /tmp/zapret and /tmp/spec.json, never /tmp itself.
+printf 'precious\n' > /tmp/spec.json
 out="$(ucode -L "$LIB_DIR" -e '
 let fs = require("fs");
 let state = require("components.engine_state");
-state.discard_steer_artifacts("steer");
-state.discard_steer_artifacts("steer-extended");
-printf("spec=%s\n", fs.stat("/etc/steer/spec.json") == null ? "GONE" : "PRESENT");
+state.discard_steer_artifacts("sing-box", "/");
+state.discard_steer_artifacts("sing-box", "/tmp/spec.json");
+state.discard_steer_artifacts("sing-box", "relative/spec.json");
+printf("toplevel=%s relative_untouched=%s\n",
+  fs.stat("/tmp/spec.json") == null ? "GONE" : "PRESENT",
+  fs.stat("/tmp/spec.json") == null ? "GONE" : "PRESENT");
+' 2>&1)" || fail "could not drive the safety-floor case: $out"
+grep -q 'toplevel=PRESENT' <<< "$out" ||
+  fail "a caller passed a single top-level directory and discard_steer_artifacts deleted it: $out"
+rm -f /tmp/spec.json /tmp/lists /tmp/zapret
+
+# Switching *to* steer must keep the artifacts, or the engine would start with
+# nothing to read and fall back to direct.
+rm -rf "$STEER_DIR"
+mkdir -p "$STEER_DIR"
+printf '{ "outputs": {} }\n' > "$STEER_DIR/spec.json"
+out="$(STEER_SPEC="$STEER_DIR/spec.json" ucode -L "$LIB_DIR" -e '
+let fs = require("fs");
+let state = require("components.engine_state");
+let spec = getenv("STEER_SPEC");
+state.discard_steer_artifacts("steer", spec);
+state.discard_steer_artifacts("steer-extended", spec);
+printf("spec=%s\n", fs.stat(spec) == null ? "GONE" : "PRESENT");
 ' 2>&1)" || fail "could not drive the steer-target case: $out"
 grep -q 'spec=PRESENT' <<< "$out" ||
   fail "switching to steer deleted its own spec.json, so the engine would start with no config at all: $out"

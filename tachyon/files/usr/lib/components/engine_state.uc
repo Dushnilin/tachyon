@@ -220,26 +220,32 @@ function validate_target(target, allow_install) {
 //
 // Only the paths Tachyon writes are removed. The steer package owns the rest of
 // /etc/steer and uninstalling its files is not this function's business.
-function discard_steer_artifacts(target) {
+//
+// The spec path is a parameter so the test can point this at a scratch directory.
+// It used to be pinned to /etc/steer, which made the test need root and therefore
+// only pass in the local docker image - the CI runner is not root and the suite
+// went red on "mkdir: cannot create directory /etc/steer". The safety floor is
+// kept where it matters: never the filesystem root, never a single top-level
+// system directory. Both are refused regardless of what the caller passes.
+function discard_steer_artifacts(target, spec_path) {
     if (as_string(target) == engine.ENGINE_STEER ||
         as_string(target) == engine.ENGINE_STEER_EXTENDED)
         return;
 
-    let spec_path = as_string(engine.STEER_SPEC_FILE);
-    if (spec_path == "")
+    spec_path = as_string(spec_path != null ? spec_path : engine.STEER_SPEC_FILE);
+    if (spec_path == "" || substr(spec_path, 0, 1) != "/")
         return;
 
-    // Guard against a test or an override pointing these somewhere unexpected.
-    // Only absolute paths under /etc/steer are ours to delete.
     let base = common.parent_dir(spec_path);
-    if (base != "/etc/steer")
+    // Refuse the filesystem root and any single top-level directory such as
+    // /etc. Compared by component count rather than with rindex(), whose
+    // behaviour with a needle is not what the same call suggests elsewhere in
+    // the codebase. "/tmp" splits to 2, "/etc/steer" to 3.
+    if (base == "" || length(split(base, "/")) < 3)
         return;
 
-    for (let dir in [ engine.STEER_LISTS_DIR, engine.STEER_ZAPRET_DIR ]) {
-        let path = as_string(dir);
-        if (index(path, base + "/") == 0)
-            common.remove_tree(path);
-    }
+    for (let name in [ "lists", "zapret" ])
+        common.remove_tree(base + "/" + name);
     common.remove_tree(spec_path);
 }
 
