@@ -1013,7 +1013,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         }
         else {
             let ep_field_m = match(check_result.reason, /endpoints\[\d+\]\.(\w+): json: unknown field/);
-            let out_field_m = match(check_result.reason, /outbounds\[\d+\]\.(\w+): json: unknown field/);
+            let out_field_m = match(check_result.reason, /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
             if (ep_field_m) {
                 let unknown_field = ep_field_m[1];
                 log_message("Installed sing-box does not support endpoint field '" + unknown_field + "'; adjusting configuration", "warn");
@@ -1036,12 +1036,26 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 }
             }
             else if (out_field_m) {
-                let unknown_field = out_field_m[1];
-                log_message("Installed sing-box does not support outbound field '" + unknown_field + "'; retrying without it", "warn");
+                let unknown_field = out_field_m[2];
+                // sing-box names the exact outbound it choked on, so only that one
+                // loses the field. Deleting it from every outbound was blunt enough
+                // to throw away settings that were working: "default" is rejected on
+                // a urltest by every build tested - stock 1.14.2, 1.14.2-lx.8 and
+                // 1.14.1-extended-2.7.2 - while a selector accepts it in all three.
+                // One bad urltest therefore silently cost every selector its chosen
+                // starting node on each regenerate, which is what the warning on
+                // 192.168.1.1 was actually reporting.
+                let bad_index = int(out_field_m[1], -1);
+                log_message("Installed sing-box does not support outbound field '" + unknown_field +
+                    "' on outbound " + (bad_index >= 0 ? to_string(bad_index) : "?") +
+                    "; retrying without it there only", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object" && type(cfg.outbounds) == "array") {
-                    for (let outb in cfg.outbounds) {
+                    let targets = (bad_index >= 0 && bad_index < length(cfg.outbounds))
+                        ? [ cfg.outbounds[bad_index] ]
+                        : cfg.outbounds;
+                    for (let outb in targets) {
                         if (type(outb) == "object")
                             delete outb[unknown_field];
                     }
