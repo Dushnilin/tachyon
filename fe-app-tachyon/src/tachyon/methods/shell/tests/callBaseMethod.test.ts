@@ -43,7 +43,6 @@ describe('callBaseMethod', () => {
     const response = await callBaseMethod(
       Tachyon.AvailableMethods.GLOBAL_CHECK,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     );
 
@@ -60,12 +59,9 @@ describe('callBaseMethod', () => {
       code: 0,
     });
 
-    await callBaseMethod(
-      Tachyon.AvailableMethods.GLOBAL_CHECK,
-      [],
-      '/usr/bin/tachyon',
-      { timeout: 60000 },
-    );
+    await callBaseMethod(Tachyon.AvailableMethods.GLOBAL_CHECK, [], {
+      timeout: 60000,
+    });
 
     expect(mocks.executeShellCommand).toHaveBeenCalledWith({
       command: '/usr/bin/tachyon',

@@ -3601,15 +3601,24 @@ function subscription_update_common_locked(force, target_section, target_source_
         return false;
     }
     module_success([ PRIORITY_UC, "stop-runtime" ]);
-    if (!service_state_success([
-        "reload-sing-box-runtime",
-        sing_box_pid_before,
-        sing_box_config_hash_before,
-        file_md5(sing_box_config_path)
-    ])) {
-        module_success([ PRIORITY_UC, "start-runtime" ]);
-        module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
-        return false;
+
+    // Attempt a graceful in-place reload via SIGHUP first.
+    // sing-box 1.10+ hot-swaps its config without tearing down the process,
+    // so active TCP sessions (Telegram, etc.) are preserved.
+    // Fall back to a full restart only when SIGHUP reload fails.
+    let sighup_ok = service_state_success([ "sighup-sing-box-runtime", sing_box_pid_before ]);
+    if (!sighup_ok) {
+        log_message("SIGHUP reload failed; falling back to full sing-box restart", "warn");
+        if (!service_state_success([
+            "reload-sing-box-runtime",
+            sing_box_pid_before,
+            sing_box_config_hash_before,
+            file_md5(sing_box_config_path)
+        ])) {
+            module_success([ PRIORITY_UC, "start-runtime" ]);
+            module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
+            return false;
+        }
     }
     if (!module_success([ PRIORITY_UC, "start-runtime" ])) {
         log_message("Failed to restart Priority runtime after subscription update", "error");

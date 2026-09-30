@@ -462,6 +462,54 @@ if (names["Native A"] != null || names["Native Group"] != null)
     die("unprefixed outbound metadata names must not remain\n");
 ' "$singbox_prefix_config" "$singbox_prefix_config.section-cache/proxy.json" || fail "subscription node prefix behavior"
 
+cat >"$WORK_DIR/singbox-drop-urltest-members-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "log_level": "warn"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "urltest_enabled": "0",
+      "detect_server_country": "country_is",
+      "subscription_urls": [ "https://singbox.example/sub" ],
+      "subscription_url_settings": "{\"https://singbox.example/sub\":{\"include_urltest_groups\":\"0\"}}"
+    }
+  ]
+}
+JSON
+
+singbox_drop_members_config="$WORK_DIR/singbox-drop-urltest-members-config.json"
+generate_config "$WORK_DIR/singbox-drop-urltest-members-fixture.json" "$singbox_drop_members_config"
+
+# With subscription URLTest groups switched off, the group is not emitted and
+# the node it was the only reference to is unreachable, so it must not linger in
+# the config either. Detour Only and Uses Detour are not group members and are
+# the reason the section still has usable outbounds, so they must survive.
+ucode -e '
+let fs = require("fs");
+function outbound_by_tag(config, tag) {
+    for (let outbound in config.outbounds || [])
+        if (outbound && outbound.tag == tag)
+            return outbound;
+    return null;
+}
+let config = json(fs.readfile(ARGV[0]));
+if (outbound_by_tag(config, "Native Group"))
+    die("a disabled subscription URLTest group must not be emitted\n");
+if (outbound_by_tag(config, "Native A"))
+    die("a node reachable only through a disabled URLTest group must be dropped\n");
+if (!outbound_by_tag(config, "Detour Only"))
+    die("a non-member outbound must survive the URLTest member filter\n");
+if (!outbound_by_tag(config, "Uses Detour"))
+    die("a non-member outbound using a detour must survive the filter\n");
+' "$singbox_drop_members_config" || fail "disabled URLTest group members are dropped"
+
 cat >"$WORK_DIR/singbox-reveal-urltest-fixture.json" <<'JSON'
 {
   "settings": {

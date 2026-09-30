@@ -2950,10 +2950,11 @@ function getOutboundTagBySection(sectionName) {
 }
 
 // src/tachyon/methods/shell/callBaseMethod.ts
-async function callBaseMethod(method, args = [], command = "/usr/bin/tachyon", options = {}) {
+var TACHYON_BIN = "/usr/bin/tachyon";
+async function callBaseMethod(method, args = [], options = {}) {
   try {
     const response = await executeShellCommand({
-      command,
+      command: TACHYON_BIN,
       args: [method, ...args],
       timeout: options.timeout ?? 15e3
     });
@@ -2999,84 +3000,200 @@ var Tachyon;
 ((Tachyon2) => {
   let AvailableMethods;
   ((AvailableMethods2) => {
-    AvailableMethods2["CHECK_DNS_AVAILABLE"] = "check_dns_available";
-    AvailableMethods2["CHECK_FAKEIP"] = "check_fakeip";
-    AvailableMethods2["CHECK_NFT_RULES"] = "check_nft_rules";
-    AvailableMethods2["CHECK_ZAPRET_RUNTIME"] = "check_zapret_runtime";
-    AvailableMethods2["CHECK_ZAPRET2_RUNTIME"] = "check_zapret2_runtime";
-    AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
-    AvailableMethods2["CHECK_INBOUNDS_CONFIG"] = "check_inbounds_config";
-    AvailableMethods2["GET_STATUS"] = "get_status";
-    AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
-    AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
-    AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
-    AvailableMethods2["CHECK_STEER"] = "check_steer";
-    AvailableMethods2["CHECK_INBOUNDS"] = "check_inbounds";
-    AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
-    AvailableMethods2["GET_ENGINE_STATUS"] = "get_engine_status";
-    AvailableMethods2["ENGINE_INFO"] = "engine_info";
-    AvailableMethods2["ENGINE_FEATURES"] = "engine_features";
-    AvailableMethods2["ENGINE_PLAN"] = "engine_plan";
-    AvailableMethods2["GET_ZAPRET_STATUS"] = "get_zapret_status";
-    AvailableMethods2["GET_TAILSCALE_PEERS"] = "get_tailscale_peers";
-    AvailableMethods2["GET_ZAPRET2_STATUS"] = "get_zapret2_status";
-    AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
-    AvailableMethods2["GET_WDTT_STATUS"] = "get_wdtt_status";
-    AvailableMethods2["GET_OLCRTC_STATUS"] = "get_olcrtc_status";
-    AvailableMethods2["GET_FPTN_STATUS"] = "get_fptn_status";
-    AvailableMethods2["CLASH_API"] = "clash_api";
-    AvailableMethods2["ENABLE"] = "enable";
-    AvailableMethods2["DISABLE"] = "disable";
-    AvailableMethods2["GLOBAL_CHECK"] = "global_check";
-    AvailableMethods2["DOCTOR"] = "doctor";
+    AvailableMethods2["AGENT_CGI"] = "agent_cgi";
     AvailableMethods2["AI_DOCTOR"] = "ai_doctor";
     AvailableMethods2["AI_DOCTOR_LAST"] = "ai_doctor_last";
+    AvailableMethods2["AI_HEAL"] = "ai_heal";
+    AvailableMethods2["AI_STATUS"] = "ai_status";
+    AvailableMethods2["AI_STATUS_FULL"] = "ai_status_full";
     AvailableMethods2["APPLY_QUICK_FIX"] = "apply_quick_fix";
-    AvailableMethods2["LAN_CLIENTS"] = "lan_clients";
-    AvailableMethods2["TOGGLE_CLIENT_BYPASS"] = "toggle_client_bypass";
-    AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
+    AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
+    AvailableMethods2["CHECK_DNS_AVAILABLE"] = "check_dns_available";
+    AvailableMethods2["CHECK_DNS_LEAK"] = "check_dns_leak";
+    AvailableMethods2["CHECK_FAKEIP"] = "check_fakeip";
+    AvailableMethods2["CHECK_INBOUNDS"] = "check_inbounds";
+    AvailableMethods2["CHECK_INBOUNDS_CONFIG"] = "check_inbounds_config";
+    AvailableMethods2["CHECK_IP_LEAK"] = "check_ip_leak";
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
+    AvailableMethods2["CHECK_NFT"] = "check_nft";
+    AvailableMethods2["CHECK_NFT_RULES"] = "check_nft_rules";
+    AvailableMethods2["CHECK_PROXY"] = "check_proxy";
+    AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
-    AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
-    AvailableMethods2["GET_SERVER_CAPABILITIES"] = "get_server_capabilities";
-    AvailableMethods2["GET_UI_CAPABILITIES"] = "get_ui_capabilities";
-    AvailableMethods2["GET_UI_STATE"] = "get_ui_state";
-    AvailableMethods2["SERVICE_ACTION_ASYNC"] = "service_action_async";
-    AvailableMethods2["SERVICE_ACTION_STATUS"] = "service_action_status";
-    AvailableMethods2["LATENCY_TEST_ASYNC"] = "latency_test_async";
-    AvailableMethods2["LATENCY_TEST_STATUS"] = "latency_test_status";
-    AvailableMethods2["UI_ACTION_ACK"] = "ui_action_ack";
+    AvailableMethods2["CHECK_STEER"] = "check_steer";
+    AvailableMethods2["CHECK_TOR_RUNTIME"] = "check_tor_runtime";
+    AvailableMethods2["CHECK_ZAPRET2_RUNTIME"] = "check_zapret2_runtime";
+    AvailableMethods2["CHECK_ZAPRET_RUNTIME"] = "check_zapret_runtime";
+    AvailableMethods2["CLASH_API"] = "clash_api";
+    AvailableMethods2["COMPONENT_ACTION"] = "component_action";
     AvailableMethods2["COMPONENT_ACTION_ASYNC"] = "component_action_async";
-    AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
     AvailableMethods2["COMPONENT_ACTION_LOG"] = "component_action_log";
-    AvailableMethods2["COMPONENT_UPDATE_CHECK_CACHE"] = "component_update_check_cache";
-    AvailableMethods2["COMPONENT_LIST_RELEASES"] = "component_list_releases";
+    AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
+    AvailableMethods2["COMPONENT_AUTO_UPDATE_APPLY"] = "component_auto_update_apply";
     AvailableMethods2["COMPONENT_INSTALL_VERSION"] = "component_install_version";
-    AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
-    AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
-    AvailableMethods2["SERVICE_HEALTH_CHECK"] = "service_health_check";
+    AvailableMethods2["COMPONENT_LIST_RELEASES"] = "component_list_releases";
+    AvailableMethods2["COMPONENT_UPDATE_CHECK_CACHE"] = "component_update_check_cache";
+    AvailableMethods2["COMPONENT_UPDATES_IF_DUE"] = "component_updates_if_due";
+    AvailableMethods2["CONFIG_PLAN"] = "config_plan";
+    AvailableMethods2["CONFIG_VALIDATE"] = "config_validate";
+    AvailableMethods2["DELETE_SECTION"] = "delete_section";
+    AvailableMethods2["DIAGNOSE_JSON"] = "diagnose_json";
+    AvailableMethods2["DISABLE"] = "disable";
+    AvailableMethods2["DNS_AUTOTUNE"] = "dns_autotune";
+    AvailableMethods2["DNS_BENCHMARK"] = "dns_benchmark";
+    AvailableMethods2["DNS_BENCHMARK_APPLY"] = "dns_benchmark_apply";
+    AvailableMethods2["DNS_BENCHMARK_ASYNC"] = "dns_benchmark_async";
+    AvailableMethods2["DNS_BENCHMARK_STATUS"] = "dns_benchmark_status";
+    AvailableMethods2["DNS_BENCHMARK_STOP"] = "dns_benchmark_stop";
+    AvailableMethods2["DNS_FAILOVER_APPLY"] = "dns_failover_apply";
+    AvailableMethods2["DNSMASQ_RESTORE"] = "dnsmasq_restore";
+    AvailableMethods2["DOCTOR"] = "doctor";
+    AvailableMethods2["EMERGENCY_RESET"] = "emergency_reset";
+    AvailableMethods2["EMERGENCY_STATUS"] = "emergency_status";
+    AvailableMethods2["EMERGENCY_TRIGGER"] = "emergency_trigger";
+    AvailableMethods2["ENABLE"] = "enable";
+    AvailableMethods2["ENGINE_APPLY"] = "engine_apply";
+    AvailableMethods2["ENGINE_DIAG"] = "engine_diag";
+    AvailableMethods2["ENGINE_EXPLAIN"] = "engine_explain";
+    AvailableMethods2["ENGINE_FEATURES"] = "engine_features";
+    AvailableMethods2["ENGINE_GENERATE"] = "engine_generate";
+    AvailableMethods2["ENGINE_INFO"] = "engine_info";
+    AvailableMethods2["ENGINE_PLAN"] = "engine_plan";
+    AvailableMethods2["ENGINE_RELOAD"] = "engine_reload";
+    AvailableMethods2["ENGINE_START"] = "engine_start";
+    AvailableMethods2["ENGINE_STATUS"] = "engine_status";
+    AvailableMethods2["ENGINE_STOP"] = "engine_stop";
+    AvailableMethods2["ENGINE_SWITCH"] = "engine_switch";
+    AvailableMethods2["ENGINE_SWITCH_BACK"] = "engine_switch_back";
+    AvailableMethods2["ESCALATION_STATUS"] = "escalation_status";
+    AvailableMethods2["EVENT_CLEAR"] = "event_clear";
+    AvailableMethods2["EVENT_QUERY"] = "event_query";
+    AvailableMethods2["EVENT_RECORD"] = "event_record";
+    AvailableMethods2["EVENT_STATS"] = "event_stats";
+    AvailableMethods2["EVENT_TAIL"] = "event_tail";
+    AvailableMethods2["EXTRACT_RULESET"] = "extract_ruleset";
+    AvailableMethods2["FAILOVER_CHECK"] = "failover_check";
+    AvailableMethods2["FUZZER_AI_SYNTHESIZE"] = "fuzzer_ai_synthesize";
+    AvailableMethods2["FUZZER_APPLY"] = "fuzzer_apply";
+    AvailableMethods2["FUZZER_AUTO_APPLY"] = "fuzzer_auto_apply";
+    AvailableMethods2["FUZZER_CLEAR_HISTORY"] = "fuzzer_clear_history";
+    AvailableMethods2["FUZZER_DETECT_DPI"] = "fuzzer_detect_dpi";
+    AvailableMethods2["FUZZER_GENERATE"] = "fuzzer_generate";
+    AvailableMethods2["FUZZER_GET_PATTERNS"] = "fuzzer_get_patterns";
+    AvailableMethods2["FUZZER_HISTORY"] = "fuzzer_history";
+    AvailableMethods2["FUZZER_PRESETS_INFO"] = "fuzzer_presets_info";
+    AvailableMethods2["FUZZER_RESET_PATTERNS"] = "fuzzer_reset_patterns";
+    AvailableMethods2["FUZZER_SAVE_PATTERNS"] = "fuzzer_save_patterns";
     AvailableMethods2["FUZZER_START"] = "fuzzer_start";
     AvailableMethods2["FUZZER_STATUS"] = "fuzzer_status";
     AvailableMethods2["FUZZER_STOP"] = "fuzzer_stop";
-    AvailableMethods2["FUZZER_APPLY"] = "fuzzer_apply";
     AvailableMethods2["FUZZER_STRATEGIES"] = "fuzzer_strategies";
-    AvailableMethods2["FUZZER_AI_SYNTHESIZE"] = "fuzzer_ai_synthesize";
-    AvailableMethods2["FUZZER_GET_PATTERNS"] = "fuzzer_get_patterns";
-    AvailableMethods2["FUZZER_SAVE_PATTERNS"] = "fuzzer_save_patterns";
-    AvailableMethods2["FUZZER_RESET_PATTERNS"] = "fuzzer_reset_patterns";
-    AvailableMethods2["FUZZER_DETECT_DPI"] = "fuzzer_detect_dpi";
-    AvailableMethods2["FUZZER_AUTO_APPLY"] = "fuzzer_auto_apply";
-    AvailableMethods2["FUZZER_HISTORY"] = "fuzzer_history";
-    AvailableMethods2["FUZZER_CLEAR_HISTORY"] = "fuzzer_clear_history";
-    AvailableMethods2["DNS_BENCHMARK_START"] = "dns_benchmark_async";
-    AvailableMethods2["DNS_BENCHMARK_STATUS"] = "dns_benchmark_status";
-    AvailableMethods2["DNS_BENCHMARK_STOP"] = "dns_benchmark_stop";
-    AvailableMethods2["DNS_BENCHMARK_APPLY"] = "dns_benchmark_apply";
+    AvailableMethods2["FUZZER_UPDATE_PRESETS"] = "fuzzer_update_presets";
+    AvailableMethods2["GENERATE_REALITY_KEYPAIR"] = "generate_reality_keypair";
+    AvailableMethods2["GENERATE_WARP"] = "generate_warp";
+    AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
+    AvailableMethods2["GET_ENGINE_STATUS"] = "get_engine_status";
+    AvailableMethods2["GET_FPTN_STATUS"] = "get_fptn_status";
+    AvailableMethods2["GET_OLCRTC_STATUS"] = "get_olcrtc_status";
+    AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
+    AvailableMethods2["GET_SERVER_CAPABILITIES"] = "get_server_capabilities";
+    AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
+    AvailableMethods2["GET_STATUS"] = "get_status";
+    AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
+    AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
+    AvailableMethods2["GET_TAILSCALE_PEERS"] = "get_tailscale_peers";
+    AvailableMethods2["GET_TAILSCALE_STATUS"] = "get_tailscale_status";
+    AvailableMethods2["GET_TLS_CERTIFICATE_SHA256"] = "get_tls_certificate_sha256";
+    AvailableMethods2["GET_UI_CAPABILITIES"] = "get_ui_capabilities";
+    AvailableMethods2["GET_UI_STATE"] = "get_ui_state";
+    AvailableMethods2["GET_WDTT_STATUS"] = "get_wdtt_status";
+    AvailableMethods2["GET_ZAPRET2_STATUS"] = "get_zapret2_status";
+    AvailableMethods2["GET_ZAPRET_STATUS"] = "get_zapret_status";
+    AvailableMethods2["GLOBAL_CHECK"] = "global_check";
+    AvailableMethods2["HOSTS_LIST_STATUS"] = "hosts_list_status";
+    AvailableMethods2["HOSTS_LIST_UPDATE"] = "hosts_list_update";
+    AvailableMethods2["IMPORT_SETTINGS"] = "import_settings";
+    AvailableMethods2["INSTALL_TOR"] = "install_tor";
+    AvailableMethods2["JOB_CANCEL"] = "job_cancel";
+    AvailableMethods2["JOB_GC"] = "job_gc";
+    AvailableMethods2["JOB_LIST"] = "job_list";
+    AvailableMethods2["JOB_QUERY"] = "job_query";
+    AvailableMethods2["JOB_REQUEST_CANCEL"] = "job_request_cancel";
+    AvailableMethods2["KNOWN_GOOD"] = "known_good";
+    AvailableMethods2["KNOWN_GOOD_CHECK"] = "known_good_check";
+    AvailableMethods2["KNOWN_GOOD_PROMOTE"] = "known_good_promote";
+    AvailableMethods2["KNOWN_GOOD_RESTORE"] = "known_good_restore";
+    AvailableMethods2["KNOWN_GOOD_ROLLBACK"] = "known_good_rollback";
+    AvailableMethods2["KNOWN_GOOD_STATUS"] = "known_good_status";
+    AvailableMethods2["LAN_CLIENTS"] = "lan_clients";
+    AvailableMethods2["LATENCY_TEST_ASYNC"] = "latency_test_async";
+    AvailableMethods2["LATENCY_TEST_STATUS"] = "latency_test_status";
     AvailableMethods2["LEAK_CHECK"] = "leak_check";
     AvailableMethods2["LEAK_CHECK_ASYNC"] = "leak_check_async";
     AvailableMethods2["LEAK_CHECK_STATUS"] = "leak_check_status";
-    AvailableMethods2["CHECK_IP_LEAK"] = "check_ip_leak";
-    AvailableMethods2["CHECK_DNS_LEAK"] = "check_dns_leak";
+    AvailableMethods2["LIST_UPDATE"] = "list_update";
+    AvailableMethods2["LIST_UPDATE_ASYNC"] = "list_update_async";
+    AvailableMethods2["LIST_UPDATE_IF_DUE"] = "list_update_if_due";
+    AvailableMethods2["LIST_UPDATE_STATUS"] = "list_update_status";
+    AvailableMethods2["LUCI_POSTINST"] = "luci_postinst";
+    AvailableMethods2["MAIN"] = "main";
+    AvailableMethods2["MCP"] = "mcp";
+    AvailableMethods2["NEUTRALIZE_ZAPRET_DEFAULTS"] = "neutralize_zapret_defaults";
+    AvailableMethods2["PACKAGE_POSTINST"] = "package_postinst";
+    AvailableMethods2["PACKAGE_PRERM"] = "package_prerm";
+    AvailableMethods2["PARENTAL_QUOTA_RESET"] = "parental_quota_reset";
+    AvailableMethods2["PARENTAL_QUOTA_TICK"] = "parental_quota_tick";
+    AvailableMethods2["RECONCILE"] = "reconcile";
+    AvailableMethods2["RECONCILE_PLAN"] = "reconcile_plan";
+    AvailableMethods2["RECONCILE_STATUS"] = "reconcile_status";
+    AvailableMethods2["RELOAD"] = "reload";
+    AvailableMethods2["RELOAD_FIREWALL"] = "reload_firewall";
+    AvailableMethods2["RESET_SETTINGS"] = "reset_settings";
+    AvailableMethods2["RESOLVE_DOMAIN"] = "resolve_domain";
+    AvailableMethods2["RESTART"] = "restart";
+    AvailableMethods2["RESTORE_DNSMASQ"] = "restore_dnsmasq";
+    AvailableMethods2["ROUTE_EXPLAIN"] = "route_explain";
+    AvailableMethods2["SERVER_BEST"] = "server_best";
+    AvailableMethods2["SERVER_PROBE"] = "server_probe";
+    AvailableMethods2["SERVER_PROBE_ALL"] = "server_probe_all";
+    AvailableMethods2["SERVER_QUERY"] = "server_query";
+    AvailableMethods2["SERVER_STATS"] = "server_stats";
+    AvailableMethods2["SERVER_STATS_RESET"] = "server_stats_reset";
+    AvailableMethods2["SERVICE_ACTION_ASYNC"] = "service_action_async";
+    AvailableMethods2["SERVICE_ACTION_STATUS"] = "service_action_status";
+    AvailableMethods2["SERVICE_HEALTH_CHECK"] = "service_health_check";
+    AvailableMethods2["SHOW_CONFIG"] = "show_config";
+    AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
+    AvailableMethods2["SHOW_SING_BOX_VERSION"] = "show_sing_box_version";
+    AvailableMethods2["SHOW_VERSION"] = "show_version";
+    AvailableMethods2["SNAPSHOT_DELETE"] = "snapshot_delete";
+    AvailableMethods2["SNAPSHOT_LIST"] = "snapshot_list";
+    AvailableMethods2["SNAPSHOT_RESTORE"] = "snapshot_restore";
+    AvailableMethods2["SNAPSHOT_SAVE"] = "snapshot_save";
+    AvailableMethods2["STABILITY_REPORT"] = "stability_report";
+    AvailableMethods2["STABILITY_STATUS"] = "stability_status";
+    AvailableMethods2["START"] = "start";
+    AvailableMethods2["STOP"] = "stop";
+    AvailableMethods2["SUBSCRIPTION_UPDATE"] = "subscription_update";
+    AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
+    AvailableMethods2["SUBSCRIPTION_UPDATE_IF_DUE"] = "subscription_update_if_due";
+    AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
+    AvailableMethods2["SUPPORT_BUNDLE"] = "support_bundle";
+    AvailableMethods2["TAILSCALE_RESTART"] = "tailscale_restart";
+    AvailableMethods2["TELEGRAM"] = "telegram";
+    AvailableMethods2["TELEGRAM_DIAGNOSE"] = "telegram_diagnose";
+    AvailableMethods2["TELEGRAM_START"] = "telegram_start";
+    AvailableMethods2["TELEGRAM_STATUS"] = "telegram_status";
+    AvailableMethods2["TELEGRAM_STOP"] = "telegram_stop";
+    AvailableMethods2["TOGGLE_CLIENT_BYPASS"] = "toggle_client_bypass";
+    AvailableMethods2["UI_ACTION_ACK"] = "ui_action_ack";
+    AvailableMethods2["UNINSTALL"] = "uninstall";
+    AvailableMethods2["VALIDATE_BYEDPI_STRATEGY_JSON"] = "validate_byedpi_strategy_json";
+    AvailableMethods2["VALIDATE_NFQWS2_STRATEGY_JSON"] = "validate_nfqws2_strategy_json";
+    AvailableMethods2["VALIDATE_NFQWS_STRATEGY_JSON"] = "validate_nfqws_strategy_json";
+    AvailableMethods2["WATCHDOG"] = "watchdog";
+    AvailableMethods2["WATCHDOG_START"] = "watchdog_start";
+    AvailableMethods2["WATCHDOG_STOP"] = "watchdog_stop";
   })(AvailableMethods = Tachyon2.AvailableMethods || (Tachyon2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -3250,7 +3367,6 @@ async function isComponentActionStillRunning(jobId, component, action) {
   const response = await callBaseMethod(
     Tachyon.AvailableMethods.GET_UI_STATE,
     [],
-    "/usr/bin/tachyon",
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
   );
   return response.success && response.data.actions.component.some(
@@ -3327,55 +3443,46 @@ var TachyonShellMethods = {
   getSingBoxStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getEngineStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_ENGINE_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getTailscalePeers: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_TAILSCALE_PEERS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getZapretStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_ZAPRET_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getZapret2Status: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_ZAPRET2_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getByedpiStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getWdttStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_WDTT_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getOlcrtcStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_OLCRTC_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getFptnStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_FPTN_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getClashApiProxies: async () => callBaseMethod(Tachyon.AvailableMethods.CLASH_API, [
@@ -3412,52 +3519,29 @@ var TachyonShellMethods = {
   closeAllClashApiConnections: async () => callBaseMethod(Tachyon.AvailableMethods.CLASH_API, [
     Tachyon.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS
   ]),
-  enable: async () => callBaseMethod(
-    Tachyon.AvailableMethods.ENABLE,
-    [],
-    "/etc/init.d/tachyon"
-  ),
-  disable: async () => callBaseMethod(
-    Tachyon.AvailableMethods.DISABLE,
-    [],
-    "/etc/init.d/tachyon"
-  ),
+  enable: async () => callBaseMethod(Tachyon.AvailableMethods.ENABLE, []),
+  disable: async () => callBaseMethod(Tachyon.AvailableMethods.DISABLE, []),
   globalCheck: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.GLOBAL_CHECK, [
     masked ? "masked" : "raw"
   ]),
-  doctor: async () => callBaseMethod(
-    Tachyon.AvailableMethods.DOCTOR,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: 3e4 }
-  ),
-  aiDoctor: async () => callBaseMethod(
-    Tachyon.AvailableMethods.AI_DOCTOR,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: 6e4 }
-  ),
-  aiDoctorLast: async () => callBaseMethod(
-    Tachyon.AvailableMethods.AI_DOCTOR_LAST,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: 1e4 }
-  ),
+  doctor: async () => callBaseMethod(Tachyon.AvailableMethods.DOCTOR, [], {
+    timeout: 3e4
+  }),
+  aiDoctor: async () => callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR, [], {
+    timeout: 6e4
+  }),
+  aiDoctorLast: async () => callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR_LAST, [], {
+    timeout: 1e4
+  }),
   applyQuickFix: async (fixCode) => callBaseMethod(
     Tachyon.AvailableMethods.APPLY_QUICK_FIX,
     [fixCode],
-    "/usr/bin/tachyon",
     { timeout: 3e4 }
   ),
-  getLanClients: async () => callBaseMethod(Tachyon.AvailableMethods.LAN_CLIENTS, [], "/usr/bin/tachyon", {
+  getLanClients: async () => callBaseMethod(Tachyon.AvailableMethods.LAN_CLIENTS, [], {
     timeout: 1e4
   }),
-  toggleClientBypass: async (ip) => callBaseMethod(
-    Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS,
-    [ip],
-    "/usr/bin/tachyon",
-    { timeout: 15e3 }
-  ),
+  toggleClientBypass: async (ip) => callBaseMethod(Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS, [ip], { timeout: 15e3 }),
   showSingBoxConfig: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
     masked ? "masked" : "raw"
   ]),
@@ -3466,19 +3550,16 @@ var TachyonShellMethods = {
   getSystemInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SYSTEM_INFO,
     [],
-    "/usr/bin/tachyon",
     { timeout: 25e3 }
   ),
   getEngineInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.ENGINE_INFO,
     [],
-    "/usr/bin/tachyon",
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
   ),
   getEnginePlan: async (engine) => callBaseMethod(
     Tachyon.AvailableMethods.ENGINE_PLAN,
     [engine],
-    "/usr/bin/tachyon",
     { timeout: UI_ACTION_RPC_TIMEOUT_MS }
   ),
   getServerCapabilities: async () => callBaseMethod(
@@ -3487,12 +3568,9 @@ var TachyonShellMethods = {
   getUiCapabilities: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_UI_CAPABILITIES
   ),
-  getUiState: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_UI_STATE,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
-  ),
+  getUiState: async () => callBaseMethod(Tachyon.AvailableMethods.GET_UI_STATE, [], {
+    timeout: GET_UI_STATE_RPC_TIMEOUT_MS
+  }),
   serviceActionStart: async (action) => {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
@@ -4332,7 +4410,7 @@ var TachyonShellMethods = {
   startDnsBenchmark: async () => {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_START],
+      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_ASYNC],
       timeout: 1e4
     });
     const parsed = parseJsonObjectOutput(response.stdout);
@@ -14005,7 +14083,6 @@ function renderAiChatModal() {
       const res = await callBaseMethod(
         Tachyon.AvailableMethods.AI_DOCTOR,
         [text],
-        "/usr/bin/tachyon",
         { timeout: 12e4 }
       );
       chatHistory.pop();

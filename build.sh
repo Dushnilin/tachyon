@@ -276,6 +276,7 @@ build_backend_root() {
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$output_root/usr/bin/tachyon"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/sbin/steer-nfqws" \
     "$output_root/usr/share/tachyon/steer-nfqws"
+  install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon-read" "$output_root/usr/bin/tachyon-read"
   cp -a "$ROOT_DIR/tachyon/files/usr/lib/." "$output_root/usr/lib/tachyon/"
 
   # Mirror Package/tachyon/install from tachyon/Makefile exactly: the release

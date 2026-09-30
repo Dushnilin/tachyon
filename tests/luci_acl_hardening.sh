@@ -2,7 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
 
-ACL="$ROOT_DIR/luci-app-tachyon/root/usr/share/rpcd/acl.d/luci-app-tachyon.json"
+ACL="$ROOT_DIR/tachyon/files/usr/share/rpcd/acl.d/luci-app-tachyon.json"
 
 fail() {
   echo "FAIL: $*" >&2

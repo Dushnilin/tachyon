@@ -42,7 +42,7 @@
         "/tmp/run/tachyon/ui-state/latency-actions/*": [
           "read"
         ],
-        "/usr/bin/tachyon": [
+        "/usr/bin/tachyon-read": [
           "exec"
         ],
         "/usr/bin/sing-box": [
@@ -82,6 +82,9 @@
     },
     "write": {
       "file": {
+        "/usr/bin/tachyon": [
+          "exec"
+        ],
         "/var/run/tachyon/ui-state/*": [
           "write"
         ],

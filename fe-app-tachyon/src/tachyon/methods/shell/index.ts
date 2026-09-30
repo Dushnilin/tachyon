@@ -174,7 +174,6 @@ async function isComponentActionStillRunning(
   const response = await callBaseMethod<Tachyon.UiState>(
     Tachyon.AvailableMethods.GET_UI_STATE,
     [],
-    '/usr/bin/tachyon',
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
   );
 
@@ -289,63 +288,54 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.GetSingBoxStatus>(
       Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getEngineStatus: async () =>
     callBaseMethod<Tachyon.GetEngineStatus>(
       Tachyon.AvailableMethods.GET_ENGINE_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getTailscalePeers: async () =>
     callBaseMethod<Tachyon.GetTailscalePeers>(
       Tachyon.AvailableMethods.GET_TAILSCALE_PEERS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getZapretStatus: async () =>
     callBaseMethod<Tachyon.GetZapretStatus>(
       Tachyon.AvailableMethods.GET_ZAPRET_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getZapret2Status: async () =>
     callBaseMethod<Tachyon.GetZapret2Status>(
       Tachyon.AvailableMethods.GET_ZAPRET2_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getByedpiStatus: async () =>
     callBaseMethod<Tachyon.GetByedpiStatus>(
       Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getWdttStatus: async () =>
     callBaseMethod<Tachyon.GetWdttStatus>(
       Tachyon.AvailableMethods.GET_WDTT_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getOlcrtcStatus: async () =>
     callBaseMethod<Tachyon.GetOlcrtcStatus>(
       Tachyon.AvailableMethods.GET_OLCRTC_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getFptnStatus: async () =>
     callBaseMethod<Tachyon.GetFptnStatus>(
       Tachyon.AvailableMethods.GET_FPTN_STATUS,
       [],
-      '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
   getClashApiProxies: async () =>
@@ -391,47 +381,29 @@ export const TachyonShellMethods = {
       Tachyon.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS,
     ]),
   enable: async () =>
-    callBaseMethod<unknown>(
-      Tachyon.AvailableMethods.ENABLE,
-      [],
-      '/etc/init.d/tachyon',
-    ),
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.ENABLE, []),
   disable: async () =>
-    callBaseMethod<unknown>(
-      Tachyon.AvailableMethods.DISABLE,
-      [],
-      '/etc/init.d/tachyon',
-    ),
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.DISABLE, []),
   globalCheck: async (masked = true) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.GLOBAL_CHECK, [
       masked ? 'masked' : 'raw',
     ]),
   doctor: async () =>
-    callBaseMethod<string>(
-      Tachyon.AvailableMethods.DOCTOR,
-      [],
-      '/usr/bin/tachyon',
-      { timeout: 30000 },
-    ),
+    callBaseMethod<string>(Tachyon.AvailableMethods.DOCTOR, [], {
+      timeout: 30000,
+    }),
   aiDoctor: async () =>
-    callBaseMethod<unknown>(
-      Tachyon.AvailableMethods.AI_DOCTOR,
-      [],
-      '/usr/bin/tachyon',
-      { timeout: 60000 },
-    ),
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.AI_DOCTOR, [], {
+      timeout: 60000,
+    }),
   aiDoctorLast: async () =>
-    callBaseMethod<unknown>(
-      Tachyon.AvailableMethods.AI_DOCTOR_LAST,
-      [],
-      '/usr/bin/tachyon',
-      { timeout: 10000 },
-    ),
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.AI_DOCTOR_LAST, [], {
+      timeout: 10000,
+    }),
   applyQuickFix: async (fixCode: string) =>
     callBaseMethod<unknown>(
       Tachyon.AvailableMethods.APPLY_QUICK_FIX,
       [fixCode],
-      '/usr/bin/tachyon',
       { timeout: 30000 },
     ),
   getLanClients: async () =>
@@ -439,7 +411,7 @@ export const TachyonShellMethods = {
       success: boolean;
       clients: Tachyon.LanClient[];
       total: number;
-    }>(Tachyon.AvailableMethods.LAN_CLIENTS, [], '/usr/bin/tachyon', {
+    }>(Tachyon.AvailableMethods.LAN_CLIENTS, [], {
       timeout: 10000,
     }),
   toggleClientBypass: async (ip: string) =>
@@ -448,12 +420,7 @@ export const TachyonShellMethods = {
       ip: string;
       mode: 'proxied' | 'direct';
       message: string;
-    }>(
-      Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS,
-      [ip],
-      '/usr/bin/tachyon',
-      { timeout: 15000 },
-    ),
+    }>(Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS, [ip], { timeout: 15000 }),
   showSingBoxConfig: async (masked = true) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
       masked ? 'masked' : 'raw',
@@ -466,21 +433,18 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.GetSystemInfo>(
       Tachyon.AvailableMethods.GET_SYSTEM_INFO,
       [],
-      '/usr/bin/tachyon',
       { timeout: 25000 },
     ),
   getEngineInfo: async () =>
     callBaseMethod<Tachyon.EngineInfo>(
       Tachyon.AvailableMethods.ENGINE_INFO,
       [],
-      '/usr/bin/tachyon',
       { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
     ),
   getEnginePlan: async (engine: string) =>
     callBaseMethod<Tachyon.EngineSwitchPlan>(
       Tachyon.AvailableMethods.ENGINE_PLAN,
       [engine],
-      '/usr/bin/tachyon',
       { timeout: UI_ACTION_RPC_TIMEOUT_MS },
     ),
   getServerCapabilities: async () =>
@@ -492,12 +456,9 @@ export const TachyonShellMethods = {
       Tachyon.AvailableMethods.GET_UI_CAPABILITIES,
     ),
   getUiState: async () =>
-    callBaseMethod<Tachyon.UiState>(
-      Tachyon.AvailableMethods.GET_UI_STATE,
-      [],
-      '/usr/bin/tachyon',
-      { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
-    ),
+    callBaseMethod<Tachyon.UiState>(Tachyon.AvailableMethods.GET_UI_STATE, [], {
+      timeout: GET_UI_STATE_RPC_TIMEOUT_MS,
+    }),
   serviceActionStart: async (action: Tachyon.ServiceAction) => {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
@@ -1618,7 +1579,7 @@ export const TachyonShellMethods = {
   > => {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_START],
+      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_ASYNC],
       timeout: 10000,
     });
     const parsed = parseJsonObjectOutput<{

@@ -6,15 +6,20 @@ interface CallBaseMethodOptions {
   timeout?: number;
 }
 
+// The executable is a constant, not a parameter. It used to be an optional
+// argument that every caller happened to leave alone, which meant a copy of
+// any call site could point the frontend at a different binary and nothing
+// would complain.
+const TACHYON_BIN = '/usr/bin/tachyon';
+
 export async function callBaseMethod<T>(
   method: Tachyon.AvailableMethods,
   args: string[] = [],
-  command: string = '/usr/bin/tachyon',
   options: CallBaseMethodOptions = {},
 ): Promise<Tachyon.MethodResponse<T>> {
   try {
     const response = await executeShellCommand({
-      command,
+      command: TACHYON_BIN,
       args: [method as string, ...args],
       timeout: options.timeout ?? 15000,
     });
