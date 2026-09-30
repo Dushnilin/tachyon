@@ -45,6 +45,7 @@ let get_tg_state = transport.get_tg_state;
 let set_tg_state = transport.set_tg_state;
 let get_proxy_args = transport.get_proxy_args;
 let get_mixed_port = transport.get_mixed_port;
+let get_mixed_proxy_info = transport.get_mixed_proxy_info;
 let get_mixed_proxy_endpoint = transport.get_mixed_proxy_endpoint;
 let mixed_port_alive = transport.mixed_port_alive;
 let direct_fallback_enabled = transport.direct_fallback_enabled;
