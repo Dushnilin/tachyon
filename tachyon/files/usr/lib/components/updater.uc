@@ -1122,7 +1122,62 @@ function olcrtc_select_asset(series, asset_ext, arch_candidates) {
     }
 }
 
+// GitHub orders /releases by created_at, not by version, so the first entry is
+// not the newest build: Leadaxe published lx.9 at 11:51 and lx.11 at 18:16 the
+// same day, and the API hands lx.9 back first. Comparing the tags here is
+// deliberately in-process: core/helpers.uc owns version_compare but it is a CLI
+// dispatcher with no export list, and spawning it after read_stdin_json() leaves
+// the child with a consumed stdin and an empty result.
+function release_tag_rank(tag) {
+    let rank = [];
+    for (let part in split(lc(tag), /[^a-z0-9]+/)) {
+        if (part == "")
+            continue;
+        if (match(part, /^[0-9]+$/))
+            push(rank, [ 0, int(part, 10) ]);
+        else
+            push(rank, [ 1, part ]);
+    }
+    return rank;
+}
+
+function compare_release_ranks(lhs, rhs) {
+    let n = length(lhs) > length(rhs) ? length(lhs) : length(rhs);
+    for (let i = 0; i < n; i++) {
+        let a = lhs[i];
+        let b = rhs[i];
+        if (a == null && b == null)
+            continue;
+        if (a == null)
+            return -1;
+        if (b == null)
+            return 1;
+        if (a[0] != b[0])
+            return a[0] < b[0] ? -1 : 1;
+        if (a[1] != b[1])
+            return a[1] < b[1] ? -1 : 1;
+    }
+    return 0;
+}
+
+function highest_release_tag(candidates) {
+    let best = null;
+    let best_rank = null;
+    for (let tag in (type(candidates) == "array" ? candidates : [])) {
+        tag = trim(as_string(tag));
+        if (tag == "")
+            continue;
+        let rank = release_tag_rank(tag);
+        if (best == null || compare_release_ranks(rank, best_rank) > 0) {
+            best = tag;
+            best_rank = rank;
+        }
+    }
+    return best;
+}
+
 function sing_box_extended_release_tag() {
+    let candidates = [];
     for (let release in releases_array_or_wrapped(read_stdin_json())) {
         if (type(release) != "object")
             continue;
@@ -1130,14 +1185,14 @@ function sing_box_extended_release_tag() {
             continue;
         let tag = as_string(release.tag_name || "");
         let lowered = lc(tag);
-        if (tag != "" && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc")) {
-            print(tag, "\n");
-            return;
-        }
+        if (tag != "" && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc"))
+            push(candidates, tag);
     }
+    print(highest_release_tag(candidates), "\n");
 }
 
 function sing_box_lx_release_tag() {
+    let candidates = [];
     for (let release in releases_array_or_wrapped(read_stdin_json())) {
         if (type(release) != "object")
             continue;
@@ -1145,11 +1200,10 @@ function sing_box_lx_release_tag() {
             continue;
         let tag = as_string(release.tag_name || "");
         let lowered = lc(tag);
-        if (tag != "" && str_contains(lowered, "-lx") && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc")) {
-            print(tag, "\n");
-            return;
-        }
+        if (tag != "" && str_contains(lowered, "-lx") && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc"))
+            push(candidates, tag);
     }
+    print(highest_release_tag(candidates), "\n");
 }
 
 function text_first_chars(value, max_chars) {
