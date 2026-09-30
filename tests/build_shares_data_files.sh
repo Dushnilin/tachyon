@@ -6,6 +6,15 @@
 # Smart Detect Plus reads to reduce a hostname to its registrable domain.
 #
 # Every file under files/usr/share/tachyon must therefore be named in build.sh.
+# The rpcd ACL is checked separately because it is not shared data: it lives in
+# files/usr/share/rpcd/acl.d and ships in the tachyon package. It was moved out
+# of luci-app-tachyon precisely so the backend and its policy update apart, and
+# build.sh was never taught to install it, so release artifacts shipped a
+# luci package whose ACL silently did not apply to the read role.
+#
+# The key is the full source path, not the bare file name: build.sh mentions
+# luci-app-tachyon.json for an unrelated uci-defaults guard on menu.d, so a
+# name-only grep passes against a build.sh that installs no ACL at all.
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 
@@ -13,10 +22,11 @@ set -eo pipefail
 
 SHARE_DIR="$ROOT_DIR/tachyon/files/usr/share/tachyon"
 BUILD_SH="$ROOT_DIR/build.sh"
+ACL_PATH="files/usr/share/rpcd/acl.d/luci-app-tachyon.json"
 
-[ -f "$SHARE_DIR" ] || true
 [ -d "$SHARE_DIR" ] || fail "shared data directory missing: $SHARE_DIR"
 [ -f "$BUILD_SH" ] || fail "build.sh missing"
+[ -f "$ROOT_DIR/tachyon/$ACL_PATH" ] || fail "rpcd ACL missing from the source tree: $ACL_PATH"
 
 missing=0
 count=0
@@ -34,4 +44,7 @@ done
 
 [ "$count" -gt 0 ] || fail "no shared data files found, the loop checked nothing"
 
-printf 'PASS: build.sh installs all %d shared data files\n' "$count"
+grep -qF "$ACL_PATH" "$BUILD_SH" ||
+  fail "build.sh does not install the rpcd ACL into the tachyon package"
+
+printf 'PASS: build.sh installs all %d shared data files and the rpcd ACL\n' "$count"

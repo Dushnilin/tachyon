@@ -266,6 +266,7 @@ build_backend_root() {
   make_dir "$output_root/usr/lib/tachyon/defaults"
   make_dir "$output_root/usr/lib/cgi-bin"
   make_dir "$output_root/usr/share/tachyon"
+  make_dir "$output_root/usr/share/rpcd/acl.d"
 
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon" "$output_root/etc/init.d/tachyon"
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon-torrserver-direct" \
@@ -277,6 +278,13 @@ build_backend_root() {
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/sbin/steer-nfqws" \
     "$output_root/usr/share/tachyon/steer-nfqws"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon-read" "$output_root/usr/bin/tachyon-read"
+  # The rpcd ACL for /usr/bin/tachyon and /usr/bin/tachyon-read ships here rather
+  # than in luci-app-tachyon, so the backend and its policy update apart. That is
+  # the point of splitting the read role off the main binary; shipping the ACL
+  # from the LuCI package left a stricter read role inert whenever only one of
+  # the two packages was upgraded.
+  install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/rpcd/acl.d/luci-app-tachyon.json" \
+    "$output_root/usr/share/rpcd/acl.d/luci-app-tachyon.json"
   cp -a "$ROOT_DIR/tachyon/files/usr/lib/." "$output_root/usr/lib/tachyon/"
 
   # Mirror Package/tachyon/install from tachyon/Makefile exactly: the release
@@ -310,6 +318,7 @@ build_backend_root() {
 
   normalize_package_root_modes "$output_root"
   chmod 0755 "$output_root/etc/init.d/tachyon" "$output_root/usr/bin/tachyon" \
+    "$output_root/usr/bin/tachyon-read" \
     "$output_root/etc/init.d/tachyon-torrserver-direct" \
     "$output_root/etc/init.d/tachyon-steer-zapret" \
     "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
@@ -462,6 +471,10 @@ fi
 
 /etc/init.d/tachyon enable >/dev/null 2>&1 || true
 /usr/bin/tachyon package_postinst >/dev/null 2>&1 || true
+# rpcd caches ACLs, so without this reload the policy shipped in this package
+# stays inert until rpcd picks it up, and the stricter read role would look
+# applied while the old one kept serving.
+[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
 chmod 600 /etc/config/tachyon 2>/dev/null || true
 chown root:root /etc/config/tachyon 2>/dev/null || true
 if [ -d /www/cgi-bin ]; then
@@ -721,6 +734,12 @@ function restore_cfg_from_backup() {
     fs.unlink(backup);
 }
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+    // rpcd caches ACLs, and the backend package now ships the ACL that splits the
+    // read role off the main binary. Without this the new policy stays inert
+    // until rpcd picks it up, and the stricter read role would look applied while
+    // the old one kept serving. Placed before the migrations so it happens on
+    // every exit path below, including the ones that exit early.
+    system("/etc/init.d/rpcd reload >/dev/null 2>&1 || true");
     system("for svc in podkop forkop netshift podkop_plus forkop_plus; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
     system("rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true");
     system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable; do nft delete table inet $tbl >/dev/null 2>&1 || true; done");
@@ -831,6 +850,12 @@ function restore_cfg_from_backup() {
     fs.unlink(backup);
 }
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+    // rpcd caches ACLs, and the backend package now ships the ACL that splits the
+    // read role off the main binary. Without this the new policy stays inert
+    // until rpcd picks it up, and the stricter read role would look applied while
+    // the old one kept serving. Placed before the migrations so it happens on
+    // every exit path below, including the ones that exit early.
+    system("/etc/init.d/rpcd reload >/dev/null 2>&1 || true");
     system("for svc in podkop forkop netshift podkop_plus forkop_plus; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
     system("rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true");
     system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable; do nft delete table inet $tbl >/dev/null 2>&1 || true; done");
