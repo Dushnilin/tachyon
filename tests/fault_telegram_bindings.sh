@@ -63,6 +63,9 @@ done
 for name in handle_fptn_token_update handle_sec_sub_add; do
   assert_in "$runtime_code" "let $name = callbacks.$name;" "runtime.uc must bind $name from callbacks"
 done
+# option() is called by block_schedules_with_notify(), the first line of
+# check_blocked_activity(). Unbound there, the worker threw on every pass.
+assert_in "$runtime_code" "let option = common.option;" "runtime.uc must bind option from common"
 assert_in "$callbacks_code" "let save_persistent_selector_choice = commands.save_persistent_selector_choice;" \
   "callbacks.uc must bind save_persistent_selector_choice from commands"
 

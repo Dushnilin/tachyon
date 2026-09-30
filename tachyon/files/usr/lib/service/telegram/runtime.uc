@@ -47,6 +47,11 @@ let view_quiet_hours = commands.view_quiet_hours;
 let handle_fptn_token_update = callbacks.handle_fptn_token_update;
 let handle_sec_sub_add = callbacks.handle_sec_sub_add;
 let object_or_empty = common.object_or_empty;
+// commands.uc and callbacks.uc both carry this binding; runtime.uc did not.
+// block_schedules_with_notify() calls option() on its first line, so
+// check_blocked_activity() threw on every pass - and because the throw
+// skipped `last_blocked_check = now`, it threw again immediately, forever.
+let option = common.option;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_from_args = common.command_from_args;
