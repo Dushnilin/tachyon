@@ -107,7 +107,6 @@ export function renderAiChatModal() {
       const res = (await callBaseMethod(
         Tachyon.AvailableMethods.AI_DOCTOR,
         [text],
-        '/usr/bin/tachyon',
         { timeout: 120000 },
       )) as { success?: boolean; data?: unknown };
       chatHistory.pop();

@@ -2950,10 +2950,11 @@ function getOutboundTagBySection(sectionName) {
 }
 
 // src/tachyon/methods/shell/callBaseMethod.ts
-async function callBaseMethod(method, args = [], command = "/usr/bin/tachyon", options = {}) {
+var TACHYON_BIN = "/usr/bin/tachyon";
+async function callBaseMethod(method, args = [], options = {}) {
   try {
     const response = await executeShellCommand({
-      command,
+      command: TACHYON_BIN,
       args: [method, ...args],
       timeout: options.timeout ?? 15e3
     });
@@ -3250,7 +3251,6 @@ async function isComponentActionStillRunning(jobId, component, action) {
   const response = await callBaseMethod(
     Tachyon.AvailableMethods.GET_UI_STATE,
     [],
-    "/usr/bin/tachyon",
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
   );
   return response.success && response.data.actions.component.some(
@@ -3327,55 +3327,46 @@ var TachyonShellMethods = {
   getSingBoxStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getEngineStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_ENGINE_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getTailscalePeers: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_TAILSCALE_PEERS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getZapretStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_ZAPRET_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getZapret2Status: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_ZAPRET2_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getByedpiStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getWdttStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_WDTT_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getOlcrtcStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_OLCRTC_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getFptnStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_FPTN_STATUS,
     [],
-    "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
   ),
   getClashApiProxies: async () => callBaseMethod(Tachyon.AvailableMethods.CLASH_API, [
@@ -3412,52 +3403,29 @@ var TachyonShellMethods = {
   closeAllClashApiConnections: async () => callBaseMethod(Tachyon.AvailableMethods.CLASH_API, [
     Tachyon.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS
   ]),
-  enable: async () => callBaseMethod(
-    Tachyon.AvailableMethods.ENABLE,
-    [],
-    "/etc/init.d/tachyon"
-  ),
-  disable: async () => callBaseMethod(
-    Tachyon.AvailableMethods.DISABLE,
-    [],
-    "/etc/init.d/tachyon"
-  ),
+  enable: async () => callBaseMethod(Tachyon.AvailableMethods.ENABLE, []),
+  disable: async () => callBaseMethod(Tachyon.AvailableMethods.DISABLE, []),
   globalCheck: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.GLOBAL_CHECK, [
     masked ? "masked" : "raw"
   ]),
-  doctor: async () => callBaseMethod(
-    Tachyon.AvailableMethods.DOCTOR,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: 3e4 }
-  ),
-  aiDoctor: async () => callBaseMethod(
-    Tachyon.AvailableMethods.AI_DOCTOR,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: 6e4 }
-  ),
-  aiDoctorLast: async () => callBaseMethod(
-    Tachyon.AvailableMethods.AI_DOCTOR_LAST,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: 1e4 }
-  ),
+  doctor: async () => callBaseMethod(Tachyon.AvailableMethods.DOCTOR, [], {
+    timeout: 3e4
+  }),
+  aiDoctor: async () => callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR, [], {
+    timeout: 6e4
+  }),
+  aiDoctorLast: async () => callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR_LAST, [], {
+    timeout: 1e4
+  }),
   applyQuickFix: async (fixCode) => callBaseMethod(
     Tachyon.AvailableMethods.APPLY_QUICK_FIX,
     [fixCode],
-    "/usr/bin/tachyon",
     { timeout: 3e4 }
   ),
-  getLanClients: async () => callBaseMethod(Tachyon.AvailableMethods.LAN_CLIENTS, [], "/usr/bin/tachyon", {
+  getLanClients: async () => callBaseMethod(Tachyon.AvailableMethods.LAN_CLIENTS, [], {
     timeout: 1e4
   }),
-  toggleClientBypass: async (ip) => callBaseMethod(
-    Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS,
-    [ip],
-    "/usr/bin/tachyon",
-    { timeout: 15e3 }
-  ),
+  toggleClientBypass: async (ip) => callBaseMethod(Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS, [ip], { timeout: 15e3 }),
   showSingBoxConfig: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
     masked ? "masked" : "raw"
   ]),
@@ -3466,19 +3434,16 @@ var TachyonShellMethods = {
   getSystemInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SYSTEM_INFO,
     [],
-    "/usr/bin/tachyon",
     { timeout: 25e3 }
   ),
   getEngineInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.ENGINE_INFO,
     [],
-    "/usr/bin/tachyon",
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
   ),
   getEnginePlan: async (engine) => callBaseMethod(
     Tachyon.AvailableMethods.ENGINE_PLAN,
     [engine],
-    "/usr/bin/tachyon",
     { timeout: UI_ACTION_RPC_TIMEOUT_MS }
   ),
   getServerCapabilities: async () => callBaseMethod(
@@ -3487,12 +3452,9 @@ var TachyonShellMethods = {
   getUiCapabilities: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_UI_CAPABILITIES
   ),
-  getUiState: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_UI_STATE,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
-  ),
+  getUiState: async () => callBaseMethod(Tachyon.AvailableMethods.GET_UI_STATE, [], {
+    timeout: GET_UI_STATE_RPC_TIMEOUT_MS
+  }),
   serviceActionStart: async (action) => {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
@@ -14005,7 +13967,6 @@ function renderAiChatModal() {
       const res = await callBaseMethod(
         Tachyon.AvailableMethods.AI_DOCTOR,
         [text],
-        "/usr/bin/tachyon",
         { timeout: 12e4 }
       );
       chatHistory.pop();
