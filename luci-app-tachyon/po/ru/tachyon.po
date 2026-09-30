@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 12:52+0300\n"
-"PO-Revision-Date: 2026-09-30 12:52+0300\n"
+"POT-Creation-Date: 2026-09-30 13:10+0300\n"
+"PO-Revision-Date: 2026-09-30 13:10+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1376,11 +1376,17 @@ msgstr "По умолчанию (авто)"
 msgid "Default (Direct WAN / Default mixed proxy)"
 msgstr "По умолчанию (WAN / стандартный смешанный прокси)"
 
+msgid "Default (upstream)"
+msgstr "Default (штатный)"
+
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
 
 msgid "Default Tab on Startup"
 msgstr "Вкладка по умолчанию при входе"
+
+msgid "Default: uses sing-box error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe."
+msgstr "Default: использует ошибки из журнала sing-box и HTTPS HEAD-проверки. Добавляет обнаруженный hostname после повторных сбоев Direct с подтверждением через минимум 120 секунд и успешной проверки через общий прокси."
 
 msgid "Degraded"
 msgstr "Деградировано"
@@ -3992,6 +3998,12 @@ msgstr "Выберите подходящую секцию правил, что�
 msgid "Please specify strategy name and arguments"
 msgstr "Пожалуйста, укажите имя стратегии и аргументы"
 
+msgid "Plus"
+msgstr "Plus"
+
+msgid "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection."
+msgstr "Plus: дополнительно наблюдает за зависшими LAN HTTP/HTTPS-соединениями и проверяет полный ответ GET. Требуются два неуспешных Direct GET и успешный GET через общий прокси. Сохраняет основной домен вместе с поддоменами по Public Suffix List. Ошибки DNS-разрешения и локальных сертификатов откладывают обнаружение."
+
 msgid "Policy Mode"
 msgstr "Режим политики"
 
@@ -5026,6 +5038,9 @@ msgstr "Пропущены loopback:"
 
 msgid "SLOW"
 msgstr "МЕДЛЕННО"
+
+msgid "Smart Detect mode"
+msgstr "Режим Smart Detect"
 
 msgid "Snapshot name"
 msgstr "Имя снапшота"
@@ -7354,23 +7369,3 @@ msgstr "базовая"
 
 msgid "Failed to parse OpenVPN config: "
 msgstr "Не удалось прочитать конфиг OpenVPN: "
-
-#: htdocs/luci-static/resources/view/tachyon/settings.js
-msgid "Smart Detect mode"
-msgstr "Режим Smart Detect"
-
-#: htdocs/luci-static/resources/view/tachyon/settings.js
-msgid "Default (upstream)"
-msgstr "Default (штатный)"
-
-#: htdocs/luci-static/resources/view/tachyon/settings.js
-msgid "Plus"
-msgstr "Plus"
-
-#: htdocs/luci-static/resources/view/tachyon/settings.js
-msgid "Default: uses sing-box error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe."
-msgstr "Default: использует ошибки из журнала sing-box и HTTPS HEAD-проверки. Добавляет обнаруженный hostname после повторных сбоев Direct с подтверждением через минимум 120 секунд и успешной проверки через общий прокси."
-
-#: htdocs/luci-static/resources/view/tachyon/settings.js
-msgid "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection."
-msgstr "Plus: дополнительно наблюдает за зависшими LAN HTTP/HTTPS-соединениями и проверяет полный ответ GET. Требуются два неуспешных Direct GET и успешный GET через общий прокси. Сохраняет основной домен вместе с поддоменами по Public Suffix List. Ошибки DNS-разрешения и локальных сертификатов откладывают обнаружение."
