@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Pins the escalation ladder: a reason's first repair attempt restarts only the
@@ -11,14 +12,7 @@ set -eo pipefail
 # "works", it just costs every connection through the router. No other test
 # would notice.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WATCHDOG_UC="$TACHYON_LIB/service/watchdog.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # ── the two rungs exist and are distinct ──────────────────────────────────────
 grep -q 'const ESCALATION_LIGHT = "light";' "$WATCHDOG_UC" \

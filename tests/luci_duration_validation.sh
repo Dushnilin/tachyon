@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 for file in settings.js section.js; do
   source="$(sed -n '/^function isSingBoxDuration(/,/^}/p' \

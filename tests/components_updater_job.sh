@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 CLI_UC="$TACHYON_BIN"
 UPDATER="$ROOT_DIR/tachyon/files/usr/lib/components/updater.uc"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
 INSTALLER_UC="$ROOT_DIR/tachyon/files/usr/lib/components/installer.uc"
-WORK_DIR="$(mktemp -d)"
 
 ucode() {
   local has_L=0
@@ -24,16 +22,6 @@ ucode() {
   else
     command ucode -L "$TACHYON_LIB" "$@"
   fi
-}
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
 }
 
 assert_eq() {

@@ -14,9 +14,9 @@
 # Spawns a real process, so this needs a real kernel - it runs in the container
 # and on a router alike. It is deliberately not mocked, because the thing being
 # tested is precisely that the process disappeared.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -z "$TACHYON_LIB" ]; then
   if [ -d "$ROOT_DIR/tachyon/files/usr/lib/core" ]; then
     TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
@@ -142,7 +142,6 @@ jobs.register_rollback(job, { type: "command", cmd: "touch " + getenv("K_RAN") }
 printf("id=%s\n", job.id);
 ')"
 
-
 kill -9 "$persist_pid" 2>/dev/null || true
 i=0
 while kill -0 "$persist_pid" 2>/dev/null && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done
@@ -188,7 +187,6 @@ jobs.register_rollback(job, function(j2, reason) {
 });
 printf("id=%s\n", job.id);
 ')"
-
 
 kill -9 "$lost_pid" 2>/dev/null || true
 i=0

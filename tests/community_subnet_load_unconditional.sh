@@ -10,15 +10,10 @@
 # surfaced on a user router as "empty nftables subnets sets (community) — data
 # was not loaded on reload", auto-remediated by the Reconciler from the
 # persistent cache, which hides rather than fixes it.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APPLY_UC="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$APPLY_UC" ] || fail "nft/apply.uc not found"
 

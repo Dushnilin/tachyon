@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 BENCHMARK="$TACHYON_LIB/dns/benchmark.uc"
 BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-WORK_DIR="$(mktemp -d)"
 GUARD_WORKER_PID=""
 
 cleanup() {
@@ -26,11 +24,6 @@ cleanup() {
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # ─── 1. Syntax check & module load ──────────────────────────────────────────
 ucode -L "$TACHYON_LIB" -c "$BENCHMARK" || fail "benchmark.uc must pass ucode syntax check"

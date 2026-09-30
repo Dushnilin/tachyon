@@ -1,23 +1,11 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 RUNTIME_MIGRATION="$TACHYON_LIB/config/migration.uc"
 INSTALLER="$ROOT_DIR/install.sh"
-WORK_DIR="$(mktemp -d)"
 MIGRATION="$RUNTIME_MIGRATION"
 MIGRATIONS_DIR="$TACHYON_LIB/config/migrations"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 if grep -n -E 'TACHYON_CONFIG_MIGRATION_EOF|installer_config_migration_path' "$INSTALLER" >/dev/null 2>&1; then
   fail "install.sh must not embed configuration migration logic"
@@ -713,7 +701,6 @@ ucode -L "$TACHYON_LIB" "$MIGRATION" commit
 
 grep -Fxq 'commit tachyon' "$WORK_DIR/uci-commit.log" ||
   fail "commit mode must commit tachyon through core.uci"
-
 
 # Regression: forkop configs often lack bootstrap_dns_server.
 # The ensure_dns_server_defaults migration must inject a default so the validator

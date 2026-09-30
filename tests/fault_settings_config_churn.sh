@@ -20,15 +20,10 @@
 #
 # settings.js is a hand-written LuCI view (tsup only builds main.js from TS), so it
 # is not covered by tsc, eslint or the vitest suite. This reads the real file.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SETTINGS_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$SETTINGS_JS" ] || fail "settings.js not found at $SETTINGS_JS"
 

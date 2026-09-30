@@ -6,16 +6,10 @@
 # 1.14 `outbound/direct[Zapret2-out]` is a direct-TYPE outbound owned by the
 # Zapret2 section. Reading it as "the bypass path failed" inverted the meaning
 # and produced VPN rules for every site whenever a section broke.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CONTROLLER_UC="$TACHYON_LIB/service/event_controller.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 uc() {
   command ucode -L "$TACHYON_LIB" "$@"

@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WATCHDOG_UC="$TACHYON_LIB/service/watchdog.uc"
 BIN_TACHYON="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert_eq() {
   local actual="$1" expected="$2" label="$3"

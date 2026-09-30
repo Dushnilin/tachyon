@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 TACHYON_INIT="$ROOT_DIR/tachyon/files/etc/init.d/tachyon"
 CLI_UC="$TACHYON_BIN"
@@ -14,11 +14,6 @@ SUBSCRIPTION_CACHE_UC="$ROOT_DIR/tachyon/files/usr/lib/subscription/cache.uc"
 NFQUEUE_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/nfqueue/runtime.uc"
 BYEDPI_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/byedpi/runtime.uc"
 PRIORITY_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/priority.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 require_pattern() {
   local pattern="$1"

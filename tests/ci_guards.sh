@@ -12,9 +12,9 @@
 #
 # Keyed by file rather than line numbers, so ordinary edits above a violation do
 # not churn the baseline.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASELINE="$ROOT_DIR/tests/ci_guards_baseline.txt"
 
 if [ "${1:-}" = "--update" ]; then
@@ -22,11 +22,6 @@ if [ "${1:-}" = "--update" ]; then
 else
   UPDATE=0
 fi
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # Rules are three TAB-separated fields: id, extended regex, exempt files.
 #

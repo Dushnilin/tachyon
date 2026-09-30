@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
-set -eo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/core/helpers.uc"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+set -eo pipefail
 
 ucode() {
   command ucode -L "$TACHYON_LIB" "$@"
 }
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
+HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/core/helpers.uc"
 
 assert_eq() {
   local expected="$1"

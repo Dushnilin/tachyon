@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 FUZZER="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/fuzzer.uc"
 BYEDPI_VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/providers/byedpi/validator.uc"
 ZAPRET_VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/providers/zapret/validator.uc"
 ZAPRET2_VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/providers/zapret2/validator.uc"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. Check strategies JSON output
 strategies_json="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" strategies)"

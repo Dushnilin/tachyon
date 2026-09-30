@@ -1,27 +1,15 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIAGNOSTICS="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/status.uc"
 DIAGNOSTICS_RUNTIME="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc"
 DIAGNOSTICS_SYSTEM_INFO="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/system_info.uc"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CLI_UC="$TACHYON_BIN"
-WORK_DIR="$(mktemp -d)"
 
 status_ucode() {
   ucode -L "$TACHYON_LIB" "$DIAGNOSTICS" "$@"
-}
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
 }
 
 assert_status() {

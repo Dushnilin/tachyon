@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
+
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
+
 HOSTS_UC="${HOSTS_UC:-$ROOT_DIR/tachyon/files/usr/lib/components/hosts.uc}"
 TACHYON_LIB="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 TMP_DIR="$(mktemp -d)"
@@ -12,10 +17,6 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$TMP_DIR/cache" "$TMP_DIR/tmp"
 export TACHYON_HOSTS_CACHE_DIR="$TMP_DIR/cache"
 export TACHYON_HOSTS_TMP_DIR="$TMP_DIR/tmp"
-
-ucode() {
-  command ucode -L "$TACHYON_LIB" "$@"
-}
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2

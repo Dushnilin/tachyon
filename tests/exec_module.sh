@@ -1,25 +1,21 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
+
 set -eo pipefail
+
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
 
 # Tests for core/exec.uc — unified process execution layer.
 # Run on the router: bash /tmp/exec_module.sh
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "$ROOT_DIR/tachyon/files/usr/lib/core" ]; then
   TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 else
   TACHYON_LIB="/usr/lib/tachyon"
 fi
 EXEC_UC="$TACHYON_LIB/core/exec.uc"
-
-ucode() {
-  command ucode -L "$TACHYON_LIB" "$@"
-}
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert_eq() {
   local expected="$1"

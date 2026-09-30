@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
 SOURCE_PO="$ROOT_DIR/fe-app-tachyon/locales/tachyon.ru.po"
 PACKAGE_PO="$ROOT_DIR/luci-app-tachyon/po/ru/tachyon.po"
 SOURCE_POT="$ROOT_DIR/fe-app-tachyon/locales/tachyon.pot"
 PACKAGE_POT="$ROOT_DIR/luci-app-tachyon/po/templates/tachyon.pot"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 if grep -Fq '_("Dismiss")' "$SECTION_JS"; then
   fail "Tachyon modals must use Close instead of the shared LuCI Dismiss key"

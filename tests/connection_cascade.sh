@@ -1,20 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 GENERATOR="$TACHYON_LIB/singbox/generator.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 mkdir -p "$WORK_DIR/subscriptions" "$WORK_DIR/output.json.section-cache"
 

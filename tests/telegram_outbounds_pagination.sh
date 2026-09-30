@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Telegram server picker must paginate.
@@ -12,15 +13,7 @@ set -eo pipefail
 # curl is stubbed so the real view function runs end to end: the clash /proxies
 # call returns a fixture, and every Telegram call is captured verbatim.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 SERVER_COUNT=100
 PER_PAGE=16

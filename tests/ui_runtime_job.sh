@@ -1,23 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UI_UC="$ROOT_DIR/tachyon/files/usr/lib/service/ui.uc"
 TACHYON_FILES="$ROOT_DIR/tachyon/files"
 TACHYON_BIN="$TACHYON_FILES/usr/bin/tachyon"
 TACHYON_INIT="$TACHYON_FILES/etc/init.d/tachyon"
 UI_RUNTIME_SH="$TACHYON_FILES/usr/lib/ui_runtime.sh"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 ui_ucode() {
   ucode -L "$TACHYON_FILES/usr/lib" "$UI_UC" "$@"

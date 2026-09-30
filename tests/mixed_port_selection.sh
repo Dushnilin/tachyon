@@ -1,21 +1,9 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 COMMON_UC="$TACHYON_LIB/core/common.uc"
 TG_UC="$TACHYON_LIB/service/telegram.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. Verify priority order in common.uc
 grep -Fq 'inbound.tag == "service-mixed-in"' "$COMMON_UC" ||

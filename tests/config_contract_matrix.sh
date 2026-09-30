@@ -1,22 +1,11 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STABLE_REF="${TACHYON_STABLE_REF:-0.7.19.9}"
 STABLE_REPO="${TACHYON_STABLE_REPO:-}"
 MATRIX_SCRIPT="$ROOT_DIR/tests/helpers/config_contract_matrix.js"
-WORK_DIR="$(mktemp -d)"
 LEGACY_STEM="$(printf '\160\157\144\153\157\160')"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 ensure_stable_ref() {
   if git -C "$ROOT_DIR" rev-parse --verify "$STABLE_REF^{commit}" >/dev/null 2>&1; then

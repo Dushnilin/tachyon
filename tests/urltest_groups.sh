@@ -1,22 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 PARSER_UC="$TACHYON_LIB/subscription/parser.uc"
 GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
 CACHE_UC="$TACHYON_LIB/subscription/cache.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 normalize_subscription() {
   local input="$1"

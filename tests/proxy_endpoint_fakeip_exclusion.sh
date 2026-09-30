@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Issue #82: with FakeIP on, a proxy endpoint's own hostname could be answered
@@ -10,20 +11,13 @@ set -eo pipefail
 # The endpoint list is rebuilt from the generated config on every run, so it
 # follows endpoint changes in a subscription with no manual exclusion.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "$ROOT_DIR/tachyon/files/usr/lib" ]; then
   TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 else
   TACHYON_LIB="/usr/lib/tachyon"
 fi
 GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # The outbound shape mirrors a subscription node: vless with a hostname server.
 cat >"$WORK_DIR/fixture.json" <<'JSON'

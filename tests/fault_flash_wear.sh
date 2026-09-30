@@ -15,19 +15,13 @@
 # The three central writers in core/common.uc - write_file, write_json_file and
 # copy_file - are where every regenerator funnels through, so the guard belongs
 # there rather than at the ~230 call sites.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$LIB_DIR/core/common.uc" ] || fail "core/common.uc not found"
 
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # Writes the same content twice and reports whether the second write actually

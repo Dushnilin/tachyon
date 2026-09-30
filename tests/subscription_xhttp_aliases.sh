@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Issue #81: the subscription parser read only the sing-box spellings of a few
@@ -14,16 +15,8 @@ set -eo pipefail
 # percent-encoded URIs and shell-quoting them through helper functions is
 # where the harness, not the parser, breaks.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 PARSER_UC="$TACHYON_LIB/subscription/parser.uc"
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
-
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # parse <uri> -> outbound JSON on stdout

@@ -1,25 +1,13 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 PACKAGE_UC="$TACHYON_LIB/service/package.uc"
 TACHYON_MAKEFILE="$ROOT_DIR/tachyon/Makefile"
 LUCI_UCI_DEFAULTS="$ROOT_DIR/luci-app-tachyon/root/etc/uci-defaults/50_luci-tachyon"
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
-WORK_DIR="$(mktemp -d)"
 export TACHYON_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -r "$PACKAGE_UC" ] ||
   fail "service/package.uc must own package lifecycle logic"

@@ -23,15 +23,10 @@
 # from another file, which reads as an ordinary free identifier. Nothing else
 # covered it either, so the button was broken for every user for as long as that
 # refactor was on main.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$LIB_DIR/service/telegram/runtime.uc" ] || fail "service/telegram/runtime.uc not found"
 

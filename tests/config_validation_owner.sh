@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_FILES="$ROOT_DIR/tachyon/files"
 TACHYON_BIN="$TACHYON_FILES/usr/bin/tachyon"
 TACHYON_LIB="$TACHYON_FILES/usr/lib"
@@ -11,11 +11,6 @@ RULE_CONFIG="$TACHYON_LIB/config/rule.uc"
 GENERATOR="$TACHYON_LIB/singbox/generator.uc"
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
 LIFECYCLE="$TACHYON_LIB/service/lifecycle.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ ! -e "$TACHYON_LIB/config_validation.sh" ] ||
   fail "config_validation.sh shell owner must be removed"

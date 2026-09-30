@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WD="$ROOT_DIR/tachyon/files/usr/lib/service/watchdog.uc"
 UPD="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 VAL="$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. Watchdog self-healing for the mixed proxy port: live core + dead 4534
 #    triggers a bounded restart, then an hourly-capped admin notification.

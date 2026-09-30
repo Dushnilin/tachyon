@@ -13,17 +13,11 @@
 # The decision is therefore split: repeated transport failures are required
 # before anything is written, and the seen stamp is only spent on a conclusive
 # verdict.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$ROOT_DIR/tachyon/files/usr/lib"
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 ucode() {
   command ucode -L "$LIB_DIR" "$@"

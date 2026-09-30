@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CLI_UC="$TACHYON_BIN"
 HELPERS_SH="$TACHYON_LIB/helpers.sh"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
@@ -12,17 +11,6 @@ RULES_UC="$TACHYON_LIB/providers/rules.uc"
 SINGBOX_RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
 COMPONENT_ACTION_UC="$TACHYON_LIB/components/action.uc"
 DIAGNOSTICS_RUNTIME_UC="$TACHYON_LIB/diagnostics/runtime.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ ! -e "$HELPERS_SH" ] ||
   fail "helpers.sh shell owner must be removed"

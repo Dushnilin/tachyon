@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Pins consequence suppression: while a root cause is being repaired, the
@@ -13,15 +14,8 @@ set -eo pipefail
 # The failure mode this guards against is quiet: without suppression the router
 # still heals, it just thrashes while doing it. Only a log read would show it.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WATCHDOG_UC="$TACHYON_LIB/service/watchdog.uc"
 CONTROLLER_UC="$TACHYON_LIB/service/event_controller.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # ── causality is expressed once ───────────────────────────────────────────────
 # The bus already ranked healers by cause. Those ranks are named so the

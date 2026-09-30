@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 TACHYON_INIT="$ROOT_DIR/tachyon/files/etc/init.d/tachyon"
 CLI_UC="$TACHYON_BIN"
@@ -11,11 +11,6 @@ LIFECYCLE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/lifecycle.uc"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
 NFT_UC="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ ! -e "$RUNTIME_STATE" ] ||
   fail "runtime_state.sh shell owner must be removed"

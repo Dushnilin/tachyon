@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "$ROOT_DIR/tachyon/files/usr/lib" ]; then
   TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 else
@@ -9,17 +9,6 @@ else
 fi
 GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
 PARSER_UC="$TACHYON_LIB/subscription/parser.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. Test subscription/parser.uc share-link-outbound for VLESS with various packetEncoding casing
 r1=$(ucode -L "$TACHYON_LIB" "$PARSER_UC" share-link-outbound "vless://00000000-0000-0000-0000-000000000001@1.2.3.4:443?security=none&packetEncoding=xudp#t1" "t1")

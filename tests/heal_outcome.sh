@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # The watchdog used to report what it was about to do. ai_heal_report() was
@@ -9,15 +10,8 @@ set -eo pipefail
 #
 # This pins the outcome path: act, then report what actually happened.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WATCHDOG_UC="$TACHYON_LIB/service/watchdog.uc"
 CONTROLLER_UC="$TACHYON_LIB/service/event_controller.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # --- the outcome parameter is alive ---
 # It was declared as `status_code` and never read; all call sites passed a

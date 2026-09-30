@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CLI_UC="$TACHYON_BIN"
 BYEDPI_RUNTIME_SH="$TACHYON_LIB/byedpi.sh"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 BYEDPI_RUNTIME_UC="$TACHYON_LIB/providers/byedpi/runtime.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ ! -e "$BYEDPI_RUNTIME_SH" ] ||
   fail "byedpi.sh shell owner must be removed"

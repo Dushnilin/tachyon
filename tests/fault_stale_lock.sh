@@ -10,15 +10,10 @@
 #
 # Drives the real core/packages.uc, because the decision hinges on what it
 # reads out of /proc.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 out="$(ucode -L "$LIB_DIR" -e '
 let packages = require("core.packages");

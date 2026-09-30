@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 UI_UC="$TACHYON_LIB/service/ui.uc"
-WORK_DIR="$(mktemp -d)"
 PROBE_BIN="$WORK_DIR/sing-box"
 PROBE_COUNT="$WORK_DIR/probe-count"
 PROBE_PIDS="$WORK_DIR/probe-pids"
@@ -19,11 +17,6 @@ cleanup() {
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 cat >"$PROBE_BIN" <<'SH'
 #!/bin/sh

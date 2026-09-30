@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert_eq() {
   local expected="$1"

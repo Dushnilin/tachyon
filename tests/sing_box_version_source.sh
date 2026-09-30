@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # The UI reads the sing-box version out of system-info.json, which used to prefer
@@ -9,20 +10,7 @@ set -eo pipefail
 # against it. The state file is only a fallback for variants whose binary cannot be
 # executed to print a version: extended-compressed (a self-extracting stub) and lx.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 RUNTIME_UC="$TACHYON_LIB/diagnostics/runtime.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 BIN_VERSION='1.13.18-extended-2.6.3'
 STATE_VERSION='1.13.16-extended-2.6.2'

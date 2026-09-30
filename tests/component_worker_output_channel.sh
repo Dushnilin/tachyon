@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # A component action prints its JSON result to stdout and logs to syslog, but the
@@ -9,17 +10,11 @@ set -eo pipefail
 # successful action was reported to the UI as a failure whose message was the
 # tail of a log ("Failed to execute").
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
 VERSIONS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/versions.uc"
 HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/helpers.uc"
 SINGBOX_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # Comments mention 2>&1 to explain the bug; only real redirections count.
 code_only() {

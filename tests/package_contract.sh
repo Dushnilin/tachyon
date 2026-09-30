@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_MAKEFILE="$ROOT_DIR/tachyon/Makefile"
 TACHYON_CONFIG="$ROOT_DIR/tachyon/files/etc/config/tachyon"
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 require_file() {
   local file="$1"

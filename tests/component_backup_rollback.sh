@@ -1,22 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 ACTION_UC="$TACHYON_LIB/components/action.uc"
 RUNTIME_UC="$TACHYON_LIB/diagnostics/runtime.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 MOCK_BIN_DIR="$WORK_DIR/bin"
 MOCK_BACKUPS_DIR="$WORK_DIR/backups"
@@ -42,7 +30,6 @@ tachyon.settings.component_backup_enabled=1
 EOF_UCI
 : > "$WORK_DIR/uci.log"
 
-export TACHYON_LIB="$TACHYON_LIB"
 export TACHYON_COMPONENT_BACKUPS_DIR="$MOCK_BACKUPS_DIR"
 export TACHYON_SING_BOX_BIN="$MOCK_BIN_DIR/sing-box"
 export TACHYON_CONFIG_DIR="$MOCK_CONFIG_DIR"

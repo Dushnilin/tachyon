@@ -2,23 +2,11 @@
 # Auto-failover: generator emits the tachyon-failover selector group only when
 # enabled; the failover module switches to a healthy section after N failures
 # (Clash API stubbed).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
 FAILOVER_UC="$TACHYON_LIB/service/failover.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 generate_config() {
   local fixture="$1" output="$2"

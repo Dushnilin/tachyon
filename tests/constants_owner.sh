@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CLI_UC="$TACHYON_BIN"
 TACHYON_MAKEFILE="$ROOT_DIR/tachyon/Makefile"
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
@@ -12,11 +11,6 @@ LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 CONSTANTS_UC="$TACHYON_LIB/core/constants.uc"
 SINGBOX_CONSTANTS_UC="$TACHYON_LIB/singbox/constants.uc"
 FRONTEND_CONSTANTS="$ROOT_DIR/fe-app-tachyon/src/constants.ts"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ ! -e "$CONSTANTS_SH" ] ||
   fail "constants.sh shell owner must be removed"

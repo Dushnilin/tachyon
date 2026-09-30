@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
+
 set -eo pipefail
+
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
 
 # Tests for cooperative job cancellation, critical section protection,
 # safe point execution, and LIFO rollback compensations.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -z "$TACHYON_LIB" ]; then
   if [ -d "$ROOT_DIR/tachyon/files/usr/lib/core" ]; then
     TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
@@ -24,10 +29,6 @@ JOBS_UC="$TACHYON_LIB/core/jobs.uc"
 TACHYON_RUNTIME_STATE_DIR="$(mktemp -d /tmp/tachyon-cancel-test.XXXXXX)"
 export TACHYON_RUNTIME_STATE_DIR
 export TACHYON_LIB
-
-ucode() {
-  command ucode -L "$TACHYON_LIB" "$@"
-}
 
 cleanup() {
   rm -rf "$TACHYON_RUNTIME_STATE_DIR"

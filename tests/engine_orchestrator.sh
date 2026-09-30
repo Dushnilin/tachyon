@@ -10,13 +10,13 @@
 #   - switch is refused when the target engine is not installed
 #   - UCI option read/write through the fixture backend
 
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TACHYON_LIB="${TACHYON_LIB:-$SCRIPT_DIR/../tachyon/files/usr/lib}"
 TACHYON_BIN="${TACHYON_BIN:-$SCRIPT_DIR/../tachyon/files/usr/bin/tachyon}"
 TACHYON_UCODE="${TACHYON_UCODE:-ucode}"
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 pass=0

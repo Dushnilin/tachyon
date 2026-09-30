@@ -24,17 +24,12 @@
 # This test asserts directly against the production source files:
 # 1. updates.uc must invoke component_action_async_job with "install"
 # 2. action.uc must normalize action "update" to "install"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 UPDATES_UC="$LIB_DIR/components/updates.uc"
 ACTION_UC="$LIB_DIR/components/action.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$UPDATES_UC" ] || fail "components/updates.uc not found"
 [ -f "$ACTION_UC" ] || fail "components/action.uc not found"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALLER="$ROOT_DIR/install.sh"
 MAKEFILE="$ROOT_DIR/tachyon/Makefile"
 MIGRATION="$ROOT_DIR/tachyon/files/usr/lib/config/migration.uc"

@@ -9,17 +9,11 @@
 # The states covered are the ones a router actually reaches: no snapshot yet, a
 # snapshot truncated by a full disk, the active config already equal to the good
 # one (the loop guard), a successful rollback, and a rollback that cannot write.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
-
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 
 KG_DIR="$WORK_DIR/known_good"

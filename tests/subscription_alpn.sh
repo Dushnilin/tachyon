@@ -1,23 +1,13 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
+
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PARSER="$ROOT_DIR/tachyon/files/usr/lib/subscription/parser.uc"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 ucode() {
   command ucode -L "$TACHYON_LIB" "$@"
 }
-WORK_DIR="$(mktemp -d)"
 
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
+PARSER="$ROOT_DIR/tachyon/files/usr/lib/subscription/parser.uc"
 
 assert_contains() {
   local file="$1"

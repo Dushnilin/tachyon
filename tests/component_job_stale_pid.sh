@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # A Tachyon self-update restarts the service mid-worker. If the worker dies
@@ -8,15 +9,8 @@ set -eo pipefail
 # modal hung for minutes over a finished install (issue #31). The pid must
 # still belong to the component-action worker (checked via /proc cmdline).
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 UPDATES_UC="$TACHYON_LIB/components/updates.uc"
 WORK_DIR="$(mktemp -d /tmp/tachyon-stale-pid-test.XXXXXX)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2

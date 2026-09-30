@@ -26,16 +26,11 @@
 # draft embedded its own copy of the regex and the stripping, which would have
 # passed unchanged against the broken code - the trap that has already produced
 # several false greens in this suite. The file itself is the unit under test.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 RUNTIME_UC="$LIB_DIR/singbox/runtime.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$RUNTIME_UC" ] || fail "singbox/runtime.uc not found"
 

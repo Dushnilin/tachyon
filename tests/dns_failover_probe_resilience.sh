@@ -12,15 +12,10 @@
 # own health inbound. For a DoH server that inbound resolves through the proxy
 # transport, so "resolver is down" is measured as "the transport answered within
 # two seconds". A degraded proxy path therefore reads as a dead resolver.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAILOVER_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/dns_failover.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$FAILOVER_UC" ] || fail "dns_failover.uc not found"
 

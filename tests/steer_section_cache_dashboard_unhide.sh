@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # TCH-1036 / TCH-1021: on the steer engine the section cache is rebuilt by
@@ -6,20 +7,6 @@ set -eo pipefail
 # singbox/generator_routes.uc applies in add_proxy_selector(). Nodes picked via
 # "Only selected" stayed flagged hidden in the cache and the LuCI dashboard
 # filtered them out (empty dashboard / only the unselected nodes left).
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 mkdir -p "$WORK_DIR/subscriptions"
 cat >"$WORK_DIR/subscriptions/proxy-subscription-1.json" <<'JSON'

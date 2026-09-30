@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # ucode captures a closure's upvalues when the closure is CREATED. A local
@@ -10,14 +11,6 @@ set -eo pipefail
 #   1. a static scan for declaration-after-use across every module
 #   2. a runtime invocation of the push handlers, which are pure closures over
 #      probes declared elsewhere in the same scope
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # ── 1. static scan ──────────────────────────────────────────────────────────
 # Comments and string literals are stripped first so that prose mentioning a

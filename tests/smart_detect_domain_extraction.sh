@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
-set -eo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WATCHDOG_UC="$ROOT_DIR/tachyon/files/usr/lib/service/watchdog.uc"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+set -eo pipefail
 
 ucode() {
   command ucode -L "$TACHYON_LIB" "$@"
 }
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
+WATCHDOG_UC="$ROOT_DIR/tachyon/files/usr/lib/service/watchdog.uc"
 
 extract() {
   ucode "$WATCHDOG_UC" smart-detect-extract-domain "$1" 2>/dev/null || true

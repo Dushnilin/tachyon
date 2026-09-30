@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
+
 set -eo pipefail
+
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
 
 # Tests for core/jobs.uc — unified Job Engine.
 # Run on the router: bash /tmp/jobs_module.sh
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "$ROOT_DIR/tachyon/files/usr/lib/core" ]; then
   TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 else
@@ -13,10 +18,6 @@ fi
 JOBS_UC="$TACHYON_LIB/core/jobs.uc"
 
 export TACHYON_RUNTIME_STATE_DIR=$(mktemp -d /tmp/tachyon-jobs-test.XXXXXX)
-
-ucode() {
-  command ucode -L "$TACHYON_LIB" "$@"
-}
 
 cleanup() {
   rm -rf "$TACHYON_RUNTIME_STATE_DIR"

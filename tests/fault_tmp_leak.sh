@@ -16,16 +16,11 @@
 #   singbox/runtime.uc:128
 #
 # Not one of those matched the sweeper, so nothing it made was ever deleted.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 HELPERS_UC="$LIB_DIR/components/helpers.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$HELPERS_UC" ] || fail "components/helpers.uc not found"
 

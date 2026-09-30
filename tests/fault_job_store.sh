@@ -10,17 +10,11 @@
 # so the file is never reclaimed. It stays invisible to list_all() but occupies
 # a slot and is re-read on every pass, on a router where the state directory
 # lives on overlay and therefore survives reboots.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
-
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 
 export TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/state"

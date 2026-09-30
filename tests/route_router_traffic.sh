@@ -1,18 +1,11 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 NFT_RUNTIME="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
-WORK_DIR="$(mktemp -d)"
 NFT_LOG="$WORK_DIR/nft.log"
 LOGGER_LOG="$WORK_DIR/logger.log"
 export NFT_LOG LOGGER_LOG WORK_DIR
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2

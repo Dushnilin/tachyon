@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 PLAN_UC="$TACHYON_LIB/service/config_plan.uc"
 API_UC="$TACHYON_LIB/service/api.uc"
 AGENT_API_UC="$TACHYON_LIB/service/agent_api.uc"
 AGENT_MCP_UC="$TACHYON_LIB/service/agent_mcp.uc"
 BIN_TACHYON="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert_contains() {
   local haystack="$1" needle="$2" label="$3"

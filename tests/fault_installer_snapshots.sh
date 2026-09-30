@@ -6,14 +6,8 @@
 # them. Each set is a copy of /etc/config/tachyon (13 KB on that device) plus
 # /etc/apk/world, so the directory grows by a flash write per install, forever,
 # and the older snapshots buy nothing once a few installs have passed.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$ROOT_DIR/install.sh" ] || fail "install.sh not found"
 

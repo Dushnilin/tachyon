@@ -16,17 +16,11 @@
 # The fixtures below reproduce the option sets of the real upstream defaults
 # (podkop 0.7.22, forkop 1.0.5, netshift 0.9.9). They are hand-written rather
 # than vendored, so the test carries no upstream code.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
-
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 
 # --- forkop 1.0.5: our sibling fork, shaped like us ------------------------

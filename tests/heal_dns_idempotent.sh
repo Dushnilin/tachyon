@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Pins that heal_dns_continuous only touches dnsmasq when dnsmasq disagrees
@@ -14,14 +15,7 @@ set -eo pipefail
 # The failure mode is invisible from outside: the repair "works" either way. Only
 # counting the commands it issues shows the difference.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WATCHDOG_UC="$TACHYON_LIB/service/watchdog.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # ── the current value is read before anything is written ──────────────────────
 grep -q 'uci_core.get("dhcp.@dnsmasq\[0\].noresolv")' "$WATCHDOG_UC" \

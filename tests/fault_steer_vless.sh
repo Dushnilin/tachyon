@@ -18,15 +18,10 @@
 # understands every subcommand we drive, was defined, exported and called from
 # nowhere - the same "written and never wired" shape as is_stale/gc in the job
 # engine.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$LIB_DIR/steer/generator.uc" ] || fail "steer/generator.uc not found"
 

@@ -12,17 +12,11 @@
 # the scenarios run without filling a real filesystem. Written as a single
 # script file rather than inline -e: nested quoting silently ate the string
 # values in the mock objects and produced a ucode syntax error.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
-
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 
 cat > "$WORK_DIR/scenarios.uc" <<'UCODE'

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # sing-box-extended action shapes.
@@ -11,20 +12,7 @@ set -eo pipefail
 # The shape is asserted here so a regression cannot reach a release again; the
 # real binaries were checked separately (stock 1.14.2 / extended 1.14.1-extended-2.7.2 / lx 1.14.2-lx.8).
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 generate_config() {
   local fixture="$1"

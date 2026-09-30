@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 LIB_DIR="$ROOT_DIR/tachyon/files/usr/lib"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 TMP_DIR="$(mktemp -d /tmp/tachyon_community_subnets_test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT

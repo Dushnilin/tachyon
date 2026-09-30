@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 TACHYON_INIT="$ROOT_DIR/tachyon/files/etc/init.d/tachyon"
 LIFECYCLE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/lifecycle.uc"
 INITD_UC="$ROOT_DIR/tachyon/files/usr/lib/service/initd.uc"
 APPLY_UC="$ROOT_DIR/tachyon/files/usr/lib/dns/apply.uc"
 GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/generator.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # --- 1. Static assertions on lifecycle.uc restart() -------------------------
 awk '
@@ -85,14 +80,8 @@ awk '
 ' "$GENERATOR_UC" || fail "generator.uc must promote default cache_path to /etc/sing-box/cache.db when dns_turbo_cache is enabled"
 
 # --- 5. Behavioral test: dnsmasq server remains 127.0.0.42 during restart ---
-WORK_DIR="$(mktemp -d)"
 STATE="$WORK_DIR/uci.state"
 LOG="$WORK_DIR/dnsmasq_mutations.log"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
 
 # Initial UCI state: Tachyon running, dnsmasq points to 127.0.0.42
 cat >"$STATE" <<'EOF_STATE'

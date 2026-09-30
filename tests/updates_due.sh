@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert_status() {
   local expected="$1"
@@ -107,12 +101,6 @@ fi
 if updates_ucode subscription-update-cron-job 0 /usr/bin/tachyon '# subscription' >/dev/null 2>&1; then
   fail "invalid subscription update interval should fail"
 fi
-
-WORK_DIR="$(mktemp -d)"
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
 
 cat >"$WORK_DIR/cron-plan.json" <<'JSON'
 {

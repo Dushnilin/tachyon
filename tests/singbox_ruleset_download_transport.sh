@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Remote rule-set download transport.
@@ -16,7 +17,6 @@ set -eo pipefail
 # When a sing-box binary is on PATH the generated configurations are also fed
 # through `sing-box check`.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "$ROOT_DIR/tachyon/files/usr/lib" ]; then
   TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 else
@@ -24,17 +24,6 @@ else
 fi
 GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # A proxy section to detour through, plus a section whose community list and
 # GeoIP country both resolve to uncached rule-sets.

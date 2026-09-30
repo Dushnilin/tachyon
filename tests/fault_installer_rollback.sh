@@ -15,15 +15,10 @@
 #
 # The invariant: after a rollback, the world file must not name anything that is
 # not installed - and in particular nothing the installer removed.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALLER="$ROOT_DIR/install.sh"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -r "$INSTALLER" ] || fail "install.sh is missing"
 sh -n "$INSTALLER" || fail "install.sh must be valid POSIX shell"
@@ -37,7 +32,6 @@ export TACHYON_APK_WORLD_FILE=""
 # shellcheck source=/dev/null
 . "$INSTALLER"
 
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 
 WORLD="$WORK_DIR/world"

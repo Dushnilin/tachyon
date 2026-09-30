@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 SERVICE_CHECK_UC="$TACHYON_LIB/diagnostics/service_check.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. Test get-targets
 targets_json="$(ucode -L "$TACHYON_LIB" "$SERVICE_CHECK_UC" get-targets)"

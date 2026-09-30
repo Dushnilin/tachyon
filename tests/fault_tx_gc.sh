@@ -11,15 +11,10 @@
 # never touched, a stale one is recovered rather than deleted, an old finalized
 # one is cleaned, and a manifest that cannot be parsed is cleaned only with a
 # line in the journal naming what was removed.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$LIB_DIR/core/transaction.uc" ] || fail "core/transaction.uc not found"
 

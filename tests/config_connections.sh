@@ -1,23 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "$ROOT_DIR/tachyon/files/usr/lib" ]; then
   TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 else
   TACHYON_LIB="/usr/lib/tachyon"
 fi
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # Create mock uci module
 cat >"$WORK_DIR/uci.uc" <<'UCODE'

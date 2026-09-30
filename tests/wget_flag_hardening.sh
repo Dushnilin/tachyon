@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # BusyBox wget in OpenWrt 25.12+ no longer supports -t (retries). Tachyon
 # handles retries explicitly in a while loop, so the flag is unnecessary and

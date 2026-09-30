@@ -6,17 +6,13 @@
 # (pkg_tx_install_files -> sanitize_apk_world).
 #
 # This test statically rejects any such forward reference in the backend.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB_DIR="$ROOT_DIR/tachyon/files/usr/lib"
 LINTER_DIR="$ROOT_DIR/tests/lib"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -d "$LIB_DIR" ] || fail "backend lib directory not found: $LIB_DIR"
 

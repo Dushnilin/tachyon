@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 AGENT_API_UC="$TACHYON_LIB/service/agent_api.uc"
 MAKEFILE="$ROOT_DIR/tachyon/Makefile"
 BUILD_SH="$ROOT_DIR/build.sh"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. agent_api.uc must use core.uci dot-path getter for agent_api_token
 grep -Fq 'uci.get(CONFIG_NAME + ".settings.agent_api_token")' "$AGENT_API_UC" ||

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # The UI shows a live log of a running component action. The worker's progress
@@ -8,15 +9,9 @@ set -eo pipefail
 # path, the log outlives the job (only the age-based sweep removes it), and the
 # component-action-log CLI mode serves it from an arbitrary byte offset.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 code_only() {
   sed 's://.*::'

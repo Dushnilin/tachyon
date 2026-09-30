@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CLI_UC="$TACHYON_BIN"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 ZAPRET_RUNTIME="$TACHYON_LIB/providers/zapret/runtime.uc"
@@ -15,11 +14,6 @@ NFQUEUE_CHECK="$TACHYON_LIB/providers/nfqueue/check.uc"
 NFQUEUE_VALIDATOR="$TACHYON_LIB/providers/nfqueue/validator.uc"
 ZAPRET2_CHECK="$TACHYON_LIB/providers/zapret2/check.uc"
 ZAPRET2_VALIDATOR="$TACHYON_LIB/providers/zapret2/validator.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ ! -e "$TACHYON_LIB/zapret.sh" ] ||
   fail "zapret.sh shell owner must be removed"

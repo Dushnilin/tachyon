@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACL="$ROOT_DIR/luci-app-tachyon/root/usr/share/rpcd/acl.d/luci-app-tachyon.json"
 
 fail() {

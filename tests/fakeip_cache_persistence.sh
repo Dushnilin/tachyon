@@ -11,15 +11,10 @@
 # routers checked carry /usr/share/sing-box/cache.db instead, so the deployed
 # behaviour and the generated default disagreed - and a router following the
 # default would lose every mapping on each reboot.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GEN_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/generator.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$GEN_UC" ] || fail "singbox/generator.uc not found"
 

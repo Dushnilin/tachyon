@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Issue #76: the AI agent gateway is reachable from the whole LAN by default and
@@ -7,22 +8,9 @@ set -eo pipefail
 #   1. the config masking covers bot_token / agent_api_token and friends;
 #   2. the uhttpd symlink is published only when agent_api_token is set.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 STATUS_UC="$TACHYON_LIB/diagnostics/status.uc"
 INITD="$ROOT_DIR/tachyon/files/etc/init.d/tachyon"
 MAKEFILE="$ROOT_DIR/tachyon/Makefile"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # ── 1. Masking ───────────────────────────────────────────────────────────────
 cat >"$WORK_DIR/tachyon" <<'UCI'

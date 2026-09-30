@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$TEST_DIR/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 PARSER_UC="$TACHYON_LIB/subscription/parser.uc"
 CACHE_UC="$TACHYON_LIB/subscription/cache.uc"
 
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 fail() {
@@ -118,5 +117,4 @@ ucode -L "$TACHYON_LIB" "$WORK_DIR/test_validate.uc" "$WORK_DIR/stub_singbox.jso
   fail "subscription validation cache checks failed"
 
 echo "subscription unsupported stub checks passed"
-
 

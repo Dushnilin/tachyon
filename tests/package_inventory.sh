@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAKEFILE="$ROOT_DIR/tachyon/Makefile"
 BUILD_SH="$ROOT_DIR/build.sh"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$MAKEFILE" ] || fail "tachyon/Makefile not found"
 [ -f "$BUILD_SH" ] || fail "build.sh not found"

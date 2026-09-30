@@ -1,26 +1,14 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
 NFT_UC="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
 UCODE_BIN="$(command -v ucode)"
-WORK_DIR="$(mktemp -d)"
 export ZAPRET_DEFAULT_NFQWS_OPT="--default-zapret"
 export ZAPRET2_DEFAULT_NFQWS2_OPT="--default-zapret2"
 export BYEDPI_DEFAULT_CMD_OPTS="--default-bye"
 export TACHYON_FAKE_INIT_CAPTURE="$WORK_DIR/pending-reload-init.args"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert_eq() {
   local expected="$1"

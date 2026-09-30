@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # A Tachyon self-update is itself a component job: the job installs the package
@@ -8,20 +9,7 @@ set -eo pipefail
 # neither a message nor stderr, and rendered its "Failed to execute" fallback
 # over an update that had actually succeeded.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 PACKAGE_UC="$TACHYON_LIB/service/package.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 STATE_DIR="$WORK_DIR/run/tachyon"
 ACTION_DIR="$STATE_DIR/component-actions"

@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 grep -Fq 'function move_validated_file_to_backup_or_discard(target_path, backup_path, label)' "$ACTION_UC" ||
   fail "validated low-space backup fallback helper is missing"

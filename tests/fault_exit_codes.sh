@@ -18,15 +18,10 @@
 # nothing in the log said the command had run out of time. It also collides with
 # this codebase's own "pipe could not be opened" sentinel of 255, which is what
 # 127 (command not found) decodes to.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -f "$LIB_DIR/components/helpers.uc" ] || fail "components/helpers.uc not found"
 

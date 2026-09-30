@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Pins the wiring between the two halves of the split: event_controller.uc
@@ -6,15 +7,8 @@ set -eo pipefail
 # subscribes to is a repair that silently stopped happening — exactly the
 # regression this refactor could introduce and that no other test would catch.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 CONTROLLER_UC="$TACHYON_LIB/service/event_controller.uc"
 WATCHDOG_UC="$TACHYON_LIB/service/watchdog.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # Facts that are deliberately published without a repair attached.
 # PROXY_UP / DNS_UP are the recovery side of a fault pair, kept so a future

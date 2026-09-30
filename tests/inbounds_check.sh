@@ -1,22 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 DIAGNOSTICS_RUNTIME="$TACHYON_LIB/diagnostics/runtime.uc"
 STATUS_UC="$TACHYON_LIB/diagnostics/status.uc"
 LEAK_CHECK="$TACHYON_LIB/diagnostics/leak_check.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. Syntax check
 ucode -L "$TACHYON_LIB" -c "$DIAGNOSTICS_RUNTIME" || fail "runtime.uc syntax error"

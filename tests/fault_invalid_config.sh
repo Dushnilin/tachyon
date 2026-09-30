@@ -9,20 +9,14 @@
 #
 # A plan that crashes on malformed input is worse than one that rejects it: the
 # caller is left with a stack trace and no way to tell the user what is wrong.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 PLAN_UC="$LIB_DIR/service/config_plan.uc"
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
-
 [ -f "$PLAN_UC" ] || fail "service/config_plan.uc not found"
 
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 
 # Runs plan() on the given source and prints: ok|verdict-hash

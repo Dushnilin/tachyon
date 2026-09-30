@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 UPDATER_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updater.uc"
 PACKAGES_UC="$ROOT_DIR/tachyon/files/usr/lib/core/packages.uc"
 FPTN_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/fptn/runtime.uc"
 STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
 DIAGNOSTICS_UC="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc"
-
-WORK_DIR="$(mktemp -d)"
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert_eq() {
   local expected="$1"
@@ -185,5 +174,4 @@ IPT_STATUS=0
 assert_eq "0" "$IPT_STATUS" "iptables shim should return 0"
 
 echo "fptn component tests passed"
-
 

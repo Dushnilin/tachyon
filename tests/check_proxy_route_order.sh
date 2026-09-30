@@ -2,22 +2,10 @@
 # Verifies that CHECK_PROXY_IP_DOMAIN (ip.podkop.fyi) always routes to a real
 # proxy outbound when available, regardless of whether direct DPI-bypass sections
 # (like zapret2) appear before or after proxy sections in UCI config.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 generate_config() {
   local fixture="$1" output="$2"

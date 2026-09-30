@@ -1,21 +1,9 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 MIGRATION="$TACHYON_LIB/config/migration.uc"
-WORK_DIR="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # 1. Verify CLI mapping in /usr/bin/tachyon
 grep -Fq 'import_settings: [ "config/migration.uc", "import-settings", 1 ]' "$TACHYON_BIN" ||

@@ -14,20 +14,14 @@
 #
 # This drives the real decision through the select-fixture CLI, which now calls
 # choose_index rather than reimplementing it.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 FAILOVER="$LIB_DIR/singbox/dns_failover.uc"
 
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
-
 [ -f "$FAILOVER" ] || fail "singbox/dns_failover.uc not found"
 
-WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 
 pick() {

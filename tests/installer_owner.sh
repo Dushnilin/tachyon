@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALLER="$ROOT_DIR/install.sh"
-WORK_DIR="$(mktemp -d)"
 LEGACY_BRAND="$(printf '\160\157\144\153\157\160')"
 LEGACY_BACKEND="${LEGACY_BRAND}-plus"
 LEGACY_CONFIG_ALT="${LEGACY_BRAND}_plus"
@@ -27,11 +26,6 @@ cleanup() {
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -r "$INSTALLER" ] || fail "install.sh is missing"
 

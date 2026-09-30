@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Pins that background spawns close the descriptors they would otherwise inherit.
@@ -18,14 +19,8 @@ set -eo pipefail
 # absent at runtime, which is the reason this test exists — the failure is
 # invisible from the outside, so only counting descriptors shows it.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$ROOT_DIR/tachyon/files/usr/lib"
 COMMON_UC="$LIB_DIR/core/common.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # ── the literal that closed nothing does not come back ────────────────────────
 if grep -rn '1000<&-\|1000>&-' "$LIB_DIR" | grep -v '^.*core/common.uc:.*//' | grep -q .; then

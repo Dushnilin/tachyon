@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_FILES="$ROOT_DIR/tachyon/files"
 TACHYON_BIN="$TACHYON_FILES/usr/bin/tachyon"
 TACHYON_LIB="$TACHYON_FILES/usr/lib"
 TACHYON_INIT="$TACHYON_FILES/etc/init.d/tachyon"
 LUCI_ROOT="$ROOT_DIR/luci-app-tachyon/root"
 LUCI_UCI_DEFAULTS="$LUCI_ROOT/etc/uci-defaults/50_luci-tachyon"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 [ -d "$TACHYON_LIB" ] || fail "runtime library directory is missing"
 [ -r "$TACHYON_BIN" ] || fail "tachyon ucode entrypoint is missing"

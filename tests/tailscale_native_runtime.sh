@@ -3,10 +3,9 @@
 # runtime paths against stubbed tailscale/tailscaled binaries and verifies
 # every kernel/nftables/dnsmasq side effect appears and is cleaned up.
 # Requires a privileged OpenWrt container (ip rule, nft tables).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 RUNTIME_UC="$TACHYON_LIB/providers/tailscale/runtime.uc"
 
 if [ "$(id -u)" != "0" ]; then
@@ -19,7 +18,6 @@ ip link add tailscale0 type dummy 2>/dev/null ||
   { printf 'skipped: cannot create dummy interface\n'; exit 0; }
 ip link set tailscale0 up
 
-WORK_DIR="$(mktemp -d)"
 TS_LOG="$WORK_DIR/ts.log"
 
 cleanup() {
@@ -77,11 +75,6 @@ export TAILSCALE_BIN="$STUB_BIN/tailscale"
 export TAILSCALE_STATE_BASE="$WORK_DIR/state"
 export TAILSCALE_RUNTIME_DIR="$WORK_DIR/run"
 export TAILSCALE_DNSMASQ_FILE="$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 run() {
   ucode -L "$TACHYON_LIB" "$RUNTIME_UC" "$@"

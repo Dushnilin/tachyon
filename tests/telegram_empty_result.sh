@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TELEGRAM="$ROOT_DIR/tachyon/files/usr/lib/service/telegram.uc"
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 # process_updates() must treat an empty result array as a success (no new
 # updates is a normal API response), not as a failure that increments the

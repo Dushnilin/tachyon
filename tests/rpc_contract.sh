@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 # Tests for contracts/tachyon-rpc.json and tools/generate_rpc_contract.js
@@ -16,11 +17,6 @@ if [ -f "$ROOT_DIR/tachyon/files/usr/bin/tachyon" ]; then
 else
   TACHYON_BIN="/usr/bin/tachyon"
 fi
-
-fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-  exit 1
-}
 
 assert() {
   local cond="$1"
