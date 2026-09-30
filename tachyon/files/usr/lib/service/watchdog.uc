@@ -507,6 +507,7 @@ function run_zero_rtt_prefetching() {
 
 let uloop = null;
 let ubus = null;
+let jobs = null;
 // Optional modules: absent in the Docker test image and on a router without
 // libubus, where the watchdog degrades to the polling path below.
 try { uloop = require("uloop"); } catch (e) {}
