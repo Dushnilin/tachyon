@@ -1427,6 +1427,27 @@ function apply_section_packet_encoding_to_connection_outbounds(config, start_ind
     }
 }
 
+// Automatically inject `support_x25519mlkem768: true` into every outbound
+// whose tls.reality is enabled, when the installed sing-box-extended build
+// supports the field (>= 2.7.2). No UCI option needed: the Reality server
+// ignores the hint on old Xray, and new Xray (26.9.x+) requires it.
+function apply_x25519mlkem768_to_reality_outbounds(config, start_index, sb_version) {
+    if (!common.extended_supports_x25519mlkem768(sb_version))
+        return;
+
+    let outbounds = array_or_empty(config.outbounds);
+    for (let i = int(start_index || 0); i < length(outbounds); i++) {
+        let outbound = outbounds[i];
+        if (type(outbound) != "object")
+            continue;
+        if (type(outbound.tls) != "object")
+            continue;
+        if (type(outbound.tls.reality) != "object" || outbound.tls.reality.enabled === false)
+            continue;
+        outbound.tls.reality.support_x25519mlkem768 = true;
+    }
+}
+
 function add_connections_outbound(config, section, taken) {
     let section_name = section[".name"];
     let selector_tags = [];
@@ -1450,6 +1471,13 @@ function add_connections_outbound(config, section, taken) {
         config,
         cascade_start,
         connections.packet_encoding(section)
+    );
+
+    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    apply_x25519mlkem768_to_reality_outbounds(
+        config,
+        cascade_start,
+        trim(fs.readfile(sb_version_file) || "")
     );
 
     if (length(selector_tags) == 0) {
