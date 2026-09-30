@@ -1119,7 +1119,19 @@ function createMenuTabsOrderWidget(option, section_id) {
   });
 
   function syncToUci() {
-    uci.set(UCI_PACKAGE, section_id, "tab_order", ordered);
+    // Only write what actually differs. This ran unconditionally at the end of
+    // every widget render, so simply opening the settings page rewrote the whole
+    // tab_order list plus one show_tab_* option per tab into the UCI session -
+    // a burst of add_list operations on /etc/config/tachyon for a value that had
+    // not changed. That is flash wear for nothing, and it is what showed up in a
+    // Telegram ticket as a config change list with nothing actually changed.
+    const sameOrder =
+      Array.isArray(savedOrder) &&
+      savedOrder.length === ordered.length &&
+      savedOrder.every((id, i) => id === ordered[i]);
+    if (!sameOrder) {
+      uci.set(UCI_PACKAGE, section_id, "tab_order", ordered);
+    }
     wrapper._order = ordered.slice();
     wrapper._vis = Object.assign({}, visibility);
     ALL_MENU_TABS.forEach(function (t) {
@@ -1128,7 +1140,13 @@ function createMenuTabsOrderWidget(option, section_id) {
         if (t.id === "server") optKey = "show_tab_servers";
         else if (t.id === "profile") optKey = "show_tab_profiles";
         else if (t.id === "schedule") optKey = "show_tab_parental";
-        uci.set(UCI_PACKAGE, section_id, optKey, visibility[t.id] ? "1" : "0");
+        const next = visibility[t.id] ? "1" : "0";
+        // uci.get returns undefined for an option that was never set, which is
+        // not the same as "0" and must not be read as a match.
+        const prev = uci.get(UCI_PACKAGE, section_id, optKey);
+        if (prev !== next) {
+          uci.set(UCI_PACKAGE, section_id, optKey, next);
+        }
       }
     });
   }
@@ -1397,7 +1415,13 @@ function createComponentsVisibilityWidget(option, section_id) {
     ALL_COMPONENTS.forEach(function (c) {
       if (!c.fixed) {
         const optKey = "show_component_" + c.id;
-        uci.set(UCI_PACKAGE, section_id, optKey, visibility[c.id] ? "1" : "0");
+        const next = visibility[c.id] ? "1" : "0";
+        // Same reasoning as the tab-order widget: an unset option reads as
+        // undefined, which is not "0", so it still has to be written once.
+        const prev = uci.get(UCI_PACKAGE, section_id, optKey);
+        if (prev !== next) {
+          uci.set(UCI_PACKAGE, section_id, optKey, next);
+        }
       }
     });
   }

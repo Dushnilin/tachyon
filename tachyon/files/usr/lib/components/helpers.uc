@@ -311,7 +311,25 @@ function helper_success(mode, args) {
 
 function cleanup_stale_tmp_files() {
     command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "d", "-name", "tachyon-updates.*", "-mmin", "+" + as_string(TMP_STALE_TTL_MINUTES), "-exec", "rm", "-rf", "{}", "+" ]);
-    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "f", "(", "-name", "tachyon-updates-command.*", "-o", "-name", "tachyon-updates-http.*", ")", "-mmin", "+" + as_string(TMP_FILE_STALE_TTL_MINUTES), "-delete" ]);
+    // tachyon-??????" is the exact shape `mktemp /tmp/tachyon-XXXXXX` produces, and
+    // four call sites create one: components/updates.uc, nft/apply.uc,
+    // service/lifecycle.uc and singbox/runtime.uc - the last three being the
+    // sing-box config candidates and rule lists. The sweeper only knew about the
+    // two tachyon-updates-* patterns, so none of those were ever reclaimed.
+    // Measured on 192.168.1.1: ten of them, 968 KB, seven days old, sitting in a
+    // 363 MB tmpfs.
+    //
+    // Exactly six characters is what keeps this safe. The real files that share the
+    // prefix all differ in shape and stay untouched: tachyon_metrics.json,
+    // tachyon_recent_releases_cache.json, tachyon-install.log,
+    // tachyon-feedback-bot.new.
+    //
+    // -exec rm, not -delete. BusyBox find has no -delete: verified on 192.168.1.205,
+    // "find: unrecognized: -delete", BusyBox v1.37.0. The file branch used -delete,
+    // so the whole command failed and the sweeper reclaimed nothing on any router,
+    // for any pattern, since it was written. The directory branch above already
+    // used -exec rm -rf and always worked.
+    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "f", "(", "-name", "tachyon-updates-command.*", "-o", "-name", "tachyon-updates-http.*", "-o", "-name", "tachyon-??????" , ")", "-mmin", "+" + as_string(TMP_FILE_STALE_TTL_MINUTES), "-exec", "rm", "-f", "{}", "+" ]);
 }
 
 function init_tmp_dir() {
