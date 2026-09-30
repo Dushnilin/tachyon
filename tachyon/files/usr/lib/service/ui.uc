@@ -180,11 +180,6 @@ function unsigned_number(value) {
 
 let object_or_empty = common.object_or_empty;
 
-function path_basename(path) {
-    let parts = split(as_string(path), "/");
-    return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
-}
-
 function str_remove_suffix(value, suffix) {
     value = as_string(value);
     suffix = as_string(suffix);
@@ -194,7 +189,7 @@ function str_remove_suffix(value, suffix) {
 }
 
 function job_id_from_path(path) {
-    return str_remove_suffix(path_basename(path), ".json");
+    return str_remove_suffix(common.path_basename(path), ".json");
 }
 
 function valid_action_state(value) {

@@ -98,10 +98,7 @@ function file_nonempty(path) {
     return helpers.file_is_usable(path, 0);
 }
 
-function path_basename(path) {
-    let parts = split(as_string(path), "/");
-    return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
-}
+function path_basename(path) { return common.path_basename(path); }
 
 function now_seconds() {
     return int(clock()[0]);

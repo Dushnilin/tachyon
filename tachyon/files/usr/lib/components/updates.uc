@@ -303,14 +303,8 @@ function copy_file(source, target) {
     return write_file(target, data);
 }
 
-function parent_dir(path) {
-    path = as_string(path);
-    let slash = rindex(path, "/");
-    return slash >= 0 ? substr(path, 0, slash) : "";
-}
-
 function ensure_parent_dir(path) {
-    let dir = parent_dir(path);
+    let dir = common.parent_dir(path);
     return dir == "" || dir == "." || ensure_dir(dir);
 }
 

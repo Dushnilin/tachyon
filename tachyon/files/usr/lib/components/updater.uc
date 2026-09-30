@@ -86,11 +86,6 @@ function string_remove_suffix(value, suffix) {
     print(str_remove_suffix(value, suffix), "\n");
 }
 
-function path_basename(value) {
-    let parts = split(as_string(value), "/");
-    return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
-}
-
 function arg_bool(value) {
     return value === true || value == "true" || value == "1" || value == 1;
 }
@@ -407,7 +402,7 @@ function updates_arch_package_version(package_name, package_arch) {
 }
 
 function updates_bundle_version(bundle_name, prefixes) {
-    let name = path_basename(bundle_name);
+    let name = common.path_basename(bundle_name);
 
     for (let prefix in prefixes) {
         if (!str_startswith(name, prefix))
@@ -561,7 +556,7 @@ function updates_archive_member_path(member_name) {
 
     for (let line in split(read_stdin(), "\n")) {
         let path = trim(as_string(line));
-        if (path != "" && path_basename(path) == member_name) {
+        if (path != "" && common.path_basename(path) == member_name) {
             print(path, "\n");
             return;
         }

@@ -80,14 +80,8 @@ function log(message, level) {
     run("logger -t " + shell_quote("tachyon") + " " + shell_quote("[" + level + "] " + as_string(message)));
 }
 
-function parent_dir(path) {
-    path = as_string(path);
-    let slash = rindex(path, "/");
-    return slash >= 0 ? substr(path, 0, slash) : "";
-}
-
 function ensure_parent_dir(path) {
-    let dir = parent_dir(path);
+    let dir = common.parent_dir(path);
     if (dir == "" || dir == ".")
         return true;
     return run("mkdir -p " + shell_quote(dir));

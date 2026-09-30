@@ -98,7 +98,6 @@ function remove_file(path) { return cmp.remove_file(path); }
 function ensure_dir(path) { return cmp.ensure_dir(path); }
 function file_exists(path) { return cmp.file_exists(path); }
 function file_nonempty(path) { return cmp.file_nonempty(path); }
-function path_basename(path) { return cmp.path_basename(path); }
 function now_seconds() { return cmp.now_seconds(); }
 function owner_pid() { return cmp.owner_pid(); }
 function pid_running(pid) { return cmp.pid_running(pid); }
@@ -552,7 +551,7 @@ function download_and_extract_zip_package(release, component) {
     if (inner_package_path == "")
         return null;
 
-    let package_name = path_basename(inner_package_path);
+    let package_name = common.path_basename(inner_package_path);
     let package_file = cmp.tmp_dir_path() + "/" + package_name;
     if (!command_success(command_from_args([ "unzip", "-p", bundle_file, inner_package_path ]) + " >" + shell_quote(package_file)) ||
         !file_nonempty(package_file))
@@ -1137,7 +1136,7 @@ function set_sing_box_extended_release_from_json(release_json, compressed, allow
         tag,
         release_url: trim(helper_output_input(release_json, "object-get-default", [ "html_url", "" ])),
         asset_url,
-        asset_name: path_basename(asset_url)
+        asset_name: common.path_basename(asset_url)
     };
 }
 
@@ -1245,7 +1244,7 @@ function set_sing_box_lx_release_from_json(release_json, allow_prerelease) {
         tag,
         release_url: trim(helper_output_input(release_json, "object-get-default", [ "html_url", "" ])),
         asset_url,
-        asset_name: path_basename(asset_url)
+        asset_name: common.path_basename(asset_url)
     };
 }
 

@@ -605,6 +605,15 @@ function parent_dir(path) {
     return slash >= 0 ? substr(path, 0, slash) : "";
 }
 
+// The counterpart, kept beside parent_dir() so path handling that depends on
+// where the slash is has exactly one implementation. Splitting instead of
+// rindex() is deliberate: rindex() on a bare "/" returns 0, which is both a
+// valid index and a falsy result, and reading it that way goes wrong quietly.
+function path_basename(path) {
+    let parts = split(as_string(path), "/");
+    return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
+}
+
 // Recursive delete, used when something is abandoned rather than refreshed.
 // Returns true when the path is gone afterwards. Deleting a directory that is
 // already absent is success, not an error: every caller here is a cleanup, and
@@ -809,6 +818,7 @@ return {
     file_exists,
     remove_tree,
     parent_dir,
+    path_basename,
     get_mixed_inbound_info,
     get_mixed_port,
     get_lan_ip,

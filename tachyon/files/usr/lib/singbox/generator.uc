@@ -121,12 +121,6 @@ let add_server_routes = null;
 let ensure_custom_ruleset = null;
 
 
-function parent_dir(path) {
-    path = as_string(path);
-    let slash = rindex(path, "/");
-    return slash <= 0 ? "" : substr(path, 0, slash);
-}
-
 function ensure_dir(path) {
     path = as_string(path);
     if (path == "" || path == "/")
@@ -134,7 +128,7 @@ function ensure_dir(path) {
     if (fs.stat(path) != null)
         return true;
 
-    let parent = parent_dir(path);
+    let parent = common.parent_dir(path);
     if (parent != "" && !ensure_dir(parent))
         return false;
 
@@ -142,7 +136,7 @@ function ensure_dir(path) {
 }
 
 function ensure_parent_dir(path) {
-    return ensure_dir(parent_dir(path));
+    return ensure_dir(common.parent_dir(path));
 }
 
 function atomic_write_json_file(path, value, indent) {

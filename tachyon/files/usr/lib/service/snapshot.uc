@@ -43,11 +43,6 @@ function log_message(message) {
     system(command_from_args([ "logger", "-t", CONFIG_NAME, "[info] " + message ]) + " >/dev/null 2>&1");
 }
 
-function path_basename(path) {
-    let parts = split(as_string(path), "/");
-    return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
-}
-
 function fail(message) {
     print(sprintf("%J\n", { success: false, message: message }));
     return 1;
@@ -140,7 +135,7 @@ function snapshot_save(name) {
     prune_snapshots();
 
     log_message("Config snapshot saved: " + safe);
-    print(sprintf("%J\n", { success: true, file: path_basename(file) }));
+    print(sprintf("%J\n", { success: true, file: common.path_basename(file) }));
     return 0;
 }
 
