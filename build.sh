@@ -290,6 +290,13 @@ build_backend_root() {
   # at service start only when agent_api_token is set (issue #76).
   install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/servicecheck_profiles.json" \
     "$output_root/usr/share/tachyon/servicecheck_profiles.json"
+  # Registrable-domain boundaries for Smart Detect Plus (ICANN + PRIVATE, MPL-2.0).
+  install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/public-suffix-list.dat" \
+    "$output_root/usr/share/tachyon/public-suffix-list.dat"
+  # Curated DPI bypass strategy presets. Without it the fuzzer falls back to
+  # downloading the file from a mirror on first use.
+  install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/dpi-presets.json" \
+    "$output_root/usr/share/tachyon/dpi-presets.json"
 
   local commit_sha="${GIT_COMMIT_SHA:-}"
   if [[ -z "$commit_sha" || "$commit_sha" == "unknown" ]]; then
