@@ -54,4 +54,25 @@ awk '
   END { exit !(snapshot > 0 && install > snapshot) }
 ' "$INSTALLER" || fail "legacy configs must be snapshotted before package hooks run"
 
+# apk reads /etc/apk/world before it selects anything. A migrating user with
+# forkop installed has world[forkop] satisfied by luci-app-forkop, and tachyon
+# declares both Conflicts: forkop and breaks: world[forkop] - a set apk cannot
+# select. The transaction aborts with "unable to select packages", rolling back
+# to a router that still runs forkop and has no Tachyon at all.
+#
+# Releasing the legacy entries from world before `apk add` is what lets apk drop
+# forkop inside the same transaction. Scrubbing afterwards, as the deletion
+# path does, is too late: the solver has already failed by then.
+grep -Fq 'resolve_legacy_conflicts_before_install' "$INSTALLER" ||
+  fail "installer must release legacy packages from apk world before installing"
+grep -Fq 'scrub_apk_world "$LEGACY_PACKAGES"' "$INSTALLER" ||
+  fail "pre-install world scrub must target the legacy packages only, so tachyon stays in world on rollback"
+
+awk '
+  /^main\(\)/ { in_main=1 }
+  in_main && /resolve_legacy_conflicts_before_install/ && !resolve { resolve=NR }
+  in_main && /install_core_transaction/ && !install { install=NR }
+  END { exit !(resolve > 0 && install > resolve) }
+' "$INSTALLER" || fail "apk world must be released from the legacy entries before install_core_transaction runs"
+
 printf 'PASS: legacy migration ownership and installer recovery contract\n'

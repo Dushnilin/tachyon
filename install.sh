@@ -23,6 +23,7 @@ PKG_IS_APK=0
 # Indirected so the rollback contract can be tested without touching a real
 # package manager state file.
 APK_WORLD_FILE="${TACHYON_APK_WORLD_FILE:-/etc/apk/world}"
+APK_INSTALLED_DB="${TACHYON_APK_INSTALLED_DB:-/lib/apk/db/installed}"
 # Two lists, not one plus a flag: the removal set and the world-scrub set are
 # genuinely different. Duplicating the package names at each call site is how
 # they drift apart, and they had.
@@ -986,7 +987,7 @@ remove_legacy_packages() {
         # their provider, so with tachyon's PROVIDES:=forkop it would always
         # report legacy forkop as installed and trigger a no-op purge.
         for _pkg in $LEGACY_PACKAGES; do
-            if grep -q "^P:${_pkg}\$" /lib/apk/db/installed 2>/dev/null; then
+            if grep -q "^P:${_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
                 _legacy_pkgs="$_legacy_pkgs $_pkg"
             fi
         done
@@ -1025,6 +1026,40 @@ scrub_apk_world() {
         sed -i "/^${_pkg}\$/d" "$APK_WORLD_FILE" 2>/dev/null || true
     done
     debug "APK world file scrubbed: $_scrub_list"
+}
+
+# apk's solver reads /etc/apk/world before it selects anything. With forkop still
+# listed there, installing tachyon is unsolvable, because tachyon declares both
+# `Conflicts: forkop` and `breaks: world[forkop]`:
+#
+#   forkop-1.0.5: conflicts: tachyon-1.4.3
+#                 satisfies: world[forkop]  luci-app-forkop-1.0.5[forkop]
+#   tachyon-1.4.3: conflicts: forkop-1.0.5[forkop]
+#                  breaks: world[forkop]
+#
+# apk cannot select both halves of that set and aborts with "unable to select
+# packages", rolling the transaction back: forkop stays installed and Tachyon is
+# absent, which is exactly where a migrating user ends up.
+#
+# The scrub used to run after `apk del`, i.e. after the solver had already
+# failed. Releasing the legacy entries *before* the install lets apk drop forkop
+# inside the same transaction, which is atomic, and it keeps the window in which
+# the legacy resolver is gone but Tachy's DNS is not up yet as short as it was
+# meant to be (issue #85). Only the legacy entries are dropped here; the full
+# scrub still runs at the end so `tachyon` is not missing from world if the
+# install fails and is rolled back.
+resolve_legacy_conflicts_before_install() {
+    [ "$PKG_IS_APK" -eq 1 ] || return 0
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    _present=""
+    for _pkg in $LEGACY_PACKAGES; do
+        if grep -q "^P:${_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
+            _present="$_present $_pkg"
+        fi
+    done
+    [ -n "$_present" ] || return 0
+    msg "Releasing legacy packages from apk world:$_present"
+    scrub_apk_world "$LEGACY_PACKAGES"
 }
 
 download_release() {
@@ -1301,6 +1336,7 @@ main() {
     snapshot_state || fail "Could not create recovery snapshot"
     msg "Preparing package transaction"
     prepare_transaction || fail "Could not prepare package transaction"
+    resolve_legacy_conflicts_before_install
     install_core_transaction || fail "Tachyon package transaction failed"
     install_zram_if_requested
     install_selected_sing_box || fail "sing-box installation failed"
