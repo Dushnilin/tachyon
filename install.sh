@@ -847,8 +847,35 @@ snapshot_state() {
     done
     [ "$PKG_IS_APK" -eq 1 ] && [ -f /etc/apk/world ] && cp -a /etc/apk/world "$SNAPSHOT_DIR/apk-world" || true
     printf 'installed=%s\nrunning=%s\nenabled=%s\n' "$TACHYON_WAS_INSTALLED" "$TACHYON_WAS_RUNNING" "$TACHYON_WAS_ENABLED" >"$SNAPSHOT_DIR/state"
+    prune_old_snapshots
     TX_ACTIVE=1
     ok "Recovery snapshot created: $SNAPSHOT_DIR"
+}
+
+# Keep only the newest few recovery snapshots. Every install creates one and
+# nothing ever removed them, so the directory only grew - measured on 192.168.1.1
+# with two sets, 7 files, 40 KB, and one more per install from then on. The
+# snapshots are copies of /etc/config/tachyon, so they are flash writes that buy
+# nothing after the previous few installs.
+#
+# Timestamp format is YYYYMMDD-HHMMSS, which sorts chronologically as a string, so
+# `sort -r` gives newest first with no date parsing. BusyBox-safe throughout: the
+# routers have no GNU date and no -printf.
+prune_old_snapshots() {
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    _keep="${TACHYON_SNAPSHOT_KEEP:-3}"
+    case "$_keep" in
+        '' | *[!0-9]*) _keep=3 ;;
+    esac
+    [ "$_keep" -ge 1 ] 2>/dev/null || _keep=3
+    [ -d /etc/tachyon/installer-backups ] || return 0
+    _old="$(ls -1d /etc/tachyon/installer-backups/*/ 2>/dev/null | sort -r | tail -n "+$((_keep + 1))")"
+    [ -n "$_old" ] || return 0
+    # shellcheck disable=SC2086
+    printf '%s\n' "$_old" | while read -r _d; do
+        [ -n "$_d" ] && [ -d "$_d" ] && rm -rf "$_d"
+    done
+    return 0
 }
 
 restore_snapshot() {
