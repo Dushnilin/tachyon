@@ -164,4 +164,55 @@ grep -q 'identical=yes' <<< "$out" ||
 grep -q 'missing=yes' <<< "$out" ||
   fail "a missing file was treated as unchanged, so the first write of every file would be skipped: $out"
 
+# --- /etc/steer must not survive a switch away from steer ---------------------
+# Measured on 192.168.1.1, which runs sing-box: /etc/steer still held ten files
+# including a full spec.json and every channel list, untouched since the day the
+# engine was switched away from steer. Only the switching code knows the engine
+# just changed, so that is where the cleanup has to live.
+# ponytail: TACHYON_STEER_* overrides exist for tests, and discard_steer_artifacts
+# deliberately ignores them and only touches /etc/steer. That keeps the guard
+# testable without ever pointing a real delete at an arbitrary directory.
+printf '%s\n' '--- steer artifacts are discarded when the engine leaves steer ---'
+rm -rf /etc/steer
+mkdir -p /etc/steer/lists/channels/Main /etc/steer/zapret /etc/steer/subs
+printf '{ "outputs": {} }\n' > /etc/steer/spec.json
+printf 'example.com\n' > /etc/steer/lists/channels/Main/domains.lst
+printf '%s\n' '--filter-tcp' > /etc/steer/zapret/Youtube.opts
+printf 'vless://a@b\n' > /etc/steer/subs/Main.txt
+printf 'package-owned\n' > /etc/steer/keep.d
+
+out="$(TACHYON_CONFIG_NAME=tachyon_steer_purge_test ucode -L "$LIB_DIR" -e '
+let fs = require("fs");
+let state = require("components.engine_state");
+state.discard_steer_artifacts("sing-box");
+function mark(p) { return fs.stat(p) == null ? "GONE" : "PRESENT"; }
+printf("spec=%s lists=%s zapret=%s subs=%s keep=%s\n",
+  mark("/etc/steer/spec.json"), mark("/etc/steer/lists"), mark("/etc/steer/zapret"),
+  mark("/etc/steer/subs"), mark("/etc/steer/keep.d"));
+' 2>&1)" || fail "could not drive discard_steer_artifacts: $out"
+
+grep -q 'spec=GONE' <<< "$out" || fail "spec.json survived the switch away from steer: $out"
+grep -q 'lists=GONE' <<< "$out" || fail "the channel list files survived the switch away from steer: $out"
+grep -q 'zapret=GONE' <<< "$out" || fail "the zapret opts files survived the switch away from steer: $out"
+# The steer package owns the rest of /etc/steer. Uninstalling its files is not
+# this function's business, so keep.d has to come out untouched.
+grep -q 'keep=PRESENT' <<< "$out" ||
+  fail "discard_steer_artifacts deleted a file the steer package owns: $out"
+
+# Switching *to* steer must keep the artifacts, or the engine would start with
+# nothing to read and fall back to direct.
+rm -rf /etc/steer
+mkdir -p /etc/steer
+printf '{ "outputs": {} }\n' > /etc/steer/spec.json
+out="$(ucode -L "$LIB_DIR" -e '
+let fs = require("fs");
+let state = require("components.engine_state");
+state.discard_steer_artifacts("steer");
+state.discard_steer_artifacts("steer-extended");
+printf("spec=%s\n", fs.stat("/etc/steer/spec.json") == null ? "GONE" : "PRESENT");
+' 2>&1)" || fail "could not drive the steer-target case: $out"
+grep -q 'spec=PRESENT' <<< "$out" ||
+  fail "switching to steer deleted its own spec.json, so the engine would start with no config at all: $out"
+rm -rf /etc/steer
+
 printf 'fault: flash wear guard passed\n'

@@ -207,6 +207,42 @@ function validate_target(target, allow_install) {
     return { ok: false, reason: "engine_not_installed", installable: true };
 }
 
+// Everything under /etc/steer is derived from the Tachyon config and is
+// regenerated on demand, so once steer is not the active engine none of it is
+// read by anything. It is also all on the flash overlay, and the biggest piece -
+// the per-channel list files and the spec - was being rewritten on every apply
+// even when a router never runs steer.
+//
+// Measured on 192.168.1.1, which runs sing-box: /etc/steer still held ten files
+// including a full spec.json and every channel list, untouched since the day the
+// engine was switched away. Nothing cleaned it up, because only the switching
+// code knows the engine just changed.
+//
+// Only the paths Tachyon writes are removed. The steer package owns the rest of
+// /etc/steer and uninstalling its files is not this function's business.
+function discard_steer_artifacts(target) {
+    if (as_string(target) == engine.ENGINE_STEER ||
+        as_string(target) == engine.ENGINE_STEER_EXTENDED)
+        return;
+
+    let spec_path = as_string(engine.STEER_SPEC_FILE);
+    if (spec_path == "")
+        return;
+
+    // Guard against a test or an override pointing these somewhere unexpected.
+    // Only absolute paths under /etc/steer are ours to delete.
+    let base = common.parent_dir(spec_path);
+    if (base != "/etc/steer")
+        return;
+
+    for (let dir in [ engine.STEER_LISTS_DIR, engine.STEER_ZAPRET_DIR ]) {
+        let path = as_string(dir);
+        if (index(path, base + "/") == 0)
+            common.remove_tree(path);
+    }
+    common.remove_tree(spec_path);
+}
+
 // Perform the switch plan: park what cannot come along, flip the engine.
 // Returns { ok, plan, restored, validation }.
 function apply_switch(target, opts) {
@@ -248,6 +284,8 @@ function apply_switch(target, opts) {
     set_option("engine_previous", active);
     commit();
 
+    discard_steer_artifacts(target);
+
     return {
         ok: true,
         reason: "",
@@ -277,6 +315,7 @@ function module_exports() {
         current_feature_map,
         validate_target,
         apply_switch,
+        discard_steer_artifacts,
         switch_back,
         set_option,
         commit

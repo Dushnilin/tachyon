@@ -605,6 +605,26 @@ function parent_dir(path) {
     return slash >= 0 ? substr(path, 0, slash) : "";
 }
 
+// Recursive delete, used when something is abandoned rather than refreshed.
+// Returns true when the path is gone afterwards. Deleting a directory that is
+// already absent is success, not an error: every caller here is a cleanup, and
+// a cleanup that fails because there was nothing to clean up is just noise.
+function remove_tree(path) {
+    path = as_string(path);
+    let st = fs.stat(path);
+    if (st == null)
+        return true;
+    if (type(st) == "object" && st.type == "directory") {
+        let names = fs.lsdir(path);
+        for (let name in array_or_empty(names))
+            remove_tree(path + "/" + as_string(name));
+        try { fs.rmdir(path); } catch (e) { return false; }
+        return fs.stat(path) == null;
+    }
+    try { fs.unlink(path); } catch (e) { return false; }
+    return fs.stat(path) == null;
+}
+
 function get_mixed_inbound_info() {
     let data = fs.readfile("/etc/sing-box/config.json");
     if (data == null) return null;
@@ -787,6 +807,7 @@ return {
     write_file,
     content_unchanged,
     file_exists,
+    remove_tree,
     parent_dir,
     get_mixed_inbound_info,
     get_mixed_port,
