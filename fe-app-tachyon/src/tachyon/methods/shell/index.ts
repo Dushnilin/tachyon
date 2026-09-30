@@ -1579,7 +1579,7 @@ export const TachyonShellMethods = {
   > => {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_START],
+      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_ASYNC],
       timeout: 10000,
     });
     const parsed = parseJsonObjectOutput<{

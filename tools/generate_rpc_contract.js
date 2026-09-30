@@ -84,8 +84,13 @@ function generate() {
 
   // ACL and Category types
   lines.push("export type RpcAclLevel = 'read' | 'write' | 'admin' | 'diagnostic';");
+  // Derived from the contract rather than listed here. The hardcoded union was a
+  // fourth hand-written copy of the surface, and a category that appeared in
+  // tachyon-rpc.json without being added to that line failed the type check
+  // instead of the generator noticing.
+  const categories = [...new Set(contract.methods.map((m) => m.category))].sort();
   lines.push(
-    "export type RpcCategory = 'system' | 'engine' | 'diagnostics' | 'jobs' | 'events' | 'known_good' | 'updates' | 'dns' | 'fuzzer' | 'snapshots';"
+    `export type RpcCategory = ${categories.map((c) => `'${c}'`).join(' | ')};`,
   );
   lines.push('');
 

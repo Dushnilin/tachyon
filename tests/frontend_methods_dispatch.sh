@@ -29,8 +29,8 @@ sed -n '/enum AvailableMethods/,/^  }/p' "$TYPES_TS" \
   | sort -u > /tmp/fm_enum.txt
 
 # Dispatcher table entries: eight spaces then key, colon, bracketed value
-grep -oE '^ {8}[a-z0-9_]+: \[' "$DISPATCHER" \
-  | sed -E 's/^ {8}([a-z0-9_]+): \[/\1/' \
+grep -oE '^ {8}"?[a-z0-9_-]+"?: \[' "$DISPATCHER" \
+  | sed -E 's/^ {8}"?([a-z0-9_-]+)"?: \[/\1/' \
   | sort -u > /tmp/fm_dispatch.txt
 
 enum_count=$(wc -l < /tmp/fm_enum.txt)
