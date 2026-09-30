@@ -2951,13 +2951,33 @@ function getOutboundTagBySection(sectionName) {
 
 // src/tachyon/methods/shell/callBaseMethod.ts
 var TACHYON_BIN = "/usr/bin/tachyon";
+var TACHYON_READ_BIN = "/usr/bin/tachyon-read";
+var useReadBinary = false;
+function isAccessDenied(response) {
+  const text = `${response.stderr} ${response.stdout}`.toLowerCase();
+  return text.includes("permission denied") || text.includes("access denied") || text.includes("not authorized") || text.includes("unauthorized");
+}
 async function callBaseMethod(method, args = [], options = {}) {
   try {
-    const response = await executeShellCommand({
+    const callArgs = [method, ...args];
+    const timeout = options.timeout ?? 15e3;
+    let response = useReadBinary ? await executeShellCommand({
+      command: TACHYON_READ_BIN,
+      args: callArgs,
+      timeout
+    }) : await executeShellCommand({
       command: TACHYON_BIN,
-      args: [method, ...args],
-      timeout: options.timeout ?? 15e3
+      args: callArgs,
+      timeout
     });
+    if (!useReadBinary && isAccessDenied(response)) {
+      useReadBinary = true;
+      response = await executeShellCommand({
+        command: TACHYON_READ_BIN,
+        args: callArgs,
+        timeout
+      });
+    }
     const exitCode = response.code ?? 0;
     if (exitCode !== 0 && !(options.allowNonZeroWithStdout && response.stdout)) {
       return {

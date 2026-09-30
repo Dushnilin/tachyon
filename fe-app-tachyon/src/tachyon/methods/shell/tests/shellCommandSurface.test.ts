@@ -21,6 +21,10 @@ const SOURCES = import.meta.glob('/src/**/*.ts', {
 
 const ALLOWED_COMMANDS = new Set([
   '/usr/bin/tachyon',
+  // Read-only LuCI accounts are denied the main binary by rpcd, so the frontend
+  // falls back to this one. It carries the read commands only and refuses the
+  // rest itself.
+  '/usr/bin/tachyon-read',
   '/sbin/uci',
   '/sbin/logread',
 ]);
