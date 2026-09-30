@@ -488,33 +488,6 @@ function download_via_proxy_option_for_purpose(purpose) {
         exit(1);
 }
 
-function md5sum_hex_prefix(prefix_length) {
-    let input = read_stdin();
-    let newline = index(input, "\n");
-    let line = newline >= 0 ? substr(input, 0, newline) : input;
-    let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
-    let hash = length(fields) > 0 ? as_string(fields[0]) : "";
-
-    prefix_length = int(prefix_length || 0);
-    if (prefix_length > 0)
-        print(substr(hash, 0, prefix_length), "\n");
-}
-
-function md5sum_hwid() {
-    let input = read_stdin();
-    let newline = index(input, "\n");
-    let line = newline >= 0 ? substr(input, 0, newline) : input;
-    let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
-    let hash = length(fields) > 0 ? substr(as_string(fields[0]), 0, 16) : "";
-
-    print(
-        substr(hash, 0, 4), "-",
-        substr(hash, 4, 4), "-",
-        substr(hash, 8, 4), "-",
-        substr(hash, 12, 4), "\n"
-    );
-}
-
 function tag_is_reserved(tag, reserved) {
     tag = as_string(tag);
     for (let value in reserved)
@@ -625,10 +598,6 @@ else if (mode == "whitespace-list-contains")
     exit(whitespace_list_contains(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "download-via-proxy-option-for-purpose")
     download_via_proxy_option_for_purpose(ARGV[1]);
-else if (mode == "md5sum-hex-prefix")
-    md5sum_hex_prefix(ARGV[1]);
-else if (mode == "md5sum-hwid")
-    md5sum_hwid();
 else if (mode == "allocate-runtime-tag")
     allocate_runtime_tag(ARGV[1], ARGV[2]);
 else if (mode == "inbound-tag")

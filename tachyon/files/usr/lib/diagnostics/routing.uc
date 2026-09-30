@@ -286,20 +286,6 @@ function nolog(message) {
 ");
 }
 
-function ensure_dir(dir) {
-    dir = as_string(dir);
-    if (dir == "" || fs.stat(dir) != null)
-        return;
-    let parts = split(dir, "/");
-    let current = "";
-    for (let part in parts) {
-        if (part == "") continue;
-        current = current + "/" + part;
-        if (fs.stat(current) == null)
-            fs.mkdir(current);
-    }
-}
-
 function server_inbound_tag(section) {
     return helper_output("server-inbound-tag", [ section ]);
 }
@@ -494,7 +480,7 @@ function check_proxy() {
     let check_proxy_cache = check_proxy_dir + "/cache.db";
 
     cleanup_check_proxy_dir(check_proxy_dir);
-    ensure_dir(check_proxy_dir);
+    common.ensure_dir(check_proxy_dir);
     if (!status_success([ "prepare-check-proxy-config", sing_box_config_path, check_proxy_config, check_proxy_cache ], null)) {
         nolog("Failed to prepare temporary configuration");
         cleanup_check_proxy_dir(check_proxy_dir);

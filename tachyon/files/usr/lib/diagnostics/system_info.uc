@@ -157,18 +157,6 @@ function stdout_is_tty() { return command_status("test -t 1") == 0; }
 function nolog(message) { if (stdout_is_tty()) print(as_string(message), "
 "); }
 
-function ensure_dir(dir) {
-    dir = as_string(dir);
-    if (dir == "" || fs.stat(dir) != null) return;
-    let parts = split(dir, "/");
-    let current = "";
-    for (let part in parts) {
-        if (part == "") continue;
-        current = current + "/" + part;
-        if (fs.stat(current) == null) fs.mkdir(current);
-    }
-}
-
 function remove_file(path) {
     path = as_string(path);
     if (path != "" && fs.stat(path) != null) fs.unlink(path);
@@ -297,7 +285,7 @@ function ensure_subscription_runtime_dirs() {
     module_success(SUBSCRIPTION_CACHE_UC, [
         "ensure-runtime-dirs"
     ]);
-    ensure_dir(RUNTIME_STATE_DIR);
+    common.ensure_dir(RUNTIME_STATE_DIR);
 }
 
 function write_system_info_cache(value) {
