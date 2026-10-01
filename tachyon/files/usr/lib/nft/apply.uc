@@ -875,13 +875,67 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     return true;
 }
 
+// A zapret section is marked in prerouting and reaches NFQUEUE from
+// mangle_forward, which runs before masquerade. nfqws2 re-injects the desync
+// fakes it fabricates from that same hook, so they carry the grey LAN address
+// and the ISP discards them - which is why routing zapret through sing-box was
+// tried instead (3e716b1d), at the cost of re-originating every WebRTC
+// connection inside sing-box.
+//
+// masquerade here instead of snat to a literal address: the WAN address is
+// discovered at apply time and changes across reconnects, whereas masquerade
+// reads it per packet. Priority 110 matches what Tailscale already uses, so the
+// two do not reorder each other.
+//
+// Only the two zapret mark ranges are touched. Everything else keeps whatever
+// fw4's srcnat_wan decided, and the @tachyon_interfaces guard keeps host-originated
+// traffic (which skips forward entirely) from being masqueraded twice.
+function nft_create_zapret_pre_nat_snat(table, interface_set) {
+    if (!nft_create_chain(table, "zapret_pre_nat_snat",
+            "{ type nat hook postrouting priority 110; policy accept; }"))
+        return false;
+
+    let guarded = as_string(interface_set) != ""
+        ? [ "iifname", "@" + as_string(interface_set) ]
+        : [];
+
+    return nft_add_rule(table, "zapret_pre_nat_snat", guarded + [ "meta", "mark", "&", "0x03ffffff", "==", "0x01000000", "counter", "masquerade" ]) &&
+        nft_add_rule(table, "zapret_pre_nat_snat", guarded + [ "meta", "mark", "&", "0x03ffffff", "==", "0x02000000", "counter", "masquerade" ]);
+}
+
 function nft_add_section_priority_rules_from_sections(sections, table, interface_set, localv4_set, localv6_set, mark) {
     localv6_set = default_arg(localv6_set, "localv6");
+    let zapret2_idx = 1;
+    let zapret_idx = 1;
     for (let section in sections) {
         section = object_or_empty(section);
         if (!bool_option(section, "enabled", true))
             continue;
-        if (!nft_add_section_priority_rules(table, section, interface_set, localv4_set, localv6_set, mark))
+        // A zapret section goes straight to its own NFQUEUE instead of being
+        // handed to sing-box first. The detour is not free: sing-box terminates
+        // the UDP connection and re-originates it, which WebRTC treats as an
+        // address change. Discord voice lost its ICE candidates that way and
+        // reported "no route" while the desync queue itself sat at zero packets.
+        //
+        // The index must match the one nft_create_provider_output_rules_from_
+        // sections assigns, since that is what builds the `meta mark 0x0200000N
+        // ... queue to N` rules; the two counters walk the same section list in
+        // the same order and skip disabled sections alike.
+        //
+        // Marking pre-NAT is what makes this fast, and it is why the SNAT rule
+        // in nft_create_zapret_pre_nat_snat exists: desync fakes are born in
+        // mangle_forward, before masquerade, so without it they would carry the
+        // grey LAN address and the ISP dropped them (see 3e716b1d).
+        let sec_mark = mark;
+        let action = option(section, "action", "connection");
+        if (action == "zapret2") {
+            sec_mark = sprintf("0x%08x", 0x02000000 + zapret2_idx);
+            zapret2_idx++;
+        } else if (action == "zapret") {
+            sec_mark = sprintf("0x%08x", 0x01000000 + zapret_idx);
+            zapret_idx++;
+        }
+        if (!nft_add_section_priority_rules(table, section, interface_set, localv4_set, localv6_set, sec_mark))
             return false;
     }
     return true;
@@ -1716,6 +1770,9 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle_forward", [ "meta", "mark", "&", "0x20000000", "==", "0x20000000", "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_forward", [ "jump", "guest_forward" ]) ||
         !nft_add_rule(table, "mangle_forward", [ "jump", "parental_forward" ]))
+        return false;
+
+    if (!nft_create_zapret_pre_nat_snat(table, interface_set))
         return false;
 
     if (tailscale_bypass_active()) {
