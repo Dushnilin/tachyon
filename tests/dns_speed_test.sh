@@ -7,7 +7,8 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/state"
 cat > "$WORK_DIR/bin/curl" <<'SH'
 #!/bin/sh
-exec ucode "$DNS_SPEED_CURL_FIXTURE" "$@"
+# GNU getopt otherwise treats curl's --disable/--next as ucode options.
+exec ucode -- "$DNS_SPEED_CURL_FIXTURE" "$@"
 SH
 chmod +x "$WORK_DIR/bin/curl"
 export PATH="$WORK_DIR/bin:$PATH" TACHYON_LIB
