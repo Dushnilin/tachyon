@@ -181,6 +181,8 @@ function show_help() {
     print("    snapshot_delete <file>  Delete a config snapshot\n");
     print("    import_settings [file]  Scan and import legacy settings from Forkop/Podkop or backup\n");
     print("    dns_benchmark [--json]  Benchmark major DNS servers (UDP/DoH) and display speed ratings\n");
+    print("    dns_speed_test_start <json>  Test selected DoH servers and domains without changing settings\n");
+    print("    dns_speed_test_status        Read DNS speed test progress and per-domain latency\n");
     print("    dns_autotune [--apply]  Auto-tune and recommend/apply the optimal DNS configuration\n");
     print("    validate_nfqws_strategy_json\n");
     print("                            Validate an NFQWS strategy and print JSON result\n");
@@ -387,6 +389,8 @@ function command_spec(command) {
         dns_benchmark_status: [ "dns/benchmark.uc", "benchmark_status", 0 ],
         dns_benchmark_stop: [ "dns/benchmark.uc", "benchmark_stop", 0 ],
         dns_benchmark_apply: [ "dns/benchmark.uc", "benchmark_apply", 0 ],
+        dns_speed_test_start: [ "dns/speed_test.uc", "start", 1 ],
+        dns_speed_test_status: [ "dns/speed_test.uc", "status", 0 ],
         import_settings: [ "config/migration.uc", "import-settings", 1 ],
         "import-settings": [ "config/migration.uc", "import-settings", 1 ],
         resolve_domain: [ "diagnostics/runtime.uc", "resolve-domain", 1 ],

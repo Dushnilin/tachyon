@@ -8,6 +8,7 @@
 "require tools.widgets as widgets";
 "require view.tachyon.main as main";
 "require view.tachyon.local_devices as local_devices";
+"require view.tachyon.dns_speed_test as dns_speed_test";
 
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
 
@@ -238,6 +239,7 @@ function configureDnsDynamicList(option, getChoices, defaultValue) {
     settingsDnsDynamicState.refreshers.get(section_id).add(refreshChoices);
     settingsDnsDynamicState.widget = widget;
     settingsDnsDynamicState.option = this;
+    if (this.speedTestController) this.speedTestController.attachList(node);
     return node;
   };
 }
@@ -1613,6 +1615,26 @@ function createSettingsContent(section, capabilities) {
   settingsDnsDynamicState.dnsType =
     uci.get(UCI_PACKAGE, "settings", "dns_type") || "udp";
 
+  const dnsSpeedController = dns_speed_test.createController();
+  const dnsSpeedOption = section.taboption(
+    "dns",
+    form.DummyValue,
+    "_dns_speed_test",
+    _("DNS speed test"),
+    _(
+      "Test the selected DoH servers from this router without changing settings. Click a ping for details.",
+    ),
+  );
+  dnsSpeedOption.renderWidget = function (section_id) {
+    return dnsSpeedController.renderToolbar(() => ({
+      protocol:
+        dnsTypeOption.formvalue(section_id) || settingsDnsDynamicState.dnsType,
+      servers: optionListValues(dnsOption, section_id),
+    }));
+  };
+  dnsSpeedOption.write = function () {};
+  dnsSpeedOption.remove = function () {};
+
   o = section.taboption(
     "dns",
     form.ListValue,
@@ -1654,6 +1676,7 @@ function createSettingsContent(section, capabilities) {
       "Main DNS server. If multiple servers are selected, a timeout switches to a backup.",
     ),
   );
+  dnsOption.speedTestController = dnsSpeedController;
   configureDnsDynamicList(
     dnsOption,
     (_section_id) => {
@@ -1712,6 +1735,7 @@ function createSettingsContent(section, capabilities) {
     const newType = value || "udp";
     if (newType === settingsDnsDynamicState.dnsType) return;
     settingsDnsDynamicState.dnsType = newType;
+    dnsSpeedController.refresh();
 
     const widget = settingsDnsDynamicState.widget;
     if (widget) {

@@ -10353,3 +10353,127 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1370
 msgid "Zero config mesh VPN daemon"
 msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Test DNS speed"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "DNS speed test"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Test the selected DoH servers from this router without changing settings. Click a ping for details."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Test domains"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Enter valid domain names, one per line."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Choose between 1 and 32 test domains."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Choose between 1 and 8 DNS servers."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "DNS speed test results"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Minimum"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Median"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Average"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Maximum"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Successful queries: %s / %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Failed queries count as 5000 ms in statistics. All times are measured from the router."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Failed / timeout"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Median; successful queries: %s / %s. Click for details."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Run the DNS speed test to see results."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Testing selected DNS…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "This speed test uses DNS over HTTPS (DoH)."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Unable to read DNS speed test results."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "DNS speed test failed."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "DNS speed test results have changed. Run the test again."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "One domain per line. These settings are saved in this browser and do not change DNS routing."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "ms"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "TLS certificate error"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Connection error: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "HTTP error: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "DNS error: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Invalid or missing DNS response"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Domain"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/tachyon/dns_speed_test.js
+msgid "Ping"
+msgstr ""

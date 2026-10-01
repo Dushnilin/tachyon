@@ -7369,3 +7369,96 @@ msgstr "базовая"
 
 msgid "Failed to parse OpenVPN config: "
 msgstr "Не удалось прочитать конфиг OpenVPN: "
+
+msgid "Test DNS speed"
+msgstr "Протестировать скорость DNS"
+
+msgid "DNS speed test"
+msgstr "Проверка скорости DNS"
+
+msgid "Test the selected DoH servers from this router without changing settings. Click a ping for details."
+msgstr "Проверить выбранные DoH с роутера без изменения настроек. Нажмите на пинг для подробностей."
+
+msgid "Test domains"
+msgstr "Домены для проверки"
+
+msgid "Enter valid domain names, one per line."
+msgstr "Введите корректные домены, по одному на строку."
+
+msgid "Choose between 1 and 32 test domains."
+msgstr "Укажите от 1 до 32 доменов для проверки."
+
+msgid "Choose between 1 and 8 DNS servers."
+msgstr "Выберите от 1 до 8 DNS-серверов."
+
+msgid "DNS speed test results"
+msgstr "Результаты проверки DNS"
+
+msgid "Minimum"
+msgstr "Минимум"
+
+msgid "Median"
+msgstr "Медиана"
+
+msgid "Average"
+msgstr "Среднее"
+
+msgid "Maximum"
+msgstr "Максимум"
+
+msgid "Successful queries: %s / %s"
+msgstr "Успешные запросы: %s / %s"
+
+msgid "Failed queries count as 5000 ms in statistics. All times are measured from the router."
+msgstr "Неудачные запросы учитываются как 5000 мс. Все замеры выполнены с роутера."
+
+msgid "Failed / timeout"
+msgstr "Ошибка / таймаут"
+
+msgid "Median; successful queries: %s / %s. Click for details."
+msgstr "Медиана; успешные запросы: %s / %s. Нажмите для подробностей."
+
+msgid "Run the DNS speed test to see results."
+msgstr "Запустите проверку скорости DNS."
+
+msgid "Testing selected DNS…"
+msgstr "Проверка выбранных DNS…"
+
+msgid "This speed test uses DNS over HTTPS (DoH)."
+msgstr "Эта проверка использует DNS через HTTPS (DoH)."
+
+msgid "Unable to read DNS speed test results."
+msgstr "Не удалось прочитать результат проверки DNS."
+
+msgid "DNS speed test failed."
+msgstr "Проверка DNS завершилась ошибкой."
+
+msgid "DNS speed test results have changed. Run the test again."
+msgstr "Результаты проверки DNS изменились. Повторите тест."
+
+msgid "One domain per line. These settings are saved in this browser and do not change DNS routing."
+msgstr "По одному домену на строку. Список сохраняется в этом браузере и не меняет маршрутизацию DNS."
+
+msgid "ms"
+msgstr "мс"
+
+msgid "TLS certificate error"
+msgstr "Ошибка сертификата TLS"
+
+msgid "Connection error: %s"
+msgstr "Ошибка соединения: %s"
+
+msgid "HTTP error: %s"
+msgstr "Ошибка HTTP: %s"
+
+msgid "DNS error: %s"
+msgstr "Ошибка DNS: %s"
+
+msgid "Invalid or missing DNS response"
+msgstr "Нет корректного DNS-ответа"
+
+msgid "Domain"
+msgstr "Домен"
+
+msgid "Ping"
+msgstr "Пинг"

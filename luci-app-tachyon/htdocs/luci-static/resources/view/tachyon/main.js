@@ -3066,6 +3066,8 @@ var Tachyon;
     AvailableMethods2["DNS_BENCHMARK_STATUS"] = "dns_benchmark_status";
     AvailableMethods2["DNS_BENCHMARK_STOP"] = "dns_benchmark_stop";
     AvailableMethods2["DNS_FAILOVER_APPLY"] = "dns_failover_apply";
+    AvailableMethods2["DNS_SPEED_TEST_START"] = "dns_speed_test_start";
+    AvailableMethods2["DNS_SPEED_TEST_STATUS"] = "dns_speed_test_status";
     AvailableMethods2["DNSMASQ_RESTORE"] = "dnsmasq_restore";
     AvailableMethods2["DOCTOR"] = "doctor";
     AvailableMethods2["EMERGENCY_RESET"] = "emergency_reset";
