@@ -3305,7 +3305,11 @@ function ai_doctor(user_query) {
 
     let dns_type = cfg.dns_type || "doh";
     let version = trim(command_output("cat /etc/tachyon/version 2>/dev/null")) || "unknown";
-    let singbox_running = trim(command_output("pgrep -x sing-box 2>/dev/null")) != "";
+    // busybox pgrep has no -x, so the old check reported "not running" on OpenWrt
+    // even when sing-box was up. pidof matches the process name exactly and
+    // works on busybox, and unlike pgrep -f it cannot pick up an unrelated
+    // command line that merely mentions sing-box.
+    let singbox_running = trim(command_output("pidof sing-box 2>/dev/null")) != "";
     let uptime_out = trim(command_output("cat /proc/uptime 2>/dev/null"));
     let uptime_min = uptime_out != "" ? int(split(uptime_out, ".")[0]) / 60 : 0;
 

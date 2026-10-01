@@ -1758,10 +1758,38 @@ function increment_reconnect_count() {
 }
 
 // events for one crash, and each would otherwise queue its own restart.
+// Restarting cannot install what is not on the filesystem. With the sing-box
+// init script absent, every heal below fails identically, and the watchdog
+// settles into alternating "Restarting Tachyon" and "Restarting sing-box
+// service only" every 25 seconds forever, while the real cause - a missing
+// binary variant - is only ever reported by the validator at startup. Name the
+// cause once and leave the router alone instead.
+//
+// The validator already distinguishes this from a missing package and from a
+// version too old; repeating its binary-variant advice here is deliberate, since
+// this is the message the user sees while the loop is running.
+function singbox_service_absent() {
+    return common.command_status_from_args([ "test", "-x", "/etc/init.d/sing-box" ]) != 0;
+}
+
+let missing_singbox_reported_at = 0;
+
 function heal_singbox_stopped(ev) {
     let now = time();
     if (now - last_restart_time < 30) return;
     last_restart_time = now;
+
+    if (singbox_service_absent()) {
+        if (now - missing_singbox_reported_at > 3600) {
+            missing_singbox_reported_at = now;
+            log_message("sing-box is not installed (no /etc/init.d/sing-box). Restarting cannot fix this - install a sing-box package or reinstall the sing-box-x / sing-box-extended binary variant. Watchdog will not retry until it appears.", "error");
+            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+            if (tcfg.notify_crash != "0") {
+                send_telegram_notification("⚠️ *Watchdog:* sing-box не установлен, перезапуск не поможет. Установите пакет sing-box или бинарный вариант sing-box-x / sing-box-extended.");
+            }
+        }
+        return;
+    }
 
     let cfg = settings();
     if (cfg.recovery_bypass == "1") return;
