@@ -144,7 +144,7 @@ function paramsOf(entry) {
     name: `arg${i + 1}`,
     type: 'string',
     required: false,
-    description: `positional argument ${i + 1} of ${entry.cli ?? entry.name}`,
+    description: `positional argument ${i + 1} of ${entry.cli || entry.name}`,
   }));
 }
 

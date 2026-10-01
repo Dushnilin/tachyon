@@ -1,6 +1,10 @@
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
+// The test image runs Node 12, which understands neither the `node:` prefix for
+// builtin subpaths nor a bare 'assert/strict' in ESM. createRequire reaches the
+// strict API through CommonJS resolution, which works on every version we run on.
+import { createRequire } from 'module';
+const assert = createRequire(import.meta.url)('assert').strict;
+import fs from 'fs';
+import vm from 'vm';
 
 const root = new URL('../', import.meta.url);
 const source = fs.readFileSync(new URL('luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js', root), 'utf8');
