@@ -111,6 +111,8 @@ export namespace Tachyon {
     DNS_BENCHMARK_STATUS = 'dns_benchmark_status',
     DNS_BENCHMARK_STOP = 'dns_benchmark_stop',
     DNS_FAILOVER_APPLY = 'dns_failover_apply',
+    DNS_SPEED_TEST_START = 'dns_speed_test_start',
+    DNS_SPEED_TEST_STATUS = 'dns_speed_test_status',
     // dnsmasq
     DNSMASQ_RESTORE = 'dnsmasq_restore',
     // doctor

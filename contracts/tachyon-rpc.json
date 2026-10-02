@@ -856,6 +856,41 @@
       }
     },
     {
+      "name": "dns_speed_test_start",
+      "cli_command": "dns_speed_test_start",
+      "category": "system",
+      "acl": "write",
+      "description": "start (dns/speed_test.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of dns_speed_test_start"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "dns_speed_test_status",
+      "cli_command": "dns_speed_test_status",
+      "category": "system",
+      "acl": "read",
+      "description": "status (dns/speed_test.uc)",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
       "name": "dnsmasq_restore",
       "cli_command": "dnsmasq_restore",
       "category": "system",

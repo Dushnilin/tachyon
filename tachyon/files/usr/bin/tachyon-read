@@ -101,6 +101,7 @@ let commands = {
     snapshot_list: [ "service/snapshot.uc", "snapshot-list", 0 ],
     dns_benchmark: [ "dns/benchmark.uc", "benchmark", 1 ],
     dns_benchmark_status: [ "dns/benchmark.uc", "benchmark_status", 0 ],
+    dns_speed_test_status: [ "dns/speed_test.uc", "status", 0 ],
     resolve_domain: [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
     "resolve-domain": [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
     reconcile_status: [ "service/reconciler.uc", "status", 0 ],

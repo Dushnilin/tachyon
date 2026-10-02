@@ -64,6 +64,8 @@ export const TACHYON_RPC_METHODS = [
   'dns_benchmark_status',
   'dns_benchmark_stop',
   'dns_failover_apply',
+  'dns_speed_test_start',
+  'dns_speed_test_status',
   'dnsmasq_restore',
   'doctor',
   'emergency_reset',
@@ -574,6 +576,19 @@ export interface DnsfailoverapplyParams {
 }
 
 export type DnsfailoverapplyResult = Record<string, unknown>;
+
+/** start (dns/speed_test.uc) */
+export interface DnsspeedteststartParams {
+  /** positional argument 1 of dns_speed_test_start */
+  arg1?: string;
+}
+
+export type DnsspeedteststartResult = Record<string, unknown>;
+
+/** status (dns/speed_test.uc) */
+export type DnsspeedteststatusParams = Record<string, never>;
+
+export type DnsspeedteststatusResult = Record<string, unknown>;
 
 /** dnsmasq-restore (service/lifecycle.uc) */
 export type DnsmasqrestoreParams = Record<string, never>;
@@ -1992,6 +2007,14 @@ export interface TachyonRpcRegistry {
     params: DnsfailoverapplyParams;
     result: DnsfailoverapplyResult;
   };
+  dns_speed_test_start: {
+    params: DnsspeedteststartParams;
+    result: DnsspeedteststartResult;
+  };
+  dns_speed_test_status: {
+    params: DnsspeedteststatusParams;
+    result: DnsspeedteststatusResult;
+  };
   dnsmasq_restore: {
     params: DnsmasqrestoreParams;
     result: DnsmasqrestoreResult;
@@ -3358,6 +3381,33 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           description: 'positional argument 1 of dns_failover_apply',
         },
       ],
+    },
+    dns_speed_test_start: {
+      name: 'dns_speed_test_start',
+      cli_command: 'dns_speed_test_start',
+      category: 'system',
+      acl: 'write',
+      description: 'start (dns/speed_test.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of dns_speed_test_start',
+        },
+      ],
+    },
+    dns_speed_test_status: {
+      name: 'dns_speed_test_status',
+      cli_command: 'dns_speed_test_status',
+      category: 'system',
+      acl: 'read',
+      description: 'status (dns/speed_test.uc)',
+      async: false,
+      timeout_ms: 5000,
+      params: [],
     },
     dnsmasq_restore: {
       name: 'dnsmasq_restore',
