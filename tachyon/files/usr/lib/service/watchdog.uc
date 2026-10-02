@@ -716,7 +716,7 @@ function ai_export_status() {
     let st = controller.state || {};
     let status_obj = {
         timestamp: time(),
-        status: is_emergency_failsafe_active() ? "emergency_failsafe" : (is_healthy ? "healthy" : "repaired"),
+        status: is_emergency_failsafe_active() ? "emergency_failsafe" : (last_ai_incident != null && (time() - last_ai_incident.timestamp < 300) ? "repaired" : "healthy"),
         ai_active: true,
         emergency_failsafe: is_emergency_failsafe_active(),
         escalation_ladder: escalation_ladder,
@@ -1341,7 +1341,7 @@ function heal_wan_and_gateway(ev) {
 
     let direct_alive = (system("curl -s -o /dev/null --connect-timeout 2 --max-time 3 http://connectivitycheck.gstatic.com/generate_204") == 0);
     if (direct_alive) {
-        log("Watchdog: heal_wan_and_gateway suppressed — direct connectivity is alive", "info");
+        log_message("Watchdog: heal_wan_and_gateway suppressed — direct connectivity is alive", "info");
         return;
     }
 

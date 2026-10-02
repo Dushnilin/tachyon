@@ -130,9 +130,20 @@ function apply_quick_fix(codes_str) {
             status = (rc == 0);
             msg = status ? "dnsmasq restarted" : "dnsmasq restart failed (exit " + rc + ")";
         } else if (c == "fix_resolv_symlink") {
-            let rc = command_status("ln -sf /tmp/resolv.conf.auto /etc/resolv.conf 2>/dev/null || ln -sf /tmp/resolv.conf.d/resolv.conf.auto /etc/resolv.conf 2>/dev/null");
-            status = (rc == 0);
-            msg = status ? "resolv.conf symlink fixed" : "resolv.conf symlink fix failed (exit " + rc + ")";
+            // `ln -sf` succeeds even when the target does not exist, so the old
+            // `a || b` fallback never fired and could leave /etc/resolv.conf
+            // pointing at the pre-22.03 path that no OpenWrt writes any more.
+            // Link a target that actually exists — same order as providers/fptn.
+            let resolv_target = fs.stat("/tmp/resolv.conf.d/resolv.conf.auto") != null
+                ? "/tmp/resolv.conf.d/resolv.conf.auto"
+                : (fs.stat("/tmp/resolv.conf.auto") != null ? "/tmp/resolv.conf.auto" : "");
+            if (resolv_target == "") {
+                msg = "resolv.conf symlink fix failed: no resolv.conf.auto to link to";
+            } else {
+                let rc = command_status("ln -sf " + common.shell_quote(resolv_target) + " /etc/resolv.conf 2>/dev/null");
+                status = (rc == 0);
+                msg = status ? "resolv.conf symlink fixed (" + resolv_target + ")" : "resolv.conf symlink fix failed (exit " + rc + ")";
+            }
         } else if (c == "start_watchdog") {
             let rc = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
             status = (rc == 0);
@@ -214,7 +225,11 @@ function apply_quick_fix(codes_str) {
             status = (rc == 0);
             msg = status ? "System time synchronized with NTP" : "NTP sync failed (exit " + rc + ")";
         } else if (c == "flush_conntrack") {
-            let rc = command_status("sysctl -w net.netfilter.nf_conntrack_max=65536 2>/dev/null; echo 1 > /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || true; conntrack -F 2>/dev/null || true");
+            // The `;` is deliberate: the procfs write is the fallback for the
+            // case where sysctl is missing, and both must set the same value.
+            // It used to write `1` here, which capped the NAT table at a single
+            // connection and took the router's internet down entirely.
+            let rc = command_status("sysctl -w net.netfilter.nf_conntrack_max=65536 2>/dev/null; echo 65536 > /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || true; conntrack -F 2>/dev/null || true");
             status = (rc == 0);
             msg = status ? "Conntrack table limits expanded and flushed" : "Conntrack flush failed (exit " + rc + ")";
         } else if (c == "fix_bootstrap_dns") {

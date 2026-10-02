@@ -171,6 +171,18 @@ function sing_box_resolved_version() { return sysinfo_mod.sing_box_resolved_vers
 function sing_box_capability_flags(version) { return sysinfo_mod.sing_box_capability_flags(version); }
 function dns_check_router_resolver_available(router_ip) { return dns_mod.dns_check_router_resolver_available(router_ip); }
 function clash_api_url() { return routing_mod.clash_api_url(); }
+function clash_auth_args() { return routing_mod.clash_auth_args(); }
+// The Clash API answers 401 on /version whenever a secret is configured, so the
+// old unauthenticated curl reported a healthy router as "unreachable" and then
+// restarted sing-box. Build the probe with the same auth args the rest of the
+// codebase uses.
+function clash_probe_cmd(clash_addr) {
+    let args = [ "-s", "-m", "5", "-o", "/dev/null", "-w", "%{http_code}" ];
+    for (let a in clash_auth_args())
+        push(args, a);
+    push(args, "http://" + clash_addr + "/version");
+    return "curl " + common.command_from_args(args);
+}
 function uci_backup_save() { return repairs_mod.uci_backup_save(); }
 function uci_backup_restore() { return repairs_mod.uci_backup_restore(); }
 
@@ -683,10 +695,18 @@ function run_recovery_checks() {
 
     let ip_rule_out = command_capture("ip rule list").output;
     if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
-        doc_run("ip rule del fwmark 0x1/0x1 >/dev/null 2>&1");
-        doc_run("ip rule del fwmark 0x2/0x2 >/dev/null 2>&1");
+        // The rules Tachyon installs carry NFT_FAKEIP_MARK at priority 105.
+        // The old 0x1/0x1 and 0x2/0x2 pair belongs to the legacy "lookup 100"
+        // table, so both deletions matched nothing while still reporting FIXED.
+        let mark_spec = NFT_FAKEIP_MARK + "/" + NFT_FAKEIP_MARK;
+        doc_run("ip -4 rule del fwmark " + mark_spec + " table " + RT_TABLE_NAME + " priority 105 >/dev/null 2>&1");
+        doc_run("ip -6 rule del fwmark " + mark_spec + " table " + RT_TABLE_NAME + " priority 105 >/dev/null 2>&1");
         doc_run("ip route flush table " + RT_TABLE_NAME + " >/dev/null 2>&1");
-        mark_fixed("routing rules (fwmark)", "leftover", "удалены");
+        let ip_rule_after = DOCTOR_REPAIR_MODE ? command_capture("ip rule list").output : "";
+        if (ip_rule_after != "" && index(ip_rule_after, "lookup " + RT_TABLE_NAME) >= 0)
+            doc_check("❌", "routing rules (fwmark)", "leftover", "→ не удалось удалить policy routing — правило осталось");
+        else
+            mark_fixed("routing rules (fwmark)", "leftover", "удалены");
     } else {
         doc_check("✅", "routing rules (fwmark)", "absent", "");
     }
@@ -822,6 +842,11 @@ function run_doctor_checks_impl(repair) {
     let issues = 0;
     let fixed = 0;
     let cfg = uci_settings();
+    // Function scope on purpose: check 11 (MSS Clamping) lives outside the
+    // engine block where this used to be declared. `let` in ucode is block
+    // scoped and an out-of-scope read yields null silently, so the check was
+    // comparing null == "nftables" and never ran.
+    let routing_mode = cfg.routing_mode || "nftables";
     // With the service stopped the doctor switches to recovery mode: it must
     // restore the stock internet (DNS back to direct upstream, no leftover
     // rules) instead of "repairing" the stopped state by re-hijacking dnsmasq
@@ -1072,7 +1097,6 @@ function run_doctor_checks_impl(repair) {
             } catch (e) {}
         }
     } else {
-        let routing_mode = cfg.routing_mode || "nftables";
         if (routing_mode == "nftables") {
             let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
             if (index(out_nft, "tproxy") >= 0) {
@@ -1125,14 +1149,19 @@ function run_doctor_checks_impl(repair) {
                 doc_check("✅", "tun0 interface", "up", "");
             } else {
                 issues++;
-                command_status(init_script + " restart >/dev/null 2>&1");
-                command_status("sleep 3");
-                let ip_link_check = command_capture("ip link show tun0").output;
-                if (index(ip_link_check, "tun0") >= 0) {
-                    doc_check("❌", "tun0 interface", "missing", "→ FIXED: интерфейс tun0 поднят после перезапуска службы");
-                    fixed++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan(init_script + " restart");
+                    doc_check("⚠️", "tun0 interface", "missing", "→ WILL FIX (doctor --fix): перезапуск службы для поднятия tun0");
                 } else {
-                    doc_check("❌", "tun0 interface", "missing", "→ не удалось поднять tun0");
+                    command_status(init_script + " restart >/dev/null 2>&1");
+                    command_status("sleep 3");
+                    let ip_link_check = command_capture("ip link show tun0").output;
+                    if (index(ip_link_check, "tun0") >= 0) {
+                        doc_check("❌", "tun0 interface", "missing", "→ FIXED: интерфейс tun0 поднят после перезапуска службы");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "tun0 interface", "missing", "→ не удалось поднять tun0");
+                    }
                 }
             }
         }
@@ -1526,20 +1555,25 @@ function run_doctor_checks_impl(repair) {
         doc_check("➖", "Clash API", "not applicable for steer", "");
     } else {
         let clash_addr = clash_api_url();
-        let curl_clash = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
+        let curl_clash = command_capture(clash_probe_cmd(clash_addr));
         if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
             doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
         } else {
             issues++;
             if (pid != "") {
-                command_status(init_script + " restart >/dev/null 2>&1");
-                command_status("sleep 3");
-                let curl_clash2 = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
-                if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
-                    doc_check("❌", "Clash API", "unreachable", "→ FIXED: sing-box перезапущен");
-                    fixed++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan(init_script + " restart");
+                    doc_check("⚠️", "Clash API", "unreachable", "→ WILL FIX (doctor --fix): перезапуск sing-box");
                 } else {
-                    doc_check("❌", "Clash API", "unreachable", "→ sing-box не отвечает на Clash API");
+                    command_status(init_script + " restart >/dev/null 2>&1");
+                    command_status("sleep 3");
+                    let curl_clash2 = command_capture(clash_probe_cmd(clash_addr));
+                    if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
+                        doc_check("❌", "Clash API", "unreachable", "→ FIXED: sing-box перезапущен");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "Clash API", "unreachable", "→ sing-box не отвечает на Clash API");
+                    }
                 }
             } else {
                 doc_check("⚠️", "Clash API", "unreachable", "→ sing-box не запущен");
@@ -2615,12 +2649,16 @@ function verify_system() {
 
     // Live checks — what a client on the LAN experiences right now.
     let is_steer_active = active_engine_is_steer();
+    // Function scope on purpose: the HTTP-via-proxy check further down reads
+    // sb_pid from outside this if/else. An out-of-scope read yields null, and
+    // null != "" is true, so the probe ran against a dead sing-box, scored a
+    // false FAIL, and local_rule_doctor escalated that to restore_native_internet.
+    let sb_pid = is_steer_active ? "" : find_process_pid("sing-box");
     if (is_steer_active) {
         let steer_pid = find_process_pid("steer");
         add("steer process", steer_pid != "" ? "pass" : "fail",
             steer_pid != "" ? "running (pid " + steer_pid + ")" : "not running");
     } else {
-        let sb_pid = find_process_pid("sing-box");
         add("sing-box process", sb_pid != "" ? "pass" : "fail",
             sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
     }
@@ -2644,7 +2682,6 @@ function verify_system() {
     } else {
         let sb_dns = dns_check_through_singbox("google.com");
         if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
-        let sb_pid = find_process_pid("sing-box");
         add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
             sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
     }
