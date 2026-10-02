@@ -1634,6 +1634,8 @@ return {
     bool_option,
     list_value,
     whitespace_list_value,
+    GEOIP_COUNTRY_MODES,
+    GEOIP_COUNTRY_CLOSED_MODES,
     cascade_delete_section,
     set_item_sections,
     set_item_sections_from_cursor,
