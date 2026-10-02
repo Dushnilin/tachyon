@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 13:24+0300\n"
-"PO-Revision-Date: 2026-10-02 13:24+0300\n"
+"POT-Creation-Date: 2026-10-02 23:22+0300\n"
+"PO-Revision-Date: 2026-10-02 23:22+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -895,9 +895,6 @@ msgstr "Выберите, устанавливать ли обновления �
 
 msgid "Choose whether to restrict the entire internet (with optional daily screen time quota) or only specific sites/domains (by scheduled hours). Screen time quotas can also be set per child directly in Profiles."
 msgstr "Выберите, ограничивать ли весь интернет (с возможностью суточной квоты экранного времени) или только конкретные сайты/домены (в часы по расписанию). Суточную квоту экранного времени также можно задать для каждого ребенка прямо в Профилях."
-
-msgid "Choose whether to route traffic to all destinations except selected countries (Exclude) or only to selected countries (Include)."
-msgstr "Выберите, маршрутизировать ли трафик ко всем назначениям кроме выбранных стран (Исключить) или только в выбранные страны (Включить)."
 
 msgid "Choose which routing sections to apply this schedule to."
 msgstr "Выберите секции маршрутизации, к которым применяется данное расписание."
@@ -1841,6 +1838,9 @@ msgstr "Исключить страны"
 msgid "Exclude selected countries"
 msgstr "Исключить выбранные страны"
 
+msgid "Exclude selected countries and route them direct"
+msgstr "Исключить выбранные страны и пустить их напрямую"
+
 msgid "Exclude servers"
 msgstr "Исключить серверы"
 
@@ -2542,6 +2542,12 @@ msgstr "Включить страны"
 
 msgid "Include selected countries"
 msgstr "Включить выбранные страны"
+
+msgid "Include selected countries and everything else"
+msgstr "Включить выбранные страны и всё остальное"
+
+msgid "Include sends only the selected countries to this section and leaves the rest to the sections below. Exclude sends everything except them. Exclude Direct additionally pins the selected countries to direct, so the section works whatever its position in the order. Include All keeps the rest in this section too, and then the countries are the whole section: any other matcher set here is ignored."
+msgstr "Включить отправляет в секцию только выбранные страны, остальное — секциям ниже. Исключить — всё, кроме них. Исключить и напрямую дополнительно отправляет выбранные страны напрямую, поэтому секция работает независимо от её места в порядке. Включить и всё остальное оставляет остальной трафик тоже в секции, и тогда страны — это вся секция: любые другие условия здесь игнорируются."
 
 msgid "Include servers"
 msgstr "Включить серверы"

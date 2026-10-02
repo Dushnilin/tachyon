@@ -532,6 +532,32 @@ function command_output_from_args(args) {
     return command_output(command_from_args(args) + " 2>/dev/null");
 }
 
+let nfqws_blob_probe_cache = {};
+
+// zapret2 1.0.5+ compiles fake_default_http/tls/quic into nfqws2 itself, so a
+// --blob= for those is a fatal "duplicate blob name" and the daemon never
+// starts. Ask the binary instead of guessing from a version string: --dry-run
+// verifies parameters and exits before touching any queue. The complaint goes to
+// stderr, hence 2>&1 rather than the usual 2>/dev/null.
+function nfqws_blob_is_builtin(bin, name, probe_file) {
+    if (!bin || !name || !probe_file) return false;
+    let key = as_string(bin) + "\t" + as_string(name);
+    if (key in nfqws_blob_probe_cache)
+        return nfqws_blob_probe_cache[key];
+
+    let builtin = false;
+    let out = command_output(command_from_args([
+        as_string(bin), "--dry-run", "--qnum=65535",
+        "--blob=" + as_string(name) + ":@" + as_string(probe_file),
+        "--filter-tcp=443", "--filter-l7=tls", "--payload=tls_client_hello"
+    ]) + " 2>&1");
+    if (index(as_string(out), "duplicate blob name") >= 0)
+        builtin = true;
+
+    nfqws_blob_probe_cache[key] = builtin;
+    return builtin;
+}
+
 let timeout_prefix_cache = null;
 
 function timeout_prefix() {
@@ -878,6 +904,7 @@ return {
     command_capture,
     command_output,
     command_output_from_args,
+    nfqws_blob_is_builtin,
     ensure_dir,
     remove_file,
     copy_file,

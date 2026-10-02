@@ -57,6 +57,27 @@ function get_blob_dir() {
     return "/opt/zapret2/files/fake";
 }
 
+function zapret2_bin(runtime_constants) {
+    let consts = runtime_constants || constants;
+    let candidate_bins = [
+        getenv("ZAPRET2_NFQWS2_BIN"),
+        getenv("ZAPRET2_PROVIDER_NFQWS2_BIN"),
+        consts.ZAPRET2_PROVIDER_NFQWS2_BIN,
+        "/opt/zapret2/nfq2/nfqws2",
+        "/opt/zapret2/nfq/nfqws2",
+        "/opt/zapret2/nfqws2",
+        "/usr/bin/nfqws2"
+    ];
+    let resolved_bin = consts.ZAPRET2_PROVIDER_NFQWS2_BIN;
+    for (let b in candidate_bins) {
+        if (b && fs.stat(b) != null) {
+            resolved_bin = b;
+            break;
+        }
+    }
+    return resolved_bin;
+}
+
 function resolve_blobs(args_str) {
     if (!args_str || args_str == "") return [];
     let candidate_dirs = [
@@ -70,6 +91,7 @@ function resolve_blobs(args_str) {
         LIB_DIR + "/providers/zapret2/files/fake",
         "/usr/lib/tachyon/providers/zapret2/files/fake"
     ];
+    let nfqws_bin = zapret2_bin();
     let result = [];
     for (let name, info in KNOWN_BLOB_FILES) {
         if ((index(args_str, "blob=" + name) >= 0 || index(args_str, "seqovl_pattern=" + name) >= 0) &&
@@ -90,7 +112,8 @@ function resolve_blobs(args_str) {
                 }
                 if (actual_path != null) break;
             }
-            if (actual_path != null) {
+            if (actual_path != null &&
+                !common.nfqws_blob_is_builtin(nfqws_bin, name, actual_path)) {
                 push(result, sprintf("--blob=%s:@%s", name, actual_path));
             }
         }
@@ -179,22 +202,7 @@ function config(ctx) {
             push(base_args, "--lua-init=@" + found);
     }
 
-    let candidate_bins = [
-        getenv("ZAPRET2_NFQWS2_BIN"),
-        getenv("ZAPRET2_PROVIDER_NFQWS2_BIN"),
-        runtime_constants.ZAPRET2_PROVIDER_NFQWS2_BIN,
-        "/opt/zapret2/nfq2/nfqws2",
-        "/opt/zapret2/nfq/nfqws2",
-        "/opt/zapret2/nfqws2",
-        "/usr/bin/nfqws2"
-    ];
-    let resolved_bin = runtime_constants.ZAPRET2_PROVIDER_NFQWS2_BIN;
-    for (let b in candidate_bins) {
-        if (b && fs.stat(b) != null) {
-            resolved_bin = b;
-            break;
-        }
-    }
+    let resolved_bin = zapret2_bin(runtime_constants);
 
     return {
         kind: "zapret2",
