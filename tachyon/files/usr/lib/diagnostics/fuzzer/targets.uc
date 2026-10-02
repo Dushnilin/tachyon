@@ -27,12 +27,7 @@ function probe_single_target_dpi(target_item, dns_flags) {
     if (target_flags == "") target_flags = dns_flags;
 
     let curl_cmd = binaries.wrap_probe_cmd(
-        sprintf(
-            "curl %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
-            extra_flags,
-            target_flags,
-            shell_quote(target_url)
-        ),
+        binaries.probe_curl_cmd(extra_flags, target_flags, target_url, (getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon") + "/fuzzer_curl_err.log"),
         8
     );
     let pipe = fs.popen(curl_cmd, "r");
@@ -122,6 +117,13 @@ function probe_single_target_dpi(target_item, dns_flags) {
             result.details = sprintf("Target %s returned client error HTTP %d — possible DPI filtering or access restriction", domain, http_code);
             result.recommended_engines = ["zapret2", "zapret", "byedpi"];
         }
+    } else if (metrics.dpi_verdict == "connect_timeout" || metrics.dpi_verdict == "connect_refused") {
+        // TCP never came up without any bypass: SNI/TLS desync cannot help here.
+        result.type = "ip_block";
+        result.confidence = 90;
+        result.l4_unreachable = true;
+        result.details = sprintf("TCP connection to %s failed before TLS (%s) — IP-level block or routing problem; DPI desync strategies cannot fix this", domain, error_str);
+        result.recommended_engines = [];
     } else if (index(error_str, "Connection reset") >= 0 || index(error_str, "ECONNRESET") >= 0 || index(error_str, "exit 35") >= 0 || metrics.dpi_verdict == "rst") {
         result.type = "rst";
         result.confidence = 90;
@@ -171,18 +173,22 @@ function detect_dpi_type(target_key, custom_url) {
     // Pre-clean: delete any stale fuzzer table so chain/rule adds don't conflict.
     binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
     system("nft add table inet tachyon_fuzzer 2>/dev/null");
-    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set meta mark | %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
-    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set meta mark | %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
+    binaries.add_bypass_singbox_chain(binaries.target_scope_match(binaries.probe_target_ips(urls_list)), true);
 
     let first_accessible_result = null;
     let blocked_result = null;
+    let l4_unreachable_urls = [];
 
+    // Probe every target (not just until the first blocked one) so targets that
+    // are unreachable at TCP level are known before strategies are benchmarked.
     for (let item in urls_list) {
         let res = probe_single_target_dpi(item, dns_flags);
+        if (res.l4_unreachable)
+            push(l4_unreachable_urls, item.url);
         if (res.type != "none") {
-            blocked_result = res;
-            break;
+            // Prefer a DPI-type finding over an IP block for strategy reranking.
+            if (!blocked_result || (blocked_result.type == "ip_block" && res.type != "ip_block"))
+                blocked_result = res;
         } else if (!first_accessible_result) {
             first_accessible_result = res;
         }
@@ -190,8 +196,10 @@ function detect_dpi_type(target_key, custom_url) {
 
     binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
 
-    if (blocked_result)
+    if (blocked_result) {
+        blocked_result.l4_unreachable_urls = l4_unreachable_urls;
         return blocked_result;
+    }
 
     if (first_accessible_result) {
         first_accessible_result.details = sprintf("Target directly accessible — no DPI blocking detected (HTTP %d, TTFB %dms)",

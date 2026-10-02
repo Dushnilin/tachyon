@@ -551,6 +551,38 @@ const STRATEGIES_ZAPRET = [
 ];
 
 const STRATEGIES_FLOWSEAL = [
+    // Current Flowseal / Zapret-Manager general profiles: fake ClientHello with
+    // TCP timestamp fooling and real ClientHello blobs. The stun2+onetrust one
+    // returned HTTP 200 for both www.youtube.com and discord.com on a router
+    // where every split/disorder/badseq preset below failed.
+    {
+        id: "fs_fake_ts_stun2_onetrust",
+        name: "[Flowseal] Fake x6 + ts (stun2 + onetrust ClientHello)",
+        engine: "zapret",
+        args: "--dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fooling=ts --dpi-desync-fake-tls=/opt/zapret/files/fake/stun2.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-http=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin",
+        description: "Flowseal general / Zapret-Manager default for 80,443."
+    },
+    {
+        id: "fs_fake_ts_stun2_maxru",
+        name: "[Flowseal] Fake x6 + ts (stun2 + max.ru ClientHello)",
+        engine: "zapret",
+        args: "--dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fooling=ts --dpi-desync-fake-tls=/opt/zapret/files/fake/stun2.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_max_ru.bin --dpi-desync-fake-http=/opt/zapret/files/fake/tls_clienthello_max_ru.bin",
+        description: "Flowseal general with the max.ru ClientHello blob."
+    },
+    {
+        id: "fs_fake_ts_google_ipid",
+        name: "[Flowseal] IP-ID zero + Fake x6 + ts (google ClientHello)",
+        engine: "zapret",
+        args: "--ip-id=zero --dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fooling=ts --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin",
+        description: "Zapret-Manager YouTube (google hostlist) profile."
+    },
+    {
+        id: "fs_fake_ts_google",
+        name: "[Flowseal] Fake x6 + ts (google ClientHello)",
+        engine: "zapret",
+        args: "--dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fooling=ts --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin",
+        description: "Flowseal discord.media / alt ports profile."
+    },
     {
         id: "fs_split2",
         name: "[Flowseal] Split2 (pos=2)",

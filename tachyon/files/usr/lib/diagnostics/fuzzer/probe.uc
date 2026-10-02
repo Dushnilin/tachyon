@@ -140,9 +140,28 @@ function parse_curl_output(output, result) {
     let starttransfer = 1.0 * parts[2];
     let speed_bytes = 1.0 * parts[3];
     let size_download = length(parts) >= 5 ? int(parts[4]) : 0;
-    let exit_code = length(parts) >= 6 ? int(parts[5]) : 0;
-    
+    // Field layout: http_code, appconnect, starttransfer, speed, size[, time_connect, tcp_up], exit.
+    // The extra columns are optional so callers that do not request them keep working.
+    // tcp_up comes from curl's verbose log: curl zeroes time_connect on timeout
+    // even when the TCP handshake completed, so time_connect alone is not proof.
+    let connect = -1.0;
+    let tcp_known = false;
+    let tcp_up = false;
+    let exit_code = 0;
+    if (length(parts) >= 8) {
+        connect = 1.0 * parts[5];
+        let tcp_flag = int(parts[6]);
+        tcp_up = tcp_flag == 1 || connect > 0.0;
+        tcp_known = tcp_up || tcp_flag == 0;
+        exit_code = int(parts[7]);
+    } else if (length(parts) >= 6) {
+        exit_code = int(parts[5]);
+    }
+
     result.http_code = http_code;
+    result.connect_ms = connect >= 0 ? int(connect * 1000.0) : -1;
+    result.tcp_established = tcp_known ? tcp_up : null;
+    result.curl_exit = exit_code;
     result.handshake_ms = int(appconnect * 1000.0);
     result.ttfb_ms = int(starttransfer * 1000.0);
     result.speed_kbps = int(speed_bytes / 1024.0);
@@ -172,8 +191,31 @@ function parse_curl_output(output, result) {
         result.success = false;
         result.score = 0;
         result.data_verified = false;
-        result.dpi_verdict = "dropped";
-        result.error = sprintf("Connection dropped by DPI (curl exit %d)", exit_code);
+        // A curl failure is only evidence of DPI once TCP is established.
+        // Without a completed TCP handshake the cause is routing, an IP-level
+        // block or a broken test path, which no desync strategy can fix.
+        if (exit_code == 6) {
+            result.dpi_verdict = "dns_fail";
+            result.error = "DNS resolution failed (curl exit 6)";
+        } else if (exit_code == 7) {
+            result.dpi_verdict = "connect_refused";
+            result.error = "TCP connection refused (curl exit 7)";
+        } else if (exit_code == 28 && tcp_known && !tcp_up) {
+            result.dpi_verdict = "connect_timeout";
+            result.error = "TCP connect timed out, no SYN-ACK (IP block or routing, not TLS DPI) (curl exit 28)";
+        } else if (exit_code == 28 && tcp_up && appconnect == 0.0) {
+            result.dpi_verdict = "dropped";
+            result.error = "TLS handshake stalled after TCP connect: dropped by DPI (curl exit 28)";
+        } else if (exit_code == 35 || exit_code == 56) {
+            result.dpi_verdict = "dropped";
+            result.error = sprintf("Connection reset during TLS/data exchange, likely DPI (curl exit %d)", exit_code);
+        } else if (exit_code == 60) {
+            result.dpi_verdict = "tls_cert";
+            result.error = "TLS certificate mismatch: wrong server reached (curl exit 60)";
+        } else {
+            result.dpi_verdict = "dropped";
+            result.error = sprintf("Connection dropped by DPI (curl exit %d)", exit_code);
+        }
         return result;
     }
 
@@ -208,7 +250,11 @@ function parse_curl_output(output, result) {
     return result;
 }
 
-function run_probe(engine, args_str, target_key, custom_url, job_id) {
+// opts.l4_unreachable: { url: true } for targets whose TCP handshake already failed
+// in the no-bypass baseline. They cannot discriminate between strategies, so they
+// are still probed and reported but no longer veto the whole strategy.
+function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
+    let l4_unreachable = (opts && type(opts.l4_unreachable) == "object") ? opts.l4_unreachable : {};
     cleanup_temp_daemons(job_id);
     if (job_id && job_id != "") {
         history.ensure_job_dir(job_id);
@@ -288,7 +334,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
         // Ensure ciadpi direct outbound connections bypass Sing-Box TProxy
         system("nft add table inet tachyon_fuzzer 2>/dev/null");
         system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto tcp tcp dport { 80, 443 } meta mark set %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
         
         let passed_count = 0;
         let max_speed = 0;
@@ -465,7 +511,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
                 fwmark_flag = sprintf("--dpi-desync-fwmark=%s ", binaries.FUZZER_FWMARK);
         }
         
-        if (!binaries.setup_fuzzer_direct_nftables(qnum, is_udp)) {
+        if (!binaries.setup_fuzzer_direct_nftables(qnum, is_udp, binaries.probe_target_ips(urls_list))) {
             result.error = "nftables setup failed: fuzzer queue rule could not be installed";
             cleanup_temp_daemons(job_id);
             return result;
@@ -512,7 +558,16 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             cleanup_temp_daemons(job_id);
             return result;
         }
-        
+
+        // The queue rule has no bypass flag: until nfqws binds the queue every
+        // matching packet is dropped. A live PID does not mean the queue is bound.
+        if (!binaries.wait_nfqueue_bound(qnum, 20)) {
+            result.dpi_verdict = "nfqueue_unbound";
+            result.error = sprintf("%s started but did not bind NFQUEUE %d", is_z2 ? "nfqws2" : "nfqws", qnum);
+            cleanup_temp_daemons(job_id);
+            return result;
+        }
+
         let passed_count = 0;
         let max_speed = 0;
         let sum_data_bytes = 0;
@@ -521,9 +576,10 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
         let last_dpi_verdict = "available";
         let dns_flags = binaries.get_fuzzer_curl_dns_flags();
         let required_failed = false;
-        
+
         for (let target_item in urls_list) {
-            let is_req = (target_item.required !== false);
+            let baseline_unreachable = l4_unreachable[target_item.url] ? true : false;
+            let is_req = (target_item.required !== false) && !baseline_unreachable;
             let p_kind = target_item.probe_kind || "tls_http";
             let extra_flags = "";
 
@@ -558,12 +614,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             if (target_flags == "") target_flags = dns_flags;
 
             let curl_cmd = binaries.wrap_probe_cmd(
-                sprintf(
-                    "curl %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
-                    extra_flags,
-                    target_flags,
-                    shell_quote(target_item.url)
-                ),
+                binaries.probe_curl_cmd(extra_flags, target_flags, target_item.url, STATE_DIR + "/fuzzer_curl_err.log"),
                 8,
                 probe_pid_path
             );
@@ -571,14 +622,16 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
             let output = pipe ? pipe.read("all") : "";
             if (pipe) pipe.close();
             try { fs.unlink(probe_pid_path); } catch (e) {}
-            
+
             let single_res = parse_curl_output(output, {});
             single_res.target_name = target_item.name;
             single_res.url = target_item.url;
             single_res.required = is_req;
+            single_res.baseline_unreachable = baseline_unreachable;
+            single_res.resolve_flags = trim(target_flags);
             single_res.weight = target_item.weight || 100;
             push(result.sub_probes, single_res);
-            
+
             if (single_res.success) {
                 passed_count++;
                 sum_data_bytes += single_res.data_bytes || 0;
@@ -588,17 +641,33 @@ function run_probe(engine, args_str, target_key, custom_url, job_id) {
                 last_dpi_verdict = single_res.dpi_verdict || "available";
             } else {
                 if (last_http == 0) last_http = single_res.http_code;
-                if (single_res.error && result.error == "") result.error = single_res.error;
-                last_dpi_verdict = single_res.dpi_verdict || "failed";
+                let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
                 if (is_req) {
+                    // The required failure is what vetoes the strategy, so report it
+                    // even when an optional target failed earlier.
+                    if (labeled_error != "") result.error = labeled_error;
+                    last_dpi_verdict = single_res.dpi_verdict || "failed";
                     required_failed = true;
                     break;
                 }
+                if (labeled_error != "" && result.error == "") result.error = labeled_error;
             }
         }
-        
+
+        let nfq_stats = binaries.read_nfqueue_stats(qnum);
+        result.nfqueue_packets = nfq_stats ? nfq_stats.packets : -1;
         let daemon_alive_at_end = is_pid_alive(daemon_pid);
         cleanup_temp_daemons(job_id);
+
+        // Nothing reached the test daemon: the failure says nothing about DPI.
+        if (nfq_stats && nfq_stats.packets == 0 && passed_count == 0) {
+            result.success = false;
+            result.score = 0;
+            result.data_verified = false;
+            result.dpi_verdict = "nfqueue_miss";
+            result.error = sprintf("Probe traffic never reached NFQUEUE %d (0 packets): test path problem, not DPI. %s", qnum, result.error);
+            return result;
+        }
 
         if (!daemon_alive_at_end) {
             result.success = false;

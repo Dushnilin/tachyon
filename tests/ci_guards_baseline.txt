@@ -30,11 +30,11 @@ raw_system|tachyon/files/usr/lib/core/transaction.uc|11
 raw_system|tachyon/files/usr/lib/core/uci.uc|1
 raw_system|tachyon/files/usr/lib/diagnostics/doctor.uc|1
 raw_system|tachyon/files/usr/lib/diagnostics/fuzzer.uc|4
-raw_system|tachyon/files/usr/lib/diagnostics/fuzzer/binaries.uc|21
+raw_system|tachyon/files/usr/lib/diagnostics/fuzzer/binaries.uc|23
 raw_system|tachyon/files/usr/lib/diagnostics/fuzzer/history.uc|3
 raw_system|tachyon/files/usr/lib/diagnostics/fuzzer/probe.uc|13
 raw_system|tachyon/files/usr/lib/diagnostics/fuzzer/strategies.uc|1
-raw_system|tachyon/files/usr/lib/diagnostics/fuzzer/targets.uc|4
+raw_system|tachyon/files/usr/lib/diagnostics/fuzzer/targets.uc|1
 raw_system|tachyon/files/usr/lib/diagnostics/fuzzer_runner.uc|3
 raw_system|tachyon/files/usr/lib/diagnostics/leak_check.uc|6
 raw_system|tachyon/files/usr/lib/diagnostics/routing.uc|2

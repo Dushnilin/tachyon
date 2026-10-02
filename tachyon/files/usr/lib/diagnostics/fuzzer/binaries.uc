@@ -207,22 +207,10 @@ function get_resolved_host_flags(url) {
     if (exists(_fuzzer_host_cache, host))
         return _fuzzer_host_cache[host];
 
-    // For googlevideo.com, query report_mapping to discover client's real local GGC caching cluster
-    if (index(host, "googlevideo.com") >= 0) {
-        let t_pre = get_timeout_prefix(3);
-        let p_map = fs.popen(sprintf("%scurl -s --connect-timeout 2 -m 3 https://redirector.googlevideo.com/report_mapping 2>/dev/null", t_pre), "r");
-        let map_out = p_map ? p_map.read("all") : "";
-        if (p_map) p_map.close();
-        if (map_out) {
-            let m_ggc = match(map_out, /^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)[ \t]*=>/);
-            if (m_ggc && m_ggc[1] && is_valid_public_ip(m_ggc[1])) {
-                let ggc_ip = m_ggc[1];
-                let flag = sprintf("--resolve %s:443:%s ", host, ggc_ip);
-                _fuzzer_host_cache[host] = flag;
-                return flag;
-            }
-        }
-    }
+    // Do not use redirector.googlevideo.com/report_mapping here: the address on
+    // the left of "=>" is the *client's* public IP (the router WAN address), not
+    // a GGC cache node. Pinning googlevideo hosts to it made every YouTube probe
+    // connect back to the router itself and time out (curl exit 28).
 
     let safe_host = shell_quote(host);
     let ip = null;
@@ -398,7 +386,123 @@ function resolve_zapret2_blobs(args_str) {
     return blob_flags;
 }
 
-function setup_fuzzer_direct_nftables(qnum, is_udp) {
+let _probe_port_seeded = false;
+
+// Builds the probe curl command. Output: http_code, appconnect, starttransfer,
+// speed, size, time_connect, tcp_up, exit. tcp_up is 1 (TCP handshake done),
+// 0 (SYN never answered) or 2 (unknown).
+//
+// curl resets time_connect to 0 when a transfer times out, even if the TCP
+// handshake completed and only TLS stalled (observed on a router: conntrack
+// ESTABLISHED, 12 ClientHello retransmits, curl time_connect=0). OpenWrt's curl
+// is built without verbose strings, so the log cannot tell either. Instead the
+// probe pins curl to a random source-port window and reads the conntrack state
+// of those ports afterwards: SYN_SENT means no SYN-ACK, anything else means TCP
+// was up. The verbose log is kept as a secondary signal for full curl builds.
+function probe_curl_cmd(extra_flags, target_flags, url, err_file) {
+    let math = require("math");
+    if (!_probe_port_seeded) {
+        math.srand(clock()[1] ^ int(fs.readlink("/proc/self") || 0));
+        _probe_port_seeded = true;
+    }
+    let port_lo = 20000 + (math.rand() % 4000) * 10;
+    let port_hi = port_lo + 7;
+    let ef = shell_quote(err_file);
+    return sprintf(
+        "curl -v --local-port %d-%d %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}\\t%%{time_connect}' -L --connect-timeout 4 --max-time 6 %s 2>%s; _rc=$?; " +
+        "if grep -qE 'ALPN|Client hello|TLS handshake|SSL connection|Connected to|Established connection' %s 2>/dev/null; then _tcp=1; " +
+        "elif [ -r /proc/net/nf_conntrack ]; then _tcp=$(awk -v a=%d -v b=%d '$3==\"tcp\"{sp=-1; for(i=7;i<=NF;i++) if($i ~ /^sport=/){sp=substr($i,7)+0; break} if(sp>=a && sp<=b){seen=1; if($6!=\"SYN_SENT\") up=1}} END{print up ? 1 : (seen ? 0 : 2)}' /proc/net/nf_conntrack 2>/dev/null); [ -n \"$_tcp\" ] || _tcp=2; " +
+        "else _tcp=2; fi; rm -f %s; printf '\\t%%d\\t%%d\\n' $_tcp $_rc",
+        port_lo, port_hi, extra_flags || "", target_flags || "", shell_quote(url), ef, ef, port_lo, port_hi, ef
+    );
+}
+
+// Reads one queue line from /proc/net/netfilter/nfnetlink_queue:
+// queue_number peer_portid queue_total copy_mode copy_range queue_dropped user_dropped id_sequence 1
+// id_sequence counts packets handed to the listener since it bound the queue, so it
+// proves whether probe traffic actually reached the test daemon.
+function read_nfqueue_stats(qnum) {
+    let nfq = fs.readfile("/proc/net/netfilter/nfnetlink_queue");
+    if (!nfq)
+        return null;
+    for (let line in split(trim(nfq), "\n")) {
+        let cols = split(trim(line), /[ \t]+/);
+        if (length(cols) < 8 || int(cols[0]) != int(qnum))
+            continue;
+        return {
+            portid: int(cols[1]),
+            queue_dropped: int(cols[5]),
+            user_dropped: int(cols[6]),
+            packets: int(cols[7])
+        };
+    }
+    return null;
+}
+
+function wait_nfqueue_bound(qnum, tries) {
+    tries = tries || 20;
+    for (let i = 0; i < tries; i++) {
+        let st = read_nfqueue_stats(qnum);
+        if (st && st.portid > 0)
+            return true;
+        system("sleep 0.1");
+    }
+    return false;
+}
+
+// "ip daddr { a, b } " for the known IPv4 probe targets, or "" when unknown
+// (then the rules fall back to all router traffic on the probe ports).
+function target_scope_match(target_ips) {
+    let ips = [];
+    let seen = {};
+    for (let ip in (type(target_ips) == "array" ? target_ips : [])) {
+        ip = as_string(ip);
+        if (is_valid_public_ip(ip) && !seen[ip]) {
+            seen[ip] = true;
+            push(ips, ip);
+        }
+    }
+    return length(ips) > 0 ? sprintf("ip daddr { %s } ", join(", ", ips)) : "";
+}
+
+// IPv4 addresses the probe will pin with --resolve for these targets.
+function probe_target_ips(urls_list) {
+    let ips = [];
+    for (let item in (type(urls_list) == "array" ? urls_list : [])) {
+        let flags = get_resolved_host_flags(as_string(item.url));
+        for (let m in match(flags, /:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) /g) || [])
+            push(ips, m[1]);
+    }
+    return ips;
+}
+
+// Marks probe traffic with FUZZER_OUTBOUND_MARK so TachyonTable's mangle_output
+// returns and it goes DIRECT to WAN. Only unmarked packets are touched: OR-ing
+// the bypass bit onto a section mark would pull that traffic out of its
+// production queue.
+function add_bypass_singbox_chain(scope, with_udp) {
+    scope = as_string(scope || "");
+    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
+    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta mark & %s == %s counter return' 2>/dev/null", FUZZER_FWMARK, FUZZER_FWMARK));
+    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox %smeta mark 0 meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
+    if (with_udp) {
+        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox %smeta mark 0 meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
+    }
+}
+
+function verify_fuzzer_queue_rule(qnum) {
+    // ── Verify the queue rule actually landed ────────────────────────────────
+    // Without it probes silently test a direct connection, defeating the purpose.
+    // nft output format varies by version: "queue num N bypass" (older) vs
+    // "queue flags bypass to N" (newer).  Match any qnum near the keyword.
+    let verified = command_success(sprintf("nft list table inet tachyon_fuzzer 2>/dev/null | grep -q 'queue.*%d'", qnum));
+    if (!verified) {
+        log_fuzzer_message(sprintf("nftables queue rule verification failed for qnum=%d; rules may not have been applied", qnum));
+    }
+    return verified;
+}
+
+function setup_fuzzer_direct_nftables(qnum, is_udp, target_ips) {
     // ── Pre-cleanup: kill any orphaned fuzzer processes bound to our queues ──
     // An orphaned nfqueue binding wedges the kernel nft subsystem; nft delete
     // blocks forever and the subsequent add silently fails (2>/dev/null), so
@@ -458,34 +562,35 @@ function setup_fuzzer_direct_nftables(qnum, is_udp) {
     system("nft 'add chain inet tachyon_fuzzer predefrag_pre { type filter hook prerouting priority -401 ; policy accept; }' 2>/dev/null");
     system("nft 'add rule inet tachyon_fuzzer predefrag_pre meta mark & 0x60000000 != 0 notrack counter' 2>/dev/null");
 
-    system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; policy accept; }' 2>/dev/null");
-    system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
-    system("nft 'add rule inet tachyon_fuzzer output ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
-    system("nft 'add rule inet tachyon_fuzzer output ip6 daddr { 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844 } counter return' 2>/dev/null");
+    // Queue in postrouting after routing/NAT (priority 101), like upstream zapret's
+    // postnat chain and blockcheck. Queuing in the output hook at priority -200
+    // made every strategy fail: an A/B test on a real router with the same nfqws
+    // and strategy gave curl exit 35/28 with output -200 and HTTP 200 with
+    // postrouting 101 for both YouTube and Discord.
+    // Scope every fuzzer rule to the probe targets when their addresses are known.
+    // Matching all router TCP 443 also captured sing-box's own outbound
+    // connections (same 0x08000000 mark): while a benchmark ran, every proxy
+    // dial went through the test strategy and timed out, and OR-ing the bypass
+    // mark onto zapret section marks (0x01000001 -> 0x09000001) took that
+    // traffic out of its production queue.
+    let scope = target_scope_match(target_ips);
+
+    system("nft 'add chain inet tachyon_fuzzer postnat { type filter hook postrouting priority 101 ; policy accept; }' 2>/dev/null");
+    system(sprintf("nft 'add rule inet tachyon_fuzzer postnat meta mark & %s == %s counter return' 2>/dev/null", FUZZER_FWMARK, FUZZER_FWMARK));
+    system("nft 'add rule inet tachyon_fuzzer postnat oifname \"lo\" return' 2>/dev/null");
+    system("nft 'add rule inet tachyon_fuzzer postnat ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
+    system("nft 'add rule inet tachyon_fuzzer postnat ip6 daddr { 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844 } counter return' 2>/dev/null");
     if (is_udp) {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto { tcp, udp } th dport { 80, 443, 2053, 2083, 2087, 2096, 8443, 19294-19344, 50000-65535 } counter queue num %d' 2>/dev/null", qnum));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto { tcp, udp } th dport { 80, 443, 2053, 2083, 2087, 2096, 8443, 19294-19344, 50000-65535 } counter queue num %d' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum));
     } else {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d' 2>/dev/null", qnum));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum));
     }
     // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with FUZZER_OUTBOUND_MARK (direct outbound mark)
     // This guarantees that TachyonTable's mangle_output immediately returns and test traffic goes DIRECT to WAN without Sing-box TProxy
-    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-    system(sprintf("nft add rule inet tachyon_fuzzer bypass_singbox meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
-    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
-    if (is_udp) {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
-    }
-
-    // ── Verify the queue rule actually landed ────────────────────────────────
-    // Without it probes silently test a direct connection, defeating the purpose.
-    // nft output format varies by version: "queue num N bypass" (older) vs
-    // "queue flags bypass to N" (newer).  Match any qnum near the keyword.
-    let verified = command_success(sprintf("nft list table inet tachyon_fuzzer 2>/dev/null | grep -q 'queue.*%d'", qnum));
-    if (!verified) {
-        log_fuzzer_message(sprintf("nftables queue rule verification failed for qnum=%d; rules may not have been applied", qnum));
-    }
-    return verified;
+    add_bypass_singbox_chain(scope, is_udp);
+    return verify_fuzzer_queue_rule(qnum);
 }
+
 
 const TARGET_SUITES = {
     youtube_suite: {
@@ -633,6 +738,12 @@ function module_exports() {
         get_zapret2_blob_dir,
         resolve_zapret2_blobs,
         setup_fuzzer_direct_nftables,
+        probe_target_ips,
+        target_scope_match,
+        add_bypass_singbox_chain,
+        probe_curl_cmd,
+        read_nfqueue_stats,
+        wait_nfqueue_bound,
         TARGET_SUITES,
         TARGET_URLS,
         resolve_target_url,

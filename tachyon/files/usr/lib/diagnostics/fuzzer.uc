@@ -189,7 +189,7 @@ function detect_dpi_type(target_key, custom_url) { return targets.detect_dpi_typ
 // ── Strategy Priority Reranking (based on DPI type) ─────────────────────────
 function rerank_strategies_by_dpi(strategies, dpi_type) { return targets.rerank_strategies_by_dpi(strategies, dpi_type); }
 
-function run_probe(engine, args_str, target_key, custom_url, job_id) { return probe.run_probe(engine, args_str, target_key, custom_url, job_id); }
+function run_probe(engine, args_str, target_key, custom_url, job_id, opts) { return probe.run_probe(engine, args_str, target_key, custom_url, job_id, opts); }
 
 function synthesize_ai_strategies(engine, target, custom_url, user_prompt) { return ai.synthesize_ai_strategies(engine, target, custom_url, user_prompt); }
 
@@ -242,6 +242,28 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
     state.phase = "exploration";
     state.stage = 1;
     save_fuzzer_state(state);
+
+    // Targets that failed TCP connect in the no-bypass baseline cannot tell
+    // strategies apart; keep probing them but do not let them veto a strategy.
+    let probe_opts = { l4_unreachable: {} };
+    let required_total = 0;
+    let required_unreachable = 0;
+    for (let u in array_or_empty(dpi_detection ? dpi_detection.l4_unreachable_urls : null))
+        probe_opts.l4_unreachable[u] = true;
+    for (let t in resolve_target_urls_list(target, custom_url)) {
+        if (t.required === false) continue;
+        required_total++;
+        if (probe_opts.l4_unreachable[t.url]) required_unreachable++;
+    }
+    if (required_total > 0 && required_unreachable == required_total) {
+        state.running = false;
+        state.phase = "finished";
+        state.error = "Every required target failed TCP connect even without DPI bypass (IP block or routing). Desync strategies cannot fix this; route the service through a proxy section instead.";
+        state.finished_at = clock()[0];
+        save_fuzzer_state(state);
+        cleanup_temp_daemons(state.job_id);
+        return;
+    }
 
     let strategies = null;
     if (custom_file && custom_file != "" && fs.stat(custom_file) != null) {
@@ -301,7 +323,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
 
             let probe = null;
             try {
-                probe = run_probe(strat.engine || engine, strat.args, target, custom_url, state.job_id);
+                probe = run_probe(strat.engine || engine, strat.args, target, custom_url, state.job_id, probe_opts);
             } catch (err) {
                 cleanup_temp_daemons(state.job_id);
                 probe = {
@@ -408,7 +430,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
                 for (let rep = 0; rep < 3; rep++) {
                     let p = null;
                     try {
-                        p = run_probe(cand.engine || engine, cand.args, target, custom_url, state.job_id);
+                        p = run_probe(cand.engine || engine, cand.args, target, custom_url, state.job_id, probe_opts);
                     } catch (e) {
                         cleanup_temp_daemons(state.job_id);
                     }
