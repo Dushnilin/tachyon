@@ -8,6 +8,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
+let constants = require("core.constants");
 let helpers = require("core.helpers");
 let api = require("service.api");
 let i18n = require("service.i18n");
@@ -15,7 +16,7 @@ let i18n = require("service.i18n");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const CB_MAP_FILE = "/tmp/tg_cb_map.json";
 const CB_MAP_MAX = 300;
-const HEARTBEAT_FILE = "/var/run/tachyon_telegram.heartbeat";
+const HEARTBEAT_FILE = getenv("TACHYON_TG_HEARTBEAT") || "/var/run/tachyon_telegram.heartbeat";
 const LOG_FILE = "/var/log/tachyon_telegram.log";
 const LOG_MAX_BYTES = 524288;
 const LOG_KEEP_BYTES = 102400;
@@ -212,7 +213,11 @@ function get_proxy_args() {
 // ─── Telegram API Core ───────────────────────────────────────────────────────
 
 function write_heartbeat() {
-    write_text_file(HEARTBEAT_FILE, as_string(time()) + "\n");
+    // "<epoch> <version>": the epoch keeps the watchdog's age check working,
+    // and the version lets it notice that this worker is running code from a
+    // package generation that has since been replaced. A healthy worker is
+    // otherwise never restarted, so it kept serving pre-upgrade behaviour.
+    write_text_file(HEARTBEAT_FILE, as_string(time()) + " " + as_string(constants.TACHYON_VERSION || "unknown") + "\n");
 }
 
 function rotate_log_if_needed() {

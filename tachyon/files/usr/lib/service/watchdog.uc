@@ -2794,9 +2794,25 @@ function check_telegram_worker() {
         return;
     }
 
-    let age = time() - int(heartbeat);
-    if (age <= 300)
+    // The worker is a long-lived process, so a healthy heartbeat on its own never
+    // triggers a restart - after a package update it kept serving the code it
+    // started with. The heartbeat carries the version it was launched from.
+    let hb = split(heartbeat, " ");
+    let age = time() - int(hb[0] || 0);
+    if (age <= 300) {
+        let installed = as_string(require("core.constants").TACHYON_VERSION || "");
+        let running = length(hb) > 1 ? hb[1] : "";
+        // An empty stamp means a worker from before this field existed; leave it
+        // alone rather than restart it on every single tick.
+        if (running == "" || running == installed)
+            return;
+
+        log_message(sprintf("Telegram worker was started on %s but %s is installed; restarting it.", running, installed), "warn");
+        command_status("/usr/bin/tachyon telegram_stop >/dev/null 2>&1");
+        telegram_worker_last_restart = 0;
+        telegram_worker_restart();
         return;
+    }
 
     if (is_running) {
         // Check startup grace period: if the process is younger than 180s, give it time
