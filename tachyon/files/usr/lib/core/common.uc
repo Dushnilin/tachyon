@@ -656,8 +656,14 @@ function remove_tree(path) {
     return fs.stat(path) == null;
 }
 
+// Override point for tests, same idea as TACHYON_LIB/TACHYON_CONFIG elsewhere:
+// the suite runs unprivileged and cannot write /etc.
+function singbox_config_path() {
+    return getenv("TACHYON_SINGBOX_CONFIG") || "/etc/sing-box/config.json";
+}
+
 function get_mixed_inbound_info() {
-    let data = fs.readfile("/etc/sing-box/config.json");
+    let data = fs.readfile(singbox_config_path());
     if (data == null) return null;
     let parsed;
     try { parsed = json(data); } catch (e) { return null; }
@@ -882,6 +888,7 @@ return {
     remove_tree,
     parent_dir,
     path_basename,
+    singbox_config_path,
     get_mixed_inbound_info,
     get_mixed_port,
     get_lan_ip,

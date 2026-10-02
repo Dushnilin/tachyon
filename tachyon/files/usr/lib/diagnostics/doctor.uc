@@ -171,6 +171,7 @@ function sing_box_resolved_version() { return sysinfo_mod.sing_box_resolved_vers
 function sing_box_capability_flags(version) { return sysinfo_mod.sing_box_capability_flags(version); }
 function dns_check_router_resolver_available(router_ip) { return dns_mod.dns_check_router_resolver_available(router_ip); }
 function clash_api_url() { return routing_mod.clash_api_url(); }
+function singbox_config_path() { return common.singbox_config_path(); }
 function clash_auth_args() { return routing_mod.clash_auth_args(); }
 // The Clash API answers 401 on /version whenever a secret is configured, so the
 // old unauthenticated curl reported a healthy router as "unreachable" and then
@@ -2689,7 +2690,7 @@ function verify_system() {
     // HTTP through the service mixed proxy — only present when download_via_proxy
     // is enabled; otherwise the tproxy/tun path is covered by the checks above.
     let mixed_port_num = common.get_mixed_port();
-    let sb_cfg = fs.readfile("/etc/sing-box/config.json") || "";
+    let sb_cfg = fs.readfile(singbox_config_path()) || "";
     let has_mixed = index(sb_cfg, '"mixed"') >= 0;
     if (has_mixed && sb_pid != "") {
         let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:" + mixed_port_num + " -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
