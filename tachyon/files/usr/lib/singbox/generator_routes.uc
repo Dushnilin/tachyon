@@ -1040,9 +1040,13 @@ function ensure_custom_ruleset(config, reference) {
             let etc_srs = "/etc/tachyon/rulesets/community-" + reference + ".srs";
             let local_path = null;
 
-            if (runtime_rulesets.is_valid_srs_file(tmp_srs) || helpers.file_is_usable(tmp_srs, 16))
+            // is_populated_srs_file, not is_valid_srs_file: the fetch-failure
+            // stub is itself a valid 17-byte SRS, and treating it as downloaded
+            // emits a local rule_set with no url, so sing-box can never fetch the
+            // real list and the rule matches nothing (TCH-1043).
+            if (runtime_rulesets.is_populated_srs_file(tmp_srs) || helpers.file_is_usable(tmp_srs, 16))
                 local_path = tmp_srs;
-            else if (runtime_rulesets.is_valid_srs_file(etc_srs) || helpers.file_is_usable(etc_srs, 16))
+            else if (runtime_rulesets.is_populated_srs_file(etc_srs) || helpers.file_is_usable(etc_srs, 16))
                 local_path = etc_srs;
 
             if (config.route.rule_set == null)
@@ -1240,9 +1244,13 @@ function ensure_community_ruleset(config, section_name, community) {
         let etc_srs = "/etc/tachyon/rulesets/community-" + community + ".srs";
         let local_path = null;
 
-        if (runtime_rulesets.is_valid_srs_file(tmp_srs) || helpers.file_is_usable(tmp_srs, 16))
+        // is_populated_srs_file, not is_valid_srs_file: the fetch-failure stub
+        // is itself a valid 17-byte SRS, and treating it as downloaded emits a
+        // local rule_set with no url, so sing-box can never fetch the real list
+        // and the rule matches nothing (TCH-1043).
+        if (runtime_rulesets.is_populated_srs_file(tmp_srs) || helpers.file_is_usable(tmp_srs, 16))
             local_path = tmp_srs;
-        else if (runtime_rulesets.is_valid_srs_file(etc_srs) || helpers.file_is_usable(etc_srs, 16))
+        else if (runtime_rulesets.is_populated_srs_file(etc_srs) || helpers.file_is_usable(etc_srs, 16))
             local_path = etc_srs;
 
         if (config.route.rule_set == null)

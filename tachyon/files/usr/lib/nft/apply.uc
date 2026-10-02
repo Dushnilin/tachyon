@@ -624,6 +624,14 @@ function section_priority_prefix(section) {
     return "tachyon_rule_" + as_string(section[".name"]);
 }
 
+// udp_ip_ports / udp_ip6_ports carry ip.port entries that must only ever match
+// UDP. The ip_ports set feeds both the TCP and the UDP matcher, so anything put
+// there is pulled into the section on TCP too. Discord's community list is where
+// that matters: it contains shared Cloudflare Anycast ranges that host plenty of
+// services other than Discord, and 443 is part of the voice port list, so a
+// Cloudflare-addressed TCP:443 connection to an unrelated site would land in the
+// Discord section and pick up its desync strategy. Keeping the shared ranges in a
+// UDP-only set confines them to what they are actually there for.
 function section_priority_sets(section) {
     let prefix = section_priority_prefix(section);
     return {
@@ -632,6 +640,8 @@ function section_priority_sets(section) {
         ports: prefix + "_ports",
         ip_ports: prefix + "_ip_ports",
         ip6_ports: prefix + "_ip6_ports",
+        udp_ip_ports: prefix + "_udp_ip_ports",
+        udp_ip6_ports: prefix + "_udp_ip6_ports",
         sources: prefix + "_sources",
         sources6: prefix + "_sources6"
     };
@@ -706,6 +716,8 @@ function nft_create_priority_sets(table, sets) {
         nft_create_inet_service_set(table, sets.ports) &&
         nft_create_ipv4_port_set(table, sets.ip_ports) &&
         nft_create_ipv6_port_set(table, sets.ip6_ports) &&
+        nft_create_ipv4_port_set(table, sets.udp_ip_ports) &&
+        nft_create_ipv6_port_set(table, sets.udp_ip6_ports) &&
         nft_create_ipv4_set(table, sets.sources) &&
         nft_create_ipv6_set(table, sets.sources6);
 }
@@ -804,9 +816,9 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     let match_ip6_tcp = [ "ip6", "daddr", "@" + as_string(sets.subnets6), "meta", "l4proto", "tcp" ];
     let match_ip6_udp = [ "ip6", "daddr", "@" + as_string(sets.subnets6), "meta", "l4proto", "udp" ];
     let match_ip_port4_tcp = [ "ip", "daddr", ".", "tcp", "dport", "@" + as_string(sets.ip_ports) ];
-    let match_ip_port4_udp = [ "ip", "daddr", ".", "udp", "dport", "@" + as_string(sets.ip_ports) ];
+    let match_ip_port4_udp = [ "ip", "daddr", ".", "udp", "dport", "@" + as_string(sets.udp_ip_ports) ];
     let match_ip_port6_tcp = [ "ip6", "daddr", ".", "tcp", "dport", "@" + as_string(sets.ip6_ports) ];
-    let match_ip_port6_udp = [ "ip6", "daddr", ".", "udp", "dport", "@" + as_string(sets.ip6_ports) ];
+    let match_ip_port6_udp = [ "ip6", "daddr", ".", "udp", "dport", "@" + as_string(sets.udp_ip6_ports) ];
     let match_port4_tcp = [ "tcp", "dport", "@" + as_string(sets.ports) ];
     let match_port4_udp = [ "udp", "dport", "@" + as_string(sets.ports) ];
     let match_port6_tcp = [ "tcp", "dport", "@" + as_string(sets.ports) ];
@@ -2130,17 +2142,17 @@ function nft_add_values_to_family_sets(values, table, ipv4_set, ipv6_set, kind, 
     return ok4 && ok6;
 }
 
-function nft_add_community_subnet_file_to_family_sets(path, table, ipv4_set, ipv6_set, service, chunk_size_text, ip_ports_v4, ip_ports_v6) {
+function nft_add_community_subnet_file_to_family_sets(path, table, ipv4_set, ipv6_set, service, chunk_size_text, ip_ports_v4, ip_ports_v6, udp_ports_v4, udp_ports_v6) {
     let non_cf = nft_community_subnet_lines(path, service, "exclude_cloudflare");
     let ok = true;
     if (length(non_cf) > 0)
         ok = nft_add_values_to_family_sets(non_cf, table, ipv4_set, ipv6_set, "ips", "", chunk_size_text);
 
-    if (as_string(service) == "discord" && ip_ports_v4) {
+    if (as_string(service) == "discord" && udp_ports_v4) {
         let cf = nft_community_subnet_lines(path, service, "only_cloudflare");
         if (length(cf) > 0) {
             let voice_ports = core_ip.DISCORD_VOICE_PORTS_NFT || "5000-5020, 3478, 19294-19344, 50000-65535";
-            let cf_ok = nft_add_values_to_family_sets(cf, table, ip_ports_v4, ip_ports_v6, "ip-port-from-ip", voice_ports, chunk_size_text);
+            let cf_ok = nft_add_values_to_family_sets(cf, table, udp_ports_v4, udp_ports_v6, "ip-port-from-ip", voice_ports, chunk_size_text);
             ok = ok && cf_ok;
         }
     }
@@ -3110,7 +3122,9 @@ function nft_add_community_subnet_file_for_section(section, service, filepath, t
         return nft_add_values_to_family_sets(lines, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, chunk_size_text);
     }
 
-    return nft_add_community_subnet_file_to_family_sets(filepath, table, common_v4, common_v6, service, chunk_size_text, ip_port_v4, ip_port_v6);
+    let udp_port_v4 = section_needs_priority_sets(section) ? sets.udp_ip_ports : "";
+    let udp_port_v6 = section_needs_priority_sets(section) ? sets.udp_ip6_ports : "";
+    return nft_add_community_subnet_file_to_family_sets(filepath, table, common_v4, common_v6, service, chunk_size_text, ip_port_v4, ip_port_v6, udp_port_v4, udp_port_v6);
 }
 
 function nft_add_subnet_file_for_uci_section(section_name, filepath, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set) {

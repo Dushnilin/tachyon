@@ -2173,7 +2173,7 @@ function get_sing_box_version(ctx) {
     if (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx))
         return sing_box_version_state(ctx);
 
-    return first_line_last_field(command_output_from_args([ "sing-box", "version" ]));
+    return common.parse_sing_box_version(command_output_from_args([ "sing-box", "version" ]));
 }
 
 function sing_box_version_is_extended(version) {
@@ -2535,7 +2535,7 @@ function check_runtime_requirements() {
 
     let ctx = context_from_runtime();
     let sing_box_version_output = command_exists("sing-box") ? command_output_from_args([ "sing-box", "version" ]) : "";
-    let sing_box_version = (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)) ? sing_box_version_state(ctx) : first_line_last_field(sing_box_version_output);
+    let sing_box_version = (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)) ? sing_box_version_state(ctx) : common.parse_sing_box_version(sing_box_version_output);
     let coreutils_base64_version = first_line_field_from_text(command_output("base64 --version 2>/dev/null"), 4);
 
     if (sing_box_version == "") {

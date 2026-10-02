@@ -1253,19 +1253,51 @@ function ai_heal_subnet_cache() {
 }
 
 // ─── Check nft sets are populated (community subnets) ─────────────────────────
+function community_subnet_sets_still_empty(set_names) {
+    let table = getenv("NFT_TABLE_NAME") || "TachyonTable";
+    let still_empty = [];
+    for (let set_name in common.array_or_empty(set_names)) {
+        let res = command_capture(
+            command_from_args([ "nft", "list", "set", "inet", table, set_name ]) + " 2>/dev/null");
+        if (res.status != 0 || res.output == "")
+            continue;
+        if (index(res.output, "elements") < 0)
+            push(still_empty, as_string(set_name));
+    }
+    return still_empty;
+}
+
 function heal_community_subnet_sets(ev) {
     if (settings().recovery_bypass == "1") return;
 
-    for (let set_name in common.array_or_empty(ev.payload.sets))
+    let reported = common.array_or_empty(ev.payload.sets);
+    for (let set_name in reported)
         log_message("Community subnet set " + set_name + " is empty — will repopulate", "warn");
 
     ai_heal_subnet_cache();
     let rec_res = execute_reconciler_subsystem("nftables", false);
-    if (rec_res != null && rec_res.ok) {
+    if (rec_res == null || !rec_res.ok)
+        bg_system("/usr/bin/tachyon reload_firewall");
+
+    // Re-read the sets and say what actually happened.
+    //
+    // Both branches used to report "fixed" unconditionally, and both reasons were
+    // wrong. execute_reconciler_subsystem("nftables") inspects only the core sets
+    // (localv4 and friends); the per-section tachyon_rule_*_subnets sets are not
+    // in its scope at all, so it found nothing to do, returned ok, and the
+    // watchdog told the user the sets had been restored while they were still
+    // empty. The user saw the same message every 900s (the Telegram cooldown) on
+    // a router where everything worked (TCH-1041).
+    //
+    // "skipped" is already a status ai_heal_report does not notify on, which is
+    // the right outcome here: a repair that did not work is not news worth
+    // pushing every 15 minutes, and the log line above still records the attempt.
+    let still_empty = community_subnet_sets_still_empty(reported);
+    if (length(still_empty) == 0) {
         ai_heal_report(
             "nft_community_sets",
             "Пустые nftables sets подсетей (community) — данные не были загружены при reload",
-            "Восстановлены nftables sets из persistent кеша через Reconciler",
+            "Восстановлены nftables sets подсетей из persistent кеша",
             "fixed"
         );
         return;
@@ -1273,10 +1305,9 @@ function heal_community_subnet_sets(ev) {
     ai_heal_report(
         "nft_community_sets",
         "Пустые nftables sets подсетей (community) — данные не были загружены при reload",
-        "Восстановлены nftables sets из persistent кеша (/etc/tachyon/rulesets/)",
-        "fixed"
+        sprintf("Не удалось заполнить %d set(ов): источник подсетей недоступен (проверьте community-subnets-*.lst и list update)", length(still_empty)),
+        "skipped"
     );
-    bg_system("/usr/bin/tachyon reload_firewall");
 }
 
 

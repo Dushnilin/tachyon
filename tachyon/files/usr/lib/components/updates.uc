@@ -2736,9 +2736,32 @@ function import_all_preset_lists(settings) {
                 continue;
             }
 
-            let downloaded = download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) && file_nonempty(tmpfile);
-            if (!downloaded) {
+            // Mirrors, not the bare URL.
+            //
+            // The .srs rulesets already go through download_candidates, so they
+            // arrive over a mirror when raw.githubusercontent.com is blocked. The
+            // community subnet .lst files went straight to download_to_file, so
+            // on the same blocked path they never landed - the per-section nft
+            // set stayed empty, and the watchdog reported it as a fault every
+            // 900s while domains from the very same community list worked fine
+            // (TCH-1041). Same list, two different reachability stories.
+            let candidates = [];
+            let url_mod = core_url_module_or_null();
+            candidates = (url_mod && type(url_mod.download_candidates) == "function")
+                ? url_mod.download_candidates(url) : [ url ];
+
+            let downloaded = false;
+            for (let candidate in candidates) {
+                if (download_to_file(candidate, tmpfile, service_proxy_address(settings, "lists")) &&
+                    file_nonempty(tmpfile)) {
+                    downloaded = true;
+                    if (candidate != url)
+                        log_message("Fetched built-in subnet list " + as_string(service) + " via mirror " + candidate, "info");
+                    break;
+                }
                 remove_file(tmpfile);
+            }
+            if (!downloaded) {
                 if (file_exists_value(persistent_file)) {
                     tmpfile = persistent_file;
                 } else {
@@ -2808,9 +2831,26 @@ function import_builtin_subnets_from_rule(section, settings) {
                 continue;
             }
 
-            let downloaded = download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) && file_nonempty(tmpfile);
-            if (!downloaded) {
+            // Mirrors, for the same reason as the preset subnet lists above: the nft set
+            // for this community is populated from this file, and going straight
+            // to the origin left it empty wherever that host is blocked (TCH-1041).
+            let candidates = [];
+            let url_mod = core_url_module_or_null();
+            candidates = (url_mod && type(url_mod.download_candidates) == "function")
+                ? url_mod.download_candidates(url) : [ url ];
+
+            let downloaded = false;
+            for (let candidate in candidates) {
+                if (download_to_file(candidate, tmpfile, service_proxy_address(settings, "lists")) &&
+                    file_nonempty(tmpfile)) {
+                    downloaded = true;
+                    if (candidate != url)
+                        log_message("Fetched community subnet list " + as_string(service) + " via mirror " + candidate, "info");
+                    break;
+                }
                 remove_file(tmpfile);
+            }
+            if (!downloaded) {
                 if (file_exists_value(persistent_file)) {
                     tmpfile = persistent_file;
                 } else {

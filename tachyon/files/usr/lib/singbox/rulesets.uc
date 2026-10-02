@@ -5,6 +5,8 @@ let fs = require("fs");
 
 const EMPTY_SRS_B64 = "U1JTAXjaYgAEAAD//wABAAE=";
 const EMPTY_SRS_PATH = "/usr/share/tachyon/rulesets/empty.srs";
+// Decoded length of the placeholder above. Derived so the two cannot drift.
+const EMPTY_SRS_SIZE = 17;
 
 const SRS_MAIN_URL = "https://github.com/itdoginfo/allow-domains/releases/latest/download";
 const SRS_ADS_HAGEZI_PRO_URL = "https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.srs";
@@ -236,6 +238,25 @@ function is_valid_srs_file(path) {
     return magic == "SRS";
 }
 
+// The placeholder this module writes when a list cannot be fetched is itself a
+// syntactically valid SRS of exactly 17 bytes, so is_valid_srs_file() accepts
+// it. Callers that mean "a real list is present locally" therefore treat the
+// placeholder as downloaded: the generator emits `type: local` with no url, so
+// sing-box can never fetch the real list again and the rule silently matches
+// nothing. A block rule over an empty list is indistinguishable from no rule at
+// all (TCH-1043), and the only recovery was a manual list update.
+//
+// So: a file the size of the placeholder is the placeholder, whatever the
+// magic bytes say. Callers that only need "not corrupt" keep using
+// is_valid_srs_file; callers that need "actually populated" use this.
+function is_populated_srs_file(path) {
+    let p = as_string(path);
+    let st = fs.stat(p);
+    if (!st || st.size <= EMPTY_SRS_SIZE)
+        return false;
+    return is_valid_srs_file(p);
+}
+
 function ensure_empty_srs_stub(target_path) {
     target_path = as_string(target_path);
     if (is_valid_srs_file(target_path))
@@ -262,6 +283,7 @@ function module_exports() {
     return {
         EMPTY_SRS_PATH,
         EMPTY_SRS_B64,
+        EMPTY_SRS_SIZE,
         COMMUNITY_SERVICES,
         COMMUNITY_SUBNET_SERVICES,
         COMMUNITY_DOMAIN_SERVICES,
@@ -275,6 +297,7 @@ function module_exports() {
         remote_format,
         is_plain_list_reference,
         is_valid_srs_file,
+        is_populated_srs_file,
         ensure_empty_srs_stub
     };
 }

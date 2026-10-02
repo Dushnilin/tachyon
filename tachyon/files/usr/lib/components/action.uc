@@ -241,6 +241,23 @@ function pkg_install_name_downgrade(package_name, package_version) { return cmp_
 function pkg_install_files_command(files, force_reinstall) { return cmp_inst.pkg_install_files_command(files, force_reinstall); }
 function sanitize_apk_world() { return cmp.sanitize_apk_world(); }
 
+// Installs a downloaded package file, releasing stale apk world entries first.
+//
+// apk reads /etc/apk/world before it selects anything, so a world entry left
+// behind by an earlier Tachyon makes the whole set unselectable and apk rolls
+// the transaction back - which runs the prerm/postrm hooks of everything in it
+// and leaves the router without the component that was just added
+// (TCH-1050/TCH-1051). Every self-update already goes through pkg_tx_install_*
+// and sanitizes; the DPI engines came in through run_logged() and did not, so
+// they were the only transactions running against an unclean world.
+//
+// run_logged() itself is not the place: it also runs restarts and probes, and
+// scrubbing world on those would be wrong.
+function run_logged_pkg_install_files(description, files, timeout_seconds) {
+    sanitize_apk_world();
+    return run_logged(description, pkg_install_files_command(files), timeout_seconds);
+}
+
 function pkg_tx_update_index(proxy_address) { return cmp_inst.pkg_tx_update_index(proxy_address); }
 
 function pkg_tx_install_files(files, force_reinstall) { return cmp_inst.pkg_tx_install_files(files, force_reinstall); }
@@ -643,7 +660,7 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     if (pkg == null)
         action_fail(component, action, "Failed to download " + label + " package", current_version, release.version, "", release.release_url || "");
 
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
+    if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
     disable_standalone_service(component);
@@ -699,19 +716,43 @@ function install_zapret2(action, target_tag) {
     if (index(hosts_content, "::1") < 0)
         command_success("printf '\n::1 localhost ip6-localhost ip6-loopback\n' >> /etc/hosts");
 
-    if (!file_exists("/etc/config/zapret2"))
-        write_file("/etc/config/zapret2", "config zapret2 'main'\n\toption enabled '0'\n");
+    // /etc/config/zapret2 is owned by upstream, and its preinst treats a config
+    // that lacks "run_on_boot" as an incompatible leftover: it removes
+    // /etc/config/zapret2, /etc/init.d/zapret2 and all of /opt/zapret2, and on
+    // an already-installed zapret2 it aborts the install outright (exit 48).
+    // Writing our own two-line stub without that option therefore made every
+    // later install fail, and the wipe in between is what took the component
+    // down with it (TCH-1050/TCH-1051).
+    //
+    // So do not author a stub. Upstream postinst builds the real config from
+    // config.default via uci-def-cfg.sh, which does carry run_on_boot; the only
+    // thing we want to change is the standalone autostart, and that is applied
+    // after the install, once the genuine config exists.
+    if (uci_core.available()) {
+        let cfg = read_file("/etc/config/zapret2") || "";
+        if (cfg != "" && index(cfg, "run_on_boot") < 0) {
+            // A stub written by an older Tachyon: repair it in place rather
+            // than let preinst wipe /opt/zapret2 over it.
+            cfg += "\n\toption run_on_boot '0'\n";
+            write_file("/etc/config/zapret2", cfg);
+            log_message("Repaired /etc/config/zapret2: added run_on_boot so upstream preinst stops wiping the install", "warn");
+        }
+    }
+
+    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
+
+    if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
+        action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
+
+    // Now that upstream postinst has produced the real config, keep the
+    // standalone service off: Tachyon owns the engine, so /etc/init.d/zapret2
+    // must not also run it.
     if (uci_core.available()) {
         if (!uci_core.exists("zapret2.main"))
             uci_core.set_section("zapret2.main", "zapret2");
         uci_core.set("zapret2.main.enabled", "0");
         uci_core.commit("zapret2");
     }
-
-    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
-
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
-        action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
     for (let p in [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfq/nfqws2", "/opt/zapret2/nfqws2", "/usr/bin/nfqws2" ]) {
         if (file_exists(p))
@@ -761,7 +802,7 @@ function install_byedpi(action, target_tag) {
 
     run_logged("Updating package lists before ByeDPI package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
+    if (!run_logged_pkg_install_files("Installing ByeDPI package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
 
     disable_standalone_service("byedpi");
@@ -801,7 +842,7 @@ function install_wdtt(action, target_tag) {
 
     run_logged("Updating package lists before WDTT package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing WDTT package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
+    if (!run_logged_pkg_install_files("Installing WDTT package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("wdtt", action, "Failed to install WDTT package", current_version, pkg.version);
 
     disable_standalone_service("wdtt");
@@ -841,7 +882,7 @@ function install_olcrtc(action, target_tag) {
 
     run_logged("Updating package lists before OlcRTC package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing OlcRTC package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
+    if (!run_logged_pkg_install_files("Installing OlcRTC package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("olcrtc", action, "Failed to install OlcRTC package", current_version, pkg.version);
 
     disable_standalone_service("olcrtc");
@@ -881,7 +922,7 @@ function install_fptn(action, target_tag) {
 
     run_logged("Updating package lists before FPTN package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing FPTN package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
+    if (!run_logged_pkg_install_files("Installing FPTN package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("fptn", action, "Failed to install FPTN package", current_version, pkg.version);
 
     disable_standalone_service("fptn");
@@ -929,7 +970,7 @@ function install_steer(action, target_tag, extended) {
 
     run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), PKG_INSTALL_TIMEOUT))
+    if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package");
 
     let nfqws_wrapper = fs.stat("/usr/share/tachyon/steer-nfqws") != null ? "/usr/share/tachyon/steer-nfqws" : (LIB_DIR + "/../../usr/sbin/steer-nfqws");

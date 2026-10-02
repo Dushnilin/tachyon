@@ -761,6 +761,45 @@ function file_first_line(path) {
     return trim(newline >= 0 ? substr(data, 0, newline) : data);
 }
 
+// Reads the version out of `sing-box version` output.
+//
+// Taking the last whitespace-separated token of the first line assumed the
+// banner ends in the version. That held for 1.13 ("sing-box version 1.13.0")
+// and stopped holding once 1.14 added trailing detail:
+//     sing-box 1.14.5 linux-amd64                         -> "linux-amd64"
+//     sing-box version 1.14.5 (with_quic, with_tailscale) -> "with_tailscale)"
+// Both then failed the caller's /^[vV]?[0-9]+/ gate and produced "". An empty
+// version is not a cosmetic status problem: check_runtime_requirements() turns
+// it into a fatal "Aborted.", so the apply dies and the user is left with a
+// config that refuses to generate and no stated cause (TCH-1046).
+//
+// So match the token that follows the word "version" wherever it appears, and
+// fall back to the first version-shaped token of the banner when the keyword is
+// absent - never to the last token, which on a banner that puts the platform
+// after the version is the platform.
+// The character class is an explicit list rather than a negated one: \s includes
+// \n in this regex engine, so "[^\s...]" runs past the end of the line and
+// swallows the rest of the banner.
+function parse_sing_box_version(output) {
+    let text = as_string(output);
+    let m = match(text, /sing-box[ \t]+version[ \t]+(v?[0-9][0-9A-Za-z._+-]*)/);
+    if (m != null)
+        return as_string(m[1]);
+    // No "version" keyword anywhere. Take the first token of the banner that
+    // is actually version-shaped rather than blindly the last one: on
+    // "sing-box 1.14.5 linux-amd64" the last token is the platform, and handing
+    // that back would be worse than returning nothing, because the caller's
+    // /^[vV]?[0-9]+/ gate would let it through.
+    let newline = index(text, "\n");
+    let line = trim(newline >= 0 ? substr(text, 0, newline) : text);
+    for (let token in split(line, /[ \t\r\n]+/)) {
+        let t = as_string(token);
+        if (t != "" && match(t, /^v?[0-9][0-9A-Za-z._+-]*$/) != null)
+            return t;
+    }
+    return "";
+}
+
 function print_file_first_line(path) {
     let data = fs.readfile(as_string(path));
     if (data == null)
@@ -792,6 +831,7 @@ return {
     hex_digit_value,
     parse_number,
     file_first_line,
+    parse_sing_box_version,
     print_file_first_line,
     section_name,
     log_message,

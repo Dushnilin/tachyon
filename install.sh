@@ -1023,7 +1023,15 @@ scrub_apk_world() {
     _scrub_list="${1:-$WORLD_SCRUB_PACKAGES}"
     [ -f "$APK_WORLD_FILE" ] || return 0
     for _pkg in $_scrub_list; do
-        sed -i "/^${_pkg}\$/d" "$APK_WORLD_FILE" 2>/dev/null || true
+        # Match the bare name and the pinned forms. After a local .apk install
+        # apk rewrites the entry with a version and hash constraint, so a live
+        # world reads `tachyon><Q1xQ...=`, not `tachyon`. An anchored "^pkg$"
+        # never matched that, so reinstalling over the package this installer
+        # previously installed left the pin in place and the next apk add had to
+        # satisfy a world entry describing a build that is no longer on the box.
+        # ^pkg followed by end-of-line, or by any of the constraint operators
+        # apk uses (space, <, >, =, ~), covers both.
+        sed -i -E "/^${_pkg}([ \t<>=~].*)?\$/d" "$APK_WORLD_FILE" 2>/dev/null || true
     done
     debug "APK world file scrubbed: $_scrub_list"
 }
@@ -1057,9 +1065,28 @@ resolve_legacy_conflicts_before_install() {
             _present="$_present $_pkg"
         fi
     done
-    [ -n "$_present" ] || return 0
-    msg "Releasing legacy packages from apk world:$_present"
-    scrub_apk_world "$LEGACY_PACKAGES"
+    if [ -n "$_present" ]; then
+        msg "Releasing legacy packages from apk world:$_present"
+        scrub_apk_world "$LEGACY_PACKAGES"
+    fi
+
+    # Release this installer's own pinned entries. Reinstalling over a Tachyon
+    # that a previous run installed leaves world entries like
+    # `tachyon><Q1xQ...=`, and the new package has to satisfy a constraint
+    # describing a build that is no longer on the box. This is the common
+    # "install over the existing version" path, so it has to happen before
+    # `apk add`, not only on the legacy-migration path.
+    _pinned=""
+    for _pkg in $WORLD_SCRUB_PACKAGES; do
+        if grep -qE "^${_pkg}[ \t<>=~]" "$APK_WORLD_FILE" 2>/dev/null; then
+            _pinned="$_pinned $_pkg"
+        fi
+    done
+    if [ -n "$_pinned" ]; then
+        msg "Releasing pinned apk world entries:$_pinned"
+        scrub_apk_world
+    fi
+    return 0
 }
 
 download_release() {

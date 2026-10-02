@@ -80,7 +80,16 @@ const sorted = Object.values(results)
         ...item,
         places: Array.from(new Set(item.places)).sort(),
     }))
-    .sort((a, b) => a.key.localeCompare(b.key)); // 🔤 сортировка по ключу
+    // Sorted by code unit, not localeCompare.
+    //
+    // localeCompare uses the collation of the machine's locale, so the order of
+    // locales/*.pot and *.po depended on whose machine ran the generator. The
+    // pre-push hook regenerates the locales and fails when that leaves the tree
+    // dirty, so a contributor on a machine with a different locale could not
+    // push at all - their regeneration reshuffled entries that were already
+    // committed, and the hook read that as drift. Comparing code units is
+    // locale-independent, so everyone produces byte-identical output.
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
 await fs.mkdir(path.dirname(outFile), { recursive: true });
 await fs.writeFile(outFile, JSON.stringify(sorted, null, 2), 'utf8');

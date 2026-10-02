@@ -135,6 +135,8 @@ function first_line_last_field(value) {
     return length(fields) > 0 ? as_string(fields[length(fields) - 1]) : "";
 }
 
+let parse_sing_box_version = common.parse_sing_box_version;
+
 // The version string is taken from stdout whatever the exit status: sing-box
 // prints "sing-box version X" first and may still exit non-zero (a warning about
 // a missing config, a signal from a concurrent service stop). Gating on the exit
@@ -190,7 +192,7 @@ function sing_box_version() {
         return "";
     if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
         return sing_box_version_state();
-    let v = first_line_last_field(sing_box_version_output());
+    let v = parse_sing_box_version(sing_box_version_output());
     return match(v, /^[vV]?[0-9]+/) ? v : "";
 }
 
