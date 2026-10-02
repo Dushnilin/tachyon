@@ -58,6 +58,8 @@ Defines an individual manual proxy outbound node.
 | `isolated_subnets` | `list string` | No | Optional custom subnets to block for isolated users (defaults to `ip_is_private: true`). |
 | `custom_route_rules` | `list string` | No | Raw JSON sing-box route rule objects injected before general routing rules. |
 
+When saving in LuCI, disabling a routing section also disables enabled servers with `routing_mode = 'section'` and a matching `routing_section`. Their routing settings are preserved; enabling the section again does not automatically enable the servers. The warning lists the affected servers and remains in that browser after page reload until dismissed. If browser storage is unavailable, the warning is shown for the current page only. Direct configuration edits and imports remain subject to runtime validation.
+
 ---
 
 ## 3. Section: `config subscription 'name'`
