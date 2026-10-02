@@ -102,7 +102,15 @@ jobs:
           fi
 
           TRIMMED="$(printf '%s' "$EXISTING_BODY" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          if [ -n "$TRIMMED" ] && ! printf '%s\n' "$TRIMMED" | grep -Eq '^Commit:[[:space:]]*[0-9a-fA-F]+$'; then
+          # Hand-written notes end with a "Commit: <sha>" line, so a per-line grep
+          # matched them and the release got its notes regenerated away on every
+          # rebuild of the same tag. Only a body that is nothing but that one
+          # placeholder counts as "no notes".
+          PLACEHOLDER_ONLY=no
+          if [ "$(printf '%s\n' "$TRIMMED" | wc -l)" -eq 1 ] && printf '%s' "$TRIMMED" | grep -Eq '^Commit:[[:space:]]*[0-9a-fA-F]+$'; then
+            PLACEHOLDER_ONLY=yes
+          fi
+          if [ -n "$TRIMMED" ] && [ "$PLACEHOLDER_ONLY" = no ]; then
             echo "Existing release notes found for $TAG_NAME. Preserving them."
             printf '%s\n' "$EXISTING_BODY" > ./release_notes.md
             echo "generate_notes=false" >> "$GITHUB_OUTPUT"
