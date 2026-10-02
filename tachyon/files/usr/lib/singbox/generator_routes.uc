@@ -1882,15 +1882,26 @@ const ACTION_KEYS = {
     strategy: true
 };
 
+// The two "everything except the selected countries" modes match the inverted
+// set; the other two match the selected countries themselves.
+function geoip_mode_inverts(country_mode) {
+    return country_mode == "exclude" || country_mode == "exclude_direct";
+}
+
+function geoip_matcher_rule(geo_tags, country_mode) {
+    let geo_rule = {
+        rule_set: single_or_array(geo_tags)
+    };
+    if (geoip_mode_inverts(country_mode))
+        geo_rule.invert = true;
+    return geo_rule;
+}
+
 function apply_section_geoip_filter(rule, geo_tags, country_mode) {
     if (!rule || !geo_tags || length(geo_tags) == 0)
         return rule;
 
-    let geo_rule = {
-        rule_set: single_or_array(geo_tags)
-    };
-    if (country_mode == "exclude")
-        geo_rule.invert = true;
+    let geo_rule = geoip_matcher_rule(geo_tags, country_mode);
 
     if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
         let cloned = {};
@@ -1920,7 +1931,7 @@ function apply_section_geoip_filter(rule, geo_tags, country_mode) {
         for (let k, v in rule)
             single_rule[k] = v;
         single_rule.rule_set = single_or_array(geo_tags);
-        if (country_mode == "exclude")
+        if (geoip_mode_inverts(country_mode))
             single_rule.invert = true;
         return single_rule;
     }
@@ -2025,6 +2036,26 @@ function push_section_route_rule(config, rule, target_outbound, excluded_cidrs, 
         rule.network = "tcp";
     }
     push_route_matcher_rule(config, apply_filters(rule));
+}
+
+// The closed GeoIP modes do not let the other half of the traffic fall through
+// to whatever section comes next. "exclude_direct" pins the selected countries
+// to direct, which is what makes a bypass section work whatever its position in
+// the order; "include_all" keeps the remainder in the section.
+function push_section_geoip_remainder(config, base_rule, target, excluded_cidrs, geo_tags, country_mode) {
+    let remainder = {};
+    for (let k, v in base_rule)
+        remainder[k] = v;
+
+    if (country_mode == "exclude_direct") {
+        remainder.rule_set = single_or_array(geo_tags);
+        remainder.action = "route";
+        remainder.outbound = runtime_constants.DIRECT_OUTBOUND_TAG;
+        push_route_matcher_rule(config, apply_excluded_source_ips(remainder, excluded_cidrs));
+        return;
+    }
+
+    push_section_route_rule(config, remainder, target.outbound, excluded_cidrs, null, country_mode);
 }
 
 function add_fully_routed_ips_rule(config, section) {
@@ -2239,7 +2270,12 @@ function add_combined_route_for_section(config, section) {
         return r;
     };
 
-    if (has_domain) {
+    let closed_geo = connections.geoip_country_mode_is_closed(section);
+    if (closed_geo && (has_domain || has_ruleset || has_ip_cidr || length(discord_cf_subnets) > 0))
+        warn("Section " + section_name + ": GeoIP mode '" + country_mode +
+            "' defines the whole section, so the other matchers in it are ignored\n");
+
+    if (has_domain && !closed_geo) {
         let domain_rule = create_section_route_rule();
         add_domain_array(domain_rule, "domain", domain);
         add_domain_array(domain_rule, "domain_suffix", domain_suffix);
@@ -2255,7 +2291,7 @@ function add_combined_route_for_section(config, section) {
         push_section_route_rule(config, domain_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
 
-    if (has_ruleset) {
+    if (has_ruleset && !closed_geo) {
         let rs_rule = create_section_route_rule();
         rs_rule.rule_set = single_or_array(rule_set_tags);
 
@@ -2268,13 +2304,13 @@ function add_combined_route_for_section(config, section) {
         push_section_route_rule(config, rs_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
 
-    if (has_ip_cidr) {
+    if (has_ip_cidr && !closed_geo) {
         let ip_rule = create_section_route_rule();
         ip_rule.ip_cidr = ip_cidr;
         push_section_route_rule(config, ip_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
 
-    if (length(discord_cf_subnets) > 0) {
+    if (length(discord_cf_subnets) > 0 && !closed_geo) {
         let voice_rule = create_section_route_rule();
         voice_rule.network = "udp";
         voice_rule.ip_cidr = discord_cf_subnets;
@@ -2282,16 +2318,18 @@ function add_combined_route_for_section(config, section) {
         push_section_route_rule(config, voice_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
 
-    if (bool_option(section, "match_all", false)) {
+    let section_is_geo_only = !has_domain && !has_ruleset && !has_ip_cidr && length(discord_cf_subnets) == 0;
+
+    if (bool_option(section, "match_all", false) && !closed_geo) {
         let all_rule = create_section_route_rule();
         push_section_route_rule(config, all_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
-    else if (!has_domain && !has_ruleset && !has_ip_cidr && length(discord_cf_subnets) == 0) {
+    else if (section_is_geo_only || closed_geo) {
         if (length(geo_tags) > 0) {
             let geoip_route_rule = create_section_route_rule();
             push_section_route_rule(config, geoip_route_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
         }
-        else {
+        else if (!closed_geo) {
             let fallback_rule = create_section_route_rule();
             let has_any_matcher = fallback_rule.source_ip_cidr != null ||
                 fallback_rule.port != null || fallback_rule.port_range != null ||
@@ -2300,6 +2338,9 @@ function add_combined_route_for_section(config, section) {
                 push_section_route_rule(config, fallback_rule, target.outbound, excluded_cidrs);
         }
     }
+
+    if (closed_geo && length(geo_tags) > 0)
+        push_section_geoip_remainder(config, create_section_route_rule(), target, excluded_cidrs, geo_tags, country_mode);
 
     let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
     if (length(domain) > 0 || length(domain_suffix) > 0 || length(domain_keyword) > 0 || length(domain_regex) > 0) {

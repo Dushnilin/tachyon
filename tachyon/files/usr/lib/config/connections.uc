@@ -743,16 +743,23 @@ function geoip_country_list(section) {
     return result;
 }
 
+// Four ways a GeoIP condition can shape its section. "include"/"exclude" leave
+// the other half of the traffic to whatever section comes next; the two closed
+// modes keep it inside, so the GeoIP condition is the whole section and no
+// other matcher may be added to it.
+const GEOIP_COUNTRY_MODES = [ "include", "exclude", "include_all", "exclude_direct" ];
+const GEOIP_COUNTRY_CLOSED_MODES = [ "include_all", "exclude_direct" ];
+
 function geoip_country_mode(section) {
     let mode = lc(trim(option(section, "geoip_mode", "")));
-    if (mode == "exclude" || mode == "include")
+    if (contains(GEOIP_COUNTRY_MODES, mode))
         return mode;
 
-    let raw = option(section, "geoip_country", "all");
-    if (raw == "non-ru")
-        return "exclude";
-
     return "exclude";
+}
+
+function geoip_country_mode_is_closed(section) {
+    return contains(GEOIP_COUNTRY_CLOSED_MODES, geoip_country_mode(section));
 }
 
 function packet_encoding(section) {
@@ -1772,6 +1779,7 @@ return {
     dscp_value,
     geoip_country_list,
     geoip_country_mode,
+    geoip_country_mode_is_closed,
     geoip_country_value,
     subscription_download_targets,
     subscription_download_target_port,

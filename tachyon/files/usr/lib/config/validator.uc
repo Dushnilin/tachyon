@@ -1253,8 +1253,8 @@ function validate_dscp_values(section) {
 
 function validate_geoip_country_values(section) {
     let mode = option(section, "geoip_mode", "");
-    if (mode != "" && mode != "exclude" && mode != "include")
-        fail_validation("Rule '" + section_name(section) + "' has invalid GeoIP filter mode '" + mode + "'. Expected 'exclude' or 'include'. Aborted.");
+    if (mode != "" && !contains(connections.GEOIP_COUNTRY_MODES, mode))
+        fail_validation("Rule '" + section_name(section) + "' has invalid GeoIP filter mode '" + mode + "'. Expected 'exclude', 'include', 'include_all' or 'exclude_direct'. Aborted.");
 
     let list = connections.geoip_country_list(section);
     for (let item in list) {

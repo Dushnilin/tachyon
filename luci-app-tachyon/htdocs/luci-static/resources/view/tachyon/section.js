@@ -11359,19 +11359,31 @@ function createSectionContent(section) {
     "geoip_mode",
     _("GeoIP Mode"),
     _(
-      "Choose whether to route traffic to all destinations except selected countries (Exclude) or only to selected countries (Include).",
+      "Include sends only the selected countries to this section and leaves the rest to the sections below. Exclude sends everything except them. Exclude Direct additionally pins the selected countries to direct, so the section works whatever its position in the order. Include All keeps the rest in this section too, and then the countries are the whole section: any other matcher set here is ignored.",
     ),
   );
   geoipModeOption.value("exclude", _("Exclude selected countries"));
   geoipModeOption.value("include", _("Include selected countries"));
+  geoipModeOption.value(
+    "exclude_direct",
+    _("Exclude selected countries and route them direct"),
+  );
+  geoipModeOption.value(
+    "include_all",
+    _("Include selected countries and everything else"),
+  );
   geoipModeOption.default = "exclude";
   geoipModeOption.rmempty = false;
   geoipModeOption.modalonly = true;
   geoipModeOption.load = function (section_id) {
     let mode = uci.get(UCI_PACKAGE, section_id, "geoip_mode");
-    if (mode === "exclude" || mode === "include") return mode;
-    let country = uci.get(UCI_PACKAGE, section_id, "geoip_country");
-    if (country === "non-ru") return "exclude";
+    if (
+      mode === "exclude" ||
+      mode === "include" ||
+      mode === "exclude_direct" ||
+      mode === "include_all"
+    )
+      return mode;
     return "exclude";
   };
   [
@@ -13082,7 +13094,11 @@ function showSectionRulesModal(section_id) {
     geoipCountry = ["ru"];
   }
   const geoipMode = uci.get(UCI_PACKAGE, section_id, "geoip_mode") || "exclude";
-  const geoip = geoipCountry.map((c) => (geoipMode === "exclude" ? "NOT " : "") + c.toUpperCase());
+  const geoipInverted =
+    geoipMode === "exclude" || geoipMode === "exclude_direct";
+  const geoip = geoipCountry.map(
+    (c) => (geoipInverted ? "NOT " : "") + c.toUpperCase(),
+  );
   const sourceIp = getCleanList("source_ip_cidr");
   const ports = getCleanList("ports");
   const dscp = getCleanList("dscp");

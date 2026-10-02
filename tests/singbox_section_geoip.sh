@@ -67,6 +67,24 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "geoip_country": [ "ru" ],
       "geoip_mode": "exclude",
       "excluded_ips": [ "192.168.1.99" ]
+    },
+    {
+      ".name": "sec_exdir",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\",\"tag\":\"sec_exdir-out\"}" ],
+      "geoip_country": [ "ru" ],
+      "geoip_mode": "exclude_direct"
+    },
+    {
+      ".name": "sec_incall",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\",\"tag\":\"sec_incall-out\"}" ],
+      "geoip_country": [ "ru" ],
+      "geoip_mode": "include_all"
     }
   ]
 }
@@ -92,6 +110,31 @@ let sec_noru_unconstrained_all = false;
 let sec_pure_ru_found = false;
 let sec_sub_found = false;
 let sec_both_found = false;
+let sec_exdir_inverted = false;
+let sec_exdir_direct = false;
+let sec_incall_geo = false;
+let sec_incall_catchall = false;
+
+function is_geo_rule(rule, tag_prefix) {
+    let rs = rule.rule_set;
+    if (!rs) return false;
+    let list = type(rs) == "array" ? rs : [ rs ];
+    for (let tag in list) {
+        if (index(tag, tag_prefix + "-geoip_ru") >= 0) return true;
+    }
+    return false;
+}
+
+function rule_has_geo(rule, tag_prefix, want_invert) {
+    if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
+        for (let sub in rule.rules) {
+            if ((sub.invert ? true : false) == want_invert && is_geo_rule(sub, tag_prefix))
+                return true;
+        }
+        return false;
+    }
+    return (rule.invert ? true : false) == want_invert && is_geo_rule(rule, tag_prefix);
+}
 
 for (let r in rules) {
     if (r.domain == "ip.podkop.fyi" || (type(r.domain) == "array" && index(r.domain, "ip.podkop.fyi") >= 0))
@@ -173,6 +216,23 @@ for (let r in rules) {
                 sec_both_found = true;
         }
     }
+
+    // 6. Check sec_exdir: the inverted geo set goes to the section, the selected
+    //    countries are pinned to direct so the bypass no longer depends on what
+    //    section happens to come next.
+    if (r.outbound == "sec_exdir-out" && rule_has_geo(r, "sec_exdir", true))
+        sec_exdir_inverted = true;
+
+    if (r.outbound == "direct-out" && rule_has_geo(r, "sec_exdir", false))
+        sec_exdir_direct = true;
+
+    // 7. Check sec_incall: the geo set and the remainder both stay in the section.
+    if (r.outbound == "sec_incall-out") {
+        if (rule_has_geo(r, "sec_incall", false))
+            sec_incall_geo = true;
+        else if (!r.domain && !r.domain_suffix && !r.rule_set && !r.ip_cidr && !r.source_ip_cidr)
+            sec_incall_catchall = true;
+    }
 }
 
 if (!sec_yt_logical_found)
@@ -195,6 +255,18 @@ if (!sec_sub_found)
 
 if (!sec_both_found)
     die("Expected combined logical rule for sec_both-out (domain + inverted geoip + inverted client ip) not found!\n");
+
+if (!sec_exdir_inverted)
+    die("Expected inverted geoip rule for sec_exdir-out not found!\n");
+
+if (!sec_exdir_direct)
+    die("Expected the selected countries to be pinned to direct-out for exclude_direct!\n");
+
+if (!sec_incall_geo)
+    die("Expected GeoIP include rule for sec_incall-out not found!\n");
+
+if (!sec_incall_catchall)
+    die("Expected the remainder to stay inside the section for include_all!\n");
 ' || fail "singbox_section_geoip verification failed"
 
 printf 'PASS: singbox_section_geoip\n'
