@@ -1,5 +1,15 @@
 #!/usr/bin/env sh
 
+# This is the Docker entrypoint, not a test. It overwrites /etc/config/network
+# and disables the firewall, which on a real OpenWrt box drops the LAN
+# addressing and the guest stops answering on the network. tests/run_all.sh
+# skips it for that reason; refuse to run at all when there is no container
+# around, so a stray `for t in tests/*.sh` cannot take a router down.
+if [ ! -e /.dockerenv ] && [ ! -e /run/.containerenv ] && ! grep -qsE '(docker|containerd|lxc)' /proc/1/cgroup; then
+  echo "container_entrypoint.sh: refusing to run outside a container" >&2
+  exit 1
+fi
+
 # Capture current IP, netmask, and gateway of eth0 (Docker's configuration) safely
 ETH0_IP=$(ip -o -4 addr show eth0 | head -n 1 | awk '{print $4}' | cut -d/ -f1)
 ETH0_NETMASK_LEN=$(ip -o -4 addr show eth0 | head -n 1 | awk '{print $4}' | cut -d/ -f2)
