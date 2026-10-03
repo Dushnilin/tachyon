@@ -894,6 +894,38 @@ function note_nfqueue_recovered(ev) {
     settle_recovery("nfqueue", "fixed");
 }
 
+// The L5 failsafe is sticky: it writes /etc/tachyon/emergency_state.json, which
+// lives on the overlay and so survives a reboot, and until something removed that
+// file every status read reported emergency_failsafe and the bypass stayed on.
+// Only the CLI emergency-reset used to clear it.
+//
+// Leaving it to a human is only defensible while the proxy really is broken.
+// Once it answers again the section has to come back on its own, and the nft
+// runtime has to be rebuilt first — clearing the flag alone would report healthy
+// while the router silently kept bypassing the proxy.
+function release_emergency_failsafe_if_recovered() {
+    if (!is_emergency_failsafe_active())
+        return false;
+    // A single recovered probe is not enough: the failsafe exists for the case
+    // where flapping made every restart look fatal, so require a settled run.
+    if (controller.proxy_consecutive_fails() > 0 || controller.dns_consecutive_fails() > 0)
+        return false;
+    if (int(controller.healthy_streak()) < 3)
+        return false;
+
+    let rebuilt = command_success_from_args([
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/lifecycle.uc", "reload-firewall"
+    ]);
+    if (!rebuilt) {
+        log_message("Watchdog: proxy is healthy again but the nft runtime could not be rebuilt, keeping the failsafe engaged", "warn");
+        return false;
+    }
+
+    clear_emergency_failsafe();
+    ai_heal_report("emergency_failsafe", "Proxy recovered, nft runtime rebuilt and the emergency failsafe was released", "released", "fixed");
+    return true;
+}
+
 // Guard: skip if a tachyon reload is already in progress (prevents concurrent reload_firewall races)
 function is_reload_in_progress() {
     return fs.stat("/var/run/tachyon.reload.lock") != null
@@ -2530,6 +2562,15 @@ function register_subscribers() {
         { name: "note_wan_recovered", priority: 5 });
     subscribe(EV.NFQUEUE_UP, note_nfqueue_recovered,
         { name: "note_nfqueue_recovered", priority: 5 });
+    // Every settled recovery re-checks the failsafe: whichever signal comes back
+    // first (proxy, DNS, WAN) is enough, and the handler is a no-op while the
+    // failsafe is not engaged.
+    subscribe(EV.PROXY_UP, release_emergency_failsafe_if_recovered,
+        { name: "release_emergency_failsafe_on_proxy_up", priority: 6 });
+    subscribe(EV.DNS_UP, release_emergency_failsafe_if_recovered,
+        { name: "release_emergency_failsafe_on_dns_up", priority: 6 });
+    subscribe(EV.WAN_UP, release_emergency_failsafe_if_recovered,
+        { name: "release_emergency_failsafe_on_wan_up", priority: 6 });
 
     subscribe(EV.SECTIONS_EMPTY, heal_empty_sections,
         { name: "heal_empty_sections", priority: 60, cooldown: 120 });

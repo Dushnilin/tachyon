@@ -18,7 +18,7 @@ cat > "$DISCORD_LST" << 'EOF'
 172.64.0.0/13
 162.158.0.0/15
 2606:4700::/32
-162.159.128.0/21
+162.159.128.0/20
 EOF
 
 cat > "$OTHER_LST" << 'EOF'
@@ -35,7 +35,7 @@ if (!core_ip.is_cloudflare_shared_cidr("172.64.0.0/13")) exit(2);
 if (!core_ip.is_cloudflare_shared_cidr("162.158.0.0/15")) exit(3);
 if (!core_ip.is_cloudflare_shared_cidr("2606:4700::/32")) exit(4);
 if (core_ip.is_cloudflare_shared_cidr("66.22.196.0/22")) exit(5);
-if (core_ip.is_cloudflare_shared_cidr("162.159.128.0/21")) exit(6);
+if (core_ip.is_cloudflare_shared_cidr("162.159.128.0/20")) exit(6);
 if (core_ip.is_cloudflare_shared_cidr("1.1.1.1/32")) exit(7);
 ' || fail "core.ip is_cloudflare_shared_cidr validation failed"
 
@@ -58,7 +58,7 @@ for (let c in discord_cidrs) {
         exit(2);
     }
 }
-if (discord_cidrs[0] != "66.22.196.0/22" || discord_cidrs[1] != "162.159.128.0/21") {
+if (discord_cidrs[0] != "66.22.196.0/22" || discord_cidrs[1] != "162.159.128.0/20") {
     warn("Expected subnets not found: " + discord_cidrs + "\n");
     exit(3);
 }
@@ -196,7 +196,7 @@ for (let line in split(data, "\n")) {
     push(result, line);
 }
 if (length(result) != 2) exit(1);
-if (result[0] != "66.22.196.0/22" || result[1] != "162.159.128.0/21") exit(2);
+if (result[0] != "66.22.196.0/22" || result[1] != "162.159.128.0/20") exit(2);
 if (length(cf_result) != 4) exit(3);
 ' || fail "community subnet lines filtering failed"
 

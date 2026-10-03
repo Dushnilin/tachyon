@@ -275,7 +275,12 @@ function is_cloudflare_shared_cidr(value) {
 const DISCORD_VOICE_PORTS_NFT = "443, 5000-5020, 3478, 19294-19344, 50000-65535";
 const DISCORD_VOICE_PORT_RANGES = [ "443:443", "5000:5020", "3478:3478", "19294:19344", "50000:65535" ];
 const DEFAULT_DISCORD_VOICE_SUBNETS = [ "104.16.0.0/12", "162.158.0.0/15", "172.64.0.0/13", "2606:4700::/32" ];
-const DISCORD_DEDICATED_SUBNETS = [ "162.159.128.0/21" ];
+// Discord's edge is spread across 162.159.128.0/20: discord.com answers on
+// .128, .135, .136, .137 and .138. The old /21 stopped at .135.255, so roughly
+// half of the addresses a resolver hands out fell outside the Discord section
+// and bypassed it without zapret. The whole /20 is CLOUDFLARENET (RIPE), the
+// operator Discord already runs on, so widening sweeps in nothing unrelated.
+const DISCORD_DEDICATED_SUBNETS = [ "162.159.128.0/20" ];
 
 return {
     valid_ipv4,
