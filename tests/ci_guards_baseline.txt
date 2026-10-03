@@ -9,7 +9,6 @@ raw_background|tachyon/files/usr/lib/diagnostics/leak_check.uc|1
 raw_background|tachyon/files/usr/lib/diagnostics/routing.uc|2
 raw_background|tachyon/files/usr/lib/diagnostics/service_check.uc|1
 raw_background|tachyon/files/usr/lib/dns/benchmark.uc|1
-raw_background|tachyon/files/usr/lib/providers/fptn/runtime.uc|1
 raw_background|tachyon/files/usr/lib/service/initd.uc|1
 raw_background|tachyon/files/usr/lib/service/state.uc|1
 raw_background|tachyon/files/usr/lib/service/watchdog.uc|1
