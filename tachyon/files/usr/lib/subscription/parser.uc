@@ -2478,6 +2478,16 @@ function xray_tls_from_stream(stream, network) {
 
     xray_add_utls(tls, settings.fingerprint || settings.fp || "");
 
+    // The Xray spelling of the pin. Without it a node whose certificate fails CA
+    // or name validation loses its pin the moment auto_user_agent makes the
+    // provider answer with Xray-JSON instead of a link list - and the node simply
+    // does not connect, with nothing in the log.
+    let certificate_pin = common.certificate_pin_base64(
+        settings.pinnedPeerCertSha256 || settings.pinned_peer_cert_sha256 || ""
+    );
+    if (certificate_pin != "")
+        tls.certificate_sha256 = [ certificate_pin ];
+
     if (security == "reality" || length(keys(reality)) > 0) {
         tls.reality = { enabled: true };
         let public_key = xray_first_string([reality.publicKey, reality.public_key, settings.publicKey, settings.public_key]);

@@ -323,8 +323,21 @@ function extended_supports_x25519mlkem768(version) {
     return patch >= 2;
 }
 
+// Providers hand out the fingerprint in the OpenSSL shape - hex byte pairs joined
+// by colons - and in subscription links the colons arrive percent-encoded, so
+// parse_query() has already decoded them back to "28:6A:02:...". Accepting only
+// the bare 64-digit form silently dropped the pin: the node then connects with a
+// certificate that fails CA or name validation, and nothing anywhere says why.
 function certificate_pin_base64(value) {
     value = lc(trim(as_string(value)));
+    // A field can carry more than one fingerprint. Take the leading run of hex and
+    // colons, which stops at any separator, instead of a split on a character class:
+    // \s inside a ucode regex does not reliably cover a plain space, and a field
+    // that quietly failed to parse is exactly the bug this fixes.
+    let leading = match(value, /^[0-9a-f:]+/);
+    if (leading == null)
+        return "";
+    value = replace(as_string(leading[0]), /:/g, "");
     if (match(value, /^[0-9a-f]{64}$/) == null)
         return "";
     return b64enc(hexdec(value));

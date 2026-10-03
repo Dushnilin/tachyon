@@ -9,7 +9,13 @@ export const styles = `
 .tachyon-partial-modal__content {
     max-height: 75vh;
     overflow-y: auto;
-    overflow-x: hidden;
+    /* Log lines, stack traces and long single-token output have no spaces to wrap
+       at. Under the default pre formatting combined with overflow-x: hidden the
+       tail of such a line was clipped with no way to scroll to it, so the error
+       that mattered sat just past the right edge of the dialog. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     border-radius: 4px;
     box-sizing: border-box;

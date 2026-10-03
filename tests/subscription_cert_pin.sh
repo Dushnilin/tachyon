@@ -51,6 +51,12 @@ BAD64="$(printf 'g%.0s' {1..64})"
 BAD63="${HEX:0:63}"
 EXPECTED_FIELD="\"certificate_sha256\": [ \"$B64\" ]"
 
+# The OpenSSL shape: hex byte pairs joined by colons. This is what providers
+# actually send, percent-encoded inside links, and rejecting it dropped the pin
+# silently - the node then fails CA or name validation with nothing in the log.
+COLON_HEX="$(printf '%s' "$HEX" | sed 's/../&:/g; s/:$//')"
+COLON_QUERY="$(printf '%s' "$COLON_HEX" | sed 's/:/%3A/g')"
+
 ucode -e '
 let common = require("core.common");
 if (common.certificate_pin_base64(ARGV[0]) !== ARGV[1]) exit(1);
@@ -58,8 +64,36 @@ if (common.certificate_pin_base64(ARGV[2]) !== ARGV[1]) exit(2);
 if (common.certificate_pin_base64(ARGV[3]) !== "") exit(3);
 if (common.certificate_pin_base64(ARGV[4]) !== "") exit(4);
 if (common.certificate_pin_base64("") !== "") exit(5);
-' "$HEX" "$B64" "$(printf '%s' "$HEX" | tr 'a-f' 'A-F')" "$BAD64" "$BAD63" ||
+if (common.certificate_pin_base64(ARGV[5]) !== ARGV[1]) exit(6);
+if (common.certificate_pin_base64(ARGV[6]) !== ARGV[1]) exit(7);
+if (common.certificate_pin_base64(" " + ARGV[5] + " ") !== ARGV[1]) exit(8);
+// Several fingerprints in one field, comma or space separated: the first is the pin.
+if (common.certificate_pin_base64(ARGV[5] + "," + ARGV[0]) !== ARGV[1]) exit(9);
+if (common.certificate_pin_base64(ARGV[5] + " " + ARGV[0]) !== ARGV[1]) exit(11);
+// A colon-separated value of the wrong length is still refused.
+if (common.certificate_pin_base64("28:6A:02:8E") !== "") exit(10);
+' "$HEX" "$B64" "$(printf '%s' "$HEX" | tr 'a-f' 'A-F')" "$BAD64" "$BAD63" \
+  "$COLON_HEX" "$(printf '%s' "$COLON_HEX" | tr 'a-f' 'A-F')" ||
   fail "common.certificate_pin_base64 contract"
+
+vless_colon_output="$(normalize_link "vless-pinned-colons" "vless://$UUID@example.com:443?encryption=none&security=tls&fp=chrome&sni=example.com&pcs=$COLON_QUERY#vless-pinned-colons")"
+assert_contains "$vless_colon_output" "$EXPECTED_FIELD" "vless-pinned-colons"
+
+# Xray-JSON spelling. auto_user_agent is on by default, so a provider answers with
+# Xray-JSON instead of a link list, and the pin was simply not read at all.
+normalize_xray() { # <label> <json> -> normalized output path
+  local label="$1" json="$2"
+  printf '%s\n' "$json" >"$WORK_DIR/$label.in.json"
+  ucode "$PARSER" normalize-content "$WORK_DIR/$label.in.json" "$WORK_DIR/$label.out.json" ||
+    fail "normalize-content failed for $label"
+  printf '%s\n' "$WORK_DIR/$label.out.json"
+}
+
+xray_output="$(normalize_xray "xray-pin" "{\"outbounds\":[{\"protocol\":\"vless\",\"tag\":\"xray-pinned\",\"settings\":{\"vnext\":[{\"address\":\"example.com\",\"port\":443,\"users\":[{\"id\":\"$UUID\"}]}]},\"streamSettings\":{\"network\":\"tcp\",\"security\":\"tls\",\"tlsSettings\":{\"serverName\":\"example.com\",\"fingerprint\":\"chrome\",\"pinnedPeerCertSha256\":\"$COLON_HEX\"}}}]}")"
+assert_contains "$xray_output" "$EXPECTED_FIELD" "xray-json pinnedPeerCertSha256"
+
+xray_plain_output="$(normalize_xray "xray-no-pin" "{\"outbounds\":[{\"protocol\":\"vless\",\"tag\":\"xray-plain\",\"settings\":{\"vnext\":[{\"address\":\"example.com\",\"port\":443,\"users\":[{\"id\":\"$UUID\"}]}]},\"streamSettings\":{\"network\":\"tcp\",\"security\":\"tls\",\"tlsSettings\":{\"serverName\":\"example.com\"}}}]}")"
+assert_not_contains "$xray_plain_output" "certificate_sha256" "xray-json without a pin"
 
 vless_output="$(normalize_link "vless-pinned" "vless://$UUID@example.com:443?encryption=none&security=tls&fp=chrome&sni=example.com&pcs=$HEX#vless-pinned")"
 assert_contains "$vless_output" "$EXPECTED_FIELD" "vless-pinned"
