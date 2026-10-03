@@ -117,7 +117,7 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_syndata_multisplit",
         name: "TCP SYN Data + Multisplit (pos=1,midsld)",
         engine: "zapret2",
-        args: "--lua-desync=syndata --lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq",
+        args: "--lua-desync=syndata --lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=tcp_seq=1000000",
         description: "Combines SYN data injection with segmented SNI payload and badseq fooling."
     },
     {
@@ -140,7 +140,7 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_fake_repeats8_multisplit",
         name: "Burst Fake (repeats=8, tcp_ts) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:blob=tls_google:repeats=8:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1,midsld:seqovl=2:fooling=badseq",
+        args: "--lua-desync=fake:blob=tls_google:repeats=8:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1,midsld:seqovl=2:fooling=tcp_seq=1000000",
         description: "High-intensity 8-packet fake burst with PAWS timestamp before segmented payload."
     },
 
@@ -149,35 +149,35 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_yt_multisplit_midsld",
         name: "YouTube 4K Multisplit + MidSLD",
         engine: "zapret2",
-        args: "--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq",
+        args: "--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=tcp_seq=1000000",
         description: "Optimized for GoogleVideo 4K chunk streams and TSPU TLS desync."
     },
     {
         id: "z2_yt_multisplit_sniext",
         name: "SNI Extension Split + Badseq",
         engine: "zapret2",
-        args: "--lua-desync=multisplit:pos=1,sniext+4:seqovl=1:fooling=badseq",
+        args: "--lua-desync=multisplit:pos=1,sniext+4:seqovl=1:fooling=tcp_seq=1000000",
         description: "Splits deep into SNI extensions to fool next-gen DPI signatures."
     },
     {
         id: "z2_aggressive_combo",
         name: "Aggressive Triple-Split + SeqOvl 2",
         engine: "zapret2",
-        args: "--lua-desync=multisplit:pos=1,midsld,sniext+2:seqovl=2:fooling=badseq",
+        args: "--lua-desync=multisplit:pos=1,midsld,sniext+2:seqovl=2:fooling=tcp_seq=1000000",
         description: "High-entropy triple fragmentation for heavily filtered regions."
     },
     {
         id: "z2_wsize_seqovl_combo",
         name: "Window Clamp (wsize=1) + SeqOvl",
         engine: "zapret2",
-        args: "--lua-desync=multisplit:pos=1,midsld:wsize=1:seqovl=1:fooling=badseq",
+        args: "--lua-desync=multisplit:pos=1,midsld:wsize=1:seqovl=1:fooling=tcp_seq=1000000",
         description: "Combines 1-byte window clamp with sequence overlap."
     },
     {
         id: "z2_wsize_multisplit",
         name: "Window Size Clamp (wsize=1)",
         engine: "zapret2",
-        args: "--lua-desync=multisplit:pos=1,midsld:wsize=1:fooling=badseq",
+        args: "--lua-desync=multisplit:pos=1,midsld:wsize=1:fooling=tcp_seq=1000000",
         description: "Forces single-byte TCP window segments to evade reassembly."
     },
 
@@ -209,49 +209,49 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_fakedsplit_badseq",
         name: "Faked Split (pos=1,midsld) + BadSeq",
         engine: "zapret2",
-        args: "--lua-desync=fakedsplit:pos=1,midsld:fooling=badseq",
+        args: "--lua-desync=fakedsplit:pos=1,midsld:fooling=tcp_seq=1000000",
         description: "Splits real stream and inserts fake packets between fragments."
     },
     {
         id: "z2_fakeddisorder",
         name: "Faked Disorder (pos=1,midsld)",
         engine: "zapret2",
-        args: "--lua-desync=fakeddisorder:pos=1,midsld:fooling=badseq",
+        args: "--lua-desync=fakeddisorder:pos=1,midsld:fooling=tcp_seq=1000000",
         description: "Inserts out-of-order fake fragments with invalid sequence fooling."
     },
     {
         id: "z2_hostfakesplit",
         name: "Hostfake Split (pos=1,midsld)",
         engine: "zapret2",
-        args: "--lua-desync=hostfakesplit:pos=1,midsld:fooling=badseq",
+        args: "--lua-desync=hostfakesplit:pos=1,midsld:fooling=tcp_seq=1000000",
         description: "Replaces host header/SNI in first split packet with dummy host."
     },
     {
         id: "z2_tcpseg_multisplit",
         name: "TCPSeg (size=40) + Multisplit (pos=midsld)",
         engine: "zapret2",
-        args: "--lua-desync=tcpseg:size=40 --lua-desync=multisplit:pos=midsld:fooling=badseq",
+        args: "--lua-desync=tcpseg:size=40 --lua-desync=multisplit:pos=midsld:fooling=tcp_seq=1000000",
         description: "Forces low TCP MSS segment size before mid-SLD desync."
     },
     {
         id: "z2_multidisorder_midsld",
         name: "Classic Multidisorder (pos=1,midsld)",
         engine: "zapret2",
-        args: "--lua-desync=multidisorder:pos=1,midsld:fooling=badseq",
+        args: "--lua-desync=multidisorder:pos=1,midsld:fooling=tcp_seq=1000000",
         description: "Sends out-of-order segments at start and mid-SLD with badseq fooling."
     },
     {
         id: "z2_split_pos1",
         name: "Classic Multisplit (pos=1)",
         engine: "zapret2",
-        args: "--lua-desync=multisplit:pos=1:fooling=badseq",
+        args: "--lua-desync=multisplit:pos=1:fooling=tcp_seq=1000000",
         description: "Standard 2-fragment multisplit desync for compatibility."
     },
     {
         id: "z2_disorder_pos2",
         name: "Classic Multidisorder (pos=2)",
         engine: "zapret2",
-        args: "--lua-desync=multidisorder:pos=2:fooling=badseq",
+        args: "--lua-desync=multidisorder:pos=2:fooling=tcp_seq=1000000",
         description: "Sends out-of-order segment with badseq fooling."
     },
 
@@ -260,42 +260,42 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_fake_ttl3_md5sig",
         name: "Fake (TTL=3, MD5Sig) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=3:fooling=md5sig --lua-desync=multisplit:pos=1,midsld",
+        args: "--lua-desync=fake:ttl=3:fooling=tcp_md5 --lua-desync=multisplit:pos=1,midsld",
         description: "Aggressive low-TTL MD5Sig injection for close TSPU hops."
     },
     {
         id: "z2_fake_ttl4_badseq",
         name: "Fake (TTL=4, BadSeq) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=4:fooling=badseq --lua-desync=multisplit:pos=1,midsld",
+        args: "--lua-desync=fake:ttl=4:fooling=tcp_seq=1000000 --lua-desync=multisplit:pos=1,midsld",
         description: "Low-TTL fake ClientHello with badseq fooling and multisplit segmentation."
     },
     {
         id: "z2_fake_ttl5_md5sig",
         name: "Fake (TTL=5, MD5Sig) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=5:fooling=md5sig --lua-desync=multisplit:pos=1,midsld",
+        args: "--lua-desync=fake:ttl=5:fooling=tcp_md5 --lua-desync=multisplit:pos=1,midsld",
         description: "MD5Sig TCP option drops packet at DPI while reaching end server."
     },
     {
         id: "z2_fake_ttl6_badack",
         name: "Fake (TTL=6, BadACK) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=6:fooling=badack --lua-desync=multisplit:pos=1,sniext+2",
+        args: "--lua-desync=fake:ttl=6:fooling=tcp_ack=1000000 --lua-desync=multisplit:pos=1,sniext+2",
         description: "BadACK fooling invalidates packet in DPI state tracking."
     },
     {
         id: "z2_fake_badseq_mid",
         name: "Fake Packet (TTL=8) + MidSLD Split",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=8:fooling=badseq --lua-desync=multisplit:pos=midsld",
+        args: "--lua-desync=fake:ttl=8:fooling=tcp_seq=1000000 --lua-desync=multisplit:pos=midsld",
         description: "Injects fake ClientHello before segmented payload."
     },
     {
         id: "z2_fake_datanoack",
         name: "Fake (TTL=8, DataNoAck) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=8:fooling=datanoack --lua-desync=multisplit:pos=1",
+        args: "--lua-desync=fake:ttl=8:fooling=tcp_flags_unset=ack --lua-desync=multisplit:pos=1",
         description: "DataNoAck fooling confuses stateful DPI without triggering ACK RST."
     },
     {
@@ -1177,12 +1177,12 @@ function generate_combinatorial_zapret2() {
         }
         for (let sq in seqovls) {
             add(sprintf("Multisplit + SeqOvl %s (pos=%s, badseq)", sq, pos),
-                sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=badseq", pos, sq),
+                sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=tcp_seq=1000000", pos, sq),
                 "Multisplit with sequence overlap");
         }
         for (let w in wsizes) {
             add(sprintf("Multisplit + Window %s (pos=%s, badseq)", w, pos),
-                sprintf("--lua-desync=multisplit:pos=%s:wsize=%s:fooling=badseq", pos, w),
+                sprintf("--lua-desync=multisplit:pos=%s:wsize=%s:fooling=tcp_seq=1000000", pos, w),
                 "Multisplit with TCP window size clamping");
         }
     }
@@ -1234,10 +1234,10 @@ function generate_combinatorial_zapret2() {
             sprintf("--lua-desync=syndata --lua-desync=multidisorder:pos=%s", dis_pos),
             "TCP SYN data payload with out-of-order data segments");
         add(sprintf("SYN Data + Multisplit (pos=%s, seqovl=1)", pos),
-            sprintf("--lua-desync=syndata --lua-desync=multisplit:pos=%s:seqovl=1:fooling=badseq", pos),
+            sprintf("--lua-desync=syndata --lua-desync=multisplit:pos=%s:seqovl=1:fooling=tcp_seq=1000000", pos),
             "TCP SYN data payload with multisplit sequence overlap");
         add(sprintf("SYN Data + Window Clamp (wsize=1, pos=%s)", pos),
-            sprintf("--lua-desync=syndata --lua-desync=multisplit:pos=%s:wsize=1:fooling=badseq", pos),
+            sprintf("--lua-desync=syndata --lua-desync=multisplit:pos=%s:wsize=1:fooling=tcp_seq=1000000", pos),
             "TCP SYN data payload with 1-byte window clamp");
     }
     
@@ -1259,14 +1259,14 @@ function generate_combinatorial_zapret2() {
     // 7. Fakedsplit, Fakeddisorder & Hostfakesplit
     for (let pos in [ "1", "1,midsld", "midsld" ]) {
         add(sprintf("Fakedsplit (pos=%s, badseq)", pos),
-            sprintf("--lua-desync=fakedsplit:pos=%s:fooling=badseq", pos),
+            sprintf("--lua-desync=fakedsplit:pos=%s:fooling=tcp_seq=1000000", pos),
             "Stream splitting with embedded fake packets");
         let dis_pos = (pos == "1") ? "2" : pos;
         add(sprintf("Fakeddisorder (pos=%s, badseq)", dis_pos),
-            sprintf("--lua-desync=fakeddisorder:pos=%s:fooling=badseq", dis_pos),
+            sprintf("--lua-desync=fakeddisorder:pos=%s:fooling=tcp_seq=1000000", dis_pos),
             "Out-of-order stream with embedded fake fragments");
         add(sprintf("Hostfakesplit (pos=%s, badseq)", pos),
-            sprintf("--lua-desync=hostfakesplit:pos=%s:fooling=badseq", pos),
+            sprintf("--lua-desync=hostfakesplit:pos=%s:fooling=tcp_seq=1000000", pos),
             "Host header substitution in initial packet");
     }
 
@@ -1478,6 +1478,109 @@ function generate_combinatorial_byedpi() {
     return list;
 }
 
+// ── Target port profiles ─────────────────────────────────────────────────────
+// The generic lists are all TCP/443 TLS desync, so a Discord run over them cannot
+// find a fix for voice: the traffic the DPI actually touches is UDP STUN/RTP on
+// the voice ports and TCP media on 2053/2083/2087/2096/8443. The runtime config
+// routes exactly those ports (core/ip.uc DISCORD_VOICE_PORT_RANGES), so probing
+// them is consistent with what the section will do to the traffic.
+//
+// Each engine gets its own grammar here, and it is not a mechanical translation:
+// nfqws2 has no --dpi-desync-hostfakesplit-mod at all, and its tls_mod list is
+// rnd,rndsni,sni=<str> while v1 also accepts dupsid.
+const TARGET_PORT_PROFILES = {
+    discord: {
+        key: "discord",
+        match: [ "discord" ],
+        udp_ports: "3478,5000-5020,19294-19344,50000-65535",
+        tcp_ports: "2053,2083,2087,2096,8443",
+        udp_blob: "discord_udp",
+        tcp_blob: "tls_google",
+        tcp_seqovl: 681,
+        hostfakesplit_host: "discord.media"
+    }
+};
+
+function target_port_profile(target) {
+    let name = lc(as_string(target || ""));
+    for (let id in TARGET_PORT_PROFILES) {
+        for (let needle in TARGET_PORT_PROFILES[id].match) {
+            if (index(name, needle) >= 0)
+                return TARGET_PORT_PROFILES[id];
+        }
+    }
+    return null;
+}
+
+/**
+ * Strategies scoped to the ports a target actually uses. They are appended to the
+ * generic list rather than replacing it: 443 still matters for the web portal.
+ *
+ * The UDP ones will come back as "udp_not_probed" unless the probe can put UDP on
+ * the wire, and that is the honest answer - the fuzzer must not award them a score
+ * it did not earn. They are listed so the user can apply one and check voice by
+ * hand, which is the only way to verify it today.
+ */
+function target_port_strategies(engine, target) {
+    let profile = target_port_profile(target);
+    if (profile == null)
+        return [];
+
+    let list = [];
+    let seen = {};
+    let add = function(name, args, desc) {
+        args = trim(as_string(args));
+        if (args == "" || seen[args]) return;
+        let real_engine = engine == "all" ? "zapret2" : engine;
+        if (!fuzzer_runner.validate_strategy_args(real_engine, args)) return;
+        seen[args] = true;
+        push(list, {
+            id: sprintf("port_%s_%s_%d", real_engine, profile.key, length(list) + 1),
+            name: name,
+            engine: real_engine,
+            args: args,
+            description: desc,
+            rationale: "Ports this target really uses, in this engine's own syntax",
+            target_ports: true
+        });
+    };
+
+    if (engine == "zapret2" || engine == "all") {
+        add(sprintf("Discord Voice UDP (ports %s)", profile.udp_ports),
+            sprintf("--filter-udp=%s --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=%s:repeats=6",
+                profile.udp_ports, profile.udp_blob),
+            "STUN/RTP fake injection on the Discord voice ports");
+        add(sprintf("Discord Media TCP (ports %s)", profile.tcp_ports),
+            sprintf("--filter-tcp=%s --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=%s:repeats=6 --lua-desync=multisplit:pos=1:seqovl=%d:seqovl_pattern=%s",
+                profile.tcp_ports, profile.tcp_blob, profile.tcp_seqovl, profile.tcp_blob),
+            "Alternate Cloudflare edge ports Discord media uses");
+        add("Discord hostfakesplit (SNI-matched fake)",
+            sprintf("--filter-tcp=%s --filter-l7=tls --payload=tls_client_hello --lua-desync=hostfakesplit:host=%s:midhost=host-2:seqovl=726:fooling=badsum,tcp_seq=1000000",
+                profile.tcp_ports, profile.hostfakesplit_host),
+            "Fake ClientHello carrying the host the DPI expects to see");
+    }
+
+    if (engine == "zapret") {
+        add(sprintf("Discord Voice UDP (ports %s)", profile.udp_ports),
+            sprintf("--filter-udp=%s --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-stun=/opt/zapret/files/fake/stun.bin --dpi-desync-repeats=6",
+                profile.udp_ports),
+            "STUN fake injection on the Discord voice ports");
+        add(sprintf("Discord Media TCP (ports %s)", profile.tcp_ports),
+            sprintf("--filter-tcp=%s --dpi-desync=multisplit --dpi-desync-split-pos=2 --dpi-desync-split-seqovl=652 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin",
+                profile.tcp_ports),
+            "Alternate Cloudflare edge ports Discord media uses");
+        add("Discord hostfakesplit (SNI-matched fake)",
+            sprintf("--filter-tcp=%s --dpi-desync=hostfakesplit --dpi-desync-hostfakesplit-mod=host=%s --dpi-desync-hostfakesplit-midhost=host-2 --dpi-desync-split-seqovl=726 --dpi-desync-fooling=badsum,badseq --dpi-desync-badseq-increment=0",
+                profile.tcp_ports, profile.hostfakesplit_host),
+            "Fake ClientHello carrying the host the DPI expects to see");
+    }
+
+    // byedpi sits on a local redirect port and filters by nothing: it has no
+    // equivalent of --filter-tcp, so a port-scoped variant would be a lie.
+
+    return list;
+}
+
 function generate_adaptive_strategies(engine, target) {
     let list = [];
     let seen = {};
@@ -1522,7 +1625,7 @@ function generate_adaptive_strategies(engine, target) {
                 "PAWS with midsld multisplit");
         }
         add("SYN Data + Multisplit pos=1,midsld (badseq)",
-            "--lua-desync=syndata --lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq",
+            "--lua-desync=syndata --lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=tcp_seq=1000000",
             "TCP SYN payload injection with badseq fooling");
         add("SYN Data + Multidisorder pos=1,midsld",
             "--lua-desync=syndata --lua-desync=multidisorder:pos=1,midsld",
@@ -1577,6 +1680,10 @@ function generate_adaptive_strategies(engine, target) {
             }
         }
     }
+
+    // 3. Port-scoped strategies for this target, in the engine's own syntax.
+    for (let ps in target_port_strategies(engine, target))
+        push(list, ps);
 
     // Check memory budget: if low RAM (<32MB), cap to 20 strategies
     let avail_kb = fuzzer_runner.get_system_memory_kb();
@@ -1724,7 +1831,15 @@ function get_strategies_for_engine(engine, mode, target) {
             });
         }
     }
-    
+
+    // Port-scoped strategies for the target being fuzzed. A Discord run otherwise
+    // only ever sees TCP/443 and cannot say anything about voice.
+    for (let ps in target_port_strategies(engine, target)) {
+        if (seen_args[ps.args]) continue;
+        seen_args[ps.args] = true;
+        push(result, ps);
+    }
+
     return result;
 }
 
@@ -1804,6 +1919,9 @@ function module_exports() {
         BUILTIN_PRESETS_FILE,
         USER_PRESETS_FILE,
         PRESETS_MIRRORS,
+        TARGET_PORT_PROFILES,
+        target_port_profile,
+        target_port_strategies,
         validate_strategy_args,
         presets_file_candidates,
         load_presets_file,

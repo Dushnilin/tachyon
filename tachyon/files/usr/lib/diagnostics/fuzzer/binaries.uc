@@ -12,6 +12,8 @@ let common = require("core.common");
 let fuzzer_runner = require("diagnostics.fuzzer_runner");
 
 let as_string = common.as_string;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
 let command_success = common.command_success;
 let command_success_from_args = common.command_success_from_args;
 let shell_quote = common.shell_quote;
@@ -491,7 +493,7 @@ function add_bypass_singbox_chain(scope, with_udp) {
 }
 
 function verify_fuzzer_queue_rule(qnum) {
-    // ── Verify the queue rule actually landed ────────────────────────────────
+    // ── Verify the queue rule actually landed ─────────────────────────────
     // Without it probes silently test a direct connection, defeating the purpose.
     // nft output format varies by version: "queue num N bypass" (older) vs
     // "queue flags bypass to N" (newer).  Match any qnum near the keyword.
@@ -500,6 +502,36 @@ function verify_fuzzer_queue_rule(qnum) {
         log_fuzzer_message(sprintf("nftables queue rule verification failed for qnum=%d; rules may not have been applied", qnum));
     }
     return verified;
+}
+
+// Packets each protocol put through the fuzzer queue.
+//
+// /proc/net/netfilter/nfnetlink_queue only knows the queue total, and the total is
+// exactly what hides a UDP strategy: curl sends TCP, the queue rule matches both
+// protocols, nfqws passes the TCP packets through because its --filter-udp does
+// not apply to them, and the strategy looks like a clean win while its filter
+// never saw a single packet. Per-rule counters answer the only question that
+// matters - did the packets the strategy filters actually arrive.
+function parse_proto_counters(listing) {
+    let result = { tcp: 0, udp: 0 };
+
+    for (let line in split(as_string(listing), "\n")) {
+        for (let proto in [ "tcp", "udp" ]) {
+            if (index(line, sprintf("comment \"%s-proto\"", proto)) < 0)
+                continue;
+            let m = match(line, /packets[ \t]+([0-9]+)/);
+            if (m && m[1])
+                result[proto] += int(m[1]);
+        }
+    }
+
+    return result;
+}
+
+function read_fuzzer_proto_counters() {
+    return parse_proto_counters(
+        command_output_from_args([ "nft", "list", "table", "inet", "tachyon_fuzzer" ])
+    );
 }
 
 function setup_fuzzer_direct_nftables(qnum, is_udp, target_ips) {
@@ -581,9 +613,13 @@ function setup_fuzzer_direct_nftables(qnum, is_udp, target_ips) {
     system("nft 'add rule inet tachyon_fuzzer postnat ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
     system("nft 'add rule inet tachyon_fuzzer postnat ip6 daddr { 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844 } counter return' 2>/dev/null");
     if (is_udp) {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto { tcp, udp } th dport { 80, 443, 2053, 2083, 2087, 2096, 8443, 19294-19344, 50000-65535 } counter queue num %d' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum));
+        // Two rules, not one "l4proto { tcp, udp }" rule: each carries its own
+        // counter so a UDP strategy can be told apart from one that was never
+        // exercised. See read_fuzzer_proto_counters().
+        command_output_from_args([ "nft", sprintf("add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d comment \"tcp-proto\"", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum) ]);
+        command_output_from_args([ "nft", sprintf("add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto udp udp dport { 443, 2053, 2083, 2087, 2096, 8443, 3478, 5000-5020, 19294-19344, 50000-65535 } counter queue num %d comment \"udp-proto\"", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum) ]);
     } else {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter comment \"tcp-proto\" queue num %d' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum));
     }
     // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with FUZZER_OUTBOUND_MARK (direct outbound mark)
     // This guarantees that TachyonTable's mangle_output immediately returns and test traffic goes DIRECT to WAN without Sing-box TProxy
@@ -743,6 +779,8 @@ function module_exports() {
         add_bypass_singbox_chain,
         probe_curl_cmd,
         read_nfqueue_stats,
+        read_fuzzer_proto_counters,
+        parse_proto_counters,
         wait_nfqueue_bound,
         TARGET_SUITES,
         TARGET_URLS,

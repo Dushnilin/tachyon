@@ -2336,6 +2336,15 @@ function add_combined_route_for_section(config, section) {
         voice_rule.ip_cidr = discord_cf_subnets;
         voice_rule.port_range = core_ip.DISCORD_VOICE_PORT_RANGES || [ "5000:5020", "3478:3478", "19294:19344", "50000:65535" ];
         push_section_route_rule(config, voice_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
+
+        // Media is TCP and rides the alternate Cloudflare edge ports. Without this
+        // the section captured voice but let media past on 443 alone, which is the
+        // half of Discord a user notices as "voice works, screen share does not".
+        let media_rule = create_section_route_rule();
+        media_rule.network = "tcp";
+        media_rule.ip_cidr = discord_cf_subnets;
+        media_rule.port_range = core_ip.DISCORD_MEDIA_PORT_RANGES || [ "2053:2053", "2083:2083", "2087:2087", "2096:2096", "8443:8443" ];
+        push_section_route_rule(config, media_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
 
     let section_is_geo_only = !has_domain && !has_ruleset && !has_ip_cidr && length(discord_cf_subnets) == 0;

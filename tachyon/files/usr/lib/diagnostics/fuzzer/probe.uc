@@ -253,6 +253,29 @@ function parse_curl_output(output, result) {
 // opts.l4_unreachable: { url: true } for targets whose TCP handshake already failed
 // in the no-bypass baseline. They cannot discriminate between strategies, so they
 // are still probed and reported but no longer veto the whole strategy.
+/**
+ * Why a UDP strategy cannot be scored, or null when it can.
+ *
+ * The fuzzer probes with curl over HTTPS, so it only ever puts TCP on the wire.
+ * A strategy whose filter is UDP therefore has nothing acting on it: nfqws accepts
+ * the TCP packets untouched because --filter-udp does not apply to them, the probe
+ * succeeds, and the strategy collects a full score for a path nobody exercised.
+ * Since the winner is what the user ends up applying, "unmeasured" has to be a
+ * failure - but a *reported* one, distinct from a DPI verdict.
+ *
+ * probes_attempted keeps this away from the QUIC target when router curl has no
+ * HTTP/3: there the honest answer is "unsupported_proto", not "no UDP traffic".
+ */
+function udp_probe_verdict(is_udp, counters, probes_attempted) {
+    if (!is_udp || probes_attempted <= 0 || counters.udp > 0)
+        return null;
+
+    return sprintf(
+        "Strategy filters UDP, but the probe sent no UDP traffic (%d TCP packets through the queue): its UDP filter never ran, so this result says nothing about the strategy. Not a DPI verdict.",
+        counters.tcp
+    );
+}
+
 function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
     let l4_unreachable = (opts && type(opts.l4_unreachable) == "object") ? opts.l4_unreachable : {};
     cleanup_temp_daemons(job_id);
@@ -275,6 +298,9 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         speed_kbps: 0,
         score: 0,
         error: "",
+        nfqueue_packets: -1,
+        nfqueue_tcp_packets: 0,
+        nfqueue_udp_packets: 0,
         sub_probes: []
     };
     
@@ -574,6 +600,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         let any_data_verified = false;
         let last_http = 0;
         let last_dpi_verdict = "available";
+        let probes_attempted = 0;
         let dns_flags = binaries.get_fuzzer_curl_dns_flags();
         let required_failed = false;
 
@@ -609,6 +636,8 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             } else if (p_kind == "streaming") {
                 extra_flags = "-r 0-65535 ";
             }
+
+            probes_attempted++;
 
             let target_flags = binaries.get_resolved_host_flags(target_item.url);
             if (target_flags == "") target_flags = dns_flags;
@@ -656,6 +685,15 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
 
         let nfq_stats = binaries.read_nfqueue_stats(qnum);
         result.nfqueue_packets = nfq_stats ? nfq_stats.packets : -1;
+
+        // Whether the packets this strategy filters actually arrived. Without it a
+        // UDP strategy is scored on TCP traffic its filter never sees and wins on
+        // a result that means nothing: nfqws accepts the TCP packets untouched
+        // because --filter-udp does not apply to them.
+        let proto_counters = binaries.read_fuzzer_proto_counters();
+        result.nfqueue_tcp_packets = proto_counters.tcp;
+        result.nfqueue_udp_packets = proto_counters.udp;
+
         let daemon_alive_at_end = is_pid_alive(daemon_pid);
         cleanup_temp_daemons(job_id);
 
@@ -675,6 +713,19 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             result.data_verified = false;
             result.dpi_verdict = "daemon_crashed";
             result.error = sprintf("Fuzzer test daemon %s crashed or exited prematurely", is_z2 ? "nfqws2" : "nfqws");
+            return result;
+        }
+
+        // The strategy filters UDP and no UDP packet was ever queued, so nothing
+        // it does was exercised. Reported as unmeasured rather than as a pass: a
+        // win here would be pure noise from the TCP path.
+        let udp_verdict = udp_probe_verdict(is_udp, proto_counters, probes_attempted);
+        if (udp_verdict != null) {
+            result.success = false;
+            result.score = 0;
+            result.data_verified = false;
+            result.dpi_verdict = "udp_not_probed";
+            result.error = udp_verdict;
             return result;
         }
         
@@ -727,8 +778,9 @@ function module_exports() {
         JOB_HARD_DEADLINE_SECONDS,
         kill_pid_file,
         cleanup_temp_daemons,
-        parse_curl_output,
-        run_probe
+parse_curl_output,
+    udp_probe_verdict,
+    run_probe
     };
 }
 

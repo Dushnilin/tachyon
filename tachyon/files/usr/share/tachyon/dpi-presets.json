@@ -7,8 +7,8 @@
     {
       "id": "z2r_quic_fake_ipfrag2",
       "name": "QUIC YouTube: fake + ipfrag2",
-      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=3 --lua-desync=ipfrag2",
-      "description": "UDP QUIC fragmentation with fake QUIC initial. From zapret4rocket UDP/YT suite.",
+      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=3:ipfrag2",
+      "description": "UDP QUIC fragmentation with fake QUIC initial. From zapret4rocket UDP/YT suite. ipfrag2 is a value of the ipfrag argument, not a desync method of its own.",
       "source": "zapret4rocket",
       "tags": ["youtube", "quic", "udp"]
     },
@@ -55,7 +55,7 @@
     {
       "id": "z2r_rkn_fake_ts_badsum",
       "name": "RKN HTTPS: fake ts+badsum (msn.com SNI)",
-      "args": "--filter-tcp=443,2053,2083,2087,2096,8443 --lua-desync=fake:blob=tls_max:repeats=6:fooling=ts,badsum",
+      "args": "--filter-tcp=443,2053,2083,2087,2096,8443 --lua-desync=fake:blob=tls_max:repeats=6:fooling=tcp_ts=-600000,badsum",
       "description": "Multi-port HTTPS strategy covering all CDN ports used by Discord/RKN targets.",
       "source": "zapret4rocket",
       "tags": ["rkn", "discord", "tcp"]
@@ -63,7 +63,7 @@
     {
       "id": "z2r_hostfakesplit_rzd",
       "name": "HostFakeSplit (rzd.ru, seqovl=726)",
-      "args": "--filter-tcp=443 --lua-desync=hostfakesplit:host=rzd.ru:midhost=host-2:seqovl=726:fooling=badsum,badseq",
+      "args": "--filter-tcp=443 --lua-desync=hostfakesplit:host=rzd.ru:midhost=host-2:seqovl=726:fooling=badsum,tcp_seq=1000000",
       "description": "Splits at a whitelisted hostname boundary. zapret4rocket user-domain strategy 5.",
       "source": "zapret4rocket",
       "tags": ["rkn", "tcp", "advanced"]
@@ -71,7 +71,7 @@
     {
       "id": "z2r_hostfakesplit_google",
       "name": "HostFakeSplit (www.google.com, repeats=4)",
-      "args": "--filter-tcp=443 --lua-desync=hostfakesplit:host=www.google.com:repeats=4:fooling=ts,badsum",
+      "args": "--filter-tcp=443 --lua-desync=hostfakesplit:host=www.google.com:repeats=4:fooling=tcp_ts=-600000,badsum",
       "description": "Google-host fake split. zapret4rocket strategy 9.",
       "source": "zapret4rocket",
       "tags": ["rkn", "youtube", "tcp"]
@@ -87,16 +87,16 @@
     {
       "id": "z2r_badseq_increment_10000000",
       "name": "Fake + badseq increment 1e7",
-      "args": "--filter-tcp=443 --lua-desync=fake:blob=tls_google:repeats=6:fooling=ts,badsum --lua-desync=multisplit:pos=1:fooling=badseq",
+      "args": "--filter-tcp=443 --lua-desync=fake:blob=tls_google:repeats=6:fooling=tcp_ts=-600000,badsum --lua-desync=multisplit:pos=1:fooling=tcp_seq=1000000",
       "description": "Large badseq increment to defeat strict stateful reassembly. zapret4rocket strategy 7.",
       "source": "zapret4rocket",
       "tags": ["rkn", "tcp"]
     },
     {
       "id": "z2r_fake_split2_google_blob",
-      "name": "Fake + split2 (google blob, repeats=6)",
-      "args": "--filter-tcp=443 --lua-desync=fake:blob=tls_google:repeats=6:fooling=ts,badsum --lua-desync=split2:pos=1",
-      "description": "zapret4rocket strategy 13 adapted to nfqws2.",
+      "name": "Fake + multisplit (google blob, repeats=6)",
+      "args": "--filter-tcp=443 --lua-desync=fake:blob=tls_google:repeats=6:fooling=tcp_ts=-600000,badsum --lua-desync=multisplit:pos=1",
+      "description": "zapret4rocket strategy 13 adapted to nfqws2. v1 split2 is nfqws2 multisplit.",
       "source": "zapret4rocket",
       "tags": ["rkn", "tcp"]
     },
@@ -143,7 +143,7 @@
     {
       "id": "z2r_rutracker_http_md5sig",
       "name": "RuTracker HTTP: multisplit md5sig",
-      "args": "--filter-tcp=80 --lua-desync=multisplit:pos=host+1:seqovl=2:fooling=md5sig",
+      "args": "--filter-tcp=80 --lua-desync=multisplit:pos=host+1:seqovl=2:fooling=tcp_md5",
       "description": "Plain HTTP announcer bypass with host-boundary split. zapret4rocket rutracker strategy.",
       "source": "zapret4rocket",
       "tags": ["rutracker", "http"]
@@ -151,7 +151,7 @@
     {
       "id": "z2r_tlsrec_sniext_ladder",
       "name": "TLS Record fragment + SNI ladder",
-      "args": "--filter-tcp=443 --lua-desync=multisplit:pos=1,midsld,sniext+4:seqovl=1:fooling=badseq",
+      "args": "--filter-tcp=443 --lua-desync=multisplit:pos=1,midsld,sniext+4:seqovl=1:fooling=tcp_seq=1000000",
       "description": "Combined TLS record and SNI extension fragmentation.",
       "source": "homeproxy-hiddify",
       "tags": ["rkn", "tcp", "advanced"]
@@ -185,7 +185,7 @@
     {
       "id": "z1r_hostfakesplit_rzd_v1",
       "name": "HostFakeSplit (rzd.ru)",
-      "args": "--dpi-desync=hostfakesplit --dpi-desync-hostfakesplit-mod=host=rzd.ru --dpi-desync-hostfakesplit-midhost=host-2 --dpi-desync-split-seqovl=726 --dpi-desync-fooling=badsum,badseq --dpi-desync-badseq-increment=0",
+      "args": "--dpi-desync=hostfakesplit --dpi-desync-hostfakesplit-mod=host=rzd.ru --dpi-desync-hostfakesplit-midhost=host-2 --dpi-desync-split-seqovl=726 --dpi-desync-fooling=badsum,tcp_seq=1000000 --dpi-desync-badseq-increment=0",
       "description": "Whitelisted hostname boundary split. zapret4rocket user-domain strategy 5.",
       "source": "zapret4rocket",
       "tags": ["rkn", "tcp", "advanced"]
