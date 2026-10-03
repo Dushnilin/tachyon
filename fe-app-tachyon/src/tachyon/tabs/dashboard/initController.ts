@@ -53,6 +53,7 @@ function toggleSectionExpanded(sectionCode: string) {
   void renderConnectionsWidget();
 }
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
+import { measurePriorityLatencies } from './priorityLatency';
 import { Tachyon } from '../../types';
 import {
   getCachedRuntimeUiState,
@@ -1647,12 +1648,50 @@ function handleShowPriorityInfo(
     return;
   }
 
+  const info = outbound.priorityInfo;
+  const body = E('div', {}, [renderPriorityInfoModal(outbound, section)]);
+
   ui.showModal(
     `${_('Priority details')}: ${
       outbound.priorityInfo.displayName || outbound.displayName
     }`,
-    renderPriorityInfoModal(outbound, section),
+    body,
   );
+
+  // A priority group is a plain selector over raw server tags, so sing-box never
+  // measures it and every fallback-level node reads N/A - even though the members
+  // are reachable and the priority daemon probes them on its own schedule. Ask the
+  // same Clash API the daemon asks, then repaint the modal with the numbers.
+  void measurePriorityLatencies(info.outbounds || [], {
+    healthUrl: info.healthUrl,
+    existing: customProxyLatencies,
+    probe: (tag, timeout) =>
+      TachyonShellMethods.getClashApiProxyLatency(tag, timeout),
+  }).then((measured) => {
+    if (measured.size === 0 || !body.isConnected) {
+      return;
+    }
+
+    measured.forEach((delay, tag) => {
+      customProxyLatencies.set(tag, delay);
+    });
+    capMapSize(customProxyLatencies);
+
+    const withLatencies: Tachyon.PriorityInfo = {
+      ...info,
+      outbounds: (info.outbounds || []).map((member) => {
+        const delay = measured.get(String(member.code || ''));
+        return delay === undefined ? member : { ...member, latency: delay };
+      }),
+    };
+
+    body.replaceChildren(
+      renderPriorityInfoModal(
+        { ...outbound, priorityInfo: withLatencies },
+        section,
+      ),
+    );
+  });
 }
 
 async function handleUpdateSubscription(section: Tachyon.OutboundGroup) {

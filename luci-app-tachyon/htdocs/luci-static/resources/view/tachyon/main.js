@@ -8540,6 +8540,49 @@ function computeTrafficRates(uploadTotal, downloadTotal, now, state) {
   };
 }
 
+// src/tachyon/tabs/dashboard/priorityLatency.ts
+var PRIORITY_PROBE_TIMEOUT_MS = "2000";
+function collectUnmeasuredTags(members, existing) {
+  const tags = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const member of members || []) {
+    const tag = String(member?.code || "");
+    if (!tag || seen.has(tag)) continue;
+    if (typeof member?.latency === "number" && member.latency !== 0) continue;
+    if (existing?.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+  }
+  return tags;
+}
+function parseDelay(data) {
+  if (!data || typeof data !== "object") return -1;
+  const single = data.delay;
+  if (typeof single === "number" && single > 0) return single;
+  const delays = Object.values(data).filter(
+    (value) => typeof value === "number" && value > 0
+  );
+  return delays.length > 0 ? Math.min(...delays) : -1;
+}
+async function measurePriorityLatencies(members, options) {
+  const measured = /* @__PURE__ */ new Map();
+  const tags = collectUnmeasuredTags(members, options.existing);
+  if (tags.length === 0) return measured;
+  const timeout = options.timeout || PRIORITY_PROBE_TIMEOUT_MS;
+  const healthUrl = options.healthUrl || "";
+  await Promise.all(
+    tags.map(async (tag) => {
+      try {
+        const response = await options.probe(tag, timeout, healthUrl);
+        measured.set(tag, response?.success ? parseDelay(response.data) : -1);
+      } catch {
+        measured.set(tag, -1);
+      }
+    })
+  );
+  return measured;
+}
+
 // src/tachyon/helpers/isActiveLuciTab.ts
 function isActiveLuciTab(tabId) {
   if (typeof document === "undefined") {
@@ -9834,10 +9877,38 @@ function handleShowPriorityInfo(section, outbound) {
   if (!outbound.priorityInfo) {
     return;
   }
+  const info = outbound.priorityInfo;
+  const body = E("div", {}, [renderPriorityInfoModal(outbound, section)]);
   ui.showModal(
     `${_("Priority details")}: ${outbound.priorityInfo.displayName || outbound.displayName}`,
-    renderPriorityInfoModal(outbound, section)
+    body
   );
+  void measurePriorityLatencies(info.outbounds || [], {
+    healthUrl: info.healthUrl,
+    existing: customProxyLatencies,
+    probe: (tag, timeout) => TachyonShellMethods.getClashApiProxyLatency(tag, timeout)
+  }).then((measured) => {
+    if (measured.size === 0 || !body.isConnected) {
+      return;
+    }
+    measured.forEach((delay, tag) => {
+      customProxyLatencies.set(tag, delay);
+    });
+    capMapSize(customProxyLatencies);
+    const withLatencies = {
+      ...info,
+      outbounds: (info.outbounds || []).map((member) => {
+        const delay = measured.get(String(member.code || ""));
+        return delay === void 0 ? member : { ...member, latency: delay };
+      })
+    };
+    body.replaceChildren(
+      renderPriorityInfoModal(
+        { ...outbound, priorityInfo: withLatencies },
+        section
+      )
+    );
+  });
 }
 async function handleUpdateSubscription(section) {
   if (store.get().sectionsWidget.subscriptionUpdatingSections[section.sectionName]) {
@@ -11585,49 +11656,52 @@ async function runSingBoxCheck() {
   const allGood = Boolean(data.sing_box_installed) && Boolean(data.sing_box_version_ok) && Boolean(data.sing_box_service_exist) && Boolean(data.sing_box_autostart_disabled) && Boolean(data.sing_box_process_running) && Boolean(data.sing_box_ports_listening);
   const atLeastOneGood = Boolean(data.sing_box_installed) || Boolean(data.sing_box_version_ok) || Boolean(data.sing_box_service_exist) || Boolean(data.sing_box_autostart_disabled) || Boolean(data.sing_box_process_running) || Boolean(data.sing_box_ports_listening);
   const { state, description } = getMeta({ atLeastOneGood, allGood });
+  const items = [
+    {
+      state: data.sing_box_installed ? "success" : "error",
+      key: _("Sing-box installed"),
+      value: ""
+    },
+    {
+      state: data.sing_box_version_ok ? "success" : "error",
+      key: _("Sing-box version is compatible (newer than 1.12.4)"),
+      value: ""
+    },
+    {
+      state: data.sing_box_service_exist ? "success" : "error",
+      key: _("Sing-box service exist"),
+      value: ""
+    },
+    {
+      state: data.sing_box_autostart_disabled ? "success" : "error",
+      key: _("Sing-box autostart disabled"),
+      value: ""
+    },
+    {
+      state: data.sing_box_process_running ? "success" : "error",
+      key: _("Sing-box process running"),
+      value: ""
+    },
+    {
+      state: data.sing_box_ports_listening ? "success" : "error",
+      key: _("Sing-box listening ports"),
+      value: ""
+    }
+  ];
+  if (!data.sing_box_extended) {
+    items.push({
+      state: !data.sing_box_installed ? "error" : data.sing_box_cert_pin ? "success" : "warning",
+      key: _("TLS certificate pinning (sing-box 1.15+)"),
+      value: data.sing_box_cert_pin ? _("Supported") : _("Ignored (Upgrade to Extended)")
+    });
+  }
   updateCheckStore({
     order,
     code,
     title,
     description,
     state,
-    items: [
-      {
-        state: data.sing_box_installed ? "success" : "error",
-        key: _("Sing-box installed"),
-        value: ""
-      },
-      {
-        state: data.sing_box_version_ok ? "success" : "error",
-        key: _("Sing-box version is compatible (newer than 1.12.4)"),
-        value: ""
-      },
-      {
-        state: data.sing_box_service_exist ? "success" : "error",
-        key: _("Sing-box service exist"),
-        value: ""
-      },
-      {
-        state: data.sing_box_autostart_disabled ? "success" : "error",
-        key: _("Sing-box autostart disabled"),
-        value: ""
-      },
-      {
-        state: data.sing_box_process_running ? "success" : "error",
-        key: _("Sing-box process running"),
-        value: ""
-      },
-      {
-        state: data.sing_box_ports_listening ? "success" : "error",
-        key: _("Sing-box listening ports"),
-        value: ""
-      },
-      {
-        state: !data.sing_box_installed ? "error" : data.sing_box_cert_pin ? "success" : "warning",
-        key: _("TLS certificate pinning (sing-box 1.15+)"),
-        value: data.sing_box_cert_pin ? _("Supported") : _("Ignored (Upgrade to Extended)")
-      }
-    ]
+    items
   });
   if (!atLeastOneGood || !data.sing_box_process_running) {
     throw new Error("Sing-box checks failed");

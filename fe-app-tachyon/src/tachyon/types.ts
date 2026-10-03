@@ -758,6 +758,7 @@ export namespace Tachyon {
     sing_box_autostart_disabled: 0 | 1;
     sing_box_process_running: 0 | 1;
     sing_box_ports_listening: 0 | 1;
+    sing_box_extended?: 0 | 1;
     sing_box_cert_pin?: 0 | 1;
   }
 

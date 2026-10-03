@@ -2,6 +2,7 @@ import { DIAGNOSTICS_CHECKS_MAP } from './constants';
 import { TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
+import { IDiagnosticsChecksItem } from '../../../services';
 
 export async function runSingBoxCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.SINGBOX;
@@ -50,55 +51,66 @@ export async function runSingBoxCheck() {
 
   const { state, description } = getMeta({ atLeastOneGood, allGood });
 
+  const items: Array<IDiagnosticsChecksItem> = [
+    {
+      state: data.sing_box_installed ? 'success' : 'error',
+      key: _('Sing-box installed'),
+      value: '',
+    },
+    {
+      state: data.sing_box_version_ok ? 'success' : 'error',
+      key: _('Sing-box version is compatible (newer than 1.12.4)'),
+      value: '',
+    },
+    {
+      state: data.sing_box_service_exist ? 'success' : 'error',
+      key: _('Sing-box service exist'),
+      value: '',
+    },
+    {
+      state: data.sing_box_autostart_disabled ? 'success' : 'error',
+      key: _('Sing-box autostart disabled'),
+      value: '',
+    },
+    {
+      state: data.sing_box_process_running ? 'success' : 'error',
+      key: _('Sing-box process running'),
+      value: '',
+    },
+    {
+      state: data.sing_box_ports_listening ? 'success' : 'error',
+      key: _('Sing-box listening ports'),
+      value: '',
+    },
+  ];
+
+  // certificate_sha256 is an upstream 1.15 field, and the capability check reads
+  // the version number. An extended build reports 1.14.x, so the line was
+  // permanently amber there and told the user to "upgrade to Extended" while they
+  // were already on it. lx sets the same flag and tracks upstream on its own, so
+  // there is nothing to act on either. Both variants drop the line; a stock build
+  // below 1.15 still gets the warning, and there it is actionable.
+  if (!data.sing_box_extended) {
+    items.push({
+      state: !data.sing_box_installed
+        ? 'error'
+        : data.sing_box_cert_pin
+          ? 'success'
+          : 'warning',
+      key: _('TLS certificate pinning (sing-box 1.15+)'),
+      value: data.sing_box_cert_pin
+        ? _('Supported')
+        : _('Ignored (Upgrade to Extended)'),
+    });
+  }
+
   updateCheckStore({
     order,
     code,
     title,
     description,
     state,
-    items: [
-      {
-        state: data.sing_box_installed ? 'success' : 'error',
-        key: _('Sing-box installed'),
-        value: '',
-      },
-      {
-        state: data.sing_box_version_ok ? 'success' : 'error',
-        key: _('Sing-box version is compatible (newer than 1.12.4)'),
-        value: '',
-      },
-      {
-        state: data.sing_box_service_exist ? 'success' : 'error',
-        key: _('Sing-box service exist'),
-        value: '',
-      },
-      {
-        state: data.sing_box_autostart_disabled ? 'success' : 'error',
-        key: _('Sing-box autostart disabled'),
-        value: '',
-      },
-      {
-        state: data.sing_box_process_running ? 'success' : 'error',
-        key: _('Sing-box process running'),
-        value: '',
-      },
-      {
-        state: data.sing_box_ports_listening ? 'success' : 'error',
-        key: _('Sing-box listening ports'),
-        value: '',
-      },
-      {
-        state: !data.sing_box_installed
-          ? 'error'
-          : data.sing_box_cert_pin
-            ? 'success'
-            : 'warning',
-        key: _('TLS certificate pinning (sing-box 1.15+)'),
-        value: data.sing_box_cert_pin
-          ? _('Supported')
-          : _('Ignored (Upgrade to Extended)'),
-      },
-    ],
+    items,
   });
 
   if (!atLeastOneGood || !data.sing_box_process_running) {
