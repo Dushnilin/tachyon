@@ -376,6 +376,11 @@ component_actions_dir="$WORK_DIR/component-actions"
 fake_lib="$WORK_DIR/lib"
 mkdir -p "$fake_lib/components" "$fake_lib/config" "$fake_lib/core"
 cp "$UPDATES_UC" "$fake_lib/components/updates.uc"
+# components/helpers.uc is a real dependency of updates.uc (component_worker_env
+# asks it for the router timezone), so the fixture has to carry it. Without it the
+# require fails, component_worker_env() throws, and the worker never starts - which
+# showed up as a job stuck at running:true rather than as a load error.
+cp "$TACHYON_LIB/components/helpers.uc" "$fake_lib/components/helpers.uc"
 cp "$TACHYON_LIB/config/connections.uc" "$fake_lib/config/connections.uc"
 cp "$TACHYON_LIB/core/uci.uc" "$fake_lib/core/uci.uc"
 cp "$TACHYON_LIB/core/common.uc" "$fake_lib/core/common.uc"

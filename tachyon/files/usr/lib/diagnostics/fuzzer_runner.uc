@@ -17,8 +17,12 @@ function is_valid_hostname(host) {
 function is_valid_url(url) {
     url = trim(as_string(url));
     if (url == "" || length(url) > 1024) return false;
-    // URL must start with http:// or https://, no shell metacharacters
-    return match(url, /^https?:\/\/[a-zA-Z0-9][-a-zA-Z0-9.]*(:[0-9]{1,5})?(\/[^\s;`$&|<>'"\\]*)?$/) != null;
+    // URL must start with http:// or https://, no shell metacharacters. The path
+    // class is an explicit list: "\s" inside a character class is not whitespace in
+    // this engine, it is the two characters "\" and "s", so "[^\s...]" also rejected
+    // every path containing the letter s - /users, /status, /api/v9/users/@me all
+    // came back invalid and a custom fuzzer target was refused for no stated reason.
+    return match(url, /^https?:\/\/[a-zA-Z0-9][-a-zA-Z0-9.]*(:[0-9]{1,5})?(\/[^ \t\r\n;`$&|<>'"\\]*)?$/) != null;
 }
 
 function tokenize_strategy_args(raw_args) {

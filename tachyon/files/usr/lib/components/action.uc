@@ -2059,7 +2059,11 @@ function install_package_sing_box(action, tiny) {
     if (new_version == "")
         fail_package_sing_box_install(action, tiny, "package was installed, but sing-box binary is not available", current_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
-    if (sing_box_runtime_success("is-extended", [ new_version ]))
+    // Judged on its own: the marker still says lx/extended at this point - it is
+    // rewritten four lines below - and sing_box_is_extended() takes the marker as
+    // the authority, so it answered "still extended" for a stock binary and the
+    // install was rolled back even though the package had been replaced.
+    if (sing_box_runtime_success("version-looks-extended", [ new_version ]))
         fail_package_sing_box_install(action, tiny, "package was installed, but the active binary is still sing-box-extended", new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
 

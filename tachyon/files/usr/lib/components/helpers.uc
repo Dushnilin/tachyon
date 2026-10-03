@@ -123,14 +123,51 @@ function pid_running(pid) {
 // Logging: syslog + job log + job phase reporting
 // ============================================================================
 
+// The timezone the router is set to, as a POSIX TZ string.
+//
+// The component worker is spawned with an explicit environment, so it cannot rely
+// on inheriting TZ, and on OpenWrt /etc/localtime is a symlink into /tmp that only
+// exists once the system init has generated it - with no zoneinfo-* installed musl
+// falls back to UTC. The operation log then showed UTC stamps on a router set to
+// Europe/Moscow. UCI is the setting the user changed in LuCI; /etc/TZ is what the
+// system init derives from it.
+function component_worker_tz() {
+    let tz = "";
+    try {
+        let uci_core = require("core.uci");
+        tz = trim(as_string(uci_core.get("system", "@system[0]", "timezone") || ""));
+    } catch (e) {}
+
+    if (tz == "") {
+        try {
+            tz = trim(as_string(fs.readfile("/etc/TZ") || ""));
+        } catch (e) {}
+    }
+
+    // Last resort: whatever the caller already has. The system init exports TZ, so
+    // this is the path on a router where /etc/TZ has not been written yet.
+    if (tz == "")
+        tz = trim(as_string(getenv("TZ") || ""));
+
+    return tz;
+}
+
 function log_message(message, level) {
     level = as_string(level || "info");
     command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
+// Local time, not UTC. clock() returns epoch seconds and dividing them by 3600
+// gives the UTC hour, so every stamp in the operation log was off by the router's
+// offset - three hours in Europe/Moscow, four in UTC+4 - while `date` and syslog on
+// the same router were correct. core/logging.uc already had this right, which is
+// why the two disagreed.
 function job_log_time() {
-    let seconds = int(clock()[0]);
-    return sprintf("%02d:%02d:%02d", int(seconds / 3600) % 24, int(seconds / 60) % 60, seconds % 60);
+    let t = time();
+    let tm = localtime(t);
+    if (!tm)
+        return as_string(t);
+    return sprintf("%02d:%02d:%02d", int(tm.hour), int(tm.min), int(tm.sec));
 }
 
 function job_log_append(message, level) {
@@ -614,8 +651,9 @@ function module_exports() {
         owner_pid,
         pid_running,
         log_message,
-        job_log_time,
-        job_log_append,
+job_log_time,
+    job_log_append,
+    component_worker_tz,
         updates_log,
         update_job_phase,
         job_heartbeat,

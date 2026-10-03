@@ -156,8 +156,9 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
     let version_file = helpers.make_tmp_file("sb-cand-ver");
     if (candidate_cfg != "" && version_file != "") {
         let ver = trim(common.command_output_from_args([ binary, "version" ]));
-        let ver_m = match(ver, /sing-box version ([^\s]+)/);
-        let ver_str = ver_m ? ver_m[1] : "";
+        // Shared parser: "\s" inside a character class is not whitespace in this
+        // engine, so this used to capture the version plus the rest of the banner.
+        let ver_str = common.parse_sing_box_version(ver);
         fs.writefile(version_file, ver_str + "\n");
         let gen_env = {
             SB_VERSION_STATE_FILE: version_file

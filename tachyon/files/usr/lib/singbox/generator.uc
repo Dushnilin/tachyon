@@ -486,16 +486,34 @@ function tproxy_inbound_matcher() {
 
 let cached_sb_version = null;
 
+// The version state file is written by the component action alone. Treating it as
+// the source of truth meant a sing-box replaced by hand - install.sh, opkg, a
+// dropped-in binary - kept whatever the last component action wrote, and the
+// generator then configured for a version that was no longer installed: stock
+// 1.13.21 answered "1.15.0-alpha.10" on the wire, the file still said 1.13.21, so
+// the generator emitted cache_file.store_rdrc and 1.15 refused to start.
+//
+// So the file is a fallback for the variants whose binary cannot be executed for a
+// version string, and nothing else: extended-compressed is a self-extracting stub
+// and lx needs a runtime that may be absent. Everyone else is asked directly, and
+// the file is refreshed from the answer so it stops being stale.
+function sing_box_live_version_probe_disabled() {
+    let marker_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let marker = trim(fs.readfile(marker_file) || "");
+    return marker == "extended-compressed" || marker == "lx";
+}
+
 function detect_sing_box_version() {
     if (cached_sb_version != null)
         return cached_sb_version;
 
-    let env_file = getenv("SB_VERSION_STATE_FILE");
-    if (env_file != null && env_file != "") {
-        let ver = trim(fs.readfile(env_file) || "");
-        if (ver != "") {
-            cached_sb_version = ver;
-            return ver;
+    let state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+
+    if (sing_box_live_version_probe_disabled()) {
+        let recorded = trim(fs.readfile(state_file) || "");
+        if (recorded != "") {
+            cached_sb_version = recorded;
+            return recorded;
         }
     }
 
@@ -505,13 +523,18 @@ function detect_sing_box_version() {
             if (pipe) {
                 let out = pipe.read("all");
                 pipe.close();
-                let m = match(out, /sing-box version ([^\s]+)/);
-                if (m) {
-                    cached_sb_version = m[1];
+                // The shared parser, not a second ad-hoc regex: "\s" inside a
+                // character class is not whitespace in this engine, so
+                // /sing-box version ([^\s]+)/ swallowed the newline and came back
+                // as "1.15.0-alpha.10\n\nTag" - which then got written to the
+                // state file. common.parse_sing_box_version() documents why.
+                let found = common.parse_sing_box_version(out);
+                if (found != "") {
+                    cached_sb_version = found;
                     try {
-                        let cur_disk = trim(fs.readfile("/etc/tachyon/sing-box-version") || "");
+                        let cur_disk = trim(fs.readfile(state_file) || "");
                         if (cur_disk != cached_sb_version)
-                            fs.writefile("/etc/tachyon/sing-box-version", cached_sb_version + "\n");
+                            fs.writefile(state_file, cached_sb_version + "\n");
                     } catch (e) {}
                     return cached_sb_version;
                 }
@@ -519,8 +542,7 @@ function detect_sing_box_version() {
         }
     } catch (e) {}
 
-    let sb_version_file = "/etc/tachyon/sing-box-version";
-    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
+    let sb_version_val = trim(fs.readfile(state_file) || "");
     if (sb_version_val == "") {
         let sb_ui_cache = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || "/var/run/tachyon/ui-state/sing-box-version";
         sb_version_val = trim(fs.readfile(sb_ui_cache) || "");
@@ -1796,6 +1818,12 @@ else if (mode == "is-cert-pin-supported")
     exit(is_certificate_sha256_supported(ARGV[1]) ? 0 : 1);
 else if (mode == "is-sb-1-14-plus")
     exit(is_sb_1_14_plus_detected(ARGV[1]) ? 0 : 1);
+else if (mode == "version-detect") {
+    // Exposed so the version source can be exercised directly: a state file that
+    // disagrees with the binary has to lose, and that is only observable here.
+    print(detect_sing_box_version() + "\n");
+    exit(0);
+}
 else if (mode == "strip-cert-pins") {
     let cfg = json(fs.readfile("/dev/stdin"));
     if (type(cfg) == "object") {

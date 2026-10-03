@@ -1019,7 +1019,9 @@ function controller(bus, opts) {
         let rt = command_capture("ip -4 route show default 2>/dev/null").output;
         if (!rt || rt == "") rt = command_capture("ip route show table all default 2>/dev/null").output;
         if (rt && rt != "") {
-            let m = match(rt, /dev\s+([^\s]+)/);
+            // Explicit class: "\s" inside [] is not whitespace in this engine, so [^\s]+
+//            took the rest of the line instead of the interface name.
+            let m = match(rt, /dev[ \t]+([^ \t\r\n]+)/);
             if (m && m[1]) return m[1];
         }
         return null;

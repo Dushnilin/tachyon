@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let helpers = require("core.helpers");
+let components_helpers = require("components.helpers");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 
@@ -1896,7 +1897,7 @@ function finish_component_job(path, component, action, exit_code, output_file) {
 }
 
 function component_worker_env() {
-    return {
+    let env = {
         TACHYON_CONFIG_NAME: CONFIG_NAME,
         TACHYON_LIB: LIB_DIR,
         TACHYON_BIN: BIN_PATH,
@@ -1907,6 +1908,20 @@ function component_worker_env() {
         UPDATES_JOB_STALE_GRACE_SECONDS: COMPONENT_JOB_STALE_GRACE_SECONDS,
         TACHYON_UI_COMPONENT_ACTION_TRACKED: "1"
     };
+
+    // Without this the operation log is stamped in UTC on any router set to a local
+    // timezone, because the worker gets an explicit env and /etc/localtime may be a
+    // dangling symlink into tmpfs.
+    //
+    // Guarded: a missing timezone costs a wrong-looking stamp, while a throw here
+    // would kill the component action that is being launched, which is far worse.
+    try {
+        let tz = components_helpers.component_worker_tz();
+        if (tz != "")
+            env.TZ = tz;
+    } catch (e) {}
+
+    return env;
 }
 
 function launch_component_worker(args) {

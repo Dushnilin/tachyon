@@ -205,6 +205,22 @@ function sing_box_version_is_lx(value) {
     return s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0;
 }
 
+// Answers "which variant is installed *right now*", and for that the marker file
+// is the authority - the binary of an extended build does not always name itself.
+//
+// But that makes it the wrong question immediately after a package swap: the
+// marker still describes the variant that was just replaced, so the post-install
+// check in components/action.uc read "extended" for a freshly installed stock
+// 1.13.21 and rolled the install back with "the active binary is still
+// sing-box-extended". That question is about one string, so this is the predicate
+// for it: the version alone, no marker, no fallback to a live probe.
+function sing_box_version_looks_extended(value) {
+    let v = as_string(value);
+    if (v == "")
+        return false;
+    return sing_box_version_is_extended(v) || sing_box_version_is_lx(v);
+}
+
 function sing_box_is_extended(value) {
     value = as_string(value);
     if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx"))
@@ -1070,6 +1086,20 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                     stripped = true;
                 }
             }
+            // 1.14 and later answer with a deprecation notice that does not carry the
+            // option path, so matching only "experimental.cache_file.store_rdrc" missed
+            // it and the whole start died on [fatal] instead of retrying with store_dns.
+            else if (match(check_result.reason, /store_rdrc cache file option is deprecated/)) {
+                log_message("Installed sing-box rejected store_rdrc: " + check_result.reason + "; switching to store_dns and retrying", "warn");
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object" && type(cfg.experimental) == "object" && type(cfg.experimental.cache_file) == "object") {
+                    delete cfg.experimental.cache_file.store_rdrc;
+                    cfg.experimental.cache_file.store_dns = true;
+                    write_file(temp_config, sprintf("%J", cfg));
+                    stripped = true;
+                }
+            }
             else if (match(check_result.reason, /experimental\.cache_file\.store_rdrc/)) {
                 log_message("Installed sing-box rejected store_rdrc: " + check_result.reason + "; switching to store_dns and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
@@ -1226,6 +1256,8 @@ else if (mode == "marker-is")
     exit(sing_box_marker_is(ARGV[1]) ? 0 : 1);
 else if (mode == "is-extended")
     exit(sing_box_is_extended(ARGV[1]) ? 0 : 1);
+else if (mode == "version-looks-extended")
+    exit(sing_box_version_looks_extended(ARGV[1]) ? 0 : 1);
 else if (mode == "is-lx")
     exit(sing_box_is_lx(ARGV[1]) ? 0 : 1);
 else if (mode == "is-tiny")

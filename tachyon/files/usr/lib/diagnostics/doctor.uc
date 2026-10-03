@@ -2468,7 +2468,9 @@ function compress_log_snippet(raw_snippet) {
     for (let i = 0; i < length(lines); i++) {
         let line = trim(as_string(lines[i]));
         if (line == "") continue;
-        let normalized = replace(line, /^[A-Z][a-z]{2}\s+\d+\s+\d+:\d+:\d+\s+[^\s]+\s+/, "");
+        // Explicit class inside []: "\s" is not whitespace in this engine, so the
+        // prefix pattern used to eat more of the line than the prefix.
+        let normalized = replace(line, /^[A-Z][a-z]{2}[ \t]+\d+[ \t]+\d+:\d+:\d+[ \t]+[^ \t\r\n]+[ \t]+/, "");
         normalized = replace(normalized, /^\d{4}-\d{2}-\d{2}\s+\d+:\d+:\d+\s+/, "");
 
         if (normalized == prev_line) {
