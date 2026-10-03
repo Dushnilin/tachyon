@@ -94,11 +94,11 @@ done
 # what left the reported router stuck: the file an older Tachyon downloaded passed
 # the cheap test, sing-box died on it, and the copy that was broken was the copy
 # believed - so neither an apply nor a list update could recover.
-if ! grep -q 'is_adoptable_srs_file(tmp_path)' "$TACHYON_LIB/service/lifecycle.uc"; then
+if ! grep -qE 'is_(adoptable|referenceable)_srs_file\(tmp_path\)' "$TACHYON_LIB/service/lifecycle.uc"; then
   fail "lifecycle.uc trusts the /tmp copy without asking sing-box; a file downloaded before the fix stays broken forever"
 fi
 
-if ! grep -q 'is_adoptable_srs_file(etc_path)' "$TACHYON_LIB/service/lifecycle.uc"; then
+if ! grep -qE 'is_(usable|referenceable)_srs_file\(etc_path\)' "$TACHYON_LIB/service/lifecycle.uc"; then
   fail "restore_rulesets_from_cache copies /etc .srs files into the ruleset sing-box reads without parsing them first"
 fi
 
@@ -156,5 +156,80 @@ adopt "$WORK_DIR/truncated.srs" no "adopt of a truncated list"
 adopt "$WORK_DIR/truncated.srs" no "second adopt of a truncated list"
 [ "$(spawns)" = "4" ] ||
   { printf 'FAIL: expected 4 spawns after the truncated adopts, got %s\n' "$(spawns)" >&2; exit 1; }
+
+# End to end through the generator: a section that references a built-in list must
+# not be handed a `local` rule_set pointing at a file sing-box cannot read. That
+# config is refused outright, which is what left the router unable to apply
+# anything. Falling through to the remote url lets sing-box fetch the list itself,
+# which is the recovery the reporter was missing.
+GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+[ -f "$GENERATOR_UC" ] || fail "missing $GENERATOR_UC"
+
+# The fixture entry point redirects the built-in list folder next to its output
+# file (generate_config_fixture sets runtime_ruleset_folder to output + ".rulesets"),
+# so the lists have to be placed there rather than in the live folder.
+gen_config_with_list() { # <srs file to place, or none> <output tag>
+  local drop="$1" out="$2"
+  mkdir -p "$out.rulesets"
+  rm -f "$out.rulesets/community-youtube.srs"
+  [ -n "$drop" ] && cp "$drop" "$out.rulesets/community-youtube.srs"
+
+  local fixture="$WORK_DIR/gen.json"
+  cat >"$fixture" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "enabled": "1", "dns_type": "udp", "dns_server": "1.1.1.1", "service_listen_address": "127.0.0.1" },
+  "section": [
+    { ".name": "yt", ".type": "section", "enabled": "1", "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\",\"tag\":\"yt-out\"}" ],
+      "community_lists": [ "youtube" ] }
+  ]
+}
+JSON
+  mkdir -p "$out.section-cache" "$out.rulesets"
+  TACHYON_SRS_VERIFY_DIR="$WORK_DIR/verify-$out" \
+    ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+    "$fixture" "$out" "127.0.0.1" "0" "1" >/dev/null
+}
+
+rule_set_kind() { # <config> -> local | remote | none
+  ucode -L "$TACHYON_LIB" -e '
+  let common = require("core.common");
+  let as_string = common.as_string;
+  let cfg = common.read_json_file("'"$1"'");
+  let out = "none";
+  for (let rs in cfg.route.rule_set || []) {
+      if (type(rs) == "object" && index(as_string(rs.tag || ""), "youtube") >= 0)
+          out = as_string(rs.type || "?");
+  }
+  printf("%s\n", out);
+  '
+}
+
+gen_config_with_list "$WORK_DIR/whole.srs" "$WORK_DIR/gen-whole.json"
+[ "$(rule_set_kind "$WORK_DIR/gen-whole.json")" = "local" ] ||
+  { printf 'FAIL: a whole list should be referenced locally, got %s\n' "$(rule_set_kind "$WORK_DIR/gen-whole.json")" >&2; exit 1; }
+
+gen_config_with_list "$WORK_DIR/truncated.srs" "$WORK_DIR/gen-truncated.json"
+kind="$(rule_set_kind "$WORK_DIR/gen-truncated.json")"
+[ "$kind" = "remote" ] ||
+  { printf 'FAIL: a truncated list was still referenced as %s; sing-box refuses that config with unexpected EOF\n' "$kind" >&2; exit 1; }
+
+# The placeholder is the opposite case and must stay local. It is valid and
+# parseable - it simply matches nothing - and it exists so a cold boot without a
+# network still applies. A remote rule_set here puts the fetch back into sing-box's
+# startup, where a GitHub hiccup kills the core with "initialize rule-set: context
+# deadline exceeded". Two tests in this suite pull in opposite directions on the
+# stub (cold_boot_community_stub wants local, and the TCH-1043 note wanted remote);
+# only one of them can be right, and this is the direction that keeps a router
+# bootable.
+gen_config_with_list "$WORK_DIR/stub.srs" "$WORK_DIR/gen-stub.json"
+kind="$(rule_set_kind "$WORK_DIR/gen-stub.json")"
+[ "$kind" = "local" ] ||
+  { printf 'FAIL: the placeholder was referenced as %s; a cold boot with no network would then depend on a GitHub fetch\n' "$kind" >&2; exit 1; }
+
+ucode -S -L "$TACHYON_LIB" "$RULESETS_UC" is-referenceable-srs-file "$WORK_DIR/stub.srs" >/dev/null ||
+  { printf 'FAIL: is_referenceable_srs_file must accept the placeholder\n' >&2; exit 1; }
+ucode -S -L "$TACHYON_LIB" "$RULESETS_UC" is-referenceable-srs-file "$WORK_DIR/truncated.srs" >/dev/null &&
+  { printf 'FAIL: is_referenceable_srs_file must reject a truncated list\n' >&2; exit 1; }
 
 printf 'PASS: srs_truncated_rejected\n'

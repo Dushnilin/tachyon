@@ -783,7 +783,7 @@ function restore_rulesets_from_cache() {
         // be one it can parse. Restoring a broken one here is what left the router
         // unable to apply anything, because the copy that was broken was the copy
         // the generator went on to reference.
-        if (match(entry, /\.srs$/) && !runtime_rulesets_mod.is_adoptable_srs_file(etc_path))
+        if (match(entry, /\.srs$/) && !runtime_rulesets_mod.is_referenceable_srs_file(etc_path))
             continue;
         if (!tmp_st || tmp_st.size == 0) {
             let content = fs.readfile(etc_path);
@@ -849,15 +849,24 @@ function prepare_community_rulesets() {
         let tmp_path = tmp_dir + "/community-" + service + ".srs";
         let etc_path = etc_dir + "/community-" + service + ".srs";
 
-        if (runtime_rulesets_mod.is_adoptable_srs_file(tmp_path))
+        // The /tmp copy used to be trusted outright, which is what left the reported
+        // router stuck: the file an older Tachyon downloaded passed the cheap test,
+        // sing-box died on it, and the copy that was broken was the copy believed -
+        // so neither an apply nor a list update could recover. A placeholder is
+        // still accepted: it is readable, and re-downloading over it on every boot
+        // would be pointless.
+        if (runtime_rulesets_mod.is_referenceable_srs_file(tmp_path))
             continue;
 
         // The /etc copy is adopted across reboots, so a file that went bad there
         // would be re-adopted on every apply and sing-box would refuse the config
-        // with "unexpected EOF" forever. Parsing it here is the way out: the
-        // download below replaces it, and if that fails too the empty stub keeps
-        // the router applyable.
-        if (runtime_rulesets_mod.is_usable_srs_file(etc_path)) {
+        // with "unexpected EOF" forever. Asking sing-box whether it parses is the
+        // way out: a truncated copy is skipped, the download below replaces it, and
+        // if that fails too the empty stub keeps the router applyable.
+        //
+        // is_referenceable, not is_usable: the placeholder is worth adopting, since
+        // promoting it beats a pointless download attempt on a boot with no network.
+        if (runtime_rulesets_mod.is_referenceable_srs_file(etc_path)) {
             let content = fs.readfile(etc_path);
             if (content && fs.writefile(tmp_path, content) != null)
                 continue;

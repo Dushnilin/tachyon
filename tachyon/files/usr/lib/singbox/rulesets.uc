@@ -342,6 +342,26 @@ function is_adoptable_srs_file(path) {
     return true;
 }
 
+// Whether a generated config may point at this file. That needs sing-box to be
+// able to read it, and it is not the same question as "is a real list here": the
+// placeholder is a valid, parseable SRS that simply matches nothing, and it exists
+// so a cold boot without a network still applies. Referencing it locally is right;
+// emitting a remote rule-set instead puts the fetch back into sing-box's startup,
+// and a GitHub hiccup then kills the core with "initialize rule-set: context
+// deadline exceeded" - the failure prepare_community_rulesets() exists to avoid.
+//
+// A truncated list is the opposite case: valid magic, larger than the placeholder,
+// and unreadable. It must never be referenced, so the generator falls through to
+// the remote branch and sing-box fetches a whole list itself.
+function is_referenceable_srs_file(path) {
+    let p = as_string(path);
+    if (!is_valid_srs_file(p))
+        return false;
+    if (!is_populated_srs_file(p))
+        return true;
+    return is_adoptable_srs_file(p);
+}
+
 function ensure_empty_srs_stub(target_path) {
     target_path = as_string(target_path);
     if (is_valid_srs_file(target_path))
@@ -386,6 +406,7 @@ function module_exports() {
         srs_file_parses,
         is_usable_srs_file,
         is_adoptable_srs_file,
+        is_referenceable_srs_file,
         ensure_empty_srs_stub
     };
 }
@@ -413,9 +434,11 @@ else if (mode == "is-usable-srs-file")
     exit(is_usable_srs_file(ARGV[1]) ? 0 : 1);
 else if (mode == "is-adoptable-srs-file")
     exit(is_adoptable_srs_file(ARGV[1]) ? 0 : 1);
+else if (mode == "is-referenceable-srs-file")
+    exit(is_referenceable_srs_file(ARGV[1]) ? 0 : 1);
 else if (mode == "ensure-empty-srs-stub")
     exit(ensure_empty_srs_stub(ARGV[1]) ? 0 : 1);
 else {
-    warn("Usage: singbox/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|is-usable-srs-file|is-adoptable-srs-file|ensure-empty-srs-stub> ...\n");
+    warn("Usage: singbox/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|is-usable-srs-file|is-adoptable-srs-file|is-referenceable-srs-file|ensure-empty-srs-stub> ...\n");
     exit(1);
 }

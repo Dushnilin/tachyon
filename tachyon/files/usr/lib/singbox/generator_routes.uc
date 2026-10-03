@@ -1044,29 +1044,38 @@ function ensure_custom_ruleset(config, reference) {
             // stub is itself a valid 17-byte SRS, and treating it as downloaded
             // emits a local rule_set with no url, so sing-box can never fetch the
             // real list and the rule matches nothing (TCH-1043).
-            if (runtime_rulesets.is_populated_srs_file(tmp_srs) || helpers.file_is_usable(tmp_srs, 16))
-                local_path = tmp_srs;
-            else if (runtime_rulesets.is_populated_srs_file(etc_srs) || helpers.file_is_usable(etc_srs, 16))
-                local_path = etc_srs;
+// is_referenceable_srs_file: the question is whether sing-box can read the file,
+// not whether it matches anything. The 17-byte placeholder is valid and parseable,
+// so it stays referenced locally and a cold boot without a network still applies -
+// emitting a remote rule-set there puts the fetch back into startup, and a GitHub
+// hiccup then kills the core. A truncated list is valid-looking and unreadable, and
+// that one must fall through to the remote url, because a config pointing at a file
+// sing-box cannot parse is refused outright ("unexpected EOF") and leaves the router
+// unable to apply anything. is_populated_srs_file alone answers neither: it accepts
+// the truncation.
+if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
+            local_path = tmp_srs;
+        else if (runtime_rulesets.is_referenceable_srs_file(etc_srs))
+            local_path = etc_srs;
 
-            if (config.route.rule_set == null)
-                config.route.rule_set = [];
+        if (config.route.rule_set == null)
+            config.route.rule_set = [];
 
-            if (local_path != null) {
-                push(config.route.rule_set, {
-                    type: "local",
-                    tag: tag_name,
-                    format: "binary",
-                    path: local_path
-                });
-            }
-            else {
-                let rule_set = {
-                    type: "remote",
-                    tag: tag_name,
-                    format: "binary",
-                    url: runtime_rulesets.community_url(reference)
-                };
+        if (local_path != null) {
+            push(config.route.rule_set, {
+                type: "local",
+                tag: tag_name,
+                format: "binary",
+                path: local_path
+            });
+        }
+        else {
+            let rule_set = {
+                type: "remote",
+                tag: tag_name,
+                format: "binary",
+                url: runtime_rulesets.community_url(reference)
+            };
                 let detour = ctx.download_detour_tag(ctx.runtime_settings());
                 apply_download_transport(config, rule_set, detour);
                 rule_set.update_interval = remote_ruleset_update_interval();
@@ -1244,13 +1253,14 @@ function ensure_community_ruleset(config, section_name, community) {
         let etc_srs = "/etc/tachyon/rulesets/community-" + community + ".srs";
         let local_path = null;
 
-        // is_populated_srs_file, not is_valid_srs_file: the fetch-failure stub
-        // is itself a valid 17-byte SRS, and treating it as downloaded emits a
-        // local rule_set with no url, so sing-box can never fetch the real list
-        // and the rule matches nothing (TCH-1043).
-        if (runtime_rulesets.is_populated_srs_file(tmp_srs) || helpers.file_is_usable(tmp_srs, 16))
+// is_referenceable_srs_file: the placeholder is valid and parseable, so it stays
+// local and a boot without a network still applies (a remote rule-set here puts the
+// fetch back into startup, where a GitHub hiccup kills the core). A truncated list
+// passes is_populated_srs_file and is unreadable, and a config pointing at it is
+// refused outright, so it falls through to the remote url below.
+if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
             local_path = tmp_srs;
-        else if (runtime_rulesets.is_populated_srs_file(etc_srs) || helpers.file_is_usable(etc_srs, 16))
+        else if (runtime_rulesets.is_referenceable_srs_file(etc_srs))
             local_path = etc_srs;
 
         if (config.route.rule_set == null)
