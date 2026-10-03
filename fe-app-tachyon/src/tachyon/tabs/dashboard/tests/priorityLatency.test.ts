@@ -4,6 +4,7 @@ import {
   collectUnmeasuredTags,
   measurePriorityLatencies,
   parseDelay,
+  PRIORITY_PROBE_CONCURRENCY,
 } from '../priorityLatency';
 
 const member = (code: string, latency?: number) => ({ code, latency });
@@ -16,15 +17,24 @@ describe('priority modal latency', () => {
       ).toEqual(['b', 'c']);
     });
 
-    // A fallback level node that did not answer is a measurement, not a gap:
-    // re-probing it on every modal open would hammer a dead node. Zero is the
-    // dashboard's "unknown" value, so it is still worth asking about.
-    it('keeps a negative latency as a measurement but re-probes an unknown zero', () => {
-      expect(collectUnmeasuredTags([member('a', -1)])).toEqual([]);
-      expect(collectUnmeasuredTags([member('a', 0)])).toEqual(['a']);
+    // A member that did not answer is exactly the one worth asking again: the
+    // priority daemon retries dead nodes on its own schedule too. Treating the
+    // cached -1 as final pinned the modal on "-1ms" for the rest of the session
+    // after one bad round, which is what the screenshot showed.
+    it('re-probes a negative latency from the member or from the cache', () => {
+      expect(collectUnmeasuredTags([member('dead', -1)])).toEqual(['dead']);
+
+      const existing = new Map([
+        ['dead', -1],
+        ['ok', 120],
+      ]);
+
+      expect(
+        collectUnmeasuredTags([member('dead'), member('ok')], existing),
+      ).toEqual(['dead']);
     });
 
-    it('skips tags already known to the caller', () => {
+    it('skips tags already measured by the caller', () => {
       const existing = new Map([['b', 120]]);
       expect(
         collectUnmeasuredTags([member('a'), member('b')], existing),
@@ -116,6 +126,47 @@ describe('priority modal latency', () => {
 
       expect(probe).not.toHaveBeenCalled();
       expect(measured.size).toBe(0);
+    });
+
+    // The whole point of the change. Asking sing-box for every member's delay at
+    // once answered 1 of 152 on a real router; the rest were "Timeout", so the
+    // modal filled with -1 instead of latencies.
+    it('keeps only a bounded number of probes in flight', async () => {
+      let inFlight = 0;
+      let peak = 0;
+
+      const probe = vi.fn(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        inFlight--;
+        return { success: true, data: { delay: 40 } };
+      });
+
+      const members = Array.from({ length: 60 }, (_, index) =>
+        member(`node-${index}`),
+      );
+      const measured = await measurePriorityLatencies(members, { probe });
+
+      expect(probe).toHaveBeenCalledTimes(60);
+      expect(measured.size).toBe(60);
+      expect(peak).toBeLessThanOrEqual(PRIORITY_PROBE_CONCURRENCY);
+      expect(peak).toBeGreaterThan(1);
+    });
+
+    it('still measures everyone when the group is smaller than one batch', async () => {
+      const probe = vi.fn(async (tag: string) => ({
+        success: true,
+        data: { delay: tag.length * 10 },
+      }));
+
+      const measured = await measurePriorityLatencies(
+        [member('a'), member('bb')],
+        { probe },
+      );
+
+      expect(measured.get('a')).toBe(10);
+      expect(measured.get('bb')).toBe(20);
     });
   });
 });

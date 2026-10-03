@@ -8542,14 +8542,16 @@ function computeTrafficRates(uploadTotal, downloadTotal, now, state) {
 
 // src/tachyon/tabs/dashboard/priorityLatency.ts
 var PRIORITY_PROBE_TIMEOUT_MS = "2000";
+var PRIORITY_PROBE_CONCURRENCY = 8;
 function collectUnmeasuredTags(members, existing) {
   const tags = [];
   const seen = /* @__PURE__ */ new Set();
   for (const member of members || []) {
     const tag = String(member?.code || "");
     if (!tag || seen.has(tag)) continue;
-    if (typeof member?.latency === "number" && member.latency !== 0) continue;
-    if (existing?.has(tag)) continue;
+    if (typeof member?.latency === "number" && member.latency > 0) continue;
+    const cached = existing?.get(tag);
+    if (typeof cached === "number" && cached > 0) continue;
     seen.add(tag);
     tags.push(tag);
   }
@@ -8570,16 +8572,20 @@ async function measurePriorityLatencies(members, options) {
   if (tags.length === 0) return measured;
   const timeout = options.timeout || PRIORITY_PROBE_TIMEOUT_MS;
   const healthUrl = options.healthUrl || "";
-  await Promise.all(
-    tags.map(async (tag) => {
+  let next = 0;
+  const worker = async () => {
+    while (next < tags.length) {
+      const tag = tags[next++];
       try {
         const response = await options.probe(tag, timeout, healthUrl);
         measured.set(tag, response?.success ? parseDelay(response.data) : -1);
       } catch {
         measured.set(tag, -1);
       }
-    })
-  );
+    }
+  };
+  const workers = Math.min(PRIORITY_PROBE_CONCURRENCY, tags.length);
+  await Promise.all(Array.from({ length: workers }, worker));
   return measured;
 }
 
@@ -9340,7 +9346,7 @@ function formatUrlTestModalValue(value) {
   return text || _("No");
 }
 function getUrlTestLatencyClass(latency) {
-  if (!latency) {
+  if (!latency || latency < 0) {
     return "tachyon_dashboard-page__outbound-grid__item__latency--empty";
   }
   if (latency < 800) {
@@ -9352,7 +9358,7 @@ function getUrlTestLatencyClass(latency) {
   return "tachyon_dashboard-page__outbound-grid__item__latency--red";
 }
 function formatUrlTestLatency(latency) {
-  return latency ? `${latency}ms` : "N/A";
+  return latency && latency > 0 ? `${latency}ms` : "N/A";
 }
 function renderDetailsUrl(value) {
   const url = `${value ?? ""}`.trim();

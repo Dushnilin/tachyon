@@ -964,8 +964,10 @@ function formatUrlTestModalValue(value: unknown) {
   return text || _('No');
 }
 
-function getUrlTestLatencyClass(latency: number) {
-  if (!latency) {
+export function getUrlTestLatencyClass(latency: number) {
+  // -1 is what the dashboard stores for "did not answer". It used to fall through
+  // to the < 800 branch and paint a dead node green.
+  if (!latency || latency < 0) {
     return 'tachyon_dashboard-page__outbound-grid__item__latency--empty';
   }
 
@@ -980,8 +982,8 @@ function getUrlTestLatencyClass(latency: number) {
   return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
 }
 
-function formatUrlTestLatency(latency: number) {
-  return latency ? `${latency}ms` : 'N/A';
+export function formatUrlTestLatency(latency: number) {
+  return latency && latency > 0 ? `${latency}ms` : 'N/A';
 }
 
 function renderDetailsUrl(value: unknown) {

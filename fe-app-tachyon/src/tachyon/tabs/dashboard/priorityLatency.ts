@@ -10,6 +10,15 @@
 
 export const PRIORITY_PROBE_TIMEOUT_MS = '2000';
 
+// Measured on a router with a 152-node subscription: asking sing-box for every
+// member's delay at once answered 1 of 152 - the rest came back "Timeout", because
+// each request is a real probe through that outbound and they pile up on each
+// other. Sequential probing answered 78 of 152, and 4, 8 and 16 at a time all came
+// out within noise of sequential (29-33 of the 40 healthiest tags against 32
+// sequential), so the cliff is only at "everything at once". Eight keeps the
+// modal responsive without paying for that.
+export const PRIORITY_PROBE_CONCURRENCY = 8;
+
 export interface PriorityLatencyMember {
   code?: string;
   latency?: number;
@@ -27,9 +36,10 @@ export interface MeasureOptions {
 }
 
 /**
- * Members whose latency is still unknown. Any non-zero number is a measurement -
- * including the negative one the dashboard stores for "did not answer" - so only
- * an absent or zero value is worth re-probing.
+ * Members whose latency is still unknown. A measurement is a positive number:
+ * zero is the dashboard's "unknown", and a negative one is "did not answer", so
+ * neither is worth keeping. Skipping the negative is what pinned the modal on
+ * -1 for the rest of the session after the first bad round.
  */
 export function collectUnmeasuredTags(
   members: PriorityLatencyMember[],
@@ -41,8 +51,9 @@ export function collectUnmeasuredTags(
   for (const member of members || []) {
     const tag = String(member?.code || '');
     if (!tag || seen.has(tag)) continue;
-    if (typeof member?.latency === 'number' && member.latency !== 0) continue;
-    if (existing?.has(tag)) continue;
+    if (typeof member?.latency === 'number' && member.latency > 0) continue;
+    const cached = existing?.get(tag);
+    if (typeof cached === 'number' && cached > 0) continue;
     seen.add(tag);
     tags.push(tag);
   }
@@ -84,16 +95,21 @@ export async function measurePriorityLatencies(
   const timeout = options.timeout || PRIORITY_PROBE_TIMEOUT_MS;
   const healthUrl = options.healthUrl || '';
 
-  await Promise.all(
-    tags.map(async (tag) => {
+  let next = 0;
+  const worker = async () => {
+    while (next < tags.length) {
+      const tag = tags[next++];
       try {
         const response = await options.probe(tag, timeout, healthUrl);
         measured.set(tag, response?.success ? parseDelay(response.data) : -1);
       } catch {
         measured.set(tag, -1);
       }
-    }),
-  );
+    }
+  };
+
+  const workers = Math.min(PRIORITY_PROBE_CONCURRENCY, tags.length);
+  await Promise.all(Array.from({ length: workers }, worker));
 
   return measured;
 }
