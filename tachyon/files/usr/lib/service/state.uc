@@ -449,12 +449,6 @@ function sing_box_service_pid_runtime() {
     return 0;
 }
 
-function hup_sing_box_runtime() {
-    command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover with sing-box service restart" ]);
-    if (!command_success_from_args([ "/etc/init.d/sing-box", "restart" ]))
-        exit(1);
-}
-
 // Send SIGHUP to the running sing-box process and wait for it to stay alive.
 // sing-box 1.10+ reloads its configuration in-place on SIGHUP without tearing
 // down the process, so existing TCP sessions are not disrupted.
@@ -488,6 +482,23 @@ function try_sighup_reload(pid) {
     // Timed out: verify at least that a sing-box is still up.
     let final_pid = sing_box_service_pid_runtime();
     return final_pid > 0 && pid_is_sing_box(final_pid);
+}
+
+function hup_sing_box_runtime() {
+    // The name said SIGHUP and the caller's log line said "SIGHUP DNS reload",
+    // but the body was a full /etc/init.d/sing-box restart, so every DNS
+    // failover dropped live sessions and the graceful path in
+    // reload_sing_box_runtime() was never the one being taken. Try SIGHUP first
+    // and fall back to a restart only when the process does not survive it.
+    let active_pid = sing_box_service_pid_runtime();
+    if (active_pid > 0 && try_sighup_reload(active_pid)) {
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via sing-box SIGHUP (graceful)" ]);
+        return;
+    }
+
+    command_success_from_args([ "logger", "-t", "tachyon", "[warn] sing-box SIGHUP did not take, falling back to a full restart" ]);
+    if (!command_success_from_args([ "/etc/init.d/sing-box", "restart" ]))
+        exit(1);
 }
 
 function process_start_ticks(stat) {
