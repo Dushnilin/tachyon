@@ -20,7 +20,7 @@ const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "TachyonTable";
 const PID_FILE = "/var/run/tachyon_telegram.pid";
-const OFFSET_FILE = "/var/run/tachyon_telegram_offset";
+const OFFSET_FILE = getenv("TACHYON_TELEGRAM_OFFSET_FILE") || "/var/run/tachyon_telegram_offset";
 const COMPONENT_UPDATE_CHECK_TIMESTAMP = "/var/run/tachyon/component-update-check.timestamp";
 // Carried over from the monolithic service/telegram.uc by the split in
 // 57c7e2b0. Left behind, the reference below resolved to nothing and ucode
@@ -275,6 +275,28 @@ function check_blocked_activity(cfg) {
     save_blocked_counts(current);
 }
 
+// Telegram forgets an update only when a later getUpdates carries an offset past
+// it, so this file is the only thing standing between a handled update and being
+// answered a second time. It used to be written once, after the whole batch had
+// already been replied to: a worker that died mid-batch - or a write that failed
+// quietly, its result discarded - meant the next poll fetched the same updates and
+// answered them again, once per restart. That is the reported "pressed status, and
+// there are 15 messages".
+//
+// Acknowledged before answering rather than after, so the window in which a crash
+// can duplicate an update is the handling itself and not the rest of the batch.
+// At-most-once is the right trade for a status bot: losing one reply beats sending
+// fifteen.
+function persist_offset(offset) {
+    if (fs.writefile(OFFSET_FILE, as_string(offset)) != null)
+        return true;
+
+    command_success_from_args(["logger", "-t", "tachyon-telegram",
+        "[err] Failed to store the update offset at " + OFFSET_FILE +
+        "; Telegram will re-deliver these updates and the bot will answer them again"]);
+    return false;
+}
+
 function process_updates(token, admin_ids) {
     let offset = int(trim(fs.readfile(OFFSET_FILE) || "0"));
     let res = tg_request(token, "getUpdates", { offset: offset, timeout: 50 });
@@ -306,6 +328,9 @@ function process_updates(token, admin_ids) {
         if (update_id >= offset) {
             offset = update_id + 1;
         }
+
+        // Acknowledge first, answer second. See persist_offset().
+        persist_offset(offset);
 
         try {
         let cb = upd.callback_query;
@@ -529,7 +554,7 @@ function process_updates(token, admin_ids) {
             command_success_from_args(["logger", "-t", "tachyon", "[err] Telegram update " + update_id + " failed: " + as_string(e)]);
         }
     }
-    fs.writefile(OFFSET_FILE, as_string(offset));
+    persist_offset(offset);
     return true;
 }
 
