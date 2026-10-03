@@ -844,7 +844,12 @@ function prepare_community_rulesets() {
         if (runtime_rulesets_mod.is_valid_srs_file(tmp_path))
             continue;
 
-        if (runtime_rulesets_mod.is_valid_srs_file(etc_path)) {
+        // The /etc copy is adopted across reboots, so a file that went bad there
+        // would be re-adopted on every apply and sing-box would refuse the config
+        // with "unexpected EOF" forever. Parsing it here is the way out: the
+        // download below replaces it, and if that fails too the empty stub keeps
+        // the router applyable.
+        if (runtime_rulesets_mod.is_usable_srs_file(etc_path)) {
             let content = fs.readfile(etc_path);
             if (content && fs.writefile(tmp_path, content) != null)
                 continue;
@@ -859,7 +864,7 @@ function prepare_community_rulesets() {
             for (let candidate in candidates) {
                 let dl_tmp = tmp_dir + "/.fetch-" + service + ".tmp";
                 let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", candidate, "-o", dl_tmp ];
-                if (command_success_from_args(args) && runtime_rulesets_mod.is_valid_srs_file(dl_tmp)) {
+                if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_srs_file(dl_tmp)) {
                     let st = fs.stat(dl_tmp);
                     if (st && st.size >= 100) {
                         command_success_from_args([ "mv", "-f", dl_tmp, tmp_path ]);

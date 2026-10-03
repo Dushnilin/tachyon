@@ -2,6 +2,7 @@
 
 let common = require("core.common");
 let fs = require("fs");
+let command_success_from_args = common.command_success_from_args;
 
 const EMPTY_SRS_B64 = "U1JTAXjaYgAEAAD//wABAAE=";
 const EMPTY_SRS_PATH = "/usr/share/tachyon/rulesets/empty.srs";
@@ -249,12 +250,45 @@ function is_valid_srs_file(path) {
 // So: a file the size of the placeholder is the placeholder, whatever the
 // magic bytes say. Callers that only need "not corrupt" keep using
 // is_valid_srs_file; callers that need "actually populated" use this.
+// Every cheap measure of an .srs passes on a truncated one: the magic sits at the
+// front and a partial file is still larger than the placeholder. sing-box then dies
+// with "parse rule-set: read rule: unexpected EOF" and takes the whole generated
+// config down with it, which leaves the router unapplyable - a red check that no
+// list update can clear, reported on 1.4.9.
+//
+// The payload is a zlib stream, so its real length cannot be read off the header
+// and a size comparison cannot tell a whole file from a prefix of one. Ask
+// sing-box, which is already a dependency, to parse it. One process per list, only
+// on the paths that adopt a file, never per generate.
+function srs_file_parses(path) {
+    let p = as_string(path);
+    if (!is_valid_srs_file(p))
+        return false;
+
+    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+    if (fs.stat(bin) == null)
+        return true;
+
+    let out = "/tmp/.srs-verify-" + hash12(p) + ".json";
+    try { fs.unlink(out); } catch (e) {}
+    let ok = command_success_from_args([ bin, "rule-set", "decompile", "--output", out, p ]);
+    try { fs.unlink(out); } catch (e) {}
+    return ok;
+}
+
 function is_populated_srs_file(path) {
     let p = as_string(path);
     let st = fs.stat(p);
     if (!st || st.size <= EMPTY_SRS_SIZE)
         return false;
     return is_valid_srs_file(p);
+}
+
+// "Usable" is the question callers actually mean when they keep a file: whole,
+// and not the placeholder. is_valid_srs_file() answers "not corrupt" and is kept
+// for the callers that need exactly that.
+function is_usable_srs_file(path) {
+    return is_populated_srs_file(path) && srs_file_parses(path);
 }
 
 function ensure_empty_srs_stub(target_path) {
@@ -298,6 +332,8 @@ function module_exports() {
         is_plain_list_reference,
         is_valid_srs_file,
         is_populated_srs_file,
+        srs_file_parses,
+        is_usable_srs_file,
         ensure_empty_srs_stub
     };
 }
@@ -321,9 +357,11 @@ else if (mode == "is-plain-list-reference")
     exit(is_plain_list_reference(ARGV[1]) ? 0 : 1);
 else if (mode == "is-valid-srs-file")
     exit(is_valid_srs_file(ARGV[1]) ? 0 : 1);
+else if (mode == "is-usable-srs-file")
+    exit(is_usable_srs_file(ARGV[1]) ? 0 : 1);
 else if (mode == "ensure-empty-srs-stub")
     exit(ensure_empty_srs_stub(ARGV[1]) ? 0 : 1);
 else {
-    warn("Usage: singbox/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|ensure-empty-srs-stub> ...\n");
+    warn("Usage: singbox/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|is-usable-srs-file|ensure-empty-srs-stub> ...\n");
     exit(1);
 }

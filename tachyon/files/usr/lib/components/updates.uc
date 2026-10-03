@@ -2559,7 +2559,7 @@ function import_community_srs_file(service, settings) {
     for (let candidate in candidates) {
         if (download_to_file(candidate, tmpfile, service_proxy_address(settings, "lists")) &&
             file_nonempty(tmpfile) &&
-            singbox_rulesets_module().is_valid_srs_file(tmpfile) &&
+            singbox_rulesets_module().is_usable_srs_file(tmpfile) &&
             helpers.file_is_usable(tmpfile, 100)) {
             ensure_dir(TMP_RULESET_FOLDER);
             copy_file(tmpfile, cached_file);
@@ -2576,7 +2576,7 @@ function import_community_srs_file(service, settings) {
     if (downloaded) {
         // Cached successfully
     }
-    else if (singbox_rulesets_module().is_valid_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 100)) {
+    else if (singbox_rulesets_module().is_usable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 100)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_file, cached_file);
         log_message("Using persistent cached ruleset for " + service + " after download failure", "warn");
