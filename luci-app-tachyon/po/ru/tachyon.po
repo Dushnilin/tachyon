@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 08:49+0300\n"
-"PO-Revision-Date: 2026-10-03 08:49+0300\n"
+"POT-Creation-Date: 2026-10-03 09:35+0300\n"
+"PO-Revision-Date: 2026-10-03 09:35+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -4376,6 +4376,9 @@ msgstr "Правила маршрутизации"
 msgid "Routing section"
 msgstr "Секция маршрутизации"
 
+msgid "Routing section \"%s\" is disabled. Servers using it were also disabled: %s."
+msgstr "Секция маршрутизации «%s» отключена. Использующие её серверы также отключены: %s."
+
 msgid "Routing sections"
 msgstr "Секции маршрутизации"
 
@@ -5458,6 +5461,9 @@ msgstr "fwmark desync управляется Tachyon для предотвращ
 
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
 msgstr "Правило применяется к домену и всем его поддоменам. Используйте префиксы full:, keyword: или regex: для точного совпадения, совпадения по ключевому слову или регулярного выражения."
+
+msgid "Their routing settings are preserved. Enable these servers manually after enabling the section."
+msgstr "Настройки маршрутизации сохранены. После включения секции включите нужные серверы вручную."
 
 msgid "There are rules using ByeDPI"
 msgstr "Есть правила, использующие ByeDPI"
@@ -7468,9 +7474,3 @@ msgstr "Не удалось прочитать конфиг OpenVPN: "
 
 msgid "Failed / timeout"
 msgstr "Ошибка / таймаут"
-
-msgid "Routing section \"%s\" is disabled. Servers using it were also disabled: %s."
-msgstr "Секция маршрутизации «%s» отключена. Использующие её серверы также отключены: %s."
-
-msgid "Their routing settings are preserved. Enable these servers manually after enabling the section."
-msgstr "Настройки маршрутизации сохранены. После включения секции включите нужные серверы вручную."
