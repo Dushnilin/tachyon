@@ -267,8 +267,14 @@ function launch_fptn_process(section) {
     }
 
     let shims_dir = cfg.shims_dir || (cfg.state_dir + "/bin");
-    let cmd_str = "PATH=" + shell_quote(shims_dir) + ":$PATH " +
-        command_from_args(cmd_args) + " >> " + shell_quote(cfg.log_file) + " 2>&1 & echo $! > " + shell_quote(cfg.pid_file);
+    // Same fd-1000 hazard as tailscale: a hand-rolled `& echo $! > pid` leaves
+    // procd's lock descriptor open in the client, and the lock belongs to the
+    // open file, so every later /etc/init.d/tachyon reload would block on it.
+    let cmd_str = common.background_command_with_pid(
+        "PATH=" + shell_quote(shims_dir) + ":$PATH " + command_from_args(cmd_args),
+        ">>" + shell_quote(cfg.log_file),
+        ">" + shell_quote(cfg.pid_file)
+    );
     log_message("Starting FPTN client on interface " + cfg.tun_interface, "info");
     system(cmd_str);
     return true;

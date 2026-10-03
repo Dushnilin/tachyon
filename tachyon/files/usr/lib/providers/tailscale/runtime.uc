@@ -191,13 +191,31 @@ function daemon_version_gte(required) {
 // Check if tailscaled actually supports --netfilter-mode flag.
 // The flag was added in 1.36 and removed in ~1.44+; version checks alone
 // are unreliable because some distro builds strip it at different ranges.
-let _netfilter_mode_supported = null;
-function netfilter_mode_supported() {
-    if (_netfilter_mode_supported === null) {
-        let help = command_output_from_args([ TAILSCALED_BIN, "--help" ]);
-        _netfilter_mode_supported = index(as_string(help), "netfilter-mode") >= 0;
-    }
-    return _netfilter_mode_supported;
+function netfilter_help_has_flag(bin) {
+    if (!bin || fs.stat(bin) == null) return false;
+    let help = command_output_from_args([ bin, "up" ]);
+    if (index(as_string(help), "up") < 0)
+        help = command_output_from_args([ bin, "--help" ]);
+    return index(as_string(help), "netfilter-mode") >= 0;
+}
+
+// --netfilter-mode lives on the daemon in older builds (1.36+) and moved to the
+// client for `tailscale up` later. Asking only tailscaled meant the client never
+// got the flag on a current version, so tailscaled installed its own netfilter
+// rules and the router carried ip filter / ip mangle tables nobody asked for.
+let _netfilter_mode_supported_daemon = null;
+let _netfilter_mode_supported_client = null;
+
+function netfilter_mode_supported_by_daemon() {
+    if (_netfilter_mode_supported_daemon === null)
+        _netfilter_mode_supported_daemon = netfilter_help_has_flag(TAILSCALED_BIN);
+    return _netfilter_mode_supported_daemon;
+}
+
+function netfilter_mode_supported_by_client() {
+    if (_netfilter_mode_supported_client === null)
+        _netfilter_mode_supported_client = netfilter_help_has_flag(TAILSCALE_BIN);
+    return _netfilter_mode_supported_client;
 }
 
 // TUN device is required for native (kernel) tailscaled mode.
@@ -432,14 +450,19 @@ function start_daemon(section) {
     // --netfilter-mode was added in tailscale 1.36 and removed in ~1.44+;
     // probe the actual help text to avoid passing an unknown flag that makes
     // tailscaled print usage and exit.
-    if (netfilter_mode_supported())
+    if (netfilter_mode_supported_by_daemon())
         push(args, "--netfilter-mode=off");
 
     fs.unlink(log_file);
-    let cmdline = command_from_args(args) +
-        " >" + shell_quote(log_file) + " 2>&1 </dev/null & echo $!";
-    let output = trim(command_output(cmdline));
-    let pid = int(output);
+    // Spawn through the shared helper: procd holds its lock on fd 1000, and a
+    // hand-rolled `& echo $!` only redirects 0/1/2, so tailscaled inherited that
+    // descriptor. The lock is held by the open file, not by the process, so every
+    // later `flock 1000` in /etc/init.d/tachyon reload blocked forever.
+    let command = common.background_command_with_pid(
+        command_from_args(args),
+        ">>" + shell_quote(log_file)
+    );
+    let pid = int(trim(command_output(command)));
     if (pid <= 0) {
         log_message("Failed to spawn tailscaled for " + section_name(section), "warn");
         return false;
@@ -498,7 +521,7 @@ function bring_up(section) {
     // through the dedicated dnsmasq forward instead of resolv.conf takeover.
     push(args, "--accept-dns=false");
     // --netfilter-mode=off — probe actual support to avoid unknown-flag crash.
-    if (netfilter_mode_supported())
+    if (netfilter_mode_supported_by_client())
         push(args, "--netfilter-mode=off");
     // Never block the runtime on interactive prompts or dead control planes.
     push(args, "--timeout=120s");
