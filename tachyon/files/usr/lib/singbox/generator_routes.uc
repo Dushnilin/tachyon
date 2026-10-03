@@ -1550,6 +1550,16 @@ function section_dns_server(section) {
     return runtime_constants.FAKEIP_DNS_SERVER_TAG;
 }
 
+// The fakeip server synthesises addresses and answers A and AAAA only. Without
+// an explicit query_type every other type went there too and got nothing, so the
+// client waited out its own timeout: MX for mail, SRV for service discovery,
+// TXT for SPF/DKIM. Browsers never noticed, they only ask A and AAAA.
+function add_fakeip_query_type(rule, server_tag) {
+    if (server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG)
+        rule.query_type = [ "A", "AAAA" ];
+    return rule;
+}
+
 function routed_dns_server_tag(section_name) {
     return runtime_constants.tag(section_name, "routed-dns-server");
 }
@@ -2349,6 +2359,7 @@ function add_combined_route_for_section(config, section) {
             server: section_dns_server(section),
             rewrite_ttl
         };
+        add_fakeip_query_type(dns_rule, section_dns_server(section));
         add_domain_array(dns_rule, "domain", domain);
         add_domain_array(dns_rule, "domain_suffix", domain_suffix);
         add_domain_array(dns_rule, "domain_keyword", domain_keyword);
@@ -2365,6 +2376,7 @@ function add_combined_route_for_section(config, section) {
                 rewrite_ttl,
                 rule_set: single_or_array(dns_query_rule_set_tags)
             };
+            add_fakeip_query_type(dns_rule, section_dns_server(section));
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
         }
@@ -2401,6 +2413,7 @@ function add_combined_route_for_section(config, section) {
                 rewrite_ttl,
                 rule_set: single_or_array(all_dns_tags)
             };
+            add_fakeip_query_type(dns_rule, section_dns_server(section));
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
         }

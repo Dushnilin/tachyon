@@ -673,7 +673,9 @@ function base_config(settings, service_address, runtime_context) {
             action: "route",
             server: runtime_constants.FAKEIP_DNS_SERVER_TAG,
             rewrite_ttl,
-            domain: [ runtime_constants.FAKEIP_TEST_DOMAIN, runtime_constants.CHECK_PROXY_IP_DOMAIN ]
+            domain: [ runtime_constants.FAKEIP_TEST_DOMAIN, runtime_constants.CHECK_PROXY_IP_DOMAIN ],
+            // fakeip answers A and AAAA only; see add_fakeip_query_type().
+            query_type: [ "A", "AAAA" ]
         }
     ])
         push(dns_rules, rule);
