@@ -22,6 +22,21 @@ assert_contains() {
   grep -Fq "$expected" "$file" || fail "$label: expected '$expected'"
 }
 
+assert_before() {
+  local file="$1"
+  local first="$2"
+  local second="$3"
+  local label="$4"
+
+  local first_line second_line
+  first_line="$(grep -nF -- "$first" "$file" | head -1 | cut -d: -f1 || true)"
+  second_line="$(grep -nF -- "$second" "$file" | head -1 | cut -d: -f1 || true)"
+  [ -n "$first_line" ] || fail "$label: '$first' is missing"
+  [ -n "$second_line" ] || fail "$label: '$second' is missing"
+  [ "$first_line" -lt "$second_line" ] ||
+    fail "$label: '$first' (line $first_line) must come before '$second' (line $second_line), otherwise the rule is dead"
+}
+
 mkdir -p "$WORK_DIR/bin"
 
 cat >"$WORK_DIR/bin/nft" <<NFT
@@ -75,6 +90,17 @@ assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tudp\tdport\t123\treturn' "enable: exclude_ntp bypass"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tmark\t0x00100000\treturn' "enable: outbound_mark bypass"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tl4proto\ttcp\tcounter\tredirect\tto\t:1604' "enable: tcp redirect to 1604"
+
+# A DPI section claims router-originated traffic in mangle_output (route output,
+# priority -150) and hands it to the provider queue there. This chain is nat
+# output at priority -100, so it runs after that. Without a bypass the very same
+# packet is both queued to nfqws2 and redirected into sing-box, and the section
+# stops bypassing anything: ticking "route router's own traffic" breaks zapret
+# and zapret2 sections.
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tmark\t&\t0x01000000\t==\t0x01000000\treturn' "enable: zapret section mark bypass"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tmark\t&\t0x02000000\t==\t0x02000000\treturn' "enable: zapret2 section mark bypass"
+assert_before "$NFT_LOG" $'meta\tmark\t&\t0x01000000\t==\t0x01000000\treturn' $'counter\tredirect\tto\t:1604' "enable: zapret bypass must precede the redirect"
+assert_before "$NFT_LOG" $'ip\tdaddr\t@localv4\treturn' $'meta\tmark\t&\t0x02000000\t==\t0x02000000\treturn' "enable: bypasses stay in one chain, local first"
 
 # Test 2: Direct disable call
 : > "$NFT_LOG"

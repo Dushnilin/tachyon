@@ -1827,6 +1827,11 @@ function nft_create_runtime_output_rules(table, localv4_set, common_set, port_se
 
 let parse_mark_number = common.parse_number;
 
+function nft_provider_mark_base_hex(route_mark_base) {
+    let base = parse_mark_number(route_mark_base);
+    return base == null ? "" : sprintf("0x%08x", base);
+}
+
 function nft_provider_mark_hex(route_mark_base, index) {
     let base = parse_mark_number(route_mark_base);
     index = int(index || 0);
@@ -2660,6 +2665,18 @@ function nft_enable_router_output_intercept(table, localv4_set, outbound_mark, e
         return false;
     if (outbound_mark != "" && !nft_add_rule(table, "output_redirect", [ "meta", "mark", outbound_mark, "return" ]))
         return false;
+    // A DPI section claims router-originated traffic in mangle_output, which is a
+    // route hook at priority -150, and hands it to the provider queue right
+    // there. This chain is nat output at priority -100, so it sees the same
+    // packet afterwards, still carrying the section mark. Without these returns
+    // the packet is both queued to nfqws and redirected into sing-box: two owners
+    // for one connection, and ticking "route router's own traffic" silently
+    // breaks every zapret and zapret2 section.
+    for (let route_mark_base in [ runtime_constants.ZAPRET_ROUTE_MARK_BASE, runtime_constants.ZAPRET2_ROUTE_MARK_BASE ]) {
+        let hex = nft_provider_mark_base_hex(route_mark_base);
+        if (hex != "" && !nft_add_rule(table, "output_redirect", [ "meta", "mark", "&", hex, "==", hex, "return" ]))
+            return false;
+    }
     return nft_add_rule(table, "output_redirect", [
         "meta", "l4proto", "tcp", "counter", "redirect", "to", ":" + port
     ]);
