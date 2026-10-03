@@ -291,6 +291,57 @@ function is_usable_srs_file(path) {
     return is_populated_srs_file(path) && srs_file_parses(path);
 }
 
+// Verifying means spawning sing-box, so remember what has already been verified
+// and skip the spawn while the file is the same one we checked. The marker sits in
+// tmpfs next to the files it describes, so it cannot outlive them and no verdict
+// survives the file changing underneath it - which is also why the stamp carries
+// the mtime and not just the size: a rewrite can land the same length.
+const SRS_VERIFY_DIR = getenv("TACHYON_SRS_VERIFY_DIR") || "/tmp/.tachyon-srs-verified";
+
+function srs_verify_marker_path(path) {
+    return SRS_VERIFY_DIR + "/" + hash12(as_string(path)) + ".ok";
+}
+
+function srs_file_stamp(path) {
+    let st = fs.stat(as_string(path));
+    if (st == null)
+        return "";
+    return int(st.size) + ":" + int(st.mtime);
+}
+
+function srs_file_already_verified(path) {
+    let stamp = srs_file_stamp(path);
+    if (stamp == "")
+        return false;
+    let marker = fs.readfile(srs_verify_marker_path(path));
+    return marker != null && trim(as_string(marker)) == stamp;
+}
+
+function remember_srs_file_verified(path) {
+    let stamp = srs_file_stamp(path);
+    if (stamp == "")
+        return;
+    try {
+        common.ensure_dir(SRS_VERIFY_DIR);
+        common.write_file(srs_verify_marker_path(path), stamp + "\n");
+    } catch (e) {}
+}
+
+// The check for a file we are about to keep but have maybe already checked. The
+// /tmp copy used to be trusted outright, which left a file downloaded by an older
+// Tachyon in place forever: it passed the cheap test, sing-box died on it, and no
+// apply could recover because the copy that was broken was the one believed.
+function is_adoptable_srs_file(path) {
+    if (!is_populated_srs_file(path))
+        return false;
+    if (srs_file_already_verified(path))
+        return true;
+    if (!srs_file_parses(path))
+        return false;
+    remember_srs_file_verified(path);
+    return true;
+}
+
 function ensure_empty_srs_stub(target_path) {
     target_path = as_string(target_path);
     if (is_valid_srs_file(target_path))
@@ -334,6 +385,7 @@ function module_exports() {
         is_populated_srs_file,
         srs_file_parses,
         is_usable_srs_file,
+        is_adoptable_srs_file,
         ensure_empty_srs_stub
     };
 }
@@ -359,9 +411,11 @@ else if (mode == "is-valid-srs-file")
     exit(is_valid_srs_file(ARGV[1]) ? 0 : 1);
 else if (mode == "is-usable-srs-file")
     exit(is_usable_srs_file(ARGV[1]) ? 0 : 1);
+else if (mode == "is-adoptable-srs-file")
+    exit(is_adoptable_srs_file(ARGV[1]) ? 0 : 1);
 else if (mode == "ensure-empty-srs-stub")
     exit(ensure_empty_srs_stub(ARGV[1]) ? 0 : 1);
 else {
-    warn("Usage: singbox/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|is-usable-srs-file|ensure-empty-srs-stub> ...\n");
+    warn("Usage: singbox/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|is-usable-srs-file|is-adoptable-srs-file|ensure-empty-srs-stub> ...\n");
     exit(1);
 }

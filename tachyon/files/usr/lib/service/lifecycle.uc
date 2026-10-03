@@ -763,6 +763,7 @@ function prepare_subscription_caches(mode) {
 
 
 function restore_rulesets_from_cache() {
+    let runtime_rulesets_mod = require("singbox.rulesets");
     let etc_dir = "/etc/tachyon/rulesets";
     let tmp_dir = TMP_RULESET_FOLDER;
 
@@ -777,7 +778,14 @@ function restore_rulesets_from_cache() {
         let etc_path = etc_dir + "/" + entry;
         let tmp_st = fs.stat(tmp_path);
         let etc_st = fs.stat(etc_path);
-        if (etc_st && etc_st.size > 0 && (!tmp_st || tmp_st.size == 0)) {
+        if (!etc_st || etc_st.size <= 0) continue;
+        // An .srs copied out of /etc into the ruleset sing-box actually reads has to
+        // be one it can parse. Restoring a broken one here is what left the router
+        // unable to apply anything, because the copy that was broken was the copy
+        // the generator went on to reference.
+        if (match(entry, /\.srs$/) && !runtime_rulesets_mod.is_adoptable_srs_file(etc_path))
+            continue;
+        if (!tmp_st || tmp_st.size == 0) {
             let content = fs.readfile(etc_path);
             if (content)
                 fs.writefile(tmp_path, content);
@@ -841,7 +849,7 @@ function prepare_community_rulesets() {
         let tmp_path = tmp_dir + "/community-" + service + ".srs";
         let etc_path = etc_dir + "/community-" + service + ".srs";
 
-        if (runtime_rulesets_mod.is_valid_srs_file(tmp_path))
+        if (runtime_rulesets_mod.is_adoptable_srs_file(tmp_path))
             continue;
 
         // The /etc copy is adopted across reboots, so a file that went bad there
