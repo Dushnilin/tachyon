@@ -463,6 +463,12 @@ function fail_outbound_detour(message) {
 
 function fail_validation(message) {
     print(message, "\n");
+    // A start that aborts on an invalid config has to leave a trace. The user runs
+    // it from a console, watches the message scroll by, and then logread shows
+    // nothing at all - reported on 1.4.8, where a bypass section with an empty
+    // include filter refused to start and left no record of why. Same text, both
+    // destinations.
+    common.command_success_from_args(["logger", "-t", "tachyon", "[err] " + as_string(message)]);
     exit(1);
 }
 
