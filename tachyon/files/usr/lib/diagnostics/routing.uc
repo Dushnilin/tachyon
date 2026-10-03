@@ -604,9 +604,47 @@ function nft_chain_counter_status(chain) {
     return [ rules_exist, counters ];
 }
 
+// Tachyon installs marking rules of its own outside TachyonTable: two rules in
+// `inet fw4` for the TPROXY mark, so marked traffic survives the firewall. A
+// check for "another package is marking packets" must not count those, or every
+// router reports a false positive against its own firewall.
+const TACHYON_OWN_MARKS = [
+    constants.NFT_FAKEIP_MARK || "0x04000000",
+    constants.NFT_OUTBOUND_MARK || "0x08000000"
+];
+
+function line_marks_are_all_ours(line) {
+    let seen = false;
+    for (let token in match(line, /0x[0-9a-fA-F]+/g) || []) {
+        seen = true;
+        // A capture-less /g match yields [whole-match] per element.
+        let value = lc(as_string(token[0]));
+        let ours = false;
+        for (let mark in TACHYON_OWN_MARKS) {
+            if (lc(as_string(mark)) == value) {
+                ours = true;
+                break;
+            }
+        }
+        if (!ours)
+            return false;
+    }
+    return seen;
+}
+
 function nft_table_has_other_mark_rules(family, table_name) {
     let output = command_output_from_args([ "nft", "list", "table", family, table_name ]);
-    return output != null && index(output, "meta mark set") >= 0;
+    if (output == null)
+        return false;
+    for (let line in split(output, "\n")) {
+        line = as_string(line);
+        if (index(line, "meta mark set") < 0)
+            continue;
+        if (line_marks_are_all_ours(line))
+            continue;
+        return true;
+    }
+    return false;
 }
 
 function nft_steer_chain_has_rules(chain) {

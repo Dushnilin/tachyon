@@ -1472,6 +1472,33 @@ function global_nft_other_mark_exists() {
     exit(type(value) == "object" && flag_is_one(value.rules_other_mark_exist) ? 0 : 1);
 }
 
+// Tachyon's own rules live in `inet fw4` (the TPROXY mark has to survive the
+// firewall), so "not in TachyonTable" is not the same as "not ours". Only lines
+// carrying a mark Tachyon does not own belong in this list.
+const TACHYON_OWN_MARKS = [
+    getenv("NFT_FAKEIP_MARK") || "0x04000000",
+    getenv("NFT_OUTBOUND_MARK") || "0x08000000"
+];
+
+function mark_line_is_ours(line) {
+    let seen = false;
+    for (let token in match(line, /0x[0-9a-fA-F]+/g) || []) {
+        seen = true;
+        // A capture-less /g match yields [whole-match] per element.
+        let value = lc(as_string(token[0]));
+        let ours = false;
+        for (let mark in TACHYON_OWN_MARKS) {
+            if (lc(as_string(mark)) == value) {
+                ours = true;
+                break;
+            }
+        }
+        if (!ours)
+            return false;
+    }
+    return seen;
+}
+
 function nft_ruleset_other_mark_lines(table_name) {
     table_name = as_string(table_name);
     let in_tachyon_table = false;
@@ -1486,8 +1513,13 @@ function nft_ruleset_other_mark_lines(table_name) {
         if (match(line, /^table/) != null)
             in_tachyon_table = false;
 
-        if (!in_tachyon_table && (index(line, "mark set") >= 0 || index(line, "meta mark") >= 0))
-            print_line(line);
+        if (in_tachyon_table)
+            continue;
+        if (index(line, "mark set") < 0 && index(line, "meta mark") < 0)
+            continue;
+        if (mark_line_is_ours(line))
+            continue;
+        print_line(line);
     }
 }
 
