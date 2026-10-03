@@ -7833,6 +7833,138 @@ function writeDnsRulesetReferences(section_id, values) {
   uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
+function readDependentServerNotices() {
+  try {
+    const entries = JSON.parse(
+      window.localStorage.getItem("tachyon:disabled-section-servers:v1") ||
+        "[]",
+    );
+    return Array.isArray(entries)
+      ? entries.filter(
+          (entry) =>
+            entry &&
+            typeof entry.sectionId === "string" &&
+            typeof entry.sectionName === "string" &&
+            Array.isArray(entry.servers) &&
+            entry.servers.every((name) => typeof name === "string"),
+        )
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writeDependentServerNotices(entries) {
+  try {
+    const key = "tachyon:disabled-section-servers:v1";
+    if (entries.length)
+      window.localStorage.setItem(key, JSON.stringify(entries));
+    else window.localStorage.removeItem(key);
+  } catch (_error) {
+    // Blocked browser storage must not prevent saving the configuration.
+  }
+}
+
+function showDependentServerNotice(entry) {
+  const id = "tachyon-disabled-servers-" + encodeURIComponent(entry.sectionId);
+  if (document.getElementById(id)) return;
+  const notification = ui.addNotification(
+    null,
+    E("div", {}, [
+      E(
+        "p",
+        {},
+        _(
+          'Routing section "%s" is disabled. Servers using it were also disabled: %s.',
+        ).format(entry.sectionName, entry.servers.join(", ")),
+      ),
+      E(
+        "p",
+        {},
+        _(
+          "Their routing settings are preserved. Enable these servers manually after enabling the section.",
+        ),
+      ),
+    ]),
+    "warning",
+  );
+  notification.id = id;
+  notification.querySelector("button").addEventListener("click", () => {
+    writeDependentServerNotices(
+      readDependentServerNotices().filter(
+        (saved) => saved.sectionId !== entry.sectionId,
+      ),
+    );
+  });
+}
+
+function restoreDependentServerNotices() {
+  readDependentServerNotices().forEach(showDependentServerNotice);
+}
+
+function disableServersUsingDisabledSections(map) {
+  if (map.readonly) return;
+
+  const disabledSections = new Map(
+    (uci.sections(UCI_PACKAGE, "section") || [])
+      .filter((item) => item.enabled === "0")
+      .map((item) => [item[".name"], item]),
+  );
+  const disabledServers = new Map();
+
+  (uci.sections(UCI_PACKAGE, "server") || []).forEach((server) => {
+    if (
+      server.enabled === "0" ||
+      server.routing_mode !== "section" ||
+      !disabledSections.has(server.routing_section)
+    ) {
+      return;
+    }
+
+    uci.set(UCI_PACKAGE, server[".name"], "enabled", "0");
+    const names = disabledServers.get(server.routing_section) || [];
+    names.push(server.label || server.name || server[".name"]);
+    disabledServers.set(server.routing_section, names);
+  });
+
+  disabledServers.forEach((names, sectionId) => {
+    const target = disabledSections.get(sectionId);
+    const entry = {
+      sectionId,
+      sectionName: target.label || target.name || sectionId,
+      servers: names,
+    };
+    writeDependentServerNotices([
+      ...readDependentServerNotices().filter(
+        (saved) => saved.sectionId !== sectionId,
+      ),
+      entry,
+    ]);
+    // Replace a previous event for this section, if it is still displayed.
+    const previous = document.getElementById(
+      "tachyon-disabled-servers-" + encodeURIComponent(sectionId),
+    );
+    if (previous) previous.remove();
+    showDependentServerNotice(entry);
+  });
+}
+
+function configureDependentServerDisable(map) {
+  if (map.__tachyonDependentServerDisable) return;
+  map.__tachyonDependentServerDisable = true;
+  const originalParse = map.parse;
+  map.parse = function () {
+    return Promise.resolve(originalParse.apply(this, arguments)).then(
+      (result) => {
+        // All fields must be parsed first: a server checkbox or routing-mode
+        // edit in another tab must not overwrite the dependent disable.
+        disableServersUsingDisabledSections(this);
+        return result;
+      },
+    );
+  };
+}
+
 function createSectionContent(section) {
   let o;
 
@@ -7844,6 +7976,13 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.editable = true;
   o.width = "6rem";
+  const originalEnabledRenderWidget = o.renderWidget;
+  o.renderWidget = function () {
+    // GridSection creates a separate map for the modal and copies the option.
+    // Install the same post-parse guard in both the table and modal maps.
+    configureDependentServerDisable(this.map);
+    return originalEnabledRenderWidget.apply(this, arguments);
+  };
 
   o = section.taboption(
     "settings",
@@ -13504,6 +13643,8 @@ function configureSectionSection(sectionRef, options = {}) {
       if (node) {
         const tracer = createTracerSearchWidget(sectionRef);
         node.appendChild(tracer);
+        // The view inserts its rendered map before the next event-loop turn.
+        window.setTimeout(restoreDependentServerNotices, 0);
       }
       return node;
     });

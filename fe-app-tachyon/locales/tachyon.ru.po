@@ -7468,3 +7468,9 @@ msgstr "Не удалось прочитать конфиг OpenVPN: "
 
 msgid "Failed / timeout"
 msgstr "Ошибка / таймаут"
+
+msgid "Routing section \"%s\" is disabled. Servers using it were also disabled: %s."
+msgstr "Секция маршрутизации «%s» отключена. Использующие её серверы также отключены: %s."
+
+msgid "Their routing settings are preserved. Enable these servers manually after enabling the section."
+msgstr "Настройки маршрутизации сохранены. После включения секции включите нужные серверы вручную."
