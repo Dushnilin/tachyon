@@ -498,12 +498,44 @@ function has_direct_mark_outbound(config, tag, routing_mark) {
     return false;
 }
 
+// A section that excludes a client does not lose its rule: apply_excluded_source_ips
+// wraps it into a logical AND, and every matcher - the tproxy inbound included -
+// moves down into rules[]. Reading only the top level then reported the section as
+// unconfigured while sing-box was routing it, and the status page called a working
+// section stopped. Descend instead, following sing-box's own and/or semantics: a
+// rule that constrains no inbound covers ours too.
+function rule_covers_inbound(rule, inbound) {
+    if (type(rule) != "object")
+        return false;
+
+    let subs = rule.rules;
+    if (rule.type == "logical" && type(subs) == "array") {
+        if (rule.mode == "or") {
+            for (let sub in subs) {
+                if (rule_covers_inbound(sub, inbound))
+                    return true;
+            }
+            return false;
+        }
+        // AND fires only when every branch is satisfied. A branch that constrains
+        // the inbound to something else rules the whole rule out for ours; a branch
+        // that says nothing about the inbound leaves it neutral.
+        for (let sub in subs) {
+            if (!rule_covers_inbound(sub, inbound))
+                return false;
+        }
+        return true;
+    }
+
+    return rule.inbound == null || value_contains(rule.inbound, inbound);
+}
+
 function has_route_rule(config, inbound, outbound) {
     for (let rule in array_or_empty(config && config.route && config.route.rules)) {
         if (type(rule) == "object" &&
             rule.action == "route" &&
-            value_contains(rule.inbound, inbound) &&
-            value_contains(rule.outbound, outbound))
+            value_contains(rule.outbound, outbound) &&
+            rule_covers_inbound(rule, inbound))
             return true;
     }
     return false;
@@ -804,5 +836,6 @@ function run(provider, argv) {
 return {
     run,
     expand_strategy,
-    normalize_ctrack_timeouts
+    normalize_ctrack_timeouts,
+    has_route_rule
 };
