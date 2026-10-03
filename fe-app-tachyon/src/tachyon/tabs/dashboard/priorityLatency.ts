@@ -1,5 +1,3 @@
-import type { Tachyon } from '../../types';
-
 // A priority group is a plain sing-box selector over the raw server tags, so
 // nothing in sing-box measures it: latency exists only for servers that belong to
 // a URLTest group. That is why the first level showed numbers and every fallback

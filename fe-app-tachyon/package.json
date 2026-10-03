@@ -12,7 +12,7 @@
     "build": "npm run contracts:generate && tsc --noEmit && tsup src/main.ts",
     "dev": "tsup src/main.ts --watch",
     "test": "vitest",
-    "ci": "npm run contracts:generate && npm run format && npm run lint --max-warnings=0 && npm run test -- --run && npm run build",
+    "ci": "npm run contracts:generate && npm run format && npm run lint -- --max-warnings=0 && npm run test -- --run && npm run build",
     "locales:extract-calls": "node extract-calls.js",
     "locales:generate-pot": "node generate-pot.js",
     "locales:generate-po:ru": "node generate-po.js ru",
