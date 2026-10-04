@@ -189,34 +189,18 @@ function daemon_version_gte(required) {
 }
 
 // Check if tailscaled actually supports --netfilter-mode flag.
-// The flag was added in 1.36 and removed in ~1.44+; version checks alone
-// are unreliable because some distro builds strip it at different ranges.
-function netfilter_help_has_flag(bin) {
-    if (!bin || fs.stat(bin) == null) return false;
-    let help = command_output_from_args([ bin, "up" ]);
-    if (index(as_string(help), "up") < 0)
-        help = command_output_from_args([ bin, "--help" ]);
-    return index(as_string(help), "netfilter-mode") >= 0;
-}
-
 // --netfilter-mode lives on the daemon in older builds (1.36+) and moved to the
 // client for `tailscale up` later. Asking only tailscaled meant the client never
 // got the flag on a current version, so tailscaled installed its own netfilter
 // rules and the router carried ip filter / ip mangle tables nobody asked for.
-let _netfilter_mode_supported_daemon = null;
-let _netfilter_mode_supported_client = null;
-
-function netfilter_mode_supported_by_daemon() {
-    if (_netfilter_mode_supported_daemon === null)
-        _netfilter_mode_supported_daemon = netfilter_help_has_flag(TAILSCALED_BIN);
-    return _netfilter_mode_supported_daemon;
-}
-
-function netfilter_mode_supported_by_client() {
-    if (_netfilter_mode_supported_client === null)
-        _netfilter_mode_supported_client = netfilter_help_has_flag(TAILSCALE_BIN);
-    return _netfilter_mode_supported_client;
-}
+//
+// The probe lives in its own module so it can be exercised without running this
+// file's CLI. That is not cosmetic: `tailscale up` with no arguments is a connect
+// command rather than a help query, and on 1.98.3 the flag is documented by
+// `tailscale up --help` and not by the general `tailscale --help`.
+let netfilter_probe = require("providers.tailscale.netfilter_probe");
+let netfilter_mode_supported_by_daemon = netfilter_probe.netfilter_mode_supported_by_daemon;
+let netfilter_mode_supported_by_client = netfilter_probe.netfilter_mode_supported_by_client;
 
 // TUN device is required for native (kernel) tailscaled mode.
 function tun_available() {

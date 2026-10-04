@@ -2313,21 +2313,46 @@ function smart_detect_process_pending() {
 // ─── OOM response ─────────────────────────────────────────────────────────────
 // Shrinks the GOMEMLIMIT scale by 20% per OOM, floored at 0.2 so sing-box is
 // never starved into permanent failure, then restarts to apply it.
+//
+// The arithmetic lives in service/oom_scale.uc so the floor rule can be exercised
+// directly: requiring watchdog.uc runs its subscriptions.
+let oom_scale = require("service.oom_scale");
+let oom_scale_path = oom_scale.oom_scale_path;
+let read_oom_scale = oom_scale.read_oom_scale;
+let oom_scale_at_floor = oom_scale.oom_scale_at_floor;
+let next_oom_scale = oom_scale.next_oom_scale;
+let last_oom_floor_notice_time = 0;
+
 function heal_oom(ev) {
+    // At the floor there is nothing left to lower, so the restart used to apply the
+    // new value re-applied the same one - and restarting every service under memory
+    // pressure is what produced the next OOM. A router could sit in that loop
+    // indefinitely with a Telegram notification a minute, which is what the log
+    // screenshots showed. Nothing is written and nothing is restarted here.
+    let floor_scale = read_oom_scale();
+    if (oom_scale_at_floor(floor_scale)) {
+        log_message("OOM event with GOMEMLIMIT scale already at the floor (" +
+            sprintf("%.2f", floor_scale) + "): not restarting services again", "err");
+        let floor_now = time();
+        if (floor_now - last_oom_floor_notice_time >= 3600) {
+            last_oom_floor_notice_time = floor_now;
+            send_telegram_notification("OOM repeats and GOMEMLIMIT is already at its minimum. Restarting services no longer helps, so it has been stopped - free memory or lower the load.");
+        }
+        return;
+    }
+
     log_message("OOM event detected from syslog! Reducing GOMEMLIMIT scaling...", "err");
     send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
-    let scale = 1.0;
-    let scale_path = "/etc/tachyon/mem_scale";
-    let scale_data = fs.readfile(scale_path);
-    if (scale_data != null) {
-        let parsed_scale = double(trim(as_string(scale_data)));
-        if (parsed_scale > 0.1) scale = parsed_scale;
-    }
-    let new_scale = scale * 0.8;
-    if (new_scale < 0.2) new_scale = 0.2;
-    fs.mkdir("/etc/tachyon");
-    fs.writefile(scale_path, sprintf("%.2f", new_scale));
-    system("logread -c >/dev/null 2>&1");
+    let scale = read_oom_scale();
+    let scale_path = oom_scale_path();
+    let new_scale = next_oom_scale(scale);
+    // write_state_file creates the parent directory itself.
+    write_state_file(scale_path, sprintf("%.2f", new_scale), "GOMEMLIMIT scale");
+
+    // No logread -c here. The replay of the historical buffer on start is already
+    // filtered by the controller's syslog_start_time guard, so clearing the buffer
+    // gained nothing and destroyed the only record of what ran the router out of
+    // memory.
     command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
 }
 
