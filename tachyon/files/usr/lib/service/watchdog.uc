@@ -22,8 +22,14 @@ try {
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const PID_FILE = "/var/run/tachyon_watchdog.pid";
+const PID_FILE = getenv("TACHYON_WATCHDOG_PID_FILE") || "/var/run/tachyon_watchdog.pid";
+const SUPERVISOR_PID_FILE = getenv("TACHYON_WATCHDOG_SUPERVISOR_PID_FILE") || "/var/run/tachyon_watchdog.supervisor.pid";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
+// The supervisor launches this instead of WATCHDOG_UC, so tests can point it
+// at a fake worker without standing up the real daemon.
+const WORKER_UC = getenv("TACHYON_WATCHDOG_WORKER_UC") || WATCHDOG_UC;
+const WORKER_RESTART_DELAY_MS = int(getenv("TACHYON_WATCHDOG_RESTART_DELAY_MS") || "5000");
+const WORKER_STABLE_SECONDS = int(getenv("TACHYON_WATCHDOG_STABLE_SECONDS") || "120");
 const PAUSE_FILE = "/tmp/tachyon_paused_until";
 const SMART_DETECT_SEEN_FILE = "/etc/tachyon/smart_detect_seen.json";
 
@@ -182,6 +188,23 @@ function process_running(pid, expected_name) {
 }
 
 function stop_runtime() {
+    // The supervisor first: while it lives it would respawn whatever we kill
+    // below. It has no SIGTERM handler, so the wait only exists to give it a
+    // chance to notice before the SIGKILL fallback.
+    let sup_pid = trim(fs.readfile(SUPERVISOR_PID_FILE) || "");
+    if (process_running(sup_pid, "ucode")) {
+        command_success_from_args([ "kill", sup_pid ]);
+        let sup_wait = 50; // 5 seconds
+        while (sup_wait > 0 && process_running(sup_pid, "ucode")) {
+            sleep(100);
+            sup_wait--;
+        }
+        if (process_running(sup_pid, "ucode")) {
+            command_success_from_args([ "kill", "-9", sup_pid ]);
+        }
+    }
+    remove_file(SUPERVISOR_PID_FILE);
+
     let pid = trim(fs.readfile(PID_FILE) || "");
     if (process_running(pid, "ucode")) {
         command_success_from_args([ "kill", pid ]);
@@ -429,10 +452,72 @@ function start_runtime() {
         return 0;
     }
 
+    // Spawn the supervisor, not the worker. The old spawn launched the worker
+    // detached with stdout and stderr both going to /dev/null and left nobody
+    // reaping it: on firmware where the ucode uloop event loop segfaults, the
+    // worker died seconds after start, nothing logged the death (the exec'd
+    // process has no shell left to print "Segmentation fault") and the
+    // watchdog stayed dead until the next manual start. The supervisor's pid
+    // lands in SUPERVISOR_PID_FILE; the worker's own pid still goes to
+    // PID_FILE, which every status surface reads.
     let command = common.background_command_with_pid(
-        command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "worker" ]),
-        ">/dev/null", ">" + shell_quote(PID_FILE));
+        command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "supervise" ]),
+        ">/dev/null", ">" + shell_quote(SUPERVISOR_PID_FILE));
     return command_status(command);
+}
+
+// Keep the worker alive. Polls the pid file the worker spawn writes, logs
+// every death with how long the worker lasted, and respawns after a flat
+// delay. Two consecutive early deaths (shorter than WORKER_STABLE_SECONDS)
+// flip the respawn into TACHYON_WATCHDOG_LEGACY=1, which makes the worker
+// take the polling branch that never touches uloop - the fallback for
+// firmware where uloop.run() itself crashes. The legacy choice is sticky for
+// the lifetime of the supervisor: it is re-evaluated on the next start, which
+// is also when a ucode upgrade that fixed the crash gets picked up.
+//
+// The supervisor has no SIGTERM handler on purpose: stop_runtime() kills it
+// first and then the worker, so a handler could only race the shutdown.
+function supervise() {
+    log_message("Watchdog supervisor started", "info");
+
+    let early_deaths = 0;
+    let force_legacy = false;
+
+    while (true) {
+        let spawn = (force_legacy ? "TACHYON_WATCHDOG_LEGACY=1 " : "") +
+            command_from_args([ "ucode", "-L", LIB_DIR, WORKER_UC, "worker" ]);
+        command_status(common.background_command_with_pid(spawn, ">/dev/null", ">" + shell_quote(PID_FILE)));
+
+        let started = time();
+        // Liveness is existence of the pid, not a name match: the recorded pid
+        // belongs to the spawn's subshell for its first milliseconds and only
+        // then becomes the worker through exec, so a comm check races the
+        // exec and would declare every worker dead at birth. A dead pid leaves
+        // no /proc entry, which is the only fact that matters here.
+        while (true) {
+            let pid = trim(fs.readfile(PID_FILE) || "");
+            if (pid == "" || !process_running(pid, ""))
+                break;
+            sleep(1000);
+        }
+
+        let lived = time() - started;
+        if (lived >= WORKER_STABLE_SECONDS) {
+            early_deaths = 0;
+            log_message("Watchdog worker exited after " + lived + "s; respawning", "warn");
+        } else {
+            early_deaths++;
+            if (early_deaths >= 2 && !force_legacy) {
+                force_legacy = true;
+                log_message("Watchdog worker exited after " + lived + "s (early exit " +
+                    early_deaths + "); respawning in legacy loop mode (uloop disabled)", "err");
+            } else {
+                log_message("Watchdog worker exited after " + lived + "s (early exit " +
+                    early_deaths + "); respawning", "warn");
+            }
+        }
+        sleep(WORKER_RESTART_DELAY_MS);
+    }
 }
 
 function run_zero_rtt_prefetching() {
@@ -2638,6 +2723,13 @@ function ai_full_health_audit() {
 }
 
 function worker() {
+    // Set by the supervisor after repeated early deaths: every listener and
+    // the event-driven branch below gate on this variable, so nulling it here
+    // reproduces the "uloop module not installed" degradation exactly - the
+    // polling loop that never calls uloop.run().
+    if (getenv("TACHYON_WATCHDOG_LEGACY") == "1")
+        uloop = null;
+
     log_message("Watchdog daemon started.", "info");
 
     // Subscribe before any source is wired up, so no fact observed during
@@ -3146,6 +3238,8 @@ if (mode == "start-runtime")
     exit(start_runtime());
 else if (mode == "stop-runtime")
     exit(stop_runtime());
+else if (mode == "supervise")
+    exit(supervise());
 else if (mode == "worker")
     exit(worker());
 else if (mode == "status")
@@ -3200,6 +3294,6 @@ else if (mode == "emergency-trigger") {
     exit(0);
 }
 else {
-    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|worker|status|ai-heal|ai-status|ai-status-full|smart-detect-extract-domain|smart-detect-proxy-sections|escalation-status|emergency-status|emergency-reset|emergency-trigger> ...\n");
+    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|supervise|worker|status|ai-heal|ai-status|ai-status-full|smart-detect-extract-domain|smart-detect-proxy-sections|escalation-status|emergency-status|emergency-reset|emergency-trigger> ...\n");
     exit(1);
 }
