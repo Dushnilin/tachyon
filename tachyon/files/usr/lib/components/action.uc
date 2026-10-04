@@ -935,6 +935,20 @@ function install_fptn(action, target_tag) {
     action_success("fptn", action, "FPTN package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
+// The steer core package. 2.0.0 renamed it from "steer" to "steer-core"; the old
+// name still exists on routers upgraded from 1.x, and the two conflict.
+const STEER_CORE_PACKAGE = "steer-core";
+
+// What is actually installed, whichever name it carries. "steer-core" declares
+// "Provides: steer", so a package manager may well answer for either name, and a
+// router that has not been updated since 1.x only has "steer".
+function installed_steer_version() {
+    let from_core = installed_package_version(STEER_CORE_PACKAGE);
+    if (from_core != "")
+        return from_core;
+    return installed_package_version("steer");
+}
+
 function install_steer(action, target_tag, extended) {
     let component = extended ? "steer-extended" : "steer";
     let label = extended ? "steer-extended" : "steer";
@@ -953,20 +967,24 @@ function install_steer(action, target_tag, extended) {
     if (action == "check_update") {
         if (!engine.binary_present(component))
             action_success(component, action, label + " is not installed", "", release.version, 0, "", release.release_url || "");
-        let current_version = installed_package_version(extended ? "steer-extended" : "steer");
-        check_success(component, current_version != "" ? current_version : "unknown", release.version, release.release_url || "");
+        check_success(component, installed_steer_version() || "unknown", release.version, release.release_url || "");
     }
 
     let pkg = download_direct_package(release);
     if (pkg == null)
         action_fail(component, action, "Failed to download " + label + " package");
 
-    // steer and steer-extended conflict in package managers (apk/opkg).
-    // The conflicting variant must be removed BEFORE installing the new one.
-    if (extended && pkg_is_installed("steer"))
-        run_logged_pkg_remove_sing_box_conflict("steer", "Removing steer before steer-extended package installation");
-    else if (!extended && pkg_is_installed("steer-extended"))
-        run_logged_pkg_remove_sing_box_conflict("steer-extended", "Removing steer-extended before steer package installation");
+    // The steer packages conflict in the package managers (apk/opkg), and
+    // steer-core additionally declares "Conflicts: steer". Everything that can
+    // collide has to go BEFORE the new one is installed, or the install is
+    // rejected over a package the user never chose to keep.
+    let conflicts = [ "steer", STEER_CORE_PACKAGE, "steer-extended" ];
+    let wanted = extended ? "steer-extended" : STEER_CORE_PACKAGE;
+    for (let other in conflicts) {
+        if (other == wanted) continue;
+        if (pkg_is_installed(other))
+            run_logged_pkg_remove_sing_box_conflict(other, "Removing " + other + " before " + label + " package installation");
+    }
 
     run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 

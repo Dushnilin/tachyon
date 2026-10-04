@@ -48,8 +48,17 @@ esac
 
 # 2. The index and the field must be read out of the match, at the right offsets:
 #    group 1 is the index, group 2 the field.
-grep -qE 'int\(out_field_m\[1\],' "$RUNTIME_UC" ||
-  fail "runtime.uc does not read the outbound index out of the match, so a captured index would be ignored"
+#
+# The index is read with plain int(m[1]). int(x, base) is a base, not a default:
+# int("23", -1) is 0, so the two-argument form silently aimed every repair at
+# outbound 0 - the opposite of the narrowing this branch exists for. Asserted
+# positively so the form cannot drift back.
+grep -qE 'int\(out_field_m\[1\]\)' "$RUNTIME_UC" ||
+  fail "runtime.uc must read the outbound index with int(m[1]); int(m[1], -1) is a base argument and always yields 0, so the repair would strip the wrong outbound"
+
+if grep -qE 'int\(out_field_m\[1\],' "$RUNTIME_UC"; then
+  fail "runtime.uc still passes a second argument to int() for the outbound index, which makes it 0"
+fi
 
 grep -qE 'unknown_field = out_field_m\[2\];' "$RUNTIME_UC" ||
   fail "runtime.uc does not read the field name from the second capture group"

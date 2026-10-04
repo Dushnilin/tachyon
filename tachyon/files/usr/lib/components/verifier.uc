@@ -107,6 +107,43 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
     return "";
 }
 
+// Drops the field sing-box named from the outbound it named, and reports whether
+// anything changed.
+//
+// The apply path in singbox/runtime.uc already does this, and it is the reason a
+// build that rejects one field can still run: only the offending outbound loses it,
+// because deleting it everywhere threw away settings that were working. The
+// pre-flight needs the same repair, or a binary that rejects a single field is
+// refused outright and the user is told the variant is "incompatible" when the truth
+// is that one key could have been dropped.
+//
+// Reports false once no further repair applies, so the caller stops instead of
+// rewriting the same file until it gives up.
+function repair_unknown_outbound_field(config_file, reason) {
+    let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
+    if (!m || !m[1] || !m[2]) return false;
+
+    let field = m[2];
+    // int(x, base) is a base, not a default: int("23", -1) is 0, so the old
+    // int(m[1], -1) form silently pointed every repair at outbound 0.
+    let index = int(m[1]);
+    if (index < 0) return false;
+
+    let cfg_text = as_string(fs.readfile(config_file) || "");
+    if (length(cfg_text) == 0) return false;
+
+    let cfg = json(cfg_text);
+    if (type(cfg) != "object" || type(cfg.outbounds) != "array") return false;
+    if (index >= length(cfg.outbounds)) return false;
+
+    let target = cfg.outbounds[index];
+    if (type(target) != "object" || target[field] == null) return false;
+
+    delete target[field];
+    fs.writefile(config_file, sprintf("%J", cfg));
+    return true;
+}
+
 function check_sing_box_config_with_binary(binary, config_path, library_dir) {
     binary = as_string(binary);
     if (binary == "" || !helpers.file_exists(binary))
@@ -171,13 +208,30 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
                 "generate-config", candidate_cfg, "127.0.0.1", "0", "0", ""
             ]) + " >/dev/null 2>&1";
         if (common.command_status(gen_cmd) == 0 && helpers.file_nonempty(candidate_cfg)) {
-            let cand_check_cmd = helpers.command_env(env_map) + " " +
-                common.command_from_args([ binary, "-c", candidate_cfg, "check" ]) +
-                " >" + common.shell_quote(err_file) + " 2>&1";
-            let cand_status = common.command_status(cand_check_cmd);
+            let repaired = true;
+            for (let attempt = 0; attempt < 4; attempt++) {
+                let cand_check_cmd = helpers.command_env(env_map) + " " +
+                    common.command_from_args([ binary, "-c", candidate_cfg, "check" ]) +
+                    " >" + common.shell_quote(err_file) + " 2>&1";
+                let cand_status = common.command_status(cand_check_cmd);
+                if (cand_status == 0) {
+                    repaired = true;
+                    break;
+                }
+                let cand_reason = "";
+                for (let line in split(as_string(helpers.read_file(err_file)), "\n")) {
+                    line = trim(line);
+                    if (line != "") { cand_reason = line; break; }
+                }
+                if (!repair_unknown_outbound_field(candidate_cfg, cand_reason)) {
+                    repaired = false;
+                    break;
+                }
+                helpers.updates_log("Pre-flight: the candidate sing-box rejected an outbound field, retrying without it", "warn");
+            }
             helpers.remove_file(candidate_cfg);
             helpers.remove_file(version_file);
-            if (cand_status == 0) {
+            if (repaired) {
                 helpers.remove_file(err_file);
                 return { ok: true };
             }
@@ -214,6 +268,7 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
 function module_exports() {
     return {
         format_fingerprint_human,
+        repair_unknown_outbound_field,
         verify_package_post_install,
         verify_binary_post_install,
         validate_sing_box_extended_binary,

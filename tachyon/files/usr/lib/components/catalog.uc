@@ -415,27 +415,16 @@ function resolve_fptn_release(arch, tag) {
 // "steer-1.5.4-1_aarch64_cortex-a53.ipk" and
 // "steer-extended-1.5.4-1_aarch64_cortex-a53.apk". The extended build is a
 // separate package that supersedes the base one.
-function resolve_steer_release(arch, tag, extended) {
-    let asset_ext = helpers.is_apk() ? "apk" : "ipk";
-    let prefix = extended ? "steer-extended-" : "steer-";
-    let distrib_arch = arch != null && as_string(arch.target) != "" ?
-        as_string(arch.target) : helpers.read_openwrt_release_value("DISTRIB_ARCH");
-    if (distrib_arch == "")
-        return null;
+// Both accounts publish the same releases and the same package (the control file
+// still says Maintainer: xyzmean). Hard-coding one of them means a rename takes the
+// install down with it, so the second is tried only when the first yields no usable
+// asset for this router.
+const STEER_RELEASE_OWNERS = [ "xyzmean", "splify2" ];
+const STEER_RELEASE_REPO = "steer";
 
-    let owner = "xyzmean";
-    let repo = "steer";
-    let releases_json = (tag != null && tag != "") ?
-        downloader.fetch_github_release_by_tag_json(owner, repo, tag) :
-        downloader.fetch_github_release_json(owner, repo);
-    if (releases_json == "")
-        return null;
-
-    let tag_name = trim(helpers.helper_output_input(releases_json, "object-get-default", [ "tag_name", "" ]));
-    let release_url = trim(helpers.helper_output_input(releases_json, "object-get-default", [ "html_url", "" ]));
-    let suffix = "-1_" + distrib_arch + "." + asset_ext;
-
-    // Walk the asset list and pick the first match for this build variant.
+// Picks this build variant's asset out of one release, or null when the release does
+// not carry it for this architecture.
+function steer_asset_from_release(releases_json, extended, suffix, distrib_arch, tag_name, release_url) {
     let assets = [];
     try {
         let parsed = json(releases_json);
@@ -448,12 +437,14 @@ function resolve_steer_release(arch, tag, extended) {
 
     for (let asset in assets) {
         let name = as_string(asset.name || "");
-        if (!helpers.str_startswith(name, prefix))
-            continue;
+        // Belt and braces alongside the exact prefixes: nothing that is not one of
+        // the two steer packages may be picked up by the shared suffix.
+        if (extended) {
+            if (!helpers.str_startswith(name, "steer-extended-")) continue;
+        } else {
+            if (!helpers.str_startswith(name, "steer-core-")) continue;
+        }
         if (substr(name, length(name) - length(suffix)) != suffix)
-            continue;
-        // Guard against "steer-extended-" matching the "steer-" prefix.
-        if (!extended && helpers.str_startswith(name, "steer-extended-"))
             continue;
         let ver = versions.extract_arch_package_version(name, distrib_arch);
         if (ver == "")
@@ -467,6 +458,52 @@ function resolve_steer_release(arch, tag, extended) {
             tag: tag_name,
             extended: !!extended
         };
+    }
+
+    return null;
+}
+
+
+function resolve_steer_release(arch, tag, extended) {
+    let asset_ext = helpers.is_apk() ? "apk" : "ipk";
+    // 2.0.0 moved the core out of the "steer" package: it ships as "steer-core",
+    // while "steer-extended" became an empty transition stub for people coming off
+    // 1.x. The plain "steer-" prefix is now ambiguous - the same release also
+    // carries "steer-hysteria2-<version>-1_<arch>.<ext>" packages, and those end
+    // with the same suffix, so the old prefix would have installed the wrong
+    // package and called it the engine.
+    let prefix = extended ? "steer-extended-" : "steer-core-";
+    let distrib_arch = arch != null && as_string(arch.target) != "" ?
+        as_string(arch.target) : helpers.read_openwrt_release_value("DISTRIB_ARCH");
+    if (distrib_arch == "")
+        return null;
+
+    let owner = STEER_RELEASE_OWNERS[0];
+    let repo = STEER_RELEASE_REPO;
+    let releases_json = "";
+    let tag_name = "";
+    let release_url = "";
+    let suffix = "-1_" + distrib_arch + "." + asset_ext;
+
+    for (let candidate in STEER_RELEASE_OWNERS) {
+        let body = (tag != null && tag != "") ?
+            downloader.fetch_github_release_by_tag_json(candidate, repo, tag) :
+            downloader.fetch_github_release_json(candidate, repo);
+        if (body == "")
+            continue;
+
+        let name_here = trim(helpers.helper_output_input(body, "object-get-default", [ "tag_name", "" ]));
+        let url_here = trim(helpers.helper_output_input(body, "object-get-default", [ "html_url", "" ]));
+        let found = steer_asset_from_release(body, extended, suffix, distrib_arch, name_here, url_here);
+        if (found != null)
+            return found;
+
+        if (releases_json == "") {
+            releases_json = body;
+            owner = candidate;
+            tag_name = name_here;
+            release_url = url_here;
+        }
     }
 
     return null;

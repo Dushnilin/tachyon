@@ -1057,7 +1057,10 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 // One bad urltest therefore silently cost every selector its chosen
                 // starting node on each regenerate, which is what the warning on
                 // 192.168.1.1 was actually reporting.
-                let bad_index = int(out_field_m[1], -1);
+                // int(x, base) is a base, not a default: int("23", -1) is 0, so
+                // every repair was aimed at outbound 0 instead of the one sing-box
+                // named. The comment above explains why aiming matters.
+                let bad_index = int(out_field_m[1]);
                 log_message("Installed sing-box does not support outbound field '" + unknown_field +
                     "' on outbound " + (bad_index >= 0 ? to_string(bad_index) : "?") +
                     "; retrying without it there only", "warn");
