@@ -917,6 +917,16 @@ function getConfiguredSubscriptionPrefixes(
   return prefixes;
 }
 
+function dashboardOutboundType(
+  code: string,
+  runtimeType: string | undefined,
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
+) {
+  return outboundMetadata?.protocols?.[code] === 'amneziawg'
+    ? 'AmneziaWG'
+    : runtimeType || '';
+}
+
 function resolveOutboundNameAndPrefix({
   code,
   entry,
@@ -1045,7 +1055,11 @@ function buildUrlTestInfo({
           displayName: resolved.displayName,
           prefix: resolved.prefix,
           latency: childEntry?.value?.history?.[0]?.delay || 0,
-          type: childEntry?.value?.type || '',
+          type: dashboardOutboundType(
+            childCode,
+            childEntry?.value?.type,
+            outboundMetadata,
+          ),
           transport:
             outboundMetadata?.transports?.[childCode] ||
             getProxyUrlTransport(link),
@@ -1182,7 +1196,11 @@ function buildPriorityInfo({
         displayName: resolved.displayName,
         prefix: resolved.prefix,
         latency: childEntry?.value?.history?.[0]?.delay || 0,
-        type: childEntry?.value?.type || '',
+        type: dashboardOutboundType(
+          childCode,
+          childEntry?.value?.type,
+          outboundMetadata,
+        ),
         transport:
           outboundMetadata?.transports?.[childCode] ||
           getProxyUrlTransport(link),
@@ -1429,7 +1447,11 @@ function buildProxyGroupOutbounds(
         latency,
         type: priorityConfig
           ? 'Priority'
-          : effectiveItem?.value.type || 'URLTest',
+          : dashboardOutboundType(
+              code,
+              effectiveItem?.value.type || 'URLTest',
+              outboundMetadata,
+            ),
         transport: isGroupType
           ? undefined
           : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),

@@ -10659,3 +10659,12 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:323
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr ""
+
+msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
+msgstr ""
+
+msgid "Amnezia export; full validation before apply"
+msgstr ""
+
+msgid "vpn:// is available only with sing-box LX"
+msgstr ""

@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let subscription_share_link = require("subscription.share_link");
+let subscription_wireguard = require("subscription.wireguard");
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -196,6 +197,8 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     if (prefix != "")
         state.outboundMetadata.prefixes[tag_name] = prefix;
     let protocol = lc(as_string(outbound.type || ""));
+    if (protocol == "wireguard" && subscription_wireguard.has_awg(outbound))
+        protocol = "amneziawg";
     if (protocol != "")
         state.outboundMetadata.protocols[tag_name] = protocol;
 
@@ -205,7 +208,7 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     else if (transport == "raw")
         transport = "tcp";
     else if (transport == "" && protocol != "" &&
-             protocol != "direct" && protocol != "wireguard" &&
+             protocol != "direct" && protocol != "wireguard" && protocol != "amneziawg" &&
              protocol != "hysteria" && protocol != "hysteria2" && protocol != "tuic" &&
              protocol != "dns" && protocol != "block" &&
              protocol != "selector" && protocol != "urltest")
@@ -223,11 +226,12 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
 
     if (!state.outboundMetadata.ports)
         state.outboundMetadata.ports = {};
-    let port = outbound.server_port != null ? outbound.server_port : outbound.port;
+    let wg_peer = as_string(outbound.type) == "wireguard" ? object_or_empty(array_or_empty(outbound.peers)[0]) : {};
+    let port = outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : wg_peer.port);
     if (port != null && port != "")
         state.outboundMetadata.ports[tag_name] = as_string(port);
 
-    let server = as_string(outbound.server || "");
+    let server = as_string(outbound.server || wg_peer.address || "");
     if (server != "")
         state.servers[tag_name] = server;
 }

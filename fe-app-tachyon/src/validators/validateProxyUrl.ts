@@ -1,4 +1,5 @@
 import { ValidationResult } from './types';
+import { supportsVpnUrl, validateVpnUrl } from './validateVpnUrl';
 import { validateShadowsocksUrl } from './validateShadowsocksUrl';
 import { validateVlessUrl } from './validateVlessUrl';
 import { validateVmessUrl } from './validateVmessUrl';
@@ -39,6 +40,14 @@ const DISPATCH: {
  */
 export function validateProxyUrl(url: string): ValidationResult {
   const trimmedUrl = url.trim();
+  if (trimmedUrl.startsWith('vpn://')) {
+    if (!supportsVpnUrl())
+      return {
+        valid: false,
+        message: _('vpn:// is available only with sing-box LX'),
+      };
+    return validateVpnUrl(trimmedUrl);
+  }
 
   for (const { prefixes, validate } of DISPATCH) {
     for (const prefix of prefixes) {
@@ -50,8 +59,9 @@ export function validateProxyUrl(url: string): ValidationResult {
 
   return {
     valid: false,
-    message: _(
-      'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://',
-    ),
+    message:
+      _(
+        'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://',
+      ) + (supportsVpnUrl() ? '; vpn:// (LX)' : ''),
   };
 }

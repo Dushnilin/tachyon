@@ -7582,3 +7582,12 @@ msgstr "Plus отдельно проверяет DNS роутера и пока�
 
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
+
+msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
+msgstr "Некорректная ссылка vpn://: используйте WG/AWG .conf или экспорт Amnezia"
+
+msgid "Amnezia export; full validation before apply"
+msgstr "Экспорт Amnezia: полная проверка перед применением"
+
+msgid "vpn:// is available only with sing-box LX"
+msgstr "vpn:// доступен только с sing-box LX"
