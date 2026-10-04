@@ -748,7 +748,9 @@ function log_file_lines(path, level, prefix) {
 // The same binary sing_box_check() runs, so the diagnosis names the file that
 // actually failed rather than a path we guessed.
 function sing_box_binary_path() {
-    return command_output_lenient("command -v sing-box 2>/dev/null") || "/usr/bin/sing-box";
+    // command_output_lenient returns the newline; stat'ing the raw value would
+    // report an existing binary as missing.
+    return trim(command_output_lenient("command -v sing-box 2>/dev/null")) || "/usr/bin/sing-box";
 }
 
 

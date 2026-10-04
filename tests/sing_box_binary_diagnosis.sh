@@ -55,6 +55,20 @@ if (r.sing_box_binary_problem(missing) == "") note("a missing binary must be rep
 // engine is broken.
 if (r.sing_box_binary_problem(binary) != "") note("a real binary must report no problem, got: " + r.sing_box_binary_problem(binary));
 
+// The reported case: a macOS build standing where the Linux binary should be.
+let macho = ARGV[0] + "/sb-macho";
+let problem_macho = r.sing_box_binary_problem(macho);
+if (problem_macho == "") note("a macOS (Mach-O) binary must be reported, got an empty problem");
+else if (index(problem_macho, "macOS") < 0 || index(problem_macho, "Mach-O") < 0)
+    note("the report must name the wrong platform, got: " + problem_macho);
+
+// The path arrives from `command -v` with its trailing newline. A stat of
+// "/usr/bin/sing-box\n" fails on a file that is very much there, and the old code
+// reported exactly that as "binary is missing".
+if (r.sing_box_binary_problem(binary + "\n") != "")
+    note("a path with a trailing newline must still find the binary, got: " +
+        r.sing_box_binary_problem(binary + "\n"));
+
 // Telling the two failures apart, from the check output alone.
 let blames = function(reason, should_be_binary, label) {
     let got = r.sing_box_check_blamed_the_binary(reason);
@@ -87,6 +101,7 @@ UCODE
 printf '#!/bin/sh\nexec /usr/bin/false\n' >"$WORK_DIR/sb-script"
 : >"$WORK_DIR/sb-empty"
 printf '\177ELF\002\001\001\000placeholder binary bytes' >"$WORK_DIR/sb-real"
+printf '\317\372\355\376\000\000\000\002placeholder mach-o bytes' >"$WORK_DIR/sb-macho"
 
 if out="$(ucode -L "$TACHYON_LIB" "$WORK_DIR/binprobe.uc" "$WORK_DIR" 2>&1)"; then
   printf 'sing-box binary diagnosis: %s\n' "$out"
@@ -112,6 +127,12 @@ ok
 # as one.
 grep -q 'Generated sing-box configuration is invalid' "$RUNTIME_UC" ||
   fail "the genuine configuration error message was replaced instead of supplemented"
+ok
+
+# command -v output carries a newline; stat'ing it raw is what reported a present
+# binary as missing. The path must be trimmed at the source too.
+grep -q 'trim(command_output_lenient' "$RUNTIME_UC" ||
+  fail "sing_box_binary_path() must trim the newline off \`command -v\` output"
 ok
 
 printf 'sing-box binary diagnosis: %d checks passed\n' "$pass_count"

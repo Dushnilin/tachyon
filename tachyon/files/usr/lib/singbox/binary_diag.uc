@@ -12,6 +12,7 @@
 let fs = require("fs");
 let common = require("core.common");
 
+// trim() is a ucode builtin; common does not export it.
 let as_string = common.as_string;
 
 /**
@@ -22,15 +23,18 @@ let as_string = common.as_string;
  * binary path, so the message reads like a configuration problem when it is not.
  */
 function sing_box_binary_problem(path) {
-    path = as_string(path);
+    // The path can arrive straight from `command -v` with its trailing newline, and
+    // a stat of "/usr/bin/sing-box\n" fails on a file that is very much there —
+    // which reported a perfectly present binary as missing.
+    path = trim(as_string(path));
+    if (path == "")
+        return "sing-box binary path is empty";
     let info = fs.stat(path);
     if (info == null)
         return "sing-box binary is missing at " + path;
     if (int(info.size || 0) <= 0)
         return "sing-box binary at " + path + " is empty";
 
-    // A shebang means something is being executed in its place - a wrapper, a
-    // half-extracted stub, a failed upgrade - and it is not the engine.
     let head = "";
     try {
         let file = fs.open(path, "r");
@@ -40,6 +44,34 @@ function sing_box_binary_problem(path) {
         }
     } catch (e) {}
 
+    // A Mach-O file has no shebang and looks like any other binary to `stat`, so
+    // nothing short of the magic bytes says what went wrong: the kernel refuses to
+    // exec it, the shell reads it as a script, and the error arrives as a shell
+    // syntax error on "line N" - pointing at a configuration nobody has touched.
+    //
+    // The magic is compared numerically: ucode's "\xcf" escapes become UTF-8
+    // (two bytes), never the single byte on disk.
+    let head4 = substr(head, 0, 4);
+    let is_macho = false;
+    if (length(head4) == 4) {
+        let b0 = ord(substr(head4, 0, 1));
+        let b1 = ord(substr(head4, 1, 1));
+        let b2 = ord(substr(head4, 2, 1));
+        let b3 = ord(substr(head4, 3, 1));
+        is_macho =
+            (b0 == 0xcf && b1 == 0xfa && b2 == 0xed && b3 == 0xfe) ||  // MH_MAGIC_64
+            (b0 == 0xfe && b1 == 0xed && b2 == 0xfa && b3 == 0xcf) ||  // MH_CIGAM_64
+            (b0 == 0xce && b1 == 0xfa && b2 == 0xed && b3 == 0xfe) ||  // MH_MAGIC
+            (b0 == 0xfe && b1 == 0xed && b2 == 0xfa && b3 == 0xce) ||  // MH_CIGAM
+            (b0 == 0xca && b1 == 0xfe && b2 == 0xba && b3 == 0xbe) ||  // FAT_MAGIC
+            (b0 == 0xbe && b1 == 0xba && b2 == 0xfe && b3 == 0xca);    // FAT_CIGAM
+    }
+    if (is_macho)
+        return "sing-box at " + path +
+            " is a macOS (Mach-O) build, not a Linux binary - a binary for another operating system was installed in its place. Reinstall the sing-box variant to get the correct build.";
+
+    // A shebang means something is being executed in its place - a wrapper, a
+    // half-extracted stub, a failed upgrade - and it is not the engine.
     if (substr(head, 0, 2) == "#!")
         return "sing-box at " + path +
             " is a shell script, not the sing-box binary - the variant is broken or something replaced it with a wrapper";
