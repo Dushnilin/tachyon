@@ -1426,14 +1426,49 @@ function validate_olcrtc_section(section, context) {
         fail_validation("OlcRTC rule '" + name + "' has empty crypto key. Aborted.");
 }
 
-function dns_action_has_domain_matchers(section) {
+function dns_action_inline_domains(section) {
     for (let key in [ "domain", "domain_suffix", "domain_keyword", "domain_regex" ])
         if (option(section, key, "") != "" || option(section, key + "_text", "") != "" || length(list_option(section, key)) > 0)
             return true;
 
+    return false;
+}
+
+function dns_action_has_domain_matchers(section) {
+    if (dns_action_inline_domains(section))
+        return true;
+
     return length(connections.community_lists(section)) > 0 ||
         length(connections.rule_sets(section)) > 0 ||
         length(list_option(section, "domain_ip_lists")) > 0;
+}
+
+// The generator emits every block/bypass rule before all others
+// (singbox/generator.uc), and sing-box DNS rules are first-match-wins, so an
+// action=dns section can never override one. A domain written inline here and
+// also claimed by a block/bypass list is dropped with no other trace.
+function warn_dns_action_precedence(section, sections) {
+    let name = section_name(section);
+    let shadowing = [];
+
+    for (let candidate in sections) {
+        let other_name = section_name(candidate);
+        if (other_name == "" || other_name == name || !section_enabled(candidate))
+            continue;
+        let other_action = rule_action(candidate);
+        if (other_action != "block" && other_action != "bypass")
+            continue;
+        if (connections.has_dns_matchers(candidate))
+            push(shadowing, other_name);
+    }
+
+    if (length(shadowing) == 0)
+        return;
+
+    log_message("DNS rule '" + name + "' lists domains inline, but block/bypass rule(s) " +
+        join(", ", shadowing) + " are evaluated first and win on any overlap, so a domain " +
+        "both lists match will not use this DNS server. Drop it here, remove it from the " +
+        "block/bypass list, or accept the block.", "warn");
 }
 
 function validate_dns_action(section, sections, context) {
@@ -1461,6 +1496,8 @@ function validate_dns_action(section, sections, context) {
         if (!core_ip.valid_ip_or_cidr(ip) && !core_ip.valid_mac(ip))
             fail_validation("DNS rule '" + name + "' has an invalid device filter IP, MAC, or subnet '" + ip + "'. Aborted.");
     }
+    if (dns_action_inline_domains(section))
+        warn_dns_action_precedence(section, sections);
     if (!bool_option(section, "dns_detour_enabled", false))
         return;
 

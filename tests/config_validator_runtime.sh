@@ -4,6 +4,15 @@ set -eo pipefail
 
 VALIDATOR="$TACHYON_LIB/config/validator.uc"
 
+# validator warnings go through logger(1); stub it so assertions can read them
+LOGGER_LOG="$WORK_DIR/logger.log"
+mkdir -p "$WORK_DIR/bin"
+cat >"$WORK_DIR/bin/logger" <<BASH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$LOGGER_LOG"
+BASH
+chmod +x "$WORK_DIR/bin/logger"
+
 cat >"$WORK_DIR/context.json" <<'JSON'
 {}
 JSON
@@ -21,7 +30,39 @@ if (input.settings.dns_server === undefined) input.settings.dns_server = ['77.88
 if (input.settings.bootstrap_dns_server === undefined) input.settings.bootstrap_dns_server = ['77.88.8.8'];
 fs.writeFileSync(process.argv[3], JSON.stringify(input));
 JS
-  TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$normalized" "$context"
+  TACHYON_LIB="$TACHYON_LIB" PATH="$WORK_DIR/bin:$PATH" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$normalized" "$context"
+}
+
+# Warnings never reach stdout, so read them back from the logger stub.
+assert_warns() {
+  local label="$1"
+  local fixture="$2"
+  local expected="$3"
+  local output
+
+  : >"$LOGGER_LOG"
+  if ! output="$(validate_fixture "$fixture" 2>/dev/null)"; then
+    fail "$label should be accepted, got '$output'"
+  fi
+
+  grep -Fq "$expected" "$LOGGER_LOG" ||
+    fail "$label: expected a warning containing '$expected', got '$(cat "$LOGGER_LOG")'"
+}
+
+assert_no_warning() {
+  local label="$1"
+  local fixture="$2"
+  local unexpected="$3"
+  local output
+
+  : >"$LOGGER_LOG"
+  if ! output="$(validate_fixture "$fixture" 2>/dev/null)"; then
+    fail "$label should be accepted, got '$output'"
+  fi
+
+  if grep -Fq "$unexpected" "$LOGGER_LOG"; then
+    fail "$label: unexpected warning containing '$unexpected'"
+  fi
 }
 
 assert_rejects() {
@@ -534,5 +575,70 @@ JSON
 if ! TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/domain_resilience.json" "{}" >/dev/null 2>&1; then
   fail "Validator must not abort startup on invalid domain conditions in rules"
 fi
+
+# ─── DNS rule shadowed by block/bypass ─────────────────────────────────────
+# A dns section can never win over block/bypass (the generator emits those
+# rules first), so an inline domain claimed by a block list is dropped silently.
+cat >"$WORK_DIR/dns-shadowed.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "block", ".type": "section", "enabled": "1", "action": "block", "community_lists": [ "ads_hagezi_pro" ] },
+    { ".name": "XboxDns", ".type": "section", "enabled": "1", "action": "dns", "dns_type": "doh", "dns_server": "https://xbox-dns.ru/dns-query", "domain_suffix": [ "gvt2.com" ] }
+  ]
+}
+JSON
+assert_warns "DNS rule shadowed by block list" "$WORK_DIR/dns-shadowed.json" "are evaluated first and win on any overlap"
+assert_warns "DNS rule shadow warning names the section" "$WORK_DIR/dns-shadowed.json" "DNS rule 'XboxDns'"
+assert_warns "DNS rule shadow warning names the blocker" "$WORK_DIR/dns-shadowed.json" "block"
+
+# bypass shadows the same way
+cat >"$WORK_DIR/dns-shadowed-bypass.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "ByPass", ".type": "section", "enabled": "1", "action": "bypass", "domain_suffix": [ "blocked.example" ] },
+    { ".name": "dns1", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "9.9.9.9", "domain": [ "blocked.example" ] }
+  ]
+}
+JSON
+assert_warns "DNS rule shadowed by bypass rule" "$WORK_DIR/dns-shadowed-bypass.json" "ByPass"
+
+# A disabled blocker cannot shadow anything.
+cat >"$WORK_DIR/dns-blocker-disabled.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "block", ".type": "section", "enabled": "0", "action": "block", "community_lists": [ "ads_hagezi_pro" ] },
+    { ".name": "dns1", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "9.9.9.9", "domain_suffix": [ "ads.example" ] }
+  ]
+}
+JSON
+assert_no_warning "disabled block rule must not warn" "$WORK_DIR/dns-blocker-disabled.json" "are evaluated first and win on any overlap"
+
+# A blocker without any domain matcher cannot shadow a domain either.
+cat >"$WORK_DIR/dns-blocker-no-domains.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "block", ".type": "section", "enabled": "1", "action": "block", "ip_cidr": [ "203.0.113.0/24" ] },
+    { ".name": "dns1", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "9.9.9.9", "domain_suffix": [ "ads.example" ] }
+  ]
+}
+JSON
+assert_no_warning "block rule without domain matchers must not warn" "$WORK_DIR/dns-blocker-no-domains.json" "are evaluated first and win on any overlap"
+
+# Community-list-only DNS sections overlap too, but the overlap is not knowable
+# without decompiling the .srs, so they stay silent rather than cry wolf.
+cat >"$WORK_DIR/dns-community-only.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "block", ".type": "section", "enabled": "1", "action": "block", "community_lists": [ "ads_hagezi_pro" ] },
+    { ".name": "dns1", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "9.9.9.9", "community_lists": [ "google_ai" ] }
+  ]
+}
+JSON
+assert_no_warning "community-list-only DNS rule must not warn" "$WORK_DIR/dns-community-only.json" "are evaluated first and win on any overlap"
 
 printf 'config validator runtime checks passed\n'
