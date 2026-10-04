@@ -4,6 +4,7 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let runtime_dns = require("singbox.dns");
+let verifier = require("components.verifier");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -912,6 +913,24 @@ function ensure_local_rulesets_exist(temp_config) {
     } catch (e) {}
 }
 
+// Strips the field sing-box rejected from the outbound it named, logging which one
+// it was. Returns true only when something changed, so the caller retries instead of
+// rewriting the same file for a reason it cannot act on. The repair itself lives in
+// components/verifier so the apply path and the pre-flight share one tested copy:
+// this branch used to inline it and called to_string(), which does not exist in
+// ucode - the undefined call crashed init_config on the first rejected field and
+// took the whole start down with it.
+function repair_outbound_field(temp_config, reason) {
+    let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
+    if (!m || !verifier.repair_unknown_outbound_field(temp_config, reason))
+        return false;
+    let bad_index = int(m[1]);
+    log_message("Installed sing-box does not support outbound field '" + m[2] +
+        "' on outbound " + (bad_index >= 0 ? sprintf("%d", bad_index) : "?") +
+        "; retrying without it there only", "warn");
+    return true;
+}
+
 function init_config(populate_nft, caches_prepared, no_refresh) {
     let settings = uci_settings();
     let config_path = option(settings, "config_path", "");
@@ -1060,35 +1079,16 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 }
             }
             else if (out_field_m) {
-                let unknown_field = out_field_m[2];
                 // sing-box names the exact outbound it choked on, so only that one
-                // loses the field. Deleting it from every outbound was blunt enough
-                // to throw away settings that were working: "default" is rejected on
-                // a urltest by every build tested - stock 1.14.2, 1.14.2-lx.8 and
-                // 1.14.1-extended-2.7.2 - while a selector accepts it in all three.
-                // One bad urltest therefore silently cost every selector its chosen
-                // starting node on each regenerate, which is what the warning on
-                // 192.168.1.1 was actually reporting.
-                // int(x, base) is a base, not a default: int("23", -1) is 0, so
-                // every repair was aimed at outbound 0 instead of the one sing-box
-                // named. The comment above explains why aiming matters.
-                let bad_index = int(out_field_m[1]);
-                log_message("Installed sing-box does not support outbound field '" + unknown_field +
-                    "' on outbound " + (bad_index >= 0 ? to_string(bad_index) : "?") +
-                    "; retrying without it there only", "warn");
-                let cfg_text = as_string(fs.readfile(temp_config) || "");
-                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
-                if (type(cfg) == "object" && type(cfg.outbounds) == "array") {
-                    let targets = (bad_index >= 0 && bad_index < length(cfg.outbounds))
-                        ? [ cfg.outbounds[bad_index] ]
-                        : cfg.outbounds;
-                    for (let outb in targets) {
-                        if (type(outb) == "object")
-                            delete outb[unknown_field];
-                    }
-                    write_file(temp_config, sprintf("%J", cfg));
+                // loses the field: deleting it everywhere threw away settings that
+                // were working - "default" is rejected on a urltest by every build
+                // tested (stock 1.14.2, 1.14.2-lx.8, 1.14.1-extended-2.7.2) while a
+                // selector accepts it in all three. One bad urltest silently cost
+                // every selector its chosen starting node on each regenerate, which
+                // was the warning on 192.168.1.1. The repair runs through
+                // components/verifier so apply and pre-flight cannot drift.
+                if (repair_outbound_field(temp_config, check_result.reason))
                     stripped = true;
-                }
             }
             else if (match(check_result.reason, /experimental\.cache_file\.store_dns/)) {
                 log_message("Installed sing-box rejected store_dns: " + check_result.reason + "; switching to store_rdrc and retrying", "warn");
@@ -1230,6 +1230,9 @@ else if (mode == "check-config-fixture") {
 }
 else if (mode == "generator-failure-reason-fixture")
     print(generator_failure_reason(ARGV[1] || "", int(ARGV[2] || "1")), "\n");
+else if (mode == "outbound-repair-fixture") {
+    printf("%s\n", repair_outbound_field(ARGV[1] || "", ARGV[2] || "") ? "repaired" : "not-repaired");
+}
 else if (mode == "patch-dns-config")
     patch_dns_config(ARGV[1] || "");
 else if (mode == "restore-dns-config")

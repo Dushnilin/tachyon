@@ -110,12 +110,14 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
 // Drops the field sing-box named from the outbound it named, and reports whether
 // anything changed.
 //
-// The apply path in singbox/runtime.uc already does this, and it is the reason a
-// build that rejects one field can still run: only the offending outbound loses it,
-// because deleting it everywhere threw away settings that were working. The
-// pre-flight needs the same repair, or a binary that rejects a single field is
-// refused outright and the user is told the variant is "incompatible" when the truth
-// is that one key could have been dropped.
+// The apply path in singbox/runtime.uc calls this same function now, because its
+// inlined copy drifted into a crash (to_string does not exist in ucode) that took
+// the whole start down on the first rejected field, while this copy stayed tested.
+// It is the reason a build that rejects one field can still run: only the offending
+// outbound loses it, because deleting it everywhere threw away settings that were
+// working. The pre-flight needs the same repair, or a binary that rejects a single
+// field is refused outright and the user is told the variant is "incompatible" when
+// the truth is that one key could have been dropped.
 //
 // Reports false once no further repair applies, so the caller stops instead of
 // rewriting the same file until it gives up.

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-04 12:01+0300\n"
-"PO-Revision-Date: 2026-10-04 12:01+0300\n"
+"POT-Creation-Date: 2026-10-04 14:05+0300\n"
+"PO-Revision-Date: 2026-10-04 14:05+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -61,6 +61,12 @@ msgstr "45 мин — глубокий (рекомендуется)"
 
 msgid "60 min — Exhaustive"
 msgstr "60 мин — исчерпывающий"
+
+msgid "A real DNS answer was received over HTTPS with certificate validation."
+msgstr "Получен корректный DNS-ответ через HTTPS с проверкой сертификата."
+
+msgid "A resolver matches a configured WAN DNS address. This is a warning for the proxy probe, not proof that all client DNS leaks."
+msgstr "Резолвер совпадает с настроенным DNS на WAN. Это предупреждение для пробы через прокси, а не доказательство утечки всех DNS-запросов клиентов."
 
 msgid "AEAD Method"
 msgstr "Метод AEAD"
@@ -1031,6 +1037,9 @@ msgstr "Конфигурация сервиса Tachyon"
 msgid "Configure User-Agent in the item settings"
 msgstr "Настройте User-Agent в параметрах элемента"
 
+msgid "Configured detour"
+msgstr "Настроенный маршрут"
+
 msgid "Conflict"
 msgstr "Конфликт"
 
@@ -1742,6 +1751,12 @@ msgstr "Включает фоновый процесс watchdog для мони�
 msgid "Encapsulates UDP inside a TCP/TLS stream (UoT / xudp). Essential for mobile/LTE operators (MegaFon, MTS, etc.) that throttle, block, or drop incoming raw UDP in games (GTA RP, CS, etc.)."
 msgstr "Инкапсулирует UDP внутри TCP/TLS потока (UoT / xudp). Критично для мобильных/LTE операторов (МегаФон, МТС и др.), которые блокируют, глушат или дропают входящий «сырой» UDP в онлайн-играх (GTA RP, CS и др.)."
 
+msgid "Encrypted protocol configured"
+msgstr "Настроен шифрованный протокол"
+
+msgid "Encryption not confirmed"
+msgstr "Шифрование не подтверждено"
+
 msgid "End Time (HH:MM)"
 msgstr "Время окончания (ЧЧ:ММ)"
 
@@ -2327,6 +2342,9 @@ msgstr "Ошибка HTTP: %s"
 msgid "HTTP hosts"
 msgstr "HTTP хосты"
 
+msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration. Engine encryption on the wire is not verified by the independent DoH probe."
+msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига. Независимая DoH-проба не подтверждает шифрование трафика самого движка."
+
 msgid "HWID"
 msgstr "HWID"
 
@@ -2551,6 +2569,9 @@ msgstr "Включить отправляет в секцию только вы�
 
 msgid "Include servers"
 msgstr "Включить серверы"
+
+msgid "Independent DoH/TLS probe"
+msgstr "Независимая проверка DoH/TLS"
 
 msgid "Information"
 msgstr "Информация"
@@ -3386,6 +3407,9 @@ msgstr "Цели для проверки не найдены в конфигур
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
 
+msgid "No configured WAN DNS address was observed in the proxy probe. Resolver ownership does not verify DNS encryption."
+msgstr "В пробе через прокси не обнаружен настроенный DNS на WAN. Принадлежность резолвера не подтверждает шифрование DNS."
+
 msgid "No conflict detected"
 msgstr "Конфликт не обнаружен"
 
@@ -3406,6 +3430,9 @@ msgstr "Домены пока не обнаружены"
 
 msgid "No enabled server inbounds configured"
 msgstr "Включённые серверные inbounds не настроены"
+
+msgid "No explicit DNS detour; default routing applies"
+msgstr "Отдельный маршрут DNS не задан; применяется маршрутизация по умолчанию"
 
 msgid "No file selected"
 msgstr "Файл не выбран"
@@ -3439,6 +3466,9 @@ msgstr "Снапшотов пока нет"
 
 msgid "No strategies match the active filter."
 msgstr "Нет стратегий, соответствующих выбранному фильтру."
+
+msgid "No test DNS names were observed on WAN port 53. This alone does not prove encryption or absence of other leaks."
+msgstr "Тестовые DNS-имена не обнаружены на порту 53 WAN. Это само по себе не доказывает шифрование или отсутствие других утечек."
 
 msgid "No tested servers recorded yet. Click \"Probe All Servers\" to evaluate node latency and reliability."
 msgstr "Протестированных серверов пока нет. Нажмите «Проверить все серверы», чтобы оценить задержку и надёжность узлов."
@@ -3544,6 +3574,9 @@ msgstr "Пароль обфускации"
 
 msgid "Observed Public IP"
 msgstr "Внешний публичный IP"
+
+msgid "Observed test queries"
+msgstr "Обнаруженные тестовые запросы"
 
 msgid "OlcRTC Crypto Key"
 msgstr "Ключ шифрования OlcRTC"
@@ -3716,11 +3749,17 @@ msgstr "PID"
 msgid "PSK"
 msgstr "PSK"
 
+msgid "PUBLIC DNS"
+msgstr "ПУБЛИЧНЫЙ DNS"
+
 msgid "Package is installed, but binary missing"
 msgstr "Пакет установлен, но бинарный файл отсутствует"
 
 msgid "Package is not installed"
 msgstr "Пакет не установлен"
+
+msgid "Packet capture is unavailable or incomplete; unencrypted DNS could not be checked."
+msgstr "Захват пакетов недоступен или не завершён; проверить незашифрованный DNS не удалось."
 
 msgid "Padding"
 msgstr "Padding"
@@ -3842,8 +3881,17 @@ msgstr "Пожалуйста, укажите имя стратегии и арг
 msgid "Plus"
 msgstr "Plus"
 
+msgid "Plus mode"
+msgstr "Режим Plus"
+
+msgid "Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test."
+msgstr "Plus проверяет DNS роутера, ищет открытые тестовые запросы на WAN и проверяет независимое соединение DoH/TLS. Выберите режим и повторите проверку."
+
 msgid "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection."
 msgstr "Plus: дополнительно наблюдает за зависшими LAN HTTP/HTTPS-соединениями и проверяет полный ответ GET. Требуются два неуспешных Direct GET и успешный GET через общий прокси. Сохраняет основной домен вместе с поддоменами по Public Suffix List. Ошибки DNS-разрешения и локальных сертификатов откладывают обнаружение."
+
+msgid "Plus: router DNS and configured transport"
+msgstr "Plus: DNS роутера и настроенный протокол"
 
 msgid "Policy Mode"
 msgstr "Режим политики"
@@ -4235,6 +4283,9 @@ msgstr "Разрешать реальный IP для маршрутизации
 msgid "Resolver IP"
 msgstr "IP резолвера"
 
+msgid "Resolver ownership is not confirmed. No reliable leak verdict can be made."
+msgstr "Принадлежность резолвера не подтверждена. Данных для достоверного вывода об утечке недостаточно."
+
 msgid "Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
 msgstr "Выбор ресурсов по IP или CIDR внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
 
@@ -4357,6 +4408,15 @@ msgstr "Протокол маршрутизированного DNS"
 
 msgid "Routed DNS Servers"
 msgstr "Серверы маршрутизированного DNS"
+
+msgid "Router DNS (127.0.0.1)"
+msgstr "DNS роутера (127.0.0.1)"
+
+msgid "Router DNS observations are unavailable. This does not mean the connection is safe."
+msgstr "Нет результатов проверки DNS роутера. Это не означает, что соединение безопасно."
+
+msgid "Router DNS queries were observed by the test service."
+msgstr "Тестовый сервис зафиксировал запросы через DNS роутера."
 
 msgid "Router Traffic Target Section"
 msgstr "Секция для трафика роутера"
@@ -5219,6 +5279,12 @@ msgstr "Ошибка сертификата TLS"
 msgid "TLS certificate pinning (sing-box 1.15+)"
 msgstr "Пиннинг TLS-сертификатов (sing-box 1.15+)"
 
+msgid "TLS probe supports the active DoH server; other DNS protocols are not verified."
+msgstr "TLS-проба поддерживает активный DoH-сервер; другие протоколы DNS не проверены."
+
+msgid "TLS verification is disabled in the router DNS configuration. The independent probe does not change this setting."
+msgstr "В DNS-конфигурации роутера отключена проверка TLS. Независимая проба не меняет эту настройку."
+
 msgid "TLS-Rec Bounds (--tlsrec)"
 msgstr "Границы записей TLS (--tlsrec)"
 
@@ -5384,6 +5450,9 @@ msgstr "Telegram канал"
 msgid "Test Connection"
 msgstr "Проверить подключение"
 
+msgid "Test DNS queries were observed unencrypted on the selected WAN interface."
+msgstr "Тестовые DNS-запросы обнаружены без шифрования на выбранном WAN-интерфейсе."
+
 msgid "Test DNS speed"
 msgstr "Протестировать скорость DNS"
 
@@ -5455,6 +5524,9 @@ msgstr "Проверка…"
 
 msgid "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Tachyon для каждого правила и не может быть переопределён здесь."
+
+msgid "The TLS certificate or DNS answer could not be verified."
+msgstr "Не удалось подтвердить TLS-сертификат или корректность DNS-ответа."
 
 msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
 msgstr "fwmark desync управляется Tachyon для предотвращения циклов и не может быть переопределён здесь."
@@ -5663,6 +5735,9 @@ msgstr "UDP / QUIC протоколы"
 msgid "UDP over TCP (Packet Encoding)"
 msgstr "UDP over TCP (инкапсуляция UDP)"
 
+msgid "UNCONFIRMED"
+msgstr "НЕ ПОДТВЕРЖДЕНО"
+
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://"
 msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2:// или tuic://"
 
@@ -5731,6 +5806,12 @@ msgstr "Magic-заголовок пакета недогрузки (H4)"
 
 msgid "Underload packet header (H3)"
 msgstr "Заголовок пакета под нагрузкой (H3)"
+
+msgid "Unencrypted DNS on WAN"
+msgstr "Незашифрованный DNS на WAN"
+
+msgid "Unencrypted bootstrap DNS alone is not proof of a DNS leak. Browser Secure DNS may use a different resolver."
+msgstr "Обычный bootstrap DNS сам по себе не доказывает утечку. Защищённый DNS в браузере может использовать другой резолвер."
 
 msgid "Unexpected ByeDPI strategy argument: %s"
 msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
@@ -5986,6 +6067,9 @@ msgstr "Видимое имя этой секции"
 
 msgid "WAN"
 msgstr "WAN"
+
+msgid "WAN DNS"
+msgstr "DNS из настроек WAN"
 
 msgid "WAN network flaps:"
 msgstr "Обрывов WAN:"
@@ -6311,11 +6395,11 @@ msgstr "уникальный идентификатор UCI"
 msgid "unknown"
 msgstr "неизвестно"
 
-msgid "via Proxy"
-msgstr "через Прокси"
+msgid "via Proxy (HTTP probe)"
+msgstr "HTTP-проба через прокси"
 
-msgid "via WAN"
-msgstr "через WAN"
+msgid "via WAN (HTTP probe)"
+msgstr "HTTP-проба через WAN"
 
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links"
 msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2://"
@@ -6325,9 +6409,6 @@ msgstr "рабочих стратегий"
 
 msgid "ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
 msgstr "ℹ️ Прямое подключение (WAN): Публичный IP совпадает с провайдером. При выборочной маршрутизации (по доменам или спискам блокировок) незаблокированные ресурсы идут напрямую — это штатный режим работы."
-
-msgid "ℹ️ ISP DNS detected: DNS queries are handled by your local Internet Service Provider. If you use selective routing, this is standard behavior for direct connections."
-msgstr "ℹ️ Обнаружен DNS провайдера: DNS-запросы обрабатываются вашим интернет-провайдером. При выборочной маршрутизации это стандартное поведение для прямого трафика."
 
 msgid "⏳ Stopping..."
 msgstr "⏳ Остановка…"
@@ -6449,9 +6530,6 @@ msgstr "🛑 Остановить бенчмарк"
 msgid "🛠️ My Custom Strategies Only"
 msgstr "🛠️ Только мои стратегии"
 
-msgid "🛡️ SECURE: All DNS queries are resolved through independent secure DNS servers."
-msgstr "🛡️ ЗАЩИЩЕНО: Все DNS-запросы разрешаются через независимые защищённые DNS-серверы."
-
 msgid "🛡️ SECURE: Public IP is concealed behind the proxy outbound."
 msgstr "🛡️ ЗАЩИЩЕНО: Публичный IP-адрес скрыт за исходящим прокси."
 
@@ -6472,6 +6550,18 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "via Proxy"
+msgstr "через Прокси"
+
+msgid "via WAN"
+msgstr "через WAN"
+
+msgid "ℹ️ ISP DNS detected: DNS queries are handled by your local Internet Service Provider. If you use selective routing, this is standard behavior for direct connections."
+msgstr "ℹ️ Обнаружен DNS провайдера: DNS-запросы обрабатываются вашим интернет-провайдером. При выборочной маршрутизации это стандартное поведение для прямого трафика."
+
+msgid "🛡️ SECURE: All DNS queries are resolved through independent secure DNS servers."
+msgstr "🛡️ ЗАЩИЩЕНО: Все DNS-запросы разрешаются через независимые защищённые DNS-серверы."
 
 msgid "Invalid Shadowsocks URL: decoded credentials must contain method:password"
 msgstr "Неверный URL Shadowsocks: декодированные данные должны содержать method:password"
@@ -7475,130 +7565,8 @@ msgstr "Не удалось прочитать конфиг OpenVPN: "
 msgid "Failed / timeout"
 msgstr "Ошибка / таймаут"
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Plus mode"
-msgstr "Режим Plus"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
 msgid "Plus additionally tests the router DNS resolver and shows configured DNS transport. Select the mode and re-run the test."
 msgstr "Plus отдельно проверяет DNS роутера и показывает настроенный протокол DNS. Выберите режим и повторите проверку."
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "A resolver matches a configured WAN DNS address. This is a warning for the proxy probe, not proof that all client DNS leaks."
-msgstr "Резолвер совпадает с настроенным DNS на WAN. Это предупреждение для пробы через прокси, а не доказательство утечки всех DNS-запросов клиентов."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Resolver ownership is not confirmed. No reliable leak verdict can be made."
-msgstr "Принадлежность резолвера не подтверждена. Данных для достоверного вывода об утечке недостаточно."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "No configured WAN DNS address was observed in the proxy probe. Resolver ownership does not verify DNS encryption."
-msgstr "В пробе через прокси не обнаружен настроенный DNS на WAN. Принадлежность резолвера не подтверждает шифрование DNS."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "WAN DNS"
-msgstr "DNS из настроек WAN"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "UNCONFIRMED"
-msgstr "НЕ ПОДТВЕРЖДЕНО"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "PUBLIC DNS"
-msgstr "ПУБЛИЧНЫЙ DNS"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "via Proxy (HTTP probe)"
-msgstr "HTTP-проба через прокси"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "via WAN (HTTP probe)"
-msgstr "HTTP-проба через WAN"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Router DNS (127.0.0.1)"
-msgstr "DNS роутера (127.0.0.1)"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Plus: router DNS and configured transport"
-msgstr "Plus: DNS роутера и настроенный протокол"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Router DNS queries were observed by the test service."
-msgstr "Тестовый сервис зафиксировал запросы через DNS роутера."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Router DNS observations are unavailable. This does not mean the connection is safe."
-msgstr "Нет результатов проверки DNS роутера. Это не означает, что соединение безопасно."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Encrypted protocol configured"
-msgstr "Настроен шифрованный протокол"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Encryption not confirmed"
-msgstr "Шифрование не подтверждено"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Configured detour"
-msgstr "Настроенный маршрут"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "No explicit DNS detour; default routing applies"
-msgstr "Отдельный маршрут DNS не задан; применяется маршрутизация по умолчанию"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Unencrypted bootstrap DNS alone is not proof of a DNS leak. Browser Secure DNS may use a different resolver."
-msgstr "Обычный bootstrap DNS сам по себе не доказывает утечку. Защищённый DNS в браузере может использовать другой резолвер."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Test DNS queries were observed unencrypted on the selected WAN interface."
-msgstr "Тестовые DNS-запросы обнаружены без шифрования на выбранном WAN-интерфейсе."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Unencrypted DNS on WAN"
-msgstr "Незашифрованный DNS на WAN"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "No test DNS names were observed on WAN port 53. This alone does not prove encryption or absence of other leaks."
-msgstr "Тестовые DNS-имена не обнаружены на порту 53 WAN. Это само по себе не доказывает шифрование или отсутствие других утечек."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Packet capture is unavailable or incomplete; unencrypted DNS could not be checked."
-msgstr "Захват пакетов недоступен или не завершён; проверить незашифрованный DNS не удалось."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Observed test queries"
-msgstr "Обнаруженные тестовые запросы"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Independent DoH/TLS probe"
-msgstr "Независимая проверка DoH/TLS"
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "A real DNS answer was received over HTTPS with certificate validation."
-msgstr "Получен корректный DNS-ответ через HTTPS с проверкой сертификата."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "TLS probe supports the active DoH server; other DNS protocols are not verified."
-msgstr "TLS-проба поддерживает активный DoH-сервер; другие протоколы DNS не проверены."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "The TLS certificate or DNS answer could not be verified."
-msgstr "Не удалось подтвердить TLS-сертификат или корректность DNS-ответа."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "TLS verification is disabled in the router DNS configuration. The independent probe does not change this setting."
-msgstr "В DNS-конфигурации роутера отключена проверка TLS. Независимая проба не меняет эту настройку."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration. Engine encryption on the wire is not verified by the independent DoH probe."
-msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига. Независимая DoH-проба не подтверждает шифрование трафика самого движка."
-
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
-msgid "Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test."
-msgstr "Plus проверяет DNS роутера, ищет открытые тестовые запросы на WAN и проверяет независимое соединение DoH/TLS. Выберите режим и повторите проверку."

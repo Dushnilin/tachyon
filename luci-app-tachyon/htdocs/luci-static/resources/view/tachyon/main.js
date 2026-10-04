@@ -24744,7 +24744,10 @@ function getComponentCards() {
       releaseUrl: getGitHubReleaseUrl("sing_box"),
       repoUrl: systemInfo.sing_box_repo_url || (singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box),
       actions: singBoxActions,
-      supportsVersions: true
+      // The package variants (stable/tiny) cannot install a picked tag - the
+      // backend refuses before touching anything (issue #108), so do not offer
+      // a picker that would only lead to that error.
+      supportsVersions: !singBoxStable && !singBoxTiny
     },
     {
       component: "direct_bypass",

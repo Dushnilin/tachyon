@@ -47,33 +47,45 @@ case "$regex" in
 esac
 
 # 2. The index and the field must be read out of the match, at the right offsets:
-#    group 1 is the index, group 2 the field.
+#    group 1 is the index, group 2 the field. The apply path reads them in
+#    repair_outbound_field() for its log line; the strip itself was moved to
+#    components/verifier so apply and pre-flight cannot drift (its inlined copy
+#    had drifted into a to_string() crash that took the whole start down).
 #
 # The index is read with plain int(m[1]). int(x, base) is a base, not a default:
 # int("23", -1) is 0, so the two-argument form silently aimed every repair at
 # outbound 0 - the opposite of the narrowing this branch exists for. Asserted
 # positively so the form cannot drift back.
-grep -qE 'int\(out_field_m\[1\]\)' "$RUNTIME_UC" ||
+grep -qE 'int\(m\[1\]\)' "$RUNTIME_UC" ||
   fail "runtime.uc must read the outbound index with int(m[1]); int(m[1], -1) is a base argument and always yields 0, so the repair would strip the wrong outbound"
 
-if grep -qE 'int\(out_field_m\[1\],' "$RUNTIME_UC"; then
+if grep -qE 'int\([a-z_]*m\[1\],' "$RUNTIME_UC"; then
   fail "runtime.uc still passes a second argument to int() for the outbound index, which makes it 0"
 fi
 
-grep -qE 'unknown_field = out_field_m\[2\];' "$RUNTIME_UC" ||
+grep -qE 'm\[2\]' "$RUNTIME_UC" ||
   fail "runtime.uc does not read the field name from the second capture group"
 
-# 3. The blanket delete is the actual bug. A loop over cfg.outbounds still exists
-#    in runtime.uc and is legitimate: the unknown-transport branch has to walk
-#    every outbound to drop the dead tag from their member lists. So this checks
-#    the stripping branch specifically - it must iterate a narrowed list, not
-#    cfg.outbounds. Asserting on the loop alone was the wrong test and flagged
-#    that correct branch.
-grep -qE 'for \(let outb in targets\)' "$RUNTIME_UC" ||
-  fail "the field-stripping branch does not iterate a narrowed target list, so it still deletes the field from every outbound"
+# 3. The strip lives in components/verifier and must still narrow to the
+#    outbound sing-box named: a loop over cfg.outbounds is the actual bug
+#    (one urltest losing `default` removed it from every selector too). The
+#    blanket loop must not exist anywhere in the apply path any more.
+VERIFIER_UC="$LIB_DIR/components/verifier.uc"
+[ -f "$VERIFIER_UC" ] || fail "components/verifier.uc not found"
 
-# 4. And the fix has to actually narrow the target list.
-grep -qE 'cfg\.outbounds\[bad_index\]' "$RUNTIME_UC" ||
-  fail "runtime.uc does not narrow the strip to the reported outbound index"
+grep -qE 'target = cfg\.outbounds\[index\]' "$VERIFIER_UC" ||
+  fail "the shared repair does not narrow the strip to the reported outbound index"
+
+grep -qE 'index >= length\(cfg\.outbounds\)' "$VERIFIER_UC" ||
+  fail "the shared repair does not bounds-check the reported index"
+
+if grep -qE 'for \(let outb in targets\)' "$RUNTIME_UC"; then
+  fail "runtime.uc still strips the field inline instead of using the shared, narrowed repair"
+fi
+
+# 4. And the apply path has to actually call that shared repair, or the next
+#    refactor silently forks the logic again.
+grep -q 'repair_unknown_outbound_field' "$RUNTIME_UC" ||
+  fail "the apply path does not call components/verifier repair_unknown_outbound_field"
 
 printf 'fault: sing-box field fallback is scoped passed\n'
