@@ -517,27 +517,36 @@ function detect_sing_box_version() {
         }
     }
 
-    try {
-        for (let cmd in [ "sing-box version 2>/dev/null", "/usr/bin/sing-box version 2>/dev/null" ]) {
-            let pipe = fs.popen(cmd, "r");
-            if (pipe) {
-                let out = pipe.read("all");
-                pipe.close();
-                // The shared parser, not a second ad-hoc regex: "\s" inside a
-                // character class is not whitespace in this engine, so
-                // /sing-box version ([^\s]+)/ swallowed the newline and came back
-                // as "1.15.0-alpha.10\n\nTag" - which then got written to the
-                // state file. common.parse_sing_box_version() documents why.
-                let found = common.parse_sing_box_version(out);
-                if (found != "") {
-                    cached_sb_version = found;
-                    try {
-                        let cur_disk = trim(fs.readfile(state_file) || "");
-                        if (cur_disk != cached_sb_version)
-                            fs.writefile(state_file, cached_sb_version + "\n");
-                    } catch (e) {}
-                    return cached_sb_version;
-                }
+    // Bounded on purpose. This runs while a configuration is being generated, and a
+// binary that never answers must not take the start with it: a stub that unpacks,
+// a wrapper script that waits, a half-written file after a failed upgrade. Before
+// the live probe became the default path this code was unreachable whenever the
+// state file existed, which is why it could carry an unbounded pop(.
+//
+// Six seconds is generous for printing a version string and short enough that a
+// router is not left waiting. Two prefixes are tried because an earlier one may be
+// absent from PATH.
+try {
+    for (let base in [ "sing-box", "/usr/bin/sing-box" ]) {
+        let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
+        if (pipe) {
+            let out = pipe.read("all");
+            pipe.close();
+            // The shared parser, not a second ad-hoc regex: "\s" inside a
+            // character class is not whitespace in this engine, so
+            // /sing-box version ([^\s]+)/ swallowed the newline and came back
+            // as "1.15.0-alpha.10\n\nTag" - which then got written to the
+            // state file. common.parse_sing_box_version() documents why.
+            let found = common.parse_sing_box_version(out);
+            if (found != "") {
+                cached_sb_version = found;
+                try {
+                    let cur_disk = trim(fs.readfile(state_file) || "");
+                    if (cur_disk != cached_sb_version)
+                        fs.writefile(state_file, cached_sb_version + "\n");
+                } catch (e) {}
+                return cached_sb_version;
+            }
             }
         }
     } catch (e) {}

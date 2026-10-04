@@ -745,6 +745,16 @@ function log_file_lines(path, level, prefix) {
     log_lines(fs.readfile(path), level, prefix);
 }
 
+// The same binary sing_box_check() runs, so the diagnosis names the file that
+// actually failed rather than a path we guessed.
+function sing_box_binary_path() {
+    return command_output_lenient("command -v sing-box 2>/dev/null") || "/usr/bin/sing-box";
+}
+
+
+let binary_diag = require("singbox.binary_diag");
+let sing_box_binary_problem = binary_diag.sing_box_binary_problem;
+let sing_box_check_blamed_the_binary = binary_diag.sing_box_check_blamed_the_binary;
 function sing_box_check(config_path, output_path) {
     let check_cmd = "GODEBUG=\"madvdontneed=1\" GOGC=\"30\" " +
         command_from_args([ "sing-box", "-c", config_path, "check" ]) +
@@ -1157,8 +1167,19 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         check_result = sing_box_check(temp_config, runtime_log);
     }
     if (check_result.status != 0) {
-        log_message("Generated sing-box configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
-        remove_files([ temp_config, runtime_log ]);
+        // Say which of the two it was before blaming the configuration.
+        let bin_problem = sing_box_binary_problem(sing_box_binary_path());
+        if (bin_problem == "" && sing_box_check_blamed_the_binary(check_result.reason))
+            bin_problem = "sing-box could not be run: " + check_result.reason;
+        if (bin_problem != "") {
+            log_message("Cannot verify the generated configuration: " + bin_problem +
+                ". This is not a configuration problem. The raw output was: " + check_result.reason, "fatal");
+            remove_files([ temp_config, runtime_log ]);
+        }
+        else {
+            log_message("Generated sing-box configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
+            remove_files([ temp_config, runtime_log ]);
+        }
         exit(1);
     }
 

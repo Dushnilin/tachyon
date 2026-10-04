@@ -89,6 +89,42 @@ got="$(detect lx)"
 [ "$got" = "$LIVE_VERSION" ] ||
   fail "marker lx with no recorded version must fall back to the live probe, got '$got'"
 
+# A binary that never answers must not take the start with it. The live probe became
+# the default path in 1.4.9, so an unbounded pop( here would hang every config
+# generation on a stub that unpacks, a wrapper that waits, or a half-written file.
+cat >"$WORK_DIR/sing-box" <<'SH'
+#!/bin/sh
+sleep 600
+SH
+chmod 0755 "$WORK_DIR/sing-box"
+
+printf '%s\n' "$STALE_VERSION" >"$WORK_DIR/sing-box-version"
+printf 'stable' >"$WORK_DIR/sing-box-variant"
+started="$(date +%s)"
+got="$(detect stable)"
+elapsed="$(( $(date +%s) - started ))"
+
+[ "$elapsed" -lt 30 ] ||
+  fail "a sing-box that never answers blocked the version probe for ${elapsed}s; the start would hang with it"
+ok
+
+# Nothing came back, so the recorded version is the only answer available.
+[ "$got" = "$STALE_VERSION" ] ||
+  fail "a hanging binary must fall back to the recorded version, got '$got'"
+ok
+
+# The probe has to be bounded in the source too, not merely fast on this machine.
+probe_body="$(sed -n '/^function detect_sing_box_version/,/^}/p' "$GEN")"
+if ! grep -q 'bounded_command' <<<"$probe_body"; then
+  fail "detect_sing_box_version runs the binary without a time bound"
+fi
+ok
+
+if grep -qE 'fs\.popen\(\[?"?sing-box version' <<<"$probe_body"; then
+  fail "detect_sing_box_version still opens the version command directly, with no bound on how long it may take"
+fi
+ok
+
 # The retry has to match the message 1.14+ actually prints. It does not carry the
 # option path, so matching only "experimental.cache_file.store_rdrc" missed it and
 # the start died on [fatal] instead of retrying with store_dns.
