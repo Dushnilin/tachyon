@@ -2777,7 +2777,14 @@
       "description": "leak-check-async (diagnostics/leak_check.uc)",
       "async": false,
       "timeout_ms": 60000,
-      "params": [],
+      "params": [
+        {
+          "name": "mode",
+          "type": "string",
+          "required": false,
+          "description": "Optional plus mode for router DNS and transport evidence"
+        }
+      ],
       "returns": {
         "type": "object",
         "description": "command output"

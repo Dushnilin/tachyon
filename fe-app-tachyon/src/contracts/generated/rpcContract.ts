@@ -1282,7 +1282,10 @@ export interface LeakcheckParams {
 export type LeakcheckResult = Record<string, unknown>;
 
 /** leak-check-async (diagnostics/leak_check.uc) */
-export type LeakcheckasyncParams = Record<string, never>;
+export interface LeakcheckasyncParams {
+  /** Optional plus mode for router DNS and transport evidence */
+  mode?: string;
+}
 
 export type LeakcheckasyncResult = Record<string, unknown>;
 
@@ -4896,7 +4899,15 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       description: 'leak-check-async (diagnostics/leak_check.uc)',
       async: false,
       timeout_ms: 60000,
-      params: [],
+      params: [
+        {
+          name: 'mode',
+          type: 'string',
+          required: false,
+          description:
+            'Optional plus mode for router DNS and transport evidence',
+        },
+      ],
     },
     leak_check_status: {
       name: 'leak_check_status',

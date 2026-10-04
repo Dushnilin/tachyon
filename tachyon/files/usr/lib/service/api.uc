@@ -310,10 +310,10 @@ function run_speedtest() {
     };
 }
 
-function run_leak_check() {
+function run_leak_check(test_mode) {
     let leak_mod = require("diagnostics.leak_check");
     if (!leak_mod) return null;
-    return leak_mod.run_leak_check(null, null);
+    return leak_mod.run_leak_check(null, null, test_mode);
 }
 
 function run_ip_leak_check() {
@@ -328,10 +328,10 @@ function run_dns_leak_check() {
     return leak_mod.check_dns_leak(null, null, null, null);
 }
 
-function run_leak_check_async() {
+function run_leak_check_async(test_mode) {
     let leak_mod = require("diagnostics.leak_check");
     if (!leak_mod) return null;
-    return leak_mod.start_leak_check_async();
+    return leak_mod.start_leak_check_async(test_mode);
 }
 
 function run_leak_check_status(job_id) {

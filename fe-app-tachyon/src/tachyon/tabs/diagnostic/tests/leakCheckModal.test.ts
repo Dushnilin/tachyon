@@ -476,3 +476,159 @@ describe('renderLeakCheckModal', () => {
     expect(text).toContain('Close');
   });
 });
+
+describe('DNS Leak Plus', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (localStorage.getItem as any).mockReset();
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(
+      makeSuccessResult(),
+    );
+  });
+
+  it('warns about observed plaintext even when the proxy probe is unavailable', async () => {
+    const result = makeSuccessResult({ mode: 'plus' });
+    Object.assign(result.data.dns_leak, {
+      verdict: 'plaintext_observed',
+      dns_leaked: true,
+      dns_servers: [],
+      wan_dns_capture: {
+        status: 'plaintext_observed',
+        interface: 'eth1',
+        queries: 2,
+      },
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+    renderLeakCheckModal();
+    await vi.waitFor(() => {
+      expect(collectText(getModalContent())).toContain(
+        'Test DNS queries were observed unencrypted',
+      );
+      expect(
+        findByClass(getModalContent(), 'alert-message warning').length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
+  it('does not present absent plaintext traffic as proof of encryption', async () => {
+    const result = makeSuccessResult({ mode: 'plus' });
+    Object.assign(result.data.dns_leak, {
+      wan_dns_capture: {
+        status: 'not_observed',
+        interface: 'eth1',
+        queries: 0,
+      },
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+    renderLeakCheckModal();
+    await vi.waitFor(() =>
+      expect(collectText(getModalContent())).toContain(
+        'This alone does not prove encryption or absence of other leaks.',
+      ),
+    );
+  });
+
+  it('reports the independent TLS probe and warns about insecure engine configuration', async () => {
+    const result = makeSuccessResult({ mode: 'plus' });
+    Object.assign(result.data.dns_leak, {
+      doh_tls_probe: {
+        status: 'verified',
+        server: 'dns.example.com',
+        tls_verified: true,
+        dns_answer_valid: true,
+        router_verification_disabled: true,
+      },
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+    renderLeakCheckModal();
+    await vi.waitFor(() => {
+      const text = collectText(getModalContent());
+      expect(text).toContain(
+        'A real DNS answer was received over HTTPS with certificate validation.',
+      );
+      expect(text).toContain(
+        'TLS verification is disabled in the router DNS configuration.',
+      );
+    });
+  });
+
+  it('restores Plus preference and passes it to the worker', () => {
+    (localStorage.getItem as any).mockReturnValue('1');
+    renderLeakCheckModal();
+    expect(TachyonShellMethods.leakCheck).toHaveBeenCalledWith(
+      expect.any(Function),
+      true,
+    );
+  });
+
+  it('keeps unknown resolvers unconfirmed instead of marking them safe', async () => {
+    const result = makeSuccessResult();
+    Object.assign(result.data.dns_leak, {
+      verdict: 'inconclusive',
+      dns_servers: [
+        {
+          ip: '2001:db8::53',
+          country: '',
+          isp: 'Example',
+          is_isp: false,
+          verdict: 'unknown',
+        },
+      ],
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+    renderLeakCheckModal();
+    await vi.waitFor(() => {
+      const badges = findByClass(getModalContent(), 'badge').map(collectText);
+      expect(badges).toContain('UNCONFIRMED');
+      expect(badges).not.toContain('SAFE');
+    });
+  });
+
+  it('shows router observations separately and does not claim verified encryption', async () => {
+    const result = makeSuccessResult({ mode: 'plus' });
+    Object.assign(result.data.dns_leak, {
+      router_dns_status: 'observed',
+      router_dns_servers: [
+        {
+          ip: '2001:db8::53',
+          country: '',
+          isp: 'Example',
+          is_isp: false,
+          verdict: 'shared',
+        },
+      ],
+      configured_dns: [
+        {
+          tag: 'dns-server',
+          protocol: 'https',
+          server: 'dns.example.com',
+          encrypted: true,
+          detour: '',
+        },
+      ],
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+    renderLeakCheckModal();
+    await vi.waitFor(() => {
+      const text = collectText(getModalContent());
+      expect(text).toContain('Router DNS (127.0.0.1)');
+      expect(text).toContain('Encrypted protocol configured');
+      expect(text).toContain('encryption on the wire is not verified');
+    });
+  });
+
+  it('shows missing router observations as unavailable', async () => {
+    const result = makeSuccessResult({ mode: 'plus' });
+    Object.assign(result.data.dns_leak, {
+      router_dns_status: 'no_data',
+      router_dns_servers: [],
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+    renderLeakCheckModal();
+    await vi.waitFor(() =>
+      expect(collectText(getModalContent())).toContain(
+        'This does not mean the connection is safe.',
+      ),
+    );
+  });
+});

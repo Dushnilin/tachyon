@@ -342,7 +342,7 @@ function command_spec(command) {
         validate_nfqws2_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws2-strategy-json", 1 ],
         validate_byedpi_strategy_json: [ "diagnostics/runtime.uc", "validate-byedpi-strategy-json", 1 ],
         leak_check: [ "diagnostics/leak_check.uc", "leak-check", 2 ],
-        leak_check_async: [ "diagnostics/leak_check.uc", "leak-check-async", 0 ],
+        leak_check_async: [ "diagnostics/leak_check.uc", "leak-check-async", 1 ],
         leak_check_status: [ "diagnostics/leak_check.uc", "leak-check-status", 1 ],
         check_ip_leak: [ "diagnostics/leak_check.uc", "ip-leak", 0 ],
         check_dns_leak: [ "diagnostics/leak_check.uc", "dns-leak", 0 ],
