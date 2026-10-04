@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-04 00:38+0300\n"
-"PO-Revision-Date: 2026-10-04 00:38+0300\n"
+"POT-Creation-Date: 2026-10-04 01:38+0300\n"
+"PO-Revision-Date: 2026-10-04 01:38+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -379,6 +379,9 @@ msgstr "Всегда блокировать эти домены для всех 
 
 msgid "Always visible"
 msgstr "Всегда включено"
+
+msgid "Amnezia export; full validation before apply"
+msgstr "Экспорт Amnezia: полная проверка перед применением"
 
 msgid "AmneziaWG (Cloudflare WARP) configuration generated and loaded successfully!"
 msgstr "Конфигурация AmneziaWG (Cloudflare WARP) успешно сгенерирована и загружена!"
@@ -2914,6 +2917,9 @@ msgstr "Неверный формат времени. Ожидается ЧЧ:М
 
 msgid "Invalid time format. Use HH:MM (e.g. 08:00 or 22:30)"
 msgstr "Неверный формат времени. Используйте ЧЧ:ММ (например, 08:00 или 22:30)"
+
+msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
+msgstr "Некорректная ссылка vpn://: используйте WG/AWG .conf или экспорт Amnezia"
 
 msgid "Isolate BitTorrent traffic and force it direct to prevent VPN bans"
 msgstr "Изолировать трафик BitTorrent и направить его напрямую для предотвращения блокировок VPN"
@@ -6416,6 +6422,9 @@ msgstr "HTTP-проба через WAN"
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links"
 msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2://"
 
+msgid "vpn:// is available only with sing-box LX"
+msgstr "vpn:// доступен только с sing-box LX"
+
 msgid "working strategies"
 msgstr "рабочих стратегий"
 
@@ -7582,12 +7591,3 @@ msgstr "Plus отдельно проверяет DNS роутера и пока�
 
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
-
-msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
-msgstr "Некорректная ссылка vpn://: используйте WG/AWG .conf или экспорт Amnezia"
-
-msgid "Amnezia export; full validation before apply"
-msgstr "Экспорт Amnezia: полная проверка перед применением"
-
-msgid "vpn:// is available only with sing-box LX"
-msgstr "vpn:// доступен только с sing-box LX"

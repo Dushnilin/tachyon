@@ -24,7 +24,10 @@ const path = require('path');
 const work = process.argv[2];
 const key = Buffer.from(Array.from({length:32}, (_, i) => i + 1)).toString('base64');
 const conf = `[Interface]\nPrivateKey = ${key}\nAddress = 10.77.0.2/32\nJc = 4\nH1 = 100-200\nRandomTrailers = on\nDisableCookies = on\n[Peer]\nPublicKey = ${key}\nEndpoint = 192.0.2.1:51820\n`;
-const link = 'vpn://' + Buffer.from(conf).toString('base64url') + '#Test%20AWG';
+// Buffer's 'base64url' encoding only exists on Node >= 15, and the test image
+// ships Node 12. Encode by hand so the fixture matches what ucode expects.
+const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const link = 'vpn://' + b64url(Buffer.from(conf)) + '#Test%20AWG';
 fs.writeFileSync(path.join(work, 'links'), link + '\nhy2://test@example.com:443#Existing\n');
 fs.writeFileSync(path.join(work, 'fixture.json'), JSON.stringify({
   settings:{'.name':'settings','.type':'settings',dns_server:'1.1.1.1',service_listen_address:'127.0.0.1'},
@@ -43,7 +46,7 @@ TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
     "$WORK_DIR/fixture.json" "$WORK_DIR/config.json" '127.0.0.1' '0'
 node - "$WORK_DIR" <<'JS'
 const fs = require('fs');
-const assert = require('assert/strict');
+const assert = require('assert').strict;
 const path = require('path');
 const work = process.argv[2];
 const parsed = JSON.parse(fs.readFileSync(path.join(work,'subscriptions/proxy-subscription-1.json')));
