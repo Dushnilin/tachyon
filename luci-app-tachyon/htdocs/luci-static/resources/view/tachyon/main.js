@@ -23782,6 +23782,63 @@ function computeSystemInfoMutation(currentSystemInfo, result) {
   };
 }
 
+// src/tachyon/tabs/updates/steerModules.ts
+var STEER_MODULES = [
+  "obfs",
+  "tgws",
+  "vless",
+  "xsteer",
+  "proxy",
+  "hysteria2"
+];
+var STEER_MODULE_PRESETS = {
+  all: [...STEER_MODULES],
+  extended: ["obfs", "tgws", "vless", "xsteer"],
+  base: []
+};
+function isSteerModule(value) {
+  return STEER_MODULES.includes(value);
+}
+function normalizeSteerModules(raw) {
+  if (!Array.isArray(raw)) {
+    return [...STEER_MODULES];
+  }
+  const out = [];
+  for (const value of raw) {
+    if (isSteerModule(value) && !out.includes(value)) {
+      out.push(value);
+    }
+  }
+  return out;
+}
+function presetForSteerModules(selection) {
+  for (const id of ["all", "extended", "base"]) {
+    const preset = STEER_MODULE_PRESETS[id];
+    if (preset.length === selection.length && preset.every((module) => selection.includes(module))) {
+      return id;
+    }
+  }
+  return "custom";
+}
+function toggleSteerModule(selection, module) {
+  const next = new Set(selection);
+  if (next.has(module)) {
+    next.delete(module);
+  } else {
+    next.add(module);
+  }
+  return STEER_MODULES.filter((name) => next.has(name));
+}
+function steerModulesUciArgs(selection) {
+  const isAll = selection.length === STEER_MODULES.length && STEER_MODULES.every((module) => selection.includes(module));
+  if (isAll) {
+    return [["-q", "delete", "tachyon.settings.steer_modules"]];
+  }
+  return [
+    ["set", `tachyon.settings.steer_modules=${[...selection].join(" ")}`]
+  ];
+}
+
 // src/tachyon/tabs/updates/cardDefinitions.ts
 function getComponentCardTitle(component) {
   switch (component) {
@@ -25231,6 +25288,16 @@ async function refreshEngineInfo() {
   engineInfoCache = response.success ? response.data : null;
 }
 var selectedEngineOverride = null;
+var steerModulesOverride = null;
+async function persistSteerModules(selection) {
+  try {
+    for (const args of steerModulesUciArgs(selection)) {
+      await TachyonShellMethods.uciRunCommand(args);
+    }
+    await TachyonShellMethods.uciRunCommand(["commit", "tachyon"]);
+  } catch {
+  }
+}
 function renderEngineCard() {
   const info = engineInfoCache;
   const systemInfo = normalizeSingBoxVariantFields(
@@ -25590,6 +25657,60 @@ function renderEngineCard() {
     warning,
     featureHint
   );
+  if (isSelectedSteer) {
+    const selection = steerModulesOverride ?? normalizeSteerModules(systemInfo.steer_modules);
+    const applySelection = (next) => {
+      steerModulesOverride = next;
+      void persistSteerModules(next);
+      renderUpdatesComponents();
+    };
+    const presetId = presetForSteerModules(selection);
+    const presetSelect = E("select", {
+      class: "cbi-input-select",
+      style: "font-size:12px;"
+    });
+    const presetChoices = [
+      { id: "all", label: _("All modules") },
+      { id: "extended", label: _("Extended preset") },
+      { id: "base", label: _("Base (core only)") }
+    ];
+    if (presetId === "custom") {
+      presetChoices.push({ id: "custom", label: _("Custom") });
+    }
+    for (const choice of presetChoices) {
+      const option = E(
+        "option",
+        { value: choice.id },
+        choice.label
+      );
+      option.selected = choice.id === presetId;
+      presetSelect.appendChild(option);
+    }
+    presetSelect.addEventListener("change", () => {
+      const id = presetSelect.value;
+      if (id === "custom") return;
+      applySelection([...STEER_MODULE_PRESETS[id]]);
+    });
+    const moduleBoxes = STEER_MODULES.map((module) => {
+      const box = E("input", { type: "checkbox" });
+      box.checked = selection.includes(module);
+      box.addEventListener("change", () => {
+        applySelection(
+          toggleSteerModule(steerModulesOverride ?? selection, module)
+        );
+      });
+      return E("label", { style: "white-space:nowrap;" }, [box, ` ${module}`]);
+    });
+    actionElements.push(
+      E(
+        "div",
+        {
+          style: "margin-top:4px;font-size:12px;gap:8px;align-items:center;flex-wrap:wrap;"
+        },
+        [E("span", {}, `${_("Modules")}:`), presetSelect, ...moduleBoxes]
+      )
+    );
+  }
   if (isSelectedSteer && (baseInstalled || extendedInstalled)) {
     const removeLoading = Boolean(updatesActions.steerRemove?.loading);
     actionElements.push(

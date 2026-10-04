@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-04 11:06+0300\n"
-"PO-Revision-Date: 2026-10-04 11:06+0300\n"
+"POT-Creation-Date: 2026-10-04 12:17+0300\n"
+"PO-Revision-Date: 2026-10-04 12:17+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -243,14 +243,14 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:20837
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:21612
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25509
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25576
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9602
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:474
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:480
 #: src/tachyon/tabs/dashboard/initController.ts:1287
 #: src/tachyon/tabs/monitoring/initController.ts:334
 #: src/tachyon/tabs/monitoring/render.ts:20
-#: src/tachyon/tabs/updates/initController.ts:2111
+#: src/tachyon/tabs/updates/initController.ts:2137
 msgid "Active"
 msgstr ""
 
@@ -290,12 +290,12 @@ msgstr ""
 msgid "Active Main DNS"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25779
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25808
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25839
-#: src/tachyon/tabs/updates/initController.ts:2464
-#: src/tachyon/tabs/updates/initController.ts:2501
-#: src/tachyon/tabs/updates/initController.ts:2540
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25900
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25929
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25960
+#: src/tachyon/tabs/updates/initController.ts:2552
+#: src/tachyon/tabs/updates/initController.ts:2589
+#: src/tachyon/tabs/updates/initController.ts:2628
 msgid "Active engine"
 msgstr ""
 
@@ -474,6 +474,11 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2378
 msgid "All except selected"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25673
+#: src/tachyon/tabs/updates/initController.ts:2258
+msgid "All modules"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2388
@@ -671,12 +676,12 @@ msgstr ""
 msgid "Anonymized support report copied to clipboard"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24027
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24433
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25649
-#: src/tachyon/tabs/updates/initController.ts:210
-#: src/tachyon/tabs/updates/initController.ts:2302
-#: src/tachyon/tabs/updates/initController.ts:758
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24084
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24490
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25770
+#: src/tachyon/tabs/updates/initController.ts:220
+#: src/tachyon/tabs/updates/initController.ts:2390
+#: src/tachyon/tabs/updates/initController.ts:768
 msgid "Another component action is already running"
 msgstr ""
 
@@ -694,9 +699,9 @@ msgid "Applied"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15760
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25509
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25576
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1697
-#: src/tachyon/tabs/updates/initController.ts:2113
+#: src/tachyon/tabs/updates/initController.ts:2139
 msgid "Apply"
 msgstr ""
 
@@ -933,6 +938,11 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:6627
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7039
 msgid "Backend validation failed: %s"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25675
+#: src/tachyon/tabs/updates/initController.ts:2260
+msgid "Base (core only)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:13405
@@ -1329,8 +1339,8 @@ msgid "Check all"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23432
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24152
-#: src/tachyon/tabs/updates/initController.ts:383
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24209
+#: src/tachyon/tabs/updates/initController.ts:393
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:366
 msgid "Check completed!"
 msgstr ""
@@ -1358,10 +1368,10 @@ msgstr ""
 msgid "Check timeout after which the server is considered dead"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23898
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25536
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23955
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25603
 #: src/tachyon/tabs/updates/cardDefinitions.ts:164
-#: src/tachyon/tabs/updates/initController.ts:2144
+#: src/tachyon/tabs/updates/initController.ts:2170
 msgid "Check update"
 msgstr ""
 
@@ -1815,8 +1825,8 @@ msgstr ""
 msgid "Copy Support Report"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25141
-#: src/tachyon/tabs/updates/initController.ts:1627
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25198
+#: src/tachyon/tabs/updates/initController.ts:1637
 msgid "Copy address"
 msgstr ""
 
@@ -1891,7 +1901,9 @@ msgid "Currently unavailable"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:13408
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25678
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:61
+#: src/tachyon/tabs/updates/initController.ts:2263
 msgid "Custom"
 msgstr ""
 
@@ -2245,8 +2257,8 @@ msgstr ""
 msgid "Days of Week"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24764
-#: src/tachyon/tabs/updates/initController.ts:1169
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24821
+#: src/tachyon/tabs/updates/initController.ts:1179
 msgid "Dedicated cgroup unavailable"
 msgstr ""
 
@@ -2377,9 +2389,9 @@ msgstr ""
 msgid "Direct Bypass"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24755
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24812
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1378
-#: src/tachyon/tabs/updates/initController.ts:1152
+#: src/tachyon/tabs/updates/initController.ts:1162
 msgid "Direct Proxy"
 msgstr ""
 
@@ -2408,10 +2420,10 @@ msgstr ""
 msgid "Direct connection via ISP"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24694
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24709
-#: src/tachyon/tabs/updates/initController.ts:1074
-#: src/tachyon/tabs/updates/initController.ts:1092
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24751
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24766
+#: src/tachyon/tabs/updates/initController.ts:1084
+#: src/tachyon/tabs/updates/initController.ts:1102
 msgid "Disable"
 msgstr ""
 
@@ -2432,15 +2444,15 @@ msgstr ""
 msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24756
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24764
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24813
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24821
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:1018
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:1051
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:467
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:480
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2949
-#: src/tachyon/tabs/updates/initController.ts:1155
-#: src/tachyon/tabs/updates/initController.ts:1174
+#: src/tachyon/tabs/updates/initController.ts:1165
+#: src/tachyon/tabs/updates/initController.ts:1184
 msgid "Disabled"
 msgstr ""
 
@@ -2668,14 +2680,14 @@ msgstr ""
 msgid "Eligible components for auto-update"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24700
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24715
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24757
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24772
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:286
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:710
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7974
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2666
-#: src/tachyon/tabs/updates/initController.ts:1081
-#: src/tachyon/tabs/updates/initController.ts:1099
+#: src/tachyon/tabs/updates/initController.ts:1091
+#: src/tachyon/tabs/updates/initController.ts:1109
 msgid "Enable"
 msgstr ""
 
@@ -2793,10 +2805,10 @@ msgstr ""
 msgid "Enable list updates"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24756
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24764
-#: src/tachyon/tabs/updates/initController.ts:1154
-#: src/tachyon/tabs/updates/initController.ts:1171
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24813
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24821
+#: src/tachyon/tabs/updates/initController.ts:1164
+#: src/tachyon/tabs/updates/initController.ts:1181
 msgid "Enabled"
 msgstr ""
 
@@ -3039,6 +3051,11 @@ msgstr ""
 msgid "Expose this section as a local HTTP+SOCKS proxy"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25674
+#: src/tachyon/tabs/updates/initController.ts:2259
+msgid "Extended preset"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:1769
 #: src/tachyon/helpers/formatServiceStatusMessage.ts:43
 msgid "External NFQUEUE rules overlap with Tachyon"
@@ -3172,22 +3189,22 @@ msgstr ""
 msgid "Failed to detect DPI type"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24238
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24303
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24480
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25705
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25742
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24295
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24360
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24537
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25826
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25863
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3401
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3404
 #: src/tachyon/methods/shell/index.ts:198
 #: src/tachyon/methods/shell/index.ts:205
-#: src/tachyon/tabs/updates/initController.ts:2371
-#: src/tachyon/tabs/updates/initController.ts:2372
-#: src/tachyon/tabs/updates/initController.ts:2418
-#: src/tachyon/tabs/updates/initController.ts:510
-#: src/tachyon/tabs/updates/initController.ts:511
-#: src/tachyon/tabs/updates/initController.ts:593
-#: src/tachyon/tabs/updates/initController.ts:811
+#: src/tachyon/tabs/updates/initController.ts:2459
+#: src/tachyon/tabs/updates/initController.ts:2460
+#: src/tachyon/tabs/updates/initController.ts:2506
+#: src/tachyon/tabs/updates/initController.ts:520
+#: src/tachyon/tabs/updates/initController.ts:521
+#: src/tachyon/tabs/updates/initController.ts:603
+#: src/tachyon/tabs/updates/initController.ts:821
 msgid "Failed to execute"
 msgstr ""
 
@@ -3257,8 +3274,8 @@ msgstr ""
 msgid "Failed to load snapshots"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24886
-#: src/tachyon/tabs/updates/initController.ts:1331
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24943
+#: src/tachyon/tabs/updates/initController.ts:1341
 msgid "Failed to load versions"
 msgstr ""
 
@@ -3890,10 +3907,10 @@ msgstr ""
 msgid "Hide values"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25178
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25621
-#: src/tachyon/tabs/updates/initController.ts:1667
-#: src/tachyon/tabs/updates/initController.ts:2247
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25235
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25742
+#: src/tachyon/tabs/updates/initController.ts:1677
+#: src/tachyon/tabs/updates/initController.ts:2335
 msgid "Hide versions"
 msgstr ""
 
@@ -4199,49 +4216,49 @@ msgid "Inline tls-crypt key (mutually exclusive with tls-auth)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23509
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23907
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24901
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24948
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23964
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24958
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25005
 #: src/tachyon/tabs/updates/cardDefinitions.ts:178
-#: src/tachyon/tabs/updates/initController.ts:1351
-#: src/tachyon/tabs/updates/initController.ts:1404
+#: src/tachyon/tabs/updates/initController.ts:1361
+#: src/tachyon/tabs/updates/initController.ts:1414
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:476
 msgid "Install"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25509
-#: src/tachyon/tabs/updates/initController.ts:2114
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25576
+#: src/tachyon/tabs/updates/initController.ts:2140
 msgid "Install & Switch"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25165
-#: src/tachyon/tabs/updates/initController.ts:1653
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25222
+#: src/tachyon/tabs/updates/initController.ts:1663
 msgid "Install another build:"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16172
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16175
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16178
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25257
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25324
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2188
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2193
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2198
-#: src/tachyon/tabs/updates/initController.ts:1791
+#: src/tachyon/tabs/updates/initController.ts:1817
 msgid "Installed"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25033
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25346
-#: src/tachyon/tabs/updates/initController.ts:1499
-#: src/tachyon/tabs/updates/initController.ts:1904
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25090
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25413
+#: src/tachyon/tabs/updates/initController.ts:1509
+#: src/tachyon/tabs/updates/initController.ts:1930
 msgid "Installed build → Available build"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23619
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25041
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25354
-#: src/tachyon/tabs/updates/initController.ts:1507
-#: src/tachyon/tabs/updates/initController.ts:1912
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25098
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25421
+#: src/tachyon/tabs/updates/initController.ts:1517
+#: src/tachyon/tabs/updates/initController.ts:1938
 #: src/tachyon/tabs/updates/notifications.ts:32
 msgid "Installed version is newer than release"
 msgstr ""
@@ -4902,18 +4919,18 @@ msgid "Latency test failed"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23621
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25039
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25352
-#: src/tachyon/tabs/updates/initController.ts:1505
-#: src/tachyon/tabs/updates/initController.ts:1910
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25096
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25419
+#: src/tachyon/tabs/updates/initController.ts:1515
+#: src/tachyon/tabs/updates/initController.ts:1936
 #: src/tachyon/tabs/updates/notifications.ts:35
 msgid "Latest version is installed"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25041
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25354
-#: src/tachyon/tabs/updates/initController.ts:1507
-#: src/tachyon/tabs/updates/initController.ts:1912
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25098
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25421
+#: src/tachyon/tabs/updates/initController.ts:1517
+#: src/tachyon/tabs/updates/initController.ts:1938
 msgid "Latest version:"
 msgstr ""
 
@@ -5027,31 +5044,31 @@ msgstr ""
 msgid "Loading stability metrics..."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24916
-#: src/tachyon/tabs/updates/initController.ts:1370
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24973
+#: src/tachyon/tabs/updates/initController.ts:1380
 msgid "Loading versions..."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24727
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24741
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24771
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24782
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24793
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24803
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24814
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24825
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24836
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25257
-#: src/tachyon/tabs/updates/initController.ts:1113
-#: src/tachyon/tabs/updates/initController.ts:1129
-#: src/tachyon/tabs/updates/initController.ts:1182
-#: src/tachyon/tabs/updates/initController.ts:1197
-#: src/tachyon/tabs/updates/initController.ts:1212
-#: src/tachyon/tabs/updates/initController.ts:1226
-#: src/tachyon/tabs/updates/initController.ts:1241
-#: src/tachyon/tabs/updates/initController.ts:1256
-#: src/tachyon/tabs/updates/initController.ts:1271
-#: src/tachyon/tabs/updates/initController.ts:1787
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24784
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24798
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24828
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24839
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24850
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24860
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24871
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24882
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24893
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25324
+#: src/tachyon/tabs/updates/initController.ts:1123
+#: src/tachyon/tabs/updates/initController.ts:1139
+#: src/tachyon/tabs/updates/initController.ts:1192
+#: src/tachyon/tabs/updates/initController.ts:1207
+#: src/tachyon/tabs/updates/initController.ts:1222
+#: src/tachyon/tabs/updates/initController.ts:1236
+#: src/tachyon/tabs/updates/initController.ts:1251
+#: src/tachyon/tabs/updates/initController.ts:1266
+#: src/tachyon/tabs/updates/initController.ts:1281
+#: src/tachyon/tabs/updates/initController.ts:1813
 msgid "Loading..."
 msgstr ""
 
@@ -5258,6 +5275,11 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3122
 msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25710
+#: src/tachyon/tabs/updates/initController.ts:2298
+msgid "Modules"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:34
@@ -5590,10 +5612,10 @@ msgstr ""
 msgid "No tested servers recorded yet. Click \"Probe All Servers\" to evaluate node latency and reliability."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24872
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24875
-#: src/tachyon/tabs/updates/initController.ts:1317
-#: src/tachyon/tabs/updates/initController.ts:1320
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24929
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24932
+#: src/tachyon/tabs/updates/initController.ts:1327
+#: src/tachyon/tabs/updates/initController.ts:1330
 msgid "No versions found"
 msgstr ""
 
@@ -5672,14 +5694,14 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16172
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16175
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16178
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24771
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24782
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24793
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24803
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24814
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24825
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24836
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25257
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24828
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24839
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24850
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24860
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24871
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24882
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24893
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25324
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:6715
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:6719
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:6724
@@ -5691,14 +5713,14 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2189
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2194
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2199
-#: src/tachyon/tabs/updates/initController.ts:1185
-#: src/tachyon/tabs/updates/initController.ts:1200
-#: src/tachyon/tabs/updates/initController.ts:1215
-#: src/tachyon/tabs/updates/initController.ts:1229
-#: src/tachyon/tabs/updates/initController.ts:1244
-#: src/tachyon/tabs/updates/initController.ts:1259
-#: src/tachyon/tabs/updates/initController.ts:1274
-#: src/tachyon/tabs/updates/initController.ts:1792
+#: src/tachyon/tabs/updates/initController.ts:1195
+#: src/tachyon/tabs/updates/initController.ts:1210
+#: src/tachyon/tabs/updates/initController.ts:1225
+#: src/tachyon/tabs/updates/initController.ts:1239
+#: src/tachyon/tabs/updates/initController.ts:1254
+#: src/tachyon/tabs/updates/initController.ts:1269
+#: src/tachyon/tabs/updates/initController.ts:1284
+#: src/tachyon/tabs/updates/initController.ts:1818
 msgid "Not installed"
 msgstr ""
 
@@ -5907,14 +5929,14 @@ msgstr ""
 msgid "Only the specified servers."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25016
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25053
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25329
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25366
-#: src/tachyon/tabs/updates/initController.ts:1481
-#: src/tachyon/tabs/updates/initController.ts:1520
-#: src/tachyon/tabs/updates/initController.ts:1887
-#: src/tachyon/tabs/updates/initController.ts:1924
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25073
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25110
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25396
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25433
+#: src/tachyon/tabs/updates/initController.ts:1491
+#: src/tachyon/tabs/updates/initController.ts:1530
+#: src/tachyon/tabs/updates/initController.ts:1913
+#: src/tachyon/tabs/updates/initController.ts:1950
 msgid "Open"
 msgstr ""
 
@@ -6716,10 +6738,10 @@ msgstr ""
 msgid "Rebuild firewall rules"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25035
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25348
-#: src/tachyon/tabs/updates/initController.ts:1501
-#: src/tachyon/tabs/updates/initController.ts:1906
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25092
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25415
+#: src/tachyon/tabs/updates/initController.ts:1511
+#: src/tachyon/tabs/updates/initController.ts:1932
 msgid "Rebuilt release"
 msgstr ""
 
@@ -6793,8 +6815,8 @@ msgstr ""
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24564
-#: src/tachyon/tabs/updates/initController.ts:936
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24621
+#: src/tachyon/tabs/updates/initController.ts:946
 msgid "Reinstall"
 msgstr ""
 
@@ -6836,12 +6858,12 @@ msgstr ""
 msgid "Removal completed successfully!"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24530
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25604
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24587
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25725
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:9216
 #: src/tachyon/tabs/updates/cardDefinitions.ts:262
-#: src/tachyon/tabs/updates/initController.ts:2227
-#: src/tachyon/tabs/updates/initController.ts:889
+#: src/tachyon/tabs/updates/initController.ts:2315
+#: src/tachyon/tabs/updates/initController.ts:899
 msgid "Remove"
 msgstr ""
 
@@ -7047,7 +7069,7 @@ msgstr ""
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23916
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23973
 #: src/tachyon/tabs/updates/cardDefinitions.ts:192
 msgid "Rollback"
 msgstr ""
@@ -7129,12 +7151,12 @@ msgstr ""
 msgid "Router Traffic Target Section"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23811
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25279
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25835
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23868
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25346
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25956
 #: src/tachyon/tabs/updates/cardDefinitions.ts:62
-#: src/tachyon/tabs/updates/initController.ts:1829
-#: src/tachyon/tabs/updates/initController.ts:2536
+#: src/tachyon/tabs/updates/initController.ts:1855
+#: src/tachyon/tabs/updates/initController.ts:2624
 msgid "Routing Engine"
 msgstr ""
 
@@ -8172,8 +8194,8 @@ msgstr ""
 msgid "Status / Suite"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25808
-#: src/tachyon/tabs/updates/initController.ts:2502
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25929
+#: src/tachyon/tabs/updates/initController.ts:2590
 msgid "Steer"
 msgstr ""
 
@@ -8568,10 +8590,10 @@ msgstr ""
 msgid "Tachyon Settings"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24204
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24261
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3919
 #: src/tachyon/methods/shell/index.ts:892
-#: src/tachyon/tabs/updates/initController.ts:463
+#: src/tachyon/tabs/updates/initController.ts:473
 msgid "Tachyon has been installed"
 msgstr ""
 
@@ -8611,8 +8633,8 @@ msgstr ""
 msgid "Tachyon update did not complete within the timeout"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24204
-#: src/tachyon/tabs/updates/initController.ts:462
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24261
+#: src/tachyon/tabs/updates/initController.ts:472
 msgid "Tachyon updated to"
 msgstr ""
 
@@ -8927,8 +8949,8 @@ msgstr ""
 msgid "There are rules using Zapret2"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25819
-#: src/tachyon/tabs/updates/initController.ts:2519
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25940
+#: src/tachyon/tabs/updates/initController.ts:2607
 msgid "These features will be parked and restored when you switch back"
 msgstr ""
 
@@ -9059,14 +9081,14 @@ msgstr ""
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24763
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24820
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1385
-#: src/tachyon/tabs/updates/initController.ts:1165
+#: src/tachyon/tabs/updates/initController.ts:1175
 msgid "TorrServer Direct"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24764
-#: src/tachyon/tabs/updates/initController.ts:1167
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24821
+#: src/tachyon/tabs/updates/initController.ts:1177
 msgid "TorrServer not found"
 msgstr ""
 
@@ -9136,8 +9158,8 @@ msgstr ""
 msgid "Traffic will go through the default route (Direct/Default)."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24450
-#: src/tachyon/tabs/updates/initController.ts:776
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24507
+#: src/tachyon/tabs/updates/initController.ts:786
 msgid "Transient connection error"
 msgstr ""
 
@@ -9473,10 +9495,10 @@ msgstr ""
 msgid "Up to 10 snapshots are kept; the oldest ones are removed automatically."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23907
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25555
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23964
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25622
 #: src/tachyon/tabs/updates/cardDefinitions.ts:178
-#: src/tachyon/tabs/updates/initController.ts:2167
+#: src/tachyon/tabs/updates/initController.ts:2193
 msgid "Update"
 msgstr ""
 
@@ -9500,17 +9522,17 @@ msgstr ""
 msgid "Update is available"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25023
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25336
-#: src/tachyon/tabs/updates/initController.ts:1488
-#: src/tachyon/tabs/updates/initController.ts:1894
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25080
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25403
+#: src/tachyon/tabs/updates/initController.ts:1498
+#: src/tachyon/tabs/updates/initController.ts:1920
 msgid "Update is available for current release"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25004
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25317
-#: src/tachyon/tabs/updates/initController.ts:1467
-#: src/tachyon/tabs/updates/initController.ts:1875
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25061
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25384
+#: src/tachyon/tabs/updates/initController.ts:1477
+#: src/tachyon/tabs/updates/initController.ts:1901
 msgid "Update is available:"
 msgstr ""
 
@@ -9786,10 +9808,10 @@ msgstr ""
 msgid "Verifying router and service readiness..."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25178
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25621
-#: src/tachyon/tabs/updates/initController.ts:1667
-#: src/tachyon/tabs/updates/initController.ts:2247
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25235
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25742
+#: src/tachyon/tabs/updates/initController.ts:1677
+#: src/tachyon/tabs/updates/initController.ts:2335
 msgid "Versions"
 msgstr ""
 
@@ -9927,8 +9949,8 @@ msgstr ""
 msgid "WRT"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24764
-#: src/tachyon/tabs/updates/initController.ts:1173
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24821
+#: src/tachyon/tabs/updates/initController.ts:1183
 msgid "Waiting for TorrServer"
 msgstr ""
 
@@ -10140,10 +10162,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:20303
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:20309
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25467
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25534
 #: src/tachyon/tabs/diagnostic/initController.ts:1352
 #: src/tachyon/tabs/diagnostic/initController.ts:1358
-#: src/tachyon/tabs/updates/initController.ts:2058
+#: src/tachyon/tabs/updates/initController.ts:2084
 msgid "active"
 msgstr ""
 
@@ -10227,10 +10249,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:20316
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:20322
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25467
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25534
 #: src/tachyon/tabs/diagnostic/initController.ts:1368
 #: src/tachyon/tabs/diagnostic/initController.ts:1374
-#: src/tachyon/tabs/updates/initController.ts:2060
+#: src/tachyon/tabs/updates/initController.ts:2086
 msgid "installed"
 msgstr ""
 
@@ -10268,8 +10290,8 @@ msgstr ""
 msgid "no devices"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25467
-#: src/tachyon/tabs/updates/initController.ts:2061
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25534
+#: src/tachyon/tabs/updates/initController.ts:2087
 msgid "not installed"
 msgstr ""
 
@@ -10285,8 +10307,8 @@ msgstr ""
 msgid "outbounds must be a non-empty array of strings"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24942
-#: src/tachyon/tabs/updates/initController.ts:1398
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:24999
+#: src/tachyon/tabs/updates/initController.ts:1408
 msgid "pre-release"
 msgstr ""
 
@@ -10483,8 +10505,8 @@ msgstr ""
 msgid "✘ Offline"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25575
-#: src/tachyon/tabs/updates/initController.ts:2194
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25642
+#: src/tachyon/tabs/updates/initController.ts:2220
 msgid "✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
 msgstr ""
 

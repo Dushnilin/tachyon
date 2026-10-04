@@ -422,6 +422,47 @@ function resolve_fptn_release(arch, tag) {
 const STEER_RELEASE_OWNERS = [ "xyzmean", "splify2" ];
 const STEER_RELEASE_REPO = "steer";
 
+// steer 2.0.0 splits the engine into a core package plus feature modules, each
+// published as "steer-<module>-<version>-1_<arch>.<ext>". This is the module set
+// upstream ships; the frontend has the same list for its checkboxes and
+// tests/steer_module_selection.sh keeps the two in sync.
+const STEER_MODULES = [ "obfs", "tgws", "vless", "xsteer", "proxy", "hysteria2" ];
+
+// The module names, for callers that iterate or test membership. Read-only: do
+// not mutate the returned array.
+function steer_module_names() {
+    return STEER_MODULES;
+}
+
+// The selection stored in tachyon.settings.steer_modules. Absent means "every
+// module" (the default the install falls back to); an explicit string or list is
+// exactly what stays enabled, and an empty value means core with no modules.
+function steer_modules_from_settings(settings_sec) {
+    if (settings_sec["steer_modules"] == null)
+        return STEER_MODULES;
+    return common.list_option(settings_sec, "steer_modules");
+}
+
+// Splits "steer-<word>-<version>" out of an asset name whose "-1_<arch>.<ext>"
+// tail the caller has already verified. The shared extract_arch_package_version
+// helper only strips the zapret/byedpi prefixes and would hand back
+// "steer-obfs-2.0.0-1" here, so the split is done directly: the word ends at the
+// first dash, and a version must start with a digit.
+function steer_name_word_version(name, suffix) {
+    if (substr(name, 0, length("steer-")) != "steer-")
+        return null;
+    if (substr(name, length(name) - length(suffix)) != suffix)
+        return null;
+    let inner = substr(name, length("steer-"), length(name) - length("steer-") - length(suffix));
+    let sep = index(inner, "-");
+    if (sep <= 0)
+        return null;
+    let version = substr(inner, sep + 1);
+    if (version == "" || match(version, /^[0-9]/) == null)
+        return null;
+    return { word: substr(inner, 0, sep), version: version };
+}
+
 // Picks this build variant's asset out of one release, or null when the release does
 // not carry it for this architecture.
 function steer_asset_from_release(releases_json, extended, suffix, distrib_arch, tag_name, release_url) {
@@ -463,6 +504,95 @@ function steer_asset_from_release(releases_json, extended, suffix, distrib_arch,
     return null;
 }
 
+
+// Picks the modular set (core + every module) out of one release body, or null
+// when the release has no steer-core asset for this architecture. Split from the
+// fetching loop so tests can drive it with a fixture instead of the network.
+function steer_module_assets_from_release(releases_json, distrib_arch, suffix) {
+    let parsed = null;
+    try {
+        parsed = json(releases_json);
+    }
+    catch (e) {
+        return null;
+    }
+    if (type(parsed) != "object" || type(parsed.assets) != "array")
+        return null;
+
+    let tag_name = trim(as_string(parsed.tag_name || ""));
+    let release_url = as_string(parsed.html_url || "");
+    let core = null;
+    let modules = [];
+    for (let asset in parsed.assets) {
+        let name = as_string(asset.name || "");
+        if (substr(name, length(name) - length(suffix)) != suffix)
+            continue;
+        let parsed_name = steer_name_word_version(name, suffix);
+        if (parsed_name == null)
+            continue;
+        if (parsed_name.word == "core") {
+            core = {
+                arch: distrib_arch,
+                package_name: name,
+                package_url: as_string(asset.browser_download_url || ""),
+                release_url: release_url,
+                version: parsed_name.version,
+                tag: tag_name
+            };
+            continue;
+        }
+        for (let known in STEER_MODULES) {
+            if (known != parsed_name.word)
+                continue;
+            push(modules, {
+                module: parsed_name.word,
+                arch: distrib_arch,
+                package_name: name,
+                package_url: as_string(asset.browser_download_url || ""),
+                release_url: release_url,
+                version: parsed_name.version,
+                tag: tag_name
+            });
+            break;
+        }
+    }
+    if (core == null)
+        return null;
+    return {
+        arch: distrib_arch,
+        tag: tag_name,
+        release_url: release_url,
+        version: core.version,
+        core: core,
+        modules: modules
+    };
+}
+
+// Every steer package out of one release: the core plus each module the release
+// ships. Returns null when the release carries no "steer-core-" asset - that is a
+// 1.x release, whose single package the legacy resolve_steer_release path handles.
+function resolve_steer_module_assets(arch, tag) {
+    let asset_ext = helpers.is_apk() ? "apk" : "ipk";
+    let distrib_arch = arch != null && as_string(arch.target) != "" ?
+        as_string(arch.target) : helpers.read_openwrt_release_value("DISTRIB_ARCH");
+    if (distrib_arch == "")
+        return null;
+    let suffix = "-1_" + distrib_arch + "." + asset_ext;
+
+    for (let candidate in STEER_RELEASE_OWNERS) {
+        let body = (tag != null && tag != "") ?
+            downloader.fetch_github_release_by_tag_json(candidate, STEER_RELEASE_REPO, tag) :
+            downloader.fetch_github_release_json(candidate, STEER_RELEASE_REPO);
+        if (body == "")
+            continue;
+
+        let found = steer_module_assets_from_release(body, distrib_arch, suffix);
+        if (found != null)
+            return found;
+    }
+
+    return null;
+}
 
 function resolve_steer_release(arch, tag, extended) {
     let asset_ext = helpers.is_apk() ? "apk" : "ipk";
@@ -578,6 +708,10 @@ function module_exports() {
         resolve_olcrtc_release,
         resolve_fptn_release,
         resolve_steer_release,
+        resolve_steer_module_assets,
+        steer_module_assets_from_release,
+        steer_module_names,
+        steer_modules_from_settings,
         resolve_tachyon_release
     };
 }

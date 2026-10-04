@@ -5,6 +5,7 @@ let constants = require("core.constants");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let cmp_cat = require("components.catalog");
 let network_mod = require("diagnostics.network");
 let dns_mod = require("diagnostics.dns");
 let status_bridge = require("diagnostics.status_bridge");
@@ -590,6 +591,9 @@ function build_system_info() {
         steer_version,
         steer_installed,
         steer_extended,
+        // What the next steer install will keep: the configured selection, with
+        // an absent option meaning every module.
+        steer_modules: cmp_cat.steer_modules_from_settings(settings()),
         steer_repo_url: "https://github.com/xyzmean/steer",
         direct_bypass_enabled,
         direct_bypass_address,

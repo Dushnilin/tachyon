@@ -957,10 +957,17 @@ function install_steer(action, target_tag, extended) {
     if (arch == null)
         action_fail(component, action, "Failed to detect package architecture");
     let release = null;
+    let modular = null;
     retry_resolve("Resolving " + label + " package", function() {
-        release = cmp_cat.resolve_steer_release(arch, target_tag, extended);
-        return release != null;
+        // steer 2.0.0+ resolves as a core package plus feature modules. A release
+        // without a core is a 1.x one and falls back to the single-package walk.
+        modular = cmp_cat.resolve_steer_module_assets(arch, target_tag);
+        if (modular == null)
+            release = cmp_cat.resolve_steer_release(arch, target_tag, extended);
+        return modular != null || release != null;
     });
+    if (modular != null)
+        release = modular.core;
     if (release == null)
         action_fail(component, action, "Failed to resolve " + label + " package for this router architecture");
 
@@ -970,26 +977,87 @@ function install_steer(action, target_tag, extended) {
         check_success(component, installed_steer_version() || "unknown", release.version, release.release_url || "");
     }
 
+    // Everything is downloaded before anything is removed: a failed download must
+    // not leave the router without its engine.
+    let files = [];
     let pkg = download_direct_package(release);
     if (pkg == null)
         action_fail(component, action, "Failed to download " + label + " package");
+    push(files, pkg.file);
+
+    let wanted_modules = [];
+    if (modular != null) {
+        let selection = cmp_cat.steer_modules_from_settings(uci_core.get_all(TACHYON_CONFIG_NAME, "settings") || {});
+        for (let m in cmp_cat.steer_module_names()) {
+            for (let want in selection) {
+                if (want == m) {
+                    push(wanted_modules, m);
+                    break;
+                }
+            }
+        }
+        for (let m in wanted_modules) {
+            let entry = null;
+            for (let cand in modular.modules) {
+                if (cand.module == m) {
+                    entry = cand;
+                    break;
+                }
+            }
+            if (entry == null) {
+                updates_log("The steer release has no " + m + " package; skipping it", "warn");
+                continue;
+            }
+            let mpkg = download_direct_package(entry);
+            if (mpkg == null)
+                action_fail(component, action, "Failed to download steer " + m + " package");
+            push(files, mpkg.file);
+        }
+    }
 
     // The steer packages conflict in the package managers (apk/opkg), and
     // steer-core additionally declares "Conflicts: steer". Everything that can
     // collide has to go BEFORE the new one is installed, or the install is
     // rejected over a package the user never chose to keep.
     let conflicts = [ "steer", STEER_CORE_PACKAGE, "steer-extended" ];
-    let wanted = extended ? "steer-extended" : STEER_CORE_PACKAGE;
+    let wanted = modular != null ? STEER_CORE_PACKAGE : (extended ? "steer-extended" : STEER_CORE_PACKAGE);
     for (let other in conflicts) {
         if (other == wanted) continue;
         if (pkg_is_installed(other))
             run_logged_pkg_remove_sing_box_conflict(other, "Removing " + other + " before " + label + " package installation");
     }
 
+    // The selection is the contract: a module the user unchecked must not stay
+    // installed. Removal runs after the conflicts above so nothing still depends
+    // on these packages.
+    if (modular != null) {
+        for (let m in cmp_cat.steer_module_names()) {
+            let enabled = false;
+            for (let w in wanted_modules) {
+                if (w == m) {
+                    enabled = true;
+                    break;
+                }
+            }
+            if (enabled) continue;
+            let stale_pkg = "steer-" + m;
+            if (pkg_is_installed(stale_pkg))
+                run_logged_pkg_remove_sing_box_conflict(stale_pkg, "Removing " + stale_pkg + " (not in the selected steer modules)");
+        }
+    }
+
     run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
-    if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
+    if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, files, PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package");
+
+    // Package post-install enables and starts the steer service on its own.
+    // Tachyon drives engine lifecycle itself, and the reload below only
+    // restarts the active engine - a stray steerd would keep running next
+    // to sing-box. Leave it stopped while steer is not the active engine.
+    let active_engine = engine.get_active();
+    if (active_engine != engine.ENGINE_STEER && active_engine != engine.ENGINE_STEER_EXTENDED)
+        disable_standalone_service("steer");
 
     let nfqws_wrapper = fs.stat("/usr/share/tachyon/steer-nfqws") != null ? "/usr/share/tachyon/steer-nfqws" : (LIB_DIR + "/../../usr/sbin/steer-nfqws");
     if (fs.stat(nfqws_wrapper) != null && fs.stat("/usr/sbin/steer-nfqws") != null) {
@@ -1004,7 +1072,10 @@ function install_steer(action, target_tag, extended) {
     // Let the lifecycle pick the package up: it generates the steer spec and
     // (re)starts the engine when steer is the active one.
     restart_tachyon_after_successful_change();
-    action_success(component, action, label + " package has been installed", release.version, release.version, 1, "latest", release.release_url || "");
+    let installed_msg = label + " package has been installed";
+    if (length(wanted_modules) > 0)
+        installed_msg += " with modules " + join(",", wanted_modules);
+    action_success(component, action, installed_msg, release.version, release.version, 1, "latest", release.release_url || "");
 }
 
 function install_tailscale(action) {

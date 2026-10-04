@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-04 14:06+0300\n"
-"PO-Revision-Date: 2026-10-04 14:06+0300\n"
+"POT-Creation-Date: 2026-10-04 15:17+0300\n"
+"PO-Revision-Date: 2026-10-04 15:17+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -298,6 +298,9 @@ msgstr "Все устройства"
 
 msgid "All except selected"
 msgstr "Все кроме выбранных"
+
+msgid "All modules"
+msgstr "Все модули"
 
 msgid "All remaining except selected"
 msgstr "Все остальные кроме выбранных"
@@ -595,6 +598,9 @@ msgstr "Ср. задержка"
 
 msgid "Backend validation failed: %s"
 msgstr "Ошибка проверки бэкенда: %s"
+
+msgid "Base (core only)"
+msgstr "Base (только ядро)"
 
 msgid "Basic connectivity"
 msgstr "Базовая связность"
@@ -1885,6 +1891,9 @@ msgstr "Истекает"
 
 msgid "Expose this section as a local HTTP+SOCKS proxy"
 msgstr "Предоставить эту секцию как локальный HTTP+SOCKS прокси"
+
+msgid "Extended preset"
+msgstr "Пресет Extended"
 
 msgid "External NFQUEUE rules overlap with Tachyon"
 msgstr "Внешние правила NFQUEUE перекрываются с Tachyon"
@@ -3268,6 +3277,9 @@ msgstr "Режим"
 
 msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
 msgstr "Имя используемой модели. Оставьте пустым, чтобы использовать модель по умолчанию (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
+
+msgid "Modules"
+msgstr "Модули"
 
 msgid "Mon"
 msgstr "Пн"

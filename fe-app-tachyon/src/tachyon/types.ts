@@ -908,6 +908,7 @@ export namespace Tachyon {
     steer_version?: string;
     steer_installed?: 0 | 1;
     steer_extended?: 0 | 1;
+    steer_modules?: string[];
     steer_repo_url?: string;
     active_engine?: string;
     zapret_version: string;

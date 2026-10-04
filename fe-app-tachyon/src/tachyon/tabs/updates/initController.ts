@@ -67,6 +67,16 @@ import {
 } from './notifications';
 import { computeSystemInfoMutation } from './mutations';
 import {
+  normalizeSteerModules,
+  presetForSteerModules,
+  steerModulesUciArgs,
+  STEER_MODULE_PRESETS,
+  STEER_MODULES,
+  toggleSteerModule,
+  type SteerModulesPreset,
+  type SteerModule,
+} from './steerModules';
+import {
   COMPONENT_REPO_URLS,
   getCheckAction,
   getComponentBackupVersion as getComponentBackupVersionHelper,
@@ -1740,6 +1750,22 @@ async function refreshEngineInfo(): Promise<void> {
 
 let selectedEngineOverride: string | null = null;
 
+// steer 2.0 module selection, kept across renders like the engine override
+// above: the checkboxes update it, UCI stores it, the install reads it back.
+let steerModulesOverride: SteerModule[] | null = null;
+
+async function persistSteerModules(selection: SteerModule[]): Promise<void> {
+  try {
+    for (const args of steerModulesUciArgs(selection)) {
+      await TachyonShellMethods.uciRunCommand(args);
+    }
+    await TachyonShellMethods.uciRunCommand(['commit', 'tachyon']);
+  } catch {
+    // Best effort: the UI keeps the selection even when a write fails, and the
+    // next successful write converges UCI back to what is on screen.
+  }
+}
+
 // One card for the routing engine: sing-box variants and steer variants in a
 // single place, with the active engine marked. Installing a variant also makes
 // it active, so choosing an engine is one click.
@@ -2211,6 +2237,68 @@ function renderEngineCard(): Node {
     warning,
     featureHint,
   );
+
+  // steer 2.0 modules: preset + checkboxes. The selection goes into UCI the
+  // moment it changes, so any install button picks it up as-is.
+  if (isSelectedSteer) {
+    const selection =
+      steerModulesOverride ?? normalizeSteerModules(systemInfo.steer_modules);
+    const applySelection = (next: SteerModule[]): void => {
+      steerModulesOverride = next;
+      void persistSteerModules(next);
+      renderUpdatesComponents();
+    };
+
+    const presetId = presetForSteerModules(selection);
+    const presetSelect = E('select', {
+      class: 'cbi-input-select',
+      style: 'font-size:12px;',
+    }) as HTMLSelectElement;
+    const presetChoices: Array<{ id: string; label: string }> = [
+      { id: 'all', label: _('All modules') },
+      { id: 'extended', label: _('Extended preset') },
+      { id: 'base', label: _('Base (core only)') },
+    ];
+    if (presetId === 'custom') {
+      presetChoices.push({ id: 'custom', label: _('Custom') });
+    }
+    for (const choice of presetChoices) {
+      const option = E(
+        'option',
+        { value: choice.id },
+        choice.label,
+      ) as HTMLOptionElement;
+      option.selected = choice.id === presetId;
+      presetSelect.appendChild(option);
+    }
+    presetSelect.addEventListener('change', () => {
+      const id = presetSelect.value;
+      if (id === 'custom') return;
+      applySelection([...STEER_MODULE_PRESETS[id as SteerModulesPreset]]);
+    });
+
+    const moduleBoxes = STEER_MODULES.map((module) => {
+      const box = E('input', { type: 'checkbox' }) as HTMLInputElement;
+      box.checked = selection.includes(module);
+      box.addEventListener('change', () => {
+        applySelection(
+          toggleSteerModule(steerModulesOverride ?? selection, module),
+        );
+      });
+      return E('label', { style: 'white-space:nowrap;' }, [box, ` ${module}`]);
+    });
+
+    actionElements.push(
+      E(
+        'div',
+        {
+          style:
+            'margin-top:4px;font-size:12px;gap:8px;align-items:center;flex-wrap:wrap;',
+        },
+        [E('span', {}, `${_('Modules')}:`), presetSelect, ...moduleBoxes],
+      ),
+    );
+  }
 
   // Remove (steer only)
   if (isSelectedSteer && (baseInstalled || extendedInstalled)) {

@@ -231,6 +231,7 @@ export interface StoreType {
     steer_version?: string;
     steer_installed?: number;
     steer_extended?: number;
+    steer_modules?: string[];
     steer_repo_url?: string;
     steer_backup_version?: string;
     steer_backup_time?: number;

@@ -451,7 +451,8 @@ function sanitize_apk_world() {
         return;
     let removable_if_uninstalled = [
         "sing-box-extended", "sing-box", "sing-box-tiny", "sing-box-lx",
-        "steer-extended", "steer",
+        "steer-extended", "steer", "steer-core",
+        "steer-obfs", "steer-tgws", "steer-vless", "steer-xsteer", "steer-proxy", "steer-hysteria2",
         "zapret2", "zapret",
         "byedpi",
         "luci-i18n-tachyon-ru"
@@ -462,7 +463,7 @@ function sanitize_apk_world() {
     }
     // Strip pinned version/hash constraints (e.g. pkg><HASH= or pkg=ver)
     // from /etc/apk/world for all managed packages so local .apk upgrades succeed
-    let pattern = "^(tachyon|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|zapret|zapret2|byedpi|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
+    let pattern = "^(tachyon|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|steer-core|steer-(obfs|tgws|vless|xsteer|proxy|hysteria2)|zapret|zapret2|byedpi|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
     command_success("sed -i -E " + shell_quote("s/" + pattern + "/\\1/") + " /etc/apk/world 2>/dev/null");
 }
 
