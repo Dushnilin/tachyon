@@ -7474,3 +7474,131 @@ msgstr "Не удалось прочитать конфиг OpenVPN: "
 
 msgid "Failed / timeout"
 msgstr "Ошибка / таймаут"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Plus mode"
+msgstr "Режим Plus"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Plus additionally tests the router DNS resolver and shows configured DNS transport. Select the mode and re-run the test."
+msgstr "Plus отдельно проверяет DNS роутера и показывает настроенный протокол DNS. Выберите режим и повторите проверку."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "A resolver matches a configured WAN DNS address. This is a warning for the proxy probe, not proof that all client DNS leaks."
+msgstr "Резолвер совпадает с настроенным DNS на WAN. Это предупреждение для пробы через прокси, а не доказательство утечки всех DNS-запросов клиентов."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Resolver ownership is not confirmed. No reliable leak verdict can be made."
+msgstr "Принадлежность резолвера не подтверждена. Данных для достоверного вывода об утечке недостаточно."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "No configured WAN DNS address was observed in the proxy probe. Resolver ownership does not verify DNS encryption."
+msgstr "В пробе через прокси не обнаружен настроенный DNS на WAN. Принадлежность резолвера не подтверждает шифрование DNS."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "WAN DNS"
+msgstr "DNS из настроек WAN"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "UNCONFIRMED"
+msgstr "НЕ ПОДТВЕРЖДЕНО"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "PUBLIC DNS"
+msgstr "ПУБЛИЧНЫЙ DNS"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "via Proxy (HTTP probe)"
+msgstr "HTTP-проба через прокси"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "via WAN (HTTP probe)"
+msgstr "HTTP-проба через WAN"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Router DNS (127.0.0.1)"
+msgstr "DNS роутера (127.0.0.1)"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Plus: router DNS and configured transport"
+msgstr "Plus: DNS роутера и настроенный протокол"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Router DNS queries were observed by the test service."
+msgstr "Тестовый сервис зафиксировал запросы через DNS роутера."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Router DNS observations are unavailable. This does not mean the connection is safe."
+msgstr "Нет результатов проверки DNS роутера. Это не означает, что соединение безопасно."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
+msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Encrypted protocol configured"
+msgstr "Настроен шифрованный протокол"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Encryption not confirmed"
+msgstr "Шифрование не подтверждено"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Configured detour"
+msgstr "Настроенный маршрут"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "No explicit DNS detour; default routing applies"
+msgstr "Отдельный маршрут DNS не задан; применяется маршрутизация по умолчанию"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Unencrypted bootstrap DNS alone is not proof of a DNS leak. Browser Secure DNS may use a different resolver."
+msgstr "Обычный bootstrap DNS сам по себе не доказывает утечку. Защищённый DNS в браузере может использовать другой резолвер."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Test DNS queries were observed unencrypted on the selected WAN interface."
+msgstr "Тестовые DNS-запросы обнаружены без шифрования на выбранном WAN-интерфейсе."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Unencrypted DNS on WAN"
+msgstr "Незашифрованный DNS на WAN"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "No test DNS names were observed on WAN port 53. This alone does not prove encryption or absence of other leaks."
+msgstr "Тестовые DNS-имена не обнаружены на порту 53 WAN. Это само по себе не доказывает шифрование или отсутствие других утечек."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Packet capture is unavailable or incomplete; unencrypted DNS could not be checked."
+msgstr "Захват пакетов недоступен или не завершён; проверить незашифрованный DNS не удалось."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Observed test queries"
+msgstr "Обнаруженные тестовые запросы"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Independent DoH/TLS probe"
+msgstr "Независимая проверка DoH/TLS"
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "A real DNS answer was received over HTTPS with certificate validation."
+msgstr "Получен корректный DNS-ответ через HTTPS с проверкой сертификата."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "TLS probe supports the active DoH server; other DNS protocols are not verified."
+msgstr "TLS-проба поддерживает активный DoH-сервер; другие протоколы DNS не проверены."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "The TLS certificate or DNS answer could not be verified."
+msgstr "Не удалось подтвердить TLS-сертификат или корректность DNS-ответа."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "TLS verification is disabled in the router DNS configuration. The independent probe does not change this setting."
+msgstr "В DNS-конфигурации роутера отключена проверка TLS. Независимая проба не меняет эту настройку."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration. Engine encryption on the wire is not verified by the independent DoH probe."
+msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига. Независимая DoH-проба не подтверждает шифрование трафика самого движка."
+
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+msgid "Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test."
+msgstr "Plus проверяет DNS роутера, ищет открытые тестовые запросы на WAN и проверяет независимое соединение DoH/TLS. Выберите режим и повторите проверку."

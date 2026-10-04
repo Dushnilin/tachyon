@@ -4,6 +4,8 @@ let fs = require("fs");
 let common = require("core.common");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
+let ip_utils = require("core.ip");
+let transport = require("diagnostics.dns_transport");
 
 let as_string = common.as_string;
 let command_capture = common.command_capture;
@@ -120,7 +122,7 @@ function vendor_matches(text) {
  * Classify a resolver.
  * Returns one of: "public", "isp", "unknown".
  *  - "public"  : a known anycast/vendor resolver (exact IP or vendor ASN/org).
- *  - "isp"     : resolver matches a resolver observed on the direct WAN path.
+ *  - "isp"     : resolver matches a configured WAN DNS address; shared observations alone are inconclusive.
  *  - "unknown" : could not be classified with confidence.
  */
 function classify_resolver(ip, name, asn, direct_map, wan_map) {
@@ -138,7 +140,7 @@ function classify_resolver(ip, name, asn, direct_map, wan_map) {
         return { kind: "public", vendor: vendor };
 
     if (ip != "" && direct_map && direct_map[ip])
-        return { kind: "isp", vendor: "" };
+        return { kind: "shared", vendor: "" };
 
     return { kind: "unknown", vendor: "" };
 }
@@ -408,23 +410,47 @@ function probe_ip_paths(wan_iface, mixed_port) {
     };
 }
 
-/**
- * Classify a resolver list and detect an ISP leak on the proxy path.
- *
- * A leak is reported when a proxy-path resolver is confidently an ISP/ISP-
- * upstream resolver (exact match with a WAN-path resolver, or matching a
- * resolver seen on the direct path). Unknown resolvers are surfaced as such
- * instead of being silently treated as safe.
- *
- * Returns { servers, leaked, has_unknown }.
- */
+/** Only DNS observations are resolver evidence; client IP and conclusions are not. */
+function filter_dns_records(records) {
+    let result = [];
+    let seen = {};
+    if (type(records) != "array") return result;
+    for (let r in records) {
+        if (type(r) != "object" || r.type != "dns" || type(r.ip) != "string") continue;
+        let addr = lc(trim(r.ip));
+        if ((!ip_utils.valid_ipv4(addr, false, true) && !ip_utils.valid_ipv6(addr)) || seen[addr]) continue;
+        seen[addr] = true;
+        push(result, { type: "dns", ip: addr, country: r.country, country_name: r.country_name, name: r.name, asn: r.asn });
+    }
+    return result;
+}
+
+/** Configuration evidence, not a packet-level claim. Never expose URL paths or credentials. */
+function dns_configuration_evidence(config) {
+    let result = [];
+    if (type(config) != "object" || type(config.dns) != "object") return result;
+    for (let s in config.dns.servers || []) {
+        if (type(s) != "object") continue;
+        let protocol = as_string(s.type || "unknown");
+        let host = as_string(s.server || "");
+        if (match(host, /^[a-zA-Z0-9.:-]+$/) == null) host = "";
+        push(result, {
+            tag: as_string(s.tag || ""), protocol: protocol, server: host,
+            encrypted: protocol == "https" || protocol == "tls" || protocol == "quic" || protocol == "h3",
+            detour: as_string(s.detour || "")
+        });
+    }
+    return result;
+}
+
+/** WAN-address matches are warnings; shared or unknown observations are inconclusive. */
 function analyse_resolvers(resolvers, direct_map, wan_map, fallback_isp_label) {
     let servers = [];
     let leaked = false;
     let has_unknown = false;
     let seen = {};
 
-    for (let r in resolvers) {
+    for (let r in filter_dns_records(resolvers)) {
         if (type(r) != "object" || !r.ip)
             continue;
         let ip = trim(as_string(r.ip));
@@ -436,7 +462,7 @@ function analyse_resolvers(resolvers, direct_map, wan_map, fallback_isp_label) {
         let is_isp = (cls.kind == "isp");
         if (is_isp)
             leaked = true;
-        if (cls.kind == "unknown")
+        if (cls.kind == "unknown" || cls.kind == "shared")
             has_unknown = true;
 
         push(servers, {
@@ -483,7 +509,8 @@ function ip_stage_result(paths) {
  *
  * `want` is a set of stages: { ip: bool, dns: bool } — defaults to both.
  */
-function run_leak_check_stages(wan_iface, mixed_port, want) {
+function run_leak_check_stages(wan_iface, mixed_port, want, test_mode) {
+    let plus = test_mode == "plus";
     mixed_port = mixed_port || common.get_mixed_port();
     wan_iface = wan_iface != null ? wan_iface : get_wan_interface();
     want = want || {};
@@ -502,7 +529,7 @@ function run_leak_check_stages(wan_iface, mixed_port, want) {
         direct_ip: paths.direct.ip,
         proxy_ip: paths.proxy.ip,
         dns_servers: [],
-        direct_dns_servers: direct_dns_servers,
+        direct_dns_servers: [],
         proxy_online: false,
         service_reachable: true
     };
@@ -515,26 +542,39 @@ function run_leak_check_stages(wan_iface, mixed_port, want) {
 
     let proxy_stage = { resolvers: [], token_ok: false, query_ok: false, service_reachable: true };
     let direct_stage = { resolvers: [], token_ok: false, query_ok: false, service_reachable: true };
+    let router_stage = { resolvers: [], token_ok: false, query_ok: false, service_reachable: true };
+    let generated_config = plus ? common.read_json_file("/etc/sing-box/config.json") : null;
+    let wire_result = { status: "unavailable", scope: "wan_port_53", queries: 0 };
+    let tls_result = { status: "unavailable", scope: "independent_doh_probe", tls_verified: false, dns_answer_valid: false };
 
     if (work_dir != "") {
         // Both token fetches in parallel, then both DNS bursts sequentially.
         let token_direct = sprintf("curl -s -m 3 --connect-timeout 2 %s https://bash.ws/id > %s/direct_id 2>/dev/null", paths.direct_flags, work_dir);
         let token_proxy = sprintf("curl -s -m 3 --connect-timeout 2 %s https://bash.ws/id > %s/proxy_id 2>/dev/null", paths.proxy_flag, work_dir);
-        system(sprintf("{ %s & %s & wait; } 2>/dev/null", token_direct, token_proxy));
+        let token_router = plus ? sprintf("curl -s -m 3 --connect-timeout 2 %s https://bash.ws/id > %s/router_id 2>/dev/null", paths.direct_flags, work_dir) : "true";
+        system(sprintf("{ %s & %s & %s & wait; } 2>/dev/null", token_direct, token_proxy, token_router));
 
         let direct_id = trim(as_string(fs.readfile(work_dir + "/direct_id") || ""));
         let proxy_id = trim(as_string(fs.readfile(work_dir + "/proxy_id") || ""));
+        let router_id = trim(as_string(fs.readfile(work_dir + "/router_id") || ""));
 
-        let run_stage = function(id, flags, tag, out_id) {
-            if (id == "") {
+        let run_stage = function(id, flags, tag, out_id, local_dns) {
+            if (match(id, /^[a-zA-Z0-9-]{1,63}$/) == null) {
                 out_id.id = "";
                 return;
             }
             out_id.id = id;
             out_id.token_ok = true;
             let burst = "{ ";
-            for (let i = 1; i <= 4; i++)
-                burst += sprintf("curl -s -m 2 %s http://%d.%s.bash.ws >/dev/null 2>&1 & ", flags, i, id);
+            for (let i = 1; i <= 4; i++) {
+                if (local_dns)
+                    burst += common.background_command(common.command_from_args([
+                        "dig", "@127.0.0.1", sprintf("%d.%s.bash.ws", i, id),
+                        "A", "+time=2", "+tries=1", "+short"
+                    ])) + " ";
+                else
+                    burst += sprintf("curl -s -m 2 %s http://%d.%s.bash.ws >/dev/null 2>&1 & ", flags, i, id);
+            }
             burst += "wait; } 2>/dev/null";
             system(burst);
             system("sleep 1 2>/dev/null");
@@ -547,7 +587,7 @@ function run_leak_check_stages(wan_iface, mixed_port, want) {
                 try {
                     let parsed = json(text);
                     if (type(parsed) == "array")
-                        out_id.resolvers = parsed;
+                        out_id.resolvers = filter_dns_records(parsed);
                 } catch (e) {}
             }
             out_id.query_ok = length(out_id.resolvers) > 0;
@@ -555,14 +595,19 @@ function run_leak_check_stages(wan_iface, mixed_port, want) {
 
         run_stage(direct_id, paths.direct_flags, "direct_res", direct_stage);
         run_stage(proxy_id, paths.proxy_flag, "proxy_res", proxy_stage);
+        if (plus) {
+            let capture = transport.capture_start(wan_iface, router_id, work_dir);
+            run_stage(router_id, paths.direct_flags, "router_res", router_stage, true);
+            wire_result = transport.capture_finish(capture, router_id, router_stage.query_ok);
+            tls_result = transport.check_doh(generated_config, router_id, work_dir);
+        }
 
         system(sprintf("rm -rf %s 2>/dev/null", shell_quote(work_dir)));
     }
 
     dns_res.service_reachable = proxy_stage.service_reachable && direct_stage.service_reachable;
 
-    // Direct-path resolver lookup: DHCP-assigned servers plus anything bash.ws
-    // observed on the direct path (plus, when known, the proxy itself).
+    // Keep configured WAN addresses distinct from observed direct-path resolvers.
     let direct_map = {};
     let wan_map = {};
     for (let s in direct_dns_servers) {
@@ -575,18 +620,13 @@ function run_leak_check_stages(wan_iface, mixed_port, want) {
         if (type(r) == "object" && r.ip)
             direct_map[r.ip] = true;
     }
-    for (let r in proxy_stage.resolvers) {
-        if (type(r) == "object" && r.ip && direct_map[r.ip])
-            direct_map[r.ip] = true;
-    }
 
     let proxy_analysis = analyse_resolvers(proxy_stage.resolvers, direct_map, wan_map, "Unknown");
     let direct_analysis = analyse_resolvers(direct_stage.resolvers, direct_map, wan_map, "ISP Upstream");
 
     let formatted_proxy = proxy_analysis.servers;
     let formatted_direct = direct_analysis.servers;
-    if (length(formatted_direct) == 0 && length(direct_dns_servers) > 0)
-        formatted_direct = direct_dns_servers;
+    // Configured WAN DNS is not an observed resolver and must not replace missing test data.
 
     // proxy_online in the DNS context means: the proxy path actually produced a
     // resolver list. A token alone is not proof the queries traversed the proxy.
@@ -608,8 +648,27 @@ function run_leak_check_stages(wan_iface, mixed_port, want) {
     dns_res.dns_servers = formatted_proxy;
     dns_res.direct_dns_servers = formatted_direct;
     dns_res.proxy_online = dns_proxy_online;
+    if (plus) {
+        let router_analysis = analyse_resolvers(router_stage.resolvers, direct_map, wan_map, "Unknown");
+        dns_res.router_dns_servers = router_analysis.servers;
+        dns_res.router_dns_status = !router_stage.token_ok || !router_stage.service_reachable ? "service_unreachable" : router_stage.query_ok ? "observed" : "no_data";
+        dns_res.proxy_verdict = dns_res.verdict;
+        if (dns_res.verdict == "secure" && (!router_stage.query_ok || router_analysis.has_unknown || router_analysis.leaked))
+            dns_res.verdict = "inconclusive";
+        dns_res.configured_dns = dns_configuration_evidence(generated_config);
+        dns_res.wan_dns_capture = wire_result;
+        dns_res.doh_tls_probe = tls_result;
+        if (wire_result.status == "plaintext_observed") {
+            dns_res.dns_leaked = true;
+            dns_res.verdict = "plaintext_observed";
+        } else if (dns_res.verdict == "secure" && (wire_result.status != "not_observed" ||
+            tls_result.status != "verified" || tls_result.router_verification_disabled)) {
+            dns_res.verdict = "inconclusive";
+        }
+    }
 
     return {
+        mode: plus ? "plus" : "default",
         ip_leak: ip_res,
         dns_leak: dns_res,
         timestamp: time()
@@ -619,8 +678,8 @@ function run_leak_check_stages(wan_iface, mixed_port, want) {
 /**
  * Full unified check (IP + DNS). Kept as the stable entry point used elsewhere.
  */
-function run_leak_check(wan_iface, mixed_port) {
-    return run_leak_check_stages(wan_iface, mixed_port, { ip: true, dns: true });
+function run_leak_check(wan_iface, mixed_port, test_mode) {
+    return run_leak_check_stages(wan_iface, mixed_port, { ip: true, dns: true }, test_mode);
 }
 
 /**
@@ -650,7 +709,8 @@ function check_dns_leak(wan_iface, mixed_port, direct_ip, proxy_ip) {
 /**
  * Start asynchronous leak check job and return job_id.
  */
-function start_leak_check_async() {
+function start_leak_check_async(test_mode) {
+    test_mode = test_mode == "plus" ? "plus" : "default";
     common.ensure_dir("/var/run/tachyon");
     common.ensure_dir(LEAK_JOB_DIR);
 
@@ -662,6 +722,7 @@ function start_leak_check_async() {
         job_id: id,
         progress: 25,
         stage: "ip",
+        mode: test_mode,
         started_at: time()
     };
 
@@ -672,7 +733,7 @@ function start_leak_check_async() {
 
     let lib_dir = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
     let mod_file = lib_dir + "/diagnostics/leak_check.uc";
-    let worker_cmd = sprintf("TACHYON_LIB=%s ucode -L %s %s leak-check-worker %s", shell_quote(lib_dir), shell_quote(lib_dir), shell_quote(mod_file), shell_quote(id));
+    let worker_cmd = sprintf("TACHYON_LIB=%s ucode -L %s %s leak-check-worker %s %s", shell_quote(lib_dir), shell_quote(lib_dir), shell_quote(mod_file), shell_quote(id), shell_quote(test_mode));
 
     let bg_cmd = common.background_command_with_pid(worker_cmd);
     command_capture("sh -c " + shell_quote(bg_cmd));
@@ -684,7 +745,7 @@ function start_leak_check_async() {
 /**
  * Worker executing leak check in background and recording final state.
  */
-function leak_check_worker(job_id) {
+function leak_check_worker(job_id, test_mode) {
     if (job_id == null || job_id == "")
         exit(1);
 
@@ -697,10 +758,11 @@ function leak_check_worker(job_id) {
         job_id: job_id,
         progress: 50,
         stage: "dns",
+        mode: test_mode,
         started_at: time()
     });
 
-    let res = run_leak_check(null, null);
+    let res = run_leak_check(null, null, test_mode);
 
     common.write_json_file(path, {
         running: false,
@@ -745,8 +807,8 @@ function get_leak_check_status(job_id) {
         exit(1);
     }
 
-    // Timeout check: if worker died or hung for more than 40 seconds
-    if (state.running && (time() - state.started_at > 40)) {
+    // Plus allows extra time for bounded capture and TLS probes.
+    if (state.running && (time() - state.started_at > (state.mode == "plus" ? 60 : 40))) {
         state.running = false;
         state.success = false;
         state.error = "IP & DNS leak test timed out on router";
@@ -775,27 +837,32 @@ function print_cli_summary(res) {
     print("\n--- DNS Resolvers Detected ---\n");
     if (res.dns_leak.proxy_online && length(res.dns_leak.dns_servers) > 0) {
         for (let s in res.dns_leak.dns_servers) {
-            let flag = s.is_isp ? "⚠️ ISP DNS" : "✅ SECURE";
+            let flag = s.is_isp ? "⚠️ WAN DNS" : s.is_public ? "PUBLIC DNS" : "UNCONFIRMED";
             print(sprintf("  [%s] %s (%s - %s)\n", flag, s.ip, s.country, s.isp));
         }
     } else {
         print("  (No proxy DNS queries recorded or proxy offline)\n");
     }
 
-    if (!res.dns_leak.proxy_online) {
+    if (res.dns_leak.verdict == "plaintext_observed") {
+        print("\nDNS Status    : Test DNS queries observed unencrypted on the selected WAN interface\n\n");
+    } else if (!res.dns_leak.proxy_online) {
         print("\nDNS Status    : ⚪ Proxy offline (DNS check skipped)\n\n");
     } else if (res.dns_leak.dns_leaked) {
-        print("\nDNS Status    : ℹ️ ISP DNS (Queries handled by ISP; normal under split tunneling)\n\n");
+        print("\nDNS Status    : Resolver matches configured WAN DNS; evaluate the intended routing policy\n\n");
+    } else if (res.dns_leak.verdict == "inconclusive") {
+        print("\nDNS Status    : UNCONFIRMED (Insufficient resolver evidence; encryption is not verified)\n\n");
     } else {
-        print("\nDNS Status    : ✅ SECURE (All DNS routed through secure/independent resolvers)\n\n");
+        print("\nDNS Status    : No WAN-assigned resolver observed; encryption is not verified by this test\n\n");
     }
 }
 
 // --- CLI Dispatcher ---
 let mode = ARGV[0] || "";
+let test_mode = ARGV[1] == "plus" || ARGV[2] == "plus" ? "plus" : "default";
 
 if (mode == "leak-check" || mode == "leak_check") {
-    let res = run_leak_check(null, null);
+    let res = run_leak_check(null, null, test_mode);
     if (ARGV[1] == "--pretty" || ARGV[1] == "-p" || ARGV[2] == "--pretty" || ARGV[2] == "-p") {
         print_cli_summary(res);
     } else {
@@ -804,10 +871,10 @@ if (mode == "leak-check" || mode == "leak_check") {
     exit(0);
 }
 else if (mode == "leak-check-async" || mode == "leak_check_async") {
-    start_leak_check_async();
+    start_leak_check_async(test_mode);
 }
 else if (mode == "leak-check-worker") {
-    leak_check_worker(ARGV[1]);
+    leak_check_worker(ARGV[1], ARGV[2]);
 }
 else if (mode == "leak-check-status" || mode == "leak_check_status") {
     get_leak_check_status(ARGV[1]);
@@ -824,6 +891,9 @@ else if (mode == "dns-leak" || mode == "check_dns_leak") {
 }
 
 return {
+    filter_dns_records,
+    analyse_resolvers,
+    dns_configuration_evidence,
     get_wan_interface,
     get_direct_dns_servers,
     get_direct_curl_flags,

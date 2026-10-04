@@ -2777,7 +2777,14 @@
       "description": "leak-check-async (diagnostics/leak_check.uc)",
       "async": false,
       "timeout_ms": 60000,
-      "params": [],
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of leak_check_async"
+        }
+      ],
       "returns": {
         "type": "object",
         "description": "command output"

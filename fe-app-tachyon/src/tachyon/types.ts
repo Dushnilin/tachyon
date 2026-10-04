@@ -1629,6 +1629,8 @@ export namespace Tachyon {
   }
 
   export interface DNSResolverInfo {
+    verdict?: 'public' | 'isp' | 'unknown' | 'shared';
+    is_public?: boolean;
     ip: string;
     country: string;
     isp: string;
@@ -1636,6 +1638,30 @@ export namespace Tachyon {
   }
 
   export interface DNSLeakResult {
+    verdict?: string;
+    wan_dns_capture?: {
+      status: string;
+      scope: string;
+      interface?: string;
+      queries: number;
+    };
+    doh_tls_probe?: {
+      status: string;
+      scope: string;
+      server?: string;
+      tls_verified: boolean;
+      dns_answer_valid: boolean;
+      router_verification_disabled?: boolean;
+    };
+    router_dns_status?: string;
+    router_dns_servers?: DNSResolverInfo[];
+    configured_dns?: {
+      tag: string;
+      protocol: string;
+      server: string;
+      encrypted: boolean;
+      detour: string;
+    }[];
     dns_leaked: boolean;
     direct_ip: string;
     proxy_ip: string;
@@ -1645,6 +1671,7 @@ export namespace Tachyon {
   }
 
   export interface LeakCheckResult {
+    mode?: 'default' | 'plus';
     ip_leak: IPLeakResult;
     dns_leak: DNSLeakResult;
     timestamp?: number;

@@ -1681,11 +1681,15 @@ export const TachyonShellMethods = {
 
   leakCheck: async (
     onProgress?: (progress: number, stage: string) => void,
+    plus = false,
   ): Promise<Tachyon.MethodResponse<Tachyon.LeakCheckResult>> => {
     // 1. Attempt asynchronous leak check execution to avoid LuCI RPC / browser XHR timeout
     const startResponse = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [Tachyon.AvailableMethods.LEAK_CHECK_ASYNC],
+      args: [
+        Tachyon.AvailableMethods.LEAK_CHECK_ASYNC,
+        ...(plus ? ['plus'] : []),
+      ],
       timeout: 5000,
     });
 
@@ -1702,7 +1706,7 @@ export const TachyonShellMethods = {
     ) {
       const jobId = startParsed.job_id;
       const startedAt = Date.now();
-      const MAX_WAIT_MS = 35000;
+      const MAX_WAIT_MS = plus ? 55000 : 35000;
       const POLL_INTERVAL_MS = 800;
 
       while (Date.now() - startedAt < MAX_WAIT_MS) {
@@ -1749,8 +1753,8 @@ export const TachyonShellMethods = {
     // 2. Fallback to direct synchronous execution if async mode is not supported
     const syncResponse = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [Tachyon.AvailableMethods.LEAK_CHECK],
-      timeout: 15000,
+      args: [Tachyon.AvailableMethods.LEAK_CHECK, ...(plus ? ['plus'] : [])],
+      timeout: plus ? 55000 : 35000,
     });
     const parsed = parseJsonObjectOutput<Tachyon.LeakCheckResult>(
       syncResponse.stdout,
