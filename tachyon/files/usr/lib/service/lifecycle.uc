@@ -1071,6 +1071,12 @@ function start_main() {
         return status;
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
+    // Native Tailscale must be up before sing-box so tailnet routes win over
+    // policy routing from the very first packet - the order the reload path
+    // keeps. This branch never started the runtime, and a reload after boot
+    // skips an unchanged configuration, so after a reboot the daemon stayed
+    // down until someone ran tailscale_restart (#110).
+    module_success(TAILSCALE_UC, [ "start-runtime" ]);
 
     for (let comp_svc in [ "forkop", "podkop", "netshift", "steer" ]) {
         if (fs.stat("/etc/init.d/" + comp_svc) != null) {

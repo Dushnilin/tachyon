@@ -10,6 +10,11 @@
 # filter / ip6 filter / nat / mangle tables that the diagnostics then reported as
 # foreign marking rules.
 #
+# On OpenWrt 1.98.3-1 both binaries print that help on stderr (Go flag package), and
+# the generic command_output_from_args() redirects stderr to /dev/null - so a probe
+# reading only stdout saw an empty help text and answered no (#110). The stubs can
+# print the flag on stderr to keep that regression visible.
+#
 # The binaries are stubbed here, so the test can prove which argv each one is asked
 # with rather than only inspecting the source.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
@@ -32,14 +37,19 @@ pass_count=0
 ok() { pass_count=$((pass_count + 1)); }
 
 # A client that records how it was invoked and only mentions the flag in "up --help".
-# TAILSCALE_SUPPORT_CLIENT / _DAEMON let a case pretend the flag does not exist.
+# TAILSCALE_SUPPORT_CLIENT / _DAEMON let a case pretend the flag does not exist,
+# TAILSCALE_*_STDERR moves the help text to stderr the way OpenWrt 1.98.3 prints it.
 cat >"$WORK_DIR/tailscale" <<'SH'
 #!/bin/sh
 printf '%s\n' "$*" >> "$PROBE_LOG"
 case "$*" in
   "up --help")
     if [ "$TAILSCALE_SUPPORT_CLIENT" = "yes" ]; then
-      printf '  --netfilter-mode=<mode>  netfilter mode (off|on)\n'
+      if [ "$TAILSCALE_CLIENT_STDERR" = "yes" ]; then
+        printf '  --netfilter-mode=<mode>  netfilter mode (off|on)\n' >&2
+      else
+        printf '  --netfilter-mode=<mode>  netfilter mode (off|on)\n'
+      fi
     else
       printf '  --accept-dns=<bool>  accept DNS\n'
     fi ;;
@@ -54,7 +64,11 @@ printf '%s\n' "$*" >> "$PROBE_LOG"
 case "$*" in
   "--help")
     if [ "$TAILSCALE_SUPPORT_DAEMON" = "yes" ]; then
-      printf '  --netfilter-mode=<mode>  netfilter mode\n'
+      if [ "$TAILSCALED_STDERR" = "yes" ]; then
+        printf '  --netfilter-mode=<mode>  netfilter mode\n' >&2
+      else
+        printf '  --netfilter-mode=<mode>  netfilter mode\n'
+      fi
     else
       printf '  --tun=<bool>  tun\n'
     fi ;;
@@ -64,13 +78,15 @@ exit 0
 SH
 chmod 0755 "$WORK_DIR/tailscale" "$WORK_DIR/tailscaled"
 
-probe() { # <client-supports> <daemon-supports>
+probe() { # <client-supports> <daemon-supports> [client-stderr] [daemon-stderr]
   rm -f "$WORK_DIR/probe.log"
   PROBE_LOG="$WORK_DIR/probe.log" \
   TAILSCALE_BIN="$WORK_DIR/tailscale" \
   TAILSCALED_BIN="$WORK_DIR/tailscaled" \
   TAILSCALE_SUPPORT_CLIENT="$1" \
   TAILSCALE_SUPPORT_DAEMON="$2" \
+  TAILSCALE_CLIENT_STDERR="${3:-no}" \
+  TAILSCALED_STDERR="${4:-no}" \
     ucode -e '
       let r = require("providers.tailscale.netfilter_probe");
       // print does not append a newline in ucode.
@@ -137,6 +153,31 @@ daemon="$(sed -n 's/^daemon=//p' <<<"$out")"
 [ "$client" = "no" ] || fail "client should be no, got '$client'"
 ok
 [ "$daemon" = "no" ] || fail "daemon should be no, got '$daemon'"
+ok
+
+# OpenWrt 1.98.3 prints that help on stderr (#110): command_output_from_args() sends
+# stderr to /dev/null, so a stdout-only capture reads an empty help and answers no.
+# Both binaries must still be detected when the only copy of the flag lives on stderr.
+out="$(probe yes yes yes yes)"
+client="$(sed -n 's/^client=//p' <<<"$out")"
+daemon="$(sed -n 's/^daemon=//p' <<<"$out")"
+[ "$client" = "yes" ] ||
+  fail "help printed on stderr must still be read by the probe, got '$client'"
+ok
+[ "$daemon" = "yes" ] ||
+  fail "the daemon help printed on stderr must still be read by the probe, got '$daemon'"
+ok
+
+# Content, not the stream: a binary that says nothing about the flag must answer no
+# even when its help text goes to stderr - otherwise "2>&1" would pass vacuously.
+out="$(probe no no yes yes)"
+client="$(sed -n 's/^client=//p' <<<"$out")"
+daemon="$(sed -n 's/^daemon=//p' <<<"$out")"
+[ "$client" = "no" ] ||
+  fail "stderr help without the flag must not be reported as support, got '$client'"
+ok
+[ "$daemon" = "no" ] ||
+  fail "stderr daemon help without the flag must not be reported as support, got '$daemon'"
 ok
 
 printf 'tailscale netfilter probe: %d checks passed\n' "$pass_count"

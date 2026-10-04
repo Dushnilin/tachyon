@@ -9,7 +9,8 @@ let fs = require("fs");
 let common = require("core.common");
 
 let as_string = common.as_string;
-let command_output_from_args = common.command_output_from_args;
+let command_output = common.command_output;
+let command_from_args = common.command_from_args;
 
 const TAILSCALE_BIN = getenv("TAILSCALE_BIN") || "/usr/sbin/tailscale";
 const TAILSCALED_BIN = getenv("TAILSCALED_BIN") || "/usr/sbin/tailscaled";
@@ -35,9 +36,14 @@ function netfilter_help_has_flag(bin) {
     // that documents the flag under "up --help" it answers no. The old fallback
     // keyed off the word "up" appearing in the output, which a help text need not
     // contain, so it replaced a correct answer with a wrong one.
-    let help = command_output_from_args(
+    //
+    // OpenWrt 1.98.3 prints that help on stderr (Go flag package), and
+    // command_output_from_args() redirects stderr to /dev/null by design - it read
+    // an empty text and answered no (#110). Both streams are read here, the same
+    // way nfqws_blob_is_builtin() asks its binary, and nowhere else.
+    let help = command_output(command_from_args(
         bin == TAILSCALE_BIN ? [ bin, "up", "--help" ] : [ bin, "--help" ]
-    );
+    ) + " 2>&1");
 
     return index(as_string(help), "netfilter-mode") >= 0;
 }
