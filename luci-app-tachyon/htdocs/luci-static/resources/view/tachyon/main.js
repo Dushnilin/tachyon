@@ -327,6 +327,532 @@ function validateOutboundJson(value, usedTags = []) {
   return { valid: true, message: _("Valid") };
 }
 
+// src/tachyon/tabs/diagnostic/helpers/getCheckTitle.ts
+function getCheckTitle(name) {
+  return `${name} ${_("checks")}`;
+}
+
+// src/tachyon/tabs/diagnostic/checks/constants.ts
+var DIAGNOSTICS_CHECKS = /* @__PURE__ */ ((DIAGNOSTICS_CHECKS2) => {
+  DIAGNOSTICS_CHECKS2["DNS"] = "DNS";
+  DIAGNOSTICS_CHECKS2["SINGBOX"] = "SINGBOX";
+  DIAGNOSTICS_CHECKS2["STEER"] = "STEER";
+  DIAGNOSTICS_CHECKS2["NFT"] = "NFT";
+  DIAGNOSTICS_CHECKS2["ZAPRET"] = "ZAPRET";
+  DIAGNOSTICS_CHECKS2["ZAPRET2"] = "ZAPRET2";
+  DIAGNOSTICS_CHECKS2["BYEDPI"] = "BYEDPI";
+  DIAGNOSTICS_CHECKS2["FAKEIP"] = "FAKEIP";
+  DIAGNOSTICS_CHECKS2["OUTBOUNDS"] = "OUTBOUNDS";
+  DIAGNOSTICS_CHECKS2["INBOUNDS"] = "INBOUNDS";
+  return DIAGNOSTICS_CHECKS2;
+})(DIAGNOSTICS_CHECKS || {});
+var DIAGNOSTICS_CHECKS_MAP = {
+  ["DNS" /* DNS */]: {
+    order: 1,
+    title: getCheckTitle("DNS"),
+    code: "DNS" /* DNS */
+  },
+  ["SINGBOX" /* SINGBOX */]: {
+    order: 2,
+    title: getCheckTitle("Sing-box"),
+    code: "SINGBOX" /* SINGBOX */
+  },
+  ["STEER" /* STEER */]: {
+    order: 2,
+    title: getCheckTitle("Steer"),
+    code: "STEER" /* STEER */
+  },
+  ["NFT" /* NFT */]: {
+    order: 4,
+    title: getCheckTitle("Nftables"),
+    code: "NFT" /* NFT */
+  },
+  ["ZAPRET" /* ZAPRET */]: {
+    order: 5,
+    title: getCheckTitle("Zapret"),
+    code: "ZAPRET" /* ZAPRET */
+  },
+  ["BYEDPI" /* BYEDPI */]: {
+    order: 7,
+    title: getCheckTitle("ByeDPI"),
+    code: "BYEDPI" /* BYEDPI */
+  },
+  ["ZAPRET2" /* ZAPRET2 */]: {
+    order: 6,
+    title: getCheckTitle("Zapret2"),
+    code: "ZAPRET2" /* ZAPRET2 */
+  },
+  ["OUTBOUNDS" /* OUTBOUNDS */]: {
+    order: 8,
+    title: getCheckTitle("Outbounds"),
+    code: "OUTBOUNDS" /* OUTBOUNDS */
+  },
+  ["FAKEIP" /* FAKEIP */]: {
+    order: 9,
+    title: getCheckTitle("FakeIP"),
+    code: "FAKEIP" /* FAKEIP */
+  },
+  ["INBOUNDS" /* INBOUNDS */]: {
+    order: 3,
+    title: getCheckTitle("Inbounds"),
+    code: "INBOUNDS" /* INBOUNDS */
+  }
+};
+
+// src/tachyon/tabs/diagnostic/diagnostic.store.ts
+function isSteerEngine(engine) {
+  return engine === "steer" || engine === "steer-extended";
+}
+function getEngineCheckCode(engine) {
+  if (isSteerEngine(engine)) return "STEER" /* STEER */;
+  return "SINGBOX" /* SINGBOX */;
+}
+function createDiagnosticCheck(code, description) {
+  const meta = DIAGNOSTICS_CHECKS_MAP[code];
+  return {
+    code,
+    title: meta.title,
+    order: meta.order,
+    description,
+    items: [],
+    state: "skipped"
+  };
+}
+function getDiagnosticsChecks(description, options = {}) {
+  const engineCheck = getEngineCheckCode(options.activeEngine);
+  const checks = ["DNS" /* DNS */, engineCheck];
+  if (options.includeInbounds === true) {
+    checks.push("INBOUNDS" /* INBOUNDS */);
+  }
+  checks.push("NFT" /* NFT */);
+  if (options.includeZapret) {
+    checks.push("ZAPRET" /* ZAPRET */);
+  }
+  if (options.includeZapret2) {
+    checks.push("ZAPRET2" /* ZAPRET2 */);
+  }
+  if (options.includeByedpi) {
+    checks.push("BYEDPI" /* BYEDPI */);
+  }
+  checks.push("OUTBOUNDS" /* OUTBOUNDS */, "FAKEIP" /* FAKEIP */);
+  return checks.map((code) => createDiagnosticCheck(code, description));
+}
+function getLoadingDiagnosticsChecks(options = {}) {
+  return {
+    diagnosticsChecks: getDiagnosticsChecks(_("Pending"), options)
+  };
+}
+var initialDiagnosticStore = {
+  diagnosticsSystemInfo: {
+    loading: true,
+    loaded: false,
+    providerInfoLoaded: false,
+    tachyon_version: "loading",
+    tachyon_commit_sha: "",
+    tachyon_latest_version: "loading",
+    luci_app_version: "loading",
+    sing_box_version: "loading",
+    sing_box_extended: 0,
+    sing_box_tiny: 0,
+    sing_box_compressed: 0,
+    sing_box_lx: 0,
+    sing_box_tailscale: 1,
+    sing_box_cert_pin: 0,
+    sing_box_repo_url: "",
+    sing_box_backup_version: "",
+    sing_box_backup_time: 0,
+    steer_version: "loading",
+    steer_installed: 0,
+    steer_extended: 0,
+    steer_repo_url: "https://github.com/xyzmean/steer",
+    steer_backup_version: "",
+    steer_backup_time: 0,
+    active_engine: "sing-box",
+    zapret_version: "loading",
+    zapret_installed: 0,
+    zapret_backup_version: "",
+    zapret_backup_time: 0,
+    zapret2_version: "loading",
+    zapret2_installed: 0,
+    zapret2_backup_version: "",
+    zapret2_backup_time: 0,
+    byedpi_version: "loading",
+    byedpi_installed: 0,
+    byedpi_backup_version: "",
+    byedpi_backup_time: 0,
+    wdtt_version: "loading",
+    wdtt_installed: 0,
+    wdtt_backup_version: "",
+    wdtt_backup_time: 0,
+    olcrtc_version: "loading",
+    olcrtc_installed: 0,
+    olcrtc_backup_version: "",
+    olcrtc_backup_time: 0,
+    tailscale_version: "loading",
+    tailscale_installed: 0,
+    tailscale_backup_version: "",
+    tailscale_backup_time: 0,
+    fptn_version: "loading",
+    fptn_installed: 0,
+    fptn_backup_version: "",
+    fptn_backup_time: 0,
+    server_inbounds_enabled_count: -1,
+    direct_bypass_enabled: 0,
+    direct_bypass_address: "",
+    direct_bypass_port: "",
+    torrserver_running: 0,
+    torrserver_direct_available: 0,
+    torrserver_direct_enabled: 0,
+    torrserver_direct_active: 0,
+    openwrt_version: "loading",
+    device_model: "loading"
+  },
+  diagnosticsActions: {
+    restart: {
+      loading: false
+    },
+    start: {
+      loading: false
+    },
+    stop: {
+      loading: false
+    },
+    enable: {
+      loading: false
+    },
+    disable: {
+      loading: false
+    },
+    globalCheck: {
+      loading: false
+    },
+    doctor: {
+      loading: false
+    },
+    aiDoctor: {
+      loading: false
+    },
+    viewLogs: {
+      loading: false
+    },
+    showSingBoxConfig: {
+      loading: false
+    },
+    generateBugReport: {
+      loading: false
+    },
+    checkServices: {
+      loading: false
+    }
+  },
+  diagnosticsRunAction: { loading: false },
+  diagnosticsChecks: getDiagnosticsChecks(_("Not running")),
+  updatesActions: {
+    tachyonCheck: { loading: false },
+    tachyonInstall: { loading: false },
+    tachyonReinstall: { loading: false },
+    tachyonRollback: { loading: false },
+    singBoxCheck: { loading: false },
+    singBoxInstall: { loading: false },
+    singBoxRollback: { loading: false },
+    singBoxInstallExtended: { loading: false },
+    singBoxInstallExtendedCompressed: { loading: false },
+    singBoxInstallLx: { loading: false },
+    singBoxInstallTiny: { loading: false },
+    singBoxInstallStable: { loading: false },
+    zapretCheck: { loading: false },
+    zapretInstall: { loading: false },
+    zapretRemove: { loading: false },
+    zapretRollback: { loading: false },
+    zapret2Check: { loading: false },
+    zapret2Install: { loading: false },
+    zapret2Remove: { loading: false },
+    zapret2Rollback: { loading: false },
+    byedpiCheck: { loading: false },
+    byedpiInstall: { loading: false },
+    byedpiRemove: { loading: false },
+    byedpiRollback: { loading: false },
+    wdttCheck: { loading: false },
+    wdttInstall: { loading: false },
+    wdttRemove: { loading: false },
+    wdttRollback: { loading: false },
+    olcrtcCheck: { loading: false },
+    olcrtcInstall: { loading: false },
+    olcrtcRemove: { loading: false },
+    olcrtcRollback: { loading: false },
+    fptnCheck: { loading: false },
+    fptnInstall: { loading: false },
+    fptnRemove: { loading: false },
+    fptnRollback: { loading: false },
+    tailscaleCheck: { loading: false },
+    tailscaleInstall: { loading: false },
+    tailscaleRemove: { loading: false },
+    tailscaleRollback: { loading: false },
+    steerCheck: { loading: false },
+    steerInstall: { loading: false },
+    steerRemove: { loading: false },
+    steerRollback: { loading: false },
+    directBypassEnable: { loading: false },
+    directBypassDisable: { loading: false },
+    torrserverDirectEnable: { loading: false },
+    torrserverDirectDisable: { loading: false },
+    engineSwitch: { loading: false }
+  },
+  updatesChecks: {
+    tachyon: { status: null, latest_version: "", release_url: "" },
+    sing_box: { status: null, latest_version: "", release_url: "" },
+    zapret: { status: null, latest_version: "", release_url: "" },
+    zapret2: { status: null, latest_version: "", release_url: "" },
+    byedpi: { status: null, latest_version: "", release_url: "" },
+    wdtt: { status: null, latest_version: "", release_url: "" },
+    olcrtc: { status: null, latest_version: "", release_url: "" },
+    fptn: { status: null, latest_version: "", release_url: "" },
+    tailscale: { status: null, latest_version: "", release_url: "" },
+    steer: { status: null, latest_version: "", release_url: "" },
+    "steer-extended": { status: null, latest_version: "", release_url: "" },
+    direct_bypass: { status: null, latest_version: "", release_url: "" },
+    torrserver_direct: { status: null, latest_version: "", release_url: "" },
+    engine: { status: null, latest_version: "", release_url: "" }
+  }
+};
+
+// src/tachyon/services/store.service.ts
+function jsonStableStringify(obj) {
+  return JSON.stringify(obj, (_2, value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return Object.keys(value).sort().reduce(
+        (acc, key) => {
+          acc[key] = value[key];
+          return acc;
+        },
+        {}
+      );
+    }
+    return value;
+  });
+}
+function jsonEqual(a, b) {
+  try {
+    return jsonStableStringify(a) === jsonStableStringify(b);
+  } catch {
+    return false;
+  }
+}
+var StoreService = class {
+  constructor(initial) {
+    this.listeners = /* @__PURE__ */ new Set();
+    this.value = initial;
+    this.initial = structuredClone(initial);
+  }
+  get() {
+    return this.value;
+  }
+  set(next) {
+    const prev = this.value;
+    const diff = {};
+    for (const key in next) {
+      if (next[key] === prev[key]) continue;
+      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
+    }
+    if (Object.keys(diff).length === 0) {
+      return;
+    }
+    const merged = { ...prev, ...next };
+    this.value = merged;
+    this.listeners.forEach((cb) => cb(this.value, prev, diff));
+  }
+  reset(keys) {
+    const prev = this.value;
+    const next = structuredClone(this.value);
+    if (keys && keys.length > 0) {
+      keys.forEach((key) => {
+        next[key] = structuredClone(this.initial[key]);
+      });
+    } else {
+      Object.assign(next, structuredClone(this.initial));
+    }
+    if (jsonEqual(prev, next)) return;
+    this.value = next;
+    const diff = {};
+    for (const key in next) {
+      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
+    }
+    this.listeners.forEach((cb) => cb(this.value, prev, diff));
+  }
+  subscribe(cb) {
+    this.listeners.add(cb);
+    cb(this.value, this.value, {});
+    return () => this.listeners.delete(cb);
+  }
+  unsubscribe(cb) {
+    this.listeners.delete(cb);
+  }
+  patch(key, value) {
+    this.set({ [key]: value });
+  }
+  getKey(key) {
+    return this.value[key];
+  }
+  subscribeKey(key, cb) {
+    let prev = this.value[key];
+    const wrapper = (val) => {
+      if (!jsonEqual(val[key], prev)) {
+        prev = val[key];
+        cb(val[key]);
+      }
+    };
+    this.listeners.add(wrapper);
+    return () => this.listeners.delete(wrapper);
+  }
+};
+var initialStore = {
+  tabService: {
+    current: "",
+    all: []
+  },
+  activeEngine: "sing-box",
+  bandwidthWidget: {
+    loading: true,
+    failed: false,
+    data: { up: 0, down: 0 }
+  },
+  trafficTotalWidget: {
+    loading: true,
+    failed: false,
+    data: { downloadTotal: 0, uploadTotal: 0 }
+  },
+  systemInfoWidget: {
+    loading: true,
+    failed: false,
+    data: { connections: 0, memory: 0 }
+  },
+  servicesInfoWidget: {
+    loading: true,
+    failed: false,
+    data: {
+      singbox: 0,
+      tachyonRunning: 0,
+      tachyonEnabled: 0,
+      tachyonStatus: "",
+      watchdogRunning: 0
+    }
+  },
+  tailscaleWidget: {
+    loading: true,
+    failed: false,
+    data: null
+  },
+  sectionsWidget: {
+    loading: true,
+    failed: false,
+    latencyFetchingSections: {},
+    latencyProgressSections: {},
+    selectorSwitchingSections: {},
+    subscriptionUpdatingSections: {},
+    data: []
+  },
+  ...initialDiagnosticStore
+};
+var store = new StoreService(initialStore);
+
+// src/validators/validateVpnUrl.ts
+function supportsVpnUrl() {
+  const state = store.get();
+  const info = state.diagnosticsSystemInfo || {};
+  const engine = state.activeEngine || info.active_engine || "sing-box";
+  return engine === "sing-box" && (Number(info.sing_box_lx) === 1 || /-lx(?:[.-]|$)/.test(String(info.sing_box_version || "")));
+}
+function validateVpnUrl(url) {
+  const invalid2 = () => ({
+    valid: false,
+    message: _("Invalid vpn:// link; use a WG/AWG .conf or Amnezia export")
+  });
+  const key32 = (value) => {
+    try {
+      const key = String(value || "").replace(/ /g, "+");
+      return /^[A-Za-z0-9+/]{43}=$/.test(key) && atob(key).length === 32;
+    } catch (_e) {
+      return false;
+    }
+  };
+  try {
+    if (url.startsWith("vpn://")) {
+      let payload = decodeURIComponent(url.slice(6).split("#")[0]);
+      if (payload.length > 131072 || !/^[A-Za-z0-9+/_-]*={0,2}$/.test(payload) || payload.length % 4 === 1)
+        return invalid2();
+      payload = payload.replace(/-/g, "+").replace(/_/g, "/");
+      while (payload.length % 4) payload += "=";
+      let text = atob(payload);
+      if (text.length >= 12 && text.charCodeAt(0) === 0) {
+        const size = text.charCodeAt(0) * 16777216 + text.charCodeAt(1) * 65536 + text.charCodeAt(2) * 256 + text.charCodeAt(3);
+        const cmf = text.charCodeAt(4), flg = text.charCodeAt(5);
+        if (!size || size > 65536 || (cmf & 15) !== 8 || cmf >> 4 > 7 || flg & 32 || (cmf * 256 + flg) % 31)
+          return invalid2();
+        return {
+          valid: true,
+          message: _("Amnezia export; full validation before apply")
+        };
+      }
+      if (text.length > 65536 || text.includes("\0")) return invalid2();
+      if (text.trim().startsWith("{")) {
+        const data = JSON.parse(text);
+        if (!Array.isArray(data.containers) || !data.containers.length || data.containers.length > 16)
+          return invalid2();
+        const choices = [];
+        for (const container of data.containers) {
+          if (!container || typeof container !== "object") return invalid2();
+          const kind = container.container;
+          const proto = ["amnezia-awg", "amnezia-awg2"].includes(kind) ? "awg" : kind === "amnezia-wireguard" ? "wireguard" : null;
+          if (!proto) continue;
+          let settings = container[proto];
+          if (typeof settings === "string") settings = JSON.parse(settings);
+          let last = settings?.last_config;
+          if (typeof last === "string") last = JSON.parse(last);
+          if (!last || typeof last.config !== "string") return invalid2();
+          choices.push({ kind, text: last.config });
+        }
+        const preferred = choices.filter(
+          (c) => c.kind === data.defaultContainer
+        );
+        if (!preferred.length && typeof data.defaultContainer === "string" && data.defaultContainer)
+          return invalid2();
+        if (preferred.length > 1 || !preferred.length && choices.length !== 1)
+          return invalid2();
+        text = (preferred[0] || choices[0]).text;
+        if (text.length > 65536 || text.includes("\0")) return invalid2();
+      }
+      let block = "", peers = 0, interfaces = 0;
+      const fields = {};
+      for (const raw of text.split("\n")) {
+        const line = raw.trim();
+        if (!line || line.startsWith("#")) continue;
+        if (line === "[Interface]") {
+          block = "interface";
+          interfaces++;
+          continue;
+        }
+        if (line === "[Peer]") {
+          block = "peer";
+          peers++;
+          continue;
+        }
+        if (line.startsWith("[")) return invalid2();
+        const eq = line.indexOf("=");
+        if (block && eq > 0)
+          fields[line.slice(0, eq).trim().toLowerCase()] = line.slice(eq + 1).trim();
+      }
+      const endpoint = (fields.endpoint || "").match(
+        /^(\[[^\]]+\]|[^:\s]+):(\d+)$/
+      );
+      if (interfaces !== 1 || peers !== 1 || !key32(fields.privatekey) || !key32(fields.publickey) || !fields.address || !endpoint || Number(endpoint[2]) < 1 || Number(endpoint[2]) > 65535 || fields.presharedkey && !key32(fields.presharedkey))
+        return invalid2();
+    }
+    return { valid: true, message: _("Valid") };
+  } catch (_e) {
+    return invalid2();
+  }
+}
+
 // src/validators/validateShadowsocksUrl.ts
 function validateShadowsocksUrl(url) {
   if (!url || !url.startsWith("ss://")) {
@@ -998,6 +1524,14 @@ var DISPATCH = [
 ];
 function validateProxyUrl(url) {
   const trimmedUrl = url.trim();
+  if (trimmedUrl.startsWith("vpn://")) {
+    if (!supportsVpnUrl())
+      return {
+        valid: false,
+        message: _("vpn:// is available only with sing-box LX")
+      };
+    return validateVpnUrl(trimmedUrl);
+  }
   for (const { prefixes, validate } of DISPATCH) {
     for (const prefix of prefixes) {
       if (trimmedUrl.startsWith(prefix)) {
@@ -1009,7 +1543,7 @@ function validateProxyUrl(url) {
     valid: false,
     message: _(
       "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://"
-    )
+    ) + (supportsVpnUrl() ? "; vpn:// (LX)" : "")
   };
 }
 
@@ -1442,7 +1976,7 @@ function insertIf(condition, elements) {
 }
 
 // src/helpers/isCopyableProxyLink.ts
-var COPYABLE_PROXY_URI_RE = /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|socks4|socks4a|socks5|http|https):\/\//i;
+var COPYABLE_PROXY_URI_RE = /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|socks4|socks4a|socks5|http|https|vpn):\/\//i;
 function isCopyableProxyLink(link) {
   return COPYABLE_PROXY_URI_RE.test((link || "").trim());
 }
@@ -5149,6 +5683,9 @@ function getConfiguredSubscriptionPrefixes(section) {
   }
   return prefixes;
 }
+function dashboardOutboundType(code, runtimeType, outboundMetadata) {
+  return outboundMetadata?.protocols?.[code] === "amneziawg" ? "AmneziaWG" : runtimeType || "";
+}
 function resolveOutboundNameAndPrefix({
   code,
   entry,
@@ -5229,7 +5766,11 @@ function buildUrlTestInfo({
           displayName: resolved.displayName,
           prefix: resolved.prefix,
           latency: childEntry?.value?.history?.[0]?.delay || 0,
-          type: childEntry?.value?.type || "",
+          type: dashboardOutboundType(
+            childCode,
+            childEntry?.value?.type,
+            outboundMetadata
+          ),
           transport: outboundMetadata?.transports?.[childCode] || getProxyUrlTransport(link),
           selected: selectedCode === childCode,
           link,
@@ -5319,7 +5860,11 @@ function buildPriorityInfo({
         displayName: resolved.displayName,
         prefix: resolved.prefix,
         latency: childEntry?.value?.history?.[0]?.delay || 0,
-        type: childEntry?.value?.type || "",
+        type: dashboardOutboundType(
+          childCode,
+          childEntry?.value?.type,
+          outboundMetadata
+        ),
         transport: outboundMetadata?.transports?.[childCode] || getProxyUrlTransport(link),
         selected: selectedCode === childCode,
         link,
@@ -5486,7 +6031,11 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
         displayName,
         prefix,
         latency,
-        type: priorityConfig ? "Priority" : effectiveItem?.value.type || "URLTest",
+        type: priorityConfig ? "Priority" : dashboardOutboundType(
+          code,
+          effectiveItem?.value.type || "URLTest",
+          outboundMetadata
+        ),
         transport: isGroupType ? void 0 : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),
         selected: isSelected,
         link,
@@ -6003,434 +6552,6 @@ var TabService = class _TabService {
   }
 };
 var TabServiceInstance = TabService.getInstance();
-
-// src/tachyon/tabs/diagnostic/helpers/getCheckTitle.ts
-function getCheckTitle(name) {
-  return `${name} ${_("checks")}`;
-}
-
-// src/tachyon/tabs/diagnostic/checks/constants.ts
-var DIAGNOSTICS_CHECKS = /* @__PURE__ */ ((DIAGNOSTICS_CHECKS2) => {
-  DIAGNOSTICS_CHECKS2["DNS"] = "DNS";
-  DIAGNOSTICS_CHECKS2["SINGBOX"] = "SINGBOX";
-  DIAGNOSTICS_CHECKS2["STEER"] = "STEER";
-  DIAGNOSTICS_CHECKS2["NFT"] = "NFT";
-  DIAGNOSTICS_CHECKS2["ZAPRET"] = "ZAPRET";
-  DIAGNOSTICS_CHECKS2["ZAPRET2"] = "ZAPRET2";
-  DIAGNOSTICS_CHECKS2["BYEDPI"] = "BYEDPI";
-  DIAGNOSTICS_CHECKS2["FAKEIP"] = "FAKEIP";
-  DIAGNOSTICS_CHECKS2["OUTBOUNDS"] = "OUTBOUNDS";
-  DIAGNOSTICS_CHECKS2["INBOUNDS"] = "INBOUNDS";
-  return DIAGNOSTICS_CHECKS2;
-})(DIAGNOSTICS_CHECKS || {});
-var DIAGNOSTICS_CHECKS_MAP = {
-  ["DNS" /* DNS */]: {
-    order: 1,
-    title: getCheckTitle("DNS"),
-    code: "DNS" /* DNS */
-  },
-  ["SINGBOX" /* SINGBOX */]: {
-    order: 2,
-    title: getCheckTitle("Sing-box"),
-    code: "SINGBOX" /* SINGBOX */
-  },
-  ["STEER" /* STEER */]: {
-    order: 2,
-    title: getCheckTitle("Steer"),
-    code: "STEER" /* STEER */
-  },
-  ["NFT" /* NFT */]: {
-    order: 4,
-    title: getCheckTitle("Nftables"),
-    code: "NFT" /* NFT */
-  },
-  ["ZAPRET" /* ZAPRET */]: {
-    order: 5,
-    title: getCheckTitle("Zapret"),
-    code: "ZAPRET" /* ZAPRET */
-  },
-  ["BYEDPI" /* BYEDPI */]: {
-    order: 7,
-    title: getCheckTitle("ByeDPI"),
-    code: "BYEDPI" /* BYEDPI */
-  },
-  ["ZAPRET2" /* ZAPRET2 */]: {
-    order: 6,
-    title: getCheckTitle("Zapret2"),
-    code: "ZAPRET2" /* ZAPRET2 */
-  },
-  ["OUTBOUNDS" /* OUTBOUNDS */]: {
-    order: 8,
-    title: getCheckTitle("Outbounds"),
-    code: "OUTBOUNDS" /* OUTBOUNDS */
-  },
-  ["FAKEIP" /* FAKEIP */]: {
-    order: 9,
-    title: getCheckTitle("FakeIP"),
-    code: "FAKEIP" /* FAKEIP */
-  },
-  ["INBOUNDS" /* INBOUNDS */]: {
-    order: 3,
-    title: getCheckTitle("Inbounds"),
-    code: "INBOUNDS" /* INBOUNDS */
-  }
-};
-
-// src/tachyon/tabs/diagnostic/diagnostic.store.ts
-function isSteerEngine(engine) {
-  return engine === "steer" || engine === "steer-extended";
-}
-function getEngineCheckCode(engine) {
-  if (isSteerEngine(engine)) return "STEER" /* STEER */;
-  return "SINGBOX" /* SINGBOX */;
-}
-function createDiagnosticCheck(code, description) {
-  const meta = DIAGNOSTICS_CHECKS_MAP[code];
-  return {
-    code,
-    title: meta.title,
-    order: meta.order,
-    description,
-    items: [],
-    state: "skipped"
-  };
-}
-function getDiagnosticsChecks(description, options = {}) {
-  const engineCheck = getEngineCheckCode(options.activeEngine);
-  const checks = ["DNS" /* DNS */, engineCheck];
-  if (options.includeInbounds === true) {
-    checks.push("INBOUNDS" /* INBOUNDS */);
-  }
-  checks.push("NFT" /* NFT */);
-  if (options.includeZapret) {
-    checks.push("ZAPRET" /* ZAPRET */);
-  }
-  if (options.includeZapret2) {
-    checks.push("ZAPRET2" /* ZAPRET2 */);
-  }
-  if (options.includeByedpi) {
-    checks.push("BYEDPI" /* BYEDPI */);
-  }
-  checks.push("OUTBOUNDS" /* OUTBOUNDS */, "FAKEIP" /* FAKEIP */);
-  return checks.map((code) => createDiagnosticCheck(code, description));
-}
-function getLoadingDiagnosticsChecks(options = {}) {
-  return {
-    diagnosticsChecks: getDiagnosticsChecks(_("Pending"), options)
-  };
-}
-var initialDiagnosticStore = {
-  diagnosticsSystemInfo: {
-    loading: true,
-    loaded: false,
-    providerInfoLoaded: false,
-    tachyon_version: "loading",
-    tachyon_commit_sha: "",
-    tachyon_latest_version: "loading",
-    luci_app_version: "loading",
-    sing_box_version: "loading",
-    sing_box_extended: 0,
-    sing_box_tiny: 0,
-    sing_box_compressed: 0,
-    sing_box_lx: 0,
-    sing_box_tailscale: 1,
-    sing_box_cert_pin: 0,
-    sing_box_repo_url: "",
-    sing_box_backup_version: "",
-    sing_box_backup_time: 0,
-    steer_version: "loading",
-    steer_installed: 0,
-    steer_extended: 0,
-    steer_repo_url: "https://github.com/xyzmean/steer",
-    steer_backup_version: "",
-    steer_backup_time: 0,
-    active_engine: "sing-box",
-    zapret_version: "loading",
-    zapret_installed: 0,
-    zapret_backup_version: "",
-    zapret_backup_time: 0,
-    zapret2_version: "loading",
-    zapret2_installed: 0,
-    zapret2_backup_version: "",
-    zapret2_backup_time: 0,
-    byedpi_version: "loading",
-    byedpi_installed: 0,
-    byedpi_backup_version: "",
-    byedpi_backup_time: 0,
-    wdtt_version: "loading",
-    wdtt_installed: 0,
-    wdtt_backup_version: "",
-    wdtt_backup_time: 0,
-    olcrtc_version: "loading",
-    olcrtc_installed: 0,
-    olcrtc_backup_version: "",
-    olcrtc_backup_time: 0,
-    tailscale_version: "loading",
-    tailscale_installed: 0,
-    tailscale_backup_version: "",
-    tailscale_backup_time: 0,
-    fptn_version: "loading",
-    fptn_installed: 0,
-    fptn_backup_version: "",
-    fptn_backup_time: 0,
-    server_inbounds_enabled_count: -1,
-    direct_bypass_enabled: 0,
-    direct_bypass_address: "",
-    direct_bypass_port: "",
-    torrserver_running: 0,
-    torrserver_direct_available: 0,
-    torrserver_direct_enabled: 0,
-    torrserver_direct_active: 0,
-    openwrt_version: "loading",
-    device_model: "loading"
-  },
-  diagnosticsActions: {
-    restart: {
-      loading: false
-    },
-    start: {
-      loading: false
-    },
-    stop: {
-      loading: false
-    },
-    enable: {
-      loading: false
-    },
-    disable: {
-      loading: false
-    },
-    globalCheck: {
-      loading: false
-    },
-    doctor: {
-      loading: false
-    },
-    aiDoctor: {
-      loading: false
-    },
-    viewLogs: {
-      loading: false
-    },
-    showSingBoxConfig: {
-      loading: false
-    },
-    generateBugReport: {
-      loading: false
-    },
-    checkServices: {
-      loading: false
-    }
-  },
-  diagnosticsRunAction: { loading: false },
-  diagnosticsChecks: getDiagnosticsChecks(_("Not running")),
-  updatesActions: {
-    tachyonCheck: { loading: false },
-    tachyonInstall: { loading: false },
-    tachyonReinstall: { loading: false },
-    tachyonRollback: { loading: false },
-    singBoxCheck: { loading: false },
-    singBoxInstall: { loading: false },
-    singBoxRollback: { loading: false },
-    singBoxInstallExtended: { loading: false },
-    singBoxInstallExtendedCompressed: { loading: false },
-    singBoxInstallLx: { loading: false },
-    singBoxInstallTiny: { loading: false },
-    singBoxInstallStable: { loading: false },
-    zapretCheck: { loading: false },
-    zapretInstall: { loading: false },
-    zapretRemove: { loading: false },
-    zapretRollback: { loading: false },
-    zapret2Check: { loading: false },
-    zapret2Install: { loading: false },
-    zapret2Remove: { loading: false },
-    zapret2Rollback: { loading: false },
-    byedpiCheck: { loading: false },
-    byedpiInstall: { loading: false },
-    byedpiRemove: { loading: false },
-    byedpiRollback: { loading: false },
-    wdttCheck: { loading: false },
-    wdttInstall: { loading: false },
-    wdttRemove: { loading: false },
-    wdttRollback: { loading: false },
-    olcrtcCheck: { loading: false },
-    olcrtcInstall: { loading: false },
-    olcrtcRemove: { loading: false },
-    olcrtcRollback: { loading: false },
-    fptnCheck: { loading: false },
-    fptnInstall: { loading: false },
-    fptnRemove: { loading: false },
-    fptnRollback: { loading: false },
-    tailscaleCheck: { loading: false },
-    tailscaleInstall: { loading: false },
-    tailscaleRemove: { loading: false },
-    tailscaleRollback: { loading: false },
-    steerCheck: { loading: false },
-    steerInstall: { loading: false },
-    steerRemove: { loading: false },
-    steerRollback: { loading: false },
-    directBypassEnable: { loading: false },
-    directBypassDisable: { loading: false },
-    torrserverDirectEnable: { loading: false },
-    torrserverDirectDisable: { loading: false },
-    engineSwitch: { loading: false }
-  },
-  updatesChecks: {
-    tachyon: { status: null, latest_version: "", release_url: "" },
-    sing_box: { status: null, latest_version: "", release_url: "" },
-    zapret: { status: null, latest_version: "", release_url: "" },
-    zapret2: { status: null, latest_version: "", release_url: "" },
-    byedpi: { status: null, latest_version: "", release_url: "" },
-    wdtt: { status: null, latest_version: "", release_url: "" },
-    olcrtc: { status: null, latest_version: "", release_url: "" },
-    fptn: { status: null, latest_version: "", release_url: "" },
-    tailscale: { status: null, latest_version: "", release_url: "" },
-    steer: { status: null, latest_version: "", release_url: "" },
-    "steer-extended": { status: null, latest_version: "", release_url: "" },
-    direct_bypass: { status: null, latest_version: "", release_url: "" },
-    torrserver_direct: { status: null, latest_version: "", release_url: "" },
-    engine: { status: null, latest_version: "", release_url: "" }
-  }
-};
-
-// src/tachyon/services/store.service.ts
-function jsonStableStringify(obj) {
-  return JSON.stringify(obj, (_2, value) => {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      return Object.keys(value).sort().reduce(
-        (acc, key) => {
-          acc[key] = value[key];
-          return acc;
-        },
-        {}
-      );
-    }
-    return value;
-  });
-}
-function jsonEqual(a, b) {
-  try {
-    return jsonStableStringify(a) === jsonStableStringify(b);
-  } catch {
-    return false;
-  }
-}
-var StoreService = class {
-  constructor(initial) {
-    this.listeners = /* @__PURE__ */ new Set();
-    this.value = initial;
-    this.initial = structuredClone(initial);
-  }
-  get() {
-    return this.value;
-  }
-  set(next) {
-    const prev = this.value;
-    const diff = {};
-    for (const key in next) {
-      if (next[key] === prev[key]) continue;
-      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
-    }
-    if (Object.keys(diff).length === 0) {
-      return;
-    }
-    const merged = { ...prev, ...next };
-    this.value = merged;
-    this.listeners.forEach((cb) => cb(this.value, prev, diff));
-  }
-  reset(keys) {
-    const prev = this.value;
-    const next = structuredClone(this.value);
-    if (keys && keys.length > 0) {
-      keys.forEach((key) => {
-        next[key] = structuredClone(this.initial[key]);
-      });
-    } else {
-      Object.assign(next, structuredClone(this.initial));
-    }
-    if (jsonEqual(prev, next)) return;
-    this.value = next;
-    const diff = {};
-    for (const key in next) {
-      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
-    }
-    this.listeners.forEach((cb) => cb(this.value, prev, diff));
-  }
-  subscribe(cb) {
-    this.listeners.add(cb);
-    cb(this.value, this.value, {});
-    return () => this.listeners.delete(cb);
-  }
-  unsubscribe(cb) {
-    this.listeners.delete(cb);
-  }
-  patch(key, value) {
-    this.set({ [key]: value });
-  }
-  getKey(key) {
-    return this.value[key];
-  }
-  subscribeKey(key, cb) {
-    let prev = this.value[key];
-    const wrapper = (val) => {
-      if (!jsonEqual(val[key], prev)) {
-        prev = val[key];
-        cb(val[key]);
-      }
-    };
-    this.listeners.add(wrapper);
-    return () => this.listeners.delete(wrapper);
-  }
-};
-var initialStore = {
-  tabService: {
-    current: "",
-    all: []
-  },
-  activeEngine: "sing-box",
-  bandwidthWidget: {
-    loading: true,
-    failed: false,
-    data: { up: 0, down: 0 }
-  },
-  trafficTotalWidget: {
-    loading: true,
-    failed: false,
-    data: { downloadTotal: 0, uploadTotal: 0 }
-  },
-  systemInfoWidget: {
-    loading: true,
-    failed: false,
-    data: { connections: 0, memory: 0 }
-  },
-  servicesInfoWidget: {
-    loading: true,
-    failed: false,
-    data: {
-      singbox: 0,
-      tachyonRunning: 0,
-      tachyonEnabled: 0,
-      tachyonStatus: "",
-      watchdogRunning: 0
-    }
-  },
-  tailscaleWidget: {
-    loading: true,
-    failed: false,
-    data: null
-  },
-  sectionsWidget: {
-    loading: true,
-    failed: false,
-    latencyFetchingSections: {},
-    latencyProgressSections: {},
-    selectorSwitchingSections: {},
-    subscriptionUpdatingSections: {},
-    data: []
-  },
-  ...initialDiagnosticStore
-};
-var store = new StoreService(initialStore);
 
 // src/tachyon/services/tachyonLogWatcher.service.ts
 var TachyonLogWatcher = class _TachyonLogWatcher {
@@ -26818,6 +26939,7 @@ return baseclass.extend({
   renderDnsBenchmarkModal,
   showToast,
   store,
+  supportsVpnUrl,
   validateDNS,
   validateDomain,
   validateIP,

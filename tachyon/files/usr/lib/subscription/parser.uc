@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let crypt4 = require("subscription.crypt4");
+let wireguard = require("subscription.wireguard");
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
 let array_or_empty = common.array_or_empty;
@@ -23,7 +24,8 @@ function starts_with(value, prefix) {
 }
 
 function is_supported_share_link(line) {
-    return starts_with(line, "ss://") ||
+    return starts_with(line, "vpn://") ||
+        starts_with(line, "ss://") ||
         starts_with(line, "vmess://") ||
         starts_with(line, "vless://") ||
         starts_with(line, "trojan://") ||
@@ -1324,6 +1326,8 @@ function process_vmess(raw) {
 }
 
 function parse_share_link(line) {
+    if (starts_with(line, "vpn://"))
+        return wireguard.from_vpn(line);
     if (starts_with(line, "vmess://"))
         return process_vmess(line);
     if (starts_with(line, "ss://"))

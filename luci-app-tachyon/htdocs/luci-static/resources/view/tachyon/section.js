@@ -535,6 +535,8 @@ function normalizeProtocolName(protocol) {
     case "wireguard":
     case "wg":
       return "WireGuard";
+    case "vpn":
+      return "WG/AWG";
     case "hysteria2":
     case "hy2":
       return "Hysteria2";
@@ -745,6 +747,14 @@ if (typeof window !== "undefined") {
   });
 }
 
+function refreshVpnUrlHints() {
+  if (typeof document === "undefined") return;
+  const hint = main.supportsVpnUrl() ? "; vpn:// (AWG, LX)" : "";
+  document.querySelectorAll("[data-tachyon-vpn-url-hint]").forEach((node) => {
+    node.textContent = hint;
+  });
+}
+
 if (main.store && typeof main.store.subscribe === "function") {
   main.store.subscribe((next, _prev, diff) => {
     if (!diff || diff.diagnosticsSystemInfo) {
@@ -752,6 +762,7 @@ if (main.store && typeof main.store.subscribe === "function") {
         next.diagnosticsSystemInfo,
       );
     }
+    if (!diff || diff.diagnosticsSystemInfo || diff.activeEngine) refreshVpnUrlHints();
   });
 }
 
@@ -10941,6 +10952,18 @@ function createSectionContent(section) {
   o.depends("action", "connection");
   o.rmempty = true;
   o.modalonly = true;
+  const originalVpnUrlRender = o.render;
+  o.render = function () {
+    return Promise.resolve(originalVpnUrlRender.apply(this, arguments)).then((node) => {
+      const description = node && node.querySelector(".cbi-value-description");
+      if (description) {
+        description.appendChild(E("span", { "data-tachyon-vpn-url-hint": "1" },
+          main.supportsVpnUrl() ? "; vpn:// (AWG, LX)" : ""));
+        refreshVpnUrlHints();
+      }
+      return node;
+    });
+  };
   o.validate = function (_section_id, value) {
     if (!value || value.length === 0) {
       return true;

@@ -9,6 +9,7 @@ let runtime_dns = require("singbox.dns");
 let runtime_url = require("core.url");
 let subscription_share_link = require("subscription.share_link");
 let connections = require("config.connections");
+let subscription_wireguard = require("subscription.wireguard");
 
 let as_string = common.as_string;
 let option = common.option;
@@ -164,6 +165,12 @@ function supported_subscription_outbound(outbound) {
     if (type(outbound) != "object")
         return false;
     let t = as_string(outbound.type);
+    if (t == "wireguard") {
+        let peer = array_or_empty(outbound.peers)[0];
+        return type(peer) == "object" && !is_dummy_outbound_server(peer.address, peer.port) &&
+            as_string(outbound.private_key) != "" && as_string(peer.public_key) != "" &&
+            length(array_or_empty(outbound.address)) > 0;
+    }
     if (subscription_group_outbound(outbound))
         return true;
     if (t == "direct" || t == "selector" || t == "urltest" || t == "dns" || t == "block")
@@ -909,8 +916,30 @@ function manual_tuic_outbound(link, tag_name) {
     return outbound;
 }
 
-function manual_link_outbound(link, tag_name) {
+function ensure_imported_vpn_lx() {
+    let variant = trim(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || "");
+    let version = trim(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version") || "");
+    if (variant != "lx" && index(version, "-lx") < 0)
+        ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx");
+}
+
+function add_imported_wireguard_endpoint(config, endpoint) {
+    ensure_imported_vpn_lx();
+    push(config.endpoints, endpoint);
+}
+
+function manual_link_outbound(link, tag_name, display_info) {
     let scheme = url_scheme(link);
+    // Preserve the base64 payload; do not URL-decode the complete link first.
+    if (scheme == "vpn") {
+        ensure_imported_vpn_lx();
+        let endpoint = subscription_wireguard.from_vpn(link);
+        if (endpoint == null)
+            ctx.runtime_generate_unsupported("invalid vpn:// export: expected a valid WG/AWG .conf or Amnezia WG/AWG container");
+        if (type(display_info) == "object")
+            display_info.name = subscription_outbound_display_name(endpoint);
+        return copy_subscription_outbound(endpoint, tag_name);
+    }
     if (scheme == "vmess")
         return manual_vmess_outbound(link, tag_name);
 
@@ -939,12 +968,16 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
         tag_name = unique_tag(tag_name, taken);
     taken[tag_name] = true;
 
-    let outbound = manual_link_outbound(link, tag_name);
+    let display_info = {};
+    let outbound = manual_link_outbound(link, tag_name, display_info);
     let display_name = url_fragment(link);
     if (display_name == "")
-        display_name = tag_name;
+        display_name = as_string(display_info.name || tag_name);
     ensure_explicit_outbound_supported(outbound, "manual outbound", display_name);
-    push(config.outbounds, outbound);
+    if (outbound.type == "wireguard")
+        add_imported_wireguard_endpoint(config, outbound);
+    else
+        push(config.outbounds, outbound);
     push(selector_tags, tag_name);
     push(urltest_candidate_tags, tag_name);
 
@@ -1224,7 +1257,11 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             continue;
         }
 
-        push(config.outbounds, outbound);
+        if (outbound.type == "wireguard") {
+            add_imported_wireguard_endpoint(config, outbound);
+        } else {
+            push(config.outbounds, outbound);
+        }
         added++;
         if (!is_group)
             push(urltest_candidate_tags, outbound.tag);
