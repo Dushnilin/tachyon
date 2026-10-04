@@ -2819,6 +2819,21 @@ function install_component_version(component, tag) {
         action_fail(component != "" ? component : "unknown", "install_version", "Invalid component or version tag specified");
     }
 
+    // Only the binary variants (lx, extended, extended-compressed) honour a tag.
+    // The package variants resolve their version from the OpenWrt repository, so
+    // the picked release used to be silently discarded and the repository version
+    // installed instead - a downgrade to 1.13.21 when 1.15.0-alpha.10 was chosen
+    // (issue #108). Refuse before create_component_backup so nothing is touched.
+    if (component == "sing_box") {
+        let variant = sing_box_runtime_output("variant", []);
+        if (index([ "lx", "extended", "extended-compressed" ], variant) < 0)
+            action_fail("sing_box", "install_version",
+                "Installing a specific version is only supported for the lx/extended sing-box variants; " +
+                "the current variant (" + variant + ") is installed from the OpenWrt repository and ignores " +
+                "the selected tag. Switch to lx/extended or install the binary manually",
+                sing_box_runtime_output("version", []), tag);
+    }
+
     create_component_backup(component);
 
     if (component == "tachyon") {
