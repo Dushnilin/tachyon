@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     libjson-c-dev \
     pkg-config \
     nodejs \
+    nftables \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch v0.0.20250529 https://github.com/jow-/ucode.git /tmp/ucode \

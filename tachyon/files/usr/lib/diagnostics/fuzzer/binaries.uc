@@ -492,6 +492,38 @@ function add_bypass_singbox_chain(scope, with_udp) {
     }
 }
 
+// Ports the fuzzer queue rule matches. Split per protocol so each rule can carry
+// its own counter.
+const FUZZER_QUEUE_PORTS_TCP = "80, 443, 2053, 2083, 2087, 2096, 8443";
+const FUZZER_QUEUE_PORTS_UDP = "443, 2053, 2083, 2087, 2096, 8443, 3478, 5000-5020, 19294-19344, 50000-65535";
+
+/**
+ * One nft rule for the fuzzer queue, with a per-protocol counter comment.
+ *
+ * The comment has to come AFTER the verdict. nft parses counter, comment and queue
+ * as rule statements and rejects the comment in the middle: "syntax error,
+ * unexpected queue". The fuzzer builds this table with stderr discarded, so the
+ * only thing the user saw was "nftables setup failed: fuzzer queue rule could not
+ * be installed" on every single strategy - the whole tool dead, with no reason.
+ *
+ * Built in one place so the ordering cannot drift between the UDP and TCP paths,
+ * and so a test can assert it against this function instead of against the source
+ * text.
+ */
+function fuzzer_queue_rule_spec(scope, protocol, qnum, ports_csv) {
+    return sprintf(
+        "add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto %s %s dport { %s } counter queue num %d comment \"%s-proto\"",
+        as_string(scope || ""),
+        FUZZER_OUTBOUND_MARK,
+        FUZZER_OUTBOUND_MARK,
+        protocol,
+        protocol,
+        ports_csv,
+        int(qnum),
+        protocol
+    );
+}
+
 function verify_fuzzer_queue_rule(qnum) {
     // ── Verify the queue rule actually landed ─────────────────────────────
     // Without it probes silently test a direct connection, defeating the purpose.
@@ -612,14 +644,14 @@ function setup_fuzzer_direct_nftables(qnum, is_udp, target_ips) {
     system("nft 'add rule inet tachyon_fuzzer postnat oifname \"lo\" return' 2>/dev/null");
     system("nft 'add rule inet tachyon_fuzzer postnat ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
     system("nft 'add rule inet tachyon_fuzzer postnat ip6 daddr { 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844 } counter return' 2>/dev/null");
-    if (is_udp) {
+if (is_udp) {
         // Two rules, not one "l4proto { tcp, udp }" rule: each carries its own
         // counter so a UDP strategy can be told apart from one that was never
         // exercised. See read_fuzzer_proto_counters().
-        command_output_from_args([ "nft", sprintf("add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d comment \"tcp-proto\"", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum) ]);
-        command_output_from_args([ "nft", sprintf("add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto udp udp dport { 443, 2053, 2083, 2087, 2096, 8443, 3478, 5000-5020, 19294-19344, 50000-65535 } counter queue num %d comment \"udp-proto\"", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum) ]);
+        command_output_from_args([ "nft", fuzzer_queue_rule_spec(scope, "tcp", qnum, FUZZER_QUEUE_PORTS_TCP) ]);
+        command_output_from_args([ "nft", fuzzer_queue_rule_spec(scope, "udp", qnum, FUZZER_QUEUE_PORTS_UDP) ]);
     } else {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter comment \"tcp-proto\" queue num %d' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK, FUZZER_OUTBOUND_MARK, qnum));
+        command_output_from_args([ "nft", fuzzer_queue_rule_spec(scope, "tcp", qnum, FUZZER_QUEUE_PORTS_TCP) ]);
     }
     // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with FUZZER_OUTBOUND_MARK (direct outbound mark)
     // This guarantees that TachyonTable's mangle_output immediately returns and test traffic goes DIRECT to WAN without Sing-box TProxy
@@ -781,6 +813,7 @@ function module_exports() {
         read_nfqueue_stats,
         read_fuzzer_proto_counters,
         parse_proto_counters,
+    fuzzer_queue_rule_spec,
         wait_nfqueue_bound,
         TARGET_SUITES,
         TARGET_URLS,

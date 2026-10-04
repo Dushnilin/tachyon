@@ -36,6 +36,8 @@ done
 pass_count=0
 ok() { pass_count=$((pass_count + 1)); }
 
+strip_ucode_comments() { grep -v '^[[:space:]]*//' "$1"; }
+
 # Real output from an nft table with a TCP rule and a UDP rule, counters
 # populated, plus the mark-return rule that carries a counter but no comment.
 cat >"$WORK_DIR/nft_both.txt" <<'NFT'
@@ -97,24 +99,35 @@ fi
 
 # The counters are only meaningful if the rules that feed them exist and are split
 # per protocol. One combined "l4proto { tcp, udp }" rule is the bug itself: it
-# cannot attribute a packet to a protocol. Comment lines are stripped first - prose
-# about the combined rule must not trip the check, and must not satisfy it.
-strip_ucode_comments() {
-  grep -v '^[[:space:]]*//' "$1"
-}
+# cannot attribute a packet to a protocol.
+#
+# Asked of the generator function rather than of the source text: the rule is built
+# with a %s for the protocol name, so a grep for the literal string is checking
+# formatting, not behaviour.
+cat >"$WORK_DIR/spec.uc" <<'UCODE'
+let b = require("diagnostics.fuzzer.binaries");
+let protocol = ARGV[0];
+let ports = protocol == "udp" ? b.FUZZER_QUEUE_PORTS_UDP : b.FUZZER_QUEUE_PORTS_TCP;
+print(b.fuzzer_queue_rule_spec("ip daddr { 203.0.113.7 } ", protocol, 200, ports));
+UCODE
+
+for protocol in tcp udp; do
+  rule="$(ucode "$WORK_DIR/spec.uc" "$protocol")"
+  case "$rule" in
+    *"comment \"$protocol-proto\""*) ok ;;
+    *) fail "the $protocol queue rule must carry its own counter comment, got: $rule" ;;
+  esac
+  case "$rule" in
+    *"meta l4proto $protocol $protocol"*) ok ;;
+    *) fail "the $protocol queue rule must match only its own protocol, got: $rule" ;;
+  esac
+done
 
 strip_ucode_comments "$BINARIES" >"$WORK_DIR/binaries_nc.uc"
 
-grep -q 'comment \\"tcp-proto\\"' "$WORK_DIR/binaries_nc.uc" ||
-  fail "the TCP queue rule must carry its own counter comment"
-ok
-
-grep -q 'comment \\"udp-proto\\"' "$WORK_DIR/binaries_nc.uc" ||
-  fail "the UDP queue rule must carry its own counter comment"
-ok
-
-grep -q 'l4proto { tcp, udp }' "$WORK_DIR/binaries_nc.uc" &&
+if grep -q 'l4proto { tcp, udp }' "$WORK_DIR/binaries_nc.uc"; then
   fail "the queue rule is combined again; a single rule cannot say which protocol a packet belonged to"
+fi
 ok
 
 # run_probe must read the counters and refuse to score on them.
