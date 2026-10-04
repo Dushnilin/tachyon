@@ -29,3 +29,8 @@ build-out/
 
 # Локальные отчёты аудита, не для репозитория
 docs/FLASH_WEAR_REPORT.md
+
+# Отдельный репозиторий установщика (не должен попадать в tachyon)
+installer-go-ref/
+tachyon-installer/
+
