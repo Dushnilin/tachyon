@@ -364,19 +364,30 @@ function config(settings, override_state) {
         sniff_inbounds: []
     };
 
-    if (length(state.main_servers) > 1 || length(state.bootstrap_servers) > 1)
+    // The failover worker probes a kind whenever failover is active at all,
+    // including a single server of that kind: choose_index's single path exists
+    // so a dead lone resolver is not reported as alive (commit 93195fdb). That
+    // probe digs the health port, so the listener has to exist for the single
+    // server too - otherwise every start of a multi-main/one-bootstrap config
+    // logged a false "all configured bootstrap DNS servers are unavailable"
+    // against a port that is deliberately never bound. A config where both
+    // kinds are single keeps no listeners, because the worker never starts
+    // there (dns_failover.uc worker() early return).
+    let failover_active = length(state.main_servers) > 1 || length(state.bootstrap_servers) > 1;
+    if (failover_active) {
         add_active_health_inbound(result);
 
-    if (length(state.main_servers) > 1)
-        for (let i = 0; i < length(state.main_servers); i++) {
-            // Health probes always use direct connection (no detour) to test DNS server reachability
-            let dns_type = is_wan_fallback_index(settings, i) ? "udp" : state.dns_type;
-            add_health_candidate(result, "main", i, state.main_servers[i], dns_type, "");
-        }
+        if (length(state.main_servers) > 0)
+            for (let i = 0; i < length(state.main_servers); i++) {
+                // Health probes always use direct connection (no detour) to test DNS server reachability
+                let dns_type = is_wan_fallback_index(settings, i) ? "udp" : state.dns_type;
+                add_health_candidate(result, "main", i, state.main_servers[i], dns_type, "");
+            }
 
-    if (length(state.bootstrap_servers) > 1)
-        for (let i = 0; i < length(state.bootstrap_servers); i++)
-            add_health_candidate(result, "bootstrap", i, state.bootstrap_servers[i]);
+        if (length(state.bootstrap_servers) > 0)
+            for (let i = 0; i < length(state.bootstrap_servers); i++)
+                add_health_candidate(result, "bootstrap", i, state.bootstrap_servers[i]);
+    }
 
     return result;
 }

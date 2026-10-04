@@ -142,10 +142,14 @@ for (let rule in multi.dns.rules || []) {
   }
 }
 // We have 2 primary + 2 fallback = 4 main candidates (all generate health probes)
-// Plus 1 bootstrap (single) = no bootstrap health
-// Plus 1 active health inbound = total 5 DNS health rules
-assert(health_rules == 5, "2 main + 2 fallback candidates + 1 active = 5 health rules, got " + health_rules);
+// Plus 1 bootstrap: failover is active (4 mains > 1), so the single bootstrap
+// gets its listener too - choose_index probes a lone server as well (commit
+// 93195fdb), and a probe against a port nothing binds can only ever answer
+// false "all configured bootstrap DNS servers are unavailable".
+// Plus 1 active health inbound = total 6 DNS health rules
+assert(health_rules == 6, "4 main + 1 bootstrap listeners + 1 active = 6 health rules, got " + health_rules);
 assert(count_prefix(multi.dns.servers, "dns-health-main-") == 4, "4 main health servers (2 primary + 2 fallback)");
+assert(count_prefix(multi.dns.servers, "dns-health-bootstrap-") == 1, "single bootstrap still gets a listener while failover is active");
 
 ' "$WORK_DIR/with-fallback-config.json" \
   "$WORK_DIR/fallback-active-config.json" \
