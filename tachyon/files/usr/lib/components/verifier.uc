@@ -122,7 +122,10 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
 // Reports false once no further repair applies, so the caller stops instead of
 // rewriting the same file until it gives up.
 function repair_unknown_outbound_field(config_file, reason) {
-    let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
+    // The offending field is usually nested, e.g.
+    //   outbounds[2].tls.reality.support_x25519mlkem768: json: unknown field
+    // The path is a dotted run, so capture all of it and walk down to the leaf.
+    let m = match(as_string(reason), /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     if (!m || !m[1] || !m[2]) return false;
 
     let field = m[2];
@@ -139,9 +142,18 @@ function repair_unknown_outbound_field(config_file, reason) {
     if (index >= length(cfg.outbounds)) return false;
 
     let target = cfg.outbounds[index];
-    if (type(target) != "object" || target[field] == null) return false;
+    if (type(target) != "object") return false;
 
-    delete target[field];
+    let parts = split(field, ".");
+    let leaf = parts[length(parts) - 1];
+    for (let step = 0; step < length(parts) - 1; step++) {
+        if (type(target) != "object") return false;
+        target = target[parts[step]];
+    }
+
+    if (type(target) != "object" || target[leaf] == null) return false;
+
+    delete target[leaf];
     fs.writefile(config_file, sprintf("%J", cfg));
     return true;
 }
@@ -210,7 +222,9 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
                 "generate-config", candidate_cfg, "127.0.0.1", "0", "0", ""
             ]) + " >/dev/null 2>&1";
         if (common.command_status(gen_cmd) == 0 && helpers.file_nonempty(candidate_cfg)) {
-            let repaired = true;
+            // Starts false on purpose: burning all four attempts without ever
+            // reaching a config the candidate accepts is a failure, not a pass.
+            let repaired = false;
             for (let attempt = 0; attempt < 4; attempt++) {
                 let cand_check_cmd = helpers.command_env(env_map) + " " +
                     common.command_from_args([ binary, "-c", candidate_cfg, "check" ]) +
