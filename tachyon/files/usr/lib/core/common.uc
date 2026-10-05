@@ -301,28 +301,6 @@ function sing_box_supports_openvpn(version) {
     return minor >= 14;
 }
 
-// support_x25519mlkem768 in tls.reality (client outbound) was added in
-// sing-box-extended 2.7.2. The field makes the Reality TLS handshake
-// compatible with Xray-core 26.9.x+ servers that send an X25519MLKEM768
-// key share. We inject it automatically when the running Extended build
-// supports it (>= 2.7.2) so users connecting to older Xray servers are
-// unaffected (the server ignores the hint) and users on 26.9.x+ just work.
-function extended_supports_x25519mlkem768(version) {
-    let m = match(lc(as_string(version)), /extended-([0-9]+)\.([0-9]+)\.([0-9]+)/);
-    if (m == null)
-        return false;
-
-    let major = int(m[1], 10);
-    let minor = int(m[2], 10);
-    let patch = int(m[3], 10);
-
-    if (major > 2) return true;
-    if (major < 2) return false;
-    if (minor > 7) return true;
-    if (minor < 7) return false;
-    return patch >= 2;
-}
-
 // Providers hand out the fingerprint in the OpenSSL shape - hex byte pairs joined
 // by colons - and in subscription links the colons arrive percent-encoded, so
 // parse_query() has already decoded them back to "28:6A:02:...". Accepting only
@@ -900,7 +878,6 @@ return {
     bytes_to_hex,
     extended_awg_schema_has_junk_signatures,
     sing_box_supports_openvpn,
-    extended_supports_x25519mlkem768,
     certificate_pin_base64,
     awg_tag_chain,
     mtproto_secret_canonical,

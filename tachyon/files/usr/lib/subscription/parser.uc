@@ -739,6 +739,11 @@ function add_tls(url, security, default_tls) {
             tls.reality.public_key = public_key;
         if (short_id != "")
             tls.reality.short_id = short_id;
+        let mlkem_preference = query.support_x25519mlkem768;
+        if (mlkem_preference == null)
+            mlkem_preference = query.supportX25519MLKEM768;
+        if (mlkem_preference != null)
+            tls.reality.support_x25519mlkem768 = is_true(mlkem_preference);
     }
     if (certificate_pin != "")
         tls.certificate_sha256 = [ certificate_pin ];
