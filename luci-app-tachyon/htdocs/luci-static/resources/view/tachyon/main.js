@@ -25675,6 +25675,11 @@ function renderEngineCard() {
     if (id === "steer-extended") return "steer-extended";
     return "sing-box";
   }
+  function getVariantComponent(id) {
+    if (id === "steer") return "steer";
+    if (id === "steer-extended") return "steer-extended";
+    return "sing_box";
+  }
   function getVariantInstallAction(id) {
     switch (id) {
       case "sing-box-tiny":
@@ -25788,7 +25793,7 @@ function renderEngineCard() {
     const presetId = presetForSteerModules(selection);
     const presetSelect = E("select", {
       class: "cbi-input-select",
-      style: "font-size:12px;"
+      style: "font-size:12px;width:auto;max-width:100%;"
     });
     const presetChoices = [
       { id: "all", label: _("All modules") },
@@ -25822,13 +25827,30 @@ function renderEngineCard() {
       });
       return E("label", { style: "white-space:nowrap;" }, [box, ` ${module}`]);
     });
+    const presetRow = E(
+      "div",
+      {
+        style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;"
+      },
+      [
+        E("span", { style: "font-size:12px;" }, `${_("Modules")}:`),
+        presetSelect
+      ]
+    );
+    const moduleRow = E(
+      "div",
+      {
+        style: "display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;font-size:12px;"
+      },
+      moduleBoxes
+    );
     actionElements.push(
       E(
         "div",
         {
-          style: "margin-top:4px;font-size:12px;gap:8px;align-items:center;flex-wrap:wrap;"
+          style: "margin-top:8px;display:flex;flex-direction:column;gap:6px;min-width:0;"
         },
-        [E("span", {}, `${_("Modules")}:`), presetSelect, ...moduleBoxes]
+        [presetRow, moduleRow]
       )
     );
   }
@@ -25856,19 +25878,20 @@ function renderEngineCard() {
       )
     );
   }
-  const isPickerOpen = activeVersionPickerComponent === checkComponent;
+  const pickerComponent = getVariantComponent(selectedVariant.id);
+  const isPickerOpen = activeVersionPickerComponent === pickerComponent;
   actionElements.push(
     E("div", { class: "tachyon_updates-page__component__versions" }, [
       renderButton({
         text: isPickerOpen ? _("Hide versions") : _("Versions"),
         loading: isPickerOpen && versionPickerLoading,
         disabled: singBoxLoading || anyActionLoading || steerBusy,
-        onClick: () => void toggleVersionPicker(checkComponent)
+        onClick: () => void toggleVersionPicker(pickerComponent)
       })
     ])
   );
   if (isPickerOpen) {
-    actionElements.push(renderVersionPickerDropdown(checkComponent));
+    actionElements.push(renderVersionPickerDropdown(pickerComponent));
   }
   const actionsContainer = E(
     "div",
