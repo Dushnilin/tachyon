@@ -14,6 +14,11 @@ TACHYON_LIB_DIR="$ROOT_DIR/tachyon/files/usr/lib"
 
 UCI_STATE="$WORK_DIR/uci_state"
 export TACHYON_UCI_STATE_FILE="$UCI_STATE"
+# component_action takes a directory lock under RUNTIME_STATE_DIR. The suite
+# runs in parallel, so without this the test would fight every other test for
+# the real /var/run/tachyon lock and answer "Another component action is
+# already running".
+export TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime"
 printf 'tachyon.settings=settings\ntachyon.settings.engine=sing-box\n' >"$UCI_STATE"
 
 # -- dispatcher contract ------------------------------------------------------
