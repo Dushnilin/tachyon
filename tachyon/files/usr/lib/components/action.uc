@@ -2110,11 +2110,11 @@ function install_package_sing_box(action, tiny) {
     let label = tiny ? "tiny sing-box" : "stable sing-box";
     let package_version = installed_package_version(package_name);
     let binary_version = sing_box_runtime_output("version", []);
-    let current_version = package_version;
-    if (sing_box_runtime_success("is-extended", [ binary_version ]))
-        current_version = binary_version;
-    if (current_version == "")
-        current_version = binary_version;
+    // What actually runs is the binary, not what apk believes it installed: the
+    // two drift whenever the binary was replaced by hand or came from a newer
+    // snapshot (issue #108). Falling back to the package version keeps the
+    // "not installed" case working when there is no binary to ask.
+    let current_version = binary_version != "" ? binary_version : package_version;
     let latest_version = available_package_version(package_name);
     if (latest_version == "")
         latest_version = installed_package_version(package_name);
@@ -2160,6 +2160,22 @@ function install_package_sing_box(action, tiny) {
     let previous_variant = sing_box_runtime_output("variant", []);
     let previous_marker = sing_box_runtime_output("read-variant-marker", []);
     let previous_version_state = sing_box_runtime_output("read-version-state", []);
+
+    // The package variants can only ever install what the repository carries. If
+    // the running binary is newer than that, a plain install rolls the router back
+    // to the packaged version without saying so (issue #108). Refuse instead, and
+    // only within the same family: switching family on purpose - extended down to
+    // tiny, say - is a legitimate request even though the versions differ.
+    if (action != "check_update" && binary_version != "" && latest_version != "" &&
+        previous_variant == (tiny ? "tiny" : "stable")) {
+        let downgrade = compare_versions(binary_version, latest_version);
+        if (downgrade != null && downgrade > 0)
+            action_fail("sing_box", action, label + " would be downgraded: the running binary is " +
+                binary_version + " but the repository only carries " + latest_version +
+                ". Install the newer build as lx/extended, or leave " + label + " as it is",
+                binary_version, latest_version);
+    }
+
     stop_tachyon_before_sing_box_change();
 
     let backup_binary = "";
