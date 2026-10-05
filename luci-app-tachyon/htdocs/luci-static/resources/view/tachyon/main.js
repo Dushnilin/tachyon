@@ -25878,20 +25878,23 @@ function renderEngineCard() {
       )
     );
   }
+  const pickerHonoursTag = selectedVariant.id !== "sing-box-stable" && selectedVariant.id !== "sing-box-tiny";
   const pickerComponent = getVariantComponent(selectedVariant.id);
-  const isPickerOpen = activeVersionPickerComponent === pickerComponent;
-  actionElements.push(
-    E("div", { class: "tachyon_updates-page__component__versions" }, [
-      renderButton({
-        text: isPickerOpen ? _("Hide versions") : _("Versions"),
-        loading: isPickerOpen && versionPickerLoading,
-        disabled: singBoxLoading || anyActionLoading || steerBusy,
-        onClick: () => void toggleVersionPicker(pickerComponent)
-      })
-    ])
-  );
-  if (isPickerOpen) {
-    actionElements.push(renderVersionPickerDropdown(pickerComponent));
+  const isPickerOpen = pickerHonoursTag && activeVersionPickerComponent === pickerComponent;
+  if (pickerHonoursTag) {
+    actionElements.push(
+      E("div", { class: "tachyon_updates-page__component__versions" }, [
+        renderButton({
+          text: isPickerOpen ? _("Hide versions") : _("Versions"),
+          loading: isPickerOpen && versionPickerLoading,
+          disabled: singBoxLoading || anyActionLoading || steerBusy,
+          onClick: () => void toggleVersionPicker(pickerComponent)
+        })
+      ])
+    );
+    if (isPickerOpen) {
+      actionElements.push(renderVersionPickerDropdown(pickerComponent));
+    }
   }
   const actionsContainer = E(
     "div",

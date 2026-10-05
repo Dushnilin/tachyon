@@ -2358,21 +2358,29 @@ function renderEngineCard(): Node {
     );
   }
 
-  // Versions picker
+  // Versions picker. The package variants install whatever the OpenWrt repository
+  // carries, and the backend refuses a picked tag for them (issue #108), so do
+  // not offer a picker that can only end in that error.
+  const pickerHonoursTag =
+    selectedVariant.id !== 'sing-box-stable' &&
+    selectedVariant.id !== 'sing-box-tiny';
   const pickerComponent = getVariantComponent(selectedVariant.id);
-  const isPickerOpen = activeVersionPickerComponent === pickerComponent;
-  actionElements.push(
-    E('div', { class: 'tachyon_updates-page__component__versions' }, [
-      renderButton({
-        text: isPickerOpen ? _('Hide versions') : _('Versions'),
-        loading: isPickerOpen && versionPickerLoading,
-        disabled: singBoxLoading || anyActionLoading || steerBusy,
-        onClick: () => void toggleVersionPicker(pickerComponent),
-      }),
-    ]),
-  );
-  if (isPickerOpen) {
-    actionElements.push(renderVersionPickerDropdown(pickerComponent));
+  const isPickerOpen =
+    pickerHonoursTag && activeVersionPickerComponent === pickerComponent;
+  if (pickerHonoursTag) {
+    actionElements.push(
+      E('div', { class: 'tachyon_updates-page__component__versions' }, [
+        renderButton({
+          text: isPickerOpen ? _('Hide versions') : _('Versions'),
+          loading: isPickerOpen && versionPickerLoading,
+          disabled: singBoxLoading || anyActionLoading || steerBusy,
+          onClick: () => void toggleVersionPicker(pickerComponent),
+        }),
+      ]),
+    );
+    if (isPickerOpen) {
+      actionElements.push(renderVersionPickerDropdown(pickerComponent));
+    }
   }
 
   const actionsContainer = E(
