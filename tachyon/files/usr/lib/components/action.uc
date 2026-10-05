@@ -1132,6 +1132,49 @@ function remove_optional_component(component, package_name, label, runtime_modul
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
 }
 
+// steer is not an optional provider, so remove_optional_component does not fit
+// it: there is no providers/steer/runtime.uc to verify leftovers against, and
+// the install is not one package. 2.0.0 ships a core plus feature modules named
+// steer-<module>, and the modules depend on the core, so they go first. The core
+// carries either of two names depending on how the router got there.
+function steer_packages_to_remove() {
+    let packages = [];
+
+    for (let module_name in cmp_cat.steer_module_names())
+        if (pkg_is_installed("steer-" + module_name))
+            push(packages, "steer-" + module_name);
+
+    for (let core in [ STEER_CORE_PACKAGE, "steer", "steer-extended" ])
+        if (pkg_is_installed(core))
+            push(packages, core);
+
+    return packages;
+}
+
+function remove_steer(component, label) {
+    let active = engine.get_active();
+    if (active == component)
+        action_fail(component, "remove", label + " is the active engine. Switch to sing-box first, then remove it.");
+
+    let packages = steer_packages_to_remove();
+    if (length(packages) == 0) {
+        if (engine.binary_present(component))
+            action_fail(component, "remove", label + " exists outside the package manager and was not removed automatically");
+        action_success(component, "remove", label + " is already removed", "", "", 0);
+    }
+
+    let current_version = installed_steer_version() || "";
+    for (let package_name in packages)
+        if (!run_logged_pkg_remove_sing_box_conflict(package_name, "Removing " + package_name))
+            action_fail(component, "remove", "Failed to remove " + label + " package", current_version);
+
+    clear_version_caches();
+    if (engine.binary_present(component))
+        action_fail(component, "remove", label + " packages were removed, but the engine binary is still present", current_version);
+    restart_tachyon_after_successful_change();
+    action_success(component, "remove", label + " has been removed", current_version, "", 1);
+}
+
 // Delegated to components/* modules (branch 4 god-module split).
 function extract_sing_box_version_from_output(output) { return cmp_ver.extract_sing_box_version_from_output(output); }
 function read_sing_box_binary_version(binary, library_dir) { return cmp_ver.read_sing_box_binary_version(binary, library_dir); }
@@ -3099,6 +3142,10 @@ function component_action(component, action, extra) {
         install_steer(action, extra, false);
     else if (component == "steer-extended" && (action == "check_update" || action == "install"))
         install_steer(action, extra, true);
+    else if (component == "steer" && action == "remove")
+        remove_steer(component, "steer");
+    else if (component == "steer-extended" && action == "remove")
+        remove_steer(component, "steer-extended");
     else if (component == "tailscale" && (action == "check_update" || action == "install"))
         install_tailscale(action);
     else if (component == "tailscale" && action == "remove")
