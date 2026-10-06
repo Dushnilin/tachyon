@@ -3074,7 +3074,9 @@ function set_torrserver_direct(action) {
 function switch_engine_component(target) {
     target = engine.normalize_engine(target);
     updates_log("Switching routing engine to " + target);
-    let engine_rt = require("service.engine_runtime");
+    // The library, not the CLI shim: requiring service/engine_runtime.uc would run
+    // its main() with this process's arguments and then exit the interpreter.
+    let engine_rt = require("service.engine_runtime_lib");
     let result = engine_rt.switch_engine(target, { allow_install: true });
     if (!result.ok)
         action_fail("engine", "switch", "Engine switch failed: " + as_string(result.reason || "unknown"), "", "", as_string(result.reason || ""));

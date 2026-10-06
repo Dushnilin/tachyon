@@ -784,9 +784,4 @@ parse_curl_output,
     };
 }
 
-if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
-    return module_exports();
-
-print("Usage: diagnostics/fuzzer/probe.uc (library module, no CLI)
-");
-exit(1);
+return module_exports();

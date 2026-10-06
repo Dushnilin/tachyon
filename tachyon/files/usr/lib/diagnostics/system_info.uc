@@ -727,7 +727,9 @@ function get_engine_status() {
     let enabled = 0;
     let channels = [];
     try {
-        let engine_runtime = require("service.engine_runtime");
+        // The library, not the CLI shim: requiring service/engine_runtime.uc would run
+        // its main() with this process's arguments and then exit the interpreter.
+        let engine_runtime = require("service.engine_runtime_lib");
         let info = require("core.engine").detect(active);
         // steer registers with START=94, so the enable symlink is S94steer
         // (get_status below has the same check). Liveness comes from the init

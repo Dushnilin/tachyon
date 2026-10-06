@@ -168,8 +168,4 @@ function module_exports() {
     };
 }
 
-if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
-    return module_exports();
-
-print("Usage: diagnostics/fuzzer/history.uc (library module, no CLI)\n");
-exit(1);
+return module_exports();
