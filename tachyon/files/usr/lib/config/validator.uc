@@ -216,9 +216,24 @@ function strip_leading_zeroes(value) {
     return substr(value, i);
 }
 
+// Kept identical to the copy in core/helpers.uc, including this. A version may
+// carry an optional "v" prefix, and comparing the raw strings lets the prefix
+// decide: "v" sorts above every digit, so "v0.0.1" compared as newer than
+// "1.12.0" and cleared every minimum-version gate.
+//
+// This copy exists because the validator runs before helpers is loaded. If one of
+// them changes, the other has to change with it - tests/version_compare.sh pins
+// the behaviour of both.
+function strip_version_prefix(value) {
+    value = trim(as_string(value));
+    if (substr(value, 0, 1) == "v" || substr(value, 0, 1) == "V")
+        return substr(value, 1);
+    return value;
+}
+
 function version_compare(lhs, rhs) {
-    lhs = as_string(lhs);
-    rhs = as_string(rhs);
+    lhs = strip_version_prefix(lhs);
+    rhs = strip_version_prefix(rhs);
 
     let li = 0, ri = 0;
     while (li < length(lhs) || ri < length(rhs)) {

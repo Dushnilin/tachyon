@@ -191,9 +191,25 @@ function strip_leading_zeroes(value) {
     return substr(value, i);
 }
 
+// A version may arrive with an optional "v" prefix - semver allows it, and the
+// version parsers deliberately keep it. Comparing the raw strings then makes the
+// prefix decide the result: "v" sorts above every digit, so "v0.0.1" came out
+// newer than "1.12.0" and passed every version gate it was given.
+//
+// That is how it stayed hidden: sing-box prints a bare "1.12.0", so the prefix
+// only shows up from an implementation that spells its banner differently - and
+// it fails in the dangerous direction, reporting an old core as new enough to
+// receive fields it cannot parse.
+function strip_version_prefix(value) {
+    value = trim(as_string(value));
+    if (substr(value, 0, 1) == "v" || substr(value, 0, 1) == "V")
+        return substr(value, 1);
+    return value;
+}
+
 function version_compare(lhs, rhs) {
-    lhs = as_string(lhs);
-    rhs = as_string(rhs);
+    lhs = strip_version_prefix(lhs);
+    rhs = strip_version_prefix(rhs);
 
     let li = 0, ri = 0;
     while (li < length(lhs) || ri < length(rhs)) {
