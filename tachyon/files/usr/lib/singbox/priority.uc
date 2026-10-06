@@ -183,7 +183,12 @@ function parse_delay_output(output) {
 }
 
 function clash_probe(tag_name, group) {
-    let timeout = as_string(duration_to_milliseconds(group.check_timeout, 2000));
+    // Health timing can change without regenerating outbounds or restarting the core.
+    // Keep the cache fallback for fixtures and groups without a current UCI owner.
+    let live = require("core.uci").get_all(getenv("TACHYON_CONFIG_NAME") || "tachyon", group.id);
+    let check_timeout = type(live) == "object" && live[".type"] == "priority_group"
+        ? common.option(live, "check_timeout", group.check_timeout) : group.check_timeout;
+    let timeout = as_string(duration_to_milliseconds(check_timeout, 2000));
     let result = module_capture([ "get_proxy_latency", tag_name, timeout, group.health_url ]);
     if (result.status != 0)
         return { alive: false, delay: 0 };
