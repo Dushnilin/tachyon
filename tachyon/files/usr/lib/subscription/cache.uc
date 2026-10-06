@@ -2106,7 +2106,12 @@ function subscription_update_section(section, force) {
     let total = 0;
 
     for (let entry in connections.subscription_urls(section)) {
+        // total++ first, for the same positional reason as in
+        // prepare_subscription_cache_section: the slot of a skipped source must
+        // not be handed to the next one.
         total++;
+        if (!connections.subscription_url_enabled(section, entry))
+            continue;
         if (!force && !connections.subscription_update_enabled(section, entry))
             continue;
         let source_section = source_id(section_name_value, total);
@@ -2369,7 +2374,13 @@ function prepare_subscription_cache_section(state, section) {
     let ready = 0;
     let failed = 0;
     for (let entry in connections.subscription_urls(section)) {
+        // total++ stays before every continue. Sources are addressed positionally
+        // (source_id is "<section>-subscription-<n>"), so skipping a disabled URL
+        // has to leave its slot unclaimed - counting only the enabled ones would
+        // shift every later source by one and read one source's cache as another's.
         total++;
+        if (!connections.subscription_url_enabled(section, entry))
+            continue;
         if (ensure_subscription_source_for_prepare(state, section, total, entry, metadata_tmpfile))
             ready++;
         else {

@@ -266,6 +266,10 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           return;
         }
         settings[item.url] = {
+          // Carried so the dashboard can tell a disabled source from an enabled
+          // one. `enabled` is absent on sections written before the flag existed,
+          // which means enabled - the same default the backend applies.
+          enabled: item.enabled,
           subscription_update_enabled: item.subscription_update_enabled,
           subscription_update_interval: item.subscription_update_interval,
           download_via_proxy_enabled: item.download_via_proxy_enabled,

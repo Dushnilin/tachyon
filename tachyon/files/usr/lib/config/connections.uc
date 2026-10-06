@@ -918,6 +918,19 @@ function urltest_settings(section, value) {
     return child != null ? child : item_settings(section, "urltest_settings", value);
 }
 
+// Whether a single subscription URL takes part at all. Distinct from
+// subscription_update_enabled: that one only governs the automatic refresh,
+// while this one must keep the source out of the download, the cache and the
+// generated outbounds entirely. Defaulting to true keeps every configuration
+// written before the flag existed behaving exactly as it did.
+function subscription_url_enabled(section, value) {
+    let child = child_item_by_value(section, "subscription_url", "url", value);
+    if (child != null)
+        return child_bool(child, "enabled", true);
+    return item_bool(section, "subscription_url_settings", value, "enabled",
+        bool_option(section, "enabled", true));
+}
+
 function subscription_update_enabled(section, value) {
     let child = child_item_by_value(section, "subscription_url", "url", value);
     if (child != null)
@@ -1686,6 +1699,7 @@ return {
     subscription_url_settings,
     interface_settings,
     urltest_settings,
+    subscription_url_enabled,
     subscription_update_enabled,
     subscription_update_interval,
     subscription_dashboard_metadata_enabled,

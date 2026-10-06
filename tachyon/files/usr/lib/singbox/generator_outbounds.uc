@@ -1295,22 +1295,25 @@ function add_subscription_source_with_state(config, section, source_index, sourc
 function add_connection_subscriptions(config, state, section, taken, selector_tags, urltest_candidate_tags) {
     let subscription_urls = connections.subscription_urls(section);
 
+    // Index 1-based on purpose: the source id is positional, so a disabled URL
+    // must keep its slot instead of the list being renumbered underneath it.
     for (let i = 0; i < length(subscription_urls); i++)
-        add_subscription_source_with_state(
-            config,
-            section,
-            i + 1,
-            subscription_urls[i],
-            taken,
-            selector_tags,
-            urltest_candidate_tags,
-            state,
-            connections.subscription_dashboard_metadata_enabled(section, subscription_urls[i]),
-            connections.subscription_include_urltest_groups(section, subscription_urls[i]),
-            connections.subscription_hide_urltest_group_outbounds(section, subscription_urls[i]),
-            connections.subscription_hide_detour_outbounds(section, subscription_urls[i]),
-            connections.subscription_node_prefix(section, subscription_urls[i])
-        );
+        if (connections.subscription_url_enabled(section, subscription_urls[i]))
+            add_subscription_source_with_state(
+                config,
+                section,
+                i + 1,
+                subscription_urls[i],
+                taken,
+                selector_tags,
+                urltest_candidate_tags,
+                state,
+                connections.subscription_dashboard_metadata_enabled(section, subscription_urls[i]),
+                connections.subscription_include_urltest_groups(section, subscription_urls[i]),
+                connections.subscription_hide_urltest_group_outbounds(section, subscription_urls[i]),
+                connections.subscription_hide_detour_outbounds(section, subscription_urls[i]),
+                connections.subscription_node_prefix(section, subscription_urls[i])
+            );
 }
 
 function add_interface_connection_outbound(config, state, section, interface_index, interface_name, taken, selector_tags, urltest_candidate_tags) {

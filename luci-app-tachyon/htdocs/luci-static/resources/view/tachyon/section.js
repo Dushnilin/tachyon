@@ -1498,9 +1498,60 @@ const SettingsUIDynamicList = ui.DynamicList.extend({
         "\u2699",
       ),
     );
+
+    // Optional per-row on/off. Opt-in through setItemEnabled so the widget stays
+    // generic: a list without it renders exactly as before.
+    //
+    // The write is staged through uci.save() and read back from UCI rather than
+    // kept in widget state, because the row is re-rendered from the list value
+    // and any local copy would be lost on the next render - the checkbox would
+    // snap back while the section was still unapplied.
+    if (typeof this.options.setItemEnabled === "function") {
+      const checkbox = E("input", {
+        type: "checkbox",
+        class: "cbi-input-checkbox fkp-dynlist-enabled",
+        "aria-label": _("Enabled"),
+        "aria-disabled": this.options.disabled ? "true" : null,
+      });
+
+      const applyEnabled = (next) => {
+        if (this.options.disabled) {
+          return;
+        }
+        this.options.setItemEnabled(
+          dynamicListItemCurrentValue(item, value),
+          next,
+        );
+        checkbox.checked = next;
+        checkbox.indeterminate = false;
+      };
+
+      checkbox.checked = this.options.setItemEnabled(
+        dynamicListItemCurrentValue(item, value),
+      );
+
+      checkbox.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        applyEnabled(checkbox.checked);
+      });
+      checkbox.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        applyEnabled(!checkbox.checked);
+      });
+
+      item.insertBefore(checkbox, item.firstChild);
+    }
   },
   handleClick(event) {
-    if (event.target.closest(".fkp-dynlist-settings")) {
+    if (
+      event.target.closest(".fkp-dynlist-settings") ||
+      event.target.closest(".fkp-dynlist-enabled")
+    ) {
       return;
     }
 
@@ -2612,6 +2663,7 @@ function optionMapValue(option, section_id, key) {
 
 function subscriptionUrlSettingsKeys() {
   return [
+    "enabled",
     "subscription_update_enabled",
     "subscription_update_interval",
     "download_via_proxy_enabled",
@@ -2639,6 +2691,7 @@ function subscriptionUrlSettingsKeys() {
 
 function defaultSubscriptionUrlSettings() {
   return {
+    enabled: "1",
     subscription_update_enabled: "1",
     subscription_update_interval: "1h",
     download_via_proxy_enabled: "0",
@@ -2859,6 +2912,15 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
       : parentSectionIdForItem;
 
   let o = itemSection.option(
+    form.Flag,
+    "enabled",
+    _("Enabled"),
+    _("Use this subscription. A disabled one is neither downloaded nor added to the config"),
+  );
+  o.default = "1";
+  o.rmempty = false;
+
+  o = itemSection.option(
     form.Flag,
     "subscription_update_enabled",
     _("Subscription auto update"),
@@ -11049,6 +11111,32 @@ function createSectionContent(section) {
     });
   };
   o.validate = validateSubscriptionUrlEntry;
+
+  // On/off right in the list, next to the gear and the remove button. A
+  // subscription_url child section is named after its URL, so the value in the
+  // row is the UCI section id and the flag can be read and written directly.
+  //
+  // Returns the current state when called with no `next`, otherwise flips it and
+  // stages the change. Default is enabled: a section written before the flag
+  // existed has no `enabled` option, and treating that as "off" would silently
+  // disable every existing subscription the first time the page opened.
+  o.setItemEnabled = function (value, next) {
+    const itemId = `${value || ""}`;
+    if (!itemId || !isExistingChildItem(section_id, itemId, "subscription_url")) {
+      return true;
+    }
+
+    const raw = uci.get(UCI_PACKAGE, itemId, "enabled");
+    const isEnabled = raw == null || raw === "" || raw === "1";
+
+    if (next == null || next === isEnabled) {
+      return isEnabled;
+    }
+
+    uci.set(UCI_PACKAGE, itemId, "enabled", next ? "1" : "0");
+    uci.save();
+    return next;
+  };
   o.validate = function (section_id, value) {
     return validateSubscriptionUrlEntry(
       section_id,

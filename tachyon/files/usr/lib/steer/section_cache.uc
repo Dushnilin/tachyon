@@ -221,7 +221,13 @@ function build_section_cache(section) {
 
     let index = 0;
     for (let entry in urls) {
+        // index++ must stay before the continue: sources are addressed
+        // positionally, and the cache side counts disabled URLs too. Skipping
+        // first would renumber every later source and read one source's nodes as
+        // another's, so the skip has to happen in every reader of the list.
         index++;
+        if (!connections.subscription_url_enabled(section, entry))
+            continue;
         let source_section = runtime_subscription.source_id(section_name, index);
         let outbounds = array_or_empty(runtime_subscription.read_source_outbounds(source_section));
         if (length(outbounds) == 0)

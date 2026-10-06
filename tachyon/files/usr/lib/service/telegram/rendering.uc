@@ -106,6 +106,10 @@ let setting_schema = {
     subscription_url: {
         section: "section",
         url: "url",
+        // The bot already writes this when adding a URL and already shows it as
+        // an on/off icon; it was missing here, so the key fell through to the
+        // untranslated branch and had no label.
+        enabled: "enabled",
         auto_user_agent: "auto_user_agent",
         user_agent: "user_agent",
         auto_hwid: "auto_hwid",

@@ -1171,6 +1171,9 @@ function subscription_urls_signature(section) {
     for (let entry in connections.subscription_urls(section)) {
         push(result, {
             url: entry,
+            // Part of the signature, not decoration: without it a toggle would
+            // leave the signature identical and nothing would rebuild the config.
+            enabled: connections.subscription_url_enabled(section, entry) ? "1" : "0",
             subscription_update_enabled: connections.subscription_update_enabled(section, entry) ? "1" : "0",
             subscription_update_interval: connections.subscription_update_interval(section, entry),
             download_via_proxy_section: connections.subscription_download_section(section, entry),

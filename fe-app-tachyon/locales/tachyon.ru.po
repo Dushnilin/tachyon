@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-06 10:18+0300\n"
-"PO-Revision-Date: 2026-10-06 10:18+0300\n"
+"POT-Creation-Date: 2026-10-06 11:03+0300\n"
+"PO-Revision-Date: 2026-10-06 11:03+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -6013,6 +6013,9 @@ msgstr "Используйте формат длительности sing-box, �
 
 msgid "Use tailnet exit node for LAN"
 msgstr "Использовать exit-node тейлнета для LAN"
+
+msgid "Use this subscription. A disabled one is neither downloaded nor added to the config"
+msgstr ""
 
 msgid "Used by"
 msgstr "Используется"
