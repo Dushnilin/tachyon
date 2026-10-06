@@ -2,6 +2,8 @@ let smart_detect=require("service.smart_detect");
 let smart_plus=require("service.smart_detect_plus");
 let pending_smart_plus={};
 let smart_plus_last_run=0;
+let smart_plus_job=null;let smart_plus_seen=null;
+let PENDING_SMART_DOMAINS_MAX=500;
 let process_status=smart_detect.probe_status;
 let native_require=require;
 let test_engine="sing-box";
@@ -17,7 +19,7 @@ let calls=[];let added=[];let saved={};
 let direct_codes=[];let proxy_code=0;
 let dns_index=0;let core_pid="123";let dns_fails=0;let in_transaction=false;
 let change_after_proxy=false;
-let fs={mkdir:function(path){return true;},readfile:function(path){return null;},writefile:function(path,data){saved=json(data);return true;},
+let fs={chmod:function(path,mode){return true;},mkdir:function(path){return true;},readfile:function(path){return null;},writefile:function(path,data){saved=json(data);return true;},
     glob:function(path){return in_transaction?["candidate"]:[];}};
 function as_string(value){return value==null?"":""+value;}
 function probe(args){
@@ -29,8 +31,8 @@ function probe(args){
 }
 function command_success_from_args(args){return probe(args)==0;}
 smart_detect.probe_status=probe;
-let common={object_or_empty:function(v){return v||{};},command_status_from_args:probe,
-    read_json_file:function(path){return index(path,"config.json")>=0?{dns:{servers:[{tag:"dns",server:"example"}]}}:{main_index:dns_index,bootstrap_index:0};}};
+let common={write_json_file:function(path,data){saved=data;return true;},object_or_empty:function(v){return v||{};},command_status_from_args:probe,
+    read_json_file:function(path){if(index(path,"smart_detect_plus_seen")>=0)return {};return index(path,"config.json")>=0?{dns:{servers:[{tag:"dns",server:"example"}]}}:{main_index:dns_index,bootstrap_index:0};}};
 let uci_core={get_all:function(config,section){return {};}};
 let event_controller={smart_detect_queue_order:function(pending,domains){return domains;},
     smart_detect_main_domain:function(host){return "example.com";}};
@@ -44,29 +46,31 @@ function log_message(message,level){}
 function send_telegram_notification(message){die("unexpected notification\n");}
 let checks=0;
 function check(ok,name){if(!ok)die("FAIL: "+name+"\n");checks++;}
+let smart_probe={start:function(request){return {decision:smart_plus.probe(request.domain,request.item,request.proxy_addr,request.direct_flags,probe)};},
+    poll:function(job){return job.decision;},stop:function(job){}};
 /* IMPLEMENTATION */
 
 function setup(codes, proxy){
     test_engine="sing-box";test_clock=1000;dns_index=0;core_pid="123";dns_fails=0;in_transaction=false;change_after_proxy=false;
     smart_detect_last_run=0;calls=[];added=[];saved={};direct_codes=codes;proxy_code=proxy;
     pending_smart_plus={"api.example.com":{queued:test_clock,scheme:"https",priority:3}};
-    smart_plus_last_run=0;
+    smart_plus_last_run=0;smart_plus_job=null;smart_plus_seen=null;
     smart_detect_dns_state={};
     smart_detect_streaks={};
     test_clock=970;smart_detect_observe_dns();test_clock=1000;
 }
 
-setup([28,28],0);smart_detect_process_pending();
+setup([28,28],0);smart_detect_process_pending();smart_detect_process_pending();
 check(length(added)==1&&added[0]=="example.com","Plus writes main domain after body probes");
 check(length(calls)==3&&index(calls[0],"-I")<0,"actual Plus loop uses GET");
-setup([28,28],0);change_after_proxy=true;smart_detect_process_pending();
+setup([28,28],0);change_after_proxy=true;smart_detect_process_pending();smart_detect_process_pending();
 check(length(added)==0&&pending_smart_plus["api.example.com"],"Plus detects DNS switch during probes");
-setup([6],0);smart_detect_process_pending();
+setup([6],0);smart_detect_process_pending();smart_detect_process_pending();
 check(length(added)==0&&length(calls)==1&&pending_smart_plus["api.example.com"],"Plus DNS error never creates a rule or cooldown");
-setup([28,28],0);dns_fails=1;smart_detect_process_pending();
+setup([28,28],0);dns_fails=1;smart_detect_process_pending();smart_detect_process_pending();
 check(length(calls)==0,"Plus holds known DNS outage");
-setup([28,28],0);in_transaction=true;smart_detect_process_pending();
+setup([28,28],0);in_transaction=true;smart_detect_process_pending();smart_detect_process_pending();
 check(length(calls)==0,"Plus holds active DNS transaction");
-setup([0],0);smart_detect_process_pending();
+setup([0],0);smart_detect_process_pending();smart_detect_process_pending();
 check(length(added)==0&&saved["api.example.com"]==1000,"healthy Direct gets only Plus cooldown");
 print(sprintf("PASS: %d actual-function Plus loop checks\n",checks));

@@ -258,6 +258,10 @@ function worker(id) {
     return state.error ? 1 : 0;
 }
 
+// Imported helpers must not consume the caller's CLI arguments (e.g. watchdog worker).
+if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
+    return { valid_domain, endpoint, validate_request, dns_query, valid_answer, summarize, measure, start, status };
+
 let mode = ARGV[0] || "";
 if (mode == "start") {
     let request;
