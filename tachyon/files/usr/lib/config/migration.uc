@@ -1490,6 +1490,48 @@ function migrate_ensure_dns_server_defaults(ctx) {
         set_list_option(ctx, settings, "bootstrap_dns_server", [ "77.88.8.8" ]);
 }
 
+// Record that this configuration targets steer spec v2, and say so once if the
+// installed steer cannot read it.
+//
+// No UCI data is rewritten here, and that is the finding rather than an
+// omission: contract-v1's `prefer`, `latency_interval_s` and
+// `latency_tolerance_ms` were never stored. They were computed at generate time
+// from the `config urltest` child options, which are still named the same and
+// now feed a v2 `pick: latency` group. So the options carry over untouched and
+// anything that renamed them would have broken sing-box as well.
+//
+// What genuinely does not carry over is the kernel. Spec v2 is a different
+// document, only steer 2.0+ reads it, and the failure is a refusal rather than a
+// degradation - so an upgrading router on a 1.x steer is told here rather than
+// discovering it when the proxy refuses to come up.
+function migrate_steer_spec_v2(ctx) {
+    let settings = ctx.model.settings;
+    set_option(ctx, settings, "steer_spec_format", "2");
+
+    let engine_id = as_string(option(settings, "engine", ""));
+    if (engine_id != "steer" && engine_id != "steer-extended")
+        return;
+
+    let engine = null;
+    try {
+        engine = require("core.engine");
+    }
+    catch (e) {
+        return;
+    }
+    if (engine == null || !engine.binary_present(engine.ENGINE_STEER))
+        return;
+
+    if (engine.steer_supports_spec_v2())
+        return;
+
+    let parts = engine.steer_version_parts();
+    warn("Tachyon now writes steer spec v2, which needs steer 2.0 or newer" +
+        (parts != null ? " (installed: " + as_string(parts[0]) + "." + as_string(parts[1]) +
+            "." + as_string(parts[2]) + ")" : " (installed version could not be read)") +
+        ". Update steer before switching to it, or stay on sing-box.\n");
+}
+
 function migrate_dns_hosts_to_option(ctx) {
     let raw = object_or_empty(ctx.model.settings)["dns_hosts"];
     if (raw == null)
@@ -1673,6 +1715,7 @@ const MIGRATIONS = [
     { id: "enable_component_checks", run: migrate_enable_component_checks },
     { id: "http_connection_urls", run: migrate_http_connection_urls },
     { id: "dns_hosts_to_option", run: migrate_dns_hosts_to_option },
+    { id: "steer_spec_v2", run: migrate_steer_spec_v2 },
     { id: "global_hosts_to_section", run: migrate_global_hosts_to_section },
     { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces },
     { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults }

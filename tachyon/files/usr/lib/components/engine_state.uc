@@ -45,6 +45,16 @@ function section_feature(section) {
         return "sections.subscription";
 
     if (stype == "section") {
+        // zapret2 strategies are Lua. contract-v1 stored `nfqws_bin`, the
+        // resolved nfqws2 path, so steer launched the Lua-capable binary; spec v2
+        // has no such key and an unknown key rejects the whole spec. So the
+        // capability is real and steer cannot express it, and parking the section
+        // is the honest outcome - emitting the output would leave a strategy that
+        // looks configured and silently runs without its Lua part.
+        if (action == "zapret2")
+            return "outbound.zapret_lua";
+        if (action == "zapret")
+            return "outbound.zapret";
         if (action == "connection")
             return "sections.outbound";
         if (action == "subscription")
@@ -56,6 +66,24 @@ function section_feature(section) {
         if (action == "tailscale")
             return "sections.tailscale";
         if (action == "urltest")
+            // Deliberately NOT a steer capability, and not a formatting gap.
+            //
+            // Spec v2 does have `pick: latency`, but a group measures its
+            // *members*, and members are outputs that have a device. A sing-box
+            // urltest group is the opposite: its members are the individual
+            // nodes of one subscription, which are not outputs and have no name
+            // in the outputs namespace. Tachyon merges every provider of a
+            // section into one subscription file, so a section is one tunnel
+            // output and a latency group over it has exactly one member - which
+            // measures nothing and cannot pick a node.
+            //
+            // Node *filtering* does work on steer (include/exclude/regex/countries
+            // reach the cache and the merged sub file), so what is lost is the
+            // latency ordering, not the composition.
+            //
+            // Un-parking this would either silently stop choosing by latency or
+            // require one output per node, which the single merged subscription
+            // file cannot produce.
             return "routing.urltest";
         if (action == "direct_bypass")
             return "routing.direct_bypass";
@@ -328,8 +356,4 @@ function module_exports() {
     };
 }
 
-if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
-    return module_exports();
-
-print("Usage: components/engine_state.uc (library module, no CLI)\n");
-exit(1);
+return module_exports();

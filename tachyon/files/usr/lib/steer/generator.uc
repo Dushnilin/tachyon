@@ -24,17 +24,16 @@ let engine = require("core.engine");
 
 let as_string = common.as_string;
 
-// Whether the installed steer build has the vless client. Set per build_spec()
-// call; read by build_outputs, which is a separate function.
+// Whether the installed steer build has the vless client. Set per build_spec_v2()
+// call; read by build_outputs_v2, which is a separate function.
 let steer_vless_supported = true;
 let steer_vless_override = null;
 
 // Test seam: the generator decides what to emit, the engine module knows what is
 // installed. An explicit answer wins over detection, so a caller driving
-// build_spec directly does not need a steer binary on the machine.
+// build_spec_v2 directly does not need a steer binary on the machine.
 function set_vless_supported(value) { steer_vless_override = value == true; }
 
-const SPEC_SCHEMA = 2;
 const DEFAULT_LAN_DEVICES = [ "br-lan" ];
 const DEFAULT_ON_FAIL = "drop";
 
@@ -72,6 +71,42 @@ function is_enabled(section) {
     return bool_option(section, "enabled", true);
 }
 
+// Spec v2 caps every name at 31 bytes, in each namespace separately: clients,
+// lists, outputs, upstreams. A longer name is a rejection, and the values we
+// derive names from are user labels, so truncation has to happen here rather
+// than being left to whatever label happens to fit.
+const NAME_MAX_BYTES = 31;
+
+function truncate_name(name) {
+    if (length(name) <= NAME_MAX_BYTES)
+        return name;
+    let trimmed = substr(name, 0, NAME_MAX_BYTES);
+    // Never end on a separator: a trailing "-" or "." is ugly and can collide
+    // with a sibling name we are about to synthesize.
+    while (length(trimmed) > 0) {
+        let last = substr(trimmed, -1);
+        if (last == "-" || last == ".")
+            trimmed = substr(trimmed, 0, length(trimmed) - 1);
+        else
+            break;
+    }
+    return length(trimmed) > 0 ? trimmed : "n";
+}
+
+// `lan` (clients) and `all` (lists) are taken words. A synthesized name that
+// lands on one of them is a reference to the wrong thing at best.
+function unique_name(taken, base, reserved) {
+    let candidate = base;
+    let suffix = 1;
+    while (taken[candidate] != null ||
+        (reserved != null && index(reserved, candidate) >= 0)) {
+        let tail = "-" + as_string(suffix);
+        candidate = substr(base, 0, NAME_MAX_BYTES - length(tail)) + tail;
+        suffix++;
+    }
+    return candidate;
+}
+
 function safe_name(value) {
     // steer rejects output/device names outside [A-Za-z0-9_.-].
     value = as_string(value);
@@ -84,7 +119,7 @@ function safe_name(value) {
     }
     if (out == "")
         out = "channel";
-    return out;
+    return truncate_name(out);
 }
 
 // ============================================================================
@@ -125,263 +160,6 @@ function section_supported(section) {
     return true;
 }
 
-// ============================================================================
-// Outputs
-// ============================================================================
-
-// Resolved through the provider, then the candidate list, never hardcoded: the
-// nfqws binary lands at different paths per build (/opt/zapret2/nfq2/nfqws2,
-// /opt/zapret2/nfq/nfqws2, /usr/bin/nfqws2, ...).
-//
-// The stat checks used to be dead code. The provider takes its path from a
-// constant, never throws and never returns an empty binary, so its value was
-// returned unconditionally and the candidate list was never reached. Found on a
-// router with only zapret2 installed: a `zapret` (v1) section put
-// /opt/zapret/nfq/nfqws into the spec, a file that does not exist, and
-// steer-nfqws could never start that output - silently, since the spec is only
-// applied at steer apply time.
-//
-// A wrong-version binary is not substituted on purpose - v1 opts are not valid
-// for nfqws2 - so when nothing matches, the configured path goes back into the
-// spec as-is and the provider check reports the missing binary to the user.
-function resolved_zapret_bin(is_z2) {
-    let preferred = "";
-    try {
-        let provider = require(is_z2 ? "providers.zapret2.common" : "providers.zapret.common").config({});
-        if (provider != null && as_string(provider.binary) != "") {
-            preferred = as_string(provider.binary);
-            if (common.file_exists(preferred))
-                return preferred;
-        }
-    }
-    catch (e) {}
-
-    let candidates = is_z2
-        ? [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfq/nfqws2", "/opt/zapret2/nfqws2", "/usr/bin/nfqws2" ]
-        : [ "/opt/zapret/nfq/nfqws", "/opt/zapret/nfqws", "/usr/bin/nfqws" ];
-    for (let path in candidates)
-        if (common.file_exists(path))
-            return path;
-
-    return (preferred != "") ? preferred
-        : (is_z2 ? "/opt/zapret2/nfq2/nfqws2" : "/opt/zapret/nfq/nfqws");
-}
-
-// Build the outputs map. Proxy sections become interface/vless outputs when the
-// device or subscription is known; everything else falls back to a direct
-// output so channels referencing it still compile.
-function build_outputs(sections, settings) {
-    let outputs = {
-        direct: { kind: "direct" }
-    };
-
-    for (let section in sections) {
-        if (!is_enabled(section) || !section_supported(section))
-            continue;
-        if (!is_proxy_section(section))
-            continue;
-
-        let name = safe_name(option(section, "label", option(section, ".name", "proxy")));
-        let device = as_string(option(section, "outbound_interface", ""));
-        let devices = list_option(section, "outbound_interfaces");
-        let on_fail = as_string(option(section, "on_fail", DEFAULT_ON_FAIL));
-        if (device != "" && length(devices) == 0)
-            devices = [ device ];
-        if (length(devices) > 0) {
-            outputs[name] = {
-                kind: "interface",
-                devices,
-                on_fail
-            };
-            continue;
-        }
-
-        // A section with a subscription can be driven through steer's own
-        // vless client; the file is written by Tachyon's subscription updater.
-        let sub_file = as_string(option(section, "steer_sub_file", ""));
-        if (sub_file != "" && steer_vless_supported) {
-            outputs[name] = {
-                kind: "vless",
-                sub_file,
-                on_fail
-            };
-            let node = option(section, "node", null);
-            let nodes = list_option(section, "nodes");
-            let sort_by_latency = bool_option(section, "sort_by_latency", false);
-            let parsed_node = (node != null && node != "") ? int(node) : null;
-            let is_valid_num = (parsed_node != null && parsed_node != "NaN");
-            let is_auto = (node == "auto" || node == "urltest" || !is_valid_num || (sort_by_latency && !is_valid_num));
-            if (is_auto || length(nodes) > 0) {
-                outputs[name].prefer = "latency";
-                outputs[name].latency_interval_s = 300;
-                outputs[name].latency_tolerance_ms = 50;
-
-                let lat_file = getenv("TACHYON_STEER_LATENCY_CACHE_FILE") || "/var/run/tachyon/steer-latencies.json";
-                let lat_data = {};
-                let lat_raw = fs.readfile(lat_file);
-                if (lat_raw != null) {
-                    let parsed_lat = json(lat_raw);
-                    if (type(parsed_lat) == "object")
-                        lat_data = parsed_lat;
-                }
-
-                let sec_cache_dir = getenv("TACHYON_SECTION_CACHE_DIR") || "/var/run/tachyon/section-cache";
-                let sec_cache_raw = fs.readfile(sec_cache_dir + "/" + name + ".json");
-                let sec_cache = sec_cache_raw ? json(sec_cache_raw) : null;
-
-                let candidate_pool = [];
-                let sel_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
-                let sel_raw = fs.readfile(sel_path);
-                let sel_data = (sel_raw != null) ? json(sel_raw) : {};
-                let active_sel = type(sel_data) == "object" ? (sel_data[name] || sel_data[name + "-out"]) : null;
-
-                if (sec_cache && type(sec_cache.links) == "object") {
-                    let tag_to_idx = {};
-                    let vless_idx = 0;
-                    let ordered_tags = [];
-                    if (type(sec_cache.urltestGroups) == "object") {
-                        for (let grp_id, grp in sec_cache.urltestGroups) {
-                            if (type(grp) == "object" && type(grp.outbounds) == "array") {
-                                for (let ob in grp.outbounds) {
-                                    let link = sec_cache.links[ob];
-                                    if (link != null && match(trim(as_string(link)), /^vless:\/\//) != null && index(ordered_tags, ob) < 0)
-                                        push(ordered_tags, ob);
-                                }
-                            }
-                        }
-                    }
-                    let hidden_ordered = type(sec_cache.hiddenOutboundTags) == "object" ? sec_cache.hiddenOutboundTags : {};
-                    for (let tname, link in sec_cache.links) {
-                        if (index(ordered_tags, tname) >= 0 || hidden_ordered[tname]) continue;
-                        link = trim(as_string(link));
-                        if (match(link, /^vless:\/\//) != null)
-                            push(ordered_tags, tname);
-                    }
-                    for (let tname, link in sec_cache.links) {
-                        if (index(ordered_tags, tname) >= 0) continue;
-                        link = trim(as_string(link));
-                        if (match(link, /^vless:\/\//) != null)
-                            push(ordered_tags, tname);
-                    }
-                    for (let tname in ordered_tags) {
-                        tag_to_idx[tname] = vless_idx;
-                        vless_idx++;
-                    }
-
-                    let target_grp = null;
-                    if (active_sel != null && type(sec_cache.urltestGroups) == "object") {
-                        target_grp = sec_cache.urltestGroups[active_sel];
-                        if (!target_grp) {
-                            for (let gid, gdata in sec_cache.urltestGroups) {
-                                if (gid == active_sel || gdata.displayName == active_sel) {
-                                    target_grp = gdata;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if (target_grp && type(target_grp.outbounds) == "array" && length(target_grp.outbounds) > 0) {
-                        for (let ob in target_grp.outbounds) {
-                            if (tag_to_idx[ob] != null)
-                                push(candidate_pool, tag_to_idx[ob]);
-                        }
-                    }
-                }
-
-                if (length(candidate_pool) == 0 && length(nodes) > 0) {
-                    for (let n in nodes) {
-                        let ni = int(n);
-                        if (ni != null && ni != "NaN")
-                            push(candidate_pool, ni);
-                    }
-                }
-
-                if (length(candidate_pool) == 0 && is_auto) {
-                    let sub_raw = fs.readfile(sub_file);
-                    if (sub_raw != null) {
-                        let lines = split(trim(sub_raw), "\n");
-                        for (let i = 0; i < length(lines); i++) {
-                            if (trim(lines[i]) != "")
-                                push(candidate_pool, i);
-                        }
-                    } else {
-                        for (let i = 0; i < 16; i++)
-                            push(candidate_pool, i);
-                    }
-                }
-
-                let sorted_pool = sort(candidate_pool, function(a, b) {
-                    let da = lat_data["proxy-" + a];
-                    let db = lat_data["proxy-" + b];
-                    let sa = (da != null && int(da) > 0) ? int(da) : (da == null ? 5000000 + a : 9000000 + a);
-                    let sb = (db != null && int(db) > 0) ? int(db) : (db == null ? 5000000 + b : 9000000 + b);
-                    return sa - sb;
-                });
-
-                let unique_nodes = [];
-                let seen = {};
-                for (let ni in sorted_pool) {
-                    if (!seen[ni]) {
-                        push(unique_nodes, ni);
-                        seen[ni] = true;
-                    }
-                }
-                if (length(unique_nodes) > 16)
-                    unique_nodes = slice(unique_nodes, 0, 16);
-                if (length(unique_nodes) > 0)
-                    outputs[name].nodes = unique_nodes;
-            } else if (is_valid_num) {
-                outputs[name].node = parsed_node;
-            }
-
-            let sec_name = safe_name(section[".name"]);
-            if (sec_name != "" && sec_name != name && !outputs[sec_name])
-                outputs[sec_name] = outputs[name];
-            continue;
-        }
-
-        // Nothing steer can point at: park via a direct output placeholder.
-        outputs[name] = { kind: "direct" };
-        let sec_name = safe_name(section[".name"]);
-        if (sec_name != "" && sec_name != name && !outputs[sec_name])
-            outputs[sec_name] = outputs[name];
-        continue;
-    }
-
-    // Zapret sections become kind: zapret outputs; steer runs nfqws itself.
-    for (let section in sections) {
-        if (!is_enabled(section) || !is_zapret_section(section))
-            continue;
-        let action = as_string(option(section, "action", ""));
-        // Addressed by label, falling back to the section name - the same rule
-        // the channel builder uses to resolve a target, so a channel always
-        // finds the output it was pointed at.
-        let name = safe_name(option(section, "label", option(section, ".name", "zapret")));
-        let opts_file = as_string(option(section, "steer_opts_file", ""));
-        if (opts_file == "")
-            opts_file = engine.STEER_ZAPRET_DIR + "/" + name + ".opts";
-        let out_entry = {
-            kind: "zapret",
-            on_fail: "direct",
-            opts_file: opts_file
-        };
-        // zapret2 uses nfqws2 (supports Lua strategies); store the resolved
-        // binary path in the spec so steer-nfqws picks the right executable.
-        out_entry.nfqws_bin = resolved_zapret_bin(action == "zapret2");
-        // One output, not two. This also emitted the section name alongside the
-        // label, so a section named Zapret2 labelled "Youtube" produced both
-        // "Zapret2" and "Youtube" pointing at the same opts file. Each output
-        // costs the engine its own netfilter queue and a second steer-nfqws
-        // process running identical filters, and the phantom showed up in
-        // `steer outputs` as a target no config section backs. Confirmed on a
-        // router: queues 8302 and 8303 for one section, with the extra one
-        // referenced by nothing.
-        outputs[name] = out_entry;
-    }
-
-    return outputs;
-}
 
 // ============================================================================
 // Channels
@@ -492,8 +270,398 @@ function channel_clients(section) {
     return { macs, addrs, addrs_single };
 }
 
-function build_channels(sections, catalog, outputs) {
-    let channels = [];
+
+
+function serialize_spec(spec) {
+    return sprintf("%J\n", spec);
+}
+
+// ============================================================================
+// Spec v2 (spec.json with a top-level `version: 2`)
+// ============================================================================
+//
+// This is a different document from the contract-v1 output Tachyon used to
+// write, not a newer number of the same one: spec v2 is recognised by
+// `version: 2`, its sections are lan / clients / lists / outputs / rules / dns,
+// and carrying `version` together with `schema` is a rejection. Only steer 2.0
+// and newer read it, so engine_runtime refuses to write one for an older kernel.
+//
+// v1 stays the default until this output is accepted by a real kernel: an
+// unknown key is a hard rejection there, so a half-finished migration takes the
+// proxy down rather than degrading.
+
+const SPEC_VERSION_V2 = 2;
+
+// steer v2 counts pool nodes in `nodes` (a list); v1 also had a scalar `node`.
+//
+// The scalar is parsed by hand rather than through int(): int() on a non-numeric
+// string does not reliably yield something distinguishable from a number, and
+// the difference matters - a node that fails to parse must fall back to "first
+// working", never turn into a bogus `nodes` entry.
+function parse_node_number(value) {
+    let text = trim(as_string(value));
+    if (text == "" || match(text, /^[0-9]+$/) == null)
+        return null;
+    let parsed = int(text, 10);
+    if (parsed == null || parsed < 1)
+        return null;
+    return parsed;
+}
+
+function section_auto_selects(section) {
+    let node = option(section, "node", null);
+    let nodes = list_option(section, "nodes");
+    let sort_by_latency = bool_option(section, "sort_by_latency", false);
+    let parsed_node = parse_node_number(node);
+    let is_valid_num = (parsed_node != null);
+    let is_auto = (node == "auto" || node == "urltest" || !is_valid_num ||
+        (sort_by_latency && !is_valid_num));
+    return { auto: is_auto || length(nodes) > 0, parsed_node, is_valid_num };
+}
+
+// Outputs v2, plus the name every rule must point at for that section. The two
+// differ wherever a section is auto-selecting: in v1 one output could be both a
+// tunnel and self-selecting, while in v2 a group is its own output whose members
+
+// Spec v2 states `interval`, `idle_timeout` and `tolerance` in plain seconds and
+// milliseconds. UCI stores sing-box durations ("3m", "1h30m", "500ms"), so they
+// have to be converted rather than passed through - "3m" in a spec field that
+// wants a number is not a shortened interval, it is a rejected spec.
+const DURATION_UNITS = {
+    "ms": null,   // sub-second; steer has no use for it, handled below
+    "s": 1,
+    "m": 60,
+    "h": 3600,
+    "d": 86400
+};
+
+function duration_to_seconds(value) {
+    let text = trim(as_string(value));
+    if (text == "")
+        return null;
+
+    // sing-box allows compound durations like "1h30m". Consume one term at a
+    // time from the front; anything left over that is not a term means the
+    // value is not a duration we understand, and guessing would put a wrong
+    // number into a spec field where it is a rejection.
+    let rest = text;
+    let total = 0;
+    while (length(rest) > 0) {
+        let term = match(rest, /^([0-9]+)(ms|s|m|h|d)/);
+        if (term == null)
+            return null;
+        let amount = int(term[1], 10);
+        if (amount == null)
+            return null;
+        if (term[2] == "ms") {
+            // Steer's smallest documented interval is 5 s, so a sub-second value
+            // has no honest conversion - rounding it to 0 would mean "measure
+            // every 5 seconds", which is not what the user asked for.
+            return null;
+        }
+        total += amount * DURATION_UNITS[term[2]];
+        rest = substr(rest, length(term[0]));
+    }
+    return total;
+}
+
+// int() does not reliably signal "not a number" - on a non-numeric string it
+// yields the string "NaN", which is neither null nor comparable and would be
+// written straight into the spec as `"tolerance": "NaN"`. So the digits are
+// checked first and anything unrecognised is treated as absent, which lets
+// steer apply its own default instead of taking the whole spec down.
+function clamp_int(value, low, high) {
+    let text = trim(as_string(value));
+    if (text == "" || match(text, /^-?[0-9]+$/) == null)
+        return null;
+    let parsed = int(text, 10);
+    if (parsed == null)
+        return null;
+    if (parsed < low)
+        return low;
+    if (parsed > high)
+        return high;
+    return parsed;
+}
+
+// The four keys are only legal on `pick: latency`. Emitting any of them on
+// another pick is a parse rejection, which takes down the whole spec, so this
+// returns them only when the caller is actually building a latency group.
+// At most one latency group per section can be expressed in spec v2, so more
+// than one urltest child is configuration this engine cannot honour. Silently
+// taking the first would apply settings the user did not pick and drop the rest
+// without a word, which is the failure this generator is supposed to avoid -
+// so nothing is applied and the section is named.
+function urltest_group_settings(section) {
+    let list = list_option(section, "steer_urltest_settings");
+    let found = null;
+    let count = 0;
+    for (let entry in list)
+        if (type(entry) == "object") {
+            count++;
+            if (found == null)
+                found = entry;
+        }
+    if (count > 1) {
+        warn("steer: section " + as_string(option(section, ".name", "?")) + " has " +
+            as_string(count) + " URLTest groups; spec v2 can express only one per section, " +
+            "so none of them is applied\n");
+        return null;
+    }
+    return found;
+}
+
+function latency_group_keys(section) {
+    let keys = {};
+    let settings = urltest_group_settings(section);
+    if (settings == null)
+        return keys;
+
+    let url = trim(as_string(option(settings, "testing_url", "")));
+    // ucode has no \s inside a character class - it means a literal backslash and
+    // an "s" - so the spaces are listed out. Only http(s) is a check address
+    // steer accepts; anything else is left out rather than written.
+    if (url != "" && match(url, /^https?:\/\/[^/ \t]+/) != null)
+        keys.url = url;
+
+    let tolerance = clamp_int(option(settings, "tolerance", ""), 0, 60000);
+    if (tolerance != null)
+        keys.tolerance = tolerance;
+
+    let interval = clamp_int(duration_to_seconds(option(settings, "check_interval", "")), 5, 86400);
+    if (interval != null)
+        keys.interval = interval;
+
+    // idle_timeout 0 means "always measure" and is steer's router default, so an
+    // absent or unparseable value is left out rather than guessed at.
+    let idle = clamp_int(duration_to_seconds(option(settings, "idle_timeout", "")), 0, 86400);
+    if (idle != null)
+        keys.idle_timeout = idle;
+
+    return keys;
+}
+
+// are other outputs, so the rule has to target the group rather than the tunnel.
+function build_outputs_v2(sections, settings) {
+    let outputs = { direct: { kind: "direct" } };
+    let targets = {};
+    let unsupported = [];
+
+    for (let section in sections) {
+        if (!is_enabled(section) || !section_supported(section))
+            continue;
+        if (!is_proxy_section(section))
+            continue;
+
+        let name = safe_name(option(section, "label", option(section, ".name", "proxy")));
+        let on_fail = as_string(option(section, "on_fail", DEFAULT_ON_FAIL));
+
+        // v1 took a list of devices; v2 takes exactly one, so several become a
+        // group over per-device outputs. This adds a node to the output graph.
+        let device = as_string(option(section, "outbound_interface", ""));
+        let devices = list_option(section, "outbound_interfaces");
+        if (device != "" && length(devices) == 0)
+            devices = [ device ];
+        if (length(devices) > 0) {
+            if (length(devices) == 1) {
+                outputs[name] = { kind: "interface", device: devices[0], on_fail };
+            }
+            else {
+                let members = [];
+                for (let index_value, dev in devices) {
+                    let member_name = safe_name(name + "-" + (index_value + 1));
+                    outputs[member_name] = {
+                        kind: "interface",
+                        device: dev,
+                        on_fail: "direct"
+                    };
+                    push(members, member_name);
+                }
+                outputs[name] = {
+                    kind: "group",
+                    pick: "order",
+                    members,
+                    on_fail
+                };
+            }
+            targets[name] = name;
+            let sec_name = safe_name(section[".name"]);
+            if (sec_name != "" && sec_name != name && outputs[sec_name] == null)
+                targets[sec_name] = name;
+            continue;
+        }
+
+        let sub_file = as_string(option(section, "steer_sub_file", ""));
+        if (sub_file != "" && steer_vless_supported) {
+            // v1 wrote `kind: vless` + `sub_file` + `prefer` into one object. v2
+            // splits them: the tunnel keeps the subscription, and auto-selection
+            // becomes a separate group output that references it.
+            let tunnel = {
+                kind: "tunnel",
+                protocol: "vless",
+                subscription: sub_file,
+                on_fail
+            };
+            let select = section_auto_selects(section);
+
+            // Nodes apply whether the section is pinned or auto-selecting: a
+            // pinned node is the difference between "use node 2" and "use the
+            // first working one", so dropping it here would silently change
+            // which server carries the traffic.
+            let explicit = list_option(section, "nodes");
+            if (length(explicit) > 0) {
+                let unique_nodes = [];
+                for (let item in explicit) {
+                    let parsed = parse_node_number(item);
+                    if (parsed != null && index(unique_nodes, parsed) < 0)
+                        push(unique_nodes, parsed);
+                }
+                if (length(unique_nodes) > 16)
+                    unique_nodes = slice(unique_nodes, 0, 16);
+                if (length(unique_nodes) > 0)
+                    tunnel.nodes = unique_nodes;
+            }
+            else if (select.is_valid_num) {
+                tunnel.nodes = [ select.parsed_node ];
+            }
+
+            if (select.auto) {
+                outputs[name + "-tun"] = tunnel;
+                let group = {
+                    kind: "group",
+                    pick: "latency",
+                    members: [ name + "-tun" ],
+                    on_fail
+                };
+                // Only ever on a latency group: these keys are a parse rejection
+                // on any other pick.
+                let keys = latency_group_keys(section);
+                for (let key in keys)
+                    group[key] = keys[key];
+                outputs[name] = group;
+            }
+            else {
+                outputs[name] = tunnel;
+            }
+            targets[name] = name;
+            let sec_name = safe_name(section[".name"]);
+            if (sec_name != "" && sec_name != name && outputs[sec_name] == null)
+                targets[sec_name] = name;
+            continue;
+        }
+
+        // Nothing steer can point at: park via a direct output placeholder.
+        outputs[name] = { kind: "direct" };
+        targets[name] = name;
+        let sec_name = safe_name(section[".name"]);
+        if (sec_name != "" && sec_name != name && outputs[sec_name] == null)
+            targets[sec_name] = name;
+    }
+
+    // Zapret sections become kind: zapret outputs; steer runs nfqws itself.
+    for (let section in sections) {
+        if (!is_enabled(section) || !is_zapret_section(section))
+            continue;
+        let name = safe_name(option(section, "label", option(section, ".name", "zapret")));
+        let strategy = as_string(option(section, "steer_opts_file", ""));
+        if (strategy == "")
+            strategy = engine.STEER_ZAPRET_DIR + "/" + name + ".opts";
+        let action = as_string(option(section, "action", ""));
+        let out_entry = {
+            kind: "zapret",
+            on_fail: "direct",
+            strategy
+        };
+        // v1 also stored `nfqws_bin`, the resolved nfqws2 path so steer would
+        // launch the Lua-capable binary. Spec v2 has no such key and an unknown
+        // key is a rejection, so it is not written at all. zapret2 Lua strategies
+        // are the casualty; engine_state has to park them on steer rather than
+        // let them look configured.
+        if (action == "zapret2")
+            push(unsupported, name + " (zapret2 Lua strategy: no v2 nfqws_bin key)");
+        outputs[name] = out_entry;
+        targets[name] = name;
+    }
+
+    return { outputs, targets, unsupported };
+}
+
+// v1 inlined the list files into the channel (`match.domains_files`). v2 has no
+// such key: a named `lists` section carries them and rules reference it by name
+// through `to`. Names must be synthesized and unique.
+// Spec v2 `rules.for` is a list of *names* from the top-level `clients`
+// section, not a list of addresses. v1 inlined raw addresses and MACs straight
+// into the channel, so this is a real migration step and not a rename: emitting
+// the addresses where names belong is a dangling reference and rejects the whole
+// spec. `addr` and `mac` cannot share one client (nft has no "or" inside a rule),
+// so a section carrying both gets two clients and two rules.
+function build_clients_v2(sections) {
+    let clients = {};
+    let refs = {};
+
+    for (let section in sections) {
+        if (!is_enabled(section) || !is_rule_section(section) || !section_supported(section))
+            continue;
+
+        let picked = channel_clients(section);
+        let addrs = picked.addrs || [];
+        let macs = picked.macs || [];
+        if (length(addrs) == 0 && length(macs) == 0)
+            continue;
+
+        let base = safe_name(option(section, ".name", "client"));
+        let names = [];
+
+        if (length(addrs) > 0) {
+            let client_name = unique_name(clients, base, [ "lan" ]);
+            clients[client_name] = { addr: addrs };
+            push(names, client_name);
+        }
+        if (length(macs) > 0) {
+            let client_name = unique_name(clients, base + "-mac", [ "lan" ]);
+            clients[client_name] = { mac: macs };
+            push(names, client_name);
+        }
+        refs[as_string(section[".name"])] = names;
+    }
+
+    return { clients, refs };
+}
+function build_lists_v2(sections, catalog) {
+    let lists = {};
+    let refs = {};
+
+    for (let section in sections) {
+        if (!is_enabled(section) || !is_rule_section(section) || !section_supported(section))
+            continue;
+
+        let match_obj = channel_match(section, catalog);
+        let domains = match_obj.domains_files || [];
+        let prefixes = match_obj.prefixes_files || [];
+        if (length(domains) == 0 && length(prefixes) == 0)
+            continue;
+
+        let base = safe_name(option(section, ".name", "list"));
+        let list_name = unique_name(lists, base, [ "all" ]);
+
+        let entry = {};
+        if (length(domains) > 0)
+            entry.domains_file = domains;
+        if (length(prefixes) > 0)
+            entry.prefixes_file = prefixes;
+        if (match_obj.proto != null)
+            entry.proto = match_obj.proto;
+        if (match_obj.ports != null)
+            entry.ports = match_obj.ports;
+        lists[list_name] = entry;
+        refs[as_string(section[".name"])] = list_name;
+    }
+
+    return { lists, refs };
+}
+
+function build_rules_v2(sections, catalog, outputs, targets, client_refs, list_refs) {
+    let rules = [];
 
     for (let section in sections) {
         if (!is_enabled(section) || !is_rule_section(section) || !section_supported(section))
@@ -501,93 +669,84 @@ function build_channels(sections, catalog, outputs) {
 
         let match_obj = channel_match(section, catalog);
         let clients = channel_clients(section);
-        let has_files = (match_obj.domains_files != null && length(match_obj.domains_files) > 0) ||
-                        (match_obj.prefixes_files != null && length(match_obj.prefixes_files) > 0);
+        let sec_key = as_string(section[".name"]);
+        let domains = match_obj.domains_files || [];
+        let prefixes = match_obj.prefixes_files || [];
+        let has_files = length(domains) > 0 || length(prefixes) > 0;
         let has_clients = length(clients.macs) > 0 || length(clients.addrs) > 0;
         if (!has_files && !has_clients)
             continue;
 
         let action = as_string(option(section, "action", ""));
-        let out_name = safe_name(option(section, "outbound", option(section, "label", option(section, ".name", "channel"))));
+        let out_name = safe_name(option(section, "outbound", option(section, "label", option(section, ".name", "rule"))));
         if (action == "bypass" || action == "hosts" || action == "direct_bypass" || action == "torrserver_direct")
             out_name = "direct";
         else if (action == "zapret" || action == "zapret2") {
             let z_name = safe_name(option(section, "label", option(section, ".name", "zapret")));
-            let z_sec = safe_name(section[".name"]);
             if (outputs && outputs[z_name])
                 out_name = z_name;
-            else if (outputs && outputs[z_sec])
-                out_name = z_sec;
+            else if (targets && targets[z_name])
+                out_name = targets[z_name];
             else
                 out_name = "direct";
-        } else if (outputs) {
+        }
+        else if (outputs) {
             if (!outputs[out_name]) {
-                let sec_fallback = safe_name(section[".name"]);
-                let lbl_fallback = safe_name(option(section, "label", ""));
-                let ob_fallback = safe_name(option(section, "outbound", ""));
-                if (outputs[sec_fallback])
-                    out_name = sec_fallback;
-                else if (outputs[lbl_fallback])
-                    out_name = lbl_fallback;
-                else if (outputs[ob_fallback])
-                    out_name = ob_fallback;
-                else
-                    out_name = "direct";
+                let candidates = [
+                    targets ? targets[safe_name(section[".name"])] : null,
+                    targets ? targets[safe_name(option(section, "label", ""))] : null,
+                    targets ? targets[safe_name(option(section, "outbound", ""))] : null
+                ];
+                out_name = "direct";
+                for (let candidate in candidates)
+                    if (candidate != null && outputs[candidate]) {
+                        out_name = candidate;
+                        break;
+                    }
             }
         }
 
-        let label = as_string(option(section, "label", option(section, ".name", "channel")));
+        let label = safe_name(option(section, "label", option(section, ".name", "rule")));
+        let list_name = list_refs ? list_refs[sec_key] : null;
+        let my_clients = (client_refs && client_refs[sec_key]) || [];
 
-        // zapret/zapret2 channels use the default fakeip mode.
-        // steer 1.5.7+ deprecated mode=realip; fakeip now correctly routes
-        // DPI-bypass traffic through nftables marks without needing realip.
+        // One rule per client: v2 rules take `for` as a list of client names,
+        // and a rule that mixes an address client with a MAC client cannot be
+        // compiled (nft has no "or" within a rule).
+        // A section with only list files and no clients still needs a rule: a v2 rule
+        // without `for` is the default clients, so it must be emitted without the
+        // key rather than skipped.
+        let emit = my_clients;
+        if (length(emit) == 0)
+            emit = [ null ];
 
-        // Addresses: one channel. scope=device (priority over global rules) only
-        // when every entry is a single host — steer rejects subnets there.
-        if (length(clients.addrs) > 0 || length(keys(match_obj)) > 0) {
-            let channel = {
-                name: label,
-                match: match_obj,
-                out: out_name
-            };
-            if (length(clients.addrs) > 0) {
-                channel.from = clients.addrs;
-                if (clients.addrs_single)
-                    channel.scope = "device";
-            }
-            push(channels, channel);
-        }
-
-        // MACs: steer forbids mixing them with addresses in one `from`, so they
-        // go into a separate channel ("заведите два канала" — contract).
-        if (length(clients.macs) > 0) {
-            let mac_channel = {
-                name: label + " (MAC)",
-                match: match_obj,
-                from: clients.macs,
-                scope: "device",
-                out: out_name
-            };
-            push(channels, mac_channel);
+        for (let slot, client_name in emit) {
+            let rule = { name: (length(my_clients) > 1
+                    ? truncate_name(label + "-" + as_string(slot + 1))
+                    : label),
+                out: out_name };
+            if (list_name != null)
+                rule.to = [ list_name ];
+            else
+                rule.to = [ "all" ];
+            if (client_name != null)
+                rule.for = [ client_name ];
+            if (client_name != null && clients.addrs_single)
+                rule.scope = "device";
+            // v1 carried the resolver choice on the channel; v2 keeps it per
+            // rule, and losing it would silently change DNS behaviour.
+            if (as_string(option(section, "mode", "")) == "realip")
+                rule.resolve = "realip";
+            push(rules, rule);
         }
     }
 
-    return channels;
+    return rules;
 }
 
-// ============================================================================
-// Spec assembly
-// ============================================================================
-
-function build_spec(sections, settings, catalog) {
+function build_spec_v2(sections, settings, catalog) {
     settings = settings || {};
-    // Does the installed engine actually have the vless client? A stock steer
-    // build does not, and it rejects the whole spec with "kind vless requires
-    // the steer-extended package" - not just that one output, so a single
-    // subscription section took every other section down with it.
-    //
-    // Detection lives in the engine module because it knows the binary path;
-    // the generator stays testable by being told the answer.
+
     steer_vless_supported = (steer_vless_override != null)
         ? steer_vless_override
         : true;
@@ -598,38 +757,47 @@ function build_spec(sections, settings, catalog) {
                 steer_vless_supported = engine_mod.steer_has_extended_build();
         }
         catch (e) {
-            // Engine not present yet: assume the richer build so the spec still
-            // carries the section, and let apply fail loudly if that is wrong.
         }
     }
+
+    let built = build_outputs_v2(sections, settings);
+    if (!steer_vless_supported && built != null) {
+        let dropped = [];
+        for (let name in built.outputs)
+            if (type(built.outputs[name]) == "object" &&
+                built.outputs[name].kind == "tunnel")
+                delete built.outputs[name];
+        for (let name in built.targets) {
+            if (built.targets[name] == name && built.outputs[name] == null)
+                push(dropped, name);
+            built.targets[name] = "direct";
+        }
+        if (length(dropped) > 0)
+            warn("steer: installed build has no vless client, sections left without a tunnelled output: " +
+                join(", ", dropped) + ". Install the steer-extended package to route them through a proxy.\n");
+    }
+    for (let note in built.unsupported)
+        warn("steer: " + note + "\n");
 
     let lan_devices = list_option(settings, "source_network_interfaces");
     if (length(lan_devices) == 0)
         lan_devices = DEFAULT_LAN_DEVICES;
 
-    let outputs = build_outputs(sections, settings);
-    if (!steer_vless_supported && outputs != null) {
-        let dropped = [];
-        for (let name in outputs)
-            if (type(outputs[name]) == "object" && outputs[name].kind == "vless") {
-                delete outputs[name];
-                push(dropped, name);
-            }
-        if (length(dropped) > 0)
-            warn("steer: installed build has no vless client, sections left without a tunnelled output: " +
-                join(", ", dropped) + ". Install the steer-extended package to route them through a proxy.\n");
-    }
-    return {
-        schema: SPEC_SCHEMA,
-        dns_redirect: bool_option(settings, "dns_redirect", true),
-        lan_devices,
-        outputs,
-        channels: build_channels(sections, catalog, outputs)
-    };
-}
+    let built_clients = build_clients_v2(sections);
+    let built_lists = build_lists_v2(sections, catalog);
 
-function serialize_spec(spec) {
-    return sprintf("%J\n", spec);
+    return {
+        version: SPEC_VERSION_V2,
+        lan: { devices: lan_devices },
+        clients: built_clients.clients,
+        lists: built_lists.lists,
+        outputs: built.outputs,
+        rules: build_rules_v2(sections, catalog, built.outputs, built.targets,
+            built_clients.refs, built_lists.refs),
+        dns: {
+            mode: bool_option(settings, "dns_redirect", true) ? "fakeip" : "realip"
+        }
+    };
 }
 
 // ============================================================================
@@ -638,23 +806,17 @@ function serialize_spec(spec) {
 
 function module_exports() {
     return {
-        SPEC_SCHEMA,
         safe_name,
         is_rule_section,
         is_proxy_section,
         is_zapret_section,
         section_supported,
-        build_outputs,
-        build_channels,
-        build_spec,
+        build_spec_v2,
+        SPEC_VERSION_V2,
         set_vless_supported,
         serialize_spec,
         set_list_materializer
     };
 }
 
-if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
-    return module_exports();
-
-print("Usage: steer/generator.uc (library module, no CLI)\n");
-exit(1);
+return module_exports();

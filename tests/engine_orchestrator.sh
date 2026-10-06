@@ -203,17 +203,20 @@ let sections = [
       "outbound_interfaces": [ "wg0" ] }
 ];
 // The generator delegates list materialisation; assert it is invoked and its
-// paths land in the channel match.
+// paths land in the named lists section. In v2 the files are not inlined into
+// the rule any more - a named list carries them and the rule points at it.
 g.set_list_materializer(function(section, catalog) {
     return { domains: "/etc/steer/lists/channels/tg/domains.lst",
              prefixes: "/etc/steer/lists/channels/tg/prefixes.lst" };
 });
-let spec = g.build_spec(sections, {}, {});
-print("domains=" + join(",", spec.channels[0].match.domains_files) + "\n");
-print("prefixes=" + join(",", spec.channels[0].match.prefixes_files) + "\n");
+let spec = g.build_spec_v2(sections, {}, {});
+print("domains=" + join(",", spec.lists.tg.domains_file) + "\n");
+print("prefixes=" + join(",", spec.lists.tg.prefixes_file) + "\n");
+print("listed=" + join(",", spec.rules[0].to) + "\n");
 ')"
 assert_match "materialised domain list referenced" 'domains=/etc/steer/lists/channels/tg/domains.lst' "$out"
 assert_match "materialised prefix list referenced" 'prefixes=/etc/steer/lists/channels/tg/prefixes.lst' "$out"
+assert_match "rule points at the named list" 'listed=tg' "$out"
 
 printf '%s\n' '--- steer list materialisation ---'
 MAT_DIR="$WORK_DIR/steer-lists"
@@ -269,32 +272,36 @@ g.set_list_materializer(function(section, catalog) {
     return { domains: length(d) ? "/tmp/" + section[".name"] + ".domains" : "",
              prefixes: length(p) ? "/tmp/" + section[".name"] + ".prefixes" : "" };
 });
-let spec = g.build_spec(sections, { "source_network_interfaces": [ "br-lan", "tailscale0" ] });
-print("schema=" + spec.schema + "\n");
-print("lan=" + join(",", spec.lan_devices) + "\n");
+let spec = g.build_spec_v2(sections, { "source_network_interfaces": [ "br-lan", "tailscale0" ] });
+print("version=" + spec.version + "\n");
+print("lan=" + join(",", spec.lan.devices) + "\n");
 print("out_main=" + spec.outputs.Main.kind + "\n");
-print("out_main_devices=" + join(",", spec.outputs.Main.devices) + "\n");
+print("out_main_pick=" + spec.outputs.Main.pick + "\n");
+print("out_main_members=" + join(",", spec.outputs.Main.members) + "\n");
 print("has_direct=" + (spec.outputs.direct != null) + "\n");
-print("channels=" + length(spec.channels) + "\n");
-print("ch0_out=" + spec.channels[0].out + "\n");
-print("ch0_domains=" + join(",", spec.channels[0].match.domains_files) + "\n");
-print("ch0_prefixes=" + join(",", spec.channels[0].match.prefixes_files) + "\n");
-print("ch1_from=" + join(",", spec.channels[1].from) + "\n");
-print("ch1_out=" + spec.channels[1].out + "\n");
+print("rules=" + length(spec.rules) + "\n");
+print("ch0_out=" + spec.rules[0].out + "\n");
+print("ch0_to=" + join(",", spec.rules[0].to) + "\n");
+print("ch1_for=" + join(",", spec.rules[1].for) + "\n");
+print("ch1_out=" + spec.rules[1].out + "\n");
+print("kid_client=" + join(",", spec.clients.kids.addr) + "\n");
 print("no_wdtt=" + (spec.outputs.Unsupported == null && spec.outputs.unsupported == null) + "\n");
 print("name_safe=" + g.safe_name("My Server / NL") + "\n");
 ')"
-assert_match "spec schema 2" 'schema=2' "$out"
+assert_match "spec v2 marker" 'version=2' "$out"
 assert_match "lan devices from settings" 'lan=br-lan,tailscale0' "$out"
-assert_match "interface output built" 'out_main=interface' "$out"
-assert_match "device preference order kept" 'out_main_devices=wg0,awg0' "$out"
+# v2 takes one device per output, so two devices become an order group over
+# per-device interface outputs - not one interface with a devices list.
+assert_match "multi-device section became a group" 'out_main=group' "$out"
+assert_match "group picks by order" 'out_main_pick=order' "$out"
+assert_match "group keeps device preference order" 'out_main_members=Main-1,Main-2' "$out"
 assert_match "direct output always present" 'has_direct=true' "$out"
-assert_match "two channels generated" 'channels=2' "$out"
-assert_match "first channel targets Main" 'ch0_out=Main' "$out"
-assert_match "domain refs mapped" 'ch0_domains=/tmp/main.domains' "$out"
-assert_match "subnet refs mapped" 'ch0_prefixes=/tmp/main.prefixes' "$out"
-assert_match "client filter mapped" 'ch1_from=192.168.1.50' "$out"
-assert_match "bypass channel goes direct" 'ch1_out=direct' "$out"
+assert_match "two rules generated" 'rules=2' "$out"
+assert_match "first rule targets Main" 'ch0_out=Main' "$out"
+assert_match "rule references its named list" 'ch0_to=main' "$out"
+assert_match "client filter became a named client" 'ch1_for=kids' "$out"
+assert_match "bypass rule goes direct" 'ch1_out=direct' "$out"
+assert_match "client addresses moved into clients" 'kid_client=192.168.1.50' "$out"
 assert_match "unsupported section skipped" 'no_wdtt=true' "$out"
 assert_match "unsafe names sanitized" 'name_safe=My_Server___NL' "$out"
 
@@ -317,37 +324,38 @@ g.set_list_materializer(function(section, catalog) {
     for (let v in (section.user_domains || [])) push(d, v);
     return { domains: length(d) ? "/tmp/" + section[".name"] + ".domains" : "", prefixes: "" };
 });
-let spec = g.build_spec(sections, {});
-let zc = null;
-for (let i = 0; i < length(spec.channels); i++)
-    if (spec.channels[i].out == "Z2" && spec.channels[i].match.proto != null)
-        zc = spec.channels[i];
-print("z2_proto=" + (zc != null ? zc.match.proto : "none") + "\n");
-print("z2_ports=" + (zc != null ? join("|", zc.match.ports) : "none") + "\n");
-print("z2_realip=" + (zc != null && zc.match.mode == "realip" ? "1" : "0") + "\n");
-let mac_chans = 0;
+let spec = g.build_spec_v2(sections, {});
+let zl = null;
+for (let n in spec.lists)
+    if (spec.lists[n].proto != null)
+        zl = spec.lists[n];
+print("z2_proto=" + (zl != null ? zl.proto : "none") + "\n");
+print("z2_ports=" + (zl != null ? join("|", zl.ports) : "none") + "\n");
+print("z2_realip=" + (zl != null && zl.mode == "realip" ? "1" : "0") + "\n");
+// v2 has no `from`: client filters are named clients in the top-level clients
+// section, and a rule references them by name. A MAC and an address therefore
+// live in two different clients and never share one client object.
+let mac_clients = 0;
 let dev_scoped = 0;
 let mixed = 0;
-for (let i = 0; i < length(spec.channels); i++) {
-    let ch = spec.channels[i];
-    if (ch.from == null) continue;
-    let macs = 0;
-    for (let v in ch.from) if (match(v, /:/) != null) macs++;
-    if (macs > 0) {
-        mac_chans++;
-        if (macs != length(ch.from)) mixed++;
+for (let name in spec.clients) {
+    let c = spec.clients[name];
+    if (c.mac != null) {
+        mac_clients++;
+        if (c.addr != null) mixed++;
     }
-    if (ch.scope == "device") dev_scoped++;
 }
-print("mac_channels=" + mac_chans + "\n");
-print("mixed_from=" + mixed + "\n");
+for (let r in spec.rules)
+    if (r.scope == "device") dev_scoped++;
+print("mac_clients=" + mac_clients + "\n");
+print("mixed_client=" + mixed + "\n");
 print("dev_scoped=" + dev_scoped + "\n");
 ' 2>&1)"
 assert_match "zapret2 proto mapped" 'z2_proto=udp' "$out"
 assert_match "ports written as strings" 'z2_ports=443|50000-65535' "$out"
 assert_match "default fakeip mode (realip deprecated by steer 1.5.7+)" 'z2_realip=0' "$out"
-assert_match "mac channel separated" 'mac_channels=2' "$out"
-assert_match "addresses and macs never mixed" 'mixed_from=0' "$out"
+assert_match "mac filters became their own clients" 'mac_clients=2' "$out"
+assert_match "addr and mac never share a client" 'mixed_client=0' "$out"
 assert_match "single hosts get device scope" 'dev_scoped=3' "$out"
 
 printf '%s\n' '--- steer per-section subscription files ---'
@@ -453,7 +461,11 @@ else
     fail_test "zapret2 opts file not written for section strategy"
 fi
 
-printf '%s\n' '--- spec nfqws_bin resolved from the provider ---'
+printf '%s\n' '--- v2 has no nfqws_bin: zapret carries strategy only ---'
+# v1 stored `nfqws_bin`, the resolved nfqws2 path, so steer would launch the
+# Lua-capable binary. Spec v2 has no such key and an unknown key rejects the
+# whole spec, so the path must not be written at all - writing it back is the
+# single easiest way to take the proxy down on a 2.x kernel.
 out="$(run_uc '
 let g = require("steer.generator");
 let sections = [ { ".name": "z2b", ".type": "section", "action": "zapret2", "enabled": "1", "label": "Z2B",
@@ -461,65 +473,47 @@ let sections = [ { ".name": "z2b", ".type": "section", "action": "zapret2", "ena
 g.set_list_materializer(function(section, catalog) {
     return { domains: "/tmp/z2b.domains", prefixes: "" };
 });
-let spec = g.build_spec(sections, {});
-print("bin=" + spec.outputs.Z2B.nfqws_bin + "\n");
+let spec = g.build_spec_v2(sections, {});
+print("kind=" + spec.outputs.Z2B.kind + "\n");
+print("strategy=" + (spec.outputs.Z2B.strategy != null ? "yes" : "no") + "\n");
+print("has_bin=" + (spec.outputs.Z2B.nfqws_bin != null) + "\n");
 ' 2>&1)"
-case "$out" in
-    bin=/opt/zapret2/nfq2/nfqws2|bin=/opt/zapret2/nfq/nfqws2|bin=/opt/zapret2/nfqws2|bin=/usr/bin/nfqws2)
-        pass=$((pass + 1)) ;;
-    *) fail_test "nfqws_bin not resolved from the provider candidate list: $out" ;;
-esac
+assert_match "zapret keeps its kind" 'kind=zapret' "$out"
+assert_match "strategy names the opts file" 'strategy=yes' "$out"
+assert_match "nfqws_bin must not be written" 'has_bin=false' "$out"
+if printf '%s' "$out" | grep -q 'nfqws_bin='; then
+    fail_test "nfqws_bin leaked into the spec; it is not a v2 key and rejects the spec"
+fi
 
-# The stat checks in resolved_zapret_bin used to be dead code: the provider takes
-# its path from a constant and never returns empty, so the candidate list was
-# never reached. Verified on a router with only zapret2 installed - a `zapret`
-# (v1) section put /opt/zapret/nfq/nfqws into the spec, a file that does not
-# exist, and steer-nfqws could never start that output.
-printf '%s\n' '--- a zapret v1 section on a zapret2-only device ---'
-v1_out="$(ZAPRET_NFQWS_BIN="$WORK_DIR/no-such-nfqws" run_uc '
+# Losing that key is not free: a zapret2 Lua strategy depends on the resolved
+# binary and v2 cannot express it. It has to be reported so the switch layer
+# parks the section, rather than left to look configured.
+out="$(run_uc '
+let g = require("steer.generator");
+let sections = [ { ".name": "z2b", ".type": "section", "action": "zapret2", "enabled": "1", "label": "Z2B",
+    "user_domains": [ "youtube.com" ] } ];
+g.set_list_materializer(function(section, catalog) {
+    return { domains: "/tmp/z2b.domains", prefixes: "" };
+});
+let spec = g.build_spec_v2(sections, {});
+' 2>&1)"
+printf '%s' "$out" | grep -qi 'zapret2' \
+    || fail_test "a zapret2 section whose Lua strategy cannot be expressed in v2 is not reported at all: $out"
+
+# A zapret v1 section is fine: it needs no Lua, so it needs no nfqws_bin.
+out="$(run_uc '
 let g = require("steer.generator");
 let sections = [ { ".name": "z1", ".type": "section", "action": "zapret", "enabled": "1", "label": "Z1",
     "user_domains": [ "example.com" ] } ];
 g.set_list_materializer(function(section, catalog) {
     return { domains: "/tmp/z1.domains", prefixes: "" };
 });
-let spec = g.build_spec(sections, {});
-print("bin=" + spec.outputs.Z1.nfqws_bin + "\n");
+let spec = g.build_spec_v2(sections, {});
+print("kind=" + spec.outputs.Z1.kind + "\n");
+print("has_bin=" + (spec.outputs.Z1.nfqws_bin != null) + "\n");
 ' 2>&1)"
-
-# A wrong-version binary must never be substituted: v1 opts are not valid for
-# nfqws2. With no v1 binary anywhere, the configured path goes back into the spec
-# and the provider check reports it, rather than silently running nfqws2.
-case "$v1_out" in
-    *nfqws2*) fail_test "a zapret v1 section was pointed at an nfqws2 binary: $v1_out" ;;
-    bin=*)   pass=$((pass + 1)) ;;
-    *)       fail_test "zapret v1 nfqws_bin not resolved at all: $v1_out" ;;
-esac
-
-# With a candidate present, the candidate wins over the missing configured path.
-# Needs to create a file under /opt, so it only asserts where that is possible
-# (the CI container runs as root) and is skipped otherwise.
-if mkdir -p /opt/zapret/nfq 2>/dev/null && : > /opt/zapret/nfq/nfqws 2>/dev/null; then
-    v1_cand="$(ZAPRET_NFQWS_BIN="$WORK_DIR/no-such-nfqws" run_uc '
-    let g = require("steer.generator");
-    let sections = [ { ".name": "z1", ".type": "section", "action": "zapret", "enabled": "1", "label": "Z1",
-        "user_domains": [ "example.com" ] } ];
-    g.set_list_materializer(function(section, catalog) {
-        return { domains: "/tmp/z1.domains", prefixes: "" };
-    });
-    let spec = g.build_spec(sections, {});
-    print("bin=" + spec.outputs.Z1.nfqws_bin + "\n");
-    ' 2>&1)"
-    if [ "$v1_cand" = "bin=/opt/zapret/nfq/nfqws" ]; then
-        pass=$((pass + 1))
-    else
-        fail_test "an existing candidate was not preferred over a missing configured path: $v1_cand"
-    fi
-    rm -f /opt/zapret/nfq/nfqws
-    rmdir /opt/zapret/nfq /opt/zapret 2>/dev/null || true
-else
-    printf '%s\n' '    (skipped: cannot create /opt/zapret/nfq/nfqws here)'
-fi
+assert_match "zapret v1 section still emitted" 'kind=zapret' "$out"
+assert_match "no nfqws_bin for a plain zapret either" 'has_bin=false' "$out"
 
 printf '%s\n' '--- steer contract facts ---'
 out="$(run_uc '
@@ -645,7 +639,9 @@ pass=$((pass + 1))
 printf '%s\n' '--- switch goes through the full lifecycle ---'
 # switch_engine must restart the service (lifecycle handles the dataplane
 # cleanup, spec generation and per-engine start), not stop/start engines inline.
-ENGINE_RUNTIME_UC="$TACHYON_LIB/service/engine_runtime.uc"
+# The implementation lives in the library; service/engine_runtime.uc is only the
+# CLI shim that dispatches to it, so the function bodies are read from the lib.
+ENGINE_RUNTIME_UC="$TACHYON_LIB/service/engine_runtime_lib.uc"
 switch_body="$(sed -n '/^function switch_engine/,/^}/p' "$ENGINE_RUNTIME_UC")"
 grep -Fq 'restart_tachyon_service' <<<"$switch_body" ||
     fail_test "switch_engine must restart the service via the lifecycle"

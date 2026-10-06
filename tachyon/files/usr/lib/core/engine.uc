@@ -25,6 +25,7 @@ let uci_core = require("core.uci");
 
 let as_string = common.as_string;
 let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
 let file_exists = common.file_exists;
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -40,10 +41,15 @@ const OPT_ENGINE = "engine";
 const OPT_ENGINE_PREVIOUS = "engine_previous";
 
 // Engine executable / service locations.
+// The steer binary is overridable so the test suite can exercise the paths that
+// depend on what is installed - most importantly the spec v2 version gate, which
+// correctly refuses to write a spec an older kernel would reject and therefore
+// cannot be reached on a machine without steer.
+const ENGINE_STEER_BINARY = getenv("TACHYON_STEER_BINARY") || "/usr/sbin/steer";
 const ENGINE_BINARIES = {
     "sing-box": "/usr/bin/sing-box",
-    "steer": "/usr/sbin/steer",
-    "steer-extended": "/usr/sbin/steer",
+    "steer": ENGINE_STEER_BINARY,
+    "steer-extended": ENGINE_STEER_BINARY,
 };
 
 const ENGINE_INIT = {
@@ -69,7 +75,10 @@ const ENGINE_CONFIG = {
 // steer contract facts (docs/contract-v1.md of xyzmean/steer, as used by the
 // splify2 control layer). Kept here so Tachyon writes exactly what the engine
 // expects and does not invent a second data model.
-const STEER_SPEC_FILE = "/etc/steer/spec.json";
+// Overridable so the test suite can point it at a scratch directory: the spec
+// write path is where flash wear is decided, and that has to be testable without
+// root and without a real /etc.
+const STEER_SPEC_FILE = getenv("TACHYON_STEER_SPEC_FILE") || "/etc/steer/spec.json";
 const STEER_SUB_FILE = "/etc/steer/sub.txt";
 // Per-section subscription files live here (one sub file per vless output so
 // two subscription sections never overwrite each other's node lists). The
@@ -98,6 +107,33 @@ const STEER_REQUIRED_COMMANDS = [
 // keep.d paths that must survive a firmware upgrade. spec.json and sub.txt are
 // not declared config files by the package itself, so Tachyon ships its own
 // keep.d entry to avoid the "looks configured, no rules" failure mode.
+// steer reads one spec, and refuses the directory outright when it finds two:
+// a leftover spec.yaml beside spec.json is a rejection, not resolved by
+// precedence - only the writer knows which of the two is real. Tachyon owns
+// spec.json, so any other spec name in that directory is stale by definition.
+const STEER_SPEC_ALTERNATIVES = [ "spec.yaml" ];
+
+function remove_stale_steer_specs(spec_dir) {
+    spec_dir = as_string(spec_dir);
+    let removed = [];
+    for (let name in STEER_SPEC_ALTERNATIVES) {
+        let stale = spec_dir + "/" + name;
+        if (!common.file_exists(stale))
+            continue;
+        let gone = false;
+        try {
+            fs.unlink(stale);
+            gone = !common.file_exists(stale);
+        }
+        catch (e) {
+            gone = false;
+        }
+        if (gone)
+            push(removed, stale);
+    }
+    return removed;
+}
+
 const STEER_KEEP_PATHS = [
     STEER_SPEC_FILE,
     STEER_SUB_FILE,
@@ -141,6 +177,8 @@ const CAPABILITIES = {
         "inbound.mixed",
         "outbound.extended_variants",
         "outbound.vless_reality",
+        "outbound.zapret",
+        "outbound.zapret_lua",
         "obs.custom_service_script",
     ],
     "steer": [
@@ -155,6 +193,9 @@ const CAPABILITIES = {
         "list_memory_fit",
         "outbound.interface",
         "outbound.direct",
+        // v2 carries a zapret strategy as `kind: zapret` + `strategy`. What it
+        // cannot carry is the Lua binary behind zapret2 - that key is gone.
+        "outbound.zapret",
         "obs.wireguard_over_tcp",
         "dns.upstream",
     ],
@@ -171,6 +212,7 @@ const CAPABILITIES = {
         "outbound.interface",
         "outbound.direct",
         "outbound.vless_reality",
+        "outbound.zapret",
         "obs.wireguard_over_tcp",
         "tunnel.tun",
         "dns.upstream",
@@ -272,6 +314,35 @@ function steer_has_extended_build() {
 // Whether the installed steer understands every subcommand we drive it with.
 // A missing command means the engine is older than our contract; callers can
 // refuse to switch and tell the user to update instead of failing at apply.
+// Spec v2 is a different document, not a newer number of the same one, and only
+// steer 2.0 and newer read it. steer_contract_ready() is a different question -
+// it asks whether every subcommand Tachyon drives exists - and on its own it
+// happily passes a 1.x build that would reject the spec outright. A v1-era spec
+// is still accepted by a 2.x kernel, so "the old one works" is not a reason to
+// let an old kernel near a new one: the write is refused instead.
+const STEER_SPEC_V2_MIN = [ 2, 0 ];
+
+function steer_version_parts() {
+    if (!binary_present(ENGINE_STEER))
+        return null;
+    let text = as_string(command_output_from_args([ ENGINE_BINARIES[ENGINE_STEER], "version" ]) || "");
+    let matched = match(text, /([0-9]+)\.([0-9]+)\.([0-9]+)/);
+    if (matched == null)
+        return null;
+    return [ int(matched[1], 10), int(matched[2], 10), int(matched[3], 10) ];
+}
+
+// null when the version cannot be read at all. An unreadable version is not
+// treated as a pass: the caller refuses to write rather than guessing.
+function steer_supports_spec_v2() {
+    let parts = steer_version_parts();
+    if (parts == null)
+        return false;
+    if (parts[0] != STEER_SPEC_V2_MIN[0])
+        return parts[0] > STEER_SPEC_V2_MIN[0];
+    return parts[1] >= STEER_SPEC_V2_MIN[1];
+}
+
 function steer_contract_ready() {
     if (!binary_present(ENGINE_STEER))
         return false;
@@ -418,6 +489,8 @@ function module_exports() {
         init_script_present,
         steer_has_extended_build,
         steer_contract_ready,
+        steer_supports_spec_v2,
+        steer_version_parts,
         detect,
         detect_all,
         normalize_engine,
@@ -425,6 +498,8 @@ function module_exports() {
         get_previous,
         plan_switch,
         STEER_SPEC_FILE,
+        STEER_SPEC_ALTERNATIVES,
+        remove_stale_steer_specs,
         STEER_SUB_FILE,
         STEER_LISTS_DIR,
         STEER_CUSTOM_LISTS_DIR,
@@ -439,8 +514,4 @@ function module_exports() {
     };
 }
 
-if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
-    return module_exports();
-
-print("Usage: core/engine.uc (library module, no CLI)\n");
-exit(1);
+return module_exports();
