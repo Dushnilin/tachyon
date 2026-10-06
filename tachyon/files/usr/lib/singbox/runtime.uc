@@ -206,6 +206,35 @@ function sing_box_version_is_lx(value) {
     return s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0;
 }
 
+// Tachyon's own core, a from-scratch implementation of the sing-box schema rather
+// than a fork of the Go binary. It identifies itself in the version string with a
+// "-tachyon.<n>" suffix, and that suffix is the only thing that distinguishes it:
+// it prints no build tags, so every capability that used to be probed from the
+// banner has to answer from this instead.
+//
+// Two consequences worth keeping straight, because they pull in opposite
+// directions:
+//
+//   - Its own version is NOT a sing-box version. `0.0.1-tachyon.0` is not older
+//     than sing-box 1.12, it is a different project that never had a release
+//     number in sing-box's series. Comparing the two numerically is meaningless
+//     and used to fail the minimum-version gate outright.
+//   - The suffix carries no schema level. Nothing in it says which sing-box
+//     release it tracks, so no field may be enabled on the strength of it.
+function sing_box_version_is_tachyon_core(value) {
+    return index(as_string(value), "-tachyon.") >= 0;
+}
+
+function sing_box_marker_is_tachyon_core() {
+    return sing_box_marker_is("tachyon-core");
+}
+
+// True for any build that is neither upstream sing-box nor a named fork, so the
+// version gate can stop treating its number as comparable.
+function sing_box_version_is_foreign_core(version) {
+    return sing_box_version_is_tachyon_core(version);
+}
+
 // Answers "which variant is installed *right now*", and for that the marker file
 // is the authority - the binary of an extended build does not always name itself.
 //
@@ -273,6 +302,12 @@ function sing_box_supports_xhttp(version, version_output) {
         return true;
     if (sing_box_is_extended(version) || sing_box_is_lx(version))
         return true;
+    // The core implements xhttp but prints no with_xhttp build tag, so the probe
+    // below answers "no" and every xhttp node is dropped from a subscription
+    // without a word. Verified against the core's own transport tests; the gap
+    // is in the banner, not in the core.
+    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core())
+        return true;
     if (version_output != "")
         return output_has_build_tag(version_output, "with_xhttp");
     return output_has_build_tag(sing_box_version_output(), "with_xhttp");
@@ -286,6 +321,14 @@ function sing_box_supports_cert_pin(version) {
     // excluded by name here, on the assumption that it would never gain the
     // field - it tracks upstream, so that would have cost lx the feature for
     // good once it passed 1.15 (issue #79).
+    //
+    // The core is excluded for the opposite reason and it must stay excluded: its
+    // TLS field allowlist has certificate_public_key_sha256 and not
+    // certificate_sha256. Enabling this by version would hand it a field it
+    // rejects, so pinning is dropped rather than enabled. The generator already
+    // warns when it strips the field.
+    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core())
+        return false;
     if (version == "" && command_exists("sing-box")) {
         if (sing_box_marker_is("extended-compressed"))
             version = sing_box_version_state();
@@ -343,6 +386,10 @@ function sing_box_variant() {
         return "not-installed";
 
     version = sing_box_version();
+    // Before the upstream forks: this binary claims the schema, it is not a fork
+    // of the Go one, so it must not be reported as "stable".
+    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core())
+        return "tachyon-core";
     if (sing_box_is_lx(version))
         return "lx";
     if (sing_box_is_extended(version))
@@ -1055,6 +1102,36 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             }
         }
         else {
+            // Nested TLS container fields, e.g. outbounds[N].tls.reality.support_x25519mlkem768.
+            // The other patterns above all match a single top-level key, so this
+            // class of error used to reach the bottom of the loop with nothing
+            // stripped: the check failed, the retry gave up, and one node with an
+            // unknown REALITY field took the whole proxy down instead of dropping
+            // that node. The dotted path is captured whole and deleted at each
+            // level, the same way the endpoints path below already does for
+            // `amnezia`.
+            let tls_field_m = match(check_result.reason, /(?:outbounds|inbounds)\[\d+\]\.tls\.(\w+)\.(\w+): json: unknown field/);
+            if (tls_field_m) {
+                let container = tls_field_m[1];
+                let unknown_field = tls_field_m[2];
+                log_message("Installed sing-box does not support tls." + container + "." + unknown_field + " (added in a later release); dropping it and retrying", "warn");
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object") {
+                    for (let list in [ cfg.outbounds, cfg.inbounds ]) {
+                        if (type(list) != "array")
+                            continue;
+                        for (let item in list) {
+                            if (type(item) != "object" || type(item.tls) != "object")
+                                continue;
+                            if (type(item.tls[container]) == "object")
+                                delete item.tls[container][unknown_field];
+                        }
+                    }
+                    write_file(temp_config, sprintf("%J", cfg));
+                    stripped = true;
+                }
+            }
             let ep_field_m = match(check_result.reason, /endpoints\[\d+\]\.(\w+): json: unknown field/);
             let out_field_m = match(check_result.reason, /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
             if (ep_field_m) {
@@ -1289,6 +1366,10 @@ else if (mode == "version-looks-extended")
     exit(sing_box_version_looks_extended(ARGV[1]) ? 0 : 1);
 else if (mode == "is-lx")
     exit(sing_box_is_lx(ARGV[1]) ? 0 : 1);
+else if (mode == "is-foreign-core")
+    exit(sing_box_version_is_foreign_core(ARGV[1]) ? 0 : 1);
+else if (mode == "supports-xhttp")
+    exit(sing_box_supports_xhttp(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "is-tiny")
     exit(sing_box_is_tiny(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "supports-tailscale")

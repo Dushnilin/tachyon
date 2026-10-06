@@ -2243,6 +2243,14 @@ function sing_box_version_is_lx(version) {
     return s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0;
 }
 
+// Kept identical to the copy in singbox/runtime.uc, like version_compare above -
+// this module runs before runtime is loaded. Its "-tachyon.<n>" suffix marks a
+// build that implements the schema from scratch rather than being a fork of the
+// Go binary, and whose version number is therefore not comparable with sing-box's.
+function sing_box_version_is_foreign_core(version) {
+    return index(as_string(version), "-tachyon.") >= 0;
+}
+
 function sing_box_is_extended(ctx, version) {
     if (as_string(version) == "" && command_exists("sing-box") &&
         (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
@@ -2600,7 +2608,14 @@ function check_runtime_requirements() {
         if (!command_exists("sing-box") || !(sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
             fail_requirement("Package 'sing-box' is not installed. Aborted.", "error");
     }
-    else if (!version_at_least(sing_box_version, ctx.sing_box_required_version)) {
+    else if (!sing_box_version_is_foreign_core(sing_box_version) &&
+        !version_at_least(sing_box_version, ctx.sing_box_required_version)) {
+        // The minimum is sing-box's own release floor, so it only means anything
+        // for a build in sing-box's series. Tachyon's core reports
+        // "0.0.1-tachyon.0": its number is from a different series and was never
+        // comparable, and refusing to start on it was refusing for no reason.
+        // Its schema compatibility is enforced by `sing-box check` on the
+        // generated config, which is the gate that can actually tell.
         fail_requirement("Package 'sing-box' version (" + sing_box_version + ") is lower than the required minimum (" + ctx.sing_box_required_version + "). Update sing-box: opkg update && opkg remove sing-box && opkg install sing-box. Aborted.", "error");
     }
 
