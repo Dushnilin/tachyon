@@ -139,10 +139,17 @@ function repair_unknown_outbound_field(config_file, reason) {
     let cfg = json(cfg_text);
     if (type(cfg) != "object") return false;
 
-    let target_list = out_m ? cfg.outbounds : (ep_m ? cfg.endpoints : cfg.inbounds);
-    if (type(target_list) != "array" || index >= length(target_list)) return false;
-
-    let target = target_list[index];
+    let target = null;
+    if (out_m) {
+        if (type(cfg.outbounds) != "array" || index >= length(cfg.outbounds)) return false;
+        target = cfg.outbounds[index];
+    } else if (ep_m) {
+        if (type(cfg.endpoints) != "array" || index >= length(cfg.endpoints)) return false;
+        target = cfg.endpoints[index];
+    } else if (inb_m) {
+        if (type(cfg.inbounds) != "array" || index >= length(cfg.inbounds)) return false;
+        target = cfg.inbounds[index];
+    }
     if (type(target) != "object") return false;
 
     let parts = split(field, ".");
