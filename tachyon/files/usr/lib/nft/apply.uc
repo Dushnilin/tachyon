@@ -2166,11 +2166,11 @@ function nft_add_community_subnet_file_to_family_sets(path, table, ipv4_set, ipv
     // ip_port sets were already passed in and only the UDP branch used them, so
     // the section carried voice and dropped media. Protocol-specific on purpose -
     // voice is UDP, media is TCP, and merging them puts TCP ports in a UDP set.
-    if (as_string(service) == "discord" && ip_port_v4) {
+    if (as_string(service) == "discord" && ip_ports_v4) {
         let cf = nft_community_subnet_lines(path, service, "only_cloudflare");
         if (length(cf) > 0) {
             let media_ports = core_ip.DISCORD_MEDIA_PORTS_NFT || "2053, 2083, 2087, 2096, 8443";
-            let cf_media = nft_add_values_to_family_sets(cf, table, ip_port_v4, ip_port_v6, "ip-port-from-ip", media_ports, chunk_size_text);
+            let cf_media = nft_add_values_to_family_sets(cf, table, ip_ports_v4, ip_ports_v6, "ip-port-from-ip", media_ports, chunk_size_text);
             ok = ok && cf_media;
         }
     }
