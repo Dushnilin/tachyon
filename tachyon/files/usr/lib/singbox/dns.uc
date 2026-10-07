@@ -189,7 +189,27 @@ const KNOWN_DNS_SERVER_NAMES = {
     "185.228.169.9": "doh.cleanbrowsing.org"
 };
 
-function server_from_options(tag_name, dns_type, dns_server, detour) {
+function apply_mtls_options(result, server, mtls_settings) {
+    if (mtls_settings == null || !bool_option(mtls_settings, "dns_mtls_enabled", false))
+        return;
+    let mtls_host = option(mtls_settings, "dns_mtls_host", "");
+    if (mtls_host != "" && server != mtls_host && (!result.tls || result.tls.server_name != mtls_host))
+        return;
+    let client_cert = option(mtls_settings, "dns_mtls_client_certificate", "");
+    let client_key = option(mtls_settings, "dns_mtls_client_key", "");
+    if (client_cert != "" && client_key != "") {
+        if (!result.tls) result.tls = { enabled: true };
+        result.tls.client_certificate_path = client_cert;
+        result.tls.client_key_path = client_key;
+    }
+    let ca = option(mtls_settings, "dns_mtls_ca", option(mtls_settings, "dns_mtls_certificate", ""));
+    if (ca != "") {
+        if (!result.tls) result.tls = { enabled: true };
+        result.tls.certificate_path = ca;
+    }
+}
+
+function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settings) {
     let server = runtime_url.host(dns_server);
     let port = runtime_url.port(dns_server);
     let result = {
@@ -211,6 +231,7 @@ function server_from_options(tag_name, dns_type, dns_server, detour) {
             result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
         else if (!core_ip.valid_ip(server))
             result.tls.server_name = server;
+        apply_mtls_options(result, server, mtls_settings);
     }
     else if (dns_type == "doh") {
         result.type = "https";
@@ -222,6 +243,7 @@ function server_from_options(tag_name, dns_type, dns_server, detour) {
             result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
         else if (!core_ip.valid_ip(server))
             result.tls.server_name = server;
+        apply_mtls_options(result, server, mtls_settings);
     }
     else if (dns_type == "doq") {
         result.type = "quic";
@@ -231,6 +253,7 @@ function server_from_options(tag_name, dns_type, dns_server, detour) {
             result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
         else if (!core_ip.valid_ip(server))
             result.tls.server_name = server;
+        apply_mtls_options(result, server, mtls_settings);
     }
     else {
         return { unsupported: "unsupported dns_type " + dns_type };
@@ -266,7 +289,8 @@ function server_config(settings, override_state) {
         runtime_constants.DNS_SERVER_TAG,
         dns_type,
         active.main,
-        detour
+        detour,
+        settings
     );
 
     if (bool_option(settings, "dns_doq_ech", false)) {
@@ -320,13 +344,14 @@ function add_active_health_inbound(result) {
     push(result.sniff_inbounds, inbound_tag);
 }
 
-function add_health_candidate(result, kind, index_value, server, override_dns_type, override_detour) {
+function add_health_candidate(result, kind, index_value, server, override_dns_type, override_detour, settings) {
     let server_tag = health_tag(kind, index_value, "server");
     let inbound_tag = health_tag(kind, index_value, "in");
     let dns_type = override_dns_type || result.state.dns_type;
     let detour = override_detour != null ? override_detour : result.state.dns_detour;
+    let active_settings = settings || result.settings;
     let dns_server = kind == "main"
-        ? server_from_options(server_tag, dns_type, server, detour)
+        ? server_from_options(server_tag, dns_type, server, detour, active_settings)
         : bootstrap_server(server_tag, server);
 
     if (dns_server.unsupported) {
@@ -357,6 +382,7 @@ function config(settings, override_state) {
         return { unsupported: main.unsupported };
 
     let result = {
+        settings,
         state,
         servers: [ bootstrap_config(settings, state), main ],
         inbounds: [],
@@ -381,12 +407,12 @@ function config(settings, override_state) {
             for (let i = 0; i < length(state.main_servers); i++) {
                 // Health probes always use direct connection (no detour) to test DNS server reachability
                 let dns_type = is_wan_fallback_index(settings, i) ? "udp" : state.dns_type;
-                add_health_candidate(result, "main", i, state.main_servers[i], dns_type, "");
+                add_health_candidate(result, "main", i, state.main_servers[i], dns_type, "", settings);
             }
 
         if (length(state.bootstrap_servers) > 0)
             for (let i = 0; i < length(state.bootstrap_servers); i++)
-                add_health_candidate(result, "bootstrap", i, state.bootstrap_servers[i]);
+                add_health_candidate(result, "bootstrap", i, state.bootstrap_servers[i], null, null, settings);
     }
 
     return result;
