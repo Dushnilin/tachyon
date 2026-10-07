@@ -122,15 +122,14 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
 // Reports false once no further repair applies, so the caller stops instead of
 // rewriting the same file until it gives up.
 function repair_unknown_outbound_field(config_file, reason) {
-    // The offending field is usually nested, e.g.
-    //   outbounds[2].tls.reality.support_x25519mlkem768: json: unknown field
-    // The path is a dotted run, so capture all of it and walk down to the leaf.
-    let m = match(as_string(reason), /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let out_m = match(as_string(reason), /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let ep_m = match(as_string(reason), /endpoints\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let inb_m = match(as_string(reason), /inbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+
+    let m = out_m || ep_m || inb_m;
     if (!m || !m[1] || !m[2]) return false;
 
     let field = m[2];
-    // int(x, base) is a base, not a default: int("23", -1) is 0, so the old
-    // int(m[1], -1) form silently pointed every repair at outbound 0.
     let index = int(m[1]);
     if (index < 0) return false;
 
@@ -138,10 +137,12 @@ function repair_unknown_outbound_field(config_file, reason) {
     if (length(cfg_text) == 0) return false;
 
     let cfg = json(cfg_text);
-    if (type(cfg) != "object" || type(cfg.outbounds) != "array") return false;
-    if (index >= length(cfg.outbounds)) return false;
+    if (type(cfg) != "object") return false;
 
-    let target = cfg.outbounds[index];
+    let target_list = out_m ? cfg.outbounds : (ep_m ? cfg.endpoints : cfg.inbounds);
+    if (type(target_list) != "array" || index >= length(target_list)) return false;
+
+    let target = target_list[index];
     if (type(target) != "object") return false;
 
     let parts = split(field, ".");
@@ -153,19 +154,22 @@ function repair_unknown_outbound_field(config_file, reason) {
 
     if (type(target) != "object" || target[leaf] == null) return false;
 
+    if (ep_m && leaf == "amnezia" && type(target.amnezia) == "object") {
+        for (let k, v in target.amnezia) {
+            if (target[k] == null)
+                target[k] = v;
+        }
+    }
+
     delete target[leaf];
     fs.writefile(config_file, sprintf("%J", cfg));
     return true;
 }
 
-function check_sing_box_config_with_binary(binary, config_path, library_dir) {
+function check_sing_box_config_with_binary(binary, config_path, library_dir, target_variant) {
     binary = as_string(binary);
     if (binary == "" || !helpers.file_exists(binary))
         return { ok: false, reason: "sing-box binary not found at " + binary };
-
-    config_path = as_string(config_path || "/etc/sing-box/config.json");
-    if (!helpers.file_exists(config_path) || !helpers.file_nonempty(config_path))
-        return { ok: true };
 
     helpers.init_tmp_dir();
     let err_file = helpers.make_tmp_file("sb-chk");
@@ -185,35 +189,64 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
         env_map.LD_LIBRARY_PATH = lib_path;
     }
 
-    let check_cmd = helpers.command_env(env_map) + " " +
-        common.command_from_args([ binary, "-c", config_path, "check" ]) +
-        " >" + common.shell_quote(err_file) + " 2>&1";
-    let status = common.command_status(check_cmd);
-    if ((status == 247 || status == 137) && fs.stat("/proc/sys/vm/drop_caches") != null) {
-        system("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null");
-        env_map.GOGC = "15";
-        check_cmd = helpers.command_env(env_map) + " " +
-            common.command_from_args([ binary, "-c", config_path, "check" ]) +
-            " >" + common.shell_quote(err_file) + " 2>&1";
-        status = common.command_status(check_cmd);
+    let ver_out = trim(common.command_output_from_args([ binary, "version" ]));
+    let ver_str = common.parse_sing_box_version(ver_out);
+
+    let active_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let active_variant = trim(fs.readfile(active_variant_file) || "");
+    let target_var = as_string(target_variant || "");
+    if (target_var == "") {
+        if (index(ver_str, "-lx") >= 0)
+            target_var = "lx";
+        else if (index(ver_str, "extended") >= 0)
+            target_var = "extended";
+        else
+            target_var = active_variant != "" ? active_variant : "stable";
     }
 
-    if (status == 0) {
-        helpers.remove_file(err_file);
-        return { ok: true };
+    let is_variant_switch = (target_var != "" && active_variant != "" && target_var != active_variant);
+
+    config_path = as_string(config_path || "/etc/sing-box/config.json");
+
+    // When changing core/variant, the existing config on disk was built for the
+    // old variant/core and may contain incompatible options (e.g. endpoints[0].amnezia).
+    // Configs must be regenerated for the target variant and checked only after regeneration.
+    if (!is_variant_switch && helpers.file_exists(config_path) && helpers.file_nonempty(config_path)) {
+        let check_cmd = helpers.command_env(env_map) + " " +
+            common.command_from_args([ binary, "-c", config_path, "check" ]) +
+            " >" + common.shell_quote(err_file) + " 2>&1";
+        let status = common.command_status(check_cmd);
+        if ((status == 247 || status == 137) && fs.stat("/proc/sys/vm/drop_caches") != null) {
+            system("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null");
+            env_map.GOGC = "15";
+            check_cmd = helpers.command_env(env_map) + " " +
+                common.command_from_args([ binary, "-c", config_path, "check" ]) +
+                " >" + common.shell_quote(err_file) + " 2>&1";
+            status = common.command_status(check_cmd);
+        }
+
+        if (status == 0) {
+            helpers.remove_file(err_file);
+            return { ok: true };
+        }
     }
 
     let candidate_cfg = helpers.make_tmp_file("sb-cand");
     let version_file = helpers.make_tmp_file("sb-cand-ver");
+    let variant_file = helpers.make_tmp_file("sb-cand-var");
+    let cand_status = -1;
     if (candidate_cfg != "" && version_file != "") {
-        let ver = trim(common.command_output_from_args([ binary, "version" ]));
-        // Shared parser: "\s" inside a character class is not whitespace in this
-        // engine, so this used to capture the version plus the rest of the banner.
-        let ver_str = common.parse_sing_box_version(ver);
         fs.writefile(version_file, ver_str + "\n");
+        if (variant_file != "")
+            fs.writefile(variant_file, target_var + "\n");
         let gen_env = {
-            SB_VERSION_STATE_FILE: version_file
+            SB_PREFLIGHT_BINARY: binary,
+            SB_VERSION_OVERRIDE: ver_str,
+            SB_VERSION_STATE_FILE: version_file,
+            RECORD_FLASH_WEAR: "0"
         };
+        if (variant_file != "")
+            gen_env.SB_VARIANT_STATE_FILE = variant_file;
         if (lib_path != "")
             gen_env.LD_LIBRARY_PATH = lib_path;
         let gen_cmd = helpers.command_env(gen_env) + " " +
@@ -222,14 +255,12 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
                 "generate-config", candidate_cfg, "127.0.0.1", "0", "0", ""
             ]) + " >/dev/null 2>&1";
         if (common.command_status(gen_cmd) == 0 && helpers.file_nonempty(candidate_cfg)) {
-            // Starts false on purpose: burning all four attempts without ever
-            // reaching a config the candidate accepts is a failure, not a pass.
             let repaired = false;
             for (let attempt = 0; attempt < 4; attempt++) {
                 let cand_check_cmd = helpers.command_env(env_map) + " " +
                     common.command_from_args([ binary, "-c", candidate_cfg, "check" ]) +
                     " >" + common.shell_quote(err_file) + " 2>&1";
-                let cand_status = common.command_status(cand_check_cmd);
+                cand_status = common.command_status(cand_check_cmd);
                 if (cand_status == 0) {
                     repaired = true;
                     break;
@@ -243,10 +274,11 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
                     repaired = false;
                     break;
                 }
-                helpers.updates_log("Pre-flight: the candidate sing-box rejected an outbound field, retrying without it", "warn");
+                helpers.updates_log("Pre-flight: the candidate sing-box rejected a field, retrying without it", "warn");
             }
             helpers.remove_file(candidate_cfg);
             helpers.remove_file(version_file);
+            if (variant_file != "") helpers.remove_file(variant_file);
             if (repaired) {
                 helpers.remove_file(err_file);
                 return { ok: true };
@@ -254,6 +286,7 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
         } else {
             helpers.remove_file(candidate_cfg);
             helpers.remove_file(version_file);
+            if (variant_file != "") helpers.remove_file(variant_file);
         }
     }
 
@@ -269,13 +302,13 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir) {
         }
     }
     if (reason == "") {
-        if (status == 247 || status == 137)
-            reason = "Out of memory (OOM killed, exit status " + status + ")";
+        if (cand_status == 247 || cand_status == 137)
+            reason = "Out of memory (OOM killed, exit status " + cand_status + ")";
         else
-            reason = "exit status " + status;
+            reason = "exit status " + cand_status;
     }
 
-    helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config " + config_path + ": " + reason, "error");
+    helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config for " + target_var + ": " + reason, "error");
     return { ok: false, reason: reason };
 }
 

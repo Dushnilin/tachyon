@@ -507,6 +507,12 @@ function detect_sing_box_version() {
     if (cached_sb_version != null)
         return cached_sb_version;
 
+    let override = getenv("SB_VERSION_OVERRIDE");
+    if (override != null && trim(override) != "") {
+        cached_sb_version = trim(override);
+        return cached_sb_version;
+    }
+
     let state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
 
     if (sing_box_live_version_probe_disabled()) {
@@ -527,7 +533,11 @@ function detect_sing_box_version() {
 // router is not left waiting. Two prefixes are tried because an earlier one may be
 // absent from PATH.
 try {
-    for (let base in [ "sing-box", "/usr/bin/sing-box" ]) {
+    let bases = [ "sing-box", "/usr/bin/sing-box" ];
+    let preflight = getenv("SB_PREFLIGHT_BINARY");
+    if (preflight && preflight != "")
+        unshift(bases, preflight);
+    for (let base in bases) {
         let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
         if (pipe) {
             let out = pipe.read("all");

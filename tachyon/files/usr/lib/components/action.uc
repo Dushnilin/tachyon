@@ -1180,7 +1180,7 @@ function extract_sing_box_version_from_output(output) { return cmp_ver.extract_s
 function read_sing_box_binary_version(binary, library_dir) { return cmp_ver.read_sing_box_binary_version(binary, library_dir); }
 function verify_binary_post_install(binary_path, expected_version, version_cmd_args) { return cmp_verify.verify_binary_post_install(binary_path, expected_version, version_cmd_args); }
 function validate_sing_box_extended_binary(binary, library_dir, compressed) { return cmp_verify.validate_sing_box_extended_binary(binary, library_dir, compressed); }
-function check_sing_box_config_with_binary(binary, config_path, library_dir) { return cmp_verify.check_sing_box_config_with_binary(binary, config_path, library_dir); }
+function check_sing_box_config_with_binary(binary, config_path, library_dir, target_variant) { return cmp_verify.check_sing_box_config_with_binary(binary, config_path, library_dir, target_variant); }
 
 
 function move_file_portable(source_path, target_path) {
@@ -1721,7 +1721,7 @@ function install_sing_box_extended_package(action, target_tag) {
         action_fail("sing_box", action, "Installed sing-box-extended package failed validation and previous sing-box variant could not be restored", current_version, latest_version);
     }
 
-    let config_check = check_sing_box_config_with_binary("/usr/bin/sing-box", "/etc/sing-box/config.json", "/usr/lib");
+    let config_check = check_sing_box_config_with_binary("/usr/bin/sing-box", "/etc/sing-box/config.json", "/usr/lib", "extended");
     if (!config_check.ok) {
         if (restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched))
             action_fail("sing_box", action, "Installed sing-box-extended package is incompatible with current configuration: " + config_check.reason + "; previous sing-box variant was restored", current_version, latest_version);
@@ -1826,7 +1826,8 @@ function install_sing_box_extended(action, compressed, target_tag) {
         action_fail("sing_box", action, "Downloaded " + label + " failed validation", current_version, latest_version);
     }
 
-    let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path());
+    let target_var = compressed ? "extended-compressed" : "extended";
+    let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path(), target_var);
     if (!config_check.ok) {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
@@ -2000,7 +2001,7 @@ function install_sing_box_lx(action, target_tag) {
         action_fail("sing_box", action, "Downloaded " + label + " failed validation", current_version, latest_version);
     }
 
-    let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path());
+    let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path(), "lx");
     if (!config_check.ok) {
         remove_file(tmp_binary);
         remove_file(tmp_cronet);
@@ -2215,7 +2216,8 @@ function install_package_sing_box(action, tiny) {
         fail_package_sing_box_install(action, tiny, "package was installed, but the active binary is still sing-box-extended", new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
 
-    let config_check = check_sing_box_config_with_binary("/usr/bin/sing-box", "/etc/sing-box/config.json", "");
+    let target_var = tiny ? "tiny" : "stable";
+    let config_check = check_sing_box_config_with_binary("/usr/bin/sing-box", "/etc/sing-box/config.json", "", target_var);
     if (!config_check.ok)
         fail_package_sing_box_install(action, tiny, "installed package is incompatible with current configuration: " + config_check.reason, new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
