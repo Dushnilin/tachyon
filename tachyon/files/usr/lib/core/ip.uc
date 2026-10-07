@@ -281,8 +281,8 @@ function is_cloudflare_shared_cidr(value) {
 // Discord documents and where allocations above 50100 do occur.
 const DISCORD_VOICE_PORTS_NFT = "443, 5000-5020, 3478, 19294-19344, 50000-65535";
 const DISCORD_VOICE_PORT_RANGES = [ "443:443", "5000:5020", "3478:3478", "19294:19344", "50000:65535" ];
-const DISCORD_MEDIA_PORTS_NFT = "2053, 2083, 2087, 2096, 8443";
-const DISCORD_MEDIA_PORT_RANGES = [ "2053:2053", "2083:2083", "2087:2087", "2096:2096", "8443:8443" ];
+const DISCORD_MEDIA_PORTS_NFT = "443, 1080, 2053, 2083, 2087, 2096, 8443";
+const DISCORD_MEDIA_PORT_RANGES = [ "443:443", "1080:1080", "2053:2053", "2083:2083", "2087:2087", "2096:2096", "8443:8443" ];
 const DEFAULT_DISCORD_VOICE_SUBNETS = [ "104.16.0.0/12", "162.158.0.0/15", "172.64.0.0/13", "2606:4700::/32" ];
 // Discord's edge is spread across 162.159.128.0/20: discord.com answers on
 // .128, .135, .136, .137 and .138. The old /21 stopped at .135.255, so roughly
