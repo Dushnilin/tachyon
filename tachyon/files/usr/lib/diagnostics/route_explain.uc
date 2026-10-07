@@ -212,7 +212,7 @@ function domain_matches_regex(target_domain, pattern) {
 
 const KNOWN_COMMUNITY_DOMAINS = {
     telegram: [ "t.me", "telegram.org", "telegram.me", "telesco.pe", "tdesktop.com", "telegra.ph" ],
-    discord: [ "discord.com", "discord.gg", "discordapp.com", "discordapp.net", "discordstatus.com", "watchanimeattheoffice.net" ],
+    discord: [ "discord.com", "discord.gg", "discordapp.com", "discordapp.net", "discordstatus.com", "watchanimeattheoffice.net", "discord-attachments-uploads-prd.storage.googleapis.com" ],
     meta: [ "facebook.com", "instagram.com", "whatsapp.com", "fbcdn.net", "cdninstagram.com", "meta.com", "threads.net", "messenger.com" ],
     twitter: [ "twitter.com", "x.com", "twimg.com", "t.co", "x.co" ],
     youtube: [ "youtube.com", "googlevideo.com", "ytimg.com", "youtu.be", "ggpht.com" ],

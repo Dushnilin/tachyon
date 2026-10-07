@@ -35,7 +35,8 @@ done
 cat >"$WORK_DIR/media_ports.uc" <<'UCODE'
 let ip = require("core.ip");
 
-let MEDIA_TCP = [ "2053", "2083", "2087", "2096", "8443" ];
+let MEDIA_TCP = [ "443", "1080", "2053", "2083", "2087", "2096", "8443" ];
+let MEDIA_ONLY_TCP = [ "1080", "2053", "2083", "2087", "2096", "8443" ];
 let errors = [];
 let note = function(m) { push(errors, m); };
 
@@ -55,7 +56,8 @@ for (let port in MEDIA_TCP) {
 }
 
 // ...and did not leak into the UDP voice sets, whose only consumer is network=udp.
-for (let port in MEDIA_TCP) {
+// 443 is valid in both (QUIC voice edge + HTTPS media); other media ports must not leak.
+for (let port in MEDIA_ONLY_TCP) {
     for (let range in (type(ip.DISCORD_VOICE_PORT_RANGES) == "array" ? ip.DISCORD_VOICE_PORT_RANGES : [])) {
         if (index(range, port + ":") == 0)
             note("TCP port " + port + " leaked into the UDP voice ranges");

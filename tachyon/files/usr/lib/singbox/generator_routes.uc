@@ -2205,7 +2205,7 @@ function add_combined_route_for_section(config, section) {
         let service = as_string(community);
         let ensured = ensure_community_ruleset(config, section_name, service);
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains")
+        if (ensured.kind == "domains" || service == "discord")
             push(dns_query_rule_set_tags, ensured.tag);
         else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
@@ -2220,21 +2220,23 @@ function add_combined_route_for_section(config, section) {
         }
     }
     for (let reference in connections.rule_sets(section)) {
-        let ensured = ensure_custom_ruleset(config, as_string(reference));
+        let ref_str = as_string(reference);
+        let ensured = ensure_custom_ruleset(config, ref_str);
         if (ensured == null)
             continue;
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains")
+        if (ensured.kind == "domains" || ref_str == "discord" || ref_str == "community-discord")
             push(dns_query_rule_set_tags, ensured.tag);
         else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
     }
     for (let reference in connections.rule_sets_with_subnets(section)) {
-        let ensured = ensure_custom_ruleset(config, as_string(reference));
+        let ref_str = as_string(reference);
+        let ensured = ensure_custom_ruleset(config, ref_str);
         if (ensured == null)
             continue;
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains")
+        if (ensured.kind == "domains" || ref_str == "discord" || ref_str == "community-discord")
             push(dns_query_rule_set_tags, ensured.tag);
         else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
