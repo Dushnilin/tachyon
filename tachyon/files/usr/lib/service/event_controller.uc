@@ -601,6 +601,27 @@ function controller(bus, opts) {
     }
     self.create_tick_context = create_tick_context;
     let last_smart_detect_poll = 0;
+    let cached_clash_api_info = null;
+    let cached_clash_cfg_mtime = 0;
+    function get_clash_api_info() {
+        let st = fs.stat("/etc/sing-box/config.json");
+        if (!st) return null;
+        if (cached_clash_api_info && cached_clash_cfg_mtime == st.mtime)
+            return cached_clash_api_info;
+        let cfg = common.read_json_file("/etc/sing-box/config.json");
+        let api = cfg?.experimental?.clash_api;
+        if (!api?.external_controller) {
+            cached_clash_api_info = null;
+            cached_clash_cfg_mtime = st.mtime;
+            return null;
+        }
+        let addr = replace(as_string(api.external_controller), /^0\.0\.0\.0:/, "127.0.0.1:");
+        addr = replace(addr, /^\[::\]:/, "[::1]:");
+        cached_clash_api_info = { addr: addr, secret: api.secret };
+        cached_clash_cfg_mtime = st.mtime;
+        return cached_clash_api_info;
+    }
+
     function probe_smart_detect_connections() {
         let ctx = current_tick_ctx || create_tick_context();
         if (!smart_plus.capture_enabled(ctx.settings) || ctx.is_paused ||
@@ -609,19 +630,17 @@ function controller(bus, opts) {
             last_smart_detect_poll = 0;
             return;
         }
-        if (ctx.now - last_smart_detect_poll < 5) return;
+        if (ctx.now - last_smart_detect_poll < 12) return;
         last_smart_detect_poll = ctx.now;
-        let cfg = common.read_json_file("/etc/sing-box/config.json");
-        let api = cfg?.experimental?.clash_api;
-        if (!api?.external_controller) return;
-        let addr = replace(as_string(api.external_controller), /^0\.0\.0\.0:/, "127.0.0.1:");
-        addr = replace(addr, /^\[::\]:/, "[::1]:");
+        let api = get_clash_api_info();
+        if (!api || !api.addr) return;
+        let addr = api.addr;
         let path = "/tmp/tachyon-smart-detect-connections.json";
         fs.writefile(path, "");
         fs.chmod(path, 0600);
         // Pass credentials on stdin, never in the shell command or a log line.
         let pipe = fs.popen(command_from_args([
-            "curl", "-s", "--max-time", "3", "--max-filesize", "2097152",
+            "curl", "-s", "--max-time", "3", "--max-filesize", "524288",
             "--config", "-", "--output", path
         ]) + " 2>/dev/null", "w");
         if (!pipe) { fs.unlink(path); return; }
@@ -631,10 +650,12 @@ function controller(bus, opts) {
         let status = pipe.close();
         let data = fs.readfile(path);
         fs.unlink(path);
-        if (status != 0) return;
+        if (status != 0 || !data) return;
         let snapshot = json(data);
+        data = null;
         if (type(snapshot?.connections) != "array") return;
         let result = smart_plus.stalled_candidates(state.smart_detect_connections, snapshot.connections, ctx.now);
+        snapshot = null;
         state.smart_detect_connections = result.tracked;
         for (let domain in keys(result.domains))
             bus.emit(EV.SMARTDETECT_CANDIDATE, { domain, scheme: result.domains[domain], priority: result.priorities[domain], reason: "download stalled" });

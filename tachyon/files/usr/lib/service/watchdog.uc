@@ -2147,20 +2147,38 @@ function smart_detect_direct_curl_argv() {
     }
 }
 
+let cached_observe_dns = null;
+let cached_observe_dns_mtime = 0;
+let cached_observe_dns_path = "";
 function smart_detect_observe_dns() {
     let ctx = controller.create_tick_context();
     let cfg_path = as_string(ctx.settings.config_path || "/etc/sing-box/config.json");
-    let runtime = common.read_json_file(cfg_path);
     let engine = "sing-box";
     try { engine = require("core.engine").get_active(); } catch (e) {}
     let is_singbox = engine == "sing-box";
     let state_path = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") ||
         (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/dns-failover.json";
     let failover = common.read_json_file(state_path) || {};
-    let dns = is_singbox ? runtime?.dns : {
-        type: ctx.settings.dns_type, servers: ctx.settings.dns_server,
-        bootstrap: ctx.settings.bootstrap_dns_server, detour: ctx.settings.dns_detour
-    };
+    let dns = null;
+    if (is_singbox) {
+        let st = (fs && type(fs.stat) == "function") ? fs.stat(cfg_path) : null;
+        if (st && cached_observe_dns_path == cfg_path && cached_observe_dns_mtime == st.mtime) {
+            dns = cached_observe_dns;
+        } else {
+            let runtime = common.read_json_file(cfg_path);
+            dns = runtime?.dns;
+            if (st) {
+                cached_observe_dns = dns;
+                cached_observe_dns_mtime = st.mtime;
+                cached_observe_dns_path = cfg_path;
+            }
+        }
+    } else {
+        dns = {
+            type: ctx.settings.dns_type, servers: ctx.settings.dns_server,
+            bootstrap: ctx.settings.bootstrap_dns_server, detour: ctx.settings.dns_detour
+        };
+    }
     let signature = dns ? sprintf("%J", {
         engine, pid: is_singbox ? ctx.singbox_pid : null, dns,
         main_index: failover.main_index, bootstrap_index: failover.bootstrap_index
@@ -2184,14 +2202,19 @@ function smart_detect_defer(domain, queued, seen, dns_error) {
 }
 
 // Plus uses a separate queue/seen file so Default keeps its upstream cooldown.
+let smart_plus_last_prune = 0;
 function smart_detect_plus_seen() {
     let path = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/smart_detect_plus_seen.json";
     if (smart_plus_seen == null) {
         smart_plus_seen = common.read_json_file(path) || common.read_json_file("/etc/tachyon/smart_detect_plus_seen.json") || {};
         if (type(smart_plus_seen) != "object") smart_plus_seen = {};
     }
-    for (let domain in keys(smart_plus_seen))
-        if (smart_plus_seen[domain] < time() - 300) delete smart_plus_seen[domain];
+    let now = time();
+    if (now - smart_plus_last_prune >= 30) {
+        smart_plus_last_prune = now;
+        for (let domain in keys(smart_plus_seen))
+            if (smart_plus_seen[domain] < now - 300) delete smart_plus_seen[domain];
+    }
     return smart_plus_seen;
 }
 function smart_detect_plus_save_seen() {
