@@ -681,7 +681,17 @@ function section_has_nft_port_only_matchers(section) {
 }
 
 function section_priority_needs_plain_ip_rules(section) {
-    return section_has_nft_ip_matchers(section) && section_rule_ports_csv(section) == "";
+    if (section_has_nft_ip_matchers(section) && section_rule_ports_csv(section) == "")
+        return true;
+
+    if (bool_option(section, "community_subnets", true)) {
+        for (let community in connections.community_lists(section)) {
+            if (as_string(community) == "discord")
+                return true;
+        }
+    }
+
+    return false;
 }
 
 function section_priority_needs_ip_port_rules(section) {
