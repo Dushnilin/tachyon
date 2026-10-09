@@ -1191,6 +1191,61 @@ function sing_box_extended_release_tag() {
     print(highest_release_tag(candidates), "\n");
 }
 
+// Tachyon's own core, packaged from github.com/Dushnilin/tachyon-core.
+//
+// The assets are named `tachyon-core-<arch>-<version>.tar.gz` with the binary
+// inside, so the arch is in the middle of the name rather than at the end the way
+// sing-box-lx spells it. That is why this cannot reuse the suffix matcher: an
+// arch-specific prefix is what has to be matched here.
+const TACHYON_CORE_RELEASE_REPO = "Dushnilin/tachyon-core";
+
+function tachyon_core_release_tag() {
+    let candidates = [];
+    for (let release in releases_array_or_wrapped(read_stdin_json())) {
+        if (type(release) != "object")
+            continue;
+        if (release.draft === true || release.prerelease === true)
+            continue;
+        let tag = as_string(release.tag_name || "");
+        let lowered = lc(tag);
+        // A core release carries no fork marker, so nothing else has to be
+        // excluded the way lx excludes alpha/beta/rc.
+        if (tag != "" && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc"))
+            push(candidates, tag);
+    }
+    print(highest_release_tag(candidates), "\n");
+}
+
+// `variant` is empty for the full build and "lite" for the reduced one. The lite
+// build is a separate artifact rather than a flag: it drops below 6 MiB against
+// 11.6 for the full binary, which is the whole point of it on a router with a
+// small flash, and it cannot be told apart from the full build after unpacking.
+function tachyon_core_asset_url(arch_suffix, variant) {
+    let release = object_or_empty(read_stdin_json());
+
+    arch_suffix = as_string(arch_suffix);
+    variant = as_string(variant || "");
+    if (arch_suffix == "")
+        exit(1);
+
+    let prefix = "tachyon-core";
+    if (variant != "")
+        prefix += "-" + variant;
+    prefix += "-" + arch_suffix + "-";
+
+    for (let asset in array_or_empty(release.assets)) {
+        if (type(asset) != "object")
+            continue;
+        let name = as_string(asset.name || "");
+        if (str_startswith(name, prefix) && str_endswith(name, ".tar.gz")) {
+            print(as_string(asset.browser_download_url || ""), "\n");
+            return;
+        }
+    }
+
+    exit(1);
+}
+
 function sing_box_lx_release_tag() {
     let candidates = [];
     for (let release in releases_array_or_wrapped(read_stdin_json())) {
@@ -1565,6 +1620,10 @@ else if (mode == "sing-box-extended-asset-url")
     sing_box_extended_asset_url(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "sing-box-lx-asset-url")
     sing_box_lx_asset_url(ARGV[1]);
+else if (mode == "tachyon-core-asset-url")
+    tachyon_core_asset_url(ARGV[1], ARGV[2]);
+else if (mode == "tachyon-core-release-tag")
+    tachyon_core_release_tag();
 else if (mode == "sing-box-extended-package-asset-url")
     sing_box_extended_package_asset_url(ARGV[1], ARGV[2]);
 else if (mode == "updates-opkg-package-installed")
