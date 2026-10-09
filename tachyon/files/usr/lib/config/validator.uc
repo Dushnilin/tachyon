@@ -216,9 +216,24 @@ function strip_leading_zeroes(value) {
     return substr(value, i);
 }
 
+// Kept identical to the copy in core/helpers.uc, including this. A version may
+// carry an optional "v" prefix, and comparing the raw strings lets the prefix
+// decide: "v" sorts above every digit, so "v0.0.1" compared as newer than
+// "1.12.0" and cleared every minimum-version gate.
+//
+// This copy exists because the validator runs before helpers is loaded. If one of
+// them changes, the other has to change with it - tests/version_compare.sh pins
+// the behaviour of both.
+function strip_version_prefix(value) {
+    value = trim(as_string(value));
+    if (substr(value, 0, 1) == "v" || substr(value, 0, 1) == "V")
+        return substr(value, 1);
+    return value;
+}
+
 function version_compare(lhs, rhs) {
-    lhs = as_string(lhs);
-    rhs = as_string(rhs);
+    lhs = strip_version_prefix(lhs);
+    rhs = strip_version_prefix(rhs);
 
     let li = 0, ri = 0;
     while (li < length(lhs) || ri < length(rhs)) {
@@ -2228,6 +2243,14 @@ function sing_box_version_is_lx(version) {
     return s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0;
 }
 
+// Kept identical to the copy in singbox/runtime.uc, like version_compare above -
+// this module runs before runtime is loaded. Its "-tachyon.<n>" suffix marks a
+// build that implements the schema from scratch rather than being a fork of the
+// Go binary, and whose version number is therefore not comparable with sing-box's.
+function sing_box_version_is_foreign_core(version) {
+    return index(as_string(version), "-tachyon.") >= 0;
+}
+
 function sing_box_is_extended(ctx, version) {
     if (as_string(version) == "" && command_exists("sing-box") &&
         (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
@@ -2588,7 +2611,14 @@ function check_runtime_requirements() {
         if (!command_exists("sing-box") || !(sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
             fail_requirement("Package 'sing-box' is not installed. Aborted.", "error");
     }
-    else if (!version_at_least(sing_box_version, ctx.sing_box_required_version)) {
+    else if (!sing_box_version_is_foreign_core(sing_box_version) &&
+        !version_at_least(sing_box_version, ctx.sing_box_required_version)) {
+        // The minimum is sing-box's own release floor, so it only means anything
+        // for a build in sing-box's series. Tachyon's core reports
+        // "0.0.1-tachyon.0": its number is from a different series and was never
+        // comparable, and refusing to start on it was refusing for no reason.
+        // Its schema compatibility is enforced by `sing-box check` on the
+        // generated config, which is the gate that can actually tell.
         fail_requirement("Package 'sing-box' version (" + sing_box_version + ") is lower than the required minimum (" + ctx.sing_box_required_version + "). Update sing-box: opkg update && opkg remove sing-box && opkg install sing-box. Aborted.", "error");
     }
 
