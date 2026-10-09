@@ -1423,6 +1423,80 @@ function set_sing_box_lx_release_from_json(release_json, allow_prerelease) {
     };
 }
 
+// Tachyon's own core, from Dushnilin/tachyon-core.
+//
+// Three things differ from the sing-box variants and each one is a trap if it is
+// copied from them: the archive holds a binary called tachyon-core-<arch>-<ver>,
+// not sing-box, so a member lookup for "sing-box" finds nothing; there is no
+// libcronet to extract; and the arch sits in the middle of the asset name, so the
+// suffix matcher the other variants use does not apply.
+const TACHYON_CORE_OWNER = "Dushnilin";
+const TACHYON_CORE_REPO = "tachyon-core";
+
+function tachyon_core_variant_label(variant) {
+    return as_string(variant || "") == "lite" ? "tachyon-core-lite" : "tachyon-core";
+}
+
+function set_tachyon_core_release_from_json(release_json, variant, allow_prerelease) {
+    if (as_string(release_json) == "")
+        return null;
+    let tag = trim(helper_output_input(release_json, "object-get-default", [ "tag_name", "" ]));
+    let lowered = lc(tag);
+    if (!allow_prerelease && (tag == "" || index(lowered, "alpha") >= 0 || index(lowered, "beta") >= 0 || index(lowered, "rc") >= 0))
+        return null;
+
+    let arch_suffix = resolve_sing_box_extended_arch_suffix();
+    if (arch_suffix == "")
+        return null;
+    let asset_url = trim(helper_output_input(release_json, "tachyon-core-asset-url", [ arch_suffix, as_string(variant || "") ]));
+    if (asset_url == "")
+        return null;
+
+    return {
+        tag,
+        release_url: trim(helper_output_input(release_json, "object-get-default", [ "html_url", "" ])),
+        asset_url,
+        asset_name: common.path_basename(asset_url)
+    };
+}
+
+function resolve_tachyon_core_release(variant, target_tag) {
+    let label = tachyon_core_variant_label(variant);
+
+    if (target_tag != null && target_tag != "") {
+        let release_json = fetch_github_release_by_tag_json(TACHYON_CORE_OWNER, TACHYON_CORE_REPO, target_tag);
+        let resolved = set_tachyon_core_release_from_json(release_json, variant, true);
+        if (resolved != null)
+            return resolved;
+
+        // No API answer: the asset name is derivable, so the download URL can be
+        // built directly. Better than refusing, and the download reports the real
+        // failure if the tag or the arch is wrong.
+        let arch_suffix = resolve_sing_box_extended_arch_suffix();
+        if (arch_suffix == "")
+            return null;
+        let tag_clean = replace(target_tag, /^v/, "");
+        let asset_name = label + "-" + arch_suffix + "-" + tag_clean + ".tar.gz";
+        return {
+            tag: target_tag,
+            release_url: "https://github.com/" + TACHYON_CORE_OWNER + "/" + TACHYON_CORE_REPO + "/releases/tag/" + target_tag,
+            asset_url: "https://github.com/" + TACHYON_CORE_OWNER + "/" + TACHYON_CORE_REPO + "/releases/download/" + target_tag + "/" + asset_name,
+            asset_name
+        };
+    }
+
+    let release_json = fetch_github_release_json(TACHYON_CORE_OWNER, TACHYON_CORE_REPO);
+    let resolved = set_tachyon_core_release_from_json(release_json, variant, false);
+    if (resolved != null)
+        return resolved;
+
+    let releases_json = fetch_github_releases_json(TACHYON_CORE_OWNER, TACHYON_CORE_REPO, "30");
+    let tag = trim(helper_output_input(releases_json, "tachyon-core-release-tag", []));
+    if (tag == "")
+        return null;
+    return resolve_tachyon_core_release(variant, tag);
+}
+
 function resolve_sing_box_lx_release(target_tag) {
     if (target_tag != null && target_tag != "") {
         let release_json = fetch_github_release_by_tag_json("Leadaxe", "sing-box-lx", target_tag);
@@ -1931,6 +2005,112 @@ function install_sing_box_extended(action, compressed, target_tag) {
     clear_version_caches();
     updates_log("Installed " + label + " " + (new_version != "" ? new_version : "unknown"));
     action_success("sing_box", action, label + " has been installed", new_version, latest_version, 1, "latest", release.release_url);
+}
+
+// A downloaded core has to be proven to be the core before it is put in place of
+// the running engine. The check is not "it printed something": a stock sing-box,
+// an lx build or a truncated download would all satisfy a bare exit code, and
+// installing one of those over the core would leave Tachyon generating a config
+// for a binary that is not there.
+function validate_tachyon_core_binary(binary, library_dir, variant) {
+    let version = versions.read_sing_box_binary_version(binary, library_dir || "");
+    if (version == "")
+        return "";
+    if (!sing_box_runtime_success("is-foreign-core", [ version ]))
+        return "";
+
+    let marker = tachyon_core_variant_label(variant);
+    updates_log("validated " + marker + " build " + version + " from " + binary, "info");
+    return version;
+}
+
+function install_tachyon_core(action, variant, target_tag) {
+    init_tmp_dir() || action_fail("sing_box", action, "Failed to create temporary directory");
+    let label = tachyon_core_variant_label(variant);
+    let current_version = sing_box_runtime_output("version", []);
+    let current_variant = sing_box_runtime_output("variant", []);
+    let previous_marker = sing_box_runtime_output("read-variant-marker", []);
+    let previous_version_state = sing_box_runtime_output("read-version-state", []);
+    let release = resolve_tachyon_core_release(variant, target_tag);
+    if (release == null)
+        action_fail("sing_box", action, "Failed to resolve " + label + " release", current_version);
+    let latest_version = normalize_sing_box_version(release.tag);
+
+    if (action == "check_update") {
+        if (current_version == "" || !sing_box_runtime_success("is-foreign-core", [ current_version ]) || !sing_box_runtime_success("marker-is", [ label ]))
+            action_success("sing_box", action, label + " is not installed", current_version, latest_version, 0, "", release.release_url);
+        else
+            check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
+    }
+
+    ensure_sing_box_dependencies();
+
+    let archive_file = cmp.tmp_dir_path() + "/" + release.asset_name;
+    if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
+        action_fail("sing_box", action, "Failed to download " + label, current_version, latest_version);
+
+    // The member is named after the build, not "sing-box", so it is found by
+    // prefix. Anything with a dot in the name is skipped: that is the .sha256
+    // sidecar, and extracting it over the binary would produce a core that cannot
+    // start.
+    let binary_path = trim(helper_output_input(
+        command_output_from_args([ "tar", "-tzf", archive_file ]),
+        "updates-archive-member-prefix",
+        [ label ]
+    ));
+    if (binary_path == "") {
+        remove_file(archive_file);
+        action_fail("sing_box", action, "core binary was not found in the downloaded archive", current_version, latest_version);
+    }
+
+    let extract_error = cmp.tmp_dir_path() + "/tachyon-core-extract.err";
+    let tmp_binary = cmp.tmp_dir_path() + "/tachyon-core." + owner_pid();
+    if (!command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", binary_path ]) + " >" + shell_quote(tmp_binary) + " 2>" + shell_quote(extract_error)) ||
+        !file_nonempty(tmp_binary) ||
+        !command_success_from_args([ "chmod", "0755", tmp_binary ])) {
+        for (let line in split(read_file(extract_error), "\n"))
+            if (trim(as_string(line)) != "")
+                updates_log(line);
+        remove_file(tmp_binary);
+        remove_file(archive_file);
+        action_fail("sing_box", action, "Failed to extract " + label, current_version, latest_version);
+    }
+    remove_file(archive_file);
+
+    stop_tachyon_before_sing_box_change();
+    let new_version = validate_tachyon_core_binary(tmp_binary, cmp.tmp_dir_path(), variant);
+    if (new_version == "") {
+        remove_file(tmp_binary);
+        restart_tachyon_after_successful_change();
+        action_fail("sing_box", action, "Downloaded " + label + " is not a tachyon-core build", current_version, latest_version);
+    }
+
+    // Refuse before installing: a core that rejects the current config would
+    // leave the router with no working engine at all, which is the failure this
+    // check exists to prevent.
+    let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path(), "tachyon-core");
+    if (!config_check.ok) {
+        remove_file(tmp_binary);
+        restart_tachyon_after_successful_change();
+        action_fail("sing_box", action, "Downloaded " + label + " is incompatible with current configuration: " + config_check.reason, current_version, latest_version);
+    }
+
+    let backup_binary = cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid();
+    copy_file("/usr/bin/sing-box", backup_binary);
+
+    if (!command_success_from_args([ "cp", "-f", tmp_binary, "/usr/bin/sing-box" ])) {
+        remove_file(tmp_binary);
+        restart_tachyon_after_successful_change();
+        action_fail("sing_box", action, "Failed to install " + label, current_version, latest_version);
+    }
+    remove_file(tmp_binary);
+
+    write_sing_box_variant_state(label, new_version);
+    install_managed_sing_box_service_script();
+    restart_tachyon_after_successful_change();
+    remove_file(backup_binary);
+
+    action_success("sing_box", action, label, new_version, latest_version, 1, "", release.release_url);
 }
 
 function install_sing_box_lx(action, target_tag) {

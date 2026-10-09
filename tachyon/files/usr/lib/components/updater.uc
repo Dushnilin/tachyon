@@ -563,6 +563,27 @@ function updates_archive_member_path(member_name) {
     }
 }
 
+function updates_archive_member_prefix(prefix) {
+    prefix = as_string(prefix);
+
+    for (let line in split(read_stdin(), "\n")) {
+        let path = trim(as_string(line));
+        if (path == "")
+            continue;
+        let name = common.path_basename(path);
+        // The archive holds the binary and its .sha256 sidecar, and only the
+        // first is ours. Matching on ".sha256" rather than "any dot" is
+        // deliberate: the version is part of the name, so "tachyon-core-aarch64-0.0.1"
+        // carries two dots and a blanket dot test would discard the binary itself.
+        if (name == "" || str_endswith(name, ".sha256") || str_endswith(name, ".sig") || str_endswith(name, ".txt"))
+            continue;
+        if (str_startswith(name, prefix)) {
+            print(path, "\n");
+            return;
+        }
+    }
+}
+
 function updates_opkg_arch_list() {
     let arches = [];
 
@@ -1606,6 +1627,8 @@ else if (mode == "updates-zip-inner-package-path")
     updates_zip_inner_package_path(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "updates-archive-member-path")
     updates_archive_member_path(ARGV[1]);
+else if (mode == "updates-archive-member-prefix")
+    updates_archive_member_prefix(ARGV[1]);
 else if (mode == "updates-opkg-arch-list")
     updates_opkg_arch_list();
 else if (mode == "updates-arch-candidates")
