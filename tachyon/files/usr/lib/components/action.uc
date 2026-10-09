@@ -68,6 +68,7 @@ let command_output = common.command_output;
 let command_output_from_args = common.command_output_from_args;
 let write_json = common.write_json;
 let write_file = common.write_file;
+let copy_file = common.copy_file;
 let bounded_command = common.bounded_command;
 let kill_matching_command = common.kill_matching_command;
 
@@ -2018,7 +2019,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
 // installing one of those over the core would leave Tachyon generating a config
 // for a binary that is not there.
 function validate_tachyon_core_binary(binary, library_dir) {
-    let version = versions.read_sing_box_binary_version(binary, library_dir || "");
+    let version = read_sing_box_binary_version(binary, library_dir || "");
     if (version == "")
         return "";
     if (!sing_box_runtime_success("is-foreign-core", [ version ]))
@@ -2102,8 +2103,10 @@ function install_tachyon_core(action, target_tag) {
     let backup_binary = cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid();
     copy_file("/usr/bin/sing-box", backup_binary);
 
-    if (!command_success_from_args([ "cp", "-f", tmp_binary, "/usr/bin/sing-box" ])) {
+    if (!install_staged_file(tmp_binary, "/usr/bin/sing-box", "0755")) {
         remove_file(tmp_binary);
+        if (file_exists(backup_binary))
+            install_staged_file(backup_binary, "/usr/bin/sing-box", "0755");
         restart_tachyon_after_successful_change();
         action_fail("sing_box", action, "Failed to install " + label, current_version, latest_version);
     }
@@ -3399,6 +3402,10 @@ if (mode == "component-action") {
     try {
         component_action(ARGV[1], ARGV[2], ARGV[3]);
     } catch (e) {
+        if (e && e.stacktrace) {
+            for (let frame in e.stacktrace)
+                updates_log("  at " + frame.filename + ":" + frame.line, "error");
+        }
         let err_str = as_string(e);
         updates_log("Unhandled component action error: " + err_str, "error");
         action_fail(ARGV[1] || "unknown", ARGV[2] || "unknown", "Unexpected error: " + err_str);

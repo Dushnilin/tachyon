@@ -21,13 +21,44 @@ let command_output_lenient = helpers.command_output_lenient;
 // Comparison
 // ============================================================================
 
+function strip_tachyon_suffix(value) {
+    let matched = match(as_string(value), /^(.*)-tachyon\.[0-9]+$/);
+    return matched ? matched[1] : as_string(value);
+}
+
+function tachyon_build_number(value) {
+    let matched = match(as_string(value), /-tachyon\.([0-9]+)$/);
+    return matched ? int(matched[1]) : null;
+}
+
+function strip_version_prefix(value) {
+    value = as_string(value);
+    if (helpers.str_startswith(value, "v") || helpers.str_startswith(value, "V"))
+        return substr(value, 1);
+    return value;
+}
+
 function compare_versions(lhs, rhs) {
-    lhs = as_string(lhs);
-    rhs = as_string(rhs);
+    lhs = strip_version_prefix(lhs);
+    rhs = strip_version_prefix(rhs);
     if (lhs == "" || rhs == "")
         return null;
     if (lhs == rhs)
         return 0;
+
+    let lhs_base = strip_tachyon_suffix(lhs);
+    let rhs_base = strip_tachyon_suffix(rhs);
+    if (lhs_base != lhs || rhs_base != rhs) {
+        if (lhs_base == rhs_base) {
+            let lb = tachyon_build_number(lhs);
+            let rb = tachyon_build_number(rhs);
+            if (lb != null && rb != null)
+                return lb == rb ? 0 : (lb < rb ? -1 : 1);
+            return 0;
+        }
+        lhs = lhs_base;
+        rhs = rhs_base;
+    }
 
     if (helpers.is_apk()) {
         let apk_result = trim(command_output_from_args([ "apk", "version", "-t", lhs, rhs ]));

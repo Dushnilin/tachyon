@@ -454,11 +454,17 @@ function strip_revision_suffix(value) {
     return matched ? matched[1] : as_string(value);
 }
 
+function strip_tachyon_suffix(value) {
+    let matched = match(as_string(value), /^(.*)-tachyon\.[0-9]+$/);
+    return matched ? matched[1] : as_string(value);
+}
+
 function updates_normalize_sing_box_version(value) {
     value = as_string(value);
-    if (str_startswith(value, "v"))
+    if (str_startswith(value, "v") || str_startswith(value, "V"))
         value = substr(value, 1);
 
+    value = strip_tachyon_suffix(value);
     print(first_version_token(strip_plus_metadata(value)), "\n");
 }
 
