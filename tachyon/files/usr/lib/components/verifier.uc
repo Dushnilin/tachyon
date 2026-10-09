@@ -260,8 +260,10 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
             common.command_from_args([
                 "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/singbox/generator.uc",
                 "generate-config", candidate_cfg, "127.0.0.1", "0", "0", ""
-            ]) + " >/dev/null 2>&1";
-        if (common.command_status(gen_cmd) == 0 && helpers.file_nonempty(candidate_cfg)) {
+            ]) + " >" + common.shell_quote(err_file) + " 2>&1";
+        let gen_status = common.command_status(gen_cmd);
+        if (gen_status == 0 && helpers.file_nonempty(candidate_cfg)) {
+            helpers.remove_file(err_file);
             let repaired = false;
             for (let attempt = 0; attempt < 4; attempt++) {
                 let cand_check_cmd = helpers.command_env(env_map) + " " +
@@ -308,14 +310,20 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
             break;
         }
     }
+    let is_gen_failure = (cand_status == -1);
     if (reason == "") {
         if (cand_status == 247 || cand_status == 137)
             reason = "Out of memory (OOM killed, exit status " + cand_status + ")";
+        else if (is_gen_failure)
+            reason = "candidate configuration generation failed";
         else
             reason = "exit status " + cand_status;
     }
 
-    helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config for " + target_var + ": " + reason, "error");
+    if (is_gen_failure)
+        helpers.updates_log("Pre-flight check failed: unable to generate configuration for " + target_var + ": " + reason, "error");
+    else
+        helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config for " + target_var + ": " + reason, "error");
     return { ok: false, reason: reason };
 }
 

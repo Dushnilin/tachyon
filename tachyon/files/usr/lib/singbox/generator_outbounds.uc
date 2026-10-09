@@ -1530,6 +1530,11 @@ function add_connections_outbound(config, section, taken) {
     if (length(selector_tags) == 0) {
         if (ctx.deferred_sections && ctx.deferred_sections[section_name])
             return;
+        if (getenv("SB_PREFLIGHT_BINARY")) {
+            ctx.deferred_sections = ctx.deferred_sections || {};
+            ctx.deferred_sections[section_name] = true;
+            return;
+        }
         ctx.runtime_generate_unsupported("connection section has no usable outbounds");
     }
 
