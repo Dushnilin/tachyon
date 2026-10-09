@@ -5,6 +5,7 @@ let uci_core = require("core.uci");
 let common = require("core.common");
 let runtime_dns = require("singbox.dns");
 let verifier = require("components.verifier");
+let core_profile = require("singbox.core_profile");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -146,9 +147,45 @@ function sing_box_version_output() {
     return command_exists("sing-box") ? command_output_lenient(command_from_args([ "sing-box", "version" ]) + " 2>/dev/null") : "";
 }
 
+// The name the binary calls itself, read off the banner: "sing-box version
+// 1.14.2-lx.12" gives "sing-box", our own build gives "tachyon-core".
+//
+// This exists because our core does not carry a fork suffix in its version. The
+// released v0.0.1 prints "tachyon-core 0.0.1" - a bare number from its own
+// series - so sing_box_version() hands back "0.0.1", which looks like a stock
+// build of the same number. Every detection that used to look for "-tachyon."
+// in the version therefore misses the real binary, and the minimum-version gate
+// then compares 0.0.1 against 1.12 and refuses to start the router.
+let sing_box_banner_identity_cache = null;
+
+function sing_box_banner_identity() {
+    if (sing_box_banner_identity_cache != null)
+        return sing_box_banner_identity_cache;
+
+    sing_box_banner_identity_cache = "";
+    let output = sing_box_version_output();
+    if (output != "") {
+        let newline = index(output, "\n");
+        let line = trim(newline >= 0 ? substr(output, 0, newline) : output);
+        let parts = split(line, /[ \t\r\n]+/);
+        if (length(parts) > 0)
+            sing_box_banner_identity_cache = as_string(parts[0]);
+    }
+    return sing_box_banner_identity_cache;
+}
+
 function sing_box_marker_is(value) {
     return file_first_line(SB_VARIANT_STATE_FILE) == as_string(value);
 }
+
+function sing_box_marker_is_tachyon_core() {
+    return sing_box_marker_is("tachyon-core");
+}
+
+function sing_box_banner_is_tachyon_core() {
+    return sing_box_banner_identity() == "tachyon-core";
+}
+
 
 function sing_box_version_state() {
     return file_first_line(SB_VERSION_STATE_FILE);
@@ -222,12 +259,15 @@ function sing_box_version_is_lx(value) {
 //   - The suffix carries no schema level. Nothing in it says which sing-box
 //     release it tracks, so no field may be enabled on the strength of it.
 function sing_box_version_is_tachyon_core(value) {
-    return index(as_string(value), "-tachyon.") >= 0;
+    if (index(as_string(value), "-tachyon.") >= 0)
+        return true;
+    // The marker is what the installer wrote when it put this binary in place,
+    // so it outranks any version string passed in. The banner is the ground
+    // truth about what is installed, and catches a binary that arrived without
+    // a marker - a manual copy, or a fresh install before the state is written.
+    return sing_box_marker_is_tachyon_core() || sing_box_banner_is_tachyon_core();
 }
 
-function sing_box_marker_is_tachyon_core() {
-    return sing_box_marker_is("tachyon-core");
-}
 
 // True for any build that is neither upstream sing-box nor a named fork, so the
 // version gate can stop treating its number as comparable.
@@ -270,6 +310,94 @@ function sing_box_is_lx(value) {
     return sing_box_version_is_lx(value != "" ? value : sing_box_version());
 }
 
+// ─── the capability model ────────────────────────────────────────────────────
+// The model itself lives in singbox/core_profile.uc: it is a pure lookup, and
+// requiring runtime.uc from a generator would run this file's command-line
+// dispatch on load and exit the process with a usage message. What is left here
+// is the part that knows about the machine - the marker file, the banner of the
+// installed binary - and it fills those in before delegating.
+// Which marker answers "what is installed".
+//
+// The marker file is the fallback, not the authority, and the order here is the
+// whole point of this function. A build that names itself - our core in either
+// its version suffix or its banner - outranks the file, because the file
+// describes what was installed *previously*: on a test router the binary had
+// been swapped for tachyon-core while /etc/tachyon/sing-box-variant still read
+// "lx", and taking the file first handed a foreign core to the lx profile - a
+// wrong pin field, a wrong schema level, and no error anywhere.
+function sing_box_core_identity_marker(build, given) {
+    let from_version = core_profile.profile_by_version(build);
+    if (from_version != "")
+        return from_version;
+
+    let identity = sing_box_banner_identity();
+    if (identity == "tachyon-core")
+        return "tachyon-core";
+
+    let marker = as_string(given);
+    return marker != "" ? marker : file_first_line(SB_VARIANT_STATE_FILE);
+}
+
+// The version of the installed binary, asked of the binary itself whenever it
+// answers.
+//
+// sing_box_version() reads the version state file whenever the marker claims lx
+// or extended-compressed. That is right for those forks, which do not always
+// name themselves, and wrong for a marker left behind by a package swap: on a
+// test router the marker still read "lx" after the binary had become tachyon-core,
+// so sing_box_version() answered "1.14.2-lx.12" and the stale file, not the binary
+// on disk, decided what was installed.
+function sing_box_core_installed_version() {
+    if (command_exists("sing-box")) {
+        let parsed = parse_sing_box_version(sing_box_version_output());
+        if (as_string(parsed) != "")
+            return as_string(parsed);
+    }
+    return sing_box_version();
+}
+
+function sing_box_core_resolve(version, marker) {
+    let build = as_string(version == null || version == "" ? sing_box_core_installed_version() : version);
+    return {
+        version: build,
+        marker: sing_box_core_identity_marker(build, marker)
+    };
+}
+
+function sing_box_core_profile(version, marker) {
+    let resolved = sing_box_core_resolve(version, marker);
+    return core_profile.profile(resolved.version, resolved.marker);
+}
+
+function sing_box_core_profile_data(profile) {
+    return core_profile.profile_data(profile);
+}
+
+function sing_box_core_pin_field(version, marker) {
+    let resolved = sing_box_core_resolve(version, marker);
+    return core_profile.pin_field(resolved.version, resolved.marker);
+}
+
+function sing_box_core_has_1_14(version, marker) {
+    let resolved = sing_box_core_resolve(version, marker);
+    return core_profile.has_1_14(resolved.version, resolved.marker);
+}
+
+function sing_box_core_has_1_15(version, marker) {
+    let resolved = sing_box_core_resolve(version, marker);
+    return core_profile.has_1_15(resolved.version, resolved.marker);
+}
+
+function sing_box_core_protocols(version, marker) {
+    let resolved = sing_box_core_resolve(version, marker);
+    return core_profile.protocols(resolved.version, resolved.marker);
+}
+
+function sing_box_core_supports_protocol(protocol, version, marker) {
+    let resolved = sing_box_core_resolve(version, marker);
+    return core_profile.supports_protocol(protocol, resolved.version, resolved.marker);
+}
+
 function output_has_build_tag(output, tag) {
     tag = as_string(tag);
     if (tag == "")
@@ -280,6 +408,46 @@ function output_has_build_tag(output, tag) {
             return true;
     return false;
 }
+
+// xhttp and tailscale are build-tag probes on upstream, which prints them, and a
+// flat yes on the forks, which do not. Our own core implements xhttp but prints
+// no build tag, so the probe alone answers "no" and every xhttp node is dropped
+// from a subscription - which is why the answer is a profile field, not a probe.
+function sing_box_core_flag(version, marker, field, tag, version_output) {
+    let declared = as_string(sing_box_core_profile_data(sing_box_core_profile(version, marker))[field]);
+    if (declared == "yes")
+        return true;
+    if (declared != "build-tag")
+        return false;
+    if (as_string(version_output) != "")
+        return output_has_build_tag(version_output, tag);
+    return output_has_build_tag(sing_box_version_output(), tag);
+}
+
+// The whole answer for one core, in a shape the interface and the diagnostics can
+// read without re-deriving any of it.
+function sing_box_core_capabilities(version, marker) {
+    let resolved = sing_box_core_resolve(version, marker);
+    let build = resolved.version;
+    let field = core_profile.pin_field(build, resolved.marker);
+    let protocols = core_profile.protocols(build, resolved.marker);
+    return {
+        profile: core_profile.profile(build, resolved.marker),
+        version: build,
+        marker: resolved.marker,
+        pin_field: field,
+        cert_pin: field != "",
+        schema_1_14: sing_box_core_has_1_14(build, marker) ? 1 : 0,
+        schema_1_15: sing_box_core_has_1_15(build, marker) ? 1 : 0,
+        xhttp: sing_box_core_flag(build, marker, "xhttp", "with_xhttp", "") ? 1 : 0,
+        tailscale: sing_box_core_flag(build, marker, "tailscale", "with_tailscale", "") ? 1 : 0,
+        foreign_series: sing_box_core_profile_data(sing_box_core_profile(build, marker)).foreign_series ? 1 : 0,
+        protocols,
+        // What this core cannot do out of the protocols Tachyon knows.
+        missing_protocols: core_profile.missing_protocols(protocols)
+    };
+}
+
 
 function sing_box_supports_tailscale(version, version_output) {
     version = as_string(version);
@@ -1393,6 +1561,27 @@ else if (mode == "supports-tailscale")
     exit(sing_box_supports_tailscale(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "supports-cert-pin")
     exit(sing_box_supports_cert_pin(ARGV[1]) ? 0 : 1);
+else if (mode == "core-profile")
+    print(sing_box_core_profile(ARGV[1], ARGV[2]), "\n");
+else if (mode == "core-pin-field") {
+    let field = sing_box_core_pin_field(ARGV[1], ARGV[2]);
+    print(field, "\n");
+    exit(field != "" ? 0 : 1);
+}
+else if (mode == "core-has-1-14")
+    exit(sing_box_core_has_1_14(ARGV[1], ARGV[2]) ? 0 : 1);
+else if (mode == "core-has-1-15")
+    exit(sing_box_core_has_1_15(ARGV[1], ARGV[2]) ? 0 : 1);
+else if (mode == "core-protocols")
+    print(sprintf("%J\n", sing_box_core_protocols(ARGV[1], ARGV[2])));
+else if (mode == "core-supports-protocol")
+    exit(sing_box_core_supports_protocol(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
+else if (mode == "core-inbounds")
+    print(sprintf("%J\n", core_profile.inbounds(sing_box_core_resolve(ARGV[1], ARGV[2]).version, sing_box_core_resolve(ARGV[1], ARGV[2]).marker)));
+else if (mode == "core-supports-inbound")
+    exit(core_profile.supports_inbound(ARGV[1], sing_box_core_resolve(ARGV[2], ARGV[3]).version, sing_box_core_resolve(ARGV[2], ARGV[3]).marker) ? 0 : 1);
+else if (mode == "core-capabilities")
+    print(sprintf("%J\n", sing_box_core_capabilities(ARGV[1], ARGV[2])));
 else if (mode == "variant")
     print(sing_box_variant(), "\n");
 else {

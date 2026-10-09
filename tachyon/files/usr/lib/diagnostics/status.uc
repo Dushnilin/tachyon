@@ -1323,6 +1323,8 @@ function render_flag_line(value, key, ok_message, fail_message) {
 }
 
 function sing_box_core_label(value) {
+    if (flag_is_one(value.sing_box_tachyon_core))
+        return "tachyon-core";
     if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_compressed))
         return "extended-compressed";
     if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_lx))

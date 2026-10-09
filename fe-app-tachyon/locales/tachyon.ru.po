@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-09 18:37+0300\n"
-"PO-Revision-Date: 2026-10-09 18:37+0300\n"
+"POT-Creation-Date: 2026-10-09 22:40+0300\n"
+"PO-Revision-Date: 2026-10-09 22:40+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3350,6 +3350,9 @@ msgstr "Имя, отображаемое на дашборде"
 msgid "Name shown in the priority level list"
 msgstr "Имя в списке уровней приоритета"
 
+msgid "Native (core)"
+msgstr ""
+
 msgid "Native Tailscale is configured, but tailscale package is missing"
 msgstr "Нативный Tailscale настроен, но пакет tailscale отсутствует"
 
@@ -6071,6 +6074,9 @@ msgstr "Проверка готовности роутера и служб..."
 msgid "Versions"
 msgstr "Версии"
 
+msgid "Via component"
+msgstr ""
+
 msgid "Via country.is"
 msgstr "Через country.is"
 
@@ -6308,6 +6314,9 @@ msgstr "выделяется динамически по мере запросо
 msgid "checks"
 msgstr "проверки"
 
+msgid "component"
+msgstr ""
+
 msgid "compressed"
 msgstr "compressed"
 
@@ -6364,6 +6373,9 @@ msgstr "мин/день"
 
 msgid "ms"
 msgstr "мс"
+
+msgid "native (core)"
+msgstr ""
 
 msgid "new build"
 msgstr "новая сборка"

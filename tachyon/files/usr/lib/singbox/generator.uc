@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let core_profile = require("singbox.core_profile");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_constants = require("singbox.constants");
@@ -223,9 +224,6 @@ function valid_section_name(name) {
     return match(name, /^[A-Za-z0-9_]+$/);
 }
 
-function section_enabled(section) {
-    return bool_option(section, "enabled", true);
-}
 
 function runtime_settings() {
     if (runtime_settings_cache == null)
@@ -485,6 +483,7 @@ function tproxy_inbound_matcher() {
 }
 
 let cached_sb_version = null;
+let cached_sb_version_banner = null;
 
 // The version state file is written by the component action alone. Treating it as
 // the source of truth meant a sing-box replaced by hand - install.sh, opkg, a
@@ -550,6 +549,7 @@ try {
             let found = common.parse_sing_box_version(out);
             if (found != "") {
                 cached_sb_version = found;
+                cached_sb_version_banner = as_string(out);
                 try {
                     let cur_disk = trim(fs.readfile(state_file) || "");
                     if (cur_disk != cached_sb_version)
@@ -579,10 +579,128 @@ try {
 // gate below opens. That is the opposite mistake to the one this gate exists to
 // prevent - the failure is a config carrying a field the core rejects, and
 // `sing-box check` refuses the whole file over one of them.
+// Does the binary on disk name itself as our core?
+//
+// Installed as /usr/bin/sing-box the core answers in the legacy shape, "sing-box
+// version v0.0.1-tachyon.0", and the suffix alone settles it. Run under its own
+// name it answers "tachyon-core 0.0.1" instead - a bare number carrying no fork
+// suffix, indistinguishable from a stock build of the same version - and then the
+// name in the banner is the only thing left to go on.
+function sing_box_banner_names_tachyon_core() {
+    if (cached_sb_version_banner == null) {
+        let banner = "";
+        for (let base in [ "sing-box", "/usr/bin/sing-box" ]) {
+            let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
+            if (pipe) {
+                banner = as_string(pipe.read("all"));
+                pipe.close();
+                if (banner != "")
+                    break;
+            }
+        }
+        cached_sb_version_banner = banner;
+    }
+    let newline = index(cached_sb_version_banner, "
+");
+    let line = trim(newline >= 0 ? substr(cached_sb_version_banner, 0, newline) : cached_sb_version_banner);
+    if (line == "")
+        return false;
+    let token = split(line, /[ 	
+]+/)[0];
+    return token == "tachyon-core";
+}
+
+// How client traffic reaches the proxy.
+//
+//   socks  - a client points at 1080 and is proxied. Nothing on the router is
+//            touched, so nothing can break underneath a client.
+//   tproxy - transparent interception through nft. The default, and what every
+//            Tachyon install has always used.
+//   tun    - the core owns the routes. Nothing is intercepted: the kernel's own
+//            policy routing sends traffic into tun0.
+//
+// Anything else falls back to tproxy rather than refusing to start: a config
+// that comes up degraded beats a router that comes up with no proxy at all.
+function proxy_mode(settings) {
+    let mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    if (mode == "socks" || mode == "tproxy" || mode == "tun")
+        return mode;
+    return "tproxy";
+}
+
+// The tun inbound, or null when it is off, unusable, or unsupported by the core.
+//
+// Written only when the capability table says the core has a tun inbound. The
+// field set below is deliberately the intersection of what all of them accept:
+// the smoltcp stack in our core and the gVisor stack in the forks take the same
+// keys, so a config generated here survives a binary swap. Anything specific -
+// the route table 2022, the fwmark - belongs to the core's own auto_route and is
+// never written into the file.
+function tun_inbound(settings) {
+    if (proxy_mode(settings) != "tun")
+        return null;
+
+    if (!core_profile.supports_inbound("tun", detect_sing_box_version(), null)) {
+        warn("proxy_mode is 'tun' but this core has no tun inbound; falling back to tproxy\n");
+        return null;
+    }
+
+    let interface_name = trim(option(settings, "tun_interface", runtime_constants.TUN_INTERFACE));
+    if (interface_name == "")
+        interface_name = runtime_constants.TUN_INTERFACE;
+
+    let inet4 = trim(option(settings, "tun_inet4", runtime_constants.TUN_INET4_ADDRESS));
+    if (inet4 == "")
+        inet4 = runtime_constants.TUN_INET4_ADDRESS;
+
+    let mtu = int_option(settings, "tun_mtu", runtime_constants.TUN_MTU);
+    if (mtu < 576 || mtu > 65535)
+        mtu = runtime_constants.TUN_MTU;
+
+    let inbound = {
+        type: "tun",
+        tag: runtime_constants.TUN_INBOUND_TAG,
+        interface_name,
+        inet4_address: inet4,
+        mtu,
+        // auto_route is the whole point on a router: it is what puts the default
+        // route into table 2022 and leaves main alone, instead of Tachyon writing
+        // routes that would collide with whatever else the box is running.
+        auto_route: bool_option(settings, "tun_auto_route", true),
+        strict_route: bool_option(settings, "tun_strict_route", false),
+        // Full-cone UDP: without it a client that has been handed a real address
+        // by the userspace NAT still fails on replies from a second source port.
+        endpoint_independent_nat: bool_option(settings, "tun_endpoint_independent_nat", true),
+        stack: trim(option(settings, "tun_stack", "mixed")) || "mixed",
+        gso: bool_option(settings, "tun_gso", true),
+        sniff: bool_option(settings, "tun_sniff", true),
+        sniff_override_destination: bool_option(settings, "tun_sniff_override_destination", false)
+    };
+
+    let inet6 = trim(option(settings, "tun_inet6", runtime_constants.TUN_INET6_ADDRESS));
+    if (inet6 != "")
+        inbound.inet6_address = inet6;
+
+    return inbound;
+}
+
+function section_enabled(section) {
+    return bool_option(section, "enabled", true);
+}
+
 function is_tachyon_core_version(sb_version_val) {
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
-    if (index(as_string(sb_version_val), "-tachyon.") >= 0)
+    // The suffix is decisive when it is there.
+    if (core_profile.profile_by_version(as_string(sb_version_val)) != "")
+        return true;
+    // Otherwise only believe the banner when the version names nothing else: with
+    // an explicit override in hand, that override is the build being generated for
+    // and the binary on disk is not evidence about it.
+    let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
+    if (override != "" && core_profile.profile(as_string(sb_version_val), "") == "upstream")
+        return false;
+    if (sing_box_banner_names_tachyon_core())
         return true;
     let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
     return trim(as_string(fs.readfile(sb_variant_file) || "")) == "tachyon-core";
@@ -807,11 +925,25 @@ function base_config(settings, service_address, runtime_context) {
         fakeip_server.inet6_range = runtime_constants.FAKEIP_INET6_RANGE;
     push(dns_servers, fakeip_server);
 
-    let inbounds = [
-        { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND_TAG, listen: runtime_constants.TPROXY_INBOUND_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true }
-    ];
-    if (core_ip.ipv6_supported()) {
-        push(inbounds, { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND6_TAG, listen: runtime_constants.TPROXY_INBOUND6_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true });
+// The transparent inbound exists only in tproxy mode. In socks mode there is
+    // a client-facing listener instead, and in tun mode the core owns the routes
+    // and a tproxy socket would only sit there unused.
+    let mode = proxy_mode(settings);
+    let inbounds = [];
+    if (mode == "tproxy") {
+        push(inbounds, { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND_TAG, listen: runtime_constants.TPROXY_INBOUND_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true });
+        if (core_ip.ipv6_supported())
+            push(inbounds, { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND6_TAG, listen: runtime_constants.TPROXY_INBOUND6_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true });
+    }
+    if (mode == "socks") {
+        push(inbounds, {
+            type: "mixed",
+            tag: runtime_constants.CLIENT_MIXED_INBOUND_TAG,
+            listen: option(settings, "socks_listen", runtime_constants.CLIENT_MIXED_INBOUND_ADDRESS),
+            listen_port: int_option(settings, "socks_port", runtime_constants.CLIENT_MIXED_INBOUND_PORT),
+            tcp_fast_open: true,
+            udp_fragment: true
+        });
     }
     push(inbounds, { type: "direct", tag: runtime_constants.DNS_INBOUND_TAG, listen: runtime_constants.DNS_INBOUND_ADDRESS, listen_port: runtime_constants.DNS_INBOUND_PORT });
     if (runtime_context.source_aware_dns) {
@@ -822,8 +954,15 @@ function base_config(settings, service_address, runtime_context) {
             listen_port: runtime_constants.SOURCE_DNS_INBOUND_PORT
         });
     }
-    for (let inbound in dns_config.inbounds)
+for (let inbound in dns_config.inbounds)
         push(inbounds, inbound);
+
+    // The tun inbound sits after the dns ones so the ordering of what is already
+    // here does not move: anything reading the generated file by position keeps
+    // reading what it read before.
+    let tun = tun_inbound(settings);
+    if (tun != null)
+        push(inbounds, tun);
 
     let default_outbounds = [
         { type: "direct", tag: runtime_constants.DIRECT_OUTBOUND_TAG },

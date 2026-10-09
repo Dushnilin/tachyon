@@ -774,6 +774,38 @@ function sing_box_extended_arch_suffix(host_arch, distrib_arch) {
         exit(1);
 }
 
+// tachyon-core names its assets after the Rust target triple, not after Go's
+// GOARCH: the release ships aarch64-musl where sing-box-extended ships arm64,
+// and x86_64-musl where that one ships amd64. Reusing the sing-box suffix
+// resolves to nothing and the install fails with "no asset".
+//
+// OpenWrt is musl throughout, so only the musl names are ever produced - taking
+// the gnu build onto a musl router would not link.
+function tachyon_core_arch_suffix(host_arch, distrib_arch) {
+    host_arch = as_string(host_arch);
+    distrib_arch = as_string(distrib_arch);
+
+    if (str_contains(distrib_arch, "mipsel") || str_contains(distrib_arch, "mipsle"))
+        host_arch = "mipsel";
+    else if (str_contains(distrib_arch, "mips64el") || str_contains(distrib_arch, "mips64le"))
+        host_arch = "mips64el";
+
+    if (host_arch == "aarch64")
+        print("aarch64-musl\n");
+    else if (str_startswith(host_arch, "armv7"))
+        print("armv7-musl\n");
+    else if (str_startswith(host_arch, "armv6"))
+        print("armv6-musl\n");
+    else if (host_arch == "x86_64")
+        print("x86_64-musl\n");
+    else if (host_arch == "mips")
+        print("mips-musl\n");
+    else if (host_arch == "mipsel" || host_arch == "mipsle")
+        print("mipsel-musl\n");
+    else
+        exit(1);
+}
+
 function sing_box_extended_asset_url(arch_suffix, _unused, compressed) {
     let release = object_or_empty(read_stdin_json());
 
@@ -1237,22 +1269,14 @@ function tachyon_core_release_tag() {
     print(highest_release_tag(candidates), "\n");
 }
 
-// `variant` is empty for the full build and "lite" for the reduced one. The lite
-// build is a separate artifact rather than a flag: it drops below 6 MiB against
-// 11.6 for the full binary, which is the whole point of it on a router with a
-// small flash, and it cannot be told apart from the full build after unpacking.
-function tachyon_core_asset_url(arch_suffix, variant) {
+function tachyon_core_asset_url(arch_suffix) {
     let release = object_or_empty(read_stdin_json());
 
     arch_suffix = as_string(arch_suffix);
-    variant = as_string(variant || "");
     if (arch_suffix == "")
         exit(1);
 
-    let prefix = "tachyon-core";
-    if (variant != "")
-        prefix += "-" + variant;
-    prefix += "-" + arch_suffix + "-";
+    let prefix = "tachyon-core-" + arch_suffix + "-";
 
     for (let asset in array_or_empty(release.assets)) {
         if (type(asset) != "object")
@@ -1639,12 +1663,14 @@ else if (mode == "file-whitespace-list")
     file_whitespace_list(ARGV[1]);
 else if (mode == "sing-box-extended-arch-suffix")
     sing_box_extended_arch_suffix(ARGV[1], ARGV[2]);
+else if (mode == "tachyon-core-arch-suffix")
+    tachyon_core_arch_suffix(ARGV[1], ARGV[2]);
 else if (mode == "sing-box-extended-asset-url")
     sing_box_extended_asset_url(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "sing-box-lx-asset-url")
     sing_box_lx_asset_url(ARGV[1]);
 else if (mode == "tachyon-core-asset-url")
-    tachyon_core_asset_url(ARGV[1], ARGV[2]);
+    tachyon_core_asset_url(ARGV[1]);
 else if (mode == "tachyon-core-release-tag")
     tachyon_core_release_tag();
 else if (mode == "sing-box-extended-package-asset-url")

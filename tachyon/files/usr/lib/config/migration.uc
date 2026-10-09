@@ -1808,6 +1808,14 @@ function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
     migrate_cleanup_accidental_full_domain_prefixes(ctx);
     apply_migrations(ctx);
+    // How client traffic reaches the proxy. Defaulted rather than left absent:
+    // the generator has to be able to express a legal config for a router that
+    // predates this option, and "no proxy_mode" would have to be read as tproxy
+    // in every caller - one of them forgetting is a silent mode switch.
+    set_option_if_missing(ctx, ctx.model.settings, "proxy_mode", "tproxy");
+    set_option_if_missing(ctx, ctx.model.settings, "tun_interface", "tun0");
+    set_option_if_missing(ctx, ctx.model.settings, "tun_inet4", "172.19.0.1/30");
+    set_option_if_missing(ctx, ctx.model.settings, "tun_mtu", "9000");
     return ctx;
 }
 

@@ -924,10 +924,12 @@ function getComponentCards(): ComponentCard[] {
   const fptnInstalled = Boolean(systemInfo.fptn_installed);
   const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
+  const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core);
   const singBoxStable =
     singBoxInstalled &&
     !systemInfo.sing_box_extended &&
-    !systemInfo.sing_box_tiny;
+    !systemInfo.sing_box_tiny &&
+    !systemInfo.sing_box_tachyon_core;
   const singBoxExtended =
     Boolean(systemInfo.sing_box_extended) &&
     !systemInfo.sing_box_compressed &&
@@ -1008,6 +1010,15 @@ function getComponentCards(): ComponentCard[] {
       action: 'install_lx',
     });
   }
+  if (!tachyonCore) {
+    singBoxActions.push({
+      key: 'singBoxInstallTachyonCore',
+      text: 'tachyon-core',
+      icon: renderDownloadIcon24,
+      component: 'sing_box',
+      action: 'install_tachyon_core',
+    });
+  }
 
   const zapretActions = getOptionalComponentActions({
     component: 'zapret',
@@ -1057,6 +1068,28 @@ function getComponentCards(): ComponentCard[] {
     removeKey: 'fptnRemove',
     rollbackKey: 'fptnRollback',
   });
+  // With tachyon-core and the fptn-client component both present, only one of
+  // them may own the tunnel; the explicit choice keeps them from fighting.
+  const fptnModeChoiceAvailable = tachyonCore && fptnInstalled;
+  if (fptnModeChoiceAvailable) {
+    fptnActions.push(
+      systemInfo.fptn_mode === 'native'
+        ? {
+            key: 'fptnSetComponentMode' as const,
+            text: _('Via component'),
+            icon: renderRotateCcwIcon24,
+            component: 'fptn' as const,
+            action: 'set_component_mode' as const,
+          }
+        : {
+            key: 'fptnSetNativeMode' as const,
+            text: _('Native (core)'),
+            icon: renderRotateCcwIcon24,
+            component: 'fptn' as const,
+            action: 'set_native_mode' as const,
+          },
+    );
+  }
   const tailscaleActions = getOptionalComponentActions({
     component: 'tailscale',
     installed: tailscaleInstalled,
@@ -1134,7 +1167,7 @@ function getComponentCards(): ComponentCard[] {
     {
       component: 'sing_box',
       column: 0,
-      title: 'Sing-box',
+      title: systemInfo.sing_box_tachyon_core ? 'tachyon-core' : 'Sing-box',
       version: systemInfoLoading
         ? _('Loading...')
         : formatSingBoxVersion(systemInfo),
@@ -1145,11 +1178,13 @@ function getComponentCards(): ComponentCard[] {
       releaseUrl: getGitHubReleaseUrl('sing_box'),
       repoUrl:
         systemInfo.sing_box_repo_url ||
-        (singBoxLx
-          ? 'https://github.com/Leadaxe/sing-box-lx'
-          : singBoxExtended || singBoxExtendedCompressed
-            ? 'https://github.com/shtorm-7/sing-box-extended'
-            : COMPONENT_REPO_URLS.sing_box),
+        (tachyonCore
+          ? 'https://github.com/Dushnilin/tachyon-core'
+          : singBoxLx
+            ? 'https://github.com/Leadaxe/sing-box-lx'
+            : singBoxExtended || singBoxExtendedCompressed
+              ? 'https://github.com/shtorm-7/sing-box-extended'
+              : COMPONENT_REPO_URLS.sing_box),
       actions: singBoxActions,
       // The package variants (stable/tiny) cannot install a picked tag - the
       // backend refuses before touching anything (issue #108), so do not offer
@@ -1265,7 +1300,13 @@ function getComponentCards(): ComponentCard[] {
       version: systemInfoLoading
         ? _('Loading...')
         : fptnInstalled
-          ? systemInfo.fptn_version
+          ? fptnModeChoiceAvailable
+            ? `${systemInfo.fptn_version} · ${
+                systemInfo.fptn_mode === 'native'
+                  ? _('native (core)')
+                  : _('component')
+              }`
+            : systemInfo.fptn_version
           : _('Not installed'),
       latestVersion: getLatestVersion('fptn'),
       releaseUrl: getGitHubReleaseUrl('fptn'),
@@ -1790,7 +1831,8 @@ function renderEngineCard(): Node {
 
   // sing-box variant availability
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
-  const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
+  const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core);
+  const singBoxTiny = Boolean(systemInfo.sing_box_tiny) && !tachyonCore;
   const singBoxExtendedCompressed =
     Boolean(systemInfo.sing_box_extended) &&
     Boolean(systemInfo.sing_box_compressed);
@@ -1804,7 +1846,8 @@ function renderEngineCard(): Node {
     !singBoxTiny &&
     !singBoxExtended &&
     !singBoxExtendedCompressed &&
-    !singBoxLx;
+    !singBoxLx &&
+    !tachyonCore;
 
   const isSingBoxActive = active === 'sing-box';
 
@@ -1840,11 +1883,13 @@ function renderEngineCard(): Node {
   // Repo URL
   const engineRepoUrl = isSingBoxActive
     ? systemInfo.sing_box_repo_url ||
-      (singBoxLx
-        ? 'https://github.com/Leadaxe/sing-box-lx'
-        : singBoxExtended || singBoxExtendedCompressed
-          ? 'https://github.com/shtorm-7/sing-box-extended'
-          : COMPONENT_REPO_URLS.sing_box)
+      (tachyonCore
+        ? 'https://github.com/Dushnilin/tachyon-core'
+        : singBoxLx
+          ? 'https://github.com/Leadaxe/sing-box-lx'
+          : singBoxExtended || singBoxExtendedCompressed
+            ? 'https://github.com/shtorm-7/sing-box-extended'
+            : COMPONENT_REPO_URLS.sing_box)
     : systemInfo.steer_repo_url || COMPONENT_REPO_URLS.steer;
 
   // Header
@@ -2003,15 +2048,17 @@ function renderEngineCard(): Node {
     active: boolean;
   }
 
-  const currentSingBoxVariant = singBoxTiny
-    ? 'sing-box-tiny'
-    : singBoxExtendedCompressed
-      ? 'sing-box-extended-compressed'
-      : singBoxLx
-        ? 'sing-box-lx'
-        : singBoxExtended
-          ? 'sing-box-extended'
-          : 'sing-box-stable';
+  const currentSingBoxVariant = tachyonCore
+    ? 'tachyon-core'
+    : singBoxTiny
+      ? 'sing-box-tiny'
+      : singBoxExtendedCompressed
+        ? 'sing-box-extended-compressed'
+        : singBoxLx
+          ? 'sing-box-lx'
+          : singBoxExtended
+            ? 'sing-box-extended'
+            : 'sing-box-stable';
 
   const selectableVariants: SelectableVariant[] = [
     {
@@ -2048,6 +2095,13 @@ function renderEngineCard(): Node {
       group: 'sing-box',
       installed: singBoxInstalled && singBoxLx,
       active: isSingBoxActive && singBoxLx,
+    },
+    {
+      id: 'tachyon-core',
+      label: 'tachyon-core',
+      group: 'sing-box',
+      installed: singBoxInstalled && tachyonCore,
+      active: isSingBoxActive && tachyonCore,
     },
     {
       id: 'steer',
@@ -2131,6 +2185,8 @@ function renderEngineCard(): Node {
         return 'install_extended_compressed';
       case 'sing-box-lx':
         return 'install_lx';
+      case 'tachyon-core':
+        return 'install_tachyon_core';
       default:
         return 'install_stable';
     }

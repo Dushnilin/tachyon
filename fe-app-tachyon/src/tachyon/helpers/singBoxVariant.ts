@@ -1,13 +1,19 @@
-type SingBoxVariantFields = {
+export type SingBoxVariantFields = {
   sing_box_version?: string;
   sing_box_extended?: number;
   sing_box_tiny?: number;
   sing_box_compressed?: number;
   sing_box_lx?: number;
+  sing_box_tachyon_core?: number;
+  sing_box_fptn?: number;
   sing_box_tailscale?: number;
   sing_box_cert_pin?: number;
   sing_box_repo_url?: string;
 };
+
+function isTachyonCoreVersion(version?: string) {
+  return String(version || '').includes('-tachyon.');
+}
 
 function isExtendedSingBoxVersion(version?: string) {
   return (
@@ -102,9 +108,16 @@ export function normalizeSingBoxVariantFields<T extends SingBoxVariantFields>(
   value: T,
 ): T {
   const version = String(value.sing_box_version || '');
+  // tachyon-core is its own engine build, not a fork of the Go sing-box: it
+  // wins over every fork flag below, and a marker or flag from a replaced
+  // binary must not reclassify it as tiny or extended.
+  const singBoxTachyonCore =
+    Boolean(value.sing_box_tachyon_core) || isTachyonCoreVersion(version);
   const versionExtended = isExtendedSingBoxVersion(version);
   const versionLx = version.includes('-lx');
-  const singBoxExtended = Boolean(value.sing_box_extended) || versionExtended;
+  const singBoxExtended =
+    !singBoxTachyonCore &&
+    (Boolean(value.sing_box_extended) || versionExtended);
   const singBoxLx =
     singBoxExtended && (Boolean(value.sing_box_lx) || versionLx);
 
@@ -114,6 +127,7 @@ export function normalizeSingBoxVariantFields<T extends SingBoxVariantFields>(
       (parseInt(m[1]!, 10) === 1 && parseInt(m[2]!, 10) >= 15)
     : false;
   const singBoxCertPin =
+    singBoxTachyonCore ||
     Boolean(value.sing_box_cert_pin) ||
     versionLx ||
     Boolean(singBoxLx) ||
@@ -121,11 +135,15 @@ export function normalizeSingBoxVariantFields<T extends SingBoxVariantFields>(
 
   return {
     ...value,
+    sing_box_tachyon_core: singBoxTachyonCore ? 1 : 0,
+    sing_box_fptn: singBoxTachyonCore || value.sing_box_fptn ? 1 : 0,
     sing_box_extended: singBoxExtended ? 1 : 0,
-    sing_box_tiny: singBoxExtended ? 0 : value.sing_box_tiny ? 1 : 0,
+    sing_box_tiny:
+      singBoxExtended || singBoxTachyonCore ? 0 : value.sing_box_tiny ? 1 : 0,
     sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
     sing_box_lx: singBoxLx ? 1 : 0,
-    sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0,
+    sing_box_tailscale:
+      singBoxExtended || singBoxTachyonCore || value.sing_box_tailscale ? 1 : 0,
     sing_box_cert_pin: singBoxCertPin ? 1 : 0,
   } as T;
 }
@@ -150,7 +168,12 @@ export function renderSingBoxVariantBadge(
   badge.style.lineHeight = '16px';
   badge.style.verticalAlign = 'middle';
 
-  if (normalized.sing_box_lx) {
+  if (normalized.sing_box_tachyon_core) {
+    badge.textContent = 'tachyon-core';
+    badge.style.backgroundColor = 'rgba(139, 92, 246, 0.15)';
+    badge.style.color = '#8b5cf6';
+    badge.style.border = '1px solid rgba(139, 92, 246, 0.35)';
+  } else if (normalized.sing_box_lx) {
     badge.textContent = 'Leadaxe (lx)';
     badge.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
     badge.style.color = '#10b981';

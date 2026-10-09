@@ -456,6 +456,8 @@ var initialDiagnosticStore = {
     sing_box_tiny: 0,
     sing_box_compressed: 0,
     sing_box_lx: 0,
+    sing_box_tachyon_core: 0,
+    sing_box_fptn: 0,
     sing_box_tailscale: 1,
     sing_box_cert_pin: 0,
     sing_box_repo_url: "",
@@ -494,6 +496,7 @@ var initialDiagnosticStore = {
     tailscale_backup_time: 0,
     fptn_version: "loading",
     fptn_installed: 0,
+    fptn_mode: "component",
     fptn_backup_version: "",
     fptn_backup_time: 0,
     server_inbounds_enabled_count: -1,
@@ -558,6 +561,7 @@ var initialDiagnosticStore = {
     singBoxInstallExtended: { loading: false },
     singBoxInstallExtendedCompressed: { loading: false },
     singBoxInstallLx: { loading: false },
+    singBoxInstallTachyonCore: { loading: false },
     singBoxInstallTiny: { loading: false },
     singBoxInstallStable: { loading: false },
     zapretCheck: { loading: false },
@@ -584,6 +588,8 @@ var initialDiagnosticStore = {
     fptnInstall: { loading: false },
     fptnRemove: { loading: false },
     fptnRollback: { loading: false },
+    fptnSetNativeMode: { loading: false },
+    fptnSetComponentMode: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
@@ -6771,6 +6777,7 @@ var componentActionKeyMap = {
   "sing_box:install_extended": "singBoxInstallExtended",
   "sing_box:install_extended_compressed": "singBoxInstallExtendedCompressed",
   "sing_box:install_lx": "singBoxInstallLx",
+  "sing_box:install_tachyon_core": "singBoxInstallTachyonCore",
   "sing_box:install_tiny": "singBoxInstallTiny",
   "sing_box:install_stable": "singBoxInstallStable",
   "zapret:check_update": "zapretCheck",
@@ -6803,6 +6810,8 @@ var componentActionKeyMap = {
   "fptn:install_version": "fptnInstall",
   "fptn:remove": "fptnRemove",
   "fptn:rollback": "fptnRollback",
+  "fptn:set_native_mode": "fptnSetNativeMode",
+  "fptn:set_component_mode": "fptnSetComponentMode",
   "tailscale:check_update": "tailscaleCheck",
   "tailscale:install": "tailscaleInstall",
   "tailscale:install_version": "tailscaleInstall",
@@ -6829,6 +6838,9 @@ function getComponentActionKey(component, action) {
 }
 
 // src/tachyon/helpers/singBoxVariant.ts
+function isTachyonCoreVersion(version) {
+  return String(version || "").includes("-tachyon.");
+}
 function isExtendedSingBoxVersion(version) {
   return String(version || "").includes("extended") || String(version || "").includes("-lx");
 }
@@ -6877,20 +6889,23 @@ function formatSingBoxVersion(value) {
 }
 function normalizeSingBoxVariantFields(value) {
   const version = String(value.sing_box_version || "");
+  const singBoxTachyonCore = Boolean(value.sing_box_tachyon_core) || isTachyonCoreVersion(version);
   const versionExtended = isExtendedSingBoxVersion(version);
   const versionLx = version.includes("-lx");
-  const singBoxExtended = Boolean(value.sing_box_extended) || versionExtended;
+  const singBoxExtended = !singBoxTachyonCore && (Boolean(value.sing_box_extended) || versionExtended);
   const singBoxLx = singBoxExtended && (Boolean(value.sing_box_lx) || versionLx);
   const m = version.match(/^v?(\d+)\.(\d+)/);
   const versionSupportsCertPin = m ? parseInt(m[1], 10) > 1 || parseInt(m[1], 10) === 1 && parseInt(m[2], 10) >= 15 : false;
-  const singBoxCertPin = Boolean(value.sing_box_cert_pin) || versionLx || Boolean(singBoxLx) || versionSupportsCertPin;
+  const singBoxCertPin = singBoxTachyonCore || Boolean(value.sing_box_cert_pin) || versionLx || Boolean(singBoxLx) || versionSupportsCertPin;
   return {
     ...value,
+    sing_box_tachyon_core: singBoxTachyonCore ? 1 : 0,
+    sing_box_fptn: singBoxTachyonCore || value.sing_box_fptn ? 1 : 0,
     sing_box_extended: singBoxExtended ? 1 : 0,
-    sing_box_tiny: singBoxExtended ? 0 : value.sing_box_tiny ? 1 : 0,
+    sing_box_tiny: singBoxExtended || singBoxTachyonCore ? 0 : value.sing_box_tiny ? 1 : 0,
     sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
     sing_box_lx: singBoxLx ? 1 : 0,
-    sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0,
+    sing_box_tailscale: singBoxExtended || singBoxTachyonCore || value.sing_box_tailscale ? 1 : 0,
     sing_box_cert_pin: singBoxCertPin ? 1 : 0
   };
 }
@@ -6910,7 +6925,12 @@ function renderSingBoxVariantBadge(value) {
   badge.style.fontWeight = "600";
   badge.style.lineHeight = "16px";
   badge.style.verticalAlign = "middle";
-  if (normalized.sing_box_lx) {
+  if (normalized.sing_box_tachyon_core) {
+    badge.textContent = "tachyon-core";
+    badge.style.backgroundColor = "rgba(139, 92, 246, 0.15)";
+    badge.style.color = "#8b5cf6";
+    badge.style.border = "1px solid rgba(139, 92, 246, 0.35)";
+  } else if (normalized.sing_box_lx) {
     badge.textContent = "Leadaxe (lx)";
     badge.style.backgroundColor = "rgba(16, 185, 129, 0.15)";
     badge.style.color = "#10b981";
@@ -6994,6 +7014,7 @@ function getEmptyUpdatesActions() {
     singBoxInstallExtended: { loading: false },
     singBoxInstallExtendedCompressed: { loading: false },
     singBoxInstallLx: { loading: false },
+    singBoxInstallTachyonCore: { loading: false },
     singBoxInstallTiny: { loading: false },
     singBoxInstallStable: { loading: false },
     zapretCheck: { loading: false },
@@ -7020,6 +7041,8 @@ function getEmptyUpdatesActions() {
     fptnInstall: { loading: false },
     fptnRemove: { loading: false },
     fptnRollback: { loading: false },
+    fptnSetNativeMode: { loading: false },
+    fptnSetComponentMode: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
@@ -7074,6 +7097,8 @@ function applyServiceState(uiState) {
   nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
   nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
   nextSystemInfo.sing_box_lx = uiState.capabilities.sing_box_lx;
+  nextSystemInfo.sing_box_tachyon_core = uiState.capabilities.sing_box_tachyon_core;
+  nextSystemInfo.sing_box_fptn = uiState.capabilities.sing_box_fptn;
   nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
   nextSystemInfo.sing_box_cert_pin = uiState.capabilities.sing_box_cert_pin ?? 0;
   store.set({
@@ -10481,7 +10506,16 @@ async function renderServicesInfoWidget() {
           }
         },
         {
-          key: store.get().activeEngine === "steer" || store.get().activeEngine === "steer-extended" ? "Steer" : "Sing-box",
+          key: (() => {
+            if (store.get().activeEngine === "steer" || store.get().activeEngine === "steer-extended") {
+              return "Steer";
+            }
+            const systemInfo = store.get().diagnosticsSystemInfo;
+            if (systemInfo.sing_box_tachyon_core) {
+              return "tachyon-core";
+            }
+            return "Sing-box";
+          })(),
           value: data.singbox ? data.singboxMemoryMb ? `✓ (${data.singboxMemoryMb} MB)` : "✓" : "✗",
           attributes: {
             class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
@@ -12598,6 +12632,8 @@ var UNKNOWN_SYSTEM_INFO = {
   sing_box_tiny: 0,
   sing_box_compressed: 0,
   sing_box_lx: 0,
+  sing_box_tachyon_core: 0,
+  sing_box_fptn: 0,
   sing_box_tailscale: 1,
   sing_box_cert_pin: 0,
   sing_box_repo_url: "",
@@ -12615,6 +12651,7 @@ var UNKNOWN_SYSTEM_INFO = {
   tailscale_installed: 0,
   fptn_version: _("unknown"),
   fptn_installed: 0,
+  fptn_mode: "component",
   server_inbounds_enabled_count: -1,
   openwrt_version: _("unknown"),
   device_model: _("unknown")
@@ -19689,6 +19726,8 @@ async function fetchDiagnosticsProviderInfo({
         sing_box_tiny: uiState.capabilities.sing_box_tiny,
         sing_box_compressed: uiState.capabilities.sing_box_compressed,
         sing_box_lx: uiState.capabilities.sing_box_lx,
+        sing_box_tachyon_core: uiState.capabilities.sing_box_tachyon_core,
+        sing_box_fptn: uiState.capabilities.sing_box_fptn,
         sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
         sing_box_cert_pin: uiState.capabilities.sing_box_cert_pin,
         zapret_installed: uiState.capabilities.zapret_installed,
@@ -20426,6 +20465,7 @@ function renderDiagnosticSystemInfoWidget() {
     diagnosticsSystemInfo.sing_box_version
   );
   const steerInstalled = Boolean(diagnosticsSystemInfo.steer_installed);
+  const singBoxRowLabel = diagnosticsSystemInfo.sing_box_tachyon_core ? "tachyon-core" : "Sing-box";
   if (isSteer) {
     items.push({
       key: "Steer",
@@ -20434,14 +20474,14 @@ function renderDiagnosticSystemInfoWidget() {
     });
   } else {
     items.push({
-      key: "Sing-box",
+      key: singBoxRowLabel,
       value: formatSingBoxVersion(diagnosticsSystemInfo),
       tag: { label: _("active"), kind: "success" }
     });
   }
   if (isSteer && singBoxInstalled) {
     items.push({
-      key: "Sing-box",
+      key: singBoxRowLabel,
       value: formatSingBoxVersion(diagnosticsSystemInfo),
       tag: { label: _("installed"), kind: "warning" }
     });
@@ -23785,6 +23825,20 @@ function computeSystemInfoMutation(currentSystemInfo, result) {
   }
   if (result.component === "sing_box") {
     nextSystemInfo.sing_box_version = version;
+    if (result.action === "install" || result.action === "install_version" || result.action === "reinstall" || result.action === "install_stable" || result.action === "install_tiny" || result.action === "install_extended" || result.action === "install_extended_compressed" || result.action === "install_lx") {
+      nextSystemInfo.sing_box_tachyon_core = 0;
+      nextSystemInfo.sing_box_fptn = 0;
+    }
+    if (result.action === "install_tachyon_core") {
+      nextSystemInfo.sing_box_tachyon_core = 1;
+      nextSystemInfo.sing_box_fptn = 1;
+      nextSystemInfo.sing_box_extended = 0;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
+    }
     if (result.action === "install_extended") {
       nextSystemInfo.sing_box_extended = 1;
       nextSystemInfo.sing_box_tiny = 0;
@@ -23881,6 +23935,10 @@ function computeSystemInfoMutation(currentSystemInfo, result) {
     if (result.action === "remove") {
       nextSystemInfo.fptn_installed = 0;
       nextSystemInfo.fptn_version = "not installed";
+    } else if (result.action === "set_native_mode") {
+      nextSystemInfo.fptn_mode = "native";
+    } else if (result.action === "set_component_mode") {
+      nextSystemInfo.fptn_mode = "component";
     } else {
       nextSystemInfo.fptn_installed = 1;
       nextSystemInfo.fptn_version = version;
@@ -24739,7 +24797,8 @@ function getComponentCards() {
   const fptnInstalled = Boolean(systemInfo.fptn_installed);
   const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
   const singBoxInstalled = !isNotInstalled2(systemInfo.sing_box_version);
-  const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny;
+  const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core);
+  const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny && !systemInfo.sing_box_tachyon_core;
   const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_compressed && !systemInfo.sing_box_lx;
   const singBoxExtendedCompressed = Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed);
   const singBoxLx = Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_lx);
@@ -24811,6 +24870,15 @@ function getComponentCards() {
       action: "install_lx"
     });
   }
+  if (!tachyonCore) {
+    singBoxActions.push({
+      key: "singBoxInstallTachyonCore",
+      text: "tachyon-core",
+      icon: renderDownloadIcon24,
+      component: "sing_box",
+      action: "install_tachyon_core"
+    });
+  }
   const zapretActions = getOptionalComponentActions({
     component: "zapret",
     installed: zapretInstalled,
@@ -24859,6 +24927,24 @@ function getComponentCards() {
     removeKey: "fptnRemove",
     rollbackKey: "fptnRollback"
   });
+  const fptnModeChoiceAvailable = tachyonCore && fptnInstalled;
+  if (fptnModeChoiceAvailable) {
+    fptnActions.push(
+      systemInfo.fptn_mode === "native" ? {
+        key: "fptnSetComponentMode",
+        text: _("Via component"),
+        icon: renderRotateCcwIcon24,
+        component: "fptn",
+        action: "set_component_mode"
+      } : {
+        key: "fptnSetNativeMode",
+        text: _("Native (core)"),
+        icon: renderRotateCcwIcon24,
+        component: "fptn",
+        action: "set_native_mode"
+      }
+    );
+  }
   const tailscaleActions = getOptionalComponentActions({
     component: "tailscale",
     installed: tailscaleInstalled,
@@ -24924,12 +25010,12 @@ function getComponentCards() {
     {
       component: "sing_box",
       column: 0,
-      title: "Sing-box",
+      title: systemInfo.sing_box_tachyon_core ? "tachyon-core" : "Sing-box",
       version: systemInfoLoading ? _("Loading...") : formatSingBoxVersion(systemInfo),
       badgeNode: systemInfoLoading ? null : renderSingBoxVariantBadge(systemInfo),
       latestVersion: getLatestVersion("sing_box"),
       releaseUrl: getGitHubReleaseUrl("sing_box"),
-      repoUrl: systemInfo.sing_box_repo_url || (singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box),
+      repoUrl: systemInfo.sing_box_repo_url || (tachyonCore ? "https://github.com/Dushnilin/tachyon-core" : singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box),
       actions: singBoxActions,
       // The package variants (stable/tiny) cannot install a picked tag - the
       // backend refuses before touching anything (issue #108), so do not offer
@@ -25009,7 +25095,7 @@ function getComponentCards() {
       component: "fptn",
       column: 2,
       title: "FPTN",
-      version: systemInfoLoading ? _("Loading...") : fptnInstalled ? systemInfo.fptn_version : _("Not installed"),
+      version: systemInfoLoading ? _("Loading...") : fptnInstalled ? fptnModeChoiceAvailable ? `${systemInfo.fptn_version} · ${systemInfo.fptn_mode === "native" ? _("native (core)") : _("component")}` : systemInfo.fptn_version : _("Not installed"),
       latestVersion: getLatestVersion("fptn"),
       releaseUrl: getGitHubReleaseUrl("fptn"),
       repoUrl: COMPONENT_REPO_URLS.fptn,
@@ -25445,11 +25531,12 @@ function renderEngineCard() {
     extended?.installed || systemInfo.steer_installed && systemInfo.steer_extended
   );
   const singBoxInstalled = !isNotInstalled2(systemInfo.sing_box_version);
-  const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
+  const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core);
+  const singBoxTiny = Boolean(systemInfo.sing_box_tiny) && !tachyonCore;
   const singBoxExtendedCompressed = Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed);
   const singBoxLx = Boolean(systemInfo.sing_box_lx);
   const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !singBoxExtendedCompressed && !singBoxLx;
-  const singBoxStable = singBoxInstalled && !singBoxTiny && !singBoxExtended && !singBoxExtendedCompressed && !singBoxLx;
+  const singBoxStable = singBoxInstalled && !singBoxTiny && !singBoxExtended && !singBoxExtendedCompressed && !singBoxLx && !tachyonCore;
   const isSingBoxActive = active === "sing-box";
   const engineVersion = isSingBoxActive ? singBoxLoading ? _("Loading...") : formatSingBoxVersion(systemInfo) : systemInfo.steer_version || (baseInstalled || extendedInstalled ? _("Installed") : _("Not installed"));
   let engineBadgeNode = null;
@@ -25468,7 +25555,7 @@ function renderEngineCard() {
       "Base"
     );
   }
-  const engineRepoUrl = isSingBoxActive ? systemInfo.sing_box_repo_url || (singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box) : systemInfo.steer_repo_url || COMPONENT_REPO_URLS.steer;
+  const engineRepoUrl = isSingBoxActive ? systemInfo.sing_box_repo_url || (tachyonCore ? "https://github.com/Dushnilin/tachyon-core" : singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box) : systemInfo.steer_repo_url || COMPONENT_REPO_URLS.steer;
   const headerChildren = [
     E(
       "b",
@@ -25600,7 +25687,7 @@ function renderEngineCard() {
     { class: "tachyon_updates-page__component__details" },
     detailsChildren
   ) : null;
-  const currentSingBoxVariant = singBoxTiny ? "sing-box-tiny" : singBoxExtendedCompressed ? "sing-box-extended-compressed" : singBoxLx ? "sing-box-lx" : singBoxExtended ? "sing-box-extended" : "sing-box-stable";
+  const currentSingBoxVariant = tachyonCore ? "tachyon-core" : singBoxTiny ? "sing-box-tiny" : singBoxExtendedCompressed ? "sing-box-extended-compressed" : singBoxLx ? "sing-box-lx" : singBoxExtended ? "sing-box-extended" : "sing-box-stable";
   const selectableVariants = [
     {
       id: "sing-box-stable",
@@ -25636,6 +25723,13 @@ function renderEngineCard() {
       group: "sing-box",
       installed: singBoxInstalled && singBoxLx,
       active: isSingBoxActive && singBoxLx
+    },
+    {
+      id: "tachyon-core",
+      label: "tachyon-core",
+      group: "sing-box",
+      installed: singBoxInstalled && tachyonCore,
+      active: isSingBoxActive && tachyonCore
     },
     {
       id: "steer",
@@ -25699,6 +25793,8 @@ function renderEngineCard() {
         return "install_extended_compressed";
       case "sing-box-lx":
         return "install_lx";
+      case "tachyon-core":
+        return "install_tachyon_core";
       default:
         return "install_stable";
     }

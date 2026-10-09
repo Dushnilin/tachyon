@@ -351,19 +351,38 @@ function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
     let tiny = 0;
     let tailscale = 0;
     let cert_pin = 0;
+    let tachyon_core = 0;
+    let fptn = 0;
 
-    if (sing_box_marker_is("extended") ||
-        sing_box_marker_is("extended-compressed") ||
-        module_success(SINGBOX_RUNTIME_UC, [ "is-extended", sing_box_version ]))
-        extended = 1;
+    // tachyon-core is decided first and it wins: a marker left behind by a
+    // replaced binary must not reclassify an installed tachyon-core as tiny
+    // or extended, and the version suffix alone catches a manual copy. The
+    // suffix is matched inline rather than through the runtime banner probe,
+    // which would run the binary an extra time on every call.
+    if (sing_box_marker_is("tachyon-core") ||
+        match(as_string(sing_box_version), /-tachyon\./) != null)
+        tachyon_core = 1;
 
-    if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", sing_box_version ]))
-        extended = 1;
+    if (tachyon_core == 0) {
+        if (sing_box_marker_is("extended") ||
+            sing_box_marker_is("extended-compressed") ||
+            module_success(SINGBOX_RUNTIME_UC, [ "is-extended", sing_box_version ]))
+            extended = 1;
 
-    if (extended == 0 && (sing_box_marker_is("tiny") || sing_box_tiny_package_installed()))
-        tiny = 1;
+        if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", sing_box_version ]))
+            extended = 1;
 
-    if (extended == 1)
+        if (extended == 0 && (sing_box_marker_is("tiny") || sing_box_tiny_package_installed()))
+            tiny = 1;
+    }
+
+    // Tailscale and FPTN are compiled into tachyon-core itself: no external
+    // component, no with_* build tag to probe for.
+    if (tachyon_core == 1) {
+        tailscale = 1;
+        fptn = 1;
+    }
+    else if (extended == 1)
         tailscale = 1;
     else if (as_string(sing_box_version_output) != "") {
         if (module_success(SINGBOX_RUNTIME_UC, [ "supports-tailscale", sing_box_version, sing_box_version_output ]))
@@ -372,10 +391,14 @@ function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
     else if (tiny == 0 && sing_box_component_action_running())
         tailscale = 1;
 
-    if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", sing_box_version ]))
+    // The capability model answers certificate_sha256 for tachyon-core,
+    // whatever the version number underneath says.
+    if (tachyon_core == 1)
+        cert_pin = 1;
+    else if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", sing_box_version ]))
         cert_pin = 1;
 
-    return { extended, tiny, tailscale, cert_pin };
+    return { extended, tiny, tailscale, cert_pin, tachyon_core, fptn };
 }
 
 function provider_installed(runtime_uc) {
@@ -467,9 +490,13 @@ function build_system_info() {
     let flags = sing_box_capability_flags(sing_box_version, sing_box_version_output);
     let sing_box_compressed = flags.extended == 1 && sing_box_marker_is("extended-compressed") ? 1 : 0;
     let sing_box_lx = flags.extended == 1 && sing_box_marker_is("lx") ? 1 : 0;
+    let sing_box_tachyon_core = flags.tachyon_core == 1 ? 1 : 0;
+    let sing_box_fptn = flags.fptn == 1 ? 1 : 0;
 
     let sing_box_repo_url = "https://github.com/SagerNet/sing-box";
-    if (sing_box_lx == 1)
+    if (sing_box_tachyon_core == 1)
+        sing_box_repo_url = "https://github.com/Dushnilin/tachyon-core";
+    else if (sing_box_lx == 1)
         sing_box_repo_url = "https://github.com/Leadaxe/sing-box-lx";
     else if (flags.extended == 1)
         sing_box_repo_url = "https://github.com/shtorm-7/sing-box-extended";
@@ -489,6 +516,7 @@ function build_system_info() {
     let fptn_installed = provider_installed(FPTN_RUNTIME_UC) ? 1 : 0;
     let fptn_supported = (fptn_installed == 1 || is_fptn_supported()) ? 1 : 0;
     let fptn_version = fptn_installed ? provider_version(FPTN_RUNTIME_UC) : "not installed";
+    let fptn_mode = require("config.connections").fptn_transport_mode();
     let steer_installed = file_executable("/usr/sbin/steer") ? 1 : 0;
     let steer_version = "not installed";
     let steer_extended = 0;
@@ -554,6 +582,8 @@ function build_system_info() {
         sing_box_tiny: flags.tiny,
         sing_box_compressed,
         sing_box_lx,
+        sing_box_tachyon_core,
+        sing_box_fptn,
         sing_box_tailscale: flags.tailscale,
         sing_box_cert_pin: flags.cert_pin,
         sing_box_repo_url,
@@ -586,6 +616,7 @@ function build_system_info() {
         fptn_version,
         fptn_installed,
         fptn_supported,
+        fptn_mode,
         fptn_backup_version: fptn_meta ? as_string(fptn_meta.version) : "",
         fptn_backup_time: fptn_meta ? int(fptn_meta.timestamp || 0) : 0,
         steer_version,
@@ -938,14 +969,24 @@ function check_sing_box() {
         sing_box_installed = 1;
         let version = strip_leading_v(replace(module_output(SINGBOX_RUNTIME_UC, [ "version" ]), /[\r\n]+$/g, ""));
         if (version != "") {
-            if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", version ]))
-                sing_box_extended = 1;
-            else if (sing_box_marker_is("extended-compressed") || module_success(SINGBOX_RUNTIME_UC, [ "is-extended", version ]))
-                sing_box_extended = 1;
-            if (module_success(HELPERS_UC, [ "version-at-least", version, "1.12.4" ]))
+            if (match(version, /-tachyon\./) != null ||
+                sing_box_marker_is("tachyon-core")) {
+                // tachyon-core numbers its own releases (0.x), so the upstream
+                // compatibility gate would mark a healthy core as too old; the
+                // capability model, not the version number, decides its features.
                 sing_box_version_ok = 1;
-            if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", version ]))
                 sing_box_cert_pin = 1;
+            }
+            else {
+                if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", version ]))
+                    sing_box_extended = 1;
+                else if (sing_box_marker_is("extended-compressed") || module_success(SINGBOX_RUNTIME_UC, [ "is-extended", version ]))
+                    sing_box_extended = 1;
+                if (module_success(HELPERS_UC, [ "version-at-least", version, "1.12.4" ]))
+                    sing_box_version_ok = 1;
+                if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", version ]))
+                    sing_box_cert_pin = 1;
+            }
         }
         else if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")) {
             sing_box_extended = 1;

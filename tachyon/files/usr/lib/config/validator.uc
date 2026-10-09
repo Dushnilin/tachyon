@@ -762,6 +762,24 @@ function settings_section() {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
 
+// The three ways client traffic can reach the proxy. An unknown value is
+// reported rather than quietly treated as tproxy: a typo in the settings would
+// otherwise leave the router intercepting traffic the user asked it not to, or
+// not intercepting traffic they expected it to, with nothing in the log.
+const PROXY_MODES = [ "socks", "tproxy", "tun" ];
+
+function proxy_mode() {
+    let mode = lc(trim(option(settings_section(), "proxy_mode", "tproxy")));
+    return contains(PROXY_MODES, mode) ? mode : "tproxy";
+}
+
+function validate_proxy_mode(errors) {
+    let raw = lc(trim(option(settings_section(), "proxy_mode", "tproxy")));
+    if (raw == "" || contains(PROXY_MODES, raw))
+        return;
+    push(errors, "settings.proxy_mode must be one of socks, tproxy, tun (got '" + raw + "')");
+}
+
 function sections_by_type(type_name) {
     if (fixture_uci_data != null)
         return fixture_section_list(type_name);
@@ -2211,6 +2229,10 @@ function sing_box_lx_marker_set(ctx) {
     return sing_box_variant_marker(ctx, "lx");
 }
 
+function sing_box_tachyon_core_marker_set(ctx) {
+    return sing_box_variant_marker(ctx, "tachyon-core");
+}
+
 function sing_box_version_state(ctx) {
     let path = as_string(ctx.sing_box_version_state_file);
     if (path == "")
@@ -2282,6 +2304,11 @@ function sing_box_output_has_build_tag(output, tag) {
 }
 
 function sing_box_supports_tailscale(ctx, version, version_output) {
+    // Tailscale is compiled into tachyon-core itself; the marker or the
+    // version suffix settles it before any build-tag probing.
+    if (sing_box_tachyon_core_marker_set(ctx) || match(as_string(version), /-tachyon\./) != null)
+        return true;
+
     if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
         return true;
 
@@ -2698,6 +2725,10 @@ else if (mode == "country-code-valid")
     exit(country_code_valid(ARGV[1]) ? 0 : 1);
 else if (mode == "enum-valid")
     exit(enum_valid(ARGV[1], 2) ? 0 : 1);
+else if (mode == "proxy-mode")
+    print(proxy_mode(), "\n");
+else if (mode == "proxy-mode-valid")
+    exit(contains(PROXY_MODES, lc(trim(as_string(ARGV[1])))) ? 0 : 1);
 else if (mode == "regex-valid")
     exit(regex_valid(ARGV[1]) ? 0 : 1);
 else if (mode == "combined-domain-valid")

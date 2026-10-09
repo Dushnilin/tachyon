@@ -31,6 +31,33 @@ export function computeSystemInfoMutation(
   if (result.component === 'sing_box') {
     nextSystemInfo.sing_box_version = version;
 
+    // Any non-tachyon-core install replaces the binary, so a tachyon-core
+    // flag left from the previous state would mislabel the new one.
+    if (
+      result.action === 'install' ||
+      result.action === 'install_version' ||
+      result.action === 'reinstall' ||
+      result.action === 'install_stable' ||
+      result.action === 'install_tiny' ||
+      result.action === 'install_extended' ||
+      result.action === 'install_extended_compressed' ||
+      result.action === 'install_lx'
+    ) {
+      nextSystemInfo.sing_box_tachyon_core = 0;
+      nextSystemInfo.sing_box_fptn = 0;
+    }
+
+    if (result.action === 'install_tachyon_core') {
+      nextSystemInfo.sing_box_tachyon_core = 1;
+      nextSystemInfo.sing_box_fptn = 1;
+      nextSystemInfo.sing_box_extended = 0;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
+    }
+
     if (result.action === 'install_extended') {
       nextSystemInfo.sing_box_extended = 1;
       nextSystemInfo.sing_box_tiny = 0;
@@ -143,6 +170,10 @@ export function computeSystemInfoMutation(
     if (result.action === 'remove') {
       nextSystemInfo.fptn_installed = 0;
       nextSystemInfo.fptn_version = 'not installed';
+    } else if (result.action === 'set_native_mode') {
+      nextSystemInfo.fptn_mode = 'native';
+    } else if (result.action === 'set_component_mode') {
+      nextSystemInfo.fptn_mode = 'component';
     } else {
       nextSystemInfo.fptn_installed = 1;
       nextSystemInfo.fptn_version = version;

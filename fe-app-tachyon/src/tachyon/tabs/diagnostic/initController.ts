@@ -405,6 +405,8 @@ async function fetchDiagnosticsProviderInfo({
         sing_box_tiny: uiState.capabilities.sing_box_tiny,
         sing_box_compressed: uiState.capabilities.sing_box_compressed,
         sing_box_lx: uiState.capabilities.sing_box_lx,
+        sing_box_tachyon_core: uiState.capabilities.sing_box_tachyon_core,
+        sing_box_fptn: uiState.capabilities.sing_box_fptn,
         sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
         sing_box_cert_pin: uiState.capabilities.sing_box_cert_pin,
         zapret_installed: uiState.capabilities.zapret_installed,
@@ -1342,6 +1344,9 @@ function renderDiagnosticSystemInfoWidget() {
     diagnosticsSystemInfo.sing_box_version,
   );
   const steerInstalled = Boolean(diagnosticsSystemInfo.steer_installed);
+  const singBoxRowLabel = diagnosticsSystemInfo.sing_box_tachyon_core
+    ? 'tachyon-core'
+    : 'Sing-box';
 
   // Only one engine is installed at a time — engines are swapped, not co-installed.
   // Show only the active engine in system info.
@@ -1353,7 +1358,7 @@ function renderDiagnosticSystemInfoWidget() {
     });
   } else {
     items.push({
-      key: 'Sing-box',
+      key: singBoxRowLabel,
       value: formatSingBoxVersion(diagnosticsSystemInfo),
       tag: { label: _('active'), kind: 'success' as const },
     });
@@ -1363,7 +1368,7 @@ function renderDiagnosticSystemInfoWidget() {
   // show the inactive one without the active tag so the user knows to clean up.
   if (isSteer && singBoxInstalled) {
     items.push({
-      key: 'Sing-box',
+      key: singBoxRowLabel,
       value: formatSingBoxVersion(diagnosticsSystemInfo),
       tag: { label: _('installed'), kind: 'warning' as const },
     });

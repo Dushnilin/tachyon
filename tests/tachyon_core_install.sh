@@ -3,21 +3,27 @@
 #
 # sing-box-lx and the stock variants ship a member literally called sing-box, so
 # the install path looks it up by exact name. tachyon-core ships
-# tachyon-core-<arch>-<version>, which is not knowable in advance - the version is
-# in the name. So the member is found by prefix, and that lookup has to survive
-# two things the exact-name matcher never had to: a name carrying two dots
-# ("0.0.1") and a .sha256 sidecar sitting next to the binary in the same archive.
+# tachyon-core-<arch>, which is not knowable in advance, so the member is found by
+# prefix, and that lookup has to survive the .sha256 sidecar and the SHA256SUMS
+# file sitting beside it.
+#
+# The asset names below are copied verbatim from the published release v0.0.1 of
+# Dushnilin/tachyon-core. They are not invented: the release ships
+# tachyon-core-aarch64-musl-v0.0.1.tar.gz, carrying a Rust target triple and the
+# "v" of the tag. An earlier version of this test used the plausible-but-wrong
+# tachyon-core-aarch64-0.0.1.tar.gz and therefore agreed with the code while both
+# were wrong - a fixture that encodes the assumption instead of the fact.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 UPDATER="$TACHYON_LIB/components/updater.uc"
 
 mkdir -p "$WORK_DIR/arch"
-printf '#!/bin/sh\necho core\n' >"$WORK_DIR/arch/tachyon-core-aarch64-0.0.1"
-sha256sum "$WORK_DIR/arch/tachyon-core-aarch64-0.0.1" \
-  >"$WORK_DIR/arch/tachyon-core-aarch64-0.0.1.sha256"
+printf '#!/bin/sh\necho core\n' >"$WORK_DIR/arch/tachyon-core-aarch64-musl"
+sha256sum "$WORK_DIR/arch/tachyon-core-aarch64-musl" \
+  >"$WORK_DIR/arch/tachyon-core-aarch64-musl.sha256"
 ( cd "$WORK_DIR/arch" && tar -czf "$WORK_DIR/core.tar.gz" \
-    ./tachyon-core-aarch64-0.0.1 ./tachyon-core-aarch64-0.0.1.sha256 )
+    ./tachyon-core-aarch64-musl ./tachyon-core-aarch64-musl.sha256 )
 
 members() {
   tar -tzf "$WORK_DIR/core.tar.gz" |
@@ -35,20 +41,48 @@ got="$(members tachyon-core)"
 case "$got" in
   *.sha256) fail "the prefix match picked the checksum file, not the binary: $got" ;;
 esac
-[ "$(basename "$got")" = "tachyon-core-aarch64-0.0.1" ] ||
+[ "$(basename "$got")" = "tachyon-core-aarch64-musl" ] ||
   fail "unexpected member picked: $got"
 
-# A different variant is a different artifact; picking it here would install the
-# wrong build and no one would notice until a feature went missing.
+# A longer prefix is a different artifact name and must not fuzzy-match into
+# the full build's member.
 [ -z "$(members tachyon-core-lite)" ] ||
-  fail "a lite lookup must not match the full build's member"
+  fail "a longer prefix must not match the full build's member"
 
-# And the asset name carries the arch in the middle, which is why the suffix
-# matcher the other variants use cannot be reused here.
-RELEASE='{"assets":[
-  {"name":"tachyon-core-aarch64-0.0.1.tar.gz","browser_download_url":"https://x/full.tgz"},
-  {"name":"tachyon-core-lite-aarch64-0.0.1.tar.gz","browser_download_url":"https://x/lite.tgz"},
-  {"name":"notes.txt","browser_download_url":"https://x/n"}]}'
+# ─── the arch name ──────────────────────────────────────────────────────────
+# The release names assets after the Rust target triple. sing-box-extended ships
+# "arm64" for the same machine, so the two resolvers cannot be shared: reusing the
+# Go name here resolves to nothing and the install fails with "no asset".
+arch() {
+  ucode -L "$TACHYON_LIB" "$UPDATER" tachyon-core-arch-suffix "$1" "" 2>/dev/null
+}
+
+[ "$(arch aarch64)" = "aarch64-musl" ] ||
+  fail "aarch64 must resolve to aarch64-musl, got '$(arch aarch64)'"
+[ "$(arch x86_64)" = "x86_64-musl" ] ||
+  fail "x86_64 must resolve to x86_64-musl, got '$(arch x86_64)'"
+[ "$(arch armv7l)" = "armv7-musl" ] ||
+  fail "armv7l must resolve to armv7-musl, got '$(arch armv7l)'"
+[ "$(arch mipsel)" = "mipsel-musl" ] ||
+  fail "mipsel must resolve to mipsel-musl, got '$(arch mipsel)'"
+# The Go name is exactly the trap: if this ever comes back "arm64", the asset
+# lookup is using the wrong table again.
+[ "$(arch aarch64)" != "arm64" ] ||
+  fail "tachyon-core must not be resolved with the sing-box-extended GOARCH name"
+# OpenWrt is musl throughout; the gnu build would not link there.
+case "$(arch aarch64)" in
+  *-musl) : ;;
+  *) fail "the arch suffix must be a musl target on OpenWrt, got '$(arch aarch64)'" ;;
+esac
+
+# ─── asset selection, against the real asset names ──────────────────────────
+RELEASE='{"tag_name":"v0.0.1","assets":[
+  {"name":"tachyon-core-aarch64-musl-v0.0.1.tar.gz","browser_download_url":"https://x/full-a64.tgz"},
+  {"name":"tachyon-core-armv7-musl-v0.0.1.tar.gz","browser_download_url":"https://x/full-armv7.tgz"},
+  {"name":"tachyon-core-x86_64-musl-v0.0.1.tar.gz","browser_download_url":"https://x/full-x64.tgz"},
+  {"name":"tachyon-core-linux-amd64-v0.0.1.tar.gz","browser_download_url":"https://x/full-amd64-gnu.tgz"},
+  {"name":"tachyon-core-windows-amd64-v0.0.1.zip","browser_download_url":"https://x/windows.zip"},
+  {"name":"SHA256SUMS","browser_download_url":"https://x/sums"}]}'
 printf '%s' "$RELEASE" >"$WORK_DIR/release.json"
 
 asset() {
@@ -56,11 +90,20 @@ asset() {
     <"$WORK_DIR/release.json" 2>/dev/null
 }
 
-[ "$(asset aarch64 "")" = "https://x/full.tgz" ] ||
-  fail "the full build's asset was not selected"
-[ "$(asset aarch64 lite)" = "https://x/lite.tgz" ] ||
-  fail "the lite build's asset was not selected"
-[ -z "$(asset mips lite)" ] ||
+[ "$(asset aarch64-musl "")" = "https://x/full-a64.tgz" ] ||
+  fail "the aarch64-musl asset was not selected, got '$(asset aarch64-musl "")'"
+[ "$(asset x86_64-musl "")" = "https://x/full-x64.tgz" ] ||
+  fail "the x86_64-musl asset was not selected, got '$(asset x86_64-musl "")'"
+# Not the gnu build, and not the Windows zip.
+[ "$(asset aarch64-musl "")" != "https://x/full-amd64-gnu.tgz" ] ||
+  fail "aarch64-musl must not resolve to the gnu build"
+[ "$(asset aarch64-musl "")" != "https://x/windows.zip" ] ||
+  fail "a musl asset lookup must not pick a zip"
+# A checksum manifest is not an artifact.
+[ "$(asset aarch64-musl "")" != "https://x/sums" ] ||
+  fail "SHA256SUMS was picked as the artifact"
+
+[ -z "$(asset mips64-musl "")" ] ||
   fail "an architecture with no artifact must resolve to nothing, not to another arch"
 
 printf 'tachyon-core asset and archive lookup checks passed\n'

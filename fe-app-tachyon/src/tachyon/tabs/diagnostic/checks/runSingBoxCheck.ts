@@ -88,8 +88,11 @@ export async function runSingBoxCheck() {
   // the version number. An extended build reports 1.14.x, so the line was
   // permanently amber there and told the user to "upgrade to Extended" while they
   // were already on it. lx sets the same flag and tracks upstream on its own, so
-  // there is nothing to act on either. Both variants drop the line; a stock build
-  // below 1.15 still gets the warning, and there it is actionable.
+  // there is nothing to act on either. tachyon-core carries the field natively
+  // (the backend flags it from the capability model, not from the version
+  // number), so the line shows "Supported" there too. Both fork variants drop
+  // the line; a stock build below 1.15 still gets the warning, and there it is
+  // actionable.
   if (!data.sing_box_extended) {
     items.push({
       state: !data.sing_box_installed

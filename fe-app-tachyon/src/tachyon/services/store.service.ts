@@ -223,6 +223,8 @@ export interface StoreType {
     sing_box_tiny: number;
     sing_box_compressed: number;
     sing_box_lx: number;
+    sing_box_tachyon_core?: number;
+    sing_box_fptn?: number;
     sing_box_tailscale: number;
     sing_box_cert_pin?: number;
     sing_box_repo_url?: string;
@@ -262,6 +264,7 @@ export interface StoreType {
     tailscale_backup_time?: number;
     fptn_version: string;
     fptn_installed: number;
+    fptn_mode?: 'native' | 'component';
     fptn_backup_version?: string;
     fptn_backup_time?: number;
     server_inbounds_enabled_count: number;
@@ -286,6 +289,7 @@ export interface StoreType {
     singBoxInstallExtended: { loading: boolean };
     singBoxInstallExtendedCompressed: { loading: boolean };
     singBoxInstallLx: { loading: boolean };
+    singBoxInstallTachyonCore: { loading: boolean };
     singBoxInstallTiny: { loading: boolean };
     singBoxInstallStable: { loading: boolean };
     zapretCheck: { loading: boolean };
@@ -312,6 +316,8 @@ export interface StoreType {
     fptnInstall: { loading: boolean };
     fptnRemove: { loading: boolean };
     fptnRollback: { loading: boolean };
+    fptnSetNativeMode: { loading: boolean };
+    fptnSetComponentMode: { loading: boolean };
     tailscaleCheck: { loading: boolean };
     tailscaleInstall: { loading: boolean };
     tailscaleRemove: { loading: boolean };

@@ -2247,11 +2247,19 @@ async function renderServicesInfoWidget() {
           },
         },
         {
-          key:
-            store.get().activeEngine === 'steer' ||
-            store.get().activeEngine === 'steer-extended'
-              ? 'Steer'
-              : 'Sing-box',
+          key: (() => {
+            if (
+              store.get().activeEngine === 'steer' ||
+              store.get().activeEngine === 'steer-extended'
+            ) {
+              return 'Steer';
+            }
+            const systemInfo = store.get().diagnosticsSystemInfo;
+            if (systemInfo.sing_box_tachyon_core) {
+              return 'tachyon-core';
+            }
+            return 'Sing-box';
+          })(),
           value: data.singbox
             ? data.singboxMemoryMb
               ? `\u2713 (${data.singboxMemoryMb} MB)`

@@ -37,14 +37,17 @@ TACHYON_UCI_STATE_FILE="$WORK_DIR/none.state" \
   tachyon_ip_ports tachyon_interfaces "br-lan" 0x00100000 0x00200000 \
   198.18.0.0/15 1602 0 "" "" "" "" "" 0 1
 
-QUIC_RULE=$'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tmeta\tl4proto\tudp\ttcp\tdport\t443\tmeta\tmark\t&\t0x00100000\t!=\t0x00100000\tcounter\tdrop'
+# UDP only. An earlier version of this rule said "meta l4proto udp tcp" - one
+# nft expression naming two protocols - which the kernel rejects with
+# "conflicting transport layer protocols", and the drop took TCP/443 with it.
+QUIC_RULE=$'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tmeta\tl4proto\tudp\tth\tdport\t443\tmeta\tmark\t&\t0x00100000\t!=\t0x00100000\tcounter\tdrop'
 
 grep -Fq "$QUIC_RULE" "$NFT_LOG" ||
   fail "disable_quic must drop UDP/443 that was not marked for tproxy"
 
 # The drop has to sit after the fakeip marking rules. Traffic that sing-box is
 # going to handle must be left alone so the engine keeps deciding for it.
-quic_line="$(awk -v pat='tcp\tdport\t443\tmeta\tmark' 'index($0, pat) { print NR; exit }' "$NFT_LOG")"
+quic_line="$(awk -v pat='th\tdport\t443\tmeta\tmark' 'index($0, pat) { print NR; exit }' "$NFT_LOG")"
 fakeip_line="$(awk -v pat='ip\tdaddr\t198.18.0.0/15\tmeta\tl4proto\tudp\tmeta\tmark\tset' 'index($0, pat) { print NR; exit }' "$NFT_LOG")"
 
 [ -n "$quic_line" ] || fail "QUIC drop rule was not emitted"

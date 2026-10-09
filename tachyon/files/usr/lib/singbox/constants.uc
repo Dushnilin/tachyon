@@ -12,6 +12,25 @@ const TPROXY_INBOUND_ADDRESS = "0.0.0.0";
 const TPROXY_INBOUND6_TAG = "tproxy6-in";
 const TPROXY_INBOUND6_ADDRESS = "::1";
 const TPROXY_INBOUND_PORT = 1602;
+
+// The tun inbound. Our core runs it on smoltcp in userspace rather than on
+// gVisor, which is why an MTU of 9000 is a real number here and not a wish - but
+// the defaults below are ones every core in the table accepts, so a config
+// generated with these keeps working if the binary is swapped for another one.
+const TUN_INBOUND_TAG = "tun-in";
+const TUN_INTERFACE = "tun0";
+const TUN_INET4_ADDRESS = "172.19.0.1/30";
+const TUN_INET6_ADDRESS = "";
+const TUN_MTU = 9000;
+// The firewall zone the tun device needs; sync_tun_firewall_zone() creates it.
+const TUN_FIREWALL_ZONE = "tachyon_tun";
+
+// The client-facing SOCKS/HTTP inbound used by the socks proxy_mode. Distinct
+// from the direct-bypass mixed inbound on 2080, which is a hole on purpose: this
+// one is where a client sends traffic to be proxied.
+const CLIENT_MIXED_INBOUND_TAG = "client-mixed-in";
+const CLIENT_MIXED_INBOUND_ADDRESS = "0.0.0.0";
+const CLIENT_MIXED_INBOUND_PORT = 1080;
 const DNS_INBOUND_TAG = "dns-in";
 const DNS_INBOUND_ADDRESS = "127.0.0.42";
 const DNS_INBOUND_PORT = 53;
@@ -174,5 +193,14 @@ return {
     outbound_tag,
     domain_resolver_tag,
     server_inbound_tag,
-    tailscale_dns_server_tag
+    tailscale_dns_server_tag,
+    TUN_INBOUND_TAG,
+    TUN_INTERFACE,
+    TUN_INET4_ADDRESS,
+    TUN_INET6_ADDRESS,
+    TUN_MTU,
+    TUN_FIREWALL_ZONE,
+    CLIENT_MIXED_INBOUND_TAG,
+    CLIENT_MIXED_INBOUND_ADDRESS,
+    CLIENT_MIXED_INBOUND_PORT
 };

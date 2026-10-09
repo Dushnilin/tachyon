@@ -902,6 +902,8 @@ export namespace Tachyon {
     sing_box_tiny: 0 | 1;
     sing_box_compressed: 0 | 1;
     sing_box_lx?: 0 | 1;
+    sing_box_tachyon_core?: 0 | 1;
+    sing_box_fptn?: 0 | 1;
     sing_box_tailscale: 0 | 1;
     sing_box_cert_pin?: 0 | 1;
     sing_box_repo_url?: string;
@@ -926,6 +928,7 @@ export namespace Tachyon {
     fptn_version: string;
     fptn_installed: 0 | 1;
     fptn_supported?: 0 | 1;
+    fptn_mode?: 'native' | 'component';
     fptn_backup_version?: string;
     fptn_backup_time?: number;
     direct_bypass_enabled?: 0 | 1;
@@ -962,6 +965,8 @@ export namespace Tachyon {
     sing_box_tiny: 0 | 1;
     sing_box_compressed: 0 | 1;
     sing_box_lx: 0 | 1;
+    sing_box_tachyon_core?: 0 | 1;
+    sing_box_fptn?: 0 | 1;
     sing_box_tailscale: 0 | 1;
     sing_box_cert_pin?: 0 | 1;
     zapret_installed: 0 | 1;
@@ -1057,10 +1062,13 @@ export namespace Tachyon {
     | 'install_extended'
     | 'install_extended_compressed'
     | 'install_lx'
+    | 'install_tachyon_core'
     | 'install_tiny'
     | 'install_stable'
     | 'enable'
     | 'disable'
+    | 'set_native_mode'
+    | 'set_component_mode'
     | 'switch';
 
   export interface ComponentActionResult {

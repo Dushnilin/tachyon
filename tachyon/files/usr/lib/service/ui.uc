@@ -1025,6 +1025,8 @@ function capability_flags() {
         sing_box_tiny: 0,
         sing_box_compressed: 0,
         sing_box_lx: 0,
+        sing_box_tachyon_core: 0,
+        sing_box_fptn: 0,
         sing_box_tailscale: 0,
         zapret_installed: file_executable(ZAPRET_PROVIDER_NFQWS_BIN) ? 1 : 0,
         zapret2_installed: file_executable(ZAPRET2_PROVIDER_NFQWS2_BIN) ? 1 : 0,
@@ -1035,7 +1037,20 @@ function capability_flags() {
     };
 
     if (file_executable(SING_BOX_BIN_PATH)) {
-        if (marker_is("lx")) {
+        // tachyon-core is decided first and it wins over every marker below:
+        // the marker of a replaced binary describes the old variant. The
+        // version suffix is checked inline rather than through the runtime
+        // module - the banner probe there would run the binary a second time
+        // and defeat the signature cache.
+        let tc_info = sing_box_version_info();
+        if (marker_is("tachyon-core") ||
+            (tc_info != null && index(tc_info.version, "-tachyon.") >= 0)) {
+            result.sing_box_tachyon_core = 1;
+            // Tailscale and FPTN are compiled into the core itself.
+            result.sing_box_tailscale = 1;
+            result.sing_box_fptn = 1;
+        }
+        else if (marker_is("lx")) {
             result.sing_box_extended = 1;
             result.sing_box_lx = 1;
             result.sing_box_tailscale = 1;

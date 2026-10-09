@@ -66,6 +66,61 @@ describe('computeSystemInfoMutation', () => {
     expect(nextSystemInfo.sing_box_cert_pin).toBe(1);
   });
 
+  it('sets tachyon-core flags for install_tachyon_core', () => {
+    const { nextSystemInfo } = computeSystemInfoMutation(initialSystemInfo, {
+      component: 'sing_box',
+      action: 'install_tachyon_core',
+      current_version: 'v0.0.1-tachyon.0',
+    });
+
+    expect(nextSystemInfo.sing_box_version).toBe('v0.0.1-tachyon.0');
+    expect(nextSystemInfo.sing_box_tachyon_core).toBe(1);
+    expect(nextSystemInfo.sing_box_fptn).toBe(1);
+    expect(nextSystemInfo.sing_box_extended).toBe(0);
+    expect(nextSystemInfo.sing_box_tiny).toBe(0);
+    expect(nextSystemInfo.sing_box_cert_pin).toBe(1);
+    expect(nextSystemInfo.sing_box_tailscale).toBe(1);
+  });
+
+  it('updates fptn transport mode for set_native_mode', () => {
+    const { nextSystemInfo } = computeSystemInfoMutation(initialSystemInfo, {
+      component: 'fptn',
+      action: 'set_native_mode',
+      current_version: '',
+    });
+
+    expect(nextSystemInfo.fptn_mode).toBe('native');
+  });
+
+  it('updates fptn transport mode for set_component_mode', () => {
+    const { nextSystemInfo } = computeSystemInfoMutation(initialSystemInfo, {
+      component: 'fptn',
+      action: 'set_component_mode',
+      current_version: '',
+    });
+
+    expect(nextSystemInfo.fptn_mode).toBe('component');
+  });
+
+  it('clears tachyon-core flags when another variant is installed', () => {
+    const tachyonCoreInstalled = {
+      ...initialSystemInfo,
+      sing_box_tachyon_core: 1,
+      sing_box_fptn: 1,
+      sing_box_version: 'v0.0.1-tachyon.0',
+    };
+
+    const { nextSystemInfo } = computeSystemInfoMutation(tachyonCoreInstalled, {
+      component: 'sing_box',
+      action: 'install_stable',
+      current_version: '1.13.21',
+    });
+
+    expect(nextSystemInfo.sing_box_tachyon_core).toBe(0);
+    expect(nextSystemInfo.sing_box_fptn).toBe(0);
+    expect(nextSystemInfo.sing_box_tiny).toBe(0);
+  });
+
   it('updates provider installation and flags notification', () => {
     const { nextSystemInfo, notifyActionProviders } = computeSystemInfoMutation(
       initialSystemInfo,

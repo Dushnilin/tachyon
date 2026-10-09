@@ -1271,6 +1271,14 @@ function restore_sing_box_service_from_marker(marker) {
     return true;
 }
 
+// tachyon-core ships Rust target-triple names (aarch64-musl), not GOARCH names
+// (arm64), so it cannot share the sing-box-extended resolver.
+function resolve_tachyon_core_arch_suffix() {
+    let host_arch = trim(command_output_from_args([ "uname", "-m" ]));
+    let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+    return trim(helper_output("tachyon-core-arch-suffix", [ host_arch, distrib_arch ]));
+}
+
 function resolve_sing_box_extended_arch_suffix() {
     let host_arch = trim(command_output_from_args([ "uname", "-m" ]));
     let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
@@ -1432,12 +1440,9 @@ function set_sing_box_lx_release_from_json(release_json, allow_prerelease) {
 // suffix matcher the other variants use does not apply.
 const TACHYON_CORE_OWNER = "Dushnilin";
 const TACHYON_CORE_REPO = "tachyon-core";
+const TACHYON_CORE_LABEL = "tachyon-core";
 
-function tachyon_core_variant_label(variant) {
-    return as_string(variant || "") == "lite" ? "tachyon-core-lite" : "tachyon-core";
-}
-
-function set_tachyon_core_release_from_json(release_json, variant, allow_prerelease) {
+function set_tachyon_core_release_from_json(release_json, allow_prerelease) {
     if (as_string(release_json) == "")
         return null;
     let tag = trim(helper_output_input(release_json, "object-get-default", [ "tag_name", "" ]));
@@ -1445,10 +1450,10 @@ function set_tachyon_core_release_from_json(release_json, variant, allow_prerele
     if (!allow_prerelease && (tag == "" || index(lowered, "alpha") >= 0 || index(lowered, "beta") >= 0 || index(lowered, "rc") >= 0))
         return null;
 
-    let arch_suffix = resolve_sing_box_extended_arch_suffix();
+    let arch_suffix = resolve_tachyon_core_arch_suffix();
     if (arch_suffix == "")
         return null;
-    let asset_url = trim(helper_output_input(release_json, "tachyon-core-asset-url", [ arch_suffix, as_string(variant || "") ]));
+    let asset_url = trim(helper_output_input(release_json, "tachyon-core-asset-url", [ arch_suffix ]));
     if (asset_url == "")
         return null;
 
@@ -1460,23 +1465,23 @@ function set_tachyon_core_release_from_json(release_json, variant, allow_prerele
     };
 }
 
-function resolve_tachyon_core_release(variant, target_tag) {
-    let label = tachyon_core_variant_label(variant);
-
+function resolve_tachyon_core_release(target_tag) {
     if (target_tag != null && target_tag != "") {
         let release_json = fetch_github_release_by_tag_json(TACHYON_CORE_OWNER, TACHYON_CORE_REPO, target_tag);
-        let resolved = set_tachyon_core_release_from_json(release_json, variant, true);
+        let resolved = set_tachyon_core_release_from_json(release_json, true);
         if (resolved != null)
             return resolved;
 
         // No API answer: the asset name is derivable, so the download URL can be
         // built directly. Better than refusing, and the download reports the real
         // failure if the tag or the arch is wrong.
-        let arch_suffix = resolve_sing_box_extended_arch_suffix();
+        let arch_suffix = resolve_tachyon_core_arch_suffix();
         if (arch_suffix == "")
             return null;
-        let tag_clean = replace(target_tag, /^v/, "");
-        let asset_name = label + "-" + arch_suffix + "-" + tag_clean + ".tar.gz";
+        // The tag goes in whole: the released assets are named
+        // tachyon-core-aarch64-musl-v0.0.1.tar.gz, so stripping the "v" here
+        // built a URL for a file the release does not have.
+        let asset_name = TACHYON_CORE_LABEL + "-" + arch_suffix + "-" + as_string(target_tag) + ".tar.gz";
         return {
             tag: target_tag,
             release_url: "https://github.com/" + TACHYON_CORE_OWNER + "/" + TACHYON_CORE_REPO + "/releases/tag/" + target_tag,
@@ -1486,7 +1491,7 @@ function resolve_tachyon_core_release(variant, target_tag) {
     }
 
     let release_json = fetch_github_release_json(TACHYON_CORE_OWNER, TACHYON_CORE_REPO);
-    let resolved = set_tachyon_core_release_from_json(release_json, variant, false);
+    let resolved = set_tachyon_core_release_from_json(release_json, false);
     if (resolved != null)
         return resolved;
 
@@ -1494,7 +1499,7 @@ function resolve_tachyon_core_release(variant, target_tag) {
     let tag = trim(helper_output_input(releases_json, "tachyon-core-release-tag", []));
     if (tag == "")
         return null;
-    return resolve_tachyon_core_release(variant, tag);
+    return resolve_tachyon_core_release(tag);
 }
 
 function resolve_sing_box_lx_release(target_tag) {
@@ -2012,26 +2017,25 @@ function install_sing_box_extended(action, compressed, target_tag) {
 // an lx build or a truncated download would all satisfy a bare exit code, and
 // installing one of those over the core would leave Tachyon generating a config
 // for a binary that is not there.
-function validate_tachyon_core_binary(binary, library_dir, variant) {
+function validate_tachyon_core_binary(binary, library_dir) {
     let version = versions.read_sing_box_binary_version(binary, library_dir || "");
     if (version == "")
         return "";
     if (!sing_box_runtime_success("is-foreign-core", [ version ]))
         return "";
 
-    let marker = tachyon_core_variant_label(variant);
-    updates_log("validated " + marker + " build " + version + " from " + binary, "info");
+    updates_log("validated " + TACHYON_CORE_LABEL + " build " + version + " from " + binary, "info");
     return version;
 }
 
-function install_tachyon_core(action, variant, target_tag) {
+function install_tachyon_core(action, target_tag) {
     init_tmp_dir() || action_fail("sing_box", action, "Failed to create temporary directory");
-    let label = tachyon_core_variant_label(variant);
+    let label = TACHYON_CORE_LABEL;
     let current_version = sing_box_runtime_output("version", []);
     let current_variant = sing_box_runtime_output("variant", []);
     let previous_marker = sing_box_runtime_output("read-variant-marker", []);
     let previous_version_state = sing_box_runtime_output("read-version-state", []);
-    let release = resolve_tachyon_core_release(variant, target_tag);
+    let release = resolve_tachyon_core_release(target_tag);
     if (release == null)
         action_fail("sing_box", action, "Failed to resolve " + label + " release", current_version);
     let latest_version = normalize_sing_box_version(release.tag);
@@ -2078,7 +2082,7 @@ function install_tachyon_core(action, variant, target_tag) {
     remove_file(archive_file);
 
     stop_tachyon_before_sing_box_change();
-    let new_version = validate_tachyon_core_binary(tmp_binary, cmp.tmp_dir_path(), variant);
+    let new_version = validate_tachyon_core_binary(tmp_binary, cmp.tmp_dir_path());
     if (new_version == "") {
         remove_file(tmp_binary);
         restart_tachyon_after_successful_change();
@@ -2658,6 +2662,10 @@ function install_tachyon_version(target_tag) {
 }
 
 function dispatch_sing_box(action, target_tag) {
+    if (action == "install_tachyon_core") {
+        install_tachyon_core(action, target_tag);
+        return;
+    }
     if (action == "install_extended") {
         install_sing_box_extended(action, false, target_tag);
         return;
@@ -2680,7 +2688,9 @@ function dispatch_sing_box(action, target_tag) {
     }
 
     let variant = sing_box_runtime_output("variant", []);
-    if (variant == "lx")
+    if (variant == "tachyon-core")
+        install_tachyon_core(action, target_tag);
+    else if (variant == "lx")
         install_sing_box_lx(action, target_tag);
     else if (variant == "extended-compressed")
         install_sing_box_extended(action, true, target_tag);
@@ -3072,6 +3082,7 @@ function list_component_releases(component, count) {
         let variant = sing_box_runtime_output("variant", []);
         if (variant == "lx") { owner = "Leadaxe"; repo = "sing-box-lx"; }
         else if (variant == "extended" || variant == "extended-compressed") { owner = "shtorm-7"; repo = "sing-box-extended"; }
+        else if (variant == "tachyon-core") { owner = TACHYON_CORE_OWNER; repo = TACHYON_CORE_REPO; }
         else { owner = "SagerNet"; repo = "sing-box"; }
     } else if (component == "zapret") {
         owner = "remittor"; repo = "zapret-openwrt";
@@ -3140,11 +3151,11 @@ function install_component_version(component, tag) {
     // (issue #108). Refuse before create_component_backup so nothing is touched.
     if (component == "sing_box") {
         let variant = sing_box_runtime_output("variant", []);
-        if (index([ "lx", "extended", "extended-compressed" ], variant) < 0)
+        if (index([ "lx", "extended", "extended-compressed", "tachyon-core" ], variant) < 0)
             action_fail("sing_box", "install_version",
-                "Installing a specific version is only supported for the lx/extended sing-box variants; " +
+                "Installing a specific version is only supported for the lx/extended/tachyon-core variants; " +
                 "the current variant (" + variant + ") is installed from the OpenWrt repository and ignores " +
-                "the selected tag. Switch to lx/extended or install the binary manually",
+                "the selected tag. Switch to lx/extended/tachyon-core or install the binary manually",
                 sing_box_runtime_output("version", []), tag);
     }
 
@@ -3173,6 +3184,23 @@ function install_component_version(component, tag) {
     } else {
         action_fail(component, "install_version", "Component " + component + " does not support version installation");
     }
+}
+
+// FPTN transport choice: with tachyon-core and the fptn-client component both
+// present, only one of them may own the tunnel. The resolver in
+// config.connections reads this setting for both the generator and the
+// provider runtime.
+function set_fptn_mode(action) {
+    let mode = action == "set_native_mode" ? "native" : "component";
+    let cursor = uci_core.cursor();
+    cursor.load("tachyon");
+    cursor.set("tachyon", "settings", "fptn_mode", mode);
+    cursor.commit("tachyon");
+
+    remove_file(SYSTEM_INFO_CACHE_FILE);
+    restart_tachyon_after_successful_change();
+
+    action_success("fptn", action, "FPTN transport set to " + mode, mode, mode, 1);
 }
 
 function set_direct_bypass(action) {
@@ -3301,7 +3329,9 @@ function component_action(component, action, extra) {
         return;
     }
 
-    if (action != "check_update" && action != "remove" && component != "direct_bypass" && component != "torrserver_direct" && component != "engine") {
+    if (action != "check_update" && action != "remove" &&
+        action != "set_native_mode" && action != "set_component_mode" &&
+        component != "direct_bypass" && component != "torrserver_direct" && component != "engine") {
         create_component_backup(component);
     }
 
@@ -3314,6 +3344,7 @@ function component_action(component, action, extra) {
     else if (component == "sing_box" && (action == "check_update" || action == "install" ||
         action == "install_extended" || action == "install_extended_compressed" ||
         action == "install_lx" ||
+        action == "install_tachyon_core" ||
         action == "install_tiny" || action == "install_stable"))
         dispatch_sing_box(action);
     else if (component == "zapret" && (action == "check_update" || action == "install"))
@@ -3340,6 +3371,8 @@ function component_action(component, action, extra) {
         install_fptn(action);
     else if (component == "fptn" && action == "remove")
         remove_optional_component("fptn", "fptn-client", "FPTN", LIB_DIR + "/providers/fptn/runtime.uc");
+    else if (component == "fptn" && (action == "set_native_mode" || action == "set_component_mode"))
+        set_fptn_mode(action);
     else if (component == "steer" && (action == "check_update" || action == "install"))
         install_steer(action, extra, false);
     else if (component == "steer-extended" && (action == "check_update" || action == "install"))

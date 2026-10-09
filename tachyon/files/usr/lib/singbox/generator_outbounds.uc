@@ -6,6 +6,7 @@ let runtime_constants = require("singbox.constants");
 let runtime_subscription = require("singbox.subscription");
 let runtime_country = require("singbox.country");
 let runtime_dns = require("singbox.dns");
+let core_profile = require("singbox.core_profile");
 let runtime_url = require("core.url");
 let subscription_share_link = require("subscription.share_link");
 let connections = require("config.connections");
@@ -476,32 +477,24 @@ function tls_alpn_array(value, transport) {
     return value == "" ? [] : split(value, ",");
 }
 
-// Which TLS field this build accepts for a pin. Duplicated from
-// generator.uc's certificate_pin_field because this module does not import it,
-// and the answer has to be the same in both: it decides whether a node's pin
-// survives generation at all.
+// Which TLS field this build accepts for a pin. The answer comes from the
+// capability model in singbox/runtime.uc rather than from a second copy of the
+// rules: two copies of "which field does this core take" is exactly how the
+// generator and the validator ended up disagreeing about the same binary, and a
+// disagreement here is silent - the pin is simply dropped from the config.
+//
+// SB_VERSION_OVERRIDE still wins, because the whole point of it is to generate a
+// config for a build that is not the one installed.
 function certificate_pin_field() {
     let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
     let version = override != ""
         ? override
         : trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version") || ""));
-    let variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
-    let variant = trim(as_string(fs.readfile(variant_file) || ""));
+    let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || ""));
 
-    if (index(version, "-tachyon.") >= 0 || variant == "tachyon-core")
-        return "certificate_sha256";
-
-    if (match(version, /^[0-9]+\.[0-9]+.*-lx/) != null || variant == "lx" || variant == "sing-box-lx")
-        return "certificate_public_key_sha256";
-
-    let m = match(version, /^v?([0-9]+)\.([0-9]+)/);
-    if (m) {
-        let major = int(m[1]);
-        let minor = int(m[2]);
-        if (major > 1 || (major == 1 && minor >= 15))
-            return "certificate_sha256";
-    }
-    return "";
+    // With no state file to go on, let the model look at the installed binary
+    // rather than guessing from an empty version.
+    return core_profile.pin_field(version, variant);
 }
 
 function apply_link_tls(outbound, scheme, query) {
@@ -2086,12 +2079,33 @@ function add_olcrtc_outbound(config, section, sections) {
 
 // FPTN routes traffic through its TUN interface (tun-fptn) via kernel routing.
 // fwmark 0x00300000 (3145728) → ip rule → routing table 4249 → dev tun-fptn.
+//
+// tachyon-core speaks FPTN itself: in native mode the outbound is a first-class
+// fptn outbound carrying the access token, not a direct + fwmark pointing at
+// the external client's tun. The native outbound also lands in the ordinary
+// leaf pool, so urltest and selector groups see it the way they see any other
+// connection. The mode comes from the single resolver in config.connections so
+// the generator and the provider runtime can never disagree.
 function add_fptn_outbound(config, section, sections) {
     if (connections && !connections.section_is_active_provider(section, "fptn"))
         return;
+    let tag = outbound_tag(section[".name"]);
+
+    if (connections && connections.fptn_transport_mode() == "native") {
+        let token = as_string(option(section, "access_token", ""));
+        if (token == "")
+            return;
+        push(config.outbounds, {
+            type: "fptn",
+            tag,
+            token
+        });
+        return;
+    }
+
     push(config.outbounds, {
         type: "direct",
-        tag: outbound_tag(section[".name"]),
+        tag,
         routing_mark: 3145728
     });
 }

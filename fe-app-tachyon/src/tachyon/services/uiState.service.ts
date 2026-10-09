@@ -23,6 +23,7 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     singBoxInstallExtended: { loading: false },
     singBoxInstallExtendedCompressed: { loading: false },
     singBoxInstallLx: { loading: false },
+    singBoxInstallTachyonCore: { loading: false },
     singBoxInstallTiny: { loading: false },
     singBoxInstallStable: { loading: false },
     zapretCheck: { loading: false },
@@ -49,6 +50,8 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     fptnInstall: { loading: false },
     fptnRemove: { loading: false },
     fptnRollback: { loading: false },
+    fptnSetNativeMode: { loading: false },
+    fptnSetComponentMode: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
@@ -115,6 +118,9 @@ function applyServiceState(uiState: Tachyon.UiState) {
   nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
   nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
   nextSystemInfo.sing_box_lx = uiState.capabilities.sing_box_lx;
+  nextSystemInfo.sing_box_tachyon_core =
+    uiState.capabilities.sing_box_tachyon_core;
+  nextSystemInfo.sing_box_fptn = uiState.capabilities.sing_box_fptn;
   nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
   nextSystemInfo.sing_box_cert_pin =
     uiState.capabilities.sing_box_cert_pin ?? 0;

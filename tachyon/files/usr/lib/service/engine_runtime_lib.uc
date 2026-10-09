@@ -22,6 +22,9 @@ let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_status_from_args = common.command_status_from_args;
 let file_exists = common.file_exists;
+let bool_option = common.bool_option;
+let option = common.option;
+let runtime_constants = require("singbox.constants");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
@@ -486,6 +489,56 @@ function generate_steer_spec(opts) {
     sync_steer_firewall_zones(spec);
 
     return { ok: true, reason: "", path, spec, removed_stale };
+}
+
+// The firewall zone the tun device needs.
+//
+// fw4 drops forwarded packets between zones it was not told about, so a tun0
+// that exists but has no zone silently blackholes every client the moment auto
+// route starts steering traffic into it - which looks exactly like "the proxy is
+// up and nothing goes through". Created only when the tun inbound is actually
+// being written, and left in place once created: removing it on disable would
+// tear down a zone the box may still have forwarding into.
+function sync_tun_firewall_zone(settings) {
+    if (as_string(option(settings, "proxy_mode", "tproxy")) != "tun")
+        return;
+
+    let interface_name = trim(option(settings, "tun_interface", runtime_constants.TUN_INTERFACE));
+    if (interface_name == "")
+        interface_name = runtime_constants.TUN_INTERFACE;
+
+    let zone = runtime_constants.TUN_FIREWALL_ZONE;
+    let index = "";
+    for (let name in uci_core.sections("firewall", "zone")) {
+        if (as_string(uci_core.get("firewall", name, "name")) == zone) {
+            index = name;
+            break;
+        }
+    }
+
+    if (index == "") {
+        index = uci_core.add("firewall", "zone");
+        if (as_string(index) == "")
+            return;
+        uci_core.set("firewall." + index + ".name", zone);
+        uci_core.set("firewall." + index + ".input", "ACCEPT");
+        uci_core.set("firewall." + index + ".output", "ACCEPT");
+        uci_core.set("firewall." + index + ".forward", "ACCEPT");
+        uci_core.set("firewall." + index + ".masq", "1");
+        uci_core.set("firewall." + index + ".mtu_fix", "1");
+        let forward = uci_core.add("firewall", "forwarding");
+        uci_core.set("firewall." + forward + ".src", "lan");
+        uci_core.set("firewall." + forward + ".dest", zone);
+    }
+
+    // The device list is replaced rather than appended to, so changing the
+    // interface name in the settings does not leave the old one claimed by the
+    // zone and silently swallowing its traffic.
+    uci_core.set("firewall." + index + ".device", interface_name);
+
+    if (!uci_core.commit("firewall"))
+        return;
+    command_status_from_args([ "/etc/init.d/firewall", "reload" ]);
 }
 
 function print_json(value) {

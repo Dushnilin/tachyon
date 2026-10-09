@@ -35,6 +35,14 @@ function provider_available() {
     return st != null && st.mode != null && (int(st.mode) & 73) != 0;
 }
 
+// tachyon-core dials FPTN from the generated config itself: no external
+// client, no tun-fptn, no fwmark routing. The decision lives in the single
+// resolver in config.connections so the runtime and the generator cannot
+// disagree about which tunnel owns the traffic.
+function native_core_mode() {
+    return connections.fptn_transport_mode() == "native";
+}
+
 function enabled_sections() {
     let sections = uci_core.section_objects(CONFIG_NAME, "section");
     if (connections && connections.active_provider_sections)
@@ -356,6 +364,13 @@ function start_runtime() {
         return true;
     }
 
+    if (native_core_mode()) {
+        // Clear any leftover tun/fwmark state from a previous component-mode
+        // run, then stand down: the core handles the tunnel itself.
+        stop_runtime();
+        return true;
+    }
+
     if (!provider_available()) {
         log_message("Cannot start FPTN: binary " + cfg.binary + " not found or not executable", "warn");
         return false;
@@ -409,6 +424,8 @@ function ensure_routing() {
     let sections = enabled_sections();
     if (length(sections) == 0)
         return true;
+    if (native_core_mode())
+        return true;
     let tun_up = command_status("ip link show " + shell_quote(cfg.tun_interface) + " >/dev/null 2>&1") == 0;
     let p = running_pid();
     if (p != null && tun_up) {
@@ -432,6 +449,33 @@ function status_json() {
     let pid = running_pid();
     let running = pid != null;
     let rule_count = enabled_rule_count();
+
+    if (native_core_mode()) {
+        let sing_box_up = command_status("pidof sing-box >/dev/null 2>&1") == 0;
+        write_json({
+            installed: 1,
+            configured: rule_count > 0,
+            enabled_rule_count: rule_count,
+            service_running: sing_box_up,
+            process_running: sing_box_up,
+            tun_up: true,
+            route_installed: true,
+            rule_installed: true,
+            pid: null,
+            version: "",
+            binary: "",
+            tun_interface: cfg.tun_interface,
+            route_table: cfg.route_table,
+            log_file: cfg.log_file,
+            ready: sing_box_up && rule_count > 0,
+            native: 1,
+            status_message: sing_box_up
+                ? "FPTN is running (native, via tachyon-core)"
+                : "FPTN is stopped (tachyon-core is not running)"
+        });
+        return true;
+    }
+
     let ver = package_version();
     let tun_up = command_status("ip link show " + shell_quote(cfg.tun_interface) + " >/dev/null 2>&1") == 0;
     let route_installed = command_status("ip route show table " + cfg.route_table + " default dev " + shell_quote(cfg.tun_interface) + " 2>/dev/null | grep -q default") == 0;
@@ -484,7 +528,7 @@ function status_json() {
 
 function check_json() {
     write_json({
-        fptn_installed: provider_available() ? 1 : 0,
+        fptn_installed: (native_core_mode() || provider_available()) ? 1 : 0,
         fptn_version: package_version(),
         binary: cfg.binary
     });

@@ -45,6 +45,19 @@ function uci_settings() {
     return uci_section("settings");
 }
 
+// True only in tproxy mode.
+//
+// The intercept rules below hand marked packets to a tproxy socket. In socks mode
+// there is no such socket, and in tun mode the core owns the routes - leaving the
+// redirect in place would send every packet to a listener nothing is steering
+// towards, and the two would fight over the same traffic. The rules are skipped
+// whole rather than made conditional one by one: marking without redirect is
+// harmless, redirect without a listener is not.
+function tproxy_intercept_enabled() {
+    let mode = lc(trim(as_string(option(uci_settings(), "proxy_mode", "tproxy"))));
+    return mode != "socks" && mode != "tun";
+}
+
 // True when at least one enabled server section runs Tailscale in native
 // (tailscaled) mode; those need tailnet bypass rules in the mangle chain.
 function native_tailscale_enabled() {
@@ -1525,10 +1538,14 @@ function nft_add_quic_block_rule(table, interface_set, fakeip_mark) {
     // The route rules in singbox/route.uc can only reject a connection they are
     // handed, so a client whose destination is never marked for tproxy keeps
     // using HTTP/3 straight to the internet, where the local DPI mangles it.
-    // Dropping UDP/443 here covers exactly that gap: marked traffic is left
-    // alone so sing-box still decides, unmarked (direct) traffic is forced back
-    // onto TCP.
-    return nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "udp", "tcp", "dport", "443", "meta", "mark", "&", as_string(fakeip_mark), "!=", as_string(fakeip_mark), "counter", "drop" ]);
+    // Dropping UDP/443 covers exactly that gap: marked traffic is left alone so
+    // sing-box still decides, unmarked (direct) traffic is forced back onto TCP.
+    //
+    // UDP only. "meta l4proto udp tcp" is one nft expression naming two
+    // protocols, which the kernel rejects with "conflicting transport layer
+    // protocols" - and the rule this replaced dropped TCP/443 too, taking the
+    // whole HTTPS path down with it.
+    return nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "udp", "th", "dport", "443", "meta", "mark", "&", as_string(fakeip_mark), "!=", as_string(fakeip_mark), "counter", "drop" ]);
 }
 
 function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address, block_doh, disable_quic) {
@@ -1703,10 +1720,11 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", fakeip6_range, "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         (arg_bool(disable_quic) && !nft_add_quic_block_rule(table, interface_set, fakeip_mark)) ||
         (arg_bool(block_doh) && !nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark)) ||
+        (!tproxy_intercept_enabled() ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ]) ||
-        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ]) ||
+        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ])) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x40000000", "==", "0x40000000", "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x20000000", "==", "0x20000000", "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "skuid", "{ 2147483647, 65534 }", "counter", "return" ]) ||
@@ -2798,9 +2816,13 @@ function nft_create_provider_output_rules_from_uci(table, action, provider_bin, 
 function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Building nftables runtime model");
 
+    // The ip rule / route table pair belongs to tproxy mode. In tun mode the
+    // core's auto_route owns the policy routing, and writing a second "fwmark
+    // table 105" rule on top of it left both fighting - the core's cleanup then
+    // removed its own rules and ours outlived the process.
     return ensure_bridge_netfilter_disabled() &&
         apply_connection_tuning() &&
-        ensure_tproxy_route_rule(rt_table, fakeip_mark) &&
+        (!tproxy_intercept_enabled() || ensure_tproxy_route_rule(rt_table, fakeip_mark)) &&
         nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) &&
         nft_add_section_priority_rules_from_sections(uci_sections("section"), table, interface_set, localv4_set, localv6_set, fakeip_mark) &&
         nft_add_schedule_rules_from_uci(table, uci_sections("section")) &&
