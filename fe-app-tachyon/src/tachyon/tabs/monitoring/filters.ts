@@ -13,6 +13,7 @@ export type MonitoringTabId = 'active' | 'closed';
 export type LocalDeviceChoices = Record<string, string>;
 
 export interface ClashConnectionMetadata {
+  chains?: string[];
   destinationIP?: string;
   destinationPort?: string | number;
   host?: string;
@@ -376,7 +377,11 @@ export function getTargetCellParts(connection: MonitoredConnection): {
 }
 
 export function getRoute(connection: MonitoredConnection): string {
-  const chains = Array.isArray(connection.chains) ? connection.chains : [];
+  const chains = Array.isArray(connection.chains)
+    ? connection.chains
+    : Array.isArray(connection.metadata?.chains)
+      ? connection.metadata.chains
+      : [];
   const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
   const fallbackRouteTag = getRouteTagFromRule(connection.rule);
   const route =

@@ -1556,7 +1556,19 @@ function add_connections_outbound(config, section, taken) {
     if (length(selector_tags) == 0) {
         if (ctx.deferred_sections && ctx.deferred_sections[section_name])
             return;
-        ctx.runtime_generate_unsupported("connection section has no usable outbounds");
+        if (getenv("SB_PREFLIGHT_BINARY")) {
+            let dummy_tag = unique_tag("preflight-dummy-" + section_name, taken);
+            taken[dummy_tag] = true;
+            push(config.outbounds, {
+                type: "direct",
+                tag: dummy_tag
+            });
+            push(selector_tags, dummy_tag);
+            push(urltest_candidate_tags, dummy_tag);
+            runtime_subscription.remember_outbound_metadata(state, dummy_tag, dummy_tag, { type: "direct", tag: dummy_tag });
+        } else {
+            ctx.runtime_generate_unsupported("connection section has no usable outbounds");
+        }
     }
 
     if (ctx.routes.section_needs_country_is(section)) {
@@ -1572,7 +1584,7 @@ function add_connections_outbound(config, section, taken) {
 
     state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
     ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag);
-    if (!ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
+    if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
         ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
 }
 

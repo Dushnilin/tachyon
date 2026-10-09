@@ -21336,7 +21336,7 @@ function getTargetCellParts(connection) {
   };
 }
 function getRoute(connection) {
-  const chains = Array.isArray(connection.chains) ? connection.chains : [];
+  const chains = Array.isArray(connection.chains) ? connection.chains : Array.isArray(connection.metadata?.chains) ? connection.metadata.chains : [];
   const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
   const fallbackRouteTag = getRouteTagFromRule(connection.rule);
   const route = getRouteDisplayNameByTag(routeTag || "") || getRouteDisplayNameByTag(fallbackRouteTag) || normalizeString(routeTag) || normalizeString(fallbackRouteTag);
