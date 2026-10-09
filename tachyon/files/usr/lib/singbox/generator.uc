@@ -628,6 +628,27 @@ function is_certificate_sha256_supported(sb_version_val) {
     return false;
 }
 
+const VERBOSE_LOG_PATH = "/tmp/sing-box/sing-box.log";
+
+function singbox_log_section(log_level) {
+    let section = {
+        disabled: false,
+        level: log_level,
+        timestamp: false
+    };
+
+    // Everything below warn produces a line per connection. Routed through
+    // procd's stderr into syslog, that fills the 128 KiB ring within minutes
+    // and evicts hostapd, dnsmasq and the actual errors we go looking for - the
+    // measured case was 744 of 771 buffered lines being sing-box INFO. Send the
+    // verbose levels to a file on tmpfs instead: the full log stays available
+    // for debugging while syslog keeps room for what it is for.
+    if (log_level == "info" || log_level == "debug" || log_level == "trace")
+        section.output = VERBOSE_LOG_PATH;
+
+    return section;
+}
+
 function base_config(settings, service_address, runtime_context) {
     runtime_context = object_or_empty(runtime_context);
     let log_level = option(settings, "log_level", "warn");
@@ -802,11 +823,7 @@ function base_config(settings, service_address, runtime_context) {
     }
 
     let base_cfg = {
-        log: {
-            disabled: false,
-            level: log_level,
-            timestamp: false
-        },
+        log: singbox_log_section(log_level),
         dns: dns_section,
         ntp: {},
         certificate: {},

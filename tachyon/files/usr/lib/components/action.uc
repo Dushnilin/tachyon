@@ -382,6 +382,8 @@ function managed_sing_box_service_text() {
         "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
+        "    mkdir -p /tmp/sing-box 2>/dev/null\n" +
+        "    : > /tmp/sing-box/sing-box.log 2>/dev/null\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
