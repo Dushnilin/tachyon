@@ -228,7 +228,7 @@ function sing_box_restore_variant_marker(variant) {
 function sing_box_version() {
     if (!command_exists("sing-box"))
         return "";
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core"))
         return sing_box_version_state();
     let v = parse_sing_box_version(sing_box_version_output());
     return match(v, /^[vV]?[0-9]+/) ? v : "";
@@ -259,7 +259,8 @@ function sing_box_version_is_lx(value) {
 //   - The suffix carries no schema level. Nothing in it says which sing-box
 //     release it tracks, so no field may be enabled on the strength of it.
 function sing_box_version_is_tachyon_core(value) {
-    if (index(as_string(value), "-tachyon.") >= 0)
+    let s = as_string(value);
+    if (index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0)
         return true;
     // The marker is what the installer wrote when it put this binary in place,
     // so it outranks any version string passed in. The banner is the ground
@@ -563,6 +564,8 @@ function sing_box_is_tiny(version, version_output) {
 function sing_box_variant() {
     let version = "";
 
+    if (sing_box_marker_is("tachyon-core"))
+        return "tachyon-core";
     if (sing_box_marker_is("lx"))
         return "lx";
     if (sing_box_marker_is("extended-compressed"))

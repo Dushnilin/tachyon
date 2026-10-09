@@ -2019,11 +2019,41 @@ function install_sing_box_extended(action, compressed, target_tag) {
 // installing one of those over the core would leave Tachyon generating a config
 // for a binary that is not there.
 function validate_tachyon_core_binary(binary, library_dir) {
-    let version = read_sing_box_binary_version(binary, library_dir || "");
-    if (version == "")
+    binary = as_string(binary);
+    if (binary == "" || !file_exists(binary)) {
+        updates_log("tachyon-core binary not found at " + binary, "warn");
         return "";
-    if (!sing_box_runtime_success("is-foreign-core", [ version ]))
+    }
+
+    command_success_from_args([ "chmod", "0755", binary ]);
+
+    let command = command_from_args([ binary, "version" ]);
+    let lib_path = as_string(library_dir || "");
+    if (lib_path != "") {
+        if (lib_path == "/usr/lib")
+            lib_path = "/usr/lib:/lib";
+        else
+            lib_path = lib_path + ":/usr/lib:/lib";
+        command = command_env({ LD_LIBRARY_PATH: lib_path }) + " " + command;
+    }
+
+    let raw_output = command_output_lenient("(" + command + ") 2>&1");
+    let is_core = index(raw_output, "tachyon-core") >= 0 || index(raw_output, "-tachyon.") >= 0;
+    if (!is_core) {
+        updates_log("Downloaded binary does not identify as tachyon-core; output: " + trim(raw_output), "warn");
         return "";
+    }
+
+    let version = extract_sing_box_version_from_output(raw_output);
+    if (version == "") {
+        let candidate = trim(helper_output_input(raw_output, "stdin-first-line-last-field", []));
+        if (match(candidate, /^[vV]?[0-9]+/))
+            version = candidate;
+    }
+    if (version == "") {
+        updates_log("Failed to parse tachyon-core version from binary " + binary + "; output: " + trim(raw_output), "warn");
+        return "";
+    }
 
     updates_log("validated " + TACHYON_CORE_LABEL + " build " + version + " from " + binary, "info");
     return version;
@@ -2082,11 +2112,9 @@ function install_tachyon_core(action, target_tag) {
     }
     remove_file(archive_file);
 
-    stop_tachyon_before_sing_box_change();
     let new_version = validate_tachyon_core_binary(tmp_binary, cmp.tmp_dir_path());
     if (new_version == "") {
         remove_file(tmp_binary);
-        restart_tachyon_after_successful_change();
         action_fail("sing_box", action, "Downloaded " + label + " is not a tachyon-core build", current_version, latest_version);
     }
 
@@ -2096,9 +2124,10 @@ function install_tachyon_core(action, target_tag) {
     let config_check = check_sing_box_config_with_binary(tmp_binary, "/etc/sing-box/config.json", cmp.tmp_dir_path(), "tachyon-core");
     if (!config_check.ok) {
         remove_file(tmp_binary);
-        restart_tachyon_after_successful_change();
         action_fail("sing_box", action, "Downloaded " + label + " is incompatible with current configuration: " + config_check.reason, current_version, latest_version);
     }
+
+    stop_tachyon_before_sing_box_change();
 
     let backup_binary = cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid();
     copy_file("/usr/bin/sing-box", backup_binary);

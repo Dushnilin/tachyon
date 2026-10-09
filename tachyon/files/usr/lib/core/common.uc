@@ -808,6 +808,9 @@ function parse_sing_box_version(output) {
     let m = match(text, /sing-box[ \t]+version[ \t]+(v?[0-9][0-9A-Za-z._+-]*)/);
     if (m != null)
         return as_string(m[1]);
+    m = match(text, /tachyon-core[ \t]+(v?[0-9][0-9A-Za-z._+-]*)/);
+    if (m != null)
+        return as_string(m[1]);
     // No "version" keyword anywhere. Take the first token of the banner that
     // is actually version-shaped rather than blindly the last one: on
     // "sing-box 1.14.5 linux-amd64" the last token is the platform, and handing

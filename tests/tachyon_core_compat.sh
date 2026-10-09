@@ -37,6 +37,9 @@ rt() {
 out="$(rt is-foreign-core "$CORE_VERSION")"
 [ "$out" = "yes" ] || fail "the core's version string is not recognised as a foreign core: $out"
 
+out="$(rt is-foreign-core "tachyon-core")"
+[ "$out" = "yes" ] || fail "tachyon-core identity is not recognised as a foreign core: $out"
+
 out="$(rt is-foreign-core "1.14.2-lx.11")"
 [ "$out" = "no" ] || fail "an lx version was mistaken for the core: $out"
 

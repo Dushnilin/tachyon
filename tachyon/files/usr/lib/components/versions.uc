@@ -146,9 +146,9 @@ function extract_sing_box_version_from_output(output) {
     for (let line in split(output, "\n")) {
         line = trim(line);
         let fields = split(line, /[ \t\r\n]+/);
-        if (length(fields) >= 3 && lc(fields[0]) == "sing-box" && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/))
+        if (length(fields) >= 3 && (lc(fields[0]) == "sing-box" || lc(fields[0]) == "tachyon-core") && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/))
             return fields[2];
-        if (length(fields) >= 2 && lc(fields[0]) == "version" && match(fields[1], /^[vV]?[0-9]+/))
+        if (length(fields) >= 2 && (lc(fields[0]) == "version" || lc(fields[0]) == "tachyon-core") && match(fields[1], /^[vV]?[0-9]+/))
             return fields[1];
     }
     return "";

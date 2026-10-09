@@ -203,7 +203,9 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
     let active_variant = trim(fs.readfile(active_variant_file) || "");
     let target_var = as_string(target_variant || "");
     if (target_var == "") {
-        if (index(ver_str, "-lx") >= 0)
+        if (index(ver_out, "tachyon-core") >= 0 || index(ver_str, "-tachyon.") >= 0)
+            target_var = "tachyon-core";
+        else if (index(ver_str, "-lx") >= 0)
             target_var = "lx";
         else if (index(ver_str, "extended") >= 0)
             target_var = "extended";
