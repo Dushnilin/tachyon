@@ -315,26 +315,43 @@ function sing_box_supports_xhttp(version, version_output) {
 
 function sing_box_supports_cert_pin(version) {
     version = as_string(version);
-    // tls.certificate_sha256 was added upstream in 1.15.0 and is a question of
-    // version only, not of build. Verified on the real binaries: stock 1.14.2 and
-    // 1.14.2-lx.8 both reject it with "unknown field". sing-box-lx used to be
-    // excluded by name here, on the assumption that it would never gain the
-    // field - it tracks upstream, so that would have cost lx the feature for
-    // good once it passed 1.15 (issue #79).
+    // Pinning asks whether the build can carry a pin at all, and the field it
+    // wants is not the same everywhere. certificate_sha256 (whole DER, the value
+    // a proxy link's pcs carries) arrived upstream in 1.15.0 and is a question of
+    // version only. Verified on the real binaries: stock 1.14.2 and 1.14.2-lx.12
+    // both reject it with "unknown field".
     //
-    // The core is excluded for the opposite reason and it must stay excluded: its
-    // TLS field allowlist has certificate_public_key_sha256 and not
-    // certificate_sha256. Enabling this by version would hand it a field it
-    // rejects, so pinning is dropped rather than enabled. The generator already
-    // warns when it strips the field.
-    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core())
-        return false;
+    // certificate_public_key_sha256 hashes the public key, so it is a different
+    // value and cannot stand in for a pcs - but it is what lx and our own core
+    // accept, and the generator writes the field the build understands. Both
+    // therefore support pinning, and the exclusion that used to sit here (issue
+    // #79, added because the core rejects certificate_sha256) is gone: it turned
+    // "which field" into "no feature".
     if (version == "" && command_exists("sing-box")) {
         if (sing_box_marker_is("extended-compressed"))
             version = sing_box_version_state();
         else
             version = sing_box_version();
     }
+
+    // lx carries no certificate_sha256 and accepts the public-key field instead,
+    // which is a field choice the generator makes. Verified on the real binary:
+    // 1.14.2-lx.12 rejects certificate_sha256 with "unknown field".
+    //
+    // Our own core has to be named here rather than left to the version rule:
+    // "0.0.1-tachyon.0" is below 1.15 by any numeric reading, and it does carry
+    // the field - it was added to its TLS allowlist together with the pinning
+    // itself. Reading the version here would switch the feature off for the one
+    // build that has it.
+    //
+    // Matched on the version suffix, not on the bare variant name: "sing-box-lx"
+    // alone carries no version to judge (and contains "-lx" itself, so a plain
+    // substring test would match it), and the marker file is the authority for
+    // what is actually installed.
+    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core() ||
+        sing_box_marker_is("lx") || match(version, /^[0-9]+\.[0-9]+.*-lx/) != null)
+        return true;
+
     let m = match(version, /^v?([0-9]+)\.([0-9]+)/);
     if (m) {
         let major = int(m[1]);

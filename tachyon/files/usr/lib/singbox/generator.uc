@@ -570,7 +570,27 @@ try {
     return cached_sb_version;
 }
 
+// Tachyon's own core is not in sing-box's version series: it reports
+// "0.0.1-tachyon.0", and no numeric comparison against 1.14/1.15 says anything
+// about it. What does say something is the schema it implements, checked field
+// by field against the core's own validator (crates/core-config/src/validate.rs):
+// http_clients, route.default_http_client, dns.optimistic, store_dns,
+// buffer_size, flush_interval and certificate_sha256 are all present, so every
+// gate below opens. That is the opposite mistake to the one this gate exists to
+// prevent - the failure is a config carrying a field the core rejects, and
+// `sing-box check` refuses the whole file over one of them.
+function is_tachyon_core_version(sb_version_val) {
+    if (sb_version_val == null || sb_version_val == "")
+        sb_version_val = detect_sing_box_version();
+    if (index(as_string(sb_version_val), "-tachyon.") >= 0)
+        return true;
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    return trim(as_string(fs.readfile(sb_variant_file) || "")) == "tachyon-core";
+}
+
 function is_sb_1_14_plus_detected(sb_version_val) {
+    if (is_tachyon_core_version(sb_version_val))
+        return true;
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
     if (sb_version_val != "") {
@@ -585,6 +605,8 @@ function is_sb_1_14_plus_detected(sb_version_val) {
 }
 
 function is_sb_1_15_plus_detected(sb_version_val) {
+    if (is_tachyon_core_version(sb_version_val))
+        return true;
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
     if (sb_version_val != "") {
@@ -609,23 +631,53 @@ function is_sing_box_lx_detected(sb_version_val) {
     return sb_variant_val == "lx" || sb_variant_val == "sing-box-lx";
 }
 
-function is_certificate_sha256_supported(sb_version_val) {
+// Tachyon's own core reports a version from its own series and prints no build
+// tags, so the -tachyon. suffix and the variant marker file are the only signals.
+function is_tachyon_core_detected(sb_version_val) {
+    return is_tachyon_core_version(sb_version_val);
+}
+
+// Which TLS field carries the pin, and "" when this build cannot pin at all.
+//
+// The field is not one thing renamed twice - the two names hash different
+// things. certificate_sha256 is over the whole DER certificate, which is what a
+// pcs value from a proxy link is; certificate_public_key_sha256 is over the
+// public key. Putting a certificate hash under the public-key field pins
+// something the server never presents, so the field has to be chosen, not
+// swapped.
+//
+// Verified on the real binaries: stock 1.14.2 and 1.14.2-lx.12 both reject
+// certificate_sha256 with "unknown field" and both accept
+// certificate_public_key_sha256. lx tracks upstream but does not carry the 1.15
+// field, so its version number says nothing either way - the marker decides.
+// Tachyon's own core is the same case one step further: the string
+// certificate_sha256 does not occur in its config crate at all, while
+// certificate_public_key_sha256 is in its TLS allowlist
+// (crates/core-config/src/validate.rs).
+function certificate_pin_field(sb_version_val) {
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
-    // Purely a question of sing-box version, and nothing else. certificate_sha256
-    // (SHA-256 over the whole DER certificate, which is what a pcs value is) was
-    // added upstream in 1.15.0; before that the only pin field was
-    // certificate_public_key_sha256, which hashes the certificate PUBLIC KEY and
-    // is therefore a different value - it cannot stand in for a pcs.
-    //
-    // Verified against the real binaries: stock 1.14.2 and 1.14.2-lx.8 both
-    // reject certificate_sha256 with "unknown field" and both accept
-    // certificate_public_key_sha256. sing-box-lx is not a special case here, it
-    // just tracks upstream: exclude it by build and lx loses the field for good
-    // once it reaches 1.15.
+
+    // Our own core takes certificate_sha256, which is the field a proxy link's
+    // pcs actually is - so it gets it. The public-key field is the older one and
+    // hashes something else.
+    if (is_tachyon_core_detected(sb_version_val))
+        return "certificate_sha256";
+
+    if (is_sing_box_lx_detected(sb_version_val))
+        return "certificate_public_key_sha256";
+
     if (is_sb_1_15_plus_detected(sb_version_val))
-        return true;
-    return false;
+        return "certificate_sha256";
+
+    return "";
+}
+
+// Whether this build can carry a pin at all, under whichever field it accepts.
+// lx and our own core pass this on the public-key field; see
+// certificate_pin_field for why that is not a rename.
+function is_certificate_sha256_supported(sb_version_val) {
+    return certificate_pin_field(sb_version_val) != "";
 }
 
 const VERBOSE_LOG_PATH = "/tmp/sing-box/sing-box.log";
@@ -1570,22 +1622,43 @@ function add_excluded_clients_route_rule(config, settings) {
     });
 }
 
+// Remove pin fields this build would reject, keeping the one it understands.
+//
+// This is not "strip pins when the build cannot pin": a config can carry
+// certificate_sha256 while the installed build only accepts
+// certificate_public_key_sha256, and an unknown field anywhere is a hard
+// rejection that takes the whole config down, not just this node. So the
+// question is which field survives, and the other one goes.
 function strip_certificate_pins_if_unsupported(config) {
-    if (is_certificate_sha256_supported())
+    let keep = certificate_pin_field();
+    let drop = [];
+    if (keep == "")
+        drop = [ "certificate_sha256", "certificate_public_key_sha256" ];
+    else if (keep == "certificate_public_key_sha256")
+        drop = [ "certificate_sha256" ];
+
+    if (length(drop) == 0)
         return;
+
     let stripped = false;
     for (let list in [ config.outbounds, config.endpoints ]) {
         if (type(list) != "array")
             continue;
         for (let item in list) {
-            if (type(item) == "object" && type(item.tls) == "object" && item.tls.certificate_sha256 != null) {
-                delete item.tls.certificate_sha256;
-                stripped = true;
+            if (type(item) != "object" || type(item.tls) != "object")
+                continue;
+            for (let field in drop) {
+                if (item.tls[field] != null) {
+                    delete item.tls[field];
+                    stripped = true;
+                }
             }
         }
     }
     if (stripped)
-        warn("tls.certificate_sha256 requires sing-box 1.15.0+ (installed: ", detect_sing_box_version() || "unknown", "); certificate pin ignored - older sing-box only has certificate_public_key_sha256, which pins a different value (the public key, not the certificate)\n");
+        warn("installed sing-box (", detect_sing_box_version() || "unknown",
+            ") does not accept ", join(", ", drop),
+            "; those certificate pins were removed to keep the config loadable\n");
 }
 
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
@@ -1854,6 +1927,13 @@ else if (mode == "is-cert-pin-supported")
     exit(is_certificate_sha256_supported(ARGV[1]) ? 0 : 1);
 else if (mode == "is-sb-1-14-plus")
     exit(is_sb_1_14_plus_detected(ARGV[1]) ? 0 : 1);
+else if (mode == "is-sb-1-15-plus")
+    exit(is_sb_1_15_plus_detected(ARGV[1]) ? 0 : 1);
+else if (mode == "certificate-pin-field") {
+    let field = certificate_pin_field(ARGV[1]);
+    print(field + "\n");
+    exit(field != "" ? 0 : 1);
+}
 else if (mode == "version-detect") {
     // Exposed so the version source can be exercised directly: a state file that
     // disagrees with the binary has to lose, and that is only observable here.

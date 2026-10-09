@@ -54,22 +54,31 @@ out="$(rt supports-xhttp "$CORE_VERSION" "sing-box version $CORE_VERSION")" \
 [ "$out" = "yes" ] \
   || fail "the core implements xhttp but is reported as not supporting it, so its nodes are dropped silently"
 
-# ─── certificate pinning is NOT implemented, whatever the version says ───────
-# The core's TLS field allowlist has certificate_public_key_sha256 and not
-# certificate_sha256. A version-derived answer would hand it a field it rejects.
+# ─── certificate pinning works, under the field the core accepts ──────────────
+# The core has no certificate_sha256 anywhere - the string does not occur in its
+# config crate - but certificate_public_key_sha256 is in its TLS allowlist. The
+# two hash different things (whole DER vs public key), so this is a field choice,
+# not a rename, and the generator has to write the one the build understands.
 out="$(rt supports-cert-pin "$CORE_VERSION")"
-[ "$out" = "no" ] \
-  || fail "certificate pinning would be emitted to a core that rejects the field"
+[ "$out" = "yes" ] \
+  || fail "the core accepts certificate_public_key_sha256, so pinning must be available to it"
 
-# And the suffix must not become a way to switch pinning on later: a future core
-# version must not be able to re-enable it through the numeric prefix alone.
+# A higher numeric prefix must not change the answer either: the field is decided
+# by the marker, not by the version number.
 out="$(rt supports-cert-pin "v1.15.0-tachyon.0")"
-[ "$out" = "no" ] \
-  || fail "a higher numeric prefix re-enabled certificate pinning for a core that rejects the field"
+[ "$out" = "yes" ] \
+  || fail "a higher numeric prefix changed pinning for the core, which is decided by the marker"
 
 # Upstream must be unaffected by any of the above.
 out="$(rt supports-cert-pin "1.15.0")"
 [ "$out" = "yes" ] || fail "pinning stopped working for sing-box 1.15 itself"
+
+# And the generator must not hand the core a field it rejects.
+GEN="$LIB_DIR/singbox/generator.uc"
+grep -q 'certificate_public_key_sha256' "$GEN" \
+  || fail "the generator has no public-key pin field, so the core's pins cannot be written"
+grep -q 'tls\[pin_field\]' "$LIB_DIR/singbox/generator_outbounds.uc" \
+  || fail "outbound generation still hardcodes certificate_sha256, which the core rejects"
 
 out="$(rt supports-xhttp "1.14.2" "sing-box version 1.14.2")"
 [ "$out" = "no" ] || fail "plain sing-box without the build tag must still report no xhttp"
@@ -103,3 +112,35 @@ grep -q 'certificate_sha256' "$RT" \
   || fail "the existing certificate_sha256 repair path is gone"
 
 printf 'fault: tachyon-core compatibility checks passed\n'
+# ─── every version gate is open: the core's schema has each of these fields ───
+# The gates exist because an unknown field is a hard rejection that takes the
+# whole config down. Checked against the core's own validator rather than its
+# README, since the README is a claim and validate.rs is the rule:
+# http_clients, route.default_http_client and dns.optimistic are accepted,
+# cache_file carries store_dns, buffer_size and flush_interval, and the TLS
+# allowlist carries certificate_sha256.
+GEN="$LIB_DIR/singbox/generator.uc"
+
+gate() {
+  ucode -L "$LIB_DIR" "$GEN" "$1" "$CORE_VERSION" >/dev/null 2>&1 && echo yes || echo no
+}
+
+out="$(gate is-sb-1-14-plus)"
+[ "$out" = "yes" ] \
+  || fail "the core implements dns.optimistic, http_clients and store_dns, so the 1.14 gate must be open: $out"
+
+out="$(gate is-sb-1-15-plus)"
+[ "$out" = "yes" ] \
+  || fail "the core implements cache buffer_size and flush_interval, so the 1.15 gate must be open: $out"
+
+out="$(ucode -L "$LIB_DIR" "$GEN" certificate-pin-field "$CORE_VERSION" 2>/dev/null)"
+[ "$out" = "certificate_sha256" ] \
+  || fail "the core accepts certificate_sha256, which is the field a pcs is: got '$out'"
+
+# And the gates must still close for a build that lacks the fields.
+if ucode -L "$LIB_DIR" "$GEN" is-sb-1-15-plus "1.14.2" >/dev/null 2>&1; then
+  fail "stock 1.14.2 has no buffer_size and the gate must stay shut"
+fi
+out="$(ucode -L "$LIB_DIR" "$GEN" certificate-pin-field "1.14.2-lx.12" 2>/dev/null)"
+[ "$out" = "certificate_public_key_sha256" ] \
+  || fail "lx rejects certificate_sha256, so it must get the public-key field: got '$out'"

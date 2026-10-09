@@ -476,6 +476,34 @@ function tls_alpn_array(value, transport) {
     return value == "" ? [] : split(value, ",");
 }
 
+// Which TLS field this build accepts for a pin. Duplicated from
+// generator.uc's certificate_pin_field because this module does not import it,
+// and the answer has to be the same in both: it decides whether a node's pin
+// survives generation at all.
+function certificate_pin_field() {
+    let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
+    let version = override != ""
+        ? override
+        : trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version") || ""));
+    let variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let variant = trim(as_string(fs.readfile(variant_file) || ""));
+
+    if (index(version, "-tachyon.") >= 0 || variant == "tachyon-core")
+        return "certificate_sha256";
+
+    if (match(version, /^[0-9]+\.[0-9]+.*-lx/) != null || variant == "lx" || variant == "sing-box-lx")
+        return "certificate_public_key_sha256";
+
+    let m = match(version, /^v?([0-9]+)\.([0-9]+)/);
+    if (m) {
+        let major = int(m[1]);
+        let minor = int(m[2]);
+        if (major > 1 || (major == 1 && minor >= 15))
+            return "certificate_sha256";
+    }
+    return "";
+}
+
 function apply_link_tls(outbound, scheme, query) {
     query = object_or_empty(query);
     let security = as_string(query.security || "");
@@ -495,8 +523,13 @@ function apply_link_tls(outbound, scheme, query) {
     if (bool_query(query.allowInsecure || query.insecure || ""))
         tls.insecure = true;
     let certificate_pin = common.certificate_pin_base64(as_string(query.pcs || ""));
-    if (certificate_pin != "")
-        tls.certificate_sha256 = [ certificate_pin ];
+    if (certificate_pin != "") {
+        let pin_field = certificate_pin_field();
+        if (pin_field != "")
+            tls[pin_field] = [ certificate_pin ];
+        else
+            warn("this sing-box build has no usable TLS pin field; certificate pin from the link ignored\n");
+    }
 
     let alpn = tls_alpn_array(query.alpn, query.type);
     if (length(alpn) > 0)
