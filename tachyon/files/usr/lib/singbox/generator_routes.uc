@@ -2592,7 +2592,7 @@ function add_service_route_rules(config, sections) {
     let settings = object_or_empty(ctx.uci_cursor().get_all(CONFIG_NAME, "settings"));
     if (bool_option(settings, "dns_detour_enabled", false)) {
         let detour_section = option(settings, "dns_detour_section", "");
-        if (detour_section != "") {
+        if (detour_section != "" && !(ctx.deferred_sections && ctx.deferred_sections[detour_section])) {
             let detour_target = outbound_tag(detour_section);
             let dns_servers = list_option(settings, "dns_server");
             if (length(dns_servers) == 0) {
