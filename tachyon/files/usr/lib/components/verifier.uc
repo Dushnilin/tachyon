@@ -9,9 +9,19 @@ let common = require("core.common");
 
 let helpers = require("components.helpers");
 let versions = require("components.versions");
-let core_profile = require("singbox.core_profile");
+let core_profile_module = null;
 
 let as_string = common.as_string;
+
+// Lazy on purpose: components_updater_job.sh stages this module into a partial
+// -L tree whose singbox/ directory is created but left empty, to pin that
+// component verification carries the profile lookup itself rather than
+// inheriting it from a require graph.
+function core_profile() {
+    if (core_profile_module == null)
+        core_profile_module = require("singbox.core_profile");
+    return core_profile_module;
+}
 
 // ============================================================================
 // Fingerprints
@@ -262,7 +272,7 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
         // The banner itself may still be the only thing naming our core - the
         // variant file can lag behind it - so the name wins over target_var.
         let xhttp_marker = index(ver_out, "tachyon-core") >= 0 ? "tachyon-core" : target_var;
-        let target_supports_xhttp = core_profile.supports_xhttp(ver_str, xhttp_marker, ver_out) === true;
+        let target_supports_xhttp = core_profile().supports_xhttp(ver_str, xhttp_marker, ver_out) === true;
         let gen_cmd = helpers.command_env(gen_env) + " " +
             common.command_from_args([
                 "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/singbox/generator.uc",

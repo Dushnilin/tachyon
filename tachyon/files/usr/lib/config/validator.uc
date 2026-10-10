@@ -15,7 +15,7 @@ let core_url = require("core.url");
 let core_ip = require("core.ip");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
-let core_profile = require("singbox.core_profile");
+let core_profile_module = null;
 
 let common = require("core.common");
 let as_string = common.as_string;
@@ -692,6 +692,16 @@ function zapret_validator() {
     if (zapret_validator_module == null)
         zapret_validator_module = require("providers.zapret.validator");
     return zapret_validator_module;
+}
+
+// Lazy on purpose: config_validator_runtime.sh runs this module against a
+// deliberately partial -L tree (core, config, subscription, providers) to pin
+// that validating a config never needs the singbox module tree loaded. A
+// top-level require put that contract back in reach of any future edit.
+function core_profile() {
+    if (core_profile_module == null)
+        core_profile_module = require("singbox.core_profile");
+    return core_profile_module;
 }
 
 function zapret2_validator() {
@@ -2314,18 +2324,18 @@ function sing_box_capability_marker(ctx, version) {
 }
 
 function sing_box_supports_tailscale(ctx, version, version_output) {
-    let answer = core_profile.supports_tailscale(as_string(version),
+    let answer = core_profile().supports_tailscale(as_string(version),
         sing_box_capability_marker(ctx, version), as_string(version_output));
     if (answer == null)
-        answer = core_profile.output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_tailscale");
+        answer = core_profile().output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_tailscale");
     return answer;
 }
 
 function sing_box_supports_xhttp(ctx, version, version_output) {
-    let answer = core_profile.supports_xhttp(as_string(version),
+    let answer = core_profile().supports_xhttp(as_string(version),
         sing_box_capability_marker(ctx, version), as_string(version_output));
     if (answer == null)
-        answer = core_profile.output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_xhttp");
+        answer = core_profile().output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_xhttp");
     return answer;
 }
 
