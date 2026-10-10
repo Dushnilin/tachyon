@@ -6,7 +6,7 @@ import {
 } from '../singBoxVariant';
 
 describe('normalizeSingBoxVariantFields', () => {
-  it('detects tachyon-core from the version suffix', () => {
+  it('detects tachyon-core from the version suffix or 0.0.x semver', () => {
     const normalized = normalizeSingBoxVariantFields<SingBoxVariantFields>({
       sing_box_version: 'v0.0.1-tachyon.0',
     });
@@ -17,6 +17,14 @@ describe('normalizeSingBoxVariantFields', () => {
     expect(normalized.sing_box_tiny).toBe(0);
     expect(normalized.sing_box_cert_pin).toBe(1);
     expect(normalized.sing_box_tailscale).toBe(1);
+
+    const semverNormalized =
+      normalizeSingBoxVariantFields<SingBoxVariantFields>({
+        sing_box_version: '0.0.3',
+      });
+    expect(semverNormalized.sing_box_tachyon_core).toBe(1);
+    expect(semverNormalized.sing_box_fptn).toBe(1);
+    expect(semverNormalized.sing_box_extended).toBe(0);
   });
 
   it('lets the tachyon_core flag win over stale fork flags', () => {

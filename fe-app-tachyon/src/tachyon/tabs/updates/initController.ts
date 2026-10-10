@@ -19,6 +19,7 @@ import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredActionLoading';
 import {
   formatSingBoxVersion,
+  isTachyonCoreVersion,
   normalizeSingBoxVariantFields,
   renderSingBoxVariantBadge,
 } from '../../helpers/singBoxVariant';
@@ -1831,7 +1832,9 @@ function renderEngineCard(): Node {
 
   // sing-box variant availability
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
-  const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core);
+  const tachyonCore =
+    Boolean(systemInfo.sing_box_tachyon_core) ||
+    isTachyonCoreVersion(systemInfo.sing_box_version);
   const singBoxTiny = Boolean(systemInfo.sing_box_tiny) && !tachyonCore;
   const singBoxExtendedCompressed =
     Boolean(systemInfo.sing_box_extended) &&
@@ -1901,11 +1904,13 @@ function renderEngineCard(): Node {
     ),
   ];
   if (engineBadgeNode) headerChildren.push(engineBadgeNode);
+  const engineTitleLabel =
+    isSingBoxActive && tachyonCore ? 'tachyon-core' : engineLabel(active);
   headerChildren.push(
     E(
       'span',
       { class: 'tachyon_updates-page__component__header-version' },
-      `${engineLabel(active)} ${engineVersion}`,
+      `${engineTitleLabel} ${engineVersion}`,
     ),
   );
   if (engineRepoUrl) {
