@@ -21,7 +21,7 @@
 
 **Tachyon** — это высокопроизводительное, автономное и бескомпромиссное решение для оркестрации сетевого трафика, проксирования и обхода цензуры на роутерах под управлением **OpenWrt** (полная совместимость с **OpenWrt 23.05, 24.10, 25.x и SNAPSHOT**). Прямой форк проектов **[Forkop от @ushan0v](https://github.com/ushan0v/forkop)** (ранее **Podkop Plus**) и **[Steer от @xyzmean](https://github.com/xyzmean/steer)**.
 
-Tachyon объединяет мульти-движковую маршрутизацию (**sing-box**, легковесный **Steer** и гибридный **Steer-Extended**), нативную поддержку **OpenVPN (.ovpn)**, высокоскоростной протокол **FPTN** (Fast Packet Tunnel Network), средства локального аппаратного обхода DPI (**Zapret v1 / Zapret v2 / ByeDPI**), интерактивный комбинаторный **DPI Strategy Fuzzer v2**, защищённый **Telegram-бот управления**, а также инновационный **AI Stack** (автономный **AI Doctor v3.0**, офлайн-диагностику, **HTTP REST Agent API / OpenAPI 3.0** и **MCP Server** для подключения ИИ-агентов).
+Tachyon объединяет мульти-движковую маршрутизацию (**sing-box**, легковесный **Steer**, гибридный **Steer-Extended** и нативный Rust-движок **[tachyon-core](https://github.com/Dushnilin/tachyon-core)**), нативную поддержку **OpenVPN (.ovpn)**, высокоскоростной протокол **FPTN** (Fast Packet Tunnel Network), средства локального аппаратного обхода DPI (**Zapret v1 / Zapret v2 / ByeDPI**), интерактивный комбинаторный **DPI Strategy Fuzzer v2**, защищённый **Telegram-бот управления**, а также инновационный **AI Stack** (автономный **AI Doctor v3.0**, офлайн-диагностику, **HTTP REST Agent API / OpenAPI 3.0** и **MCP Server** для подключения ИИ-агентов).
 
 Вся внутренняя логика реализована на скриптовом движке **ucode** — нативном C-интерпретаторе OpenWrt, обеспечивающем ультранизкое потребление RAM (от 128 МБ ОЗУ) и мгновенный отклик.
 
@@ -42,7 +42,7 @@ Tachyon перехватывает сетевой стек через ядро *
 2. **Zapret v1 (`nfqws`)**: Базовая десинхронизация TCP/UDP (`fake`, `disorder`, `split2`) прямо на роутере без VPS.
 3. **Zapret v2 (`nfqws2`)**: Адаптивный многовекторный обход ТСПУ (`multisplit`, `seqovl`, `wsize`, PAWS `tcp_ts`, аутентичные `blobs`) для YouTube 4K, Discord и стриминга.
 4. **ByeDPI (`ciadpi`)**: Локальный SOCKS5-десинхронизатор с фрагментацией полезной нагрузки HTTP/TLS SNI.
-5. **Мульти-движковое туннелирование и прокси (sing-box / Steer / FPTN / OpenVPN)**: Заблокированные ресурсы и приватный трафик направляются через защищённые протоколы (VLESS Reality, Hysteria2, WireGuard, AmneziaWG, OpenVPN) или высокоскоростной туннель **FPTN** (`tun-fptn` поверх WebSocket/TLS с маскировкой под веб-трафик). На устройствах с малым объемом памяти активен **Steer** / **Steer-Extended**.
+5. **Мульти-движковое туннелирование и прокси (sing-box / Steer / tachyon-core / FPTN / OpenVPN)**: Заблокированные ресурсы и приватный трафик направляются через защищённые протоколы (VLESS Reality, Hysteria2, WireGuard, AmneziaWG, OpenVPN) или высокоскоростной туннель **FPTN** (`tun-fptn` поверх WebSocket/TLS с маскировкой под веб-трафик). На устройствах с малым объемом памяти активен **Steer** / **Steer-Extended**, а для максимальной производительности без накладных расходов Go — нативный Rust-рантайм **tachyon-core**.
 6. **Smart DNS Pipeline**: Изолированная обработка DNS через FakeIP (`198.18.0.0/15`), DoH/DoT/DoQ с защитой от перехвата провайдером, интеграцией SmartDNS/`steer-dnsd` и автоматическим отказоустойчивым переключением (DNS Failover).
 
 <p align="center">
@@ -54,6 +54,7 @@ Tachyon перехватывает сетевой стек через ядро *
 ### 🧭 1. Мульти-движковая маршрутизация (Multi-Engine Architecture)
 * **Гибкий выбор движка маршрутизации**:
   * **sing-box Engine**: Полнофункциональный шлюз со всеми современными прокси-протоколами, селективной маршрутизацией по доменам/IP/устройствам и FakeIP.
+  * **tachyon-core Engine**: Нативное высокоскоростное прокси-ядро на чистом Rust (без GC, 4.2 МБ RAM в простое) со 100% совместимостью по CLI и конфигурации sing-box, встроенным L3-туннелем FPTN и компиляцией под роутеры с малым объемом памяти.
   * **Steer Engine**: Ультралегковесный движок селективной маршрутизации на нативном `steer` и SmartDNS/DoH/DoT (`steer-dnsd`) для роутеров со скромным объёмом памяти.
   * **Steer-Extended Engine**: Гибридный режим — легковесный Steer в связке с аппаратным десинхронизатором Zapret (`nfqws`/`nfqws2`). Максимальная производительность и обход DPI без затрат ОЗУ на тяжелые Go-демоны.
 * **Переключение движка в 1 клик**:
@@ -325,6 +326,7 @@ Tachyon опирается на фундаментальные разработ�
 * 🍴 **[Forkop (ushan0v)](https://github.com/ushan0v/forkop)** — прямой родительский проект (ранее Podkop Plus).
 * 🐕 **[Podkop (itdoginfo)](https://github.com/itdoginfo/podkop)** — оригинальный проект, заложивший основу архитектуры.
 * 🧭 **[steer (xyzmean)](https://github.com/xyzmean/steer)** — оригинальный проект легковесной policy-based маршрутизации и обхода блокировок для OpenWrt, интегрированный в Multi-Engine ядро Tachyon.
+* 🦀 **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** — нативное высокопроизводительное прокси-ядро на чистом Rust (без рантайма Go, 4.2 МБ RAM в простое), разработанное специально для Tachyon и встраиваемых систем.
 * 📦 **[sing-box](https://github.com/SagerNet/sing-box)** — универсальная прокси-платформа.
 * 🚀 **[zapret (bol-van)](https://github.com/bol-van/zapret2)** — средства локального обхода DPI (`nfqws` / `nfqws2`).
 * 🌐 **[ByeDPI](https://github.com/hrbrmstr/byedpi)** — локальный SOCKS-прокси для десинка пакетов.

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-10 06:23+0300\n"
-"PO-Revision-Date: 2026-10-10 06:23+0300\n"
+"POT-Creation-Date: 2026-10-10 06:24+0300\n"
+"PO-Revision-Date: 2026-10-10 06:24+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -596,7 +596,7 @@ msgid "Always visible"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:799
-#: src/validators/validateVpnUrl.ts:61
+#: src/validators/validateVpnUrl.ts:63
 msgid "Amnezia export; full validation before apply"
 msgstr ""
 
@@ -4725,7 +4725,7 @@ msgid "Invalid time format. Use HH:MM (e.g. 08:00 or 22:30)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:774
-#: src/validators/validateVpnUrl.ts:17
+#: src/validators/validateVpnUrl.ts:19
 msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
 msgstr ""
 
@@ -9791,7 +9791,7 @@ msgstr ""
 #: src/validators/validateUrl.ts:32
 #: src/validators/validateVlessUrl.ts:115
 #: src/validators/validateVmessUrl.ts:66
-#: src/validators/validateVpnUrl.ts:145
+#: src/validators/validateVpnUrl.ts:147
 msgid "Valid"
 msgstr ""
 

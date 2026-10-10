@@ -294,21 +294,21 @@ function sing_box_version_looks_extended(value) {
 
 function sing_box_is_extended(value) {
     value = as_string(value);
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx"))
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core"))
         return true;
 
     value = value != "" ? value : sing_box_version();
-    return sing_box_version_is_extended(value) || sing_box_version_is_lx(value);
+    return sing_box_version_is_extended(value) || sing_box_version_is_lx(value) || sing_box_version_is_foreign_core(value);
 }
 
 function sing_box_is_lx(value) {
     value = as_string(value);
-    if (sing_box_version_is_lx(value))
+    if (sing_box_version_is_lx(value) || sing_box_version_is_foreign_core(value))
         return true;
-    if (sing_box_marker_is("lx"))
+    if (sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core"))
         return true;
 
-    return sing_box_version_is_lx(value != "" ? value : sing_box_version());
+    return sing_box_version_is_lx(value != "" ? value : sing_box_version()) || sing_box_version_is_foreign_core(value != "" ? value : sing_box_version());
 }
 
 // ─── the capability model ────────────────────────────────────────────────────

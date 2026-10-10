@@ -2250,7 +2250,7 @@ function get_sing_box_version(ctx) {
     if (!command_exists("sing-box"))
         return "";
 
-    if (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx))
+    if (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx))
         return sing_box_version_state(ctx);
 
     return common.parse_sing_box_version(command_output_from_args([ "sing-box", "version" ]));
@@ -2275,20 +2275,20 @@ function sing_box_version_is_foreign_core(version) {
 
 function sing_box_is_extended(ctx, version) {
     if (as_string(version) == "" && command_exists("sing-box") &&
-        (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
+        (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         return true;
 
     version = version != null ? version : get_sing_box_version(ctx);
-    return sing_box_version_is_extended(version) || sing_box_version_is_lx(version);
+    return sing_box_version_is_extended(version) || sing_box_version_is_lx(version) || sing_box_version_is_foreign_core(version);
 }
 
 function sing_box_is_lx(ctx, version) {
-    if (sing_box_version_is_lx(version))
+    if (sing_box_version_is_lx(version) || sing_box_version_is_foreign_core(version))
         return true;
-    if (as_string(version) == "" && command_exists("sing-box") && sing_box_lx_marker_set(ctx))
+    if (as_string(version) == "" && command_exists("sing-box") && (sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         return true;
 
-    return sing_box_version_is_lx(version != null ? version : get_sing_box_version(ctx));
+    return sing_box_version_is_lx(version != null ? version : get_sing_box_version(ctx)) || sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx));
 }
 
 function sing_box_output_has_build_tag(output, tag) {
@@ -2309,7 +2309,7 @@ function sing_box_supports_tailscale(ctx, version, version_output) {
     if (sing_box_tachyon_core_marker_set(ctx) || match(as_string(version), /-tachyon\./) != null)
         return true;
 
-    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
+    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         return true;
 
     if (sing_box_is_extended(ctx, version))
@@ -2322,7 +2322,7 @@ function sing_box_supports_tailscale(ctx, version, version_output) {
 }
 
 function sing_box_supports_xhttp(ctx, version, version_output) {
-    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
+    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         return true;
 
     if (sing_box_is_extended(ctx, version) || sing_box_is_lx(ctx, version))
@@ -2631,11 +2631,11 @@ function check_runtime_requirements() {
 
     let ctx = context_from_runtime();
     let sing_box_version_output = command_exists("sing-box") ? command_output_from_args([ "sing-box", "version" ]) : "";
-    let sing_box_version = (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)) ? sing_box_version_state(ctx) : common.parse_sing_box_version(sing_box_version_output);
+    let sing_box_version = (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)) ? sing_box_version_state(ctx) : common.parse_sing_box_version(sing_box_version_output);
     let coreutils_base64_version = first_line_field_from_text(command_output("base64 --version 2>/dev/null"), 4);
 
     if (sing_box_version == "") {
-        if (!command_exists("sing-box") || !(sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
+        if (!command_exists("sing-box") || !(sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
             fail_requirement("Package 'sing-box' is not installed. Aborted.", "error");
     }
     else if (!sing_box_version_is_foreign_core(sing_box_version) &&
@@ -2649,7 +2649,7 @@ function check_runtime_requirements() {
         fail_requirement("Package 'sing-box' version (" + sing_box_version + ") is lower than the required minimum (" + ctx.sing_box_required_version + "). Update sing-box: opkg update && opkg remove sing-box && opkg install sing-box. Aborted.", "error");
     }
 
-    if (!service_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
+    if (!service_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         install_managed_sing_box_service_script(ctx);
 
     if (!service_exists("sing-box"))

@@ -8,7 +8,9 @@ export function supportsVpnUrl() {
   return (
     engine === 'sing-box' &&
     (Number(info.sing_box_lx) === 1 ||
-      /-lx(?:[.-]|$)/.test(String(info.sing_box_version || '')))
+      Number(info.sing_box_tachyon_core) === 1 ||
+      /-lx(?:[.-]|$)/.test(String(info.sing_box_version || '')) ||
+      /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || '')))
   );
 }
 export function validateVpnUrl(url: string): ValidationResult {
