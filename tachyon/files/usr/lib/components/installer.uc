@@ -91,7 +91,7 @@ function pkg_install_name_downgrade(package_name, package_version) {
 
 function pkg_install_files_command(files, force_reinstall) {
     if (is_apk()) {
-        let add_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite" ];
+        let add_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite", "--force-missing-repositories" ];
         for (let file in files)
             push(add_args, file);
         return command_from_args(add_args) + " </dev/null";
@@ -229,7 +229,7 @@ function pkg_tx_install_files(files, force_reinstall) {
     let args = [];
     let timeout = PKG_TX_INSTALL_TIMEOUT;
     if (is_apk()) {
-        push(args, "apk", "add", "--allow-untrusted", "--force-overwrite");
+        push(args, "apk", "add", "--allow-untrusted", "--force-overwrite", "--force-missing-repositories");
         if (force_reinstall)
             push(args, "--force-reinstall");
         for (let f in files)

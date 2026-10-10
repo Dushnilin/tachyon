@@ -87,7 +87,7 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
     let version = versions.read_sing_box_binary_version(binary, library_dir || "");
     if (version != "")
         return version;
-    if (compressed) {
+    if (compressed && binary && binary != "") {
         let is_elf = false;
         try {
             let f = fs.open(binary, "r");

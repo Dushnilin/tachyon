@@ -260,7 +260,7 @@ function sing_box_version_is_lx(value) {
 //     release it tracks, so no field may be enabled on the strength of it.
 function sing_box_version_is_tachyon_core(value) {
     let s = as_string(value);
-    if (index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0)
+    if (index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0 || match(s, /^v?0\.0\./) != null)
         return true;
     // The marker is what the installer wrote when it put this binary in place,
     // so it outranks any version string passed in. The banner is the ground
@@ -454,9 +454,9 @@ function sing_box_supports_tailscale(version, version_output) {
     version = as_string(version);
     version_output = as_string(version_output);
 
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx") || sing_box_marker_is_tachyon_core())
         return true;
-    if (sing_box_is_extended(version) || sing_box_is_lx(version))
+    if (sing_box_is_extended(version) || sing_box_is_lx(version) || sing_box_version_is_tachyon_core(version))
         return true;
     if (version_output != "")
         return output_has_build_tag(version_output, "with_tailscale");

@@ -2270,7 +2270,8 @@ function sing_box_version_is_lx(version) {
 // build that implements the schema from scratch rather than being a fork of the
 // Go binary, and whose version number is therefore not comparable with sing-box's.
 function sing_box_version_is_foreign_core(version) {
-    return index(as_string(version), "-tachyon.") >= 0;
+    let s = as_string(version);
+    return index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0 || match(s, /^v?0\.0\./) != null;
 }
 
 function sing_box_is_extended(ctx, version) {
@@ -2639,6 +2640,7 @@ function check_runtime_requirements() {
             fail_requirement("Package 'sing-box' is not installed. Aborted.", "error");
     }
     else if (!sing_box_version_is_foreign_core(sing_box_version) &&
+        !sing_box_tachyon_core_marker_set(ctx) &&
         !version_at_least(sing_box_version, ctx.sing_box_required_version)) {
         // The minimum is sing-box's own release floor, so it only means anything
         // for a build in sing-box's series. Tachyon's core reports
