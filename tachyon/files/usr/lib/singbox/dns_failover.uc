@@ -299,6 +299,27 @@ function apply_selections(state, selections) {
     return true;
 }
 
+// Seconds since the sing-box process started, or null if it is not running.
+// Probing a core that is still loading rule sets and 60 outbounds counts its
+// silence as a dead resolver; three such strikes switch the DNS server, which
+// rewrites the config, which restarts the core, which is silent again.
+function core_age_seconds() {
+    let pid = trim(as_string(common.command_output("pidof sing-box 2>/dev/null")));
+    pid = split(pid, " ")[0];
+    if (match(as_string(pid), /^[0-9]+$/) == null)
+        return null;
+    let stat = fs.readfile("/proc/" + pid + "/stat");
+    let uptime = fs.readfile("/proc/uptime");
+    if (stat == null || uptime == null)
+        return null;
+    // fields after the parenthesised name; starttime is field 22 overall
+    let tail = split(trim(substr(stat, rindex(stat, ")") + 1)), " ");
+    let started = int(tail[19]) / 100;
+    return int(split(uptime, " ")[0]) - started;
+}
+
+const CORE_GRACE_SECONDS = 90;
+
 function worker() {
     let cfg = settings();
     let state = runtime_dns.normalize_state(cfg, common.read_json_file(STATE_FILE));
@@ -341,6 +362,14 @@ function worker() {
             : int(common.option(current_cfg, "dns_recovery_threshold", "3"));
 
         if (now >= next_active) {
+            let age = core_age_seconds();
+            if (age == null || age < CORE_GRACE_SECONDS) {
+                strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
+                next_active = now_seconds() + active_interval;
+                next_recovery = now_seconds() + recovery_interval;
+                command_success_from_args([ "sleep", as_string(sleep_interval) ]);
+                continue;
+            }
             let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
             if (!bootstrap.alive && !all_down.bootstrap)
                 log_message("all configured bootstrap DNS servers are unavailable (PROBE_DETAIL: " +
