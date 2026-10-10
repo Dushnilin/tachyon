@@ -2323,6 +2323,9 @@ function sing_box_supports_tailscale(ctx, version, version_output) {
 }
 
 function sing_box_supports_xhttp(ctx, version, version_output) {
+    if (sing_box_tachyon_core_marker_set(ctx) || match(as_string(version), /-tachyon\./) != null || match(as_string(version), /tachyon-core/) != null)
+        return true;
+
     if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         return true;
 

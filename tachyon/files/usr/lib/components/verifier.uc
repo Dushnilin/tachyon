@@ -258,10 +258,11 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
             gen_env.SB_VARIANT_STATE_FILE = variant_file;
         if (lib_path != "")
             gen_env.LD_LIBRARY_PATH = lib_path;
+        let target_supports_xhttp = (target_var == "extended" || target_var == "extended-compressed" || target_var == "lx" || target_var == "tachyon-core" || index(ver_out, "with_xhttp") >= 0 || index(ver_out, "tachyon-core") >= 0 || index(ver_str, "-tachyon.") >= 0);
         let gen_cmd = helpers.command_env(gen_env) + " " +
             common.command_from_args([
                 "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/singbox/generator.uc",
-                "generate-config", candidate_cfg, "127.0.0.1", "0", "0", ""
+                "generate-config", candidate_cfg, "127.0.0.1", "0", (target_supports_xhttp ? "1" : "0"), ""
             ]) + " >" + common.shell_quote(err_file) + " 2>&1";
         let gen_status = common.command_status(gen_cmd);
         if (gen_status == 0 && helpers.file_nonempty(candidate_cfg)) {
