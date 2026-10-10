@@ -58,6 +58,15 @@ function uci_commit(package_name) {
 }
 
 function words(value) {
+    if (type(value) == "array") {
+        let result = [];
+        for (let item in value) {
+            let s = trim(as_string(item));
+            if (s != "")
+                push(result, s);
+        }
+        return result;
+    }
     value = trim(as_string(value));
     return value == "" ? [] : split(value, /[ \t\r\n]+/);
 }

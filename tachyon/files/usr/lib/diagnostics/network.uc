@@ -19,6 +19,15 @@ let command_status = common.command_status;
 let read_stdin = common.read_stdin;
 
 function words(value) {
+    if (type(value) == "array") {
+        let result = [];
+        for (let item in value) {
+            let s = trim(as_string(item));
+            if (s != "")
+                push(result, s);
+        }
+        return result;
+    }
     let result = [];
     for (let word in split(as_string(value), /[ \t\r\n]+/)) {
         if (word != "")
