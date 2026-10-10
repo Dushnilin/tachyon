@@ -2483,19 +2483,23 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         };
         let extended_only_label = extended_only_labels[as_string(action)];
         // NB: sing_box_is_extended() also matches sing-box-lx, so exclude it here.
-        if (extended_only_label != null &&
-            !(sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version))) {
-            let lx_note = sing_box_is_lx(ctx, sing_box_version)
-                ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
-                : "";
-            fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended or change the action. Aborted.", "fatal");
+        if (extended_only_label != null) {
+            let is_extended = sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version);
+            let is_core = sing_box_is_tachyon_core(ctx, sing_box_version);
+            let core_supported = (action == "warp" || action == "masque" || action == "openvpn" || action == "snell");
+            if (!is_extended && !(is_core && core_supported)) {
+                let lx_note = sing_box_is_lx(ctx, sing_box_version)
+                    ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
+                    : (is_core ? " tachyon-core does not implement " + extended_only_label + " yet." : "");
+                fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary" + (core_supported ? " or tachyon-core" : "") + " (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended" + (core_supported ? " or tachyon-core" : "") + " or change the action. Aborted.", "fatal");
+            }
         }
 
         // OpenVPN was added in sing-box 1.14.0. Older extended builds (e.g.
         // 1.13.x-extended-2.x.x) don't know the endpoint type and abort with
         // "unknown endpoint type: openvpn". Gate on version so the user gets a
         // clear error instead of a cryptic sing-box fatal.
-        if (action == "openvpn" && !common.sing_box_supports_openvpn(sing_box_version))
+        if (action == "openvpn" && !sing_box_is_tachyon_core(ctx, sing_box_version) && !common.sing_box_supports_openvpn(sing_box_version))
             fail_requirement("Section '" + name + "' uses OpenVPN, but the installed sing-box version (" + as_string(sing_box_version) + ") does not support it. OpenVPN requires sing-box 1.14.0 or newer. Update sing-box-extended in the Updates tab or change the action. Aborted.", "fatal");
     }
 
@@ -2503,7 +2507,11 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         if (!server_enabled(server))
             continue;
 
-        if (as_string(option(server, "protocol", "vless")) != "awg")
+        let srv_proto = as_string(option(server, "protocol", "vless"));
+        if (srv_proto == "mtproto" && sing_box_is_tachyon_core(ctx, sing_box_version))
+            fail_requirement("Server '" + section_name(server) + "' uses MTProto, but tachyon-core does not implement MTProto yet. Use sing-box-extended or select another protocol. Aborted.", "fatal");
+
+        if (srv_proto != "awg")
             continue;
 
         let name = section_name(server);

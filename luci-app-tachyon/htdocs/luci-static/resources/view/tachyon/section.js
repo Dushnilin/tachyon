@@ -4889,9 +4889,9 @@ function getActionOptionLabel(action) {
     case "snell":
       return "Snell";
     case "mieru":
-      return "Mieru";
+      return isTachyonCoreForUi() ? _("Mieru (не реализован)") : "Mieru";
     case "sudoku":
-      return "Sudoku";
+      return isTachyonCoreForUi() ? _("Sudoku (не реализован)") : "Sudoku";
     case "masque":
       return "MASQUE";
     case "openvpn":
@@ -4977,24 +4977,12 @@ function populateActionOptionValues(option) {
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
-  // tachyon-core passes the backend's extended-family gates for AmneziaWG and
-  // AnyTLS (validator.uc accepts both on a foreign core), so they must be
-  // offered with it too. warp/masque/openvpn/snell/mieru/sudoku stay behind the
-  // real sing-box-extended fork: the validator still rejects their schema on
-  // the lx family and tachyon-core is counted as one ("support is planned"),
-  // and offering them would abort the whole config on apply.
   if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
     option.value("awg", getActionOptionLabel("awg"));
-  }
-  if (isSingBoxExtendedForUi()) {
     option.value("warp", getActionOptionLabel("warp"));
     option.value("masque", getActionOptionLabel("masque"));
     option.value("openvpn", getActionOptionLabel("openvpn"));
-  }
-  if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
     option.value("anytls", getActionOptionLabel("anytls"));
-  }
-  if (isSingBoxExtendedForUi()) {
     option.value("snell", getActionOptionLabel("snell"));
     option.value("mieru", getActionOptionLabel("mieru"));
     option.value("sudoku", getActionOptionLabel("sudoku"));
@@ -8130,9 +8118,33 @@ function createSectionContent(section) {
 
   const super_validate = o.validate;
   o.validate = function (section_id, value) {
+    if (isTachyonCoreForUi() && (value === "mieru" || value === "sudoku")) {
+      return _("This protocol is not implemented in tachyon-core yet");
+    }
     return super_validate
       ? super_validate.apply(this, [section_id, value])
       : true;
+  };
+
+  const originalActionRenderWidget = o.renderWidget;
+  o.renderWidget = function (section_id, option_index, cfgvalue) {
+    const node = originalActionRenderWidget.apply(this, arguments);
+    if (isTachyonCoreForUi()) {
+      Promise.resolve(node).then((elem) => {
+        if (!elem) return;
+        const disabledItems = elem.querySelectorAll
+          ? elem.querySelectorAll(
+              '[data-value="mieru"], [data-value="sudoku"], option[value="mieru"], option[value="sudoku"]',
+            )
+          : [];
+        disabledItems.forEach((opt) => {
+          opt.disabled = true;
+          opt.setAttribute("disabled", "disabled");
+          opt.classList.add("disabled");
+        });
+      });
+    }
+    return node;
   };
 
   o.default = "connection";

@@ -127,7 +127,7 @@ const CORE_PROTOCOLS = {
         "tailscale" ],
     "tachyon-core": [ "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic",
         "hysteria", "anytls", "snell", "naive", "shadowtls", "ssh", "tor",
-        "socks", "http", "wireguard", "awg", "masque", "fptn", "selector", "urltest",
+        "socks", "http", "wireguard", "awg", "warp", "openvpn", "masque", "fptn", "selector", "urltest",
         "cloudflared", "tailscale", "openconnect", "bridge" ]
 };
 
@@ -145,11 +145,19 @@ const TACHYON_INBOUNDS = [ "mixed", "direct", "redirect", "tproxy", "socks", "ht
 // never writes a tun-specific expectation into the generated config - only
 // fields every one of them accepts.
 const CORE_INBOUNDS = {
-    "upstream": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun" ],
-    "extended": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun" ],
-    "extended-compressed": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun" ],
-    "lx": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun" ],
-    "tachyon-core": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun" ]
+    "upstream": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
+        "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "shadowtls" ],
+    "extended": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
+        "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls",
+        "naive", "shadowtls", "fptn", "mtproto" ],
+    "extended-compressed": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
+        "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls",
+        "naive", "shadowtls", "fptn", "mtproto" ],
+    "lx": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
+        "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "shadowtls" ],
+    "tachyon-core": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
+        "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls",
+        "naive", "shadowtls", "fptn" ]
 };
 
 // Local, like every other module: core.common has no contains(), and the

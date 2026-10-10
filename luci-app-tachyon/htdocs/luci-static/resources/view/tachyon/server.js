@@ -397,9 +397,28 @@ const PORT_PROTOCOLS = [
   "trojan",
   "hysteria2",
   "awg",
+  "tuic",
+  "anytls",
+  "naive",
+  "shadowtls",
+  "fptn",
+  "http",
+  "mixed",
 ];
 const EXTENDED_PORT_PROTOCOLS = ["mtproto"];
-const PASSWORD_PROTOCOLS = ["shadowsocks", "socks", "trojan", "hysteria2"];
+const PASSWORD_PROTOCOLS = [
+  "shadowsocks",
+  "socks",
+  "trojan",
+  "hysteria2",
+  "tuic",
+  "anytls",
+  "naive",
+  "shadowtls",
+  "fptn",
+  "http",
+  "mixed",
+];
 
 const BASE_PROTOCOL_LABELS = {
   vless: "VLESS",
@@ -409,6 +428,15 @@ const BASE_PROTOCOL_LABELS = {
   trojan: "Trojan",
   hysteria2: "Hysteria2",
   awg: "AmneziaWG",
+};
+const CORE_SERVER_PROTOCOL_LABELS = {
+  tuic: "TUIC",
+  anytls: "AnyTLS",
+  naive: "NaiveProxy",
+  shadowtls: "ShadowTLS",
+  fptn: "FPTN",
+  http: "HTTP",
+  mixed: "Mixed (SOCKS/HTTP)",
 };
 const EXTENDED_PROTOCOL_LABELS = {
   mtproto: "MTProto",
@@ -421,6 +449,7 @@ const TAILSCALE_PROTOCOL_LABELS = {
 };
 const PROTOCOL_LABELS = {
   ...BASE_PROTOCOL_LABELS,
+  ...CORE_SERVER_PROTOCOL_LABELS,
   ...EXTENDED_PROTOCOL_LABELS,
   ...CUSTOM_PROTOCOL_LABELS,
   ...TAILSCALE_PROTOCOL_LABELS,
@@ -437,6 +466,13 @@ const SECURITY_BY_PROTOCOL = {
   tailscale: ["none"],
   json_inbound: ["none"],
   awg: ["none"],
+  tuic: ["tls"],
+  anytls: ["tls"],
+  naive: ["tls"],
+  shadowtls: ["none"],
+  fptn: ["tls"],
+  http: ["none"],
+  mixed: ["none"],
 };
 
 function getSecurityLabel(security) {
@@ -559,7 +595,20 @@ function populateProtocolValues(option, capabilities) {
     addOptionValue(option, value, label);
   });
 
-  if (normalized.singBoxExtended) {
+  if (normalized.singBoxExtended || normalized.singBoxTachyonCore) {
+    Object.entries(CORE_SERVER_PROTOCOL_LABELS).forEach(([value, label]) => {
+      addOptionValue(option, value, label);
+    });
+  } else {
+    addOptionValue(option, "tuic", "TUIC");
+    addOptionValue(option, "shadowtls", "ShadowTLS");
+    addOptionValue(option, "http", "HTTP");
+    addOptionValue(option, "mixed", "Mixed (SOCKS/HTTP)");
+  }
+
+  if (normalized.singBoxTachyonCore) {
+    addOptionValue(option, "mtproto", _("MTProto (не реализован)"));
+  } else if (normalized.singBoxExtended) {
     Object.entries(EXTENDED_PROTOCOL_LABELS).forEach(([value, label]) => {
       addOptionValue(option, value, label);
     });
@@ -632,7 +681,14 @@ function getDefaultSecurity(protocol) {
   if (protocol === "vless") {
     return "reality";
   }
-  if (protocol === "trojan" || protocol === "hysteria2") {
+  if (
+    protocol === "trojan" ||
+    protocol === "hysteria2" ||
+    protocol === "tuic" ||
+    protocol === "anytls" ||
+    protocol === "naive" ||
+    protocol === "fptn"
+  ) {
     return "tls";
   }
   return "none";
@@ -651,11 +707,21 @@ function getEffectiveSecurity(sectionId) {
     protocol === "socks" ||
     protocol === "mtproto" ||
     protocol === "tailscale" ||
-    protocol === "json_inbound"
+    protocol === "json_inbound" ||
+    protocol === "awg" ||
+    protocol === "shadowtls" ||
+    protocol === "http" ||
+    protocol === "mixed"
   ) {
     return "none";
   }
-  if (protocol === "hysteria2") {
+  if (
+    protocol === "hysteria2" ||
+    protocol === "tuic" ||
+    protocol === "anytls" ||
+    protocol === "naive" ||
+    protocol === "fptn"
+  ) {
     return "tls";
   }
   if (security === "reality" && protocol !== "vless") {
@@ -1056,7 +1122,7 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     setDefault(sectionId, "transport", "tcp");
   }
 
-  if (protocol === "vless" || protocol === "vmess") {
+  if (protocol === "vless" || protocol === "vmess" || protocol === "tuic") {
     setDefault(sectionId, "server_uuid", generateUuid());
   }
 
@@ -1064,9 +1130,27 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     setDefault(sectionId, "server_password", generatePassword());
   }
 
-  if (protocol === "socks") {
-    setDefault(sectionId, "socks_auth_enabled", "1");
+  if (
+    protocol === "socks" ||
+    protocol === "naive" ||
+    protocol === "fptn" ||
+    protocol === "http" ||
+    protocol === "mixed"
+  ) {
     setDefault(sectionId, "server_username", getServerName(sectionId));
+    if (protocol === "socks") {
+      setDefault(sectionId, "socks_auth_enabled", "1");
+    }
+  }
+
+  if (protocol === "tuic") {
+    setDefault(sectionId, "tuic_congestion_control", "bbr");
+  }
+
+  if (protocol === "shadowtls") {
+    setDefault(sectionId, "shadowtls_handshake_server", "www.microsoft.com");
+    setDefault(sectionId, "shadowtls_handshake_server_port", "443");
+    setDefault(sectionId, "shadowtls_version", "3");
   }
 
   if (protocol === "vless") {
@@ -2519,6 +2603,10 @@ function addTlsDepends(option) {
   option.depends({ protocol: "vmess", security: "tls" });
   option.depends({ protocol: "trojan", security: "tls" });
   option.depends("protocol", "hysteria2");
+  option.depends("protocol", "tuic");
+  option.depends("protocol", "anytls");
+  option.depends("protocol", "naive");
+  option.depends("protocol", "fptn");
 }
 
 function addRealityDepends(option) {
@@ -2718,7 +2806,38 @@ function createServerContent(section, options = {}) {
   o.default = getDefaultProtocolForCapabilities(capabilities);
   o.rmempty = false;
   o.modalonly = true;
-  o.validate = validateRequired;
+  o.validate = function (sectionId, value) {
+    const normalized = normalizeServerCapabilities(
+      section.serverCapabilities || capabilities,
+    );
+    if (normalized.singBoxTachyonCore && value === "mtproto") {
+      return _("MTProto is not implemented in tachyon-core yet");
+    }
+    return validateRequired.call(this, sectionId, value);
+  };
+  const originalProtocolRenderWidget = o.renderWidget;
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    const node = originalProtocolRenderWidget.apply(this, arguments);
+    const normalized = normalizeServerCapabilities(
+      section.serverCapabilities || capabilities,
+    );
+    if (normalized.singBoxTachyonCore) {
+      Promise.resolve(node).then((elem) => {
+        if (!elem) return;
+        const disabledItems = elem.querySelectorAll
+          ? elem.querySelectorAll(
+              '[data-value="mtproto"], option[value="mtproto"]',
+            )
+          : [];
+        disabledItems.forEach((opt) => {
+          opt.disabled = true;
+          opt.setAttribute("disabled", "disabled");
+          opt.classList.add("disabled");
+        });
+      });
+    }
+    return node;
+  };
   o.onchange = function (_ev, sectionId, value) {
     ensureProtocolDefaults(sectionId, value, true);
     syncSecurityChoices(sectionId);
@@ -3065,6 +3184,21 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.depends("protocol", "socks");
 
+  o = section.option(form.Value, "server_uuid", _("UUID"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequiredText;
+  o.load = function (sectionId) {
+    const current = uci.get(UCI_PACKAGE, sectionId, "server_uuid");
+    if (current) return current;
+    const value = generateUuid();
+    uci.set(UCI_PACKAGE, sectionId, "server_uuid", value);
+    return value;
+  };
+  o.depends("protocol", "vless");
+  o.depends("protocol", "vmess");
+  o.depends("protocol", "tuic");
+
   o = section.option(form.Value, "server_username", _("Username"));
   o.modalonly = true;
   o.rmempty = false;
@@ -3080,6 +3214,10 @@ function createServerContent(section, options = {}) {
     return value;
   };
   o.depends({ protocol: "socks", socks_auth_enabled: "1" });
+  o.depends("protocol", "naive");
+  o.depends("protocol", "fptn");
+  o.depends("protocol", "http");
+  o.depends("protocol", "mixed");
 
   o = section.option(form.Value, "server_password", _("Password"));
   o.modalonly = true;
@@ -3096,6 +3234,58 @@ function createServerContent(section, options = {}) {
     return value;
   };
   o.depends({ protocol: "socks", socks_auth_enabled: "1" });
+  o.depends("protocol", "shadowsocks");
+  o.depends("protocol", "trojan");
+  o.depends("protocol", "hysteria2");
+  o.depends("protocol", "tuic");
+  o.depends("protocol", "anytls");
+  o.depends("protocol", "naive");
+  o.depends("protocol", "shadowtls");
+  o.depends("protocol", "fptn");
+  o.depends("protocol", "http");
+  o.depends("protocol", "mixed");
+
+  o = section.option(
+    form.ListValue,
+    "tuic_congestion_control",
+    _("Congestion control"),
+  );
+  o.value("bbr", "BBR");
+  o.value("cubic", "Cubic");
+  o.value("new_reno", "New Reno");
+  o.default = "bbr";
+  o.modalonly = true;
+  o.depends("protocol", "tuic");
+
+  o = section.option(
+    form.Value,
+    "shadowtls_handshake_server",
+    _("Handshake server"),
+  );
+  o.default = "www.microsoft.com";
+  o.modalonly = true;
+  o.depends("protocol", "shadowtls");
+
+  o = section.option(
+    form.Value,
+    "shadowtls_handshake_server_port",
+    _("Handshake server port"),
+  );
+  o.default = "443";
+  o.modalonly = true;
+  o.validate = validatePort;
+  o.depends("protocol", "shadowtls");
+
+  o = section.option(
+    form.ListValue,
+    "shadowtls_version",
+    _("ShadowTLS version"),
+  );
+  o.value("3", "v3");
+  o.value("2", "v2");
+  o.default = "3";
+  o.modalonly = true;
+  o.depends("protocol", "shadowtls");
 
   o = section.option(form.Value, "vmess_alter_id", _("Alter ID"));
   o.default = "0";

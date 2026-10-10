@@ -133,6 +133,17 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
 // Reports false once no further repair applies, so the caller stops instead of
 // rewriting the same file until it gives up.
 function repair_unknown_outbound_field(config_file, reason) {
+    if (index(as_string(reason), "unknown log level: panic") >= 0) {
+        let cfg_text = as_string(fs.readfile(config_file) || "");
+        if (length(cfg_text) == 0) return false;
+        let cfg = json(cfg_text);
+        if (type(cfg) == "object" && type(cfg.log) == "object" && cfg.log.level == "panic") {
+            cfg.log.level = "fatal";
+            fs.writefile(config_file, sprintf("%J", cfg));
+            return true;
+        }
+    }
+
     let out_m = match(as_string(reason), /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     let ep_m = match(as_string(reason), /endpoints\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     let inb_m = match(as_string(reason), /inbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);

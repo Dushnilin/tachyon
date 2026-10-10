@@ -80,6 +80,34 @@ function users(section, protocol) {
             user.name = name;
         return [ user ];
     }
+    if (protocol == "tuic") {
+        let user = {
+            uuid: option(section, "server_uuid", ""),
+            password: option(section, "server_password", "")
+        };
+        if (name != "")
+            user.name = name;
+        return [ user ];
+    }
+    if (protocol == "naive" || protocol == "fptn") {
+        let u = option(section, "server_username", "");
+        let p = option(section, "server_password", "");
+        return [{
+            username: u != "" ? u : (name != "" ? name : "user"),
+            password: p
+        }];
+    }
+    if (protocol == "http" || protocol == "mixed") {
+        let u = option(section, "server_username", "");
+        let p = option(section, "server_password", "");
+        if (u != "" || p != "") {
+            return [{
+                username: u != "" ? u : "user",
+                password: p
+            }];
+        }
+        return [];
+    }
     if (protocol == "socks") {
         return [{
             username: name != "" ? name : "user",
@@ -107,16 +135,19 @@ function effective_security(section, protocol) {
     if (security == "") {
         if (protocol == "vless")
             security = "reality";
-        else if (protocol == "trojan" || protocol == "hysteria2")
+        else if (protocol == "trojan" || protocol == "hysteria2" || protocol == "tuic" ||
+                 protocol == "anytls" || protocol == "naive" || protocol == "fptn")
             security = "tls";
         else
             security = "none";
     }
 
     if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" ||
-        protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg")
+        protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" ||
+        protocol == "shadowtls" || protocol == "http" || protocol == "mixed")
         return "none";
-    if (protocol == "hysteria2")
+    if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" ||
+        protocol == "naive" || protocol == "fptn")
         return "tls";
     if ((protocol == "vmess" || protocol == "trojan") && security == "reality")
         return protocol == "trojan" ? "tls" : "none";
@@ -246,6 +277,37 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let obfs_password = option(section, "hysteria2_obfs_password", "");
         if (obfs_type != "" && obfs_password != "")
             inbound.obfs = { type: obfs_type, password: obfs_password };
+    }
+    else if (protocol == "tuic") {
+        inbound.users = users(section, protocol);
+        let cc = option(section, "tuic_congestion_control", "bbr");
+        if (cc != "")
+            inbound.congestion_control = cc;
+    }
+    else if (protocol == "anytls") {
+        inbound.password = option(section, "server_password", "");
+    }
+    else if (protocol == "naive") {
+        inbound.users = users(section, protocol);
+    }
+    else if (protocol == "shadowtls") {
+        inbound.password = option(section, "server_password", "");
+        let h_server = option(section, "shadowtls_handshake_server", "");
+        if (h_server != "") {
+            inbound.handshake = {
+                server: h_server,
+                server_port: int_option(section, "shadowtls_handshake_server_port", "443")
+            };
+        }
+        inbound.version = int_option(section, "shadowtls_version", "3");
+    }
+    else if (protocol == "fptn") {
+        inbound.users = users(section, protocol);
+    }
+    else if (protocol == "http" || protocol == "mixed") {
+        let u = users(section, protocol);
+        if (length(u) > 0)
+            inbound.users = u;
     }
     else if (protocol == "mtproto") {
         // sing-box-extended registers this inbound as "mtproxy" and expects

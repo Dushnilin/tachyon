@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-10 19:51+0300\n"
-"PO-Revision-Date: 2026-10-10 19:51+0300\n"
+"POT-Creation-Date: 2026-10-10 20:48+0300\n"
+"PO-Revision-Date: 2026-10-10 20:48+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1051,6 +1051,9 @@ msgstr "Настроенный маршрут"
 
 msgid "Conflict"
 msgstr "Конфликт"
+
+msgid "Congestion control"
+msgstr ""
 
 msgid "Connect through"
 msgstr "Подключаться через"
@@ -2360,6 +2363,12 @@ msgstr "Маршрут HTTP-пробы не доказывает маршрут 
 msgid "HWID"
 msgstr "HWID"
 
+msgid "Handshake server"
+msgstr ""
+
+msgid "Handshake server port"
+msgstr ""
+
 msgid "Handshake timeout"
 msgstr "Таймаут рукопожатия"
 
@@ -3173,6 +3182,12 @@ msgstr "ID аккаунта MASQUE"
 msgid "MASQUE Private Key"
 msgstr "Приватный ключ MASQUE"
 
+msgid "MTProto (не реализован)"
+msgstr ""
+
+msgid "MTProto is not implemented in tachyon-core yet"
+msgstr ""
+
 msgid "MTU"
 msgstr "MTU"
 
@@ -3259,6 +3274,9 @@ msgstr "Метод"
 
 msgid "Metrics Retention (hours)"
 msgstr "Хранение метрик (часы)"
+
+msgid "Mieru (не реализован)"
+msgstr ""
 
 msgid "Minimum"
 msgstr "Минимум"
@@ -4877,6 +4895,9 @@ msgstr "Настройки сброшены к значениям по умол�
 msgid "Severity"
 msgstr "Важность"
 
+msgid "ShadowTLS version"
+msgstr ""
+
 msgid "Shared CDN / Anycast Warning"
 msgstr "Предупреждение: общий диапазон CDN / Anycast"
 
@@ -5215,6 +5236,9 @@ msgstr "Успешно импортировано %d DNS-записей"
 
 msgid "Successfully updated %d hosts entries"
 msgstr "Успешно обновлено %d записей hosts"
+
+msgid "Sudoku (не реализован)"
+msgstr ""
 
 msgid "Sun"
 msgstr "Вс"
@@ -5600,6 +5624,9 @@ msgstr "Этот флаг не принимает значение."
 msgid "This option requires a value."
 msgstr "Этот параметр требует значение."
 
+msgid "This protocol is not implemented in tachyon-core yet"
+msgstr ""
+
 msgid "This router"
 msgstr "Этот роутер"
 
@@ -5791,6 +5818,9 @@ msgstr "Настройки URLTest"
 
 msgid "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>."
 msgstr "URL удалённых файлов hosts для загрузки и применения. Поддерживается стандартный формат hosts: <code>IP domain</code>."
+
+msgid "UUID"
+msgstr ""
 
 msgid "Ukraine (ua)"
 msgstr "Украина (ua)"
