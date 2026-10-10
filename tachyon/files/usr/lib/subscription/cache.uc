@@ -2483,9 +2483,18 @@ function mark_pending_subscription_recovery_reload() {
     state_ucode_status([ "mark-pending-reload", TACHYON_PENDING_RELOAD_FILE, "subscription_deferred_recovery" ]);
 }
 
+// A recovered subscription cache only needs config.json regenerated and pushed
+// into the running sing-box, which `updates.uc subscription-deferred-recovery-
+// apply` does in place. Escalating to `/etc/init.d/tachyon reload` walked the
+// whole validate/capture/plan pipeline and restarted both helper workers, so a
+// background bootstrap retry could take the router's proxy down for minutes
+// (issue #119).
 function trigger_subscription_recovery_reload(worker) {
     if (worker)
-        command_status_from_args([ TACHYON_SERVICE_INIT, "reload", "subscription_deferred_recovery" ]);
+        command_status_from_args(command_args_with([
+            "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",
+            "subscription-deferred-recovery-apply"
+        ]));
     else
         mark_pending_subscription_recovery_reload();
 }
