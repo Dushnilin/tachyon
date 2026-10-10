@@ -259,6 +259,7 @@ const EntryPoint = {
     const uiCapabilities = {
       loaded: false,
       singBoxExtended: false,
+      singBoxTachyonCore: false,
       singBoxTiny: false,
       singBoxTailscale: true,
       zapretInstalled: false,
@@ -281,6 +282,7 @@ const EntryPoint = {
               zapretInstalled: uiCapabilities.zapretInstalled,
               zapret2Installed: uiCapabilities.zapret2Installed,
               byedpiInstalled: uiCapabilities.byedpiInstalled,
+              singBoxTachyonCore: uiCapabilities.singBoxTachyonCore,
             },
           }),
         );
@@ -319,6 +321,14 @@ const EntryPoint = {
       uiCapabilities.singBoxExtended = Boolean(
         Number(data?.sing_box_extended) === 1,
       );
+      // The deepest fallback payload (get-server-capabilities) predates
+      // tachyon-core and carries no such key: leave a known value alone
+      // rather than clearing it to false.
+      if (typeof data?.sing_box_tachyon_core !== "undefined") {
+        uiCapabilities.singBoxTachyonCore = Boolean(
+          Number(data.sing_box_tachyon_core) === 1,
+        );
+      }
       uiCapabilities.singBoxTiny = Boolean(Number(data?.sing_box_tiny) === 1);
       uiCapabilities.singBoxTailscale =
         typeof data?.sing_box_tailscale === "undefined"

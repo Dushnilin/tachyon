@@ -499,6 +499,7 @@ const actionProvidersAvailabilityState = {
   fptnInstalled: false,
   torInstalled: false,
   singBoxExtended: false,
+  singBoxTachyonCore: false,
 };
 let actionProvidersAvailabilityPromise = null;
 let actionProvidersAvailabilityLoader = null;
@@ -704,6 +705,12 @@ function updateActionProvidersAvailabilityState(nextState) {
     );
   }
 
+  if (typeof nextState.singBoxTachyonCore !== "undefined") {
+    actionProvidersAvailabilityState.singBoxTachyonCore = Boolean(
+      nextState.singBoxTachyonCore,
+    );
+  }
+
   if (typeof nextState.singBoxExtended !== "undefined") {
     actionProvidersAvailabilityState.singBoxExtended = Boolean(
       nextState.singBoxExtended,
@@ -730,8 +737,13 @@ function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
     byedpiInstalled: Boolean(systemInfo.byedpi_installed),
     wdttInstalled: Boolean(systemInfo.wdtt_installed),
     olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
-    fptnInstalled: Boolean(systemInfo.fptn_installed),
+    // FPTN is compiled into tachyon-core itself, so the built-in flag makes
+    // the action available even with no fptn package on disk.
+    fptnInstalled: Boolean(
+      systemInfo.fptn_installed || systemInfo.sing_box_fptn,
+    ),
     singBoxExtended: Boolean(systemInfo.sing_box_extended),
+    singBoxTachyonCore: Boolean(systemInfo.sing_box_tachyon_core),
     torInstalled: Boolean(systemInfo.tor_installed),
   });
 }
@@ -4735,6 +4747,7 @@ function ensureActionProvidersAvailabilityLoaded() {
           zapret2Installed: Boolean(capabilities?.zapret2Installed),
           byedpiInstalled: Boolean(capabilities?.byedpiInstalled),
           singBoxExtended: Boolean(capabilities?.singBoxExtended),
+          singBoxTachyonCore: Boolean(capabilities?.singBoxTachyonCore),
         });
         return actionProvidersAvailabilityState;
       })
@@ -4827,6 +4840,10 @@ function isFptnInstalledForUi() {
 
 function isSingBoxExtendedForUi() {
   return actionProvidersAvailabilityState.singBoxExtended;
+}
+
+function isTachyonCoreForUi() {
+  return actionProvidersAvailabilityState.singBoxTachyonCore;
 }
 
 function getRuleConfiguredAction(section_id) {
@@ -4960,12 +4977,24 @@ function populateActionOptionValues(option) {
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
-  if (isSingBoxExtendedForUi()) {
+  // tachyon-core passes the backend's extended-family gates for AmneziaWG and
+  // AnyTLS (validator.uc accepts both on a foreign core), so they must be
+  // offered with it too. warp/masque/openvpn/snell/mieru/sudoku stay behind the
+  // real sing-box-extended fork: the validator still rejects their schema on
+  // the lx family and tachyon-core is counted as one ("support is planned"),
+  // and offering them would abort the whole config on apply.
+  if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
     option.value("awg", getActionOptionLabel("awg"));
+  }
+  if (isSingBoxExtendedForUi()) {
     option.value("warp", getActionOptionLabel("warp"));
     option.value("masque", getActionOptionLabel("masque"));
     option.value("openvpn", getActionOptionLabel("openvpn"));
+  }
+  if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
     option.value("anytls", getActionOptionLabel("anytls"));
+  }
+  if (isSingBoxExtendedForUi()) {
     option.value("snell", getActionOptionLabel("snell"));
     option.value("mieru", getActionOptionLabel("mieru"));
     option.value("sudoku", getActionOptionLabel("sudoku"));

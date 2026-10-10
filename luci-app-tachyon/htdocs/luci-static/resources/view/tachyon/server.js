@@ -523,9 +523,18 @@ function addOptionValue(option, value, label) {
 }
 
 function normalizeServerCapabilities(capabilities) {
+  const singBoxExtended = Boolean(capabilities?.singBoxExtended);
+  const singBoxTachyonCore = Boolean(capabilities?.singBoxTachyonCore);
+
   return {
-    singBoxExtended: Boolean(capabilities?.singBoxExtended),
+    singBoxExtended,
+    singBoxTachyonCore,
     singBoxTailscale: capabilities?.singBoxTailscale !== false,
+    // XHTTP ships in sing-box-lx and in tachyon-core (the validator's
+    // sing_box_supports_xhttp covers both). MTProto is deliberately not part
+    // of this: it stays on the real sing-box-extended fork, because the
+    // tachyon-core inbound stack has no MTProto and would fail `sing-box check`.
+    singBoxXhttp: singBoxExtended || singBoxTachyonCore,
   };
 }
 
@@ -561,7 +570,7 @@ function populateProtocolValues(option, capabilities) {
   });
 }
 
-function populateTransportValues(option, singBoxExtended) {
+function populateTransportValues(option, supportsXhttp) {
   resetOptionValues(option);
 
   addOptionValue(option, "tcp", "TCP");
@@ -570,7 +579,7 @@ function populateTransportValues(option, singBoxExtended) {
   addOptionValue(option, "http", "HTTP");
   addOptionValue(option, "httpupgrade", "HTTPUpgrade");
 
-  if (singBoxExtended) {
+  if (supportsXhttp) {
     addOptionValue(option, "xhttp", "XHTTP");
   }
 }
@@ -591,7 +600,7 @@ function applyServerCapabilities(sectionRef, capabilities) {
   }
 
   if (options.transport) {
-    populateTransportValues(options.transport, normalized.singBoxExtended);
+    populateTransportValues(options.transport, normalized.singBoxXhttp);
   }
 }
 
@@ -2658,7 +2667,7 @@ function configureServerSection(sectionRef, options = {}) {
 function createServerContent(section, options = {}) {
   injectServerStyles();
   const capabilities = normalizeServerCapabilities(options);
-  const singBoxExtended = capabilities.singBoxExtended;
+  const singBoxXhttp = capabilities.singBoxXhttp;
   const singBoxTailscale = capabilities.singBoxTailscale;
   section.serverCapabilityOptions = {};
   section.serverCapabilities = capabilities;
@@ -2975,7 +2984,7 @@ function createServerContent(section, options = {}) {
 
   o = section.option(form.ListValue, "transport", _("Transport"));
   section.serverCapabilityOptions.transport = o;
-  populateTransportValues(o, singBoxExtended);
+  populateTransportValues(o, singBoxXhttp);
   o.default = "tcp";
   o.rmempty = false;
   o.modalonly = true;
