@@ -134,7 +134,8 @@ Usage: $0 [options]
       --engine NAME     Routing engine: sing-box (default), steer, steer-extended
       --steer           Install steer engine
       --steer-extended  Install steer-extended engine
-      --sing-box-variant VAR  sing-box build: stable, tiny, extended, extended-compressed, lx
+      --tachyon-core    Install tachyon-core engine build
+      --sing-box-variant VAR  sing-box build: stable, tiny, extended, extended-compressed, lx, tachyon-core
       --skip-sing-box   Do not install routing engine when none is present
       --skip-engine     Alias for --skip-sing-box
       --zram            Install zram-swap
@@ -160,11 +161,16 @@ parse_args() {
                 [ "$#" -gt 0 ] || { err "--engine requires name (sing-box, steer, steer-extended)"; return 2; }
                 case "$1" in
                     sing-box|sing_box) ENGINE_INSTALL_REQUESTED="sing-box" ;;
+                    tachyon-core|tachyon_core) ENGINE_INSTALL_REQUESTED="sing-box"; SING_BOX_VARIANT_REQUESTED="tachyon-core" ;;
                     steer) ENGINE_INSTALL_REQUESTED="steer" ;;
                     steer-extended|steer_extended) ENGINE_INSTALL_REQUESTED="steer-extended" ;;
                     none|skip) SKIP_SING_BOX=1 ;;
-                    *) err "Unsupported engine: $1 (allowed: sing-box, steer, steer-extended, none)"; return 2 ;;
+                    *) err "Unsupported engine: $1 (allowed: sing-box, tachyon-core, steer, steer-extended, none)"; return 2 ;;
                 esac
+                ;;
+            --tachyon-core)
+                ENGINE_INSTALL_REQUESTED="sing-box"
+                SING_BOX_VARIANT_REQUESTED="tachyon-core"
                 ;;
             --steer) ENGINE_INSTALL_REQUESTED="steer" ;;
             --steer-extended) ENGINE_INSTALL_REQUESTED="steer-extended" ;;
@@ -796,7 +802,8 @@ select_sing_box_installation() {
     printf '  5) sing-box lx\n'
     printf '  6) steer (lightweight Go engine, SmartDNS)\n'
     printf '  7) steer-extended (steer + xHTTP)\n'
-    printf '  8) skip\n'
+    printf '  8) tachyon-core (Rust core for sing-box configs)\n'
+    printf '  9) skip\n'
     printf 'Choice [1]: '
     read -r _answer || _answer=""
     case "${_answer:-1}" in
@@ -807,7 +814,8 @@ select_sing_box_installation() {
         5) SING_BOX_INSTALL_VARIANT="lx"; ENGINE_INSTALL_CHOICE="sing-box" ;;
         6) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="steer" ;;
         7) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="steer-extended" ;;
-        8) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="" ;;
+        8) SING_BOX_INSTALL_VARIANT="tachyon-core"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        9) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="" ;;
         *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
     esac
 }
@@ -1216,6 +1224,7 @@ install_selected_sing_box() {
                 extended) _action="install_extended" ;;
                 extended-compressed) _action="install_extended_compressed" ;;
                 lx) _action="install_lx" ;;
+                tachyon-core|tachyon_core) _action="install_tachyon_core" ;;
                 *) return 1 ;;
             esac
             msg "Installing sing-box ($SING_BOX_INSTALL_VARIANT)"

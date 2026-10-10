@@ -21,12 +21,12 @@ awk '
   END { exit !(sel > 0 && res > sel) }
 ' "$INSTALLER" || fail "select_release_version must run before resolve_release"
 
-for variant in stable tiny extended extended-compressed lx; do
+for variant in stable tiny extended extended-compressed lx tachyon-core; do
   grep -Fq "SING_BOX_INSTALL_VARIANT=\"$variant\"" "$INSTALLER" ||
     fail "sing-box menu missing variant: $variant"
 done
 
-for action in install_stable install_tiny install_extended install_extended_compressed install_lx; do
+for action in install_stable install_tiny install_extended install_extended_compressed install_lx install_tachyon_core; do
   grep -Fq "_action=\"$action\"" "$INSTALLER" ||
     fail "missing sing-box action mapping: $action"
 done
@@ -106,6 +106,16 @@ select_sing_box_installation <<'IN' >/dev/null 2>&1 || true
 IN
 [ "$ENGINE_INSTALL_CHOICE" = "steer-extended" ] ||
   fail "menu choice 7 must select steer-extended (got: ${ENGINE_INSTALL_CHOICE:-empty})"
+
+SING_BOX_INSTALL_VARIANT=""
+ENGINE_INSTALL_CHOICE=""
+select_sing_box_installation <<'IN' >/dev/null 2>&1 || true
+8
+IN
+[ "$SING_BOX_INSTALL_VARIANT" = "tachyon-core" ] ||
+  fail "menu choice 8 must select tachyon-core (got: ${SING_BOX_INSTALL_VARIANT:-empty})"
+[ "$ENGINE_INSTALL_CHOICE" = "sing-box" ] ||
+  fail "menu choice 8 must set engine sing-box (got: ${ENGINE_INSTALL_CHOICE:-empty})"
 
 SING_BOX_INSTALL_VARIANT="keep"
 ENGINE_INSTALL_CHOICE="keep"
