@@ -163,9 +163,9 @@ if (!svcb_rule) {
     warn("HTTPS/SVCB DNS rule missing\n");
     exit(2);
 }
-// issue #118: the block must answer NOERROR with no records (NODATA). sing-box's
-// `reject` replies REFUSED unconditionally and carries no rcode of its own, so a
-// reject here is the bug, not the fix.
+// issue #118: the block must answer NOERROR with no records (NODATA). The
+// reject action replies REFUSED unconditionally and carries no rcode at all,
+// so a reject here is the bug, not the fix.
 if (svcb_rule.action != "predefined" || svcb_rule.rcode != "NOERROR") {
     warn("HTTPS/SVCB rule must be predefined with rcode NOERROR, got action=" +
          svcb_rule.action + " rcode=" + svcb_rule.rcode + "\n");
