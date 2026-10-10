@@ -217,15 +217,46 @@ function consume_pending_reload(path) {
     return true;
 }
 
+// Only this one pending reason means "a subscription cache was rewritten",
+// which config.json regeneration plus a SIGHUP into the running sing-box
+// settles. Every other reason still means the configuration itself changed and
+// has to go through the real reload (issue #119).
+const PENDING_RELOAD_SOFT_APPLY_REASON = "subscription_deferred_recovery";
+
+function pending_reload_reason(path) {
+    // Deliberately not first_line_value(): that helper is declared further down
+    // this file and ucode resolves a call against what is defined at that point.
+    let data = fs.readfile(path);
+    if (data == null)
+        return "";
+    let first = split(trim(as_string(data)), "\n")[0];
+    return replace(as_string(first), /^reason=/, "");
+}
+
 function run_pending_reload_if_requested(path, init_script) {
     path = as_string(path || DEFAULT_PENDING_RELOAD_FILE);
     init_script = as_string(init_script || DEFAULT_SERVICE_INIT);
 
+    let reason = "";
+    if (fs.stat(path) != null)
+        reason = pending_reload_reason(path);
+
     if (!consume_pending_reload(path))
         return;
 
-    command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying pending Tachyon reload" ]);
-    system(background_command(shell_quote(init_script) + " reload pending"));
+    // One launch site for both outcomes, so this file does not grow a second
+    // background invocation.
+    let apply_in_place = reason == PENDING_RELOAD_SOFT_APPLY_REASON;
+    let message = apply_in_place ? "Applying pending subscription recovery in place" : "Applying pending Tachyon reload";
+    let command = apply_in_place
+        ? command_from_args([
+            "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",
+            "subscription-deferred-recovery-apply"
+        ])
+        : shell_quote(init_script) + " reload pending";
+
+    command_success_from_args([ "logger", "-t", "tachyon", "[info] " + message ]);
+    system(background_command(command));
 }
 
 function first_line_value(path) {
