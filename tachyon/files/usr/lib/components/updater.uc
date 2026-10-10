@@ -1283,12 +1283,13 @@ function tachyon_core_asset_url(arch_suffix) {
         exit(1);
 
     let prefix = "tachyon-core-" + arch_suffix + "-";
+    let alt_prefix = "tachyon-core-" + replace(arch_suffix, "-musl", "") + "-";
 
     for (let asset in array_or_empty(release.assets)) {
         if (type(asset) != "object")
             continue;
         let name = as_string(asset.name || "");
-        if (str_startswith(name, prefix) && str_endswith(name, ".tar.gz")) {
+        if ((str_startswith(name, prefix) || str_startswith(name, alt_prefix)) && str_endswith(name, ".tar.gz")) {
             print(as_string(asset.browser_download_url || ""), "\n");
             return;
         }
