@@ -133,14 +133,14 @@ if (!cfg || !cfg.dns || !cfg.dns.rules) {
     exit(1);
 }
 
-let found_https_reject = false;
+let svcb_rule = null;
 let query_rule = null;
 let eval_rule = null;
 let resp_rule = null;
 
 for (let r in cfg.dns.rules) {
-    if (r.action == "reject" && r.query_type && r.query_type[0] == "HTTPS")
-        found_https_reject = true;
+    if (r.query_type && (r.query_type[0] == "HTTPS" || r.query_type[0] == "SVCB"))
+        svcb_rule = r;
     if (r.action == "route" && !r.match_response && r.rule_set) {
         let rs = type(r.rule_set) == "array" ? r.rule_set : [ r.rule_set ];
         for (let s in rs) {
@@ -159,9 +159,17 @@ for (let r in cfg.dns.rules) {
     }
 }
 
-if (!found_https_reject) {
-    warn("HTTPS reject rule missing\n");
+if (!svcb_rule) {
+    warn("HTTPS/SVCB DNS rule missing\n");
     exit(2);
+}
+// issue #118: the block must answer NOERROR with no records (NODATA). The
+// reject action replies REFUSED unconditionally and carries no rcode at all,
+// so a reject here is the bug, not the fix.
+if (svcb_rule.action != "predefined" || svcb_rule.rcode != "NOERROR") {
+    warn("HTTPS/SVCB rule must be predefined with rcode NOERROR, got action=" +
+         svcb_rule.action + " rcode=" + svcb_rule.rcode + "\n");
+    exit(7);
 }
 if (!query_rule) {
     warn("query rule for russia_inside missing\n");
