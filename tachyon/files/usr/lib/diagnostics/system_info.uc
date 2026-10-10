@@ -347,56 +347,36 @@ function sing_box_tiny_package_installed() {
 }
 
 function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
-    let extended = 0;
+    // The whole answer comes from the one profile model, in one process: the
+    // function below used to shell out per predicate (marker-is, is-extended,
+    // is-lx, supports-tailscale, supports-cert-pin) and each copy of the
+    // question could - and did - answer differently from the next.
+    let caps = parse_json_or_null(module_output(SINGBOX_RUNTIME_UC,
+        [ "core-capabilities", as_string(sing_box_version), "", as_string(sing_box_version_output) ]));
+    if (type(caps) != "object")
+        caps = {};
+
+    let profile = as_string(caps.profile);
+    let tachyon_core = profile == "tachyon-core" ? 1 : 0;
+    let extended = (profile == "lx" || profile == "extended" || profile == "extended-compressed") ? 1 : 0;
     let tiny = 0;
-    let tailscale = 0;
-    let cert_pin = 0;
-    let tachyon_core = 0;
+    if (tachyon_core == 0 && extended == 0 &&
+        (sing_box_marker_is("tiny") || sing_box_tiny_package_installed()))
+        tiny = 1;
+
+    let tailscale = caps.tailscale ? 1 : 0;
+    // A component job rebuilding the binary answers for itself, but only when
+    // there was no banner to ask: a readable banner is the ground truth about
+    // the build that is on disk right now.
+    if (tailscale == 0 && tiny == 0 && as_string(sing_box_version_output) == "" &&
+        sing_box_component_action_running())
+        tailscale = 1;
+
+    let cert_pin = caps.cert_pin ? 1 : 0;
     let fptn = 0;
-
-    // tachyon-core is decided first and it wins: a marker left behind by a
-    // replaced binary must not reclassify an installed tachyon-core as tiny
-    // or extended, and the version suffix alone catches a manual copy. The
-    // suffix is matched inline rather than through the runtime banner probe,
-    // which would run the binary an extra time on every call.
-    if (sing_box_marker_is("tachyon-core") ||
-        match(as_string(sing_box_version), /-tachyon\./) != null)
-        tachyon_core = 1;
-
-    if (tachyon_core == 0) {
-        if (sing_box_marker_is("extended") ||
-            sing_box_marker_is("extended-compressed") ||
-            module_success(SINGBOX_RUNTIME_UC, [ "is-extended", sing_box_version ]))
-            extended = 1;
-
-        if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", sing_box_version ]))
-            extended = 1;
-
-        if (extended == 0 && (sing_box_marker_is("tiny") || sing_box_tiny_package_installed()))
-            tiny = 1;
-    }
-
-    // Tailscale and FPTN are compiled into tachyon-core itself: no external
-    // component, no with_* build tag to probe for.
-    if (tachyon_core == 1) {
-        tailscale = 1;
-        fptn = 1;
-    }
-    else if (extended == 1)
-        tailscale = 1;
-    else if (as_string(sing_box_version_output) != "") {
-        if (module_success(SINGBOX_RUNTIME_UC, [ "supports-tailscale", sing_box_version, sing_box_version_output ]))
-            tailscale = 1;
-    }
-    else if (tiny == 0 && sing_box_component_action_running())
-        tailscale = 1;
-
-    // The capability model answers certificate_sha256 for tachyon-core,
-    // whatever the version number underneath says.
-    if (tachyon_core == 1)
-        cert_pin = 1;
-    else if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", sing_box_version ]))
-        cert_pin = 1;
+    for (let item in (type(caps.protocols) == "array" ? caps.protocols : []))
+        if (item == "fptn")
+            fptn = 1;
 
     return { extended, tiny, tailscale, cert_pin, tachyon_core, fptn };
 }

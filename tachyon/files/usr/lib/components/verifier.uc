@@ -9,6 +9,7 @@ let common = require("core.common");
 
 let helpers = require("components.helpers");
 let versions = require("components.versions");
+let core_profile = require("singbox.core_profile");
 
 let as_string = common.as_string;
 
@@ -258,7 +259,10 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
             gen_env.SB_VARIANT_STATE_FILE = variant_file;
         if (lib_path != "")
             gen_env.LD_LIBRARY_PATH = lib_path;
-        let target_supports_xhttp = (target_var == "extended" || target_var == "extended-compressed" || target_var == "lx" || target_var == "tachyon-core" || index(ver_out, "with_xhttp") >= 0 || index(ver_out, "tachyon-core") >= 0 || index(ver_str, "-tachyon.") >= 0);
+        // The banner itself may still be the only thing naming our core - the
+        // variant file can lag behind it - so the name wins over target_var.
+        let xhttp_marker = index(ver_out, "tachyon-core") >= 0 ? "tachyon-core" : target_var;
+        let target_supports_xhttp = core_profile.supports_xhttp(ver_str, xhttp_marker, ver_out) === true;
         let gen_cmd = helpers.command_env(gen_env) + " " +
             common.command_from_args([
                 "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/singbox/generator.uc",

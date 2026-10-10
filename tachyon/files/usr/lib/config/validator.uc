@@ -15,6 +15,7 @@ let core_url = require("core.url");
 let core_ip = require("core.ip");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
+let core_profile = require("singbox.core_profile");
 
 let common = require("core.common");
 let as_string = common.as_string;
@@ -2292,50 +2293,40 @@ function sing_box_is_lx(ctx, version) {
     return sing_box_version_is_lx(version != null ? version : get_sing_box_version(ctx)) || sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx));
 }
 
-function sing_box_output_has_build_tag(output, tag) {
-    tag = as_string(tag);
-    if (tag == "")
-        return false;
+// The marker the profile lookup answers from: the state file when there is one,
+// and the identity a bare foreign version carries otherwise. profile() reads a
+// version suffix, so "0.0.1" and "tachyon-core" have none and would be filed
+// under upstream - switching their features off exactly the way the old
+// build-tag probe did.
+function sing_box_capability_marker(ctx, version) {
+    let path = as_string(ctx.sing_box_variant_state_file);
+    if (path == "")
+        path = "/etc/tachyon/sing-box-variant";
 
-    for (let token in split(replace(as_string(output), /[,: \t\r\n]+/g, " "), " "))
-        if (token == tag)
-            return true;
+    let data = fs.readfile(path);
+    let marker = data == null ? "" : trim(as_string(data));
 
-    return false;
+    let v = as_string(version);
+    if (marker == "" && (match(v, /^v?0\.0\./) != null || index(v, "tachyon-core") >= 0))
+        marker = "tachyon-core";
+
+    return marker;
 }
 
 function sing_box_supports_tailscale(ctx, version, version_output) {
-    // Tailscale is compiled into tachyon-core itself; the marker or the
-    // version suffix settles it before any build-tag probing.
-    if (sing_box_tachyon_core_marker_set(ctx) || match(as_string(version), /-tachyon\./) != null)
-        return true;
-
-    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
-        return true;
-
-    if (sing_box_is_extended(ctx, version))
-        return true;
-
-    if (as_string(version_output) == "")
-        version_output = command_output_from_args([ "sing-box", "version" ]);
-
-    return sing_box_output_has_build_tag(version_output, "with_tailscale");
+    let answer = core_profile.supports_tailscale(as_string(version),
+        sing_box_capability_marker(ctx, version), as_string(version_output));
+    if (answer == null)
+        answer = core_profile.output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_tailscale");
+    return answer;
 }
 
 function sing_box_supports_xhttp(ctx, version, version_output) {
-    if (sing_box_tachyon_core_marker_set(ctx) || match(as_string(version), /-tachyon\./) != null || match(as_string(version), /tachyon-core/) != null)
-        return true;
-
-    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
-        return true;
-
-    if (sing_box_is_extended(ctx, version) || sing_box_is_lx(ctx, version))
-        return true;
-
-    if (as_string(version_output) == "")
-        version_output = command_output_from_args([ "sing-box", "version" ]);
-
-    return sing_box_output_has_build_tag(version_output, "with_xhttp");
+    let answer = core_profile.supports_xhttp(as_string(version),
+        sing_box_capability_marker(ctx, version), as_string(version_output));
+    if (answer == null)
+        answer = core_profile.output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_xhttp");
+    return answer;
 }
 
 function managed_sing_box_service_script(marker) {

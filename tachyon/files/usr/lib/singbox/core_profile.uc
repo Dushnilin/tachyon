@@ -54,7 +54,10 @@ const CORE_PROFILES = {
         pin_field: FROM_VERSION_PREFIX + "1.15",
         schema_1_14: FROM_VERSION_PREFIX + "1.14",
         schema_1_15: FROM_VERSION_PREFIX + "1.15",
-        xhttp: "build-tag",
+        // Same code base as extended-compressed below, so the same flat yes:
+        // shtorm-7 compiles xhttp in unconditionally, and every caller used to
+        // answer "extended supports xhttp" by hand anyway.
+        xhttp: "yes",
         tailscale: "yes"
     },
     "extended-compressed": {
@@ -210,10 +213,6 @@ function profile_matches_version(profile, version) {
     return profile.marker == "";
 }
 
-// Which profile a version/marker pair belongs to. The marker decides when there
-// is one, because a build does not always name itself; the version decides the
-// rest. Our own core is only ever recognised by marker or by the banner name the
-// caller passes in as the marker - its number alone says nothing.
 // Which profile a version alone identifies, or "" when the version says nothing
 // decisive. Our own core is the case that matters: a stale marker file says "lx"
 // while the binary on disk says "-tachyon.", and the binary is the truth.
@@ -229,6 +228,10 @@ function profile_by_version(version) {
     return "";
 }
 
+// Which profile a version/marker pair belongs to. The marker decides when there
+// is one, because a build does not always name itself; the version decides the
+// rest. Our own core is only ever recognised by marker or by the banner name the
+// caller passes in as the marker - its number alone says nothing.
 function profile(version, marker) {
     version = as_string(version);
     marker = as_string(marker);
@@ -311,6 +314,55 @@ function missing_inbounds(supported) {
     return missing;
 }
 
+// The build-tag scan, as a pure string question: does this `sing-box version`
+// output carry the tag? Tokenized rather than substring-matched, so "with_xhttp"
+// does not match inside a longer word.
+function output_has_build_tag(output, tag) {
+    tag = as_string(tag);
+    if (tag == "")
+        return false;
+
+    for (let token in split(trim(replace(as_string(output), /[,: \t\r\n]+/g, " ")), " "))
+        if (as_string(token) == tag)
+            return true;
+
+    return false;
+}
+
+// The answer to one capability field for one build: true, false, or null when
+// the answer lives in the binary's banner and the caller has not supplied it.
+// Callers that get null run `sing-box version` themselves and settle it - this
+// module never spawns anything, which is the whole reason it can be required
+// from the generator and the validator, where requiring runtime.uc would run
+// its command-line dispatch and kill the process.
+//
+// This is the one place that interprets a profile field. Before it existed the
+// same question was answered by hand in runtime.uc, validator.uc and verifier.uc,
+// and the three answers drifted apart the moment a new core shipped.
+function flag(version, marker, field, tag, version_output) {
+    let declared = as_string(profile_data(profile(version, marker))[field]);
+    if (declared == "yes")
+        return true;
+    if (declared == "no")
+        return false;
+    if (declared == "build-tag") {
+        if (as_string(version_output) == "")
+            return null;
+        return output_has_build_tag(version_output, tag);
+    }
+    if (is_from_version(declared))
+        return reaches(version, from_version_level(declared));
+    return null;
+}
+
+function supports_xhttp(version, marker, version_output) {
+    return flag(version, marker, "xhttp", "with_xhttp", version_output);
+}
+
+function supports_tailscale(version, marker, version_output) {
+    return flag(version, marker, "tailscale", "with_tailscale", version_output);
+}
+
 return {
     CORE_PROFILES,
     CORE_PROTOCOLS,
@@ -331,6 +383,10 @@ return {
     inbounds,
     supports_inbound,
     missing_inbounds,
+    output_has_build_tag,
+    flag,
+    supports_xhttp,
+    supports_tailscale,
     reaches,
     version_pair
 };
