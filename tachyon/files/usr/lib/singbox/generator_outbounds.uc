@@ -954,8 +954,8 @@ function manual_tuic_outbound(link, tag_name) {
 function ensure_imported_vpn_lx() {
     let variant = trim(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || "");
     let version = trim(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version") || "");
-    if (variant != "lx" && index(version, "-lx") < 0)
-        ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx");
+    if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0)
+        ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
 }
 
 function add_imported_wireguard_endpoint(config, endpoint) {

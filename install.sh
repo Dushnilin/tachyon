@@ -999,7 +999,15 @@ remove_legacy_packages() {
             # setup. Removing the package is enough to stop the service.
             apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" del $_legacy_pkgs || warn "Could not remove legacy packages (will scrub world file)"
         fi
-        scrub_apk_world
+        # Legacy names only. The no-argument scrub uses WORLD_SCRUB_PACKAGES,
+        # which also lists tachyon and luci-app-tachyon - the packages this
+        # installer has just installed. Scrubbing them here drops them out of
+        # /etc/apk/world while they are installed, and apk's next transaction
+        # (a zapret2 component update, say) sees two orphans and purges them,
+        # taking the LuCI menu with them (issue #120). The full scrub still
+        # runs before the next install, where it belongs: it exists to release
+        # stale pinned entries before apk selects anything.
+        scrub_apk_world "$LEGACY_PACKAGES"
     else
         for _pkg in $LEGACY_PACKAGES; do
             if opkg status "$_pkg" 2>/dev/null | grep -q '^Status:'; then
@@ -1053,9 +1061,11 @@ scrub_apk_world() {
 # failed. Releasing the legacy entries *before* the install lets apk drop forkop
 # inside the same transaction, which is atomic, and it keeps the window in which
 # the legacy resolver is gone but Tachy's DNS is not up yet as short as it was
-# meant to be (issue #85). Only the legacy entries are dropped here; the full
-# scrub still runs at the end so `tachyon` is not missing from world if the
-# install fails and is rolled back.
+# meant to be (issue #85). Only the legacy entries are dropped here, and only
+# legacy entries at the end too: the full scrub belongs to the start of the next
+# run, where it releases stale pins before apk selects anything. Scrubbing the
+# freshly installed tachyon entries on the way out is what let the next apk
+# transaction purge Tachyon itself (issue #120).
 resolve_legacy_conflicts_before_install() {
     [ "$PKG_IS_APK" -eq 1 ] || return 0
     [ "$DRY_RUN" -eq 1 ] && return 0

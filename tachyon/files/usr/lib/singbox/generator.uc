@@ -899,7 +899,14 @@ function base_config(settings, service_address, runtime_context) {
     for (let rule in dns_config.rules)
         push(dns_rules, rule);
     for (let rule in [
-        { action: "reject", query_type: [ "HTTPS", "SVCB" ] },
+        // HTTPS/SVCB records are how a client discovers DoH servers, so they
+        // must not be answered - but with NODATA, not REFUSED. sing-box's
+        // `reject` answers REFUSED unconditionally (dns/router.go has no rcode
+        // option on the action at all), and resolvers read REFUSED as the
+        // server refusing to serve: they retry, switch servers or mark the
+        // resolver dead (issue #118). `predefined` with NOERROR and no records
+        // is the same block, answered as "this name has no such record".
+        { action: "predefined", query_type: [ "HTTPS", "SVCB" ], rcode: "NOERROR" },
         { action: "reject", domain_suffix: "use-application-dns.net" },
         {
             action: "route",

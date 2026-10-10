@@ -766,7 +766,7 @@ function supportsVpnUrl() {
   const state = store.get();
   const info = state.diagnosticsSystemInfo || {};
   const engine = state.activeEngine || info.active_engine || "sing-box";
-  return engine === "sing-box" && (Number(info.sing_box_lx) === 1 || /-lx(?:[.-]|$)/.test(String(info.sing_box_version || "")));
+  return engine === "sing-box" && (Number(info.sing_box_lx) === 1 || Number(info.sing_box_tachyon_core) === 1 || /-lx(?:[.-]|$)/.test(String(info.sing_box_version || "")) || /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || "")));
 }
 function validateVpnUrl(url) {
   const invalid2 = () => ({

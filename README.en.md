@@ -21,7 +21,7 @@
 
 **Tachyon** is an advanced, autonomous network routing, proxy orchestration, and anti-censorship engine designed specifically for **OpenWrt** routers (fully supporting **OpenWrt 23.05, 24.10, 25.x, and SNAPSHOT** builds). Direct fork and evolution of **[Forkop by @ushan0v](https://github.com/ushan0v/forkop)** (formerly **Podkop Plus**) and **[Steer by @xyzmean](https://github.com/xyzmean/steer)**.
 
-Tachyon combines multi-engine routing (**sing-box**, lightweight **Steer**, and hybrid **Steer-Extended**), native **OpenVPN (.ovpn)** client integration, high-speed **FPTN** (Fast Packet Tunnel Network), local hardware DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive combinatorial **DPI Strategy Fuzzer v2**, a hardened **Telegram control bot**, and a cutting-edge **AI Stack** (autonomous **AI Doctor v3.0**, offline local diagnostics, **HTTP REST Agent API / OpenAPI 3.0**, and **Model Context Protocol (MCP)** server for autonomous AI agents).
+Tachyon combines multi-engine routing (**sing-box**, lightweight **Steer**, hybrid **Steer-Extended**, and native Rust-powered **[tachyon-core](https://github.com/Dushnilin/tachyon-core)**), native **OpenVPN (.ovpn)** client integration, high-speed **FPTN** (Fast Packet Tunnel Network), local hardware DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive combinatorial **DPI Strategy Fuzzer v2**, a hardened **Telegram control bot**, and a cutting-edge **AI Stack** (autonomous **AI Doctor v3.0**, offline local diagnostics, **HTTP REST Agent API / OpenAPI 3.0**, and **Model Context Protocol (MCP)** server for autonomous AI agents).
 
 The entire backend logic is written in **ucode** — OpenWrt's native, high-performance C scripting language — delivering instant response times with minimal RAM footprint (starting from 128 MB RAM devices).
 
@@ -42,7 +42,7 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 2. **Zapret v1 (`nfqws`)**: Basic TCP/UDP packet desynchronization (`fake`, `disorder`, `split2`) directly on router without VPS.
 3. **Zapret v2 (`nfqws2`)**: Advanced multi-vector DPI evasion (`multisplit`, `seqovl`, `wsize`, PAWS `tcp_ts`, authentic `blobs`) for YouTube 4K, Discord, and streaming.
 4. **ByeDPI (`ciadpi`)**: Local SOCKS5 desync engine with HTTP/TLS SNI payload fragmentation.
-5. **Multi-Engine Tunneling & Proxying (sing-box / Steer / FPTN / OpenVPN)**: Censored endpoints and private traffic are routed through modern secure protocols (VLESS Reality, Hysteria2, WireGuard, AmneziaWG, OpenVPN) or high-speed **FPTN** tunnel (`tun-fptn` over WebSocket/TLS with web traffic masquerading). On resource-constrained hardware, **Steer** / **Steer-Extended** takes over with ultra-low memory footprint.
+5. **Multi-Engine Tunneling & Proxying (sing-box / Steer / tachyon-core / FPTN / OpenVPN)**: Censored endpoints and private traffic are routed through modern secure protocols (VLESS Reality, Hysteria2, WireGuard, AmneziaWG, OpenVPN) or high-speed **FPTN** tunnel (`tun-fptn` over WebSocket/TLS with web traffic masquerading). On resource-constrained hardware, **Steer** / **Steer-Extended** takes over with ultra-low memory footprint, while **tachyon-core** delivers peak performance on pure Rust without Go runtime overhead.
 6. **Smart DNS Pipeline**: Isolated DNS processing via FakeIP (`198.18.0.0/15`), DoH/DoT/DoQ with anti-hijack transparent redirection, SmartDNS/`steer-dnsd` integration, and automated failover (DNS Failover).
 
 <p align="center">
@@ -54,6 +54,7 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 ### 🧭 1. Multi-Engine Architecture
 * **Flexible Routing Engine Selection**:
   * **sing-box Engine**: Full-featured routing and proxy powerhouse supporting all modern protocols, selective routing rules, and FakeIP.
+  * **tachyon-core Engine**: High-speed, pure-Rust proxy engine (zero GC, 4.2 MB idle RAM) featuring 100% CLI and config compatibility with sing-box, native FPTN L3 tunneling, and optimized footprint for constrained routers.
   * **Steer Engine**: Ultra-lightweight routing engine running native `steer` alongside SmartDNS / local DNS resolver (`steer-dnsd`), optimal for routers with limited RAM.
   * **Steer-Extended Engine**: Hybrid orchestration running Steer + Zapret hardware DPI desync (`nfqws`/`nfqws2`) — pure wire-speed DPI bypass without running heavy Go-based proxy processes.
 * **1-Click Engine Switching**:
@@ -325,6 +326,7 @@ Tachyon stands on the shoulders of incredible open-source projects:
 * 🍴 **[Forkop (ushan0v)](https://github.com/ushan0v/forkop)** — Direct parent repository (formerly Podkop Plus).
 * 🐕 **[Podkop (itdoginfo)](https://github.com/itdoginfo/podkop)** — The original project that inspired the architecture.
 * 🧭 **[steer (xyzmean)](https://github.com/xyzmean/steer)** — Original lightweight policy-based routing and bypass project for OpenWrt, integrated into the Multi-Engine core.
+* 🦀 **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** — High-performance, pure-Rust proxy engine (zero Go runtime, 4.2 MB idle RAM) custom-built for Tachyon and embedded networking.
 * 📦 **[sing-box](https://github.com/SagerNet/sing-box)** — Universal proxy engine.
 * 🚀 **[zapret (bol-van)](https://github.com/bol-van/zapret2)** — DPI desync framework (`nfqws` / `nfqws2`).
 * 🌐 **[ByeDPI](https://github.com/hrbrmstr/byedpi)** — Local SOCKS desync proxy.
