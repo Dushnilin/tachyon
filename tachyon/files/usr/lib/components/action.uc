@@ -68,7 +68,7 @@ let command_output = common.command_output;
 let command_output_from_args = common.command_output_from_args;
 let write_json = common.write_json;
 let write_file = common.write_file;
-let copy_file = common.copy_file;
+let copy_file_stream = common.copy_file_stream;
 let bounded_command = common.bounded_command;
 let kill_matching_command = common.kill_matching_command;
 
@@ -2130,7 +2130,7 @@ function install_tachyon_core(action, target_tag) {
     stop_tachyon_before_sing_box_change();
 
     let backup_binary = cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid();
-    copy_file("/usr/bin/sing-box", backup_binary);
+    copy_file_stream("/usr/bin/sing-box", backup_binary);
 
     if (!install_staged_file(tmp_binary, "/usr/bin/sing-box", "0755")) {
         remove_file(tmp_binary);
