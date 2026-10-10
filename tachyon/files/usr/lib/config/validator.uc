@@ -2629,14 +2629,25 @@ function check_provider_requirements(ctx) {
         "Failed to prepare the Tachyon ByeDPI state directory in " + ctx.byedpi_state_dir + ". Aborted."
     );
 
-    check_provider_requirement(
-        "fptn",
-        "FPTN",
-        ctx.fptn_bin,
-        [ ctx.fptn_state_dir ],
-        "FPTN provider is not available at " + ctx.fptn_bin + ". Rules with action 'fptn' will be skipped until the fptn package is installed.",
-        "Failed to prepare the Tachyon FPTN state directory in " + ctx.fptn_state_dir + ". Aborted."
-    );
+    // FPTN is not always a provider process. With tachyon-core the core dials
+    // FPTN straight from the generated config - generator_outbounds emits an
+    // fptn outbound and there is no external client, no shims, no state dir.
+    // Probing for /usr/bin/fptn-client there produced an error telling the
+    // admin to install a package their setup never uses, and skipped preparing
+    // a directory only the component runtime would have touched. The transport
+    // decision belongs to the single resolver in config.connections, which the
+    // generator and the provider runtime already ask - ask it here too instead
+    // of sniffing a binary behind its back.
+    if (connections.fptn_transport_mode() == "component") {
+        check_provider_requirement(
+            "fptn",
+            "FPTN",
+            ctx.fptn_bin,
+            [ ctx.fptn_state_dir ],
+            "FPTN provider is not available at " + ctx.fptn_bin + ". Rules with action 'fptn' will be skipped until the fptn package is installed.",
+            "Failed to prepare the Tachyon FPTN state directory in " + ctx.fptn_state_dir + ". Aborted."
+        );
+    }
 }
 
 function check_runtime_requirements() {
