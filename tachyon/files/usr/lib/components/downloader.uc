@@ -146,8 +146,51 @@ function download_with_retry(url, output_path, label) {
 // GitHub API
 // ============================================================================
 
+// The same GET, but without curl -f, so an HTTP error keeps its body and
+// status instead of collapsing into a bare failure. That body is the only way
+// to tell "GitHub refused us because the budget ran out" from "GitHub is
+// unreachable", and the two call for completely different follow-ups.
+function http_get_with_body(url, timeout) {
+    helpers.init_tmp_dir();
+    let output_path = helpers.make_tmp_file("http");
+    if (output_path == "")
+        return { body: "", status: "000" };
+
+    let t = as_string(timeout || "12");
+    let status = trim(command_output_from_args([
+        "curl", "--connect-timeout", "4", "-m", t, "-sSL",
+        "-H", "User-Agent: Tachyon-OpenWrt",
+        "-o", output_path, "-w", "%{http_code}",
+        as_string(url)
+    ]));
+    let body = file_nonempty(output_path) ? read_file(output_path) : "";
+    remove_file(output_path);
+    return { body: as_string(body), status: as_string(status || "000") };
+}
+
 // Fetch a URL that is expected to return valid JSON checked by github-response-ok.
 // Priority: direct → proxy section → mirrors from url.uc (gh-proxy etc.)
+//
+// GitHub's unauthenticated API budget is 60 requests per hour per IP, and a
+// component sweep spends many of them. Once the budget is gone the API answers
+// 403 with a rate-limit body instead of JSON, and the mirror walk would fire
+// anyway: a dozen more requests that cannot succeed on networks where those
+// mirrors are unreachable, which is most of them. So the direct attempt keeps
+// its body, and a rate-limit answer ends the sweep right there.
+function github_response_is_rate_limited(body) {
+    return match(as_string(body), /API rate limit exceeded/) != null ||
+           match(as_string(body), /rate limit exceeded/i) != null ||
+           match(as_string(body), /exceeded a secondary rate limit/) != null;
+}
+
+function github_rate_limit_reset_hint(body) {
+    let at = match(as_string(body), /"reset": *([0-9]+)/);
+    if (at == null)
+        return "";
+    let wait = int(at[1] || "0") - time();
+    return wait > 0 ? sprintf(" (resets in %ds)", wait) : " (window already reset)";
+}
+
 function fetch_github_json(url, timeout) {
     let url_mod = core_url_module_or_null();
     let candidates = url_mod && type(url_mod.download_candidates) == "function"
@@ -155,8 +198,28 @@ function fetch_github_json(url, timeout) {
 
     for (let i = 0; i < length(candidates); i++) {
         let candidate = candidates[i];
-        // http_get already does: direct → section; skip to next mirror on failure
-        let response = http_get(candidate, timeout);
+        let response;
+
+        if (i == 0) {
+            // GitHub itself: keep the error body so a rate-limit answer is
+            // recognisable. Only a mirror follows the same order after this.
+            let direct = http_get_with_body(candidate, timeout);
+            if (github_response_is_rate_limited(direct.body)) {
+                helpers.updates_log("GitHub API rate limit exhausted" + github_rate_limit_reset_hint(direct.body) +
+                    "; skipping mirrors, they cannot lift it", "warn");
+                return "";
+            }
+            if (direct.status != "200" || direct.body == "") {
+                // Genuinely unreachable or refused. The proxy section is still
+                // worth one attempt, then the mirrors take over as before.
+                response = http_get(candidate, timeout);
+            }
+            else
+                response = direct.body;
+        }
+        else
+            response = http_get(candidate, timeout);
+
         if (response != "" && helpers.helper_success_input(response, "github-response-ok", [])) {
             if (i > 0)
                 helpers.updates_log("Fetched GitHub JSON via mirror: " + candidate);

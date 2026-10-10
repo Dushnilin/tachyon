@@ -17,9 +17,14 @@ PROBE="$WORK_DIR/probe.uc"
 SB_CONFIG="$WORK_DIR/sing-box-config.json"
 
 cleanup() {
+    release_sing_box_proc_lock
     rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
+
+# fault_sighup_listeners.sh runs a stand-in process named sing-box, so the two
+# tests cannot overlap under run_all's parallel runner.
+acquire_sing_box_proc_lock
 
 if pidof sing-box >/dev/null 2>&1; then
     fail "test needs no sing-box process running"

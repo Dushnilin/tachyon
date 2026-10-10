@@ -480,11 +480,87 @@ function sing_box_service_pid_runtime() {
     return 0;
 }
 
-// Send SIGHUP to the running sing-box process and wait for it to stay alive.
+function has_int(values, needle) {
+    for (let value in values)
+        if (int(value) == needle)
+            return true;
+    return false;
+}
+
+// Mixed-inbound ports the generated config declares. Read from the config
+// rather than hardcoded, so this stays in step with the generator and stands
+// down when no section enables the mixed proxy at all.
+function sing_box_mixed_ports() {
+    let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let config_path = trim(as_string(settings.config_path || "")) || "/etc/sing-box/config.json";
+    let data = fs.readfile(config_path);
+    if (data == null)
+        return [];
+
+    let parsed;
+    try {
+        parsed = json(data);
+    }
+    catch (e) {
+        return [];
+    }
+    if (parsed == null || parsed.inbounds == null)
+        return [];
+
+    let ports = [];
+    for (let inbound in parsed.inbounds) {
+        if (inbound.type != "mixed" || inbound.listen_port == null)
+            continue;
+        let port = int(inbound.listen_port, 10);
+        if (port > 0 && !has_int(ports, port))
+            push(ports, port);
+    }
+    return ports;
+}
+
+// Are the ports the config promises actually in LISTEN? /proc/net/tcp is
+// read directly: this runs inside the SIGHUP poll loop and a netstat fork per
+// iteration is exactly the kind of churn a reload should not add.
+function sing_box_mixed_ports_listening(ports) {
+    if (length(ports) == 0)
+        return true;
+
+    let listening = {};
+    for (let path in [ "/proc/net/tcp", "/proc/net/tcp6" ]) {
+        let content = fs.readfile(path);
+        if (content == null)
+            continue;
+        for (let line in split(content, "\n")) {
+            let fields = split(trim(line), /[ \t]+/);
+            if (length(fields) < 4 || (fields[3] != "0A" && fields[3] != "0a"))
+                continue;
+            let colon = index(fields[1], ":");
+            if (colon <= 0)
+                continue;
+            listening[int("0x" + substr(fields[1], colon + 1))] = true;
+        }
+    }
+
+    for (let port in ports)
+        if (!listening[int(port)])
+            return false;
+    return true;
+}
+
+// Send SIGHUP to the running sing-box process and wait for it to stay alive
+// AND to still be listening.
 // sing-box 1.10+ reloads its configuration in-place on SIGHUP without tearing
 // down the process, so existing TCP sessions are not disrupted.
+// A live pid is not evidence that the reload worked: on tachyon-core a SIGHUP
+// was observed to leave the process running and answering the clash API while
+// the mixed inbound silently never came back - every LAN client proxy and the
+// Telegram bot then dead-ended, and only the watchdog's two-strike mixed-port
+// watch noticed, ten minutes later. So the inbounds the config declares are
+// checked too; if they do not come back the caller escalates to a full restart
+// instead of logging a success that did not happen.
 // Returns true if the process accepted the reload and is still healthy;
-// returns false if the process died or was unreachable (caller should restart).
+// returns false if the process died, was unreachable, or came back deaf
+// (caller should restart).
 function try_sighup_reload(pid) {
     pid = int(pid || 0);
     if (pid <= 0 || !pid_is_sing_box(pid))
@@ -494,7 +570,10 @@ function try_sighup_reload(pid) {
     // finished a reload and the transient exit-code is unreliable.
     command_success_from_args([ "kill", "-HUP", as_string(pid) ]);
 
-    // Give sing-box up to 5 s to ingest the new config.  We poll every 500 ms.
+    // Give sing-box up to 5 s to ingest the new config and bring its inbounds
+    // back. We poll every 500 ms and only call it a success when the process
+    // is alive AND every mixed port the config declares is listening again.
+    let ports = sing_box_mixed_ports();
     let deadline = 10;
     while (deadline > 0) {
         command_success_from_args([ "sleep", "0.5" ]);
@@ -502,17 +581,20 @@ function try_sighup_reload(pid) {
         let current_pid = sing_box_service_pid_runtime();
         if (current_pid <= 0)
             return false;   // process died — caller must restart
-        if (current_pid == pid)
-            return true;    // still alive, reload succeeded
-        // PID changed: procd replaced the process (e.g. MTProxy restart path);
-        // treat as success since something is running.
-        if (pid_is_sing_box(current_pid))
+        // PID unchanged, or procd replaced it (e.g. MTProxy restart path): both
+        // mean "something is running". That alone is not enough - the inbounds
+        // have to be back before this counts as a working reload.
+        let process_ok = current_pid == pid || pid_is_sing_box(current_pid);
+        if (process_ok && sing_box_mixed_ports_listening(ports))
             return true;
     }
 
-    // Timed out: verify at least that a sing-box is still up.
+    // Timed out: verify at least that a sing-box is still up, and that it is
+    // not running deaf.
     let final_pid = sing_box_service_pid_runtime();
-    return final_pid > 0 && pid_is_sing_box(final_pid);
+    if (final_pid <= 0 || !pid_is_sing_box(final_pid))
+        return false;
+    return sing_box_mixed_ports_listening(ports);
 }
 
 function hup_sing_box_runtime() {
