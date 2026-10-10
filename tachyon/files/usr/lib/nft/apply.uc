@@ -2922,7 +2922,9 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
     let v4_set = priority ? priority.subnets : default_arg(common_set, "tachyon_subnets");
     let v6_set = priority ? priority.subnets6 : default_arg(common6_set, "tachyon_subnets6");
     let ports_v4 = priority ? priority.ip_ports : ip_port_set;
-    let ports_v6 = priority ? priority.ip_ports6 : ip_port6_set;
+    let ports_v6 = priority ? priority.ip6_ports : default_arg(ip_port6_set, "tachyon_ip6_ports");
+    let udp_ports_v4 = priority ? priority.udp_ip_ports : "";
+    let udp_ports_v6 = priority ? priority.udp_ip6_ports : "";
 
     for (let community in connections.community_lists(section)) {
         let service = as_string(community);
@@ -2937,7 +2939,7 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
         for (let path in candidates) {
             if (helpers.file_is_usable(path, 50)) {
                 nft_add_community_subnet_file_to_family_sets(
-                    path, table, v4_set, v6_set, service, "5000", ports_v4, ports_v6);
+                    path, table, v4_set, v6_set, service, "5000", ports_v4, ports_v6, udp_ports_v4, udp_ports_v6);
                 loaded = true;
                 break;
             }
