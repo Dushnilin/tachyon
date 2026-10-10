@@ -15,6 +15,7 @@ let core_url = require("core.url");
 let core_ip = require("core.ip");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
+let core_profile_module = null;
 
 let common = require("core.common");
 let as_string = common.as_string;
@@ -691,6 +692,16 @@ function zapret_validator() {
     if (zapret_validator_module == null)
         zapret_validator_module = require("providers.zapret.validator");
     return zapret_validator_module;
+}
+
+// Lazy on purpose: config_validator_runtime.sh runs this module against a
+// deliberately partial -L tree (core, config, subscription, providers) to pin
+// that validating a config never needs the singbox module tree loaded. A
+// top-level require put that contract back in reach of any future edit.
+function core_profile() {
+    if (core_profile_module == null)
+        core_profile_module = require("singbox.core_profile");
+    return core_profile_module;
 }
 
 function zapret2_validator() {
@@ -2292,50 +2303,40 @@ function sing_box_is_lx(ctx, version) {
     return sing_box_version_is_lx(version != null ? version : get_sing_box_version(ctx)) || sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx));
 }
 
-function sing_box_output_has_build_tag(output, tag) {
-    tag = as_string(tag);
-    if (tag == "")
-        return false;
+// The marker the profile lookup answers from: the state file when there is one,
+// and the identity a bare foreign version carries otherwise. profile() reads a
+// version suffix, so "0.0.1" and "tachyon-core" have none and would be filed
+// under upstream - switching their features off exactly the way the old
+// build-tag probe did.
+function sing_box_capability_marker(ctx, version) {
+    let path = as_string(ctx.sing_box_variant_state_file);
+    if (path == "")
+        path = "/etc/tachyon/sing-box-variant";
 
-    for (let token in split(replace(as_string(output), /[,: \t\r\n]+/g, " "), " "))
-        if (token == tag)
-            return true;
+    let data = fs.readfile(path);
+    let marker = data == null ? "" : trim(as_string(data));
 
-    return false;
+    let v = as_string(version);
+    if (marker == "" && (match(v, /^v?0\.0\./) != null || index(v, "tachyon-core") >= 0))
+        marker = "tachyon-core";
+
+    return marker;
 }
 
 function sing_box_supports_tailscale(ctx, version, version_output) {
-    // Tailscale is compiled into tachyon-core itself; the marker or the
-    // version suffix settles it before any build-tag probing.
-    if (sing_box_tachyon_core_marker_set(ctx) || match(as_string(version), /-tachyon\./) != null)
-        return true;
-
-    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
-        return true;
-
-    if (sing_box_is_extended(ctx, version))
-        return true;
-
-    if (as_string(version_output) == "")
-        version_output = command_output_from_args([ "sing-box", "version" ]);
-
-    return sing_box_output_has_build_tag(version_output, "with_tailscale");
+    let answer = core_profile().supports_tailscale(as_string(version),
+        sing_box_capability_marker(ctx, version), as_string(version_output));
+    if (answer == null)
+        answer = core_profile().output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_tailscale");
+    return answer;
 }
 
 function sing_box_supports_xhttp(ctx, version, version_output) {
-    if (sing_box_tachyon_core_marker_set(ctx) || match(as_string(version), /-tachyon\./) != null || match(as_string(version), /tachyon-core/) != null)
-        return true;
-
-    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
-        return true;
-
-    if (sing_box_is_extended(ctx, version) || sing_box_is_lx(ctx, version))
-        return true;
-
-    if (as_string(version_output) == "")
-        version_output = command_output_from_args([ "sing-box", "version" ]);
-
-    return sing_box_output_has_build_tag(version_output, "with_xhttp");
+    let answer = core_profile().supports_xhttp(as_string(version),
+        sing_box_capability_marker(ctx, version), as_string(version_output));
+    if (answer == null)
+        answer = core_profile().output_has_build_tag(command_output_from_args([ "sing-box", "version" ]), "with_xhttp");
+    return answer;
 }
 
 function managed_sing_box_service_script(marker) {
@@ -2482,19 +2483,23 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         };
         let extended_only_label = extended_only_labels[as_string(action)];
         // NB: sing_box_is_extended() also matches sing-box-lx, so exclude it here.
-        if (extended_only_label != null &&
-            !(sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version))) {
-            let lx_note = sing_box_is_lx(ctx, sing_box_version)
-                ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
-                : "";
-            fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended or change the action. Aborted.", "fatal");
+        if (extended_only_label != null) {
+            let is_extended = sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version);
+            let is_core = sing_box_is_tachyon_core(ctx, sing_box_version);
+            let core_supported = (action == "warp" || action == "masque" || action == "openvpn" || action == "snell");
+            if (!is_extended && !(is_core && core_supported)) {
+                let lx_note = sing_box_is_lx(ctx, sing_box_version)
+                    ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
+                    : (is_core ? " tachyon-core does not implement " + extended_only_label + " yet." : "");
+                fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary" + (core_supported ? " or tachyon-core" : "") + " (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended" + (core_supported ? " or tachyon-core" : "") + " or change the action. Aborted.", "fatal");
+            }
         }
 
         // OpenVPN was added in sing-box 1.14.0. Older extended builds (e.g.
         // 1.13.x-extended-2.x.x) don't know the endpoint type and abort with
         // "unknown endpoint type: openvpn". Gate on version so the user gets a
         // clear error instead of a cryptic sing-box fatal.
-        if (action == "openvpn" && !common.sing_box_supports_openvpn(sing_box_version))
+        if (action == "openvpn" && !sing_box_is_tachyon_core(ctx, sing_box_version) && !common.sing_box_supports_openvpn(sing_box_version))
             fail_requirement("Section '" + name + "' uses OpenVPN, but the installed sing-box version (" + as_string(sing_box_version) + ") does not support it. OpenVPN requires sing-box 1.14.0 or newer. Update sing-box-extended in the Updates tab or change the action. Aborted.", "fatal");
     }
 
@@ -2502,7 +2507,11 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         if (!server_enabled(server))
             continue;
 
-        if (as_string(option(server, "protocol", "vless")) != "awg")
+        let srv_proto = as_string(option(server, "protocol", "vless"));
+        if (srv_proto == "mtproto" && sing_box_is_tachyon_core(ctx, sing_box_version))
+            fail_requirement("Server '" + section_name(server) + "' uses MTProto, but tachyon-core does not implement MTProto yet. Use sing-box-extended or select another protocol. Aborted.", "fatal");
+
+        if (srv_proto != "awg")
             continue;
 
         let name = section_name(server);

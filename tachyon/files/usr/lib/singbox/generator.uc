@@ -800,7 +800,10 @@ function is_certificate_sha256_supported(sb_version_val) {
 
 const VERBOSE_LOG_PATH = "/tmp/sing-box/sing-box.log";
 
-function singbox_log_section(log_level) {
+function singbox_log_section(log_level, sb_version_val) {
+    if (log_level == "panic" && is_tachyon_core_detected(sb_version_val))
+        log_level = "fatal";
+
     let section = {
         disabled: false,
         level: log_level,
@@ -1021,7 +1024,7 @@ for (let inbound in dns_config.inbounds)
     }
 
     let base_cfg = {
-        log: singbox_log_section(log_level),
+        log: singbox_log_section(log_level, sb_version_val),
         dns: dns_section,
         ntp: {},
         certificate: {},

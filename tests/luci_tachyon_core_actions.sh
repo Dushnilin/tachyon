@@ -128,21 +128,25 @@ for (const base of ["connection", "bypass", "block", "dns", "hosts"]) {
   expectGate(gates, base, null);
 }
 
-// Accepted by validator.uc on a foreign core, and present in tachyon-core.
-expectGate(gates, "awg", tachyonGate);
-expectGate(gates, "anytls", tachyonGate);
-
-// Still rejected on the lx family ("support is planned"): tachyon-core counts
-// as one, so offering these would abort the config on apply.
-for (const extendedOnly of [
+// Supported or unreleased actions offered when extended or tachyon-core is active.
+for (const action of [
+  "awg",
   "warp",
   "masque",
   "openvpn",
+  "anytls",
   "snell",
   "mieru",
   "sudoku",
 ]) {
-  expectGate(gates, extendedOnly, "isSingBoxExtendedForUi()");
+  expectGate(gates, action, tachyonGate);
+}
+
+if (!sectionSource.includes('case "mieru":\n      return isTachyonCoreForUi() ? _("Mieru (не реализован)") : "Mieru";')) {
+  fail("mieru label must indicate (не реализован) for tachyon-core");
+}
+if (!sectionSource.includes('case "sudoku":\n      return isTachyonCoreForUi() ? _("Sudoku (не реализован)") : "Sudoku";')) {
+  fail("sudoku label must indicate (не реализован) for tachyon-core");
 }
 
 // Component-gated actions must keep their own gates.

@@ -86,4 +86,15 @@ for file in "$ROOT_DIR/tachyon/files/usr/lib/components/action.uc" \
     fail "$(basename "$file") must truncate the verbose log on service start"
 done
 
+# panic stays panic for standard sing-box, but maps to fatal for tachyon-core
+got="$(generate_log_level panic "$WORK_DIR/panic.out")"
+case "$got" in
+  *"panic") ;; *) fail "log_level=panic was not preserved for sing-box: got '$got'" ;;
+esac
+
+got_core="$(export SB_VERSION_OVERRIDE="0.0.1-tachyon.0"; generate_log_level panic "$WORK_DIR/panic-core.out")"
+case "$got_core" in
+  *"fatal") ;; *) fail "log_level=panic was not mapped to fatal for tachyon-core: got '$got_core'" ;;
+esac
+
 printf 'sing-box log routing checks passed\n'

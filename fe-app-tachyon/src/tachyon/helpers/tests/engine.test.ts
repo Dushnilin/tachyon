@@ -51,6 +51,7 @@ describe('isWidgetAvailable', () => {
 describe('engineLabel', () => {
   it('names each known engine', () => {
     expect(engineLabel('sing-box')).toBe('sing-box');
+    expect(engineLabel('tachyon-core')).toBe('tachyon-core');
     expect(engineLabel('steer')).toBe('steer');
     expect(engineLabel('steer-extended')).toBe('steer-extended');
   });

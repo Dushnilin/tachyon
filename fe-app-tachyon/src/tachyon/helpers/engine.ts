@@ -47,6 +47,8 @@ export function isWidgetAvailable(
  */
 export function engineLabel(engine: string | undefined): string {
   switch (engine) {
+    case 'tachyon-core':
+      return 'tachyon-core';
     case 'steer':
       return 'steer';
     case 'steer-extended':

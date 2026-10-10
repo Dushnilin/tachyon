@@ -3595,6 +3595,94 @@ function run_pending_reload_if_requested() {
     service_state_success([ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
 }
 
+// Regenerate config.json from the freshly rewritten subscription caches and put
+// the new config in front of sing-box. Shared by the scheduled subscription
+// update and by the deferred-recovery bootstrap retry, which used to escalate
+// to a full `tachyon reload` (issue #119): the full reload walks
+// validate -> capture-state -> plan -> zapret -> nft -> sing-box, tears down
+// both helper workers and restarts them again, which is exactly the churn that
+// dropped live connections after a subscription update.
+function subscription_runtime_apply_changed(context) {
+    log_message("Reloading sing-box to apply " + context, "info");
+    if (!module_success([ LIB_DIR + "/server/service.uc", "prepare-all-defaults" ]))
+        return false;
+    if (!module_success([ LIB_DIR + "/config/validator.uc", "validate-runtime" ])) {
+        log_message("Runtime config validation failed. Aborted.", "fatal");
+        return false;
+    }
+
+    if (!singbox_runtime_success([ "configure-service" ]))
+        return false;
+    let sing_box_config_path = option(uci_settings(), "config_path", "");
+    let sing_box_config_hash_before = file_md5(sing_box_config_path);
+    let sing_box_pid_before = trim(module_output([ LIB_DIR + "/service/state.uc", "sing-box-service-runtime-pid" ]));
+    if (!singbox_runtime_success([ "init-config", "0", "1", "1" ])) {
+        log_message("Failed to rebuild sing-box configuration after " + context, "error");
+        return false;
+    }
+
+    // Graceful in-place reload via SIGHUP first: sing-box 1.10+ hot-swaps its
+    // config without tearing down the process, so active TCP sessions
+    // (Telegram, etc.) are preserved. Only a failed SIGHUP escalates to a full
+    // restart, and only there do the helper workers have to stand down.
+    let sighup_ok = service_state_success([ "sighup-sing-box-runtime", sing_box_pid_before ]);
+    if (!sighup_ok) {
+        log_message("SIGHUP reload failed; falling back to full sing-box restart", "warn");
+        module_success([ PRIORITY_UC, "stop-runtime" ]);
+        module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
+        if (!service_state_success([
+            "reload-sing-box-runtime",
+            sing_box_pid_before,
+            sing_box_config_hash_before,
+            file_md5(sing_box_config_path)
+        ])) {
+            module_success([ PRIORITY_UC, "start-runtime" ]);
+            module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
+            return false;
+        }
+        if (!module_success([ DNS_FAILOVER_UC, "start-runtime" ])) {
+            log_message("Failed to restart DNS failover runtime after " + context, "error");
+            return false;
+        }
+    }
+
+    // Priority reads the section cache once per worker start, and the cache was
+    // just rewritten, so it always has to be restarted after an apply. Its
+    // start-runtime stops the previous worker itself. DNS failover is left
+    // alone on the SIGHUP path: it probes the sing-box DNS listener, which
+    // stays bound across an in-place reload, and it re-normalizes its state
+    // every probe cycle.
+    if (!module_success([ PRIORITY_UC, "start-runtime" ])) {
+        log_message("Failed to restart Priority runtime after " + context, "error");
+        return false;
+    }
+
+    return write_current_reload_state_clean();
+}
+
+function subscription_deferred_recovery_apply() {
+    if (!subscription_cache_success([ "ensure-runtime-dirs" ]))
+        exit(1);
+
+    if (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, false)) {
+        log_message("Deferred subscription recovery apply skipped: another subscription update is running", "info");
+        mark_pending_reload("subscription_update_busy");
+        return;
+    }
+    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, false)) {
+        release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
+        log_message("Deferred subscription recovery apply skipped: tachyon reload is already running", "info");
+        mark_pending_reload("reload_busy");
+        return;
+    }
+
+    let ok = subscription_runtime_apply_changed("deferred subscription recovery");
+    release_runtime_lock(RELOAD_LOCK_DIR);
+    release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
+    run_pending_reload_if_requested();
+    exit(ok ? 0 : 1);
+}
+
 function subscription_update_common_locked(force, target_section, target_source_index) {
     let result = subscription_cache_capture([
         "update-request",
@@ -3629,54 +3717,7 @@ function subscription_update_common_locked(force, target_section, target_source_
         return true;
     }
 
-    log_message("Reloading sing-box to apply updated subscriptions", "info");
-    if (!module_success([ LIB_DIR + "/server/service.uc", "prepare-all-defaults" ]))
-        return false;
-    if (!module_success([ LIB_DIR + "/config/validator.uc", "validate-runtime" ])) {
-        log_message("Runtime config validation failed. Aborted.", "fatal");
-        return false;
-    }
-
-    if (!singbox_runtime_success([ "configure-service" ]))
-        return false;
-    let sing_box_config_path = option(uci_settings(), "config_path", "");
-    let sing_box_config_hash_before = file_md5(sing_box_config_path);
-    let sing_box_pid_before = trim(module_output([ LIB_DIR + "/service/state.uc", "sing-box-service-runtime-pid" ]));
-    module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
-    if (!singbox_runtime_success([ "init-config", "0", "1", "1" ])) {
-        module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
-        log_message("Failed to rebuild sing-box after subscription update", "error");
-        return false;
-    }
-    module_success([ PRIORITY_UC, "stop-runtime" ]);
-
-    // Attempt a graceful in-place reload via SIGHUP first.
-    // sing-box 1.10+ hot-swaps its config without tearing down the process,
-    // so active TCP sessions (Telegram, etc.) are preserved.
-    // Fall back to a full restart only when SIGHUP reload fails.
-    let sighup_ok = service_state_success([ "sighup-sing-box-runtime", sing_box_pid_before ]);
-    if (!sighup_ok) {
-        log_message("SIGHUP reload failed; falling back to full sing-box restart", "warn");
-        if (!service_state_success([
-            "reload-sing-box-runtime",
-            sing_box_pid_before,
-            sing_box_config_hash_before,
-            file_md5(sing_box_config_path)
-        ])) {
-            module_success([ PRIORITY_UC, "start-runtime" ]);
-            module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
-            return false;
-        }
-    }
-    if (!module_success([ PRIORITY_UC, "start-runtime" ])) {
-        log_message("Failed to restart Priority runtime after subscription update", "error");
-        return false;
-    }
-    if (!module_success([ DNS_FAILOVER_UC, "start-runtime" ])) {
-        log_message("Failed to restart DNS failover runtime after subscription update", "error");
-        return false;
-    }
-    if (!write_current_reload_state_clean())
+    if (!subscription_runtime_apply_changed("updated subscriptions"))
         return false;
 
     if (failed > 0)
@@ -3907,6 +3948,8 @@ else if (mode == "subscription-update")
     subscription_update(ARGV[1], ARGV[2]);
 else if (mode == "subscription-update-if-due")
     subscription_update_if_due();
+else if (mode == "subscription-deferred-recovery-apply")
+    subscription_deferred_recovery_apply();
 else if (mode == "subscription-update-async")
     subscription_update_async(ARGV[1], ARGV[2]);
 else if (mode == "subscription-update-status")

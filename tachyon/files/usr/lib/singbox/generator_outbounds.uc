@@ -1812,6 +1812,24 @@ function add_warp_endpoint(config, section) {
     }
 
     let detour = option(section, "warp_detour", "");
+    if (ctx.sing_box_tachyon_core) {
+        let masque_out = {
+            type: "masque",
+            tag,
+            server: "162.159.198.2",
+            server_port: 443,
+            profile: "cloudflare",
+            private_key,
+            ip: "172.16.0.2/32"
+        };
+        if (access_token != "")
+            masque_out.auth_token = access_token;
+        if (detour != "")
+            masque_out.detour = outbound_tag(detour);
+        push(config.outbounds, masque_out);
+        return;
+    }
+
     // NB: no "mtu" here. sing-box-extended 2.7.x rejects it on the warp
     // endpoint ("endpoints[0].mtu: json: unknown field \"mtu\"") and aborts the
     // whole config. warp_mtu stays readable for backwards compatibility.

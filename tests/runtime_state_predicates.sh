@@ -220,6 +220,56 @@ assert_eq "reload" \
 [ ! -e "$PENDING_RELOAD_FILE" ] ||
   fail "pending reload should be consumed when worker is started"
 
+# A recovered subscription cache is not a configuration change: config.json is
+# regenerated and SIGHUP'd into the running sing-box. It must not walk the full
+# reload pipeline (issue #119). `ucode` is shimmed on PATH to observe the apply
+# without running the real one; the shim records and then passes through, so the
+# outer invocation this test makes itself still works.
+mkdir -p "$WORK_DIR/shim"
+cat >"$WORK_DIR/shim/ucode" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >>"$TACHYON_FAKE_UCODE_CAPTURE"
+exec "$TACHYON_REAL_UCODE" "$@"
+SH
+chmod +x "$WORK_DIR/shim/ucode"
+: >"$WORK_DIR/fake-ucode.args"
+
+rm -f "$TACHYON_FAKE_INIT_CAPTURE"
+state_ucode mark-pending-reload "$PENDING_RELOAD_FILE" "subscription_deferred_recovery"
+grep -Fxq "reason=subscription_deferred_recovery" "$PENDING_RELOAD_FILE" ||
+  fail "pending reload should record the recovery reason verbatim"
+PATH="$WORK_DIR/shim:$PATH" \
+  TACHYON_REAL_UCODE="$UCODE_BIN" \
+  TACHYON_FAKE_UCODE_CAPTURE="$WORK_DIR/fake-ucode.args" \
+  state_ucode run-pending-reload-if-requested "$PENDING_RELOAD_FILE" "$WORK_DIR/fake-init"
+for _ in $(seq 1 20); do
+  grep -Fq "subscription-deferred-recovery-apply" "$WORK_DIR/fake-ucode.args" 2>/dev/null && break
+  sleep 1
+done
+
+[ ! -e "$TACHYON_FAKE_INIT_CAPTURE" ] ||
+  fail "deferred subscription recovery must not trigger 'tachyon reload' (issue #119)"
+grep -Fq "subscription-deferred-recovery-apply" "$WORK_DIR/fake-ucode.args" ||
+  fail "deferred subscription recovery should apply in place, got: $(cat "$WORK_DIR/fake-ucode.args")"
+[ ! -e "$PENDING_RELOAD_FILE" ] ||
+  fail "pending reload should be consumed when the in-place apply is started"
+
+# Every other reason keeps the full reload: a real configuration change must not
+# be downgraded to an SIGHUP.
+rm -f "$TACHYON_FAKE_INIT_CAPTURE" "$WORK_DIR/fake-ucode.args"
+state_ucode mark-pending-reload "$PENDING_RELOAD_FILE" "on_config_change"
+PATH="$WORK_DIR/shim:$PATH" \
+  TACHYON_REAL_UCODE="$UCODE_BIN" \
+  TACHYON_FAKE_UCODE_CAPTURE="$WORK_DIR/fake-ucode.args" \
+  state_ucode run-pending-reload-if-requested "$PENDING_RELOAD_FILE" "$WORK_DIR/fake-init"
+for _ in $(seq 1 20); do
+  [ -s "$TACHYON_FAKE_INIT_CAPTURE" ] && break
+  sleep 1
+done
+assert_eq "reload" \
+  "$(cat "$TACHYON_FAKE_INIT_CAPTURE")" \
+  "a non-recovery pending reason must still invoke init.d reload"
+
 LOCK_DIR="$WORK_DIR/runtime.lock"
 state_ucode acquire-runtime-dir-lock "$LOCK_DIR" "$$" ||
   fail "ucode should acquire runtime dir lock"

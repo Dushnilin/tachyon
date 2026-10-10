@@ -6839,7 +6839,8 @@ function getComponentActionKey(component, action) {
 
 // src/tachyon/helpers/singBoxVariant.ts
 function isTachyonCoreVersion(version) {
-  return String(version || "").includes("-tachyon.");
+  const v = String(version || "").trim();
+  return v.includes("-tachyon.") || v.includes("tachyon-core") || /^v?0\.0\.\d+/.test(v);
 }
 function isExtendedSingBoxVersion(version) {
   return String(version || "").includes("extended") || String(version || "").includes("-lx");
@@ -23231,6 +23232,8 @@ function shouldApplyCompletedComponentActionResult(result, notify) {
 // src/tachyon/helpers/engine.ts
 function engineLabel(engine) {
   switch (engine) {
+    case "tachyon-core":
+      return "tachyon-core";
     case "steer":
       return "steer";
     case "steer-extended":
@@ -25531,7 +25534,7 @@ function renderEngineCard() {
     extended?.installed || systemInfo.steer_installed && systemInfo.steer_extended
   );
   const singBoxInstalled = !isNotInstalled2(systemInfo.sing_box_version);
-  const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core);
+  const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core) || isTachyonCoreVersion(systemInfo.sing_box_version);
   const singBoxTiny = Boolean(systemInfo.sing_box_tiny) && !tachyonCore;
   const singBoxExtendedCompressed = Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed);
   const singBoxLx = Boolean(systemInfo.sing_box_lx);
@@ -25564,11 +25567,12 @@ function renderEngineCard() {
     )
   ];
   if (engineBadgeNode) headerChildren.push(engineBadgeNode);
+  const engineTitleLabel = isSingBoxActive && tachyonCore ? "tachyon-core" : engineLabel(active);
   headerChildren.push(
     E(
       "span",
       { class: "tachyon_updates-page__component__header-version" },
-      `${engineLabel(active)} ${engineVersion}`
+      `${engineTitleLabel} ${engineVersion}`
     )
   );
   if (engineRepoUrl) {

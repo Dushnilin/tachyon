@@ -139,18 +139,18 @@ const fs = require("fs");
 const calls = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n+/);
 
 // Happy path: SIGHUP succeeds, so reload-sing-box-runtime is NOT called.
+// Neither helper worker is stopped before it: DNS failover probes the sing-box
+// DNS listener, which stays bound across an in-place reload, and Priority's
+// start-runtime stops its previous worker by itself (issue #119).
 const expected = [
   "subscription/cache:update-request",
   "server/service:prepare-all-defaults",
   "config/validator:validate-runtime",
   "singbox/runtime:configure-service",
   "service/state:sing-box-service-runtime-pid",
-  "singbox/dns_failover:stop-runtime",
   "singbox/runtime:init-config:0:1:1",
-  "singbox/priority:stop-runtime",
   "service/state:sighup-sing-box-runtime",
   "singbox/priority:start-runtime",
-  "singbox/dns_failover:start-runtime",
   "service/state:write-current-reload-state-clean",
   "service/state:run-pending-reload-if-requested"
 ];
@@ -169,6 +169,16 @@ for (const item of expected) {
 // reload-sing-box-runtime must NOT be called when SIGHUP succeeds.
 if (calls.includes("service/state:reload-sing-box-runtime")) {
   console.error("reload-sing-box-runtime must not be called when SIGHUP reload succeeds");
+  process.exit(1);
+}
+
+// An ordered "expected" list does not catch extra calls - it only requires the
+// listed ones to appear in order. DNS failover is the one that must be absent
+// entirely: it is the churn the graceful path removed.
+const dns_failover_calls = calls.filter((c) => c.startsWith("singbox/dns_failover:"));
+if (dns_failover_calls.length > 0) {
+  console.error("DNS failover must not be cycled on the graceful path, got:");
+  console.error(dns_failover_calls.join("\n"));
   process.exit(1);
 }
 JS
@@ -202,6 +212,34 @@ grep -Fq 'service/state:sighup-sing-box-runtime' "$sighup_fail_log" ||
   fail "sighup-sing-box-runtime must be attempted even when FAKE_SIGHUP_FAILS=1"
 grep -Fq 'service/state:reload-sing-box-runtime' "$sighup_fail_log" ||
   fail "reload-sing-box-runtime (restart fallback) must be called when SIGHUP fails"
+
+# The escalation is the one path where a real restart tears down the listeners
+# both workers probe, so they have to stand down and come back - and the order
+# matters: nothing may be probing while the process it probes through is gone.
+node - "$sighup_fail_log" <<'JS'
+const fs = require("fs");
+const calls = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n+/);
+
+const fallback = [
+  "service/state:sighup-sing-box-runtime",
+  "singbox/priority:stop-runtime",
+  "singbox/dns_failover:stop-runtime",
+  "service/state:reload-sing-box-runtime",
+  "singbox/dns_failover:start-runtime",
+  "singbox/priority:start-runtime",
+];
+
+let position = -1;
+for (const item of fallback) {
+  const next = calls.indexOf(item, position + 1);
+  if (next === -1) {
+    console.error(`missing or out-of-order call in the SIGHUP fallback: ${item}`);
+    console.error(calls.join("\n"));
+    process.exit(1);
+  }
+  position = next;
+}
+JS
 
 unchanged_log="$WORK_DIR/unchanged.log"
 run_update "0 0 1 0" "$unchanged_log"

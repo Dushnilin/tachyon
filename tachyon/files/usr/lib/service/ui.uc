@@ -4,6 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
+let core_profile = require("singbox.core_profile");
 
 let as_string = common.as_string;
 let bool_option = common.bool_option;
@@ -865,10 +866,6 @@ function dns_configured() {
     return index(uci_core.get("dhcp.@dnsmasq[0].server"), SB_DNS_INBOUND_ADDRESS) >= 0;
 }
 
-function marker_is(expected) {
-    return first_line(SING_BOX_VARIANT_STATE_FILE) == as_string(expected);
-}
-
 function tiny_package_installed() {
     if (command_success_from_args([ "sh", "-c", "command -v apk" ]))
         return command_success_from_args([ "apk", "info", "-e", "sing-box-tiny" ]);
@@ -1028,6 +1025,11 @@ function capability_flags() {
         sing_box_tachyon_core: 0,
         sing_box_fptn: 0,
         sing_box_tailscale: 0,
+        sing_box_profile: "none",
+        sing_box_protocols: [],
+        sing_box_missing_protocols: [],
+        sing_box_inbounds: [],
+        sing_box_missing_inbounds: [],
         zapret_installed: file_executable(ZAPRET_PROVIDER_NFQWS_BIN) ? 1 : 0,
         zapret2_installed: file_executable(ZAPRET2_PROVIDER_NFQWS2_BIN) ? 1 : 0,
         byedpi_installed: file_executable(BYEDPI_BIN) ? 1 : 0,
@@ -1037,57 +1039,77 @@ function capability_flags() {
     };
 
     if (file_executable(SING_BOX_BIN_PATH)) {
-        // tachyon-core is decided first and it wins over every marker below:
-        // the marker of a replaced binary describes the old variant. The
-        // version suffix is checked inline rather than through the runtime
-        // module - the banner probe there would run the binary a second time
-        // and defeat the signature cache.
-        let tc_info = sing_box_version_info();
-        if (marker_is("tachyon-core") ||
-            (tc_info != null && index(tc_info.version, "-tachyon.") >= 0)) {
+        // The classification comes from the one profile table; the ordering of
+        // the questions below is what used to live in this function by hand.
+        // tachyon-core is decided first and it wins over every marker: the
+        // marker of a replaced binary describes the old variant. The version is
+        // taken from the signature-cached probe - asking the binary again here
+        // would defeat that cache.
+        let info = sing_box_version_info();
+        let version = info != null ? as_string(info.version) : "";
+        let marker = first_line(SING_BOX_VARIANT_STATE_FILE);
+
+        let name;
+        if (marker == "tachyon-core" || index(version, "-tachyon.") >= 0)
+            name = "tachyon-core";
+        else if (marker == "lx" || marker == "extended-compressed" || marker == "extended")
+            name = marker;
+        else
+            name = core_profile.profile(version, "");
+        result.sing_box_profile = name;
+
+        let tailscale = 0;
+        if (name == "tachyon-core") {
             result.sing_box_tachyon_core = 1;
             // Tailscale and FPTN are compiled into the core itself.
-            result.sing_box_tailscale = 1;
-            result.sing_box_fptn = 1;
+            tailscale = 1;
         }
-        else if (marker_is("lx")) {
+        else if (name == "lx") {
             result.sing_box_extended = 1;
             result.sing_box_lx = 1;
-            result.sing_box_tailscale = 1;
+            tailscale = 1;
         }
-        else if (marker_is("extended-compressed")) {
+        else if (name == "extended-compressed") {
             result.sing_box_extended = 1;
             result.sing_box_compressed = 1;
-            result.sing_box_tailscale = 1;
+            tailscale = 1;
         }
-        else if (marker_is("extended")) {
+        else if (name == "extended") {
             result.sing_box_extended = 1;
-            result.sing_box_tailscale = 1;
+            tailscale = 1;
         }
-        else if (marker_is("tiny") || tiny_package_installed()) {
+        else if (marker == "tiny" || tiny_package_installed()) {
             result.sing_box_tiny = 1;
         }
         else if (component_action_running_for("sing_box")) {
-            result.sing_box_tailscale = 1;
+            tailscale = 1;
         }
-        else {
-            let info = sing_box_version_info();
-            if (info != null && index(info.version, "-lx") >= 0) {
-                result.sing_box_extended = 1;
-                result.sing_box_lx = 1;
-                result.sing_box_tailscale = 1;
-            }
-            else if (info != null && index(info.version, "extended") >= 0) {
-                result.sing_box_extended = 1;
-                result.sing_box_tailscale = 1;
-            }
-            else if (info != null) {
-                if (match(info.tags, /(^|[,: \t])with_tailscale([, \t]|$)/) != null)
-                    result.sing_box_tailscale = 1;
-                if (result.sing_box_tailscale == 0)
-                    result.sing_box_tiny = 1;
-            }
+        else if (info != null) {
+            tailscale = core_profile.output_has_build_tag(info.tags, "with_tailscale") ? 1 : 0;
+            if (!tailscale)
+                result.sing_box_tiny = 1;
         }
+        result.sing_box_tailscale = tailscale;
+
+        // The protocol table answers what the profile can ever speak; upstream
+        // carries tailscale only when this particular binary was built with it,
+        // so the list is corrected against the actual build before the missing
+        // list is derived. The resolved name is passed as the marker so the
+        // tables follow the classification above, not a stale state file.
+        let protocols = core_profile.protocols(version, name);
+        if (!tailscale) {
+            let filtered = [];
+            for (let item in protocols)
+                if (item != "tailscale")
+                    push(filtered, item);
+            protocols = filtered;
+        }
+        let inbounds = core_profile.inbounds(version, name);
+        result.sing_box_fptn = core_profile.core_contains(protocols, "fptn") ? 1 : 0;
+        result.sing_box_protocols = protocols;
+        result.sing_box_missing_protocols = core_profile.missing_protocols(protocols);
+        result.sing_box_inbounds = inbounds;
+        result.sing_box_missing_inbounds = core_profile.missing_inbounds(inbounds);
     }
 
     result.server_inbounds_enabled_count = server_inbounds_enabled_count();

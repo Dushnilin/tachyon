@@ -101,4 +101,14 @@ out="$(run_repair "$CFG4" '')"
 # The refusal cases must not have modified the file.
 grep -q support_x25519mlkem768 "$CFG4" || fail "a refused repair must leave the config alone"
 
+# --- log level panic repair for tachyon-core ---------------------------------
+CFG5="$WORK_DIR/panic_log.json"
+cat >"$CFG5" <<'JSON'
+{ "log": { "level": "panic", "timestamp": false }, "outbounds": [ { "type": "direct", "tag": "direct-out" } ] }
+JSON
+out="$(run_repair "$CFG5" 'check: create log factory: parse log level: unknown log level: panic')"
+[ "$out" = "repaired" ] || fail "log level panic must be repaired to fatal, got '$out'"
+grep -q '"level": "fatal"' "$CFG5" || fail "log.level was not changed to fatal"
+grep -q '"panic"' "$CFG5" && fail "panic survived the repair"
+
 printf 'sing-box unknown-field repair checks passed\n'

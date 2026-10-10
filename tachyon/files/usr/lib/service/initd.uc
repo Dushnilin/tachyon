@@ -313,15 +313,36 @@ function consume_pending_reload(path) {
     return true;
 }
 
+// Mirrors service/state.uc: only this pending reason is a rewritten
+// subscription cache, which the in-place apply settles. Everything else is a
+// real configuration change and still goes through `tachyon reload`
+// (issue #119).
+const PENDING_RELOAD_SOFT_APPLY_REASON = "subscription_deferred_recovery";
+
 function run_pending_reload_if_requested(path, init_script) {
     path = as_string(path || PENDING_RELOAD_FILE);
     init_script = as_string(init_script || SERVICE_INIT);
 
+    let reason = "";
+    if (file_exists(path))
+        reason = replace(first_line_value(path), /^reason=/, "");
+
     if (!consume_pending_reload(path))
         return;
 
-    command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Applying pending Tachyon reload" ]);
-    system(background_command(shell_quote(init_script) + " reload pending"));
+    // One launch site for both outcomes, so this file does not grow a second
+    // background invocation.
+    let apply_in_place = reason == PENDING_RELOAD_SOFT_APPLY_REASON;
+    let message = apply_in_place ? "Applying pending subscription recovery in place" : "Applying pending Tachyon reload";
+    let command = apply_in_place
+        ? command_from_args([
+            "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",
+            "subscription-deferred-recovery-apply"
+        ])
+        : shell_quote(init_script) + " reload pending";
+
+    command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] " + message ]);
+    system(background_command(command));
 }
 
 function uci_settings() {

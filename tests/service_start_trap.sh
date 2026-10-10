@@ -92,10 +92,18 @@ require_pattern 'return "current reload";' \
 # does that at runtime.
 require_file_pattern "$LIFECYCLE_UC" 'common.background_command(module_command(module_path, args))' \
   "service/lifecycle.uc background modules must close inherited descriptors via the shared helper"
-require_file_pattern "$INITD_UC" 'background_command(shell_quote(init_script) + " reload pending")' \
-  "service/initd.uc pending reload worker must close inherited descriptors"
-require_file_pattern "$STATE_UC" 'background_command(shell_quote(init_script) + " reload pending")' \
-  "service/state.uc pending reload worker must close inherited descriptors"
+require_file_pattern "$INITD_UC" 'system(background_command(command))' \
+  "service/initd.uc pending reload worker must close inherited descriptors via the shared helper"
+require_file_pattern "$STATE_UC" 'system(background_command(command))' \
+  "service/state.uc pending reload worker must close inherited descriptors via the shared helper"
+# Both outcomes of run_pending_reload_if_requested must travel through that one
+# launch site - the in-place subscription apply as much as the reload. A bare
+# second system() would hand the apply to a shell that inherits the procd lock,
+# which is exactly what the assertions above exist to prevent.
+require_file_pattern "$INITD_UC" 'subscription-deferred-recovery-apply' \
+  "service/initd.uc must launch the in-place subscription apply"
+require_file_pattern "$STATE_UC" 'subscription-deferred-recovery-apply' \
+  "service/state.uc must launch the in-place subscription apply"
 for background_owner in "$UI_UC" "$UPDATES_UC" "$SUBSCRIPTION_CACHE_UC" \
     "$NFQUEUE_RUNTIME_UC" "$BYEDPI_RUNTIME_UC" "$PRIORITY_UC"; do
   require_file_pattern "$background_owner" 'common.background_command_with_pid(' \

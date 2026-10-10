@@ -9,8 +9,19 @@ let common = require("core.common");
 
 let helpers = require("components.helpers");
 let versions = require("components.versions");
+let core_profile_module = null;
 
 let as_string = common.as_string;
+
+// Lazy on purpose: components_updater_job.sh stages this module into a partial
+// -L tree whose singbox/ directory is created but left empty, to pin that
+// component verification carries the profile lookup itself rather than
+// inheriting it from a require graph.
+function core_profile() {
+    if (core_profile_module == null)
+        core_profile_module = require("singbox.core_profile");
+    return core_profile_module;
+}
 
 // ============================================================================
 // Fingerprints
@@ -122,6 +133,17 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
 // Reports false once no further repair applies, so the caller stops instead of
 // rewriting the same file until it gives up.
 function repair_unknown_outbound_field(config_file, reason) {
+    if (index(as_string(reason), "unknown log level: panic") >= 0) {
+        let cfg_text = as_string(fs.readfile(config_file) || "");
+        if (length(cfg_text) == 0) return false;
+        let cfg = json(cfg_text);
+        if (type(cfg) == "object" && type(cfg.log) == "object" && cfg.log.level == "panic") {
+            cfg.log.level = "fatal";
+            fs.writefile(config_file, sprintf("%J", cfg));
+            return true;
+        }
+    }
+
     let out_m = match(as_string(reason), /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     let ep_m = match(as_string(reason), /endpoints\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     let inb_m = match(as_string(reason), /inbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
@@ -258,7 +280,10 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
             gen_env.SB_VARIANT_STATE_FILE = variant_file;
         if (lib_path != "")
             gen_env.LD_LIBRARY_PATH = lib_path;
-        let target_supports_xhttp = (target_var == "extended" || target_var == "extended-compressed" || target_var == "lx" || target_var == "tachyon-core" || index(ver_out, "with_xhttp") >= 0 || index(ver_out, "tachyon-core") >= 0 || index(ver_str, "-tachyon.") >= 0);
+        // The banner itself may still be the only thing naming our core - the
+        // variant file can lag behind it - so the name wins over target_var.
+        let xhttp_marker = index(ver_out, "tachyon-core") >= 0 ? "tachyon-core" : target_var;
+        let target_supports_xhttp = core_profile().supports_xhttp(ver_str, xhttp_marker, ver_out) === true;
         let gen_cmd = helpers.command_env(gen_env) + " " +
             common.command_from_args([
                 "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/singbox/generator.uc",

@@ -414,24 +414,60 @@ function output_has_build_tag(output, tag) {
 // flat yes on the forks, which do not. Our own core implements xhttp but prints
 // no build tag, so the probe alone answers "no" and every xhttp node is dropped
 // from a subscription - which is why the answer is a profile field, not a probe.
+// The interpretation lives in core_profile.flag(); what is left here is the
+// machine part - a null answer means the question needs the installed binary's
+// banner, and only this module may run it.
 function sing_box_core_flag(version, marker, field, tag, version_output) {
-    let declared = as_string(sing_box_core_profile_data(sing_box_core_profile(version, marker))[field]);
-    if (declared == "yes")
-        return true;
-    if (declared != "build-tag")
-        return false;
-    if (as_string(version_output) != "")
-        return output_has_build_tag(version_output, tag);
+    let resolved = sing_box_core_resolve(version, marker);
+    let answer = core_profile.flag(resolved.version, resolved.marker, field, tag, version_output);
+    if (answer != null)
+        return answer;
     return output_has_build_tag(sing_box_version_output(), tag);
 }
 
 // The whole answer for one core, in a shape the interface and the diagnostics can
-// read without re-deriving any of it.
-function sing_box_core_capabilities(version, marker) {
+// read without re-deriving any of it. version_output is the caller's already-read
+// `sing-box version` banner: a string (empty or not) means the caller has asked
+// the binary already and nothing here may ask again - the compressed build is a
+// self-extracting stub and the lx build may have no runtime to run it with. Only
+// leaving the argument off lets this function probe the installed binary itself.
+function sing_box_core_capabilities(version, marker, version_output) {
+    let output = version_output == null ? null : as_string(version_output);
+    if (output != null && sing_box_banner_identity_cache == null) {
+        let first = trim(split(output, "\n")[0] || "");
+        let parts = split(first, /[ \t\r\n]+/);
+        sing_box_banner_identity_cache = length(parts) > 0 ? as_string(parts[0]) : "";
+    }
+
     let resolved = sing_box_core_resolve(version, marker);
     let build = resolved.version;
     let field = core_profile.pin_field(build, resolved.marker);
     let protocols = core_profile.protocols(build, resolved.marker);
+    let inbounds = core_profile.inbounds(build, resolved.marker);
+
+    let tailscale;
+    let xhttp;
+    if (output != null) {
+        let tail_flag = core_profile.flag(build, resolved.marker, "tailscale", "with_tailscale", output);
+        let xhttp_flag = core_profile.flag(build, resolved.marker, "xhttp", "with_xhttp", output);
+        tailscale = (tail_flag == null ? false : tail_flag) ? 1 : 0;
+        xhttp = (xhttp_flag == null ? false : xhttp_flag) ? 1 : 0;
+    }
+    else {
+        tailscale = sing_box_core_flag(build, marker, "tailscale", "with_tailscale", "") ? 1 : 0;
+        xhttp = sing_box_core_flag(build, marker, "xhttp", "with_xhttp", "") ? 1 : 0;
+    }
+
+    // The table answers "can this profile ever speak it", but upstream carries
+    // tailscale only when the binary was built with the tag - so the list is
+    // corrected against the actual build before the missing-list is derived.
+    if (!tailscale) {
+        let filtered = [];
+        for (let item in protocols)
+            if (item != "tailscale")
+                push(filtered, item);
+        protocols = filtered;
+    }
     return {
         profile: core_profile.profile(build, resolved.marker),
         version: build,
@@ -440,46 +476,26 @@ function sing_box_core_capabilities(version, marker) {
         cert_pin: field != "",
         schema_1_14: sing_box_core_has_1_14(build, marker) ? 1 : 0,
         schema_1_15: sing_box_core_has_1_15(build, marker) ? 1 : 0,
-        xhttp: sing_box_core_flag(build, marker, "xhttp", "with_xhttp", "") ? 1 : 0,
-        tailscale: sing_box_core_flag(build, marker, "tailscale", "with_tailscale", "") ? 1 : 0,
+        xhttp,
+        tailscale,
         foreign_series: sing_box_core_profile_data(sing_box_core_profile(build, marker)).foreign_series ? 1 : 0,
         protocols,
-        // What this core cannot do out of the protocols Tachyon knows.
-        missing_protocols: core_profile.missing_protocols(protocols)
+        inbounds,
+        // What this core cannot do out of the protocols and inbound kinds Tachyon
+        // knows, so the interface can name the gap instead of dropping a section
+        // silently.
+        missing_protocols: core_profile.missing_protocols(protocols),
+        missing_inbounds: core_profile.missing_inbounds(inbounds)
     };
 }
 
 
 function sing_box_supports_tailscale(version, version_output) {
-    version = as_string(version);
-    version_output = as_string(version_output);
-
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx") || sing_box_marker_is_tachyon_core())
-        return true;
-    if (sing_box_is_extended(version) || sing_box_is_lx(version) || sing_box_version_is_tachyon_core(version))
-        return true;
-    if (version_output != "")
-        return output_has_build_tag(version_output, "with_tailscale");
-    return output_has_build_tag(sing_box_version_output(), "with_tailscale");
+    return sing_box_core_flag(as_string(version), "", "tailscale", "with_tailscale", as_string(version_output));
 }
 
 function sing_box_supports_xhttp(version, version_output) {
-    version = as_string(version);
-    version_output = as_string(version_output);
-
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
-        return true;
-    if (sing_box_is_extended(version) || sing_box_is_lx(version))
-        return true;
-    // The core implements xhttp but prints no with_xhttp build tag, so the probe
-    // below answers "no" and every xhttp node is dropped from a subscription
-    // without a word. Verified against the core's own transport tests; the gap
-    // is in the banner, not in the core.
-    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core())
-        return true;
-    if (version_output != "")
-        return output_has_build_tag(version_output, "with_xhttp");
-    return output_has_build_tag(sing_box_version_output(), "with_xhttp");
+    return sing_box_core_flag(as_string(version), "", "xhttp", "with_xhttp", as_string(version_output));
 }
 
 function sing_box_supports_cert_pin(version) {
@@ -1584,7 +1600,7 @@ else if (mode == "core-inbounds")
 else if (mode == "core-supports-inbound")
     exit(core_profile.supports_inbound(ARGV[1], sing_box_core_resolve(ARGV[2], ARGV[3]).version, sing_box_core_resolve(ARGV[2], ARGV[3]).marker) ? 0 : 1);
 else if (mode == "core-capabilities")
-    print(sprintf("%J\n", sing_box_core_capabilities(ARGV[1], ARGV[2])));
+    print(sprintf("%J\n", sing_box_core_capabilities(ARGV[1], ARGV[2], ARGV[3])));
 else if (mode == "variant")
     print(sing_box_variant(), "\n");
 else {

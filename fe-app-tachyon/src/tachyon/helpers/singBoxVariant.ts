@@ -11,8 +11,13 @@ export type SingBoxVariantFields = {
   sing_box_repo_url?: string;
 };
 
-function isTachyonCoreVersion(version?: string) {
-  return String(version || '').includes('-tachyon.');
+export function isTachyonCoreVersion(version?: string) {
+  const v = String(version || '').trim();
+  return (
+    v.includes('-tachyon.') ||
+    v.includes('tachyon-core') ||
+    /^v?0\.0\.\d+/.test(v)
+  );
 }
 
 function isExtendedSingBoxVersion(version?: string) {

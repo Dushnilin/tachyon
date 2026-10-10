@@ -621,6 +621,27 @@ function copy_file(source, target) {
     return fs.writefile(target, data) != null;
 }
 
+// The copy that never holds the payload in the ucode heap. copy_file() reads
+// the whole file with fs.readfile to compare and rewrite it, which is fine for
+// a ruleset and fatal for a sing-box binary: on the 256 MB router from issue
+// #124 the installer was OOM-killed at 70-77 MB RSS backing up the old core.
+// cp streams through the kernel instead. There is deliberately no
+// unchanged-content guard here: comparing would need the very read this
+// function exists to avoid, and the callers are binary backups into /tmp, not
+// regenerated flash artifacts. Flash targets must keep using copy_file().
+function copy_file_stream(source, target) {
+    source = as_string(source);
+    target = as_string(target);
+    if (source == "" || target == "")
+        return false;
+    if (fs.stat(source) == null)
+        return false;
+    let slash = rindex(target, "/");
+    if (slash > 0)
+        ensure_dir(substr(target, 0, slash));
+    return command_success_from_args([ "cp", "-p", source, target ]);
+}
+
 function unlink_file(path) {
     return remove_file(path);
 }
@@ -901,6 +922,7 @@ return {
     ensure_dir,
     remove_file,
     copy_file,
+    copy_file_stream,
     unlink_file,
     write_file,
     content_unchanged,
