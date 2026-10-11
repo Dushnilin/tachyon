@@ -2303,6 +2303,15 @@ function sing_box_is_lx(ctx, version) {
     return sing_box_version_is_lx(version != null ? version : get_sing_box_version(ctx)) || sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx));
 }
 
+function sing_box_is_tachyon_core(ctx, version) {
+    if (sing_box_version_is_foreign_core(version))
+        return true;
+    if (as_string(version) == "" && command_exists("sing-box") && sing_box_tachyon_core_marker_set(ctx))
+        return true;
+
+    return sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx)) || sing_box_tachyon_core_marker_set(ctx);
+}
+
 // The marker the profile lookup answers from: the state file when there is one,
 // and the identity a bare foreign version carries otherwise. profile() reads a
 // version suffix, so "0.0.1" and "tachyon-core" have none and would be filed
@@ -2488,7 +2497,7 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
             let is_core = sing_box_is_tachyon_core(ctx, sing_box_version);
             let core_supported = (action == "warp" || action == "masque" || action == "openvpn" || action == "snell");
             if (!is_extended && !(is_core && core_supported)) {
-                let lx_note = sing_box_is_lx(ctx, sing_box_version)
+                let lx_note = (sing_box_is_lx(ctx, sing_box_version) && !is_core)
                     ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
                     : (is_core ? " tachyon-core does not implement " + extended_only_label + " yet." : "");
                 fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary" + (core_supported ? " or tachyon-core" : "") + " (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended" + (core_supported ? " or tachyon-core" : "") + " or change the action. Aborted.", "fatal");
@@ -2795,6 +2804,11 @@ else if (mode == "check-requirements-and-validate-runtime") {
 else if (mode == "validate-runtime-fixture") {
     use_fixture_cursor(ARGV[1]);
     validate_runtime_config(context_from_json(ARGV[2], context_from_runtime()));
+}
+else if (mode == "validate-section-action-variant-support") {
+    use_fixture_cursor(ARGV[1]);
+    let ctx = context_from_json(ARGV[2], context_from_runtime());
+    validate_section_action_variant_support(ctx, ARGV[3]);
 }
 else {
     warn("Usage: config/validator.uc <operation> ...\n");
