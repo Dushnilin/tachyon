@@ -3162,6 +3162,27 @@ function nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, ta
     return true;
 }
 
+// Чистые UDP ruleset с портами должны попадать в UDP-наборы, а не TCP.
+function ruleset_has_only_udp_port_rules(json_path) {
+    let data = object_or_empty(common_read_json_file(json_path));
+    if (type(data.rules) != "array" || length(data.rules) == 0)
+        return false;
+    for (let rule in data.rules) {
+        rule = object_or_empty(rule);
+        let udp = rule.network == "udp" ||
+            (type(rule.network) == "array" && length(rule.network) == 1 && rule.network[0] == "udp");
+        if (!udp || rule.type != null || rule.invert)
+            return false;
+        let ports = rule.port != null && rule.port != "" &&
+            (type(rule.port) != "array" || length(rule.port) > 0);
+        let ranges = rule.port_range != null && rule.port_range != "" &&
+            (type(rule.port_range) != "array" || length(rule.port_range) > 0);
+        if (!ports && !ranges)
+            return false;
+    }
+    return true;
+}
+
 function nft_add_json_ruleset_subnets_for_section(section, json_path, label, table, common_set, ip_port_set, unscoped_path, scoped_path, chunk_size_text, common6_set, ip_port6_set) {
     let ports = section_rule_ports_csv(section);
     let sets = section_priority_sets(section);
@@ -3180,7 +3201,11 @@ function nft_add_json_ruleset_subnets_for_section(section, json_path, label, tab
         sprintf("%J", rule_port_ranges(ports))
     );
 
-    return nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, table, sets.subnets, sets.ip_ports, chunk_size_text, sets.subnets6, sets.ip6_ports);
+    let unscoped_stat = fs.stat(unscoped_path);
+    let udp_only = ruleset_has_only_udp_port_rules(json_path) && (!unscoped_stat || unscoped_stat.size == 0);
+    return nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, table,
+        sets.subnets, udp_only ? sets.udp_ip_ports : sets.ip_ports, chunk_size_text,
+        sets.subnets6, udp_only ? sets.udp_ip6_ports : sets.ip6_ports);
 }
 
 function nft_add_community_subnet_file_for_section(section, service, filepath, table, common_set, ip_port_set, interface_set, discord_set, mark, chunk_size_text, common6_set, ip_port6_set, discord6_set) {

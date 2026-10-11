@@ -575,6 +575,25 @@ if grep -Fq '198.51.100.221' "$NFT_LOG" || grep -Fq '198.51.100.222' "$NFT_LOG";
   fail "json ruleset section ports should intersect rule-owned port filters"
 fi
 
+# Flat UDP-only rulesets must use the UDP priority sets for both families.
+# A same-port TCP packet must not be caught by the imported UDP rule.
+for proto in udp tcp; do
+  printf '{"version":3,"rules":[{"network":"%s","ip_cidr":["192.0.2.0/24","2001:db8::/32"],"port":[50008]}]}\n' "$proto" > "$json_ruleset"
+  : > "$NFT_LOG"
+  nft_ucode nft-add-json-ruleset-subnets-for-section-fixture "$WORK_DIR/populate-fixture.json" inline_no_ports "$json_ruleset" "protocol fixture" TachyonTable unused unused "$unscoped_json" "$scoped_json" 5000
+  prefix=tachyon_rule_inline_no_ports
+  if [ "$proto" = udp ]; then prefix="${prefix}_udp"; fi
+  assert_contains "$NFT_LOG" "$prefix"$'_ip_ports\t{ 192.0.2.0/24 . 50008 }' "$proto IPv4 port import"
+  assert_contains "$NFT_LOG" "$prefix"$'_ip6_ports\t{ 2001:db8::/32 . 50008 }' "$proto IPv6 port import"
+  if [ "$proto" = udp ]; then
+    if grep -Fq $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_no_ports_ip_ports\t{' "$NFT_LOG" || grep -Fq $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_no_ports_ip6_ports\t{' "$NFT_LOG"; then
+      fail "UDP ruleset populated TCP priority sets"
+    fi
+  elif grep -Fq $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_no_ports_udp_ip_ports\t{' "$NFT_LOG" || grep -Fq $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_no_ports_udp_ip6_ports\t{' "$NFT_LOG"; then
+    fail "TCP ruleset populated UDP priority sets"
+  fi
+done
+
 : > "$NFT_LOG"
 nft_ucode nft-add-community-subnet-file-for-section-fixture "$WORK_DIR/populate-fixture.json" inline_no_ports discord "$plain_subnets" TachyonTable tachyon_subnets tachyon_ip_ports tachyon_interfaces tachyon_discord_subnets 0x00100000 5000
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_no_ports_subnets\t{ 198.51.100.210,203.0.113.0/24 }' "discord community subnet import"
