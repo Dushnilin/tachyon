@@ -95,6 +95,7 @@ import {
   FIX_LABELS,
   getAiDoctorHistory,
   getDeviceIcon,
+  getFixLabel,
   renderAiDoctorModal,
   saveAiDoctorHistory,
 } from '../partials/renderAiDoctorModal';
@@ -146,6 +147,11 @@ describe('renderAiDoctorModal helpers', () => {
     expect(FIX_LABELS.start_singbox).toBeDefined();
     expect(FIX_LABELS.rebuild_rules).toBeDefined();
     expect(FIX_LABELS.restore_native_internet).toBeDefined();
+    expect(getFixLabel('start_singbox', true)).toBe('Start Tachyon Core');
+    expect(getFixLabel('restart_singbox_dns', true)).toBe(
+      'Restart Tachyon Core DNS',
+    );
+    expect(getFixLabel('start_singbox', false)).toBe(FIX_LABELS.start_singbox);
   });
 
   it('renders modal with root cause nodes and report', () => {

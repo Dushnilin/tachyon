@@ -574,7 +574,11 @@ async function followComponentActionState(
       showUpdateProgressModal({
         component: state.component,
         action: state.action,
-        componentTitle: getComponentCardTitle(state.component),
+        componentTitle: getComponentCardTitle(
+          state.component,
+          state.component === 'sing_box' &&
+            Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core),
+        ),
         currentVersion: state.current_version,
         targetVersion: state.latest_version,
       });
@@ -724,7 +728,11 @@ async function handleComponentAction(button: ComponentActionButton) {
     return;
   }
 
-  const cardTitle = getComponentCardTitle(button.component);
+  const cardTitle = getComponentCardTitle(
+    button.component,
+    button.component === 'sing_box' &&
+      Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core),
+  );
   const currentVersion = getComponentCurrentVersion(button.component);
   const targetVersion = getExpectedLatestVersionForAction(button);
   const checkResult = getVisibleCheckResult(button.component);
@@ -1169,7 +1177,7 @@ function getComponentCards(): ComponentCard[] {
     {
       component: 'sing_box',
       column: 0,
-      title: systemInfo.sing_box_tachyon_core ? 'tachyon-core' : 'Sing-box',
+      title: systemInfo.sing_box_tachyon_core ? 'Tachyon Core' : 'Sing-box',
       version: systemInfoLoading
         ? _('Loading...')
         : formatSingBoxVersion(systemInfo),
@@ -2746,7 +2754,11 @@ async function runComponentAction(
     {
       component,
       action,
-      componentTitle: getComponentCardTitle(component),
+      componentTitle: getComponentCardTitle(
+        component as Tachyon.ComponentName,
+        component === 'sing_box' &&
+          Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core),
+      ),
       currentVersion: getComponentCurrentVersion(component),
     },
     `${_('Active engine')}: ${engineLabel(engineTarget)}`,

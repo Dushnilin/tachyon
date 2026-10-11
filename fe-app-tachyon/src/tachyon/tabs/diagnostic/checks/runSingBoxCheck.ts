@@ -2,15 +2,20 @@ import { DIAGNOSTICS_CHECKS_MAP } from './constants';
 import { TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
-import { IDiagnosticsChecksItem } from '../../../services';
+import { getCheckTitle } from '../helpers/getCheckTitle';
+import { IDiagnosticsChecksItem, store } from '../../../services';
 
 export async function runSingBoxCheck() {
-  const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.SINGBOX;
+  const storeSystemInfo = store?.get()?.diagnosticsSystemInfo;
+  const initialIsTachyonCore = Boolean(storeSystemInfo?.sing_box_tachyon_core);
+  const initialTitle = initialIsTachyonCore
+    ? getCheckTitle('Tachyon Core')
+    : DIAGNOSTICS_CHECKS_MAP.SINGBOX.title;
 
   updateCheckStore({
-    order,
-    code,
-    title,
+    order: DIAGNOSTICS_CHECKS_MAP.SINGBOX.order,
+    code: DIAGNOSTICS_CHECKS_MAP.SINGBOX.code,
+    title: initialTitle,
     description: _('Checking, please wait'),
     state: 'loading',
     items: [],
@@ -20,18 +25,26 @@ export async function runSingBoxCheck() {
 
   if (!singBoxChecks.success) {
     updateCheckStore({
-      order,
-      code,
-      title,
+      order: DIAGNOSTICS_CHECKS_MAP.SINGBOX.order,
+      code: DIAGNOSTICS_CHECKS_MAP.SINGBOX.code,
+      title: initialTitle,
       description: _('Cannot receive checks result'),
       state: 'error',
       items: [],
     });
 
-    throw new Error('Sing-box checks failed');
+    throw new Error(
+      `${initialIsTachyonCore ? 'Tachyon Core' : 'Sing-box'} checks failed`,
+    );
   }
 
   const data = singBoxChecks.data;
+  const isTachyonCore =
+    Boolean(data.sing_box_tachyon_core) || initialIsTachyonCore;
+  const coreTitle = isTachyonCore ? 'Tachyon Core' : 'Sing-box';
+  const title = isTachyonCore
+    ? getCheckTitle('Tachyon Core')
+    : DIAGNOSTICS_CHECKS_MAP.SINGBOX.title;
 
   const allGood =
     Boolean(data.sing_box_installed) &&
@@ -54,32 +67,44 @@ export async function runSingBoxCheck() {
   const items: Array<IDiagnosticsChecksItem> = [
     {
       state: data.sing_box_installed ? 'success' : 'error',
-      key: _('Sing-box installed'),
+      key: isTachyonCore
+        ? _('Tachyon Core installed')
+        : _('Sing-box installed'),
       value: '',
     },
     {
       state: data.sing_box_version_ok ? 'success' : 'error',
-      key: _('Sing-box version is compatible (newer than 1.12.4)'),
+      key: isTachyonCore
+        ? _('Tachyon Core version is compatible')
+        : _('Sing-box version is compatible (newer than 1.12.4)'),
       value: '',
     },
     {
       state: data.sing_box_service_exist ? 'success' : 'error',
-      key: _('Sing-box service exist'),
+      key: isTachyonCore
+        ? _('Tachyon Core service exist')
+        : _('Sing-box service exist'),
       value: '',
     },
     {
       state: data.sing_box_autostart_disabled ? 'success' : 'error',
-      key: _('Sing-box autostart disabled'),
+      key: isTachyonCore
+        ? _('Tachyon Core autostart disabled')
+        : _('Sing-box autostart disabled'),
       value: '',
     },
     {
       state: data.sing_box_process_running ? 'success' : 'error',
-      key: _('Sing-box process running'),
+      key: isTachyonCore
+        ? _('Tachyon Core process running')
+        : _('Sing-box process running'),
       value: '',
     },
     {
       state: data.sing_box_ports_listening ? 'success' : 'error',
-      key: _('Sing-box listening ports'),
+      key: isTachyonCore
+        ? _('Tachyon Core listening ports')
+        : _('Sing-box listening ports'),
       value: '',
     },
   ];
@@ -93,7 +118,7 @@ export async function runSingBoxCheck() {
   // number), so the line shows "Supported" there too. Both fork variants drop
   // the line; a stock build below 1.15 still gets the warning, and there it is
   // actionable.
-  if (!data.sing_box_extended) {
+  if (!data.sing_box_extended && !isTachyonCore) {
     items.push({
       state: !data.sing_box_installed
         ? 'error'
@@ -108,8 +133,8 @@ export async function runSingBoxCheck() {
   }
 
   updateCheckStore({
-    order,
-    code,
+    order: DIAGNOSTICS_CHECKS_MAP.SINGBOX.order,
+    code: DIAGNOSTICS_CHECKS_MAP.SINGBOX.code,
     title,
     description,
     state,
@@ -117,6 +142,6 @@ export async function runSingBoxCheck() {
   });
 
   if (!atLeastOneGood || !data.sing_box_process_running) {
-    throw new Error('Sing-box checks failed');
+    throw new Error(`${coreTitle} checks failed`);
   }
 }

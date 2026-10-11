@@ -58,6 +58,7 @@ describe('updates cardDefinitions helpers', () => {
   it('resolves component card titles correctly', () => {
     expect(getComponentCardTitle('tachyon')).toBe('Tachyon');
     expect(getComponentCardTitle('sing_box')).toBe('Sing-box');
+    expect(getComponentCardTitle('sing_box', true)).toBe('Tachyon Core');
     expect(getComponentCardTitle('zapret2')).toBe('Zapret2');
     expect(getComponentCardTitle('engine')).toBe('Routing Engine');
   });

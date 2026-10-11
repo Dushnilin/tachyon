@@ -105,4 +105,20 @@ describe('sing-box diagnostics: certificate pinning line', () => {
 
     expect(keysOf()).toContain(certPinKey);
   });
+
+  it('names Tachyon Core in title and check item keys when sing_box_tachyon_core is 1', async () => {
+    mocks.checkSingBox.mockResolvedValue({
+      success: true,
+      data: { ...healthy, sing_box_tachyon_core: 1, sing_box_cert_pin: 1 },
+    });
+
+    await runSingBoxCheck();
+
+    expect(keysOf()).toContain('Tachyon Core listening ports');
+    expect(keysOf()).toContain('Tachyon Core installed');
+    expect(keysOf()).not.toContain('Sing-box listening ports');
+    expect(mocks.updateCheckStore.mock.calls.slice(-1)[0]?.[0]?.title).toBe(
+      'Tachyon Core checks',
+    );
+  });
 });

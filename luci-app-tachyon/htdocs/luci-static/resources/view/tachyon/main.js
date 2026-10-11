@@ -6963,7 +6963,7 @@ function normalizeSingBoxVariantFields(value) {
 }
 function renderSingBoxVariantBadge(value) {
   const version = String(value.sing_box_version || "");
-  if (!version || isVersionPlaceholder(version)) {
+  if (!version || isVersionPlaceholder(version) || typeof document === "undefined") {
     return null;
   }
   const normalized = normalizeSingBoxVariantFields(value);
@@ -6978,7 +6978,7 @@ function renderSingBoxVariantBadge(value) {
   badge.style.lineHeight = "16px";
   badge.style.verticalAlign = "middle";
   if (normalized.sing_box_tachyon_core) {
-    badge.textContent = "tachyon-core";
+    badge.textContent = "Tachyon Core";
     badge.style.backgroundColor = "rgba(139, 92, 246, 0.15)";
     badge.style.color = "#8b5cf6";
     badge.style.border = "1px solid rgba(139, 92, 246, 0.35)";
@@ -10564,7 +10564,7 @@ async function renderServicesInfoWidget() {
             }
             const systemInfo = store.get().diagnosticsSystemInfo;
             if (systemInfo.sing_box_tachyon_core) {
-              return "tachyon-core";
+              return "Tachyon Core";
             }
             return "Sing-box";
           })(),
@@ -11851,11 +11851,13 @@ async function runDnsCheck() {
 
 // src/tachyon/tabs/diagnostic/checks/runSingBoxCheck.ts
 async function runSingBoxCheck() {
-  const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.SINGBOX;
+  const storeSystemInfo = store?.get()?.diagnosticsSystemInfo;
+  const initialIsTachyonCore = Boolean(storeSystemInfo?.sing_box_tachyon_core);
+  const initialTitle = initialIsTachyonCore ? getCheckTitle("Tachyon Core") : DIAGNOSTICS_CHECKS_MAP.SINGBOX.title;
   updateCheckStore({
-    order,
-    code,
-    title,
+    order: DIAGNOSTICS_CHECKS_MAP.SINGBOX.order,
+    code: DIAGNOSTICS_CHECKS_MAP.SINGBOX.code,
+    title: initialTitle,
     description: _("Checking, please wait"),
     state: "loading",
     items: []
@@ -11863,52 +11865,57 @@ async function runSingBoxCheck() {
   const singBoxChecks = await TachyonShellMethods.checkSingBox();
   if (!singBoxChecks.success) {
     updateCheckStore({
-      order,
-      code,
-      title,
+      order: DIAGNOSTICS_CHECKS_MAP.SINGBOX.order,
+      code: DIAGNOSTICS_CHECKS_MAP.SINGBOX.code,
+      title: initialTitle,
       description: _("Cannot receive checks result"),
       state: "error",
       items: []
     });
-    throw new Error("Sing-box checks failed");
+    throw new Error(
+      `${initialIsTachyonCore ? "Tachyon Core" : "Sing-box"} checks failed`
+    );
   }
   const data = singBoxChecks.data;
+  const isTachyonCore = Boolean(data.sing_box_tachyon_core) || initialIsTachyonCore;
+  const coreTitle = isTachyonCore ? "Tachyon Core" : "Sing-box";
+  const title = isTachyonCore ? getCheckTitle("Tachyon Core") : DIAGNOSTICS_CHECKS_MAP.SINGBOX.title;
   const allGood = Boolean(data.sing_box_installed) && Boolean(data.sing_box_version_ok) && Boolean(data.sing_box_service_exist) && Boolean(data.sing_box_autostart_disabled) && Boolean(data.sing_box_process_running) && Boolean(data.sing_box_ports_listening);
   const atLeastOneGood = Boolean(data.sing_box_installed) || Boolean(data.sing_box_version_ok) || Boolean(data.sing_box_service_exist) || Boolean(data.sing_box_autostart_disabled) || Boolean(data.sing_box_process_running) || Boolean(data.sing_box_ports_listening);
   const { state, description } = getMeta({ atLeastOneGood, allGood });
   const items = [
     {
       state: data.sing_box_installed ? "success" : "error",
-      key: _("Sing-box installed"),
+      key: isTachyonCore ? _("Tachyon Core installed") : _("Sing-box installed"),
       value: ""
     },
     {
       state: data.sing_box_version_ok ? "success" : "error",
-      key: _("Sing-box version is compatible (newer than 1.12.4)"),
+      key: isTachyonCore ? _("Tachyon Core version is compatible") : _("Sing-box version is compatible (newer than 1.12.4)"),
       value: ""
     },
     {
       state: data.sing_box_service_exist ? "success" : "error",
-      key: _("Sing-box service exist"),
+      key: isTachyonCore ? _("Tachyon Core service exist") : _("Sing-box service exist"),
       value: ""
     },
     {
       state: data.sing_box_autostart_disabled ? "success" : "error",
-      key: _("Sing-box autostart disabled"),
+      key: isTachyonCore ? _("Tachyon Core autostart disabled") : _("Sing-box autostart disabled"),
       value: ""
     },
     {
       state: data.sing_box_process_running ? "success" : "error",
-      key: _("Sing-box process running"),
+      key: isTachyonCore ? _("Tachyon Core process running") : _("Sing-box process running"),
       value: ""
     },
     {
       state: data.sing_box_ports_listening ? "success" : "error",
-      key: _("Sing-box listening ports"),
+      key: isTachyonCore ? _("Tachyon Core listening ports") : _("Sing-box listening ports"),
       value: ""
     }
   ];
-  if (!data.sing_box_extended) {
+  if (!data.sing_box_extended && !isTachyonCore) {
     items.push({
       state: !data.sing_box_installed ? "error" : data.sing_box_cert_pin ? "success" : "warning",
       key: _("TLS certificate pinning (sing-box 1.15+)"),
@@ -11916,15 +11923,15 @@ async function runSingBoxCheck() {
     });
   }
   updateCheckStore({
-    order,
-    code,
+    order: DIAGNOSTICS_CHECKS_MAP.SINGBOX.order,
+    code: DIAGNOSTICS_CHECKS_MAP.SINGBOX.code,
     title,
     description,
     state,
     items
   });
   if (!atLeastOneGood || !data.sing_box_process_running) {
-    throw new Error("Sing-box checks failed");
+    throw new Error(`${coreTitle} checks failed`);
   }
 }
 
@@ -13394,7 +13401,7 @@ function renderAvailableActions({
       renderButton({
         onClick: showSingBoxConfig.onClick,
         icon: renderCogIcon24,
-        text: _("Show sing-box config"),
+        text: showSingBoxConfig.text || _("Show sing-box config"),
         loading: showSingBoxConfig.loading,
         disabled: showSingBoxConfig.disabled
       })
@@ -18126,6 +18133,13 @@ var FIX_LABELS = {
   fix_bootstrap_dns: _("Reset Bootstrap DNS"),
   optimize_mtu: _("Optimize AWG MTU")
 };
+function getFixLabel(code, isTachyonCore) {
+  if (isTachyonCore) {
+    if (code === "start_singbox") return _("Start Tachyon Core");
+    if (code === "restart_singbox_dns") return _("Restart Tachyon Core DNS");
+  }
+  return FIX_LABELS[code] || code;
+}
 function getUi2() {
   if (typeof ui !== "undefined") return ui;
   if (typeof window !== "undefined" && window.ui)
@@ -18162,8 +18176,8 @@ function renderAiDoctorModal(options) {
       status: repLower.includes("сбой разрешения dns") || repLower.includes("dns resolution failed") || repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK"
     },
     {
-      name: "sing-box",
-      status: (repLower.includes("sing-box") || repLower.includes("proxy")) && (repLower.includes("остановлен") || repLower.includes("stopped") || repLower.includes("не функционирует") || repLower.includes("error") || repLower.includes("crash")) ? "FAIL" : "OK"
+      name: options.isTachyonCore ? "Tachyon Core" : "sing-box",
+      status: (repLower.includes("sing-box") || repLower.includes("tachyon-core") || repLower.includes("tachyon core") || repLower.includes("proxy")) && (repLower.includes("остановлен") || repLower.includes("stopped") || repLower.includes("не функционирует") || repLower.includes("error") || repLower.includes("crash")) ? "FAIL" : "OK"
     },
     {
       name: "nftables",
@@ -18207,7 +18221,7 @@ function renderAiDoctorModal(options) {
       }
     }
     const nodeSummary = nodes.map((n) => `${n.name}: ${n.status}`).join(" | ");
-    const fixesSummary = quickFixes.length > 0 ? quickFixes.map((f) => FIX_LABELS[f] || f).join(", ") : _("None");
+    const fixesSummary = quickFixes.length > 0 ? quickFixes.map((f) => getFixLabel(f, options.isTachyonCore)).join(", ") : _("None");
     const clientsSummary = currentClients.length > 0 ? currentClients.map(
       (c) => `- ${c.hostname} (IP: ${c.ip}, MAC: ${c.mac.slice(0, 8)}**): ${c.mode.toUpperCase()}`
     ).join("\n") : _("No DHCP clients detected");
@@ -18292,7 +18306,10 @@ function renderAiDoctorModal(options) {
             },
             quickFixes.map((code) => {
               let applied = false;
-              const friendlyLabel = FIX_LABELS[code] || code;
+              const friendlyLabel = getFixLabel(
+                code,
+                options.isTachyonCore
+              );
               const btn = renderButton({
                 classNames: ["cbi-button-apply"],
                 text: friendlyLabel,
@@ -20138,6 +20155,9 @@ async function handleRunAiDoctor() {
         report,
         quickFixes,
         backendNodes,
+        isTachyonCore: Boolean(
+          store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+        ),
         onRefreshServices: () => refreshDiagnosticServicesInfo({
           force: true,
           allowInactive: true
@@ -20241,8 +20261,11 @@ async function handleShowSingBoxConfig() {
       const maskedSingBoxConfigText = formatMaskedSingBoxConfig(
         showSingBoxConfig.data
       );
+      const isTachyonCore = Boolean(
+        store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+      );
       ui.showModal(
-        _("Show sing-box config"),
+        isTachyonCore ? _("Show Tachyon Core config") : _("Show sing-box config"),
         renderModal(rawSingBoxConfigText, "show_sing_box_config", {
           maskText: () => maskedSingBoxConfigText,
           initialAutoRefresh: false,
@@ -20298,6 +20321,9 @@ async function handleGenerateBugReport() {
       }
       return filtered.join("\n");
     };
+    const isTachyonCore = Boolean(
+      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+    );
     const rawReport = [
       "--- TACHYON CONFIG ---",
       configResult || "Failed to fetch config",
@@ -20305,8 +20331,8 @@ async function handleGenerateBugReport() {
       "--- TACHYON LOGS ---",
       logsResult.code === 0 ? filterUdpErrors(logsResult.stdout) : "Failed to fetch tachyon logs",
       "",
-      "--- SING-BOX LOGS ---",
-      singboxLogsResult.code === 0 ? filterUdpErrors(singboxLogsResult.stdout) : "Failed to fetch sing-box logs"
+      isTachyonCore ? "--- TACHYON-CORE LOGS ---" : "--- SING-BOX LOGS ---",
+      singboxLogsResult.code === 0 ? filterUdpErrors(singboxLogsResult.stdout) : `Failed to fetch ${isTachyonCore ? "tachyon-core" : "sing-box"} logs`
     ].join("\n");
     const maskedReport = maskLogText(maskGlobalCheckText(rawReport));
     const blob = new Blob([maskedReport], { type: "text/plain;charset=utf-8" });
@@ -20478,6 +20504,7 @@ function renderDiagnosticAvailableActionsWidget() {
     showSingBoxConfig: {
       loading: diagnosticsActions.showSingBoxConfig.loading,
       visible: true,
+      text: store.get().diagnosticsSystemInfo?.sing_box_tachyon_core ? _("Show Tachyon Core config") : _("Show sing-box config"),
       onClick: handleShowSingBoxConfig,
       disabled: utilityActionsDisabled
     },
@@ -20517,7 +20544,7 @@ function renderDiagnosticSystemInfoWidget() {
     diagnosticsSystemInfo.sing_box_version
   );
   const steerInstalled = Boolean(diagnosticsSystemInfo.steer_installed);
-  const singBoxRowLabel = diagnosticsSystemInfo.sing_box_tachyon_core ? "tachyon-core" : "Sing-box";
+  const singBoxRowLabel = diagnosticsSystemInfo.sing_box_tachyon_core ? "Tachyon Core" : "Sing-box";
   if (isSteer) {
     items.push({
       key: "Steer",
@@ -24082,12 +24109,12 @@ function steerModulesUciArgs(selection) {
 }
 
 // src/tachyon/tabs/updates/cardDefinitions.ts
-function getComponentCardTitle(component) {
+function getComponentCardTitle(component, isTachyonCore) {
   switch (component) {
     case "tachyon":
       return "Tachyon";
     case "sing_box":
-      return "Sing-box";
+      return isTachyonCore ? "Tachyon Core" : "Sing-box";
     case "zapret":
       return "Zapret";
     case "zapret2":
@@ -24576,7 +24603,10 @@ async function followComponentActionState(state) {
       showUpdateProgressModal({
         component: state.component,
         action: state.action,
-        componentTitle: getComponentCardTitle(state.component),
+        componentTitle: getComponentCardTitle(
+          state.component,
+          state.component === "sing_box" && Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core)
+        ),
         currentVersion: state.current_version,
         targetVersion: state.latest_version
       });
@@ -24691,7 +24721,10 @@ async function handleComponentAction(button) {
   if (!beginComponentAction(button)) {
     return;
   }
-  const cardTitle = getComponentCardTitle(button.component);
+  const cardTitle = getComponentCardTitle(
+    button.component,
+    button.component === "sing_box" && Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core)
+  );
   const currentVersion = getComponentCurrentVersion2(button.component);
   const targetVersion = getExpectedLatestVersionForAction2(button);
   const checkResult = getVisibleCheckResult(button.component);
@@ -25065,7 +25098,7 @@ function getComponentCards() {
     {
       component: "sing_box",
       column: 0,
-      title: systemInfo.sing_box_tachyon_core ? "tachyon-core" : "Sing-box",
+      title: systemInfo.sing_box_tachyon_core ? "Tachyon Core" : "Sing-box",
       version: systemInfoLoading ? _("Loading...") : formatSingBoxVersion(systemInfo),
       badgeNode: systemInfoLoading ? null : renderSingBoxVariantBadge(systemInfo),
       latestVersion: getLatestVersion("sing_box"),
@@ -26281,7 +26314,10 @@ async function runComponentAction(component, action, _key) {
     {
       component,
       action,
-      componentTitle: getComponentCardTitle(component),
+      componentTitle: getComponentCardTitle(
+        component,
+        component === "sing_box" && Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core)
+      ),
       currentVersion: getComponentCurrentVersion2(component)
     },
     `${_("Active engine")}: ${engineLabel(engineTarget)}`

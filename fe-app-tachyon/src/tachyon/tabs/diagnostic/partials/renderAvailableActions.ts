@@ -17,6 +17,7 @@ interface ActionProps {
   visible: boolean;
   disabled: boolean;
   onClick: () => void;
+  text?: string;
 }
 
 interface IRenderAvailableActionsProps {
@@ -211,7 +212,7 @@ export function renderAvailableActions({
       renderButton({
         onClick: showSingBoxConfig.onClick,
         icon: renderCogIcon24,
-        text: _('Show sing-box config'),
+        text: showSingBoxConfig.text || _('Show sing-box config'),
         loading: showSingBoxConfig.loading,
         disabled: showSingBoxConfig.disabled,
       }),

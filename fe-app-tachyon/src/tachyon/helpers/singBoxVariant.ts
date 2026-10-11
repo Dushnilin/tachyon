@@ -157,7 +157,11 @@ export function renderSingBoxVariantBadge(
   value: SingBoxVariantFields,
 ): HTMLSpanElement | null {
   const version = String(value.sing_box_version || '');
-  if (!version || isVersionPlaceholder(version)) {
+  if (
+    !version ||
+    isVersionPlaceholder(version) ||
+    typeof document === 'undefined'
+  ) {
     return null;
   }
 
@@ -174,7 +178,7 @@ export function renderSingBoxVariantBadge(
   badge.style.verticalAlign = 'middle';
 
   if (normalized.sing_box_tachyon_core) {
-    badge.textContent = 'tachyon-core';
+    badge.textContent = 'Tachyon Core';
     badge.style.backgroundColor = 'rgba(139, 92, 246, 0.15)';
     badge.style.color = '#8b5cf6';
     badge.style.border = '1px solid rgba(139, 92, 246, 0.35)';

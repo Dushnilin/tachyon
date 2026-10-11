@@ -941,6 +941,7 @@ function check_sing_box() {
     let sing_box_version_ok = 0;
     let sing_box_extended = 0;
     let sing_box_cert_pin = 0;
+    let sing_box_tachyon_core = 0;
     let sing_box_service_exist = 0;
     let sing_box_autostart_disabled = 0;
     let sing_box_process_running = 0;
@@ -951,10 +952,13 @@ function check_sing_box() {
         let version = strip_leading_v(replace(module_output(SINGBOX_RUNTIME_UC, [ "version" ]), /[\r\n]+$/g, ""));
         if (version != "") {
             if (match(version, /-tachyon\./) != null ||
-                sing_box_marker_is("tachyon-core")) {
+                match(version, /^0\.0\./) != null ||
+                sing_box_marker_is("tachyon-core") ||
+                module_success(SINGBOX_RUNTIME_UC, [ "is-foreign-core", version ])) {
                 // tachyon-core numbers its own releases (0.x), so the upstream
                 // compatibility gate would mark a healthy core as too old; the
                 // capability model, not the version number, decides its features.
+                sing_box_tachyon_core = 1;
                 sing_box_version_ok = 1;
                 sing_box_cert_pin = 1;
             }
@@ -968,6 +972,11 @@ function check_sing_box() {
                 if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", version ]))
                     sing_box_cert_pin = 1;
             }
+        }
+        else if (sing_box_marker_is("tachyon-core")) {
+            sing_box_tachyon_core = 1;
+            sing_box_version_ok = 1;
+            sing_box_cert_pin = 1;
         }
         else if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")) {
             sing_box_extended = 1;
@@ -993,6 +1002,7 @@ function check_sing_box() {
         sing_box_version_ok,
         sing_box_extended,
         sing_box_cert_pin,
+        sing_box_tachyon_core,
         sing_box_service_exist,
         sing_box_autostart_disabled,
         sing_box_process_running,

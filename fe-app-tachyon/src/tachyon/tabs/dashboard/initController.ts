@@ -2256,7 +2256,7 @@ async function renderServicesInfoWidget() {
             }
             const systemInfo = store.get().diagnosticsSystemInfo;
             if (systemInfo.sing_box_tachyon_core) {
-              return 'tachyon-core';
+              return 'Tachyon Core';
             }
             return 'Sing-box';
           })(),

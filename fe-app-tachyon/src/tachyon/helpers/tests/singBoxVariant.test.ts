@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatSingBoxVersion,
   normalizeSingBoxVariantFields,
+  renderSingBoxVariantBadge,
   type SingBoxVariantFields,
 } from '../singBoxVariant';
 
@@ -58,5 +59,24 @@ describe('formatSingBoxVersion', () => {
     });
 
     expect(formatted).toBe('v0.0.1-tachyon.0');
+  });
+});
+
+describe('renderSingBoxVariantBadge', () => {
+  it('renders Tachyon Core badge text for tachyon-core variant', () => {
+    const prevDoc = (globalThis as unknown as { document?: unknown }).document;
+    (globalThis as unknown as { document?: unknown }).document = {
+      createElement: () => ({ style: {}, className: '', textContent: '' }),
+    };
+    try {
+      const badge = renderSingBoxVariantBadge({
+        sing_box_version: '0.0.3',
+        sing_box_tachyon_core: 1,
+      });
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toBe('Tachyon Core');
+    } finally {
+      (globalThis as unknown as { document?: unknown }).document = prevDoc;
+    }
   });
 });

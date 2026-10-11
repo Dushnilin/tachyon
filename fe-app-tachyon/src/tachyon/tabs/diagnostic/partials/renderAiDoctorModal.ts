@@ -16,6 +16,7 @@ export interface AiDoctorModalOptions {
   quickFixes?: string[];
   backendNodes?: Array<{ name: string; status: 'OK' | 'WARN' | 'FAIL' }> | null;
   onRefreshServices?: () => Promise<void>;
+  isTachyonCore?: boolean;
 }
 
 const AI_DOCTOR_HISTORY_STORAGE_KEY = 'tachyon_ai_doctor_history';
@@ -67,6 +68,14 @@ export const FIX_LABELS: Record<string, string> = {
   fix_bootstrap_dns: _('Reset Bootstrap DNS'),
   optimize_mtu: _('Optimize AWG MTU'),
 };
+
+export function getFixLabel(code: string, isTachyonCore?: boolean): string {
+  if (isTachyonCore) {
+    if (code === 'start_singbox') return _('Start Tachyon Core');
+    if (code === 'restart_singbox_dns') return _('Restart Tachyon Core DNS');
+  }
+  return FIX_LABELS[code] || code;
+}
 
 function getUi(): any {
   if (typeof ui !== 'undefined') return ui;
@@ -145,9 +154,12 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
           : ('OK' as const),
     },
     {
-      name: 'sing-box',
+      name: options.isTachyonCore ? 'Tachyon Core' : 'sing-box',
       status:
-        (repLower.includes('sing-box') || repLower.includes('proxy')) &&
+        (repLower.includes('sing-box') ||
+          repLower.includes('tachyon-core') ||
+          repLower.includes('tachyon core') ||
+          repLower.includes('proxy')) &&
         (repLower.includes('остановлен') ||
           repLower.includes('stopped') ||
           repLower.includes('не функционирует') ||
@@ -214,7 +226,9 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
     const nodeSummary = nodes.map((n) => `${n.name}: ${n.status}`).join(' | ');
     const fixesSummary =
       quickFixes.length > 0
-        ? quickFixes.map((f) => FIX_LABELS[f] || f).join(', ')
+        ? quickFixes
+            .map((f) => getFixLabel(f, options.isTachyonCore))
+            .join(', ')
         : _('None');
     const clientsSummary =
       currentClients.length > 0
@@ -322,7 +336,10 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                 },
                 quickFixes.map((code) => {
                   let applied = false;
-                  const friendlyLabel = FIX_LABELS[code] || code;
+                  const friendlyLabel = getFixLabel(
+                    code,
+                    options.isTachyonCore,
+                  );
                   const btn = renderButton({
                     classNames: ['cbi-button-apply'],
                     text: friendlyLabel,

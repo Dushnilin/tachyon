@@ -34,12 +34,13 @@ export interface ComponentCard {
 
 export function getComponentCardTitle(
   component: Tachyon.ComponentName,
+  isTachyonCore?: boolean,
 ): string {
   switch (component) {
     case 'tachyon':
       return 'Tachyon';
     case 'sing_box':
-      return 'Sing-box';
+      return isTachyonCore ? 'Tachyon Core' : 'Sing-box';
     case 'zapret':
       return 'Zapret';
     case 'zapret2':

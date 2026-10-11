@@ -391,7 +391,7 @@ function managed_sing_box_service_text() {
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"unlimited\"\n" +
         "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
-        "    procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\"\n" +
+        "    procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
         "    procd_close_instance\n" +
@@ -511,6 +511,102 @@ function stop_tachyon_before_sing_box_change() {
         command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
 
     prepare_sing_box_service_disabled();
+}
+
+function sing_box_family_of_variant(variant) {
+    variant = as_string(variant);
+    if (variant == "tachyon-core" || index(variant, "tachyon") >= 0)
+        return "tachyon-core";
+    if (variant == "lx" || index(variant, "lx") >= 0)
+        return "lx";
+    if (variant == "extended" || variant == "extended-compressed" || index(variant, "extended") >= 0)
+        return "extended";
+    if (variant == "tiny" || variant == "stable" || variant == "upstream")
+        return "upstream";
+    return variant;
+}
+
+function should_clear_sing_box_cache_on_change(prev_var, next_var) {
+    prev_var = as_string(prev_var);
+    next_var = as_string(next_var);
+    if (prev_var == "" || prev_var == "not-installed" || next_var == "" || next_var == "not-installed")
+        return true;
+    let prev_fam = sing_box_family_of_variant(prev_var);
+    let next_fam = sing_box_family_of_variant(next_var);
+    if (prev_fam != next_fam)
+        return true;
+    if (index(prev_var, "compressed") >= 0 || index(next_var, "compressed") >= 0)
+        return prev_var != next_var;
+    return false;
+}
+
+function get_sing_box_cache_paths() {
+    let paths = [];
+    let seen = {};
+    let add_path = function(p) {
+        p = as_string(p);
+        if (p != "" && !seen[p]) {
+            seen[p] = true;
+            push(paths, p);
+        }
+    };
+
+    if (uci_core.available()) {
+        try {
+            let configured = uci_core.get(TACHYON_CONFIG_NAME, "settings", "cache_path");
+            if (configured)
+                add_path(configured);
+        } catch (e) {}
+    }
+
+    add_path("/tmp/sing-box/cache.db");
+    add_path("/usr/share/sing-box/cache.db");
+    add_path("/etc/sing-box/cache.db");
+    add_path("/var/run/sing-box/cache.db");
+    return paths;
+}
+
+function clear_sing_box_cache_files(reason) {
+    let cleared = 0;
+    let paths = get_sing_box_cache_paths();
+    for (let p in paths) {
+        if (file_exists(p)) {
+            remove_file(p);
+            cleared++;
+        }
+        if (file_exists(p + "-lock"))
+            remove_file(p + "-lock");
+        if (file_exists(p + ".lock"))
+            remove_file(p + ".lock");
+        if (file_exists(p + "-journal"))
+            remove_file(p + "-journal");
+    }
+    for (let dir in [ "/tmp/sing-box", "/etc/sing-box", "/usr/share/sing-box", "/var/run/sing-box" ]) {
+        if (file_exists(dir)) {
+            try {
+                let matches = fs.glob(dir + "/cache.db*");
+                if (matches) {
+                    for (let item in matches) {
+                        remove_file(item);
+                        cleared++;
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+    updates_log("Cleared sing-box cache database" + (reason ? " (" + reason + ")" : ""), "info");
+    return cleared;
+}
+
+function clear_sing_box_cache_if_needed(prev_var, next_var) {
+    if (should_clear_sing_box_cache_on_change(prev_var, next_var)) {
+        let prev_fam = sing_box_family_of_variant(prev_var);
+        let next_fam = sing_box_family_of_variant(next_var);
+        let reason = "core variant changed from " + (prev_var != "" ? prev_var : "none") + " to " + (next_var != "" ? next_var : "none");
+        if (prev_fam != next_fam)
+            reason = "core family changed from " + prev_fam + " to " + next_fam;
+        clear_sing_box_cache_files(reason);
+    }
 }
 
 function wait_tachyon_running_after_sing_box_change() {
@@ -1813,6 +1909,7 @@ function install_sing_box_extended_package(action, target_tag) {
     write_sing_box_variant_state("extended", new_version);
     if (target_tag != null && target_tag != "")
         write_file("/etc/tachyon/sing-box-version", target_tag + "\n");
+    clear_sing_box_cache_if_needed(current_variant, "extended");
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log("sing-box-extended package did not start cleanly; restoring previous sing-box variant", "error");
@@ -1993,6 +2090,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     write_sing_box_variant_state("extended-compressed", new_version);
     if (target_tag != null && target_tag != "")
         write_file("/etc/tachyon/sing-box-version", target_tag + "\n");
+    clear_sing_box_cache_if_needed(current_variant, "extended-compressed");
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log(label + " did not start cleanly; restoring previous sing-box binary", "error");
@@ -2040,7 +2138,17 @@ function validate_tachyon_core_binary(binary, library_dir) {
     let raw_output = command_output_lenient("(" + command + ") 2>&1");
     let is_core = index(raw_output, "tachyon-core") >= 0 || index(raw_output, "-tachyon.") >= 0;
     if (!is_core) {
-        updates_log("Downloaded binary does not identify as tachyon-core; output: " + trim(raw_output), "warn");
+        let trimmed_output = trim(raw_output);
+        let status = command_status_from_args([ binary, "version" ]);
+        if (status == 132) {
+            updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - your CPU lacks required AVX2/x86-64-v3 instructions (if on Proxmox/KVM VM, set CPU type to 'host')", "error");
+        } else if (status > 128) {
+            updates_log("Downloaded binary crashed with signal " + (status - 128) + (trimmed_output != "" ? "; output: " + trimmed_output : ""), "error");
+        } else if (trimmed_output == "") {
+            updates_log("Downloaded binary exited with code " + status + " without output", "warn");
+        } else {
+            updates_log("Downloaded binary does not identify as tachyon-core; output: " + trimmed_output, "warn");
+        }
         return "";
     }
 
@@ -2143,6 +2251,7 @@ function install_tachyon_core(action, target_tag) {
 
     write_sing_box_variant_state(label, new_version);
     install_managed_sing_box_service_script();
+    clear_sing_box_cache_if_needed(current_variant, label);
     restart_tachyon_after_successful_change();
     remove_file(backup_binary);
 
@@ -2303,6 +2412,7 @@ function install_sing_box_lx(action, target_tag) {
     write_sing_box_variant_state("lx", new_version);
     if (target_tag != null && target_tag != "")
         write_file("/etc/tachyon/sing-box-version", target_tag + "\n");
+    clear_sing_box_cache_if_needed(current_variant, "lx");
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log(label + " did not start cleanly; restoring previous sing-box binary", "error");
@@ -2441,6 +2551,7 @@ function install_package_sing_box(action, tiny) {
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
 
     write_sing_box_variant_state(tiny ? "tiny" : "stable", new_version);
+    clear_sing_box_cache_if_needed(previous_variant, tiny ? "tiny" : "stable");
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change())
         fail_package_sing_box_install(action, tiny, "was installed, but Tachyon did not start cleanly", new_version, latest_version,
@@ -3463,6 +3574,10 @@ else if (mode == "tachyon-release-metadata")
     print(fetch_tachyon_latest_release_metadata(), "\n");
 else if (mode == "pkg-install-files-command")
     print(pkg_install_files_command(slice(ARGV, 2), ARGV[1] == "1"), "\n");
+else if (mode == "clear-sing-box-cache")
+    exit(clear_sing_box_cache_files(ARGV[1] || "manual") >= 0 ? 0 : 1);
+else if (mode == "should-clear-sing-box-cache")
+    exit(should_clear_sing_box_cache_on_change(ARGV[1], ARGV[2]) ? 0 : 1);
 else {
     warn("Usage: components/action.uc <component-action|list-component-releases|install-component-version|latest-tachyon-version|tachyon-release-metadata> ...\n");
     exit(1);

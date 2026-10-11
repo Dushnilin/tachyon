@@ -892,6 +892,9 @@ async function handleRunAiDoctor() {
         report,
         quickFixes,
         backendNodes,
+        isTachyonCore: Boolean(
+          store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+        ),
         onRefreshServices: () =>
           refreshDiagnosticServicesInfo({
             force: true,
@@ -1021,8 +1024,13 @@ async function handleShowSingBoxConfig() {
         showSingBoxConfig.data,
       );
 
+      const isTachyonCore = Boolean(
+        store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+      );
       ui.showModal(
-        _('Show sing-box config'),
+        isTachyonCore
+          ? _('Show Tachyon Core config')
+          : _('Show sing-box config'),
         renderModal(rawSingBoxConfigText, 'show_sing_box_config', {
           maskText: () => maskedSingBoxConfigText,
           initialAutoRefresh: false,
@@ -1081,6 +1089,9 @@ async function handleGenerateBugReport() {
       return filtered.join('\n');
     };
 
+    const isTachyonCore = Boolean(
+      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+    );
     const rawReport = [
       '--- TACHYON CONFIG ---',
       configResult || 'Failed to fetch config',
@@ -1090,10 +1101,10 @@ async function handleGenerateBugReport() {
         ? filterUdpErrors(logsResult.stdout)
         : 'Failed to fetch tachyon logs',
       '',
-      '--- SING-BOX LOGS ---',
+      isTachyonCore ? '--- TACHYON-CORE LOGS ---' : '--- SING-BOX LOGS ---',
       singboxLogsResult.code === 0
         ? filterUdpErrors(singboxLogsResult.stdout)
-        : 'Failed to fetch sing-box logs',
+        : `Failed to fetch ${isTachyonCore ? 'tachyon-core' : 'sing-box'} logs`,
     ].join('\n');
 
     const maskedReport = maskLogText(maskGlobalCheckText(rawReport));
@@ -1290,6 +1301,9 @@ function renderDiagnosticAvailableActionsWidget() {
     showSingBoxConfig: {
       loading: diagnosticsActions.showSingBoxConfig.loading,
       visible: true,
+      text: store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+        ? _('Show Tachyon Core config')
+        : _('Show sing-box config'),
       onClick: handleShowSingBoxConfig,
       disabled: utilityActionsDisabled,
     },
@@ -1345,7 +1359,7 @@ function renderDiagnosticSystemInfoWidget() {
   );
   const steerInstalled = Boolean(diagnosticsSystemInfo.steer_installed);
   const singBoxRowLabel = diagnosticsSystemInfo.sing_box_tachyon_core
-    ? 'tachyon-core'
+    ? 'Tachyon Core'
     : 'Sing-box';
 
   // Only one engine is installed at a time — engines are swapped, not co-installed.

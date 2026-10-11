@@ -765,6 +765,7 @@ export namespace Tachyon {
     sing_box_ports_listening: 0 | 1;
     sing_box_extended?: 0 | 1;
     sing_box_cert_pin?: 0 | 1;
+    sing_box_tachyon_core?: 0 | 1;
   }
 
   export interface SteerCheckResult {
