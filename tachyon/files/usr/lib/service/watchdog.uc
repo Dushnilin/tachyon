@@ -3027,6 +3027,40 @@ function telegram_worker_restart() {
     command_status("/usr/bin/tachyon telegram_start >/dev/null 2>&1");
 }
 
+function on_disk_tachyon_version() {
+    let env_ver = getenv("TACHYON_VERSION");
+    if (env_ver != null && env_ver != "")
+        return env_ver;
+
+    for (let path in [
+        "/usr/lib/opkg/info/tachyon.control",
+        "/usr/lib/opkg/info/luci-app-tachyon.control"
+    ]) {
+        let content = fs.readfile(path);
+        if (content != null) {
+            let m = match(content, /Version:\s*([0-9]+\.[0-9]+\.[0-9]+)/);
+            if (m && m[1]) return m[1];
+        }
+    }
+
+    let apk_db = fs.readfile("/lib/apk/db/installed");
+    if (apk_db != null) {
+        let lines = split(as_string(apk_db), "\n");
+        let current_pkg = "";
+        for (let line in lines) {
+            let pm = match(line, /^P:(.+)$/);
+            if (pm && pm[1]) {
+                current_pkg = trim(pm[1]);
+            } else if ((current_pkg == "tachyon" || current_pkg == "luci-app-tachyon") && match(line, /^V:/)) {
+                let vm = match(line, /^V:([0-9]+\.[0-9]+\.[0-9]+)/);
+                if (vm && vm[1]) return vm[1];
+            }
+        }
+    }
+
+    return as_string(require("core.constants").TACHYON_VERSION || "");
+}
+
 function check_telegram_worker() {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (as_string(tcfg.enabled || "0") != "1")
@@ -3054,14 +3088,14 @@ function check_telegram_worker() {
     let hb = split(heartbeat, " ");
     let age = time() - int(hb[0] || 0);
     if (age <= 300) {
-        let installed = as_string(require("core.constants").TACHYON_VERSION || "");
+        let installed = on_disk_tachyon_version();
         let running = length(hb) > 1 ? hb[1] : "";
         // An empty stamp means a worker from before this field existed; leave it
         // alone rather than restart it on every single tick.
         if (running == "" || running == installed)
             return;
 
-        log_message(sprintf("Telegram worker was started on %s but %s is installed; restarting it.", running, installed), "warn");
+        log_message(sprintf("Telegram worker was started on %s but %s is installed on disk; restarting it.", running, installed), "warn");
         command_status("/usr/bin/tachyon telegram_stop >/dev/null 2>&1");
         telegram_worker_last_restart = 0;
         telegram_worker_restart();
@@ -3130,6 +3164,16 @@ function reap_dead_jobs() {
         log_message(sprintf("Reaped %d stale job state file(s)", removed), "info");
 }
 
+function check_watchdog_outdated() {
+    let installed = on_disk_tachyon_version();
+    let my_version = as_string(require("core.constants").TACHYON_VERSION || "");
+    if (installed == "" || my_version == "" || installed == my_version)
+        return;
+
+    log_message(sprintf("Watchdog running version %s but %s is installed on disk; restarting tachyon service.", my_version, installed), "warn");
+    bg_system("/etc/init.d/tachyon restart >/dev/null 2>&1");
+}
+
 function perform_slow_checks() {
     controller.probe_slow(current_ctx);
     safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
@@ -3138,6 +3182,7 @@ function perform_slow_checks() {
     safe_call(check_tailscale_worker, "check_tailscale_worker");
     safe_call(check_section_failover, "check_section_failover");
     safe_call(reap_dead_jobs, "reap_dead_jobs");
+    safe_call(check_watchdog_outdated, "check_watchdog_outdated");
 }
 
 let last_keepalive_write = 0;

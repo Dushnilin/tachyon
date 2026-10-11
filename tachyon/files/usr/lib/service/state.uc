@@ -570,11 +570,11 @@ function try_sighup_reload(pid) {
     // finished a reload and the transient exit-code is unreliable.
     command_success_from_args([ "kill", "-HUP", as_string(pid) ]);
 
-    // Give sing-box up to 5 s to ingest the new config and bring its inbounds
+    // Give sing-box up to 15 s to ingest the new config and bring its inbounds
     // back. We poll every 500 ms and only call it a success when the process
     // is alive AND every mixed port the config declares is listening again.
     let ports = sing_box_mixed_ports();
-    let deadline = 10;
+    let deadline = 30;
     while (deadline > 0) {
         command_success_from_args([ "sleep", "0.5" ]);
         deadline--;

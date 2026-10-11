@@ -1251,6 +1251,8 @@ function stop_main() {
         log_message("Tailscale stop failed (non-fatal)", "warn");
     module_success(PARENTAL_QUOTA_UC, [ "remove-cron" ]);
     module_success(TELEGRAM_UC, [ "stop-runtime" ]);
+    if (!module_success(WATCHDOG_UC, [ "stop-runtime" ]))
+        log_message("Watchdog stop failed (non-fatal)", "warn");
 
     module_success(NFT_UC, [ "nft-disable-router-output-intercept", NFT_TABLE_NAME ]);
 
@@ -1560,13 +1562,13 @@ function dns_failover_apply(candidate_state_path) {
         let sing_box_pid_before = sing_box_runtime_pid();
         status = module_status(STATE_UC, [ "hup-sing-box-runtime" ]);
         if (status == 0)
-            status = wait_dns_failover_state(candidate_state_path, 5);
+            status = wait_dns_failover_state(candidate_state_path, 10);
 
         if (status != 0) {
             log_message("sing-box SIGHUP DNS reload did not become ready; trying service reload", "warn");
             status = module_status(STATE_UC, [ "reload-sing-box-runtime", sing_box_pid_before, "dns-before", "dns-after" ]);
             if (status == 0)
-                status = wait_dns_failover_state(candidate_state_path, 8);
+                status = wait_dns_failover_state(candidate_state_path, 15);
         }
     }
 

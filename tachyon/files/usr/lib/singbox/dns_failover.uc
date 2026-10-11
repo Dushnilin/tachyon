@@ -255,10 +255,12 @@ function apply_selections(state, selections) {
     if (!write_state(candidate_path, candidate))
         return false;
 
-    let status = command_status(command_from_args([ "timeout", "10", SERVICE_BIN, "dns_failover_apply", candidate_path ]) + " >/dev/null 2>&1");
+    let status = command_status(command_from_args([ "timeout", "45", SERVICE_BIN, "dns_failover_apply", candidate_path ]) + " >/dev/null 2>&1");
     remove_file(candidate_path);
-    if (status != 0)
+    if (status != 0) {
+        log_message("dns_failover_apply failed with status " + as_string(status), "warn");
         return false;
+    }
 
     state.main_index = candidate.main_index;
     state.bootstrap_index = candidate.bootstrap_index;
@@ -382,7 +384,7 @@ function worker() {
                 if (main.alive)
                     selections.main = main;
                 let applied = apply_selections(state, selections);
-                next_active = now_seconds() + (applied && !main.alive ? 1 : active_interval);
+                next_active = now_seconds() + active_interval;
             }
             else {
                 let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
