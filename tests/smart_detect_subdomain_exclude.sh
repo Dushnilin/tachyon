@@ -84,6 +84,20 @@ assert(smart_plus_job == null, 'excluded candidate not probed');
 assert(length(applied) == 0, 'excluded candidate not applied');
 assert(pending_smart_plus['clck.yandex.net'] == null, 'excluded candidate purged from queue');
 
+// An excluded sibling prevents parent expansion, but not the safe hostname.
+applied = []; smart_plus_job = null; smart_plus_last_run = 0; smart_plus_seen = {};
+pending_smart_plus = { 'api.example.com': { queued: time(), scheme: 'https', priority: 3 } };
+let cfg4 = { smart_detect: '1', smart_detect_mode: 'plus', smart_detect_sections: ['vpn'], smart_detect_exclude: ['cdn.example.com'] };
+smart_detect_process_plus(cfg4); smart_detect_process_plus(cfg4);
+assert(length(applied) == 1 && applied[0].domain == 'api.example.com', 'excluded sibling prevents broad parent rule');
+// A selection changed while a probe was running is checked before apply.
+applied = []; smart_plus_job = null; smart_plus_last_run = 0; smart_plus_seen = {};
+pending_smart_plus = { 'api.example.com': { queued: time(), scheme: 'https', priority: 3 } };
+let cfg5 = { smart_detect: '1', smart_detect_mode: 'plus', smart_detect_sections: ['vpn'] };
+smart_detect_process_plus(cfg5);
+cfg5.smart_detect_exclude = ['example.com'];
+smart_detect_process_plus(cfg5);
+assert(length(applied) == 0, 'new exclusion blocks in-flight result');
 print("PASS: smart_detect_subdomain_exclude\n");
 UCODE
 

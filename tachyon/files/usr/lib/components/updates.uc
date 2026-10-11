@@ -3442,6 +3442,15 @@ function list_update() {
         if (!import_all_preset_lists(settings))
             ok = false;
     }
+    let exclusions = require("service.smart_detect_exclusions");
+    for (let name in exclusions.selected_lists(settings)) {
+        if (!bool_option(settings, "download_all_presets", false) && !import_community_srs_file(name, settings))
+            ok = false;
+        if (!exclusions.prepare_list(name, TMP_RULESET_FOLDER + "/community-" + name + ".srs")) {
+            log_message("Smart Detect: could not refresh exclusion preset " + name + "; keeping the previous cache", "warn");
+            ok = false;
+        }
+    }
     for (let section in sections)
         if (!rebuild_domain_ip_lists_from_rule(section, settings))
             ok = false;

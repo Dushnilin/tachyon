@@ -366,12 +366,18 @@ function smart_detect_apply_plus_domains(entries) {
         return [];
     }
     // Settings may have changed while synchronous probes were running.
-    if (!smart_plus.capture_enabled(c.get_all(CONFIG_NAME, "settings"))) return [];
+    let cfg = c.get_all(CONFIG_NAME, "settings");
+    if (!smart_plus.capture_enabled(cfg)) return [];
+    let exclusions = require("service.smart_detect_exclusions");
+    if (!exclusions.state(cfg).ready) return [];
     let written = [];
     let added = [];
     let dirty = false;
     let per_section = {};
     for (let entry in entries) {
+        let domain = exclusions.target(entry.source_domain || entry.domain, cfg, entry.domain);
+        if (domain == null) continue;
+        entry = {...entry, domain};
         let sec = c.get_all(CONFIG_NAME, entry.section);
         if (!sec) continue;
         let values = per_section[entry.section] || smart_plus.domain_values(
@@ -425,7 +431,12 @@ function smart_detect_apply_domains(entries) {
     if (smart_plus.mode(settings()) == "plus") return smart_detect_apply_plus_domains(entries);
     let c = uci_core.cursor();
     if (!c || length(entries) == 0) return [];
+    c.unload(CONFIG_NAME);
     c.load(CONFIG_NAME);
+    if (length(c.changes(CONFIG_NAME) || {})) return [];
+    let cfg = c.get_all(CONFIG_NAME, "settings");
+    let exclusions = require("service.smart_detect_exclusions");
+    if (!exclusions.state(cfg).ready) return [];
 
     let written = [];
     let per_section = {};
@@ -433,6 +444,7 @@ function smart_detect_apply_domains(entries) {
         let sec_name = trim(as_string(entry.section));
         let domain = trim(as_string(entry.domain));
         if (sec_name == "" || domain == "") continue;
+        if (exclusions.excluded(domain, cfg)) continue;
         let sec = c.get_all(CONFIG_NAME, sec_name);
         if (!sec) continue;
         let existing = sec.user_domains;
@@ -2223,21 +2235,21 @@ function smart_detect_plus_save_seen() {
 }
 
 function smart_detect_is_domain_excluded(domain, cfg) {
-    if (!domain) return true;
-    domain = smart_plus.normalize_domain(domain);
-    if (!domain) return true;
-    let raw = cfg ? cfg.smart_detect_exclude : null;
-    let list = type(raw) == "array" ? raw : (raw ? split(trim(as_string(raw)), /[ \t\r\n,]+/) : []);
-    for (let exc in list) {
-        exc = smart_plus.normalize_domain(exc);
-        if (!exc) continue;
-        if (domain == exc || (length(domain) > length(exc) && substr(domain, -length(exc) - 1) == "." + exc))
-            return true;
-    }
-    return false;
+    return require("service.smart_detect_exclusions").excluded(domain, cfg);
+}
+
+let smart_detect_exclusion_warning = null;
+function smart_detect_exclusions_ready(cfg) {
+    let state = require("service.smart_detect_exclusions").state(cfg);
+    let missing = join(", ", state.missing);
+    if (!state.ready && missing != smart_detect_exclusion_warning)
+        log_message("Smart Detect: waiting for exclusion presets: " + missing + "; update lists to populate the cache", "warn");
+    smart_detect_exclusion_warning = state.ready ? null : missing;
+    return state.ready;
 }
 
 function smart_detect_process_plus(cfg) {
+    if (!smart_detect_exclusions_ready(cfg)) return;
     let now = time();
     let before_dns = smart_detect_observe_dns();
     let seen = smart_detect_plus_seen();
@@ -2253,11 +2265,8 @@ function smart_detect_process_plus(cfg) {
             job.selection != sprintf("%J", cfg.smart_detect_sections || []) ||
             index(smart_detect_get_proxy_sections(), job.target) < 0) decision = {defer:true};
         if (decision.act) {
-            let target_domain = job.domain;
-            if (cfg.smart_detect_expand_to_root != "0" && cfg.smart_detect_expand_to_root !== false) {
-                let main = smart_plus.main_domain(job.domain);
-                if (main != null) target_domain = main;
-            }
+            let target_domain = require("service.smart_detect_exclusions").target(
+                job.domain, cfg, smart_plus.main_domain(job.domain));
             if (target_domain == null || smart_detect_is_domain_excluded(job.domain, cfg) || smart_detect_is_domain_excluded(target_domain, cfg)) {
                 decision = {seen:true};
             } else if (!length(smart_detect_apply_domains([{section:job.target, domain:target_domain, source_domain:job.domain}]))) {
@@ -2402,6 +2411,7 @@ function smart_detect_process_pending() {
     let to_add = [];
 
     for (let domain in candidate_domains) {
+        if (!smart_detect_exclusions_ready(cfg)) return;
         if (smart_detect_is_domain_excluded(domain, cfg)) continue;
         let item = queued_candidates[domain];
         try {

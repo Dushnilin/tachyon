@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-11 00:58+0300\n"
-"PO-Revision-Date: 2026-10-11 00:58+0300\n"
+"POT-Creation-Date: 2026-10-11 01:00+0300\n"
+"PO-Revision-Date: 2026-10-11 01:00+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -382,6 +382,18 @@ msgstr "Всегда блокировать эти домены для всех 
 
 msgid "Always visible"
 msgstr "Всегда включено"
+
+msgid "Amnezia .conf"
+msgstr ""
+
+msgid "Amnezia configuration"
+msgstr ""
+
+msgid "Amnezia configuration must not exceed 64 KiB including its name"
+msgstr ""
+
+msgid "Amnezia configurations"
+msgstr ""
 
 msgid "Amnezia export; full validation before apply"
 msgstr "Экспорт Amnezia: полная проверка перед применением"
@@ -817,6 +829,9 @@ msgstr "Отмена"
 
 msgid "Cannot apply"
 msgstr "Невозможно применить"
+
+msgid "Cannot read the Amnezia .conf file"
+msgstr ""
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -1832,6 +1847,9 @@ msgstr "Введите полный объект outbound sing-box"
 msgid "Enter a display name"
 msgstr "Введите отображаемое имя"
 
+msgid "Enter a display name of up to 200 bytes without control characters"
+msgstr ""
+
 msgid "Enter a domain or IP to check (e.g. example.com)..."
 msgstr "Введите домен или IP для проверки (напр. example.com)..."
 
@@ -2585,6 +2603,9 @@ msgstr "Импорт"
 msgid "Import (%d records)"
 msgstr "Импорт (%d записей)"
 
+msgid "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core."
+msgstr ""
+
 msgid "Import AmneziaWG settings from .conf file"
 msgstr "Импортировать настройки AmneziaWG из файла .conf"
 
@@ -2725,6 +2746,9 @@ msgstr "Разрывать соединения при переключении 
 
 msgid "Interval"
 msgstr "Интервал"
+
+msgid "Invalid Amnezia .conf file"
+msgstr ""
 
 msgid "Invalid ByeDPI strategy"
 msgstr "Неверная стратегия ByeDPI"
@@ -4061,6 +4085,9 @@ msgstr "Подготовка"
 msgid "Preparing strategies and isolated nftables queue..."
 msgstr "Подготовка стратегий и изолированной очереди nftables..."
 
+msgid "Preset exclusions for Smart Detect"
+msgstr ""
+
 msgid "Preshared Key"
 msgstr "Предварительный общий ключ"
 
@@ -4102,6 +4129,9 @@ msgstr "Настройки приоритета"
 
 msgid "Private Key"
 msgstr "Приватный ключ"
+
+msgid "Private keys are stored on the router. DNS and command hooks from the file are not applied."
+msgstr ""
 
 msgid "Probe"
 msgstr "Проверить"
@@ -4769,6 +4799,9 @@ msgstr "Выберите транзитную секцию"
 msgid "Select active days. If none selected, the rule applies every day."
 msgstr "Выберите активные дни. Если ни один день не выбран, правило действует каждый день."
 
+msgid "Select an Amnezia .conf file up to 64 KiB"
+msgstr ""
+
 msgid "Select an existing URLTest or Priority group"
 msgstr "Выберите существующую группу URLTest или Приоритет"
 
@@ -4834,6 +4867,9 @@ msgstr "Выбран"
 
 msgid "Selected Devices are Guests (Explicit list)"
 msgstr "Выбранные устройства — гости (явный список)"
+
+msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
+msgstr ""
 
 msgid "Selected section"
 msgstr "Выбранная секция"
@@ -5717,6 +5753,9 @@ msgstr "Думаю..."
 msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
 msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
 
+msgid "This display name is already in use"
+msgstr ""
+
 msgid "This field is required"
 msgstr "Это поле обязательно"
 
@@ -6353,8 +6392,8 @@ msgstr "Выходные (Сб-Вс)"
 msgid "What Tachyon should do when this section matches"
 msgstr "Что должен делать Tachyon при совпадении этой секции"
 
-msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy."
-msgstr "Если включено, блокировка поддомена (напр., sub.example.com) приводит к добавлению всего базового домена (example.com). Если выключено, через прокси направляется только конкретный поддомен."
+msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
+msgstr ""
 
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."
@@ -6721,6 +6760,9 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy."
+msgstr "Если включено, блокировка поддомена (напр., sub.example.com) приводит к добавлению всего базового домена (example.com). Если выключено, через прокси направляется только конкретный поддомен."
 
 msgid "Server configured specifically for router environment (WAN/DDNS host, collision-safe subnet, optimized port)."
 msgstr "Сервер настроен с учетом окружения роутера (хост WAN/DDNS, бесконфликтная подсеть, оптимизированный порт)."

@@ -1,0 +1,36 @@
+// Named .conf imports reuse the same WG/AWG parser as vpn:// links.
+let wireguard = require("subscription.wireguard");
+
+function parse(value) {
+    if (type(value) != "string" || length(value) > 262144)
+        return null;
+
+    let data = null;
+    try { data = json(value); } catch (e) { return null; }
+    if (type(data) != "object" || type(data.name) != "string" || type(data.config) != "string")
+        return null;
+
+    let name = trim(data.name);
+    if (!length(name) || length(name) > 200 || index(name, "\u0000") >= 0 || match(name, /[[:cntrl:]]/) != null ||
+        !length(data.config) || length(data.config) > 65536 || index(data.config, "\u0000") >= 0)
+        return null;
+
+    // Reject ambiguous files before using the shared data-only parser.
+    let interfaces = 0, peers = 0;
+    for (let line in split(data.config, "\n")) {
+        line = trim(line);
+        if (line == "[Interface]") interfaces++;
+        if (line == "[Peer]") peers++;
+    }
+    if (interfaces != 1 || peers != 1)
+        return null;
+
+    let text = "# " + name + "\n" + data.config;
+    let link = "vpn://" + replace(replace(replace(b64enc(text), /\+/g, "-"), /\//g, "_"), /=+$/, "");
+    if (length(text) > 65536 || wireguard.from_conf(text, link, name) == null)
+        return null;
+
+    return { name, config: data.config, link };
+}
+
+return { parse };

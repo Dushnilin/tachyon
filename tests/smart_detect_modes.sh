@@ -6,6 +6,8 @@ export TACHYON_PSL_FILE="$root/tachyon/files/usr/share/tachyon/public-suffix-lis
 ucode -L "$root/tachyon/files/usr/lib" "$root/tests/smart_detect_modes.uc"
 ucode -L "$root/tachyon/files/usr/lib" "$root/tests/smart_detect_plus.uc"
 work=$(mktemp -d)
+export TACHYON_SMART_EXCLUSIONS_DIR="$work/exclusions"
+mkdir -p "$TACHYON_SMART_EXCLUSIONS_DIR"
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 ucode "$root/tests/smart_detect_dns_guard_build.uc" "$root/tachyon/files/usr/lib/service/watchdog.uc" "$root/tests/smart_detect_plus_loop.fixture.uc" "$work/loop.uc"
 ucode -L "$root/tachyon/files/usr/lib" "$work/loop.uc"

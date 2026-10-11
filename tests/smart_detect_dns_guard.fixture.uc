@@ -37,7 +37,8 @@ let event_controller={smart_detect_queue_order:function(pending,domains){return 
     smart_detect_main_domain:function(host){return "example.com";}};
 let controller={proxy_port:function(){return "4534";},dns_consecutive_fails:function(){return dns_fails;},
     create_tick_context:function(){return {settings:{dns_type:"doh",dns_server:["resolver"]},singbox_pid:core_pid,singbox_running:test_engine=="sing-box",is_paused:false,reload_in_progress:false};}};
-function settings(){return {smart_detect:"1",smart_detect_sections:["vpn"]};}
+let test_exclusions={};
+function settings(){return {...test_exclusions, smart_detect:"1",smart_detect_sections:["vpn"]};}
 function smart_detect_get_proxy_sections(){return ["vpn"];}
 function smart_detect_domain_resolves(domain){return true;}
 function smart_detect_apply_domains(entries){for(let e in entries)push(added,e.domain);return entries;}
@@ -48,6 +49,7 @@ function check(ok,name){if(!ok)die("FAIL: "+name+"\n");checks++;}
 /* IMPLEMENTATION */
 
 function setup(codes, proxy){
+    test_exclusions={};
     test_engine="sing-box";test_clock=1000;dns_index=0;core_pid="123";dns_fails=0;in_transaction=false;change_after_proxy=false;
     smart_detect_last_run=0;calls=[];added=[];saved={};direct_codes=codes;proxy_code=proxy;
     pending_smart_domains={"api.example.com":test_clock};
@@ -107,4 +109,12 @@ setup([28,28],0);test_engine="steer";smart_detect_observe_dns();test_clock=1030;
 check(length(added)==1,"Steer resumes without a sing-box process after resolver grace");
 setup([28,28],0);test_engine="steer-extended";in_transaction=true;smart_detect_observe_dns();test_clock=1030;confirm([28,28],0);
 check(length(added)==1,"Steer extended is not blocked by stale sing-box candidate files");
+setup([28,28],0);test_exclusions={smart_detect_exclude:["example.com"]};smart_detect_process_pending();
+check(length(calls)==0&&length(added)==0,"manual exclusion prevents actual detector probes");
+setup([28,28],0);test_exclusions={smart_detect_exclude_lists:["telegram"]};smart_detect_process_pending();
+check(length(calls)==0&&length(added)==0,"missing selected preset pauses actual detector probes");
+let test_cache=native_require("service.smart_detect_exclusions").cache_path("telegram");
+native_require("core.common").write_json_file(test_cache,{version:1,service:"telegram",domains:["example.com"]});
+setup([28,28],0);test_exclusions={smart_detect_exclude_lists:["telegram"]};smart_detect_process_pending();
+check(length(calls)==0&&length(added)==0,"cached preset excludes candidate in actual detector loop");
 print(sprintf("PASS: %d actual-function DNS guard checks\n",checks));

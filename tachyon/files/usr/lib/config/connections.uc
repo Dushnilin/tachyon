@@ -413,6 +413,16 @@ function action(section) {
 
 function connection_urls(section) {
     let links = whitespace_list_value(section, "selector_proxy_links");
+    let configs = raw_option(section, "selector_amnezia_configs");
+    if (configs != null && configs != "") {
+        if (type(configs) != "array") configs = [configs];
+        let importer = require("subscription.amnezia_config");
+        for (let value in configs) {
+            let item = importer.parse(value);
+            if (item == null) die("Invalid imported Amnezia configuration");
+            push(links, item.link);
+        }
+    }
     let text = option(section, "selector_proxy_links_text", "");
     if (text != "") {
         for (let line in split(text, /[\r\n]+/)) {
