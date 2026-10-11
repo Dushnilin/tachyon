@@ -1,15 +1,15 @@
 # RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
-# Dushnilin, 2026.
+# MaksSt, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-11 14:22+0300\n"
-"PO-Revision-Date: 2026-10-11 14:22+0300\n"
-"Last-Translator: Dushnilin\n"
+"POT-Creation-Date: 2026-10-11 17:19+0500\n"
+"PO-Revision-Date: 2026-10-11 17:19+0500\n"
+"Last-Translator: MaksSt\n"
 "Language-Team: none\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -382,6 +382,18 @@ msgstr "Всегда блокировать эти домены для всех 
 
 msgid "Always visible"
 msgstr "Всегда включено"
+
+msgid "Amnezia .conf"
+msgstr "Amnezia .conf"
+
+msgid "Amnezia configuration"
+msgstr "Конфиг Amnezia"
+
+msgid "Amnezia configuration must not exceed 64 KiB including its name"
+msgstr "Конфиг Amnezia вместе с именем не должен превышать 64 КиБ"
+
+msgid "Amnezia configurations"
+msgstr "Amnezia конфиги"
 
 msgid "Amnezia export; full validation before apply"
 msgstr "Экспорт Amnezia: полная проверка перед применением"
@@ -817,6 +829,9 @@ msgstr "Отмена"
 
 msgid "Cannot apply"
 msgstr "Невозможно применить"
+
+msgid "Cannot read the Amnezia .conf file"
+msgstr "Не удалось прочитать файл Amnezia .conf"
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -1832,6 +1847,9 @@ msgstr "Введите полный объект outbound sing-box"
 msgid "Enter a display name"
 msgstr "Введите отображаемое имя"
 
+msgid "Enter a display name of up to 200 bytes without control characters"
+msgstr "Введите имя до 200 байт без управляющих символов"
+
 msgid "Enter a domain or IP to check (e.g. example.com)..."
 msgstr "Введите домен или IP для проверки (напр. example.com)..."
 
@@ -2582,6 +2600,9 @@ msgstr "Импорт"
 msgid "Import (%d records)"
 msgstr "Импорт (%d записей)"
 
+msgid "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core."
+msgstr "Загрузите .conf для AmneziaWG 2.0, 3.0 и 3.1. Доступно с sing-box LX и tachyon-core."
+
 msgid "Import AmneziaWG settings from .conf file"
 msgstr "Импортировать настройки AmneziaWG из файла .conf"
 
@@ -2722,6 +2743,9 @@ msgstr "Разрывать соединения при переключении 
 
 msgid "Interval"
 msgstr "Интервал"
+
+msgid "Invalid Amnezia .conf file"
+msgstr "Некорректный файл Amnezia .conf"
 
 msgid "Invalid ByeDPI strategy"
 msgstr "Неверная стратегия ByeDPI"
@@ -4058,6 +4082,9 @@ msgstr "Подготовка"
 msgid "Preparing strategies and isolated nftables queue..."
 msgstr "Подготовка стратегий и изолированной очереди nftables..."
 
+msgid "Preset exclusions for Smart Detect"
+msgstr "Готовые списки исключений Smart Detect"
+
 msgid "Preshared Key"
 msgstr "Предварительный общий ключ"
 
@@ -4099,6 +4126,9 @@ msgstr "Настройки приоритета"
 
 msgid "Private Key"
 msgstr "Приватный ключ"
+
+msgid "Private keys are stored on the router. DNS and command hooks from the file are not applied."
+msgstr "Приватные ключи хранятся на роутере. DNS и команды из файла не применяются."
 
 msgid "Probe"
 msgstr "Проверить"
@@ -4760,6 +4790,9 @@ msgstr "Выберите транзитную секцию"
 msgid "Select active days. If none selected, the rule applies every day."
 msgstr "Выберите активные дни. Если ни один день не выбран, правило действует каждый день."
 
+msgid "Select an Amnezia .conf file up to 64 KiB"
+msgstr "Выберите файл Amnezia .conf размером до 64 КиБ"
+
 msgid "Select an existing URLTest or Priority group"
 msgstr "Выберите существующую группу URLTest или Приоритет"
 
@@ -4825,6 +4858,9 @@ msgstr "Выбран"
 
 msgid "Selected Devices are Guests (Explicit list)"
 msgstr "Выбранные устройства — гости (явный список)"
+
+msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
+msgstr "Домены и поддомены из выбранных списков не добавляются автоматически через Smart Detect. Ручные правила маршрутизации и ранее добавленные домены сохраняются. Списки обновляются штатным механизмом; если кэш выбранного списка отсутствует, обнаружение ожидает обновления списков."
 
 msgid "Selected section"
 msgstr "Выбранная секция"
@@ -5683,6 +5719,9 @@ msgstr "Думаю..."
 
 msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
 msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
+
+msgid "This display name is already in use"
+msgstr "Это имя уже используется"
 
 msgid "This field is required"
 msgstr "Это поле обязательно"
@@ -7735,10 +7774,3 @@ msgstr "Plus отдельно проверяет DNS роутера и пока�
 
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
-
-
-msgid "Preset exclusions for Smart Detect"
-msgstr "Готовые списки исключений Smart Detect"
-
-msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
-msgstr "Домены и поддомены из выбранных списков не добавляются автоматически через Smart Detect. Ручные правила маршрутизации и ранее добавленные домены сохраняются. Списки обновляются штатным механизмом; если кэш выбранного списка отсутствует, обнаружение ожидает обновления списков."

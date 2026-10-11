@@ -763,10 +763,16 @@ if (typeof window !== "undefined") {
 
 function refreshVpnUrlHints() {
   if (typeof document === "undefined") return;
-  const hint = main.supportsVpnUrl() ? "; vpn:// (AWG, LX)" : "";
+  const supported = main.supportsVpnUrl();
+  const hint = supported ? "; vpn:// (AWG, LX / tachyon-core)" : "";
   document.querySelectorAll("[data-tachyon-vpn-url-hint]").forEach((node) => {
     node.textContent = hint;
   });
+  document
+    .querySelectorAll("[data-tachyon-amnezia-configs]")
+    .forEach((node) => {
+      node.style.display = supported ? "" : "none";
+    });
 }
 
 if (main.store && typeof main.store.subscribe === "function") {
@@ -2005,6 +2011,14 @@ function getOutboundTypeForName(section_id, name) {
     return found;
   }
 
+  currentSourceOptionValues(section_id, "selector_amnezia_configs").forEach(
+    (value) => {
+      const config = parseAmneziaConfig(value);
+      if (config && config.name === name) found = "AmneziaWG";
+    },
+  );
+  if (found) return found;
+
   currentSourceOptionValues(section_id, "outbound_jsons").forEach((jsonStr) => {
     if (found) {
       return;
@@ -2124,6 +2138,12 @@ function currentDraftOutboundNames(section_id) {
     (value, index) => {
       const name = main.getProxyUrlName(`${value || ""}`);
       names.push(name || `${section_id}-${index + 1}-out`);
+    },
+  );
+  currentSourceOptionValues(section_id, "selector_amnezia_configs").forEach(
+    (value) => {
+      const config = parseAmneziaConfig(value);
+      if (config) names.push(config.name);
     },
   );
   currentSourceOptionValues(section_id, "interfaces").forEach((itemId) => {
@@ -4603,6 +4623,244 @@ function validatePriorityGroupItemsBeforeSave(section_id, values) {
     }
   }
 
+  return true;
+}
+
+function parseAmneziaConfig(value) {
+  try {
+    if (typeof value !== "string" || value.length > 262144) return null;
+    const config = JSON.parse(value);
+    return config &&
+      typeof config.name === "string" &&
+      typeof config.config === "string"
+      ? config
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function amneziaConfigLink(name, config) {
+  const bytes = new TextEncoder().encode(`# ${name.trim()}\n${config}`);
+  if (bytes.length > 65536) return null;
+  // Encode UTF-8 without placing keys in a URL visible to the user.
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `vpn://${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+
+function amneziaConfigTextForSave(original, edited) {
+  // Textareas normalize CRLF; preserve an unchanged uploaded file verbatim.
+  return original.replace(/\r\n?/g, "\n") === edited ? original : edited;
+}
+
+function validateAmneziaConfig(name, config) {
+  name = `${name || ""}`.trim();
+  if (
+    !name ||
+    /[\x00-\x1f\x7f]/.test(name) ||
+    new TextEncoder().encode(name).length > 200
+  ) {
+    return _(
+      "Enter a display name of up to 200 bytes without control characters",
+    );
+  }
+  if (!config || config.includes("\0")) return _("Invalid Amnezia .conf file");
+  const link = amneziaConfigLink(name, config);
+  if (!link)
+    return _("Amnezia configuration must not exceed 64 KiB including its name");
+  const validation = main.validateProxyUrl(link);
+  if (!validation.valid) return _("Invalid Amnezia .conf file");
+  // The shared backend parser validates the same AWG fields before applying.
+  const fields = {};
+  for (const line of config.split("\n")) {
+    const match = line.trim().match(/^([^#=]+)\s*=\s*(.*?)\s*$/);
+    if (match)
+      fields[match[1].trim().toLowerCase().replace(/_/g, "")] = match[2];
+  }
+  const ranges = [
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "contentpaddingaddition",
+    "rekeyaftertime",
+    "rekeytimeout",
+    "rejectaftertime",
+    "keepalivetimeout",
+    "maxhandshakeattempts",
+    "persistentkeepalive",
+    "persistentkeepaliveinterval",
+  ];
+  for (const key of ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", ...ranges]) {
+    if (fields[key] == null || (ranges.includes(key) && fields[key] === ""))
+      continue;
+    const range = fields[key].match(/^(\d+)(?:-(\d+))?$/);
+    if (
+      !range ||
+      (!ranges.includes(key) && range[2] != null) ||
+      Number(range[1]) > Number(range[2] ?? range[1]) ||
+      Number(range[2] ?? range[1]) > 4294967295
+    )
+      return _("Invalid Amnezia .conf file");
+  }
+  if (
+    fields.mtu != null &&
+    (!/^\d+$/.test(fields.mtu) ||
+      Number(fields.mtu) < 576 ||
+      Number(fields.mtu) > 65535)
+  )
+    return _("Invalid Amnezia .conf file");
+  if (
+    fields.headerprotectionkey &&
+    (!/^[A-Za-z0-9+/]{43}=$/.test(fields.headerprotectionkey) ||
+      atob(fields.headerprotectionkey).length !== 32)
+  )
+    return _("Invalid Amnezia .conf file");
+  for (const key of ["randomtrailers", "disablecookies"]) {
+    if (
+      fields[key] != null &&
+      !/^(1|true|on|yes|0|false|off|no)$/i.test(fields[key])
+    )
+      return _("Invalid Amnezia .conf file");
+  }
+  return true;
+}
+
+function showAmneziaConfigSettingsModal(
+  section_id,
+  itemValue,
+  _option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  if (context.adding && !itemValue) {
+    const input = E("input", {
+      type: "file",
+      accept: ".conf",
+      hidden: true,
+      "data-tachyon-amnezia-upload": "1",
+      style: "display:none!important",
+      "aria-hidden": "true",
+      tabindex: "-1",
+    });
+    input.addEventListener("cancel", () => input.remove());
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+      if (!/\.conf$/i.test(file.name) || file.size > 65536) {
+        ui.addNotification(
+          null,
+          E("p", _("Select an Amnezia .conf file up to 64 KiB")),
+        );
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () =>
+        ui.addNotification(
+          null,
+          E("p", _("Cannot read the Amnezia .conf file")),
+        );
+      reader.onload = () => {
+        const config = `${reader.result || ""}`.replace(/^\uFEFF/, "");
+        showAmneziaConfigSettingsModal(
+          section_id,
+          JSON.stringify({ name: file.name.replace(/\.conf$/i, ""), config }),
+          _option,
+          widget,
+          itemNode,
+          context,
+        );
+      };
+      reader.readAsText(file);
+    });
+    const oldInput = document.querySelector("[data-tachyon-amnezia-upload]");
+    if (oldInput) oldInput.remove();
+    document.body.appendChild(input);
+    input.click();
+    return;
+  }
+  const config = parseAmneziaConfig(itemValue) || { name: "", config: "" };
+  const map = new form.JSONMap({
+    settings: { name: config.name, config: config.config },
+  });
+  const itemSection = map.section(form.NamedSection, "settings");
+  itemSection.anonymous = true;
+  itemSection.addremove = false;
+  const nameOption = itemSection.option(form.Value, "name", _("Display name"));
+  nameOption.rmempty = false;
+  nameOption.validate = function (_id, value) {
+    const result = validateAmneziaConfig(
+      value,
+      configOption.formvalue("settings") || config.config,
+    );
+    if (result !== true) return result;
+    const names = currentDraftOutboundNames(section_id);
+    if (!context.adding) {
+      const index = names.indexOf(config.name);
+      if (index >= 0) names.splice(index, 1);
+    }
+    if (widget && widget.node) {
+      for (const item of widget.node.querySelectorAll(".item")) {
+        if (item === itemNode) continue;
+        const other = parseAmneziaConfig(dynamicListItemCurrentValue(item, ""));
+        if (other) names.push(other.name.trim());
+      }
+    }
+    return names.includes(`${value || ""}`.trim())
+      ? _("This display name is already in use")
+      : true;
+  };
+  const configOption = itemSection.option(
+    form.TextValue,
+    "config",
+    _("Amnezia .conf"),
+    _(
+      "Private keys are stored on the router. DNS and command hooks from the file are not applied.",
+    ),
+  );
+  configOption.rows = 12;
+  configOption.wrap = "off";
+  configOption.rmempty = false;
+  configOption.validate = function (_id, value) {
+    return validateAmneziaConfig(
+      nameOption.formvalue("settings") || config.name,
+      `${value || ""}`,
+    );
+  };
+  configureTextareaOption(configOption);
+  return renderStackedJsonSettingsModal(
+    _("Amnezia configuration"),
+    map,
+    (settings) => {
+      const value = JSON.stringify({
+        name: `${settings.name || ""}`.trim(),
+        config: amneziaConfigTextForSave(config.config, settings.config),
+      });
+      if (context.adding) addDynamicListItem(widget, value);
+      else {
+        setDynamicListItemValue(itemNode, value);
+        updateDynamicListItemLabel(itemNode, settings.name.trim());
+        if (widget && widget.node)
+          widget.dispatchCbiDynlistChange(widget.node, value);
+      }
+    },
+  );
+}
+
+function validateAmneziaConfigsBeforeSave(_section_id, values) {
+  const names = new Set();
+  for (const value of normalizeDynamicListItems(values)) {
+    const config = parseAmneziaConfig(value);
+    if (!config) return _("Invalid Amnezia .conf file");
+    const result = validateAmneziaConfig(config.name, config.config);
+    if (result !== true) return result;
+    if (names.has(config.name.trim()))
+      return _("This display name is already in use");
+    names.add(config.name.trim());
+  }
   return true;
 }
 
@@ -11103,7 +11361,7 @@ function createSectionContent(section) {
             E(
               "span",
               { "data-tachyon-vpn-url-hint": "1" },
-              main.supportsVpnUrl() ? "; vpn:// (AWG, LX)" : "",
+              main.supportsVpnUrl() ? "; vpn:// (AWG, LX / tachyon-core)" : "",
             ),
           );
           refreshVpnUrlHints();
@@ -11124,6 +11382,58 @@ function createSectionContent(section) {
     refreshDashboardFilterChoiceWidgets(section_id);
   };
   outboundNameSourceOptions.set("selector_proxy_links", o);
+
+  o = section.taboption(
+    "settings",
+    ButtonAddSettingsDynamicList,
+    "selector_amnezia_configs",
+    _("Amnezia configurations"),
+    _(
+      "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core.",
+    ),
+  );
+  o.depends("action", "connection");
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.addButtonLabel = `\u{1F4C1} ${_("Load .conf")}`;
+  o.renderItemSettingsModal = showAmneziaConfigSettingsModal;
+  o.renderListItemLabel = function (_id, value) {
+    const config = parseAmneziaConfig(value);
+    return E(
+      "span",
+      { class: "fkp-dynlist-label" },
+      config ? config.name : _("Invalid Amnezia .conf file"),
+    );
+  };
+  o.inputValueForItem = function (_id, value) {
+    return parseAmneziaConfig(value)?.name || value;
+  };
+  o.validateItemsOnSave = validateAmneziaConfigsBeforeSave;
+  o.validate = function (_id, value) {
+    return !value ? true : validateAmneziaConfigsBeforeSave(_id, [value]);
+  };
+  const originalAmneziaIsActive = o.isActive;
+  o.isActive = function () {
+    return (
+      main.supportsVpnUrl() && originalAmneziaIsActive.apply(this, arguments)
+    );
+  };
+  const originalAmneziaRender = o.render;
+  o.render = function () {
+    return Promise.resolve(originalAmneziaRender.apply(this, arguments)).then(
+      (node) => {
+        if (node) {
+          node.setAttribute("data-tachyon-amnezia-configs", "1");
+          refreshVpnUrlHints();
+          node.style.display = main.supportsVpnUrl() ? "" : "none";
+        }
+        return node;
+      },
+    );
+  };
+  o.onListChange = refreshDashboardFilterChoiceWidgets;
+  outboundNameSourceOptions.set("selector_amnezia_configs", o);
 
   o = section.taboption(
     "settings",

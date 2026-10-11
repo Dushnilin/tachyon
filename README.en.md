@@ -69,6 +69,7 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 ### 🛡️ 2. Multi-Protocol Proxying & Advanced Subscriptions
 * **sing-box Engine (v1.11 - v1.14+)**:
   * Native support for modern proxy protocols: **VLESS (Reality / gRPC / WS)**, **VMess**, **Shadowsocks**, **Trojan**, **Hysteria2**, and **WireGuard / AmneziaWG (AWG 3.1)**.
+  * **AmneziaWG 2.0 / 3.0 / 3.1 `.conf` import**: a separate named list between Connection URL and Connection links (text), with upload, edit and removal on sing-box LX and tachyon-core. Original configurations are stored in UCI `selector_amnezia_configs`; the shared WG/AWG parser creates native endpoints. Unsupported engines hide the field without deleting saved entries, but cannot apply them. One Interface and one Peer are supported, with a 64 KiB limit including the name. DNS and command hooks are not applied. Private keys remain in router configuration; do not publish it.
   * **Native OpenVPN Endpoint & `.ovpn` File Upload**: Complete built-in OpenVPN client in sing-box (>= 1.14.0) with direct `.ovpn` configuration file upload and validation via LuCI.
 * **High-Speed FPTN Engine (`fptn-client-cli`)**:
   * L3 packet tunneling over WebSocket/TLS with effective HTTPS camouflage to bypass restrictive protocol blocks (`tun-fptn`, routing table `4249`).
