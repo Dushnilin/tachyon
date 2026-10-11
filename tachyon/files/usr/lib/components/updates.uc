@@ -2262,7 +2262,7 @@ function download_to_file(url, filepath, proxy_address) {
     // download_one: try url via the given proxy (or direct if proxy=="")
     function download_one(target_url, proxy_addr) {
         if (command_exists("curl")) {
-            let curl_args = [ "curl", "--connect-timeout", "5", "-m", "10", "-fsSL" ];
+            let curl_args = [ "curl", "--connect-timeout", "5", "-m", "15", "-y", "6", "-Y", "32768", "-fsSL" ];
             if (as_string(proxy_addr) != "") {
                 push(curl_args, "-x", "http://" + as_string(proxy_addr));
             } else {
@@ -2273,7 +2273,7 @@ function download_to_file(url, filepath, proxy_address) {
             push(curl_args, target_url, "-o", filepath);
             return command_success_from_args(curl_args) && file_nonempty(filepath);
         } else {
-            let command = command_from_args([ "wget", "-q", "-T", "10", "-O", filepath, target_url ]);
+            let command = command_from_args([ "wget", "-q", "-T", "15", "-O", filepath, target_url ]);
             if (as_string(proxy_addr) != "")
                 command = "http_proxy=" + shell_quote("http://" + as_string(proxy_addr)) +
                     " https_proxy=" + shell_quote("http://" + as_string(proxy_addr)) + " " + command;
@@ -2281,25 +2281,31 @@ function download_to_file(url, filepath, proxy_address) {
         }
     }
 
+    // 1. Through the configured proxy section first if available
+    if (as_string(proxy_address) != "") {
+        if (download_one(url, proxy_address)) {
+            log_message("Successfully downloaded " + as_string(url) + " via proxy section", "info");
+            return true;
+        }
+        log_message("Download via proxy section failed for " + as_string(url) + "; retrying direct and mirrors", "warn");
+    }
+
     for (let i = 0; i < length(candidates); i++) {
         let candidate = candidates[i];
         let label = i == 0 ? "" : " via mirror " + candidate;
 
-        // 1. Direct — always the first attempt for every candidate
+        // 2. Direct fallback
         if (download_one(candidate, "")) {
             if (candidate != url)
                 log_message("Successfully downloaded " + as_string(url) + label, "info");
             return true;
         }
 
-        // 2. Through the configured proxy section — only if direct failed
-        if (as_string(proxy_address) != "") {
+        // 3. Through the configured proxy section for mirrors if direct failed
+        if (as_string(proxy_address) != "" && i > 0) {
             log_message("Download direct failed for " + as_string(candidate) + "; retrying via proxy section", "warn");
             if (download_one(candidate, proxy_address)) {
-                if (candidate != url)
-                    log_message("Successfully downloaded " + as_string(url) + label + " (via proxy section)", "info");
-                else
-                    log_message("Successfully downloaded " + as_string(url) + " via proxy section", "info");
+                log_message("Successfully downloaded " + as_string(url) + label + " (via proxy section)", "info");
                 return true;
             }
             log_message("Download via proxy section also failed for " + as_string(candidate), "warn");
