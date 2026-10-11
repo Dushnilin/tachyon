@@ -1514,8 +1514,40 @@ function validateHttpProxyUrl(url) {
   return { valid: true, message: _("Valid") };
 }
 
+// src/validators/validateFptnUrl.ts
+function validateFptnUrl(url) {
+  const trimmed = url.trim();
+  const prefixes = ["fptnb://", "fptn://", "fptnb:", "fptn:"];
+  const prefix = prefixes.find((p) => trimmed.startsWith(p));
+  if (!prefix) {
+    return {
+      valid: false,
+      message: _("Invalid FPTN URL: must start with fptn: or fptnb:")
+    };
+  }
+  const body = trimmed.slice(prefix.length).split("#")[0].trim();
+  if (!body) {
+    return {
+      valid: false,
+      message: _("Invalid FPTN URL: missing token body")
+    };
+  }
+  const cleaned = body.replace(/[\s=]/g, "");
+  if (cleaned.length % 4 === 1 || !/^[A-Za-z0-9+/_-]+$/.test(cleaned)) {
+    return {
+      valid: false,
+      message: _("Invalid FPTN URL: invalid base64 token payload")
+    };
+  }
+  return { valid: true, message: _("Valid") };
+}
+
 // src/validators/validateProxyUrl.ts
 var DISPATCH = [
+  {
+    prefixes: ["fptnb://", "fptn://", "fptnb:", "fptn:"],
+    validate: validateFptnUrl
+  },
   { prefixes: ["ss://"], validate: validateShadowsocksUrl },
   { prefixes: ["vless://"], validate: validateVlessUrl },
   { prefixes: ["vmess://"], validate: validateVmessUrl },
@@ -1548,7 +1580,7 @@ function validateProxyUrl(url) {
   return {
     valid: false,
     message: _(
-      "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://"
+      "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, tuic://, fptn://, or fptn:"
     ) + (supportsVpnUrl() ? "; vpn:// (LX)" : "")
   };
 }
@@ -1982,7 +2014,7 @@ function insertIf(condition, elements) {
 }
 
 // src/helpers/isCopyableProxyLink.ts
-var COPYABLE_PROXY_URI_RE = /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|socks4|socks4a|socks5|http|https|vpn):\/\//i;
+var COPYABLE_PROXY_URI_RE = /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|anytls|shadowtls|naive|socks4|socks4a|socks5|http|https|vpn):\/\/|^fptn[b]?(:|\/\/)/i;
 function isCopyableProxyLink(link) {
   return COPYABLE_PROXY_URI_RE.test((link || "").trim());
 }
@@ -2573,12 +2605,12 @@ function renderDefaultState({
     "masque",
     "openvpn"
   ].includes(section.action || "");
-  const isServiceNode = ["zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn"].includes(
+  const isServiceNode = ["zapret", "zapret2", "byedpi", "wdtt", "olcrtc"].includes(
     section.action || ""
   ) || Boolean(section.serviceStatus);
   if (isServiceNode) {
     const ss = section.serviceStatus;
-    const serviceType = ss?.serviceType || (["zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn"].includes(
+    const serviceType = ss?.serviceType || (["zapret", "zapret2", "byedpi", "wdtt", "olcrtc"].includes(
       section.action || ""
     ) ? section.action : "zapret");
     const typeLabel = serviceType === "zapret" ? "Zapret" : serviceType === "zapret2" ? "Zapret2" : serviceType === "byedpi" ? "ByeDPI" : serviceType === "wdtt" ? "WDTT" : serviceType === "olcrtc" ? "OlcRTC" : "FPTN";
@@ -3652,12 +3684,15 @@ var Tachyon;
     AvailableMethods2["FUZZER_STRATEGIES"] = "fuzzer_strategies";
     AvailableMethods2["FUZZER_UPDATE_PRESETS"] = "fuzzer_update_presets";
     AvailableMethods2["GENERATE_REALITY_KEYPAIR"] = "generate_reality_keypair";
+    AvailableMethods2["GENERATE_TLS_KEYPAIR"] = "generate_tls_keypair";
     AvailableMethods2["GENERATE_WARP"] = "generate_warp";
+    AvailableMethods2["GENERATE_WG_KEYPAIR"] = "generate_wg_keypair";
     AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
     AvailableMethods2["GET_ENGINE_STATUS"] = "get_engine_status";
     AvailableMethods2["GET_FPTN_STATUS"] = "get_fptn_status";
     AvailableMethods2["GET_OLCRTC_STATUS"] = "get_olcrtc_status";
     AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
+    AvailableMethods2["GET_ROUTER_NETWORK_ENV"] = "get_router_network_env";
     AvailableMethods2["GET_SERVER_CAPABILITIES"] = "get_server_capabilities";
     AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
     AvailableMethods2["GET_STATUS"] = "get_status";
@@ -4334,14 +4369,18 @@ var TachyonShellMethods = {
   componentUpdateCheckCache: async () => callBaseMethod(
     Tachyon.AvailableMethods.COMPONENT_UPDATE_CHECK_CACHE
   ),
-  componentListReleases: async (component, count = 3) => {
+  componentListReleases: async (component, count = 5, page = 1) => {
+    const args = [
+      Tachyon.AvailableMethods.COMPONENT_LIST_RELEASES,
+      component,
+      String(count)
+    ];
+    if (page > 1) {
+      args.push(String(page));
+    }
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [
-        Tachyon.AvailableMethods.COMPONENT_LIST_RELEASES,
-        component,
-        String(count)
-      ],
+      args,
       timeout: 25e3
     });
     const parsed = parseJsonArrayOutput(
@@ -5339,14 +5378,12 @@ var ACTION_DISPLAY_NAMES = {
 };
 function isConnectionAction(action) {
   return Boolean(
-    action && (SINGLE_ENDPOINT_ACTIONS.has(action) || ["connection", "proxy", "outbound"].includes(action))
+    action && (SINGLE_ENDPOINT_ACTIONS.has(action) || ["connection", "proxy", "outbound", "fptn"].includes(action))
   );
 }
 function isServiceAction(action) {
   return Boolean(
-    action && ["zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn"].includes(
-      action
-    )
+    action && ["zapret", "zapret2", "byedpi", "wdtt", "olcrtc"].includes(action)
   );
 }
 function hasSubscriptionSources(section) {
@@ -5381,7 +5418,7 @@ function isNaOutbound(outbound) {
   return !outbound.latency && outbound.latency !== -1;
 }
 function shouldUseProxyGroup(section) {
-  return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
+  return section.action === "fptn" || Boolean(section.access_token) || getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
 }
 function getSectionProxyConfigType(section) {
   if (hasSubscriptionSources(section)) {
@@ -5392,6 +5429,9 @@ function getSectionProxyConfigType(section) {
   }
   if (getManualProxyLinks(section).length > 0) {
     return "selector";
+  }
+  if (section.action === "fptn") {
+    return "urltest";
   }
   if (getJsonOutbounds(section).length > 0) {
     return "outbound";
@@ -5710,7 +5750,7 @@ function resolveOutboundNameAndPrefix({
   if (!prefix && configuredPrefixes.length > 0) {
     for (const p of configuredPrefixes) {
       if (!p) continue;
-      if (rawName.startsWith(p + " ") || rawName.startsWith(p + "-") || code.startsWith(p + " ") || code.startsWith(p + "-") || entry?.value?.name?.startsWith(p + " ") || entry?.value?.name?.startsWith(p + "-")) {
+      if (rawName.startsWith(p + " ") || rawName.startsWith(p + "-") || rawName.startsWith(p + "/") || code.startsWith(p + " ") || code.startsWith(p + "-") || code.startsWith(p + "/") || entry?.value?.name?.startsWith(p + " ") || entry?.value?.name?.startsWith(p + "-") || entry?.value?.name?.startsWith(p + "/")) {
         prefix = p;
         break;
       }
@@ -5728,6 +5768,17 @@ function resolveOutboundNameAndPrefix({
       if (stripped) {
         displayName = stripped;
       }
+    } else if (displayName.startsWith(prefix + "/")) {
+      const stripped = displayName.slice(prefix.length + 1).trim();
+      if (stripped) {
+        displayName = stripped;
+      }
+    }
+  } else if (displayName.includes("/")) {
+    const parts = displayName.split("/");
+    if (parts.length > 1 && parts[parts.length - 1].trim()) {
+      prefix = parts.slice(0, -1).join("/");
+      displayName = parts[parts.length - 1].trim();
     }
   }
   return {
@@ -24205,6 +24256,7 @@ var componentActionStateRefreshPromise = null;
 var followedComponentJobs = /* @__PURE__ */ new Set();
 var handledComponentJobs = /* @__PURE__ */ new Set();
 var activeVersionPickerComponent = null;
+var versionPickerPage = 1;
 var versionPickerLoading = false;
 var versionPickerError = null;
 var versionPickerReleases = [];
@@ -25126,9 +25178,15 @@ async function toggleVersionPicker(component) {
     return;
   }
   activeVersionPickerComponent = component;
+  versionPickerPage = 1;
+  await loadVersionPickerReleases(component, 1);
+}
+async function loadVersionPickerReleases(component, page) {
+  const cacheKey = `${component}:${page}`;
   versionPickerError = null;
-  if (versionPickerReleasesCache[component]) {
-    versionPickerReleases = versionPickerReleasesCache[component];
+  versionPickerPage = page;
+  if (versionPickerReleasesCache[cacheKey]) {
+    versionPickerReleases = versionPickerReleasesCache[cacheKey];
     versionPickerLoading = false;
     renderUpdatesComponents();
     return;
@@ -25139,30 +25197,31 @@ async function toggleVersionPicker(component) {
   try {
     const response = await TachyonShellMethods.componentListReleases(
       component,
-      5
+      5,
+      page
     );
-    if (activeVersionPickerComponent !== component) {
+    if (activeVersionPickerComponent !== component || versionPickerPage !== page) {
       return;
     }
     if (!response.success) {
       versionPickerError = response.error || _("No versions found");
       versionPickerReleases = [];
     } else if (!response.data || response.data.length === 0) {
-      versionPickerError = _("No versions found");
+      versionPickerError = page > 1 ? _("No more versions found") : _("No versions found");
       versionPickerReleases = [];
     } else {
       versionPickerReleases = response.data;
-      versionPickerReleasesCache[component] = response.data;
+      versionPickerReleasesCache[cacheKey] = response.data;
       versionPickerError = null;
     }
   } catch (_error) {
-    if (activeVersionPickerComponent !== component) {
+    if (activeVersionPickerComponent !== component || versionPickerPage !== page) {
       return;
     }
     versionPickerError = _("Failed to load versions");
     versionPickerReleases = [];
   } finally {
-    if (activeVersionPickerComponent === component) {
+    if (activeVersionPickerComponent === component && versionPickerPage === page) {
       versionPickerLoading = false;
       renderUpdatesComponents();
     }
@@ -25184,6 +25243,37 @@ async function handleInstallVersion(component, tag) {
 }
 function renderVersionPickerDropdown(component) {
   const container = E("div", { class: "tachyon-version-picker" });
+  const customInput = E("input", {
+    type: "text",
+    class: "cbi-input-text tachyon-version-picker__custom-input",
+    placeholder: _("Custom tag (e.g. v1.2.3)"),
+    id: `tachyon-version-picker-custom-${component}`
+  });
+  const customInstallBtn = renderButton({
+    text: _("Install"),
+    loading: false,
+    disabled: isAnyActionLoading(),
+    onClick: () => {
+      const tag = customInput.value?.trim();
+      if (tag) {
+        void handleInstallVersion(component, tag);
+      }
+    }
+  });
+  customInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const tag = customInput.value?.trim();
+      if (tag) {
+        void handleInstallVersion(component, tag);
+      }
+    }
+  });
+  const customRow = E("div", { class: "tachyon-version-picker__custom" }, [
+    customInput,
+    customInstallBtn
+  ]);
+  container.appendChild(customRow);
   if (versionPickerLoading) {
     container.appendChild(
       E(
@@ -25192,46 +25282,87 @@ function renderVersionPickerDropdown(component) {
         _("Loading versions...")
       )
     );
-    return container;
-  }
-  if (versionPickerError) {
+  } else if (versionPickerError) {
     container.appendChild(
       E("div", { class: "tachyon-version-picker__error" }, versionPickerError)
     );
-    return container;
+  } else if (versionPickerReleases.length === 0) {
+    container.appendChild(
+      E(
+        "div",
+        { class: "tachyon-version-picker__empty" },
+        _("No versions found")
+      )
+    );
+  } else {
+    const list = E("div", { class: "tachyon-version-picker__list" });
+    for (const release of versionPickerReleases) {
+      const children = [
+        E("span", { class: "tachyon-version-picker__tag" }, release.tag)
+      ];
+      if (release.published) {
+        children.push(
+          E(
+            "span",
+            { class: "tachyon-version-picker__date" },
+            release.published
+          )
+        );
+      }
+      if (release.prerelease) {
+        children.push(
+          E(
+            "span",
+            { class: "tachyon-version-picker__prerelease" },
+            _("pre-release")
+          )
+        );
+      }
+      children.push(
+        renderButton({
+          text: _("Install"),
+          loading: false,
+          disabled: isAnyActionLoading(),
+          onClick: () => void handleInstallVersion(component, release.tag)
+        })
+      );
+      list.appendChild(
+        E("div", { class: "tachyon-version-picker__item" }, children)
+      );
+    }
+    container.appendChild(list);
   }
-  const list = E("div", { class: "tachyon-version-picker__list" });
-  for (const release of versionPickerReleases) {
-    const children = [
-      E("span", { class: "tachyon-version-picker__tag" }, release.tag)
-    ];
-    if (release.published) {
-      children.push(
-        E("span", { class: "tachyon-version-picker__date" }, release.published)
-      );
-    }
-    if (release.prerelease) {
-      children.push(
-        E(
-          "span",
-          { class: "tachyon-version-picker__prerelease" },
-          _("pre-release")
-        )
-      );
-    }
-    children.push(
+  const hasReleasesOrNext = versionPickerReleases.length >= 5;
+  const paginationRow = E(
+    "div",
+    { class: "tachyon-version-picker__pagination" },
+    [
       renderButton({
-        text: _("Install"),
+        text: "← " + _("Previous"),
         loading: false,
-        disabled: isAnyActionLoading(),
-        onClick: () => void handleInstallVersion(component, release.tag)
+        disabled: versionPickerLoading || versionPickerPage <= 1,
+        onClick: () => {
+          if (versionPickerPage > 1) {
+            void loadVersionPickerReleases(component, versionPickerPage - 1);
+          }
+        }
+      }),
+      E(
+        "span",
+        { class: "tachyon-version-picker__page-num" },
+        `${_("Page")} ${versionPickerPage}`
+      ),
+      renderButton({
+        text: _("Next") + " →",
+        loading: false,
+        disabled: versionPickerLoading || !hasReleasesOrNext,
+        onClick: () => {
+          void loadVersionPickerReleases(component, versionPickerPage + 1);
+        }
       })
-    );
-    list.appendChild(
-      E("div", { class: "tachyon-version-picker__item" }, children)
-    );
-  }
-  container.appendChild(list);
+    ]
+  );
+  container.appendChild(paginationRow);
   return container;
 }
 function renderComponentCard(card) {
@@ -26740,6 +26871,45 @@ var styles6 = `
     border: 1px solid var(--color-yellow-base, #f39c12);
     border-radius: 3px;
     padding: 1px 4px;
+}
+
+.tachyon-version-picker__custom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color-low, #dee2e6);
+}
+
+.tachyon-version-picker__custom-input {
+    flex: 1 1 auto;
+    font-size: 12px;
+    padding: 4px 8px;
+    height: 30px;
+}
+
+.tachyon-version-picker__empty {
+    padding: 6px 0;
+    font-size: 12px;
+    color: var(--text-color-medium, #6c757d);
+    font-style: italic;
+}
+
+.tachyon-version-picker__pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color-low, #dee2e6);
+}
+
+.tachyon-version-picker__page-num {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-color-medium, #6c757d);
 }
 `;
 

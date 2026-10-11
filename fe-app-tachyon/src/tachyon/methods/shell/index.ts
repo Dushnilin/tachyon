@@ -719,15 +719,20 @@ export const TachyonShellMethods = {
     ),
   componentListReleases: async (
     component: Tachyon.ComponentName,
-    count = 3,
+    count = 5,
+    page = 1,
   ) => {
+    const args = [
+      Tachyon.AvailableMethods.COMPONENT_LIST_RELEASES,
+      component,
+      String(count),
+    ];
+    if (page > 1) {
+      args.push(String(page));
+    }
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [
-        Tachyon.AvailableMethods.COMPONENT_LIST_RELEASES,
-        component,
-        String(count),
-      ],
+      args,
       timeout: 25_000,
     });
     const parsed = parseJsonArrayOutput<Tachyon.ComponentRelease>(

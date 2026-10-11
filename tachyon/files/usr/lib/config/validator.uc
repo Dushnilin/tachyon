@@ -1643,7 +1643,7 @@ function validate_rule(section, sections, context) {
             fail_validation(provider_labels[action] + " rule '" + name + "' has no routing conditions. Add domains, community lists, IP/subnet/port/protocol matchers or enable Match All explicitly. Aborted.");
     }
 
-    if (connections.is_connections_action(action)) {
+    if (connections.is_connections_action(action) || action == "fptn") {
         validate_dashboard_filter(section);
 
         for (let urltest_id in connections.urltests(section)) {

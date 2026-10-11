@@ -1482,16 +1482,14 @@ function createComponentsVisibilityWidget(option, section_id) {
           E(
             "div",
             {
-              style:
-                "font-weight:600;font-size:0.875rem;color:inherit;",
+              style: "font-weight:600;font-size:0.875rem;color:inherit;",
             },
             c.label,
           ),
           E(
             "div",
             {
-              style:
-                "font-size:0.75rem;opacity:0.75;",
+              style: "font-size:0.75rem;opacity:0.75;",
             },
             c.desc,
           ),
@@ -1950,7 +1948,7 @@ function createSettingsContent(section, capabilities) {
       const rawVal =
         input && input.value !== undefined && input.value !== ""
           ? input.value
-          : (cfgvalue || 10000);
+          : cfgvalue || 10000;
       const val = parseInt(rawVal, 10);
       if (isNaN(val) || val <= 0) {
         calcNode.textContent =
@@ -2285,7 +2283,9 @@ function createSettingsContent(section, capabilities) {
     const entries = value.split(",");
     for (const entry of entries) {
       const trimmed = entry.trim();
-      if (!/^((tcp|udp):)?[0-9]{1,5}(-[0-9]{1,5})?$|^(tcp|udp)$/.test(trimmed)) {
+      if (
+        !/^((tcp|udp):)?[0-9]{1,5}(-[0-9]{1,5})?$|^(tcp|udp)$/.test(trimmed)
+      ) {
         return _(
           'Each entry must be "proto", "proto:port" or "proto:port-port" (tcp/udp), e.g. tcp:6881,udp:6881-6889',
         );
@@ -2293,7 +2293,9 @@ function createSettingsContent(section, capabilities) {
 
       const portSpec = trimmed.includes(":")
         ? trimmed.split(":")[1]
-        : (/^[0-9]/.test(trimmed) ? trimmed : null);
+        : /^[0-9]/.test(trimmed)
+          ? trimmed
+          : null;
       if (!portSpec) {
         continue;
       }
@@ -2414,27 +2416,76 @@ function createSettingsContent(section, capabilities) {
 
     function renderStepIcon(state) {
       if (state === "done")
-        return E("span", { style: "color: var(--color-green-base, #2ecc71); font-weight: bold;" }, "\u2713");
+        return E(
+          "span",
+          {
+            style:
+              "color: var(--color-green-base, #2ecc71); font-weight: bold;",
+          },
+          "\u2713",
+        );
       if (state === "error")
-        return E("span", { style: "color: var(--color-red-base, #e74c3c); font-weight: bold;" }, "\u2717");
+        return E(
+          "span",
+          {
+            style: "color: var(--color-red-base, #e74c3c); font-weight: bold;",
+          },
+          "\u2717",
+        );
       if (state === "active")
-        return E("span", { class: "spinning", style: "color: var(--color-blue-base, #3498db);" }, "\u25CB");
-      return E("span", { style: "color: var(--text-color-medium, #999);" }, "\u25CB");
+        return E(
+          "span",
+          {
+            class: "spinning",
+            style: "color: var(--color-blue-base, #3498db);",
+          },
+          "\u25CB",
+        );
+      return E(
+        "span",
+        { style: "color: var(--text-color-medium, #999);" },
+        "\u25CB",
+      );
     }
 
-    const stepsContainer = E("div", { style: "display: flex; flex-direction: column; gap: 8px; margin: 12px 0;" });
+    const stepsContainer = E("div", {
+      style: "display: flex; flex-direction: column; gap: 8px; margin: 12px 0;",
+    });
     const stepEls = steps.map((step) => {
-      const row = E("div", { style: "display: flex; align-items: center; gap: 8px; padding: 4px 0; transition: opacity 0.3s;" }, [
-        renderStepIcon("pending"),
-        E("span", { style: "font-size: 13px; color: var(--text-color-medium, #666);" }, step.label),
-      ]);
+      const row = E(
+        "div",
+        {
+          style:
+            "display: flex; align-items: center; gap: 8px; padding: 4px 0; transition: opacity 0.3s;",
+        },
+        [
+          renderStepIcon("pending"),
+          E(
+            "span",
+            {
+              style: "font-size: 13px; color: var(--text-color-medium, #666);",
+            },
+            step.label,
+          ),
+        ],
+      );
       stepsContainer.appendChild(row);
-      return { el: row, iconEl: row.childNodes[0], labelEl: row.childNodes[1], key: step.key };
+      return {
+        el: row,
+        iconEl: row.childNodes[0],
+        labelEl: row.childNodes[1],
+        key: step.key,
+      };
     });
 
-    const detailText = E("p", {
-      style: "margin: 4px 0 0; font-size: 12px; color: var(--text-color-medium, #999); min-height: 18px;",
-    }, _("Starting lists update..."));
+    const detailText = E(
+      "p",
+      {
+        style:
+          "margin: 4px 0 0; font-size: 12px; color: var(--text-color-medium, #999); min-height: 18px;",
+      },
+      _("Starting lists update..."),
+    );
 
     let pollTimer = null;
     let pollAttempts = 0;
@@ -2505,10 +2556,11 @@ function createSettingsContent(section, capabilities) {
       _("Close"),
     );
 
-    const modalBody = E("div", { style: "display: flex; flex-direction: column; gap: 4px;" }, [
-      stepsContainer,
-      detailText,
-    ]);
+    const modalBody = E(
+      "div",
+      { style: "display: flex; flex-direction: column; gap: 4px;" },
+      [stepsContainer, detailText],
+    );
 
     ui.showModal(_("Updating lists..."), [
       modalBody,
@@ -2554,7 +2606,9 @@ function createSettingsContent(section, capabilities) {
             stopPolling();
             if (data.success !== false) {
               markAllDone();
-              detailText.textContent = _("Lists and rule sets successfully updated!");
+              detailText.textContent = _(
+                "Lists and rule sets successfully updated!",
+              );
               detailText.style.color = "var(--color-green-base, #2ecc71)";
               setTimeout(function () {
                 ui.hideModal();
@@ -3492,6 +3546,31 @@ function createSettingsContent(section, capabilities) {
     uci.unset(UCI_PACKAGE, section_id, "smart_detect_sections");
   };
 
+  const sdExpandOpt = section.taboption(
+    "services",
+    form.Flag,
+    "smart_detect_expand_to_root",
+    _("Expand detected subdomains to root domain"),
+    _(
+      "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy.",
+    ),
+  );
+  sdExpandOpt.default = "1";
+  sdExpandOpt.rmempty = false;
+  sdExpandOpt.depends("smart_detect", "1");
+
+  const sdExcludeOpt = section.taboption(
+    "services",
+    form.DynamicList,
+    "smart_detect_exclude",
+    _("Excluded domains from Smart Detect"),
+    _(
+      "Domains and subdomains that should never be automatically proxied by Smart Detect (e.g. yandex.net, mail.ru, vk.com).",
+    ),
+  );
+  sdExcludeOpt.placeholder = "example.com";
+  sdExcludeOpt.depends("smart_detect", "1");
+
   const sdDomainsOpt = section.option(
     form.DummyValue,
     "_smart_detect_domains",
@@ -3690,15 +3769,24 @@ function createTelegramContent(section) {
     _("Telegram Bot Token"),
     _("Enter the API token obtained from @BotFather."),
   );
-  o.depends("enabled", "1");
-  o.retain = true;
   o.password = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.validate = function (section_id, value) {
     if (this.section.formvalue(section_id, "enabled") === "1" && !value) {
       return _("Token is required when the bot is enabled");
     }
     return true;
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : "";
+    if (val) {
+      uci.set(UCI_PACKAGE, section_id, "bot_token", val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, "bot_token");
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, "bot_token");
   };
 
   o = section.option(
@@ -3709,9 +3797,7 @@ function createTelegramContent(section) {
       "Comma-separated list of Telegram user IDs authorized to control the bot.",
     ),
   );
-  o.depends("enabled", "1");
-  o.retain = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.validate = function (section_id, value) {
     if (this.section.formvalue(section_id, "enabled") === "1") {
       if (!value) {
@@ -3723,6 +3809,17 @@ function createTelegramContent(section) {
     }
     return true;
   };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : "";
+    if (val) {
+      uci.set(UCI_PACKAGE, section_id, "admin_ids", val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, "admin_ids");
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, "admin_ids");
+  };
 
   o = section.option(
     form.Value,
@@ -3733,9 +3830,9 @@ function createTelegramContent(section) {
   o.depends("enabled", "1");
   o.retain = true;
   o.default = "5";
-  o.rmempty = false;
+  o.rmempty = true;
   o.validate = function (section_id, value) {
-    if (this.section.formvalue(section_id, "enabled") !== "1") {
+    if (this.section.formvalue(section_id, "enabled") !== "1" || !value) {
       return true;
     }
     const val = parseInt(value);
@@ -3743,6 +3840,17 @@ function createTelegramContent(section) {
       return _("Polling interval must be at least 1 second");
     }
     return true;
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : "";
+    if (val && val !== "5") {
+      uci.set(UCI_PACKAGE, section_id, "poll_interval", val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, "poll_interval");
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, "poll_interval");
   };
 
   o = section.option(
@@ -3868,7 +3976,6 @@ function createTelegramContent(section) {
     _("Test Telegram Connection"),
   );
   testOpt.rawhtml = true;
-  testOpt.depends("enabled", "1");
   testOpt.cfgvalue = function () {
     const wrapper = E("div", { style: "margin-top: 8px;" });
     const btn = E(

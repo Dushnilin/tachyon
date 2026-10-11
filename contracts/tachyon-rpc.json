@@ -556,6 +556,12 @@
           "type": "string",
           "required": false,
           "description": "positional argument 2 of component_list_releases"
+        },
+        {
+          "name": "arg3",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 3 of component_list_releases"
         }
       ],
       "returns": {
@@ -1807,6 +1813,27 @@
       }
     },
     {
+      "name": "generate_tls_keypair",
+      "cli_command": "generate_tls_keypair",
+      "category": "system",
+      "acl": "write",
+      "description": "generate-tls-keypair (server/service.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of generate_tls_keypair"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
       "name": "generate_warp",
       "cli_command": "generate_warp",
       "category": "system",
@@ -1828,6 +1855,20 @@
           "description": "positional argument 2 of generate_warp"
         }
       ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "generate_wg_keypair",
+      "cli_command": "generate_wg_keypair",
+      "category": "system",
+      "acl": "write",
+      "description": "generate-wg-keypair (server/service.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [],
       "returns": {
         "type": "object",
         "description": "command output"
@@ -1905,6 +1946,20 @@
           "description": "positional argument 1 of get_outbound_metadata"
         }
       ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "get_router_network_env",
+      "cli_command": "get_router_network_env",
+      "category": "system",
+      "acl": "write",
+      "description": "get-router-network-env (server/service.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [],
       "returns": {
         "type": "object",
         "description": "command output"

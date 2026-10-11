@@ -1357,7 +1357,7 @@ describe('getDashboardSections', () => {
     expect(outbound?.displayName).toBe('🇫🇷 France');
   });
 
-  it('returns FPTN service section with running status on dashboard', async () => {
+  it('returns FPTN section as a connection with servers and urltest on dashboard', async () => {
     mocks.getConfigSections.mockResolvedValue([
       {
         '.name': 'fptn_sec',
@@ -1367,14 +1367,24 @@ describe('getDashboardSections', () => {
         access_token: 'test_token',
       },
     ]);
-    mocks.getFptnStatus.mockResolvedValue({
+    mocks.getClashApiProxies.mockResolvedValue({
       success: true,
       data: {
-        installed: true,
-        configured: true,
-        service_running: true,
-        ready: true,
-        status_message: 'FPTN is running',
+        proxies: {
+          'fptn_sec-out': proxy('URLTest', {
+            name: 'fptn_sec-out',
+            now: 'fptn_sec/Node-1',
+            all: ['fptn_sec/Node-1', 'fptn_sec/Node-2'],
+          }),
+          'fptn_sec/Node-1': proxy('FPTN', {
+            name: 'fptn_sec/Node-1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 42 }],
+          }),
+          'fptn_sec/Node-2': proxy('FPTN', {
+            name: 'fptn_sec/Node-2',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 84 }],
+          }),
+        },
       },
     });
 
@@ -1384,9 +1394,12 @@ describe('getDashboardSections', () => {
     expect(result.data).toHaveLength(1);
     expect(result.data[0].sectionName).toBe('fptn_sec');
     expect(result.data[0].action).toBe('fptn');
-    expect(result.data[0].serviceStatus?.serviceType).toBe('fptn');
-    expect(result.data[0].serviceStatus?.ready).toBe(true);
-    expect(result.data[0].outbounds[0].displayName).toBe('Running');
+    expect(result.data[0].withTagSelect).toBe(true);
+    expect(result.data[0].proxyConfigType).toBe('urltest');
+    expect(result.data[0].serviceStatus).toBeUndefined();
+    expect(result.data[0].outbounds).toHaveLength(2);
+    expect(result.data[0].outbounds[0].displayName).toBe('Node-1');
+    expect(result.data[0].outbounds[0].prefix).toBe('fptn_sec');
   });
 
   it('excludes hidden outbound tags from dashboard section cards even if present in selector', async () => {

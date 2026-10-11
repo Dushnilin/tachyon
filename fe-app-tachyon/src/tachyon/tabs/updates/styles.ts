@@ -391,4 +391,43 @@ export const styles = `
     border-radius: 3px;
     padding: 1px 4px;
 }
+
+.tachyon-version-picker__custom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color-low, #dee2e6);
+}
+
+.tachyon-version-picker__custom-input {
+    flex: 1 1 auto;
+    font-size: 12px;
+    padding: 4px 8px;
+    height: 30px;
+}
+
+.tachyon-version-picker__empty {
+    padding: 6px 0;
+    font-size: 12px;
+    color: var(--text-color-medium, #6c757d);
+    font-style: italic;
+}
+
+.tachyon-version-picker__pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color-low, #dee2e6);
+}
+
+.tachyon-version-picker__page-num {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-color-medium, #6c757d);
+}
 `;

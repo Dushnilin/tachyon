@@ -251,8 +251,10 @@ function fetch_github_tag_commit_sha(owner, repo, tag) {
     return response != "" ? trim(helpers.helper_output_input(response, "commit-object-sha", [])) : "";
 }
 
-function fetch_github_releases_json(owner, repo, per_page) {
+function fetch_github_releases_json(owner, repo, per_page, page) {
     let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "10");
+    if (page != null && int(page) > 1)
+        url += "&page=" + as_string(page);
     return fetch_github_json(url, "8");
 }
 

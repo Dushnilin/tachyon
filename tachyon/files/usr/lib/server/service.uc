@@ -189,6 +189,12 @@ function normalize_host(value) {
     return lc(value);
 }
 
+function str_startswith(value, prefix) {
+    value = as_string(value);
+    prefix = as_string(prefix);
+    return length(value) >= length(prefix) && substr(value, 0, length(prefix)) == prefix;
+}
+
 function str_endswith(value, suffix) {
     value = as_string(value);
     suffix = as_string(suffix);
@@ -597,7 +603,8 @@ function default_security_value(protocol) {
     protocol = as_string(protocol);
     if (protocol == "vless")
         return "reality";
-    if (protocol == "trojan" || protocol == "hysteria2")
+    if (protocol == "trojan" || protocol == "hysteria2" || protocol == "tuic" ||
+        protocol == "anytls" || protocol == "naive" || protocol == "fptn")
         return "tls";
     return "none";
 }
@@ -608,9 +615,9 @@ function server_effective_security_value(section, protocol) {
     if (security == "")
         security = default_security_value(protocol);
 
-    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg")
+    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" || protocol == "shadowtls" || protocol == "http" || protocol == "mixed")
         security = "none";
-    else if (protocol == "hysteria2")
+    else if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" || protocol == "naive" || protocol == "fptn")
         security = "tls";
     else if ((protocol == "vmess" || protocol == "trojan") && security == "reality")
         security = default_security_value(protocol);
@@ -737,6 +744,285 @@ function server_tls_certificate_sha256_from_file(certificate_path) {
     return valid_sha256_hex(fingerprint) ? fingerprint : "";
 }
 
+
+function is_tcp_port_busy(port) {
+    let port_hex = sprintf(":%04X ", int(port));
+    for (let path in [ "/proc/net/tcp", "/proc/net/tcp6" ]) {
+        let content = fs.readfile(path);
+        if (content && index(uc(as_string(content)), port_hex) >= 0)
+            return true;
+    }
+    return false;
+}
+
+function is_udp_port_busy(port) {
+    let port_hex = sprintf(":%04X ", int(port));
+    for (let path in [ "/proc/net/udp", "/proc/net/udp6" ]) {
+        let content = fs.readfile(path);
+        if (content && index(uc(as_string(content)), port_hex) >= 0)
+            return true;
+    }
+    return false;
+}
+
+function generate_awg_header_int() {
+    let hex = replace(output("head -c 4 /dev/urandom | hexdump -ve '1/1 \"%02x\"' 2>/dev/null"), /\n/g, "");
+    if (hex != "" && length(hex) == 8) {
+        let val = int("0x" + hex);
+        if (val != null) {
+            val = val & 0x7FFFFFFF;
+            if (val < 100000000)
+                val += 100000000;
+            return as_string(val);
+        }
+    }
+    let rand_hex = replace(output("sing-box generate rand --hex 3 2>/dev/null"), /\n/g, "");
+    if (rand_hex != "") {
+        let fallback_val = 100000000 + (int("0x" + rand_hex) || 0);
+        return as_string(fallback_val);
+    }
+    return "184920412";
+}
+
+function generate_awg_headers() {
+    let headers = [];
+    let attempts = 0;
+    while (length(headers) < 4 && attempts < 20) {
+        attempts++;
+        let val = generate_awg_header_int();
+        let exists = false;
+        for (let h in headers) {
+            if (h == val) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists)
+            push(headers, val);
+    }
+    while (length(headers) < 4) {
+        push(headers, as_string(100000000 + length(headers) * 1234567));
+    }
+    return headers;
+}
+
+function get_router_awg_network(lan_ip) {
+    lan_ip = as_string(lan_ip);
+    let local = "10.8.0.1/24";
+    let client = "10.8.0.2/32";
+    if (str_startswith(lan_ip, "10.")) {
+        local = "172.16.8.1/24";
+        client = "172.16.8.2/32";
+    }
+    return {
+        local_address: local,
+        client_address: client,
+        dns: valid_ipv4(lan_ip) ? lan_ip : (str_startswith(lan_ip, "10.") ? "172.16.8.1" : "10.8.0.1")
+    };
+}
+
+function get_router_ddns_domain() {
+    let services = uci.sections("ddns", "service");
+    if (type(services) == "array") {
+        for (let s in services) {
+            let enabled = as_string(s["enabled"] ?? "1");
+            if (enabled == "0" || enabled == "false")
+                continue;
+            let domain = as_string(s["lookup_host"] || s["domain"] || "");
+            if (valid_domain(domain))
+                return domain;
+        }
+    }
+    return "";
+}
+
+function get_router_wan_ips() {
+    let result = [];
+    let seen = {};
+
+    let raw = output("ubus -S call network.interface dump 2>/dev/null");
+    if (raw != "") {
+        try {
+            let parsed = json(raw);
+            let ifaces = parsed["interface"];
+            if (type(ifaces) == "array") {
+                for (let item in ifaces) {
+                    let iname = as_string(item.interface || "");
+                    if (iname == "loopback" || iname == "lan" || index(iname, "br-") == 0)
+                        continue;
+                    let addrs = item["ipv4-address"];
+                    if (type(addrs) == "array") {
+                        for (let addr_obj in addrs) {
+                            let addr = as_string(addr_obj.address || "");
+                            if (valid_ipv4(addr) && !seen[addr]) {
+                                seen[addr] = true;
+                                push(result, addr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (e) {}
+    }
+
+    for (let iface in [ "wan", "wan6", "wwan", "wwan6" ]) {
+        let raw_single = output("ubus -S call " + shell_quote("network.interface." + iface) + " status 2>/dev/null");
+        if (raw_single == "")
+            continue;
+        try {
+            let parsed = json(raw_single);
+            let addrs = parsed["ipv4-address"];
+            if (type(addrs) == "array") {
+                for (let item in addrs) {
+                    let addr = as_string(item.address || "");
+                    if (valid_ipv4(addr) && !seen[addr]) {
+                        seen[addr] = true;
+                        push(result, addr);
+                    }
+                }
+            }
+        }
+        catch (e) {}
+    }
+
+    let route = output("ip -4 route show default 2>/dev/null");
+    if (route != "") {
+        let m = match(route, /dev\s+([a-zA-Z0-9_\.\-]+)/);
+        if (m && m[1]) {
+            let ifdev = m[1];
+            let addr_out = output("ip -4 addr show dev " + shell_quote(ifdev) + " 2>/dev/null");
+            for (let line in split(addr_out, "\n")) {
+                let matched = match(trim(line), /^inet[ \t]+([0-9.]+)\//);
+                if (matched && valid_ipv4(matched[1])) {
+                    let ip = matched[1];
+                    if (!seen[ip]) {
+                        seen[ip] = true;
+                        unshift(result, ip);
+                    }
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+function get_cached_external_wan_ip() {
+    for (let path in [ "/tmp/tachyon/wan_ip", "/tmp/tachyon/external_ip", "/tmp/wan_ip", "/var/run/tachyon/wan_ip" ]) {
+        let data = fs.readfile(path);
+        if (data == null)
+            continue;
+        for (let line in split(as_string(data), "\n")) {
+            line = trim(line);
+            if (valid_public_ipv4(line))
+                return line;
+        }
+    }
+    return "";
+}
+
+function get_router_network_env() {
+    let ddns_domain = get_router_ddns_domain();
+    let has_ddns = ddns_domain != "";
+    let wan_ips = get_router_wan_ips();
+    let cached_external_ip = get_cached_external_wan_ip();
+    let lan_ip = as_string(uci.get("network.lan.ipaddr") || "192.168.1.1");
+
+    let public_host = "";
+    let is_public_ip = false;
+
+    if (has_ddns) {
+        public_host = ddns_domain;
+    } else if (cached_external_ip != "") {
+        public_host = cached_external_ip;
+        is_public_ip = true;
+    } else {
+        for (let ip in wan_ips) {
+            if (valid_public_ipv4(ip)) {
+                public_host = ip;
+                is_public_ip = true;
+                break;
+            }
+        }
+        if (public_host == "" && length(wan_ips) > 0) {
+            public_host = wan_ips[0];
+        }
+    }
+    if (public_host == "") {
+        public_host = valid_dotted_ipv4(lan_ip) ? lan_ip : "192.168.1.1";
+    }
+
+    let tcp_443_busy = is_tcp_port_busy(443);
+    let tcp_80_busy = is_tcp_port_busy(80);
+    let udp_443_busy = is_udp_port_busy(443);
+    let standard_tls_port = tcp_443_busy ? 8443 : 443;
+    let standard_quic_port = udp_443_busy ? 8443 : 443;
+
+    let awg_net = get_router_awg_network(lan_ip);
+    let awg_headers = generate_awg_headers();
+
+    let terminating_sni = has_ddns ? ddns_domain : (valid_domain(public_host) ? public_host : "tachyon.lan");
+
+    return {
+        public_host: public_host,
+        is_public_ip: is_public_ip,
+        has_ddns: has_ddns,
+        ddns_domain: ddns_domain,
+        wan_ips: wan_ips,
+        cached_external_ip: cached_external_ip,
+        lan_ip: lan_ip,
+        tcp_443_busy: tcp_443_busy,
+        tcp_80_busy: tcp_80_busy,
+        udp_443_busy: udp_443_busy,
+        recommended_ports: {
+            vless: standard_tls_port,
+            trojan: standard_tls_port,
+            anytls: standard_tls_port,
+            naive: standard_tls_port,
+            shadowtls: standard_tls_port,
+            fptn: standard_tls_port,
+            hysteria2: standard_quic_port,
+            tuic: 8443,
+            awg: 51820,
+            shadowsocks: 8388,
+            socks: 1080,
+            http: 8080,
+            mixed: 8080,
+            mtproto: standard_tls_port
+        },
+        recommended_sni: {
+            reality: "www.microsoft.com",
+            shadowtls: "www.microsoft.com",
+            terminating_tls: terminating_sni
+        },
+        awg: {
+            local_address: awg_net.local_address,
+            client_address: awg_net.client_address,
+            dns: awg_net.dns,
+            h1: awg_headers[0],
+            h2: awg_headers[1],
+            h3: awg_headers[2],
+            h4: awg_headers[3]
+        }
+    };
+}
+
+function server_detect_default_public_host() {
+    let env = get_router_network_env();
+    return env.public_host;
+}
+
+function safe_filename_string(value) {
+    value = as_string(value);
+    let result = [];
+    for (let i = 0; i < length(value); i++) {
+        let chr = substr(value, i, 1);
+        push(result, regex_matches(chr, "^[A-Za-z0-9_.-]$") ? chr : "_");
+    }
+    return join("", result);
+}
+
 function get_tls_certificate_sha256_cli(section) {
     if (as_string(section) == "") {
         error_response("Missing server section");
@@ -751,9 +1037,26 @@ function get_tls_certificate_sha256_cli(section) {
     }
 
     let certificate_path = config_get(section, "tls_certificate_path", "");
-    if (certificate_path == "") {
-        error_response("TLS certificate path is empty");
-        exit(1);
+    let key_path = config_get(section, "tls_key_path", "");
+    let tls_server_name = config_get(section, "tls_server_name", "");
+    if (tls_server_name == "") {
+        let env = get_router_network_env();
+        tls_server_name = env.recommended_sni.terminating_tls;
+    }
+
+    if (certificate_path == "" || key_path == "") {
+        let safe_name = safe_filename_string(section);
+        let default_dir = "/etc/tachyon/server-certs";
+        if (certificate_path == "")
+            certificate_path = default_dir + "/" + safe_name + ".crt";
+        if (key_path == "")
+            key_path = default_dir + "/" + safe_name + ".key";
+        server_set_option(section, "tls_certificate_path", certificate_path);
+        server_set_option(section, "tls_key_path", key_path);
+    }
+
+    if (!run("[ -s " + shell_quote(certificate_path) + " ] && [ -s " + shell_quote(key_path) + " ]")) {
+        server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path);
     }
 
     let fingerprint = server_tls_certificate_sha256_from_file(certificate_path);
@@ -765,34 +1068,30 @@ function get_tls_certificate_sha256_cli(section) {
     tls_fingerprint_response(fingerprint);
 }
 
-function network_status_ipv4_address(data) {
-    try {
-        data = json(as_string(data));
-    }
-    catch (e) {
-        return "";
+function generate_tls_keypair_cli(section) {
+    if (as_string(section) == "") {
+        error_response("Missing server section");
+        exit(1);
     }
 
-    let addresses = data["ipv4-address"];
-    if (type(addresses) != "array")
-        return "";
-
-    for (let item in addresses)
-        if (type(item) == "object" && as_string(item.address) != "")
-            return as_string(item.address);
-
-    return "";
-}
-
-function server_detect_default_public_host() {
-    for (let interface in [ "wan", "wwan" ]) {
-        let ip = network_status_ipv4_address(output("ubus -S call " + shell_quote("network.interface." + interface) + " status 2>/dev/null"));
-        if (valid_public_ipv4(ip))
-            return ip;
+    let tls_server_name = config_get(section, "tls_server_name", "");
+    if (tls_server_name == "") {
+        let env = get_router_network_env();
+        tls_server_name = env.recommended_sni.terminating_tls;
     }
 
-    let lan_ip = uci_get("network.lan.ipaddr");
-    return valid_dotted_ipv4(lan_ip) ? lan_ip : "";
+    let safe_name = safe_filename_string(section);
+    let default_dir = "/etc/tachyon/server-certs";
+    let certificate_path = config_get(section, "tls_certificate_path", default_dir + "/" + safe_name + ".crt");
+    let key_path = config_get(section, "tls_key_path", default_dir + "/" + safe_name + ".key");
+
+    if (!server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path)) {
+        error_response("Failed to generate TLS certificate");
+        exit(1);
+    }
+
+    let fingerprint = server_tls_certificate_sha256_from_file(certificate_path);
+    tls_fingerprint_response(fingerprint);
 }
 
 function first_server_user(section) {
@@ -833,15 +1132,6 @@ function server_prepare_legacy_user_defaults(section, protocol) {
         server_default_set_option(section, "vless_flow", extra);
 }
 
-function safe_filename_string(value) {
-    value = as_string(value);
-    let result = [];
-    for (let i = 0; i < length(value); i++) {
-        let chr = substr(value, i, 1);
-        push(result, regex_matches(chr, "^[A-Za-z0-9_.-]$") ? chr : "_");
-    }
-    return join("", result);
-}
 
 function server_prepare_tls_defaults(section, protocol, security) {
     if (security != "tls")
@@ -850,8 +1140,10 @@ function server_prepare_tls_defaults(section, protocol, security) {
         return;
 
     let tls_server_name = config_get(section, "tls_server_name", "");
-    if (tls_server_name == "")
-        tls_server_name = "www.microsoft.com";
+    if (tls_server_name == "") {
+        let env = get_router_network_env();
+        tls_server_name = env.recommended_sni.terminating_tls;
+    }
     server_default_set_option(section, "tls_server_name", tls_server_name);
 
     let certificate_path = config_get(section, "tls_certificate_path", "");
@@ -885,38 +1177,58 @@ function prepare_server_defaults(section) {
     let protocol = config_get(section, "protocol", "vless");
     if (!(protocol == "shadowsocks" || protocol == "socks" || protocol == "vmess" || protocol == "vless" ||
         protocol == "trojan" || protocol == "hysteria2" || protocol == "mtproto" || protocol == "tailscale" ||
-        protocol == "json_inbound" || protocol == "awg"))
+        protocol == "json_inbound" || protocol == "awg" || protocol == "tuic" || protocol == "anytls" ||
+        protocol == "naive" || protocol == "shadowtls" || protocol == "fptn" || protocol == "http" ||
+        protocol == "mixed"))
         fatal("Server '" + section + "' has unsupported protocol '" + protocol + "'. Aborted.");
 
     server_default_set_option(section, "protocol", protocol);
     server_default_set_option(section, "label", section);
     server_default_set_option(section, "enabled", "1");
     server_default_set_option(section, "routing_mode", "rules");
+    server_default_set_option(section, "open_firewall_port", "1");
 
     if (protocol == "json_inbound") {
         server_set_option(section, "security", "none");
         return;
     }
 
+    let env = get_router_network_env();
+
     server_default_set_option(section, "listen", "0.0.0.0");
-    server_default_set_option(section, "listen_port", "443");
-    server_default_set_option(section, "public_host", server_detect_default_public_host());
+    let rec_port = env.recommended_ports[protocol] ?? 443;
+    server_default_set_option(section, "listen_port", as_string(rec_port));
+    server_default_set_option(section, "public_host", env.public_host);
 
     let security = server_effective_security_value(section, protocol);
     server_set_option(section, "security", security);
     server_prepare_legacy_user_defaults(section, protocol);
 
-    if (protocol == "vless" || protocol == "vmess") {
+    if (protocol == "vless" || protocol == "vmess" || protocol == "tuic") {
         if (uci_get(config_path(section, "server_uuid")) == "") {
             let uuid = server_generate_uuid();
             server_default_set_option(section, "server_uuid", uuid);
         }
     }
-    else if (protocol == "shadowsocks" || protocol == "socks" || protocol == "trojan" || protocol == "hysteria2") {
+    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "trojan" || protocol == "hysteria2" ||
+        protocol == "tuic" || protocol == "anytls" || protocol == "naive" || protocol == "shadowtls" ||
+        protocol == "fptn" || protocol == "http" || protocol == "mixed") {
         if (uci_get(config_path(section, "server_password")) == "") {
             let password = server_generate_password();
             server_default_set_option(section, "server_password", password);
         }
+    }
+    if (protocol == "socks" || protocol == "naive" || protocol == "fptn" || protocol == "http" || protocol == "mixed") {
+        if (uci_get(config_path(section, "server_username")) == "")
+            server_default_set_option(section, "server_username", config_get(section, "label", section));
+    }
+    if (protocol == "tuic") {
+        server_default_set_option(section, "tuic_congestion_control", "bbr");
+    }
+    if (protocol == "shadowtls") {
+        server_default_set_option(section, "shadowtls_handshake_server", "www.microsoft.com");
+        server_default_set_option(section, "shadowtls_handshake_server_port", "443");
+        server_default_set_option(section, "shadowtls_version", "3");
     }
 
     if (protocol == "mtproto") {
@@ -954,8 +1266,9 @@ function prepare_server_defaults(section) {
     if (protocol == "awg") {
         server_default_set_option(section, "listen_port", "51820");
         server_default_set_option(section, "awg_mtu", "1280");
-        server_default_set_option(section, "awg_local_address", "10.0.0.1/24");
-        server_default_set_option(section, "awg_client_address", "10.0.0.2/32");
+        server_default_set_option(section, "awg_local_address", env.awg.local_address);
+        server_default_set_option(section, "awg_client_address", env.awg.client_address);
+        server_default_set_option(section, "awg_dns", env.awg.dns);
         server_default_set_option(section, "awg_jc", "4");
         server_default_set_option(section, "awg_jmin", "40");
         server_default_set_option(section, "awg_jmax", "70");
@@ -963,10 +1276,10 @@ function prepare_server_defaults(section) {
         server_default_set_option(section, "awg_s2", "0");
         server_default_set_option(section, "awg_s3", "0");
         server_default_set_option(section, "awg_s4", "0");
-        server_default_set_option(section, "awg_h1", "1");
-        server_default_set_option(section, "awg_h2", "2");
-        server_default_set_option(section, "awg_h3", "3");
-        server_default_set_option(section, "awg_h4", "4");
+        server_default_set_option(section, "awg_h1", env.awg.h1);
+        server_default_set_option(section, "awg_h2", env.awg.h2);
+        server_default_set_option(section, "awg_h3", env.awg.h3);
+        server_default_set_option(section, "awg_h4", env.awg.h4);
         server_default_set_option(section, "awg_keepalive", "25");
         
         let server_private_key = uci_get(config_path(section, "awg_private_key"));
@@ -1118,6 +1431,8 @@ else if (mode == "generate-reality-keypair")
     generate_reality_keypair_cli();
 else if (mode == "generate-wg-keypair")
     generate_wg_keypair_cli();
+else if (mode == "generate-tls-keypair")
+    generate_tls_keypair_cli(ARGV[1]);
 else if (mode == "tls-certificate-sha256")
     get_tls_certificate_sha256_cli(ARGV[1]);
 else if (mode == "reality-keypair-response")
@@ -1132,6 +1447,8 @@ else if (mode == "valid-sha256-hex")
     exit(valid_sha256_hex(ARGV[1]) ? 0 : 1);
 else if (mode == "tls-fingerprint-response")
     tls_fingerprint_response(ARGV[1]);
+else if (mode == "get-router-network-env")
+    write_json(get_router_network_env());
 else {
     warn("Usage: server/service.uc <operation> ...\n");
     exit(1);

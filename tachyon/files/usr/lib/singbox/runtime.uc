@@ -631,12 +631,6 @@ function uci_get_option(config, section, key) {
     return trim(uci_core.get(uci_path(config, section, key)));
 }
 
-function ensure_sing_box_main_section() {
-    if (uci_core.exists("sing-box.main"))
-        return true;
-    return uci_core.set_section("sing-box.main", "sing-box");
-}
-
 function uci_set_option(config, section, key, value) {
     if (!uci_core.exists(as_string(config) + "." + as_string(section)))
         return false;
@@ -645,6 +639,26 @@ function uci_set_option(config, section, key, value) {
 
 function uci_commit(config) {
     return uci_core.commit(config);
+}
+
+function ensure_sing_box_main_section() {
+    let cfg_file = "/etc/config/sing-box";
+    if (!fs.stat(cfg_file)) {
+        let dir = fs.stat("/etc/config");
+        if (!dir || dir.type != "directory")
+            fs.mkdir("/etc/config", 0755);
+        write_file(cfg_file, "");
+    }
+    if (uci_core.exists("sing-box.main"))
+        return true;
+    if (!uci_core.set_section("sing-box.main", "sing-box"))
+        return false;
+    uci_set_option("sing-box", "main", "workdir", "/usr/share/sing-box");
+    uci_set_option("sing-box", "main", "conffile", "/etc/sing-box/config.json");
+    uci_set_option("sing-box", "main", "user", "root");
+    uci_set_option("sing-box", "main", "log_stderr", "1");
+    uci_commit("sing-box");
+    return true;
 }
 
 function owner_pid() {
@@ -675,6 +689,7 @@ function managed_service_text() {
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
+        "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
@@ -741,6 +756,14 @@ function configure_service() {
 
     if (!ensure_sing_box_main_section())
         exit(1);
+
+    let workdir = uci_get_option("sing-box", "main", "workdir") || "/usr/share/sing-box";
+    if (!fs.stat(workdir)) {
+        let parent = "/usr/share";
+        if (!fs.stat(parent))
+            fs.mkdir(parent, 0755);
+        fs.mkdir(workdir, 0755);
+    }
 
     let changed = false;
     if (uci_get_option("sing-box", "main", "enabled") != "1") {

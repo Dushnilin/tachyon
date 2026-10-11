@@ -25,6 +25,33 @@ const callNetworkInterfaceDump = rpc.declare({
 });
 let defaultPublicHostPromise = null;
 let defaultPublicHostCache = null;
+let routerNetworkEnvPromise = null;
+let routerNetworkEnvCache = null;
+
+function fetchRouterNetworkEnv() {
+  if (routerNetworkEnvCache != null) {
+    return Promise.resolve(routerNetworkEnvCache);
+  }
+  if (routerNetworkEnvPromise) {
+    return routerNetworkEnvPromise;
+  }
+  routerNetworkEnvPromise = fs
+    .exec("/usr/bin/tachyon", ["get_router_network_env"])
+    .then((res) => {
+      if (res && res.code === 0 && res.stdout) {
+        try {
+          routerNetworkEnvCache = JSON.parse(res.stdout);
+          return routerNetworkEnvCache;
+        } catch (e) {}
+      }
+      return null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      routerNetworkEnvPromise = null;
+    });
+  return routerNetworkEnvPromise;
+}
 
 function asList(value) {
   if (!value) {
@@ -862,6 +889,35 @@ function chooseDefaultPublicHost(networkInterfaces) {
     return publicIp;
   }
 
+  if (routerNetworkEnvCache) {
+    if (routerNetworkEnvCache.has_ddns && routerNetworkEnvCache.ddns_domain) {
+      return routerNetworkEnvCache.ddns_domain;
+    }
+    if (routerNetworkEnvCache.cached_external_ip) {
+      return routerNetworkEnvCache.cached_external_ip;
+    }
+    if (
+      routerNetworkEnvCache.public_host &&
+      routerNetworkEnvCache.public_host !== routerNetworkEnvCache.lan_ip
+    ) {
+      return routerNetworkEnvCache.public_host;
+    }
+  }
+
+  const wanInterface =
+    upInterfaces.find((networkInterface) => {
+      const name = `${networkInterface.interface || ""}`.toLowerCase();
+      const device = `${networkInterface.device || networkInterface.l3_device || ""}`.toLowerCase();
+      return name.startsWith("wan") || name.startsWith("wwan") || device.startsWith("wan");
+    }) || {};
+  const wanIp = getInterfaceIpAddresses(wanInterface).find(
+    (ip) => ip !== "::1" && !ip.startsWith("127."),
+  );
+
+  if (wanIp) {
+    return wanIp;
+  }
+
   const lanInterface =
     upInterfaces.find((networkInterface) => {
       const name = `${networkInterface.interface || ""}`;
@@ -892,10 +948,16 @@ function loadDefaultPublicHost() {
     return defaultPublicHostPromise;
   }
 
-  defaultPublicHostPromise = callNetworkInterfaceDump()
-    .then((networkInterfaces) => {
-      defaultPublicHostCache = chooseDefaultPublicHost(networkInterfaces);
-      return defaultPublicHostCache;
+  defaultPublicHostPromise = fetchRouterNetworkEnv()
+    .then((env) => {
+      if (env && env.public_host) {
+        defaultPublicHostCache = env.public_host;
+        return defaultPublicHostCache;
+      }
+      return callNetworkInterfaceDump().then((networkInterfaces) => {
+        defaultPublicHostCache = chooseDefaultPublicHost(networkInterfaces);
+        return defaultPublicHostCache;
+      });
     })
     .catch(() => getBrowserHost())
     .finally(() => {
@@ -906,7 +968,10 @@ function loadDefaultPublicHost() {
 }
 
 function preloadServerModalData() {
-  return loadDefaultPublicHost().catch(() => null);
+  return Promise.all([
+    fetchRouterNetworkEnv(),
+    loadDefaultPublicHost(),
+  ]).catch(() => null);
 }
 
 function applyDefaultPublicHost(sectionId, host) {
@@ -1098,6 +1163,7 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   setDefault(sectionId, "enabled", "1");
   setDefault(sectionId, "label", sectionId);
   setDefault(sectionId, "routing_mode", "rules");
+  setDefault(sectionId, "open_firewall_port", "1");
 
   if (protocol === "json_inbound") {
     setValue(sectionId, "security", getDefaultSecurity(protocol));
@@ -1105,14 +1171,42 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   }
 
   setDefault(sectionId, "listen", "0.0.0.0");
-  setDefault(sectionId, "listen_port", randomPort());
-  setDefault(sectionId, "public_host", getBrowserHost());
+  let defaultPort = "443";
+  if (
+    routerNetworkEnvCache &&
+    routerNetworkEnvCache.recommended_ports &&
+    routerNetworkEnvCache.recommended_ports[protocol]
+  ) {
+    defaultPort = `${routerNetworkEnvCache.recommended_ports[protocol]}`;
+  } else if (protocol === "awg") {
+    defaultPort = "51820";
+  } else if (protocol === "hysteria2") {
+    defaultPort = "443";
+  } else if (protocol === "tuic") {
+    defaultPort = "8443";
+  } else if (protocol === "shadowsocks") {
+    defaultPort = "8388";
+  } else if (protocol === "socks") {
+    defaultPort = "1080";
+  } else if (protocol === "http" || protocol === "mixed") {
+    defaultPort = "8080";
+  }
+  setDefault(sectionId, "listen_port", defaultPort);
+
+  if (defaultPublicHostCache) {
+    setDefault(sectionId, "public_host", defaultPublicHostCache);
+  }
   setDefault(
     sectionId,
     "tls_certificate_path",
     defaultTlsCertificatePath(sectionId),
   );
   setDefault(sectionId, "tls_key_path", defaultTlsKeyPath(sectionId));
+
+  const terminatingSni =
+    routerNetworkEnvCache && routerNetworkEnvCache.recommended_sni
+      ? routerNetworkEnvCache.recommended_sni.terminating_tls
+      : "tachyon.lan";
 
   if (forceProtocolDefaults) {
     setValue(sectionId, "security", getDefaultSecurity(protocol));
@@ -1145,12 +1239,22 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
 
   if (protocol === "tuic") {
     setDefault(sectionId, "tuic_congestion_control", "bbr");
+    setDefault(sectionId, "tls_server_name", terminatingSni);
   }
 
   if (protocol === "shadowtls") {
     setDefault(sectionId, "shadowtls_handshake_server", "www.microsoft.com");
     setDefault(sectionId, "shadowtls_handshake_server_port", "443");
     setDefault(sectionId, "shadowtls_version", "3");
+  }
+
+  if (
+    protocol === "anytls" ||
+    protocol === "naive" ||
+    protocol === "fptn" ||
+    protocol === "trojan"
+  ) {
+    setDefault(sectionId, "tls_server_name", terminatingSni);
   }
 
   if (protocol === "vless") {
@@ -1186,7 +1290,42 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   }
 
   if (protocol === "hysteria2") {
+    setDefault(sectionId, "hysteria2_obfs_type", "salamander");
     setDefault(sectionId, "hysteria2_obfs_password", generatePassword());
+    setDefault(sectionId, "tls_server_name", terminatingSni);
+  }
+
+  if (protocol === "awg") {
+    const awgNet =
+      routerNetworkEnvCache && routerNetworkEnvCache.awg
+        ? routerNetworkEnvCache.awg
+        : {
+            local_address: "10.8.0.1/24",
+            client_address: "10.8.0.2/32",
+            dns: "10.8.0.1",
+            h1: "184920412",
+            h2: "492019482",
+            h3: "829401928",
+            h4: "392019481",
+          };
+    setDefault(sectionId, "listen_port", "51820");
+    setDefault(sectionId, "awg_local_address", awgNet.local_address);
+    setDefault(sectionId, "awg_client_address", awgNet.client_address);
+    setDefault(sectionId, "awg_dns", awgNet.dns);
+    setDefault(sectionId, "awg_mtu", "1280");
+    setDefault(sectionId, "awg_keepalive", "25");
+    setDefault(sectionId, "awg_version", "2.0");
+    setDefault(sectionId, "awg_jc", "4");
+    setDefault(sectionId, "awg_jmin", "40");
+    setDefault(sectionId, "awg_jmax", "70");
+    setDefault(sectionId, "awg_s1", "0");
+    setDefault(sectionId, "awg_s2", "0");
+    setDefault(sectionId, "awg_s3", "0");
+    setDefault(sectionId, "awg_s4", "0");
+    setDefault(sectionId, "awg_h1", `${awgNet.h1}`);
+    setDefault(sectionId, "awg_h2", `${awgNet.h2}`);
+    setDefault(sectionId, "awg_h3", `${awgNet.h3}`);
+    setDefault(sectionId, "awg_h4", `${awgNet.h4}`);
   }
 
   if (protocol === "mtproto") {
@@ -1339,7 +1478,7 @@ function getTransportParams(sectionId, params) {
   return transport;
 }
 
-function buildVlessTrojanLink(sectionId, identity) {
+function buildVlessTrojanLink(sectionId, identity, options = {}) {
   const protocol = getProtocol(sectionId);
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
@@ -1361,6 +1500,10 @@ function buildVlessTrojanLink(sectionId, identity) {
   if (security === "tls" || security === "reality") {
     params.sni = tlsServerName;
     params.alpn = asList(uci.get(UCI_PACKAGE, sectionId, "tls_alpn")).join(",");
+  }
+
+  if (security === "tls" && options && options.tlsCertificateSha256) {
+    params.pcs = normalizeSha256(options.tlsCertificateSha256);
   }
 
   if (security === "reality") {
@@ -1515,6 +1658,99 @@ function buildMtprotoLink(sectionId, identity) {
   return `https://t.me/proxy?${query}`;
 }
 
+function buildTuicLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
+  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+  const cc =
+    uci.get(UCI_PACKAGE, sectionId, "tuic_congestion_control") || "bbr";
+  const params = {
+    congestion_control: cc,
+    alpn: "h3",
+    sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+  };
+  if (certificatePin) {
+    params.pcs = certificatePin;
+  }
+  const query = encodeQuery(params);
+  return `tuic://${encodeURIComponent(identity.uuid)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildAnytlsLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
+  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+  const params = {
+    sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+  };
+  if (certificatePin) {
+    params.pcs = certificatePin;
+  }
+  const query = encodeQuery(params);
+  return `anytls://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildNaiveLink(sectionId, identity) {
+  const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
+  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const username = identity.username || identity.name || sectionId;
+  return `naive+https://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildShadowtlsLink(sectionId, identity) {
+  const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
+  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const handshakeServer =
+    uci.get(UCI_PACKAGE, sectionId, "shadowtls_handshake_server") ||
+    "www.microsoft.com";
+  const version = uci.get(UCI_PACKAGE, sectionId, "shadowtls_version") || "3";
+  const query = encodeQuery({
+    sni: handshakeServer,
+    version: version,
+  });
+  return `shadowtls://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildFptnLink(sectionId, identity) {
+  const host = getPublicHost(sectionId);
+  const port = parseInt(
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") || "443",
+    10,
+  );
+  const username = identity.username || identity.name || sectionId;
+  const payload = {
+    servers: [
+      {
+        server: host,
+        port: port,
+        username: username,
+        password: identity.password,
+        sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+      },
+    ],
+  };
+  return `fptn:${base64Encode(JSON.stringify(payload))}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildHttpLink(sectionId, identity) {
+  const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
+  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const username = identity.username || identity.name || sectionId;
+  const userInfo = identity.password
+    ? `${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@`
+    : "";
+  return `http://${userInfo}${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildMixedLink(sectionId, identity) {
+  return buildSocksLink(sectionId, identity);
+}
+
 function buildAwgClientConfig(sectionId) {
   const host = getPublicHost(sectionId);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "51820";
@@ -1607,7 +1843,8 @@ function buildClientLink(sectionId, options = {}) {
   }
 
   if (
-    ((protocol === "vless" || protocol === "vmess") && !identity.uuid) ||
+    ((protocol === "vless" || protocol === "vmess" || protocol === "tuic") &&
+      !identity.uuid) ||
     (PASSWORD_PROTOCOLS.includes(protocol) && !identity.password) ||
     (protocol === "mtproto" && !identity.mtprotoSecret)
   ) {
@@ -1631,22 +1868,41 @@ function buildClientLink(sectionId, options = {}) {
     case "vmess":
       return buildVmessLink(sectionId, identity);
     case "trojan":
-      return buildVlessTrojanLink(sectionId, identity);
+      return buildVlessTrojanLink(sectionId, identity, options);
     case "hysteria2":
       return buildHysteria2Link(sectionId, identity, options);
+    case "tuic":
+      return buildTuicLink(sectionId, identity, options);
+    case "anytls":
+      return buildAnytlsLink(sectionId, identity, options);
+    case "naive":
+      return buildNaiveLink(sectionId, identity);
+    case "shadowtls":
+      return buildShadowtlsLink(sectionId, identity);
+    case "fptn":
+      return buildFptnLink(sectionId, identity);
+    case "http":
+      return buildHttpLink(sectionId, identity);
+    case "mixed":
+      return buildMixedLink(sectionId, identity);
     case "mtproto":
       return buildMtprotoLink(sectionId, identity);
     case "awg":
       return buildAwgClientConfig(sectionId);
     case "vless":
     default:
-      return buildVlessTrojanLink(sectionId, identity);
+      return buildVlessTrojanLink(sectionId, identity, options);
   }
 }
 
 function buildClientLinkContext(sectionId) {
+  const protocol = getProtocol(sectionId);
+  const security = getEffectiveSecurity(sectionId);
   const certificatePinExpected =
-    getProtocol(sectionId) === "hysteria2" &&
+    ["hysteria2", "tuic", "anytls", "trojan", "fptn", "vless"].includes(
+      protocol,
+    ) &&
+    security === "tls" &&
     shouldUseGeneratedTlsCertificatePin(sectionId);
 
   if (!certificatePinExpected) {
@@ -2375,7 +2631,11 @@ function setWidgetValue(sectionId, option, value) {
     return;
   }
 
-  widget.value = value;
+  if (widget.type === "checkbox") {
+    widget.checked = value === "1" || value === true || value === "true";
+  } else {
+    widget.value = value;
+  }
   uci.set(UCI_PACKAGE, sectionId, option, value);
   widget.dispatchEvent(new Event("input", { bubbles: true }));
   widget.dispatchEvent(new Event("change", { bubbles: true }));
@@ -2575,12 +2835,292 @@ function generateAwgKeypairsIfMissing(sectionId) {
   });
 }
 
+function generateTlsCertificateIfMissing(sectionId) {
+  return fs
+    .exec("/usr/bin/tachyon", ["generate_tls_keypair", sectionId])
+    .catch(() => null);
+}
+
+function autoConfigureServer(sectionId) {
+  const protocol = getProtocol(sectionId);
+
+  setWidgetValue(sectionId, "enabled", "1");
+  setWidgetValue(sectionId, "routing_mode", "rules");
+  setWidgetValue(sectionId, "open_firewall_port", "1");
+  setWidgetValue(sectionId, "listen", "0.0.0.0");
+
+  fetchRouterNetworkEnv().then((env) => {
+    env = env || {};
+    const recPorts = env.recommended_ports || {};
+    const recSni = env.recommended_sni || {};
+    const awgEnv = env.awg || {};
+
+    const publicHost = env.public_host || getBrowserHost();
+    setWidgetValue(sectionId, "public_host", publicHost);
+
+    let chosenPort = recPorts[protocol] ? `${recPorts[protocol]}` : "443";
+    if (protocol === "awg") {
+      chosenPort = "51820";
+    } else if (protocol === "hysteria2") {
+      chosenPort = recPorts.hysteria2 ? `${recPorts.hysteria2}` : "443";
+    } else if (protocol === "tuic") {
+      chosenPort = "8443";
+    } else if (protocol === "shadowsocks") {
+      chosenPort = "8388";
+    } else if (protocol === "socks") {
+      chosenPort = "1080";
+    } else if (protocol === "http" || protocol === "mixed") {
+      chosenPort = "8080";
+    }
+
+    const serverSections = uci.sections(UCI_PACKAGE, "server") || [];
+
+    if (protocol !== "tailscale" && protocol !== "json_inbound") {
+      const usedPorts = new Set();
+      for (const s of serverSections) {
+        if (s[".name"] === sectionId) continue;
+        const p = uci.get(UCI_PACKAGE, s[".name"], "listen_port");
+        if (p) usedPorts.add(parseInt(p, 10));
+      }
+      let pNum = parseInt(chosenPort, 10);
+      while (usedPorts.has(pNum) && pNum < 65535) {
+        pNum++;
+      }
+      chosenPort = `${pNum}`;
+      setWidgetValue(sectionId, "listen_port", chosenPort);
+    }
+
+    const certPath = defaultTlsCertificatePath(sectionId);
+    const keyPath = defaultTlsKeyPath(sectionId);
+    const terminatingSni =
+      recSni.terminating_tls ||
+      (env.has_ddns && env.ddns_domain ? env.ddns_domain : "tachyon.lan");
+    const decoySni = "www.microsoft.com";
+
+    if (protocol === "vless") {
+      setWidgetValue(sectionId, "security", "reality");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(sectionId, "server_uuid", generateUuid());
+      setWidgetValue(sectionId, "vless_flow", "xtls-rprx-vision");
+      setWidgetValue(sectionId, "tls_server_name", decoySni);
+      setWidgetValue(sectionId, "client_fingerprint", "chrome");
+      setWidgetValue(sectionId, "reality_handshake_server", decoySni);
+      setWidgetValue(sectionId, "reality_handshake_server_port", "443");
+      setWidgetValue(sectionId, "reality_short_id", randomHex(4));
+      setWidgetValue(sectionId, "reality_max_time_difference", "1m");
+      generateRealityKeypair(sectionId);
+    } else if (protocol === "awg") {
+      let localAddr = awgEnv.local_address || "10.8.0.1/24";
+      let cliAddr = awgEnv.client_address || "10.8.0.2/32";
+      const dnsAddr = awgEnv.dns || env.lan_ip || "10.8.0.1";
+      const h1 = awgEnv.h1 ? `${awgEnv.h1}` : "184920412";
+      const h2 = awgEnv.h2 ? `${awgEnv.h2}` : "492019482";
+      const h3 = awgEnv.h3 ? `${awgEnv.h3}` : "829401928";
+      const h4 = awgEnv.h4 ? `${awgEnv.h4}` : "392019481";
+
+      const usedSubnets = new Set();
+      for (const s of serverSections) {
+        if (s[".name"] === sectionId) continue;
+        const la = uci.get(UCI_PACKAGE, s[".name"], "awg_local_address");
+        if (la) usedSubnets.add(la);
+      }
+      if (usedSubnets.has(localAddr)) {
+        for (let idx = 1; idx < 100; idx++) {
+          const candidate = localAddr.replace(/\.8\.0\.1\//, `.8.${idx}.1/`).replace(/\.16\.8\.1\//, `.16.${8 + idx}.1/`);
+          if (!usedSubnets.has(candidate)) {
+            localAddr = candidate;
+            cliAddr = cliAddr.replace(/\.8\.0\.2\//, `.8.${idx}.2/`).replace(/\.16\.8\.2\//, `.16.${8 + idx}.2/`);
+            break;
+          }
+        }
+      }
+
+      setWidgetValue(sectionId, "awg_local_address", localAddr);
+      setWidgetValue(sectionId, "awg_client_address", cliAddr);
+      setWidgetValue(sectionId, "awg_dns", dnsAddr);
+      setWidgetValue(sectionId, "awg_mtu", "1280");
+      setWidgetValue(sectionId, "awg_keepalive", "25");
+      setWidgetValue(sectionId, "awg_version", "2.0");
+      setWidgetValue(sectionId, "awg_jc", "4");
+      setWidgetValue(sectionId, "awg_jmin", "40");
+      setWidgetValue(sectionId, "awg_jmax", "70");
+      setWidgetValue(sectionId, "awg_s1", "0");
+      setWidgetValue(sectionId, "awg_s2", "0");
+      setWidgetValue(sectionId, "awg_s3", "0");
+      setWidgetValue(sectionId, "awg_s4", "0");
+      setWidgetValue(sectionId, "awg_h1", h1);
+      setWidgetValue(sectionId, "awg_h2", h2);
+      setWidgetValue(sectionId, "awg_h3", h3);
+      setWidgetValue(sectionId, "awg_h4", h4);
+
+      Promise.all([
+        generateAwgKeypair(sectionId),
+        generateAwgKeypair(sectionId),
+      ]).then(([srvPair, cliPair]) => {
+        if (srvPair) {
+          uci.set(UCI_PACKAGE, sectionId, "awg_private_key", srvPair.private_key);
+          uci.set(
+            UCI_PACKAGE,
+            sectionId,
+            "awg_server_public_key",
+            srvPair.public_key,
+          );
+          setWidgetValue(sectionId, "awg_private_key", srvPair.private_key);
+          setWidgetValue(sectionId, "awg_server_public_key", srvPair.public_key);
+        }
+        if (cliPair) {
+          uci.set(
+            UCI_PACKAGE,
+            sectionId,
+            "awg_client_private_key",
+            cliPair.private_key,
+          );
+          uci.set(
+            UCI_PACKAGE,
+            sectionId,
+            "awg_peer_public_key",
+            cliPair.public_key,
+          );
+          setWidgetValue(
+            sectionId,
+            "awg_client_private_key",
+            cliPair.private_key,
+          );
+          setWidgetValue(sectionId, "awg_peer_public_key", cliPair.public_key);
+        }
+      });
+    } else if (protocol === "hysteria2") {
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "hysteria2_obfs_type", "salamander");
+      setWidgetValue(sectionId, "hysteria2_obfs_password", generatePassword());
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+    } else if (protocol === "tuic") {
+      setWidgetValue(sectionId, "server_uuid", generateUuid());
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "tuic_congestion_control", "bbr");
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+    } else if (protocol === "trojan") {
+      setWidgetValue(sectionId, "security", "tls");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+    } else if (protocol === "anytls") {
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+    } else if (protocol === "naive") {
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "tachyon",
+      );
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+    } else if (protocol === "shadowtls") {
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "shadowtls_handshake_server", decoySni);
+      setWidgetValue(sectionId, "shadowtls_handshake_server_port", "443");
+      setWidgetValue(sectionId, "shadowtls_version", "3");
+    } else if (protocol === "fptn") {
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "tachyon",
+      );
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+    } else if (protocol === "vmess") {
+      setWidgetValue(sectionId, "security", "none");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(sectionId, "server_uuid", generateUuid());
+      setWidgetValue(sectionId, "vmess_alter_id", "0");
+    } else if (protocol === "shadowsocks") {
+      setWidgetValue(sectionId, "shadowsocks_method", "aes-128-gcm");
+      setWidgetValue(sectionId, "server_password", generatePassword());
+    } else if (protocol === "socks") {
+      setWidgetValue(sectionId, "socks_auth_enabled", "1");
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "tachyon",
+      );
+      setWidgetValue(sectionId, "server_password", generatePassword());
+    } else if (protocol === "http" || protocol === "mixed") {
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "tachyon",
+      );
+      setWidgetValue(sectionId, "server_password", generatePassword());
+    } else if (protocol === "mtproto") {
+      setWidgetValue(sectionId, "mtproto_secret", generateMtprotoSecret());
+      setWidgetValue(sectionId, "mtproto_faketls", "google.com");
+      setWidgetValue(sectionId, "mtproto_padding", "1");
+      setWidgetValue(sectionId, "mtproto_domain_fronting_port", "443");
+      setWidgetValue(sectionId, "mtproto_prefer_ip", "prefer-ipv4");
+      setWidgetValue(sectionId, "mtproto_tolerate_time_skewness", "3s");
+      setWidgetValue(sectionId, "mtproto_idle_timeout", "5m");
+      setWidgetValue(sectionId, "mtproto_handshake_timeout", "10s");
+    } else if (protocol === "tailscale") {
+      setWidgetValue(
+        sectionId,
+        "tailscale_control_url",
+        "https://controlplane.tailscale.com",
+      );
+      setWidgetValue(
+        sectionId,
+        "tailscale_hostname",
+        defaultTailscaleHostname(sectionId),
+      );
+      setWidgetValue(sectionId, "tailscale_advertise_exit_node", "1");
+      setWidgetValue(sectionId, "tailscale_mode", "singbox");
+    }
+
+    const isTls =
+      protocol === "hysteria2" ||
+      protocol === "tuic" ||
+      protocol === "trojan" ||
+      protocol === "anytls" ||
+      protocol === "naive" ||
+      protocol === "fptn";
+    if (isTls) {
+      generateTlsCertificateIfMissing(sectionId);
+    }
+
+    ui.addNotification(
+      null,
+      E(
+        "p",
+        {},
+        _(
+          "Server configured specifically for router environment (WAN/DDNS host, collision-safe subnet, optimized port).",
+        ),
+      ),
+      "info",
+    );
+  });
+}
+
 function prepareServerModal(sectionId) {
   if (shouldGenerateRealityKeypair(sectionId)) {
     return generateRealityKeypairIfMissing(sectionId);
   }
   if (getProtocol(sectionId) === "awg") {
     return generateAwgKeypairsIfMissing(sectionId);
+  }
+  if (getEffectiveSecurity(sectionId) === "tls") {
+    return generateTlsCertificateIfMissing(sectionId);
   }
   return Promise.resolve();
 }
@@ -2847,7 +3387,31 @@ function createServerContent(section, options = {}) {
     if (value === "awg") {
       generateAwgKeypairsIfMissing(sectionId);
     }
+    if (getEffectiveSecurity(sectionId) === "tls") {
+      generateTlsCertificateIfMissing(sectionId);
+    }
   };
+
+  o = section.option(form.Button, "_autoconfig", _("Auto-configuration"));
+  o.inputtitle = _("⚡ Auto-configure (Generate all in 1 click)");
+  o.inputstyle = "action primary";
+  o.modalonly = true;
+  o.onclick = function (_ev, sectionId) {
+    autoConfigureServer(sectionId);
+  };
+
+  o = section.option(
+    form.Flag,
+    "open_firewall_port",
+    _("Open firewall port"),
+    _(
+      "Automatically allow inbound WAN traffic to the server port in nftables firewall",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
+  o.modalonly = true;
+  addPortProtocolDepends(o, true);
 
   o = section.option(form.Value, "listen", _("Listen address"));
   o.default = "0.0.0.0";

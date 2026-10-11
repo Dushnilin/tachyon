@@ -312,7 +312,7 @@ function fetch_github_tag_commit_sha(owner, repo, tag) { return cmp_dl.fetch_git
 
 function format_fingerprint_human(fp) { return cmp_verify.format_fingerprint_human(fp); }
 
-function fetch_github_releases_json(owner, repo, per_page) { return cmp_dl.fetch_github_releases_json(owner, repo, per_page); }
+function fetch_github_releases_json(owner, repo, per_page, page) { return cmp_dl.fetch_github_releases_json(owner, repo, per_page, page); }
 
 
 // Delegated to components/catalog.uc (branch 4 god-module split).
@@ -3086,13 +3086,17 @@ function rollback_component(component) {
     }
 }
 
-function list_component_releases(component, count) {
+function list_component_releases(component, count, page) {
     component = normalize_component_name(component);
-    count = int(count || 3);
+    count = int(count || 5);
     if (count < 1) count = 1;
-    if (count > 10) count = 10;
+    if (count > 30) count = 30;
+    page = int(page || 1);
+    if (page < 1) page = 1;
 
-    let cache_file = "/tmp/tachyon-releases-" + component + ".json";
+    let cache_file = (page == 1)
+        ? ("/tmp/tachyon-releases-" + component + ".json")
+        : ("/tmp/tachyon-releases-" + component + "-p" + page + ".json");
     let cached_stat = fs.stat(cache_file);
     if (cached_stat != null && (time() - cached_stat.mtime) < 600) {
         let cached_data = read_file(cache_file);
@@ -3134,12 +3138,12 @@ function list_component_releases(component, count) {
         print("[]\n"); return;
     }
 
-    let releases_json = fetch_github_releases_json(owner, repo, per_page);
+    let releases_json = fetch_github_releases_json(owner, repo, per_page, page);
     if ((releases_json == "" || releases_json == "[]") && (component == "wdtt" || component == "olcrtc" || component == "fptn")) {
         if (component == "wdtt") { owner = "SpaceNeuroX"; repo = "qwdtt-openwrt"; }
         else if (component == "olcrtc") { owner = "alekvol"; repo = "openwrt-olcrtc"; }
         else if (component == "fptn") { owner = "fptn-project"; repo = "fptn"; }
-        releases_json = fetch_github_releases_json(owner, repo, per_page);
+        releases_json = fetch_github_releases_json(owner, repo, per_page, page);
     }
     if (releases_json == "" || releases_json == "[]") { print("[]\n"); return; }
 
@@ -3441,7 +3445,7 @@ if (mode == "component-action") {
     }
 }
 else if (mode == "list-component-releases")
-    list_component_releases(ARGV[1], ARGV[2]);
+    list_component_releases(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "install-component-version") {
     try {
         component_action(ARGV[1], "install_version", ARGV[2]);

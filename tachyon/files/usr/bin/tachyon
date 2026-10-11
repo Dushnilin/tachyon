@@ -150,8 +150,8 @@ function show_help() {
     print("    component_action_status Get background component action status\n");
     print("    component_action_log [job_id] [offset]\n");
     print("                            Get background component action log from offset\n");
-    print("    component_list_releases <component> [count]\n");
-    print("                            List last N releases for a component (default 3)\n");
+    print("    component_list_releases <component> [count] [page]\n");
+    print("                            List releases for a component (default 5, page 1)\n");
     print("    component_install_version <component> <tag>\n");
     print("                            Install a specific component release version\n");
     print("    component_updates_if_due Check installed components for updates when due\n");
@@ -228,6 +228,7 @@ function show_help() {
     print("                            List top optimal servers for auto-tuning & failover\n");
     print("    stability_report        Generate comprehensive system stability and health report (JSON)\n");
     print("    stability_status        Show lightweight system stability status (JSON)\n");
+    print("    get_router_network_env  Get router network environment and inbound recommendations (JSON)\n");
 }
 
 function command_spec(command) {
@@ -302,12 +303,15 @@ function command_spec(command) {
         latency_test_status: [ "service/ui.uc", "latency-test-status", 1 ],
         ui_action_ack: [ "service/ui.uc", "action-ack", 2 ],
         generate_reality_keypair: [ "server/service.uc", "generate-reality-keypair", 0 ],
+        generate_wg_keypair: [ "server/service.uc", "generate-wg-keypair", 0 ],
+        generate_tls_keypair: [ "server/service.uc", "generate-tls-keypair", 1 ],
         get_tls_certificate_sha256: [ "server/service.uc", "tls-certificate-sha256", 1 ],
+        get_router_network_env: [ "server/service.uc", "get-router-network-env", 0 ],
         component_action: [ "components/action.uc", "component-action", 2 ],
         component_action_async: [ "components/updates.uc", "component-action-async", 2 ],
         component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
         component_action_log: [ "components/updates.uc", "component-action-log", 2 ],
-        component_list_releases: [ "components/action.uc", "list-component-releases", 2 ],
+        component_list_releases: [ "components/action.uc", "list-component-releases", 3 ],
         component_install_version: [ "components/action.uc", "install-component-version", 2 ],
         component_updates_if_due: [ "components/updates.uc", "component-updates-if-due", 0 ],
         component_auto_update_apply: [ "components/updates.uc", "component-auto-update-apply", 0 ],

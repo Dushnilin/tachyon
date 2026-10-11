@@ -2221,6 +2221,22 @@ function smart_detect_plus_save_seen() {
     let path = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/smart_detect_plus_seen.json";
     if (common.write_json_file(path, smart_plus_seen)) fs.chmod(path, 0600);
 }
+
+function smart_detect_is_domain_excluded(domain, cfg) {
+    if (!domain) return true;
+    domain = smart_plus.normalize_domain(domain);
+    if (!domain) return true;
+    let raw = cfg ? cfg.smart_detect_exclude : null;
+    let list = type(raw) == "array" ? raw : (raw ? split(trim(as_string(raw)), /[ \t\r\n,]+/) : []);
+    for (let exc in list) {
+        exc = smart_plus.normalize_domain(exc);
+        if (!exc) continue;
+        if (domain == exc || (length(domain) > length(exc) && substr(domain, -length(exc) - 1) == "." + exc))
+            return true;
+    }
+    return false;
+}
+
 function smart_detect_process_plus(cfg) {
     let now = time();
     let before_dns = smart_detect_observe_dns();
@@ -2237,10 +2253,16 @@ function smart_detect_process_plus(cfg) {
             job.selection != sprintf("%J", cfg.smart_detect_sections || []) ||
             index(smart_detect_get_proxy_sections(), job.target) < 0) decision = {defer:true};
         if (decision.act) {
-            let main = smart_plus.main_domain(job.domain);
-            if (main == null) decision = {seen:true};
-            else if (!length(smart_detect_apply_domains([{section:job.target, domain:main, source_domain:job.domain}])))
+            let target_domain = job.domain;
+            if (cfg.smart_detect_expand_to_root != "0" && cfg.smart_detect_expand_to_root !== false) {
+                let main = smart_plus.main_domain(job.domain);
+                if (main != null) target_domain = main;
+            }
+            if (target_domain == null || smart_detect_is_domain_excluded(job.domain, cfg) || smart_detect_is_domain_excluded(target_domain, cfg)) {
+                decision = {seen:true};
+            } else if (!length(smart_detect_apply_domains([{section:job.target, domain:target_domain, source_domain:job.domain}]))) {
                 decision = {defer:true};
+            }
         }
         if (decision.defer) {
             job.item.queued = time();
@@ -2255,7 +2277,7 @@ function smart_detect_process_plus(cfg) {
     }
     if (now - smart_plus_last_run < 10 || !before_dns.ready) return;
     for (let domain in keys(pending_smart_plus)) {
-        if (pending_smart_plus[domain].queued < now - 300 || seen[domain])
+        if (pending_smart_plus[domain].queued < now - 300 || seen[domain] || smart_detect_is_domain_excluded(domain, cfg))
             delete pending_smart_plus[domain];
     }
     let domains = smart_plus.queue_order(pending_smart_plus, keys(pending_smart_plus));
@@ -2380,6 +2402,7 @@ function smart_detect_process_pending() {
     let to_add = [];
 
     for (let domain in candidate_domains) {
+        if (smart_detect_is_domain_excluded(domain, cfg)) continue;
         let item = queued_candidates[domain];
         try {
         // No nslookup pre-check: the direct probe already reports an

@@ -418,16 +418,14 @@ function isConnectionAction(action?: string) {
   return Boolean(
     action &&
       (SINGLE_ENDPOINT_ACTIONS.has(action) ||
-        ['connection', 'proxy', 'outbound'].includes(action)),
+        ['connection', 'proxy', 'outbound', 'fptn'].includes(action)),
   );
 }
 
 function isServiceAction(action?: string) {
   return Boolean(
     action &&
-      ['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc', 'fptn'].includes(
-        action,
-      ),
+      ['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(action),
   );
 }
 
@@ -480,6 +478,8 @@ function isNaOutbound(outbound: Tachyon.Outbound) {
 
 function shouldUseProxyGroup(section: Tachyon.ConfigSection) {
   return (
+    section.action === 'fptn' ||
+    Boolean(section.access_token) ||
     getManualProxyLinks(section).length > 0 ||
     hasSubscriptionSources(section) ||
     getConnectionInterfaces(section).length > 0 ||
@@ -500,6 +500,10 @@ function getSectionProxyConfigType(section: Tachyon.ConfigSection) {
 
   if (getManualProxyLinks(section).length > 0) {
     return 'selector' as const;
+  }
+
+  if (section.action === 'fptn') {
+    return 'urltest' as const;
   }
 
   if (getJsonOutbounds(section).length > 0) {
@@ -961,10 +965,13 @@ function resolveOutboundNameAndPrefix({
       if (
         rawName.startsWith(p + ' ') ||
         rawName.startsWith(p + '-') ||
+        rawName.startsWith(p + '/') ||
         code.startsWith(p + ' ') ||
         code.startsWith(p + '-') ||
+        code.startsWith(p + '/') ||
         entry?.value?.name?.startsWith(p + ' ') ||
-        entry?.value?.name?.startsWith(p + '-')
+        entry?.value?.name?.startsWith(p + '-') ||
+        entry?.value?.name?.startsWith(p + '/')
       ) {
         prefix = p;
         break;
@@ -984,6 +991,17 @@ function resolveOutboundNameAndPrefix({
       if (stripped) {
         displayName = stripped;
       }
+    } else if (displayName.startsWith(prefix + '/')) {
+      const stripped = displayName.slice(prefix.length + 1).trim();
+      if (stripped) {
+        displayName = stripped;
+      }
+    }
+  } else if (displayName.includes('/')) {
+    const parts = displayName.split('/');
+    if (parts.length > 1 && parts[parts.length - 1].trim()) {
+      prefix = parts.slice(0, -1).join('/');
+      displayName = parts[parts.length - 1].trim();
     }
   }
 

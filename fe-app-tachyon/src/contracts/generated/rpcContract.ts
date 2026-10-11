@@ -115,12 +115,15 @@ export const TACHYON_RPC_METHODS = [
   'fuzzer_strategies',
   'fuzzer_update_presets',
   'generate_reality_keypair',
+  'generate_tls_keypair',
   'generate_warp',
+  'generate_wg_keypair',
   'get_byedpi_status',
   'get_engine_status',
   'get_fptn_status',
   'get_olcrtc_status',
   'get_outbound_metadata',
+  'get_router_network_env',
   'get_server_capabilities',
   'get_sing_box_status',
   'get_status',
@@ -465,6 +468,8 @@ export interface ComponentlistreleasesParams {
   arg1?: string;
   /** positional argument 2 of component_list_releases */
   arg2?: string;
+  /** positional argument 3 of component_list_releases */
+  arg3?: string;
 }
 
 export type ComponentlistreleasesResult = Record<string, unknown>;
@@ -925,6 +930,14 @@ export type GeneraterealitykeypairParams = Record<string, never>;
 
 export type GeneraterealitykeypairResult = Record<string, unknown>;
 
+/** generate-tls-keypair (server/service.uc) */
+export interface GeneratetlskeypairParams {
+  /** positional argument 1 of generate_tls_keypair */
+  arg1?: string;
+}
+
+export type GeneratetlskeypairResult = Record<string, unknown>;
+
 /**  (service/warp_generator.uc) */
 export interface GeneratewarpParams {
   /** positional argument 1 of generate_warp */
@@ -934,6 +947,11 @@ export interface GeneratewarpParams {
 }
 
 export type GeneratewarpResult = Record<string, unknown>;
+
+/** generate-wg-keypair (server/service.uc) */
+export type GeneratewgkeypairParams = Record<string, never>;
+
+export type GeneratewgkeypairResult = Record<string, unknown>;
 
 /** get-byedpi-status (diagnostics/runtime.uc) */
 export type GetbyedpistatusParams = Record<string, never>;
@@ -962,6 +980,11 @@ export interface GetoutboundmetadataParams {
 }
 
 export type GetoutboundmetadataResult = Record<string, unknown>;
+
+/** get-router-network-env (server/service.uc) */
+export type GetrouternetworkenvParams = Record<string, never>;
+
+export type GetrouternetworkenvResult = Record<string, unknown>;
 
 /** get-server-capabilities (diagnostics/runtime.uc) */
 export type GetservercapabilitiesParams = Record<string, never>;
@@ -2214,9 +2237,17 @@ export interface TachyonRpcRegistry {
     params: GeneraterealitykeypairParams;
     result: GeneraterealitykeypairResult;
   };
+  generate_tls_keypair: {
+    params: GeneratetlskeypairParams;
+    result: GeneratetlskeypairResult;
+  };
   generate_warp: {
     params: GeneratewarpParams;
     result: GeneratewarpResult;
+  };
+  generate_wg_keypair: {
+    params: GeneratewgkeypairParams;
+    result: GeneratewgkeypairResult;
   };
   get_byedpi_status: {
     params: GetbyedpistatusParams;
@@ -2237,6 +2268,10 @@ export interface TachyonRpcRegistry {
   get_outbound_metadata: {
     params: GetoutboundmetadataParams;
     result: GetoutboundmetadataResult;
+  };
+  get_router_network_env: {
+    params: GetrouternetworkenvParams;
+    result: GetrouternetworkenvResult;
   };
   get_server_capabilities: {
     params: GetservercapabilitiesParams;
@@ -3154,6 +3189,12 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           type: 'string',
           required: false,
           description: 'positional argument 2 of component_list_releases',
+        },
+        {
+          name: 'arg3',
+          type: 'string',
+          required: false,
+          description: 'positional argument 3 of component_list_releases',
         },
       ],
     },
@@ -4132,6 +4173,23 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 60000,
       params: [],
     },
+    generate_tls_keypair: {
+      name: 'generate_tls_keypair',
+      cli_command: 'generate_tls_keypair',
+      category: 'system',
+      acl: 'write',
+      description: 'generate-tls-keypair (server/service.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of generate_tls_keypair',
+        },
+      ],
+    },
     generate_warp: {
       name: 'generate_warp',
       cli_command: 'generate_warp',
@@ -4154,6 +4212,16 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           description: 'positional argument 2 of generate_warp',
         },
       ],
+    },
+    generate_wg_keypair: {
+      name: 'generate_wg_keypair',
+      cli_command: 'generate_wg_keypair',
+      category: 'system',
+      acl: 'write',
+      description: 'generate-wg-keypair (server/service.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [],
     },
     get_byedpi_status: {
       name: 'get_byedpi_status',
@@ -4211,6 +4279,16 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           description: 'positional argument 1 of get_outbound_metadata',
         },
       ],
+    },
+    get_router_network_env: {
+      name: 'get_router_network_env',
+      cli_command: 'get_router_network_env',
+      category: 'system',
+      acl: 'write',
+      description: 'get-router-network-env (server/service.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [],
     },
     get_server_capabilities: {
       name: 'get_server_capabilities',

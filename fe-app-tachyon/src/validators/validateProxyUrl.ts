@@ -8,6 +8,7 @@ import { validateSocksUrl } from './validateSocksUrl';
 import { validateHysteria2Url } from './validateHysteriaUrl';
 import { validateTuicUrl } from './validateTuicUrl';
 import { validateHttpProxyUrl } from './validateHttpProxyUrl';
+import { validateFptnUrl } from './validateFptnUrl';
 
 /**
  * Scheme dispatch, longest prefix first so that a longer scheme can never be
@@ -17,6 +18,10 @@ const DISPATCH: {
   prefixes: string[];
   validate: (url: string) => ValidationResult;
 }[] = [
+  {
+    prefixes: ['fptnb://', 'fptn://', 'fptnb:', 'fptn:'],
+    validate: validateFptnUrl,
+  },
   { prefixes: ['ss://'], validate: validateShadowsocksUrl },
   { prefixes: ['vless://'], validate: validateVlessUrl },
   { prefixes: ['vmess://'], validate: validateVmessUrl },
@@ -61,7 +66,7 @@ export function validateProxyUrl(url: string): ValidationResult {
     valid: false,
     message:
       _(
-        'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://',
+        'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, tuic://, fptn://, or fptn:',
       ) + (supportsVpnUrl() ? '; vpn:// (LX)' : ''),
   };
 }

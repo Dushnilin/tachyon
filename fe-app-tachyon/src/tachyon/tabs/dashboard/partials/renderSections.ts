@@ -307,7 +307,7 @@ function renderDefaultState({
     'openvpn',
   ].includes(section.action || '');
   const isServiceNode =
-    ['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc', 'fptn'].includes(
+    ['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(
       section.action || '',
     ) || Boolean(section.serviceStatus);
 
@@ -315,7 +315,7 @@ function renderDefaultState({
     const ss = section.serviceStatus;
     const serviceType =
       ss?.serviceType ||
-      (['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc', 'fptn'].includes(
+      (['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(
         section.action || '',
       )
         ? (section.action as Tachyon.ServiceStatus['serviceType'])

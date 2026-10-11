@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-10 00:34+0300\n"
-"PO-Revision-Date: 2026-10-10 00:34+0300\n"
+"POT-Creation-Date: 2026-10-11 12:38+0300\n"
+"PO-Revision-Date: 2026-10-11 12:38+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -527,6 +527,9 @@ msgstr "Авто-применение лучшей стратегии"
 msgid "Auto-apply failed"
 msgstr "Авто-применение не удалось"
 
+msgid "Auto-configuration"
+msgstr ""
+
 msgid "Auto-detected Domains"
 msgstr "Автоопределённые домены"
 
@@ -559,6 +562,9 @@ msgstr "Автоматическое обновление компонентов
 
 msgid "Automatically add text to the name of each server from this subscription for convenient filtering."
 msgstr "Автоматически добавлять текст к имени каждого сервера из этой подписки для удобной фильтрации."
+
+msgid "Automatically allow inbound WAN traffic to the server port in nftables firewall"
+msgstr ""
 
 msgid "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
 msgstr "Автоматически замерить задержку, потери пакетов и защиту от цензуры основных DNS серверов (UDP/DoH) прямо с роутера, чтобы найти и применить оптимальную конфигурацию."
@@ -1196,6 +1202,9 @@ msgstr "Пользовательские конфигурации outbound в ф
 msgid "Custom strategy added!"
 msgstr "Пользовательская стратегия добавлена!"
 
+msgid "Custom tag (e.g. v1.2.3)"
+msgstr ""
+
 msgid "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs."
 msgstr "Настройте порядок и видимость вкладок в главном меню навигации. Используйте стрелки для перемещения и галочки для показа или скрытия."
 
@@ -1574,6 +1583,9 @@ msgstr "Секции тестирования доменов"
 msgid "Domains"
 msgstr "Домены"
 
+msgid "Domains and subdomains that should never be automatically proxied by Smart Detect (e.g. yandex.net, mail.ru, vk.com)."
+msgstr ""
+
 msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
 msgstr "Домены, автоматически определённые Smart Detect или добавленные через Telegram-бота. Вы можете вручную отредактировать или удалить их здесь."
 
@@ -1888,6 +1900,12 @@ msgstr "Исключить типы трафика"
 
 msgid "Excluded devices"
 msgstr "Исключённые устройства"
+
+msgid "Excluded domains from Smart Detect"
+msgstr ""
+
+msgid "Expand detected subdomains to root domain"
+msgstr ""
 
 msgid "Expecting: %s"
 msgstr "Ожидалось: %s"
@@ -2696,6 +2714,15 @@ msgstr "Неверный формат DNS-сервера. Примеры: 8.8.8.
 msgid "Invalid DNS server port"
 msgstr "Неверный порт DNS-сервера"
 
+msgid "Invalid FPTN URL: invalid base64 token payload"
+msgstr ""
+
+msgid "Invalid FPTN URL: missing token body"
+msgstr ""
+
+msgid "Invalid FPTN URL: must start with fptn: or fptnb:"
+msgstr ""
+
 msgid "Invalid HTTP proxy URL: invalid host and port"
 msgstr "Некорректный URL HTTP-прокси: неверный хост и порт"
 
@@ -3401,6 +3428,9 @@ msgstr "Новые домены:"
 msgid "New version %s is available for %s"
 msgstr "Доступна новая версия %s для %s"
 
+msgid "Next"
+msgstr ""
+
 msgid "No"
 msgstr "Нет"
 
@@ -3481,6 +3511,9 @@ msgstr "Проблем не обнаружено. Система работае�
 
 msgid "No issues found"
 msgstr "Проблем не обнаружено"
+
+msgid "No more versions found"
+msgstr ""
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"
@@ -3683,6 +3716,9 @@ msgstr "Открыть"
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
 
+msgid "Open firewall port"
+msgstr ""
+
 msgid "Open priority settings and enter a display name"
 msgstr "Откройте настройки приоритета и введите отображаемое имя"
 
@@ -3802,6 +3838,9 @@ msgstr "Захват пакетов недоступен или не завер�
 
 msgid "Padding"
 msgstr "Padding"
+
+msgid "Page"
+msgstr ""
 
 msgid "Parallel (fast failover, ≤3 s)"
 msgstr "Параллельный (быстрый failover, ≤3 с)"
@@ -4009,6 +4048,9 @@ msgstr "Запретить гостевым устройствам доступ 
 
 msgid "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."
 msgstr "Предотвращает множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
+
+msgid "Previous"
+msgstr ""
 
 msgid "Primary DNS"
 msgstr "Основной DNS"
@@ -4819,6 +4861,9 @@ msgstr "Публичный ключ сервера"
 
 msgid "Server VPN IP address and subnet (e.g. 10.0.0.1/24)"
 msgstr "VPN IP-адрес и подсеть сервера (например, 10.0.0.1/24)"
+
+msgid "Server configured specifically for router environment (WAN/DDNS host, collision-safe subnet, optimized port)."
+msgstr ""
 
 msgid "Server filtering"
 msgstr "Фильтрация серверов"
@@ -5786,8 +5831,8 @@ msgstr "UDP over TCP (инкапсуляция UDP)"
 msgid "UNCONFIRMED"
 msgstr "НЕ ПОДТВЕРЖДЕНО"
 
-msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://"
-msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2:// или tuic://"
+msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, tuic://, fptn://, or fptn:"
+msgstr ""
 
 msgid "URL must use one of the following protocols:"
 msgstr "URL должен использовать один из следующих протоколов:"
@@ -6236,6 +6281,9 @@ msgstr "Выходные (Сб-Вс)"
 msgid "What Tachyon should do when this section matches"
 msgstr "Что должен делать Tachyon при совпадении этой секции"
 
+msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy."
+msgstr ""
+
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."
 
@@ -6464,8 +6512,8 @@ msgstr "HTTP-проба через прокси"
 msgid "via WAN (HTTP probe)"
 msgstr "HTTP-проба через WAN"
 
-msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links"
-msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2://"
+msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links, fptn://"
+msgstr ""
 
 msgid "vpn:// is available only with sing-box LX"
 msgstr "vpn:// доступен только с sing-box LX"
@@ -6493,6 +6541,9 @@ msgstr "⚠️ Если все основные DNS завершатся с ош
 
 msgid "⚠️ Server received fakes"
 msgstr "⚠️ Сервер получил фейки"
+
+msgid "⚡ Auto-configure (Generate all in 1 click)"
+msgstr ""
 
 msgid "⚡ Fast (>1MB/s)"
 msgstr "⚡ Быстрые (>1 МБ/с)"
@@ -6616,6 +6667,18 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2://, fptn:// links"
+msgstr ""
+
+msgid "Server parameters and credentials have been automatically configured."
+msgstr ""
+
+msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://"
+msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2:// или tuic://"
+
+msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links"
+msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2://"
 
 msgid "via Proxy"
 msgstr "через Прокси"

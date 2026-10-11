@@ -110,6 +110,7 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
       "sudoku",
       "masque",
       "openvpn",
+      "fptn",
     ].includes(action)
   );
 }
@@ -164,6 +165,7 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       "sudoku",
       "masque",
       "openvpn",
+      "fptn",
     ].includes(action)
   ) {
     return true;
@@ -774,7 +776,8 @@ if (main.store && typeof main.store.subscribe === "function") {
         next.diagnosticsSystemInfo,
       );
     }
-    if (!diff || diff.diagnosticsSystemInfo || diff.activeEngine) refreshVpnUrlHints();
+    if (!diff || diff.diagnosticsSystemInfo || diff.activeEngine)
+      refreshVpnUrlHints();
   });
 }
 
@@ -2254,6 +2257,7 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       "sudoku",
       "masque",
       "openvpn",
+      "fptn",
     ].includes(action)
   ) {
     return true;
@@ -2927,7 +2931,9 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     form.Flag,
     "enabled",
     _("Enabled"),
-    _("Use this subscription. A disabled one is neither downloaded nor added to the config"),
+    _(
+      "Use this subscription. A disabled one is neither downloaded nor added to the config",
+    ),
   );
   o.default = "1";
   o.rmempty = false;
@@ -3913,15 +3919,17 @@ function addDashboardServerFilterOptions(section) {
   );
   o.default = "disabled";
   o.depends("action", "connection");
+  o.depends("action", "fptn");
 
   o = optionSection.option(
     form.ListValue,
     "dashboard_detect_server_country",
     _("Detect server country"),
   );
-  ["exclude", "include", "mixed"].forEach((mode) =>
-    o.depends({ action: "connection", dashboard_filter_mode: mode }),
-  );
+  ["exclude", "include", "mixed"].forEach((mode) => {
+    o.depends({ action: "connection", dashboard_filter_mode: mode });
+    o.depends({ action: "fptn", dashboard_filter_mode: mode });
+  });
   serverCountryDetectionChoices().forEach((choice) =>
     o.value(choice.value, choice.label),
   );
@@ -3937,6 +3945,7 @@ function addDashboardServerFilterOptions(section) {
   );
   o.default = "0";
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.modalonly = true;
 
   const includeProxyParameterOptions = {
@@ -3948,6 +3957,8 @@ function addDashboardServerFilterOptions(section) {
     dependencies: [
       { action: "connection", dashboard_filter_mode: "include" },
       { action: "connection", dashboard_filter_mode: "mixed" },
+      { action: "fptn", dashboard_filter_mode: "include" },
+      { action: "fptn", dashboard_filter_mode: "mixed" },
     ],
     protocolDescription: _(
       "Show only servers with one of the selected protocols.",
@@ -3971,6 +3982,8 @@ function addDashboardServerFilterOptions(section) {
     dependencies: [
       { action: "connection", dashboard_filter_mode: "exclude" },
       { action: "connection", dashboard_filter_mode: "mixed" },
+      { action: "fptn", dashboard_filter_mode: "exclude" },
+      { action: "fptn", dashboard_filter_mode: "mixed" },
     ],
     protocolDescription: _("Hide servers with one of the selected protocols."),
     transportDescription: _(
@@ -4040,9 +4053,10 @@ function addDashboardServerFilterOptions(section) {
       label,
       description,
     );
-    modes.forEach((mode) =>
-      list.depends({ action: "connection", dashboard_filter_mode: mode }),
-    );
+    modes.forEach((mode) => {
+      list.depends({ action: "connection", dashboard_filter_mode: mode });
+      list.depends({ action: "fptn", dashboard_filter_mode: mode });
+    });
     list.rmempty = true;
     if (choices) {
       choices.forEach((choice) => list.value(choice.value, choice.label));
@@ -7851,7 +7865,9 @@ function validateCustomRulesetReference(value) {
   return validateFileReference(
     value,
     [".srs", ".json", ".lst", ".txt"],
-    _("Rule set must be an HTTP(S) URL or a local .srs / .json / .lst / .txt path"),
+    _(
+      "Rule set must be an HTTP(S) URL or a local .srs / .json / .lst / .txt path",
+    ),
     { allowRemoteWithoutExtension: true },
   );
 }
@@ -8575,7 +8591,7 @@ function createSectionContent(section) {
   );
   o.depends("action", "fptn");
   o.password = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.modalonly = true;
 
   o = section.taboption(
@@ -10671,7 +10687,10 @@ function createSectionContent(section) {
         result.tls_crypt = tagContent;
       else if (tagName === "auth-user-pass" || tagName === "auth_user_pass") {
         result.auth_user_pass_required = true;
-        const creds = tagContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const creds = tagContent
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
         if (creds.length >= 1) result.username = creds[0];
         if (creds.length >= 2) result.password = creds[1];
       }
@@ -10694,7 +10713,9 @@ function createSectionContent(section) {
           result.server = parts[1];
           if (parts[2] && /^\d+$/.test(parts[2])) result.port = parts[2];
           if (parts[3] && /^(udp|tcp)/i.test(parts[3])) {
-            result.proto = parts[3].toLowerCase().startsWith("tcp") ? "tcp" : "udp";
+            result.proto = parts[3].toLowerCase().startsWith("tcp")
+              ? "tcp"
+              : "udp";
           }
         }
       } else if (cmd === "port" && parts[1] && /^\d+$/.test(parts[1])) {
@@ -10839,17 +10860,32 @@ function createSectionContent(section) {
         setBtn("success", _("Loaded!"));
         setTimeout(() => setBtn("", null), 2000);
 
-        if (parsed.auth_user_pass_required && (!parsed.username || !parsed.password)) {
+        if (
+          parsed.auth_user_pass_required &&
+          (!parsed.username || !parsed.password)
+        ) {
           ui.addNotification(
             _("OpenVPN Credentials Required"),
-            E("p", {}, _("OpenVPN config loaded. Please enter your username and password below.")),
+            E(
+              "p",
+              {},
+              _(
+                "OpenVPN config loaded. Please enter your username and password below.",
+              ),
+            ),
             "info",
           );
           const uEl =
-            document.getElementById(`cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`) ||
-            document.getElementById(`widget.cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`);
+            document.getElementById(
+              `cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`,
+            ) ||
+            document.getElementById(
+              `widget.cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`,
+            );
           if (uEl) {
-            const input = uEl.querySelector ? uEl.querySelector("input") || uEl : uEl;
+            const input = uEl.querySelector
+              ? uEl.querySelector("input") || uEl
+              : uEl;
             if (input && input.focus) input.focus();
           }
         } else {
@@ -11020,7 +11056,9 @@ function createSectionContent(section) {
     form.ListValue,
     "openvpn_key_direction",
     _("TLS Auth Key Direction"),
-    _("Key direction for tls-auth (0 = server, 1 = client, empty = bidirectional)"),
+    _(
+      "Key direction for tls-auth (0 = server, 1 = client, empty = bidirectional)",
+    ),
   );
   o.modalonly = true;
   o.rmempty = true;
@@ -11049,23 +11087,32 @@ function createSectionContent(section) {
     "selector_proxy_links",
     _("Connection URL"),
     _(
-      "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links",
+      "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links, fptn://",
     ),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   const originalVpnUrlRender = o.render;
   o.render = function () {
-    return Promise.resolve(originalVpnUrlRender.apply(this, arguments)).then((node) => {
-      const description = node && node.querySelector(".cbi-value-description");
-      if (description) {
-        description.appendChild(E("span", { "data-tachyon-vpn-url-hint": "1" },
-          main.supportsVpnUrl() ? "; vpn:// (AWG, LX)" : ""));
-        refreshVpnUrlHints();
-      }
-      return node;
-    });
+    return Promise.resolve(originalVpnUrlRender.apply(this, arguments)).then(
+      (node) => {
+        const description =
+          node && node.querySelector(".cbi-value-description");
+        if (description) {
+          description.appendChild(
+            E(
+              "span",
+              { "data-tachyon-vpn-url-hint": "1" },
+              main.supportsVpnUrl() ? "; vpn:// (AWG, LX)" : "",
+            ),
+          );
+          refreshVpnUrlHints();
+        }
+        return node;
+      },
+    );
   };
   o.validate = function (_section_id, value) {
     if (!value || value.length === 0) {
@@ -11088,6 +11135,7 @@ function createSectionContent(section) {
     _("Paste proxy links one per line; they are added to the connection list"),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.rows = 5;
@@ -11102,6 +11150,7 @@ function createSectionContent(section) {
     ),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.rows = 5;
@@ -11114,6 +11163,7 @@ function createSectionContent(section) {
     _("Enter the subscription URL"),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.childType = "subscription_url";
@@ -11163,7 +11213,10 @@ function createSectionContent(section) {
   // disable every existing subscription the first time the page opened.
   o.setItemEnabled = function (value, next) {
     const itemId = `${value || ""}`;
-    if (!itemId || !isExistingChildItem(section_id, itemId, "subscription_url")) {
+    if (
+      !itemId ||
+      !isExistingChildItem(section_id, itemId, "subscription_url")
+    ) {
       return true;
     }
 
@@ -11195,6 +11248,7 @@ function createSectionContent(section) {
     ),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.placeholder = _("Add include keyword");
@@ -11209,6 +11263,7 @@ function createSectionContent(section) {
     ),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.placeholder = _("Add exclude keyword");
@@ -11221,6 +11276,7 @@ function createSectionContent(section) {
     _("Select network interface for VPN connection"),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.placeholder = _("Select a network interface");
@@ -11262,6 +11318,7 @@ function createSectionContent(section) {
     _("Custom outbound configurations in JSON format"),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add JSON outbound");
@@ -11289,6 +11346,7 @@ function createSectionContent(section) {
     _("Server group for automatic lowest-latency selection"),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add URLTest");
@@ -11348,6 +11406,7 @@ function createSectionContent(section) {
     _("Server group for priority failover"),
   );
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add priority");
@@ -11391,6 +11450,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.depends("action", "awg");
   o.modalonly = true;
   o.write = function (section_id, value) {
@@ -11427,6 +11487,7 @@ function createSectionContent(section) {
   );
   o.rmempty = false;
   o.depends({ action: "connection", outbound_detour_enabled: "1" });
+  o.depends({ action: "fptn", outbound_detour_enabled: "1" });
   o.depends({ action: "awg", outbound_detour_enabled: "1" });
   o.modalonly = true;
   o.load = function (section_id) {
@@ -11455,6 +11516,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.modalonly = true;
 
   o = section.taboption(
@@ -11473,6 +11535,7 @@ function createSectionContent(section) {
   o.default = "";
   o.rmempty = true;
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.modalonly = true;
 
   o = section.taboption(
@@ -11485,6 +11548,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.depends("action", "awg");
   o.depends("action", "byedpi");
   o.depends("action", "wdtt");
@@ -11502,6 +11566,7 @@ function createSectionContent(section) {
   );
   o.rmempty = false;
   o.depends({ action: "connection", mixed_proxy_enabled: "1" });
+  o.depends({ action: "fptn", mixed_proxy_enabled: "1" });
   o.depends({ action: "awg", mixed_proxy_enabled: "1" });
   o.depends({ action: "byedpi", mixed_proxy_enabled: "1" });
   o.depends({ action: "zapret", mixed_proxy_enabled: "1" });
@@ -11530,6 +11595,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends({ action: "connection", mixed_proxy_enabled: "1" });
+  o.depends({ action: "fptn", mixed_proxy_enabled: "1" });
   o.depends({ action: "awg", mixed_proxy_enabled: "1" });
   o.depends({ action: "byedpi", mixed_proxy_enabled: "1" });
   o.depends({ action: "zapret", mixed_proxy_enabled: "1" });
@@ -11545,6 +11611,11 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.depends({
     action: "connection",
+    mixed_proxy_enabled: "1",
+    mixed_proxy_auth_enabled: "1",
+  });
+  o.depends({
+    action: "fptn",
     mixed_proxy_enabled: "1",
     mixed_proxy_auth_enabled: "1",
   });
@@ -11590,6 +11661,11 @@ function createSectionContent(section) {
     mixed_proxy_auth_enabled: "1",
   });
   o.depends({
+    action: "fptn",
+    mixed_proxy_enabled: "1",
+    mixed_proxy_auth_enabled: "1",
+  });
+  o.depends({
     action: "awg",
     mixed_proxy_enabled: "1",
     mixed_proxy_auth_enabled: "1",
@@ -11630,6 +11706,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "connection");
+  o.depends("action", "fptn");
   o.modalonly = true;
   o.cfgvalue = function (section_id) {
     const value = uci.get(

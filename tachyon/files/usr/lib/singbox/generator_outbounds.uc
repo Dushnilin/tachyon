@@ -975,6 +975,15 @@ function manual_link_outbound(link, tag_name, display_info) {
             display_info.name = subscription_outbound_display_name(endpoint);
         return copy_subscription_outbound(endpoint, tag_name);
     }
+    if (scheme == "fptn" || scheme == "fptnb" || index(link, "fptn:") == 0 || index(link, "fptnb:") == 0) {
+        if (type(display_info) == "object")
+            display_info.name = tag_name;
+        return {
+            type: "fptn",
+            tag: tag_name,
+            token: link
+        };
+    }
     if (scheme == "vmess")
         return manual_vmess_outbound(link, tag_name);
 
@@ -2125,11 +2134,15 @@ function add_fptn_outbound(config, section, sections) {
         let token = as_string(option(section, "access_token", ""));
         if (token == "")
             return;
-        push(config.outbounds, {
+        let fptn_out = {
             type: "fptn",
             tag,
             token
-        });
+        };
+        let detour = connections.section_detour_tag ? connections.section_detour_tag(section) : null;
+        if (detour)
+            fptn_out.detour = detour;
+        push(config.outbounds, fptn_out);
         return;
     }
 

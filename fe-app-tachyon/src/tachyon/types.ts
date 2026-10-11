@@ -168,13 +168,16 @@ export namespace Tachyon {
     FUZZER_UPDATE_PRESETS = 'fuzzer_update_presets',
     // generate
     GENERATE_REALITY_KEYPAIR = 'generate_reality_keypair',
+    GENERATE_TLS_KEYPAIR = 'generate_tls_keypair',
     GENERATE_WARP = 'generate_warp',
+    GENERATE_WG_KEYPAIR = 'generate_wg_keypair',
     // get
     GET_BYEDPI_STATUS = 'get_byedpi_status',
     GET_ENGINE_STATUS = 'get_engine_status',
     GET_FPTN_STATUS = 'get_fptn_status',
     GET_OLCRTC_STATUS = 'get_olcrtc_status',
     GET_OUTBOUND_METADATA = 'get_outbound_metadata',
+    GET_ROUTER_NETWORK_ENV = 'get_router_network_env',
     GET_SERVER_CAPABILITIES = 'get_server_capabilities',
     GET_SING_BOX_STATUS = 'get_sing_box_status',
     GET_STATUS = 'get_status',
@@ -667,6 +670,8 @@ export namespace Tachyon {
     smart_detect_mode?: 'default' | 'plus';
     smart_detect_section?: string;
     smart_detect_sections?: string | string[];
+    smart_detect_expand_to_root?: '0' | '1';
+    smart_detect_exclude?: string | string[];
     dns_turbo_cache?: '0' | '1';
     dns_local_cache?: '0' | '1';
     dns_cache_size?: string;

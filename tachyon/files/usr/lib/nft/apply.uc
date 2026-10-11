@@ -2446,6 +2446,103 @@ function tproxy_route_rule_present(table, mark) {
     return tproxy_route_present(table) && tproxy_marking_rule_present(table, mark);
 }
 
+function collect_server_firewall_ports() {
+    let tcp_ports = [];
+    let udp_ports = [];
+    let servers = uci_sections("server");
+    if (!servers)
+        return { tcp: tcp_ports, udp: udp_ports };
+
+    for (let s in servers) {
+        if (as_string(s["enabled"]) == "0" || as_string(s["enabled"]) == "false")
+            continue;
+        if (as_string(s["open_firewall_port"] ?? "1") == "0")
+            continue;
+        let proto = as_string(s["protocol"] || "vless");
+        if (proto == "tailscale" || proto == "json_inbound")
+            continue;
+        let port = proto == "awg" ? int(s["awg_server_port"] || s["listen_port"] || 51820) : int(s["listen_port"] || 0);
+        if (port <= 0 || port > 65535)
+            continue;
+        if (proto == "awg" || proto == "hysteria2" || proto == "tuic") {
+            push(udp_ports, port);
+        } else {
+            push(tcp_ports, port);
+            push(udp_ports, port);
+        }
+    }
+    return { tcp: tcp_ports, udp: udp_ports };
+}
+
+function sync_server_firewall_uci_rules() {
+    let servers = uci_sections("server");
+    let active_rule_names = {};
+    let changed = false;
+
+    if (servers) {
+        for (let s in servers) {
+            let section_name = as_string(s[".name"] || "");
+            if (section_name == "")
+                continue;
+
+            let enabled = as_string(s["enabled"] ?? "1");
+            if (enabled == "0" || enabled == "false")
+                continue;
+
+            let open_port = as_string(s["open_firewall_port"] ?? "1");
+            if (open_port == "0" || open_port == "false")
+                continue;
+
+            let proto = as_string(s["protocol"] || "vless");
+            if (proto == "tailscale" || proto == "json_inbound")
+                continue;
+
+            let port = proto == "awg" ? int(s["awg_server_port"] || s["listen_port"] || 51820) : int(s["listen_port"] || 0);
+            if (port <= 0 || port > 65535)
+                continue;
+
+            let safe_name = replace(section_name, /[^A-Za-z0-9_]/g, "_");
+            let rule_name = "tachyon_srv_" + safe_name;
+            active_rule_names[rule_name] = true;
+
+            let rule_proto = (proto == "awg" || proto == "hysteria2" || proto == "tuic") ? "udp" : "tcp";
+            let port_str = as_string(port);
+
+            let current_target = uci_core.get("firewall." + rule_name + ".target");
+            let current_port = uci_core.get("firewall." + rule_name + ".dest_port");
+            let current_proto = uci_core.get("firewall." + rule_name + ".proto");
+            let current_enabled = uci_core.get("firewall." + rule_name + ".enabled");
+
+            if (current_target != "ACCEPT" || current_port != port_str || current_proto != rule_proto || current_enabled != "1") {
+                uci_core.set("firewall." + rule_name, "rule");
+                uci_core.set("firewall." + rule_name + ".name", "Tachyon server " + section_name);
+                uci_core.set("firewall." + rule_name + ".src", "wan");
+                uci_core.set("firewall." + rule_name + ".dest_port", port_str);
+                uci_core.set("firewall." + rule_name + ".proto", rule_proto);
+                uci_core.set("firewall." + rule_name + ".target", "ACCEPT");
+                uci_core.set("firewall." + rule_name + ".enabled", "1");
+                changed = true;
+            }
+        }
+    }
+
+    let fw_rules = uci_core.section_objects("firewall", "rule");
+    if (type(fw_rules) == "array") {
+        for (let r in fw_rules) {
+            let r_name = as_string(r[".name"] || "");
+            if (substr(r_name, 0, 12) == "tachyon_srv_" && !active_rule_names[r_name]) {
+                uci_core.delete("firewall." + r_name);
+                changed = true;
+            }
+        }
+    }
+
+    if (changed) {
+        uci_core.commit("firewall");
+        run_args_quiet([ "/etc/init.d/firewall", "reload" ]);
+    }
+}
+
 function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
     rt_tables_path = as_string(rt_tables_path || "/etc/iproute2/rt_tables");
 
@@ -2511,13 +2608,35 @@ function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
         run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "meta", "mark", "&", as_string(mark), "==", as_string(mark), "accept", "comment", "\"Allow Tachyon TPROXY marked traffic\"" ]);
     }
 
+    let srv_ports = collect_server_firewall_ports();
+    for (let p in srv_ports.tcp) {
+        if (index(fw4_input_out, "tcp dport " + as_string(p)) < 0) {
+            run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "tcp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound TCP\"" ]);
+        }
+    }
+    for (let p in srv_ports.udp) {
+        if (index(fw4_input_out, "udp dport " + as_string(p)) < 0) {
+            run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "udp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound UDP\"" ]);
+        }
+    }
+
     let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
     let fw4_include_file = fw4_include_dir + "/10-tachyon.nft";
     if (fs.stat("/usr/share/nftables.d") != null) {
         fs.mkdir("/usr/share/nftables.d/chain-pre");
         fs.mkdir(fw4_include_dir);
-        write_text_file(fw4_include_file, sprintf("meta mark & %s == %s accept comment \"Allow Tachyon TPROXY marked traffic\"\n", as_string(mark), as_string(mark)));
+        let nft_content = sprintf("meta mark & %s == %s accept comment \"Allow Tachyon TPROXY marked traffic\"\n", as_string(mark), as_string(mark));
+        if (length(srv_ports.tcp) > 0) {
+            let ports_str = length(srv_ports.tcp) == 1 ? as_string(srv_ports.tcp[0]) : "{ " + join(", ", srv_ports.tcp) + " }";
+            nft_content += sprintf("tcp dport %s accept comment \"Allow Tachyon server inbound TCP\"\n", ports_str);
+        }
+        if (length(srv_ports.udp) > 0) {
+            let ports_str = length(srv_ports.udp) == 1 ? as_string(srv_ports.udp[0]) : "{ " + join(", ", srv_ports.udp) + " }";
+            nft_content += sprintf("udp dport %s accept comment \"Allow Tachyon server inbound UDP\"\n", ports_str);
+        }
+        write_text_file(fw4_include_file, nft_content);
     }
+    sync_server_firewall_uci_rules();
     return true;
 }
 
@@ -2825,6 +2944,8 @@ function nft_create_provider_output_rules_from_uci(table, action, provider_bin, 
 
 function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Building nftables runtime model");
+
+    sync_server_firewall_uci_rules();
 
     // The ip rule / route table pair belongs to tproxy mode. In tun mode the
     // core's auto_route owns the policy routing, and writing a second "fwmark

@@ -69,11 +69,17 @@ describe('validateProxyUrl', () => {
     );
   });
 
-  it('rejects VMess configs with an invalid server host', () => {
-    const config = Buffer.from(
-      JSON.stringify({ add: 'bad_host', port: '443', id: 'uuid' }),
-    ).toString('base64');
+  it('accepts valid FPTN token URLs', () => {
+    const validB64 = Buffer.from('test_token_content').toString('base64');
+    expect(validateProxyUrl(`fptn:${validB64}`).valid).toBe(true);
+    expect(validateProxyUrl(`fptnb:${validB64}`).valid).toBe(true);
+    expect(validateProxyUrl(`fptn://${validB64}`).valid).toBe(true);
+    expect(validateProxyUrl(`fptnb://${validB64}`).valid).toBe(true);
+    expect(validateProxyUrl(`fptn:${validB64}#MyServer`).valid).toBe(true);
+  });
 
-    expect(validateProxyUrl(`vmess://${config}`).valid).toBe(false);
+  it('rejects invalid FPTN token URLs', () => {
+    expect(validateProxyUrl('fptn:').valid).toBe(false);
+    expect(validateProxyUrl('fptn:!bad_b64!').valid).toBe(false);
   });
 });

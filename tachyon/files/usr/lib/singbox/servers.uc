@@ -338,13 +338,20 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let server_port = int_option(section, "awg_server_port", "51820");
         let peer_public_key = option(section, "awg_peer_public_key", "");
 
-        let allowed_ips = list_option(section, "awg_allowed_ips");
+        let allowed_ips = list_option(section, "awg_peer_allowed_ips");
+        if (length(allowed_ips) == 0)
+            allowed_ips = list_option(section, "awg_allowed_ips");
         if (length(allowed_ips) == 0) {
-            let allowed_str = option(section, "awg_allowed_ips", "");
-            if (allowed_str != "")
+            let allowed_str = option(section, "awg_peer_allowed_ips", option(section, "awg_allowed_ips", ""));
+            if (allowed_str != "") {
                 allowed_ips = split(allowed_str, /[,\s]+/);
-            else
-                allowed_ips = [ "0.0.0.0/0", "::/0" ];
+            } else {
+                let cli_addr = option(section, "awg_client_address", "");
+                if (cli_addr != "")
+                    allowed_ips = [ cli_addr ];
+                else
+                    allowed_ips = [ "10.8.0.2/32" ];
+            }
         }
 
         let peer = {
