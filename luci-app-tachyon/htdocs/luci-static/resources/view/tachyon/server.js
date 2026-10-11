@@ -531,20 +531,21 @@ function injectServerStyles() {
 #cbi-${UCI_PACKAGE}-server .cbi-section-actions > div{display:inline-flex;align-items:center;gap:4px}
 #cbi-${UCI_PACKAGE}-server .cbi-section-actions{text-align:right}
 
-.fkp-server-info-modal{display:flex;flex-direction:column;gap:14px;width:min(560px,calc(100vw - 32px));max-width:100%;box-sizing:border-box}
-.fkp-server-info-modal__container{display:flex;gap:24px;align-items:flex-start;width:100%;box-sizing:border-box}
-.fkp-server-info-modal__qr-col{display:flex;flex-direction:column;align-items:center;gap:12px;flex-shrink:0;width:180px}
-.fkp-server-info-modal__qr-image{width:180px;height:180px;max-width:min(180px,60vw);max-height:min(180px,60vw);display:block;image-rendering:pixelated}
-.fkp-server-info-modal__details-col{display:flex;flex-direction:column;gap:16px;flex-grow:1;min-width:0;box-sizing:border-box}
-.fkp-server-info-modal__details-grid{display:flex;flex-direction:column;gap:10px;background:rgba(128,128,128,0.08);padding:14px;border:1px solid rgba(128,128,128,0.15);box-sizing:border-box}
-.fkp-server-info-modal__detail-item{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.fkp-server-info-dialog{max-width:720px !important;width:100%}
+.fkp-server-info-modal{display:flex;flex-direction:column;gap:14px;width:100%;max-width:680px;box-sizing:border-box}
+.fkp-server-info-modal__container{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;width:100%;box-sizing:border-box}
+.fkp-server-info-modal__qr-col{display:flex;flex-direction:column;align-items:center;gap:12px;flex:0 0 160px;max-width:100%}
+.fkp-server-info-modal__qr-image{width:160px;height:160px;max-width:100%;display:block;image-rendering:pixelated}
+.fkp-server-info-modal__details-col{display:flex;flex-direction:column;gap:14px;flex:1 1 260px;min-width:0;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
+.fkp-server-info-modal__details-grid{display:flex;flex-direction:column;gap:10px;background:rgba(128,128,128,0.08);padding:12px;border:1px solid rgba(128,128,128,0.15);box-sizing:border-box;border-radius:4px}
+.fkp-server-info-modal__detail-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .fkp-server-info-modal__detail-label{font-size:11px;opacity:0.65;text-transform:uppercase;letter-spacing:0.05em;font-weight:700}
 .fkp-server-info-modal__detail-value{font-size:13px;font-weight:500}
 .fkp-server-info-modal__detail-value--title{font-weight:600}
 .fkp-server-info-modal__detail-value--mono{font-family:monospace;font-size:12px;background:rgba(128,128,128,0.12);padding:2px 6px;border-radius:4px;word-break:break-all}
 .fkp-server-info-modal__badge{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-weight:600;border-radius:4px;border:1px solid var(--border-color,rgba(128,128,128,0.25));background:rgba(128,128,128,0.08);line-height:1.2}
-.fkp-server-info-modal__link-section{display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
-.fkp-server-info-modal__link{width:100% !important;max-width:100% !important;font-family:monospace;font-size:11px;padding:8px 10px;resize:none;min-height:54px;box-sizing:border-box;margin:0 !important;line-height:1.4;word-break:break-all;float:none !important;position:static !important;border-radius:0 !important;background-color:transparent !important}
+.fkp-server-info-modal__link-section{display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:100%;min-width:0}
+.fkp-server-info-modal__link{width:100% !important;max-width:100% !important;font-family:monospace;font-size:11px;padding:8px 10px;resize:none;min-height:54px;box-sizing:border-box;margin:0 !important;line-height:1.4;word-break:break-all;overflow-wrap:anywhere;white-space:pre-wrap;float:none !important;position:static !important;border-radius:4px !important;background-color:transparent !important}
 .fkp-server-info-modal__copy-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;align-self:flex-start;padding:3px 10px !important;font-size:11px !important;height:auto !important;min-height:24px !important;float:none !important;position:static !important;margin:0 !important}
 
 @media (max-width:640px){
@@ -1715,30 +1716,42 @@ function buildShadowtlsLink(sectionId, identity) {
   return `shadowtls://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildFptnToken(sectionId, identity) {
+function buildFptnPayload(sectionId, identity) {
   const host = getPublicHost(sectionId);
   const port = parseInt(
     uci.get(UCI_PACKAGE, sectionId, "listen_port") || "443",
     10,
   );
   const username = identity.username || identity.name || sectionId;
-  const payload = {
+  const serverName = identity.name || getServerName(sectionId) || sectionId;
+  return {
+    version: 1,
+    service_name: "Tachyon",
+    username: username,
+    password: identity.password || "",
     servers: [
       {
-        server: host,
+        name: serverName,
+        host: host,
         port: port,
-        username: username,
-        password: identity.password,
-        sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+        md5_fingerprint: "",
       },
     ],
+    censored_zone_servers: [],
   };
-  return base64Encode(JSON.stringify(payload));
+}
+
+function buildFptnToken(sectionId, identity) {
+  const payload = buildFptnPayload(sectionId, identity);
+  const b64 = base64Encode(JSON.stringify(payload)).replace(/=+$/, "");
+  return `fptn:${b64}`;
 }
 
 function buildFptnLink(sectionId, identity) {
-  const token = buildFptnToken(sectionId, identity);
-  return `fptn://${token}#${encodeURIComponent(identity.name || sectionId)}`;
+  const payload = buildFptnPayload(sectionId, identity);
+  const b64 = base64Encode(JSON.stringify(payload)).replace(/=+$/, "");
+  const serverName = identity.name || getServerName(sectionId) || sectionId;
+  return `fptn://${b64}#${encodeURIComponent(serverName)}`;
 }
 
 function buildHttpLink(sectionId, identity) {
@@ -2399,7 +2412,7 @@ function showServerInfoModal(sectionId) {
         ),
       ]),
     ],
-    "cbi-modal",
+    "cbi-modal fkp-server-info-dialog",
   );
 
   buildClientLinkContext(sectionId)
@@ -2899,9 +2912,77 @@ function syncSecurityChoices(sectionId) {
   }
 }
 
+function syncProtocolWidgetValues(sectionId, _protocol) {
+  const optionsToSync = [
+    "listen_port",
+    "security",
+    "server_username",
+    "server_password",
+    "server_uuid",
+    "tls_server_name",
+    "tls_certificate_path",
+    "tls_key_path",
+    "public_host",
+    "vless_flow",
+    "reality_handshake_server",
+    "reality_handshake_server_port",
+    "reality_short_id",
+    "reality_max_time_difference",
+    "client_fingerprint",
+    "hysteria2_obfs_type",
+    "hysteria2_obfs_password",
+    "tuic_congestion_control",
+    "shadowtls_handshake_server",
+    "shadowtls_handshake_server_port",
+    "shadowtls_version",
+    "shadowsocks_method",
+    "awg_local_address",
+    "awg_client_address",
+    "awg_dns",
+    "awg_mtu",
+    "awg_keepalive",
+    "awg_version",
+    "awg_jc",
+    "awg_jmin",
+    "awg_jmax",
+    "awg_s1",
+    "awg_s2",
+    "awg_s3",
+    "awg_s4",
+    "awg_h1",
+    "awg_h2",
+    "awg_h3",
+    "awg_h4",
+    "tailscale_control_url",
+    "tailscale_hostname",
+    "tailscale_advertise_exit_node",
+    "mtproto_secret",
+    "mtproto_faketls",
+    "mtproto_padding",
+    "mtproto_domain_fronting_port",
+    "mtproto_prefer_ip",
+    "mtproto_tolerate_time_skewness",
+    "mtproto_idle_timeout",
+    "mtproto_handshake_timeout",
+  ];
+
+  for (const opt of optionsToSync) {
+    const val = uci.get(UCI_PACKAGE, sectionId, opt);
+    if (val != null && val !== "") {
+      const widget = getControlWidget(sectionId, opt);
+      if (widget && (!widget.value || widget.value === "")) {
+        setWidgetValue(sectionId, opt, val);
+      }
+    }
+  }
+}
+
 function getModalNode() {
-  return document.querySelector(
-    "body.modal-overlay-active > #modal_overlay > .modal.cbi-modal",
+  return (
+    document.querySelector("#modal_overlay .modal.cbi-modal") ||
+    document.querySelector(".modal.cbi-modal") ||
+    document.querySelector("#modal_overlay .modal") ||
+    document.querySelector(".cbi-modal")
   );
 }
 
@@ -3312,17 +3393,9 @@ function autoConfigureServer(sectionId) {
       generateTlsCertificateIfMissing(sectionId);
     }
 
-    ui.addNotification(
-      null,
-      E(
-        "p",
-        {},
-        _(
-          "Server configured specifically for router environment (WAN/DDNS host, collision-safe subnet, optimized port).",
-        ),
-      ),
-      "info",
-    );
+    if (typeof main.showToast === "function") {
+      main.showToast(_("Server configuration generated"), "success");
+    }
   });
 }
 
@@ -3490,14 +3563,27 @@ function configureServerSection(sectionRef, options = {}) {
   sectionRef.handleModalSave = function (modalMap, ev) {
     clearServerValidationMessage();
 
-    const mapNode = this.getActiveModalMap();
-    const activeMap = dom.findClassInstance(mapNode);
+    const targetMap =
+      modalMap ||
+      (typeof this.getActiveModalMap === "function"
+        ? dom.findClassInstance(this.getActiveModalMap())
+        : null);
 
-    return activeMap
-      .parse()
-      .then(() =>
-        form.GridSection.prototype.handleModalSave.call(this, modalMap, ev),
-      )
+    if (!targetMap) {
+      return Promise.resolve();
+    }
+
+    let saveTasks = targetMap.save(null, true);
+    let curr = targetMap;
+    while (curr.parent) {
+      curr = curr.parent;
+      saveTasks = saveTasks
+        .then(curr.load.bind(curr))
+        .then(curr.reset.bind(curr));
+    }
+
+    return saveTasks
+      .then(() => this.handleModalCancel(targetMap, ev, true))
       .catch((error) => showServerValidationMessage(error));
   };
 
@@ -3595,6 +3681,7 @@ function createServerContent(section, options = {}) {
   o.onchange = function (_ev, sectionId, value) {
     ensureProtocolDefaults(sectionId, value, true);
     syncSecurityChoices(sectionId);
+    syncProtocolWidgetValues(sectionId, value);
     if (value === "vless" && getEffectiveSecurity(sectionId) === "reality") {
       generateRealityKeypairIfMissing(sectionId);
     }
@@ -4267,7 +4354,15 @@ function createServerContent(section, options = {}) {
   o.validate = validateRequiredDuration;
   addMtprotoDepends(o);
 
-  o = section.option(form.Value, "tailscale_auth_key", _("Tailscale auth key"));
+  o = section.option(
+    form.Value,
+    "tailscale_auth_key",
+    _("Tailscale auth key"),
+    _("Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...).") +
+      ' <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noopener noreferrer">' +
+      _("Generate in Tailscale Admin Console") +
+      "</a>",
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateRequired;

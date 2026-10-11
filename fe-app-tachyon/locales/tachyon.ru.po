@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-11 23:33+0300\n"
-"PO-Revision-Date: 2026-10-11 23:33+0300\n"
+"POT-Creation-Date: 2026-10-11 00:58+0300\n"
+"PO-Revision-Date: 2026-10-11 00:58+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2336,6 +2336,9 @@ msgstr "Сгенерировать случайный 16-символьный ш
 msgid "Generate bug report"
 msgstr "Сгенерировать баг-репорт"
 
+msgid "Generate in Tailscale Admin Console"
+msgstr ""
+
 msgid "Generated inbound"
 msgstr "Созданный inbound"
 
@@ -4484,6 +4487,9 @@ msgstr "Продолжить обновление"
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
 
+msgid "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...)."
+msgstr ""
+
 msgid "Rollback"
 msgstr "Откатить"
 
@@ -4901,8 +4907,8 @@ msgstr "Публичный ключ сервера"
 msgid "Server VPN IP address and subnet (e.g. 10.0.0.1/24)"
 msgstr "VPN IP-адрес и подсеть сервера (например, 10.0.0.1/24)"
 
-msgid "Server configured specifically for router environment (WAN/DDNS host, collision-safe subnet, optimized port)."
-msgstr "Сервер настроен с учетом окружения роутера (хост WAN/DDNS, бесконфликтная подсеть, оптимизированный порт)."
+msgid "Server configuration generated"
+msgstr ""
 
 msgid "Server filtering"
 msgstr "Фильтрация серверов"
@@ -6715,6 +6721,9 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Server configured specifically for router environment (WAN/DDNS host, collision-safe subnet, optimized port)."
+msgstr "Сервер настроен с учетом окружения роутера (хост WAN/DDNS, бесконфликтная подсеть, оптимизированный порт)."
 
 msgid "⚡ Auto-configure (Generate all in 1 click)"
 msgstr "Автонастройка (Сгенерировать всё в 1 клик)"
