@@ -1715,7 +1715,7 @@ function buildShadowtlsLink(sectionId, identity) {
   return `shadowtls://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildFptnLink(sectionId, identity) {
+function buildFptnToken(sectionId, identity) {
   const host = getPublicHost(sectionId);
   const port = parseInt(
     uci.get(UCI_PACKAGE, sectionId, "listen_port") || "443",
@@ -1733,7 +1733,12 @@ function buildFptnLink(sectionId, identity) {
       },
     ],
   };
-  return `fptn:${base64Encode(JSON.stringify(payload))}#${encodeURIComponent(identity.name || sectionId)}`;
+  return base64Encode(JSON.stringify(payload));
+}
+
+function buildFptnLink(sectionId, identity) {
+  const token = buildFptnToken(sectionId, identity);
+  return `fptn://${token}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
 function buildHttpLink(sectionId, identity) {
@@ -1751,7 +1756,7 @@ function buildMixedLink(sectionId, identity) {
   return buildSocksLink(sectionId, identity);
 }
 
-function buildAwgClientConfig(sectionId) {
+function buildAwgClientConfig(sectionId, targetVersion) {
   const host = getPublicHost(sectionId);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "51820";
   const clientPrivateKey =
@@ -1768,60 +1773,80 @@ function buildAwgClientConfig(sectionId) {
   const keepalive = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive") || "25";
   const dns = uci.get(UCI_PACKAGE, sectionId, "awg_dns") || "10.0.0.1";
 
-  const jc = uci.get(UCI_PACKAGE, sectionId, "awg_jc") || "4";
-  const jmin = uci.get(UCI_PACKAGE, sectionId, "awg_jmin") || "40";
-  const jmax = uci.get(UCI_PACKAGE, sectionId, "awg_jmax") || "70";
-  const s1 = uci.get(UCI_PACKAGE, sectionId, "awg_s1") || "0";
-  const s2 = uci.get(UCI_PACKAGE, sectionId, "awg_s2") || "0";
-  const s3 = uci.get(UCI_PACKAGE, sectionId, "awg_s3") || "0";
-  const s4 = uci.get(UCI_PACKAGE, sectionId, "awg_s4") || "0";
-  const h1 = uci.get(UCI_PACKAGE, sectionId, "awg_h1") || "1";
-  const h2 = uci.get(UCI_PACKAGE, sectionId, "awg_h2") || "2";
-  const h3 = uci.get(UCI_PACKAGE, sectionId, "awg_h3") || "3";
-  const h4 = uci.get(UCI_PACKAGE, sectionId, "awg_h4") || "4";
-  const i1 = uci.get(UCI_PACKAGE, sectionId, "awg_i1") || "";
-  const i2 = uci.get(UCI_PACKAGE, sectionId, "awg_i2") || "";
-  const i3 = uci.get(UCI_PACKAGE, sectionId, "awg_i3") || "";
-  const i4 = uci.get(UCI_PACKAGE, sectionId, "awg_i4") || "";
-  const i5 = uci.get(UCI_PACKAGE, sectionId, "awg_i5") || "";
-  const j1 = uci.get(UCI_PACKAGE, sectionId, "awg_j1") || "";
-  const j2 = uci.get(UCI_PACKAGE, sectionId, "awg_j2") || "";
-  const j3 = uci.get(UCI_PACKAGE, sectionId, "awg_j3") || "";
-  const itime = uci.get(UCI_PACKAGE, sectionId, "awg_itime") || "";
+  const effectiveVer =
+    targetVersion || uci.get(UCI_PACKAGE, sectionId, "awg_version") || "2.0";
 
   let conf = `[Interface]\nAddress = ${clientAddress}\nPrivateKey = ${clientPrivateKey}\nDNS = ${dns}\nMTU = ${mtu}\n`;
-  conf += `Jc = ${jc}\nJmin = ${jmin}\nJmax = ${jmax}\nS1 = ${s1}\nS2 = ${s2}\nS3 = ${s3}\nS4 = ${s4}\nH1 = ${h1}\nH2 = ${h2}\nH3 = ${h3}\nH4 = ${h4}\n`;
-  if (i1) conf += `I1 = ${i1}\n`;
-  if (i2) conf += `I2 = ${i2}\n`;
-  if (i3) conf += `I3 = ${i3}\n`;
-  if (i4) conf += `I4 = ${i4}\n`;
-  if (i5) conf += `I5 = ${i5}\n`;
-  if (j1) conf += `J1 = ${j1}\n`;
-  if (j2) conf += `J2 = ${j2}\n`;
-  if (j3) conf += `J3 = ${j3}\n`;
-  if (itime) conf += `Itime = ${itime}\n`;
 
-  const awgVer = uci.get(UCI_PACKAGE, sectionId, "awg_version") || "2.0";
-  if (awgVer === "3.0" || awgVer === "3.1") {
-    const hpk =
-      uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || "";
-    const cpa =
-      uci.get(UCI_PACKAGE, sectionId, "awg_content_padding_addition") || "";
-    if (hpk) conf += `HeaderProtectionKey = ${hpk}\n`;
-    if (cpa) conf += `ContentPaddingAddition = ${cpa}\n`;
-  }
-  if (awgVer === "3.1") {
-    const rka = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_after_time") || "";
-    const rkt = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_timeout") || "";
-    const rja = uci.get(UCI_PACKAGE, sectionId, "awg_reject_after_time") || "";
-    const kpt = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive_timeout") || "";
-    const mha =
-      uci.get(UCI_PACKAGE, sectionId, "awg_max_handshake_attempts") || "";
-    if (rka) conf += `RekeyAfterTime = ${rka}\n`;
-    if (rkt) conf += `RekeyTimeout = ${rkt}\n`;
-    if (rja) conf += `RejectAfterTime = ${rja}\n`;
-    if (kpt) conf += `KeepaliveTimeout = ${kpt}\n`;
-    if (mha) conf += `MaxHandshakeAttempts = ${mha}\n`;
+  if (effectiveVer === "wg") {
+    // Pure WireGuard without obfuscation headers
+  } else if (effectiveVer === "1.0") {
+    // AWG 1.0: Only Jc, Jmin, Jmax, S1, S2, H1, H2, H3, H4
+    const jc = uci.get(UCI_PACKAGE, sectionId, "awg_jc") || "4";
+    const jmin = uci.get(UCI_PACKAGE, sectionId, "awg_jmin") || "40";
+    const jmax = uci.get(UCI_PACKAGE, sectionId, "awg_jmax") || "70";
+    const s1 = uci.get(UCI_PACKAGE, sectionId, "awg_s1") || "0";
+    const s2 = uci.get(UCI_PACKAGE, sectionId, "awg_s2") || "0";
+    const h1 = uci.get(UCI_PACKAGE, sectionId, "awg_h1") || "1";
+    const h2 = uci.get(UCI_PACKAGE, sectionId, "awg_h2") || "2";
+    const h3 = uci.get(UCI_PACKAGE, sectionId, "awg_h3") || "3";
+    const h4 = uci.get(UCI_PACKAGE, sectionId, "awg_h4") || "4";
+    conf += `Jc = ${jc}\nJmin = ${jmin}\nJmax = ${jmax}\nS1 = ${s1}\nS2 = ${s2}\nH1 = ${h1}\nH2 = ${h2}\nH3 = ${h3}\nH4 = ${h4}\n`;
+  } else {
+    // AWG 2.0 / 3.0 / 3.1
+    const jc = uci.get(UCI_PACKAGE, sectionId, "awg_jc") || "4";
+    const jmin = uci.get(UCI_PACKAGE, sectionId, "awg_jmin") || "40";
+    const jmax = uci.get(UCI_PACKAGE, sectionId, "awg_jmax") || "70";
+    const s1 = uci.get(UCI_PACKAGE, sectionId, "awg_s1") || "0";
+    const s2 = uci.get(UCI_PACKAGE, sectionId, "awg_s2") || "0";
+    const s3 = uci.get(UCI_PACKAGE, sectionId, "awg_s3") || "0";
+    const s4 = uci.get(UCI_PACKAGE, sectionId, "awg_s4") || "0";
+    const h1 = uci.get(UCI_PACKAGE, sectionId, "awg_h1") || "1";
+    const h2 = uci.get(UCI_PACKAGE, sectionId, "awg_h2") || "2";
+    const h3 = uci.get(UCI_PACKAGE, sectionId, "awg_h3") || "3";
+    const h4 = uci.get(UCI_PACKAGE, sectionId, "awg_h4") || "4";
+    const i1 = uci.get(UCI_PACKAGE, sectionId, "awg_i1") || "";
+    const i2 = uci.get(UCI_PACKAGE, sectionId, "awg_i2") || "";
+    const i3 = uci.get(UCI_PACKAGE, sectionId, "awg_i3") || "";
+    const i4 = uci.get(UCI_PACKAGE, sectionId, "awg_i4") || "";
+    const i5 = uci.get(UCI_PACKAGE, sectionId, "awg_i5") || "";
+    const j1 = uci.get(UCI_PACKAGE, sectionId, "awg_j1") || "";
+    const j2 = uci.get(UCI_PACKAGE, sectionId, "awg_j2") || "";
+    const j3 = uci.get(UCI_PACKAGE, sectionId, "awg_j3") || "";
+    const itime = uci.get(UCI_PACKAGE, sectionId, "awg_itime") || "";
+
+    conf += `Jc = ${jc}\nJmin = ${jmin}\nJmax = ${jmax}\nS1 = ${s1}\nS2 = ${s2}\nS3 = ${s3}\nS4 = ${s4}\nH1 = ${h1}\nH2 = ${h2}\nH3 = ${h3}\nH4 = ${h4}\n`;
+    if (i1) conf += `I1 = ${i1}\n`;
+    if (i2) conf += `I2 = ${i2}\n`;
+    if (i3) conf += `I3 = ${i3}\n`;
+    if (i4) conf += `I4 = ${i4}\n`;
+    if (i5) conf += `I5 = ${i5}\n`;
+    if (j1) conf += `J1 = ${j1}\n`;
+    if (j2) conf += `J2 = ${j2}\n`;
+    if (j3) conf += `J3 = ${j3}\n`;
+    if (itime) conf += `Itime = ${itime}\n`;
+
+    if (effectiveVer === "3.0" || effectiveVer === "3.1") {
+      const hpk =
+        uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || "";
+      const cpa =
+        uci.get(UCI_PACKAGE, sectionId, "awg_content_padding_addition") || "";
+      if (hpk) conf += `HeaderProtectionKey = ${hpk}\n`;
+      if (cpa) conf += `ContentPaddingAddition = ${cpa}\n`;
+    }
+    if (effectiveVer === "3.1") {
+      const rka = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_after_time") || "";
+      const rkt = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_timeout") || "";
+      const rja = uci.get(UCI_PACKAGE, sectionId, "awg_reject_after_time") || "";
+      const kpt = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive_timeout") || "";
+      const mha =
+        uci.get(UCI_PACKAGE, sectionId, "awg_max_handshake_attempts") || "";
+      if (rka) conf += `RekeyAfterTime = ${rka}\n`;
+      if (rkt) conf += `RekeyTimeout = ${rkt}\n`;
+      if (rja) conf += `RejectAfterTime = ${rja}\n`;
+      if (kpt) conf += `KeepaliveTimeout = ${kpt}\n`;
+      if (mha) conf += `MaxHandshakeAttempts = ${mha}\n`;
+    }
   }
 
   conf += `\n[Peer]\nPublicKey = ${serverPublicKey}\nEndpoint = ${host}:${port}\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = ${keepalive}\n`;
@@ -1839,7 +1864,7 @@ function buildClientLink(sectionId, options = {}) {
   }
 
   if (protocol === "awg") {
-    return buildAwgClientConfig(sectionId);
+    return buildAwgClientConfig(sectionId, options.awgVersion);
   }
 
   if (
@@ -1888,7 +1913,7 @@ function buildClientLink(sectionId, options = {}) {
     case "mtproto":
       return buildMtprotoLink(sectionId, identity);
     case "awg":
-      return buildAwgClientConfig(sectionId);
+      return buildAwgClientConfig(sectionId, options.awgVersion);
     case "vless":
     default:
       return buildVlessTrojanLink(sectionId, identity, options);
@@ -2011,18 +2036,28 @@ function copyText(text) {
 }
 
 function renderInfoClientLink(sectionId, linkContext = {}) {
-  const link = linkContext.link || buildClientLink(sectionId);
-
-  if (!link) {
-    return E("em", {}, _("Client link is not available yet"));
-  }
-
-  const qr = qrSvgDataUri(link);
   const protocol = getProtocol(sectionId);
   const security = getEffectiveSecurity(sectionId);
   const host = getPublicHost(sectionId);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
   const name = getServerName(sectionId);
+  const identity = getServerIdentity(sectionId);
+
+  let activeAwgVersion =
+    uci.get(UCI_PACKAGE, sectionId, "awg_version") || "2.0";
+
+  let currentLink =
+    protocol === "awg"
+      ? buildAwgClientConfig(sectionId, activeAwgVersion)
+      : linkContext.link || buildClientLink(sectionId);
+
+  if (!currentLink && protocol !== "fptn") {
+    return E("em", {}, _("Client link is not available yet"));
+  }
+
+  const qrUri = protocol === "fptn"
+    ? qrSvgDataUri(buildFptnLink(sectionId, identity))
+    : qrSvgDataUri(currentLink || "");
 
   const securitySuffix =
     security && security !== "none" ? ` + ${getSecurityLabel(security)}` : "";
@@ -2040,128 +2075,307 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
         )
       : "";
 
-  return E("div", { class: "fkp-server-info-modal__container" }, [
-    // Left column: QR code
-    E("div", { class: "fkp-server-info-modal__qr-col" }, [
-      qr
-        ? E("img", {
-            class: "fkp-server-info-modal__qr-image",
-            src: qr,
-            alt: _("Client link QR code"),
-          })
-        : E("em", {}, _("QR code is too large")),
+  let qrImg = E("img", {
+    class: "fkp-server-info-modal__qr-image",
+    src: qrUri,
+    alt: _("Client link QR code"),
+  });
+
+  const qrColChildren = [
+    qrUri ? qrImg : E("em", {}, _("QR code is too large")),
+  ];
+
+  if (protocol === "fptn") {
+    const fptnToken = buildFptnToken(sectionId, identity);
+    const fptnLink = buildFptnLink(sectionId, identity);
+
+    const btnLink = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-action",
+        type: "button",
+        style: "padding:2px 8px;font-size:11px;",
+        click: (ev) => {
+          ev.preventDefault();
+          btnLink.className = "btn cbi-button cbi-button-action";
+          btnToken.className = "btn cbi-button cbi-button-neutral";
+          qrImg.src = qrSvgDataUri(fptnLink);
+        },
+      },
+      _("QR: Link"),
+    );
+
+    const btnToken = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-neutral",
+        type: "button",
+        style: "padding:2px 8px;font-size:11px;",
+        click: (ev) => {
+          ev.preventDefault();
+          btnToken.className = "btn cbi-button cbi-button-action";
+          btnLink.className = "btn cbi-button cbi-button-neutral";
+          qrImg.src = qrSvgDataUri(fptnToken);
+        },
+      },
+      _("QR: Token"),
+    );
+
+    qrColChildren.push(
+      E(
+        "div",
+        {
+          style: "display:flex;gap:4px;margin-top:8px;justify-content:center;",
+        },
+        [btnLink, btnToken],
+      ),
+    );
+  }
+
+  const qrCol = E("div", { class: "fkp-server-info-modal__qr-col" }, qrColChildren);
+
+  const detailsGrid = E("div", { class: "fkp-server-info-modal__details-grid" }, [
+    E("div", { class: "fkp-server-info-modal__detail-item" }, [
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Server name")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--title" },
+        name,
+      ),
     ]),
-
-    // Right column: Details and Copy Box
-    E("div", { class: "fkp-server-info-modal__details-col" }, [
-      E("div", { class: "fkp-server-info-modal__details-grid" }, [
-        E("div", { class: "fkp-server-info-modal__detail-item" }, [
-          E(
-            "span",
-            { class: "fkp-server-info-modal__detail-label" },
-            _("Server name"),
-          ),
-          E(
-            "span",
-            {
-              class:
-                "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--title",
-            },
-            name,
-          ),
-        ]),
-        E("div", { class: "fkp-server-info-modal__detail-item" }, [
-          E(
-            "span",
-            { class: "fkp-server-info-modal__detail-label" },
-            _("Type"),
-          ),
-          E(
-            "span",
-            {
-              class:
-                "fkp-server-info-modal__detail-value fkp-server-info-modal__badge",
-            },
-            protocolText,
-          ),
-        ]),
-        E("div", { class: "fkp-server-info-modal__detail-item" }, [
-          E(
-            "span",
-            { class: "fkp-server-info-modal__detail-label" },
-            _("Address"),
-          ),
-          E(
-            "span",
-            {
-              class:
-                "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--mono",
-            },
-            `${host}:${port}`,
-          ),
-        ]),
-      ]),
-
-      E("div", { class: "fkp-server-info-modal__link-section" }, [
-        E(
-          "span",
-          { class: "fkp-server-info-modal__detail-label" },
-          _("Client link"),
-        ),
-        certificatePinWarning,
-        E(
-          "textarea",
-          {
-            class: "cbi-input-textarea fkp-server-info-modal__link",
-            readonly: "readonly",
-            rows: 3,
-            click: (ev) => ev.currentTarget.select(),
-          },
-          link,
-        ),
-        E("div", { style: "display:flex;gap:6px;" }, [
-          E(
-            "button",
-            {
-              class:
-                "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
-              type: "button",
-              click: (ev) => {
-                ev.preventDefault();
-                copyText(link);
-              },
-            },
-            [iconSvg("copy"), " ", E("span", {}, _("Copy"))],
-          ),
-          protocol === "awg"
-            ? E(
-                "button",
-                {
-                  class:
-                    "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
-                  type: "button",
-                  click: (ev) => {
-                    ev.preventDefault();
-                    const blob = new Blob([link], {
-                      type: "text/plain;charset=utf-8",
-                    });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `${name || "amneziawg"}.conf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                  },
-                },
-                [E("span", {}, _("Download .conf"))],
-              )
-            : "",
-        ]),
-      ]),
+    E("div", { class: "fkp-server-info-modal__detail-item" }, [
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Type")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-value fkp-server-info-modal__badge" },
+        protocolText,
+      ),
+    ]),
+    E("div", { class: "fkp-server-info-modal__detail-item" }, [
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Address")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--mono" },
+        `${host}:${port}`,
+      ),
     ]),
   ]);
+
+  const linkSection = E("div", { class: "fkp-server-info-modal__link-section" });
+
+  if (protocol === "fptn") {
+    const fptnToken = buildFptnToken(sectionId, identity);
+    const fptnLink = buildFptnLink(sectionId, identity);
+
+    linkSection.appendChild(
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Access Token (FPTN)")),
+    );
+    const tokenTextarea = E(
+      "textarea",
+      {
+        class: "cbi-input-textarea fkp-server-info-modal__link",
+        readonly: "readonly",
+        rows: 3,
+        click: (ev) => ev.currentTarget.select(),
+      },
+      fptnToken,
+    );
+    linkSection.appendChild(tokenTextarea);
+
+    const tokenBtnRow = E("div", { style: "display:flex;gap:6px;margin-bottom:12px;margin-top:4px;" }, [
+      E(
+        "button",
+        {
+          class: "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
+          type: "button",
+          click: (ev) => {
+            ev.preventDefault();
+            copyText(fptnToken);
+          },
+        },
+        [iconSvg("copy"), " ", E("span", {}, _("Copy Token"))],
+      ),
+    ]);
+    linkSection.appendChild(tokenBtnRow);
+
+    linkSection.appendChild(
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Client link")),
+    );
+    const linkTextarea = E(
+      "textarea",
+      {
+        class: "cbi-input-textarea fkp-server-info-modal__link",
+        readonly: "readonly",
+        rows: 2,
+        click: (ev) => ev.currentTarget.select(),
+      },
+      fptnLink,
+    );
+    linkSection.appendChild(linkTextarea);
+
+    const linkBtnRow = E("div", { style: "display:flex;gap:6px;margin-top:4px;" }, [
+      E(
+        "button",
+        {
+          class: "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
+          type: "button",
+          click: (ev) => {
+            ev.preventDefault();
+            copyText(fptnLink);
+          },
+        },
+        [iconSvg("copy"), " ", E("span", {}, _("Copy Link"))],
+      ),
+    ]);
+    linkSection.appendChild(linkBtnRow);
+  } else if (protocol === "awg") {
+    const awgVersions = [
+      { id: "2.0", label: "AmneziaWG 2.0" },
+      { id: "1.0", label: "AmneziaWG 1.0" },
+      { id: "3.0", label: "AmneziaWG 3.0" },
+      { id: "wg", label: "WireGuard" },
+    ];
+
+    const versionBar = E("div", {
+      style: "display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;",
+    });
+
+    const confTextarea = E(
+      "textarea",
+      {
+        class: "cbi-input-textarea fkp-server-info-modal__link",
+        readonly: "readonly",
+        rows: 6,
+        style: "font-family:monospace;font-size:11px;",
+        click: (ev) => ev.currentTarget.select(),
+      },
+      currentLink,
+    );
+
+    const vBtns = {};
+
+    const selectVersion = (vId) => {
+      activeAwgVersion = vId;
+      Object.entries(vBtns).forEach(([id, b]) => {
+        if (id === vId) {
+          b.className = "btn cbi-button cbi-button-action";
+        } else {
+          b.className = "btn cbi-button cbi-button-neutral";
+        }
+      });
+      currentLink = buildAwgClientConfig(sectionId, activeAwgVersion);
+      confTextarea.value = currentLink;
+      const newQr = qrSvgDataUri(currentLink);
+      if (newQr) qrImg.src = newQr;
+    };
+
+    awgVersions.forEach((v) => {
+      const btn = E(
+        "button",
+        {
+          class: `btn cbi-button ${v.id === activeAwgVersion ? "cbi-button-action" : "cbi-button-neutral"}`,
+          type: "button",
+          style: "padding:3px 10px;font-size:12px;",
+          click: (ev) => {
+            ev.preventDefault();
+            selectVersion(v.id);
+          },
+        },
+        v.label,
+      );
+      vBtns[v.id] = btn;
+      versionBar.appendChild(btn);
+    });
+
+    linkSection.appendChild(
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Protocol Version")),
+    );
+    linkSection.appendChild(versionBar);
+
+    linkSection.appendChild(
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Configuration File")),
+    );
+    linkSection.appendChild(confTextarea);
+
+    const btnRow = E("div", { style: "display:flex;gap:6px;margin-top:6px;" }, [
+      E(
+        "button",
+        {
+          class: "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
+          type: "button",
+          click: (ev) => {
+            ev.preventDefault();
+            copyText(currentLink);
+          },
+        },
+        [iconSvg("copy"), " ", E("span", {}, _("Copy"))],
+      ),
+      E(
+        "button",
+        {
+          class: "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
+          type: "button",
+          click: (ev) => {
+            ev.preventDefault();
+            const blob = new Blob([currentLink], {
+              type: "text/plain;charset=utf-8",
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${name || "amneziawg"}_${activeAwgVersion}.conf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          },
+        },
+        [E("span", {}, _("Download .conf"))],
+      ),
+    ]);
+    linkSection.appendChild(btnRow);
+  } else {
+    linkSection.appendChild(
+      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Client link")),
+    );
+    if (certificatePinWarning) {
+      linkSection.appendChild(certificatePinWarning);
+    }
+    const linkTextarea = E(
+      "textarea",
+      {
+        class: "cbi-input-textarea fkp-server-info-modal__link",
+        readonly: "readonly",
+        rows: 3,
+        click: (ev) => ev.currentTarget.select(),
+      },
+      currentLink,
+    );
+    linkSection.appendChild(linkTextarea);
+
+    const btnRow = E("div", { style: "display:flex;gap:6px;margin-top:6px;" }, [
+      E(
+        "button",
+        {
+          class: "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
+          type: "button",
+          click: (ev) => {
+            ev.preventDefault();
+            copyText(currentLink);
+          },
+        },
+        [iconSvg("copy"), " ", E("span", {}, _("Copy"))],
+      ),
+    ]);
+    linkSection.appendChild(btnRow);
+  }
+
+  const detailsCol = E("div", { class: "fkp-server-info-modal__details-col" }, [
+    detailsGrid,
+    linkSection,
+  ]);
+
+  return E("div", { class: "fkp-server-info-modal__container" }, [qrCol, detailsCol]);
 }
 
 function showServerInfoModal(sectionId) {
@@ -3393,7 +3607,7 @@ function createServerContent(section, options = {}) {
   };
 
   o = section.option(form.Button, "_autoconfig", _("Auto-configuration"));
-  o.inputtitle = _("⚡ Auto-configure (Generate all in 1 click)");
+  o.inputtitle = _("Auto-configure (Generate all in 1 click)");
   o.inputstyle = "action primary";
   o.modalonly = true;
   o.onclick = function (_ev, sectionId) {

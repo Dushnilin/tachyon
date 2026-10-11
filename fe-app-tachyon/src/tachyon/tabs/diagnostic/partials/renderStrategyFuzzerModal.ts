@@ -86,7 +86,7 @@ export function renderStrategyFuzzerModal(
         style:
           'display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;',
       },
-      [E('span', {}, icon), E('span', {}, label)],
+      [E('span', {}, label)],
     );
     btn.addEventListener('click', () => {
       activeTab = id;
@@ -465,7 +465,7 @@ export function renderStrategyFuzzerModal(
   );
 
   const applyBestBtn = renderButton({
-    text: _('🏆 Apply Best Match'),
+    text: _('Apply Best Match'),
     classNames: ['cbi-button-save'],
     disabled: true,
     onClick: () => handleApplyBest(),
@@ -651,7 +651,7 @@ export function renderStrategyFuzzerModal(
 
   // Footer Actions for Benchmark
   const startBtn = renderButton({
-    text: _('🚀 Start Benchmark'),
+    text: _('Start Benchmark'),
     classNames: ['cbi-button-action'],
     onClick: () => handleToggleRun(),
   });
@@ -912,7 +912,7 @@ export function renderStrategyFuzzerModal(
       },
       [
         renderButton({
-          text: _('💾 Save Custom Patterns'),
+          text: _('Save Custom Patterns'),
           classNames: ['cbi-button-save'],
           onClick: async () => {
             const res =
@@ -925,7 +925,7 @@ export function renderStrategyFuzzerModal(
           },
         }),
         renderButton({
-          text: _('🔄 Reset to Factory Defaults'),
+          text: _('Reset to Factory Defaults'),
           classNames: ['cbi-button-neutral'],
           onClick: async () => {
             const res = await TachyonShellMethods.resetFuzzerPatterns();
@@ -1149,7 +1149,7 @@ export function renderStrategyFuzzerModal(
   });
 
   const aiSynthesizeBtn = renderButton({
-    text: _('🧠 Synthesize with AI'),
+    text: _('Synthesize with AI'),
     classNames: ['cbi-button-action'],
     onClick: () => handleAiSynthesize(),
   });
@@ -1241,12 +1241,12 @@ export function renderStrategyFuzzerModal(
         ),
         E('div', { style: 'display: flex; gap: 8px;' }, [
           renderButton({
-            text: _('🔄 Refresh'),
+            text: _('Refresh'),
             classNames: ['cbi-button-neutral'],
             onClick: () => renderHistoryTab(),
           }),
           renderButton({
-            text: _('🗑️ Clear History'),
+            text: _('Clear History'),
             classNames: ['cbi-button-reset'],
             onClick: async () => {
               await TachyonShellMethods.clearFuzzerHistory();

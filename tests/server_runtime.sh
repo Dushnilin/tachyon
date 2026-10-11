@@ -57,6 +57,9 @@ export TACHYON_UCI_STATE_FILE="$STATE"
 export TACHYON_UCI_LOG_FILE="$LOG"
 export TACHYON_CONFIG_NAME="tachyon"
 export TACHYON_SERVER_RUNTIME_UC="$SERVER_RUNTIME"
+export TACHYON_PROC_NET_DIR="$WORK_DIR/proc_net"
+mkdir -p "$WORK_DIR/proc_net"
+touch "$WORK_DIR/proc_net/tcp" "$WORK_DIR/proc_net/tcp6" "$WORK_DIR/proc_net/udp" "$WORK_DIR/proc_net/udp6"
 
 if grep -E 'uci -q|command -v uci' "$SERVER_RUNTIME" >/dev/null; then
   fail "server/service.uc must use ucode UCI access instead of shelling out to uci"

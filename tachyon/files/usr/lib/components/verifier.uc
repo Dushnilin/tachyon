@@ -149,50 +149,74 @@ function repair_unknown_outbound_field(config_file, reason) {
     let inb_m = match(as_string(reason), /inbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
 
     let m = out_m || ep_m || inb_m;
-    if (!m || !m[1] || !m[2]) return false;
+    if (m && m[1] && m[2]) {
+        let field = m[2];
+        let index = int(m[1]);
+        if (index < 0) return false;
 
-    let field = m[2];
-    let index = int(m[1]);
-    if (index < 0) return false;
+        let cfg_text = as_string(fs.readfile(config_file) || "");
+        if (length(cfg_text) == 0) return false;
 
-    let cfg_text = as_string(fs.readfile(config_file) || "");
-    if (length(cfg_text) == 0) return false;
+        let cfg = json(cfg_text);
+        if (type(cfg) != "object") return false;
 
-    let cfg = json(cfg_text);
-    if (type(cfg) != "object") return false;
-
-    let target = null;
-    if (out_m) {
-        if (type(cfg.outbounds) != "array" || index >= length(cfg.outbounds)) return false;
-        target = cfg.outbounds[index];
-    } else if (ep_m) {
-        if (type(cfg.endpoints) != "array" || index >= length(cfg.endpoints)) return false;
-        target = cfg.endpoints[index];
-    } else if (inb_m) {
-        if (type(cfg.inbounds) != "array" || index >= length(cfg.inbounds)) return false;
-        target = cfg.inbounds[index];
-    }
-    if (type(target) != "object") return false;
-
-    let parts = split(field, ".");
-    let leaf = parts[length(parts) - 1];
-    for (let step = 0; step < length(parts) - 1; step++) {
+        let target = null;
+        if (out_m) {
+            if (type(cfg.outbounds) != "array" || index >= length(cfg.outbounds)) return false;
+            target = cfg.outbounds[index];
+        } else if (ep_m) {
+            if (type(cfg.endpoints) != "array" || index >= length(cfg.endpoints)) return false;
+            target = cfg.endpoints[index];
+        } else if (inb_m) {
+            if (type(cfg.inbounds) != "array" || index >= length(cfg.inbounds)) return false;
+            target = cfg.inbounds[index];
+        }
         if (type(target) != "object") return false;
-        target = target[parts[step]];
+
+        let parts = split(field, ".");
+        let leaf = parts[length(parts) - 1];
+        for (let step = 0; step < length(parts) - 1; step++) {
+            if (type(target) != "object") return false;
+            target = target[parts[step]];
+        }
+
+        if (type(target) != "object" || target[leaf] == null) return false;
+
+        if (ep_m && leaf == "amnezia" && type(target.amnezia) == "object") {
+            for (let k, v in target.amnezia) {
+                if (target[k] == null)
+                    target[k] = v;
+            }
+        }
+
+        delete target[leaf];
+        fs.writefile(config_file, sprintf("%J", cfg));
+        return true;
     }
 
-    if (type(target) != "object" || target[leaf] == null) return false;
+    let gen_m = match(as_string(reason), /([A-Za-z0-9_.]+): json: unknown field/);
+    if (gen_m && gen_m[1]) {
+        let field = gen_m[1];
+        let cfg_text = as_string(fs.readfile(config_file) || "");
+        if (length(cfg_text) == 0) return false;
+        let cfg = json(cfg_text);
+        if (type(cfg) != "object") return false;
 
-    if (ep_m && leaf == "amnezia" && type(target.amnezia) == "object") {
-        for (let k, v in target.amnezia) {
-            if (target[k] == null)
-                target[k] = v;
+        let parts = split(field, ".");
+        let target = cfg;
+        let leaf = parts[length(parts) - 1];
+        for (let step = 0; step < length(parts) - 1; step++) {
+            if (type(target) != "object") return false;
+            target = target[parts[step]];
+        }
+        if (type(target) == "object" && target[leaf] != null) {
+            delete target[leaf];
+            fs.writefile(config_file, sprintf("%J", cfg));
+            return true;
         }
     }
 
-    delete target[leaf];
-    fs.writefile(config_file, sprintf("%J", cfg));
-    return true;
+    return false;
 }
 
 function check_sing_box_config_with_binary(binary, config_path, library_dir, target_variant) {

@@ -1602,7 +1602,7 @@ function createSettingsContent(section, capabilities) {
       "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration.",
     ),
   );
-  dnsBenchmarkBtn.inputtitle = "⚡ " + _("Auto-Tune & Benchmark DNS");
+  dnsBenchmarkBtn.inputtitle = _("Auto-Tune & Benchmark DNS");
   dnsBenchmarkBtn.inputstyle = "action important";
   dnsBenchmarkBtn.onclick = function () {
     if (main && typeof main.renderDnsBenchmarkModal === "function") {
@@ -1952,7 +1952,7 @@ function createSettingsContent(section, capabilities) {
       const val = parseInt(rawVal, 10);
       if (isNaN(val) || val <= 0) {
         calcNode.textContent =
-          "⚡ " + _("Local DNS caching disabled (0 entries)");
+          _("Local DNS caching disabled (0 entries)");
         return;
       }
       const bytes = val * 120;
@@ -1962,7 +1962,6 @@ function createSettingsContent(section, capabilities) {
           : (bytes / (1024 * 1024)).toFixed(1) + " MB";
 
       calcNode.innerHTML =
-        "📊 " +
         _("Estimated RAM usage (max):") +
         " <strong>~" +
         sizeText +

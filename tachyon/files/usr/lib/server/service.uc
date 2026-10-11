@@ -746,21 +746,40 @@ function server_tls_certificate_sha256_from_file(certificate_path) {
 
 
 function is_tcp_port_busy(port) {
-    let port_hex = sprintf(":%04X ", int(port));
-    for (let path in [ "/proc/net/tcp", "/proc/net/tcp6" ]) {
-        let content = fs.readfile(path);
-        if (content && index(uc(as_string(content)), port_hex) >= 0)
-            return true;
+    let port_hex = sprintf(":%04X", int(port));
+    let proc_dir = getenv("TACHYON_PROC_NET_DIR") || "/proc/net";
+    for (let fname in [ "tcp", "tcp6" ]) {
+        let content = fs.readfile(proc_dir + "/" + fname);
+        if (!content) continue;
+        for (let line in split(as_string(content), "\n")) {
+            let tokens = split(trim(line), /[ \t]+/);
+            if (length(tokens) >= 4) {
+                let loc = uc(tokens[1]);
+                if (index(loc, port_hex) >= 0) {
+                    let st = uc(tokens[3]);
+                    if (st == "0A" || st == "01")
+                        return true;
+                }
+            }
+        }
     }
     return false;
 }
 
 function is_udp_port_busy(port) {
-    let port_hex = sprintf(":%04X ", int(port));
-    for (let path in [ "/proc/net/udp", "/proc/net/udp6" ]) {
-        let content = fs.readfile(path);
-        if (content && index(uc(as_string(content)), port_hex) >= 0)
-            return true;
+    let port_hex = sprintf(":%04X", int(port));
+    let proc_dir = getenv("TACHYON_PROC_NET_DIR") || "/proc/net";
+    for (let fname in [ "udp", "udp6" ]) {
+        let content = fs.readfile(proc_dir + "/" + fname);
+        if (!content) continue;
+        for (let line in split(as_string(content), "\n")) {
+            let tokens = split(trim(line), /[ \t]+/);
+            if (length(tokens) >= 2) {
+                let loc = uc(tokens[1]);
+                if (index(loc, port_hex) >= 0)
+                    return true;
+            }
+        }
     }
     return false;
 }

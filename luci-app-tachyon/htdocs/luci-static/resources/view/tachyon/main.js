@@ -14578,7 +14578,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         class: `cbi-button ${activeTab2 === id ? "cbi-button-action" : "cbi-button-neutral"}`,
         style: "display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;"
       },
-      [E("span", {}, icon), E("span", {}, label)]
+      [E("span", {}, label)]
     );
     btn.addEventListener("click", () => {
       activeTab2 = id;
@@ -14892,7 +14892,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     ]
   );
   const applyBestBtn = renderButton({
-    text: _("🏆 Apply Best Match"),
+    text: _("Apply Best Match"),
     classNames: ["cbi-button-save"],
     disabled: true,
     onClick: () => handleApplyBest()
@@ -15060,7 +15060,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   );
   resultsContainer.appendChild(tableEl);
   const startBtn = renderButton({
-    text: _("🚀 Start Benchmark"),
+    text: _("Start Benchmark"),
     classNames: ["cbi-button-action"],
     onClick: () => handleToggleRun()
   });
@@ -15292,7 +15292,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       },
       [
         renderButton({
-          text: _("💾 Save Custom Patterns"),
+          text: _("Save Custom Patterns"),
           classNames: ["cbi-button-save"],
           onClick: async () => {
             const res = await TachyonShellMethods.saveFuzzerPatterns(patternsConfig);
@@ -15304,7 +15304,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           }
         }),
         renderButton({
-          text: _("🔄 Reset to Factory Defaults"),
+          text: _("Reset to Factory Defaults"),
           classNames: ["cbi-button-neutral"],
           onClick: async () => {
             const res = await TachyonShellMethods.resetFuzzerPatterns();
@@ -15499,7 +15499,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     style: "flex: 1 1 240px; min-width: 180px; font-size: 12px;"
   });
   const aiSynthesizeBtn = renderButton({
-    text: _("🧠 Synthesize with AI"),
+    text: _("Synthesize with AI"),
     classNames: ["cbi-button-action"],
     onClick: () => handleAiSynthesize()
   });
@@ -15577,12 +15577,12 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         ),
         E("div", { style: "display: flex; gap: 8px;" }, [
           renderButton({
-            text: _("🔄 Refresh"),
+            text: _("Refresh"),
             classNames: ["cbi-button-neutral"],
             onClick: () => renderHistoryTab()
           }),
           renderButton({
-            text: _("🗑️ Clear History"),
+            text: _("Clear History"),
             classNames: ["cbi-button-reset"],
             onClick: async () => {
               await TachyonShellMethods.clearFuzzerHistory();
@@ -16693,7 +16693,7 @@ function renderDnsBenchmarkModal() {
     onClick: () => startBenchmark()
   });
   const applyBtn = renderButton({
-    text: `🚀 ${_("Apply Recommended DNS")}`,
+    text: _("Apply Recommended DNS"),
     classNames: ["cbi-button-positive"],
     disabled: true,
     onClick: () => applyRecommended()
@@ -16758,7 +16758,7 @@ function renderDnsBenchmarkModal() {
   const applyRecommended = async () => {
     if (applyBtn) {
       applyBtn.disabled = true;
-      applyBtn.textContent = `⏳ ${_("Applying...")}`;
+      applyBtn.textContent = _("Applying...");
     }
     const res = await TachyonShellMethods.applyDnsBenchmark();
     if (res.success) {
@@ -16783,7 +16783,7 @@ function renderDnsBenchmarkModal() {
       );
       if (applyBtn) {
         applyBtn.disabled = false;
-        applyBtn.textContent = `🚀 ${_("Apply Recommended DNS")}`;
+        applyBtn.textContent = _("Apply Recommended DNS");
       }
     }
   };
@@ -18295,10 +18295,10 @@ function renderAiDoctorModal(options) {
               const friendlyLabel = FIX_LABELS[code] || code;
               const btn = renderButton({
                 classNames: ["cbi-button-apply"],
-                text: `⚡ ${friendlyLabel}`,
+                text: friendlyLabel,
                 onClick: async () => {
                   if (applied) return;
-                  btn.textContent = "⏳ " + _("Applying...") + " " + friendlyLabel;
+                  btn.textContent = _("Applying...") + " " + friendlyLabel;
                   showToast(
                     _("Applying fix") + ": " + friendlyLabel + "...",
                     "success"
@@ -18306,7 +18306,7 @@ function renderAiDoctorModal(options) {
                   const fixRes = await TachyonShellMethods.applyQuickFix(code);
                   if (fixRes && typeof fixRes === "object" && fixRes.success) {
                     applied = true;
-                    btn.textContent = `✓ ${friendlyLabel} (${_("Fixed")})`;
+                    btn.textContent = `${friendlyLabel} (${_("Fixed")})`;
                     btn.classList.remove("cbi-button-apply");
                     btn.classList.add("cbi-button-neutral");
                     showToast(
@@ -18314,7 +18314,7 @@ function renderAiDoctorModal(options) {
                       "success"
                     );
                   } else {
-                    btn.textContent = `⚡ ${friendlyLabel}`;
+                    btn.textContent = friendlyLabel;
                     showToast(
                       _("Failed to apply fix") + ": " + friendlyLabel,
                       "error"
@@ -18366,7 +18366,7 @@ function renderAiDoctorModal(options) {
         ),
         renderButton({
           classNames: ["cbi-button-action"],
-          text: "🔄 " + _("Refresh Device List"),
+          text: _("Refresh Device List"),
           onClick: loadLanClients
         })
       ]);
@@ -18385,7 +18385,7 @@ function renderAiDoctorModal(options) {
           ),
           renderButton({
             classNames: ["cbi-button-neutral"],
-            text: "🔄 " + _("Refresh"),
+            text: _("Refresh"),
             onClick: loadLanClients
           })
         ]
@@ -18444,7 +18444,7 @@ function renderAiDoctorModal(options) {
                     classNames: [
                       isDirect ? "cbi-button-action" : "cbi-button-apply"
                     ],
-                    text: isDirect ? "🛡️ " + _("Route via Proxy") : "⚡ " + _("Direct Bypass"),
+                    text: isDirect ? _("Route via Proxy") : _("Direct Bypass"),
                     onClick: async () => {
                       showToast(
                         _("Updating device routing mode..."),
@@ -18539,7 +18539,7 @@ function renderAiDoctorModal(options) {
               classNames: [
                 activeTab2 === "diagnosis" ? "cbi-button-action" : "cbi-button-neutral"
               ],
-              text: "🔍 " + _("Current Diagnosis"),
+              text: _("Current Diagnosis"),
               onClick: () => {
                 activeTab2 = "diagnosis";
                 renderModalLayout();
@@ -18549,7 +18549,7 @@ function renderAiDoctorModal(options) {
               classNames: [
                 activeTab2 === "devices" ? "cbi-button-action" : "cbi-button-neutral"
               ],
-              text: `📱 ${_("LAN Devices")} ${lanClients.length > 0 ? `(${lanClients.length})` : ""}`,
+              text: `${_("LAN Devices")} ${lanClients.length > 0 ? `(${lanClients.length})` : ""}`,
               onClick: () => {
                 activeTab2 = "devices";
                 if (lanClients.length === 0) {
@@ -18563,7 +18563,7 @@ function renderAiDoctorModal(options) {
               classNames: [
                 activeTab2 === "history" ? "cbi-button-action" : "cbi-button-neutral"
               ],
-              text: `🕒 ${_("History")} (${historyEntries.length})`,
+              text: `${_("History")} (${historyEntries.length})`,
               onClick: () => {
                 historyEntries = getAiDoctorHistory();
                 activeTab2 = "history";
@@ -18588,14 +18588,14 @@ function renderAiDoctorModal(options) {
               [
                 renderButton({
                   classNames: ["cbi-button-action"],
-                  text: "📋 " + _("Copy Support Report"),
+                  text: _("Copy Support Report"),
                   onClick: () => {
                     void copySupportReport();
                   }
                 }),
                 renderButton({
                   classNames: ["cbi-button-reset"],
-                  text: "🚨 " + _("Restore Native Internet (Stop Tachyon)"),
+                  text: _("Restore Native Internet (Stop Tachyon)"),
                   onClick: async () => {
                     showToast(
                       _(

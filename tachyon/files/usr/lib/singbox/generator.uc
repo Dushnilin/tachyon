@@ -587,6 +587,21 @@ try {
 // suffix, indistinguishable from a stock build of the same version - and then the
 // name in the banner is the only thing left to go on.
 function sing_box_banner_names_tachyon_core() {
+    let preflight = getenv("SB_PREFLIGHT_BINARY");
+    if (preflight && preflight != "") {
+        let pipe = fs.popen(common.bounded_command(preflight + " version 2>/dev/null", "6"), "r");
+        if (pipe) {
+            let banner = as_string(pipe.read("all"));
+            pipe.close();
+            let newline = index(banner, "\n");
+            let line = trim(newline >= 0 ? substr(banner, 0, newline) : banner);
+            if (line != "") {
+                let token = split(line, /[ \t\r\n]+/)[0];
+                return token == "tachyon-core";
+            }
+        }
+        return false;
+    }
     if (cached_sb_version_banner == null) {
         let banner = "";
         for (let base in [ "sing-box", "/usr/bin/sing-box" ]) {
@@ -694,16 +709,36 @@ function is_tachyon_core_version(sb_version_val) {
     // The suffix is decisive when it is there.
     if (core_profile.profile_by_version(as_string(sb_version_val)) != "")
         return true;
+
+    // A recorded variant in state file (including SB_VARIANT_STATE_FILE during pre-flight)
+    // is explicit evidence: if set to anything other than tachyon-core (e.g. lx, extended),
+    // this is not tachyon-core.
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let recorded_variant = trim(as_string(fs.readfile(sb_variant_file) || ""));
+    if (recorded_variant != "")
+        return recorded_variant == "tachyon-core";
+
+    // Any version with a non-upstream, non-tachyon-core profile (e.g. -lx, extended)
+    // is definitely not tachyon-core.
+    let prof = core_profile.profile(as_string(sb_version_val), "");
+    if (prof != "upstream" && prof != "tachyon-core")
+        return false;
+
     // Otherwise only believe the banner when the version names nothing else: with
     // an explicit override in hand, that override is the build being generated for
     // and the binary on disk is not evidence about it.
     let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
-    if (override != "" && core_profile.profile(as_string(sb_version_val), "") == "upstream")
+    if (override != "" && prof == "upstream") {
+        let preflight = getenv("SB_PREFLIGHT_BINARY");
+        if (preflight && preflight != "")
+            return sing_box_banner_names_tachyon_core();
         return false;
+    }
+
     if (sing_box_banner_names_tachyon_core())
         return true;
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
-    return trim(as_string(fs.readfile(sb_variant_file) || "")) == "tachyon-core";
+
+    return false;
 }
 
 function is_sb_1_14_plus_detected(sb_version_val) {
@@ -727,6 +762,10 @@ function is_sb_1_15_plus_detected(sb_version_val) {
         return true;
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
+    let prof = core_profile.profile(as_string(sb_version_val), "");
+    let pdata = core_profile.profile_data(prof);
+    if (pdata && pdata.schema_1_15 == "no")
+        return false;
     if (sb_version_val != "") {
         let m = match(sb_version_val, /^v?([0-9]+)\.([0-9]+)/);
         if (m) {

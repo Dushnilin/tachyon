@@ -276,7 +276,7 @@ export function renderDnsBenchmarkModal() {
   });
 
   const applyBtn = renderButton({
-    text: `🚀 ${_('Apply Recommended DNS')}`,
+    text: _('Apply Recommended DNS'),
     classNames: ['cbi-button-positive'],
     disabled: true,
     onClick: () => applyRecommended(),
@@ -350,7 +350,7 @@ export function renderDnsBenchmarkModal() {
   const applyRecommended = async () => {
     if (applyBtn) {
       (applyBtn as HTMLButtonElement).disabled = true;
-      applyBtn.textContent = `⏳ ${_('Applying...')}`;
+      applyBtn.textContent = _('Applying...');
     }
 
     const res = await TachyonShellMethods.applyDnsBenchmark();
@@ -376,7 +376,7 @@ export function renderDnsBenchmarkModal() {
       );
       if (applyBtn) {
         (applyBtn as HTMLButtonElement).disabled = false;
-        applyBtn.textContent = `🚀 ${_('Apply Recommended DNS')}`;
+        applyBtn.textContent = _('Apply Recommended DNS');
       }
     }
   };

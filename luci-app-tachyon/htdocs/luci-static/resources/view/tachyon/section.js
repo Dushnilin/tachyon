@@ -9842,7 +9842,6 @@ function createSectionContent(section) {
       style: "display:none",
     });
 
-    const icon = E("span", {}, ["📂"]);
     const label = E("span", { class: "twg-label" }, [_("Load .conf")]);
     const btn = E(
       "button",
@@ -9851,7 +9850,7 @@ function createSectionContent(section) {
         type: "button",
         style: "display:inline-flex;align-items:center;gap:8px;",
       },
-      [icon, label],
+      [label],
     );
 
     const setBtn = (state, text) => {
@@ -10769,7 +10768,6 @@ function createSectionContent(section) {
       style: "display:none",
     });
 
-    const icon = E("span", {}, ["📂"]);
     const label = E("span", { class: "twg-label" }, [_("Load .ovpn")]);
     const btn = E(
       "button",
@@ -10778,7 +10776,7 @@ function createSectionContent(section) {
         type: "button",
         style: "display:inline-flex;align-items:center;gap:8px;",
       },
-      [icon, label],
+      [label],
     );
 
     const setBtn = (state, text) => {

@@ -1195,13 +1195,17 @@ function ensure_local_rulesets_exist(temp_config) {
 // ucode - the undefined call crashed init_config on the first rejected field and
 // took the whole start down with it.
 function repair_outbound_field(temp_config, reason) {
-    let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
-    if (!m || !verifier.repair_unknown_outbound_field(temp_config, reason))
+    if (!verifier.repair_unknown_outbound_field(temp_config, reason))
         return false;
-    let bad_index = int(m[1]);
-    log_message("Installed sing-box does not support outbound field '" + m[2] +
-        "' on outbound " + (bad_index >= 0 ? sprintf("%d", bad_index) : "?") +
-        "; retrying without it there only", "warn");
+    let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
+    if (m) {
+        let bad_index = int(m[1]);
+        log_message("Installed sing-box does not support outbound field '" + m[2] +
+            "' on outbound " + (bad_index >= 0 ? sprintf("%d", bad_index) : "?") +
+            "; retrying without it there only", "warn");
+    } else {
+        log_message("Installed sing-box does not support field reported in '" + reason + "'; retrying without it", "warn");
+    }
     return true;
 }
 
@@ -1466,6 +1470,10 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                     write_file(temp_config, sprintf("%J", cfg));
                     stripped = true;
                 }
+            }
+            else if (match(check_result.reason, /json: unknown field/)) {
+                if (repair_outbound_field(temp_config, check_result.reason))
+                    stripped = true;
             }
         }
         if (!stripped)

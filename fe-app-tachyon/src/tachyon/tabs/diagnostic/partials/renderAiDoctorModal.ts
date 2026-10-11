@@ -325,11 +325,10 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                   const friendlyLabel = FIX_LABELS[code] || code;
                   const btn = renderButton({
                     classNames: ['cbi-button-apply'],
-                    text: `⚡ ${friendlyLabel}`,
+                    text: friendlyLabel,
                     onClick: async () => {
                       if (applied) return;
-                      btn.textContent =
-                        '⏳ ' + _('Applying...') + ' ' + friendlyLabel;
+                      btn.textContent = _('Applying...') + ' ' + friendlyLabel;
                       showToast(
                         _('Applying fix') + ': ' + friendlyLabel + '...',
                         'success',
@@ -342,7 +341,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                         (fixRes as { success?: boolean }).success
                       ) {
                         applied = true;
-                        btn.textContent = `✓ ${friendlyLabel} (${_('Fixed')})`;
+                        btn.textContent = `${friendlyLabel} (${_('Fixed')})`;
                         btn.classList.remove('cbi-button-apply');
                         btn.classList.add('cbi-button-neutral');
                         showToast(
@@ -350,7 +349,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                           'success',
                         );
                       } else {
-                        btn.textContent = `⚡ ${friendlyLabel}`;
+                        btn.textContent = friendlyLabel;
                         showToast(
                           _('Failed to apply fix') + ': ' + friendlyLabel,
                           'error',
@@ -409,7 +408,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
         ),
         renderButton({
           classNames: ['cbi-button-action'],
-          text: '🔄 ' + _('Refresh Device List'),
+          text: _('Refresh Device List'),
           onClick: loadLanClients,
         }),
       ]);
@@ -430,7 +429,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
           ),
           renderButton({
             classNames: ['cbi-button-neutral'],
-            text: '🔄 ' + _('Refresh'),
+            text: _('Refresh'),
             onClick: loadLanClients,
           }),
         ],
@@ -494,9 +493,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                     classNames: [
                       isDirect ? 'cbi-button-action' : 'cbi-button-apply',
                     ],
-                    text: isDirect
-                      ? '🛡️ ' + _('Route via Proxy')
-                      : '⚡ ' + _('Direct Bypass'),
+                    text: isDirect ? _('Route via Proxy') : _('Direct Bypass'),
                     onClick: async () => {
                       showToast(
                         _('Updating device routing mode...'),
@@ -603,7 +600,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                   ? 'cbi-button-action'
                   : 'cbi-button-neutral',
               ],
-              text: '🔍 ' + _('Current Diagnosis'),
+              text: _('Current Diagnosis'),
               onClick: () => {
                 activeTab = 'diagnosis';
                 renderModalLayout();
@@ -615,7 +612,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                   ? 'cbi-button-action'
                   : 'cbi-button-neutral',
               ],
-              text: `📱 ${_('LAN Devices')} ${lanClients.length > 0 ? `(${lanClients.length})` : ''}`,
+              text: `${_('LAN Devices')} ${lanClients.length > 0 ? `(${lanClients.length})` : ''}`,
               onClick: () => {
                 activeTab = 'devices';
                 if (lanClients.length === 0) {
@@ -631,7 +628,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                   ? 'cbi-button-action'
                   : 'cbi-button-neutral',
               ],
-              text: `🕒 ${_('History')} (${historyEntries.length})`,
+              text: `${_('History')} (${historyEntries.length})`,
               onClick: () => {
                 historyEntries = getAiDoctorHistory();
                 activeTab = 'history';
@@ -662,14 +659,14 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
               [
                 renderButton({
                   classNames: ['cbi-button-action'],
-                  text: '📋 ' + _('Copy Support Report'),
+                  text: _('Copy Support Report'),
                   onClick: () => {
                     void copySupportReport();
                   },
                 }),
                 renderButton({
                   classNames: ['cbi-button-reset'],
-                  text: '🚨 ' + _('Restore Native Internet (Stop Tachyon)'),
+                  text: _('Restore Native Internet (Stop Tachyon)'),
                   onClick: async () => {
                     showToast(
                       _(
