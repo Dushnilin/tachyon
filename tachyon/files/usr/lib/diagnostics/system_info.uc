@@ -49,6 +49,7 @@ const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
 const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
 const BYEDPI_VALIDATOR_UC = LIB_DIR + "/providers/byedpi/validator.uc";
+const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;

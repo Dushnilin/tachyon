@@ -1314,10 +1314,10 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             // that node. The dotted path is captured whole and deleted at each
             // level, the same way the endpoints path below already does for
             // `amnezia`.
-            let tls_field_m = match(check_result.reason, /(?:outbounds|inbounds)\[\d+\]\.tls\.(\w+)\.(\w+): json: unknown field/);
+            let tls_field_m = match(check_result.reason, /(outbounds|inbounds)\[\d+\]\.tls\.(\w+)\.(\w+): json: unknown field/);
             if (tls_field_m) {
-                let container = tls_field_m[1];
-                let unknown_field = tls_field_m[2];
+                let container = tls_field_m[2];
+                let unknown_field = tls_field_m[3];
                 log_message("Installed sing-box does not support tls." + container + "." + unknown_field + " (added in a later release); dropping it and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;

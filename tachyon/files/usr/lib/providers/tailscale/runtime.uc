@@ -173,10 +173,10 @@ function daemon_version() {
 // Returns [0, 0, 0] on parse failure.
 function parse_version(ver) {
     ver = trim(as_string(ver));
-    let m = match(ver, /^(\d+)\.(\d+)(?:\.(\d+))?/);
-    if (!m || length(m) < 3)
+    let parts = split(ver, ".");
+    if (length(parts) < 2)
         return [0, 0, 0];
-    return [int(m[0]), int(m[1]), int(m[2] || "0")];
+    return [int(parts[0]), int(parts[1]), int(parts[2] || "0")];
 }
 
 // Returns true if the running tailscaled version >= the required version.
