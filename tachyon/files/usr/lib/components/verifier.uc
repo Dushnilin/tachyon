@@ -244,6 +244,11 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
 
     let ver_out = trim(common.command_output_from_args([ binary, "version" ]));
     let ver_str = common.parse_sing_box_version(ver_out);
+    if (ver_str == "") {
+        helpers.remove_file(err_file);
+        helpers.updates_log("Pre-flight check failed: binary " + binary + " is invalid or unable to report version", "error");
+        return { ok: false, reason: "binary unable to report version" };
+    }
 
     let active_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
     let active_variant = trim(fs.readfile(active_variant_file) || "");

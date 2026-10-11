@@ -4699,8 +4699,8 @@ function validateAmneziaConfig(name, config) {
     if (
       !range ||
       (!ranges.includes(key) && range[2] != null) ||
-      Number(range[1]) > Number(range[2] ?? range[1]) ||
-      Number(range[2] ?? range[1]) > 4294967295
+      Number(range[1]) > Number(range[2] != null ? range[2] : range[1]) ||
+      Number(range[2] != null ? range[2] : range[1]) > 4294967295
     )
       return _("Invalid Amnezia .conf file");
   }
@@ -11407,7 +11407,8 @@ function createSectionContent(section) {
     );
   };
   o.inputValueForItem = function (_id, value) {
-    return parseAmneziaConfig(value)?.name || value;
+    const parsed = parseAmneziaConfig(value);
+    return (parsed && parsed.name) || value;
   };
   o.validateItemsOnSave = validateAmneziaConfigsBeforeSave;
   o.validate = function (_id, value) {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-11 01:00+0300\n"
-"PO-Revision-Date: 2026-10-11 01:00+0300\n"
+"POT-Creation-Date: 2026-10-11 01:12+0300\n"
+"PO-Revision-Date: 2026-10-11 01:12+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -384,16 +384,16 @@ msgid "Always visible"
 msgstr "Всегда включено"
 
 msgid "Amnezia .conf"
-msgstr ""
+msgstr "Amnezia .conf"
 
 msgid "Amnezia configuration"
-msgstr ""
+msgstr "Конфиг Amnezia"
 
 msgid "Amnezia configuration must not exceed 64 KiB including its name"
-msgstr ""
+msgstr "Конфиг Amnezia вместе с именем не должен превышать 64 КиБ"
 
 msgid "Amnezia configurations"
-msgstr ""
+msgstr "Amnezia конфиги"
 
 msgid "Amnezia export; full validation before apply"
 msgstr "Экспорт Amnezia: полная проверка перед применением"
@@ -831,7 +831,7 @@ msgid "Cannot apply"
 msgstr "Невозможно применить"
 
 msgid "Cannot read the Amnezia .conf file"
-msgstr ""
+msgstr "Не удалось прочитать файл Amnezia .conf"
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -1848,7 +1848,7 @@ msgid "Enter a display name"
 msgstr "Введите отображаемое имя"
 
 msgid "Enter a display name of up to 200 bytes without control characters"
-msgstr ""
+msgstr "Введите имя до 200 байт без управляющих символов"
 
 msgid "Enter a domain or IP to check (e.g. example.com)..."
 msgstr "Введите домен или IP для проверки (напр. example.com)..."
@@ -2604,7 +2604,7 @@ msgid "Import (%d records)"
 msgstr "Импорт (%d записей)"
 
 msgid "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core."
-msgstr ""
+msgstr "Загрузите .conf для AmneziaWG 2.0, 3.0 и 3.1. Доступно с sing-box LX и tachyon-core."
 
 msgid "Import AmneziaWG settings from .conf file"
 msgstr "Импортировать настройки AmneziaWG из файла .conf"
@@ -2748,7 +2748,7 @@ msgid "Interval"
 msgstr "Интервал"
 
 msgid "Invalid Amnezia .conf file"
-msgstr ""
+msgstr "Некорректный файл Amnezia .conf"
 
 msgid "Invalid ByeDPI strategy"
 msgstr "Неверная стратегия ByeDPI"
@@ -4086,7 +4086,7 @@ msgid "Preparing strategies and isolated nftables queue..."
 msgstr "Подготовка стратегий и изолированной очереди nftables..."
 
 msgid "Preset exclusions for Smart Detect"
-msgstr ""
+msgstr "Готовые списки исключений Smart Detect"
 
 msgid "Preshared Key"
 msgstr "Предварительный общий ключ"
@@ -4131,7 +4131,7 @@ msgid "Private Key"
 msgstr "Приватный ключ"
 
 msgid "Private keys are stored on the router. DNS and command hooks from the file are not applied."
-msgstr ""
+msgstr "Приватные ключи хранятся на роутере. DNS и команды из файла не применяются."
 
 msgid "Probe"
 msgstr "Проверить"
@@ -4800,7 +4800,7 @@ msgid "Select active days. If none selected, the rule applies every day."
 msgstr "Выберите активные дни. Если ни один день не выбран, правило действует каждый день."
 
 msgid "Select an Amnezia .conf file up to 64 KiB"
-msgstr ""
+msgstr "Выберите файл Amnezia .conf размером до 64 КиБ"
 
 msgid "Select an existing URLTest or Priority group"
 msgstr "Выберите существующую группу URLTest или Приоритет"
@@ -4869,7 +4869,7 @@ msgid "Selected Devices are Guests (Explicit list)"
 msgstr "Выбранные устройства — гости (явный список)"
 
 msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
-msgstr ""
+msgstr "Домены и поддомены из выбранных списков не добавляются автоматически через Smart Detect. Ручные правила маршрутизации и ранее добавленные домены сохраняются. Списки обновляются штатным механизмом; если кэш выбранного списка отсутствует, обнаружение ожидает обновления списков."
 
 msgid "Selected section"
 msgstr "Выбранная секция"
@@ -5754,7 +5754,7 @@ msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all p
 msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
 
 msgid "This display name is already in use"
-msgstr ""
+msgstr "Это имя уже используется"
 
 msgid "This field is required"
 msgstr "Это поле обязательно"

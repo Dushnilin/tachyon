@@ -532,10 +532,10 @@ function injectServerStyles() {
 #cbi-${UCI_PACKAGE}-server .cbi-section-actions{text-align:right}
 
 .fkp-server-info-dialog{max-width:720px !important;width:100%}
-.fkp-server-info-modal{display:flex;flex-direction:column;gap:14px;width:100%;max-width:680px;box-sizing:border-box}
+.fkp-server-info-modal{display:flex;flex-direction:column;gap:14px;width:min(560px, calc(100vw - 32px));max-width:680px;box-sizing:border-box}
 .fkp-server-info-modal__container{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;width:100%;box-sizing:border-box}
 .fkp-server-info-modal__qr-col{display:flex;flex-direction:column;align-items:center;gap:12px;flex:0 0 160px;max-width:100%}
-.fkp-server-info-modal__qr-image{width:160px;height:160px;max-width:100%;display:block;image-rendering:pixelated}
+.fkp-server-info-modal__qr-image{width:160px;height:160px;max-width:min(180px, 60vw);display:block;image-rendering:pixelated}
 .fkp-server-info-modal__details-col{display:flex;flex-direction:column;gap:14px;flex:1 1 260px;min-width:0;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
 .fkp-server-info-modal__details-grid{display:flex;flex-direction:column;gap:10px;background:rgba(128,128,128,0.08);padding:12px;border:1px solid rgba(128,128,128,0.15);box-sizing:border-box;border-radius:4px}
 .fkp-server-info-modal__detail-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
