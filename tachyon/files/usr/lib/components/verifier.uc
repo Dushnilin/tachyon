@@ -372,10 +372,16 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
             reason = "exit status " + cand_status;
     }
 
-    if (is_gen_failure)
+    if (is_gen_failure) {
+        if (index(reason, "no enabled sections") >= 0) {
+            helpers.updates_log("Pre-flight: no enabled sections yet in configuration, skipping pre-flight check", "info");
+            return { ok: true };
+        }
         helpers.updates_log("Pre-flight check failed: unable to generate configuration for " + target_var + ": " + reason, "error");
-    else
+    }
+    else {
         helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config for " + target_var + ": " + reason, "error");
+    }
     return { ok: false, reason: reason };
 }
 
