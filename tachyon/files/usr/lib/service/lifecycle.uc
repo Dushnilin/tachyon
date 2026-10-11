@@ -804,6 +804,10 @@ function prepare_community_rulesets() {
     command_success_from_args(["mkdir", "-p", tmp_dir]);
 
     let needed = {};
+    let exclusions = require("service.smart_detect_exclusions");
+    let exclusion_lists = exclusions.selected_lists(uci_core.get_all(CONFIG_NAME, "settings"));
+    for (let name in exclusion_lists)
+        if (exclusions.supported(name)) needed[name] = true;
     let sections = uci_core.get_all(CONFIG_NAME, "section") || {};
     for (let name, section in sections) {
         if (!section || !section.enabled || section.enabled == "0")
@@ -903,6 +907,9 @@ function prepare_community_rulesets() {
             log_message("Community ruleset '" + service + "' initialized with local fallback stub to allow sing-box clean start", "info");
         }
     }
+    for (let name in exclusion_lists)
+        if (!exclusions.prepare_list(name, tmp_dir + "/community-" + name + ".srs"))
+            log_message("Smart Detect: exclusion preset " + name + " is unavailable; keeping the previous cache", "warn");
 }
 
 // Whether the active routing engine is steer or steer-extended. Used to skip

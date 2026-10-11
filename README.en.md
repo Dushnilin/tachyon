@@ -79,6 +79,7 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
   * **Anti-Collapse Shrink Guard**: Prevents working node cache loss when upstream providers return temporary empty or invalid responses.
 * **Cloudflare WARP & AmneziaWG Generator (`generate_warp`)**.
 * **Multi-Dimensional Selective Routing**: by domains, IP subnets, client MAC/IP addresses, and destination country (GeoIP).
+* **Smart Detect exclusions**: combine manual domains with service presets (`smart_detect_exclude_lists`) under Settings → Services and access. Exclusions cover domains and subdomains in Default and Plus, preserving manual routes and previously added rules. Root expansion keeps the detected hostname when expanding would include an excluded subdomain. Regular list updates prepare a persistent cache in `/etc/tachyon/smart-detect-exclusions/`; a missing selected cache pauses automatic detection, and a failed refresh retains the previous cache. IP-only presets are unavailable; mixed presets contribute domain entries only. Cache preparation requires `sing-box rule-set decompile` or a compatible `tachyon-core`, with no additional packages.
 
 ---
 

@@ -3551,7 +3551,7 @@ function createSettingsContent(section, capabilities) {
     "smart_detect_expand_to_root",
     _("Expand detected subdomains to root domain"),
     _(
-      "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy.",
+      "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy.",
     ),
   );
   sdExpandOpt.default = "1";
@@ -3569,6 +3569,37 @@ function createSettingsContent(section, capabilities) {
   );
   sdExcludeOpt.placeholder = "example.com";
   sdExcludeOpt.depends("smart_detect", "1");
+
+  const sdExcludeListsOpt = section.taboption(
+    "services",
+    form.DynamicList,
+    "smart_detect_exclude_lists",
+    _("Preset exclusions for Smart Detect"),
+    _(
+      "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated.",
+    ),
+  );
+  sdExcludeListsOpt.placeholder = _("Service list");
+  sdExcludeListsOpt.depends("smart_detect", "1");
+  const sdIpOnlyPresets = new Set([
+    "cloudflare",
+    "cloudfront",
+    "hetzner",
+    "ovh",
+    "digitalocean",
+  ]);
+  const sdPresetChoices = Object.entries(main.DOMAIN_LIST_OPTIONS).filter(
+    ([name]) => !sdIpOnlyPresets.has(name),
+  );
+  sdPresetChoices.forEach(([name, label]) =>
+    sdExcludeListsOpt.value(name, label),
+  );
+  sdExcludeListsOpt.validate = function (_section_id, value) {
+    const names = Array.isArray(value) ? value : value ? [value] : [];
+    return names.every((name) => sdPresetChoices.some(([key]) => key === name))
+      ? true
+      : _("Select a predefined domain list");
+  };
 
   const sdDomainsOpt = section.option(
     form.DummyValue,

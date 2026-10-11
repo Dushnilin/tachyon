@@ -10206,8 +10206,8 @@ msgstr ""
 msgid "What Tachyon should do when this section matches"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3553
-msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy."
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3554
+msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3741
@@ -10853,4 +10853,11 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14774
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:323
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
+msgstr ""
+
+
+msgid "Preset exclusions for Smart Detect"
+msgstr ""
+
+msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
 msgstr ""

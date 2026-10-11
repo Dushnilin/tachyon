@@ -2,11 +2,15 @@ let smart_plus = require("service.smart_detect_plus");
 let CONFIG_NAME = "fixture";
 let commits=0;let reloads=0;let conflict=false;let commit_ok=true;let reload_ok=true;
 let values={};
+function settings(){return values.settings;}
+function as_string(value){return value == null ? "" : ""+value;}
+function command_status(command){reloads++;return 0;}
 let cursor={
     unload:function(){}, load:function(){}, changes:function(){return conflict?{fixture:{}}:{};},
     get_all:function(config,name){return values[name];},
     set:function(config,name,key,data){values[name][key]=data;return true;},
     delete:function(config,name,key){delete values[name][key];return true;},
+    list_add:function(config,name,key,data){push(values[name][key],data);return true;},
     commit:function(){commits++;return commit_ok;}
 };
 let uci_core={cursor:function(){return cursor;},get_all:function(config,name){return values[name]||{};}};
@@ -47,4 +51,21 @@ smart_detect_apply_plus_domains([{section:"vpn",domain:"site.example",source_dom
 check(length(notifications)==1&&notifications[0]=="🔍 *Smart Detect*: `api.site.example` недоступен напрямую, работает через прокси.\nДомен `site.example` добавлен в секцию *vpn*.","Plus keeps Smart Detect title, original hostname and saved main domain");
 smart_detect_apply_plus_domains([{section:"vpn",domain:"site.example"}]);
 check(length(notifications)==1,"covered domains do not send duplicate notifications");
-print(sprintf("PASS: %d actual-function Plus UCI checks\n",checks));
+let previous_domains = sprintf("%J", values.vpn.user_domains);
+let previous_commits = commits;
+values.settings.smart_detect_exclude = ["example.org"];
+check(length(smart_detect_apply_plus_domains([{section:"vpn",domain:"example.org",source_domain:"api.example.org"}])) == 0, "final UCI write rechecks newly selected exclusions");
+check(commits == previous_commits && sprintf("%J", values.vpn.user_domains) == previous_domains, "new exclusions do not delete existing routing rules or commit unrelated changes");
+values.settings.smart_detect_exclude = ["cdn.safe.example"];
+smart_detect_apply_plus_domains([{section:"vpn",domain:"safe.example",source_domain:"api.safe.example"}]);
+check(index(values.vpn.user_domains, "api.safe.example") >= 0 && index(values.vpn.user_domains, "safe.example") < 0, "final UCI write narrows an unsafe parent expansion");
+values={settings:{smart_detect:"1",smart_detect_mode:"default",smart_detect_exclude:["example.com"]},vpn:{user_domains:["manual.example"]}};
+previous_commits=commits;let previous_reloads=reloads;
+check(length(smart_detect_apply_domains([{section:"vpn",domain:"api.example.com"}]))==0,"Default final write rechecks manual exclusions");
+check(commits==previous_commits&&reloads==previous_reloads&&length(values.vpn.user_domains)==1,"Default exclusions preserve existing rules without commit or reload");
+check(length(smart_detect_apply_domains([{section:"vpn",domain:"allowed.example"}]))==1,"Default still adds eligible domains");
+conflict=true;
+check(length(smart_detect_apply_domains([{section:"vpn",domain:"pending.example"}]))==0&&index(values.vpn.user_domains,"pending.example")<0,"Default defers pending UI changes");
+conflict=false;values.settings.smart_detect_exclude_lists=["unknown"];
+check(length(smart_detect_apply_domains([{section:"vpn",domain:"missing.example"}]))==0,"Default final write waits for missing preset cache");
+print(sprintf("PASS: %d actual-function Smart Detect UCI checks\n",checks));

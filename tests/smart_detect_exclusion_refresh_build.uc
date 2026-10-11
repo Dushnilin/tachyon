@@ -1,0 +1,11 @@
+let fs=require("fs");
+let lifecycle=fs.readfile(ARGV[0]);let updates=fs.readfile(ARGV[1]);
+let start=index(lifecycle,"function prepare_community_rulesets()");
+let end=index(lifecycle,"// Whether the active routing engine",start);
+let update_start=index(updates,"    // Фаза 1: скачивание файлов");
+let relative_end=index(substr(updates,update_start),"    for (let section in sections)");
+let update_end=relative_end<0?-1:update_start+relative_end;
+if(start<0||end<start||update_start<0||update_end<update_start)die("Refresh boundaries missing\n");
+let fixture=replace(fs.readfile(ARGV[2]),"/* STARTUP */",substr(lifecycle,start,end-start));
+fixture=replace(fixture,"/* UPDATE */",substr(updates,update_start,update_end-update_start));
+fs.writefile(ARGV[3],fixture);

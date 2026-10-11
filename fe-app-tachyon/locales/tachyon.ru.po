@@ -6320,8 +6320,8 @@ msgstr "Выходные (Сб-Вс)"
 msgid "What Tachyon should do when this section matches"
 msgstr "Что должен делать Tachyon при совпадении этой секции"
 
-msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy."
-msgstr "Если включено, блокировка поддомена (напр., sub.example.com) приводит к добавлению всего базового домена (example.com). Если выключено, через прокси направляется только конкретный поддомен."
+msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
+msgstr "При включении обнаружение заблокированного поддомена (например, sub.example.com) добавляет весь основной домен (example.com), если это не затрагивает исключённые поддомены. При выключении через прокси направляется только обнаруженный поддомен."
 
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."
@@ -7735,3 +7735,10 @@ msgstr "Plus отдельно проверяет DNS роутера и пока�
 
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
+
+
+msgid "Preset exclusions for Smart Detect"
+msgstr "Готовые списки исключений Smart Detect"
+
+msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
+msgstr "Домены и поддомены из выбранных списков не добавляются автоматически через Smart Detect. Ручные правила маршрутизации и ранее добавленные домены сохраняются. Списки обновляются штатным механизмом; если кэш выбранного списка отсутствует, обнаружение ожидает обновления списков."
