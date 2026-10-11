@@ -1108,9 +1108,11 @@ function run_doctor_checks_impl(repair) {
                     doc_check("⚠️", "nftables table", "missing or incomplete", "→ GRACEFUL DEGRADATION: Proxy offline");
                 } else {
                     issues++;
+                    let kmod_missing = !fs.stat("/sys/module/nft_tproxy") && !command_success_from_args([ "modprobe", "nft_tproxy" ]);
                     if (!DOCTOR_REPAIR_MODE) {
+                        let kmod_hint = kmod_missing ? " (kmod-nft-tproxy не установлен: apk add kmod-nft-tproxy)" : "";
                         doc_plan("delete nft table + /usr/bin/tachyon restart");
-                        doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил");
+                        doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил" + kmod_hint);
                     } else {
                         command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
                         let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
@@ -1119,7 +1121,8 @@ function run_doctor_checks_impl(repair) {
                             doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
                             fixed++;
                         } else {
-                            doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила");
+                            let kmod_hint = kmod_missing ? " (kmod-nft-tproxy не установлен: apk add kmod-nft-tproxy)" : "";
+                            doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила" + kmod_hint);
                         }
                     }
                 }

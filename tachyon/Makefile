@@ -22,7 +22,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/tachyon
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+ca-bundle +curl +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +coreutils-base64 +coreutils-timeout +bind-dig +nftables +ip-full
+	DEPENDS:=+ca-bundle +curl +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +coreutils-base64 +coreutils-timeout +bind-dig +nftables +ip-full +kmod-nft-tproxy +kmod-tun +kmod-inet-diag
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	PROVIDES:=forkop
 	REPLACES:=forkop

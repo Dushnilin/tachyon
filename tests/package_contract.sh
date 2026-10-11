@@ -87,6 +87,10 @@ if grep -Rqs 'require("fs")' "$TACHYON_LIB"; then
   require_package_dependency "ucode-mod-fs"
 fi
 
+require_package_dependency "kmod-nft-tproxy"
+require_package_dependency "kmod-tun"
+require_package_dependency "kmod-inet-diag"
+
 if grep -Rqs 'tachyon_dnsmasq_failsafe_restore_raw' \
   "$ROOT_DIR/tachyon/files/usr/bin" \
   "$ROOT_DIR/tachyon/files/usr/lib" \

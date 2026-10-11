@@ -545,10 +545,34 @@ ensure_bootstrap_ucode_runtime() {
     ensure_package ucode-mod-uci || return 1
 }
 
+kmod_is_available() {
+    _kmod="$1"
+    pkg_is_installed "$_kmod" && return 0
+    case "$_kmod" in
+        kmod-nft-tproxy)
+            [ -d /sys/module/nft_tproxy ] && return 0
+            modprobe nft_tproxy >/dev/null 2>&1 && return 0
+            ;;
+        kmod-tun)
+            [ -e /dev/net/tun ] && return 0
+            [ -d /sys/module/tun ] && return 0
+            modprobe tun >/dev/null 2>&1 && return 0
+            ;;
+        kmod-inet-diag)
+            [ -d /sys/module/inet_diag ] && return 0
+            modprobe inet_diag >/dev/null 2>&1 && return 0
+            ;;
+    esac
+    return 1
+}
+
 ensure_runtime_dependencies() {
     _missing=""
     for _pkg in ca-bundle curl coreutils-base64 coreutils-timeout bind-dig nftables ip-full; do
         pkg_is_installed "$_pkg" || _missing="$_missing $_pkg"
+    done
+    for _kmod in kmod-nft-tproxy kmod-tun kmod-inet-diag; do
+        kmod_is_available "$_kmod" || _missing="$_missing $_kmod"
     done
     [ -z "$_missing" ] && return 0
     pkg_update_index || return 1

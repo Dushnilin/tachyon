@@ -1558,6 +1558,20 @@ function nft_add_quic_block_rule(table, interface_set, fakeip_mark) {
     return nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "udp", "th", "dport", "443", "meta", "mark", "&", as_string(fakeip_mark), "!=", as_string(fakeip_mark), "counter", "drop" ]);
 }
 
+function nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address) {
+    if (!tproxy_intercept_enabled())
+        return true;
+    run_args_quiet([ "modprobe", "nft_tproxy" ]);
+    if (!nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
+        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
+        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ]) ||
+        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ])) {
+        log_warn("Failed to apply tproxy nftables rule (is kmod-nft-tproxy installed? Run: apk add kmod-nft-tproxy or opkg install kmod-nft-tproxy)");
+        return false;
+    }
+    return true;
+}
+
 function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address, block_doh, disable_quic) {
     localv6_set = default_arg(localv6_set, "localv6");
     common6_set = default_arg(common6_set, "tachyon_subnets6");
@@ -1730,11 +1744,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", fakeip6_range, "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         (arg_bool(disable_quic) && !nft_add_quic_block_rule(table, interface_set, fakeip_mark)) ||
         (arg_bool(block_doh) && !nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark)) ||
-        (!tproxy_intercept_enabled() ||
-        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
-        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
-        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ]) ||
-        !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ])) ||
+        !nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x40000000", "==", "0x40000000", "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x20000000", "==", "0x20000000", "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "skuid", "{ 2147483647, 65534 }", "counter", "return" ]) ||

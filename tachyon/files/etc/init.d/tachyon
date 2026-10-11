@@ -29,6 +29,11 @@ sync_service_triggers_payload() {
 }
 
 start_service() {
+    [ -d /dev/net ] || mkdir -p /dev/net
+    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true
+    modprobe nft_tproxy 2>/dev/null || true
+    modprobe tun 2>/dev/null || true
+    modprobe inet_diag 2>/dev/null || true
     trap 'exit 1' INT TERM
     initd_ucode start-service "$1" "$$"
     TACHYON_LAST_START_STATUS="$?"
