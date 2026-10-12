@@ -4,6 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let runtime_constants = require("singbox.constants");
 let variant_state = require("singbox.variant_state");
+let core_ip = require("core.ip");
 
 let as_string = common.as_string;
 let option = common.option;
@@ -331,7 +332,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
     }
     else if (protocol == "awg") {
         inbound.type = "wireguard";
-        inbound.address = list_option(section, "awg_local_address");
+        inbound.address = core_ip.normalize_to_cidrs(list_option(section, "awg_local_address"));
         inbound.private_key = option(section, "awg_private_key", "");
         inbound.mtu = int_option(section, "awg_mtu", "1280");
 
@@ -357,7 +358,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
 
         let peer = {
             public_key: peer_public_key,
-            allowed_ips: allowed_ips
+            allowed_ips: core_ip.normalize_to_cidrs(allowed_ips)
         };
         if (server_address != "")
             peer.address = server_address;

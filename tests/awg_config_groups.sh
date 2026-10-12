@@ -57,7 +57,7 @@ assert_rejects() {
 
 KEY="$(node -e 'process.stdout.write(Buffer.from(Array.from({length:32},(_,i)=>i+1)).toString("base64"))')"
 conf() {
-  printf '[Interface]\nPrivateKey = %s\nAddress = 10.77.0.2/32\nJc = 4\nH1 = 100-200\nS3 = 40\nS4 = 50\n[Peer]\nPublicKey = %s\nEndpoint = %s\n' \
+  printf '[Interface]\nPrivateKey = %s\nAddress = 172.16.0.2\nJc = 4\nH1 = 100-200\nS3 = 40\nS4 = 50\n[Peer]\nPublicKey = %s\nEndpoint = %s\n' \
     "$KEY" "$KEY" "$1"
 }
 
@@ -127,6 +127,8 @@ for (let endpoint in endpoints) {
         die("AWG header parameters were lost for " + endpoint.tag + "\n");
     if (endpoint.share_link != null || endpoint.remark != null)
         die("import metadata leaked into " + endpoint.tag + "\n");
+    if (length(endpoint.address || []) != 1 || endpoint.address[0] != "172.16.0.2/32")
+        die("endpoint address was not normalized to CIDR: " + json(endpoint.address) + "\n");
 }
 
 let byTag = { };
@@ -202,7 +204,7 @@ cat >"$WORK_DIR/awg-manual-fixture.json" <<JSON
       "enabled": "1",
       "action": "awg",
       "domain_suffix": ["example.org"],
-      "awg_local_address": "10.99.0.2/32",
+      "awg_local_address": "172.16.0.2",
       "awg_private_key": "$KEY",
       "awg_peer_public_key": "$KEY",
       "awg_server_address": "192.0.2.9",
@@ -223,6 +225,8 @@ for (let candidate in config.endpoints || [])
         endpoint = candidate;
 if (!endpoint)
     die("manual-only AWG section lost its endpoint\n");
+if (length(endpoint.address || []) != 1 || endpoint.address[0] != "172.16.0.2/32")
+    die("manual endpoint address was not normalized to CIDR: " + json(endpoint.address) + "\n");
 for (let outbound in config.outbounds || [])
     if (outbound && outbound.tag == "manual-out")
         die("manual-only AWG section must not gain a selector\n");

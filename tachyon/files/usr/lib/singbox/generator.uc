@@ -1849,6 +1849,27 @@ function strip_certificate_pins_if_unsupported(config) {
             "; those certificate pins were removed to keep the config loadable\n");
 }
 
+function normalize_wireguard_addresses(config) {
+    for (let list in [ config.outbounds, config.endpoints, config.inbounds ]) {
+        if (type(list) != "array")
+            continue;
+        for (let item in list) {
+            if (type(item) == "object" && (item.type == "wireguard" || item.type == "awg")) {
+                if (item.address != null)
+                    item.address = core_ip.normalize_to_cidrs(item.address);
+                if (item.local_address != null)
+                    item.local_address = core_ip.normalize_to_cidrs(item.local_address);
+                if (type(item.peers) == "array") {
+                    for (let peer in item.peers) {
+                        if (type(peer) == "object" && peer.allowed_ips != null)
+                            peer.allowed_ips = core_ip.normalize_to_cidrs(peer.allowed_ips);
+                    }
+                }
+            }
+        }
+    }
+}
+
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     ctx.runtime_ruleset_folder = runtime_ruleset_folder;
@@ -1932,6 +1953,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     assert_unique_outbound_tags(config);
     strip_internal_fields(config);
     strip_certificate_pins_if_unsupported(config);
+    normalize_wireguard_addresses(config);
     if (!atomic_write_json_file(output_path, config)) {
         warn("failed to write ", output_path, "\n");
         exit(1);

@@ -1,6 +1,7 @@
 // WG/AWG .conf and bounded Amnezia containers carried by vpn://.
 let common = require('core.common');
 let amnezia = require('subscription.amnezia');
+let core_ip = require('core.ip');
 let as_string = common.as_string;
 let numbers = ['jc', 'jmin', 'jmax', 's1', 's2', 's3', 's4'];
 let ranges = ['h1', 'h2', 'h3', 'h4', 'content_padding_addition',
@@ -60,11 +61,11 @@ function has_awg(endpoint) {
 function build(input, host, port, name, raw) {
     let v = fields(input);
     let private_key = key32(v.private_key), public_key = key32(v.public_key);
-    let addresses = list(v.address);
+    let addresses = core_ip.normalize_to_cidrs(list(v.address));
     if (!private_key || !public_key || !length(addresses) ||
         host == '' || match(host, /[ \t\r\n]/) || port < 1 || port > 65535) return null;
     let peer = {address:host, port, public_key,
-        allowed_ips:v.allowed_ips ? list(v.allowed_ips) : ['0.0.0.0/0', '::/0']};
+        allowed_ips:v.allowed_ips ? core_ip.normalize_to_cidrs(list(v.allowed_ips)) : ['0.0.0.0/0', '::/0']};
     if (v.pre_shared_key) {
         peer.pre_shared_key = key32(v.pre_shared_key);
         if (!peer.pre_shared_key) return null;

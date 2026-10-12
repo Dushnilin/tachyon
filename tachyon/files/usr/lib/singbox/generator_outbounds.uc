@@ -13,6 +13,7 @@ let connections = require("config.connections");
 let subscription_wireguard = require("subscription.wireguard");
 let subscription_amnezia = require("subscription.amnezia_config");
 let exec = require("core.exec");
+let core_ip = require("core.ip");
 
 let as_string = common.as_string;
 let option = common.option;
@@ -962,6 +963,16 @@ function ensure_imported_vpn_lx() {
 
 function add_imported_wireguard_endpoint(config, endpoint) {
     ensure_imported_vpn_lx();
+    if (type(endpoint) == "object") {
+        if (endpoint.address != null)
+            endpoint.address = core_ip.normalize_to_cidrs(endpoint.address);
+        if (type(endpoint.peers) == "array") {
+            for (let peer in endpoint.peers) {
+                if (type(peer) == "object" && peer.allowed_ips != null)
+                    peer.allowed_ips = core_ip.normalize_to_cidrs(peer.allowed_ips);
+            }
+        }
+    }
     push(config.endpoints, endpoint);
 }
 
@@ -1673,7 +1684,7 @@ function add_awg_endpoint(config, section) {
         type: "wireguard",
         tag: tag,
         name: tag,
-        address: list_option(section, "awg_local_address"),
+        address: core_ip.normalize_to_cidrs(list_option(section, "awg_local_address")),
         private_key: option(section, "awg_private_key", ""),
         peers: [{
             address: option(section, "awg_server_address", ""),
