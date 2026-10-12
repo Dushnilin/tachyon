@@ -241,6 +241,22 @@ assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tproxy\tmeta\tma
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tmeta\tmark\t0x00200000\tcounter\treturn' "runtime outbound return"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tjump\tpriority_output_rules' "runtime priority output jump"
 assert_contains "$NFT_LOG" $'nft\tinsert\trule\tinet\tTachyonTable\tmangle\tudp\tdport\t123\treturn' "runtime ntp exclusion"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t!=\t@tachyon_interfaces\treturn' "runtime non-client early return"
+assert_line_before "$NFT_LOG" \
+  $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tjump\tparental_control' \
+  $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t!=\t@tachyon_interfaces\treturn' \
+  "runtime non-client early return runs after parental control"
+assert_line_before "$NFT_LOG" \
+  $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t!=\t@tachyon_interfaces\treturn' \
+  $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tjump\tpriority_rules' \
+  "runtime non-client early return runs before client-only classification"
+
+: > "$NFT_LOG"
+nft_ucode nft-create-runtime-base TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces "" 0x00100000 0x00200000 198.18.0.0/15 1602 0 "" "" "" "" "" 0
+if grep -Fq $'mangle\tiifname\t!=' "$NFT_LOG"; then
+  fail "non-client early return must be absent when no client interface is configured"
+fi
+: > "$NFT_LOG"
 
 cat >"$WORK_DIR/runtime-base-uci.state" <<'EOF_UCI'
 tachyon.settings=settings

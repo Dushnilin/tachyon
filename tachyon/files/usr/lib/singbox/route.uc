@@ -8,6 +8,7 @@ let option = common.option;
 let bool_option = common.bool_option;
 let as_string = common.as_string;
 let bool_value = common.bool_value;
+let disable_quic_mode = common.disable_quic_mode;
 
 function normalize_port_entry(value) {
     value = trim(as_string(value));
@@ -135,7 +136,7 @@ function config(settings, runtime) {
 
     if (output_network_interface != "")
         result.default_interface = output_network_interface;
-    if (bool_option(settings, "disable_quic", false)) {
+    if (disable_quic_mode(option(settings, "disable_quic", "0")) != "off") {
         push(result.rules, { action: "reject", network: "udp", port: [ 443 ] });
         push(result.rules, { action: "reject", protocol: "quic" });
     }

@@ -172,4 +172,58 @@ ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixt
 grep -q '"persistent_keepalive_interval": 25' "$out_json" || fail "Non-lx AWG outbound must safely fallback to integer keepalive"
 grep -q '"tag": "my_awg_section-mixed-in"' "$out_json" || fail "Non-lx AWG missing mixed inbound"
 
+# Test 3: tachyon-core must get the endpoint schema exactly like lx. A released
+# tachyon-core prints a bare "0.0.x" version, so the marker is what identifies
+# it; without this the generator pushed a wireguard *inbound* and the core
+# refused to start with "unknown inbound type: wireguard".
+assert_awg_server_is_endpoint() {
+  JSON_VALUE="$(cat "$out_json")" node - <<'NODE'
+const cfg = JSON.parse(process.env.JSON_VALUE);
+const inbound = (cfg.inbounds || []).find(i => i.tag === "server-my_awg_server-in");
+const endpoint = (cfg.endpoints || []).find(e => e.tag === "server-my_awg_server-in");
+if (!endpoint) {
+  console.error("AWG server must be generated as an endpoint");
+  process.exit(1);
+}
+if (inbound) {
+  console.error("AWG server must not be an inbound (core rejects: unknown inbound type: wireguard)");
+  process.exit(1);
+}
+if (endpoint.type !== "wireguard" || endpoint.listen !== undefined) {
+  console.error("endpoint must be wireguard without a listen field");
+  process.exit(1);
+}
+if (endpoint.listen_port !== 51820) {
+  console.error("endpoint must listen on awg_server_port 51820");
+  process.exit(1);
+}
+if (endpoint.jc !== 5 || endpoint.s1 !== 15) {
+  console.error("endpoint must carry the root-level AWG fields");
+  process.exit(1);
+}
+if (endpoint.amnezia !== undefined) {
+  console.error("endpoint must not carry the extended amnezia object");
+  process.exit(1);
+}
+NODE
+}
+
+printf 'tachyon-core\n' > "$WORK_DIR/sing-box-variant"
+: > "$WORK_DIR/sing-box-version"
+SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
+SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+  "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
+assert_awg_server_is_endpoint
+
+# The same build identified by its version suffix alone (pre-release builds),
+# with no marker to help - a stale or wiped marker must not lose the schema.
+printf '0.0.1-tachyon.0\n' > "$WORK_DIR/sing-box-version"
+: > "$WORK_DIR/sing-box-variant"
+SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
+SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+  "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
+assert_awg_server_is_endpoint
+
 printf 'AWG 2.0, 3.0, and 3.1 server and outbound configuration checks passed\n'

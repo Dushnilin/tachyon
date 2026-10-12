@@ -6,6 +6,7 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let network_mod = require("diagnostics.network");
+let variant_state = require("singbox.variant_state");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -294,7 +295,8 @@ function server_required_inbound_proto(protocol) {
     protocol = as_string(protocol);
     if (protocol == "json_inbound")
         return "";
-    return protocol == "hysteria2" || protocol == "tuic" ? "udp" : "tcp";
+    // AWG is WireGuard underneath, whichever schema the core puts it in.
+    return protocol == "hysteria2" || protocol == "tuic" || protocol == "awg" ? "udp" : "tcp";
 }
 
 function server_runtime_type_for_protocol(protocol) {
@@ -303,7 +305,22 @@ function server_runtime_type_for_protocol(protocol) {
         return "";
     if (protocol == "mtproto")
         return "mtproxy";
+    // Every schema Tachyon generates calls the AWG object "wireguard": an
+    // inbound on extended, an endpoint on lx / tachyon-core.
+    if (protocol == "awg")
+        return "wireguard";
     return protocol;
+}
+
+// The port an AWG server actually listens on, mirroring the generator:
+// singbox/servers.uc gives awg_server_port precedence, then listen_port, then
+// the 51820 WireGuard default - and nft/apply.uc opens exactly that port. The
+// generic listen_port option alone is not what the core binds, so every probe
+// below has to ask about the effective port.
+function server_effective_listen_port(section, protocol) {
+    if (protocol != "awg")
+        return option(section, "listen_port", "");
+    return option(section, "awg_server_port", option(section, "listen_port", "51820"));
 }
 
 function server_listen_requires_firewall(listen, wan_ip) {
@@ -364,7 +381,7 @@ function check_inbounds() {
         if (protocol != "tailscale" && protocol != "json_inbound")
             requires_public_wan = 1;
         let listen = option(section, "listen", "0.0.0.0");
-        let listen_port = option(section, "listen_port", "");
+        let listen_port = server_effective_listen_port(section, protocol);
         let public_host = option(section, "public_host", "");
         let routing_mode = option(section, "routing_mode", "rules");
         let inbound_tag = server_inbound_tag(section_name);
@@ -2086,6 +2103,7 @@ return {
     server_inbound_tag,
     server_required_inbound_proto,
     server_runtime_type_for_protocol,
+    server_effective_listen_port,
     server_listen_requires_firewall,
     firewall_required_protocols_open,
     resolve_public_host_ips,

@@ -136,6 +136,11 @@ function find_tagged_item(items, tag) {
 function tagged_runtime_summary(config_path, section_name, tag) {
     let config = read_json_file(config_path);
     let item = find_tagged_item(config && config[section_name], tag);
+    // The same tag lives in a different top-level section depending on the
+    // core: AWG is an inbound on extended but an endpoint on lx /
+    // tachyon-core, so an inbound asked for by tag may answer from endpoints.
+    if (item == null && section_name == "inbounds")
+        item = find_tagged_item(config && config.endpoints, tag);
 
     if (item == null) {
         write_json({ exists: 0 });

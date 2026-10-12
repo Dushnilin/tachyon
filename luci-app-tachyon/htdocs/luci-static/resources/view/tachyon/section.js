@@ -2128,7 +2128,43 @@ function currentLiveDynamicListValues(section_id, optionName) {
     values.push(pendingValue);
   }
 
+  if (!values.length && widget.tagName === "INPUT" && widget.value) {
+    // A plain form.Value rather than a DynamicList: the fptn access token is
+    // a scalar input, so there are no list items to read.
+    const scalar = `${widget.value}`.trim();
+    if (scalar) values.push(scalar);
+  }
+
   return values;
+}
+
+// Node names inside an fptn access token: the backend emits one outbound per
+// `servers[]` entry, so the draft picker needs those names before the section
+// is saved. fptnb: is brotli — the backend decodes it through the core
+// binary, and the draft waits for the saved state.
+function fptnTokenServerNames(value) {
+  const token = `${value || ""}`.trim();
+  if (token.startsWith("fptnb:") || token.startsWith("fptnb//")) return [];
+
+  let body = null;
+  if (token.startsWith("fptn://")) body = token.slice(7);
+  else if (token.startsWith("fptn:")) body = token.slice(5);
+  if (body === null) return [];
+
+  try {
+    const b64 = body
+      .replace(/[\r\n\t =]/g, "")
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const payload = JSON.parse(
+      atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)),
+    );
+    return (Array.isArray(payload.servers) ? payload.servers : [])
+      .map((server) => `${(server && server.name) || ""}`.trim())
+      .filter(Boolean);
+  } catch (_error) {
+    return [];
+  }
 }
 
 function currentDraftOutboundNames(section_id) {
@@ -2162,6 +2198,9 @@ function currentDraftOutboundNames(section_id) {
     if (tag) {
       names.push(tag);
     }
+  });
+  currentSourceOptionValues(section_id, "access_token").forEach((value) => {
+    fptnTokenServerNames(value).forEach((name) => names.push(name));
   });
 
   return names;
@@ -8851,6 +8890,7 @@ function createSectionContent(section) {
   o.password = true;
   o.rmempty = true;
   o.modalonly = true;
+  outboundNameSourceOptions.set("access_token", o);
 
   o = section.taboption(
     "settings",
@@ -9791,6 +9831,28 @@ function createSectionContent(section) {
     return s;
   };
 
+  // An AmneziaWG section is set up one of three ways; a heading per way keeps
+  // the long option list readable. LuCI renders the label on the left and this
+  // markup on the right.
+  function addAwgModeTitle(key, title, description) {
+    const o = section.taboption("settings", form.DummyValue, key, title);
+    o.modalonly = true;
+    o.rawhtml = true;
+    o.depends("action", "awg");
+    o.cfgvalue = function () {
+      return `<span style="opacity:.75">${description}</span>`;
+    };
+    return o;
+  }
+
+  addAwgModeTitle(
+    "_awg_mode_generate",
+    _("Generate for 2.0"),
+    _(
+      "Generate an AmneziaWG 2.0 configuration from a Cloudflare WARP account. Only 2.0 can be generated: WARP does not run AmneziaWG, so 3.0 and 3.1 cannot be produced here — load a .conf for those.",
+    ),
+  );
+
   o = section.taboption(
     "settings",
     form.Button,
@@ -10349,6 +10411,12 @@ function createSectionContent(section) {
 
     return E("div", { style: "display:contents" }, [fileInput, btn]);
   };
+
+  addAwgModeTitle(
+    "_awg_mode_manual",
+    _("Manual setup"),
+    _("Set the AmneziaWG keys, ports and header parameters by hand."),
+  );
 
   o = section.taboption(
     "settings",
@@ -11383,6 +11451,14 @@ function createSectionContent(section) {
   };
   outboundNameSourceOptions.set("selector_proxy_links", o);
 
+  addAwgModeTitle(
+    "_awg_mode_import",
+    _("Load several configs"),
+    _(
+      "Import several AmneziaWG .conf files. They are combined into one group: Tachyon picks the fastest and the URLTest / Priority groups below can select among them.",
+    ),
+  );
+
   o = section.taboption(
     "settings",
     ButtonAddSettingsDynamicList,
@@ -11392,7 +11468,7 @@ function createSectionContent(section) {
       "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core.",
     ),
   );
-  o.depends("action", "connection");
+  o.depends("action", "awg");
   o.rmempty = true;
   o.retain = true;
   o.modalonly = true;
@@ -11656,6 +11732,7 @@ function createSectionContent(section) {
   );
   o.depends("action", "connection");
   o.depends("action", "fptn");
+  o.depends("action", "awg");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add URLTest");
@@ -11716,6 +11793,7 @@ function createSectionContent(section) {
   );
   o.depends("action", "connection");
   o.depends("action", "fptn");
+  o.depends("action", "awg");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add priority");
@@ -12897,33 +12975,25 @@ async function matchCommunityList(secName, community, query, type) {
     const checkMatch = (res) => {
       if (!res || res.code !== 0) return false;
       const output = (res.stdout || "") + (res.stderr || "");
-      return output.trim() !== "";
+      return (
+        /\[\d+\]\s*match/.test(output) ||
+        (output.includes("match") && !output.includes("no match"))
+      );
     };
 
+    const matchArgs = [
+      "rule-set",
+      "match",
+      srsPath,
+      ...(type === "ip" ? ["--ip", query] : ["--domain", query]),
+    ];
+
     // Try /usr/bin/sing-box first
-    let res = await fs
-      .exec("/usr/bin/sing-box", [
-        "rule-set",
-        "match",
-        srsPath,
-        query,
-        "-f",
-        "binary",
-      ])
-      .catch(() => null);
+    let res = await fs.exec("/usr/bin/sing-box", matchArgs).catch(() => null);
     if (checkMatch(res)) return true;
 
     // Fallback to /usr/sbin/sing-box
-    res = await fs
-      .exec("/usr/sbin/sing-box", [
-        "rule-set",
-        "match",
-        srsPath,
-        query,
-        "-f",
-        "binary",
-      ])
-      .catch(() => null);
+    res = await fs.exec("/usr/sbin/sing-box", matchArgs).catch(() => null);
     if (checkMatch(res)) return true;
   }
 

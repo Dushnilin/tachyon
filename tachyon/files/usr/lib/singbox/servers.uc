@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let runtime_constants = require("singbox.constants");
+let variant_state = require("singbox.variant_state");
 
 let as_string = common.as_string;
 let option = common.option;
@@ -243,10 +244,10 @@ function apply_transport(inbound, section, protocol) {
 }
 
 function add_standard_inbound(config, section, protocol, tag_name) {
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
-    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
-    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
-    let is_lx = sb_version_val != "" ? (index(sb_version_val, "-lx") >= 0) : (trim(fs.readfile(sb_variant_file) || "") == "lx");
+    // Function scope, deliberately: the AWG block below is nested, and a let
+    // declared there would not be visible where the endpoint/inbound split
+    // happens at the end of this function.
+    let endpoint_schema = variant_state.awg_endpoint_schema();
     let inbound = {
         type: protocol,
         tag: tag_name,
@@ -405,12 +406,6 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let j3 = awg_cps_option(section, "awg_j3");
         let itime = int_option(section, "awg_itime", "0");
 
-        let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
-        let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
-        let sb_version_val = trim(fs.readfile(sb_version_file) || "");
-        let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
-        let is_lx = sb_variant_val == "lx" || index(sb_version_val, "-lx") >= 0;
-
         // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx v1.14.0-lx.32+)
         let awg_ver = option(section, "awg_version", "");
         if (awg_ver == "") {
@@ -426,10 +421,8 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             }
         }
 
-        let is_lx_schema = is_lx;
-
-        if (is_lx_schema) {
-            // sing-box-lx expects AWG fields at the inbound root (AWG 2.0 schema);
+        if (endpoint_schema) {
+            // sing-box-lx and tachyon-core expect AWG fields at the endpoint root (AWG 2.0 schema);
             // magic headers accept a single value or an AWG 2.0 "min-max" range.
             // j1-j3/itime are sing-box-extended-only and are not emitted here.
             inbound.jc = amnezia.jc;
@@ -544,7 +537,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
 
     apply_tls(inbound, section, protocol);
     apply_transport(inbound, section, protocol);
-    if (protocol == "awg" && is_lx_schema) {
+    if (protocol == "awg" && endpoint_schema) {
         let server_port = int_option(section, "awg_server_port", int_option(section, "listen_port", 51820));
         inbound.listen_port = server_port;
         delete inbound.listen;

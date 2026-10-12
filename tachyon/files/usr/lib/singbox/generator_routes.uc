@@ -1638,7 +1638,10 @@ function add_routed_dns_server_for_section(config, section) {
 
     for (let i = 0; i < length(servers); i++) {
         let s_val = servers[i];
-        let server_tag = length(servers) <= 1
+        // The rule references the un-indexed tag, so the first server has to
+        // carry it however many are configured — with a single server this is
+        // the same tag as before, with several the rest get -2, -3, …
+        let server_tag = i == 0
             ? tag_name
             : runtime_constants.tag(section_name, "routed-dns-server-" + (i + 1));
         let server = runtime_dns.server_from_options(

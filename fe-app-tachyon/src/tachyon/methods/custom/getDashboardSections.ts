@@ -503,7 +503,7 @@ function getSectionProxyConfigType(section: Tachyon.ConfigSection) {
   }
 
   if (section.action === 'fptn') {
-    return 'urltest' as const;
+    return 'selector' as const;
   }
 
   if (getJsonOutbounds(section).length > 0) {

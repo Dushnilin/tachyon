@@ -1945,11 +1945,11 @@ function getTarget(target) {
 }
 async function onMount(target) {
   return new Promise((resolve) => {
-    let observer = null;
+    let observer2 = null;
     const resolveIfMountedAndVisible = () => {
       const mountedTarget = getTarget(target);
       if (mountedTarget && mountedTarget.isConnected && mountedTarget.offsetParent !== null) {
-        observer?.disconnect();
+        observer2?.disconnect();
         resolve(mountedTarget);
         return true;
       }
@@ -1958,10 +1958,10 @@ async function onMount(target) {
     if (resolveIfMountedAndVisible()) {
       return;
     }
-    observer = new MutationObserver(() => {
+    observer2 = new MutationObserver(() => {
       resolveIfMountedAndVisible();
     });
-    observer.observe(document.body, {
+    observer2.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
@@ -5431,7 +5431,7 @@ function getSectionProxyConfigType(section) {
     return "selector";
   }
   if (section.action === "fptn") {
-    return "urltest";
+    return "selector";
   }
   if (getJsonOutbounds(section).length > 0) {
     return "outbound";
@@ -12974,7 +12974,7 @@ function renderModal(text, name, options) {
   let pendingForcedRefresh = false;
   let refreshSessionId = 0;
   let timer;
-  let observer;
+  let observer2;
   let autoRefreshEnabled = options?.initialAutoRefresh ?? Boolean(options?.getText);
   let maskValuesEnabled = options?.initialMaskValues ?? true;
   let shouldScrollToBottomOnMount = Boolean(options?.startAtEnd);
@@ -13003,8 +13003,8 @@ function renderModal(text, name, options) {
     pendingRefresh = false;
     pendingForcedRefresh = false;
     stopRefreshTimer();
-    observer?.disconnect();
-    observer = void 0;
+    observer2?.disconnect();
+    observer2 = void 0;
   };
   const scrollToBottom = () => {
     contentEl.scrollTop = contentEl.scrollHeight;
@@ -13201,14 +13201,14 @@ ${currentText}
     ])
   ]);
   if ((options?.getText || options?.startAtEnd) && typeof document !== "undefined") {
-    observer = new MutationObserver(() => {
+    observer2 = new MutationObserver(() => {
       if (!body.isConnected) {
         destroyLiveRefresh();
         return;
       }
       scheduleInitialScrollToBottom();
     });
-    observer.observe(document.body, {
+    observer2.observe(document.body, {
       childList: true,
       subtree: true
     });
@@ -27252,6 +27252,36 @@ function injectGlobalStyles() {
   );
 }
 
+// src/helpers/applyAutofillProtection.ts
+var AUTOFILL_ATTRIBUTES = {
+  autocomplete: "off",
+  autocorrect: "off",
+  autocapitalize: "off",
+  spellcheck: "false"
+};
+var FIELD_SELECTOR = "input, textarea, select";
+function protectField(field) {
+  for (const [name, value] of Object.entries(AUTOFILL_ATTRIBUTES))
+    field.setAttribute(name, value);
+}
+function protectFields(root) {
+  if (!root || root.nodeType !== 1) return;
+  const element = root;
+  if (element.matches(FIELD_SELECTOR)) protectField(element);
+  for (const field of element.querySelectorAll(FIELD_SELECTOR))
+    protectField(field);
+}
+var observer = null;
+function applyAutofillProtection() {
+  protectFields(document.body);
+  if (observer) return;
+  observer = new MutationObserver((records) => {
+    for (const record of records)
+      for (const node of record.addedNodes) protectFields(node);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
 // src/main.ts
 if (typeof structuredClone !== "function")
   globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
@@ -27268,6 +27298,7 @@ return baseclass.extend({
   TACHYON_UCI_PACKAGE,
   TachyonShellMethods,
   UpdatesTab,
+  applyAutofillProtection,
   applyUiStateToStore,
   bulkValidate,
   coreService,

@@ -22,6 +22,7 @@ let bool_option = common.bool_option;
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
 let option = common.option;
+let disable_quic_mode = common.disable_quic_mode;
 let write_compact_string_array = common.write_compact_string_array;
 let unlink_file = common.unlink_file;
 let shell_quote = common.shell_quote;
@@ -1543,19 +1544,28 @@ function sqm_service_enabled() {
     return false;
 }
 
-function nft_add_quic_block_rule(table, interface_set, fakeip_mark) {
+function nft_add_quic_block_rule(table, interface_set, fakeip_mark, mode) {
     // disable_quic also has to cover traffic that never reaches sing-box.
     // The route rules in singbox/route.uc can only reject a connection they are
     // handed, so a client whose destination is never marked for tproxy keeps
     // using HTTP/3 straight to the internet, where the local DPI mangles it.
-    // Dropping UDP/443 covers exactly that gap: marked traffic is left alone so
-    // sing-box still decides, unmarked (direct) traffic is forced back onto TCP.
+    // Rejecting UDP/443 covers exactly that gap. "tunneled" leaves marked
+    // traffic alone so sing-box still decides; "all" has no mark condition and
+    // rejects every UDP/443 at the door.
+    //
+    // reject, not drop: a client whose QUIC is dropped waits for its own
+    // timeout before falling back to TCP, while an ICMP port-unreachable makes
+    // the fallback immediate.
     //
     // UDP only. "meta l4proto udp tcp" is one nft expression naming two
     // protocols, which the kernel rejects with "conflicting transport layer
     // protocols" - and the rule this replaced dropped TCP/443 too, taking the
     // whole HTTPS path down with it.
-    return nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "udp", "th", "dport", "443", "meta", "mark", "&", as_string(fakeip_mark), "!=", as_string(fakeip_mark), "counter", "drop" ]);
+    let rule = [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "udp", "th", "dport", "443" ];
+    if (mode != "all")
+        append_array(rule, [ "meta", "mark", "&", as_string(fakeip_mark), "!=", as_string(fakeip_mark) ]);
+    append_array(rule, [ "counter", "reject", "with", "icmpx", "type", "port-unreachable" ]);
+    return nft_add_rule(table, "mangle", rule);
 }
 
 function nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address) {
@@ -1578,6 +1588,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     ip_port6_set = default_arg(ip_port6_set, "tachyon_ip6_ports");
     fakeip6_range = default_arg(fakeip6_range, "fc00::/18");
     tproxy6_address = default_arg(tproxy6_address, "::1");
+    let quic_mode = disable_quic_mode(disable_quic);
 
     if (!nft_create_table(table) ||
         !nft_create_ipv4_set(table, localv4_set) ||
@@ -1696,6 +1707,20 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]))
         return false;
 
+    // Everything below this point in prerouting is either guarded by
+    // `iifname @interface_set` itself or jumps to a chain whose rules all are,
+    // so a packet arriving on any other interface (WAN replies above all) can
+    // no longer match anything and does not pay for the remaining set lookups.
+    // Without it a large WAN download walked ~20 classification rules per
+    // packet. #128
+    //
+    // Not on an empty set: `iifname != @empty` matches everything, and that
+    // would take the whole chain with it.
+    if (length(whitespace_values(source_interfaces)) > 0) {
+        if (!nft_add_rule(table, "mangle", [ "iifname", "!=", "@" + as_string(interface_set), "return" ]))
+            return false;
+    }
+
     let console_ips_list = list_option(uci_settings(), "game_console_ips");
     if (bool_option(uci_settings(), "game_console_optimizer", false) && length(console_ips_list) > 0) {
         let v4_ips = [];
@@ -1742,7 +1767,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", fakeip_range, "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", fakeip6_range, "meta", "l4proto", "tcp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", fakeip6_range, "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
-        (arg_bool(disable_quic) && !nft_add_quic_block_rule(table, interface_set, fakeip_mark)) ||
+        (quic_mode != "off" && !nft_add_quic_block_rule(table, interface_set, fakeip_mark, quic_mode)) ||
         (arg_bool(block_doh) && !nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark)) ||
         !nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x40000000", "==", "0x40000000", "counter", "return" ]) ||

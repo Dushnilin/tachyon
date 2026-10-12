@@ -175,6 +175,19 @@ function bool_value(value) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+// disable_quic has grown from a flag into three modes: "off" (no rule at all),
+// "tunneled" (reject QUIC that never reaches sing-box, sing-box still decides
+// what it is handed) and "all" (reject every UDP/443 outright). One
+// normalizer for every reader — bool_value() would call both new modes false.
+function disable_quic_mode(value) {
+    value = lc(trim(as_string(value)));
+    if (value == "all")
+        return "all";
+    if (value == "tunneled" || value == "1" || value == "true" || value == "yes" || value == "on")
+        return "tunneled";
+    return "off";
+}
+
 function bool_option(section, key, fallback) {
     if (fallback == null)
         fallback = false;
@@ -897,6 +910,7 @@ return {
     list_option,
     bool_option,
     bool_value,
+    disable_quic_mode,
     int_option,
     int_or_range_option,
     bytes_to_hex,

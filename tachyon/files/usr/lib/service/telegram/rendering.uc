@@ -139,11 +139,14 @@ function get_schema_label(stype, key, custom_t) {
 }
 
 function is_boolean_key(key) {
+    // disable_quic is a three-mode value (off/tunneled/all), not a flag: a
+    // checkbox would render both new modes as "off" and a toggle would erase
+    // them. It goes through the plain string branch instead.
     let b = ["enabled", "auto_user_agent", "auto_hwid", "subscription_update_enabled",
              "download_via_proxy_enabled", "show_dashboard_metadata", "prefix_nodes",
              "include_urltest_groups", "hide_urltest_group_outbounds", "hide_detour_outbounds",
              "dns_detour_enabled", "enable_output_network_interface", "enable_badwan_interface_monitoring",
-             "enable_yacd", "disable_quic", "block_doh", "list_update_enabled", "component_update_check_enabled",
+             "enable_yacd", "block_doh", "list_update_enabled", "component_update_check_enabled",
              "download_lists_via_proxy", "download_components_via_proxy", "dont_touch_dhcp",
              "isolate_p2p", "exclude_ntp", "route_router_traffic", "shutdown_correctly", "smart_detect",
              "notify_crash", "notify_restart", "notify_server_switch", "notify_subscription", "notify_cert", "notify_dns_leak",

@@ -602,7 +602,7 @@ sequential
 [settings.output_network_interface]
 wan
 [settings.disable_quic]
-1
+tunneled
 [settings.block_doh]
 0
 [settings.update_interval]

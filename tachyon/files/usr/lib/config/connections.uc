@@ -411,17 +411,24 @@ function action(section) {
     return normalize_action(option(section, "action", ""));
 }
 
+// Imported .conf entries. Shared by the connection path (each entry becomes a
+// vpn:// link) and the AmneziaWG path (each entry becomes its own endpoint).
+function amnezia_configs(section) {
+    let configs = raw_option(section, "selector_amnezia_configs");
+    if (configs == null || configs == "")
+        return [];
+    if (type(configs) != "array")
+        configs = [configs];
+    return configs;
+}
+
 function connection_urls(section) {
     let links = whitespace_list_value(section, "selector_proxy_links");
-    let configs = raw_option(section, "selector_amnezia_configs");
-    if (configs != null && configs != "") {
-        if (type(configs) != "array") configs = [configs];
-        let importer = require("subscription.amnezia_config");
-        for (let value in configs) {
-            let item = importer.parse(value);
-            if (item == null) die("Invalid imported Amnezia configuration");
-            push(links, item.link);
-        }
+    let importer = require("subscription.amnezia_config");
+    for (let value in amnezia_configs(section)) {
+        let item = importer.parse(value);
+        if (item == null) die("Invalid imported Amnezia configuration");
+        push(links, item.link);
     }
     let text = option(section, "selector_proxy_links_text", "");
     if (text != "") {
@@ -1839,6 +1846,7 @@ return {
     routed_dns_enabled,
     routed_dns_type,
     routed_dns_servers,
+    amnezia_configs,
     item_index_from_cursor,
     cli_delete_section,
     wdtt_sections,

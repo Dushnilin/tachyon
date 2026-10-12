@@ -436,7 +436,10 @@ cat >"$WORK_DIR/bypass_routed_dns_fixture.json" <<'EOF'
       "community_lists": [ "russia_outside" ],
       "routed_dns_enabled": "1",
       "routed_dns_type": "doh",
-      "routed_dns_server": [ "https://dns.comss.one/dns-query" ]
+      "routed_dns_server": [
+        "https://dns.comss.one/dns-query",
+        "https://dns2.comss.one/dns-query"
+      ]
     }
   ]
 }
@@ -472,6 +475,27 @@ for (let r in cfg.dns.rules || []) {
 }
 if (!found_dns_rule) {
     warn("DNS rule targeting ByPass-routed-dns-server not found\n");
+    exit(1);
+}
+
+// With several routed DNS servers the rule still points at the un-indexed tag,
+// so the first server has to carry it and the rest get -2, -3, …
+let found_second = false;
+for (let s in cfg.dns.servers || []) {
+    if (s.tag == "ByPass-routed-dns-server-2") {
+        found_second = true;
+        if (s.type != "https" || s.server != "dns2.comss.one" || s.detour) {
+            warn("ByPass-routed-dns-server-2 properties mismatch: " + json(s) + "\n");
+            exit(1);
+        }
+    }
+    if (s.tag == "ByPass-routed-dns-server-1") {
+        warn("the first server must carry the un-indexed tag, not -1\n");
+        exit(1);
+    }
+}
+if (!found_second) {
+    warn("second routed DNS server not found under the -2 tag\n");
     exit(1);
 }
 

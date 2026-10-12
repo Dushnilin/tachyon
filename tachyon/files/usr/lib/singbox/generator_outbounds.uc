@@ -11,6 +11,8 @@ let runtime_url = require("core.url");
 let subscription_share_link = require("subscription.share_link");
 let connections = require("config.connections");
 let subscription_wireguard = require("subscription.wireguard");
+let subscription_amnezia = require("subscription.amnezia_config");
+let exec = require("core.exec");
 
 let as_string = common.as_string;
 let option = common.option;
@@ -1597,7 +1599,75 @@ function add_connections_outbound(config, section, taken) {
         ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
 }
 
+// An AmneziaWG section carrying imported .conf files is shaped the way an FPTN
+// token is: one endpoint per config, an auto urltest group over them, and the
+// section selector on top — so several configs behave like several servers and
+// the urltest/priority children have something to group. A bare endpoint
+// cannot carry those children, and the Clash API rejects a non-selector as the
+// section tag on every dashboard group switch.
+function add_awg_config_members(config, section) {
+    let section_name = section[".name"];
+    let tag = outbound_tag(section_name);
+    let state = runtime_subscription.new_section_state(section_name);
+    let selector_tags = [];
+    let urltest_candidate_tags = [];
+    let taken = { };
+    taken[tag] = true;
+    let detour = outbound_detour_tag_for_section(section);
+
+    for (let value in connections.amnezia_configs(section)) {
+        let item = subscription_amnezia.parse(value);
+        if (item == null)
+            ctx.runtime_generate_unsupported("Invalid imported Amnezia configuration");
+        let endpoint = subscription_wireguard.from_vpn(item.link);
+        if (endpoint == null)
+            ctx.runtime_generate_unsupported("invalid imported Amnezia configuration: " + as_string(item.name));
+        let member_tag = unique_tag(tag + "/" + as_string(item.name), taken);
+        taken[member_tag] = true;
+        let member = copy_subscription_outbound(endpoint, member_tag);
+        if (detour != "")
+            member.detour = detour;
+        add_imported_wireguard_endpoint(config, member);
+        push(selector_tags, member_tag);
+        push(urltest_candidate_tags, member_tag);
+        runtime_subscription.remember_outbound_metadata(state, member_tag, as_string(item.name), member);
+    }
+
+    // The group the selector defaults to. Same shape as the FPTN expansion;
+    // a section urltest child called "urltest" owns this very tag, and then it
+    // is the group and nothing is emitted here.
+    let text_urltest_tag = "";
+    if (index(connections.urltests(section), "urltest") < 0) {
+        text_urltest_tag = ctx.routes.urltest_outbound_tag(section_name, "urltest");
+        let group_members = [];
+        for (let member_tag in selector_tags)
+            push(group_members, member_tag);
+        let auto_group = {
+            type: "urltest",
+            tag: text_urltest_tag,
+            outbounds: group_members
+        };
+        push(config.outbounds, auto_group);
+        let group_name = option(section, "label", "");
+        if (group_name == "") group_name = text_urltest_tag;
+        runtime_subscription.remember_outbound_metadata(state, text_urltest_tag, group_name, auto_group);
+        runtime_subscription.remember_urltest_group_config(state, text_urltest_tag, {
+            displayName: group_name,
+            outbounds: group_members
+        });
+    }
+
+    state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
+    ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag);
+    if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
+        ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
+}
+
 function add_awg_endpoint(config, section) {
+    if (length(connections.amnezia_configs(section)) > 0) {
+        add_awg_config_members(config, section);
+        return;
+    }
     let tag = outbound_tag(section[".name"]);
     let endpoint = {
         type: "wireguard",
@@ -2116,15 +2186,206 @@ function add_olcrtc_outbound(config, section, sections) {
     });
 }
 
+// Validate a decoded payload exactly the way core fptn::parse_token does —
+// same field errors, same ranges — so the backend and the core's own token
+// expansion can never disagree about which token is usable. Returns the
+// normalized payload or null.
+function fptn_token_payload(payload) {
+    if (type(payload) != "object")
+        return null;
+    // ucode numbers are "int"/"double", there is no "number" type — and both
+    // fields are integers in fptn::parse_token too.
+    if (payload.version != null && type(payload.version) != "int")
+        return null;
+    if (payload.service_name != null && type(payload.service_name) != "string")
+        return null;
+    if (type(payload.username) != "string" || payload.username == "")
+        return null;
+    if (type(payload.password) != "string" || payload.password == "")
+        return null;
+    if (type(payload.servers) != "array" || length(payload.servers) == 0)
+        return null;
+
+    let servers = [];
+    let seen = {};
+    for (let entry in payload.servers) {
+        if (type(entry) != "object")
+            return null;
+        if (type(entry.name) != "string" || entry.name == "")
+            return null;
+        if (seen[entry.name])
+            return null;
+        if (type(entry.host) != "string" || entry.host == "")
+            return null;
+        if (type(entry.port) != "int" || entry.port < 1 || entry.port > 65535)
+            return null;
+        let fingerprint = "";
+        if (entry.md5_fingerprint != null) {
+            if (type(entry.md5_fingerprint) != "string")
+                return null;
+            fingerprint = entry.md5_fingerprint;
+            if (fingerprint != "" && !match(fingerprint, /^[0-9a-fA-F]{32}$/))
+                return null;
+        }
+        seen[entry.name] = true;
+        push(servers, {
+            name: entry.name,
+            host: entry.host,
+            port: int(entry.port),
+            md5_fingerprint: fingerprint
+        });
+    }
+
+    return {
+        service_name: as_string(payload.service_name || ""),
+        username: payload.username,
+        password: payload.password,
+        servers
+    };
+}
+
+// fptnb: is brotli, which ucode has not got — the core CLI decodes it for us
+// (`tachyon-core fptn decode <token>`). Returns null when the binary is
+// missing or refuses, and the caller falls back to the raw-token form.
+function fptn_token_decode_via_core(token) {
+    let binary = getenv("SB_PREFLIGHT_BINARY") || getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+    if (fs.stat(binary) == null)
+        return null;
+    let result = exec.run({ argv: [ binary, "fptn", "decode", token ], timeout: 15 });
+    if (result.status != 0)
+        return null;
+    try {
+        return json(result.output);
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+// Decode an access token into its payload, or null for anything undecodable
+// (bad prefix, bad base64, invalid payload). fptn: is base64+JSON inline;
+// fptnb: goes through the core.
+function fptn_token_decode(token) {
+    token = trim(as_string(token));
+    let body = null;
+    let compressed = false;
+    if (substr(token, 0, 6) == "fptnb:") {
+        body = substr(token, 6);
+        compressed = true;
+    } else if (substr(token, 0, 7) == "fptnb//") {
+        body = substr(token, 7);
+        compressed = true;
+    } else if (substr(token, 0, 7) == "fptn://") {
+        body = substr(token, 7);
+    } else if (substr(token, 0, 5) == "fptn:") {
+        body = substr(token, 5);
+    } else {
+        return null;
+    }
+
+    let payload = null;
+    if (compressed) {
+        payload = fptn_token_decode_via_core(token);
+    } else {
+        let raw = base64_decode_value(body);
+        if (raw == null)
+            return null;
+        try {
+            payload = json(raw);
+        }
+        catch (e) {
+            return null;
+        }
+    }
+    return fptn_token_payload(payload);
+}
+
+// Emit the section the way a connection section is shaped: one outbound per
+// token server (`<tag>/<name>`), the auto urltest group over them, and the
+// section selector on top — a urltest group as the section tag gets a 400
+// "Must be a Selector" from the Clash API on every dashboard group switch.
+// Returns false when the token cannot be decoded here.
+function add_fptn_token_members(config, section, token) {
+    let section_name = section[".name"];
+    let decoded = fptn_token_decode(token);
+    if (decoded == null)
+        return false;
+
+    let tag = outbound_tag(section_name);
+    let state = runtime_subscription.new_section_state(section_name);
+    let selector_tags = [];
+    let urltest_candidate_tags = [];
+    let detour = outbound_detour_tag_for_section(section);
+
+    for (let server in decoded.servers) {
+        let member = {
+            type: "fptn",
+            tag: tag + "/" + server.name,
+            server: server.host,
+            server_port: server.port,
+            username: decoded.username,
+            password: decoded.password
+        };
+        if (server.md5_fingerprint != "")
+            member.md5_fingerprint = server.md5_fingerprint;
+        if (detour != "")
+            member.detour = detour;
+        push(config.outbounds, member);
+        push(selector_tags, member.tag);
+        push(urltest_candidate_tags, member.tag);
+        runtime_subscription.remember_outbound_metadata(state, member.tag, server.name, member);
+    }
+
+    // The group the selector defaults to. No url/interval/tolerance: this is
+    // the same bare urltest core's own token expansion emits, and the two
+    // shapes must not drift. A section urltest child called "urltest" owns
+    // this very tag, so then it is the group and nothing is emitted here.
+    let text_urltest_tag = "";
+    if (index(connections.urltests(section), "urltest") < 0) {
+        text_urltest_tag = ctx.routes.urltest_outbound_tag(section_name, "urltest");
+        let group_members = [];
+        for (let member_tag in selector_tags)
+            push(group_members, member_tag);
+        let auto_group = {
+            type: "urltest",
+            tag: text_urltest_tag,
+            outbounds: group_members
+        };
+        push(config.outbounds, auto_group);
+        let group_name = decoded.service_name != "" ? decoded.service_name : text_urltest_tag;
+        runtime_subscription.remember_outbound_metadata(state, text_urltest_tag, group_name, auto_group);
+        runtime_subscription.remember_urltest_group_config(state, text_urltest_tag, {
+            displayName: group_name,
+            outbounds: group_members
+        });
+    }
+
+    if (ctx.routes.section_needs_country_is(section)) {
+        let previous_state = read_json_file(runtime_subscription.section_cache_path(section_name));
+        state.outboundMetadata.countries = runtime_country.detect(
+            state.servers,
+            previous_state,
+            option(ctx.runtime_settings(), "bootstrap_dns_server", "77.88.8.8")
+        );
+    }
+    if (ctx.routes.section_has_direct_priority_level(section))
+        state.outboundMetadata.names[runtime_constants.DIRECT_OUTBOUND_TAG] = "Direct";
+
+    state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
+    ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag);
+    if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
+        ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
+    return true;
+}
+
 // FPTN routes traffic through its TUN interface (tun-fptn) via kernel routing.
 // fwmark 0x00300000 (3145728) → ip rule → routing table 4249 → dev tun-fptn.
 //
-// tachyon-core speaks FPTN itself: in native mode the outbound is a first-class
-// fptn outbound carrying the access token, not a direct + fwmark pointing at
-// the external client's tun. The native outbound also lands in the ordinary
-// leaf pool, so urltest and selector groups see it the way they see any other
-// connection. The mode comes from the single resolver in config.connections so
-// the generator and the provider runtime can never disagree.
+// tachyon-core speaks FPTN itself: in native mode the section expands into
+// per-server outbounds plus a selector — the same shape a connection section
+// gets — instead of a single outbound carrying the access token. The mode
+// comes from the single resolver in config.connections so the generator and
+// the provider runtime can never disagree.
 function add_fptn_outbound(config, section, sections) {
     if (connections && !connections.section_is_active_provider(section, "fptn"))
         return;
@@ -2134,13 +2395,18 @@ function add_fptn_outbound(config, section, sections) {
         let token = as_string(option(section, "access_token", ""));
         if (token == "")
             return;
+        if (add_fptn_token_members(config, section, token))
+            return;
+        // Undecodable on this box (brotli without the core binary, malformed
+        // token): hand the raw token to the core, which expands it into the
+        // same members itself.
         let fptn_out = {
             type: "fptn",
             tag,
             token
         };
-        let detour = connections.section_detour_tag ? connections.section_detour_tag(section) : null;
-        if (detour)
+        let detour = outbound_detour_tag_for_section(section);
+        if (detour != "")
             fptn_out.detour = detour;
         push(config.outbounds, fptn_out);
         return;
@@ -2191,5 +2457,6 @@ return {
     add_wdtt_outbound,
     add_olcrtc_outbound,
     add_fptn_outbound,
+    fptn_token_decode,
     apply_section_packet_encoding_to_connection_outbounds
 };

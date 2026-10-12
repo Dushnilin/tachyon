@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 08:31+0300\n"
-"PO-Revision-Date: 2026-10-12 08:31+0300\n"
+"POT-Creation-Date: 2026-10-12 22:44+0300\n"
+"PO-Revision-Date: 2026-10-12 22:44+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1550,8 +1550,8 @@ msgstr "Отключить QUIC"
 msgid "Disable autostart"
 msgstr "Отключить автостарт"
 
-msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming"
-msgstr "Отключить протокол QUIC для улучшения совместимости или исправления проблем с видео-стримингом"
+msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled also rejects QUIC handed to the proxy; All rejects every UDP/443 outright."
+msgstr ""
 
 msgid "Disabled"
 msgstr "Отключено"
@@ -2351,8 +2351,14 @@ msgstr "Сгенерировать конфигурацию WARP"
 msgid "Generate a random 16-character hexadecimal HWID"
 msgstr "Сгенерировать случайный 16-символьный шестнадцатеричный HWID"
 
+msgid "Generate an AmneziaWG 2.0 configuration from a Cloudflare WARP account. Only 2.0 can be generated: WARP does not run AmneziaWG, so 3.0 and 3.1 cannot be produced here — load a .conf for those."
+msgstr "Сгенерируйте конфигурацию AmneziaWG 2.0 из аккаунта Cloudflare WARP. Сгенерировать можно только 2.0: WARP не запускает AmneziaWG, поэтому 3.0 и 3.1 здесь недоступны — для них загрузите .conf."
+
 msgid "Generate bug report"
 msgstr "Сгенерировать баг-репорт"
+
+msgid "Generate for 2.0"
+msgstr "Сгенерировать для 2.0"
 
 msgid "Generate in Tailscale Admin Console"
 msgstr ""
@@ -2617,6 +2623,9 @@ msgstr "Импортировать настройки OpenVPN из файла .o
 
 msgid "Import URLTest groups returned by this subscription provider"
 msgstr "Импортировать группы URLTest, возвращённые этим провайдером подписки"
+
+msgid "Import several AmneziaWG .conf files. They are combined into one group: Tachyon picks the fastest and the URLTest / Priority groups below can select among them."
+msgstr "Импортируйте несколько файлов AmneziaWG .conf. Они объединяются в одну группу: Tachyon выбирает самый быстрый, а группы URLTest и Priority ниже могут выбирать между ними."
 
 msgid "Import subscription URLTest groups"
 msgstr "Импортировать группы URLTest подписки"
@@ -3197,6 +3206,9 @@ msgstr "Загрузить .ovpn конфиг"
 msgid "Load Current Records"
 msgstr "Загрузить текущие записи"
 
+msgid "Load several configs"
+msgstr "Загрузить несколько конфигов"
+
 msgid "Loaded %d current record(s)"
 msgstr "Загружено %d текущих записей"
 
@@ -3283,6 +3295,9 @@ msgstr "Вручную"
 
 msgid "Manual list update"
 msgstr "Ручное обновление списков"
+
+msgid "Manual setup"
+msgstr "Ручная настройка"
 
 msgid "Masquerade LAN traffic into tailnet"
 msgstr "Маскарадинг LAN-трафика в тейлнет"
@@ -3697,6 +3712,9 @@ msgstr "Внешний публичный IP"
 
 msgid "Observed test queries"
 msgstr "Обнаруженные тестовые запросы"
+
+msgid "Off"
+msgstr ""
 
 msgid "OlcRTC Crypto Key"
 msgstr "Ключ шифрования OlcRTC"
@@ -5012,6 +5030,9 @@ msgstr "Информация о сервисах"
 msgid "Services restarted. Click to reload page."
 msgstr "Службы перезапущены. Нажмите для перезагрузки страницы."
 
+msgid "Set the AmneziaWG keys, ports and header parameters by hand."
+msgstr "Задайте ключи, порты и параметры заголовков AmneziaWG вручную."
+
 msgid "Settings"
 msgstr "Настройки"
 
@@ -5924,6 +5945,9 @@ msgstr "Вторник"
 msgid "Tunnel MTU"
 msgstr "MTU туннеля"
 
+msgid "Tunneled"
+msgstr ""
+
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
 
@@ -6760,6 +6784,9 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming"
+msgstr "Отключить протокол QUIC для улучшения совместимости или исправления проблем с видео-стримингом"
 
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com). When disabled, only the specific subdomain is routed through the proxy."
 msgstr "Если включено, блокировка поддомена (напр., sub.example.com) приводит к добавлению всего базового домена (example.com). Если выключено, через прокси направляется только конкретный поддомен."

@@ -536,24 +536,6 @@ function firewall_required_protocols_open(port, required_proto) {
     return true;
 }
 
-function server_required_inbound_proto(protocol) {
-    protocol = as_string(protocol);
-    if (protocol == "json_inbound")
-        print("\n");
-    else
-        print(protocol == "hysteria2" || protocol == "tuic" ? "udp" : "tcp", "\n");
-}
-
-function server_runtime_type_for_protocol(protocol) {
-    protocol = as_string(protocol);
-    if (protocol == "json_inbound")
-        print("\n");
-    else if (protocol == "mtproto")
-        print("mtproxy\n");
-    else
-        print(protocol, "\n");
-}
-
 function arg_bool(value) {
     return value === true || value == "true" || value == "1" || value == 1;
 }
@@ -1050,6 +1032,13 @@ function inbound_runtime_ok(protocol, runtime_exists, runtime_type, runtime_list
 
     if (runtime_type != expected_type)
         return 0;
+
+    // An endpoint-schema AWG (lx / tachyon-core) carries no listen field -
+    // singbox/servers.uc deletes it before pushing the object into endpoints -
+    // so the port is the only thing left to match here; the socket itself is
+    // checked by the separate listening probe.
+    if (protocol == "awg" && runtime_type == "wireguard" && runtime_listen == "")
+        return runtime_port_text == listen_port ? 1 : 0;
 
     if (protocol == "tailscale")
         return 1;
@@ -1969,10 +1958,6 @@ else if (mode == "firewall-port-open")
     exit(firewall_port_open_for_proto(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "firewall-required-protocols-open")
     exit(firewall_required_protocols_open(ARGV[1], ARGV[2]) ? 0 : 1);
-else if (mode == "server-required-inbound-proto")
-    server_required_inbound_proto(ARGV[1]);
-else if (mode == "server-runtime-type-for-protocol")
-    server_runtime_type_for_protocol(ARGV[1]);
 else if (mode == "server-listen-requires-firewall")
     exit(server_listen_requires_firewall(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "server-port-listening")

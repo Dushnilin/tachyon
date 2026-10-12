@@ -256,6 +256,9 @@ const EntryPoint = {
   },
   async render() {
     main.injectGlobalStyles();
+    // Password managers treat any page holding a password field as a login
+    // form and offer to store the neighbouring text inputs as the username.
+    main.applyAutofillProtection();
     const uiCapabilities = {
       loaded: false,
       singBoxExtended: false,

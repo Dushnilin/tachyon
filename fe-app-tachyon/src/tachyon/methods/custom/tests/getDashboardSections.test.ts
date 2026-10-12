@@ -1367,21 +1367,35 @@ describe('getDashboardSections', () => {
         access_token: 'test_token',
       },
     ]);
+    // The backend now expands the token itself: the section tag is a selector
+    // (the Clash API rejects a group switch against a urltest group with 400
+    // "Must be a Selector"), members sit under `<tag>/<name>` exactly like the
+    // core's own expansion, and the auto urltest group carries the section
+    // cache's `-urltest-out` tag.
     mocks.getClashApiProxies.mockResolvedValue({
       success: true,
       data: {
         proxies: {
-          'fptn_sec-out': proxy('URLTest', {
+          'fptn_sec-out': proxy('Selector', {
             name: 'fptn_sec-out',
-            now: 'fptn_sec/Node-1',
-            all: ['fptn_sec/Node-1', 'fptn_sec/Node-2'],
+            now: 'fptn_sec-urltest-out',
+            all: [
+              'fptn_sec-urltest-out',
+              'fptn_sec-out/Node-1',
+              'fptn_sec-out/Node-2',
+            ],
           }),
-          'fptn_sec/Node-1': proxy('FPTN', {
-            name: 'fptn_sec/Node-1',
+          'fptn_sec-urltest-out': proxy('URLTest', {
+            name: 'fptn_sec-urltest-out',
+            now: 'fptn_sec-out/Node-1',
+            all: ['fptn_sec-out/Node-1', 'fptn_sec-out/Node-2'],
+          }),
+          'fptn_sec-out/Node-1': proxy('FPTN', {
+            name: 'fptn_sec-out/Node-1',
             history: [{ time: '2026-05-27T00:00:00Z', delay: 42 }],
           }),
-          'fptn_sec/Node-2': proxy('FPTN', {
-            name: 'fptn_sec/Node-2',
+          'fptn_sec-out/Node-2': proxy('FPTN', {
+            name: 'fptn_sec-out/Node-2',
             history: [{ time: '2026-05-27T00:00:00Z', delay: 84 }],
           }),
         },
@@ -1395,11 +1409,18 @@ describe('getDashboardSections', () => {
     expect(result.data[0].sectionName).toBe('fptn_sec');
     expect(result.data[0].action).toBe('fptn');
     expect(result.data[0].withTagSelect).toBe(true);
-    expect(result.data[0].proxyConfigType).toBe('urltest');
+    expect(result.data[0].proxyConfigType).toBe('selector');
     expect(result.data[0].serviceStatus).toBeUndefined();
-    expect(result.data[0].outbounds).toHaveLength(2);
-    expect(result.data[0].outbounds[0].displayName).toBe('Node-1');
-    expect(result.data[0].outbounds[0].prefix).toBe('fptn_sec');
+    expect(result.data[0].outbounds.map((item) => item.code)).toEqual([
+      'fptn_sec-urltest-out',
+      'fptn_sec-out/Node-1',
+      'fptn_sec-out/Node-2',
+    ]);
+    const firstNode = result.data[0].outbounds.find(
+      (item) => item.code === 'fptn_sec-out/Node-1',
+    );
+    expect(firstNode?.displayName).toBe('Node-1');
+    expect(firstNode?.prefix).toBe('fptn_sec-out');
   });
 
   it('excludes hidden outbound tags from dashboard section cards even if present in selector', async () => {

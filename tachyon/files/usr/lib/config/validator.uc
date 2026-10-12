@@ -1565,6 +1565,61 @@ function validate_dns_action(section, sections, context) {
         fail_validation("DNS rule '" + name + "' references detour section '" + target_name + "' with unsupported action '" + rule_action(target) + "'. Select an enabled Connection, VPN, Zapret, Zapret2, or ByeDPI section. Aborted.");
 }
 
+// URLTest and Priority groups, shared by every action that emits them: the
+// connection family, FPTN and AmneziaWG.
+function validate_section_route_groups(section) {
+    let name = section_name(section);
+    validate_dashboard_filter(section);
+
+    for (let urltest_id in connections.urltests(section)) {
+        validate_urltest_identifier_value(urltest_id, name);
+
+        let urltest_filter_mode = connections.urltest_filter_mode(section, urltest_id);
+        validate_urltest_filter_mode_value(urltest_filter_mode, name);
+        if (contains([ "exclude", "include", "mixed" ], urltest_filter_mode))
+            validate_detect_server_country_value(connections.urltest_detect_server_country(section, urltest_id), name);
+
+        validate_required_duration_option(connections.urltest_check_interval(section, urltest_id), "rule." + name + ".urltest." + urltest_id + ".urltest_check_interval");
+        validate_urltest_tolerance_value(connections.urltest_tolerance(section, urltest_id), name, urltest_id);
+        validate_http_url_option(connections.urltest_testing_url(section, urltest_id), "rule." + name + ".urltest." + urltest_id + ".testing_url");
+        let idle_timeout = connections.urltest_idle_timeout(section, urltest_id);
+        if (idle_timeout != "")
+            validate_required_duration_option(idle_timeout, "rule." + name + ".urltest." + urltest_id + ".idle_timeout");
+
+        if (contains([ "include", "mixed" ], urltest_filter_mode)) {
+            for (let value in connections.urltest_include_regex(section, urltest_id))
+                validate_urltest_regex_value(value, name);
+            for (let value in connections.urltest_include_countries(section, urltest_id))
+                validate_country_code_value(value, name);
+            if (connections.urltest_include_proxy_parameters(section, urltest_id))
+                validate_proxy_parameter_filters(
+                    connections.urltest_include_protocols(section, urltest_id),
+                    connections.urltest_include_transports(section, urltest_id),
+                    connections.urltest_include_securities(section, urltest_id),
+                    connections.urltest_include_ports(section, urltest_id),
+                    name
+                );
+        }
+        if (contains([ "exclude", "mixed" ], urltest_filter_mode)) {
+            for (let value in connections.urltest_exclude_countries(section, urltest_id))
+                validate_country_code_value(value, name);
+            for (let value in connections.urltest_exclude_regex(section, urltest_id))
+                validate_urltest_regex_value(value, name);
+            if (connections.urltest_exclude_proxy_parameters(section, urltest_id))
+                validate_proxy_parameter_filters(
+                    connections.urltest_exclude_protocols(section, urltest_id),
+                    connections.urltest_exclude_transports(section, urltest_id),
+                    connections.urltest_exclude_securities(section, urltest_id),
+                    connections.urltest_exclude_ports(section, urltest_id),
+                    name
+                );
+        }
+    }
+
+    for (let group_id in connections.priority_groups(section))
+        validate_priority_group(section, group_id);
+}
+
 function validate_rule(section, sections, context) {
     if (!section_enabled(section))
         return;
@@ -1644,55 +1699,7 @@ function validate_rule(section, sections, context) {
     }
 
     if (connections.is_connections_action(action) || action == "fptn") {
-        validate_dashboard_filter(section);
-
-        for (let urltest_id in connections.urltests(section)) {
-            validate_urltest_identifier_value(urltest_id, name);
-
-            let urltest_filter_mode = connections.urltest_filter_mode(section, urltest_id);
-            validate_urltest_filter_mode_value(urltest_filter_mode, name);
-            if (contains([ "exclude", "include", "mixed" ], urltest_filter_mode))
-                validate_detect_server_country_value(connections.urltest_detect_server_country(section, urltest_id), name);
-
-            validate_required_duration_option(connections.urltest_check_interval(section, urltest_id), "rule." + name + ".urltest." + urltest_id + ".urltest_check_interval");
-            validate_urltest_tolerance_value(connections.urltest_tolerance(section, urltest_id), name, urltest_id);
-            validate_http_url_option(connections.urltest_testing_url(section, urltest_id), "rule." + name + ".urltest." + urltest_id + ".testing_url");
-            let idle_timeout = connections.urltest_idle_timeout(section, urltest_id);
-            if (idle_timeout != "")
-                validate_required_duration_option(idle_timeout, "rule." + name + ".urltest." + urltest_id + ".idle_timeout");
-
-            if (contains([ "include", "mixed" ], urltest_filter_mode)) {
-                for (let value in connections.urltest_include_regex(section, urltest_id))
-                    validate_urltest_regex_value(value, name);
-                for (let value in connections.urltest_include_countries(section, urltest_id))
-                    validate_country_code_value(value, name);
-                if (connections.urltest_include_proxy_parameters(section, urltest_id))
-                    validate_proxy_parameter_filters(
-                        connections.urltest_include_protocols(section, urltest_id),
-                        connections.urltest_include_transports(section, urltest_id),
-                        connections.urltest_include_securities(section, urltest_id),
-                        connections.urltest_include_ports(section, urltest_id),
-                        name
-                    );
-            }
-            if (contains([ "exclude", "mixed" ], urltest_filter_mode)) {
-                for (let value in connections.urltest_exclude_countries(section, urltest_id))
-                    validate_country_code_value(value, name);
-                for (let value in connections.urltest_exclude_regex(section, urltest_id))
-                    validate_urltest_regex_value(value, name);
-                if (connections.urltest_exclude_proxy_parameters(section, urltest_id))
-                    validate_proxy_parameter_filters(
-                        connections.urltest_exclude_protocols(section, urltest_id),
-                        connections.urltest_exclude_transports(section, urltest_id),
-                        connections.urltest_exclude_securities(section, urltest_id),
-                        connections.urltest_exclude_ports(section, urltest_id),
-                        name
-                    );
-            }
-        }
-
-        for (let group_id in connections.priority_groups(section))
-            validate_priority_group(section, group_id);
+        validate_section_route_groups(section);
 
         if (rule_has_subscription_urls(section)) {
             for (let value in connections.subscription_urls(section)) {
@@ -1706,6 +1713,12 @@ function validate_rule(section, sections, context) {
 
         validate_outbound_json_values(section);
     }
+
+    // AmneziaWG sections emit the same URLTest/Priority groups a connection
+    // section does, so the groups need the same validation. Their other
+    // connection-only options (subscriptions, JSON outbounds) stay out of it.
+    if (action == "awg")
+        validate_section_route_groups(section);
 
     if (action == "outbound")
         validate_outbound_json_rule(section);

@@ -2231,15 +2231,25 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "services",
-    form.Flag,
+    form.ListValue,
     "disable_quic",
     _("Disable QUIC"),
     _(
-      "Disable the QUIC protocol to improve compatibility or fix issues with video streaming",
+      "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled also rejects QUIC handed to the proxy; All rejects every UDP/443 outright.",
     ),
   );
-  o.default = "0";
+  o.value("off", _("Off"));
+  o.value("tunneled", _("Tunneled"));
+  o.value("all", _("All"));
+  o.default = "off";
   o.rmempty = false;
+  o.cfgvalue = function (section_id) {
+    const value = uci.get(UCI_PACKAGE, section_id, "disable_quic");
+    // legacy flag values keep their meaning across the mode split
+    if (value === "1" || value === "true" || value === "yes" || value === "on")
+      return "tunneled";
+    return value === "all" ? "all" : "off";
+  };
 
   o = section.taboption(
     "services",

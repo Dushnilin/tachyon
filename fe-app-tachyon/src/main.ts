@@ -23,6 +23,7 @@ export { getProxyUrlName } from './helpers/getProxyUrlName';
 export { formatOutboundType } from './helpers/formatOutboundType';
 export { getProxyUrlTransport } from './helpers/getProxyUrlTransport';
 export { injectGlobalStyles } from './helpers/injectGlobalStyles';
+export { applyAutofillProtection } from './helpers/applyAutofillProtection';
 export { showToast } from './helpers/showToast';
 export { getClashUIUrl } from './helpers/getClashApiUrl';
 export { TachyonShellMethods } from './tachyon/methods/shell';
