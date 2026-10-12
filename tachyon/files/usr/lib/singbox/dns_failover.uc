@@ -78,7 +78,8 @@ function probe_timeout(settings_value) {
     // resolver, and since strikes are reset on any success that false failure
     // still had to repeat before it counted - which is exactly the shape issue
     // #84 reported.
-    return duration_seconds(settings_value, 5);
+    let t = duration_seconds(settings_value, 5);
+    return t < 3 ? 3 : t;
 }
 
 // Keeps a probe failure readable: the raw dig output can be several lines and a
@@ -255,7 +256,7 @@ function apply_selections(state, selections) {
     if (!write_state(candidate_path, candidate))
         return false;
 
-    let status = command_status(command_from_args([ "timeout", "45", SERVICE_BIN, "dns_failover_apply", candidate_path ]) + " >/dev/null 2>&1");
+    let status = command_status(command_from_args([ "timeout", "90", SERVICE_BIN, "dns_failover_apply", candidate_path ]) + " >/dev/null 2>&1");
     remove_file(candidate_path);
     if (status != 0) {
         log_message("dns_failover_apply failed with status " + as_string(status), "warn");
@@ -324,18 +325,34 @@ function core_age_seconds() {
     // starttime remain unchanged). During ruleset loading and outbound
     // re-initialization (which takes 2-8 seconds on router CPU), DNS probes
     // to health ports must not count as dead upstream resolvers.
-    // If the configuration file was modified recently, use that age so the
-    // CORE_GRACE_SECONDS window protects both process restarts and in-place reloads.
+    // Check config mtime, reload stamp file, or reload hash mtime so the
+    // CORE_GRACE_SECONDS window protects restarts, config changes, and in-place reloads.
     let cfg = settings();
+    let min_age = proc_age;
+
     let config_path = trim(as_string(cfg.config_path || "")) || "/etc/sing-box/config.json";
     let config_stat = fs.stat(config_path);
     if (config_stat != null && config_stat.mtime > 0) {
         let config_age = int(time()) - int(config_stat.mtime);
-        if (config_age >= 0 && config_age < proc_age)
-            return config_age;
+        if (config_age >= 0 && config_age < min_age)
+            min_age = config_age;
     }
 
-    return proc_age;
+    for (let stamp_file in [
+        RUNTIME_STATE_DIR + "/sing-box-reload.timestamp",
+        RUNTIME_STATE_DIR + "/reload.timestamp",
+        RUNTIME_STATE_DIR + "/reload.hash",
+        RUNTIME_STATE_DIR + "/reload-state"
+    ]) {
+        let stamp_stat = fs.stat(stamp_file);
+        if (stamp_stat != null && stamp_stat.mtime > 0) {
+            let stamp_age = int(time()) - int(stamp_stat.mtime);
+            if (stamp_age >= 0 && stamp_age < min_age)
+                min_age = stamp_age;
+        }
+    }
+
+    return min_age;
 }
 
 const CORE_GRACE_SECONDS = 90;
@@ -351,15 +368,9 @@ function worker() {
     let mode = common.option(cfg, "dns_upstream_mode", "sequential");
     let is_parallel = (mode == "parallel");
 
-    let active_interval = is_parallel
-        ? duration_seconds(common.option(cfg, "dns_check_interval", "15s"), 15)
-        : duration_seconds(common.option(cfg, "dns_check_interval", "10s"), 10);
-    let recovery_interval = is_parallel
-        ? 30
-        : duration_seconds(common.option(cfg, "dns_recovery_check_interval", "60s"), 60);
-    let timeout_seconds = is_parallel
-        ? 2
-        : probe_timeout(common.option(cfg, "dns_check_timeout", "2s"));
+    let active_interval = duration_seconds(common.option(cfg, "dns_check_interval", is_parallel ? "15s" : "10s"), is_parallel ? 15 : 10);
+    let recovery_interval = duration_seconds(common.option(cfg, "dns_recovery_check_interval", is_parallel ? "30s" : "60s"), is_parallel ? 30 : 60);
+    let timeout_seconds = probe_timeout(common.option(cfg, "dns_check_timeout", is_parallel ? "3s" : "2s"));
     let next_active = now_seconds() + active_interval;
     let next_recovery = now_seconds() + recovery_interval;
     let all_down = { main: false, bootstrap: false };
@@ -374,12 +385,8 @@ function worker() {
         if (!runtime_dns.state_matches(runtime_dns.state_template(current_cfg), state))
             return 0;
 
-        let failure_threshold = is_parallel
-            ? 2
-            : int(common.option(current_cfg, "dns_failure_threshold", common.option(current_cfg, "dns_failover_failure_threshold", "3")));
-        let recovery_threshold = is_parallel
-            ? 2
-            : int(common.option(current_cfg, "dns_recovery_threshold", "3"));
+        let failure_threshold = int(common.option(current_cfg, "dns_failure_threshold", common.option(current_cfg, "dns_failover_failure_threshold", is_parallel ? "3" : "3")));
+        let recovery_threshold = int(common.option(current_cfg, "dns_recovery_threshold", is_parallel ? "3" : "3"));
 
         if (now >= next_active) {
             let age = core_age_seconds();

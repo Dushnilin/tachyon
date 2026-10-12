@@ -585,8 +585,10 @@ function try_sighup_reload(pid) {
         // mean "something is running". That alone is not enough - the inbounds
         // have to be back before this counts as a working reload.
         let process_ok = current_pid == pid || pid_is_sing_box(current_pid);
-        if (process_ok && sing_box_mixed_ports_listening(ports))
+        if (process_ok && sing_box_mixed_ports_listening(ports)) {
+            common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
             return true;
+        }
     }
 
     // Timed out: verify at least that a sing-box is still up, and that it is
@@ -594,7 +596,11 @@ function try_sighup_reload(pid) {
     let final_pid = sing_box_service_pid_runtime();
     if (final_pid <= 0 || !pid_is_sing_box(final_pid))
         return false;
-    return sing_box_mixed_ports_listening(ports);
+    if (sing_box_mixed_ports_listening(ports)) {
+        common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
+        return true;
+    }
+    return false;
 }
 
 function hup_sing_box_runtime() {

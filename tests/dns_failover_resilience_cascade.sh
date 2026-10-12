@@ -54,5 +54,14 @@ grep -Fq 'check_watchdog_outdated' "$WATCHDOG_UC" ||
 grep -A25 'function core_age_seconds' "$FAILOVER_UC" | grep -Fq 'config_stat' ||
   fail "core_age_seconds in dns_failover.uc must check config mtime to protect in-place SIGHUP reloads from premature failover"
 
+# 8. core_age_seconds in dns_failover.uc must inspect sing-box-reload.timestamp
+grep -A35 'function core_age_seconds' "$FAILOVER_UC" | grep -Fq 'sing-box-reload.timestamp' ||
+  fail "core_age_seconds in dns_failover.uc must check sing-box-reload.timestamp for SIGHUP in-place reload grace period"
+
+# 9. dns_failover must not hardcode failure_threshold to 2 and ignore user settings in parallel mode
+if grep -Eq 'failure_threshold = is_parallel \? 2 :' "$FAILOVER_UC"; then
+  fail "dns_failover must not override user dns_failure_threshold in parallel mode"
+fi
+
 printf 'dns failover and sighup resilience checks passed\n'
 

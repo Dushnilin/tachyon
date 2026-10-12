@@ -3201,22 +3201,22 @@ function dns_probe_passed(proxy_address) {
         // up after a component update or restart and the proxy port may not be
         // ready even though the process is already running.
         let attempt = 1;
-        while (attempt <= 10) {
+        while (attempt <= 5) {
             if (service_proxy_is_ready(proxy_address)) {
                 log_message("Service proxy is ready", "info");
                 return true;
             }
-            log_message("Service proxy not yet ready [" + attempt + "/10]", "info");
-            command_success_from_args([ "sleep", "3" ]);
+            log_message("Service proxy not yet ready [" + attempt + "/5]", "info");
+            command_success_from_args([ "sleep", "1" ]);
             attempt++;
         }
-        log_message("Service proxy is not accepting connections after 10 attempts; skipping list update", "info");
+        log_message("Service proxy is not accepting connections after 5 attempts; skipping list update", "info");
         return false;
     }
 
     let attempt = 1;
-    while (attempt <= 10) {
-        let output = command_output_from_args([ "dig", "+short", "openwrt.org", "A", "+timeout=3", "+tries=1" ]);
+    while (attempt <= 3) {
+        let output = command_output_from_args([ "dig", "+short", "openwrt.org", "A", "+timeout=2", "+tries=2" ]);
         for (let line in split(output, "\n")) {
             if (match(as_string(line), /^[0-9]+\./) != null) {
                 log_message("DNS check passed", "info");
@@ -3224,19 +3224,19 @@ function dns_probe_passed(proxy_address) {
             }
         }
 
-        log_message("DNS is unavailable [" + attempt + "/10]", "info");
-        command_success_from_args([ "sleep", "3" ]);
+        log_message("DNS is unavailable [" + attempt + "/3]", "info");
+        command_success_from_args([ "sleep", "1" ]);
         attempt++;
     }
 
-    log_message("DNS check failed after 10 attempts; skipping remote lists update until the next attempt", "info");
+    log_message("DNS check failed after 3 attempts; skipping remote lists update until the next attempt", "info");
     return false;
 }
 
 function github_probe(proxy_address) {
     let attempt = 1;
-    let timeout = 5;
-    while (attempt <= 10) {
+    let timeout = 3;
+    while (attempt <= 2) {
         let args = [ "curl", "-s", "-m", "" + timeout ];
         if (as_string(proxy_address) != "") {
             push(args, "-x");
@@ -3249,14 +3249,12 @@ function github_probe(proxy_address) {
             return true;
         }
 
-        log_message("GitHub is unavailable [" + attempt + "/10] (max-timeout=" + timeout + ")", "info");
-        if (timeout < 10)
-            timeout++;
-        command_success_from_args([ "sleep", "3" ]);
+        log_message("GitHub is unavailable [" + attempt + "/2] (max-timeout=" + timeout + ")", "info");
+        command_success_from_args([ "sleep", "1" ]);
         attempt++;
     }
 
-    log_message("GitHub connection check failed after 10 attempts; trying configured list downloads individually", "info");
+    log_message("GitHub connection check failed; trying configured list downloads individually", "info");
     return false;
 }
 
