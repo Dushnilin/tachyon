@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 22:44+0300\n"
-"PO-Revision-Date: 2026-10-12 22:44+0300\n"
+"POT-Creation-Date: 2026-10-12 23:25+0300\n"
+"PO-Revision-Date: 2026-10-12 23:25+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1551,7 +1551,7 @@ msgid "Disable autostart"
 msgstr "Отключить автостарт"
 
 msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled also rejects QUIC handed to the proxy; All rejects every UDP/443 outright."
-msgstr ""
+msgstr "Отключает протокол QUIC для улучшения совместимости или решения проблем с воспроизведением видео. «Через туннель» также отклоняет QUIC, переданный прокси; «Все» отклоняет весь UDP/443 напрямую."
 
 msgid "Disabled"
 msgstr "Отключено"
@@ -2361,7 +2361,7 @@ msgid "Generate for 2.0"
 msgstr "Сгенерировать для 2.0"
 
 msgid "Generate in Tailscale Admin Console"
-msgstr ""
+msgstr "Сгенерировать в консоли администратора Tailscale"
 
 msgid "Generated inbound"
 msgstr "Созданный inbound"
@@ -3714,7 +3714,7 @@ msgid "Observed test queries"
 msgstr "Обнаруженные тестовые запросы"
 
 msgid "Off"
-msgstr ""
+msgstr "Выкл"
 
 msgid "OlcRTC Crypto Key"
 msgstr "Ключ шифрования OlcRTC"
@@ -4482,7 +4482,7 @@ msgid "Restart Tachyon"
 msgstr "Перезапустить Tachyon"
 
 msgid "Restart Tachyon Core DNS"
-msgstr ""
+msgstr "Перезапустить DNS Tachyon Core"
 
 msgid "Restart Zapret/ByeDPI"
 msgstr "Перезапустить Zapret/ByeDPI"
@@ -4536,7 +4536,7 @@ msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked 
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
 
 msgid "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...)."
-msgstr ""
+msgstr "Многоразовый или эфемерный pre-auth ключ для подключения к вашему Tailnet (например, tskey-auth-...)."
 
 msgid "Rollback"
 msgstr "Откатить"
@@ -4962,7 +4962,7 @@ msgid "Server VPN IP address and subnet (e.g. 10.0.0.1/24)"
 msgstr "VPN IP-адрес и подсеть сервера (например, 10.0.0.1/24)"
 
 msgid "Server configuration generated"
-msgstr ""
+msgstr "Конфигурация сервера сгенерирована"
 
 msgid "Server filtering"
 msgstr "Фильтрация серверов"
@@ -5052,7 +5052,7 @@ msgid "Shopping"
 msgstr "Магазины"
 
 msgid "Show Tachyon Core config"
-msgstr ""
+msgstr "Показать Tachyon Core конфигурацию"
 
 msgid "Show metadata on dashboard"
 msgstr "Показывать метаданные на дашборде"
@@ -5241,7 +5241,7 @@ msgid "Start Tachyon"
 msgstr "Запустить Tachyon"
 
 msgid "Start Tachyon Core"
-msgstr ""
+msgstr "Запустить Tachyon Core"
 
 msgid "Start Time (HH:MM)"
 msgstr "Время начала (ЧЧ:ММ)"
@@ -5517,22 +5517,22 @@ msgid "Tachyon Core"
 msgstr "Ядро Tachyon"
 
 msgid "Tachyon Core autostart disabled"
-msgstr ""
+msgstr "Автостарт Tachyon Core отключен"
 
 msgid "Tachyon Core installed"
-msgstr ""
+msgstr "Tachyon Core установлен"
 
 msgid "Tachyon Core listening ports"
-msgstr ""
+msgstr "Tachyon Core слушает порты"
 
 msgid "Tachyon Core process running"
-msgstr ""
+msgstr "Процесс Tachyon Core запущен"
 
 msgid "Tachyon Core service exist"
-msgstr ""
+msgstr "Сервис Tachyon Core существует"
 
 msgid "Tachyon Core version is compatible"
-msgstr ""
+msgstr "Версия Tachyon Core совместима"
 
 msgid "Tachyon DNS Benchmark & Auto-Tuning"
 msgstr "Tachyon: Бенчмарк и автоподбор DNS"
@@ -5946,7 +5946,7 @@ msgid "Tunnel MTU"
 msgstr "MTU туннеля"
 
 msgid "Tunneled"
-msgstr ""
+msgstr "Через туннель"
 
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
@@ -6417,7 +6417,7 @@ msgid "What Tachyon should do when this section matches"
 msgstr "Что должен делать Tachyon при совпадении этой секции"
 
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
-msgstr ""
+msgstr "Если включено, блокировка поддомена (напр., sub.example.com) приводит к добавлению всего базового домена (example.com), если только это не затронет исключённый поддомен. Если выключено, через прокси направляется только конкретный поддомен."
 
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."

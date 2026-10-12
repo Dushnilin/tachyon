@@ -1951,8 +1951,7 @@ function createSettingsContent(section, capabilities) {
           : cfgvalue || 10000;
       const val = parseInt(rawVal, 10);
       if (isNaN(val) || val <= 0) {
-        calcNode.textContent =
-          _("Local DNS caching disabled (0 entries)");
+        calcNode.textContent = _("Local DNS caching disabled (0 entries)");
         return;
       }
       const bytes = val * 120;
@@ -2637,7 +2636,8 @@ function createSettingsContent(section, capabilities) {
                   null,
                   E(
                     "p",
-                    _("Error updating lists: ") +
+                    _("Error updating lists:") +
+                      " " +
                       (data.message || _("Update failed")),
                   ),
                   "error",
@@ -2663,7 +2663,7 @@ function createSettingsContent(section, capabilities) {
         ui.hideModal();
         ui.addNotification(
           null,
-          E("p", _("Error updating lists: ") + (err.message || err)),
+          E("p", _("Error updating lists:") + " " + (err.message || err)),
           "error",
         );
       });

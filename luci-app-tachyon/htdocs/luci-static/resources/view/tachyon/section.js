@@ -9192,24 +9192,27 @@ function createSectionContent(section) {
           },
           [
             E("div", {}, [
-              E("strong", {}, _("Total lines: ")),
+              E("strong", {}, _("Total lines:") + " "),
               `${result.totalLines}`,
             ]),
             E("div", {}, [
-              E("strong", {}, _("Parsed records: ")),
+              E("strong", {}, _("Parsed records:") + " "),
               `${result.entries.length}`,
             ]),
             E("div", {}, [
-              E("strong", {}, _("Skipped loopback: ")),
+              E("strong", {}, _("Skipped loopback:") + " "),
               `${result.skippedLoopback}`,
             ]),
             E("div", {}, [
-              E("strong", {}, _("Skipped comments/invalid: ")),
+              E("strong", {}, _("Skipped comments/invalid:") + " "),
               `${result.skippedComments + result.skippedInvalid}`,
             ]),
-            E("div", {}, [E("strong", {}, _("New domains: ")), `${newCount}`]),
             E("div", {}, [
-              E("strong", {}, _("Updated/duplicates: ")),
+              E("strong", {}, _("New domains:") + " "),
+              `${newCount}`,
+            ]),
+            E("div", {}, [
+              E("strong", {}, _("Updated/duplicates:") + " "),
               `${updatedCount}`,
             ]),
           ],
@@ -9744,13 +9747,15 @@ function createSectionContent(section) {
                       );
                     } else {
                       msg =
-                        _("Update failed: ") + (data.error || res.stderr || "");
+                        _("Update failed:") +
+                        " " +
+                        (data.error || res.stderr || "");
                     }
                   } catch (e) {
                     msg =
                       res.stdout ||
                       res.stderr ||
-                      _("Finished with code ") + res.code;
+                      _("Finished with code") + " " + res.code;
                   }
                   ui.addNotification(
                     null,
@@ -9970,7 +9975,8 @@ function createSectionContent(section) {
           resetAfter(2500);
           showStatusModal(
             _("Error"),
-            _("Failed to generate WARP config: ") +
+            _("Failed to generate WARP config:") +
+              " " +
               (response?.stderr || "Unknown error"),
             true,
           );
@@ -9984,7 +9990,8 @@ function createSectionContent(section) {
             resetAfter(2500);
             showStatusModal(
               _("Error"),
-              _("Failed to generate WARP config: ") +
+              _("Failed to generate WARP config:") +
+                " " +
                 (data.message || "Unknown error"),
               true,
             );
@@ -10063,7 +10070,7 @@ function createSectionContent(section) {
           resetAfter(2500);
           showStatusModal(
             _("Error"),
-            _("Failed to parse WARP config: ") + err.message,
+            _("Failed to parse WARP config:") + " " + err.message,
             true,
           );
         }
@@ -10073,7 +10080,7 @@ function createSectionContent(section) {
         resetAfter(2500);
         showStatusModal(
           _("Error"),
-          _("Error running generator: ") + error.message,
+          _("Error running generator:") + " " + error.message,
           true,
         );
       });
@@ -10205,7 +10212,7 @@ function createSectionContent(section) {
           setTimeout(() => setBtn("", null), 2500);
           ui.addNotification(
             _("Error"),
-            E("p", {}, _("Failed to parse file: ") + err.message),
+            E("p", {}, _("Failed to parse file:") + " " + err.message),
             "danger",
           );
           return;
@@ -11151,7 +11158,11 @@ function createSectionContent(section) {
           setTimeout(() => setBtn("", null), 2500);
           ui.addNotification(
             _("Error"),
-            E("p", {}, _("Failed to parse OpenVPN config: ") + err.message),
+            E(
+              "p",
+              {},
+              _("Failed to parse OpenVPN config:") + " " + err.message,
+            ),
             "danger",
           );
           return;

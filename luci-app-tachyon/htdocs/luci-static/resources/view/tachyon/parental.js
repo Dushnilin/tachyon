@@ -1001,7 +1001,8 @@ function createParentalContent(section) {
     const mode = uci.get(UCI_PACKAGE, sectionId, "mode") || "block";
     if (domains.length === 0) return _("None");
     return (
-      (mode === "allow" ? _("Allow only: ") : _("Block: ")) + domains.join(", ")
+      (mode === "allow" ? _("Allow only:") + " " : _("Block:") + " ") +
+      domains.join(", ")
     );
   };
 
