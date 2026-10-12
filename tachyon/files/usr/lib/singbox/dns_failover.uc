@@ -317,7 +317,25 @@ function core_age_seconds() {
     // fields after the parenthesised name; starttime is field 22 overall
     let tail = split(trim(substr(stat, rindex(stat, ")") + 1)), " ");
     let started = int(tail[19]) / 100;
-    return int(split(uptime, " ")[0]) - started;
+    let proc_age = int(split(uptime, " ")[0]) - started;
+
+    // SIGHUP in-place reload protection: sing-box or tachyon-core reloads its
+    // configuration in-place without restarting the process (PID and stat
+    // starttime remain unchanged). During ruleset loading and outbound
+    // re-initialization (which takes 2-8 seconds on router CPU), DNS probes
+    // to health ports must not count as dead upstream resolvers.
+    // If the configuration file was modified recently, use that age so the
+    // CORE_GRACE_SECONDS window protects both process restarts and in-place reloads.
+    let cfg = settings();
+    let config_path = trim(as_string(cfg.config_path || "")) || "/etc/sing-box/config.json";
+    let config_stat = fs.stat(config_path);
+    if (config_stat != null && config_stat.mtime > 0) {
+        let config_age = int(time()) - int(config_stat.mtime);
+        if (config_age >= 0 && config_age < proc_age)
+            return config_age;
+    }
+
+    return proc_age;
 }
 
 const CORE_GRACE_SECONDS = 90;

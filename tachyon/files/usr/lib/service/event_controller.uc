@@ -1030,7 +1030,7 @@ function controller(bus, opts) {
                 if (line == "") continue;
                 let fields = split(line, /[ \t]+/);
                 if (length(fields) >= 4 && fields[1] == "00000000") {
-                    let flags = int("0x" + fields[3]);
+                    let flags = int(fields[3], 16);
                     if ((flags & 1) != 0) { // RTF_UP
                         return fields[0];
                     }

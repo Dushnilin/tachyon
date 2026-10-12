@@ -787,7 +787,7 @@ function is_udp_port_busy(port) {
 function generate_awg_header_int() {
     let hex = replace(output("head -c 4 /dev/urandom | hexdump -ve '1/1 \"%02x\"' 2>/dev/null"), /\n/g, "");
     if (hex != "" && length(hex) == 8) {
-        let val = int("0x" + hex);
+        let val = int(hex, 16);
         if (val != null) {
             val = val & 0x7FFFFFFF;
             if (val < 100000000)
@@ -797,7 +797,7 @@ function generate_awg_header_int() {
     }
     let rand_hex = replace(output("sing-box generate rand --hex 3 2>/dev/null"), /\n/g, "");
     if (rand_hex != "") {
-        let fallback_val = 100000000 + (int("0x" + rand_hex) || 0);
+        let fallback_val = 100000000 + (int(rand_hex, 16) || 0);
         return as_string(fallback_val);
     }
     return "184920412";

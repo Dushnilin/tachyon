@@ -545,7 +545,7 @@ function check_candidate_port_collisions(candidate_uci) {
                         let colon = index(local_addr, ":");
                         if (colon > 0) {
                             let hex_port = substr(local_addr, colon + 1);
-                            let dec_port = int("0x" + hex_port);
+                            let dec_port = int(hex_port, 16);
                             if (dec_port > 0) listening_ports[dec_port] = true;
                         }
                     }

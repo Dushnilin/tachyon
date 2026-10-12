@@ -50,4 +50,9 @@ grep -Fq 'on_disk_tachyon_version' "$WATCHDOG_UC" ||
 grep -Fq 'check_watchdog_outdated' "$WATCHDOG_UC" ||
   fail "watchdog.uc must check if the watchdog process itself is outdated"
 
+# 7. core_age_seconds in dns_failover.uc must check config mtime for SIGHUP reload grace period
+grep -A25 'function core_age_seconds' "$FAILOVER_UC" | grep -Fq 'config_stat' ||
+  fail "core_age_seconds in dns_failover.uc must check config mtime to protect in-place SIGHUP reloads from premature failover"
+
 printf 'dns failover and sighup resilience checks passed\n'
+

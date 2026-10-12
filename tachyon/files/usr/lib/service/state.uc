@@ -537,7 +537,7 @@ function sing_box_mixed_ports_listening(ports) {
             let colon = index(fields[1], ":");
             if (colon <= 0)
                 continue;
-            listening[int("0x" + substr(fields[1], colon + 1))] = true;
+            listening[int(substr(fields[1], colon + 1), 16)] = true;
         }
     }
 

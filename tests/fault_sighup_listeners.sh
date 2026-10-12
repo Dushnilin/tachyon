@@ -83,6 +83,19 @@ fi
 kill -0 "$FAKE_PID" 2>/dev/null ||
   fail "fake sing-box died during the port check; the failure came from the pid check, not the listener check, so the case proves nothing"
 
+# --- the positive contract: mixed inbound declared and port is actually listening
+LIVE_PORT=45998
+node -e "require('net').createServer().listen($LIVE_PORT); setInterval(()=>{}, 1000);" &
+NODE_PID=$!
+sleep 0.5
+write_config "[ { \"type\": \"mixed\", \"listen_port\": $LIVE_PORT } ]"
+if ! sighup_rc; then
+  kill "$NODE_PID" 2>/dev/null || true
+  fail "SIGHUP must succeed when declared mixed port $LIVE_PORT is listening"
+fi
+kill "$NODE_PID" 2>/dev/null || true
+
+
 # --- the success path has to consult the listeners too, not just the loop exit
 awk '/^function try_sighup_reload\(/,/^}/' "$STATE_UC" >"$WORK_DIR/sighup.uc"
 [ -s "$WORK_DIR/sighup.uc" ] || fail "try_sighup_reload not found in service/state.uc"
