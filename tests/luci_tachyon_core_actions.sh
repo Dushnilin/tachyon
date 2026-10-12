@@ -128,6 +128,18 @@ for (const base of ["connection", "bypass", "block", "dns", "hosts"]) {
   expectGate(gates, base, null);
 }
 
+// NaiveProxy ships an outbound in every core, so its action carries no variant
+// gate - gating it would hide it on stock sing-box, which has it too.
+expectGate(gates, "naive", null);
+if (!sectionSource.includes('case "naive":\n      return "NaiveProxy";')) {
+  fail("naive action must carry its NaiveProxy label");
+}
+for (const field of ["naive_server", "naive_server_port", "naive_username", "naive_password"]) {
+  if (!sectionSource.includes(`"${field}",`)) {
+    fail(`naive section must expose ${field}`);
+  }
+}
+
 // Supported or unreleased actions offered when extended or tachyon-core is active.
 for (const action of [
   "awg",
@@ -142,11 +154,26 @@ for (const action of [
   expectGate(gates, action, tachyonGate);
 }
 
-if (!sectionSource.includes('case "mieru":\n      return isTachyonCoreForUi() ? _("Mieru (не реализован)") : "Mieru";')) {
-  fail("mieru label must indicate (не реализован) for tachyon-core");
+if (!sectionSource.includes('case "mieru":\n      return "Mieru";')) {
+  fail("mieru label must be plain: tachyon-core implements it");
+}
+if (sectionSource.includes('"Mieru (не реализован)"')) {
+  fail("the stale mieru (не реализован) label must be gone");
+}
+// mieru is implemented on tachyon-core, so neither the validate() guard nor the
+// disabled-<option> pass may touch it: an offered value there is a value the
+// validator refuses on apply.
+if (sectionSource.includes('value === "mieru" || value === "sudoku"')) {
+  fail("mieru must not be blocked by the tachyon-core validate() guard");
+}
+if (sectionSource.includes('option[value="mieru"]')) {
+  fail("mieru must not be disabled in the action dropdown for tachyon-core");
 }
 if (!sectionSource.includes('case "sudoku":\n      return isTachyonCoreForUi() ? _("Sudoku (не реализован)") : "Sudoku";')) {
   fail("sudoku label must indicate (не реализован) for tachyon-core");
+}
+if (!sectionSource.includes('value === "sudoku"')) {
+  fail("sudoku must stay blocked by the tachyon-core validate() guard");
 }
 
 // Component-gated actions must keep their own gates.

@@ -817,14 +817,14 @@ function rule_action(section) {
 
 function rule_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
-        "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
+        "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
         "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "hosts",
         "wdtt", "olcrtc", "fptn" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
-        "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
+        "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
         "zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn" ], as_string(action));
 }
 
@@ -2475,19 +2475,26 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
 
         let name = section_name(section);
         let action = rule_action(section);
-        if (action == "awg" && !sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version))
-            fail_requirement("Section '" + name + "' uses AmneziaWG, but the installed sing-box binary does not support it. Install sing-box-extended or sing-box-lx, or change the action. Aborted.", "fatal");
+        // tachyon-core carries AmneziaWG inside its wireguard endpoint
+        // (AwgParams::from_obj), so it is a supported target like extended/lx.
+        if (action == "awg" && !sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version) && !sing_box_is_tachyon_core(ctx, sing_box_version))
+            fail_requirement("Section '" + name + "' uses AmneziaWG, but the installed sing-box binary does not support it. Install sing-box-extended, sing-box-lx or tachyon-core, or change the action. Aborted.", "fatal");
 
         if (action == "awg") {
+            // NB: sing_box_is_lx() is true for tachyon-core as well (it folds in
+            // sing_box_version_is_foreign_core), so the core has to be excluded
+            // explicitly: its AWG_FIELDS has no j1/j2/j3/itime and an unknown
+            // endpoint key is a hard rejection, not a warning.
+            let is_core_awg = sing_box_is_tachyon_core(ctx, sing_box_version);
             if (removed_junk_sig_set(section) &&
-                !sing_box_is_lx(ctx, sing_box_version) &&
-                !common.extended_awg_schema_has_junk_signatures(sing_box_version))
-                fail_requirement("Section '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but sing-box-extended removed these fields in 2.6.1 and aborts on unknown fields. Remove them from the section or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
+                !common.extended_awg_schema_has_junk_signatures(sing_box_version) &&
+                !(sing_box_is_lx(ctx, sing_box_version) && !is_core_awg))
+                fail_requirement("Section '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but the installed core does not accept junk-signature fields: sing-box-extended dropped them in 2.6.1 and tachyon-core never had them. Remove them from the section or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
 
             let has_v31_trailers = bool_option(section, "awg_random_trailers", false);
             let has_v31_cookies = bool_option(section, "awg_disable_cookies", false);
-            if ((has_v31_trailers || has_v31_cookies) && !sing_box_is_lx(ctx, sing_box_version))
-                fail_requirement("Section '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx. Install sing-box-lx in the Updates tab or disable these options. Aborted.", "fatal");
+            if ((has_v31_trailers || has_v31_cookies) && !sing_box_is_lx(ctx, sing_box_version) && !sing_box_is_tachyon_core(ctx, sing_box_version))
+                fail_requirement("Section '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx and tachyon-core. Install one of them in the Updates tab or disable these options. Aborted.", "fatal");
         }
 
         // These actions emit outbound/endpoint shapes that only exist in the
@@ -2508,7 +2515,7 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         if (extended_only_label != null) {
             let is_extended = sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version);
             let is_core = sing_box_is_tachyon_core(ctx, sing_box_version);
-            let core_supported = (action == "warp" || action == "masque" || action == "openvpn" || action == "snell");
+            let core_supported = (action == "warp" || action == "masque" || action == "openvpn" || action == "snell" || action == "mieru");
             if (!is_extended && !(is_core && core_supported)) {
                 let lx_note = (sing_box_is_lx(ctx, sing_box_version) && !is_core)
                     ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
@@ -2537,15 +2544,18 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
             continue;
 
         let name = section_name(server);
+        // Same NB as on the section side: sing_box_is_lx() is true for
+        // tachyon-core too, and the core rejects j1/j2/j3/itime outright.
+        let is_core_awg = sing_box_is_tachyon_core(ctx, sing_box_version);
         if (removed_junk_sig_set(server) &&
-            !sing_box_is_lx(ctx, sing_box_version) &&
-            !common.extended_awg_schema_has_junk_signatures(sing_box_version))
-            fail_requirement("Server '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but sing-box-extended removed these fields in 2.6.1 and aborts on unknown fields. Remove them from the server or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
+            !common.extended_awg_schema_has_junk_signatures(sing_box_version) &&
+            !(sing_box_is_lx(ctx, sing_box_version) && !is_core_awg))
+            fail_requirement("Server '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but the installed core does not accept junk-signature fields: sing-box-extended dropped them in 2.6.1 and tachyon-core never had them. Remove them from the server or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
 
         let has_srv_trailers = bool_option(server, "awg_random_trailers", false);
         let has_srv_cookies = bool_option(server, "awg_disable_cookies", false);
         if ((has_srv_trailers || has_srv_cookies) && !sing_box_is_lx(ctx, sing_box_version))
-            fail_requirement("Server '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx. Install sing-box-lx in the Updates tab or disable these options. Aborted.", "fatal");
+            fail_requirement("Server '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx and tachyon-core. Install one of them in the Updates tab or disable these options. Aborted.", "fatal");
     }
 }
 
@@ -2566,7 +2576,7 @@ function has_outbound_section(ctx) {
         // without this check a lone AWG/WARP/VPN section triggered the
         // misleading "No proxy outbound sections found" warning.
         if (contains([ "awg", "warp", "vpn", "openvpn", "masque",
-            "anytls", "snell", "mieru", "sudoku", "fptn" ], as_string(action)))
+            "anytls", "snell", "mieru", "naive", "sudoku", "fptn" ], as_string(action)))
             return true;
 
         if (length(connections.connection_urls(section)) > 0 ||

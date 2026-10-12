@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 23:25+0300\n"
-"PO-Revision-Date: 2026-10-12 23:25+0300\n"
+"POT-Creation-Date: 2026-10-12 01:13+0300\n"
+"PO-Revision-Date: 2026-10-12 01:13+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3365,9 +3365,6 @@ msgstr "Метод"
 msgid "Metrics Retention (hours)"
 msgstr "Хранение метрик (часы)"
 
-msgid "Mieru (не реализован)"
-msgstr "Mieru (не реализован)"
-
 msgid "Minimum"
 msgstr "Минимум"
 
@@ -4690,6 +4687,9 @@ msgstr "МЕДЛЕННО"
 
 msgid "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes."
 msgstr "Подменять LAN-адреса при выходе через tailscale0, чтобы пиры могли отвечать. Нужно, если не все пиры принимают маршруты."
+
+msgid "SNI"
+msgstr "SNI"
 
 msgid "SSH"
 msgstr "SSH"
@@ -6784,6 +6784,9 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Mieru (не реализован)"
+msgstr "Mieru (не реализован)"
 
 msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming"
 msgstr "Отключить протокол QUIC для улучшения совместимости или исправления проблем с видео-стримингом"

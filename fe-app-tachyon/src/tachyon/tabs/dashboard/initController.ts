@@ -1821,6 +1821,7 @@ function updateLatencyProgressInline(
       'anytls',
       'snell',
       'mieru',
+      'naive',
       'sudoku',
       'masque',
       'openvpn',

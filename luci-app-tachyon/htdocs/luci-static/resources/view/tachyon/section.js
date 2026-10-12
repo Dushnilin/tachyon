@@ -31,6 +31,7 @@ const ROUTING_ACTIONS = [
   "anytls",
   "snell",
   "mieru",
+  "naive",
   "sudoku",
   "masque",
   "openvpn",
@@ -107,6 +108,7 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
       "anytls",
       "snell",
       "mieru",
+      "naive",
       "sudoku",
       "masque",
       "openvpn",
@@ -162,6 +164,7 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       "anytls",
       "snell",
       "mieru",
+      "naive",
       "sudoku",
       "masque",
       "openvpn",
@@ -2313,6 +2316,7 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       "anytls",
       "snell",
       "mieru",
+      "naive",
       "sudoku",
       "masque",
       "openvpn",
@@ -5200,7 +5204,9 @@ function getActionOptionLabel(action) {
     case "snell":
       return "Snell";
     case "mieru":
-      return isTachyonCoreForUi() ? _("Mieru (не реализован)") : "Mieru";
+      return "Mieru";
+    case "naive":
+      return "NaiveProxy";
     case "sudoku":
       return isTachyonCoreForUi() ? _("Sudoku (не реализован)") : "Sudoku";
     case "masque":
@@ -5288,6 +5294,9 @@ function populateActionOptionValues(option) {
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
+  // NaiveProxy ships an outbound in every core we support, so it needs no
+  // variant gate of its own.
+  option.value("naive", getActionOptionLabel("naive"));
   if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
     option.value("awg", getActionOptionLabel("awg"));
     option.value("warp", getActionOptionLabel("warp"));
@@ -8431,7 +8440,9 @@ function createSectionContent(section) {
 
   const super_validate = o.validate;
   o.validate = function (section_id, value) {
-    if (isTachyonCoreForUi() && (value === "mieru" || value === "sudoku")) {
+    // mieru is implemented in tachyon-core (outbound/mieru.rs + inbound/mieru.rs
+    // and its type is in KNOWN_OUTBOUND_TYPES), so only sudoku stays blocked.
+    if (isTachyonCoreForUi() && value === "sudoku") {
       return _("This protocol is not implemented in tachyon-core yet");
     }
     return super_validate
@@ -8447,7 +8458,7 @@ function createSectionContent(section) {
         if (!elem) return;
         const disabledItems = elem.querySelectorAll
           ? elem.querySelectorAll(
-              '[data-value="mieru"], [data-value="sudoku"], option[value="mieru"], option[value="sudoku"]',
+              '[data-value="sudoku"], option[value="sudoku"]',
             )
           : [];
         disabledItems.forEach((opt) => {
@@ -10842,7 +10853,7 @@ function createSectionContent(section) {
   o.default = "4";
   o.depends("action", "snell");
 
-  // ── Mieru (sing-box-extended) ─────────────────────────────────────────────
+  // ── Mieru (sing-box-extended, tachyon-core) ──────────────────────────────
 
   o = section.taboption(
     "settings",
@@ -10901,6 +10912,61 @@ function createSectionContent(section) {
   o.password = true;
   o.depends("action", "mieru");
   o.validate = validateRequiredText;
+
+  // ── NaiveProxy (every core) ──────────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "naive_server",
+    _("Server Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "naive");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "naive_server_port",
+    _("Server Port"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.depends("action", "naive");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "naive_username",
+    _("Username"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "naive");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "naive_password",
+    _("Password"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends("action", "naive");
+  o.validate = validateRequiredText;
+
+  // NaiveProxy always speaks HTTPS. The SNI defaults to the server address,
+  // and tachyon-core refuses tls.insecure outright, so there is deliberately
+  // no skip-verification option here.
+  o = section.taboption("settings", form.Value, "naive_sni", _("SNI"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "naive");
 
   // ── Sudoku (sing-box-extended) ────────────────────────────────────────────
 
@@ -12159,6 +12225,7 @@ function createSectionContent(section) {
     "anytls",
     "snell",
     "mieru",
+    "naive",
     "sudoku",
     "masque",
     "openvpn",
@@ -12216,6 +12283,7 @@ function createSectionContent(section) {
     "anytls",
     "snell",
     "mieru",
+    "naive",
     "sudoku",
     "masque",
     "openvpn",
@@ -12619,6 +12687,7 @@ const ACTION_COLORS = {
   anytls: "#16a085",
   snell: "#2c3e50",
   mieru: "#34495e",
+  naive: "#1f618d",
   sudoku: "#7f8c8d",
   masque: "#8e44ad",
   openvpn: "#e74c3c",

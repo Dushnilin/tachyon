@@ -478,6 +478,7 @@ export namespace Tachyon {
     | 'anytls'
     | 'snell'
     | 'mieru'
+    | 'naive'
     | 'sudoku'
     | 'masque'
     | 'openvpn'

@@ -164,7 +164,7 @@ function target(section, outbound_tag_name) {
     let action = option(section, "action", "");
     if (connections.is_connections_action(action) ||
         action == "awg" || action == "warp" ||
-        action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
+        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
         action == "masque" || action == "openvpn" ||
         action == "byedpi" || action == "zapret" || action == "zapret2" ||
         action == "wdtt" || action == "olcrtc" || action == "fptn")

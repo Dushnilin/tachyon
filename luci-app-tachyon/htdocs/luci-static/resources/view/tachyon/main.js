@@ -2405,6 +2405,7 @@ var CONNECTION_ACTION_LABELS = {
   anytls: "AnyTLS",
   snell: "Snell",
   mieru: "Mieru",
+  naive: "NaiveProxy",
   sudoku: "Sudoku",
   masque: "MASQUE",
   openvpn: "OpenVPN",
@@ -2601,6 +2602,7 @@ function renderDefaultState({
     "anytls",
     "snell",
     "mieru",
+    "naive",
     "sudoku",
     "masque",
     "openvpn"
@@ -3023,6 +3025,7 @@ function renderDefaultState({
                 "anytls",
                 "snell",
                 "mieru",
+                "naive",
                 "sudoku",
                 "masque",
                 "openvpn"
@@ -5361,6 +5364,7 @@ var SINGLE_ENDPOINT_ACTIONS = /* @__PURE__ */ new Set([
   "anytls",
   "snell",
   "mieru",
+  "naive",
   "sudoku",
   "masque",
   "openvpn"
@@ -5371,6 +5375,7 @@ var ACTION_DISPLAY_NAMES = {
   anytls: "AnyTLS",
   snell: "Snell",
   mieru: "Mieru",
+  naive: "NaiveProxy",
   sudoku: "Sudoku",
   masque: "MASQUE",
   openvpn: "OpenVPN",
@@ -10209,6 +10214,7 @@ function updateLatencyProgressInline(sectionsWidget) {
       "anytls",
       "snell",
       "mieru",
+      "naive",
       "sudoku",
       "masque",
       "openvpn"
@@ -12311,6 +12317,7 @@ var PROXY_ACTIONS = /* @__PURE__ */ new Set([
   "anytls",
   "snell",
   "mieru",
+  "naive",
   "sudoku",
   "masque",
   "openvpn"

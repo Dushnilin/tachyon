@@ -16,6 +16,7 @@ const PROXY_ACTIONS = new Set([
   'anytls',
   'snell',
   'mieru',
+  'naive',
   'sudoku',
   'masque',
   'openvpn',

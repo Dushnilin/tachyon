@@ -2062,6 +2062,7 @@ ctx.atomic_write_json_file = atomic_write_json_file;
 ctx.is_sb_1_14_plus = is_sb_1_14_plus_detected;
 ctx.is_sb_1_15_plus = is_sb_1_15_plus_detected;
 ctx.is_sing_box_lx = is_sing_box_lx_detected;
+ctx.is_tachyon_core = is_tachyon_core_detected;
 ctx.is_certificate_sha256_supported = is_certificate_sha256_supported;
 
 generator_outbounds.init(ctx);

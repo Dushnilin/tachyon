@@ -2480,6 +2480,8 @@ function add_outbound_for_section(config, section, taken, sections) {
         ctx.outbounds.add_snell_outbound(config, section);
     else if (action == "mieru")
         ctx.outbounds.add_mieru_outbound(config, section);
+    else if (action == "naive")
+        ctx.outbounds.add_naive_outbound(config, section);
     else if (action == "sudoku")
         ctx.outbounds.add_sudoku_outbound(config, section);
     else if (action == "masque")
@@ -2524,7 +2526,7 @@ function reserve_section_outbound_tags(sections, taken) {
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "wdtt" || action == "olcrtc" || action == "fptn" ||
-            action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
+            action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
             action == "masque" || action == "openvpn")
             taken[outbound_tag(section[".name"])] = true;
 
@@ -2560,7 +2562,7 @@ function failover_candidate(sections) {
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "wdtt" || action == "olcrtc" ||
-            action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
+            action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
             action == "masque" || action == "openvpn") {
             push(result, section);
         }

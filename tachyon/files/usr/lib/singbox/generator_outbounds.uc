@@ -1695,6 +1695,11 @@ function add_awg_endpoint(config, section) {
     let sb_version_val = trim(fs.readfile(sb_version_file) || "");
     let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
     let is_lx = sb_variant_val == "lx" || index(sb_version_val, "-lx") >= 0;
+    // tachyon-core reads the AmneziaWG params flat off the wireguard endpoint -
+    // the same layout sing-box-lx uses. Its KNOWN_ENDPOINT_FIELDS has no
+    // "amnezia" wrapper, so a config carrying one is rejected outright.
+    let is_core = ctx.is_tachyon_core != null ? ctx.is_tachyon_core(sb_version_val) : false;
+    let flat_awg = is_lx || is_core;
 
     let keepalive = int_or_range_option(section, "awg_keepalive", 25);
     if (is_lx) {
@@ -1741,10 +1746,10 @@ function add_awg_endpoint(config, section) {
     let j3 = awg_cps_option(section, "awg_j3");
     let itime = int_option(section, "awg_itime", "0");
 
-    if (is_lx) {
-        // sing-box-lx expects AWG fields at the endpoint root (AWG 2.0 schema).
-        // Magic headers accept a single value or an AWG 2.0 "min-max" range;
-        // junk-packet fields are plain integers.
+    if (flat_awg) {
+        // sing-box-lx and tachyon-core expect AWG fields at the endpoint root
+        // (AWG 2.0 schema). Magic headers accept a single value or an AWG 2.0
+        // "min-max" range; junk-packet fields are plain integers.
         endpoint.jc = amnezia.jc;
         endpoint.jmin = amnezia.jmin;
         endpoint.jmax = amnezia.jmax;
@@ -1800,7 +1805,7 @@ function add_awg_endpoint(config, section) {
     if (awg_ver == "3.0" || awg_ver == "3.1") {
         let hpk = option(section, "awg_header_protection_key", "");
         if (hpk != "") {
-            if (is_lx) {
+            if (flat_awg) {
                 if (endpoint.s1 < 12) endpoint.s1 = 20;
                 if (endpoint.s2 < 12) endpoint.s2 = 20;
                 if (endpoint.s3 < 12) endpoint.s3 = 20;
@@ -1817,7 +1822,7 @@ function add_awg_endpoint(config, section) {
 
         let cpa = option(section, "awg_content_padding_addition", "");
         if (cpa != "") {
-            if (is_lx) endpoint.content_padding_addition = cpa;
+            if (flat_awg) endpoint.content_padding_addition = cpa;
             else endpoint.amnezia.content_padding_addition = cpa;
         }
     }
@@ -1825,35 +1830,35 @@ function add_awg_endpoint(config, section) {
     if (awg_ver == "3.1") {
         let rka = option(section, "awg_rekey_after_time", "");
         if (rka != "") {
-            if (is_lx) endpoint.rekey_after_time = rka;
+            if (flat_awg) endpoint.rekey_after_time = rka;
             else endpoint.amnezia.rekey_after_time = rka;
         }
 
         let rkt = option(section, "awg_rekey_timeout", "");
         if (rkt != "") {
-            if (is_lx) endpoint.rekey_timeout = rkt;
+            if (flat_awg) endpoint.rekey_timeout = rkt;
             else endpoint.amnezia.rekey_timeout = rkt;
         }
 
         let rja = option(section, "awg_reject_after_time", "");
         if (rja != "") {
-            if (is_lx) endpoint.reject_after_time = rja;
+            if (flat_awg) endpoint.reject_after_time = rja;
             else endpoint.amnezia.reject_after_time = rja;
         }
 
         let kpt = option(section, "awg_keepalive_timeout", "");
         if (kpt != "") {
-            if (is_lx) endpoint.keepalive_timeout = kpt;
+            if (flat_awg) endpoint.keepalive_timeout = kpt;
             else endpoint.amnezia.keepalive_timeout = kpt;
         }
 
         let mha = option(section, "awg_max_handshake_attempts", "");
         if (mha != "") {
-            if (is_lx) endpoint.max_handshake_attempts = mha;
+            if (flat_awg) endpoint.max_handshake_attempts = mha;
             else endpoint.amnezia.max_handshake_attempts = mha;
         }
 
-        if (is_lx) {
+        if (flat_awg) {
             if (bool_option(section, "awg_random_trailers", false))
                 endpoint.random_trailers = true;
             if (bool_option(section, "awg_disable_cookies", false))
@@ -1891,7 +1896,9 @@ function add_warp_endpoint(config, section) {
     }
 
     let detour = option(section, "warp_detour", "");
-    if (ctx.sing_box_tachyon_core) {
+    // NB: was ctx.sing_box_tachyon_core, which nothing ever set - the branch was
+    // dead and tachyon-core got the sing-box-extended masque shape instead.
+    if (ctx.is_tachyon_core != null && ctx.is_tachyon_core(null)) {
         let masque_out = {
             type: "masque",
             tag,
@@ -1967,6 +1974,24 @@ function add_mieru_outbound(config, section) {
         transport: option(section, "mieru_transport", "TCP"),
         username: option(section, "mieru_username", ""),
         password: option(section, "mieru_password", "")
+    });
+}
+
+function add_naive_outbound(config, section) {
+    let tls = { enabled: true };
+    let sni = option(section, "naive_sni", "");
+    if (sni != "")
+        tls.server_name = sni;
+    push(config.outbounds, {
+        type: "naive",
+        tag: outbound_tag(section[".name"]),
+        server: option(section, "naive_server", ""),
+        server_port: int_option(section, "naive_server_port", "0"),
+        username: option(section, "naive_username", ""),
+        password: option(section, "naive_password", ""),
+        // NaiveProxy is HTTPS-only: tachyon-core refuses a naive outbound with
+        // no tls block, and tls.insecure is rejected by it outright.
+        tls: tls
     });
 }
 
@@ -2448,6 +2473,7 @@ return {
     add_anytls_outbound,
     add_snell_outbound,
     add_mieru_outbound,
+    add_naive_outbound,
     add_sudoku_outbound,
     add_masque_outbound,
     add_openvpn_endpoint,
