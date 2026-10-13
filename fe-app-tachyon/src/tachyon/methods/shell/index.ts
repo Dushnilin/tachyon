@@ -388,10 +388,14 @@ export const TachyonShellMethods = {
     callBaseMethod<unknown>(Tachyon.AvailableMethods.GLOBAL_CHECK, [
       masked ? 'masked' : 'raw',
     ]),
-  doctor: async () =>
-    callBaseMethod<string>(Tachyon.AvailableMethods.DOCTOR, [], {
-      timeout: 30000,
-    }),
+  doctor: async (fix = false) =>
+    callBaseMethod<string>(
+      Tachyon.AvailableMethods.DOCTOR,
+      fix ? ['--fix'] : [],
+      {
+        timeout: 60000,
+      },
+    ),
   aiDoctor: async () =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.AI_DOCTOR, [], {
       timeout: 60000,

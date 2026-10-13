@@ -220,4 +220,95 @@ if (index(tags, "FptnSecB-out") < 0 || index(tags, "FptnSecC-out") < 0) {
 }
 ' "$output_b" || fail "undecodable fptn tokens did not keep the raw-token fallback"
 
+# ---------------------------------------------------------------------------
+# 3. The same token pasted as a plain connection link expands too.
+#
+# A Connection section takes share links, and fptn: is a share link whose
+# payload carries the whole server list. Before this, such a link became one
+# outbound wearing the token, the core expanded it into a group behind that
+# tag, and the dashboard showed a single card instead of the servers.
+# ---------------------------------------------------------------------------
+
+cat > "$WORK_DIR/fixture_manual.json" <<EOF_JSON
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "dns_type": "udp",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "ManualSec",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "match_all": "1",
+      "selector_proxy_links": [ "$TOKEN", "fptnb:AAAA" ]
+    }
+  ]
+}
+EOF_JSON
+
+output_m="$WORK_DIR/out_manual.json"
+generate_fixture "$WORK_DIR/fixture_manual.json" "$output_m" ||
+  fail "generate-config-fixture rejected the fptn manual-link fixture"
+
+ucode -e '
+let fs = require("fs");
+let cfg = json(fs.readfile(ARGV[0]));
+let by_tag = {};
+for (let o in cfg.outbounds || []) {
+    if (type(o) == "object" && o.tag != null)
+        by_tag[o.tag] = o;
+}
+
+// The decodable token must surface its servers as members of the section
+// selector, named exactly like the fptn action expansion names them.
+for (let tag in [ "ManualSec-1-out/Alpha", "ManualSec-1-out/Beta" ]) {
+    if (by_tag[tag] == null) {
+        warn("manual fptn link did not expand into " + tag + "\n"); exit(1);
+    }
+}
+let alpha = by_tag["ManualSec-1-out/Alpha"];
+if (alpha.type != "fptn" || alpha.server != "10.0.0.1" || alpha.server_port != 443 ||
+    alpha.username != "user1" || alpha.password != "pass1") {
+    warn("manual member dial fields mismatch: " + json(alpha) + "\n"); exit(1);
+}
+
+// The token slot itself must be gone for the decodable link: if it survived,
+// the core would re-expand it into a group wearing that tag, which is exactly
+// the behaviour this replaces. The undecodable link is allowed to keep one.
+if (by_tag["ManualSec-1-out"] != null) {
+    warn("the decodable link still emits a raw-token outbound\n"); exit(1);
+}
+
+// The undecodable fptnb: link keeps the single raw-token outbound.
+let fallback = by_tag["ManualSec-2-out"];
+if (fallback == null || fallback.type != "fptn" || fallback.token != "fptnb:AAAA") {
+    warn("an undecodable manual link must keep the raw-token fallback: " + json(fallback) + "\n");
+    exit(1);
+}
+
+// The section selector has to carry the members, not the token slot.
+let selector = by_tag["ManualSec-out"];
+if (selector == null || selector.type != "selector") {
+    warn("manual section tag must be a selector\n"); exit(1);
+}
+for (let tag in [ "ManualSec-1-out/Alpha", "ManualSec-1-out/Beta", "ManualSec-2-out" ]) {
+    if (index(selector.outbounds, tag) < 0) {
+        warn(tag + " missing from the section selector\n"); exit(1);
+    }
+}
+
+let cache = json(fs.readfile(ARGV[0] + ".section-cache/ManualSec.json"));
+let names = type(cache) == "object" && type(cache.outboundMetadata) == "object"
+    ? cache.outboundMetadata.names : null;
+if (type(names) != "object" || names["ManualSec-1-out/Alpha"] != "Alpha") {
+    warn("section cache must record manual member display names\n"); exit(1);
+}
+' "$output_m" || fail "an fptn link pasted into a Connection section did not load its servers"
+
 printf 'fptn backend expansion checks passed\n'

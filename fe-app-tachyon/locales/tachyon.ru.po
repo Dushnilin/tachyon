@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-13 18:58+0300\n"
-"PO-Revision-Date: 2026-10-13 18:58+0300\n"
+"POT-Creation-Date: 2026-10-13 00:06+0300\n"
+"PO-Revision-Date: 2026-10-13 00:06+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1595,8 +1595,14 @@ msgstr "Не тестировать указанные серверы."
 msgid "Doctor failed"
 msgstr "Доктор завершился с ошибкой"
 
+msgid "Doctor fixes applied"
+msgstr "Исправления доктором применены"
+
 msgid "Doctor repair"
 msgstr "Исправление доктором"
+
+msgid "Doctor repair completed"
+msgstr "Исправление доктором завершено"
 
 msgid "Does not resolve"
 msgstr "Не резолвится"
@@ -2252,6 +2258,9 @@ msgstr "Финляндия (fi)"
 msgid "Firewall WAN port"
 msgstr "Порт в firewall для WAN"
 
+msgid "Fix"
+msgstr "Исправить"
+
 msgid "Fix applied"
 msgstr "Исправление применено"
 
@@ -2437,6 +2446,9 @@ msgstr "Порт сервера рукопожатия"
 
 msgid "Handshake timeout"
 msgstr "Таймаут рукопожатия"
+
+msgid "Has errors"
+msgstr ""
 
 msgid "Header Protection Key"
 msgstr "Ключ защиты заголовка"

@@ -242,7 +242,7 @@ function stop_runtime() {
 }
 
 function launch_fptn_process(section) {
-    let token = as_string(option(section, "access_token", ""));
+    let token = connections.fptn_section_token(section);
     if (token == "")
         return false;
 
@@ -377,9 +377,9 @@ function start_runtime() {
     }
 
     let section = sections[0];
-    let token = as_string(option(section, "access_token", ""));
+    let token = connections.fptn_section_token(section);
     if (token == "") {
-        log_message("Cannot start FPTN: access_token not configured for section " + section_name(section), "warn");
+        log_message("Cannot start FPTN: no access token (access_token or fptn:// link) for section " + section_name(section), "warn");
         return false;
     }
 

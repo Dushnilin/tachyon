@@ -101,21 +101,36 @@ $(cat "$WORK_DIR/cfg.json")"
 fi
 ok
 
-# The repair has to be reachable from init_config, not merely present in the file.
+# The repair has to be reachable from init_config, not merely present in the
+# file. init_config drives it through check_with_field_repairs - the extract of
+# the quarantine loop that runs sing-box check and strips rejected fields until
+# nothing can be stripped anymore.
 body="$(sed -n '/^function init_config(/,/^}/p' "$RUNTIME")"
 [ -n "$body" ] || fail "init_config not found"
-if ! grep -q 'repair_outbound_field' <<<"$body"; then
-  fail "init_config does not call the repair, so a rejected field still kills the start"
+if ! grep -q 'check_with_field_repairs' <<<"$body"; then
+  fail "init_config does not call check_with_field_repairs, so a rejected field still kills the start"
 fi
 ok
 
-# The helper init_config calls must sit above it, or the call resolves to nothing
-# at runtime even though the file parses (ucode resolves callees when defined).
+repair_body="$(sed -n '/^function check_with_field_repairs(/,/^}/p' "$RUNTIME")"
+[ -n "$repair_body" ] || fail "check_with_field_repairs not found"
+if ! grep -q 'repair_outbound_field' <<<"$repair_body"; then
+  fail "check_with_field_repairs does not call repair_outbound_field, so a rejected field still kills the start"
+fi
+ok
+
+# The helpers init_config's call chain reaches must sit above it, or the call
+# resolves to nothing at runtime even though the file parses (ucode resolves
+# callees when defined).
 helper_line="$(grep -n '^function repair_outbound_field' "$RUNTIME" | head -1 | cut -d: -f1)"
+wrapper_line="$(grep -n '^function check_with_field_repairs' "$RUNTIME" | head -1 | cut -d: -f1)"
 init_line="$(grep -n '^function init_config' "$RUNTIME" | head -1 | cut -d: -f1)"
-[ -n "$helper_line" ] && [ -n "$init_line" ] || fail "could not locate functions"
-if [ "$helper_line" -ge "$init_line" ]; then
-  fail "repair_outbound_field (line $helper_line) must be defined before init_config (line $init_line)"
+[ -n "$helper_line" ] && [ -n "$wrapper_line" ] && [ -n "$init_line" ] || fail "could not locate functions"
+if [ "$helper_line" -ge "$wrapper_line" ]; then
+  fail "repair_outbound_field (line $helper_line) must be defined before check_with_field_repairs (line $wrapper_line)"
+fi
+if [ "$wrapper_line" -ge "$init_line" ]; then
+  fail "check_with_field_repairs (line $wrapper_line) must be defined before init_config (line $init_line)"
 fi
 ok
 

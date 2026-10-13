@@ -124,6 +124,23 @@ export const styles = `
     box-sizing: border-box;
 }
 
+/* The runtime quarantined this section: sing-box refused the config it
+   produced, so the section is not loaded while everything else runs. */
+.tachyon_dashboard-page__outbound-section--error {
+    border-color: var(--error-color-medium, red);
+}
+
+.tachyon_dashboard-page__outbound-section__config-error-badge {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--error-color-medium, red);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: help;
+}
+
 .tachyon_dashboard-page__outbound-section__title-section {
     display: flex;
     align-items: center;

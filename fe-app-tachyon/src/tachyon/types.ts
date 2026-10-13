@@ -419,6 +419,9 @@ export namespace Tachyon {
     subscriptionSourceCount?: number;
     subscriptionMetadata?: SubscriptionMetadata[];
     serviceStatus?: ServiceStatus;
+    // sing-box rejected this section at start and the runtime quarantined it;
+    // the section is not loaded and the reason is shown on the dashboard card.
+    configError?: string;
     outbounds: Outbound[];
   }
 

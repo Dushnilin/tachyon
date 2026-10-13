@@ -1469,4 +1469,38 @@ describe('getDashboardSections', () => {
     expect(codes).toContain('proxy-visible-2');
     expect(codes).not.toContain('proxy-hidden-1');
   });
+
+  it('marks a quarantined section with configError from the runtime errors file', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection(),
+      proxySection({ '.name': 'other' }),
+    ]);
+    // The runtime writes a flat { section: reason } map when sing-box rejects a
+    // section and init-config quarantines it; a missing file means every
+    // section loaded fine.
+    mocks.fsRead.mockImplementation((path: string) =>
+      path.includes('section-errors')
+        ? Promise.resolve(
+            JSON.stringify({ main: 'outbounds[1]: missing required field' }),
+          )
+        : Promise.reject(new Error('cache miss')),
+    );
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data[0].configError).toBe(
+      'outbounds[1]: missing required field',
+    );
+    expect(result.data[1].configError).toBeUndefined();
+  });
+
+  it('leaves configError unset when the runtime errors file is absent', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data[0].configError).toBeUndefined();
+  });
 });

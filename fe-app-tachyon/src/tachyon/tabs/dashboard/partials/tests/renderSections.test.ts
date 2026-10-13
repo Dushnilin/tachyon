@@ -604,4 +604,62 @@ describe('renderSections', () => {
     expect(grid?.textContent).toContain('AmneziaWG 3.0');
     expect(grid?.textContent).toContain('155 ms');
   });
+
+  it('frames a quarantined section in red with a Has errors badge next to its name', () => {
+    const base: any = {
+      code: 'proxy',
+      sectionName: 'proxy',
+      displayName: 'Proxy Section',
+      action: 'connection',
+      withTagSelect: true,
+      outbounds: [
+        {
+          code: 'vless-1',
+          displayName: 'VLESS Server',
+          latency: 120,
+          type: 'VLESS',
+          selected: true,
+        },
+      ],
+    };
+    const props = {
+      loading: false,
+      failed: false,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    };
+
+    const broken = renderSections({
+      ...props,
+      section: {
+        ...base,
+        configError: 'outbounds[1]: missing required field',
+      },
+    });
+    expect(
+      broken.querySelector('.tachyon_dashboard-page__outbound-section--error'),
+    ).not.toBeNull();
+    const badge = broken.querySelector(
+      '.tachyon_dashboard-page__outbound-section__config-error-badge',
+    );
+    expect(badge).not.toBeNull();
+    expect(badge.textContent).toBe('Has errors');
+    expect(badge.title).toBe('outbounds[1]: missing required field');
+
+    const healthy = renderSections({ ...props, section: base });
+    expect(
+      healthy.querySelector('.tachyon_dashboard-page__outbound-section--error'),
+    ).toBeNull();
+    expect(
+      healthy.querySelector(
+        '.tachyon_dashboard-page__outbound-section__config-error-badge',
+      ),
+    ).toBeNull();
+  });
 });

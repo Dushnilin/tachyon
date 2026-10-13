@@ -62,20 +62,22 @@ let url_query_params = runtime_url.query_params;
 
 const CONFIG_NAME = "tachyon";
 
+function parse_name_set(raw) {
+    let res = {};
+    for (let s in split(as_string(raw || ""), /[ \t\r\n,]+/)) {
+        s = trim(s);
+        if (s != "")
+            res[s] = true;
+    }
+    return res;
+}
+
 function parse_deferred_sections(deferred_sections) {
     let raw = trim(as_string(deferred_sections || getenv("TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS") || ""));
     if (raw == "" && fs.stat(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE) != null) {
         raw = trim(as_string(fs.readfile(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE)) || "");
     }
-    let res = {};
-    if (raw != "") {
-        for (let s in split(raw, /[ \t\r\n]+/)) {
-            s = trim(s);
-            if (s != "")
-                res[s] = true;
-        }
-    }
-    return res;
+    return parse_name_set(raw);
 }
 
 // UCI stores values written as '<b 0x...>' strings as binary, which when
@@ -215,7 +217,13 @@ function uci_cursor() {
     return uci;
 }
 
+// Section-scoped failures must be attributable: the runtime quarantines the
+// named section and regenerates without it instead of losing the whole start.
+// A failure raised outside any section loop (ctx.current_section == null) is a
+// whole-config problem and keeps the old exit(2) semantics with no marker.
 function runtime_generate_unsupported(reason) {
+    if (ctx.current_section != null)
+        warn("tachyon-section-error:", ctx.current_section, ":", reason, "\n");
     warn(reason, "\n");
     exit(2);
 }
@@ -1268,6 +1276,11 @@ function add_service_mixed_proxy(config, settings, sections) {
     let has_any_proxy = false;
     let default_proxy_tag = "";
     for (let s in sections) {
+        // A deferred or quarantined section contributes no outbound; picking it
+        // as the default target would leave the service-mixed route rule
+        // pointing at a tag that does not exist.
+        if (ctx.deferred_sections && ctx.deferred_sections[s[".name"]])
+            continue;
         let action = s.action || "";
         if (s.enabled != "0" && (action == "connection" || action == "subscription" || action == "provider")) {
             has_any_proxy = true;
@@ -1870,8 +1883,17 @@ function normalize_wireguard_addresses(config) {
     }
 }
 
-function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
+function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
+    // Quarantine reuses the same skip set the deferred sections use: every
+    // consumer (outbounds, routes, failover candidates, mixed proxies) already
+    // checks ctx.deferred_sections, so filtering there is the one place that
+    // makes a section disappear from the whole config. The runtime keeps the
+    // two lists apart on its side - quarantined sections must never be printed
+    // back as deferred, or the subscription bootstrap would retry them.
+    ctx.quarantined_sections = parse_name_set(quarantined_sections);
+    for (let name in ctx.quarantined_sections)
+        ctx.deferred_sections[name] = true;
     ctx.runtime_ruleset_folder = runtime_ruleset_folder;
     runtime_supports_xhttp = supports_xhttp == null || as_string(supports_xhttp) == ""
         ? true
@@ -1897,21 +1919,29 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     reserve_section_outbound_tags(sections, taken);
     for (let server in servers)
         runtime_servers.add_server(config, server);
-    for (let section in sections)
+    for (let section in sections) {
+        ctx.current_section = section[".name"];
         add_outbound_for_section(config, section, taken, sections);
+    }
+    ctx.current_section = null;
     add_service_route_rules(config, sections);
 
     // Add block and bypass sections before proxy sections so exceptions take precedence
     for (let section in sections) {
         let act = option(section, "action", "");
-        if (act == "block" || act == "bypass")
+        if (act == "block" || act == "bypass") {
+            ctx.current_section = section[".name"];
             add_route_for_section(config, section);
+        }
     }
     for (let section in sections) {
         let act = option(section, "action", "");
-        if (act != "block" && act != "bypass")
+        if (act != "block" && act != "bypass") {
+            ctx.current_section = section[".name"];
             add_route_for_section(config, section);
+        }
     }
+    ctx.current_section = null;
 
     add_server_routes(config, servers, sections);
     add_proxy_endpoint_dns_rule(config);
@@ -1931,8 +1961,11 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     add_direct_bypass_proxy(config, settings, service_address);
     add_service_mixed_proxy(config, settings, sections);
-    for (let section in sections)
+    for (let section in sections) {
+        ctx.current_section = section[".name"];
         add_mixed_proxy_for_section(config, section, service_address);
+    }
+    ctx.current_section = null;
     add_router_traffic_redirect(config, settings);
 
     add_content_blocking(config);
@@ -1960,11 +1993,11 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     }
 }
 
-function generate_config_fixture(fixture_path, output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
+function generate_config_fixture(fixture_path, output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
     use_fixture_cursor(fixture_path);
     runtime_subscription.set_section_cache_dir(output_path + ".section-cache");
     runtime_ruleset_folder = output_path + ".rulesets";
-    generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections);
+    generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections);
 }
 
 function stdin_length() {
@@ -2105,9 +2138,9 @@ ensure_custom_ruleset = generator_routes.ensure_custom_ruleset;
 let mode = ARGV[0] || "";
 
 if (mode == "generate-config")
-    generate_config(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
+    generate_config(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 else if (mode == "generate-config-fixture")
-    generate_config_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
+    generate_config_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 else if (mode == "stdin-length")
     stdin_length();
 else if (mode == "stdin-contains")

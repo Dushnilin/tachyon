@@ -131,6 +131,9 @@ type ChildType =
   | 'priority_level';
 
 const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
+// Written by singbox/runtime.uc when it quarantines a section that sing-box
+// refused to load; absent (or stale-empty) when every section loaded fine.
+const SECTION_ERRORS_FILE = '/var/run/tachyon/section-errors.json';
 const CLASH_API_FETCH_TIMEOUT_MS = 2500;
 let directClashApiFailedAt = 0;
 const DIRECT_CLASH_API_COOLDOWN_MS = 10_000;
@@ -886,6 +889,22 @@ async function readDashboardSectionCache(
     return parsed;
   } catch (_error) {
     return undefined;
+  }
+}
+
+// One flat map { section: reason } from the runtime's quarantine record.
+async function readSectionErrors(): Promise<Record<string, string>> {
+  try {
+    const raw = await fs.read(SECTION_ERRORS_FILE);
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return objectMap(parsed);
+  } catch (_error) {
+    return {};
   }
 }
 
@@ -1827,6 +1846,7 @@ export async function getDashboardSections(
     return serviceStatusCache.get(serviceType)!;
   };
 
+  const sectionErrors = await readSectionErrors();
   const data = await Promise.all(
     configSections
       .filter(
@@ -2009,6 +2029,10 @@ export async function getDashboardSections(
 
   return {
     success: true,
-    data,
+    data: data.map((group) =>
+      sectionErrors[group.sectionName]
+        ? { ...group, configError: sectionErrors[group.sectionName] }
+        : group,
+    ),
   };
 }

@@ -747,11 +747,72 @@ async function handleShowGlobalCheck() {
   }
 }
 
-async function handleRunDoctor() {
+function getDoctorModalTitle(issues: number, fixed: number, report: string) {
+  if (issues > 0 || fixed > 0) {
+    return (
+      _('Doctor repair') +
+      ' \u2014 ' +
+      _('Issues') +
+      ': ' +
+      issues +
+      ', ' +
+      _('Fixed') +
+      ': ' +
+      fixed
+    );
+  }
+
+  if (
+    /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
+      report,
+    )
+  ) {
+    return _('Doctor repair') + ' \u2014 Safe Bypass';
+  }
+
+  return _('Doctor repair') + ' \u2014 ' + _('No issues found');
+}
+
+function showDoctorModal(report: string, issues: number, fixed: number) {
+  const title = getDoctorModalTitle(issues, fixed, report);
+
+  let isFixing = false;
+  const fixBtn = renderButton({
+    classNames: ['cbi-button-action'],
+    text: _('Fix'),
+    onClick: async () => {
+      if (isFixing) {
+        return;
+      }
+      isFixing = true;
+      (fixBtn as HTMLButtonElement).disabled = true;
+      fixBtn.classList.add('tachyon-partial-button--loading');
+
+      try {
+        await handleRunDoctor(true);
+      } finally {
+        isFixing = false;
+        (fixBtn as HTMLButtonElement).disabled = false;
+        fixBtn.classList.remove('tachyon-partial-button--loading');
+      }
+    },
+  });
+
+  ui.showModal(
+    title,
+    renderModal(report, 'doctor_repair', {
+      initialAutoRefresh: false,
+      extraButtons: [fixBtn],
+    }),
+  );
+}
+
+async function handleRunDoctor(fixParam: boolean | unknown = false) {
+  const fix = fixParam === true;
   setDiagnosticActionLoading('doctor', true);
 
   try {
-    const doctorRes = await TachyonShellMethods.doctor();
+    const doctorRes = await TachyonShellMethods.doctor(fix);
 
     if (!doctorRes || typeof doctorRes !== 'object') {
       showToast(_('Doctor failed') + ': ' + _('Unknown error'), 'error');
@@ -768,29 +829,20 @@ async function handleRunDoctor() {
       const issues = data ? Number(data.issues ?? 0) : 0;
       const fixed = data ? Number(data.fixed ?? 0) : 0;
 
-      const title =
-        issues > 0
-          ? _('Doctor repair') +
-            ' \u2014 ' +
-            _('Issues') +
-            ': ' +
-            issues +
-            ', ' +
-            _('Fixed') +
-            ': ' +
-            fixed
-          : /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
-                report,
-              )
-            ? _('Doctor repair') + ' \u2014 Safe Bypass'
-            : _('Doctor repair') + ' \u2014 ' + _('No issues found');
+      showDoctorModal(report, issues, fixed);
 
-      ui.showModal(
-        title,
-        renderModal(report, 'doctor_repair', {
-          initialAutoRefresh: false,
-        }),
-      );
+      if (fix) {
+        showToast(
+          fixed > 0
+            ? _('Doctor fixes applied') + `: ${fixed}`
+            : _('Doctor repair completed'),
+          'success',
+        );
+        await refreshDiagnosticServicesInfo({
+          force: true,
+          allowInactive: true,
+        });
+      }
     } else {
       const errorMsg =
         typeof doctorRes.error === 'string'
@@ -1245,7 +1297,7 @@ function renderDiagnosticAvailableActionsWidget() {
     doctor: {
       loading: diagnosticsActions.doctor.loading,
       visible: true,
-      onClick: handleRunDoctor,
+      onClick: () => handleRunDoctor(false),
       disabled: utilityActionsDisabled,
     },
     aiDoctor: {

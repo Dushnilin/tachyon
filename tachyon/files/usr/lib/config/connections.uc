@@ -402,6 +402,36 @@ function fptn_transport_mode() {
     return has_binary ? "component" : "native";
 }
 
+// The token an FPTN section dials with: the explicit access_token when there
+// is one, otherwise the first fptn:// link pasted into the section URL list.
+// One resolver so the generator, the provider runtime and the validator can
+// never disagree about where the token comes from.
+function fptn_section_token(section) {
+    let token = trim(as_string(option(section, "access_token", "")));
+    if (token != "")
+        return token;
+    let links = raw_option(section, "selector_proxy_links");
+    if (links == null || links == "")
+        links = [];
+    if (type(links) != "array")
+        links = [links];
+    // The text variant of the same field, kept for configs that carry it.
+    let text = option(section, "selector_proxy_links_text", "");
+    if (text != "") {
+        for (let line in split(text, /[\r\n]+/)) {
+            line = trim(line);
+            if (line != "" && match(line, /^[^#\s]/))
+                push(links, line);
+        }
+    }
+    for (let link in links) {
+        link = trim(as_string(link));
+        if (substr(link, 0, 6) == "fptnb:" || substr(link, 0, 5) == "fptn:")
+            return link;
+    }
+    return "";
+}
+
 function normalize_action(action) {
     action = as_string(action);
     return is_connections_action(action) ? "connection" : action;
@@ -1852,6 +1882,7 @@ return {
     wdtt_sections,
     olcrtc_sections,
     fptn_sections,
+    fptn_section_token,
     fptn_transport_mode,
     is_wdtt_action,
     is_olcrtc_action,

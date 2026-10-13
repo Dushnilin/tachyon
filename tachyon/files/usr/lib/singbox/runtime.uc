@@ -1209,63 +1209,101 @@ function repair_outbound_field(temp_config, reason) {
     return true;
 }
 
-function init_config(populate_nft, caches_prepared, no_refresh) {
-    let settings = uci_settings();
-    let config_path = option(settings, "config_path", "");
-    if (config_path == "") {
-        log_message("sing-box config path is empty. Aborted.", "fatal");
-        exit(1);
+// --- section quarantine ------------------------------------------------------
+//
+// A generated config that sing-box refuses to load must not take the whole
+// proxy down: the runtime isolates the offending section, regenerates without
+// it and starts with the rest, leaving the error visible to the UI in
+// /var/run/tachyon/section-errors.json. Only failures that sing-box itself
+// attributes to an outbound/endpoint/inbound/rule-set tag get quarantined -
+// tags carry the owning section name as their prefix, and section names are
+// [A-Za-z0-9_]+ (valid_section_name in the generator), so the substring before
+// the first "-" or "/" identifies the owner. A failure that cannot be
+// attributed keeps the old fatal behaviour: guessing here would drop random
+// sections and still leave the user without a proxy.
+
+const SECTION_ERRORS_FILE = getenv("TACHYON_SECTION_ERRORS_FILE") || "/var/run/tachyon/section-errors.json";
+
+function section_exists(name) {
+    name = as_string(name || "");
+    return name != "" && uci_core.exists(CONFIG_NAME + "." + name);
+}
+
+function section_from_tag(tag) {
+    let m = match(as_string(tag || ""), /^([A-Za-z0-9_]+)[-\/]/);
+    return m ? m[1] : "";
+}
+
+// The runtime keeps the quarantine map up to date for the UI. The file lives
+// in /var/run (tmpfs), never on flash; write_json_file's unchanged-content
+// guard keeps repeat writes silent.
+function write_section_errors(quarantined) {
+    let errors = {};
+    for (let name in quarantined)
+        errors[name] = as_string(quarantined[name] || "");
+    if (length(errors) == 0) {
+        remove_file(SECTION_ERRORS_FILE);
+        return;
+    }
+    common.write_json_file(SECTION_ERRORS_FILE, errors);
+}
+
+// When generation itself dies on a section (runtime_generate_unsupported), the
+// generator names the section in a tachyon-section-error:<name>:<reason> line
+// before exiting 2.
+function section_from_generator_log(log_path) {
+    let text = as_string(fs.readfile(log_path) || "");
+    let m = match(text, /tachyon-section-error:([A-Za-z0-9_]+):/);
+    return m ? m[1] : "";
+}
+
+function config_item_tag(config, list_name, index) {
+    let list = type(config) == "object" ? config[list_name] : null;
+    if (type(list) != "array")
+        return null;
+    let i = int(index);
+    if (i < 0 || i >= length(list) || type(list[i]) != "object")
+        return null;
+    return list[i].tag;
+}
+
+// Maps a sing-box check failure to the section that produced the blamed
+// element. Returns "" when the failure is not attributable to a section
+// (global settings, inbounds of the service itself, unparseable output).
+function section_from_check_reason(reason, config_path) {
+    reason = as_string(reason || "");
+    let tag = null;
+
+    let m = match(reason, /(outbounds|endpoints|inbounds)\[(\d+)\]/);
+    if (m)
+        tag = config_item_tag(common.read_json_file(config_path), m[1], m[2]);
+
+    if (tag == null) {
+        let rs = match(reason, /rule_set\[(\d+)\]/);
+        if (rs) {
+            let cfg = common.read_json_file(config_path);
+            let list = type(cfg) == "object" && type(cfg.route) == "object" ? cfg.route.rule_set : null;
+            let i = int(rs[1]);
+            if (type(list) == "array" && i >= 0 && i < length(list) && type(list[i]) == "object")
+                tag = list[i].tag;
+        }
     }
 
-    // Cleanup stale temp config files from previous failed runs
-    try {
-        let stale = trim(command_output_from_args([ "find", "/tmp", "-maxdepth", "1", "-name", "config.json.*.tmp.*", "-mmin", "+5", "-type", "f" ]));
-        for (let path in split(stale, "\n"))
-            if (trim(path) != "") remove_file(trim(path));
-    }
-    catch (e) {
-        // Housekeeping for temp files left by earlier failed runs. Failing here
-        // leaves a few stale files in /tmp and must not stop the start.
+    if (tag == null) {
+        let tm = match(reason, /(missing|unknown) outbound tag: *([-A-Za-z0-9_/]+)/);
+        if (tm)
+            tag = tm[2];
     }
 
-    let mwan3_active = module_success([ LIB_DIR + "/config/validator.uc", "mwan3-is-active" ]);
-    let output_interface = option(settings, "output_network_interface", "");
-    if (mwan3_active && output_interface != "")
-        log_message("mwan3 is active and Output Network Interface is set to '" + output_interface + "'; sing-box egress is pinned to this interface", "warn");
-    else if (mwan3_active)
-        log_message("mwan3 is active; disabling sing-box auto_detect_interface so mwan3 can control egress routing", "warn");
+    let name = section_from_tag(tag);
+    return section_exists(name) ? name : "";
+}
 
-    let deferred_sections = prepare_subscription_caches(caches_prepared, no_refresh);
-    if (deferred_sections == null)
-        exit(1);
-
-    let temp_config = temp_path();
-    let runtime_log = temp_path();
-    if (temp_config == "" || runtime_log == "") {
-        remove_files([ temp_config, runtime_log ]);
-        exit(1);
-    }
-
-    let generate_status = command_status(
-        module_command([
-            LIB_DIR + "/singbox/generator.uc",
-            "generate-config",
-            temp_config,
-            service_listen_address_value(settings),
-            mwan3_active ? "1" : "0",
-            sing_box_supports_xhttp(sing_box_version()) ? "1" : "0",
-            deferred_sections
-        ]) + " >" + shell_quote(runtime_log) + " 2>&1"
-    );
-    if (generate_status != 0) {
-        let reason = generator_failure_reason(runtime_log, generate_status);
-        log_message("Failed to generate sing-box configuration: " + reason, "fatal");
-        log_file_lines(runtime_log, "debug", "sing-box config generator output: ");
-        remove_files([ temp_config, runtime_log ]);
-        exit(1);
-    }
-    log_file_lines(runtime_log, "warn", "sing-box config generator: ");
-
+// Runs sing-box check and applies the known graceful-degradation repairs
+// (stripping fields older builds reject) until either the config passes or
+// nothing else can be stripped. Extracted from init_config so the quarantine
+// loop can call it once per attempt without re-running the repairs inline.
+function check_with_field_repairs(temp_config, runtime_log) {
     ensure_local_rulesets_exist(temp_config);
     let check_result = sing_box_check(temp_config, runtime_log);
     while (check_result.status != 0) {
@@ -1480,7 +1518,85 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             break;
         check_result = sing_box_check(temp_config, runtime_log);
     }
-    if (check_result.status != 0) {
+    return check_result;
+}
+
+function init_config(populate_nft, caches_prepared, no_refresh) {
+    let settings = uci_settings();
+    let config_path = option(settings, "config_path", "");
+    if (config_path == "") {
+        log_message("sing-box config path is empty. Aborted.", "fatal");
+        exit(1);
+    }
+
+    // Cleanup stale temp config files from previous failed runs
+    try {
+        let stale = trim(command_output_from_args([ "find", "/tmp", "-maxdepth", "1", "-name", "config.json.*.tmp.*", "-mmin", "+5", "-type", "f" ]));
+        for (let path in split(stale, "\n"))
+            if (trim(path) != "") remove_file(trim(path));
+    }
+    catch (e) {
+        // Housekeeping for temp files left by earlier failed runs. Failing here
+        // leaves a few stale files in /tmp and must not stop the start.
+    }
+
+    let mwan3_active = module_success([ LIB_DIR + "/config/validator.uc", "mwan3-is-active" ]);
+    let output_interface = option(settings, "output_network_interface", "");
+    if (mwan3_active && output_interface != "")
+        log_message("mwan3 is active and Output Network Interface is set to '" + output_interface + "'; sing-box egress is pinned to this interface", "warn");
+    else if (mwan3_active)
+        log_message("mwan3 is active; disabling sing-box auto_detect_interface so mwan3 can control egress routing", "warn");
+
+    let deferred_sections = prepare_subscription_caches(caches_prepared, no_refresh);
+    if (deferred_sections == null)
+        exit(1);
+
+    let temp_config = temp_path();
+    let runtime_log = temp_path();
+    if (temp_config == "" || runtime_log == "") {
+        remove_files([ temp_config, runtime_log ]);
+        exit(1);
+    }
+
+    // Quarantine loop: each iteration either yields a config sing-box accepts
+    // or isolates one more section that both the generator and sing-box check
+    // could attribute by name. 16 bounds the loop for pathological cases; in
+    // practice every pass quarantines at least one section or breaks out.
+    let quarantined = {};
+    let check_result = { status: 1, reason: "configuration was not generated" };
+    for (let attempt = 0; attempt < 16; attempt++) {
+        let generate_status = command_status(
+            module_command([
+                LIB_DIR + "/singbox/generator.uc",
+                "generate-config",
+                temp_config,
+                service_listen_address_value(settings),
+                mwan3_active ? "1" : "0",
+                sing_box_supports_xhttp(sing_box_version()) ? "1" : "0",
+                deferred_sections,
+                join(",", keys(quarantined))
+            ]) + " >" + shell_quote(runtime_log) + " 2>&1"
+        );
+        if (generate_status != 0) {
+            let reason = generator_failure_reason(runtime_log, generate_status);
+            let section = section_from_generator_log(runtime_log);
+            if (section != "" && quarantined[section] == null && section_exists(section)) {
+                log_message("Section '" + section + "' failed to generate: " + reason +
+                    ". Not loading it; the rest of the configuration starts normally", "warn");
+                quarantined[section] = reason;
+                continue;
+            }
+            log_message("Failed to generate sing-box configuration: " + reason, "fatal");
+            log_file_lines(runtime_log, "debug", "sing-box config generator output: ");
+            remove_files([ temp_config, runtime_log ]);
+            exit(1);
+        }
+        log_file_lines(runtime_log, "warn", "sing-box config generator: ");
+
+        check_result = check_with_field_repairs(temp_config, runtime_log);
+        if (check_result.status == 0)
+            break;
+
         // Say which of the two it was before blaming the configuration.
         let bin_problem = sing_box_binary_problem(sing_box_binary_path());
         if (bin_problem == "" && sing_box_check_blamed_the_binary(check_result.reason))
@@ -1489,11 +1605,23 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             log_message("Cannot verify the generated configuration: " + bin_problem +
                 ". This is not a configuration problem. The raw output was: " + check_result.reason, "fatal");
             remove_files([ temp_config, runtime_log ]);
+            exit(1);
         }
-        else {
+
+        let section = section_from_check_reason(check_result.reason, temp_config);
+        if (section == "" || quarantined[section] != null) {
             log_message("Generated sing-box configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
             remove_files([ temp_config, runtime_log ]);
+            exit(1);
         }
+        log_message("sing-box rejected the configuration at section '" + section + "' (" + check_result.reason +
+            "). Not loading it; the rest of the configuration starts normally", "warn");
+        quarantined[section] = check_result.reason;
+    }
+    write_section_errors(quarantined);
+    if (check_result.status != 0) {
+        log_message("Generated sing-box configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
+        remove_files([ temp_config, runtime_log ]);
         exit(1);
     }
 
@@ -1540,6 +1668,10 @@ else if (mode == "check-config-fixture") {
         print(result.reason, "\n");
     exit(result.status);
 }
+else if (mode == "quarantine-attribution-fixture")
+    print(section_from_check_reason(ARGV[1] || "", ARGV[2] || ""), "\n");
+else if (mode == "quarantine-marker-fixture")
+    print(section_from_generator_log(ARGV[1] || ""), "\n");
 else if (mode == "generator-failure-reason-fixture")
     print(generator_failure_reason(ARGV[1] || "", int(ARGV[2] || "1")), "\n");
 else if (mode == "outbound-repair-fixture") {

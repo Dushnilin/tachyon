@@ -353,105 +353,124 @@ function renderDefaultState({
             : _('Not configured')
       : _('Unknown');
 
-    return E('div', { class: 'tachyon_dashboard-page__outbound-section' }, [
-      E(
-        'div',
-        {
-          class: 'tachyon_dashboard-page__outbound-section__title-section',
-          style: 'cursor: default;',
-        },
-        [
-          E(
-            'div',
-            {
-              class:
-                'tachyon_dashboard-page__outbound-section__title-section__title',
-              style: 'display: flex; align-items: center; gap: 8px;',
-            },
-            [
-              E('span', {}, section.displayName),
-              E(
-                'span',
-                {
-                  style: 'font-size: 12px; opacity: 0.6; font-weight: normal;',
-                },
-                typeLabel,
-              ),
-            ],
-          ),
-        ],
-      ),
-      E(
-        'div',
-        {
-          style:
-            'display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 16px 12px;',
-        },
-        [
-          E('div', { style: 'display: flex; align-items: center; gap: 6px;' }, [
+    return E(
+      'div',
+      {
+        class: [
+          'tachyon_dashboard-page__outbound-section',
+          section.configError
+            ? 'tachyon_dashboard-page__outbound-section--error'
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      },
+      [
+        E(
+          'div',
+          {
+            class: 'tachyon_dashboard-page__outbound-section__title-section',
+            style: 'cursor: default;',
+          },
+          [
             E(
-              'span',
-              { style: 'opacity: 0.7; font-size: 13px;' },
-              _('Status') + ':',
-            ),
-            E(
-              'span',
+              'div',
               {
-                style: `font-size: 13px; font-weight: 500; color: ${statusColor};`,
+                class:
+                  'tachyon_dashboard-page__outbound-section__title-section__title',
+                style: 'display: flex; align-items: center; gap: 8px;',
               },
-              statusText,
+              [
+                E('span', {}, section.displayName),
+                renderConfigErrorBadge(section),
+                E(
+                  'span',
+                  {
+                    style:
+                      'font-size: 12px; opacity: 0.6; font-weight: normal;',
+                  },
+                  typeLabel,
+                ),
+              ],
             ),
-          ]),
-          ss && ss.restartCount > 0
-            ? E(
-                'div',
-                { style: 'display: flex; align-items: center; gap: 6px;' },
-                [
-                  E(
-                    'span',
-                    { style: 'opacity: 0.7; font-size: 13px;' },
-                    _('Restarts') + ':',
-                  ),
-                  E(
-                    'span',
-                    {
-                      style:
-                        'font-size: 13px; font-weight: 500; color: var(--warn-color-medium, orange);',
-                    },
-                    `${ss.restartCount}`,
-                  ),
-                ],
-              )
-            : '',
-          ss && ss.unstable
-            ? E(
-                'div',
-                { style: 'display: flex; align-items: center; gap: 6px;' },
-                [
-                  E(
-                    'span',
-                    {
-                      style:
-                        'font-size: 13px; font-weight: 500; color: var(--error-color-medium, red);',
-                    },
-                    _('Unstable'),
-                  ),
-                ],
-              )
-            : '',
-        ],
-      ),
-      ss?.statusMessage
-        ? E(
-            'div',
-            {
-              style:
-                'padding: 0 16px 8px; font-size: 12px; opacity: 0.6; word-break: break-word;',
-            },
-            formatServiceStatusMessage(ss.statusMessage),
-          )
-        : '',
-    ]);
+          ],
+        ),
+        E(
+          'div',
+          {
+            style:
+              'display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 16px 12px;',
+          },
+          [
+            E(
+              'div',
+              { style: 'display: flex; align-items: center; gap: 6px;' },
+              [
+                E(
+                  'span',
+                  { style: 'opacity: 0.7; font-size: 13px;' },
+                  _('Status') + ':',
+                ),
+                E(
+                  'span',
+                  {
+                    style: `font-size: 13px; font-weight: 500; color: ${statusColor};`,
+                  },
+                  statusText,
+                ),
+              ],
+            ),
+            ss && ss.restartCount > 0
+              ? E(
+                  'div',
+                  { style: 'display: flex; align-items: center; gap: 6px;' },
+                  [
+                    E(
+                      'span',
+                      { style: 'opacity: 0.7; font-size: 13px;' },
+                      _('Restarts') + ':',
+                    ),
+                    E(
+                      'span',
+                      {
+                        style:
+                          'font-size: 13px; font-weight: 500; color: var(--warn-color-medium, orange);',
+                      },
+                      `${ss.restartCount}`,
+                    ),
+                  ],
+                )
+              : '',
+            ss && ss.unstable
+              ? E(
+                  'div',
+                  { style: 'display: flex; align-items: center; gap: 6px;' },
+                  [
+                    E(
+                      'span',
+                      {
+                        style:
+                          'font-size: 13px; font-weight: 500; color: var(--error-color-medium, red);',
+                      },
+                      _('Unstable'),
+                    ),
+                  ],
+                )
+              : '',
+          ],
+        ),
+        ss?.statusMessage
+          ? E(
+              'div',
+              {
+                style:
+                  'padding: 0 16px 8px; font-size: 12px; opacity: 0.6; word-break: break-word;',
+              },
+              formatServiceStatusMessage(ss.statusMessage),
+            )
+          : '',
+      ],
+    );
   }
 
   function testLatency() {
@@ -845,243 +864,273 @@ function renderDefaultState({
     (section.withTagSelect ||
       (section.outbounds && section.outbounds.length > 0));
 
-  return E('div', { class: 'tachyon_dashboard-page__outbound-section' }, [
-    // Title with test latency
-    E(
-      'div',
-      {
-        class: 'tachyon_dashboard-page__outbound-section__title-section',
-        click: (e: MouseEvent) => {
-          if (e.target && (e.target as Element).closest('button')) return;
-          onToggleCollapse?.();
-        },
-        style: 'cursor: pointer; user-select: none;',
-      },
-      [
-        E(
-          'div',
-          {
-            class:
-              'tachyon_dashboard-page__outbound-section__title-section__title',
-            style: 'display: flex; align-items: center; gap: 8px;',
+  return E(
+    'div',
+    {
+      class: [
+        'tachyon_dashboard-page__outbound-section',
+        section.configError
+          ? 'tachyon_dashboard-page__outbound-section--error'
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    },
+    [
+      // Title with test latency
+      E(
+        'div',
+        {
+          class: 'tachyon_dashboard-page__outbound-section__title-section',
+          click: (e: MouseEvent) => {
+            if (e.target && (e.target as Element).closest('button')) return;
+            onToggleCollapse?.();
           },
-          [
-            svgEl(
-              'svg',
-              {
-                width: '16',
-                height: '16',
-                viewBox: '0 0 24 24',
-                fill: 'none',
-                stroke: 'currentColor',
-                'stroke-width': '2',
-                'stroke-linecap': 'round',
-                'stroke-linejoin': 'round',
-                style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? '-90deg' : '0deg'})`,
-              },
-              [svgEl('polyline', { points: '6 9 12 15 18 9' })],
-            ),
-            E('span', {}, section.displayName),
-            isCollapsed
-              ? (() => {
-                  const selectedOutbound = section.outbounds.find(
-                    (o) => o.selected,
-                  );
-                  if (!selectedOutbound) return '';
-
-                  const isConnectionNode = [
-                    'vpn',
-                    'awg',
-                    'warp',
-                    'anytls',
-                    'snell',
-                    'mieru',
-                    'naive',
-                    'sudoku',
-                    'masque',
-                    'openvpn',
-                  ].includes(section.action || '');
-
-                  const connectionTitle =
-                    (section.action &&
-                      CONNECTION_ACTION_LABELS[section.action]) ||
-                    selectedOutbound.displayName;
-
-                  function getLatencyColor() {
-                    if (isConnectionNode) {
-                      if (latencyFetching)
-                        return 'var(--warn-color-medium, orange)';
-                      if (selectedOutbound!.latency === -1)
-                        return 'var(--error-color-medium, red)';
-                      if (
-                        selectedOutbound!.latency &&
-                        selectedOutbound!.latency > 0
-                      ) {
-                        if (selectedOutbound!.latency < 800)
-                          return 'var(--success-color-medium, green)';
-                        if (selectedOutbound!.latency < 1500)
-                          return 'var(--warn-color-medium, orange)';
-                        return 'var(--error-color-medium, red)';
-                      }
-                      return selectedOutbound!.runtimeAvailable
-                        ? 'var(--success-color-medium, green)'
-                        : 'var(--error-color-medium, red)';
-                    }
-
-                    if (!selectedOutbound!.latency)
-                      return 'var(--primary-color-low, lightgray)';
-                    if (
-                      selectedOutbound!.latency === -1 ||
-                      selectedOutbound!.latency < 0
-                    )
-                      return 'var(--error-color-medium, red)';
-                    if (selectedOutbound!.latency < 800)
-                      return 'var(--success-color-medium, green)';
-                    if (selectedOutbound!.latency < 1500)
-                      return 'var(--warn-color-medium, orange)';
-                    return 'var(--error-color-medium, red)';
-                  }
-
-                  let latencyText = '';
-                  if (isConnectionNode) {
-                    latencyText = latencyFetching
-                      ? _('Checking...')
-                      : selectedOutbound.latency && selectedOutbound.latency > 0
-                        ? `${selectedOutbound.latency}ms`
-                        : selectedOutbound.latency === -1 ||
-                            selectedOutbound.latency < 0
-                          ? _('Not responding')
-                          : selectedOutbound.runtimeAvailable
-                            ? _('Connected')
-                            : _('Not connected');
-                  } else {
-                    latencyText =
-                      selectedOutbound.latency && selectedOutbound.latency > 0
-                        ? `${selectedOutbound.latency}ms`
-                        : selectedOutbound.latency === -1 ||
-                            selectedOutbound.latency < 0
-                          ? _('Not responding')
-                          : '';
-                  }
-
-                  return E(
-                    'span',
-                    {
-                      style:
-                        'font-size: 13px; font-weight: normal; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px;',
-                    },
-                    [
-                      E(
-                        'span',
-                        { style: 'opacity: 0.7;' },
-                        isConnectionNode
-                          ? connectionTitle
-                          : selectedOutbound.prefix ||
-                              selectedOutbound.displayName,
-                      ),
-                      latencyText
-                        ? E(
-                            'span',
-                            { style: `color: ${getLatencyColor()};` },
-                            latencyText,
-                          )
-                        : '',
-                    ],
-                  );
-                })()
-              : isConnectionNode
+          style: 'cursor: pointer; user-select: none;',
+        },
+        [
+          E(
+            'div',
+            {
+              class:
+                'tachyon_dashboard-page__outbound-section__title-section__title',
+              style: 'display: flex; align-items: center; gap: 8px;',
+            },
+            [
+              svgEl(
+                'svg',
+                {
+                  width: '16',
+                  height: '16',
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  'stroke-width': '2',
+                  'stroke-linecap': 'round',
+                  'stroke-linejoin': 'round',
+                  style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? '-90deg' : '0deg'})`,
+                },
+                [svgEl('polyline', { points: '6 9 12 15 18 9' })],
+              ),
+              E('span', {}, section.displayName),
+              renderConfigErrorBadge(section),
+              isCollapsed
                 ? (() => {
                     const selectedOutbound = section.outbounds.find(
                       (o) => o.selected,
                     );
                     if (!selectedOutbound) return '';
+
+                    const isConnectionNode = [
+                      'vpn',
+                      'awg',
+                      'warp',
+                      'anytls',
+                      'snell',
+                      'mieru',
+                      'naive',
+                      'sudoku',
+                      'masque',
+                      'openvpn',
+                    ].includes(section.action || '');
+
                     const connectionTitle =
                       (section.action &&
                         CONNECTION_ACTION_LABELS[section.action]) ||
                       selectedOutbound.displayName;
-                    if (
-                      section.displayName.toLowerCase().trim() ===
-                      connectionTitle.toLowerCase().trim()
-                    ) {
-                      return '';
+
+                    function getLatencyColor() {
+                      if (isConnectionNode) {
+                        if (latencyFetching)
+                          return 'var(--warn-color-medium, orange)';
+                        if (selectedOutbound!.latency === -1)
+                          return 'var(--error-color-medium, red)';
+                        if (
+                          selectedOutbound!.latency &&
+                          selectedOutbound!.latency > 0
+                        ) {
+                          if (selectedOutbound!.latency < 800)
+                            return 'var(--success-color-medium, green)';
+                          if (selectedOutbound!.latency < 1500)
+                            return 'var(--warn-color-medium, orange)';
+                          return 'var(--error-color-medium, red)';
+                        }
+                        return selectedOutbound!.runtimeAvailable
+                          ? 'var(--success-color-medium, green)'
+                          : 'var(--error-color-medium, red)';
+                      }
+
+                      if (!selectedOutbound!.latency)
+                        return 'var(--primary-color-low, lightgray)';
+                      if (
+                        selectedOutbound!.latency === -1 ||
+                        selectedOutbound!.latency < 0
+                      )
+                        return 'var(--error-color-medium, red)';
+                      if (selectedOutbound!.latency < 800)
+                        return 'var(--success-color-medium, green)';
+                      if (selectedOutbound!.latency < 1500)
+                        return 'var(--warn-color-medium, orange)';
+                      return 'var(--error-color-medium, red)';
                     }
+
+                    let latencyText = '';
+                    if (isConnectionNode) {
+                      latencyText = latencyFetching
+                        ? _('Checking...')
+                        : selectedOutbound.latency &&
+                            selectedOutbound.latency > 0
+                          ? `${selectedOutbound.latency}ms`
+                          : selectedOutbound.latency === -1 ||
+                              selectedOutbound.latency < 0
+                            ? _('Not responding')
+                            : selectedOutbound.runtimeAvailable
+                              ? _('Connected')
+                              : _('Not connected');
+                    } else {
+                      latencyText =
+                        selectedOutbound.latency && selectedOutbound.latency > 0
+                          ? `${selectedOutbound.latency}ms`
+                          : selectedOutbound.latency === -1 ||
+                              selectedOutbound.latency < 0
+                            ? _('Not responding')
+                            : '';
+                    }
+
                     return E(
                       'span',
                       {
                         style:
-                          'font-size: 13px; font-weight: normal; margin-left: 8px; opacity: 0.7;',
+                          'font-size: 13px; font-weight: normal; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px;',
                       },
-                      connectionTitle,
+                      [
+                        E(
+                          'span',
+                          { style: 'opacity: 0.7;' },
+                          isConnectionNode
+                            ? connectionTitle
+                            : selectedOutbound.prefix ||
+                                selectedOutbound.displayName,
+                        ),
+                        latencyText
+                          ? E(
+                              'span',
+                              { style: `color: ${getLatencyColor()};` },
+                              latencyText,
+                            )
+                          : '',
+                      ],
                     );
                   })()
-                : '',
-          ],
-        ),
-        E(
-          'div',
-          {
-            class:
-              'tachyon_dashboard-page__outbound-section__title-section__actions',
-          },
-          [
-            ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
-            ...(canTestLatency
-              ? [
-                  E(
-                    'button',
-                    {
-                      type: 'button',
-                      class: 'btn dashboard-sections-grid-item-test-latency',
-                      'data-latency-section': section.sectionName,
-                      disabled: latencyFetching ? true : undefined,
-                      click: (event: MouseEvent) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (latencyFetching) {
-                          return;
-                        }
+                : isConnectionNode
+                  ? (() => {
+                      const selectedOutbound = section.outbounds.find(
+                        (o) => o.selected,
+                      );
+                      if (!selectedOutbound) return '';
+                      const connectionTitle =
+                        (section.action &&
+                          CONNECTION_ACTION_LABELS[section.action]) ||
+                        selectedOutbound.displayName;
+                      if (
+                        section.displayName.toLowerCase().trim() ===
+                        connectionTitle.toLowerCase().trim()
+                      ) {
+                        return '';
+                      }
+                      return E(
+                        'span',
+                        {
+                          style:
+                            'font-size: 13px; font-weight: normal; margin-left: 8px; opacity: 0.7;',
+                        },
+                        connectionTitle,
+                      );
+                    })()
+                  : '',
+            ],
+          ),
+          E(
+            'div',
+            {
+              class:
+                'tachyon_dashboard-page__outbound-section__title-section__actions',
+            },
+            [
+              ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
+              ...(canTestLatency
+                ? [
+                    E(
+                      'button',
+                      {
+                        type: 'button',
+                        class: 'btn dashboard-sections-grid-item-test-latency',
+                        'data-latency-section': section.sectionName,
+                        disabled: latencyFetching ? true : undefined,
+                        click: (event: MouseEvent) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (latencyFetching) {
+                            return;
+                          }
 
-                        testLatency();
+                          testLatency();
+                        },
                       },
-                    },
-                    latencyFetching
-                      ? [
-                          renderLoaderCircleIcon24(),
-                          E(
+                      latencyFetching
+                        ? [
+                            renderLoaderCircleIcon24(),
+                            E(
+                              'span',
+                              {
+                                class:
+                                  'dashboard-sections-grid-item-test-latency__label',
+                              },
+                              isConnectionNode
+                                ? _('Checking...')
+                                : getLatencyTestLabel(latencyProgress),
+                            ),
+                          ]
+                        : E(
                             'span',
                             {
                               class:
                                 'dashboard-sections-grid-item-test-latency__label',
                             },
                             isConnectionNode
-                              ? _('Checking...')
-                              : getLatencyTestLabel(latencyProgress),
+                              ? _('Check Connection')
+                              : _('Test latency'),
                           ),
-                        ]
-                      : E(
-                          'span',
-                          {
-                            class:
-                              'dashboard-sections-grid-item-test-latency__label',
-                          },
-                          isConnectionNode
-                            ? _('Check Connection')
-                            : _('Test latency'),
-                        ),
-                  ),
-                ]
-              : []),
-          ],
-        ),
-      ],
-    ),
-    !isCollapsed
-      ? E('div', { class: 'tachyon_dashboard-page__outbound-grid' }, [
-          ...metadataNodes,
-          ...section.outbounds.map((outbound) => renderOutbound(outbound)),
-        ])
-      : '',
-  ]);
+                    ),
+                  ]
+                : []),
+            ],
+          ),
+        ],
+      ),
+      !isCollapsed
+        ? E('div', { class: 'tachyon_dashboard-page__outbound-grid' }, [
+            ...metadataNodes,
+            ...section.outbounds.map((outbound) => renderOutbound(outbound)),
+          ])
+        : '',
+    ],
+  );
+}
+
+function renderConfigErrorBadge(section: Tachyon.OutboundGroup) {
+  if (!section.configError) {
+    return '';
+  }
+
+  return E(
+    'span',
+    {
+      class: 'tachyon_dashboard-page__outbound-section__config-error-badge',
+      title: section.configError,
+    },
+    _('Has errors'),
+  );
 }
 
 export function renderSections(props: IRenderSectionsProps) {

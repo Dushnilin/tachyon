@@ -17,6 +17,7 @@ interface RenderModalOptions {
   startAtEnd?: boolean;
   autoRefreshLabel?: string;
   maskValuesLabel?: string;
+  extraButtons?: HTMLElement[];
 }
 
 export function renderModal(
@@ -248,6 +249,7 @@ export function renderModal(
   };
 
   const footerChildren: HTMLElement[] = [
+    ...(options?.extraButtons ?? []),
     renderButton({
       classNames: ['cbi-button-apply'],
       text: _('Download'),

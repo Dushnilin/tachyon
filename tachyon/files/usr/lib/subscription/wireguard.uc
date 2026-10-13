@@ -108,33 +108,53 @@ function build(input, host, port, name, raw) {
     endpoint.share_link = raw;
     return endpoint;
 }
-function from_conf(text, raw, name) {
-    if (length(text) > 65536 || index(text, '\u0000') >= 0) return null;
-    let values = {}, block = '', peers = 0;
+// Parse a .conf into one endpoint per [Peer]: several servers in one file
+// become several endpoints, so each peer can join a urltest pool separately.
+// Fails closed as a whole — one bad peer rejects the file, like the old
+// single-peer parser did.
+function from_conf_endpoints(text, raw, name) {
+    if (length(text) > 65536 || index(text, '\u0000') >= 0) return [];
+    let interface = {}, peers = [], current = null;
     for (let line in split(text, '\n')) {
         line = trim(line);
         if (substr(line, 0, 1) == '#') {
             if (!name) name = trim(substr(line, 1));
             continue;
         }
-        if (line == '[Interface]') { block = 'interface'; continue; }
-        if (line == '[Peer]') { block = 'peer'; peers++; continue; }
-        if (substr(line, 0, 1) == '[') return null;
+        if (line == '[Interface]') { current = interface; continue; }
+        if (line == '[Peer]') { current = {}; push(peers, current); continue; }
+        if (substr(line, 0, 1) == '[') return [];
         let eq = index(line, '=');
-        if (eq < 1 || block == '') continue;
+        if (eq < 1 || current == null) continue;
         let key = lc(trim(substr(line, 0, eq)));
         // Only data fields are read. PostUp/PreDown and other hooks are ignored.
-        values[key] = trim(substr(line, eq + 1));
+        current[key] = trim(substr(line, eq + 1));
     }
-    if (peers != 1) return null;
-    let address = as_string(values.endpoint);
-    let m = match(address, /^(\[[^]]+\]|[^:]+):([0-9]+)$/);
-    if (!m) return null;
-    let host = m[1];
-    if (substr(host, 0, 1) == '[') host = substr(host, 1, length(host) - 2);
-    return build(values, host, int(m[2], 10), name, raw);
+    if (!length(peers)) return [];
+    let endpoints = [];
+    for (let i = 0; i < length(peers); i++) {
+        let values = {};
+        for (let k, v in interface) values[k] = v;
+        for (let k, v in peers[i]) values[k] = v;
+        let address = as_string(values.endpoint);
+        let m = match(address, /^(\[[^]]+\]|[^:]+):([0-9]+)$/);
+        if (!m) return [];
+        let host = m[1];
+        if (substr(host, 0, 1) == '[') host = substr(host, 1, length(host) - 2);
+        // The second and later peers get a numbered display name so several
+        // servers of one file stay distinguishable in the dashboard.
+        let peer_name = i == 0 ? name : sprintf('%s (%d)', name || 'WireGuard', i + 1);
+        let endpoint = build(values, host, int(m[2], 10), peer_name, raw);
+        if (endpoint == null) return [];
+        push(endpoints, endpoint);
+    }
+    return endpoints;
 }
-function from_vpn(raw) {
+function from_conf(text, raw, name) {
+    let endpoints = from_conf_endpoints(text, raw, name);
+    return length(endpoints) ? endpoints[0] : null;
+}
+function from_vpn_endpoints(raw) {
     let payload = split(substr(raw, 6), '#')[0];
     if (length(payload) > 131072) return null;
     payload = replace(payload, /%([0-9A-Fa-f]{2})/g, (all, n) => chr(hex(n)));
@@ -146,9 +166,14 @@ function from_vpn(raw) {
     if (text == null) return null;
     let decoded = amnezia.decode(text);
     if (!decoded) return null;
-    let endpoint = from_conf(decoded.text, raw, decoded.name);
+    let endpoints = from_conf_endpoints(decoded.text, raw, decoded.name);
+    if (!length(endpoints)) return null;
     // An AWG export without obfuscation fields must not silently become WG.
-    if (decoded.awg && endpoint && !has_awg(endpoint)) return null;
-    return endpoint;
+    if (decoded.awg && !has_awg(endpoints[0])) return null;
+    return endpoints;
 }
-return {from_vpn, from_conf, has_awg, awg_fields:[...numbers, ...ranges, ...strings, ...flags]};
+function from_vpn(raw) {
+    let endpoints = from_vpn_endpoints(raw);
+    return endpoints != null ? endpoints[0] : null;
+}
+return {from_vpn, from_vpn_endpoints, from_conf, from_conf_endpoints, has_awg, awg_fields:[...numbers, ...ranges, ...strings, ...flags]};

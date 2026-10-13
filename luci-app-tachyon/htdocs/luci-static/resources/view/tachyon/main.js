@@ -2618,94 +2618,108 @@ function renderDefaultState({
     const typeLabel = serviceType === "zapret" ? "Zapret" : serviceType === "zapret2" ? "Zapret2" : serviceType === "byedpi" ? "ByeDPI" : serviceType === "wdtt" ? "WDTT" : serviceType === "olcrtc" ? "OlcRTC" : "FPTN";
     const statusColor = ss ? ss.ready ? "var(--success-color-medium, green)" : ss.conflict ? "var(--error-color-medium, red)" : ss.configured ? "var(--warn-color-medium, orange)" : "var(--primary-color-low, lightgray)" : "var(--primary-color-low, lightgray)";
     const statusText = ss ? ss.ready ? _("Running") : ss.conflict ? _("Conflict") : ss.configured ? _("Stopped") : _("Not configured") : _("Unknown");
-    return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
-      E(
-        "div",
-        {
-          class: "tachyon_dashboard-page__outbound-section__title-section",
-          style: "cursor: default;"
-        },
-        [
-          E(
-            "div",
-            {
-              class: "tachyon_dashboard-page__outbound-section__title-section__title",
-              style: "display: flex; align-items: center; gap: 8px;"
-            },
-            [
-              E("span", {}, section.displayName),
-              E(
-                "span",
-                {
-                  style: "font-size: 12px; opacity: 0.6; font-weight: normal;"
-                },
-                typeLabel
-              )
-            ]
-          )
-        ]
-      ),
-      E(
-        "div",
-        {
-          style: "display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 16px 12px;"
-        },
-        [
-          E("div", { style: "display: flex; align-items: center; gap: 6px;" }, [
+    return E(
+      "div",
+      {
+        class: [
+          "tachyon_dashboard-page__outbound-section",
+          section.configError ? "tachyon_dashboard-page__outbound-section--error" : ""
+        ].filter(Boolean).join(" ")
+      },
+      [
+        E(
+          "div",
+          {
+            class: "tachyon_dashboard-page__outbound-section__title-section",
+            style: "cursor: default;"
+          },
+          [
             E(
-              "span",
-              { style: "opacity: 0.7; font-size: 13px;" },
-              _("Status") + ":"
-            ),
-            E(
-              "span",
+              "div",
               {
-                style: `font-size: 13px; font-weight: 500; color: ${statusColor};`
+                class: "tachyon_dashboard-page__outbound-section__title-section__title",
+                style: "display: flex; align-items: center; gap: 8px;"
               },
-              statusText
+              [
+                E("span", {}, section.displayName),
+                renderConfigErrorBadge(section),
+                E(
+                  "span",
+                  {
+                    style: "font-size: 12px; opacity: 0.6; font-weight: normal;"
+                  },
+                  typeLabel
+                )
+              ]
             )
-          ]),
-          ss && ss.restartCount > 0 ? E(
-            "div",
-            { style: "display: flex; align-items: center; gap: 6px;" },
-            [
-              E(
-                "span",
-                { style: "opacity: 0.7; font-size: 13px;" },
-                _("Restarts") + ":"
-              ),
-              E(
-                "span",
-                {
-                  style: "font-size: 13px; font-weight: 500; color: var(--warn-color-medium, orange);"
-                },
-                `${ss.restartCount}`
-              )
-            ]
-          ) : "",
-          ss && ss.unstable ? E(
-            "div",
-            { style: "display: flex; align-items: center; gap: 6px;" },
-            [
-              E(
-                "span",
-                {
-                  style: "font-size: 13px; font-weight: 500; color: var(--error-color-medium, red);"
-                },
-                _("Unstable")
-              )
-            ]
-          ) : ""
-        ]
-      ),
-      ss?.statusMessage ? E(
-        "div",
-        {
-          style: "padding: 0 16px 8px; font-size: 12px; opacity: 0.6; word-break: break-word;"
-        },
-        formatServiceStatusMessage(ss.statusMessage)
-      ) : ""
-    ]);
+          ]
+        ),
+        E(
+          "div",
+          {
+            style: "display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 16px 12px;"
+          },
+          [
+            E(
+              "div",
+              { style: "display: flex; align-items: center; gap: 6px;" },
+              [
+                E(
+                  "span",
+                  { style: "opacity: 0.7; font-size: 13px;" },
+                  _("Status") + ":"
+                ),
+                E(
+                  "span",
+                  {
+                    style: `font-size: 13px; font-weight: 500; color: ${statusColor};`
+                  },
+                  statusText
+                )
+              ]
+            ),
+            ss && ss.restartCount > 0 ? E(
+              "div",
+              { style: "display: flex; align-items: center; gap: 6px;" },
+              [
+                E(
+                  "span",
+                  { style: "opacity: 0.7; font-size: 13px;" },
+                  _("Restarts") + ":"
+                ),
+                E(
+                  "span",
+                  {
+                    style: "font-size: 13px; font-weight: 500; color: var(--warn-color-medium, orange);"
+                  },
+                  `${ss.restartCount}`
+                )
+              ]
+            ) : "",
+            ss && ss.unstable ? E(
+              "div",
+              { style: "display: flex; align-items: center; gap: 6px;" },
+              [
+                E(
+                  "span",
+                  {
+                    style: "font-size: 13px; font-weight: 500; color: var(--error-color-medium, red);"
+                  },
+                  _("Unstable")
+                )
+              ]
+            ) : ""
+          ]
+        ),
+        ss?.statusMessage ? E(
+          "div",
+          {
+            style: "padding: 0 16px 8px; font-size: 12px; opacity: 0.6; word-break: break-word;"
+          },
+          formatServiceStatusMessage(ss.statusMessage)
+        ) : ""
+      ]
+    );
   }
   function testLatency() {
     if (section.withTagSelect) {
@@ -2977,179 +2991,202 @@ function renderDefaultState({
     onUpdateSubscription
   );
   const canTestLatency = !isServiceNode && (section.withTagSelect || section.outbounds && section.outbounds.length > 0);
-  return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
-    // Title with test latency
-    E(
-      "div",
-      {
-        class: "tachyon_dashboard-page__outbound-section__title-section",
-        click: (e) => {
-          if (e.target && e.target.closest("button")) return;
-          onToggleCollapse?.();
+  return E(
+    "div",
+    {
+      class: [
+        "tachyon_dashboard-page__outbound-section",
+        section.configError ? "tachyon_dashboard-page__outbound-section--error" : ""
+      ].filter(Boolean).join(" ")
+    },
+    [
+      // Title with test latency
+      E(
+        "div",
+        {
+          class: "tachyon_dashboard-page__outbound-section__title-section",
+          click: (e) => {
+            if (e.target && e.target.closest("button")) return;
+            onToggleCollapse?.();
+          },
+          style: "cursor: pointer; user-select: none;"
         },
-        style: "cursor: pointer; user-select: none;"
-      },
-      [
-        E(
-          "div",
-          {
-            class: "tachyon_dashboard-page__outbound-section__title-section__title",
-            style: "display: flex; align-items: center; gap: 8px;"
-          },
-          [
-            svgEl(
-              "svg",
-              {
-                width: "16",
-                height: "16",
-                viewBox: "0 0 24 24",
-                fill: "none",
-                stroke: "currentColor",
-                "stroke-width": "2",
-                "stroke-linecap": "round",
-                "stroke-linejoin": "round",
-                style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? "-90deg" : "0deg"})`
-              },
-              [svgEl("polyline", { points: "6 9 12 15 18 9" })]
-            ),
-            E("span", {}, section.displayName),
-            isCollapsed ? (() => {
-              const selectedOutbound = section.outbounds.find(
-                (o) => o.selected
-              );
-              if (!selectedOutbound) return "";
-              const isConnectionNode2 = [
-                "vpn",
-                "awg",
-                "warp",
-                "anytls",
-                "snell",
-                "mieru",
-                "naive",
-                "sudoku",
-                "masque",
-                "openvpn"
-              ].includes(section.action || "");
-              const connectionTitle = section.action && CONNECTION_ACTION_LABELS[section.action] || selectedOutbound.displayName;
-              function getLatencyColor() {
-                if (isConnectionNode2) {
-                  if (latencyFetching)
-                    return "var(--warn-color-medium, orange)";
-                  if (selectedOutbound.latency === -1)
-                    return "var(--error-color-medium, red)";
-                  if (selectedOutbound.latency && selectedOutbound.latency > 0) {
-                    if (selectedOutbound.latency < 800)
-                      return "var(--success-color-medium, green)";
-                    if (selectedOutbound.latency < 1500)
+        [
+          E(
+            "div",
+            {
+              class: "tachyon_dashboard-page__outbound-section__title-section__title",
+              style: "display: flex; align-items: center; gap: 8px;"
+            },
+            [
+              svgEl(
+                "svg",
+                {
+                  width: "16",
+                  height: "16",
+                  viewBox: "0 0 24 24",
+                  fill: "none",
+                  stroke: "currentColor",
+                  "stroke-width": "2",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? "-90deg" : "0deg"})`
+                },
+                [svgEl("polyline", { points: "6 9 12 15 18 9" })]
+              ),
+              E("span", {}, section.displayName),
+              renderConfigErrorBadge(section),
+              isCollapsed ? (() => {
+                const selectedOutbound = section.outbounds.find(
+                  (o) => o.selected
+                );
+                if (!selectedOutbound) return "";
+                const isConnectionNode2 = [
+                  "vpn",
+                  "awg",
+                  "warp",
+                  "anytls",
+                  "snell",
+                  "mieru",
+                  "naive",
+                  "sudoku",
+                  "masque",
+                  "openvpn"
+                ].includes(section.action || "");
+                const connectionTitle = section.action && CONNECTION_ACTION_LABELS[section.action] || selectedOutbound.displayName;
+                function getLatencyColor() {
+                  if (isConnectionNode2) {
+                    if (latencyFetching)
                       return "var(--warn-color-medium, orange)";
-                    return "var(--error-color-medium, red)";
-                  }
-                  return selectedOutbound.runtimeAvailable ? "var(--success-color-medium, green)" : "var(--error-color-medium, red)";
-                }
-                if (!selectedOutbound.latency)
-                  return "var(--primary-color-low, lightgray)";
-                if (selectedOutbound.latency === -1 || selectedOutbound.latency < 0)
-                  return "var(--error-color-medium, red)";
-                if (selectedOutbound.latency < 800)
-                  return "var(--success-color-medium, green)";
-                if (selectedOutbound.latency < 1500)
-                  return "var(--warn-color-medium, orange)";
-                return "var(--error-color-medium, red)";
-              }
-              let latencyText = "";
-              if (isConnectionNode2) {
-                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 || selectedOutbound.latency < 0 ? _("Not responding") : selectedOutbound.runtimeAvailable ? _("Connected") : _("Not connected");
-              } else {
-                latencyText = selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 || selectedOutbound.latency < 0 ? _("Not responding") : "";
-              }
-              return E(
-                "span",
-                {
-                  style: "font-size: 13px; font-weight: normal; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px;"
-                },
-                [
-                  E(
-                    "span",
-                    { style: "opacity: 0.7;" },
-                    isConnectionNode2 ? connectionTitle : selectedOutbound.prefix || selectedOutbound.displayName
-                  ),
-                  latencyText ? E(
-                    "span",
-                    { style: `color: ${getLatencyColor()};` },
-                    latencyText
-                  ) : ""
-                ]
-              );
-            })() : isConnectionNode ? (() => {
-              const selectedOutbound = section.outbounds.find(
-                (o) => o.selected
-              );
-              if (!selectedOutbound) return "";
-              const connectionTitle = section.action && CONNECTION_ACTION_LABELS[section.action] || selectedOutbound.displayName;
-              if (section.displayName.toLowerCase().trim() === connectionTitle.toLowerCase().trim()) {
-                return "";
-              }
-              return E(
-                "span",
-                {
-                  style: "font-size: 13px; font-weight: normal; margin-left: 8px; opacity: 0.7;"
-                },
-                connectionTitle
-              );
-            })() : ""
-          ]
-        ),
-        E(
-          "div",
-          {
-            class: "tachyon_dashboard-page__outbound-section__title-section__actions"
-          },
-          [
-            ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
-            ...canTestLatency ? [
-              E(
-                "button",
-                {
-                  type: "button",
-                  class: "btn dashboard-sections-grid-item-test-latency",
-                  "data-latency-section": section.sectionName,
-                  disabled: latencyFetching ? true : void 0,
-                  click: (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (latencyFetching) {
-                      return;
+                    if (selectedOutbound.latency === -1)
+                      return "var(--error-color-medium, red)";
+                    if (selectedOutbound.latency && selectedOutbound.latency > 0) {
+                      if (selectedOutbound.latency < 800)
+                        return "var(--success-color-medium, green)";
+                      if (selectedOutbound.latency < 1500)
+                        return "var(--warn-color-medium, orange)";
+                      return "var(--error-color-medium, red)";
                     }
-                    testLatency();
+                    return selectedOutbound.runtimeAvailable ? "var(--success-color-medium, green)" : "var(--error-color-medium, red)";
                   }
-                },
-                latencyFetching ? [
-                  renderLoaderCircleIcon24(),
-                  E(
+                  if (!selectedOutbound.latency)
+                    return "var(--primary-color-low, lightgray)";
+                  if (selectedOutbound.latency === -1 || selectedOutbound.latency < 0)
+                    return "var(--error-color-medium, red)";
+                  if (selectedOutbound.latency < 800)
+                    return "var(--success-color-medium, green)";
+                  if (selectedOutbound.latency < 1500)
+                    return "var(--warn-color-medium, orange)";
+                  return "var(--error-color-medium, red)";
+                }
+                let latencyText = "";
+                if (isConnectionNode2) {
+                  latencyText = latencyFetching ? _("Checking...") : selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 || selectedOutbound.latency < 0 ? _("Not responding") : selectedOutbound.runtimeAvailable ? _("Connected") : _("Not connected");
+                } else {
+                  latencyText = selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 || selectedOutbound.latency < 0 ? _("Not responding") : "";
+                }
+                return E(
+                  "span",
+                  {
+                    style: "font-size: 13px; font-weight: normal; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px;"
+                  },
+                  [
+                    E(
+                      "span",
+                      { style: "opacity: 0.7;" },
+                      isConnectionNode2 ? connectionTitle : selectedOutbound.prefix || selectedOutbound.displayName
+                    ),
+                    latencyText ? E(
+                      "span",
+                      { style: `color: ${getLatencyColor()};` },
+                      latencyText
+                    ) : ""
+                  ]
+                );
+              })() : isConnectionNode ? (() => {
+                const selectedOutbound = section.outbounds.find(
+                  (o) => o.selected
+                );
+                if (!selectedOutbound) return "";
+                const connectionTitle = section.action && CONNECTION_ACTION_LABELS[section.action] || selectedOutbound.displayName;
+                if (section.displayName.toLowerCase().trim() === connectionTitle.toLowerCase().trim()) {
+                  return "";
+                }
+                return E(
+                  "span",
+                  {
+                    style: "font-size: 13px; font-weight: normal; margin-left: 8px; opacity: 0.7;"
+                  },
+                  connectionTitle
+                );
+              })() : ""
+            ]
+          ),
+          E(
+            "div",
+            {
+              class: "tachyon_dashboard-page__outbound-section__title-section__actions"
+            },
+            [
+              ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
+              ...canTestLatency ? [
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    class: "btn dashboard-sections-grid-item-test-latency",
+                    "data-latency-section": section.sectionName,
+                    disabled: latencyFetching ? true : void 0,
+                    click: (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (latencyFetching) {
+                        return;
+                      }
+                      testLatency();
+                    }
+                  },
+                  latencyFetching ? [
+                    renderLoaderCircleIcon24(),
+                    E(
+                      "span",
+                      {
+                        class: "dashboard-sections-grid-item-test-latency__label"
+                      },
+                      isConnectionNode ? _("Checking...") : getLatencyTestLabel(latencyProgress)
+                    )
+                  ] : E(
                     "span",
                     {
                       class: "dashboard-sections-grid-item-test-latency__label"
                     },
-                    isConnectionNode ? _("Checking...") : getLatencyTestLabel(latencyProgress)
+                    isConnectionNode ? _("Check Connection") : _("Test latency")
                   )
-                ] : E(
-                  "span",
-                  {
-                    class: "dashboard-sections-grid-item-test-latency__label"
-                  },
-                  isConnectionNode ? _("Check Connection") : _("Test latency")
                 )
-              )
-            ] : []
-          ]
-        )
-      ]
-    ),
-    !isCollapsed ? E("div", { class: "tachyon_dashboard-page__outbound-grid" }, [
-      ...metadataNodes,
-      ...section.outbounds.map((outbound) => renderOutbound(outbound))
-    ]) : ""
-  ]);
+              ] : []
+            ]
+          )
+        ]
+      ),
+      !isCollapsed ? E("div", { class: "tachyon_dashboard-page__outbound-grid" }, [
+        ...metadataNodes,
+        ...section.outbounds.map((outbound) => renderOutbound(outbound))
+      ]) : ""
+    ]
+  );
+}
+function renderConfigErrorBadge(section) {
+  if (!section.configError) {
+    return "";
+  }
+  return E(
+    "span",
+    {
+      class: "tachyon_dashboard-page__outbound-section__config-error-badge",
+      title: section.configError
+    },
+    _("Has errors")
+  );
 }
 function renderSections(props) {
   if (props.failed) {
@@ -4124,9 +4161,13 @@ var TachyonShellMethods = {
   globalCheck: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.GLOBAL_CHECK, [
     masked ? "masked" : "raw"
   ]),
-  doctor: async () => callBaseMethod(Tachyon.AvailableMethods.DOCTOR, [], {
-    timeout: 3e4
-  }),
+  doctor: async (fix = false) => callBaseMethod(
+    Tachyon.AvailableMethods.DOCTOR,
+    fix ? ["--fix"] : [],
+    {
+      timeout: 6e4
+    }
+  ),
   aiDoctor: async () => callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR, [], {
     timeout: 6e4
   }),
@@ -5155,6 +5196,7 @@ var TachyonShellMethods = {
 
 // src/tachyon/methods/custom/getDashboardSections.ts
 var DASHBOARD_SECTION_CACHE_DIR = "/var/run/tachyon/section-cache";
+var SECTION_ERRORS_FILE = "/var/run/tachyon/section-errors.json";
 var CLASH_API_FETCH_TIMEOUT_MS = 2500;
 var directClashApiFailedAt = 0;
 var DIRECT_CLASH_API_COOLDOWN_MS = 1e4;
@@ -5708,6 +5750,18 @@ async function readDashboardSectionCache(sectionName) {
     return parsed;
   } catch (_error) {
     return void 0;
+  }
+}
+async function readSectionErrors() {
+  try {
+    const raw = await fs.read(SECTION_ERRORS_FILE);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return objectMap(parsed);
+  } catch (_error) {
+    return {};
   }
 }
 function getUrlTestGroups(dashboardCache) {
@@ -6349,6 +6403,7 @@ async function getDashboardSections(options = {}) {
     }
     return serviceStatusCache.get(serviceType);
   };
+  const sectionErrors = await readSectionErrors();
   const data = await Promise.all(
     configSections.filter(
       (section) => section.enabled !== "0" && (isConnectionAction(section.action) || isServiceAction(section.action))
@@ -6477,7 +6532,9 @@ async function getDashboardSections(options = {}) {
   );
   return {
     success: true,
-    data
+    data: data.map(
+      (group) => sectionErrors[group.sectionName] ? { ...group, configError: sectionErrors[group.sectionName] } : group
+    )
   };
 }
 
@@ -10929,6 +10986,23 @@ var styles = `
     box-sizing: border-box;
 }
 
+/* The runtime quarantined this section: sing-box refused the config it
+   produced, so the section is not loaded while everything else runs. */
+.tachyon_dashboard-page__outbound-section--error {
+    border-color: var(--error-color-medium, red);
+}
+
+.tachyon_dashboard-page__outbound-section__config-error-badge {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--error-color-medium, red);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: help;
+}
+
 .tachyon_dashboard-page__outbound-section__title-section {
     display: flex;
     align-items: center;
@@ -13142,6 +13216,7 @@ function renderModal(text, name, options) {
     requestForcedRefresh();
   };
   const footerChildren = [
+    ...options?.extraButtons ?? [],
     renderButton({
       classNames: ["cbi-button-apply"],
       text: _("Download"),
@@ -20074,10 +20149,52 @@ async function handleShowGlobalCheck() {
     setDiagnosticActionLoading("globalCheck", false);
   }
 }
-async function handleRunDoctor() {
+function getDoctorModalTitle(issues, fixed, report) {
+  if (issues > 0 || fixed > 0) {
+    return _("Doctor repair") + " — " + _("Issues") + ": " + issues + ", " + _("Fixed") + ": " + fixed;
+  }
+  if (/safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
+    report
+  )) {
+    return _("Doctor repair") + " — Safe Bypass";
+  }
+  return _("Doctor repair") + " — " + _("No issues found");
+}
+function showDoctorModal(report, issues, fixed) {
+  const title = getDoctorModalTitle(issues, fixed, report);
+  let isFixing = false;
+  const fixBtn = renderButton({
+    classNames: ["cbi-button-action"],
+    text: _("Fix"),
+    onClick: async () => {
+      if (isFixing) {
+        return;
+      }
+      isFixing = true;
+      fixBtn.disabled = true;
+      fixBtn.classList.add("tachyon-partial-button--loading");
+      try {
+        await handleRunDoctor(true);
+      } finally {
+        isFixing = false;
+        fixBtn.disabled = false;
+        fixBtn.classList.remove("tachyon-partial-button--loading");
+      }
+    }
+  });
+  ui.showModal(
+    title,
+    renderModal(report, "doctor_repair", {
+      initialAutoRefresh: false,
+      extraButtons: [fixBtn]
+    })
+  );
+}
+async function handleRunDoctor(fixParam = false) {
+  const fix = fixParam === true;
   setDiagnosticActionLoading("doctor", true);
   try {
-    const doctorRes = await TachyonShellMethods.doctor();
+    const doctorRes = await TachyonShellMethods.doctor(fix);
     if (!doctorRes || typeof doctorRes !== "object") {
       showToast(_("Doctor failed") + ": " + _("Unknown error"), "error");
       return;
@@ -20088,15 +20205,17 @@ async function handleRunDoctor() {
       const report = data ? String(data.report ?? "") : String(rawData ?? "");
       const issues = data ? Number(data.issues ?? 0) : 0;
       const fixed = data ? Number(data.fixed ?? 0) : 0;
-      const title = issues > 0 ? _("Doctor repair") + " — " + _("Issues") + ": " + issues + ", " + _("Fixed") + ": " + fixed : /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
-        report
-      ) ? _("Doctor repair") + " — Safe Bypass" : _("Doctor repair") + " — " + _("No issues found");
-      ui.showModal(
-        title,
-        renderModal(report, "doctor_repair", {
-          initialAutoRefresh: false
-        })
-      );
+      showDoctorModal(report, issues, fixed);
+      if (fix) {
+        showToast(
+          fixed > 0 ? _("Doctor fixes applied") + `: ${fixed}` : _("Doctor repair completed"),
+          "success"
+        );
+        await refreshDiagnosticServicesInfo({
+          force: true,
+          allowInactive: true
+        });
+      }
     } else {
       const errorMsg = typeof doctorRes.error === "string" ? doctorRes.error : _("Unknown error");
       showToast(_("Doctor failed") + ": " + errorMsg, "error");
@@ -20455,7 +20574,7 @@ function renderDiagnosticAvailableActionsWidget() {
     doctor: {
       loading: diagnosticsActions.doctor.loading,
       visible: true,
-      onClick: handleRunDoctor,
+      onClick: () => handleRunDoctor(false),
       disabled: utilityActionsDisabled
     },
     aiDoctor: {

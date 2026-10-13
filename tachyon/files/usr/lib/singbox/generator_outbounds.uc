@@ -961,6 +961,15 @@ function ensure_imported_vpn_lx() {
         ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
 }
 
+// An fptn outbound exists only in tachyon-core's protocol list: on every other
+// core the emitted config would be rejected outright, so refuse with a clear
+// error instead of shipping a broken config. fptn_transport_mode() is the one
+// resolver that already knows the answer — native exists on tachyon-core only.
+function ensure_fptn_outbound_supported() {
+    if (connections && connections.fptn_transport_mode() != "native")
+        ctx.runtime_generate_unsupported("fptn:// links require tachyon-core; this core cannot dial FPTN");
+}
+
 function add_imported_wireguard_endpoint(config, endpoint) {
     ensure_imported_vpn_lx();
     if (type(endpoint) == "object") {
@@ -974,6 +983,120 @@ function add_imported_wireguard_endpoint(config, endpoint) {
         }
     }
     push(config.endpoints, endpoint);
+}
+
+// Validate a decoded payload exactly the way core fptn::parse_token does —
+// same field errors, same ranges — so the backend and the core's own token
+// expansion can never disagree about which token is usable. Returns the
+// normalized payload or null.
+function fptn_token_payload(payload) {
+    if (type(payload) != "object")
+        return null;
+    // ucode numbers are "int"/"double", there is no "number" type — and both
+    // fields are integers in fptn::parse_token too.
+    if (payload.version != null && type(payload.version) != "int")
+        return null;
+    if (payload.service_name != null && type(payload.service_name) != "string")
+        return null;
+    if (type(payload.username) != "string" || payload.username == "")
+        return null;
+    if (type(payload.password) != "string" || payload.password == "")
+        return null;
+    if (type(payload.servers) != "array" || length(payload.servers) == 0)
+        return null;
+
+    let servers = [];
+    let seen = {};
+    for (let entry in payload.servers) {
+        if (type(entry) != "object")
+            return null;
+        if (type(entry.name) != "string" || entry.name == "")
+            return null;
+        if (seen[entry.name])
+            return null;
+        if (type(entry.host) != "string" || entry.host == "")
+            return null;
+        if (type(entry.port) != "int" || entry.port < 1 || entry.port > 65535)
+            return null;
+        let fingerprint = "";
+        if (entry.md5_fingerprint != null) {
+            if (type(entry.md5_fingerprint) != "string")
+                return null;
+            fingerprint = entry.md5_fingerprint;
+            if (fingerprint != "" && !match(fingerprint, /^[0-9a-fA-F]{32}$/))
+                return null;
+        }
+        seen[entry.name] = true;
+        push(servers, {
+            name: entry.name,
+            host: entry.host,
+            port: int(entry.port),
+            md5_fingerprint: fingerprint
+        });
+    }
+
+    return {
+        service_name: as_string(payload.service_name || ""),
+        username: payload.username,
+        password: payload.password,
+        servers
+    };
+}
+
+// fptnb: is brotli, which ucode has not got — the core CLI decodes it for us
+// (`tachyon-core fptn decode <token>`). Returns null when the binary is
+// missing or refuses, and the caller falls back to the raw-token form.
+function fptn_token_decode_via_core(token) {
+    let binary = getenv("SB_PREFLIGHT_BINARY") || getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+    if (fs.stat(binary) == null)
+        return null;
+    let result = exec.run({ argv: [ binary, "fptn", "decode", token ], timeout: 15 });
+    if (result.status != 0)
+        return null;
+    try {
+        return json(result.output);
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+// Decode an access token into its payload, or null for anything undecodable
+// (bad prefix, bad base64, invalid payload). fptn: is base64+JSON inline;
+// fptnb: goes through the core.
+function fptn_token_decode(token) {
+    token = trim(as_string(token));
+    let body = null;
+    let compressed = false;
+    if (substr(token, 0, 6) == "fptnb:") {
+        body = substr(token, 6);
+        compressed = true;
+    } else if (substr(token, 0, 7) == "fptnb//") {
+        body = substr(token, 7);
+        compressed = true;
+    } else if (substr(token, 0, 7) == "fptn://") {
+        body = substr(token, 7);
+    } else if (substr(token, 0, 5) == "fptn:") {
+        body = substr(token, 5);
+    } else {
+        return null;
+    }
+
+    let payload = null;
+    if (compressed) {
+        payload = fptn_token_decode_via_core(token);
+    } else {
+        let raw = base64_decode_value(body);
+        if (raw == null)
+            return null;
+        try {
+            payload = json(raw);
+        }
+        catch (e) {
+            return null;
+        }
+    }
+    return fptn_token_payload(payload);
 }
 
 function manual_link_outbound(link, tag_name, display_info) {
@@ -1019,11 +1142,62 @@ function manual_link_outbound(link, tag_name, display_info) {
     ctx.runtime_generate_unsupported("manual proxy link scheme is not supported by sing-box config generation yet");
 }
 
+// fptn:// is a share link whose scheme is not a standard URI scheme the
+// generic parser knows, so recognize it exactly the way manual_link_outbound
+// does — both the //-forms and the bare fptn:/fptnb: forms.
+function is_fptn_link(link) {
+    let scheme = url_scheme(link);
+    return scheme == "fptn" || scheme == "fptnb" ||
+        index(link, "fptn:") == 0 || index(link, "fptnb:") == 0;
+}
+
+// An fptn: link in a connection section is an access token carrying a whole
+// server list, not one server. Expand it here the same way the fptn action
+// does, so the dashboard lists the servers instead of one opaque card. Falls
+// back to false for anything undecodable, and the caller then keeps the raw
+// token for the core to expand itself.
+function add_fptn_manual_members(config, state, section_name, tag_name, link, taken, selector_tags, urltest_candidate_tags) {
+    if (!is_fptn_link(link))
+        return false;
+    ensure_fptn_outbound_supported();
+    let decoded = fptn_token_decode(link);
+    if (decoded == null)
+        return false;
+
+    for (let server in decoded.servers) {
+        let member_tag = tag_name + "/" + server.name;
+        if (taken[member_tag])
+            member_tag = unique_tag(member_tag, taken);
+        taken[member_tag] = true;
+
+        let member = {
+            type: "fptn",
+            tag: member_tag,
+            server: server.host,
+            server_port: server.port,
+            username: decoded.username,
+            password: decoded.password
+        };
+        if (server.md5_fingerprint != "")
+            member.md5_fingerprint = server.md5_fingerprint;
+
+        push(config.outbounds, member);
+        push(selector_tags, member_tag);
+        push(urltest_candidate_tags, member_tag);
+        state.links[member_tag] = as_string(link);
+        runtime_subscription.remember_outbound_metadata(state, member_tag, server.name, member);
+    }
+    return true;
+}
+
 function add_manual_proxy_link(config, state, section_name, manual_index, link, taken, selector_tags, urltest_candidate_tags) {
     let tag_name = outbound_tag(section_name + "-" + manual_index);
     if (taken[tag_name])
         tag_name = unique_tag(tag_name, taken);
     taken[tag_name] = true;
+
+    if (add_fptn_manual_members(config, state, section_name, tag_name, link, taken, selector_tags, urltest_candidate_tags))
+        return tag_name;
 
     let display_info = {};
     let outbound = manual_link_outbound(link, tag_name, display_info);
@@ -1497,7 +1671,14 @@ function outbound_detour_tag_for_section(section) {
         return "";
 
     let detour_section = option(section, "outbound_detour_section", "");
-    return detour_section == "" ? "" : outbound_tag(detour_section);
+    if (detour_section == "")
+        return "";
+    // A deferred or quarantined detour target contributes no outbound at all;
+    // emitting its tag anyway would leave a dangling detour and take the whole
+    // config down at sing-box check time.
+    if (ctx.deferred_sections && ctx.deferred_sections[detour_section])
+        return "";
+    return outbound_tag(detour_section);
 }
 
 function apply_section_detour_to_connection_outbounds(config, start_index, detour_tag) {
@@ -1630,18 +1811,23 @@ function add_awg_config_members(config, section) {
         let item = subscription_amnezia.parse(value);
         if (item == null)
             ctx.runtime_generate_unsupported("Invalid imported Amnezia configuration");
-        let endpoint = subscription_wireguard.from_vpn(item.link);
-        if (endpoint == null)
+        let endpoints = subscription_wireguard.from_vpn_endpoints(item.link);
+        if (endpoints == null)
             ctx.runtime_generate_unsupported("invalid imported Amnezia configuration: " + as_string(item.name));
-        let member_tag = unique_tag(tag + "/" + as_string(item.name), taken);
-        taken[member_tag] = true;
-        let member = copy_subscription_outbound(endpoint, member_tag);
-        if (detour != "")
-            member.detour = detour;
-        add_imported_wireguard_endpoint(config, member);
-        push(selector_tags, member_tag);
-        push(urltest_candidate_tags, member_tag);
-        runtime_subscription.remember_outbound_metadata(state, member_tag, as_string(item.name), member);
+        // Every peer of the .conf is its own member: a multi-peer file behaves
+        // like several configs, and each server joins the urltest pool.
+        for (let i = 0; i < length(endpoints); i++) {
+            let display_name = as_string(endpoints[i].tag || item.name);
+            let member_tag = unique_tag(tag + "/" + display_name, taken);
+            taken[member_tag] = true;
+            let member = copy_subscription_outbound(endpoints[i], member_tag);
+            if (detour != "")
+                member.detour = detour;
+            add_imported_wireguard_endpoint(config, member);
+            push(selector_tags, member_tag);
+            push(urltest_candidate_tags, member_tag);
+            runtime_subscription.remember_outbound_metadata(state, member_tag, display_name, member);
+        }
     }
 
     // The group the selector defaults to. Same shape as the FPTN expansion;
@@ -2222,120 +2408,6 @@ function add_olcrtc_outbound(config, section, sections) {
     });
 }
 
-// Validate a decoded payload exactly the way core fptn::parse_token does —
-// same field errors, same ranges — so the backend and the core's own token
-// expansion can never disagree about which token is usable. Returns the
-// normalized payload or null.
-function fptn_token_payload(payload) {
-    if (type(payload) != "object")
-        return null;
-    // ucode numbers are "int"/"double", there is no "number" type — and both
-    // fields are integers in fptn::parse_token too.
-    if (payload.version != null && type(payload.version) != "int")
-        return null;
-    if (payload.service_name != null && type(payload.service_name) != "string")
-        return null;
-    if (type(payload.username) != "string" || payload.username == "")
-        return null;
-    if (type(payload.password) != "string" || payload.password == "")
-        return null;
-    if (type(payload.servers) != "array" || length(payload.servers) == 0)
-        return null;
-
-    let servers = [];
-    let seen = {};
-    for (let entry in payload.servers) {
-        if (type(entry) != "object")
-            return null;
-        if (type(entry.name) != "string" || entry.name == "")
-            return null;
-        if (seen[entry.name])
-            return null;
-        if (type(entry.host) != "string" || entry.host == "")
-            return null;
-        if (type(entry.port) != "int" || entry.port < 1 || entry.port > 65535)
-            return null;
-        let fingerprint = "";
-        if (entry.md5_fingerprint != null) {
-            if (type(entry.md5_fingerprint) != "string")
-                return null;
-            fingerprint = entry.md5_fingerprint;
-            if (fingerprint != "" && !match(fingerprint, /^[0-9a-fA-F]{32}$/))
-                return null;
-        }
-        seen[entry.name] = true;
-        push(servers, {
-            name: entry.name,
-            host: entry.host,
-            port: int(entry.port),
-            md5_fingerprint: fingerprint
-        });
-    }
-
-    return {
-        service_name: as_string(payload.service_name || ""),
-        username: payload.username,
-        password: payload.password,
-        servers
-    };
-}
-
-// fptnb: is brotli, which ucode has not got — the core CLI decodes it for us
-// (`tachyon-core fptn decode <token>`). Returns null when the binary is
-// missing or refuses, and the caller falls back to the raw-token form.
-function fptn_token_decode_via_core(token) {
-    let binary = getenv("SB_PREFLIGHT_BINARY") || getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
-    if (fs.stat(binary) == null)
-        return null;
-    let result = exec.run({ argv: [ binary, "fptn", "decode", token ], timeout: 15 });
-    if (result.status != 0)
-        return null;
-    try {
-        return json(result.output);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-// Decode an access token into its payload, or null for anything undecodable
-// (bad prefix, bad base64, invalid payload). fptn: is base64+JSON inline;
-// fptnb: goes through the core.
-function fptn_token_decode(token) {
-    token = trim(as_string(token));
-    let body = null;
-    let compressed = false;
-    if (substr(token, 0, 6) == "fptnb:") {
-        body = substr(token, 6);
-        compressed = true;
-    } else if (substr(token, 0, 7) == "fptnb//") {
-        body = substr(token, 7);
-        compressed = true;
-    } else if (substr(token, 0, 7) == "fptn://") {
-        body = substr(token, 7);
-    } else if (substr(token, 0, 5) == "fptn:") {
-        body = substr(token, 5);
-    } else {
-        return null;
-    }
-
-    let payload = null;
-    if (compressed) {
-        payload = fptn_token_decode_via_core(token);
-    } else {
-        let raw = base64_decode_value(body);
-        if (raw == null)
-            return null;
-        try {
-            payload = json(raw);
-        }
-        catch (e) {
-            return null;
-        }
-    }
-    return fptn_token_payload(payload);
-}
-
 // Emit the section the way a connection section is shaped: one outbound per
 // token server (`<tag>/<name>`), the auto urltest group over them, and the
 // section selector on top — a urltest group as the section tag gets a 400
@@ -2428,7 +2500,10 @@ function add_fptn_outbound(config, section, sections) {
     let tag = outbound_tag(section[".name"]);
 
     if (connections && connections.fptn_transport_mode() == "native") {
-        let token = as_string(option(section, "access_token", ""));
+        // access_token is the canonical field; an fptn:// link pasted into the
+        // section URL list feeds the same resolver, so a pasted token works
+        // everywhere the section is read.
+        let token = connections.fptn_section_token(section);
         if (token == "")
             return;
         if (add_fptn_token_members(config, section, token))

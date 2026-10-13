@@ -111,16 +111,28 @@ else
 $out"
 fi
 
-# The fatal path has to consult the diagnosis before blaming the configuration.
-body="$(sed -n '/^    if (check_result.status != 0) {/,/^    }/p' "$RUNTIME_UC")"
-[ -n "$body" ] || fail "could not find the check failure path"
+# The failure path has to consult the diagnosis before blaming the
+# configuration. Since the quarantine loop was extracted, that path lives inside
+# the loop: classify the binary first, report the configuration error only after.
+handler="$(sed -n '/Say which of the two it was before blaming the configuration\./,/Aborted\./p' "$RUNTIME_UC")"
+[ -n "$handler" ] || fail "could not find the check failure path"
 
-grep -q 'sing_box_binary_problem' <<<"$body" ||
+grep -q 'sing_box_binary_problem' <<<"$handler" ||
   fail "the check failure path does not classify the binary"
 ok
 
-grep -q 'sing_box_check_blamed_the_binary' <<<"$body" ||
+grep -q 'sing_box_check_blamed_the_binary' <<<"$handler" ||
   fail "the check failure path does not use the output to tell the two failures apart"
+ok
+
+# The diagnosis must come first: blaming the configuration before classifying
+# the binary is the original bug this test exists for.
+classify_line="$(grep -n 'let bin_problem = sing_box_binary_problem' "$RUNTIME_UC" | head -1 | cut -d: -f1)"
+blame_line="$(grep -n 'Generated sing-box configuration is invalid' "$RUNTIME_UC" | head -1 | cut -d: -f1)"
+[ -n "$classify_line" ] && [ -n "$blame_line" ] || fail "could not locate classification or blame"
+if [ "$classify_line" -ge "$blame_line" ]; then
+  fail "the binary is classified (line $classify_line) only after the configuration is blamed (line $blame_line)"
+fi
 ok
 
 # Both messages have to survive: a genuine configuration error must still be reported
