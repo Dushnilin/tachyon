@@ -2785,6 +2785,12 @@ function import_all_preset_lists(settings) {
             if (!downloaded) {
                 if (file_exists_value(persistent_file)) {
                     tmpfile = persistent_file;
+                } else if (as_string(service) == "telegram") {
+                    let core_ip = require("core.ip");
+                    for (let s in (core_ip.DEFAULT_TELEGRAM_SUBNETS || [])) push(combined_lines, s);
+                    for (let s in (core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [])) push(combined_lines, s);
+                    log_message("Seeded community subnet list telegram with built-in fallbacks", "info");
+                    continue;
                 } else {
                     log_message("Failed to download built-in preset subnet list " + as_string(service) + "; skipping it until next update", "warn");
                     continue;
@@ -2874,6 +2880,12 @@ function import_builtin_subnets_from_rule(section, settings) {
             if (!downloaded) {
                 if (file_exists_value(persistent_file)) {
                     tmpfile = persistent_file;
+                } else if (as_string(service) == "telegram") {
+                    let core_ip = require("core.ip");
+                    for (let s in (core_ip.DEFAULT_TELEGRAM_SUBNETS || [])) push(combined_lines, s);
+                    for (let s in (core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [])) push(combined_lines, s);
+                    log_message("Seeded community subnet list telegram with built-in fallbacks", "info");
+                    continue;
                 } else {
                     log_message("Failed to download built-in " + as_string(service) + " subnet list; skipping it until next update", "warn");
                     continue;

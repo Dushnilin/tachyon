@@ -514,6 +514,15 @@ function load_local_ruleset(name, domains, prefixes) {
         }
     }
 
+    if (name == "telegram" && length(keys(prefixes)) == 0) {
+        let core_ip = require("core.ip");
+        for (let p in (core_ip.DEFAULT_TELEGRAM_SUBNETS || []))
+            prefixes[p] = true;
+        for (let p in (core_ip.DEFAULT_TELEGRAM_SUBNETS6 || []))
+            prefixes[p] = true;
+        loaded = true;
+    }
+
     return loaded;
 }
 

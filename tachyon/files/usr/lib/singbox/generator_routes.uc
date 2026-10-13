@@ -2178,6 +2178,13 @@ function load_community_subnet_cidrs(community, filter_mode) {
             return core_ip.DISCORD_DEDICATED_SUBNETS || [ "162.159.128.0/20" ];
     }
 
+    if (service == "telegram" && length(cidrs) == 0) {
+        let res = [];
+        for (let c in (core_ip.DEFAULT_TELEGRAM_SUBNETS || [])) push(res, c);
+        for (let c in (core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [])) push(res, c);
+        return res;
+    }
+
     if (service == "cloudflare" && length(cidrs) == 0)
         return core_ip.CLOUDFLARE_SHARED_CIDRS || [];
 

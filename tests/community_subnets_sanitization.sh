@@ -205,5 +205,38 @@ output="$(ucode -L "$LIB_DIR" "$LIB_DIR/diagnostics/runtime.uc" resolve-domain "
 # Output should be valid JSON array (e.g. ["127.0.0.1"] or [] if nslookup filters loopback)
 echo "$output" | grep -q '^\[' || fail "diagnostics/runtime.uc resolve-domain must output a JSON array"
 
+# 7. Test telegram fallback subnets in core.ip and generator_routes
+ucode -L "$LIB_DIR" -e '
+let core_ip = require("core.ip");
+let generator_routes = require("singbox.generator_routes");
+
+if (!core_ip.DEFAULT_TELEGRAM_SUBNETS || length(core_ip.DEFAULT_TELEGRAM_SUBNETS) != 10) {
+    warn("DEFAULT_TELEGRAM_SUBNETS missing or incorrect length: " + length(core_ip.DEFAULT_TELEGRAM_SUBNETS) + "\n");
+    exit(1);
+}
+if (!core_ip.DEFAULT_TELEGRAM_SUBNETS6 || length(core_ip.DEFAULT_TELEGRAM_SUBNETS6) != 4) {
+    warn("DEFAULT_TELEGRAM_SUBNETS6 missing or incorrect length: " + length(core_ip.DEFAULT_TELEGRAM_SUBNETS6) + "\n");
+    exit(2);
+}
+
+// When no files exist on disk, generator_routes must return default Telegram subnets
+let tg_cidrs = generator_routes.load_community_subnet_cidrs("telegram");
+if (!tg_cidrs || length(tg_cidrs) != 14) {
+    warn("generator_routes telegram fallback failed: " + length(tg_cidrs) + "\n");
+    exit(3);
+}
+let has_149 = false;
+let has_91_56 = false;
+for (let c in tg_cidrs) {
+    if (c == "149.154.160.0/20") has_149 = true;
+    if (c == "91.108.56.0/22") has_91_56 = true;
+}
+if (!has_149 || !has_91_56) {
+    warn("generator_routes telegram fallback missing core DC subnets\n");
+    exit(4);
+}
+' || fail "telegram fallback subnets test failed"
+
 printf 'All community subnets sanitization tests PASSED!\n'
+
 

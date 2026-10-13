@@ -2184,6 +2184,12 @@ function nft_community_subnet_lines(path, service, filter_mode) {
             if (filter_mode == "exclude_cloudflare" || filter_mode == null)
                 return core_ip.DISCORD_DEDICATED_SUBNETS || [ "162.159.128.0/20" ];
         }
+        if (as_string(service) == "telegram") {
+            let res = [];
+            for (let c in (core_ip.DEFAULT_TELEGRAM_SUBNETS || [])) push(res, c);
+            for (let c in (core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [])) push(res, c);
+            return res;
+        }
         return [];
     }
 
@@ -2210,6 +2216,12 @@ function nft_community_subnet_lines(path, service, filter_mode) {
             return core_ip.DEFAULT_DISCORD_VOICE_SUBNETS || [ "104.16.0.0/12", "162.158.0.0/15", "172.64.0.0/13", "2606:4700::/32" ];
         if ((filter_mode == "exclude_cloudflare" || filter_mode == null) && length(result) == 0)
             return core_ip.DISCORD_DEDICATED_SUBNETS || [ "162.159.128.0/20" ];
+    }
+    if (as_string(service) == "telegram" && length(result) == 0) {
+        let res = [];
+        for (let c in (core_ip.DEFAULT_TELEGRAM_SUBNETS || [])) push(res, c);
+        for (let c in (core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [])) push(res, c);
+        return res;
     }
 
     return result;
@@ -3108,6 +3120,33 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
                     path, table, v4_set, v6_set, service, "5000", ports_v4, ports_v6, udp_ports_v4, udp_ports_v6);
                 loaded = true;
                 break;
+            }
+        }
+
+        if (!loaded) {
+            if (service == "telegram") {
+                let v4 = core_ip.DEFAULT_TELEGRAM_SUBNETS || [];
+                let v6 = core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [];
+                if (length(v4) > 0)
+                    nft_add_values_to_family_sets(v4, table, v4_set, v6_set, "ips", "", "5000");
+                if (length(v6) > 0)
+                    nft_add_values_to_family_sets(v6, table, v4_set, v6_set, "ips", "", "5000");
+                loaded = true;
+            } else if (service == "discord") {
+                let lines = nft_community_subnet_lines("", service, "exclude_cloudflare");
+                if (length(lines) > 0)
+                    nft_add_values_to_family_sets(lines, table, v4_set, v6_set, "ips", "", "5000");
+                if (udp_ports_v4) {
+                    let cf_voice = nft_community_subnet_lines("", service, "only_cloudflare");
+                    let voice_ports = core_ip.DISCORD_VOICE_PORTS_NFT || "5000-5020, 3478, 19294-19344, 50000-65535";
+                    nft_add_values_to_family_sets(cf_voice, table, udp_ports_v4, udp_ports_v6, "ip-port-from-ip", voice_ports, "5000");
+                }
+                if (ip_ports_v4) {
+                    let cf_media = nft_community_subnet_lines("", service, "only_cloudflare");
+                    let media_ports = core_ip.DISCORD_MEDIA_PORTS_NFT || "2053, 2083, 2087, 2096, 8443";
+                    nft_add_values_to_family_sets(cf_media, table, ip_ports_v4, ip_ports_v6, "ip-port-from-ip", media_ports, "5000");
+                }
+                loaded = true;
             }
         }
 
