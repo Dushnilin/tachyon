@@ -522,8 +522,8 @@ function injectServerStyles() {
       "style",
       { id: SERVER_STYLE_ID },
       `
-.fkp-server-icon-button{box-sizing:border-box;vertical-align:middle}
-.fkp-server-icon-button__glyph{display:inline-block;line-height:1;transform:scale(1.55);transform-origin:center}
+.fkp-server-icon-button{box-sizing:border-box;vertical-align:middle;cursor:pointer}
+.fkp-server-icon-button__glyph{display:inline-block;line-height:1;transform:scale(1.55);transform-origin:center;pointer-events:none}
 .fkp-server-icon-button--done{outline:2px solid var(--success-color,#37a969);outline-offset:1px}
 .fkp-server-validation-summary{margin:0 0 12px}
 #cbi-${UCI_PACKAGE}-server > h3:nth-child(1){display:none}
@@ -1449,9 +1449,31 @@ function encodeQuery(params) {
 function getPublicHost(sectionId) {
   return (
     uci.get(UCI_PACKAGE, sectionId, "public_host") ||
+    defaultPublicHostCache ||
     window.location.hostname ||
     ""
   );
+}
+
+function getServerPort(sectionId) {
+  const configured = uci.get(UCI_PACKAGE, sectionId, "listen_port");
+  if (configured) {
+    return `${configured}`;
+  }
+  const protocol = getProtocol(sectionId);
+  if (
+    routerNetworkEnvCache &&
+    routerNetworkEnvCache.recommended_ports &&
+    routerNetworkEnvCache.recommended_ports[protocol]
+  ) {
+    return `${routerNetworkEnvCache.recommended_ports[protocol]}`;
+  }
+  if (protocol === "awg") return "51820";
+  if (protocol === "tuic") return "8443";
+  if (protocol === "shadowsocks") return "8388";
+  if (protocol === "socks") return "1080";
+  if (protocol === "http" || protocol === "mixed") return "8080";
+  return "443";
 }
 
 function getTransportParams(sectionId, params) {
@@ -1483,7 +1505,9 @@ function buildVlessTrojanLink(sectionId, identity, options = {}) {
   const protocol = getProtocol(sectionId);
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const security = getEffectiveSecurity(sectionId);
   const tlsServerName =
     uci.get(UCI_PACKAGE, sectionId, "tls_server_name") ||
@@ -1524,7 +1548,9 @@ function buildVlessTrojanLink(sectionId, identity, options = {}) {
 
 function buildVmessLink(sectionId, identity) {
   const host = getPublicHost(sectionId);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const security = getEffectiveSecurity(sectionId);
   const transportParams = {};
   const transport = getTransportParams(sectionId, transportParams);
@@ -1561,7 +1587,9 @@ function buildShadowsocksLink(sectionId, identity) {
     uci.get(UCI_PACKAGE, sectionId, "shadowsocks_method") || "aes-128-gcm";
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "8388");
   const userInfo = base64UrlEncode(`${method}:${identity.password}`);
 
   return `ss://${userInfo}@${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
@@ -1570,7 +1598,9 @@ function buildShadowsocksLink(sectionId, identity) {
 function buildSocksLink(sectionId, identity) {
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "1080");
   const username = identity.username || identity.name || sectionId;
   const userInfo = isSocksAuthenticationEnabled(sectionId)
     ? `${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@`
@@ -1623,13 +1653,19 @@ function loadGeneratedTlsCertificatePin(sectionId) {
 function buildHysteria2Link(sectionId, identity, options = {}) {
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const certificatePin = normalizeSha256(options.tlsCertificateSha256);
   const obfsType = uci.get(UCI_PACKAGE, sectionId, "hysteria2_obfs_type") || "";
   const params = {
     sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || "",
-    pcs: certificatePin,
   };
+
+  if (certificatePin) {
+    params.insecure = "1";
+    params.pinSHA256 = certificatePin;
+  }
 
   if (obfsType === "salamander") {
     params.obfs = obfsType;
@@ -1644,7 +1680,9 @@ function buildHysteria2Link(sectionId, identity, options = {}) {
 
 function buildMtprotoLink(sectionId, identity) {
   const host = getPublicHost(sectionId);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const secret = buildMtprotoFullSecret(
     identity.mtprotoSecret,
     identity.mtprotoFaketls,
@@ -1662,7 +1700,9 @@ function buildMtprotoLink(sectionId, identity) {
 function buildTuicLink(sectionId, identity, options = {}) {
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "8443");
   const certificatePin = normalizeSha256(options.tlsCertificateSha256);
   const cc =
     uci.get(UCI_PACKAGE, sectionId, "tuic_congestion_control") || "bbr";
@@ -1681,7 +1721,9 @@ function buildTuicLink(sectionId, identity, options = {}) {
 function buildAnytlsLink(sectionId, identity, options = {}) {
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const certificatePin = normalizeSha256(options.tlsCertificateSha256);
   const params = {
     sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
@@ -1696,7 +1738,9 @@ function buildAnytlsLink(sectionId, identity, options = {}) {
 function buildNaiveLink(sectionId, identity) {
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const username = identity.username || identity.name || sectionId;
   return `naive+https://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
 }
@@ -1704,7 +1748,9 @@ function buildNaiveLink(sectionId, identity) {
 function buildShadowtlsLink(sectionId, identity) {
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const handshakeServer =
     uci.get(UCI_PACKAGE, sectionId, "shadowtls_handshake_server") ||
     "www.microsoft.com";
@@ -1719,7 +1765,8 @@ function buildShadowtlsLink(sectionId, identity) {
 function buildFptnPayload(sectionId, identity) {
   const host = getPublicHost(sectionId);
   const port = parseInt(
-    uci.get(UCI_PACKAGE, sectionId, "listen_port") || "443",
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+      (typeof getServerPort === "function" ? getServerPort(sectionId) : "443"),
     10,
   );
   const username = identity.username || identity.name || sectionId;
@@ -1757,7 +1804,9 @@ function buildFptnLink(sectionId, identity) {
 function buildHttpLink(sectionId, identity) {
   const host = getPublicHost(sectionId);
   const uriHost = formatHostForUri(host);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "8080");
   const username = identity.username || identity.name || sectionId;
   const userInfo = identity.password
     ? `${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@`
@@ -1771,7 +1820,9 @@ function buildMixedLink(sectionId, identity) {
 
 function buildAwgClientConfig(sectionId, targetVersion) {
   const host = getPublicHost(sectionId);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "51820";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "51820");
   const clientPrivateKey =
     uci.get(UCI_PACKAGE, sectionId, "awg_client_private_key") || "";
   const serverPublicKey =
@@ -2052,7 +2103,9 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
   const protocol = getProtocol(sectionId);
   const security = getEffectiveSecurity(sectionId);
   const host = getPublicHost(sectionId);
-  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const name = getServerName(sectionId);
   const identity = getServerIdentity(sectionId);
 
@@ -2065,7 +2118,23 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       : linkContext.link || buildClientLink(sectionId);
 
   if (!currentLink && protocol !== "fptn") {
-    return E("em", {}, _("Client link is not available yet"));
+    return E(
+      "div",
+      {
+        class: "alert-message warning",
+        style: "margin: 1rem 0; text-align: left;",
+      },
+      [
+        E("strong", {}, _("Client link is not available yet")),
+        E(
+          "div",
+          { style: "margin-top: 0.5rem;" },
+          _(
+            "Server configuration is incomplete. Please edit the server settings and apply changes.",
+          ),
+        ),
+      ],
+    );
   }
 
   const qrUri = protocol === "fptn"
@@ -2412,10 +2481,11 @@ function showServerInfoModal(sectionId) {
         ),
       ]),
     ],
-    "cbi-modal fkp-server-info-dialog",
+    "fkp-server-info-dialog",
   );
 
-  buildClientLinkContext(sectionId)
+  prepareServerModal(sectionId)
+    .then(() => buildClientLinkContext(sectionId))
     .then((linkContext) => {
       modalContent.innerHTML = "";
       modalContent.appendChild(renderInfoClientLink(sectionId, linkContext));
@@ -2448,6 +2518,7 @@ function renderServerRowActions(sectionRef, sectionId) {
       E(
         "button",
         {
+          type: "button",
           title: infoLabel,
           "aria-label": infoLabel,
           class: "cbi-button center fkp-server-icon-button",
@@ -3400,16 +3471,54 @@ function autoConfigureServer(sectionId) {
 }
 
 function prepareServerModal(sectionId) {
-  if (shouldGenerateRealityKeypair(sectionId)) {
-    return generateRealityKeypairIfMissing(sectionId);
+  const protocol = getProtocol(sectionId);
+
+  if (
+    ["vless", "vmess", "tuic"].includes(protocol) &&
+    !uci.get(UCI_PACKAGE, sectionId, "server_uuid")
+  ) {
+    setDefault(sectionId, "server_uuid", generateUuid());
   }
-  if (getProtocol(sectionId) === "awg") {
-    return generateAwgKeypairsIfMissing(sectionId);
+
+  if (
+    PASSWORD_PROTOCOLS.includes(protocol) &&
+    !uci.get(UCI_PACKAGE, sectionId, "server_password")
+  ) {
+    setDefault(sectionId, "server_password", generatePassword());
+  }
+
+  if (
+    protocol === "vless" &&
+    getEffectiveSecurity(sectionId) === "reality" &&
+    !getFirstListValue(sectionId, "reality_short_id")
+  ) {
+    setDefault(sectionId, "reality_short_id", randomHex(4));
+  }
+
+  if (!uci.get(UCI_PACKAGE, sectionId, "listen_port")) {
+    setDefault(sectionId, "listen_port", getServerPort(sectionId));
+  }
+
+  const tasks = [];
+
+  if (shouldGenerateRealityKeypair(sectionId)) {
+    tasks.push(generateRealityKeypairIfMissing(sectionId));
+  }
+  if (protocol === "awg") {
+    tasks.push(generateAwgKeypairsIfMissing(sectionId));
   }
   if (getEffectiveSecurity(sectionId) === "tls") {
-    return generateTlsCertificateIfMissing(sectionId);
+    tasks.push(generateTlsCertificateIfMissing(sectionId));
   }
-  return Promise.resolve();
+  if (!defaultPublicHostCache && typeof loadDefaultPublicHost === "function") {
+    tasks.push(
+      loadDefaultPublicHost()
+        .then((host) => applyDefaultPublicHost(sectionId, host))
+        .catch(() => null),
+    );
+  }
+
+  return Promise.all(tasks).then(() => null);
 }
 
 function addStreamDepends(option) {

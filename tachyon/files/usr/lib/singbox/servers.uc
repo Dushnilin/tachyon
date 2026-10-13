@@ -692,17 +692,53 @@ function clone_rules_for_inbound(config, source_inbound, target_inbound, skip_do
             continue;
         if (rule.action != "route" && rule.action != "reject" && rule.action != "resolve")
             continue;
-        if (!value_contains(rule.inbound, source_inbound))
-            continue;
-        if (skip_domain != "" && value_contains(rule.domain, skip_domain))
-            continue;
-        if (rule.source_ip_cidr != null)
+        let matches = value_contains(rule.inbound, source_inbound);
+        if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
+            for (let child in rule.rules) {
+                if (type(child) == "object" && value_contains(child.inbound, source_inbound))
+                    matches = true;
+            }
+        }
+        if (!matches)
             continue;
 
-        let cloned = clone(rule);
+        let skips_domain = false;
+        if (skip_domain != "") {
+            if (value_contains(rule.domain, skip_domain))
+                skips_domain = true;
+            if (rule.type == "logical" && type(rule.rules) == "array") {
+                for (let child in rule.rules) {
+                    if (type(child) == "object" && value_contains(child.domain, skip_domain))
+                        skips_domain = true;
+                }
+            }
+        }
+        if (skips_domain)
+            continue;
+
+        if (rule.source_ip_cidr != null)
+            continue;
+        let has_positive_source_ip = false;
+        if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
+            for (let child in rule.rules) {
+                if (type(child) == "object" && child.source_ip_cidr != null && !child.invert)
+                    has_positive_source_ip = true;
+            }
+        }
+        if (has_positive_source_ip)
+            continue;
+
+        let cloned = json(sprintf("%J", rule));
         if (type(cloned) != "object")
             continue;
-        cloned.inbound = target_inbound;
+        if (value_contains(cloned.inbound, source_inbound))
+            cloned.inbound = target_inbound;
+        if (cloned.type == "logical" && cloned.mode == "and" && type(cloned.rules) == "array") {
+            for (let child in cloned.rules) {
+                if (type(child) == "object" && value_contains(child.inbound, source_inbound))
+                    child.inbound = target_inbound;
+            }
+        }
         push(cloned_rules, cloned);
     }
     for (let cloned_rule in cloned_rules)

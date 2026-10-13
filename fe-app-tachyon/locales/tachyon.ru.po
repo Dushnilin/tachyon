@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-13 07:19+0300\n"
-"PO-Revision-Date: 2026-10-13 07:19+0300\n"
+"POT-Creation-Date: 2026-10-13 18:58+0300\n"
+"PO-Revision-Date: 2026-10-13 18:58+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -4963,6 +4963,9 @@ msgstr "VPN IP-адрес и подсеть сервера (например, 10
 
 msgid "Server configuration generated"
 msgstr "Конфигурация сервера сгенерирована"
+
+msgid "Server configuration is incomplete. Please edit the server settings and apply changes."
+msgstr "Конфигурация сервера не завершена. Пожалуйста, проверьте настройки сервера и примените изменения."
 
 msgid "Server filtering"
 msgstr "Фильтрация серверов"

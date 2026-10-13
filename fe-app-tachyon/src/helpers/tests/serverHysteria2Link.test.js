@@ -59,7 +59,7 @@ describe('buildHysteria2Link', () => {
   const certificatePin =
     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
-  it('exports a single certificate pin alias and omits stale obfs password when obfs is disabled', () => {
+  it('exports insecure=1 and pinSHA256 for self-signed certificate and omits stale obfs password when obfs is disabled', () => {
     const buildHysteria2Link = loadBuildHysteria2Link({
       'server1.public_host': 'vpn.example.com',
       'server1.listen_port': '8443',
@@ -75,13 +75,14 @@ describe('buildHysteria2Link', () => {
     );
     const params = new URL(link).searchParams;
 
-    expect(params.get('pcs')).toBe(certificatePin);
-    expect(params.has('pinSHA256')).toBe(false);
+    expect(params.get('insecure')).toBe('1');
+    expect(params.get('pinSHA256')).toBe(certificatePin);
+    expect(params.has('pcs')).toBe(false);
     expect(params.has('obfs')).toBe(false);
     expect(params.has('obfs-password')).toBe(false);
   });
 
-  it('exports salamander obfuscation together with its password', () => {
+  it('exports salamander obfuscation together with its password and self-signed certificate parameters', () => {
     const buildHysteria2Link = loadBuildHysteria2Link({
       'server1.public_host': 'vpn.example.com',
       'server1.listen_port': '8443',
@@ -96,10 +97,28 @@ describe('buildHysteria2Link', () => {
     );
     const params = new URL(link).searchParams;
 
-    expect(params.get('pcs')).toBe(certificatePin);
-    expect(params.has('pinSHA256')).toBe(false);
+    expect(params.get('insecure')).toBe('1');
+    expect(params.get('pinSHA256')).toBe(certificatePin);
     expect(params.get('obfs')).toBe('salamander');
     expect(params.get('obfs-password')).toBe('secret');
+  });
+
+  it('omits insecure and pinSHA256 when certificate is trusted (no pin provided)', () => {
+    const buildHysteria2Link = loadBuildHysteria2Link({
+      'server1.public_host': 'vpn.example.com',
+      'server1.listen_port': '8443',
+      'server1.tls_server_name': 'sni.example.com',
+    });
+
+    const link = buildHysteria2Link(
+      'server1',
+      { password: 'password', name: 'Server 1' },
+      { tlsCertificateSha256: '' },
+    );
+    const params = new URL(link).searchParams;
+
+    expect(params.has('insecure')).toBe(false);
+    expect(params.has('pinSHA256')).toBe(false);
   });
 
   it('brackets IPv6 public host in exported URI', () => {
