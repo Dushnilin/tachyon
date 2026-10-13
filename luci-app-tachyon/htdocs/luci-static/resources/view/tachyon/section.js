@@ -4782,6 +4782,7 @@ function showAmneziaConfigSettingsModal(
     const input = E("input", {
       type: "file",
       accept: ".conf",
+      multiple: true,
       hidden: true,
       "data-tachyon-amnezia-upload": "1",
       style: "display:none!important",
@@ -4790,9 +4791,50 @@ function showAmneziaConfigSettingsModal(
     });
     input.addEventListener("cancel", () => input.remove());
     input.addEventListener("change", () => {
-      const file = input.files && input.files[0];
+      const files = Array.from(input.files || []);
       input.remove();
-      if (!file) return;
+      if (!files.length) return;
+      if (files.length > 1) {
+        // Several files at once: each becomes its own item straight away —
+        // a review modal per file would be noise. Content is validated per
+        // file; duplicates and anything else are caught on save.
+        for (const file of files) {
+          if (!/\.conf$/i.test(file.name) || file.size > 65536) {
+            ui.addNotification(
+              null,
+              E(
+                "p",
+                _("%s: select an Amnezia .conf file up to 64 KiB").format(
+                  file.name,
+                ),
+              ),
+            );
+            continue;
+          }
+          const reader = new FileReader();
+          reader.onerror = () =>
+            ui.addNotification(
+              null,
+              E("p", _("Cannot read the Amnezia .conf file")),
+            );
+          reader.onload = () => {
+            const config = `${reader.result || ""}`.replace(/^\uFEFF/, "");
+            const name = file.name.replace(/\.conf$/i, "");
+            const result = validateAmneziaConfig(name, config);
+            if (result !== true) {
+              ui.addNotification(
+                null,
+                E("p", "%s: %s".format(file.name, result)),
+              );
+              return;
+            }
+            addDynamicListItem(widget, JSON.stringify({ name, config }));
+          };
+          reader.readAsText(file);
+        }
+        return;
+      }
+      const file = files[0];
       if (!/\.conf$/i.test(file.name) || file.size > 65536) {
         ui.addNotification(
           null,
@@ -8382,6 +8424,7 @@ function createSectionContent(section) {
 
   section.tab("settings", _("Settings"));
   section.tab("conditions", _("Conditions"));
+  section.tab("awg_manual", _("Manual setup"));
 
   o = section.taboption("settings", form.Flag, "enabled", _("Enable"));
   o.default = "1";
@@ -10430,14 +10473,8 @@ function createSectionContent(section) {
     return E("div", { style: "display:contents" }, [fileInput, btn]);
   };
 
-  addAwgModeTitle(
-    "_awg_mode_manual",
-    _("Manual setup"),
-    _("Set the AmneziaWG keys, ports and header parameters by hand."),
-  );
-
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Value,
     "awg_local_address",
     _("Local Address"),
@@ -10449,7 +10486,7 @@ function createSectionContent(section) {
   o.validate = validateRequiredText;
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Value,
     "awg_private_key",
     _("Private Key"),
@@ -10460,7 +10497,7 @@ function createSectionContent(section) {
   o.validate = validateRequiredText;
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Value,
     "awg_peer_public_key",
     _("Peer Public Key"),
@@ -10471,7 +10508,7 @@ function createSectionContent(section) {
   o.validate = validateRequiredText;
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Value,
     "awg_server_address",
     _("Server Address"),
@@ -10482,7 +10519,7 @@ function createSectionContent(section) {
   o.validate = validateRequiredText;
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Value,
     "awg_server_port",
     _("Server Port"),
@@ -10494,7 +10531,7 @@ function createSectionContent(section) {
   o.validate = validateRequiredText;
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Value,
     "awg_preshared_key",
     _("Preshared Key"),
@@ -10503,7 +10540,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "awg");
 
-  o = section.taboption("settings", form.Value, "awg_mtu", _("MTU"));
+  o = section.taboption("awg_manual", form.Value, "awg_mtu", _("MTU"));
   o.datatype = "uinteger";
   o.placeholder = "1280";
   o.modalonly = true;
@@ -10511,7 +10548,7 @@ function createSectionContent(section) {
   o.depends("action", "awg");
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Value,
     "awg_keepalive",
     _("Persistent Keepalive"),
@@ -10529,7 +10566,7 @@ function createSectionContent(section) {
   o.depends("action", "awg");
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.ListValue,
     "awg_version",
     _("AmneziaWG Version"),
@@ -10569,7 +10606,7 @@ function createSectionContent(section) {
 
   // ── AmneziaWG obfuscation parameters (NATIVE LUCI CBI STYLE) ──────────────
   const addAwgParam = (name, title, desc, def) => {
-    let opt = section.taboption("settings", form.Value, name, title, desc);
+    let opt = section.taboption("awg_manual", form.Value, name, title, desc);
     opt.modalonly = true;
     opt.rmempty = false;
     opt.default = def;
@@ -10589,7 +10626,7 @@ function createSectionContent(section) {
   addAwgParam("awg_h3", _("Underload Packet Magic Header (H3)"), "", "3");
   addAwgParam("awg_h4", _("Underload Packet Magic Header (H4)"), "", "4");
   const addAwgPayloadParam = (name, title, desc, def) => {
-    let opt = section.taboption("settings", form.Value, name, title, desc);
+    let opt = section.taboption("awg_manual", form.Value, name, title, desc);
     opt.modalonly = true;
     opt.rmempty = false;
     opt.default = def;
@@ -10613,7 +10650,7 @@ function createSectionContent(section) {
 
   // ── AmneziaWG 3.0 & 3.1 Advanced Parameters ───────────────────────────────
   const addAwgV3Param = (name, title, desc) => {
-    let opt = section.taboption("settings", form.Value, name, title, desc);
+    let opt = section.taboption("awg_manual", form.Value, name, title, desc);
     opt.modalonly = true;
     opt.rmempty = true;
     opt.depends({ action: "awg", awg_version: "3.0" });
@@ -10622,7 +10659,7 @@ function createSectionContent(section) {
   };
 
   const addAwgV31Param = (name, title, desc) => {
-    let opt = section.taboption("settings", form.Value, name, title, desc);
+    let opt = section.taboption("awg_manual", form.Value, name, title, desc);
     opt.modalonly = true;
     opt.rmempty = true;
     opt.depends({ action: "awg", awg_version: "3.1" });
@@ -10666,7 +10703,7 @@ function createSectionContent(section) {
   );
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Flag,
     "awg_random_trailers",
     _("Random Trailers"),
@@ -10678,7 +10715,7 @@ function createSectionContent(section) {
   o.depends({ action: "awg", awg_version: "3.1" });
 
   o = section.taboption(
-    "settings",
+    "awg_manual",
     form.Flag,
     "awg_disable_cookies",
     _("Disable Cookies"),
@@ -11515,13 +11552,26 @@ function createSectionContent(section) {
       },
     );
   };
-  o.validate = function (_section_id, value) {
+  o.validate = function (section_id, value) {
     if (!value || value.length === 0) {
       return true;
     }
 
     const validation = main.validateProxyUrl(value);
-    return validation.valid ? true : validation.message;
+    if (!validation.valid) {
+      return validation.message;
+    }
+
+    // An FPTN section dials with an fptn: / fptnb: access token and nothing
+    // else — the generator silently ignores any other link pasted here.
+    if (
+      uci.get(UCI_PACKAGE, section_id, "action") === "fptn" &&
+      !/^fptnb?:/.test(value)
+    ) {
+      return _("FPTN section accepts only fptn:// or fptnb:// links");
+    }
+
+    return true;
   };
   o.onchange = function (_event, section_id) {
     refreshDashboardFilterChoiceWidgets(section_id);
@@ -11597,7 +11647,6 @@ function createSectionContent(section) {
     _("Paste proxy links one per line; they are added to the connection list"),
   );
   o.depends("action", "connection");
-  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.rows = 5;
@@ -11612,7 +11661,6 @@ function createSectionContent(section) {
     ),
   );
   o.depends("action", "connection");
-  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.rows = 5;
@@ -11625,7 +11673,6 @@ function createSectionContent(section) {
     _("Enter the subscription URL"),
   );
   o.depends("action", "connection");
-  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.childType = "subscription_url";
@@ -11710,7 +11757,6 @@ function createSectionContent(section) {
     ),
   );
   o.depends("action", "connection");
-  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.placeholder = _("Add include keyword");
@@ -11725,7 +11771,6 @@ function createSectionContent(section) {
     ),
   );
   o.depends("action", "connection");
-  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.placeholder = _("Add exclude keyword");
@@ -11738,7 +11783,6 @@ function createSectionContent(section) {
     _("Select network interface for VPN connection"),
   );
   o.depends("action", "connection");
-  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.placeholder = _("Select a network interface");
@@ -11780,7 +11824,6 @@ function createSectionContent(section) {
     _("Custom outbound configurations in JSON format"),
   );
   o.depends("action", "connection");
-  o.depends("action", "fptn");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add JSON outbound");

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-13 00:06+0300\n"
-"PO-Revision-Date: 2026-10-13 00:06+0300\n"
+"POT-Creation-Date: 2026-10-13 01:15+0300\n"
+"PO-Revision-Date: 2026-10-13 01:15+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -16,6 +16,9 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "%s: select an Amnezia .conf file up to 64 KiB"
+msgstr ""
 
 msgid "(provider default)"
 msgstr "(по умолчанию провайдера)"
@@ -1999,6 +2002,9 @@ msgstr "Предпочитаемый сервер FPTN"
 
 msgid "FPTN SNI"
 msgstr "SNI для FPTN"
+
+msgid "FPTN section accepts only fptn:// or fptnb:// links"
+msgstr ""
 
 msgid "Failed queries count as 5000 ms in statistics. All times are measured from the router."
 msgstr "Неудачные запросы учитываются как 5000 мс. Все замеры выполнены с роутера."
@@ -5045,9 +5051,6 @@ msgstr "Информация о сервисах"
 msgid "Services restarted. Click to reload page."
 msgstr "Службы перезапущены. Нажмите для перезагрузки страницы."
 
-msgid "Set the AmneziaWG keys, ports and header parameters by hand."
-msgstr "Задайте ключи, порты и параметры заголовков AmneziaWG вручную."
-
 msgid "Settings"
 msgstr "Настройки"
 
@@ -6799,6 +6802,9 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Set the AmneziaWG keys, ports and header parameters by hand."
+msgstr "Задайте ключи, порты и параметры заголовков AmneziaWG вручную."
 
 msgid "Mieru (не реализован)"
 msgstr "Mieru (не реализован)"
