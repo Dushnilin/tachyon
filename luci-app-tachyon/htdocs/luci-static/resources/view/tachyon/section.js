@@ -8424,6 +8424,7 @@ function createSectionContent(section) {
 
   section.tab("settings", _("Settings"));
   section.tab("conditions", _("Conditions"));
+  section.tab("servers", _("Servers"));
   section.tab("awg_manual", _("Manual setup"));
 
   o = section.taboption("settings", form.Flag, "enabled", _("Enable"));
@@ -9894,7 +9895,7 @@ function createSectionContent(section) {
   // the long option list readable. LuCI renders the label on the left and this
   // markup on the right.
   function addAwgModeTitle(key, title, description) {
-    const o = section.taboption("settings", form.DummyValue, key, title);
+    const o = section.taboption("servers", form.DummyValue, key, title);
     o.modalonly = true;
     o.rawhtml = true;
     o.depends("action", "awg");
@@ -9913,7 +9914,7 @@ function createSectionContent(section) {
   );
 
   o = section.taboption(
-    "settings",
+    "servers",
     form.Button,
     "_generate_warp",
     _("AmneziaWG Generator"),
@@ -10142,7 +10143,7 @@ function createSectionContent(section) {
 
   // ── Load .conf button ──────────────────────────────────────────────────────
   o = section.taboption(
-    "settings",
+    "servers",
     form.Button,
     "_load_awg_conf",
     _("Load .conf config"),
@@ -11587,7 +11588,7 @@ function createSectionContent(section) {
   );
 
   o = section.taboption(
-    "settings",
+    "servers",
     ButtonAddSettingsDynamicList,
     "selector_amnezia_configs",
     _("Amnezia configurations"),
