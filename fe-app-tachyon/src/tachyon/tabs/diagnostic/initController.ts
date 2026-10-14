@@ -41,6 +41,7 @@ import {
   renderAiChatModal,
   renderStrategyFuzzerModal,
   renderLeakCheckModal,
+  renderRouteExplainModal,
   renderStabilityModal,
   renderAiDoctorModal,
   saveAiDoctorHistory,
@@ -1335,6 +1336,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: false,
       disabled: false,
       onClick: handleOpenLeakCheck,
+    },
+    routeExplain: {
+      visible: true,
+      loading: false,
+      disabled: false,
+      onClick: () => renderRouteExplainModal(),
     },
     stabilityReport: {
       visible: true,

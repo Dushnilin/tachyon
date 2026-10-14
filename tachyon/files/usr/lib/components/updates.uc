@@ -1519,6 +1519,10 @@ function cache_component_update_check_result(value, notify_update) {
         cached.current_build = as_string(value.current_build);
     if (as_string(value.latest_build) != "")
         cached.latest_build = as_string(value.latest_build);
+    if (as_string(value.release_notes) != "")
+        cached.release_notes = as_string(value.release_notes);
+    else if (as_string(previous.release_notes) != "" && as_string(previous.latest_version) == cached.latest_version)
+        cached.release_notes = as_string(previous.release_notes);
     if (!write_state_file(path, cached))
         return false;
 
@@ -1577,6 +1581,7 @@ function update_component_check_cache_from_action(value) {
             current_version: current_ver,
             latest_version,
             release_url: as_string(value.release_url),
+            release_notes: as_string(value.release_notes),
             status: "latest",
             current_sha: as_string(value.current_sha),
             latest_sha: as_string(value.latest_sha),
@@ -2580,15 +2585,22 @@ function import_community_srs_file(service, settings) {
     for (let candidate in candidates) {
         if (download_to_file(candidate, tmpfile, service_proxy_address(settings, "lists")) &&
             file_nonempty(tmpfile) &&
-            singbox_rulesets_module().is_usable_srs_file(tmpfile) &&
             helpers.file_is_usable(tmpfile, 100)) {
-            ensure_dir(TMP_RULESET_FOLDER);
-            copy_file(tmpfile, cached_file);
-            ensure_dir("/etc/tachyon/rulesets");
-            copy_file(tmpfile, persistent_file);
-            log_message("Successfully cached preset ruleset " + service + (candidate != url ? " via mirror " + candidate : ""), "info");
-            downloaded = true;
-            break;
+            let raw = fs.readfile(tmpfile);
+            let unchanged_verified = raw != null &&
+                common.content_unchanged(cached_file, raw) &&
+                singbox_rulesets_module().srs_file_already_verified(cached_file);
+            if (unchanged_verified || singbox_rulesets_module().is_usable_srs_file(tmpfile)) {
+                ensure_dir(TMP_RULESET_FOLDER);
+                copy_file(tmpfile, cached_file);
+                singbox_rulesets_module().remember_srs_file_verified(cached_file);
+                ensure_dir("/etc/tachyon/rulesets");
+                copy_file(tmpfile, persistent_file);
+                singbox_rulesets_module().remember_srs_file_verified(persistent_file);
+                log_message("Successfully cached preset ruleset " + service + (candidate != url ? " via mirror " + candidate : ""), "info");
+                downloaded = true;
+                break;
+            }
         }
         remove_file(tmpfile);
     }
@@ -2597,9 +2609,10 @@ function import_community_srs_file(service, settings) {
     if (downloaded) {
         // Cached successfully
     }
-    else if (singbox_rulesets_module().is_usable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 100)) {
+    else if (singbox_rulesets_module().is_adoptable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 100)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_file, cached_file);
+        singbox_rulesets_module().remember_srs_file_verified(cached_file);
         log_message("Using persistent cached ruleset for " + service + " after download failure", "warn");
     }
     else {

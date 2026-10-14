@@ -548,6 +548,20 @@ function buildManualLinkByCode(section: Tachyon.ConfigSection) {
   );
 }
 
+function findManualLink(
+  manualLinkByCode: Map<string, string>,
+  code: string,
+): string {
+  const direct = manualLinkByCode.get(code);
+  if (direct) return direct;
+  for (const [tag, link] of manualLinkByCode.entries()) {
+    if (code === tag || code.startsWith(`${tag}/`)) {
+      return link;
+    }
+  }
+  return '';
+}
+
 function getProxyEntryByCode(proxies: ClashProxyEntry[]) {
   return new Map(proxies.map((proxy) => [proxy.code, proxy]));
 }
@@ -1011,11 +1025,21 @@ function resolveOutboundNameAndPrefix({
   preferMetadata?: boolean;
   configuredPrefixes?: string[];
 }): { displayName: string; prefix?: string } {
+  const isFptn =
+    link.startsWith('fptn:') ||
+    link.startsWith('fptnb:') ||
+    link.startsWith('fptn://') ||
+    link.startsWith('fptnb://');
   const metadataName = outboundMetadata?.names?.[code];
+  const proxyUrlName = isFptn ? '' : getProxyUrlName(link);
+  const fallbackServerName = code.includes('/')
+    ? code.split('/').pop()
+    : undefined;
   const rawName =
-    (preferMetadata ? metadataName : getProxyUrlName(link)) ||
-    (preferMetadata ? getProxyUrlName(link) : metadataName) ||
+    (preferMetadata ? metadataName : proxyUrlName) ||
+    (preferMetadata ? proxyUrlName : metadataName) ||
     entry?.value?.name ||
+    fallbackServerName ||
     code;
 
   let prefix = outboundMetadata?.prefixes?.[code]?.trim() || '';
@@ -1119,7 +1143,7 @@ function buildUrlTestInfo({
     childCodes.flatMap((childCode) => {
       const childEntry = proxyByCode.get(childCode);
       const link =
-        manualLinkByCode.get(childCode) ||
+        findManualLink(manualLinkByCode, childCode) ||
         cachedProxyLinks.get(childCode) ||
         '';
       const canCopyLink = isCopyableProxyLink(link);
@@ -1262,7 +1286,7 @@ function buildPriorityInfo({
     const members = uniqueCodes(level.outbounds || []).map((childCode) => {
       const childEntry = proxyByCode.get(childCode);
       const link =
-        manualLinkByCode.get(childCode) ||
+        findManualLink(manualLinkByCode, childCode) ||
         cachedProxyLinks.get(childCode) ||
         '';
       const canCopyLink = isCopyableProxyLink(link);
@@ -1414,7 +1438,10 @@ function buildProxyGroupOutbounds(
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
     const priorityConfig = priorityConfigByCode.get(code);
-    const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || '';
+    const link =
+      findManualLink(manualLinkByCode, code) ||
+      cachedProxyLinks.get(code) ||
+      '';
 
     if (!item && !urlTestConfig && !priorityConfig && !link) {
       return [];

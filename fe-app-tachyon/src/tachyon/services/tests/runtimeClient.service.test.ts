@@ -257,7 +257,14 @@ describe('RuntimeClient', () => {
       );
       expect(mocks.executeShellCommand).toHaveBeenCalledWith({
         command: '/usr/bin/tachyon',
-        args: ['route_explain', '192.168.1.100', 'github.com', '443', 'tcp'],
+        args: [
+          'route_explain',
+          '192.168.1.100',
+          'github.com',
+          '443',
+          'tcp',
+          '--json',
+        ],
         timeout: 10000,
       });
       expect(res).toEqual(mockExplain);

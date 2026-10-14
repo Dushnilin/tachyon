@@ -81,4 +81,25 @@ if [ -f /tmp/sing-box/cache.db ] || [ -f /tmp/sing-box/cache.db.lock ] || [ -f /
   fail "clear-sing-box-cache failed to remove /tmp/sing-box/cache.db*"
 fi
 
+# 4. Test rollback-safe backup and restore of cache.db across variant switch failure
+printf 'prev-variant-fakeip-records' > /tmp/sing-box/cache.db
+ucode "$ACTION_UC" backup-sing-box-cache
+[ ! -f /tmp/sing-box/cache.db ] || fail "backup-sing-box-cache should move cache.db to .rollback-bak"
+[ -f /tmp/sing-box/cache.db.rollback-bak ] || fail "backup-sing-box-cache did not create .rollback-bak"
+
+# Simulate failed new variant creating an incompatible cache.db before rollback
+printf 'corrupt-new-variant-db' > /tmp/sing-box/cache.db
+touch /tmp/sing-box/cache.db-lock
+ucode "$ACTION_UC" restore-sing-box-cache-backup
+[ -f /tmp/sing-box/cache.db ] || fail "restore-sing-box-cache-backup did not restore cache.db"
+[ ! -f /tmp/sing-box/cache.db.rollback-bak ] || fail "restore-sing-box-cache-backup left .rollback-bak behind"
+[ ! -f /tmp/sing-box/cache.db-lock ] || fail "restore-sing-box-cache-backup did not clean lock file"
+[ "$(cat /tmp/sing-box/cache.db)" = "prev-variant-fakeip-records" ] ||
+  fail "restore-sing-box-cache-backup did not preserve original cache.db contents"
+
+# Simulate successful switch cleanup
+ucode "$ACTION_UC" backup-sing-box-cache
+ucode "$ACTION_UC" cleanup-sing-box-cache-backup
+[ ! -f /tmp/sing-box/cache.db.rollback-bak ] || fail "cleanup-sing-box-cache-backup did not remove .rollback-bak"
+
 printf 'PASS: sing_box_cache_cleanup\n'

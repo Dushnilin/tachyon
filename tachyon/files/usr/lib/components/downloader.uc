@@ -207,6 +207,72 @@ function github_rate_limit_reset_hint(body) {
     return wait > 0 ? sprintf(" (resets in %ds)", wait) : " (window already reset)";
 }
 
+let release_notes_by_key = {};
+let last_release_notes = "";
+
+function normalize_release_notes(raw_body) {
+    let notes = trim(replace(as_string(raw_body || ""), /\r/g, ""));
+    if (length(notes) > 3500)
+        notes = substr(notes, 0, 3500) + "\n...";
+    return notes;
+}
+
+function remember_release_json(raw_json) {
+    if (as_string(raw_json) == "")
+        return;
+    try {
+        let parsed = json(raw_json);
+        if (type(parsed) == "object") {
+            let notes = normalize_release_notes(parsed.body);
+            if (notes != "") {
+                last_release_notes = notes;
+                let html_url = trim(as_string(parsed.html_url || ""));
+                let tag = trim(as_string(parsed.tag_name || ""));
+                if (html_url != "")
+                    release_notes_by_key[html_url] = notes;
+                if (tag != "") {
+                    release_notes_by_key[tag] = notes;
+                    if (substr(tag, 0, 1) == "v")
+                        release_notes_by_key[substr(tag, 1)] = notes;
+                    else
+                        release_notes_by_key["v" + tag] = notes;
+                }
+            }
+        } else if (type(parsed) == "array") {
+            for (let r in parsed) {
+                if (type(r) != "object")
+                    continue;
+                let notes = normalize_release_notes(r.body);
+                if (notes == "")
+                    continue;
+                if (last_release_notes == "")
+                    last_release_notes = notes;
+                let html_url = trim(as_string(r.html_url || ""));
+                let tag = trim(as_string(r.tag_name || ""));
+                if (html_url != "" && !release_notes_by_key[html_url])
+                    release_notes_by_key[html_url] = notes;
+                if (tag != "" && !release_notes_by_key[tag]) {
+                    release_notes_by_key[tag] = notes;
+                    if (substr(tag, 0, 1) == "v")
+                        release_notes_by_key[substr(tag, 1)] = notes;
+                    else
+                        release_notes_by_key["v" + tag] = notes;
+                }
+            }
+        }
+    } catch (e) {}
+}
+
+function get_release_notes(release_url, tag) {
+    release_url = trim(as_string(release_url || ""));
+    tag = trim(as_string(tag || ""));
+    if (release_url != "" && release_notes_by_key[release_url])
+        return release_notes_by_key[release_url];
+    if (tag != "" && release_notes_by_key[tag])
+        return release_notes_by_key[tag];
+    return last_release_notes;
+}
+
 function fetch_github_json(url, timeout) {
     let url_mod = core_url_module_or_null();
     let candidates = url_mod && type(url_mod.download_candidates) == "function"
@@ -219,6 +285,7 @@ function fetch_github_json(url, timeout) {
         if (proxy_resp.status == "200" && proxy_resp.body != "" &&
             helpers.helper_success_input(proxy_resp.body, "github-response-ok", [])) {
             helpers.updates_log("Fetched GitHub JSON via proxy section: " + url);
+            remember_release_json(proxy_resp.body);
             return proxy_resp.body;
         }
     }
@@ -250,6 +317,7 @@ function fetch_github_json(url, timeout) {
         if (response != "" && helpers.helper_success_input(response, "github-response-ok", [])) {
             if (i > 0)
                 helpers.updates_log("Fetched GitHub JSON via mirror: " + candidate);
+            remember_release_json(response);
             return response;
         }
     }
@@ -373,6 +441,7 @@ function module_exports() {
         fetch_github_tag_commit_sha,
         fetch_github_releases_json,
         fetch_github_release_tag_fallback,
+        get_release_notes,
         url_exists
     };
 }

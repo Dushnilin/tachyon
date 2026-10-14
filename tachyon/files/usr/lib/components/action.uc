@@ -181,6 +181,11 @@ function updates_response(success, component, action, message, current_version, 
         status: as_string(status),
         release_url: as_string(release_url)
     };
+    let notes = (cmp_dl && type(cmp_dl.get_release_notes) == "function")
+        ? as_string(cmp_dl.get_release_notes(release_url, latest_version) || "")
+        : "";
+    if (notes != "")
+        obj.release_notes = notes;
     // Merge optional extra fields (e.g. current_sha, latest_sha) without breaking existing callers
     if (type(extra) == "object") {
         for (let k, v in extra)
@@ -587,7 +592,10 @@ function clear_sing_box_cache_files(reason) {
                 let matches = fs.glob(dir + "/cache.db*");
                 if (matches) {
                     for (let item in matches) {
-                        remove_file(item);
+                        let s = as_string(item);
+                        if (length(s) >= 13 && substr(s, length(s) - 13) == ".rollback-bak")
+                            continue;
+                        remove_file(s);
                         cleared++;
                     }
                 }
@@ -598,8 +606,59 @@ function clear_sing_box_cache_files(reason) {
     return cleared;
 }
 
+function backup_sing_box_cache_files() {
+    let backed_up = 0;
+    for (let p in get_sing_box_cache_paths()) {
+        if (file_exists(p)) {
+            remove_file(p + ".rollback-bak");
+            if (fs.rename(p, p + ".rollback-bak"))
+                backed_up++;
+        }
+    }
+    return backed_up;
+}
+
+function restore_sing_box_cache_backup() {
+    let paths = get_sing_box_cache_paths();
+    let has_backup = false;
+    for (let p in paths) {
+        if (file_exists(p + ".rollback-bak")) {
+            has_backup = true;
+            break;
+        }
+    }
+    if (!has_backup)
+        return 0;
+
+    clear_sing_box_cache_files("rollback cleanup");
+    let restored = 0;
+    for (let p in paths) {
+        if (file_exists(p + ".rollback-bak")) {
+            remove_file(p);
+            if (fs.rename(p + ".rollback-bak", p))
+                restored++;
+        }
+    }
+    if (restored > 0)
+        updates_log("Restored previous sing-box cache database after variant rollback", "info");
+    return restored;
+}
+
+function cleanup_sing_box_cache_backup() {
+    let cleaned = 0;
+    for (let p in get_sing_box_cache_paths()) {
+        if (file_exists(p + ".rollback-bak")) {
+            remove_file(p + ".rollback-bak");
+            cleaned++;
+        }
+    }
+    return cleaned;
+}
+
 function clear_sing_box_cache_if_needed(prev_var, next_var) {
     if (should_clear_sing_box_cache_on_change(prev_var, next_var)) {
+        if (prev_var != "" && prev_var != "not-installed")
+            backup_sing_box_cache_files();
         let prev_fam = sing_box_family_of_variant(prev_var);
         let next_fam = sing_box_family_of_variant(next_var);
         let reason = "core variant changed from " + (prev_var != "" ? prev_var : "none") + " to " + (next_var != "" ? next_var : "none");
@@ -610,8 +669,10 @@ function clear_sing_box_cache_if_needed(prev_var, next_var) {
 }
 
 function wait_tachyon_running_after_sing_box_change() {
-    if (!tachyon_was_running)
+    if (!tachyon_was_running) {
+        cleanup_sing_box_cache_backup();
         return true;
+    }
     if (!file_exists(BIN_PATH))
         return false;
 
@@ -619,8 +680,10 @@ function wait_tachyon_running_after_sing_box_change() {
     while (waited < 120) {
         if (tachyon_status_running_with_timeout()) {
             command_success_from_args([ "sleep", "8" ]);
-            if (tachyon_status_running_with_timeout())
+            if (tachyon_status_running_with_timeout()) {
+                cleanup_sing_box_cache_backup();
                 return true;
+            }
         }
         command_success_from_args([ "sleep", "4" ]);
         waited += 4;
@@ -1753,6 +1816,7 @@ function restore_sing_box_after_failed_extended_install(previous_variant, backup
     if (!restore_sing_box_install_backup(previous_variant, backup_binary))
         restore_status = false;
     restore_sing_box_variant_state(previous_marker, previous_version_state);
+    restore_sing_box_cache_backup();
     restore_sing_box_service_from_marker(previous_marker);
     clear_version_caches();
     return restore_status;
@@ -1769,6 +1833,7 @@ function restore_sing_box_after_failed_extended_package_install(previous_variant
             command_success_from_args([ "chmod", "0644", "/usr/lib/libcronet.so" ]);
     }
     restore_sing_box_variant_state(previous_marker, previous_version_state);
+    restore_sing_box_cache_backup();
     restore_sing_box_service_from_marker(previous_marker);
     clear_version_caches();
     return restore_status;
@@ -1784,6 +1849,7 @@ function restore_sing_box_after_failed_package_install(target_package, previous_
             restore_status = false;
     }
     restore_sing_box_variant_state(previous_marker, previous_version_state);
+    restore_sing_box_cache_backup();
     if (!restore_sing_box_service_from_marker(previous_marker))
         restore_status = false;
     if (restore_status) {
@@ -3206,8 +3272,8 @@ function list_component_releases(component, count, page) {
     if (page < 1) page = 1;
 
     let cache_file = (page == 1)
-        ? ("/tmp/tachyon-releases-" + component + ".json")
-        : ("/tmp/tachyon-releases-" + component + "-p" + page + ".json");
+        ? ("/tmp/tachyon-releases-v2-" + component + ".json")
+        : ("/tmp/tachyon-releases-v2-" + component + "-p" + page + ".json");
     let cached_stat = fs.stat(cache_file);
     if (cached_stat != null && (time() - cached_stat.mtime) < 600) {
         let cached_data = read_file(cache_file);
@@ -3267,9 +3333,12 @@ function list_component_releases(component, count, page) {
                 let name = trim(as_string(r.name || tag));
                 let published = trim(as_string(r.published_at || r.created_at || ""));
                 let html_url = trim(as_string(r.html_url || ""));
+                let body = trim(replace(as_string(r.body || ""), /\r/g, ""));
+                if (length(body) > 3500)
+                    body = substr(body, 0, 3500) + "\n...";
                 if (tag == "") continue;
                 let prerelease = !!r.prerelease;
-                push(releases, { tag, name, published, prerelease, release_url: html_url });
+                push(releases, { tag, name, published, prerelease, release_url: html_url, body });
             }
         }
     } catch (e) {}
@@ -3576,6 +3645,12 @@ else if (mode == "pkg-install-files-command")
     print(pkg_install_files_command(slice(ARGV, 2), ARGV[1] == "1"), "\n");
 else if (mode == "clear-sing-box-cache")
     exit(clear_sing_box_cache_files(ARGV[1] || "manual") >= 0 ? 0 : 1);
+else if (mode == "backup-sing-box-cache")
+    exit(backup_sing_box_cache_files() >= 0 ? 0 : 1);
+else if (mode == "restore-sing-box-cache-backup")
+    exit(restore_sing_box_cache_backup() >= 0 ? 0 : 1);
+else if (mode == "cleanup-sing-box-cache-backup")
+    exit(cleanup_sing_box_cache_backup() >= 0 ? 0 : 1);
 else if (mode == "should-clear-sing-box-cache")
     exit(should_clear_sing_box_cache_on_change(ARGV[1], ARGV[2]) ? 0 : 1);
 else {

@@ -1446,7 +1446,7 @@ function heal_community_subnet_sets(ev) {
     ai_heal_subnet_cache();
     let rec_res = execute_reconciler_subsystem("nftables", false);
     if (rec_res == null || !rec_res.ok)
-        bg_system("/usr/bin/tachyon reload_firewall");
+        log_message("Community subnet repopulation could not complete — preserving existing firewall rules", "warn");
 
     // Re-read the sets and say what actually happened.
     //

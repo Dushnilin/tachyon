@@ -74,6 +74,7 @@ function view_settings_menu(token, chat_id, msg_id) {
     let keyboard = [
         [{ text: t("menu_global"), callback_data: "/set_cat settings settings" }],
         [{ text: t("menu_telegram"), callback_data: "/set_cat telegram telegram" }],
+        [{ text: t("menu_router_name"), callback_data: "/name" }],
         [{ text: t("menu_subscriptions"), callback_data: "/set_list subscription_url" }],
         [{ text: t("menu_servers_short"), callback_data: "/set_list server" }],
         [{ text: t("menu_dns_presets"), callback_data: "/dns_presets" }],
@@ -719,10 +720,22 @@ function exec_check_updates(token, chat_id, msg_id) {
                         let transition = build_transition(comp);
                         text += "• <b>" + title + "</b>: <code>" + cur + "</code> — " + t("update_new_release_build") +
                             (transition != "" ? " " + transition : "") + " ⚠️\n";
+                        let notes = trim(replace(as_string(comp.release_notes || ""), /\r/g, ""));
+                        if (notes != "") {
+                            if (length(notes) > 400)
+                                notes = substr(notes, 0, 400) + "...";
+                            text += "  📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>\n";
+                        }
                         push(keyboard, [{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]);
                         has_updates = true;
                     } else if (comp.status == "outdated") {
                         text += "• <b>" + title + "</b>: <code>" + cur + "</code> ➡️ <code>" + lat + "</code> ⚠️\n";
+                        let notes = trim(replace(as_string(comp.release_notes || ""), /\r/g, ""));
+                        if (notes != "") {
+                            if (length(notes) > 400)
+                                notes = substr(notes, 0, 400) + "...";
+                            text += "  📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>\n";
+                        }
                         push(keyboard, [{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]);
                         has_updates = true;
                     } else if (comp.status == "dev") {
@@ -1086,10 +1099,30 @@ function view_help(token, chat_id, msg_id) {
         "/check_updates — Проверить обновления\n\n" +
         "<b>" + t("help_settings_section") + "</b>\n" +
         "/settings — Все настройки\n" +
+        "/name — " + t("cmd_name") + "\n" +
         "/dns_presets — DNS пресеты\n" +
         "/help — " + t("help_this");
 
     let keyboard = [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]];
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_router_name(token, chat_id, msg_id) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let cur = trim(as_string(option(c.get_all(CONFIG_NAME, "telegram"), "router_name", "")));
+    let cur_display = (cur != "") ? ("<code>" + escape_html(cur) + "</code>") : ("<i>" + t("router_name_not_set") + "</i>");
+    let text = "🖥 <b>" + t("router_name_title") + "</b>\n\n" +
+        t("router_name_current", cur_display) + "\n\n" +
+        "<i>" + t("router_name_hint") + "</i>";
+    let keyboard = [
+        [{ text: t("btn_router_name_change"), callback_data: "/name_prompt" }]
+    ];
+    if (cur != "") {
+        push(keyboard, [{ text: t("btn_router_name_clear"), callback_data: "/name_clear" }]);
+    }
+    push(keyboard, [{ text: t("nav_back"), callback_data: "/settings" }]);
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -1431,6 +1464,7 @@ return {
     view_connections,
     view_sec_subs,
     view_help,
+    view_router_name,
     view_language,
     view_guest_mode,
     view_quiet_hours,

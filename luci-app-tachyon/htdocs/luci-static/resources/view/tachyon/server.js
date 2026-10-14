@@ -908,8 +908,13 @@ function chooseDefaultPublicHost(networkInterfaces) {
   const wanInterface =
     upInterfaces.find((networkInterface) => {
       const name = `${networkInterface.interface || ""}`.toLowerCase();
-      const device = `${networkInterface.device || networkInterface.l3_device || ""}`.toLowerCase();
-      return name.startsWith("wan") || name.startsWith("wwan") || device.startsWith("wan");
+      const device =
+        `${networkInterface.device || networkInterface.l3_device || ""}`.toLowerCase();
+      return (
+        name.startsWith("wan") ||
+        name.startsWith("wwan") ||
+        device.startsWith("wan")
+      );
     }) || {};
   const wanIp = getInterfaceIpAddresses(wanInterface).find(
     (ip) => ip !== "::1" && !ip.startsWith("127."),
@@ -969,10 +974,9 @@ function loadDefaultPublicHost() {
 }
 
 function preloadServerModalData() {
-  return Promise.all([
-    fetchRouterNetworkEnv(),
-    loadDefaultPublicHost(),
-  ]).catch(() => null);
+  return Promise.all([fetchRouterNetworkEnv(), loadDefaultPublicHost()]).catch(
+    () => null,
+  );
 }
 
 function applyDefaultPublicHost(sectionId, host) {
@@ -1901,8 +1905,10 @@ function buildAwgClientConfig(sectionId, targetVersion) {
     if (effectiveVer === "3.1") {
       const rka = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_after_time") || "";
       const rkt = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_timeout") || "";
-      const rja = uci.get(UCI_PACKAGE, sectionId, "awg_reject_after_time") || "";
-      const kpt = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive_timeout") || "";
+      const rja =
+        uci.get(UCI_PACKAGE, sectionId, "awg_reject_after_time") || "";
+      const kpt =
+        uci.get(UCI_PACKAGE, sectionId, "awg_keepalive_timeout") || "";
       const mha =
         uci.get(UCI_PACKAGE, sectionId, "awg_max_handshake_attempts") || "";
       if (rka) conf += `RekeyAfterTime = ${rka}\n`;
@@ -2137,9 +2143,10 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     );
   }
 
-  const qrUri = protocol === "fptn"
-    ? qrSvgDataUri(buildFptnLink(sectionId, identity))
-    : qrSvgDataUri(currentLink || "");
+  const qrUri =
+    protocol === "fptn"
+      ? qrSvgDataUri(buildFptnLink(sectionId, identity))
+      : qrSvgDataUri(currentLink || "");
 
   const securitySuffix =
     security && security !== "none" ? ` + ${getSecurityLabel(security)}` : "";
@@ -2214,43 +2221,74 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     );
   }
 
-  const qrCol = E("div", { class: "fkp-server-info-modal__qr-col" }, qrColChildren);
+  const qrCol = E(
+    "div",
+    { class: "fkp-server-info-modal__qr-col" },
+    qrColChildren,
+  );
 
-  const detailsGrid = E("div", { class: "fkp-server-info-modal__details-grid" }, [
-    E("div", { class: "fkp-server-info-modal__detail-item" }, [
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Server name")),
-      E(
-        "span",
-        { class: "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--title" },
-        name,
-      ),
-    ]),
-    E("div", { class: "fkp-server-info-modal__detail-item" }, [
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Type")),
-      E(
-        "span",
-        { class: "fkp-server-info-modal__detail-value fkp-server-info-modal__badge" },
-        protocolText,
-      ),
-    ]),
-    E("div", { class: "fkp-server-info-modal__detail-item" }, [
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Address")),
-      E(
-        "span",
-        { class: "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--mono" },
-        `${host}:${port}`,
-      ),
-    ]),
-  ]);
+  const detailsGrid = E(
+    "div",
+    { class: "fkp-server-info-modal__details-grid" },
+    [
+      E("div", { class: "fkp-server-info-modal__detail-item" }, [
+        E(
+          "span",
+          { class: "fkp-server-info-modal__detail-label" },
+          _("Server name"),
+        ),
+        E(
+          "span",
+          {
+            class:
+              "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--title",
+          },
+          name,
+        ),
+      ]),
+      E("div", { class: "fkp-server-info-modal__detail-item" }, [
+        E("span", { class: "fkp-server-info-modal__detail-label" }, _("Type")),
+        E(
+          "span",
+          {
+            class:
+              "fkp-server-info-modal__detail-value fkp-server-info-modal__badge",
+          },
+          protocolText,
+        ),
+      ]),
+      E("div", { class: "fkp-server-info-modal__detail-item" }, [
+        E(
+          "span",
+          { class: "fkp-server-info-modal__detail-label" },
+          _("Address"),
+        ),
+        E(
+          "span",
+          {
+            class:
+              "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--mono",
+          },
+          `${host}:${port}`,
+        ),
+      ]),
+    ],
+  );
 
-  const linkSection = E("div", { class: "fkp-server-info-modal__link-section" });
+  const linkSection = E("div", {
+    class: "fkp-server-info-modal__link-section",
+  });
 
   if (protocol === "fptn") {
     const fptnToken = buildFptnToken(sectionId, identity);
     const fptnLink = buildFptnLink(sectionId, identity);
 
     linkSection.appendChild(
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Access Token (FPTN)")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-label" },
+        _("Access Token (FPTN)"),
+      ),
     );
     const tokenTextarea = E(
       "textarea",
@@ -2264,24 +2302,33 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     );
     linkSection.appendChild(tokenTextarea);
 
-    const tokenBtnRow = E("div", { style: "display:flex;gap:6px;margin-bottom:12px;margin-top:4px;" }, [
-      E(
-        "button",
-        {
-          class: "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
-          type: "button",
-          click: (ev) => {
-            ev.preventDefault();
-            copyText(fptnToken);
+    const tokenBtnRow = E(
+      "div",
+      { style: "display:flex;gap:6px;margin-bottom:12px;margin-top:4px;" },
+      [
+        E(
+          "button",
+          {
+            class:
+              "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
+            type: "button",
+            click: (ev) => {
+              ev.preventDefault();
+              copyText(fptnToken);
+            },
           },
-        },
-        [iconSvg("copy"), " ", E("span", {}, _("Copy Token"))],
-      ),
-    ]);
+          [iconSvg("copy"), " ", E("span", {}, _("Copy Token"))],
+        ),
+      ],
+    );
     linkSection.appendChild(tokenBtnRow);
 
     linkSection.appendChild(
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Client link")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-label" },
+        _("Client link"),
+      ),
     );
     const linkTextarea = E(
       "textarea",
@@ -2295,20 +2342,25 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     );
     linkSection.appendChild(linkTextarea);
 
-    const linkBtnRow = E("div", { style: "display:flex;gap:6px;margin-top:4px;" }, [
-      E(
-        "button",
-        {
-          class: "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
-          type: "button",
-          click: (ev) => {
-            ev.preventDefault();
-            copyText(fptnLink);
+    const linkBtnRow = E(
+      "div",
+      { style: "display:flex;gap:6px;margin-top:4px;" },
+      [
+        E(
+          "button",
+          {
+            class:
+              "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
+            type: "button",
+            click: (ev) => {
+              ev.preventDefault();
+              copyText(fptnLink);
+            },
           },
-        },
-        [iconSvg("copy"), " ", E("span", {}, _("Copy Link"))],
-      ),
-    ]);
+          [iconSvg("copy"), " ", E("span", {}, _("Copy Link"))],
+        ),
+      ],
+    );
     linkSection.appendChild(linkBtnRow);
   } else if (protocol === "awg") {
     const awgVersions = [
@@ -2370,12 +2422,20 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     });
 
     linkSection.appendChild(
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Protocol Version")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-label" },
+        _("Protocol Version"),
+      ),
     );
     linkSection.appendChild(versionBar);
 
     linkSection.appendChild(
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Configuration File")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-label" },
+        _("Configuration File"),
+      ),
     );
     linkSection.appendChild(confTextarea);
 
@@ -2383,7 +2443,8 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       E(
         "button",
         {
-          class: "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
+          class:
+            "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
           type: "button",
           click: (ev) => {
             ev.preventDefault();
@@ -2395,7 +2456,8 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       E(
         "button",
         {
-          class: "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
+          class:
+            "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
           type: "button",
           click: (ev) => {
             ev.preventDefault();
@@ -2418,7 +2480,11 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     linkSection.appendChild(btnRow);
   } else {
     linkSection.appendChild(
-      E("span", { class: "fkp-server-info-modal__detail-label" }, _("Client link")),
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-label" },
+        _("Client link"),
+      ),
     );
     if (certificatePinWarning) {
       linkSection.appendChild(certificatePinWarning);
@@ -2439,7 +2505,8 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       E(
         "button",
         {
-          class: "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
+          class:
+            "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
           type: "button",
           click: (ev) => {
             ev.preventDefault();
@@ -2457,7 +2524,10 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     linkSection,
   ]);
 
-  return E("div", { class: "fkp-server-info-modal__container" }, [qrCol, detailsCol]);
+  return E("div", { class: "fkp-server-info-modal__container" }, [
+    qrCol,
+    detailsCol,
+  ]);
 }
 
 function showServerInfoModal(sectionId) {
@@ -3292,10 +3362,14 @@ function autoConfigureServer(sectionId) {
       }
       if (usedSubnets.has(localAddr)) {
         for (let idx = 1; idx < 100; idx++) {
-          const candidate = localAddr.replace(/\.8\.0\.1\//, `.8.${idx}.1/`).replace(/\.16\.8\.1\//, `.16.${8 + idx}.1/`);
+          const candidate = localAddr
+            .replace(/\.8\.0\.1\//, `.8.${idx}.1/`)
+            .replace(/\.16\.8\.1\//, `.16.${8 + idx}.1/`);
           if (!usedSubnets.has(candidate)) {
             localAddr = candidate;
-            cliAddr = cliAddr.replace(/\.8\.0\.2\//, `.8.${idx}.2/`).replace(/\.16\.8\.2\//, `.16.${8 + idx}.2/`);
+            cliAddr = cliAddr
+              .replace(/\.8\.0\.2\//, `.8.${idx}.2/`)
+              .replace(/\.16\.8\.2\//, `.16.${8 + idx}.2/`);
             break;
           }
         }
@@ -3324,7 +3398,12 @@ function autoConfigureServer(sectionId) {
         generateAwgKeypair(sectionId),
       ]).then(([srvPair, cliPair]) => {
         if (srvPair) {
-          uci.set(UCI_PACKAGE, sectionId, "awg_private_key", srvPair.private_key);
+          uci.set(
+            UCI_PACKAGE,
+            sectionId,
+            "awg_private_key",
+            srvPair.private_key,
+          );
           uci.set(
             UCI_PACKAGE,
             sectionId,
@@ -3332,7 +3411,11 @@ function autoConfigureServer(sectionId) {
             srvPair.public_key,
           );
           setWidgetValue(sectionId, "awg_private_key", srvPair.private_key);
-          setWidgetValue(sectionId, "awg_server_public_key", srvPair.public_key);
+          setWidgetValue(
+            sectionId,
+            "awg_server_public_key",
+            srvPair.public_key,
+          );
         }
         if (cliPair) {
           uci.set(
@@ -4467,7 +4550,9 @@ function createServerContent(section, options = {}) {
     form.Value,
     "tailscale_auth_key",
     _("Tailscale auth key"),
-    _("Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...).") +
+    _(
+      "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...).",
+    ) +
       ' <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noopener noreferrer">' +
       _("Generate in Tailscale Admin Console") +
       "</a>",

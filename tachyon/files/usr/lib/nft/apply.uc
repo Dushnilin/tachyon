@@ -625,12 +625,34 @@ function action_captures_traffic(action) {
         action == "byedpi" || action == "wdtt" || action == "olcrtc";
 }
 
+function section_is_failed_in_runtime(section_name) {
+    section_name = as_string(section_name);
+    if (section_name == "")
+        return false;
+    let fail_path = getenv("TACHYON_SECTION_FAIL_STATE_FILE") || "/var/run/tachyon/section-fail-state.json";
+    let fail_state = common_read_json_file(fail_path);
+    if (type(fail_state) == "object" && fail_state[section_name] != null) {
+        let entry = fail_state[section_name];
+        if (type(entry) == "object" ? arg_bool(entry.failed) : arg_bool(entry))
+            return true;
+    }
+    let err_path = getenv("TACHYON_SECTION_ERRORS_FILE") || "/var/run/tachyon/section-errors.json";
+    let errors = common_read_json_file(err_path);
+    if (type(errors) == "object" && as_string(errors[section_name] || "") != "")
+        return true;
+    return false;
+}
+
 function section_priority_action(section) {
     let action = section_action(section);
     if (action == "bypass")
         return "bypass";
-    if (action_captures_traffic(action))
+    if (action_captures_traffic(action)) {
+        let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
+        if ((fail_policy == "block" || fail_policy == "direct") && section_is_failed_in_runtime(section[".name"]))
+            return fail_policy == "block" ? "block" : "bypass";
         return "capture";
+    }
     return "";
 }
 
@@ -749,6 +771,8 @@ function nft_create_priority_sets(table, sets) {
 function nft_priority_verdict_args(priority_action, mark) {
     if (priority_action == "bypass")
         return [ "counter", "accept" ];
+    if (priority_action == "block")
+        return [ "counter", "drop" ];
     return [ "meta", "mark", "set", mark, "counter", "accept" ];
 }
 
@@ -832,7 +856,8 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     let needs_plain_ip_rules = section_priority_needs_plain_ip_rules(section);
     let needs_ip_port_rules = section_priority_needs_ip_port_rules(section);
     let has_port_only_matchers = section_has_nft_port_only_matchers(section);
-    let is_bypass = (section_priority_action(section) == "bypass");
+    let p_action = section_priority_action(section);
+    let is_bypass = (p_action == "bypass" || p_action == "block");
     let match_ip4 = [ "ip", "daddr", "@" + as_string(sets.subnets) ];
     let match_ip6 = [ "ip6", "daddr", "@" + as_string(sets.subnets6) ];
     let match_ip4_tcp = [ "ip", "daddr", "@" + as_string(sets.subnets), "meta", "l4proto", "tcp" ];
@@ -1747,6 +1772,12 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "udp", "dport", "3478", "counter", "drop" ]) ||
             !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "udp", "dport", "5349", "counter", "drop" ]) ||
             !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "udp", "dport", "19302", "counter", "drop" ]))
+            return false;
+    }
+
+    if (bool_option(uci_settings(), "wifi_calling_direct", false)) {
+        if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", fakeip_range, "udp", "dport", "{ 500, 4500 }", "counter", "return", "comment", "\"tachyon-wifi-calling-direct\"" ]) ||
+            !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", fakeip6_range, "udp", "dport", "{ 500, 4500 }", "counter", "return", "comment", "\"tachyon-wifi-calling-direct\"" ]))
             return false;
     }
 
@@ -2798,6 +2829,12 @@ function nft_rule_signature_body(body, section) {
     body = signature_add_value(body, "rule." + section_name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
     body = signature_add_value(body, "rule." + section_name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
     body = signature_add_value(body, "rule." + section_name + ".dscp", connections.dscp_value(section));
+    let fail_policy = lc(trim(option(section, "fail_policy", "")));
+    if (fail_policy == "block" || fail_policy == "direct") {
+        body = signature_add_value(body, "rule." + section_name + ".fail_policy", fail_policy);
+        if (section_is_failed_in_runtime(section_name))
+            body = signature_add_value(body, "rule." + section_name + ".fail_active", "1");
+    }
 
     return body;
 }
@@ -2931,6 +2968,8 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     body = signature_add_value(body, "settings.excluded_ips", option(settings, "excluded_ips", ""));
     body = signature_add_value(body, "settings.route_router_traffic", bool_option(settings, "route_router_traffic", false) ? "1" : "0");
     body = signature_add_value(body, "settings.route_router_traffic_section", option(settings, "route_router_traffic_section", ""));
+    if (bool_option(settings, "wifi_calling_direct", false))
+        body = signature_add_value(body, "settings.wifi_calling_direct", "1");
 
     for (let section in sections)
         body = nft_rule_signature_body(body, object_or_empty(section));
@@ -3107,6 +3146,7 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
     for (let community in connections.community_lists(section)) {
         let service = as_string(community);
         if (service == "") continue;
+        if (!rule_config.community_service_has_subnet_list(service)) continue;
 
         let candidates = [
             "/tmp/sing-box/rulesets/community-subnets-" + service + ".lst",
@@ -3176,7 +3216,8 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
     if (section_needs_priority_sets(section) && !nft_add_section_source_matchers(section, table, 5000))
         return false;
 
-    if (deferred_sections[as_string(section[".name"])])
+    let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
+    if (deferred_sections[as_string(section[".name"])] && fail_policy != "block" && fail_policy != "direct")
         return true;
 
     if (section_needs_priority_sets(section)) {
@@ -3336,7 +3377,7 @@ function file_nonempty(path) {
     return helpers.file_is_usable(path, 0);
 }
 
-function nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set) {
+function nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set, udp_scoped_path, udp_ip_port_set, udp_ip_port6_set) {
     let has_entries = false;
 
     if (file_nonempty(unscoped_path)) {
@@ -3351,30 +3392,15 @@ function nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, ta
         has_entries = true;
     }
 
+    if (udp_scoped_path != null && udp_scoped_path != "" && file_nonempty(udp_scoped_path)) {
+        if (!nft_add_file_chunks_to_family_sets(udp_scoped_path, table, default_arg(udp_ip_port_set, ip_port_set), default_arg(udp_ip_port6_set, default_arg(ip_port6_set, "tachyon_ip6_ports")), "ip-ports", "", chunk_size_text))
+            return false;
+        has_entries = true;
+    }
+
     if (!has_entries)
         log_warn(as_string(label) + " has no ip_cidr entries for nftables");
 
-    return true;
-}
-
-// Чистые UDP ruleset с портами должны попадать в UDP-наборы, а не TCP.
-function ruleset_has_only_udp_port_rules(json_path) {
-    let data = object_or_empty(common_read_json_file(json_path));
-    if (type(data.rules) != "array" || length(data.rules) == 0)
-        return false;
-    for (let rule in data.rules) {
-        rule = object_or_empty(rule);
-        let udp = rule.network == "udp" ||
-            (type(rule.network) == "array" && length(rule.network) == 1 && rule.network[0] == "udp");
-        if (!udp || rule.type != null || rule.invert)
-            return false;
-        let ports = rule.port != null && rule.port != "" &&
-            (type(rule.port) != "array" || length(rule.port) > 0);
-        let ranges = rule.port_range != null && rule.port_range != "" &&
-            (type(rule.port_range) != "array" || length(rule.port_range) > 0);
-        if (!ports && !ranges)
-            return false;
-    }
     return true;
 }
 
@@ -3388,19 +3414,35 @@ function nft_add_json_ruleset_subnets_for_section(section, json_path, label, tab
     if (!nft_create_priority_sets(table, sets))
         return false;
 
+    let udp_scoped_path = as_string(scoped_path) + ".udp";
     routing_rulesets.extract_ip_cidr_nft_elements(
         json_path,
         unscoped_path,
         scoped_path,
         sprintf("%J", rule_port_values(ports)),
-        sprintf("%J", rule_port_ranges(ports))
+        sprintf("%J", rule_port_ranges(ports)),
+        udp_scoped_path
     );
 
-    let unscoped_stat = fs.stat(unscoped_path);
-    let udp_only = ruleset_has_only_udp_port_rules(json_path) && (!unscoped_stat || unscoped_stat.size == 0);
-    return nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, table,
-        sets.subnets, udp_only ? sets.udp_ip_ports : sets.ip_ports, chunk_size_text,
-        sets.subnets6, udp_only ? sets.udp_ip6_ports : sets.ip6_ports);
+    let sec_proto = lc(trim(option(section, "protocol", "all")));
+    let tcp_scoped = sec_proto == "udp" ? "" : scoped_path;
+    let udp_scoped = sec_proto == "tcp" ? "" : udp_scoped_path;
+    let ok = nft_add_extracted_ruleset_subnets(
+        unscoped_path,
+        tcp_scoped,
+        label,
+        table,
+        sets.subnets,
+        sets.ip_ports,
+        chunk_size_text,
+        sets.subnets6,
+        sets.ip6_ports,
+        udp_scoped,
+        sets.udp_ip_ports,
+        sets.udp_ip6_ports
+    );
+    unlink_file(udp_scoped_path);
+    return ok;
 }
 
 function nft_add_community_subnet_file_for_section(section, service, filepath, table, common_set, ip_port_set, interface_set, discord_set, mark, chunk_size_text, common6_set, ip_port6_set, discord6_set) {

@@ -133,10 +133,14 @@ adopt() { # <path> <expected yes|no> <label>
   [ "$got" = "$2" ] || { printf 'FAIL: %s: got %s, expected %s\n' "$3" "$got" "$2" >&2; exit 1; }
 }
 
-spawns() { grep -c decompile "$STUB_LOG" 2>/dev/null || true; }
+spawns() { grep -cE 'rule-set (match|decompile)' "$STUB_LOG" 2>/dev/null || true; }
 
 adopt "$WORK_DIR/whole.srs" yes "first adopt of a whole list"
 [ "$(spawns)" = "1" ] || { printf 'FAIL: first adopt spawned %s times, expected 1\n' "$(spawns)" >&2; exit 1; }
+if grep -q 'decompile.*--output' "$STUB_LOG" 2>/dev/null; then
+  printf 'FAIL: srs_file_parses still uses rule-set decompile --output instead of in-memory rule-set match\n' >&2
+  exit 1
+fi
 
 adopt "$WORK_DIR/whole.srs" yes "second adopt of the same list"
 [ "$(spawns)" = "1" ] ||

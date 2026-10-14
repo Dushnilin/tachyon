@@ -338,6 +338,7 @@ export interface StoreType {
       status: 'latest' | 'outdated' | 'dev' | 'outdated_same_release' | null;
       latest_version: string;
       release_url: string;
+      release_notes?: string;
       current_sha?: string;
       latest_sha?: string;
     }

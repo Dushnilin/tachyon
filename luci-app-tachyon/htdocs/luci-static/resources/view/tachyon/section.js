@@ -880,6 +880,8 @@ function filteredOutboundMetadataFromCache(cache) {
   const countries = plainObject(metadata.countries);
   const protocols = plainObject(metadata.protocols);
   const transports = plainObject(metadata.transports);
+  const securities = plainObject(metadata.securities);
+  const ports = plainObject(metadata.ports);
   const candidateTags = Array.isArray(cache.urltestCandidateTags)
     ? cache.urltestCandidateTags
     : [];
@@ -889,6 +891,8 @@ function filteredOutboundMetadataFromCache(cache) {
     countries: {},
     protocols: {},
     transports: {},
+    securities: {},
+    ports: {},
   };
 
   if (candidateTags.length > 0) {
@@ -908,6 +912,12 @@ function filteredOutboundMetadataFromCache(cache) {
       }
       if (transports[tag] != null) {
         result.transports[tag] = transports[tag];
+      }
+      if (securities[tag] != null) {
+        result.securities[tag] = securities[tag];
+      }
+      if (ports[tag] != null) {
+        result.ports[tag] = ports[tag];
       }
     });
     return result;
@@ -933,6 +943,16 @@ function filteredOutboundMetadataFromCache(cache) {
       result.transports[tag] = transport;
     }
   });
+  Object.entries(securities).forEach(([tag, security]) => {
+    if (!groups[tag]) {
+      result.securities[tag] = security;
+    }
+  });
+  Object.entries(ports).forEach(([tag, port]) => {
+    if (!groups[tag]) {
+      result.ports[tag] = port;
+    }
+  });
 
   return result;
 }
@@ -945,6 +965,8 @@ function readOutboundMetadataFromSectionCache(section_id) {
       countries: {},
       protocols: {},
       transports: {},
+      securities: {},
+      ports: {},
     });
   }
 
@@ -956,7 +978,259 @@ function readOutboundMetadataFromSectionCache(section_id) {
       countries: {},
       protocols: {},
       transports: {},
+      securities: {},
+      ports: {},
     }));
+}
+
+function extractCountryFromFlagEmojiName(name) {
+  const str = `${name || ""}`;
+  const chars = Array.from(str);
+  for (let i = 0; i + 1 < chars.length; i += 1) {
+    const cp1 = chars[i].codePointAt(0);
+    const cp2 = chars[i + 1].codePointAt(0);
+    if (cp1 >= 0x1f1e6 && cp1 <= 0x1f1ff && cp2 >= 0x1f1e6 && cp2 <= 0x1f1ff) {
+      const code =
+        String.fromCharCode(65 + (cp1 - 0x1f1e6)) +
+        String.fromCharCode(65 + (cp2 - 0x1f1e6));
+      if (COUNTRY_CODES.includes(code)) {
+        return code;
+      }
+    }
+  }
+  return "";
+}
+
+function portMatchesFilterCondition(portNum, condition) {
+  const cond = `${condition || ""}`.trim();
+  if (!cond) return false;
+  const dash = cond.indexOf("-");
+  if (dash < 0) {
+    return Number.parseInt(cond, 10) === portNum;
+  }
+  const start = Number.parseInt(cond.slice(0, dash), 10);
+  const end = Number.parseInt(cond.slice(dash + 1), 10);
+  if (Number.isNaN(start) || Number.isNaN(end)) return false;
+  return portNum >= start && portNum <= end;
+}
+
+function evaluateLiveServerFilterPreview(metadata, filterSpec) {
+  const meta = plainObject(metadata);
+  const namesMap = plainObject(meta.names);
+  const countriesMap = plainObject(meta.countries);
+  const protocolsMap = plainObject(meta.protocols);
+  const transportsMap = plainObject(meta.transports);
+  const securitiesMap = plainObject(meta.securities);
+  const portsMap = plainObject(meta.ports);
+
+  const filterMode = `${filterSpec.filterMode || "disabled"}`.trim();
+  const detectMethod =
+    `${filterSpec.detectServerCountry || "flag_emoji"}`.trim();
+  const normalizeArr = (arr) =>
+    (Array.isArray(arr) ? arr : arr ? [arr] : [])
+      .map((v) => `${v || ""}`.trim())
+      .filter(Boolean);
+
+  const includeCountries = normalizeArr(filterSpec.includeCountries).map((c) =>
+    c.toUpperCase(),
+  );
+  const includeOutbounds = normalizeArr(filterSpec.includeOutbounds);
+  const includeRegexes = normalizeArr(filterSpec.includeRegex);
+  const includeProxyParams =
+    `${filterSpec.includeProxyParameters || "0"}` === "1";
+  const includeProtocols = normalizeArr(filterSpec.includeProtocols).map((p) =>
+    p.toLowerCase(),
+  );
+  const includeTransports = normalizeArr(filterSpec.includeTransports).map(
+    (t) => t.toLowerCase(),
+  );
+  const includeSecurities = normalizeArr(filterSpec.includeSecurities).map(
+    (s) => s.toLowerCase(),
+  );
+  const includePorts = normalizeArr(filterSpec.includePorts);
+
+  const excludeCountries = normalizeArr(filterSpec.excludeCountries).map((c) =>
+    c.toUpperCase(),
+  );
+  const excludeOutbounds = normalizeArr(filterSpec.excludeOutbounds);
+  const excludeRegexes = normalizeArr(filterSpec.excludeRegex);
+  const excludeProxyParams =
+    `${filterSpec.excludeProxyParameters || "0"}` === "1";
+  const excludeProtocols = normalizeArr(filterSpec.excludeProtocols).map((p) =>
+    p.toLowerCase(),
+  );
+  const excludeTransports = normalizeArr(filterSpec.excludeTransports).map(
+    (t) => t.toLowerCase(),
+  );
+  const excludeSecurities = normalizeArr(filterSpec.excludeSecurities).map(
+    (s) => s.toLowerCase(),
+  );
+  const excludePorts = normalizeArr(filterSpec.excludePorts);
+
+  const compileRegexList = (patterns) =>
+    patterns
+      .map((pat) => {
+        try {
+          return new RegExp(pat);
+        } catch (_e) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+  const includeCompiledRegexes = compileRegexList(includeRegexes);
+  const excludeCompiledRegexes = compileRegexList(excludeRegexes);
+
+  const seenTypeCounts = new Map();
+  const entries = [];
+
+  Object.entries(namesMap).forEach(([tag, rawName]) => {
+    const name = `${rawName || tag}`.trim();
+    if (!name) return;
+    const protocol = `${protocolsMap[tag] || ""}`.trim();
+    const transport = `${transportsMap[tag] || ""}`.trim();
+    const security = `${securitiesMap[tag] || ""}`.trim();
+    const port = Number.parseInt(`${portsMap[tag] || ""}`, 10) || 0;
+    const typeLabel = formatOutboundTypeLabel(protocol, transport);
+    const nameWithType = typeLabel ? `${name} [${typeLabel}]` : name;
+    const count = (seenTypeCounts.get(nameWithType) || 0) + 1;
+    seenTypeCounts.set(nameWithType, count);
+    const indexedLabel =
+      count > 1 ? `${nameWithType} (#${count})` : nameWithType;
+
+    const flagCountry = extractCountryFromFlagEmojiName(name);
+    const metaCountry = `${countriesMap[tag] || ""}`.trim().toUpperCase();
+    const country =
+      detectMethod === "flag_emoji" ? flagCountry : metaCountry || flagCountry;
+
+    entries.push({
+      tag,
+      name,
+      label: indexedLabel,
+      nameWithType,
+      country,
+      protocol: protocol.toLowerCase(),
+      transport: transport.toLowerCase(),
+      security: security.toLowerCase(),
+      port,
+    });
+  });
+
+  const matchesCandidate = (
+    entry,
+    nameFilter,
+    compiledRegexes,
+    countryFilter,
+    proxyParamsEnabled,
+    operator,
+    protocols,
+    transports,
+    securities,
+    ports,
+  ) => {
+    const nameMatched =
+      nameFilter.includes(entry.name) ||
+      nameFilter.includes(entry.tag) ||
+      nameFilter.includes(entry.nameWithType) ||
+      nameFilter.includes(entry.label) ||
+      compiledRegexes.some((rx) => rx.test(entry.name));
+    const countryMatched =
+      Boolean(entry.country) && countryFilter.includes(entry.country);
+    const baseConfigured =
+      nameFilter.length > 0 ||
+      compiledRegexes.length > 0 ||
+      countryFilter.length > 0;
+    let baseMatches = nameMatched || countryMatched;
+
+    const attrMatches = (val, selected) =>
+      selected.length === 0 ? true : Boolean(val) && selected.includes(val);
+    const portMatches = (portNum, selected) =>
+      selected.length === 0
+        ? true
+        : portNum > 0 &&
+          selected.some((cond) => portMatchesFilterCondition(portNum, cond));
+
+    if (proxyParamsEnabled && operator === "or") {
+      const anyParam =
+        (protocols.length > 0 && attrMatches(entry.protocol, protocols)) ||
+        (transports.length > 0 && attrMatches(entry.transport, transports)) ||
+        (securities.length > 0 && attrMatches(entry.security, securities)) ||
+        (ports.length > 0 && portMatches(entry.port, ports));
+      return baseMatches || anyParam;
+    }
+
+    if (proxyParamsEnabled) {
+      if (!baseConfigured) {
+        baseMatches = true;
+      }
+      const allParams =
+        attrMatches(entry.protocol, protocols) &&
+        attrMatches(entry.transport, transports) &&
+        attrMatches(entry.security, securities) &&
+        portMatches(entry.port, ports);
+      return baseMatches && allParams;
+    }
+
+    return baseMatches;
+  };
+
+  const matchedServers = [];
+  const excludedServers = [];
+
+  entries.forEach((entry) => {
+    if (!filterMode || filterMode === "disabled" || filterMode === "all") {
+      matchedServers.push(entry);
+      return;
+    }
+
+    const isIncluded = matchesCandidate(
+      entry,
+      includeOutbounds,
+      includeCompiledRegexes,
+      includeCountries,
+      includeProxyParams,
+      "and",
+      includeProtocols,
+      includeTransports,
+      includeSecurities,
+      includePorts,
+    );
+    const isExcluded = matchesCandidate(
+      entry,
+      excludeOutbounds,
+      excludeCompiledRegexes,
+      excludeCountries,
+      excludeProxyParams,
+      "or",
+      excludeProtocols,
+      excludeTransports,
+      excludeSecurities,
+      excludePorts,
+    );
+
+    let keep = true;
+    if (filterMode === "include") {
+      keep = isIncluded;
+    } else if (filterMode === "exclude") {
+      keep = !isExcluded;
+    } else if (filterMode === "mixed") {
+      keep = isIncluded && !isExcluded;
+    }
+
+    if (keep) {
+      matchedServers.push(entry);
+    } else {
+      excludedServers.push(entry);
+    }
+  });
+
+  return {
+    totalCount: entries.length,
+    matchedCount: matchedServers.length,
+    excludedCount: excludedServers.length,
+    matchedServers,
+    excludedServers,
+  };
 }
 
 function loadOutboundNameChoices(section_id) {
@@ -2146,13 +2420,18 @@ function currentLiveDynamicListValues(section_id, optionName) {
 // is saved. fptnb: is brotli — the backend decodes it through the core
 // binary, and the draft waits for the saved state.
 function fptnTokenServerNames(value) {
-  const token = `${value || ""}`.trim();
-  if (token.startsWith("fptnb:") || token.startsWith("fptnb//")) return [];
+  let token = `${value || ""}`.trim();
+  const hashIdx = token.indexOf("#");
+  if (hashIdx >= 0) {
+    token = token.slice(0, hashIdx);
+  }
+  if (token.startsWith("fptnb:") || token.startsWith("fptnb//") || token.startsWith("fptnb://")) return [];
 
   let body = null;
   if (token.startsWith("fptn://")) body = token.slice(7);
   else if (token.startsWith("fptn:")) body = token.slice(5);
   if (body === null) return [];
+  if (body.startsWith("//")) body = body.slice(2);
 
   try {
     const b64 = body
@@ -2175,8 +2454,14 @@ function currentDraftOutboundNames(section_id) {
 
   currentSourceOptionValues(section_id, "selector_proxy_links").forEach(
     (value, index) => {
-      const name = main.getProxyUrlName(`${value || ""}`);
-      names.push(name || `${section_id}-${index + 1}-out`);
+      const valStr = `${value || ""}`.trim();
+      const fptnServers = fptnTokenServerNames(valStr);
+      if (fptnServers.length > 0) {
+        fptnServers.forEach((sName) => names.push(sName));
+      } else {
+        const name = main.getProxyUrlName(valStr);
+        names.push(name || `${section_id}-${index + 1}-out`);
+      }
     },
   );
   currentSourceOptionValues(section_id, "selector_amnezia_configs").forEach(
@@ -2682,6 +2967,386 @@ function addProxyParameterFilterOptions(itemSection, options) {
     }
     list.placeholder = _("-- Select or type port/range --");
   });
+}
+
+function findSectionFilterOption(ownerOption, key) {
+  const sec = ownerOption && ownerOption.section;
+  if (!sec || !Array.isArray(sec.children)) return null;
+  for (let i = 0; i < sec.children.length; i += 1) {
+    if (sec.children[i] && sec.children[i].option === key) {
+      return sec.children[i];
+    }
+  }
+  return null;
+}
+
+function readLiveFilterOptionValue(ownerOption, itemId, key, fallback = "") {
+  const opt = findSectionFilterOption(ownerOption, key);
+  if (opt) {
+    try {
+      const uiEl =
+        typeof opt.getUIElement === "function"
+          ? opt.getUIElement(itemId)
+          : null;
+      if (uiEl && typeof uiEl.getValue === "function") {
+        const val = uiEl.getValue();
+        if (val != null) return val;
+      }
+    } catch (_e) {}
+    try {
+      if (typeof opt.formvalue === "function") {
+        const val = opt.formvalue(itemId);
+        if (val != null) return val;
+      }
+    } catch (_e) {}
+  }
+  const mapVal = optionMapValue(ownerOption, itemId, key);
+  return mapVal !== "" && mapVal != null ? mapVal : fallback;
+}
+
+function addLiveServerFilterPreviewOption(optionTarget, config = {}) {
+  const optionKey = config.optionKey || "_server_filter_preview";
+  const dependencies = Array.isArray(config.dependencies)
+    ? config.dependencies
+    : [];
+  const resolveSectionId =
+    typeof config.resolveSectionId === "function"
+      ? config.resolveSectionId
+      : (itemId) => itemId || "Main";
+  const keys = Object.assign(
+    {
+      filterMode: "filter_mode",
+      detectServerCountry: "detect_server_country",
+      includeCountries: "include_countries",
+      includeOutbounds: "include_outbounds",
+      includeRegex: "include_regex",
+      includeProxyParameters: "include_proxy_parameters",
+      includeProtocols: "include_protocols",
+      includeTransports: "include_transports",
+      includeSecurities: "include_securities",
+      includePorts: "include_ports",
+      excludeCountries: "exclude_countries",
+      excludeOutbounds: "exclude_outbounds",
+      excludeRegex: "exclude_regex",
+      excludeProxyParameters: "exclude_proxy_parameters",
+      excludeProtocols: "exclude_protocols",
+      excludeTransports: "exclude_transports",
+      excludeSecurities: "exclude_securities",
+      excludePorts: "exclude_ports",
+    },
+    config.keys || {},
+  );
+
+  const o = optionTarget.option(
+    form.DummyValue,
+    optionKey,
+    _("Live filter preview"),
+    _("Preview matched and excluded servers in real time before saving."),
+  );
+  dependencies.forEach((dep) => o.depends(dep));
+
+  o.renderWidget = function (itemId) {
+    const ownerOption = this;
+    let showDetails = false;
+    let cachedMeta = null;
+    let timerId = null;
+
+    const statusBadge = E(
+      "span",
+      {
+        class: "badge",
+        style:
+          "display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#28a745;color:#fff;",
+      },
+      _("Loading servers..."),
+    );
+
+    const summaryText = E(
+      "span",
+      { style: "font-size:12px;opacity:0.85;" },
+      "",
+    );
+
+    const detailsBox = E("div", {
+      style:
+        "display:none;margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid rgba(128,128,128,0.2);background:rgba(128,128,128,0.04);max-height:180px;overflow-y:auto;font-size:12px;",
+    });
+
+    const toggleBtn = E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        style: "padding:1px 8px;min-height:24px;font-size:11px;",
+        click: function (ev) {
+          ev.preventDefault();
+          showDetails = !showDetails;
+          detailsBox.style.display = showDetails ? "block" : "none";
+          toggleBtn.textContent = showDetails
+            ? _("Hide servers")
+            : _("Show servers");
+        },
+      },
+      _("Show servers"),
+    );
+
+    const refreshBtn = E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        style: "padding:1px 8px;min-height:24px;font-size:11px;",
+        click: function (ev) {
+          ev.preventDefault();
+          cachedMeta = null;
+          updatePreview();
+        },
+      },
+      _("Refresh preview"),
+    );
+
+    function collectCurrentSpec() {
+      return {
+        filterMode: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.filterMode,
+          "disabled",
+        ),
+        detectServerCountry: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.detectServerCountry,
+          "flag_emoji",
+        ),
+        includeCountries: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeCountries,
+          [],
+        ),
+        includeOutbounds: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeOutbounds,
+          [],
+        ),
+        includeRegex: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeRegex,
+          [],
+        ),
+        includeProxyParameters: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeProxyParameters,
+          "0",
+        ),
+        includeProtocols: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeProtocols,
+          [],
+        ),
+        includeTransports: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeTransports,
+          [],
+        ),
+        includeSecurities: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeSecurities,
+          [],
+        ),
+        includePorts: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includePorts,
+          [],
+        ),
+        excludeCountries: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeCountries,
+          [],
+        ),
+        excludeOutbounds: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeOutbounds,
+          [],
+        ),
+        excludeRegex: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeRegex,
+          [],
+        ),
+        excludeProxyParameters: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeProxyParameters,
+          "0",
+        ),
+        excludeProtocols: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeProtocols,
+          [],
+        ),
+        excludeTransports: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeTransports,
+          [],
+        ),
+        excludeSecurities: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeSecurities,
+          [],
+        ),
+        excludePorts: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludePorts,
+          [],
+        ),
+      };
+    }
+
+    function renderDetails(preview) {
+      detailsBox.innerHTML = "";
+      if (preview.totalCount === 0) {
+        detailsBox.appendChild(
+          E(
+            "div",
+            { style: "opacity:0.75;" },
+            _("No cached servers found for this section yet."),
+          ),
+        );
+        return;
+      }
+
+      const renderServerGroup = (title, list, badgeBg) => {
+        if (!list.length) return null;
+        return E("div", { style: "margin-bottom:6px;" }, [
+          E(
+            "div",
+            { style: "font-weight:600;margin-bottom:4px;font-size:11px;" },
+            `${title} (${list.length}):`,
+          ),
+          E(
+            "div",
+            { style: "display:flex;flex-wrap:wrap;gap:4px;" },
+            list.slice(0, 60).map((srv) =>
+              E(
+                "span",
+                {
+                  style: `display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;background:${badgeBg};border:1px solid rgba(128,128,128,0.25);`,
+                },
+                srv.label,
+              ),
+            ),
+          ),
+        ]);
+      };
+
+      const matchedNode = renderServerGroup(
+        _("Matched servers"),
+        preview.matchedServers,
+        "rgba(40,167,69,0.12)",
+      );
+      const excludedNode = renderServerGroup(
+        _("Excluded servers"),
+        preview.excludedServers,
+        "rgba(220,53,69,0.10)",
+      );
+      if (matchedNode) detailsBox.appendChild(matchedNode);
+      if (excludedNode) detailsBox.appendChild(excludedNode);
+      if (!matchedNode && !excludedNode) {
+        detailsBox.appendChild(
+          E("div", { style: "opacity:0.75;" }, _("No servers matched.")),
+        );
+      }
+    }
+
+    function updatePreview() {
+      const targetSection = resolveSectionId(itemId) || "Main";
+      const metaPromise = cachedMeta
+        ? Promise.resolve(cachedMeta)
+        : readOutboundMetadataFromSectionCache(targetSection).then((m) => {
+            cachedMeta = m;
+            return m;
+          });
+
+      metaPromise.then((meta) => {
+        const spec = collectCurrentSpec();
+        const preview = evaluateLiveServerFilterPreview(meta, spec);
+
+        if (preview.totalCount === 0) {
+          statusBadge.style.background = "#6c757d";
+          statusBadge.textContent = _("0 servers cached");
+          summaryText.textContent = _(
+            "Save & update subscriptions once to populate the server cache.",
+          );
+        } else if (preview.matchedCount === 0) {
+          statusBadge.style.background = "#dc3545";
+          statusBadge.textContent = `${_("Matched")}: 0 / ${preview.totalCount}`;
+          summaryText.textContent = _(
+            "Warning: current filter excludes all servers!",
+          );
+        } else {
+          statusBadge.style.background = "#28a745";
+          statusBadge.textContent = `${_("Matched")}: ${preview.matchedCount} / ${preview.totalCount}`;
+          summaryText.textContent = `${_("Excluded")}: ${preview.excludedCount}`;
+        }
+        renderDetails(preview);
+      });
+    }
+
+    function scheduleUpdate() {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(updatePreview, 80);
+    }
+
+    const root = E(
+      "div",
+      {
+        class: "tachyon-live-filter-preview",
+        style: "padding:4px 0;",
+      },
+      [
+        E(
+          "div",
+          { style: "display:flex;flex-wrap:wrap;align-items:center;gap:8px;" },
+          [statusBadge, summaryText, toggleBtn, refreshBtn],
+        ),
+        detailsBox,
+      ],
+    );
+
+    setTimeout(() => {
+      const scopeEl =
+        root.closest(".cbi-section") ||
+        root.closest(".modal") ||
+        root.parentElement;
+      if (scopeEl && !scopeEl._tachyonFilterPreviewBound) {
+        scopeEl._tachyonFilterPreviewBound = true;
+        scopeEl.addEventListener("change", scheduleUpdate, true);
+        scopeEl.addEventListener("input", scheduleUpdate, true);
+        scopeEl.addEventListener("click", scheduleUpdate, true);
+      }
+      updatePreview();
+    }, 60);
+
+    return root;
+  };
+
+  return o;
 }
 
 function urlTestUrlChoices() {
@@ -3205,7 +3870,10 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   [
     ["", tr("Auto (by name)", "Авто (по названию)")],
     ["#1e3a8a", tr("Blue (Indigo) — #1e3a8a", "Синий (Индиго) — #1e3a8a")],
-    ["#065f46", tr("Emerald (Green) — #065f46", "Изумрудный (Зелёный) — #065f46")],
+    [
+      "#065f46",
+      tr("Emerald (Green) — #065f46", "Изумрудный (Зелёный) — #065f46"),
+    ],
     ["#78350f", tr("Amber (Gold) — #78350f", "Янтарный (Золотой) — #78350f")],
     ["#4c1d95", tr("Purple (Violet) — #4c1d95", "Фиолетовый — #4c1d95")],
     ["#831843", tr("Rose (Pink) — #831843", "Розовый — #831843")],
@@ -3253,7 +3921,13 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.depends("prefix_nodes", "1");
   o.renderWidget = function (section_id) {
     const presets = [
-      { label: tr("Auto", "Авто"), bg: "", color: "", previewBg: "rgba(59, 130, 246, 0.24)", previewColor: "#93c5fd" },
+      {
+        label: tr("Auto", "Авто"),
+        bg: "",
+        color: "",
+        previewBg: "rgba(59, 130, 246, 0.24)",
+        previewColor: "#93c5fd",
+      },
       { label: tr("Blue", "Синий"), bg: "#1e3a8a", color: "#93c5fd" },
       { label: tr("Emerald", "Изумруд"), bg: "#065f46", color: "#6ee7b7" },
       { label: tr("Amber", "Янтарь"), bg: "#78350f", color: "#fcd34d" },
@@ -3278,7 +3952,8 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
       type: "color",
       value: "#1e3a8a",
       title: tr("Pick background color", "Выбрать цвет фона"),
-      style: "width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;",
+      style:
+        "width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;",
       change: function (ev) {
         const val = ev.target.value;
         const uiEl = prefixBgOption.getUIElement(section_id);
@@ -3291,7 +3966,8 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
       type: "color",
       value: "#93c5fd",
       title: tr("Pick text color", "Выбрать цвет текста"),
-      style: "width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;",
+      style:
+        "width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;",
       change: function (ev) {
         const val = ev.target.value;
         const uiEl = prefixColorOption.getUIElement(section_id);
@@ -3304,9 +3980,12 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
       const textUi = prefixTextOption.getUIElement(section_id);
       const bgUi = prefixBgOption.getUIElement(section_id);
       const colUi = prefixColorOption.getUIElement(section_id);
-      const txt = (textUi && textUi.getValue ? textUi.getValue() : "") || tr("Prefix", "Префикс");
+      const txt =
+        (textUi && textUi.getValue ? textUi.getValue() : "") ||
+        tr("Prefix", "Префикс");
       const bg = (bgUi && bgUi.getValue ? bgUi.getValue() : "") || "#1e3a8a";
-      const col = (colUi && colUi.getValue ? colUi.getValue() : "") || "#93c5fd";
+      const col =
+        (colUi && colUi.getValue ? colUi.getValue() : "") || "#93c5fd";
       previewBadge.textContent = txt.trim() || tr("Prefix", "Префикс");
       previewBadge.style.background = bg;
       previewBadge.style.color = col;
@@ -3357,18 +4036,28 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
               "display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;opacity:0.9;",
           },
           [
-            E("span", { style: "display:inline-flex;align-items:center;gap:6px;" }, [
-              bgColorInput,
-              E("span", {}, tr("Background", "Пипетка фона")),
-            ]),
-            E("span", { style: "display:inline-flex;align-items:center;gap:6px;" }, [
-              textColorInput,
-              E("span", {}, tr("Text", "Пипетка текста")),
-            ]),
-            E("span", { style: "display:inline-flex;align-items:center;gap:6px;" }, [
-              E("span", { style: "opacity:0.75;" }, tr("Preview:", "Предпросмотр:")),
-              previewBadge,
-            ]),
+            E(
+              "span",
+              { style: "display:inline-flex;align-items:center;gap:6px;" },
+              [bgColorInput, E("span", {}, tr("Background", "Пипетка фона"))],
+            ),
+            E(
+              "span",
+              { style: "display:inline-flex;align-items:center;gap:6px;" },
+              [textColorInput, E("span", {}, tr("Text", "Пипетка текста"))],
+            ),
+            E(
+              "span",
+              { style: "display:inline-flex;align-items:center;gap:6px;" },
+              [
+                E(
+                  "span",
+                  { style: "opacity:0.75;" },
+                  tr("Preview:", "Предпросмотр:"),
+                ),
+                previewBadge,
+              ],
+            ),
           ],
         ),
       ],
@@ -3703,6 +4392,16 @@ function addUrlTestItemOptions(itemSection, options = {}) {
       addProxyParameterFilterOptions(itemSection, excludeProxyParameterOptions);
     }
   });
+
+  addLiveServerFilterPreviewOption(itemSection, {
+    optionKey: "_urltest_filter_preview",
+    dependencies: [
+      { filter_mode: "include" },
+      { filter_mode: "exclude" },
+      { filter_mode: "mixed" },
+    ],
+    resolveSectionId: (itemId) => parentSectionForItem(itemId) || "Main",
+  });
 }
 
 function priorityLevelSettingsForValidation(groupId, levelId, option) {
@@ -3924,6 +4623,21 @@ function addPriorityLevelItemOptions(itemSection, options = {}) {
     } else if (key === "exclude_regex") {
       addProxyParameterFilterOptions(itemSection, excludeProxyParameterOptions);
     }
+  });
+
+  addLiveServerFilterPreviewOption(itemSection, {
+    optionKey: "_priority_level_filter_preview",
+    dependencies: [
+      { direct: "0", filter_mode: "include" },
+      { direct: "0", filter_mode: "exclude" },
+      { direct: "0", filter_mode: "mixed" },
+    ],
+    resolveSectionId: (itemId) => parentSectionForItem(itemId) || "Main",
+    keys: {
+      includeCountries: "country",
+      includeOutbounds: "server_name",
+      includeRegex: "regex",
+    },
   });
 }
 
@@ -4370,6 +5084,39 @@ function addDashboardServerFilterOptions(section) {
         excludeProxyParameterOptions,
       );
     }
+  });
+
+  addLiveServerFilterPreviewOption(optionSection, {
+    optionKey: "_dashboard_server_filter_preview",
+    dependencies: [
+      { action: "connection", dashboard_filter_mode: "include" },
+      { action: "connection", dashboard_filter_mode: "exclude" },
+      { action: "connection", dashboard_filter_mode: "mixed" },
+      { action: "fptn", dashboard_filter_mode: "include" },
+      { action: "fptn", dashboard_filter_mode: "exclude" },
+      { action: "fptn", dashboard_filter_mode: "mixed" },
+    ],
+    resolveSectionId: (sectionId) => sectionId || "Main",
+    keys: {
+      filterMode: "dashboard_filter_mode",
+      detectServerCountry: "dashboard_detect_server_country",
+      includeCountries: "dashboard_include_countries",
+      includeOutbounds: "dashboard_include_outbounds",
+      includeRegex: "dashboard_include_regex",
+      includeProxyParameters: "dashboard_include_proxy_parameters",
+      includeProtocols: "dashboard_include_protocols",
+      includeTransports: "dashboard_include_transports",
+      includeSecurities: "dashboard_include_securities",
+      includePorts: "dashboard_include_ports",
+      excludeCountries: "dashboard_exclude_countries",
+      excludeOutbounds: "dashboard_exclude_outbounds",
+      excludeRegex: "dashboard_exclude_regex",
+      excludeProxyParameters: "dashboard_exclude_proxy_parameters",
+      excludeProtocols: "dashboard_exclude_protocols",
+      excludeTransports: "dashboard_exclude_transports",
+      excludeSecurities: "dashboard_exclude_securities",
+      excludePorts: "dashboard_exclude_ports",
+    },
   });
 }
 
@@ -12276,6 +13023,31 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "connection");
   o.depends("action", "fptn");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "fail_policy",
+    _("Section Fail Policy"),
+    _(
+      "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly).",
+    ),
+  );
+  o.value("keep", _("Keep (default behavior)"));
+  o.value("block", _("Fail-Closed (Block / Kill-switch)"));
+  o.value("direct", _("Fail-Open (Direct bypass)"));
+  o.default = "keep";
+  o.rmempty = true;
+  o.depends("action", "connection");
+  o.depends("action", "fptn");
+  o.depends("action", "awg");
+  o.depends("action", "byedpi");
+  o.depends("action", "wdtt");
+  o.depends("action", "olcrtc");
+  o.depends("action", "zapret");
+  o.depends("action", "zapret2");
+  o.depends("action", "outbound");
   o.modalonly = true;
 
   o = section.taboption(

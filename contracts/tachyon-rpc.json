@@ -3708,6 +3708,69 @@
       }
     },
     {
+      "name": "snapshot_diff",
+      "cli_command": "snapshot_diff",
+      "category": "system",
+      "acl": "write",
+      "description": "snapshot-diff (service/snapshot.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of snapshot_diff"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "snapshot_export",
+      "cli_command": "snapshot_export",
+      "category": "system",
+      "acl": "write",
+      "description": "snapshot-export (service/snapshot.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of snapshot_export"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "snapshot_import",
+      "cli_command": "snapshot_import",
+      "category": "system",
+      "acl": "write",
+      "description": "snapshot-import (service/snapshot.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of snapshot_import"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
       "name": "snapshot_list",
       "cli_command": "snapshot_list",
       "category": "system",

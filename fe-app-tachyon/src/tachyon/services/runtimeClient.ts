@@ -62,16 +62,124 @@ export interface ResolveDomainResult {
   error?: string;
 }
 
+export interface RouteExplainStages {
+  '1_client_classification'?: {
+    stage: number;
+    name: string;
+    client: string;
+    ip?: string;
+    mac?: string | null;
+    client_type?: string;
+    is_excluded?: boolean;
+    details: string;
+  };
+  '2_target_classification'?: {
+    stage: number;
+    name: string;
+    target: string;
+    target_type: string;
+    port: number;
+    proto: string;
+    is_private_ip?: boolean;
+    is_fakeip?: boolean;
+    details: string;
+  };
+  '3_section_matching'?: {
+    stage: number;
+    name: string;
+    matched_section: string | null;
+    section_label?: string | null;
+    action: string;
+    rule_type: string;
+    rule_value: string;
+    details: string;
+  };
+  '4_dns_decision'?: {
+    stage: number;
+    name: string;
+    mode: string;
+    resolver: string;
+    fakeip_active?: boolean;
+    details: string;
+  };
+  '5_nftables_interception'?: {
+    stage: number;
+    name: string;
+    table: string;
+    chain: string;
+    hook?: string;
+    intercepted: boolean;
+    fwmark: string;
+    action: string;
+    details: string;
+  };
+  '6_policy_routing'?: {
+    stage: number;
+    name: string;
+    table: string;
+    ip_rule: string;
+    route: string;
+    details: string;
+  };
+  '7_engine_outbound'?: {
+    stage: number;
+    name: string;
+    engine: string;
+    engaged?: boolean;
+    inbound_tag?: string;
+    group_tag?: string;
+    group_type?: string;
+    outbound_tag?: string;
+    selected_node: string;
+    node_type?: string;
+    server_address?: string;
+    server_port?: number | string;
+    transport?: string;
+    details: string;
+  };
+}
+
 export interface RouteExplainResult {
-  target: string;
+  success?: boolean;
+  error?: string;
+  query?: {
+    client: string;
+    client_mac?: string | null;
+    target: string;
+    target_type?: string;
+    port: number;
+    proto: string;
+  };
+  verdict?:
+    | 'proxied'
+    | 'direct'
+    | 'blocked'
+    | 'zapret'
+    | 'byedpi'
+    | 'local'
+    | string;
+  matched_section?: string | null;
+  matched_rule?: {
+    type: string;
+    value: string;
+    section: string;
+    action: string;
+  };
+  stages?: RouteExplainStages;
+  explanation?:
+    | {
+        en: string;
+        ru: string;
+      }
+    | string;
+  target?: string;
   client?: string;
   port?: number;
   proto?: string;
-  action: 'proxy' | 'direct' | 'block' | 'drop' | string;
+  action?: 'proxy' | 'direct' | 'block' | 'drop' | string;
   engine?: string;
   rule_matched?: string;
   outbound?: string;
-  explanation?: string;
 }
 
 function parseJsonStdout<T>(stdout: string, fallback: T): T {
@@ -285,11 +393,12 @@ export class RuntimeClient {
           target,
           String(port),
           proto,
+          '--json',
         ],
         timeout: 10000,
       });
 
-      if ((res.code ?? 0) !== 0) {
+      if ((res.code ?? 0) !== 0 && !res.stdout) {
         return null;
       }
 

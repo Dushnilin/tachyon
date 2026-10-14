@@ -86,6 +86,7 @@ let setting_schema = {
     },
     telegram: {
         enabled: "enabled",
+        router_name: "router_name",
         bot_token: "bot_token",
         admin_ids: "admin_ids",
         poll_interval: "poll_interval",

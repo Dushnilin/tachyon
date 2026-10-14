@@ -16,6 +16,12 @@ grep -Fq 'snapshot_restore: [ "service/snapshot.uc", "snapshot-restore", 1 ]' "$
   fail "tachyon entrypoint must dispatch snapshot_restore to service/snapshot.uc"
 grep -Fq 'snapshot_delete: [ "service/snapshot.uc", "snapshot-delete", 1 ]' "$TACHYON_BIN" ||
   fail "tachyon entrypoint must dispatch snapshot_delete to service/snapshot.uc"
+grep -Fq 'snapshot_diff: [ "service/snapshot.uc", "snapshot-diff", 1 ]' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must dispatch snapshot_diff to service/snapshot.uc"
+grep -Fq 'snapshot_export: [ "service/snapshot.uc", "snapshot-export", 1 ]' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must dispatch snapshot_export to service/snapshot.uc"
+grep -Fq 'snapshot_import: [ "service/snapshot.uc", "snapshot-import", 1 ]' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must dispatch snapshot_import to service/snapshot.uc"
 grep -Fq 'snapshot_save <name>' "$TACHYON_BIN" ||
   fail "tachyon help must document snapshot_save"
 
@@ -205,5 +211,42 @@ grep -Fq 'invalid snapshot name' "$WORK_DIR/result.json" ||
 run_uc snapshot-restore "evil" >"$WORK_DIR/result.json" && fail "restore must reject invalid files"
 grep -Fq 'invalid snapshot name' "$WORK_DIR/result.json" ||
   fail "restore of an invalid file name must be rejected"
+
+# ---- snapshot-diff (with secret masking), snapshot-export, and snapshot-import
+
+printf '%s\n' \
+  "config settings 'settings'" \
+  "        option dns_type 'udp'" \
+  "        option dns '8.8.8.8'" \
+  "        option bot_token 'super-secret-token-1'" >"$WORK_DIR/config/tachyon"
+run_uc snapshot-save prof1 >"$WORK_DIR/result.json"
+PROF_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/result.json")"
+
+printf '%s\n' \
+  "config settings 'settings'" \
+  "        option dns_type 'doh'" \
+  "        option dns '1.1.1.1'" \
+  "        option bot_token 'super-secret-token-2'" >"$WORK_DIR/config/tachyon"
+
+run_uc snapshot-diff "$PROF_FILE" >"$WORK_DIR/diff.json"
+grep -Fq '"success": true' "$WORK_DIR/diff.json" ||
+  fail "snapshot-diff must succeed"
+grep -Fq '"has_changes": true' "$WORK_DIR/diff.json" ||
+  fail "snapshot-diff must detect changes"
+if grep -Fq 'super-secret-token' "$WORK_DIR/diff.json"; then
+  fail "snapshot-diff must mask sensitive UCI options like bot_token"
+fi
+
+run_uc snapshot-export "$PROF_FILE" >"$WORK_DIR/export.json"
+grep -Fq '"format": "tachyon-profile-v1"' "$WORK_DIR/export.json" ||
+  fail "snapshot-export must emit tachyon-profile-v1 format"
+
+run_uc snapshot-delete "$PROF_FILE" >/dev/null
+run_uc snapshot-import "$WORK_DIR/export.json" >"$WORK_DIR/import.json"
+grep -Fq '"success": true' "$WORK_DIR/import.json" ||
+  fail "snapshot-import must succeed on exported profile JSON"
+IMPORTED_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/import.json")"
+[ -f "$WORK_DIR/snapshots/$IMPORTED_FILE" ] ||
+  fail "snapshot-import must create the archive in snapshots directory"
 
 printf 'snapshot contract checks passed\n'

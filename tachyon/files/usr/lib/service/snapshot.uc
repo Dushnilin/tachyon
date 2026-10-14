@@ -149,9 +149,10 @@ function snapshot_list() {
         if (line == "" || !snapshot_file_valid(line))
             continue;
         let full = SNAPSHOTS_DIR + "/" + line;
-        if (fs.stat(full) == null)
+        let st = fs.stat(full);
+        if (st == null)
             continue;
-        let size = int(command_output_from_args([ "stat", "-c", "%s", full ]));
+        let size = int(st.size || 0);
         let base = substr(line, 0, length(line) - length(".tar.gz"));
         let last_dash = rindex(base, "-");
         let mid_dash = last_dash >= 0 ? rindex(substr(base, 0, last_dash), "-") : -1;
@@ -268,6 +269,332 @@ function snapshot_restore(file) {
     return 0;
 }
 
+const SENSITIVE_UCI_OPTIONS = {
+    bot_token: true,
+    yacd_secret_key: true,
+    ai_doctor_api_key: true,
+    agent_api_token: true,
+    access_token: true,
+    crypto_key: true,
+    private_key: true,
+    preshared_key: true,
+    server_password: true,
+    server_uuid: true,
+    mixed_proxy_password: true,
+    reality_private_key: true,
+    password: true,
+    secret: true,
+    token: true,
+    uuid: true,
+    selector_proxy_links: true,
+    selector_proxy_links_text: true,
+    outbound_json: true,
+    outbound_jsons: true,
+    warp_flow_uri: true
+};
+
+function is_sensitive_uci_key(key) {
+    key = lc(as_string(key));
+    if (SENSITIVE_UCI_OPTIONS[key])
+        return true;
+    return index(key, "password") >= 0 ||
+        index(key, "secret") >= 0 ||
+        index(key, "token") >= 0 ||
+        index(key, "private_key") >= 0 ||
+        index(key, "crypto_key") >= 0;
+}
+
+function mask_uci_secrets(text) {
+    let lines = split(as_string(text || ""), "\n");
+    let out = [];
+    for (let line in lines) {
+        let m = match(line, /^([ \t]*(option|list)[ \t]+)([A-Za-z0-9_]+)([ \t]+)(.+)$/);
+        if (m != null && is_sensitive_uci_key(m[3])) {
+            push(out, m[1] + m[3] + m[4] + "'***'");
+        } else {
+            push(out, line);
+        }
+    }
+    return join("\n", out);
+}
+
+function parse_snapshot_meta(file) {
+    let base = substr(file, 0, length(file) - length(".tar.gz"));
+    let last_dash = rindex(base, "-");
+    let mid_dash = last_dash >= 0 ? rindex(substr(base, 0, last_dash), "-") : -1;
+    let name = mid_dash >= 0 ? substr(base, 0, mid_dash) : base;
+    let stamp = mid_dash >= 0 ? substr(base, mid_dash + 1) : "";
+    return { name: name, stamp: stamp };
+}
+
+function snapshot_diff(file) {
+    if (!snapshot_file_valid(file))
+        return fail("invalid snapshot name");
+    let archive = SNAPSHOTS_DIR + "/" + file;
+    if (fs.stat(archive) == null)
+        return fail("snapshot not found");
+
+    let members_out = command_output_from_args([ "tar", "-tzf", archive ]);
+    let members = [];
+    for (let line in split(members_out, "\n")) {
+        line = trim(line);
+        if (line != "")
+            push(members, line);
+    }
+    let safety = backup_archive_safe(members);
+    if (!safety.ok)
+        return fail("unsafe archive: " + safety.reason);
+
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-snapshot-diff.XXXXXX" ]));
+    if (stage == "")
+        return fail("unable to create staging directory");
+    if (!command_success_from_args([ "tar", "-xzf", archive, "-C", stage ])) {
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("unable to extract snapshot archive");
+    }
+
+    let staged_config = stage + "/config/" + CONFIG_NAME;
+    let snap_raw = fs.readfile(staged_config) || "";
+    let curr_raw = fs.readfile(CONFIG_PATH) || "";
+    command_status(command_from_args([ "rm", "-rf", stage ]));
+
+    let snap_masked = mask_uci_secrets(snap_raw);
+    let curr_masked = mask_uci_secrets(curr_raw);
+
+    let curr_lines = split(curr_masked, "\n");
+    let snap_lines = split(snap_masked, "\n");
+
+    let curr_counts = {};
+    for (let l in curr_lines) {
+        let trimmed = trim(l);
+        if (trimmed == "")
+            continue;
+        curr_counts[l] = int(curr_counts[l] || 0) + 1;
+    }
+
+    let snap_counts = {};
+    for (let l in snap_lines) {
+        let trimmed = trim(l);
+        if (trimmed == "")
+            continue;
+        snap_counts[l] = int(snap_counts[l] || 0) + 1;
+    }
+
+    let diff_lines = [];
+    let removed_count = 0;
+    let added_count = 0;
+
+    let rem_tracker = {};
+    for (let l in curr_lines) {
+        if (trim(l) == "")
+            continue;
+        let seen = int(rem_tracker[l] || 0) + 1;
+        rem_tracker[l] = seen;
+        if (seen > int(snap_counts[l] || 0)) {
+            push(diff_lines, "- " + l);
+            removed_count++;
+        }
+    }
+
+    let add_tracker = {};
+    for (let l in snap_lines) {
+        if (trim(l) == "")
+            continue;
+        let seen = int(add_tracker[l] || 0) + 1;
+        add_tracker[l] = seen;
+        if (seen > int(curr_counts[l] || 0)) {
+            push(diff_lines, "+ " + l);
+            added_count++;
+        }
+    }
+
+    let meta = parse_snapshot_meta(file);
+    print(sprintf("%J\n", {
+        success: true,
+        file: file,
+        name: meta.name,
+        stamp: meta.stamp,
+        has_changes: (added_count > 0 || removed_count > 0),
+        added_count: added_count,
+        removed_count: removed_count,
+        diff: join("\n", diff_lines)
+    }));
+    return 0;
+}
+
+function snapshot_export(file) {
+    if (!snapshot_file_valid(file))
+        return fail("invalid snapshot name");
+    let archive = SNAPSHOTS_DIR + "/" + file;
+    if (fs.stat(archive) == null)
+        return fail("snapshot not found");
+
+    let members_out = command_output_from_args([ "tar", "-tzf", archive ]);
+    let members = [];
+    for (let line in split(members_out, "\n")) {
+        line = trim(line);
+        if (line != "")
+            push(members, line);
+    }
+    let safety = backup_archive_safe(members);
+    if (!safety.ok)
+        return fail("unsafe archive: " + safety.reason);
+
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-snapshot-export.XXXXXX" ]));
+    if (stage == "")
+        return fail("unable to create staging directory");
+    if (!command_success_from_args([ "tar", "-xzf", archive, "-C", stage ])) {
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("unable to extract snapshot archive");
+    }
+
+    let staged_config = stage + "/config/" + CONFIG_NAME;
+    let config_text = as_string(fs.readfile(staged_config) || "");
+    command_status(command_from_args([ "rm", "-rf", stage ]));
+
+    let raw_archive = fs.readfile(archive);
+    let archive_b64 = raw_archive != null ? b64enc(raw_archive) : "";
+    let meta = parse_snapshot_meta(file);
+
+    print(sprintf("%J\n", {
+        success: true,
+        profile: {
+            format: "tachyon-profile-v1",
+            name: meta.name,
+            stamp: meta.stamp,
+            file: file,
+            created_at: time(),
+            config_text: config_text,
+            archive_base64: archive_b64
+        }
+    }));
+    return 0;
+}
+
+function snapshot_import(source_arg) {
+    source_arg = as_string(source_arg || "");
+    if (source_arg == "")
+        return fail("snapshot import payload or file path required");
+
+    let raw = "";
+    if (source_arg == "-") {
+        raw = as_string(fs.stdin.read("all") || "");
+    } else if (substr( trim(source_arg), 0, 1) == "{") {
+        raw = source_arg;
+    } else {
+        if (fs.stat(source_arg) == null)
+            return fail("import file not found");
+        raw = as_string(fs.readfile(source_arg) || "");
+    }
+
+    let parsed = null;
+    try {
+        parsed = json(raw);
+    } catch (e) {
+        parsed = null;
+    }
+    if (type(parsed) != "object")
+        return fail("invalid snapshot profile JSON");
+
+    let profile = type(parsed.profile) == "object" ? parsed.profile : parsed;
+    if (as_string(profile.format || "") != "tachyon-profile-v1")
+        return fail("unsupported snapshot profile format");
+
+    let safe_name = snapshot_name_safe(profile.name || "imported");
+    if (safe_name == null)
+        safe_name = "imported";
+
+    if (!command_success_from_args([ "mkdir", "-p", SNAPSHOTS_DIR ]))
+        return fail("unable to create snapshots directory");
+
+    let stamp = snapshot_stamp();
+    if (!match(stamp, /^[0-9]{8}-[0-9]{6}$/))
+        stamp = "20260101-000000";
+    let target_file = SNAPSHOTS_DIR + "/" + safe_name + "-" + stamp + ".tar.gz";
+
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-snapshot-import.XXXXXX" ]));
+    if (stage == "")
+        return fail("unable to create staging directory");
+
+    let archive_b64 = trim(as_string(profile.archive_base64 || ""));
+    let config_text = as_string(profile.config_text || "");
+
+    if (archive_b64 != "") {
+        let decoded = null;
+        try {
+            decoded = b64dec(archive_b64);
+        } catch (e) {
+            decoded = null;
+        }
+        if (decoded == null || decoded == "") {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("invalid archive_base64 in profile");
+        }
+        let tmp_tar = stage + "/imported.tar.gz";
+        fs.writefile(tmp_tar, decoded);
+        let members_out = command_output_from_args([ "tar", "-tzf", tmp_tar ]);
+        let members = [];
+        for (let line in split(members_out, "\n")) {
+            line = trim(line);
+            if (line != "")
+                push(members, line);
+        }
+        if (length(members) == 0) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("imported archive is empty or corrupt");
+        }
+        let safety = backup_archive_safe(members);
+        if (!safety.ok) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("unsafe archive: " + safety.reason);
+        }
+        let extract_dir = stage + "/extract";
+        command_success_from_args([ "mkdir", "-p", extract_dir ]);
+        if (!command_success_from_args([ "tar", "-xzf", tmp_tar, "-C", extract_dir ])) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("unable to extract imported archive");
+        }
+        let extracted_cfg = extract_dir + "/config/" + CONFIG_NAME;
+        if (fs.stat(extracted_cfg) != null && !config_sane_preview(extracted_cfg)) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("imported config does not look like a valid UCI file");
+        }
+        if (!command_success_from_args([ "mv", "-f", tmp_tar, target_file ])) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("unable to save imported snapshot");
+        }
+    } else if (config_text != "") {
+        let cfg_dir = stage + "/config";
+        let data_dir = stage + "/" + CONFIG_NAME;
+        command_success_from_args([ "mkdir", "-p", cfg_dir, data_dir ]);
+        let staged_cfg = cfg_dir + "/" + CONFIG_NAME;
+        fs.writefile(staged_cfg, config_text);
+        if (!config_sane_preview(staged_cfg)) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("imported config does not look like a valid UCI file");
+        }
+        if (!command_success_from_args([ "tar", "-czf", target_file, "-C", stage, "config/" + CONFIG_NAME, CONFIG_NAME ])) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("unable to package imported snapshot");
+        }
+    } else {
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("snapshot profile contains neither archive_base64 nor config_text");
+    }
+
+    command_status(command_from_args([ "rm", "-rf", stage ]));
+    command_success_from_args([ "chmod", "600", target_file ]);
+    prune_snapshots();
+
+    log_message("Config snapshot imported: " + safe_name);
+    print(sprintf("%J\n", {
+        success: true,
+        file: common.path_basename(target_file),
+        name: safe_name
+    }));
+    return 0;
+}
+
 let mode = as_string(ARGV[0]);
 
 if (mode == "snapshot-save") {
@@ -296,5 +623,26 @@ if (mode == "snapshot-delete") {
     exit(snapshot_delete(file));
 }
 
-warn("Usage: service/snapshot.uc snapshot-list|snapshot-save <name>|snapshot-restore <file>|snapshot-delete <file>\n");
+if (mode == "snapshot-diff") {
+    let file = as_string(ARGV[1]);
+    if (file == "")
+        exit(fail("snapshot file required"));
+    exit(snapshot_diff(file));
+}
+
+if (mode == "snapshot-export") {
+    let file = as_string(ARGV[1]);
+    if (file == "")
+        exit(fail("snapshot file required"));
+    exit(snapshot_export(file));
+}
+
+if (mode == "snapshot-import") {
+    let source_arg = as_string(ARGV[1]);
+    if (source_arg == "")
+        exit(fail("snapshot import payload or file path required"));
+    exit(snapshot_import(source_arg));
+}
+
+warn("Usage: service/snapshot.uc snapshot-list|snapshot-save <name>|snapshot-restore <file>|snapshot-delete <file>|snapshot-diff <file>|snapshot-export <file>|snapshot-import <file|json>\n");
 exit(1);

@@ -787,8 +787,11 @@ function restore_rulesets_from_cache() {
             continue;
         if (!tmp_st || tmp_st.size == 0) {
             let content = fs.readfile(etc_path);
-            if (content)
-                fs.writefile(tmp_path, content);
+            if (content) {
+                write_file(tmp_path, content);
+                if (match(entry, /\.srs$/) && runtime_rulesets_mod.is_populated_srs_file(tmp_path))
+                    runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
+            }
         }
     }
     dir.close();
@@ -872,8 +875,11 @@ function prepare_community_rulesets() {
         // promoting it beats a pointless download attempt on a boot with no network.
         if (runtime_rulesets_mod.is_referenceable_srs_file(etc_path)) {
             let content = fs.readfile(etc_path);
-            if (content && fs.writefile(tmp_path, content) != null)
+            if (content && write_file(tmp_path, content)) {
+                if (runtime_rulesets_mod.is_populated_srs_file(tmp_path))
+                    runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
                 continue;
+            }
         }
 
         let url = runtime_rulesets_mod.community_url(service);
@@ -889,10 +895,13 @@ function prepare_community_rulesets() {
                     let st = fs.stat(dl_tmp);
                     if (st && st.size >= 100) {
                         command_success_from_args([ "mv", "-f", dl_tmp, tmp_path ]);
+                        runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
                         command_success_from_args([ "mkdir", "-p", etc_dir ]);
                         let cdata = fs.readfile(tmp_path);
-                        if (cdata)
-                            fs.writefile(etc_path, cdata);
+                        if (cdata) {
+                            write_file(etc_path, cdata);
+                            runtime_rulesets_mod.remember_srs_file_verified(etc_path);
+                        }
                         log_message("Pre-downloaded community ruleset " + service + " from " + candidate, "info");
                         fetched = true;
                         break;

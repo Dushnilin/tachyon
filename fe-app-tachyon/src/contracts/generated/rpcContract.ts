@@ -215,6 +215,9 @@ export const TACHYON_RPC_METHODS = [
   'show_sing_box_version',
   'show_version',
   'snapshot_delete',
+  'snapshot_diff',
+  'snapshot_export',
+  'snapshot_import',
   'snapshot_list',
   'snapshot_restore',
   'snapshot_save',
@@ -1629,6 +1632,30 @@ export interface SnapshotdeleteParams {
 
 export type SnapshotdeleteResult = Record<string, unknown>;
 
+/** snapshot-diff (service/snapshot.uc) */
+export interface SnapshotdiffParams {
+  /** positional argument 1 of snapshot_diff */
+  arg1?: string;
+}
+
+export type SnapshotdiffResult = Record<string, unknown>;
+
+/** snapshot-export (service/snapshot.uc) */
+export interface SnapshotexportParams {
+  /** positional argument 1 of snapshot_export */
+  arg1?: string;
+}
+
+export type SnapshotexportResult = Record<string, unknown>;
+
+/** snapshot-import (service/snapshot.uc) */
+export interface SnapshotimportParams {
+  /** positional argument 1 of snapshot_import */
+  arg1?: string;
+}
+
+export type SnapshotimportResult = Record<string, unknown>;
+
 /** snapshot-list (service/snapshot.uc) */
 export type SnapshotlistParams = Record<string, never>;
 
@@ -2636,6 +2663,18 @@ export interface TachyonRpcRegistry {
   snapshot_delete: {
     params: SnapshotdeleteParams;
     result: SnapshotdeleteResult;
+  };
+  snapshot_diff: {
+    params: SnapshotdiffParams;
+    result: SnapshotdiffResult;
+  };
+  snapshot_export: {
+    params: SnapshotexportParams;
+    result: SnapshotexportResult;
+  };
+  snapshot_import: {
+    params: SnapshotimportParams;
+    result: SnapshotimportResult;
   };
   snapshot_list: {
     params: SnapshotlistParams;
@@ -5665,6 +5704,57 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           type: 'string',
           required: false,
           description: 'positional argument 1 of snapshot_delete',
+        },
+      ],
+    },
+    snapshot_diff: {
+      name: 'snapshot_diff',
+      cli_command: 'snapshot_diff',
+      category: 'system',
+      acl: 'write',
+      description: 'snapshot-diff (service/snapshot.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of snapshot_diff',
+        },
+      ],
+    },
+    snapshot_export: {
+      name: 'snapshot_export',
+      cli_command: 'snapshot_export',
+      category: 'system',
+      acl: 'write',
+      description: 'snapshot-export (service/snapshot.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of snapshot_export',
+        },
+      ],
+    },
+    snapshot_import: {
+      name: 'snapshot_import',
+      cli_command: 'snapshot_import',
+      category: 'system',
+      acl: 'write',
+      description: 'snapshot-import (service/snapshot.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of snapshot_import',
         },
       ],
     },

@@ -97,6 +97,7 @@ let view_system_info = commands.view_system_info;
 let view_connections = commands.view_connections;
 let view_sec_subs = commands.view_sec_subs;
 let view_help = commands.view_help;
+let view_router_name = commands.view_router_name;
 let view_language = commands.view_language;
 let view_guest_mode = commands.view_guest_mode;
 let view_quiet_hours = commands.view_quiet_hours;
@@ -547,7 +548,27 @@ function handle_qos_toggle(token, chat_id, msg_id) {
     view_qos(token, chat_id, msg_id);
 }
 
+function handle_router_name_set(token, chat_id, msg_id, new_name) {
+    t = i18n.bind(settings().language);
+    new_name = trim(as_string(new_name || ""));
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    if (!c.get_all(CONFIG_NAME, "telegram"))
+        c.set(CONFIG_NAME, "telegram", "telegram");
+    if (new_name == "") {
+        c.delete(CONFIG_NAME, "telegram", "router_name");
+        c.commit(CONFIG_NAME);
+        send_message(token, chat_id, "✅ " + t("router_name_cleared"), "HTML");
+    } else {
+        c.set(CONFIG_NAME, "telegram", "router_name", new_name);
+        c.commit(CONFIG_NAME);
+        send_message(token, chat_id, "✅ " + t("router_name_saved") + " <code>" + escape_html(new_name) + "</code>", "HTML");
+    }
+    return view_router_name(token, chat_id, null);
+}
+
 function dispatch_command(token, chat_id, text, msg_id) {
+    t = i18n.bind(settings().language);
     let cmd = trim(as_string(text));
 
     // Resolve tokenized callbacks produced by cb_data() for oversized payloads
@@ -577,6 +598,18 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/test") return view_quick_test(token, chat_id, msg_id);
     if (cmd == "/info") return view_system_info(token, chat_id, msg_id);
     if (cmd == "/help") return view_help(token, chat_id, msg_id);
+    if (cmd == "/name" || cmd == "/router_name") return view_router_name(token, chat_id, msg_id);
+    if (cmd == "/name_prompt") {
+        set_tg_state(chat_id, { action: "router_name" });
+        return send_message(token, chat_id, t("router_name_prompt"), "HTML");
+    }
+    if (cmd == "/name_clear") {
+        return handle_router_name_set(token, chat_id, msg_id, "");
+    }
+    let name_match = match(cmd, /^\/(name|router_name)[ \t]+(.+)$/);
+    if (name_match) {
+        return handle_router_name_set(token, chat_id, msg_id, trim(name_match[2]));
+    }
     if (cmd == "/lang" || cmd == "/language") return view_language(token, chat_id, msg_id);
     let lang_match = match(cmd, /^\/(lang_set|lang|language)[ \t]+([a-zA-Z0-9_-]+)/);
     if (lang_match) {
@@ -957,6 +990,7 @@ return {
     apply_backup_restore,
     handle_sec_sub_add,
     handle_sec_sub_del,
+    handle_router_name_set,
     handle_lang_set,
     handle_guest_toggle,
     handle_qh_toggle,

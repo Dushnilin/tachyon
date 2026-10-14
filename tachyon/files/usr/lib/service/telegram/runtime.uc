@@ -46,6 +46,7 @@ let view_test_rule = commands.view_test_rule;
 let view_quiet_hours = commands.view_quiet_hours;
 let handle_fptn_token_update = callbacks.handle_fptn_token_update;
 let handle_sec_sub_add = callbacks.handle_sec_sub_add;
+let handle_router_name_set = callbacks.handle_router_name_set;
 let object_or_empty = common.object_or_empty;
 // commands.uc and callbacks.uc both carry this binding; runtime.uc did not.
 // block_schedules_with_notify() calls option() on its first line, so
@@ -175,6 +176,15 @@ function check_notified_updates(token, admin_ids) {
                             (transition != "" ? "\n" + t("update_build_label") + ": " + transition : "");
                     } else {
                         msg = "📦 <b>" + t("update_available") + "</b>\n" + title + ": <code>" + escape_html(cur) + "</code> ➡️ <code>" + escape_html(as_string(latest)) + "</code>";
+                    }
+                    let notes = trim(replace(as_string(comp.release_notes || ""), /\r/g, ""));
+                    if (notes != "") {
+                        if (length(notes) > 1200)
+                            notes = substr(notes, 0, 1200) + "\n...";
+                        msg += "\n\n📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>";
+                    }
+                    if (as_string(comp.release_url || "") != "") {
+                        msg += "\n🔗 <a href=\"" + escape_html(as_string(comp.release_url)) + "\">GitHub Release</a>";
                     }
                     let kb = [[{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]];
 
@@ -544,6 +554,10 @@ function process_updates(token, admin_ids) {
                 else if (state.action == "fptn_token") {
                     set_tg_state(chat_id, null);
                     handle_fptn_token_update(token, chat_id, trim(msg.text), state.sec || null);
+                }
+                else if (state.action == "router_name") {
+                    set_tg_state(chat_id, null);
+                    handle_router_name_set(token, chat_id, null, trim(msg.text));
                 }
                 continue;
             }

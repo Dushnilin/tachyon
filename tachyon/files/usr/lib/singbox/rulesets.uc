@@ -269,11 +269,9 @@ function srs_file_parses(path) {
     if (fs.stat(bin) == null)
         return true;
 
-    let out = "/tmp/.srs-verify-" + hash12(p) + ".json";
-    try { fs.unlink(out); } catch (e) {}
-    let ok = command_success_from_args([ bin, "rule-set", "decompile", "--output", out, p ]);
-    try { fs.unlink(out); } catch (e) {}
-    return ok;
+    return command_success_from_args([
+        bin, "rule-set", "match", "--format", "binary", p, "tachyon-validation.invalid"
+    ]);
 }
 
 function is_populated_srs_file(path) {
@@ -404,6 +402,8 @@ function module_exports() {
         is_valid_srs_file,
         is_populated_srs_file,
         srs_file_parses,
+        srs_file_already_verified,
+        remember_srs_file_verified,
         is_usable_srs_file,
         is_adoptable_srs_file,
         is_referenceable_srs_file,

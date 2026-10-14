@@ -179,6 +179,9 @@ function show_help() {
     print("    snapshot_save <name>    Save a config snapshot\n");
     print("    snapshot_restore <file> Restore a config snapshot\n");
     print("    snapshot_delete <file>  Delete a config snapshot\n");
+    print("    snapshot_diff <file>    Show secret-masked diff between snapshot and active config\n");
+    print("    snapshot_export <file>  Export a config snapshot as a JSON profile\n");
+    print("    snapshot_import <file>  Import a config snapshot from a JSON profile\n");
     print("    import_settings [file]  Scan and import legacy settings from Forkop/Podkop or backup\n");
     print("    dns_benchmark [--json]  Benchmark major DNS servers (UDP/DoH) and display speed ratings\n");
     print("    dns_speed_test_start <json>  Test selected DoH servers and domains without changing settings\n");
@@ -387,6 +390,9 @@ function command_spec(command) {
         snapshot_save: [ "service/snapshot.uc", "snapshot-save", 1 ],
         snapshot_restore: [ "service/snapshot.uc", "snapshot-restore", 1 ],
         snapshot_delete: [ "service/snapshot.uc", "snapshot-delete", 1 ],
+        snapshot_diff: [ "service/snapshot.uc", "snapshot-diff", 1 ],
+        snapshot_export: [ "service/snapshot.uc", "snapshot-export", 1 ],
+        snapshot_import: [ "service/snapshot.uc", "snapshot-import", 1 ],
         dns_benchmark: [ "dns/benchmark.uc", "benchmark", 1 ],
         dns_autotune: [ "dns/benchmark.uc", "autotune", 1 ],
         dns_benchmark_async: [ "dns/benchmark.uc", "benchmark_async", 0 ],

@@ -39,4 +39,11 @@ grep -q 'cache_path_on_volatile' "$GEN_UC" ||
 grep -qE 'generator_log\(|log_message\(|log_warn\(' "$GEN_UC" ||
   fail "the volatility check never reaches a logger"
 
+# --- service/state.uc signature default must match generator.uc -------------
+STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
+[ -f "$STATE_UC" ] || fail "service/state.uc not found"
+state_default="$(grep -oE 'option\(settings, "cache_path", "[^"]*"\)' "$STATE_UC" | head -1 | sed -E 's/.*"cache_path", "([^"]*)".*/\1/')"
+[ "$state_default" = "$default_path" ] ||
+  fail "service/state.uc default cache_path ($state_default) disagrees with generator.uc ($default_path)"
+
 printf 'fakeip cache persistence: checks passed\n'

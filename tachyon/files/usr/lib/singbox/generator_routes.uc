@@ -1656,7 +1656,53 @@ function push_route_matcher_rule(config, rule) {
         push(config.route.rules, rule);
 }
 
+function section_fail_state_map() {
+    let path = getenv("TACHYON_SECTION_FAIL_STATE_FILE") || "/var/run/tachyon/section-fail-state.json";
+    let data = read_json_file(path);
+    return type(data) == "object" ? data : {};
+}
+
+function section_is_failed_or_quarantined(section_name) {
+    section_name = as_string(section_name);
+    if (section_name == "")
+        return false;
+    if (ctx.deferred_sections && ctx.deferred_sections[section_name])
+        return true;
+    if (ctx.quarantined_sections && ctx.quarantined_sections[section_name])
+        return true;
+    let fstate = section_fail_state_map();
+    let entry = fstate[section_name];
+    if (type(entry) == "object")
+        return common.bool_value(entry.failed);
+    return common.bool_value(entry);
+}
+
+function section_fail_policy_mode(section) {
+    let raw = lc(trim(option(section, "fail_policy", "keep")));
+    if (raw == "block" || raw == "direct")
+        return raw;
+    return "keep";
+}
+
+function section_fail_policy_override_target(section) {
+    let name = as_string(section[".name"]);
+    if (!section_is_failed_or_quarantined(name))
+        return null;
+    let policy = section_fail_policy_mode(section);
+    if (policy == "block")
+        return { action: "reject", fail_policy: "block" };
+    if (policy == "direct")
+        return { action: "route", outbound: runtime_constants.DIRECT_OUTBOUND_TAG, fail_policy: "direct" };
+    return null;
+}
+
 function section_dns_server(section) {
+    let override = section_fail_policy_override_target(section);
+    if (override != null) {
+        if (override.fail_policy == "direct")
+            return runtime_constants.DNS_SERVER_TAG;
+        return runtime_constants.FAKEIP_DNS_SERVER_TAG;
+    }
     if (connections.routed_dns_enabled(section))
         return runtime_constants.tag(section[".name"], "routed-dns-server");
     if (option(section, "action", "") == "bypass")
@@ -2190,7 +2236,8 @@ function add_fully_routed_ips_rule(config, section) {
     if (length(source_ip_cidr) == 0)
         return;
 
-    let target = runtime_route.target(section, group_outbound_tag_for_section(section) || outbound_tag(section[".name"]));
+    let target = section_fail_policy_override_target(section) ||
+        runtime_route.target(section, group_outbound_tag_for_section(section) || outbound_tag(section[".name"]));
     if (target.unsupported)
         ctx.runtime_generate_unsupported(target.unsupported);
 
@@ -2365,7 +2412,9 @@ function add_combined_route_for_section(config, section) {
         false
     );
 
-    let target = runtime_route.target(section, group_outbound_tag_for_section(section) || outbound_tag(section_name));
+    let override = section_fail_policy_override_target(section);
+    let target = override ||
+        runtime_route.target(section, group_outbound_tag_for_section(section) || outbound_tag(section_name));
     if (target.unsupported)
         ctx.runtime_generate_unsupported(target.unsupported);
 
@@ -2418,11 +2467,13 @@ function add_combined_route_for_section(config, section) {
         add_domain_array(domain_rule, "domain_keyword", domain_keyword);
         add_domain_array(domain_rule, "domain_regex", domain_regex);
 
-        let resolve = runtime_route.resolve_rule_for_section(section, domain_rule);
-        if (type(resolve) == "object" && resolve.warning)
-            warn(resolve.warning, "\n");
-        else if (type(resolve) == "object" && resolve.rule)
-            push_route_matcher_rule(config, apply_excluded_source_ips(resolve.rule, excluded_cidrs));
+        if (override == null) {
+            let resolve = runtime_route.resolve_rule_for_section(section, domain_rule);
+            if (type(resolve) == "object" && resolve.warning)
+                warn(resolve.warning, "\n");
+            else if (type(resolve) == "object" && resolve.rule)
+                push_route_matcher_rule(config, apply_excluded_source_ips(resolve.rule, excluded_cidrs));
+        }
 
         push_section_route_rule(config, domain_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
@@ -2431,11 +2482,13 @@ function add_combined_route_for_section(config, section) {
         let rs_rule = create_section_route_rule();
         rs_rule.rule_set = single_or_array(rule_set_tags);
 
-        let resolve = runtime_route.resolve_rule_for_section(section, rs_rule);
-        if (type(resolve) == "object" && resolve.warning)
-            warn(resolve.warning, "\n");
-        else if (type(resolve) == "object" && resolve.rule)
-            push_route_matcher_rule(config, apply_excluded_source_ips(resolve.rule, excluded_cidrs));
+        if (override == null) {
+            let resolve = runtime_route.resolve_rule_for_section(section, rs_rule);
+            if (type(resolve) == "object" && resolve.warning)
+                warn(resolve.warning, "\n");
+            else if (type(resolve) == "object" && resolve.rule)
+                push_route_matcher_rule(config, apply_excluded_source_ips(resolve.rule, excluded_cidrs));
+        }
 
         push_section_route_rule(config, rs_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
     }
@@ -2661,7 +2714,8 @@ function reserve_section_outbound_tags(sections, taken) {
 }
 
 function add_route_for_section(config, section) {
-    if (ctx.deferred_sections && ctx.deferred_sections[section[".name"]])
+    let override = section_fail_policy_override_target(section);
+    if (ctx.deferred_sections && ctx.deferred_sections[section[".name"]] && override == null)
         return;
     let action = option(section, "action", "");
     if (action == "dns")

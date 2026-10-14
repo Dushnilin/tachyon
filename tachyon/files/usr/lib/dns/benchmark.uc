@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let exec = require("core.exec");
 let uci_core = require("core.uci");
 
 let as_string = common.as_string;
@@ -602,7 +603,7 @@ function run_benchmark(on_progress) {
     };
 }
 
-function apply_recommendation(rec) {
+function apply_recommendation(rec, async_restart) {
     if (!rec || type(rec) != "object")
         return false;
 
@@ -621,10 +622,19 @@ function apply_recommendation(rec) {
     if (rec.dns_upstream_mode)
         cursor.set(CONFIG_NAME, "settings", "dns_upstream_mode", as_string(rec.dns_upstream_mode));
 
-    cursor.commit(CONFIG_NAME);
+    if (!cursor.commit(CONFIG_NAME))
+        return false;
 
-    // Restart tachyon service to apply immediately
-    command_success_from_args([ SERVICE_INIT, "restart" ]);
+    // Restart tachyon service to apply immediately.
+    // When invoked via RPC/UI (async_restart), spawn the restart in the background
+    // with inherited file descriptors closed so rpcd does not hang waiting for
+    // child daemons or time out while rulesets/sing-box reload.
+    if (fs.stat(SERVICE_INIT) != null) {
+        if (async_restart)
+            exec.run_background({ argv: [ SERVICE_INIT, "restart" ] });
+        else
+            command_success_from_args([ SERVICE_INIT, "restart" ]);
+    }
     return true;
 }
 
@@ -800,7 +810,7 @@ function apply_from_state() {
         return 1;
     }
 
-    let ok = apply_recommendation(state.recommendation);
+    let ok = apply_recommendation(state.recommendation, true);
     if (ok)
         print(sprintf("%J\n", { success: true, message: "Recommended DNS configuration applied and service restarted", recommendation: state.recommendation }));
     else

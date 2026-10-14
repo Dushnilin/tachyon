@@ -265,9 +265,37 @@ function tg_request(token, method, payload) {
     return res;
 }
 
+function escape_html_simple(text) {
+    text = replace(as_string(text), /&/g, "&amp;");
+    text = replace(text, /</g, "&lt;");
+    text = replace(text, />/g, "&gt;");
+    return text;
+}
+
+function escape_markdown_simple(text) {
+    text = replace(as_string(text), /([_*`\[])/g, "\\$1");
+    return text;
+}
+
+function router_name() {
+    return trim(as_string(settings().router_name || ""));
+}
+
+function apply_router_prefix(text, parse_mode) {
+    text = as_string(text);
+    let rname = router_name();
+    if (rname == "" || index(text, "🖥 [") == 0 || index(text, "🖥 <b>[") == 0 || index(text, "🖥 *[") == 0)
+        return text;
+    if (parse_mode == "HTML")
+        return "🖥 <b>[" + escape_html_simple(rname) + "]</b>\n" + text;
+    if (parse_mode == "Markdown")
+        return "🖥 *[" + escape_markdown_simple(rname) + "]*\n" + text;
+    return "🖥 [" + rname + "]\n" + text;
+}
+
 function send_message(token, chat_id, text, parse_mode, keyboard) {
     let t = get_t();
-    text = as_string(text);
+    text = apply_router_prefix(text, parse_mode);
     if (length(text) > 3900) {
         text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
         if (parse_mode == "HTML") {
@@ -311,7 +339,7 @@ function alert_route_failure(attempt, proxy_alive) {
 
 function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {
     let t = get_t();
-    text = as_string(text);
+    text = apply_router_prefix(text, parse_mode);
     if (length(text) > 3900) {
         text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
         if (parse_mode == "HTML") {
@@ -337,6 +365,9 @@ function send_document(token, chat_id, file_path) {
     if (!token) return null;
     let url = "https://api.telegram.org/bot" + token + "/sendDocument";
     let args = [ "curl", "-s", "-m", "60", "--connect-timeout", "10", "-X", "POST", "-F", "chat_id=" + chat_id, "-F", "document=@" + file_path ];
+    let rname = router_name();
+    if (rname != "")
+        push(args, "-F", "caption=🖥 [" + rname + "]");
     let proxy = get_proxy_args();
     for (let p in proxy) push(args, p);
     push(args, url);
@@ -376,6 +407,7 @@ function register_bot_commands(token) {
         { command: "close_connections", description: t("cmd_close_connections") },
         { command: "doctor",    description: t("cmd_doctor") },
         { command: "restart",   description: t("cmd_restart") },
+        { command: "name",      description: t("cmd_name") },
         { command: "lang",      description: t("cmd_lang") },
         { command: "fptn",      description: t("fptn_token_btn") }
     ];
@@ -430,6 +462,8 @@ return {
     cb_map_get,
     cb_data,
     settings,
+    router_name,
+    apply_router_prefix,
     get_mixed_proxy_info,
     get_mixed_port,
     get_mixed_proxy_endpoint,

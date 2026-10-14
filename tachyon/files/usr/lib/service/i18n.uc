@@ -26,6 +26,8 @@ let strings = {
         download_components_via_proxy: "Core via Proxy",
         dont_touch_dhcp: "Don't Touch DHCP",
         isolate_p2p: "Isolate P2P",
+        bittorrent_policy: "BitTorrent Policy",
+        wifi_calling_direct: "Wi-Fi Calling Direct",
         log_level: "Log Level",
         exclude_ntp: "Exclude NTP",
         route_router_traffic: "Route Router Traffic",
@@ -552,6 +554,8 @@ let strings = {
         exec_changed_to: "changed to",
         exec_format_hint: "Format: domain.com or [ip]/prefix.",
         update_new_release_header: "New build of current release!",
+        update_available: "Component update available!",
+        update_whats_new: "What's new",
         update_build_label: "Build",
         critical_keyword_fallen: "Down",
         critical_keyword_error: "Error",
@@ -566,6 +570,18 @@ let strings = {
         fptn_token_retry_hint: "Connecting in background; routing will be applied automatically.",
         fptn_token_change_btn: "FPTN Token",
         fptn_token_btn: "FPTN Token",
+        router_name: "Router Name",
+        cmd_name: "Router name",
+        menu_router_name: "🖥 Router Name",
+        router_name_title: "Router Name",
+        router_name_current: "Current name: %s",
+        router_name_not_set: "Not set",
+        router_name_hint: "Displayed at the top of all Telegram bot messages to distinguish multiple routers using the same bot token.",
+        router_name_prompt: "🖥 Enter a new name for this router (e.g. <code>Home</code>, <code>Office</code>, <code>Dacha</code>):\n\n<i>Send /cancel to cancel</i>",
+        router_name_saved: "Router name saved:",
+        router_name_cleared: "Router name cleared.",
+        btn_router_name_change: "✏️ Change Name",
+        btn_router_name_clear: "🗑 Clear Name",
     },
 
     ru: {
@@ -592,6 +608,8 @@ let strings = {
         download_components_via_proxy: "Ядро через прокси",
         dont_touch_dhcp: "Не трогать DHCP",
         isolate_p2p: "Изолировать P2P",
+        bittorrent_policy: "Политика BitTorrent",
+        wifi_calling_direct: "Wi-Fi Calling напрямую",
         log_level: "Уровень логов",
         exclude_ntp: "Исключить NTP",
         route_router_traffic: "Маршрутизировать трафик роутера",
@@ -940,6 +958,7 @@ let strings = {
         // ─── Updates ───
         update_new_build: "Новая сборка текущего релиза!",
         update_available: "Доступно обновление компонента!",
+        update_whats_new: "Что нового",
         build_label: "Сборка",
 
         // ─── Healer ───
@@ -1133,6 +1152,18 @@ let strings = {
         fptn_token_retry_hint: "Подключение продолжится в фоне; маршрутизация применится автоматически.",
         fptn_token_change_btn: "Сменить токен FPTN",
         fptn_token_btn: "Токен FPTN",
+        router_name: "Имя роутера",
+        cmd_name: "Имя роутера",
+        menu_router_name: "🖥 Имя роутера",
+        router_name_title: "Имя роутера",
+        router_name_current: "Текущее имя: %s",
+        router_name_not_set: "Не задано",
+        router_name_hint: "Отображается в начале всех сообщений бота, чтобы различать роутеры при использовании одного токена.",
+        router_name_prompt: "🖥 Введите имя для этого роутера (например, <code>Дом</code>, <code>Офис</code>, <code>Дача</code>):\n\n<i>Отправьте /cancel для отмены</i>",
+        router_name_saved: "Имя роутера сохранено:",
+        router_name_cleared: "Имя роутера очищено.",
+        btn_router_name_change: "✏️ Изменить имя",
+        btn_router_name_clear: "🗑 Очистить имя",
     }
 };
 

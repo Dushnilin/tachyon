@@ -228,7 +228,7 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
         state.outboundMetadata.ports = {};
     let wg_peer = as_string(outbound.type) == "wireguard" ? object_or_empty(array_or_empty(outbound.peers)[0]) : {};
     let port = outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : wg_peer.port);
-    if (port != null && port != "" && as_string(port) != "443")
+    if (port != null && port != "")
         state.outboundMetadata.ports[tag_name] = as_string(port);
 
     let server = as_string(outbound.server || wg_peer.address || "");

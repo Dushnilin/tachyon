@@ -1066,10 +1066,19 @@ function fptn_token_decode_via_core(token) {
 // fptnb: goes through the core.
 function fptn_token_decode(token) {
     token = trim(as_string(token));
+    let hash_idx = index(token, "#");
+    if (hash_idx >= 0)
+        token = substr(token, 0, hash_idx);
+
     let body = null;
     let compressed = false;
-    if (substr(token, 0, 6) == "fptnb:") {
+    if (substr(token, 0, 8) == "fptnb://") {
+        body = substr(token, 8);
+        compressed = true;
+    } else if (substr(token, 0, 6) == "fptnb:") {
         body = substr(token, 6);
+        if (substr(body, 0, 2) == "//")
+            body = substr(body, 2);
         compressed = true;
     } else if (substr(token, 0, 7) == "fptnb//") {
         body = substr(token, 7);
@@ -1078,13 +1087,15 @@ function fptn_token_decode(token) {
         body = substr(token, 7);
     } else if (substr(token, 0, 5) == "fptn:") {
         body = substr(token, 5);
+        if (substr(body, 0, 2) == "//")
+            body = substr(body, 2);
     } else {
         return null;
     }
 
     let payload = null;
     if (compressed) {
-        payload = fptn_token_decode_via_core(token);
+        payload = fptn_token_decode_via_core("fptnb:" + body);
     } else {
         let raw = base64_decode_value(body);
         if (raw == null)

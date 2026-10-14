@@ -1195,6 +1195,28 @@ function nft_guest_mode_signature_body(body, guest_mode) {
     return body;
 }
 
+function section_runtime_failed(name) {
+    let path = getenv("TACHYON_SECTION_FAIL_STATE_FILE") || "/var/run/tachyon/section-fail-state.json";
+    let raw = "";
+    try {
+        raw = trim(as_string(fs.readfile(path)) || "");
+    } catch (e) {
+        raw = "";
+    }
+    if (raw == "")
+        return false;
+    let parsed = null;
+    try {
+        parsed = json(raw);
+    } catch (e) {
+        parsed = null;
+    }
+    if (type(parsed) != "object")
+        return false;
+    let entry = object_or_empty(parsed[as_string(name)]);
+    return entry.failed == true || as_string(entry.failed || "") == "1";
+}
+
 function nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes) {
     let body = "";
 
@@ -1209,6 +1231,8 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     body = signature_add_value(body, "settings.excluded_ips", option(settings, "excluded_ips", ""));
     body = signature_add_value(body, "settings.route_router_traffic", bool_option(settings, "route_router_traffic", false) ? "1" : "0");
     body = signature_add_value(body, "settings.route_router_traffic_section", option(settings, "route_router_traffic_section", ""));
+    if (bool_option(settings, "wifi_calling_direct", false))
+        body = signature_add_value(body, "settings.wifi_calling_direct", "1");
 
     for (let section in sections) {
         section = object_or_empty(section);
@@ -1244,6 +1268,12 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         body = signature_add_value(body, "rule." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
         body = signature_add_value(body, "rule." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
         body = signature_add_value(body, "rule." + name + ".dscp", connections.dscp_value(section));
+        let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
+        if (fail_policy == "block" || fail_policy == "direct") {
+            body = signature_add_value(body, "rule." + name + ".fail_policy", fail_policy);
+            if (section_runtime_failed(name))
+                body = signature_add_value(body, "rule." + name + ".runtime_failed", "1");
+        }
     }
 
     for (let profile in profiles)
@@ -1702,6 +1732,12 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     if (action != "dns")
         body = signature_add_value(body, prefix + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
     body = signature_add_value(body, prefix + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+    let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
+    if (fail_policy == "block" || fail_policy == "direct") {
+        body = signature_add_value(body, prefix + ".fail_policy", fail_policy);
+        if (section_runtime_failed(name))
+            body = signature_add_value(body, prefix + ".runtime_failed", "1");
+    }
 
     return body;
 }
@@ -1856,7 +1892,7 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     body = signature_add_value(body, "settings.block_doh", bool_option_value(settings, "block_doh", false));
     if (sing_box_signature_has_remote_ruleset_sources(sections))
         body = signature_add_value(body, "settings.update_interval", settings_update_interval(settings));
-    body = signature_add_value(body, "settings.cache_path", option(settings, "cache_path", "/tmp/sing-box/cache.db"));
+    body = signature_add_value(body, "settings.cache_path", option(settings, "cache_path", "/usr/share/sing-box/cache.db"));
     body = signature_add_value(body, "settings.config_path", option(settings, "config_path", ""));
     body = signature_add_value(body, "settings.log_level", option(settings, "log_level", "warn"));
     body = signature_add_value(body, "settings.service_listen_address", option(settings, "service_listen_address", ""));
@@ -1879,6 +1915,15 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
         body = signature_add_value(body, "settings.download_components_via_proxy_section", option(settings, "download_components_via_proxy_section", ""));
     body = signature_add_value(body, "settings.route_router_traffic", bool_option_value(settings, "route_router_traffic", false));
     body = signature_add_value(body, "settings.route_router_traffic_section", option(settings, "route_router_traffic_section", ""));
+    if (bool_option(settings, "wifi_calling_direct", false))
+        body = signature_add_value(body, "settings.wifi_calling_direct", "1");
+    let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
+    if (bt_policy == "")
+        bt_policy = bool_option(settings, "isolate_p2p", false) ? "direct" : "off";
+    if (bt_policy != "off") {
+        body = signature_add_value(body, "settings.bittorrent_policy", bt_policy);
+        body = signature_add_value(body, "settings.p2p_ports", option(settings, "p2p_ports", ""));
+    }
 
     for (let section in sections)
         body = append_sing_box_rule_signature_body(body, object_or_empty(section), sections);

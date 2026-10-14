@@ -6,13 +6,17 @@ function check(ok, label) {
 
 let request = { protocol: "doh", servers: [ "https://dns.example/dns-query" ], domains: [ "example.com", "fail.example" ] };
 check(speed.validate_request(request) != null, "valid selected servers and hosts");
+check(speed.validate_request({ ...request, udp_servers: [ "77.88.8.8", "1.0.0.1" ] }) != null, "valid DoH with Bootstrap/Fallback UDP servers");
+check(speed.validate_request({ protocol: "udp", servers: [ "77.88.8.8", "1.1.1.1" ], udp_servers: [ "8.8.8.8" ], domains: [ "example.com" ] }) != null, "valid UDP protocol with Bootstrap/Fallback UDP servers");
 check(speed.validate_request({ ...request, protocol: "doq" }) == null, "do not measure DoH for another selected protocol");
 check(speed.validate_request({ ...request, servers: [ "http://dns.example/dns-query" ] }) == null, "HTTPS only");
+check(speed.validate_request({ ...request, udp_servers: [ "https://dns.example/dns-query" ] }) == null, "reject DoH URL in udp_servers");
 check(speed.validate_request({ ...request, servers: [ "https://user:pass@dns.example/dns-query" ] }) == null, "reject URL credentials");
 check(speed.validate_request({ ...request, domains: [ "a.example;touch /tmp/injected" ] }) == null, "reject shell input");
 check(speed.validate_request({ ...request, domains: [ "a..example" ] }) == null, "reject empty labels");
 check(speed.validate_request({ ...request, domains: [] }) == null, "reject empty host list");
 check(speed.endpoint("1.1.1.1").resolve == "cloudflare-dns.com:443:1.1.1.1", "IP aliases preserve TLS SNI and target IP");
+check(speed.endpoint("77.88.8.8", "udp").kind == "udp" && speed.endpoint("77.88.8.8", "udp").address == "77.88.8.8", "UDP endpoint parses IP directly");
 check(speed.endpoint("https://dns.example/profile").address == "https://dns.example:443/profile", "preserve custom profile path");
 let stats = speed.summarize([ { ok: true, ms: 10 }, { ok: true, ms: 30 }, { ok: false, ms: null }, { ok: true, ms: 20 } ]);
 check(stats.success == 3 && stats.total == 4 && stats.min == 10 && stats.median == 25 && stats.avg == 1265 && stats.max == 5000, "timeouts penalize statistics instead of biasing them down");

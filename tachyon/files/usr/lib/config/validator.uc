@@ -404,12 +404,12 @@ function valid_inbound() {
 
 function outbound_detour_source_action(action) {
     action = as_string(action);
-    return connections.is_connections_action(action) || action == "awg";
+    return connections.is_connections_action(action) || action == "awg" || action == "fptn";
 }
 
 function outbound_detour_target_action(action) {
     action = as_string(action);
-    return connections.is_connections_action(action) || action == "awg";
+    return connections.is_connections_action(action) || action == "awg" || action == "fptn";
 }
 
 function outbound_detour_rows() {
@@ -553,7 +553,7 @@ function download_section_action_available(action, byedpi_installed, zapret_inst
     action = as_string(action);
     if (connections.is_connections_action(action))
         return true;
-    if (action == "awg" || action == "warp" ||
+    if (action == "fptn" || action == "awg" || action == "warp" ||
         action == "anytls" || action == "snell" || action == "mieru" ||
         action == "sudoku" || action == "masque" || action == "openvpn")
         return true;
@@ -1683,6 +1683,10 @@ function validate_rule(section, sections, context) {
     if (!rule_action_supported(action))
         fail_validation("Enabled rule '" + name + "' uses unsupported action '" + action + "'. Aborted.");
 
+    let fail_policy = lc(trim(option(section, "fail_policy", "")));
+    if (fail_policy != "" && !contains([ "keep", "block", "direct" ], fail_policy))
+        fail_validation("Rule '" + name + "' has invalid fail_policy '" + fail_policy + "'. Expected keep, block, or direct. Aborted.");
+
     if (action != "dns")
         for (let value in list_option(section, "ports"))
             validate_port_condition_value(value, name);
@@ -2202,6 +2206,9 @@ function validate_runtime_config(context) {
     validate_dns_settings(settings, sections, context);
     validate_list_update_settings(settings);
     validate_http_url_option(option(settings, "latency_test_url", DEFAULT_LATENCY_TEST_URL) || DEFAULT_LATENCY_TEST_URL, "settings.latency_test_url");
+    let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
+    if (bt_policy != "" && !contains([ "off", "direct", "block" ], bt_policy))
+        fail_validation("Unsupported BitTorrent policy '" + bt_policy + "'. Use off, direct, or block. Aborted.");
 
     if (download_via_proxy_enabled(settings, "lists")) {
         validate_download_section_rows(

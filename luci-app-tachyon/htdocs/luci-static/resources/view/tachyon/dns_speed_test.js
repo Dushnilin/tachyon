@@ -153,7 +153,7 @@ function createController() {
     /* Keep defaults when storage is unavailable or invalid. */
   }
   let results = new Map();
-  let listNode = null,
+  let listEntries = [],
     toolbar = null,
     runButton = null,
     gearButton = null,
@@ -165,64 +165,76 @@ function createController() {
   let generation = 0;
 
   function updateRows() {
-    if (!listNode) return;
-    listNode.querySelectorAll(".item").forEach((item) => {
-      const value = item.querySelector('input[type="hidden"]')?.value;
-      if (!value) return;
-      let button = item.querySelector(".tachyon-dns-speed-value");
-      if (!button) {
-        button = E("button", {
-          type: "button",
-          class: "cbi-button tachyon-dns-speed-value",
-        });
-        // Stop LuCI DynamicList's click/delete and touch/drag handlers for this control.
-        ["click", "touchstart", "keydown", "dragstart"].forEach((name) =>
-          button.addEventListener(name, (event) => event.stopPropagation()),
+    listEntries.forEach(({ node }) => {
+      if (!node) return;
+      node.querySelectorAll(".item").forEach((item) => {
+        const value = item.querySelector('input[type="hidden"]')?.value;
+        if (!value) return;
+        let button = item.querySelector(".tachyon-dns-speed-value");
+        if (!button) {
+          button = E("button", {
+            type: "button",
+            class: "cbi-button tachyon-dns-speed-value",
+          });
+          // Stop LuCI DynamicList's click/delete and touch/drag handlers for this control.
+          ["click", "touchstart", "keydown", "dragstart"].forEach((name) =>
+            button.addEventListener(name, (event) => event.stopPropagation()),
+          );
+          item.appendChild(button);
+        }
+        const result = results.get(value);
+        button.textContent = result ? formatMs(result.stats.median) : "—";
+        button.disabled = !result;
+        button.title = result
+          ? _("Median; successful queries: %s / %s. Click for details.").format(
+              result.stats.success,
+              result.stats.total,
+            )
+          : _("Run the DNS speed test to see results.");
+        button.setAttribute(
+          "aria-label",
+          result
+            ? _("DNS speed test results") +
+                ": " +
+                value +
+                ", " +
+                button.textContent
+            : _("Run the DNS speed test to see results."),
         );
-        item.appendChild(button);
-      }
-      const result = results.get(value);
-      button.textContent = result ? formatMs(result.stats.median) : "—";
-      button.disabled = !result;
-      button.title = result
-        ? _("Median; successful queries: %s / %s. Click for details.").format(
-            result.stats.success,
-            result.stats.total,
-          )
-        : _("Run the DNS speed test to see results.");
-      button.setAttribute(
-        "aria-label",
-        result
-          ? _("DNS speed test results") +
-              ": " +
-              value +
-              ", " +
-              button.textContent
-          : _("Run the DNS speed test to see results."),
-      );
-      button.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (result) showResult(result);
-      };
+        button.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (result) showResult(result);
+        };
+      });
     });
+  }
+
+  function isSupportedProtocol(protocol) {
+    return protocol === "doh" || protocol === "udp";
   }
 
   function updateControls() {
     if (!runButton) return;
-    const protocol = getSelection().protocol;
-    runButton.disabled = running || protocol !== "doh";
+    const sel = getSelection ? getSelection() : { protocol: "doh" };
+    const protocol = sel.protocol;
+    const hasUdpExtras =
+      Array.isArray(sel.udp_servers) && sel.udp_servers.length > 0;
+    const canRun = isSupportedProtocol(protocol) || hasUdpExtras;
+    runButton.disabled = running || !canRun;
     gearButton.disabled = running;
     progress.textContent = running
       ? _("Testing selected DNS…")
-      : protocol !== "doh"
-        ? _("This speed test uses DNS over HTTPS (DoH).")
+      : !canRun
+        ? _("This speed test supports DoH and UDP DNS servers.")
         : "";
-    if (listNode)
-      listNode.classList.toggle(
+    listEntries.forEach(({ node, alwaysEnabled }) => {
+      if (!node) return;
+      node.classList.toggle(
         "tachyon-dns-speed-enabled",
-        protocol === "doh",
+        Boolean(alwaysEnabled || isSupportedProtocol(protocol)),
       );
+    });
   }
 
   async function command(name, args = []) {
@@ -363,9 +375,26 @@ function createController() {
           class: "cbi-button cbi-button-action",
           click: async () => {
             const selected = getSelection();
-            if (running || selected.protocol !== "doh") return;
-            if (!selected.servers.length || selected.servers.length > 8) {
-              progress.textContent = _("Choose between 1 and 8 DNS servers.");
+            const hasUdpExtras =
+              Array.isArray(selected.udp_servers) &&
+              selected.udp_servers.length > 0;
+            if (
+              running ||
+              (!isSupportedProtocol(selected.protocol) && !hasUdpExtras)
+            )
+              return;
+            const payload = isSupportedProtocol(selected.protocol)
+              ? { ...selected, domains }
+              : {
+                  protocol: "udp",
+                  servers: selected.udp_servers || [],
+                  domains,
+                };
+            const totalCount =
+              (payload.servers ? payload.servers.length : 0) +
+              (payload.udp_servers ? payload.udp_servers.length : 0);
+            if (!totalCount || totalCount > 24) {
+              progress.textContent = _("Choose between 1 and 24 DNS servers.");
               return;
             }
             running = true;
@@ -375,7 +404,7 @@ function createController() {
             updateRows();
             try {
               const response = await command("dns_speed_test_start", [
-                JSON.stringify({ ...selected, domains }),
+                JSON.stringify(payload),
               ]);
               jobId = response.id;
               if (timer) window.clearTimeout(timer);
@@ -428,8 +457,13 @@ function createController() {
       window.setTimeout(poll, 0);
       return toolbar;
     },
-    attachList(node) {
-      listNode = node;
+    attachList(node, opts) {
+      if (!node) return;
+      const alwaysEnabled = Boolean(opts && opts.alwaysEnabled);
+      listEntries = listEntries.filter(
+        (entry) => entry.node && entry.node.isConnected && entry.node !== node,
+      );
+      listEntries.push({ node, alwaysEnabled });
       node.classList.add("tachyon-dns-speed-list");
       node.addEventListener("cbi-dynlist-change", updateRows);
       new MutationObserver(() => updateRows()).observe(node, {

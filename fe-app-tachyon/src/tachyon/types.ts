@@ -276,6 +276,9 @@ export namespace Tachyon {
     SHOW_VERSION = 'show_version',
     // snapshot
     SNAPSHOT_DELETE = 'snapshot_delete',
+    SNAPSHOT_DIFF = 'snapshot_diff',
+    SNAPSHOT_EXPORT = 'snapshot_export',
+    SNAPSHOT_IMPORT = 'snapshot_import',
     SNAPSHOT_LIST = 'snapshot_list',
     SNAPSHOT_RESTORE = 'snapshot_restore',
     SNAPSHOT_SAVE = 'snapshot_save',
@@ -1098,6 +1101,7 @@ export namespace Tachyon {
     current_version: string;
     latest_version: string;
     release_url?: string;
+    release_notes?: string;
     changed: boolean;
     status?: 'latest' | 'outdated' | 'dev' | 'outdated_same_release' | '';
     /** Short commit SHA of the currently installed build (tachyon only) */
@@ -1133,6 +1137,7 @@ export namespace Tachyon {
     published: string;
     prerelease: boolean;
     release_url: string;
+    body?: string;
   }
 
   export type ComponentActionStartResult = UiActionStartResult;

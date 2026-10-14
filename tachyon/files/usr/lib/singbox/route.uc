@@ -18,12 +18,31 @@ function normalize_port_entry(value) {
     return number >= 1 && number <= 65535 ? number : null;
 }
 
+function bittorrent_policy_mode(settings) {
+    let raw = lc(trim(option(settings, "bittorrent_policy", "")));
+    if (raw == "direct" || raw == "block" || raw == "off")
+        return raw;
+    if (bool_option(settings, "isolate_p2p", false))
+        return "direct";
+    return "off";
+}
+
+function p2p_port_rule_verdict(policy_mode) {
+    if (as_string(policy_mode) == "block")
+        return { action: "reject" };
+    return {
+        action: "route",
+        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
+    };
+}
+
 // P2P leak protection can be pinned down to the torrent client's own ports so
 // nothing sneaks past the protocol sniffer. Each entry is:
 // "port", "port-port", "proto", "proto:port" or "proto:port-port" (tcp/udp, comma separated).
-// Without a port the whole protocol is routed direct.
-function p2p_direct_rules(settings) {
+// Without a port the whole protocol is routed direct (or rejected when policy_mode == "block").
+function p2p_direct_rules(settings, policy_mode) {
     let rules = [];
+    let verdict = p2p_port_rule_verdict(policy_mode || "direct");
     for (let entry in split(option(settings, "p2p_ports", ""), ",")) {
         entry = trim(entry);
         if (entry == "")
@@ -59,42 +78,52 @@ function p2p_direct_rules(settings) {
                 let end = normalize_port_entry(substr(port_spec, dash + 1));
                 if (start != null && end != null && start <= end) {
                     let range_str = sprintf("%d:%d", start, end);
-                    push(rules, {
+                    let src_rule = {
                         network: networks,
                         source_port_range: [ range_str ],
-                        action: "route",
-                        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
-                    });
-                    push(rules, {
+                        action: verdict.action
+                    };
+                    if (verdict.outbound != null)
+                        src_rule.outbound = verdict.outbound;
+                    push(rules, src_rule);
+                    let dst_rule = {
                         network: networks,
                         port_range: [ range_str ],
-                        action: "route",
-                        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
-                    });
+                        action: verdict.action
+                    };
+                    if (verdict.outbound != null)
+                        dst_rule.outbound = verdict.outbound;
+                    push(rules, dst_rule);
                 }
             } else {
                 let port = normalize_port_entry(port_spec);
                 if (port != null) {
-                    push(rules, {
+                    let src_rule = {
                         network: networks,
                         source_port: port,
-                        action: "route",
-                        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
-                    });
-                    push(rules, {
+                        action: verdict.action
+                    };
+                    if (verdict.outbound != null)
+                        src_rule.outbound = verdict.outbound;
+                    push(rules, src_rule);
+                    let dst_rule = {
                         network: networks,
                         port: [ port ],
-                        action: "route",
-                        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
-                    });
+                        action: verdict.action
+                    };
+                    if (verdict.outbound != null)
+                        dst_rule.outbound = verdict.outbound;
+                    push(rules, dst_rule);
                 }
             }
         } else {
-            push(rules, {
+            let net_rule = {
                 network: networks,
-                action: "route",
-                outbound: runtime_constants.DIRECT_OUTBOUND_TAG
-            });
+                action: verdict.action
+            };
+            if (verdict.outbound != null)
+                net_rule.outbound = verdict.outbound;
+            push(rules, net_rule);
         }
     }
     return rules;
@@ -140,9 +169,22 @@ function config(settings, runtime) {
         push(result.rules, { action: "reject", network: "udp", port: [ 443 ] });
         push(result.rules, { action: "reject", protocol: "quic" });
     }
-    if (bool_option(settings, "isolate_p2p", false)) {
+    if (bool_option(settings, "wifi_calling_direct", false)) {
+        push(result.rules, {
+            network: "udp",
+            port: [ 500, 4500 ],
+            action: "route",
+            outbound: runtime_constants.DIRECT_OUTBOUND_TAG
+        });
+    }
+    let bt_mode = bittorrent_policy_mode(settings);
+    if (bt_mode == "direct") {
         push(result.rules, { protocol: "bittorrent", action: "route", outbound: runtime_constants.DIRECT_OUTBOUND_TAG });
-        for (let rule in p2p_direct_rules(settings))
+        for (let rule in p2p_direct_rules(settings, "direct"))
+            push(result.rules, rule);
+    } else if (bt_mode == "block") {
+        push(result.rules, { protocol: "bittorrent", action: "reject" });
+        for (let rule in p2p_direct_rules(settings, "block"))
             push(result.rules, rule);
     }
     if (bool_option(settings, "block_doh", false)) {
@@ -217,6 +259,7 @@ return {
     target,
     has_resolve_matchers,
     resolve_rule_for_section,
+    bittorrent_policy_mode,
     p2p_direct_rules,
     normalize_port_entry
 };

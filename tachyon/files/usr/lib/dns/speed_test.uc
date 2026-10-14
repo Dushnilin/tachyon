@@ -11,7 +11,7 @@ let as_string = common.as_string;
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const STATE_DIR = (getenv("TACHYON_UI_STATE_DIR") || "/var/run/tachyon") + "/dns-speed-test";
 const TIMEOUT_MS = 5000;
-const MAX_SERVERS = 8;
+const MAX_SERVERS = 24;
 const MAX_DOMAINS = 32;
 
 function valid_domain(value) {
@@ -25,10 +25,29 @@ function valid_domain(value) {
     return !ip.valid_ip(value);
 }
 
-function endpoint(value) {
+function endpoint(value, proto) {
+    proto = as_string(proto || "doh");
     if (type(value) != "string" || length(value) > 2048 || value == "" ||
-        match(value, /[[:space:][:cntrl:]]/) || index(value, "#") >= 0 || index(value, "@") >= 0 ||
-        (index(value, "://") >= 0 && substr(value, 0, 8) != "https://"))
+        match(value, /[[:space:][:cntrl:]]/) || index(value, "#") >= 0 || index(value, "@") >= 0)
+        return null;
+    if (proto == "udp") {
+        if (index(value, "://") >= 0 || index(value, "/") >= 0)
+            return null;
+        let host = url.host(value);
+        let port = url.port(value);
+        if (!ip.valid_ip(host) && !valid_domain(lc(host)))
+            return null;
+        if (port != "" && (match(port, /^[0-9]+$/) == null || int(port) < 1 || int(port) > 65535))
+            return null;
+        return {
+            value,
+            kind: "udp",
+            address: host,
+            port: port != "" ? int(port) : 53,
+            resolve: null
+        };
+    }
+    if (index(value, "://") >= 0 && substr(value, 0, 8) != "https://")
         return null;
     let host = url.host(value);
     let port = url.port(value);
@@ -39,7 +58,7 @@ function endpoint(value) {
     let server = dns.server_from_options("speed-test", "doh", value, "");
     let tls_host = server.tls.server_name || server.server;
     let authority = index(tls_host, ":") >= 0 ? "[" + tls_host + "]" : tls_host;
-    let result = { value, address: "https://" + authority + ":" + server.server_port + server.path, resolve: null };
+    let result = { value, kind: "doh", address: "https://" + authority + ":" + server.server_port + server.path, resolve: null };
     if (tls_host != server.server && ip.valid_ip(server.server))
         result.resolve = tls_host + ":" + server.server_port + ":" + server.server;
     // Match Tachyon's DoH path/default and TLS server name; do not log profile URLs.
@@ -47,18 +66,26 @@ function endpoint(value) {
 }
 
 function validate_request(request) {
-    if (type(request) != "object" || request.protocol != "doh" ||
+    if (type(request) != "object" || (request.protocol != "doh" && request.protocol != "udp") ||
         type(request.servers) != "array" || type(request.domains) != "array" ||
-        length(request.servers) < 1 || length(request.servers) > MAX_SERVERS ||
+        (request.udp_servers != null && type(request.udp_servers) != "array") ||
         length(request.domains) < 1 || length(request.domains) > MAX_DOMAINS)
         return null;
     let servers = [], domains = [], seen = {};
     for (let value in request.servers) {
-        let normalized = endpoint(value);
+        let normalized = endpoint(value, request.protocol);
         if (normalized == null) return null;
         if (!seen[value]) push(servers, normalized);
         seen[value] = true;
     }
+    for (let value in (request.udp_servers || [])) {
+        let normalized = endpoint(value, "udp");
+        if (normalized == null) return null;
+        if (!seen[value]) push(servers, normalized);
+        seen[value] = true;
+    }
+    if (length(servers) < 1 || length(servers) > MAX_SERVERS)
+        return null;
     seen = {};
     for (let value in request.domains) {
         if (!valid_domain(value)) return null;
@@ -133,7 +160,88 @@ function summarize(samples) {
     };
 }
 
+let _has_dig = null;
+let _has_nslookup = null;
+
+function has_dig() {
+    if (_has_dig == null)
+        _has_dig = exec.command_success_from_args([ "command", "-v", "dig" ]);
+    return _has_dig;
+}
+
+function has_nslookup() {
+    if (_has_nslookup == null)
+        _has_nslookup = exec.command_success_from_args([ "command", "-v", "nslookup" ]);
+    return _has_nslookup;
+}
+
+function probe_udp_domain(server, domain) {
+    let target = as_string(server.address || server.value);
+    let port = int(server.port || 53);
+    if (has_dig()) {
+        let args = [ "dig", "@" + target, domain, "A", "+time=2", "+tries=1", "+stats" ];
+        if (port > 0 && port != 53)
+            push(args, "-p", as_string(port));
+        let t0 = clock();
+        let res = exec.run({ argv: args, timeout: 4 });
+        let t1 = clock();
+        if (res.status == 0 && length(res.output) > 0) {
+            if (index(res.output, "status: NOERROR") >= 0 || index(res.output, "status: NXDOMAIN") >= 0) {
+                let m = match(res.output, /;; Query time:[ \t]+([0-9]+)[ \t]+msec/);
+                if (m && m[1] != null)
+                    return { ok: true, ms: double(int(m[1])), error: null };
+                if (t0 && t1) {
+                    let elapsed = (t1[0] - t0[0]) * 1000.0 + (t1[1] - t0[1]) / 1000000.0;
+                    return { ok: true, ms: elapsed >= 0 ? elapsed : 0.0, error: null };
+                }
+            }
+        }
+        return { ok: false, ms: null, error: { kind: "transport", code: 28 } };
+    }
+
+    if (has_nslookup()) {
+        let server_arg = port > 0 && port != 53 ? (target + ":" + port) : target;
+        let t0 = clock();
+        let res = exec.run({ argv: [ "nslookup", "-timeout=2", "-type=a", domain, server_arg ], timeout: 4 });
+        let t1 = clock();
+        let output = res.output;
+        if (index(output, "timed out") >= 0 || index(output, "no servers could be reached") >= 0 || index(output, "can't find") >= 0)
+            return { ok: false, ms: null, error: { kind: "transport", code: 28 } };
+        if (length(output) > 0) {
+            let m_time = match(output, /Query #[0-9]+ completed in ([0-9]+)ms/);
+            if (m_time && m_time[1] != null)
+                return { ok: true, ms: double(int(m_time[1])), error: null };
+            if (index(output, "Name:") >= 0 && t0 && t1) {
+                let elapsed = (t1[0] - t0[0]) * 1000.0 + (t1[1] - t0[1]) / 1000000.0;
+                return { ok: true, ms: elapsed >= 0 ? elapsed : 0.0, error: null };
+            }
+        }
+        t0 = clock();
+        let res2 = exec.run({ argv: [ "nslookup", domain, server_arg ], timeout: 4, capture: false });
+        t1 = clock();
+        if (res2.status == 0 && t0 && t1) {
+            let elapsed = (t1[0] - t0[0]) * 1000.0 + (t1[1] - t0[1]) / 1000000.0;
+            return { ok: true, ms: elapsed >= 0 ? elapsed : 0.0, error: null };
+        }
+    }
+
+    return { ok: false, ms: null, error: { kind: "transport", code: 28 } };
+}
+
+function measure_udp(server, domains) {
+    if (length(domains) > 0)
+        probe_udp_domain(server, domains[0]);
+    let samples = [];
+    for (let domain in domains) {
+        let p = probe_udp_domain(server, domain);
+        push(samples, { domain, ok: p.ok, ms: p.ms, error: p.error });
+    }
+    return { server: server.value, samples, stats: summarize(samples) };
+}
+
 function measure(server, domains) {
+    if (server.kind == "udp")
+        return measure_udp(server, domains);
     let args = [ "curl", "--disable" ];
     let count = length(domains);
     // One curl process keeps its connection cache for warm-up and measured requests.
@@ -215,8 +323,11 @@ function start(request) {
             return { success: false, error: "Cannot lock DNS speed test" };
     }
     let stamp = clock();
+    let server_values = [];
+    for (let s in normalized.servers)
+        push(server_values, s.value);
     let state = { id: sprintf("%d-%d", stamp[0], stamp[1]), running: true, progress: 0,
-        started_at: time(), domains: normalized.domains, servers: request.servers, results: [], error: null };
+        started_at: time(), domains: normalized.domains, servers: server_values, results: [], error: null };
     try {
         if (!common.write_json_file(STATE_DIR + "/request.json", normalized)) die("Cannot save DNS speed test request");
         fs.unlink(STATE_DIR + "/identity.json");

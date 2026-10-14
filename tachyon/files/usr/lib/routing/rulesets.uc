@@ -309,11 +309,78 @@ function union_port_filters(first, second) {
     return normalize_port_intervals(result);
 }
 
+function rule_is_inverted(rule) {
+    return type(rule) == "object" &&
+        (rule.invert === true || lc(trim_string(rule.invert)) == "true" || as_string(rule.invert) == "1");
+}
+
+function direct_network_filter(rule) {
+    if (type(rule) != "object" || rule.network == null)
+        return null;
+
+    let has_tcp = false;
+    let has_udp = false;
+    let has_other = false;
+    let count = 0;
+
+    for (let item in array_from_value(rule.network)) {
+        let value = lc(trim_string(item));
+        if (value == "")
+            continue;
+        count++;
+        if (value == "tcp")
+            has_tcp = true;
+        else if (value == "udp")
+            has_udp = true;
+        else if (value == "any" || value == "all") {
+            has_tcp = true;
+            has_udp = true;
+        }
+        else
+            has_other = true;
+    }
+
+    if (count == 0)
+        return null;
+    if (has_tcp && has_udp)
+        return null;
+    if (has_tcp)
+        return "tcp";
+    if (has_udp)
+        return "udp";
+    if (has_other)
+        return "none";
+    return null;
+}
+
+function intersect_network_filters(first, second) {
+    if (first == "none" || second == "none")
+        return "none";
+    if (first == null)
+        return second;
+    if (second == null)
+        return first;
+    return first == second ? first : "none";
+}
+
+function union_network_filters(first, second) {
+    if (first == null || second == null)
+        return null;
+    if (first == "none")
+        return second;
+    if (second == "none")
+        return first;
+    return first == second ? first : null;
+}
+
 function extract_port_filter(rule) {
     if (type(rule) != "object")
         return null;
 
     let own_filter = direct_port_filter(rule);
+    if (rule_is_inverted(rule))
+        return own_filter != null ? [] : null;
+
     if (rule.type != "logical" || type(rule.rules) != "array")
         return own_filter;
 
@@ -349,6 +416,51 @@ function extract_port_filter(rule) {
     return result;
 }
 
+function extract_network_filter(rule) {
+    if (type(rule) != "object")
+        return null;
+
+    let own_net = direct_network_filter(rule);
+    if (rule_is_inverted(rule))
+        return own_net != null ? "none" : null;
+
+    if (rule.type != "logical" || type(rule.rules) != "array")
+        return own_net;
+
+    let mode = as_string(rule.mode);
+    if (mode == "or") {
+        let result = "none";
+        let initialized = false;
+
+        for (let child in rule.rules) {
+            if (rule_is_inverted(child))
+                continue;
+            let child_net = extract_network_filter(child);
+            if (!initialized) {
+                result = child_net;
+                initialized = true;
+            }
+            else {
+                result = union_network_filters(result, child_net);
+            }
+
+            if (result == null)
+                break;
+        }
+
+        return intersect_network_filters(own_net, initialized ? result : null);
+    }
+
+    let result = own_net;
+    for (let child in rule.rules) {
+        result = intersect_network_filters(result, extract_network_filter(child));
+        if (result == "none")
+            return result;
+    }
+
+    return result;
+}
+
 function nft_port_value(interval) {
     return interval.start == interval.end ? "" + interval.start : interval.start + "-" + interval.end;
 }
@@ -358,11 +470,37 @@ function add_line(lines, value) {
         lines[value] = true;
 }
 
-function add_ip_cidr_values_to_nft_outputs(rule, port_filter, unscoped_lines, scoped_lines) {
+function add_ip_cidr_values_to_nft_outputs(rule, port_filter, net_filter, unscoped_lines, scoped_lines, udp_scoped_lines) {
+    if (net_filter == "none")
+        return;
+
     for (let ip in array_from_value(rule.ip_cidr)) {
         ip = trim_string(ip);
         if (ip == "")
             continue;
+
+        if (udp_scoped_lines != null) {
+            let effective_ports = port_filter;
+            if (effective_ports == null && (net_filter == "tcp" || net_filter == "udp"))
+                effective_ports = [ { start: 1, end: 65535 } ];
+
+            if (effective_ports == null) {
+                add_line(unscoped_lines, ip);
+                continue;
+            }
+
+            if (filter_is_empty(effective_ports))
+                continue;
+
+            for (let interval in effective_ports) {
+                let tuple = ip + " . " + nft_port_value(interval);
+                if (net_filter == null || net_filter == "tcp")
+                    add_line(scoped_lines, tuple);
+                if (net_filter == null || net_filter == "udp")
+                    add_line(udp_scoped_lines, tuple);
+            }
+            continue;
+        }
 
         if (port_filter == null) {
             add_line(unscoped_lines, ip);
@@ -377,34 +515,37 @@ function add_ip_cidr_values_to_nft_outputs(rule, port_filter, unscoped_lines, sc
     }
 }
 
-function collect_ip_cidr_nft_outputs(rule, inherited_filter, unscoped_lines, scoped_lines) {
-    if (type(rule) != "object")
+function collect_ip_cidr_nft_outputs(rule, inherited_filter, inherited_net, unscoped_lines, scoped_lines, udp_scoped_lines) {
+    if (type(rule) != "object" || rule_is_inverted(rule))
         return;
 
     let own_filter = direct_port_filter(rule);
     let filter = intersect_port_filters(inherited_filter, own_filter);
+    let own_net = direct_network_filter(rule);
+    let net_filter = intersect_network_filters(inherited_net, own_net);
 
-    if (filter_is_empty(filter))
+    if (filter_is_empty(filter) || net_filter == "none")
         return;
 
     if (rule.type == "logical" && type(rule.rules) == "array") {
         if (as_string(rule.mode) == "and") {
             for (let child in rule.rules) {
                 filter = intersect_port_filters(filter, extract_port_filter(child));
-                if (filter_is_empty(filter))
+                net_filter = intersect_network_filters(net_filter, extract_network_filter(child));
+                if (filter_is_empty(filter) || net_filter == "none")
                     return;
             }
         }
 
-        add_ip_cidr_values_to_nft_outputs(rule, filter, unscoped_lines, scoped_lines);
+        add_ip_cidr_values_to_nft_outputs(rule, filter, net_filter, unscoped_lines, scoped_lines, udp_scoped_lines);
 
         for (let child in rule.rules)
-            collect_ip_cidr_nft_outputs(child, filter, unscoped_lines, scoped_lines);
+            collect_ip_cidr_nft_outputs(child, filter, net_filter, unscoped_lines, scoped_lines, udp_scoped_lines);
 
         return;
     }
 
-    add_ip_cidr_values_to_nft_outputs(rule, filter, unscoped_lines, scoped_lines);
+    add_ip_cidr_values_to_nft_outputs(rule, filter, net_filter, unscoped_lines, scoped_lines, udp_scoped_lines);
 }
 
 function write_lines(path, lines_object) {
@@ -417,20 +558,23 @@ function write_lines(path, lines_object) {
         exit(1);
 }
 
-function extract_ip_cidr_nft_elements(json_path, unscoped_output_path, scoped_output_path, ports_text, port_ranges_text) {
+function extract_ip_cidr_nft_elements(json_path, unscoped_output_path, scoped_output_path, ports_text, port_ranges_text, udp_scoped_output_path) {
     let ruleset = object_or_empty(read_json_file(json_path));
     let unscoped_lines = {};
     let scoped_lines = {};
+    let udp_scoped_lines = (udp_scoped_output_path != null && udp_scoped_output_path != "") ? {} : null;
     let outer_filter = direct_port_filter({
         port: array_or_empty(json_decode_text(ports_text)),
         port_range: array_or_empty(json_decode_text(port_ranges_text))
     });
 
     for (let rule in array_or_empty(ruleset.rules))
-        collect_ip_cidr_nft_outputs(rule, outer_filter, unscoped_lines, scoped_lines);
+        collect_ip_cidr_nft_outputs(rule, outer_filter, null, unscoped_lines, scoped_lines, udp_scoped_lines);
 
     write_lines(unscoped_output_path, unscoped_lines);
     write_lines(scoped_output_path, scoped_lines);
+    if (udp_scoped_lines != null)
+        write_lines(udp_scoped_output_path, udp_scoped_lines);
 }
 
 function value_has_domain_matchers(value) {
@@ -565,7 +709,7 @@ else if (mode == "import-plain-list")
 else if (mode == "extract-ip-cidr")
     extract_ip_cidr(ARGV[1], ARGV[2]);
 else if (mode == "extract-ip-cidr-nft")
-    extract_ip_cidr_nft_elements(ARGV[1], ARGV[2], ARGV[3], ARGV[4] || "[]", ARGV[5] || "[]");
+    extract_ip_cidr_nft_elements(ARGV[1], ARGV[2], ARGV[3], ARGV[4] || "[]", ARGV[5] || "[]", ARGV[6] || "");
 else if (mode == "has-domain-matchers")
     exit(has_domain_matchers(ARGV[1]) ? 0 : 1);
 else if (mode == "has-ip-matchers")

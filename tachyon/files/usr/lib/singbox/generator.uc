@@ -1283,7 +1283,7 @@ function add_service_mixed_proxy(config, settings, sections) {
         if (ctx.deferred_sections && ctx.deferred_sections[s[".name"]])
             continue;
         let action = s.action || "";
-        if (s.enabled != "0" && (action == "connection" || action == "subscription" || action == "provider")) {
+        if (s.enabled != "0" && (action == "connection" || action == "subscription" || action == "provider" || action == "fptn" || action == "awg")) {
             has_any_proxy = true;
             if (default_proxy_tag == "")
                 default_proxy_tag = outbound_tag(s[".name"]);
