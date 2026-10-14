@@ -335,6 +335,7 @@ export namespace Tachyon {
     latency: number;
     type: string;
     transport?: string;
+    details?: string;
     selected: boolean;
     link?: string;
     canCopyLink?: boolean;
@@ -351,6 +352,7 @@ export namespace Tachyon {
     latency: number;
     type: string;
     transport?: string;
+    details?: string;
     selected: boolean;
     link?: string;
     canCopyLink?: boolean;
@@ -663,6 +665,8 @@ export namespace Tachyon {
     show_dashboard_metadata?: '0' | '1';
     prefix_nodes?: '0' | '1';
     node_prefix?: string;
+    node_prefix_bg?: string;
+    node_prefix_color?: string;
     include_urltest_groups?: '0' | '1';
     hide_urltest_group_outbounds?: '0' | '1';
     hide_detour_outbounds?: '0' | '1';
@@ -841,6 +845,8 @@ export namespace Tachyon {
     transports?: Record<string, string>;
     protocols?: Record<string, string>;
     securities?: Record<string, string>;
+    ports?: Record<string, string>;
+    details?: Record<string, string>;
     prefixes?: Record<string, string>;
   }
 

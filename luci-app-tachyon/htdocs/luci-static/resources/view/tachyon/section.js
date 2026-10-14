@@ -2761,6 +2761,8 @@ function subscriptionUrlSettingsKeys() {
     "show_dashboard_metadata",
     "prefix_nodes",
     "node_prefix",
+    "node_prefix_bg",
+    "node_prefix_color",
     "include_urltest_groups",
     "hide_urltest_group_outbounds",
     "hide_detour_outbounds",
@@ -2789,6 +2791,8 @@ function defaultSubscriptionUrlSettings() {
     show_dashboard_metadata: "1",
     prefix_nodes: "0",
     node_prefix: "",
+    node_prefix_bg: "",
+    node_prefix_color: "",
     include_urltest_groups: "1",
     hide_urltest_group_outbounds: "1",
     hide_detour_outbounds: "1",
@@ -3171,9 +3175,205 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.default = "0";
   o.rmempty = false;
 
-  o = itemSection.option(form.Value, "node_prefix", _("Prefix text"));
+  const isRu =
+    _("Add prefix to nodes") !== "Add prefix to nodes" ||
+    (typeof document !== "undefined" &&
+      document.documentElement &&
+      document.documentElement.lang === "ru");
+  const tr = (en, ru) => (isRu ? ru : _(en));
+
+  const prefixTextOption = itemSection.option(
+    form.Value,
+    "node_prefix",
+    _("Prefix text"),
+  );
+  prefixTextOption.depends("prefix_nodes", "1");
+  prefixTextOption.rmempty = false;
+
+  const prefixBgOption = itemSection.option(
+    form.Value,
+    "node_prefix_bg",
+    tr("Prefix background color", "Цвет фона префикса"),
+    tr(
+      "Select a preset background color or enter any HEX/CSS color (leave empty for automatic palette)",
+      "Выберите цвет фона из базового набора или укажите свой HEX/CSS-цвет (пусто — авто-палитра)",
+    ),
+  );
+  prefixBgOption.depends("prefix_nodes", "1");
+  prefixBgOption.rmempty = true;
+  prefixBgOption.placeholder = tr("Auto (by name)", "Авто (по названию)");
+  [
+    ["", tr("Auto (by name)", "Авто (по названию)")],
+    ["#1e3a8a", tr("Blue (Indigo) — #1e3a8a", "Синий (Индиго) — #1e3a8a")],
+    ["#065f46", tr("Emerald (Green) — #065f46", "Изумрудный (Зелёный) — #065f46")],
+    ["#78350f", tr("Amber (Gold) — #78350f", "Янтарный (Золотой) — #78350f")],
+    ["#4c1d95", tr("Purple (Violet) — #4c1d95", "Фиолетовый — #4c1d95")],
+    ["#831843", tr("Rose (Pink) — #831843", "Розовый — #831843")],
+    ["#155e75", tr("Cyan (Teal) — #155e75", "Бирюзовый — #155e75")],
+    ["#7c2d12", tr("Orange — #7c2d12", "Оранжевый — #7c2d12")],
+    ["#7f1d1d", tr("Red — #7f1d1d", "Красный — #7f1d1d")],
+    ["#334155", tr("Slate (Dark Gray) — #334155", "Графитовый — #334155")],
+  ].forEach(([val, label]) => prefixBgOption.value(val, label));
+
+  const prefixColorOption = itemSection.option(
+    form.Value,
+    "node_prefix_color",
+    tr("Prefix text color", "Цвет текста префикса"),
+    tr(
+      "Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)",
+      "Выберите цвет текста из базового набора или укажите свой HEX/CSS-цвет (пусто — авто-палитра)",
+    ),
+  );
+  prefixColorOption.depends("prefix_nodes", "1");
+  prefixColorOption.rmempty = true;
+  prefixColorOption.placeholder = tr("Auto (by name)", "Авто (по названию)");
+  [
+    ["", tr("Auto (by name)", "Авто (по названию)")],
+    ["#ffffff", tr("White — #ffffff", "Белый — #ffffff")],
+    ["#93c5fd", tr("Light Blue — #93c5fd", "Голубой — #93c5fd")],
+    ["#6ee7b7", tr("Mint Green — #6ee7b7", "Мятно-зелёный — #6ee7b7")],
+    ["#fcd34d", tr("Amber Gold — #fcd34d", "Золотистый — #fcd34d")],
+    ["#c4b5fd", tr("Lavender — #c4b5fd", "Лавандовый — #c4b5fd")],
+    ["#f9a8d4", tr("Light Pink — #f9a8d4", "Светло-розовый — #f9a8d4")],
+    ["#67e8f9", tr("Cyan — #67e8f9", "Бирюзовый — #67e8f9")],
+    ["#fdba74", tr("Peach Orange — #fdba74", "Персиковый — #fdba74")],
+    ["#fca5a5", tr("Light Red — #fca5a5", "Светло-красный — #fca5a5")],
+    ["#e2e8f0", tr("Light Silver — #e2e8f0", "Светло-серый — #e2e8f0")],
+  ].forEach(([val, label]) => prefixColorOption.value(val, label));
+
+  o = itemSection.option(
+    form.DummyValue,
+    "_prefix_color_presets",
+    tr("Quick color palette", "Быстрый выбор палитры"),
+    tr(
+      "Click a ready-made badge theme or use the color pickers to set background and text colors",
+      "Нажмите на готовый стиль бейджа или выберите произвольные цвета пипеткой",
+    ),
+  );
   o.depends("prefix_nodes", "1");
-  o.rmempty = false;
+  o.renderWidget = function (section_id) {
+    const presets = [
+      { label: tr("Auto", "Авто"), bg: "", color: "", previewBg: "rgba(59, 130, 246, 0.24)", previewColor: "#93c5fd" },
+      { label: tr("Blue", "Синий"), bg: "#1e3a8a", color: "#93c5fd" },
+      { label: tr("Emerald", "Изумруд"), bg: "#065f46", color: "#6ee7b7" },
+      { label: tr("Amber", "Янтарь"), bg: "#78350f", color: "#fcd34d" },
+      { label: tr("Purple", "Фиолет"), bg: "#4c1d95", color: "#c4b5fd" },
+      { label: tr("Rose", "Розовый"), bg: "#831843", color: "#f9a8d4" },
+      { label: tr("Cyan", "Циан"), bg: "#155e75", color: "#67e8f9" },
+      { label: tr("Orange", "Оранж"), bg: "#7c2d12", color: "#fdba74" },
+      { label: tr("Red", "Красный"), bg: "#7f1d1d", color: "#fca5a5" },
+      { label: tr("Slate", "Графит"), bg: "#334155", color: "#e2e8f0" },
+    ];
+
+    const previewBadge = E(
+      "span",
+      {
+        style:
+          "display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.03em;border:1px solid rgba(147,197,253,0.45);background:#1e3a8a;color:#93c5fd;box-shadow:0 1px 2px rgba(0,0,0,0.2);",
+      },
+      "Префикс",
+    );
+
+    const bgColorInput = E("input", {
+      type: "color",
+      value: "#1e3a8a",
+      title: tr("Pick background color", "Выбрать цвет фона"),
+      style: "width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;",
+      change: function (ev) {
+        const val = ev.target.value;
+        const uiEl = prefixBgOption.getUIElement(section_id);
+        if (uiEl) uiEl.setValue(val);
+        updatePreview();
+      },
+    });
+
+    const textColorInput = E("input", {
+      type: "color",
+      value: "#93c5fd",
+      title: tr("Pick text color", "Выбрать цвет текста"),
+      style: "width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;",
+      change: function (ev) {
+        const val = ev.target.value;
+        const uiEl = prefixColorOption.getUIElement(section_id);
+        if (uiEl) uiEl.setValue(val);
+        updatePreview();
+      },
+    });
+
+    function updatePreview() {
+      const textUi = prefixTextOption.getUIElement(section_id);
+      const bgUi = prefixBgOption.getUIElement(section_id);
+      const colUi = prefixColorOption.getUIElement(section_id);
+      const txt = (textUi && textUi.getValue ? textUi.getValue() : "") || tr("Prefix", "Префикс");
+      const bg = (bgUi && bgUi.getValue ? bgUi.getValue() : "") || "#1e3a8a";
+      const col = (colUi && colUi.getValue ? colUi.getValue() : "") || "#93c5fd";
+      previewBadge.textContent = txt.trim() || tr("Prefix", "Префикс");
+      previewBadge.style.background = bg;
+      previewBadge.style.color = col;
+      previewBadge.style.borderColor = col;
+      if (/^#[0-9a-fA-F]{6}$/.test(bg)) bgColorInput.value = bg;
+      if (/^#[0-9a-fA-F]{6}$/.test(col)) textColorInput.value = col;
+    }
+
+    const pills = presets.map((p) => {
+      const pBg = p.bg || p.previewBg;
+      const pCol = p.color || p.previewColor;
+      return E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          style: `padding:2px 8px;min-height:24px;line-height:1.3;font-size:11px;font-weight:700;border-radius:6px;background:${pBg};color:${pCol};border:1px solid ${pCol};cursor:pointer;`,
+          click: function (ev) {
+            ev.preventDefault();
+            const bgUi = prefixBgOption.getUIElement(section_id);
+            const colUi = prefixColorOption.getUIElement(section_id);
+            if (bgUi) bgUi.setValue(p.bg);
+            if (colUi) colUi.setValue(p.color);
+            updatePreview();
+          },
+        },
+        p.label,
+      );
+    });
+
+    setTimeout(updatePreview, 60);
+
+    return E(
+      "div",
+      {
+        style: "display:flex;flex-direction:column;gap:8px;padding:4px 0;",
+      },
+      [
+        E(
+          "div",
+          { style: "display:flex;flex-wrap:wrap;gap:6px;align-items:center;" },
+          pills,
+        ),
+        E(
+          "div",
+          {
+            style:
+              "display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;opacity:0.9;",
+          },
+          [
+            E("span", { style: "display:inline-flex;align-items:center;gap:6px;" }, [
+              bgColorInput,
+              E("span", {}, tr("Background", "Пипетка фона")),
+            ]),
+            E("span", { style: "display:inline-flex;align-items:center;gap:6px;" }, [
+              textColorInput,
+              E("span", {}, tr("Text", "Пипетка текста")),
+            ]),
+            E("span", { style: "display:inline-flex;align-items:center;gap:6px;" }, [
+              E("span", { style: "opacity:0.75;" }, tr("Preview:", "Предпросмотр:")),
+              previewBadge,
+            ]),
+          ],
+        ),
+      ],
+    );
+  };
 
   o = itemSection.option(
     form.Flag,

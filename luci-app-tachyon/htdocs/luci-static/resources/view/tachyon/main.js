@@ -1610,6 +1610,267 @@ function getProxyUrlName(url) {
 }
 
 // src/helpers/formatOutboundType.ts
+var BASE_PREFIX_PALETTES = [
+  { name: "Blue", bg: "#2563eb", color: "#ffffff", border: "#3b82f6" },
+  { name: "Green", bg: "#16a34a", color: "#ffffff", border: "#22c55e" },
+  { name: "Purple", bg: "#9333ea", color: "#ffffff", border: "#a855f7" },
+  { name: "Orange", bg: "#ea580c", color: "#ffffff", border: "#f97316" },
+  { name: "Cyan", bg: "#0891b2", color: "#ffffff", border: "#06b6d4" },
+  { name: "Rose", bg: "#e11d48", color: "#ffffff", border: "#f43f5e" },
+  { name: "Amber", bg: "#d97706", color: "#ffffff", border: "#f59e0b" },
+  { name: "Indigo", bg: "#4f46e5", color: "#ffffff", border: "#6366f1" },
+  { name: "Teal", bg: "#0d9488", color: "#ffffff", border: "#14b8a6" },
+  { name: "Dark", bg: "#1e293b", color: "#f8fafc", border: "#475569" }
+];
+var BASE_TEXT_COLORS = [
+  { name: "White", color: "#ffffff" },
+  { name: "Light Blue", color: "#bfdbfe" },
+  { name: "Light Green", color: "#bbf7d0" },
+  { name: "Light Yellow", color: "#fef08a" },
+  { name: "Light Pink", color: "#fbcfe8" },
+  { name: "Cyan", color: "#a5f3fc" },
+  { name: "Orange", color: "#fed7aa" },
+  { name: "Dark", color: "#0f172a" }
+];
+function getPrefixCustomColors() {
+  try {
+    return JSON.parse(
+      localStorage.getItem("tachyon_prefix_colors_v1") || "{}"
+    );
+  } catch {
+    return {};
+  }
+}
+function setPrefixCustomColor(prefix, style) {
+  try {
+    const map = getPrefixCustomColors();
+    if (!style) {
+      delete map[prefix];
+    } else {
+      map[prefix] = style;
+    }
+    localStorage.setItem("tachyon_prefix_colors_v1", JSON.stringify(map));
+  } catch {
+  }
+}
+function resolvePrefixBadgeStyle(prefix) {
+  const customMap = getPrefixCustomColors();
+  const key = (prefix || "").trim();
+  const uciMap = typeof window !== "undefined" && window.__tachyonUciPrefixStyles ? window.__tachyonUciPrefixStyles[key] : void 0;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = hash * 31 + key.charCodeAt(i) >>> 0;
+  }
+  const base = BASE_PREFIX_PALETTES[hash % BASE_PREFIX_PALETTES.length];
+  const localCustom = customMap[key];
+  if (localCustom && (localCustom.bg || localCustom.color)) {
+    return {
+      name: "Custom",
+      bg: localCustom.bg || uciMap?.bg || base.bg,
+      color: localCustom.color || uciMap?.color || base.color,
+      border: localCustom.border || localCustom.bg || uciMap?.bg || base.border
+    };
+  }
+  if (uciMap && (uciMap.bg || uciMap.color)) {
+    return {
+      name: "UCI",
+      bg: uciMap.bg || base.bg,
+      color: uciMap.color || base.color,
+      border: uciMap.bg || base.border
+    };
+  }
+  return base;
+}
+function openPrefixColorPickerModal(prefix, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const key = (prefix || "").trim();
+  if (!key || typeof ui === "undefined" || !ui.showModal) return;
+  const current = resolvePrefixBadgeStyle(key);
+  let selectedBg = current.bg;
+  let selectedColor = current.color;
+  const previewBadge = E(
+    "span",
+    {
+      class: "tachyon_dashboard-page__outbound-grid__item__prefix-badge",
+      style: `background: ${selectedBg}; color: ${selectedColor}; border: 1px solid ${selectedBg}; font-size: 13px; padding: 3px 10px; font-weight: 600;`
+    },
+    key
+  );
+  const bgInput = E("input", {
+    type: "color",
+    value: selectedBg.startsWith("#") ? selectedBg : "#2563eb",
+    style: "width: 44px; height: 30px; padding: 0; border: 1px solid rgba(128,128,128,0.4); border-radius: 4px; cursor: pointer;",
+    change: (ev) => {
+      selectedBg = ev.target.value;
+      updatePreview();
+    }
+  });
+  const colorInput = E("input", {
+    type: "color",
+    value: selectedColor.startsWith("#") ? selectedColor : "#ffffff",
+    style: "width: 44px; height: 30px; padding: 0; border: 1px solid rgba(128,128,128,0.4); border-radius: 4px; cursor: pointer;",
+    change: (ev) => {
+      selectedColor = ev.target.value;
+      updatePreview();
+    }
+  });
+  function updatePreview() {
+    previewBadge.style.background = selectedBg;
+    previewBadge.style.color = selectedColor;
+    previewBadge.style.borderColor = selectedBg;
+  }
+  function applyLiveToDom(bg, color) {
+    document.querySelectorAll(
+      ".tachyon_dashboard-page__outbound-grid__item__prefix-badge"
+    ).forEach((el) => {
+      if ((el.textContent || "").trim() === key) {
+        const htmlEl = el;
+        htmlEl.style.background = bg;
+        htmlEl.style.color = color;
+        htmlEl.style.borderColor = bg;
+      }
+    });
+  }
+  ui.showModal(_("Customize prefix color:") + " " + key, [
+    E(
+      "div",
+      {
+        style: "margin-bottom: 14px; display: flex; align-items: center; gap: 10px;"
+      },
+      [E("span", { style: "font-weight: 500;" }, _("Preview:")), previewBadge]
+    ),
+    E("div", { style: "margin-bottom: 12px;" }, [
+      E(
+        "div",
+        { style: "font-weight: 500; margin-bottom: 6px;" },
+        _("Background color presets:")
+      ),
+      E(
+        "div",
+        { style: "display: flex; flex-wrap: wrap; gap: 6px;" },
+        BASE_PREFIX_PALETTES.map(
+          (p) => E(
+            "button",
+            {
+              type: "button",
+              class: "btn",
+              style: `background: ${p.bg}; color: ${p.color}; border: 1px solid ${p.border}; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;`,
+              click: () => {
+                selectedBg = p.bg;
+                selectedColor = p.color;
+                bgInput.value = p.bg;
+                colorInput.value = p.color;
+                updatePreview();
+              }
+            },
+            p.name
+          )
+        )
+      )
+    ]),
+    E("div", { style: "margin-bottom: 12px;" }, [
+      E(
+        "div",
+        { style: "font-weight: 500; margin-bottom: 6px;" },
+        _("Text color presets:")
+      ),
+      E(
+        "div",
+        { style: "display: flex; flex-wrap: wrap; gap: 6px;" },
+        BASE_TEXT_COLORS.map(
+          (t) => E(
+            "button",
+            {
+              type: "button",
+              class: "btn",
+              style: `background: #334155; color: ${t.color}; border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;`,
+              click: () => {
+                selectedColor = t.color;
+                colorInput.value = t.color;
+                updatePreview();
+              }
+            },
+            t.name
+          )
+        )
+      )
+    ]),
+    E(
+      "div",
+      {
+        style: "display: flex; align-items: center; gap: 16px; margin-bottom: 16px;"
+      },
+      [
+        E(
+          "label",
+          {
+            style: "display: flex; align-items: center; gap: 6px; cursor: pointer;"
+          },
+          [_("Background:"), bgInput]
+        ),
+        E(
+          "label",
+          {
+            style: "display: flex; align-items: center; gap: 6px; cursor: pointer;"
+          },
+          [_("Text:"), colorInput]
+        )
+      ]
+    ),
+    E(
+      "div",
+      {
+        class: "right",
+        style: "display: flex; justify-content: flex-end; gap: 8px;"
+      },
+      [
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn",
+            click: () => {
+              setPrefixCustomColor(key, null);
+              const def = resolvePrefixBadgeStyle(key);
+              applyLiveToDom(def.bg, def.color);
+              ui.hideModal();
+            }
+          },
+          _("Reset to default")
+        ),
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn",
+            click: () => ui.hideModal()
+          },
+          _("Cancel")
+        ),
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button-action important",
+            click: () => {
+              setPrefixCustomColor(key, {
+                bg: selectedBg,
+                color: selectedColor,
+                border: selectedBg
+              });
+              applyLiveToDom(selectedBg, selectedColor);
+              ui.hideModal();
+            }
+          },
+          _("Save")
+        )
+      ]
+    )
+  ]);
+}
 function formatOutboundType(type, transport) {
   const cleanType = (type || "").trim();
   const cleanTransport = (transport || "").trim().toUpperCase();
@@ -1623,6 +1884,86 @@ function formatOutboundType(type, transport) {
     return cleanType;
   }
   return `${cleanType} (${cleanTransport})`;
+}
+function parseNodeProtocolBreakdown(type, transport, details) {
+  const base = formatOutboundType(type, transport);
+  const rawParts = (details || "").split("·").map((s) => s.trim()).filter(Boolean);
+  const rows = [];
+  const proto = (type || "").trim().toUpperCase();
+  if (proto) {
+    rows.push({ label: "Protocol", value: proto });
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const part of rawParts) {
+    const low = part.toLowerCase();
+    if (seen.has(low)) continue;
+    seen.add(low);
+    if (low === proto.toLowerCase()) continue;
+    if (low === "reality" || low === "tls" || low === "none" || low.startsWith("reality")) {
+      rows.push({ label: "Security", value: part.toUpperCase() });
+    } else if (low.startsWith("xtls-") || low.startsWith("flow:")) {
+      rows.push({ label: "Flow", value: part.replace(/^flow:\s*/i, "") });
+    } else if (low.startsWith("xhttp") || low === "ws" || low === "grpc" || low === "http" || low === "httpupgrade" || low === "quic" || low === "tcp") {
+      rows.push({ label: "Transport", value: part });
+    } else if (low.startsWith("xmux")) {
+      rows.push({
+        label: "XMUX",
+        value: part.replace(/^xmux\s*\((.*)\)$/i, "$1")
+      });
+    } else if (low.startsWith("utls:")) {
+      rows.push({ label: "uTLS Fingerprint", value: part.slice(5).trim() });
+    } else if (low.startsWith("alpn:")) {
+      rows.push({ label: "ALPN", value: part.slice(5).trim() });
+    } else if (low.startsWith("sni:")) {
+      rows.push({ label: "SNI / Host", value: part.slice(4).trim() });
+    } else if (low.startsWith("pin:")) {
+      rows.push({ label: "Pinning", value: part.slice(4).trim() });
+    } else if (low.startsWith("mux:")) {
+      rows.push({ label: "Multiplex", value: part.slice(4).trim() });
+    } else if (low.startsWith(":")) {
+      rows.push({ label: "Port", value: part.slice(1).trim() });
+    } else {
+      rows.push({ label: "Info", value: part });
+    }
+  }
+  if (!rows.some((r) => r.label === "Transport") && transport && transport.toLowerCase() !== proto.toLowerCase()) {
+    rows.push({ label: "Transport", value: transport.toUpperCase() });
+  }
+  return { base, rows };
+}
+function formatOutboundTypeTooltip(type, transport, details) {
+  const { base, rows } = parseNodeProtocolBreakdown(type, transport, details);
+  if (!rows.length) return base;
+  return [base, ...rows.map((r) => `${r.label}: ${r.value}`)].join("\n");
+}
+function renderProtocolPopoverNodes(type, transport, details) {
+  const { base, rows } = parseNodeProtocolBreakdown(type, transport, details);
+  if (rows.length <= 1 && !details) {
+    return null;
+  }
+  return E("div", { class: "tachyon_proto-popover" }, [
+    E("div", { class: "tachyon_proto-popover__header" }, base),
+    ...rows.map(
+      (r) => E("div", { class: "tachyon_proto-popover__row" }, [
+        E("span", { class: "tachyon_proto-popover__label" }, `${r.label}:`),
+        E("span", { class: "tachyon_proto-popover__val" }, r.value)
+      ])
+    )
+  ]);
+}
+function renderOutboundTypeWithPopover(type, transport, details, className, extraSuffix) {
+  const baseType = formatOutboundType(type, transport);
+  const labelText = extraSuffix ? `${baseType} ${extraSuffix}` : baseType;
+  const popover = renderProtocolPopoverNodes(type, transport, details);
+  const tooltip = formatOutboundTypeTooltip(type, transport, details);
+  return E(
+    "span",
+    {
+      class: [className || "", popover ? "tachyon_proto-popover-trigger" : ""].filter(Boolean).join(" "),
+      title: popover ? void 0 : tooltip
+    },
+    [E("span", {}, labelText), ...popover ? [popover] : []]
+  );
 }
 
 // src/helpers/getProxyUrlTransport.ts
@@ -2839,8 +3180,8 @@ function renderDefaultState({
     const isManualUrlTest = Boolean(outbound.urlTestInfo?.isManualSelection);
     const isManualPriority = Boolean(outbound.priorityInfo?.isManualSelection);
     const activeServerName = outbound.urlTestInfo?.selectedName || outbound.priorityInfo?.selectedName || "";
-    const baseType = formatOutboundType(outbound.type, outbound.transport);
-    const typeLabel = isManualUrlTest || isManualPriority ? `${baseType} (${_("Manual")})` : outbound.urlTestInfo || outbound.priorityInfo ? `${baseType} (${_("Auto")})` : baseType;
+    const modeSuffix = isManualUrlTest || isManualPriority ? `(${_("Manual")})` : outbound.urlTestInfo || outbound.priorityInfo ? `(${_("Auto")})` : "";
+    const prefixStyle = outbound.prefix ? resolvePrefixBadgeStyle(outbound.prefix) : null;
     return E(
       "div",
       {
@@ -2877,10 +3218,13 @@ function renderDefaultState({
               },
               [
                 E("b", {}, renderFlagEmojis(outbound.displayName)),
-                outbound.prefix ? E(
+                outbound.prefix && prefixStyle ? E(
                   "span",
                   {
-                    class: "tachyon_dashboard-page__outbound-grid__item__prefix-badge"
+                    class: "tachyon_dashboard-page__outbound-grid__item__prefix-badge",
+                    style: `background: ${prefixStyle.bg}; color: ${prefixStyle.color}; border: 1px solid ${prefixStyle.border}; font-weight: 600; cursor: pointer;`,
+                    title: _("Click to customize prefix colors"),
+                    click: (event) => openPrefixColorPickerModal(outbound.prefix, event)
                   },
                   renderFlagEmojis(outbound.prefix)
                 ) : ""
@@ -2951,10 +3295,12 @@ function renderDefaultState({
           "div",
           { class: "tachyon_dashboard-page__outbound-grid__item__footer" },
           [
-            E(
-              "div",
-              { class: "tachyon_dashboard-page__outbound-grid__item__type" },
-              typeLabel
+            renderOutboundTypeWithPopover(
+              outbound.type,
+              outbound.transport,
+              outbound.details,
+              "tachyon_dashboard-page__outbound-grid__item__type",
+              modeSuffix
             ),
             E(
               "div",
@@ -5312,6 +5658,8 @@ function hydrateConfigSections(configSections) {
           show_dashboard_metadata: item.show_dashboard_metadata,
           prefix_nodes: item.prefix_nodes,
           node_prefix: item.node_prefix,
+          node_prefix_bg: item.node_prefix_bg,
+          node_prefix_color: item.node_prefix_color,
           include_urltest_groups: item.include_urltest_groups,
           hide_urltest_group_outbounds: item.hide_urltest_group_outbounds,
           hide_detour_outbounds: item.hide_detour_outbounds
@@ -5792,6 +6140,31 @@ function getConfiguredSubscriptionPrefixes(section) {
   }
   return prefixes;
 }
+function getConfiguredSubscriptionPrefixStyles(section) {
+  const settings = itemSettingsMap(section.subscription_url_settings);
+  const styles7 = {};
+  for (const url of Object.keys(settings)) {
+    const item = settings[url];
+    if (item && item.prefix_nodes === "1") {
+      const p = typeof item.node_prefix === "string" ? item.node_prefix.trim() : "";
+      if (p) {
+        const bg = typeof item.node_prefix_bg === "string" ? item.node_prefix_bg.trim() : "";
+        const color = typeof item.node_prefix_color === "string" ? item.node_prefix_color.trim() : "";
+        if (bg || color) {
+          styles7[p] = { bg: bg || void 0, color: color || void 0 };
+        }
+      }
+    }
+  }
+  if (typeof window !== "undefined" && Object.keys(styles7).length > 0) {
+    const win = window;
+    win.__tachyonUciPrefixStyles = {
+      ...win.__tachyonUciPrefixStyles || {},
+      ...styles7
+    };
+  }
+  return styles7;
+}
 function dashboardOutboundType(code, runtimeType, outboundMetadata) {
   return outboundMetadata?.protocols?.[code] === "amneziawg" ? "AmneziaWG" : runtimeType || "";
 }
@@ -5833,7 +6206,7 @@ function resolveOutboundNameAndPrefix({
         displayName = stripped;
       }
     }
-  } else if (displayName.includes("/")) {
+  } else if (/^[A-Za-z0-9_-]+\//.test(displayName)) {
     const parts = displayName.split("/");
     if (parts.length > 1 && parts[parts.length - 1].trim()) {
       prefix = parts.slice(0, -1).join("/");
@@ -5892,6 +6265,7 @@ function buildUrlTestInfo({
             outboundMetadata
           ),
           transport: outboundMetadata?.transports?.[childCode] || getProxyUrlTransport(link),
+          details: outboundMetadata?.details?.[childCode],
           selected: selectedCode === childCode,
           link,
           canCopyLink,
@@ -5986,6 +6360,7 @@ function buildPriorityInfo({
           outboundMetadata
         ),
         transport: outboundMetadata?.transports?.[childCode] || getProxyUrlTransport(link),
+        details: outboundMetadata?.details?.[childCode],
         selected: selectedCode === childCode,
         link,
         canCopyLink,
@@ -6024,6 +6399,7 @@ function buildPriorityInfo({
 function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map(), hiddenOutboundTags = {}) {
   const sectionName = section[".name"];
   const configuredPrefixes = getConfiguredSubscriptionPrefixes(section);
+  getConfiguredSubscriptionPrefixStyles(section);
   const proxyByCode = getProxyEntryByCode(proxies);
   const selectorTag = getOutboundTagBySection(sectionName);
   const selector = proxyByCode.get(selectorTag);
@@ -6157,6 +6533,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
           outboundMetadata
         ),
         transport: isGroupType ? void 0 : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),
+        details: isGroupType ? void 0 : outboundMetadata?.details?.[code],
         selected: isSelected,
         link,
         canCopyLink,
@@ -6266,7 +6643,10 @@ function getOutboundMetadata(dashboardCache) {
     countries: objectMap(metadata.countries),
     transports: objectMap(metadata.transports),
     protocols: objectMap(metadata.protocols),
-    securities: objectMap(metadata.securities)
+    securities: objectMap(metadata.securities),
+    ports: objectMap(metadata.ports),
+    details: objectMap(metadata.details),
+    prefixes: objectMap(metadata.prefixes)
   };
 }
 function getCachedProxyLinks(dashboardCache, includeHidden = false) {
@@ -9663,13 +10043,16 @@ function renderDetailsMemberName(member) {
     ...renderFlagEmojis(member.displayName)
   ] : renderFlagEmojis(member.displayName);
   if (member.prefix) {
+    const pStyle = resolvePrefixBadgeStyle(member.prefix);
     return [
       ...elements,
       E(
         "span",
         {
           class: "tachyon_dashboard-page__outbound-grid__item__prefix-badge",
-          style: "margin-left: 6px;"
+          style: `margin-left: 6px; background: ${pStyle.bg}; color: ${pStyle.color}; border: 1px solid ${pStyle.border}; font-weight: 600; cursor: pointer;`,
+          title: _("Click to customize prefix colors"),
+          click: (event) => openPrefixColorPickerModal(member.prefix, event)
         },
         renderFlagEmojis(member.prefix)
       )
@@ -9709,12 +10092,11 @@ function renderUrlTestSelectedValue(info) {
         selectedMember ? renderDetailsMemberName(selectedMember) : name
       ),
       ...selectedMember?.type ? [
-        E(
-          "span",
-          {
-            class: "tachyon_dashboard-page__urltest-details__selected-type"
-          },
-          selectedMember.type
+        renderOutboundTypeWithPopover(
+          selectedMember.type,
+          selectedMember.transport,
+          selectedMember.details,
+          "tachyon_dashboard-page__urltest-details__selected-type"
         )
       ] : [],
       ...selectedMember ? [
@@ -9792,29 +10174,21 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, se
                     renderMemberName(member)
                   ),
                   ...member.type ? [
-                    E(
-                      "span",
-                      {
-                        class: "tachyon_dashboard-page__urltest-details__row-type"
-                      },
-                      formatOutboundType(
-                        member.type,
-                        member.transport
-                      )
+                    renderOutboundTypeWithPopover(
+                      member.type,
+                      member.transport,
+                      member.details,
+                      "tachyon_dashboard-page__urltest-details__row-type"
                     )
                   ] : []
                 ] : [
                   E("b", {}, renderMemberName(member)),
                   ...member.type ? [
-                    E(
-                      "span",
-                      {
-                        class: "tachyon_dashboard-page__urltest-details__row-type"
-                      },
-                      formatOutboundType(
-                        member.type,
-                        member.transport
-                      )
+                    renderOutboundTypeWithPopover(
+                      member.type,
+                      member.transport,
+                      member.details,
+                      "tachyon_dashboard-page__urltest-details__row-type"
                     )
                   ] : []
                 ]
@@ -11369,6 +11743,68 @@ var styles = `
     max-width: 100%;
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+
+.tachyon_proto-popover-trigger {
+    position: relative;
+    cursor: help;
+}
+
+.tachyon_proto-popover {
+    display: none;
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    z-index: 10050;
+    min-width: 220px;
+    max-width: 310px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: rgba(20, 24, 33, 0.97);
+    color: #f1f5f9;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-size: 11.5px;
+    line-height: 1.4;
+    text-align: left;
+    pointer-events: none;
+    white-space: normal;
+}
+
+.tachyon_proto-popover-trigger:hover .tachyon_proto-popover {
+    display: block;
+}
+
+.tachyon_proto-popover__header {
+    font-weight: 700;
+    font-size: 12px;
+    color: #60a5fa;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    padding-bottom: 4px;
+    margin-bottom: 5px;
+    word-break: break-word;
+}
+
+.tachyon_proto-popover__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 1.5px 0;
+}
+
+.tachyon_proto-popover__label {
+    color: #94a3b8;
+    font-weight: 500;
+    flex: 0 0 auto;
+}
+
+.tachyon_proto-popover__val {
+    color: #f8fafc;
+    font-family: monospace;
+    font-weight: 600;
+    text-align: right;
+    word-break: break-all;
 }
 
 .tachyon_dashboard-page .btn.tachyon_dashboard-page__outbound-grid__item__copy-button {

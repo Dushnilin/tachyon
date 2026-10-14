@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 09:36+0300\n"
-"PO-Revision-Date: 2026-10-14 09:36+0300\n"
+"POT-Creation-Date: 2026-10-14 12:19+0300\n"
+"PO-Revision-Date: 2026-10-14 12:19+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -632,6 +632,12 @@ msgstr "Ср. задержка"
 msgid "Backend validation failed: %s"
 msgstr "Ошибка проверки бэкенда: %s"
 
+msgid "Background color presets:"
+msgstr ""
+
+msgid "Background:"
+msgstr ""
+
 msgid "Base (core only)"
 msgstr "Base (только ядро)"
 
@@ -962,6 +968,9 @@ msgstr "Очистить кэш DNS"
 msgid "Clear History"
 msgstr "Очистить историю"
 
+msgid "Click to customize prefix colors"
+msgstr ""
+
 msgid "Click to hide"
 msgstr "Нажмите, чтобы скрыть"
 
@@ -1243,6 +1252,9 @@ msgstr "Пользовательская стратегия добавлена!"
 
 msgid "Custom tag (e.g. v1.2.3)"
 msgstr "Пользовательский тег (например, v1.2.3)"
+
+msgid "Customize prefix color:"
+msgstr ""
 
 msgid "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs."
 msgstr "Настройте порядок и видимость вкладок в главном меню навигации. Используйте стрелки для перемещения и галочки для показа или скрытия."
@@ -4139,6 +4151,9 @@ msgstr "Запретить гостевым устройствам доступ 
 msgid "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."
 msgstr "Предотвращает множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
 
+msgid "Preview:"
+msgstr ""
+
 msgid "Previous"
 msgstr "Назад"
 
@@ -4450,6 +4465,9 @@ msgstr "Сбросить статистику"
 
 msgid "Reset to Factory Defaults"
 msgstr "Сбросить к исходным настройкам"
+
+msgid "Reset to default"
+msgstr ""
 
 msgid "Resetting…"
 msgstr "Сброс…"
@@ -5773,6 +5791,12 @@ msgstr "Тестирование:"
 
 msgid "Testing…"
 msgstr "Проверка…"
+
+msgid "Text color presets:"
+msgstr ""
+
+msgid "Text:"
+msgstr ""
 
 msgid "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Tachyon для каждого правила и не может быть переопределён здесь."

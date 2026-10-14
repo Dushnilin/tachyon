@@ -228,16 +228,49 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
         state.outboundMetadata.ports = {};
     let wg_peer = as_string(outbound.type) == "wireguard" ? object_or_empty(array_or_empty(outbound.peers)[0]) : {};
     let port = outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : wg_peer.port);
-    if (port != null && port != "")
+    if (port != null && port != "" && as_string(port) != "443")
         state.outboundMetadata.ports[tag_name] = as_string(port);
 
     let server = as_string(outbound.server || wg_peer.address || "");
     if (server != "")
         state.servers[tag_name] = server;
+
+    if (!state.outboundMetadata.details)
+        state.outboundMetadata.details = {};
+    let tr_obj = object_or_empty(outbound.transport);
+    let badges = [];
+    if (protocol == "urltest")
+        push(badges, "авто-группы");
+    let flow = as_string(outbound.flow || "");
+    if (flow != "")
+        push(badges, flow);
+    if (transport == "xhttp") {
+        let xmode = as_string(tr_obj.mode || "auto");
+        push(badges, xmode);
+        if (type(tr_obj.xmux) == "object" && length(keys(tr_obj.xmux)) > 0)
+            push(badges, "xmux");
+    }
+    if (tls != null && tls.enabled !== false) {
+        let csha = tls.certificate_sha256;
+        if ((type(csha) == "array" && length(csha) > 0) || (type(csha) == "string" && csha != ""))
+            push(badges, "cert_sha256");
+        let psha = tls.certificate_public_key_sha256;
+        if ((type(psha) == "array" && length(psha) > 0) || (type(psha) == "string" && psha != ""))
+            push(badges, "pubkey_sha256");
+    }
+    if (type(outbound.multiplex) == "object" && outbound.multiplex.enabled == true)
+        push(badges, "mux:" + as_string(outbound.multiplex.protocol || "h2mux"));
+
+    let b_str = join("+", badges);
+    if (b_str != "")
+        state.outboundMetadata.details[tag_name] = b_str;
 }
 
 function remember_source_outbound(state, tag_name, display_name, outbound, source_link, prefix) {
     if (type(state) != "object")
+        return;
+    let is_cand = index(tag_name, "cand-") == 0 || index(tag_name, " cand-") >= 0;
+    if (is_cand)
         return;
     remember_outbound_metadata(state, tag_name, display_name, outbound, prefix);
     let outbound_type = as_string(outbound.type || "");
@@ -352,7 +385,8 @@ function new_section_state(section_name) {
             transports: {},
             securities: {},
             prefixes: {},
-            ports: {}
+            ports: {},
+            details: {}
         },
         servers: {},
         urltestCandidateTags: [],

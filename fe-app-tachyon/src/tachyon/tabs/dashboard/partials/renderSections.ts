@@ -5,8 +5,10 @@ import {
   renderInfoIcon24,
 } from '../../../../icons';
 import {
-  formatOutboundType,
   isCopyableProxyLink,
+  openPrefixColorPickerModal,
+  renderOutboundTypeWithPopover,
+  resolvePrefixBadgeStyle,
   svgEl,
 } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
@@ -657,14 +659,15 @@ function renderDefaultState({
       outbound.priorityInfo?.selectedName ||
       '';
 
-    const baseType = formatOutboundType(outbound.type, outbound.transport);
-
-    const typeLabel =
+    const modeSuffix =
       isManualUrlTest || isManualPriority
-        ? `${baseType} (${_('Manual')})`
+        ? `(${_('Manual')})`
         : outbound.urlTestInfo || outbound.priorityInfo
-          ? `${baseType} (${_('Auto')})`
-          : baseType;
+          ? `(${_('Auto')})`
+          : '';
+    const prefixStyle = outbound.prefix
+      ? resolvePrefixBadgeStyle(outbound.prefix)
+      : null;
 
     return E(
       'div',
@@ -708,12 +711,16 @@ function renderDefaultState({
               },
               [
                 E('b', {}, renderFlagEmojis(outbound.displayName)),
-                outbound.prefix
+                outbound.prefix && prefixStyle
                   ? E(
                       'span',
                       {
                         class:
                           'tachyon_dashboard-page__outbound-grid__item__prefix-badge',
+                        style: `background: ${prefixStyle.bg}; color: ${prefixStyle.color}; border: 1px solid ${prefixStyle.border}; font-weight: 600; cursor: pointer;`,
+                        title: _('Click to customize prefix colors'),
+                        click: (event: MouseEvent) =>
+                          openPrefixColorPickerModal(outbound.prefix!, event),
                       },
                       renderFlagEmojis(outbound.prefix),
                     )
@@ -798,10 +805,12 @@ function renderDefaultState({
           'div',
           { class: 'tachyon_dashboard-page__outbound-grid__item__footer' },
           [
-            E(
-              'div',
-              { class: 'tachyon_dashboard-page__outbound-grid__item__type' },
-              typeLabel,
+            renderOutboundTypeWithPopover(
+              outbound.type,
+              outbound.transport,
+              outbound.details,
+              'tachyon_dashboard-page__outbound-grid__item__type',
+              modeSuffix,
             ),
             E(
               'div',

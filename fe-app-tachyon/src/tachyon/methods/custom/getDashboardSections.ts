@@ -291,6 +291,8 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           show_dashboard_metadata: item.show_dashboard_metadata,
           prefix_nodes: item.prefix_nodes,
           node_prefix: item.node_prefix,
+          node_prefix_bg: item.node_prefix_bg,
+          node_prefix_color: item.node_prefix_color,
           include_urltest_groups: item.include_urltest_groups,
           hide_urltest_group_outbounds: item.hide_urltest_group_outbounds,
           hide_detour_outbounds: item.hide_detour_outbounds,
@@ -946,6 +948,44 @@ function getConfiguredSubscriptionPrefixes(
   return prefixes;
 }
 
+function getConfiguredSubscriptionPrefixStyles(section: Tachyon.ConfigSection) {
+  const settings = itemSettingsMap(section.subscription_url_settings);
+  const styles: Record<string, { bg?: string; color?: string }> = {};
+  for (const url of Object.keys(settings)) {
+    const item = settings[url];
+    if (item && item.prefix_nodes === '1') {
+      const p =
+        typeof item.node_prefix === 'string' ? item.node_prefix.trim() : '';
+      if (p) {
+        const bg =
+          typeof item.node_prefix_bg === 'string'
+            ? item.node_prefix_bg.trim()
+            : '';
+        const color =
+          typeof item.node_prefix_color === 'string'
+            ? item.node_prefix_color.trim()
+            : '';
+        if (bg || color) {
+          styles[p] = { bg: bg || undefined, color: color || undefined };
+        }
+      }
+    }
+  }
+  if (typeof window !== 'undefined' && Object.keys(styles).length > 0) {
+    const win = window as unknown as {
+      __tachyonUciPrefixStyles?: Record<
+        string,
+        { bg?: string; color?: string }
+      >;
+    };
+    win.__tachyonUciPrefixStyles = {
+      ...(win.__tachyonUciPrefixStyles || {}),
+      ...styles,
+    };
+  }
+  return styles;
+}
+
 function dashboardOutboundType(
   code: string,
   runtimeType: string | undefined,
@@ -1018,7 +1058,7 @@ function resolveOutboundNameAndPrefix({
         displayName = stripped;
       }
     }
-  } else if (displayName.includes('/')) {
+  } else if (/^[A-Za-z0-9_-]+\//.test(displayName)) {
     const parts = displayName.split('/');
     if (parts.length > 1 && parts[parts.length - 1].trim()) {
       prefix = parts.slice(0, -1).join('/');
@@ -1106,6 +1146,7 @@ function buildUrlTestInfo({
           transport:
             outboundMetadata?.transports?.[childCode] ||
             getProxyUrlTransport(link),
+          details: outboundMetadata?.details?.[childCode],
           selected: selectedCode === childCode,
           link,
           canCopyLink,
@@ -1247,6 +1288,7 @@ function buildPriorityInfo({
         transport:
           outboundMetadata?.transports?.[childCode] ||
           getProxyUrlTransport(link),
+        details: outboundMetadata?.details?.[childCode],
         selected: selectedCode === childCode,
         link,
         canCopyLink,
@@ -1314,6 +1356,7 @@ function buildProxyGroupOutbounds(
 ) {
   const sectionName = section['.name'];
   const configuredPrefixes = getConfiguredSubscriptionPrefixes(section);
+  getConfiguredSubscriptionPrefixStyles(section);
   const proxyByCode = getProxyEntryByCode(proxies);
   const selectorTag = getOutboundTagBySection(sectionName);
   const selector = proxyByCode.get(selectorTag);
@@ -1498,6 +1541,7 @@ function buildProxyGroupOutbounds(
         transport: isGroupType
           ? undefined
           : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),
+        details: isGroupType ? undefined : outboundMetadata?.details?.[code],
         selected: isSelected,
         link,
         canCopyLink,
@@ -1684,6 +1728,9 @@ function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
     transports: objectMap(metadata.transports),
     protocols: objectMap(metadata.protocols),
     securities: objectMap(metadata.securities),
+    ports: objectMap(metadata.ports),
+    details: objectMap(metadata.details),
+    prefixes: objectMap(metadata.prefixes),
   };
 }
 

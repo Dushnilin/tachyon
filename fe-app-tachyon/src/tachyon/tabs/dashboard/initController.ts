@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   canUseDirectClashApi,
-  formatOutboundType,
   getClashWsUrl,
   isCopyableProxyLink,
   onMount,
+  openPrefixColorPickerModal,
   preserveScrollForPage,
+  renderOutboundTypeWithPopover,
+  resolvePrefixBadgeStyle,
   svgEl,
 } from '../../../helpers';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
@@ -1031,13 +1033,17 @@ function renderDetailsMemberName(member: Tachyon.UrlTestMember) {
     : renderFlagEmojis(member.displayName);
 
   if (member.prefix) {
+    const pStyle = resolvePrefixBadgeStyle(member.prefix);
     return [
       ...elements,
       E(
         'span',
         {
           class: 'tachyon_dashboard-page__outbound-grid__item__prefix-badge',
-          style: 'margin-left: 6px;',
+          style: `margin-left: 6px; background: ${pStyle.bg}; color: ${pStyle.color}; border: 1px solid ${pStyle.border}; font-weight: 600; cursor: pointer;`,
+          title: _('Click to customize prefix colors'),
+          click: (event: MouseEvent) =>
+            openPrefixColorPickerModal(member.prefix!, event),
         },
         renderFlagEmojis(member.prefix),
       ),
@@ -1088,12 +1094,11 @@ function renderUrlTestSelectedValue(info: Tachyon.UrlTestInfo) {
       ),
       ...(selectedMember?.type
         ? [
-            E(
-              'span',
-              {
-                class: 'tachyon_dashboard-page__urltest-details__selected-type',
-              },
+            renderOutboundTypeWithPopover(
               selectedMember.type,
+              selectedMember.transport,
+              selectedMember.details,
+              'tachyon_dashboard-page__urltest-details__selected-type',
             ),
           ]
         : []),
@@ -1202,16 +1207,11 @@ function renderCommonDetailsModal(
                           ),
                           ...(member.type
                             ? [
-                                E(
-                                  'span',
-                                  {
-                                    class:
-                                      'tachyon_dashboard-page__urltest-details__row-type',
-                                  },
-                                  formatOutboundType(
-                                    member.type,
-                                    member.transport,
-                                  ),
+                                renderOutboundTypeWithPopover(
+                                  member.type,
+                                  member.transport,
+                                  member.details,
+                                  'tachyon_dashboard-page__urltest-details__row-type',
                                 ),
                               ]
                             : []),
@@ -1220,16 +1220,11 @@ function renderCommonDetailsModal(
                           E('b', {}, renderMemberName(member)),
                           ...(member.type
                             ? [
-                                E(
-                                  'span',
-                                  {
-                                    class:
-                                      'tachyon_dashboard-page__urltest-details__row-type',
-                                  },
-                                  formatOutboundType(
-                                    member.type,
-                                    member.transport,
-                                  ),
+                                renderOutboundTypeWithPopover(
+                                  member.type,
+                                  member.transport,
+                                  member.details,
+                                  'tachyon_dashboard-page__urltest-details__row-type',
                                 ),
                               ]
                             : []),
