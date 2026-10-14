@@ -161,6 +161,7 @@ const CAPABILITIES = {
         "sections.provider",
         "sections.server",
         "sections.tailscale",
+        "sections.group",
         "dns.fakeip",
         "dns.realip",
         "dns.presets",

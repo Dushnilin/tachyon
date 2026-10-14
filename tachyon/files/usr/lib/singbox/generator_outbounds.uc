@@ -2570,5 +2570,6 @@ return {
     add_olcrtc_outbound,
     add_fptn_outbound,
     fptn_token_decode,
+    urltest_leaf_candidate_outbound,
     apply_section_packet_encoding_to_connection_outbounds
 };

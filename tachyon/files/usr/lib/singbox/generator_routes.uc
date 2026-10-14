@@ -697,6 +697,67 @@ function priority_outbound_tag(section_name, group_id) {
     return outbound_tag(section_name + "-priority-" + as_string(group_id));
 }
 
+// Section group (action 'group'): members keep their own selectors, but their
+// route rules are repointed at one flat urltest over the union of member
+// leaves. add_proxy_selector records each section's leaf candidates; the
+// post-pass add_group_urltest_outbounds builds the urltest and fills
+// section_group_map, which route generation reads.
+let section_leaf_tags = {};
+let section_group_map = {};
+
+function remember_section_leaf_tags(name, tags) {
+    section_leaf_tags[name] = tags;
+}
+
+function find_outbound_by_tag(config, want) {
+    for (let outbound in config.outbounds)
+        if (as_string(outbound.tag) == want)
+            return outbound;
+    return null;
+}
+
+// urltest tag of the group this section belongs to, or "" when the section is
+// not a group member (or its group produced no urltest).
+function group_outbound_tag_for_section(section) {
+    let group_name = as_string(section_group_map[section[".name"]]);
+    if (group_name == "")
+        return "";
+    return urltest_outbound_tag(group_name, "urltest");
+}
+
+function group_member_action_supported(action) {
+    action = as_string(action);
+    if (action == "group")
+        return false;
+    return connections.is_connections_action(action) ||
+        action == "awg" || action == "warp" ||
+        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
+        action == "sudoku" || action == "masque" || action == "openvpn" || action == "fptn";
+}
+
+// Union of the member sections' leaf outbound tags. Sections that went through
+// add_proxy_selector contribute their recorded candidates; single-outbound
+// sections (anytls, snell, ...) fall back to their own top-level outbound.
+function group_member_leaf_tags(members, config) {
+    let tags = [];
+    for (let member in members) {
+        let name = member[".name"];
+        if (ctx.deferred_sections && ctx.deferred_sections[name])
+            continue;
+        let recorded = section_leaf_tags[name];
+        if (type(recorded) == "array" && length(recorded) > 0) {
+            for (let candidate in recorded)
+                push(tags, candidate);
+            continue;
+        }
+        let own_tag = outbound_tag(name);
+        let outbound = find_outbound_by_tag(config, own_tag);
+        if (outbound != null && ctx.outbounds.urltest_leaf_candidate_outbound(outbound))
+            push(tags, own_tag);
+    }
+    return unique_string_array(tags);
+}
+
 function is_extended_variant_detected() {
     let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
     let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
@@ -749,6 +810,48 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
         tag: urltest_tag,
         outbounds: urltest_outbounds
     };
+}
+
+// Post-pass: after every section has generated its outbounds, build one flat
+// urltest per group section over the union of member leaves and record the
+// member -> group mapping used to repoint route rules. Deferred (quarantined)
+// members contribute no leaves; a group with no live members is not emitted.
+function add_group_urltest_outbounds(config, sections) {
+    for (let section in sections) {
+        if (option(section, "action", "") != "group")
+            continue;
+        let group_name = section[".name"];
+        if (ctx.deferred_sections && ctx.deferred_sections[group_name])
+            continue;
+
+        let wanted = {};
+        for (let member_name in list_option(section, "group_members"))
+            wanted[trim(as_string(member_name))] = true;
+
+        let members = [];
+        for (let candidate in sections)
+            if (wanted[candidate[".name"]])
+                push(members, candidate);
+
+        let tags = group_member_leaf_tags(members, config);
+        if (length(tags) == 0) {
+            warn("Section group " + group_name + " has no member servers available, the group is not generated\n");
+            continue;
+        }
+
+        let state = runtime_subscription.new_section_state(group_name);
+        let result = add_urltest_outbound(config, section, "urltest", tags, state);
+        if (result.tag == "")
+            continue;
+        for (let member in members) {
+            let name = member[".name"];
+            if (section_group_map[name] != null)
+                warn("Rule " + name + " belongs to several section groups; " +
+                    as_string(section_group_map[name]) + " wins, " + group_name + " is ignored\n");
+            else
+                section_group_map[name] = group_name;
+        }
+    }
 }
 
 function add_priority_group_outbound(config, section, group_id, urltest_candidate_tags, state) {
@@ -921,6 +1024,7 @@ function section_excluded_candidate_tags(section, candidate_tags, state) {
 
 function add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag) {
     let section_name = section[".name"];
+    remember_section_leaf_tags(section_name, urltest_candidate_tags);
     let selector_tag = outbound_tag(section_name);
     let selector_outbounds = selector_tags;
     let selector_default = selector_tags[0];
@@ -2086,7 +2190,7 @@ function add_fully_routed_ips_rule(config, section) {
     if (length(source_ip_cidr) == 0)
         return;
 
-    let target = runtime_route.target(section, outbound_tag(section[".name"]));
+    let target = runtime_route.target(section, group_outbound_tag_for_section(section) || outbound_tag(section[".name"]));
     if (target.unsupported)
         ctx.runtime_generate_unsupported(target.unsupported);
 
@@ -2261,7 +2365,7 @@ function add_combined_route_for_section(config, section) {
         false
     );
 
-    let target = runtime_route.target(section, outbound_tag(section_name));
+    let target = runtime_route.target(section, group_outbound_tag_for_section(section) || outbound_tag(section_name));
     if (target.unsupported)
         ctx.runtime_generate_unsupported(target.unsupported);
 
@@ -2507,6 +2611,10 @@ function add_outbound_for_section(config, section, taken, sections) {
         ctx.outbounds.add_olcrtc_outbound(config, section, sections);
     else if (action == "fptn")
         ctx.outbounds.add_fptn_outbound(config, section, sections);
+    else if (action == "group") {
+        /* container — the flat urltest is built by add_group_urltest_outbounds
+           after every member section has generated its outbounds */
+    }
     else if (action == "bypass") {
         /* route-only action */
     }
@@ -2523,7 +2631,7 @@ function add_outbound_for_section(config, section, taken, sections) {
         ctx.runtime_generate_unsupported("unsupported action " + action);
     }
 
-    if (action != "dns" && action != "hosts" && action != "block")
+    if (action != "dns" && action != "hosts" && action != "block" && action != "group")
         add_routed_dns_server_for_section(config, section);
 }
 
@@ -2536,6 +2644,11 @@ function reserve_section_outbound_tags(sections, taken) {
             action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
             action == "masque" || action == "openvpn")
             taken[outbound_tag(section[".name"])] = true;
+
+        if (action == "group") {
+            taken[urltest_outbound_tag(section[".name"], "urltest")] = true;
+            continue;
+        }
 
         if (!connections.is_connections_action(action))
             continue;
@@ -2555,6 +2668,10 @@ function add_route_for_section(config, section) {
         add_dns_action_rules_for_section(config, section);
     else if (action == "hosts") {
         /* hosts-only action — entries are consumed globally via combined cache */
+    }
+    else if (action == "group") {
+        /* group container — members keep their own rules, repointed at the
+           group urltest; the group itself matches no traffic */
     }
     else
         add_combined_route_for_section(config, section);
@@ -2816,7 +2933,7 @@ function add_server_routes(config, servers, sections) {
             let action = option(routing_section, "action", "");
             if (action == "bypass" || action == "block")
                 ctx.runtime_generate_unsupported("server routing section " + routing_section_name + " cannot use action " + action);
-            let target = runtime_route.target(routing_section, outbound_tag(routing_section[".name"]));
+            let target = runtime_route.target(routing_section, group_outbound_tag_for_section(routing_section) || outbound_tag(routing_section[".name"]));
             if (target.unsupported)
                 ctx.runtime_generate_unsupported(target.unsupported);
             let rule = {
@@ -2850,6 +2967,8 @@ return {
     urltest_outbound_tag,
     priority_outbound_tag,
     add_urltest_outbound,
+    add_group_urltest_outbounds,
+    group_outbound_tag_for_section,
     add_priority_group_outbound,
     add_proxy_selector,
     dashboard_filtered_outbounds,

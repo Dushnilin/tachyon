@@ -155,7 +155,8 @@ function is_zapret_section(section) {
 function section_supported(section) {
     let action = as_string(option(section, "action", ""));
     if (action == "anytls" || action == "awg" || action == "fptn" ||
-        action == "wdtt" || action == "olcrtc" || action == "byedpi")
+        action == "wdtt" || action == "olcrtc" || action == "byedpi" ||
+        action == "group")
         return false;
     return true;
 }

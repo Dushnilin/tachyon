@@ -118,6 +118,7 @@ let enabled_sections = null;
 let enabled_servers = null;
 let reserve_section_outbound_tags = null;
 let add_outbound_for_section = null;
+let add_group_urltest_outbounds = null;
 let add_service_route_rules = null;
 let add_route_for_section = null;
 let add_server_routes = null;
@@ -1924,6 +1925,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
         add_outbound_for_section(config, section, taken, sections);
     }
     ctx.current_section = null;
+    add_group_urltest_outbounds(config, sections);
     add_service_route_rules(config, sections);
 
     // Add block and bypass sections before proxy sections so exceptions take precedence
@@ -2130,6 +2132,7 @@ enabled_sections = generator_routes.enabled_sections;
 enabled_servers = generator_routes.enabled_servers;
 reserve_section_outbound_tags = generator_routes.reserve_section_outbound_tags;
 add_outbound_for_section = generator_routes.add_outbound_for_section;
+add_group_urltest_outbounds = generator_routes.add_group_urltest_outbounds;
 add_service_route_rules = generator_routes.add_service_route_rules;
 add_route_for_section = generator_routes.add_route_for_section;
 add_server_routes = generator_routes.add_server_routes;

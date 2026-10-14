@@ -819,13 +819,65 @@ function rule_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
         "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "hosts",
-        "wdtt", "olcrtc", "fptn" ], as_string(action));
+        "wdtt", "olcrtc", "fptn", "group" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
         "zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn" ], as_string(action));
+}
+
+// A group member must be a section that actually produces proxy outbounds:
+// no nested groups, no DPI engines, no markers, no route-only sections.
+function group_member_action_supported(action) {
+    action = as_string(action);
+    if (action == "group")
+        return false;
+    return connections.is_connections_action(action) ||
+        action == "awg" || action == "warp" ||
+        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
+        action == "sudoku" || action == "masque" || action == "openvpn" || action == "fptn";
+}
+
+function validate_group_members(section, sections) {
+    let group_name = section_name(section);
+    let members = list_option(section, "group_members");
+    if (length(members) == 0)
+        fail_validation("Section group '" + group_name +
+            "' has no members. Add at least one Connection, VPN or AmneziaWG rule. Aborted.");
+
+    let seen = {};
+    for (let member_value in members) {
+        let member_name = trim(as_string(member_value));
+        if (member_name == "")
+            fail_validation("Section group '" + group_name + "' has an empty member entry. Aborted.");
+        if (seen[member_name])
+            fail_validation("Section group '" + group_name + "' lists rule '" + member_name + "' twice. Aborted.");
+        seen[member_name] = true;
+
+        if (member_name == group_name)
+            fail_validation("Section group '" + group_name + "' cannot include itself. Aborted.");
+
+        let member = null;
+        for (let candidate in sections) {
+            if (section_name(candidate) == member_name) {
+                member = candidate;
+                break;
+            }
+        }
+        if (member == null)
+            fail_validation("Section group '" + group_name +
+                "' references missing rule '" + member_name + "'. Aborted.");
+        if (!section_enabled(member))
+            fail_validation("Section group '" + group_name +
+                "' references disabled rule '" + member_name +
+                "'. Enable it or remove it from the group. Aborted.");
+        if (!group_member_action_supported(rule_action(member)))
+            fail_validation("Section group '" + group_name + "' cannot include rule '" + member_name +
+                "' with action '" + rule_action(member) +
+                "'. DPI, marker, route-only and group rules produce no proxy servers. Aborted.");
+    }
 }
 
 function duration_to_seconds_value(value) {
@@ -1684,6 +1736,9 @@ function validate_rule(section, sections, context) {
         if (!vres.valid)
             fail_validation("FPTN rule '" + name + "': " + vres.error + ". Aborted.");
     }
+
+    if (action == "group")
+        validate_group_members(section, sections);
 
     let provider_labels = {
         zapret: "Zapret",

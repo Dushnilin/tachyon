@@ -57,6 +57,8 @@ function section_feature(section) {
             return "outbound.zapret";
         if (action == "connection")
             return "sections.outbound";
+        if (action == "group")
+            return "sections.group";
         if (action == "subscription")
             return "sections.subscription";
         if (action == "provider")
