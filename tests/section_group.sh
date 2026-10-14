@@ -234,4 +234,15 @@ grep -q '^steer=0$' <<<"$parking" ||
 grep -q '^steer_supported=0$' <<<"$parking" ||
   fail "the steer generator must skip group sections: $parking"
 
+# ─── UI: action is choosable and members are pickable ─────────────────────────
+
+SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
+[ -f "$SECTION_JS" ] || fail "section.js not found at $SECTION_JS"
+grep -Fq 'option.value("group", getActionOptionLabel("group"))' "$SECTION_JS" ||
+  fail "the action chooser must offer the group action"
+grep -Fq '"group_members"' "$SECTION_JS" ||
+  fail "the section modal must declare the group_members picker"
+grep -Fq 'getOutboundDetourTargetSections(section_id).map' "$SECTION_JS" ||
+  fail "the group members picker must reuse the eligible-section choices"
+
 printf 'Section group checks passed\n'

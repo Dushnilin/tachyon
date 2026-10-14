@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 08:00+0300\n"
-"PO-Revision-Date: 2026-10-14 08:00+0300\n"
+"POT-Creation-Date: 2026-10-14 08:13+0300\n"
+"PO-Revision-Date: 2026-10-14 08:13+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2411,8 +2411,14 @@ msgstr "Глобальная проверка"
 msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
 
+msgid "Group"
+msgstr ""
+
 msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
 msgstr "Группируйте устройства в семейные профили для централизованного управления фильтрацией сайтов, безопасным поиском и лимитами экранного времени."
+
+msgid "Group members"
+msgstr ""
 
 msgid "Guest Devices (MAC / IP)"
 msgstr "Гостевые устройства (MAC / IP)"
@@ -4793,6 +4799,9 @@ msgstr "Секция для регистрации Cloudflare WARP API. Если
 msgid "Sections"
 msgstr "Секции"
 
+msgid "Sections merged into one flat URLTest group: their rules keep matching traffic, but all their servers are selected together by one URLTest. DPI, marker and route-only sections cannot be members."
+msgstr ""
+
 msgid "Security"
 msgstr "Безопасность"
 
@@ -4850,6 +4859,9 @@ msgstr "Выберите промежуточную секцию"
 msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
 msgstr "Выберите и упорядочите секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
 
+msgid "Select at least one section to merge"
+msgstr ""
+
 msgid "Select days when guest access is permitted. Leave empty for all days."
 msgstr "Выберите дни, когда гостевой доступ разрешен. Оставьте пустым для доступа во все дни."
 
@@ -4870,6 +4882,9 @@ msgstr "Выберите или введите IP-адреса ваших игр
 
 msgid "Select path for sing-box config file. Change this ONLY if you know what you are doing"
 msgstr "Выберите путь к файлу конфигурации sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
+
+msgid "Select sections to merge"
+msgstr ""
 
 msgid "Select the WAN interfaces to be monitored"
 msgstr "Выберите WAN-интерфейсы для отслеживания"

@@ -5220,6 +5220,8 @@ function getActionOptionLabel(action) {
       return "Bypass";
     case "connection":
       return "Connection";
+    case "group":
+      return _("Group");
     case "dns":
       return "DNS";
     case "vpn":
@@ -5336,6 +5338,9 @@ function populateActionOptionValues(option) {
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
+  // A group merges other sections into one flat URLTest; it is plain urltest
+  // machinery, so it needs no variant gate.
+  option.value("group", getActionOptionLabel("group"));
   // NaiveProxy ships an outbound in every core we support, so it needs no
   // variant gate of its own.
   option.value("naive", getActionOptionLabel("naive"));
@@ -8530,6 +8535,33 @@ function createSectionContent(section) {
       }
       return this.cfgvalue(section_id);
     });
+  };
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "group_members",
+    _("Group members"),
+    _(
+      "Sections merged into one flat URLTest group: their rules keep matching traffic, but all their servers are selected together by one URLTest. DPI, marker and route-only sections cannot be members.",
+    ),
+  );
+  o.depends("action", "group");
+  o.modalonly = true;
+  o.rmempty = false;
+  o.placeholder = _("Select sections to merge");
+  configureLiveDynamicListChoices(o, (section_id) =>
+    getOutboundDetourTargetSections(section_id).map((targetSection) => ({
+      value: getUciSectionName(targetSection),
+      label: getUciSectionLabel(targetSection),
+    })),
+  );
+  o.validate = function (section_id, value) {
+    const members = L.toArray(value != null ? value : []);
+    if (!members.filter(Boolean).length) {
+      return _("Select at least one section to merge");
+    }
+    return true;
   };
 
   o = section.taboption(
