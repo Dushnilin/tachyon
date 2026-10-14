@@ -1669,6 +1669,8 @@ function buildHysteria2Link(sectionId, identity, options = {}) {
   if (certificatePin) {
     params.insecure = "1";
     params.pinSHA256 = certificatePin;
+  } else if (shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    params.insecure = "1";
   }
 
   if (obfsType === "salamander") {
@@ -1716,7 +1718,10 @@ function buildTuicLink(sectionId, identity, options = {}) {
     sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
   };
   if (certificatePin) {
+    params.insecure = "1";
     params.pcs = certificatePin;
+  } else if (shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    params.insecure = "1";
   }
   const query = encodeQuery(params);
   return `tuic://${encodeURIComponent(identity.uuid)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
@@ -1733,7 +1738,10 @@ function buildAnytlsLink(sectionId, identity, options = {}) {
     sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
   };
   if (certificatePin) {
+    params.insecure = "1";
     params.pcs = certificatePin;
+  } else if (shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    params.insecure = "1";
   }
   const query = encodeQuery(params);
   return `anytls://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;

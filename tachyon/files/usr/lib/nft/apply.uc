@@ -1727,7 +1727,8 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         log_debug("Native Tailscale bypass rules added to mangle chain");
     }
 
-    if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
+    if (!nft_add_rule(table, "mangle", [ "fib", "daddr", "type", "local", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
         !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]))
         return false;
@@ -2320,7 +2321,8 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
             let ok = run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "tcp", "meta", "mark", "set", mark, "counter" ]) &&
                      run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "udp", "meta", "mark", "set", mark, "counter" ]) &&
                      run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip", "daddr", "@" + localv4, "return" ]) &&
-                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip6", "daddr", "@" + localv6, "return" ]);
+                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip6", "daddr", "@" + localv6, "return" ]) &&
+                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "fib", "daddr", "type", "local", "return" ]);
             for (let res_ip in core_ip.resolve_mac_to_ips(mac))
                 nft_insert_fully_routed_ip_rules(res_ip, table, interface_set, localv4_set, localv6_set, mark);
             return ok;
@@ -2331,7 +2333,8 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
     return (
         run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "tcp", "meta", "mark", "set", mark, "counter" ]) &&
         run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "udp", "meta", "mark", "set", mark, "counter" ]) &&
-        run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, ip_key, "daddr", "@" + as_string(local_set), "return" ])
+        run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, ip_key, "daddr", "@" + as_string(local_set), "return" ]) &&
+        run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, "fib", "daddr", "type", "local", "return" ])
     );
 }
 
