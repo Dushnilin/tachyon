@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 08:13+0300\n"
-"PO-Revision-Date: 2026-10-14 08:13+0300\n"
+"POT-Creation-Date: 2026-10-14 09:36+0300\n"
+"PO-Revision-Date: 2026-10-14 09:36+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 msgid "%s: select an Amnezia .conf file up to 64 KiB"
-msgstr ""
+msgstr "%s: выберите файл Amnezia .conf размером до 64 КиБ"
 
 msgid "(provider default)"
 msgstr "(по умолчанию провайдера)"
@@ -2004,7 +2004,7 @@ msgid "FPTN SNI"
 msgstr "SNI для FPTN"
 
 msgid "FPTN section accepts only fptn:// or fptnb:// links"
-msgstr ""
+msgstr "Секция FPTN принимает только ссылки fptn:// или fptnb://"
 
 msgid "Failed queries count as 5000 ms in statistics. All times are measured from the router."
 msgstr "Неудачные запросы учитываются как 5000 мс. Все замеры выполнены с роутера."
@@ -2412,13 +2412,13 @@ msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
 
 msgid "Group"
-msgstr ""
+msgstr "Группа"
 
 msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
 msgstr "Группируйте устройства в семейные профили для централизованного управления фильтрацией сайтов, безопасным поиском и лимитами экранного времени."
 
 msgid "Group members"
-msgstr ""
+msgstr "Участники группы"
 
 msgid "Guest Devices (MAC / IP)"
 msgstr "Гостевые устройства (MAC / IP)"
@@ -2460,7 +2460,7 @@ msgid "Handshake timeout"
 msgstr "Таймаут рукопожатия"
 
 msgid "Has errors"
-msgstr ""
+msgstr "Есть ошибки"
 
 msgid "Header Protection Key"
 msgstr "Ключ защиты заголовка"
@@ -4800,7 +4800,7 @@ msgid "Sections"
 msgstr "Секции"
 
 msgid "Sections merged into one flat URLTest group: their rules keep matching traffic, but all their servers are selected together by one URLTest. DPI, marker and route-only sections cannot be members."
-msgstr ""
+msgstr "Секции, объединённые в одну плоскую группу URLTest: их правила продолжают матчить трафик, но все их серверы выбираются одним общим URLTest. Секции DPI, маркеры и секции, управляющие только маршрутизацией, не могут быть участниками."
 
 msgid "Security"
 msgstr "Безопасность"
@@ -4860,7 +4860,7 @@ msgid "Select and order the sections through which blocked domains are tested. C
 msgstr "Выберите и упорядочите секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
 
 msgid "Select at least one section to merge"
-msgstr ""
+msgstr "Выберите хотя бы одну секцию для объединения"
 
 msgid "Select days when guest access is permitted. Leave empty for all days."
 msgstr "Выберите дни, когда гостевой доступ разрешен. Оставьте пустым для доступа во все дни."
@@ -4884,7 +4884,7 @@ msgid "Select path for sing-box config file. Change this ONLY if you know what y
 msgstr "Выберите путь к файлу конфигурации sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
 
 msgid "Select sections to merge"
-msgstr ""
+msgstr "Выберите секции для объединения"
 
 msgid "Select the WAN interfaces to be monitored"
 msgstr "Выберите WAN-интерфейсы для отслеживания"
