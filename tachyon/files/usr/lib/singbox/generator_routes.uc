@@ -1716,7 +1716,7 @@ function section_is_ipv4_only_dpi(section) {
     let raw = trim(option(section, opt_key, ""));
     if (raw == "" || index(raw, "--filter-l3=ipv4") < 0)
         return false;
-    return match(raw, /--filter-l3=[^\s]*ipv6/) == null;
+    return match(raw, /--filter-l3=[^[:space:]]*ipv6/) == null;
 }
 
 // The fakeip server synthesises addresses and answers A and AAAA only. Without
