@@ -523,7 +523,7 @@ function handle_restart(body) {
     }
 
     let cmd_map = {
-        singbox:  "/etc/init.d/sing-box restart > /dev/null 2>&1",
+        singbox:  "/etc/init.d/tachyon-core restart > /dev/null 2>&1",
         tachyon:  "/etc/init.d/tachyon restart > /dev/null 2>&1",
         dnsmasq:  "/etc/init.d/dnsmasq restart > /dev/null 2>&1",
         watchdog: "/usr/bin/tachyon watchdog start-runtime > /dev/null 2>&1"

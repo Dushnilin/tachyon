@@ -19,7 +19,7 @@ set -eo pipefail
 # than a copy of it.
 
 LIB_DIR="$TACHYON_LIB"
-GENERATOR="$LIB_DIR/singbox/generator.uc"
+GENERATOR="$LIB_DIR/tachyon_core/generator.uc"
 
 reality_link() {
   # $1 tag suffix, $2 extra query string

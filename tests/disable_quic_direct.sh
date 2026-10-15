@@ -116,7 +116,7 @@ fi
 
 # 6. The engine's own reject rules follow the same normalizer: everything but
 # "off" pushes them into the route, "off" leaves the route clean.
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 route_fixture() {
   local mode="$1" out="$2"

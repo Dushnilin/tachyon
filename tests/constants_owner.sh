@@ -9,7 +9,7 @@ BUILD_SCRIPT="$ROOT_DIR/build.sh"
 CONSTANTS_SH="$TACHYON_LIB/constants.sh"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 CONSTANTS_UC="$TACHYON_LIB/core/constants.uc"
-SINGBOX_CONSTANTS_UC="$TACHYON_LIB/singbox/constants.uc"
+SINGBOX_CONSTANTS_UC="$TACHYON_LIB/tachyon_core/constants.uc"
 FRONTEND_CONSTANTS="$ROOT_DIR/fe-app-tachyon/src/constants.ts"
 
 [ ! -e "$CONSTANTS_SH" ] ||
@@ -42,7 +42,7 @@ config_name="$(ucode -L "$TACHYON_LIB" "$CONSTANTS_UC" get TACHYON_CONFIG_NAME)"
 eval "$(ucode -L "$TACHYON_LIB" "$CONSTANTS_UC" shell-env)"
 [ "$TACHYON_CONFIG" = "/etc/config/tachyon" ] ||
   fail "core/constants.uc shell-env did not derive TACHYON_CONFIG"
-[ "$TMP_RULESET_FOLDER" = "/tmp/sing-box/rulesets" ] ||
+[ "$TMP_RULESET_FOLDER" = "/tmp/tachyon-core/rulesets" ] ||
   fail "core/constants.uc shell-env did not derive TMP_RULESET_FOLDER"
 [ "$BYEDPI_PID_DIR" = "/var/run/tachyon/byedpi/pid" ] ||
   fail "core/constants.uc shell-env did not derive BYEDPI_PID_DIR"

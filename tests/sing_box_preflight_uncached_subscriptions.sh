@@ -21,8 +21,8 @@ fi
 ucode() { command ucode -L "$TACHYON_LIB" "$@"; }
 
 VERIFIER="$TACHYON_LIB/components/verifier.uc"
-OUTBOUNDS="$TACHYON_LIB/singbox/generator_outbounds.uc"
-ROUTES="$TACHYON_LIB/singbox/generator_routes.uc"
+OUTBOUNDS="$TACHYON_LIB/tachyon_core/generator_outbounds.uc"
+ROUTES="$TACHYON_LIB/tachyon_core/generator_routes.uc"
 [ -f "$VERIFIER" ] || fail "missing $VERIFIER"
 [ -f "$OUTBOUNDS" ] || fail "missing $OUTBOUNDS"
 [ -f "$ROUTES" ] || fail "missing $ROUTES"

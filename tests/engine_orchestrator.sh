@@ -70,13 +70,13 @@ out="$(run_uc '
 let e = require("core.engine");
 let known = e.known_engines();
 print("count=" + length(known) + "\n");
-print("has_singbox=" + e.engine_is_known("sing-box") + "\n");
+print("has_singbox=" + e.engine_is_known("tachyon-core") + "\n");
 print("has_steer=" + e.engine_is_known("steer") + "\n");
 print("has_ext=" + e.engine_is_known("steer-extended") + "\n");
 print("has_bogus=" + e.engine_is_known("nonsense") + "\n");
 ')"
 assert_match "registry lists engines" 'count=3' "$out"
-assert_match "sing-box is known" 'has_singbox=true' "$out"
+assert_match "tachyon-core is known" 'has_singbox=true' "$out"
 assert_match "steer is known" 'has_steer=true' "$out"
 assert_match "steer-extended is known" 'has_ext=true' "$out"
 assert_match "unknown engine rejected" 'has_bogus=false' "$out"
@@ -84,15 +84,15 @@ assert_match "unknown engine rejected" 'has_bogus=false' "$out"
 printf '%s\n' '--- capability matrix ---'
 out="$(run_uc '
 let e = require("core.engine");
-print("sb_sub=" + e.supports("sing-box", "sections.subscription") + "\n");
-print("sb_vless=" + e.supports("sing-box", "outbound.vless_reality") + "\n");
+print("sb_sub=" + e.supports("tachyon-core", "sections.subscription") + "\n");
+print("sb_vless=" + e.supports("tachyon-core", "outbound.vless_reality") + "\n");
 print("steer_sub=" + e.supports("steer", "sections.subscription") + "\n");
 print("steer_fit=" + e.supports("steer", "list_memory_fit") + "\n");
 print("ext_vless=" + e.supports("steer-extended", "outbound.vless_reality") + "\n");
 print("ext_sub=" + e.supports("steer-extended", "sections.subscription") + "\n");
 ')"
-assert_match "sing-box supports subscriptions" 'sb_sub=true' "$out"
-assert_match "sing-box supports vless" 'sb_vless=true' "$out"
+assert_match "tachyon-core supports subscriptions" 'sb_sub=true' "$out"
+assert_match "tachyon-core supports vless" 'sb_vless=true' "$out"
 assert_match "steer cannot express subscriptions" 'steer_sub=false' "$out"
 assert_match "steer supports list fit" 'steer_fit=true' "$out"
 assert_match "steer-extended supports vless" 'ext_vless=true' "$out"
@@ -104,14 +104,14 @@ let e = require("core.engine");
 let feats = [ "sections.subscription", "routing.domain_lists", "outbound.vless_reality", "list_memory_fit" ];
 let to_steer = e.unsupported_features("steer", feats);
 print("to_steer=" + join(",", to_steer) + "\n");
-let to_sb = e.unsupported_features("sing-box", feats);
+let to_sb = e.unsupported_features("tachyon-core", feats);
 print("to_sb=" + join(",", to_sb) + "\n");
-let summary = e.unsupported_summary("sing-box", "steer", feats);
+let summary = e.unsupported_summary("tachyon-core", "steer", feats);
 print("loses=" + summary.loses_features + "\n");
 ')"
 assert_match "steer parks subscription" 'to_steer=sections.subscription' "$out"
 assert_match "steer parks vless" 'to_steer=.*outbound.vless_reality' "$out"
-assert_match "sing-box parks fit" 'to_sb=list_memory_fit' "$out"
+assert_match "tachyon-core parks fit" 'to_sb=list_memory_fit' "$out"
 assert_match "switch reports feature loss" 'loses=true' "$out"
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ print("unsupported=" + join(",", plan.unsupported) + "\n");
 print("parked_sub=" + (plan.parked["sections.subscription"] != null) + "\n");
 print("parked_domains=" + (plan.parked["routing.domain_lists"] != null) + "\n");
 ')"
-assert_match "plan from sing-box" 'from=sing-box' "$out"
+assert_match "plan from tachyon-core" 'from=tachyon-core' "$out"
 assert_match "plan to steer" 'to=steer' "$out"
 assert_match "plan parks subscription" 'parked_sub=true' "$out"
 assert_match "plan parks only incompatible" 'parked_domains=false' "$out"
@@ -536,7 +536,7 @@ assert_match "contract not ready without engine" 'ready=false' "$out"
 
 printf '%s\n' '--- CLI info surface ---'
 out="$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/service/engine_runtime.uc" engine-info 2>&1)"
-assert_match "engine-info reports active engine" '"active": *"sing-box"' "$out"
+assert_match "engine-info reports active engine" '"active": *"tachyon-core"' "$out"
 assert_match "engine-info lists engines" '"engine": *"steer"' "$out"
 
 out="$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/service/engine_runtime.uc" engine-plan steer 2>&1)"
@@ -569,10 +569,10 @@ print("active=" + e.get_active() + "\n");
 print("previous=" + e.get_previous() + "\n");
 ')"
 assert_match "switch succeeds with allow-install" 'ok=true' "$out"
-assert_match "switch records from engine" 'from=sing-box' "$out"
+assert_match "switch records from engine" 'from=tachyon-core' "$out"
 assert_match "switch records to engine" 'to=steer' "$out"
 assert_match "active engine flipped" 'active=steer' "$out"
-assert_match "previous engine recorded" 'previous=sing-box' "$out"
+assert_match "previous engine recorded" 'previous=tachyon-core' "$out"
 
 printf '%s\n' '--- switch back restores previous ---'
 out="$(TACHYON_UCI_STATE_FILE="$WORK_DIR/uci5.state" run_uc '
@@ -585,7 +585,7 @@ print("active=" + e.get_active() + "\n");
 print("previous=" + e.get_previous() + "\n");
 ')"
 assert_match "switch back succeeds" 'ok=true' "$out"
-assert_match "active engine restored" 'active=sing-box' "$out"
+assert_match "active engine restored" 'active=tachyon-core' "$out"
 assert_match "previous now points at steer" 'previous=steer' "$out"
 
 printf '%s\n' '--- switch back without previous is refused ---'
@@ -606,20 +606,20 @@ grep -Fq 'reload_steer' "$LIFECYCLE_UC" ||
     fail_test "lifecycle must have a steer reload branch"
 grep -Fq 'get_active()' "$LIFECYCLE_UC" ||
     fail_test "lifecycle must consult the active engine"
-# The steer branches must not run the sing-box start pipeline.
+# The steer branches must not run the tachyon-core start pipeline.
 steer_branch="$(sed -n '/^function start_steer_main/,/^}/p' "$LIFECYCLE_UC")"
 grep -Fq 'generate_steer_spec' <<<"$steer_branch" ||
     fail_test "steer start must generate the spec"
 if grep -Fq 'nft_rebuild_runtime' <<<"$steer_branch"; then
-    fail_test "steer start must not run the sing-box nft pipeline"
+    fail_test "steer start must not run the tachyon-core nft pipeline"
 fi
 reload_branch="$(sed -n '/^function reload_steer/,/^}/p' "$LIFECYCLE_UC")"
 grep -Fq 'generate_steer_spec' <<<"$reload_branch" ||
     fail_test "steer reload must regenerate the spec"
 pass=$((pass + 1))
 
-printf '%s\n' '--- sing-box-only start work must not run on steer ---'
-# The engine branch must come before the sing-box config validator: the
+printf '%s\n' '--- tachyon-core-only start work must not run on steer ---'
+# The engine branch must come before the tachyon-core config validator: the
 # validator would abort the start on a steer-only device.
 start_main_body="$(sed -n '/^function start_main/,/^}/p' "$LIFECYCLE_UC")"
 validator_line="$(grep -n 'validate_start_config' <<<"$start_main_body" | head -1 | cut -d: -f1)"
@@ -627,10 +627,10 @@ engine_branch_line="$(grep -n 'active_engine_is_steer' <<<"$start_main_body" | h
 if [ -z "$validator_line" ] || [ -z "$engine_branch_line" ]; then
     fail_test "start_main must call validate_start_config and check the engine"
 elif [ "$engine_branch_line" -ge "$validator_line" ]; then
-    fail_test "engine branch must be checked before the sing-box validator"
+    fail_test "engine branch must be checked before the tachyon-core validator"
 fi
 pass=$((pass + 1))
-# On steer dnsmasq must be restored, never configured for the sing-box DNS.
+# On steer dnsmasq must be restored, never configured for the tachyon-core DNS.
 start_impl_body="$(sed -n '/^function start_impl/,/^}/p' "$LIFECYCLE_UC")"
 grep -Fq 'active_engine_is_steer' <<<"$start_impl_body" ||
     fail_test "start_impl must branch dnsmasq handling per engine"
@@ -675,12 +675,12 @@ printf '%s\n' '--- restart and reload lifecycle steer guards ---'
 restart_body="$(sed -n '/^function restart(/,/^}/p' "$LIFECYCLE_UC")"
 grep -Fq 'active_engine_is_steer' <<<"$restart_body" ||
     fail_test "restart() must check active_engine_is_steer"
-restart_sb_wait="$(grep -n 'wait-sing-box-service-stable' <<<"$restart_body" | head -1 | cut -d: -f1)"
+restart_sb_wait="$(grep -n 'wait-tachyon-core-service-stable' <<<"$restart_body" | head -1 | cut -d: -f1)"
 restart_steer_guard="$(grep -n 'active_engine_is_steer' <<<"$restart_body" | head -1 | cut -d: -f1)"
 if [ -z "$restart_sb_wait" ] || [ -z "$restart_steer_guard" ]; then
-    fail_test "restart must have steer guard and sing-box wait"
+    fail_test "restart must have steer guard and tachyon-core wait"
 elif [ "$restart_steer_guard" -ge "$restart_sb_wait" ]; then
-    fail_test "restart must guard against waiting for sing-box when steer is active"
+    fail_test "restart must guard against waiting for tachyon-core when steer is active"
 fi
 
 reload_restart_body="$(sed -n '/^function restart_runtime_for_reload/,/^}/p' "$LIFECYCLE_UC")"
@@ -693,12 +693,12 @@ grep -Fq '/etc/init.d/steer' <<<"$stop_main_body" ||
 
 UI_UC="$TACHYON_LIB/service/ui.uc"
 ui_running_body="$(sed -n '/^function tachyon_running/,/^}/p' "$UI_UC")"
-grep -Fq 'active_engine != "sing-box"' <<<"$ui_running_body" ||
+grep -Fq 'active_engine != "tachyon-core"' <<<"$ui_running_body" ||
     fail_test "ui.uc tachyon_running must be engine-aware"
 
 EVENT_CTRL_UC="$TACHYON_LIB/service/event_controller.uc"
 probe_sb_body="$(sed -n '/^    function probe_singbox/,/^    }/p' "$EVENT_CTRL_UC")"
-grep -Fq 'active_engine != "sing-box"' <<<"$probe_sb_body" ||
+grep -Fq 'active_engine != "tachyon-core"' <<<"$probe_sb_body" ||
     fail_test "event_controller probe_singbox must be engine-aware"
 pass=$((pass + 1))
 

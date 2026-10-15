@@ -6,7 +6,7 @@
 set -eo pipefail
 
 VALIDATOR="$TACHYON_LIB/config/validator.uc"
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 # validator warnings go through logger(1); stub it so accepted fixtures do not
 # depend on a host logger
@@ -219,7 +219,7 @@ function has(values, needle) {
     return false;
 }
 printf("feat=%s\n", st.section_feature({ ".type": "section", "action": "group" }));
-printf("singbox=%d\n", has(e.capabilities("sing-box"), "sections.group"));
+printf("singbox=%d\n", has(e.capabilities("tachyon-core"), "sections.group"));
 printf("steer=%d\n", has(e.capabilities("steer"), "sections.group"));
 let g = require("steer.generator");
 printf("steer_supported=%d\n", g.section_supported({ ".name": "grp", "action": "group" }));

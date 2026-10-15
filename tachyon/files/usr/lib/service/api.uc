@@ -16,7 +16,7 @@ let command_output = common.command_output;
 // Helper to get clash url
 function get_clash_url(endpoint) {
     let host = "127.0.0.1:9090"; // default fallback
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -41,7 +41,7 @@ function get_clash_url(endpoint) {
 }
 
 function get_clash_secret() {
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -130,7 +130,7 @@ function get_system_status() {
     let sb_running = command_success_from_args(["pidof", "sing-box"]);
     status_obj.singbox_running = sb_running;
     status_obj.singbox = sb_running ? "🟢 running" : "🔴 stopped";
-    let sb_variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
+    let sb_variant = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || ""));
     if (sb_variant != "")
         status_obj.singbox_variant = sb_variant;
 

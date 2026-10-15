@@ -4,7 +4,7 @@ set -eo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$TEST_DIR/.." && pwd)"
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 trap 'rm -rf "$WORK_DIR"' EXIT
 

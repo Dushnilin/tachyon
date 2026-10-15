@@ -111,7 +111,7 @@ done
 # --- event vocabulary is exported and non-empty ---
 types="$(uc "$CONTROLLER_UC" event-types)"
 for expected in \
-  "SINGBOX_STOPPED=singbox.stopped" \
+  "CORE_STOPPED=core.stopped" \
   "DNS_DOWN=dns.down" \
   "PROXY_DOWN=proxy.down" \
   "OOM_DETECTED=oom.detected" \
@@ -177,12 +177,12 @@ actual="$(run_case '
 let b = events.bus();
 let c = ec.controller(b, {});
 let seen = [];
-b.on("singbox.stopped", function(ev) { push(seen, ev.payload.reason); });
-let ours = c.handle_ubus_service_stop("sing-box", "procd");
+b.on("core.stopped", function(ev) { push(seen, ev.payload.reason); });
+let ours = c.handle_ubus_service_stop("tachyon-core", "procd");
 let theirs = c.handle_ubus_service_stop("dnsmasq", "procd");
 print(ours + "," + theirs + "," + join(",", seen));
 ')"
-assert_eq "$actual" "true,false,procd" "only sing-box stops publish singbox.stopped"
+assert_eq "$actual" "true,false,procd" "only core stops publish core.stopped"
 
 # --- publication layer: honeypot input is validated before publishing ---
 # The FIFO is world-writable by design; a malformed line must not become a fact

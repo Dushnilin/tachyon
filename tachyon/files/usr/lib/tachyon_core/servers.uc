@@ -2,8 +2,8 @@
 
 let fs = require("fs");
 let common = require("core.common");
-let runtime_constants = require("singbox.constants");
-let variant_state = require("singbox.variant_state");
+let runtime_constants = require("tachyon_core.constants");
+let variant_state = require("tachyon_core.variant_state");
 let core_ip = require("core.ip");
 
 let as_string = common.as_string;
@@ -488,7 +488,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             // j1-j3/itime were removed from the extended schema in 2.6.1 and
             // sing-box fatals on unknown fields, so emit them only for builds
             // whose schema still accepts them.
-            let sb_version_state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+            let sb_version_state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
             let sb_version = trim(fs.readfile(sb_version_state_file) || "");
             if (common.extended_awg_schema_has_junk_signatures(sb_version)) {
                 if (j1 != "") amnezia.j1 = j1;

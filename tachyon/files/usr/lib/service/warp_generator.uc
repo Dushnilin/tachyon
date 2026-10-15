@@ -14,7 +14,7 @@ let write_json = common.write_json;
 
 function get_clash_base_url() {
     let host = "127.0.0.1:9090";
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -35,7 +35,7 @@ function get_clash_base_url() {
 }
 
 function get_clash_auth_header() {
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -302,7 +302,7 @@ function switch_server(srv_name) {
     exec_output("sleep 1");
 }
 
-let keypair_data = exec_output("/usr/bin/sing-box generate wg-keypair 2>/dev/null");
+let keypair_data = exec_output("/usr/bin/tachyon-core generate wg-keypair 2>/dev/null");
 let private_key = null;
 let public_key = null;
 
@@ -541,7 +541,7 @@ function generate_base64_key() {
         k = replace(trim(k), /[\r\n\t ]/g, "");
         if (length(k) >= 40) return k;
     }
-    let pair = exec_output("/usr/bin/sing-box generate wg-keypair 2>/dev/null");
+    let pair = exec_output("/usr/bin/tachyon-core generate wg-keypair 2>/dev/null");
     for (let l in split(pair, "\n")) {
         let m = match(l, /^PrivateKey:\s*(.+)$/);
         if (m) return trim(m[1]);

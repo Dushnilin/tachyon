@@ -45,13 +45,13 @@
         "/usr/bin/tachyon-read": [
           "exec"
         ],
-        "/usr/bin/sing-box": [
+        "/usr/bin/tachyon-core": [
           "exec"
         ],
-        "/usr/sbin/sing-box": [
+        "/usr/sbin/tachyon-core": [
           "exec"
         ],
-        "/tmp/sing-box/rulesets/*": [
+        "/tmp/tachyon-core/rulesets/*": [
           "read"
         ],
         "/etc/tachyon/rulesets/*": [

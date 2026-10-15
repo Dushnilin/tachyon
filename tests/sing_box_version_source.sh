@@ -3,7 +3,7 @@
 set -eo pipefail
 
 # The UI reads the sing-box version out of system-info.json, which used to prefer
-# /etc/tachyon/sing-box-version for every "extended" install. That state file is
+# /etc/tachyon/tachyon-core-version for every "extended" install. That state file is
 # written by the component action alone, so a sing-box installed through install.sh,
 # opkg or by hand left it pinned at whatever the last component action wrote — the
 # dashboard reported an old version indefinitely and the update badge compared
@@ -15,23 +15,23 @@ RUNTIME_UC="$TACHYON_LIB/diagnostics/runtime.uc"
 BIN_VERSION='1.13.18-extended-2.6.3'
 STATE_VERSION='1.13.16-extended-2.6.2'
 
-cat >"$WORK_DIR/sing-box" <<SH
+cat >"$WORK_DIR/tachyon-core" <<SH
 #!/bin/sh
 printf 'sing-box version $BIN_VERSION\n\n'
 printf 'Tags: with_quic,with_tailscale\n'
 SH
-chmod 0755 "$WORK_DIR/sing-box"
+chmod 0755 "$WORK_DIR/tachyon-core"
 
-printf '%s\n' "$STATE_VERSION" >"$WORK_DIR/sing-box-version"
+printf '%s\n' "$STATE_VERSION" >"$WORK_DIR/tachyon-core-version"
 
 system_info() {
   local variant="$1"
-  printf '%s\n' "$variant" >"$WORK_DIR/sing-box-variant"
+  printf '%s\n' "$variant" >"$WORK_DIR/tachyon-core-variant"
   PATH="$WORK_DIR:$PATH" \
   TACHYON_LIB="$TACHYON_LIB" \
-  SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-  SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/sing-box" \
+  SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
+  SB_VERSION_STATE_FILE="$WORK_DIR/tachyon-core-version" \
+  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/tachyon-core" \
   TACHYON_SYSTEM_INFO_CACHE_FILE="$WORK_DIR/system-info.json" \
   TACHYON_SYSTEM_INFO_CACHE_TTL=0 \
   TACHYON_CONFIG_NAME=tachyon-sing-box-version-test \
@@ -47,7 +47,7 @@ rm -f "$WORK_DIR/system-info.json"
 extended="$(system_info extended)"
 got="$(reported_version "$extended")"
 [ "$got" = "$BIN_VERSION" ] ||
-  fail "extended sing-box must report the live binary version, got '$got' (state file holds $STATE_VERSION)"
+  fail "an extended install must report the live core binary version, got '$got' (state file holds $STATE_VERSION)"
 
 # extended-compressed cannot be executed for a version, so the state file stands.
 rm -f "$WORK_DIR/system-info.json"
@@ -59,12 +59,12 @@ got="$(reported_version "$compressed")"
 # ...but an absent state must fall through to the live probe rather than "unknown":
 # nothing writes the state except the component action.
 rm -f "$WORK_DIR/system-info.json"
-mv "$WORK_DIR/sing-box-version" "$WORK_DIR/sing-box-version.bak"
+mv "$WORK_DIR/tachyon-core-version" "$WORK_DIR/sing-box-version.bak"
 no_state="$(system_info extended-compressed)"
 got="$(reported_version "$no_state")"
 [ "$got" = "$BIN_VERSION" ] ||
   fail "missing version state must fall back to the live probe, got '$got'"
-mv "$WORK_DIR/sing-box-version.bak" "$WORK_DIR/sing-box-version"
+mv "$WORK_DIR/sing-box-version.bak" "$WORK_DIR/tachyon-core-version"
 
 # Structural: the gate must never list plain `extended` again.
 gate="$(sed -n '/^function sing_box_live_probe_disabled/,/^}/p' "$RUNTIME_UC")"

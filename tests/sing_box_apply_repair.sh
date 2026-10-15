@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The apply path's out-of-field repair must not be able to crash the start.
 #
-# init_config() in singbox/runtime.uc carries its own copy of the
+# init_config() in tachyon_core/runtime.uc carries its own copy of the
 # "drop the field sing-box rejected on the outbound it named" repair. That copy
 # logged the outbound index with to_string(), which is not a ucode function: the
 # first config the installed binary rejected therefore killed init_config with
@@ -30,7 +30,7 @@ fi
 
 ucode() { command ucode -L "$TACHYON_LIB" "$@"; }
 
-RUNTIME="$TACHYON_LIB/singbox/runtime.uc"
+RUNTIME="$TACHYON_LIB/tachyon_core/runtime.uc"
 [ -f "$RUNTIME" ] || fail "missing $RUNTIME"
 
 pass_count=0

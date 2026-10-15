@@ -14,7 +14,7 @@
 set -eo pipefail
 
 LIB_DIR="$TACHYON_LIB"
-GEN="$LIB_DIR/singbox/generator.uc"
+GEN="$LIB_DIR/tachyon_core/generator.uc"
 NFT="$LIB_DIR/nft/apply.uc"
 VAL="$LIB_DIR/config/validator.uc"
 
@@ -49,10 +49,10 @@ rejects "tun0"
 # A core that has no tun inbound cannot be asked for one: the generator would
 # otherwise write a section the binary rejects and `sing-box check` would take
 # the whole config down over it.
-ucode -L "$LIB_DIR" "$LIB_DIR/singbox/runtime.uc" core-supports-inbound tun "0.0.1-tachyon.0" \
+ucode -L "$LIB_DIR" "$LIB_DIR/tachyon_core/runtime.uc" core-supports-inbound tun "0.0.1-tachyon.0" \
   || fail "tachyon-core must report a tun inbound; it implements one on smoltcp"
 ok
-ucode -L "$LIB_DIR" "$LIB_DIR/singbox/runtime.uc" core-supports-inbound tun "1.15.0" \
+ucode -L "$LIB_DIR" "$LIB_DIR/tachyon_core/runtime.uc" core-supports-inbound tun "1.15.0" \
   || fail "upstream sing-box must report a tun inbound"
 ok
 

@@ -4,7 +4,7 @@ set -eo pipefail
 
 LIB_DIR="$ROOT_DIR/tachyon/files/usr/lib"
 VALIDATOR="$LIB_DIR/config/validator.uc"
-GENERATOR="$LIB_DIR/singbox/generator.uc"
+GENERATOR="$LIB_DIR/tachyon_core/generator.uc"
 
 assert_eq() {
   local expected="$1"

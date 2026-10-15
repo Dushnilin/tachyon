@@ -80,7 +80,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|"uci", "-q"|command_output\(comma
 fi
 grep -Fq 'require("core.uci")' "$NFQUEUE_RUNTIME" ||
   fail "providers/nfqueue/runtime.uc must use core.uci for runtime UCI access"
-grep -Fq 'require("singbox.constants")' "$NFQUEUE_RUNTIME" ||
+grep -Fq 'require("tachyon_core.constants")' "$NFQUEUE_RUNTIME" ||
   fail "providers/nfqueue/runtime.uc must share the sing-box runtime tag allocator"
 grep -Fq 'runtime_constants.tag(base, postfix)' "$NFQUEUE_RUNTIME" ||
   fail "providers/nfqueue/runtime.uc must allocate section tags through singbox.constants"

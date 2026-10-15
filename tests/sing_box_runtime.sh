@@ -6,8 +6,8 @@ TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 CLI_UC="$TACHYON_BIN"
 SING_BOX_RUNTIME_SH="$TACHYON_LIB/sing_box_runtime.sh"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
-SINGBOX_RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
-SINGBOX_GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+SINGBOX_RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
+SINGBOX_GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 [ ! -e "$SING_BOX_RUNTIME_SH" ] ||
   fail "sing_box_runtime.sh shell owner must be removed"
@@ -15,33 +15,33 @@ grep -Fq '#!/usr/bin/ucode' "$TACHYON_BIN" ||
   fail "tachyon entrypoint must be a direct ucode executable"
 grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
   fail "service/cli.uc must dispatch lifecycle orchestration through service/lifecycle.uc"
-grep -Fq 'singbox/runtime.uc' "$LIFECYCLE_UC" ||
-  fail "service/lifecycle.uc must call singbox/runtime.uc for sing-box runtime operations"
+grep -Fq 'tachyon_core/runtime.uc' "$LIFECYCLE_UC" ||
+  fail "service/lifecycle.uc must call tachyon_core/runtime.uc for core runtime operations"
 if grep -R -n -E 'sing_box_runtime_ucode|rulesets_ucode|sing_box_configure_service|sing_box_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$TACHYON_BIN" "$TACHYON_LIB" --include='*.sh' >/dev/null 2>&1; then
   fail "sing-box runtime shell symbols must not remain"
 fi
 grep -Fq 'mode == "configure-service"' "$SINGBOX_RUNTIME_UC" ||
-  fail "singbox/runtime.uc must own sing-box service configuration"
+  fail "tachyon_core/runtime.uc must own core service configuration"
 grep -Fq 'mode == "init-config"' "$SINGBOX_RUNTIME_UC" ||
-  fail "singbox/runtime.uc must own sing-box config initialization"
+  fail "tachyon_core/runtime.uc must own core config initialization"
 grep -Fq 'mode == "service-listen-address"' "$SINGBOX_RUNTIME_UC" ||
-  fail "singbox/runtime.uc must own service listen address detection"
+  fail "tachyon_core/runtime.uc must own service listen address detection"
 grep -Fq 'mode == "service-proxy-address"' "$SINGBOX_RUNTIME_UC" ||
-  fail "singbox/runtime.uc must own service proxy address detection"
-if grep -Fq 'log_file_lines(runtime_log, "debug", "sing-box config generator: ");' "$SINGBOX_RUNTIME_UC"; then
-  fail "singbox/runtime.uc must not duplicate generator failure output as debug log"
+  fail "tachyon_core/runtime.uc must own service proxy address detection"
+if grep -Fq 'log_file_lines(runtime_log, "debug", "core config generator: ");' "$SINGBOX_RUNTIME_UC"; then
+  fail "tachyon_core/runtime.uc must not duplicate generator failure output as debug log"
 fi
 if grep -Fq 'warn("unsupported: "' "$SINGBOX_GENERATOR_UC"; then
-  fail "singbox/generator.uc must emit concise generator failure reasons"
+  fail "tachyon_core/generator.uc must emit concise generator failure reasons"
 fi
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$SINGBOX_RUNTIME_UC" >/dev/null 2>&1; then
-  fail "singbox/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
+  fail "tachyon_core/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$SINGBOX_GENERATOR_UC" >/dev/null 2>&1; then
-  fail "singbox/generator.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
+  fail "tachyon_core/generator.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
 grep -Fq 'require("core.uci")' "$SINGBOX_GENERATOR_UC" ||
-  fail "singbox/generator.uc must import core.uci"
+  fail "tachyon_core/generator.uc must import core.uci"
 grep -Fq 'TACHYON_RULE_CONDITION_CACHE_DIR' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must pass rule-condition cache dir through module environment"
 if awk '
@@ -65,42 +65,42 @@ END {
 fi
 
 mkdir -p "$WORK_DIR/bin"
-cat >"$WORK_DIR/bin/sing-box" <<'EOF_SING_BOX'
+cat >"$WORK_DIR/bin/tachyon-core" <<'EOF_SING_BOX'
 #!/bin/sh
 echo 'sing-box version 1.12.25'
 EOF_SING_BOX
-chmod +x "$WORK_DIR/bin/sing-box"
+chmod +x "$WORK_DIR/bin/tachyon-core"
 stable_variant="$({
   PATH="$WORK_DIR/bin:$PATH" \
     TACHYON_LIB="$TACHYON_LIB" \
-    SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
+    SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
     ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" variant
 } 2>"$WORK_DIR/stable-variant.stderr")" ||
-  fail "singbox/runtime.uc must detect a stable binary without a ucode call-order failure"
+  fail "tachyon_core/runtime.uc must detect a stable binary without a ucode call-order failure"
 [ "$stable_variant" = "stable" ] ||
-  fail "singbox/runtime.uc should classify a regular sing-box binary as stable"
+  fail "tachyon_core/runtime.uc should classify a regular sing-box binary as stable"
 [ ! -s "$WORK_DIR/stable-variant.stderr" ] ||
-  fail "stable sing-box variant detection must not emit ucode runtime errors"
+  fail "stable core variant detection must not emit ucode runtime errors"
 
 mkdir -p "$WORK_DIR/check-bin"
-cat >"$WORK_DIR/check-bin/sing-box" <<'EOF_SING_BOX_CHECK'
+cat >"$WORK_DIR/check-bin/tachyon-core" <<'EOF_SING_BOX_CHECK'
 #!/bin/sh
 printf '\n' >&2
 printf '%s\n' 'FATAL[0000] route: missing outbound tag' >&2
 exit 42
 EOF_SING_BOX_CHECK
-chmod +x "$WORK_DIR/check-bin/sing-box"
+chmod +x "$WORK_DIR/check-bin/tachyon-core"
 : >"$WORK_DIR/invalid-config.json"
 if PATH="$WORK_DIR/check-bin:$PATH" \
   ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" check-config-fixture \
-  "$WORK_DIR/invalid-config.json" "$WORK_DIR/sing-box-check.log" \
-  >"$WORK_DIR/sing-box-check.reason"; then
-  fail "singbox/runtime.uc check fixture should preserve a failed sing-box status"
+  "$WORK_DIR/invalid-config.json" "$WORK_DIR/tachyon-core-check.log" \
+  >"$WORK_DIR/tachyon-core-check.reason"; then
+  fail "tachyon_core/runtime.uc check fixture should preserve a failed core check status"
 fi
-[ "$(cat "$WORK_DIR/sing-box-check.reason")" = 'FATAL[0000] route: missing outbound tag' ] ||
-  fail "singbox/runtime.uc must return the first non-empty sing-box check diagnostic"
-grep -Fq 'Generated sing-box configuration is invalid: " + check_result.reason' "$SINGBOX_RUNTIME_UC" ||
-  fail "generated config failure must include the captured sing-box check diagnostic"
+[ "$(cat "$WORK_DIR/tachyon-core-check.reason")" = 'FATAL[0000] route: missing outbound tag' ] ||
+  fail "tachyon_core/runtime.uc must return the first non-empty core check diagnostic"
+grep -Fq 'Generated tachyon-core configuration is invalid: " + check_result.reason' "$SINGBOX_RUNTIME_UC" ||
+  fail "generated config failure must include the captured core check diagnostic"
 
 cat >"$WORK_DIR/generator-failure.log" <<'EOF_GENERATOR_FAILURE'
 skipped incompatible subscription outbound for rule 'only_xhttp': Only XHTTP node (XHTTP requires sing-box-extended)
@@ -109,7 +109,7 @@ EOF_GENERATOR_FAILURE
 generator_reason="$(ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" generator-failure-reason-fixture \
   "$WORK_DIR/generator-failure.log" 2)"
 [ "$generator_reason" = 'connection section has no usable outbounds' ] ||
-  fail "singbox/runtime.uc must report the terminal generator error instead of an earlier warning"
+  fail "tachyon_core/runtime.uc must report the terminal generator error instead of an earlier warning"
 
 mkdir -p "$WORK_DIR/etc" "$WORK_DIR/tmp"
 printf 'old config\n' >"$WORK_DIR/etc/config.json"
@@ -117,9 +117,9 @@ printf 'new config\n' >"$WORK_DIR/tmp/config.json"
 ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" save-config-file-fixture \
   "$WORK_DIR/tmp/config.json" "$WORK_DIR/etc/config.json"
 [ "$(cat "$WORK_DIR/etc/config.json")" = "new config" ] ||
-  fail "singbox/runtime.uc must replace an existing config from a temp file"
+  fail "tachyon_core/runtime.uc must replace an existing config from a temp file"
 [ ! -e "$WORK_DIR/tmp/config.json" ] ||
-  fail "singbox/runtime.uc must consume the temp config after save"
+  fail "tachyon_core/runtime.uc must consume the temp config after save"
 
 generate_config() {
   local fixture="$1"
@@ -127,7 +127,7 @@ generate_config() {
   local mwan3_active="${3:-0}"
 
   mkdir -p "$output.section-cache" "$output.rulesets"
-  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
     "$fixture" "$output" "127.0.0.1" "$mwan3_active"
 }
 
@@ -139,7 +139,7 @@ generate_config_with_subscription_cache() {
   mkdir -p "$output.section-cache" "$output.rulesets"
   TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
     TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-subscription-cache" \
-    ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+    ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
       "$fixture" "$output" "127.0.0.1" "0" "$supports_xhttp"
 }
 
@@ -148,7 +148,7 @@ cat >"$WORK_DIR/no-enabled-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -171,8 +171,8 @@ cat >"$WORK_DIR/generator-uci.state" <<'EOF_UCI'
 tachyon.settings=settings
 tachyon.settings.dns_server=1.1.1.1
 tachyon.settings.bootstrap_dns_server=1.1.1.1
-tachyon.settings.config_path=/tmp/sing-box/config.json
-tachyon.settings.cache_path=/tmp/sing-box/cache.db
+tachyon.settings.config_path=/tmp/tachyon-core/config.json
+tachyon.settings.cache_path=/tmp/tachyon-core/cache.db
 tachyon.settings.log_level=warn
 tachyon.uci_proxy=section
 tachyon.uci_proxy.enabled=1
@@ -185,18 +185,18 @@ TACHYON_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
   TACHYON_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
   ucode -L "$TACHYON_LIB" "$SINGBOX_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
 grep -Fq '"example.org"' "$WORK_DIR/generated-from-uci.json" ||
-  fail "singbox/generator.uc must read section matchers from core.uci"
+  fail "tachyon_core/generator.uc must read section matchers from core.uci"
 grep -Fq '"smart.example"' "$WORK_DIR/generated-from-uci.json" ||
-  fail "singbox/generator.uc must route smart-detect user_domains from core.uci"
+  fail "tachyon_core/generator.uc must route smart-detect user_domains from core.uci"
 grep -Fq '"uci_proxy-out"' "$WORK_DIR/generated-from-uci.json" ||
-  fail "singbox/generator.uc must read section names from core.uci"
+  fail "tachyon_core/generator.uc must read section names from core.uci"
 
 cat >"$WORK_DIR/disabled-updates-fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "list_update_enabled": "0",
     "update_interval": "5m",
     "dns_server": "1.1.1.1",
@@ -222,7 +222,7 @@ cat >"$WORK_DIR/default-updates-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -244,7 +244,7 @@ cat >"$WORK_DIR/server-inbound-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -291,7 +291,7 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "dns_strategy": "prefer_ipv6",
     "service_listen_address": "127.0.0.1"
@@ -354,7 +354,7 @@ cat >"$WORK_DIR/dns-action-fixture.json" <<JSON
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -410,7 +410,7 @@ cat >"$WORK_DIR/urltest-filter-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -457,7 +457,7 @@ cat >"$WORK_DIR/provider-actions-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -474,7 +474,7 @@ cat >"$WORK_DIR/manual-transport-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -500,7 +500,7 @@ cat >"$WORK_DIR/vpn-interface-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -532,7 +532,7 @@ cat >"$WORK_DIR/download-via-proxy-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1",
     "download_lists_via_proxy": "1",
@@ -569,7 +569,7 @@ cat >"$WORK_DIR/fully-routed-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -592,7 +592,7 @@ cat >"$WORK_DIR/mwan3-auto-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -614,7 +614,7 @@ cat >"$WORK_DIR/mwan3-pinned-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1",
     "output_network_interface": "wan2"
@@ -637,7 +637,7 @@ cat >"$WORK_DIR/p2p-isolate-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1",
     "isolate_p2p": "1",
@@ -676,7 +676,7 @@ cat >"$WORK_DIR/domain-ip-rulesets-fixture.json" <<JSON
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -700,7 +700,7 @@ cat >"$WORK_DIR/subscription-metadata-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -737,7 +737,7 @@ cat >"$WORK_DIR/subscription-group-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -770,7 +770,7 @@ cat >"$WORK_DIR/subscription-group-disabled-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -795,7 +795,7 @@ cat >"$WORK_DIR/subscription-xhttp-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -844,7 +844,7 @@ cat >"$WORK_DIR/subscription-only-xhttp-fixture.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -1035,7 +1035,7 @@ printf '%s' 'Happ' >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.user_agen
 cat >"$WORK_DIR/block-doh-fixture.json" <<'JSON'
 {
   "settings": {
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1",
     "block_doh": "1"
@@ -1055,7 +1055,7 @@ JSON
 cat >"$WORK_DIR/bulk-proxy-links-fixture.json" <<'JSON'
 {
   "settings": {
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -1075,7 +1075,7 @@ JSON
 cat >"$WORK_DIR/subscription-filter-fixture.json" <<'JSON'
 {
   "settings": {
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },

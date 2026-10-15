@@ -312,7 +312,7 @@ let KNOWLEDGE_BASE = {
             "Always start with 'tachyon snapshot' to get the full picture.",
             "Use 'tachyon diagnose' for structured problem list.",
             "For memory-constrained routers, enable GOMEMLIMIT scaling.",
-            "Community lists are downloaded to /tmp/sing-box/rulesets/."
+            "Community lists are downloaded to /tmp/tachyon-core/rulesets/."
         ]
     },
 
@@ -593,7 +593,7 @@ function execute_restart(args) {
         return error_result("Unknown service '" + svc + "'. Allowed: singbox, tachyon, dnsmasq, watchdog");
     }
     let cmd_map = {
-        singbox: "/etc/init.d/sing-box restart > /dev/null 2>&1",
+        singbox: "/etc/init.d/tachyon-core restart > /dev/null 2>&1",
         tachyon: "/etc/init.d/tachyon restart > /dev/null 2>&1",
         dnsmasq: "/etc/init.d/dnsmasq restart > /dev/null 2>&1",
         watchdog: "/usr/bin/tachyon watchdog start-runtime > /dev/null 2>&1"

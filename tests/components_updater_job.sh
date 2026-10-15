@@ -84,13 +84,13 @@ grep -Fq 'component-action-status' "$UPDATES_UC" ||
   fail "components/updates.uc must own component action status"
 grep -Fq 'components/action.uc' "$UPDATES_UC" ||
   fail "component action worker must execute components/action.uc directly"
-grep -Fq 'singbox/runtime.uc' "$UPDATES_UC" ||
-  fail "components/updates.uc must delegate sing-box service/config work to singbox/runtime.uc"
+grep -Fq 'tachyon_core/runtime.uc' "$UPDATES_UC" ||
+  fail "components/updates.uc must delegate sing-box service/config work to tachyon_core/runtime.uc"
 if grep -n -E 'function (configure_sing_box_service|rebuild_sing_box_config|save_sing_box_config_file|service_listen_address|managed_sing_box_service_text)' "$UPDATES_UC" >/dev/null 2>&1; then
-  fail "components/updates.uc must not duplicate singbox/runtime.uc service/config ownership"
+  fail "components/updates.uc must not duplicate tachyon_core/runtime.uc service/config ownership"
 fi
 if grep -Fq 'save-sing-box-config-file-fixture' "$UPDATES_UC"; then
-  fail "components/updates.uc must not expose sing-box config save fixtures owned by singbox/runtime.uc"
+  fail "components/updates.uc must not expose sing-box config save fixtures owned by tachyon_core/runtime.uc"
 fi
 grep -Fq 'component_action_async: [ "components/updates.uc", "component-action-async", 2 ]' "$CLI_UC" ||
   fail "service/cli.uc must dispatch component_action_async through components/updates.uc"
@@ -109,7 +109,7 @@ grep -Fq 'let package_spec = package_name + "=" + package_version;' "$INSTALLER_
   fail "APK sing-box installs must pin the concrete package version instead of selecting a provider"
 grep -Fq 'Package rollback failed; restored the previous sing-box binary backup' "$ACTION_UC" ||
   fail "package rollback must accept a successfully restored binary backup"
-grep -Fq '!file_exists("/etc/init.d/sing-box") && file_nonempty("/usr/bin/sing-box")' "$ACTION_UC" ||
+grep -Fq '!file_exists("/etc/init.d/tachyon-core") && file_nonempty("/usr/bin/tachyon-core")' "$ACTION_UC" ||
   fail "binary rollback must restore a managed sing-box service when the package script is missing"
 grep -Fq 'fail_package_sing_box_install(action, tiny, "package was installed, but sing-box binary is not available"' "$ACTION_UC" ||
   fail "stable and tiny sing-box binary validation failures must use transactional rollback"
@@ -159,25 +159,25 @@ $0 == "    let new_version = validate_sing_box_extended_binary(tmp_binary, cmp.t
 END { exit safe_validation ? 0 : 1 }
 ' "$ACTION_UC" ||
   fail "compressed sing-box validation must release the archive and stop the running service to avoid OpenWrt OOM"
-grep -Fq 'install_staged_file(tmp_binary, "/usr/bin/sing-box", "0755")' "$ACTION_UC" ||
+grep -Fq 'install_staged_file(tmp_binary, "/usr/bin/tachyon-core", "0755")' "$ACTION_UC" ||
   fail "compressed sing-box binary installation must support moving from tmpfs to overlay"
 grep -Fq 'install_staged_file(tmp_cronet, "/usr/lib/libcronet.so", "0644")' "$ACTION_UC" ||
   fail "compressed libcronet installation must support moving from tmpfs to overlay"
-if grep -Fq 'fs.rename(tmp_binary, "/usr/bin/sing-box")' "$ACTION_UC"; then
+if grep -Fq 'fs.rename(tmp_binary, "/usr/bin/tachyon-core")' "$ACTION_UC"; then
   fail "compressed sing-box installation must not rename directly across OpenWrt filesystems"
 fi
 grep -Fq 'let backup_on_tmpfs = previous_variant == "extended-compressed";' "$ACTION_UC" ||
   fail "package sing-box installs must move compressed backups off overlay before opkg space checks"
 grep -Fq 'backup_binary = backup_on_tmpfs ? cmp.tmp_dir_path() + "/sing-box.tachyon-backup"' "$ACTION_UC" ||
   fail "compressed sing-box backup must use tmpfs while installing a package variant"
-grep -Fq 'return move_file_portable(backup_binary, "/usr/bin/sing-box");' "$ACTION_UC" &&
+grep -Fq 'return move_file_portable(backup_binary, "/usr/bin/tachyon-core");' "$ACTION_UC" &&
   fail "portable sing-box restore must preserve executable permissions explicitly"
-grep -Fq 'if (!move_file_portable(backup_binary, "/usr/bin/sing-box"))' "$ACTION_UC" ||
+grep -Fq 'if (!move_file_portable(backup_binary, "/usr/bin/tachyon-core"))' "$ACTION_UC" ||
   fail "compressed sing-box rollback must restore backups across filesystems"
 
 package_runtime_lib="$WORK_DIR/package-runtime-lib"
 package_runtime_bin="$WORK_DIR/package-runtime-bin"
-mkdir -p "$package_runtime_lib/components" "$package_runtime_lib/core" "$package_runtime_lib/singbox" "$package_runtime_bin"
+mkdir -p "$package_runtime_lib/components" "$package_runtime_lib/core" "$package_runtime_lib/tachyon_core" "$package_runtime_bin"
 cp "$UPDATER" "$package_runtime_lib/components/updater.uc"
 cp "$TACHYON_LIB/components/helpers.uc" "$package_runtime_lib/components/helpers.uc"
 cp "$TACHYON_LIB/components/versions.uc" "$package_runtime_lib/components/versions.uc"
@@ -220,7 +220,7 @@ if (mode == "apk-version")
   exit(0);
 exit(1);
 UCODE
-cat >"$package_runtime_lib/singbox/runtime.uc" <<'UCODE'
+cat >"$package_runtime_lib/tachyon_core/runtime.uc" <<'UCODE'
 let mode = ARGV[0] || "";
 if (mode == "version")
   exit(0);

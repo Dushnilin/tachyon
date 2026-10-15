@@ -6,7 +6,7 @@ set -eo pipefail
 
 STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
 LIFECYCLE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/lifecycle.uc"
-FAILOVER_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/dns_failover.uc"
+FAILOVER_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/dns_failover.uc"
 WATCHDOG_UC="$ROOT_DIR/tachyon/files/usr/lib/service/watchdog.uc"
 
 [ -f "$STATE_UC" ] || fail "service/state.uc not found"

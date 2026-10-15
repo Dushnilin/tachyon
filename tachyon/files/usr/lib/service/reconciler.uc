@@ -1130,7 +1130,7 @@ function reconcile_event(event_type, event_payload, opts) {
         sub_opts.subsystem = SUBSYSTEM_NFTABLES;
         return reconcile(sub_opts);
     }
-    if (event_type == "singbox.stopped" || event_type == "singbox_stopped") {
+    if (event_type == "core.stopped" || event_type == "core_stopped") {
         sub_opts.subsystem = SUBSYSTEM_ENGINE;
         return reconcile(sub_opts);
     }

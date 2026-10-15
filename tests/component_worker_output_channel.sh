@@ -14,7 +14,7 @@ UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
 VERSIONS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/versions.uc"
 HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/helpers.uc"
-SINGBOX_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc"
+SINGBOX_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc"
 
 # Comments mention 2>&1 to explain the bug; only real redirections count.
 code_only() {
@@ -70,7 +70,7 @@ if grep -Eq '[^_]command_output\(' <<<"$probe"; then
 fi
 
 version_output="$(sed -n '/^function sing_box_version_output/,/^}/p' "$SINGBOX_UC" | code_only)"
-[ -n "$version_output" ] || fail "singbox/runtime.uc must define sing_box_version_output"
+[ -n "$version_output" ] || fail "tachyon_core/runtime.uc must define sing_box_version_output"
 grep -Fq 'command_output_lenient(' <<<"$version_output" ||
   fail "sing_box_version_output must keep stdout regardless of exit status"
 

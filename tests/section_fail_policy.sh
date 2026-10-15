@@ -13,7 +13,7 @@
 set -eo pipefail
 export WORK_DIR
 
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 NFT_APPLY_UC="$TACHYON_LIB/nft/apply.uc"
 FAILOVER_UC="$TACHYON_LIB/service/failover.uc"
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"

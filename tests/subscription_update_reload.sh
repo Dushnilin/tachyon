@@ -48,11 +48,11 @@ exit(64);
 write_stub "$FAKE_LIB/service/state.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 record("service/state:" + mode);
-if (mode == "sing-box-service-runtime-pid") {
+if (mode == "tachyon-core-service-runtime-pid") {
     print("3285\n");
     exit(0);
 }
-if (mode == "sighup-sing-box-runtime") {
+if (mode == "sighup-core-runtime") {
     // By default, simulate a successful SIGHUP reload. Tests that need
     // a failing SIGHUP set FAKE_SIGHUP_FAILS=1.
     exit((getenv("FAKE_SIGHUP_FAILS") == "1") ? 1 : 0);
@@ -60,7 +60,7 @@ if (mode == "sighup-sing-box-runtime") {
 if (mode == "acquire-runtime-dir-lock" ||
     mode == "acquire-runtime-dir-lock-wait" ||
     mode == "release-runtime-dir-lock" ||
-    mode == "reload-sing-box-runtime" ||
+    mode == "reload-core-runtime" ||
     mode == "write-current-reload-state-clean" ||
     mode == "run-pending-reload-if-requested")
     exit(0);
@@ -77,7 +77,7 @@ record("config/validator:" + as_string(ARGV[0]));
 exit(ARGV[0] == "validate-runtime" ? 0 : 64);
 '
 
-write_stub "$FAKE_LIB/singbox/runtime.uc" "$stub_header"'
+write_stub "$FAKE_LIB/tachyon_core/runtime.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 if (mode == "init-config")
     record("singbox/runtime:init-config:" + as_string(ARGV[1]) + ":" + as_string(ARGV[2]) + ":" + as_string(ARGV[3]));
@@ -88,7 +88,7 @@ if (mode == "configure-service" || mode == "init-config")
 exit(64);
 '
 
-write_stub "$FAKE_LIB/singbox/priority.uc" "$stub_header"'
+write_stub "$FAKE_LIB/tachyon_core/priority.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 record("singbox/priority:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
@@ -96,7 +96,7 @@ if (mode == "stop-runtime" || mode == "start-runtime")
 exit(64);
 '
 
-write_stub "$FAKE_LIB/singbox/dns_failover.uc" "$stub_header"'
+write_stub "$FAKE_LIB/tachyon_core/dns_failover.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 record("singbox/dns_failover:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
@@ -138,7 +138,7 @@ node - "$updated_log" <<'JS'
 const fs = require("fs");
 const calls = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n+/);
 
-// Happy path: SIGHUP succeeds, so reload-sing-box-runtime is NOT called.
+// Happy path: SIGHUP succeeds, so reload-core-runtime is NOT called.
 // Neither helper worker is stopped before it: DNS failover probes the sing-box
 // DNS listener, which stays bound across an in-place reload, and Priority's
 // start-runtime stops its previous worker by itself (issue #119).
@@ -147,9 +147,9 @@ const expected = [
   "server/service:prepare-all-defaults",
   "config/validator:validate-runtime",
   "singbox/runtime:configure-service",
-  "service/state:sing-box-service-runtime-pid",
+  "service/state:tachyon-core-service-runtime-pid",
   "singbox/runtime:init-config:0:1:1",
-  "service/state:sighup-sing-box-runtime",
+  "service/state:sighup-core-runtime",
   "singbox/priority:start-runtime",
   "service/state:write-current-reload-state-clean",
   "service/state:run-pending-reload-if-requested"
@@ -166,9 +166,9 @@ for (const item of expected) {
   position = next;
 }
 
-// reload-sing-box-runtime must NOT be called when SIGHUP succeeds.
-if (calls.includes("service/state:reload-sing-box-runtime")) {
-  console.error("reload-sing-box-runtime must not be called when SIGHUP reload succeeds");
+// reload-core-runtime must NOT be called when SIGHUP succeeds.
+if (calls.includes("service/state:reload-core-runtime")) {
+  console.error("reload-core-runtime must not be called when SIGHUP reload succeeds");
   process.exit(1);
 }
 
@@ -208,10 +208,10 @@ FAKE_SIGHUP_FAILS=1 \
     ucode -L "$REAL_LIB" "$UPDATES_UC" subscription-update-if-due
 
 # When SIGHUP fails, reload_sing_box_runtime must be called as the fallback.
-grep -Fq 'service/state:sighup-sing-box-runtime' "$sighup_fail_log" ||
-  fail "sighup-sing-box-runtime must be attempted even when FAKE_SIGHUP_FAILS=1"
-grep -Fq 'service/state:reload-sing-box-runtime' "$sighup_fail_log" ||
-  fail "reload-sing-box-runtime (restart fallback) must be called when SIGHUP fails"
+grep -Fq 'service/state:sighup-core-runtime' "$sighup_fail_log" ||
+  fail "sighup-core-runtime must be attempted even when FAKE_SIGHUP_FAILS=1"
+grep -Fq 'service/state:reload-core-runtime' "$sighup_fail_log" ||
+  fail "reload-core-runtime (restart fallback) must be called when SIGHUP fails"
 
 # The escalation is the one path where a real restart tears down the listeners
 # both workers probe, so they have to stand down and come back - and the order
@@ -221,10 +221,10 @@ const fs = require("fs");
 const calls = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n+/);
 
 const fallback = [
-  "service/state:sighup-sing-box-runtime",
+  "service/state:sighup-core-runtime",
   "singbox/priority:stop-runtime",
   "singbox/dns_failover:stop-runtime",
-  "service/state:reload-sing-box-runtime",
+  "service/state:reload-core-runtime",
   "singbox/dns_failover:start-runtime",
   "singbox/priority:start-runtime",
 ];
@@ -244,7 +244,7 @@ JS
 unchanged_log="$WORK_DIR/unchanged.log"
 run_update "0 0 1 0" "$unchanged_log"
 
-if grep -Eq 'server/service|config/validator|singbox/runtime|singbox/priority|singbox/dns_failover|reload-sing-box-runtime|write-current-reload-state-clean' "$unchanged_log"; then
+if grep -Eq 'server/service|config/validator|singbox/runtime|singbox/priority|singbox/dns_failover|reload-core-runtime|write-current-reload-state-clean' "$unchanged_log"; then
   fail "unchanged subscription update must not rebuild or reload sing-box"
 fi
 

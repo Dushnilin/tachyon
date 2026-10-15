@@ -5,7 +5,7 @@ let common = require("core.common");
 let exec = require("core.exec");
 let url = require("core.url");
 let ip = require("core.ip");
-let dns = require("singbox.dns");
+let dns = require("tachyon_core.dns");
 let as_string = common.as_string;
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";

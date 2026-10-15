@@ -18,7 +18,7 @@
 set -eo pipefail
 
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-FAILOVER="$LIB_DIR/singbox/dns_failover.uc"
+FAILOVER="$LIB_DIR/tachyon_core/dns_failover.uc"
 
 [ -f "$FAILOVER" ] || fail "singbox/dns_failover.uc not found"
 

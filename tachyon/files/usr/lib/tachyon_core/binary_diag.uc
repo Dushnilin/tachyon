@@ -2,7 +2,7 @@
 //
 // Telling a broken sing-box apart from a broken configuration.
 //
-// Separate from singbox/runtime.uc because that file is a script: requiring it runs
+// Separate from tachyon_core/runtime.uc because that file is a script: requiring it runs
 // its CLI dispatcher. Both helpers are small and pure apart from the stat/open, and
 // the difference between the two failures is worth being able to test directly - it
 // is the difference between a user fixing their config and a user fixing their
@@ -24,7 +24,7 @@ let as_string = common.as_string;
  */
 function sing_box_binary_problem(path) {
     // The path can arrive straight from `command -v` with its trailing newline, and
-    // a stat of "/usr/bin/sing-box\n" fails on a file that is very much there —
+    // a stat of "/usr/bin/tachyon-core\n" fails on a file that is very much there —
     // which reported a perfectly present binary as missing.
     path = trim(as_string(path));
     if (path == "")

@@ -63,14 +63,14 @@ raw_system|tachyon/files/usr/lib/service/telegram/rendering.uc|1
 raw_system|tachyon/files/usr/lib/service/ui.uc|2
 raw_system|tachyon/files/usr/lib/service/uninstall.uc|4
 raw_system|tachyon/files/usr/lib/service/watchdog.uc|28
-raw_system|tachyon/files/usr/lib/singbox/country.uc|1
-raw_system|tachyon/files/usr/lib/singbox/dns_failover.uc|5
-raw_system|tachyon/files/usr/lib/singbox/runtime.uc|1
 raw_system|tachyon/files/usr/lib/steer/dns.uc|1
 raw_system|tachyon/files/usr/lib/steer/lists.uc|1
 raw_system|tachyon/files/usr/lib/subscription/cache.uc|9
 raw_system|tachyon/files/usr/lib/subscription/parser.uc|1
 raw_system|tachyon/files/usr/lib/subscription/share_link.uc|1
+raw_system|tachyon/files/usr/lib/tachyon_core/country.uc|1
+raw_system|tachyon/files/usr/lib/tachyon_core/dns_failover.uc|5
+raw_system|tachyon/files/usr/lib/tachyon_core/runtime.uc|1
 raw_system|tachyon/files/usr/lib/torrserver/direct.uc|1
 shell_c|tachyon/files/usr/lib/components/action.uc|2
 shell_c|tachyon/files/usr/lib/components/updates.uc|2

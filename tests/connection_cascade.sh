@@ -2,7 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR="$TACHYON_LIB/tachyon_core/generator.uc"
 
 mkdir -p "$WORK_DIR/subscriptions" "$WORK_DIR/output.json.section-cache"
 

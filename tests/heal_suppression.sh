@@ -21,7 +21,7 @@ CONTROLLER_UC="$TACHYON_LIB/service/event_controller.uc"
 # The bus already ranked healers by cause. Those ranks are named so the
 # subscription priority and the suppression check cannot drift apart — a drift
 # would either suppress nothing or let a cause suppress itself.
-for c in 'PRIORITY_WAN     = 10' 'PRIORITY_SINGBOX = 20' \
+for c in 'PRIORITY_WAN     = 10' 'PRIORITY_CORE    = 20' \
          'PRIORITY_PROXY   = 40' 'PRIORITY_DNS     = 50'; do
   grep -q "const $c;" "$WATCHDOG_UC" || fail "the causal rank '$c' is gone"
 done
@@ -29,7 +29,7 @@ done
 # The registrations must use the constants, not literals, or naming them buys
 # nothing.
 for reg in 'heal_wan_and_gateway", priority: PRIORITY_WAN' \
-           'heal_singbox_stopped", priority: PRIORITY_SINGBOX' \
+           'heal_core_stopped", priority: PRIORITY_CORE' \
            'heal_proxy_connectivity", priority: PRIORITY_PROXY' \
            'heal_dns_stall", priority: PRIORITY_DNS'; do
   grep -q "$reg" "$WATCHDOG_UC" \
@@ -57,7 +57,7 @@ ifdown_line="$(grep -n -m1 '/sbin/ifdown wan' "$WATCHDOG_UC" | cut -d: -f1)"
   || fail "the WAN deadline is set after ifdown; the resulting proxy/DNS failures would not be suppressed"
 
 grep -q 'singbox_repair_until = time()' "$WATCHDOG_UC" \
-  || fail "heal_singbox_stopped does not set singbox_repair_until"
+  || fail "heal_core_stopped does not set singbox_repair_until"
 
 # ── every claim has a release path ────────────────────────────────────────────
 # A deadline released only at expiry suppresses real faults for the full window.

@@ -30,14 +30,14 @@
 set -eo pipefail
 
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-RUNTIME_UC="$LIB_DIR/singbox/runtime.uc"
+RUNTIME_UC="$LIB_DIR/tachyon_core/runtime.uc"
 
-[ -f "$RUNTIME_UC" ] || fail "singbox/runtime.uc not found"
+[ -f "$RUNTIME_UC" ] || fail "tachyon_core/runtime.uc not found"
 
 # 1. The regex must capture the outbound index, not just the field name. The old
 #    one was /outbounds\[\d+\]\.(\w+)/, where the index is present but ungrouped.
 regex="$(grep -oE '/outbounds[^/]*/' "$RUNTIME_UC" | head -1)"
-[ -n "$regex" ] || fail "could not find the outbound-field regex in singbox/runtime.uc"
+[ -n "$regex" ] || fail "could not find the outbound-field regex in tachyon_core/runtime.uc"
 
 case "$regex" in
   *'(\d+)'*) ;;

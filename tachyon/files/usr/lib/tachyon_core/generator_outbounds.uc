@@ -2,11 +2,11 @@
 
 let fs = require("fs");
 let common = require("core.common");
-let runtime_constants = require("singbox.constants");
-let runtime_subscription = require("singbox.subscription");
-let runtime_country = require("singbox.country");
-let runtime_dns = require("singbox.dns");
-let core_profile = require("singbox.core_profile");
+let runtime_constants = require("tachyon_core.constants");
+let runtime_subscription = require("tachyon_core.subscription");
+let runtime_country = require("tachyon_core.country");
+let runtime_dns = require("tachyon_core.dns");
+let core_profile = require("tachyon_core.core_profile");
 let runtime_url = require("core.url");
 let subscription_share_link = require("subscription.share_link");
 let connections = require("config.connections");
@@ -481,7 +481,7 @@ function tls_alpn_array(value, transport) {
 }
 
 // Which TLS field this build accepts for a pin. The answer comes from the
-// capability model in singbox/runtime.uc rather than from a second copy of the
+// capability model in tachyon_core/runtime.uc rather than from a second copy of the
 // rules: two copies of "which field does this core take" is exactly how the
 // generator and the validator ended up disagreeing about the same binary, and a
 // disagreement here is silent - the pin is simply dropped from the config.
@@ -492,8 +492,8 @@ function certificate_pin_field() {
     let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
     let version = override != ""
         ? override
-        : trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version") || ""));
-    let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || ""));
+        : trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || ""));
+    let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || ""));
 
     // With no state file to go on, let the model look at the installed binary
     // rather than guessing from an empty version.
@@ -955,8 +955,8 @@ function manual_tuic_outbound(link, tag_name) {
 }
 
 function ensure_imported_vpn_lx() {
-    let variant = trim(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || "");
-    let version = trim(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version") || "");
+    let variant = trim(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || "");
+    let version = trim(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || "");
     if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0)
         ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
 }
@@ -1047,7 +1047,7 @@ function fptn_token_payload(payload) {
 // (`tachyon-core fptn decode <token>`). Returns null when the binary is
 // missing or refuses, and the caller falls back to the raw-token form.
 function fptn_token_decode_via_core(token) {
-    let binary = getenv("SB_PREFLIGHT_BINARY") || getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+    let binary = getenv("SB_PREFLIGHT_BINARY") || getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
     if (fs.stat(binary) == null)
         return null;
     let result = exec.run({ argv: [ binary, "fptn", "decode", token ], timeout: 15 });
@@ -1251,11 +1251,11 @@ function add_connection_manual_links(config, state, section, taken, selector_tag
 }
 
 function is_extended_variant_detected() {
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
     if (sb_variant_val == "extended" || sb_variant_val == "extended-compressed")
         return true;
-    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
     let sb_version_val = trim(fs.readfile(sb_version_file) || "");
     return index(sb_version_val, "extended") >= 0;
 }
@@ -1896,8 +1896,8 @@ function add_awg_endpoint(config, section) {
     let mtu = int_option(section, "awg_mtu", "1280");
     endpoint.mtu = mtu > 0 ? mtu : 1280;
 
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
-    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
     let sb_version_val = trim(fs.readfile(sb_version_file) || "");
     let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
     let is_lx = sb_variant_val == "lx" || index(sb_version_val, "-lx") >= 0;
@@ -1981,7 +1981,7 @@ function add_awg_endpoint(config, section) {
         // j1-j3/itime were removed from the extended schema in 2.6.1 and
         // sing-box fatals on unknown fields, so emit them only for builds
         // whose schema still accepts them.
-        let sb_version_state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+        let sb_version_state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
         let sb_version = trim(fs.readfile(sb_version_state_file) || "");
         if (common.extended_awg_schema_has_junk_signatures(sb_version)) {
             if (j1 != "") amnezia.j1 = j1;

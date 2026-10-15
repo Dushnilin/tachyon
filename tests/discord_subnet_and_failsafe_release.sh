@@ -79,7 +79,7 @@ done
 ok
 
 # The literals in the nft and singbox fallbacks must not drift back to /21.
-for f in "$TACHYON_LIB/nft/apply.uc" "$TACHYON_LIB/singbox/generator_routes.uc"; do
+for f in "$TACHYON_LIB/nft/apply.uc" "$TACHYON_LIB/tachyon_core/generator_routes.uc"; do
   [ -f "$f" ] || fail "missing $f"
   if grep -q '162\.159\.128\.0/21' "$f"; then
     fail "$f still falls back to the /21 literal; the constant and the fallback must agree"

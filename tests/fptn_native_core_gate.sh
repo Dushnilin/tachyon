@@ -19,7 +19,7 @@ set -eo pipefail
 
 VALIDATOR_UC="$TACHYON_LIB/config/validator.uc"
 CONNECTIONS_UC="$TACHYON_LIB/config/connections.uc"
-GENERATOR_UC="$TACHYON_LIB/singbox/generator_outbounds.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator_outbounds.uc"
 RUNTIME_UC="$TACHYON_LIB/providers/fptn/runtime.uc"
 for f in "$VALIDATOR_UC" "$CONNECTIONS_UC" "$GENERATOR_UC" "$RUNTIME_UC"; do
   [ -f "$f" ] || fail "$(basename "$f") not found"

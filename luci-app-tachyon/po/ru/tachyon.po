@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-15 22:52+0300\n"
-"PO-Revision-Date: 2026-10-15 22:52+0300\n"
+"POT-Creation-Date: 2026-10-15 02:44+0300\n"
+"PO-Revision-Date: 2026-10-15 02:44+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -5162,14 +5162,14 @@ msgstr "Выберите один или несколько ISO-кодов ст�
 msgid "Select or enter a User-Agent"
 msgstr "Выберите или введите User-Agent"
 
-msgid "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing"
-msgstr "Выберите или введите путь к файлу кэша sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
+msgid "Select or enter path for tachyon-core cache file. Change this ONLY if you know what you are doing"
+msgstr ""
 
 msgid "Select or enter the IP addresses of your game consoles."
 msgstr "Выберите или введите IP-адреса ваших игровых консолей."
 
-msgid "Select path for sing-box config file. Change this ONLY if you know what you are doing"
-msgstr "Выберите путь к файлу конфигурации sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
+msgid "Select path for tachyon-core config file. Change this ONLY if you know what you are doing"
+msgstr ""
 
 msgid "Select sections to merge"
 msgstr "Выберите секции для объединения"
@@ -7159,6 +7159,12 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing"
+msgstr "Выберите или введите путь к файлу кэша sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
+
+msgid "Select path for sing-box config file. Change this ONLY if you know what you are doing"
+msgstr "Выберите путь к файлу конфигурации sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
 
 msgid "Open"
 msgstr "Открыть"

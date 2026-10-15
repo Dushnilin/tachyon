@@ -105,7 +105,7 @@ if command -v ucode >/dev/null 2>&1; then
   TMP_CANDIDATE=$(mktemp)
   cat <<'EOF' > "$TMP_CANDIDATE"
 config settings 'settings'
-	option engine 'sing-box'
+	option engine 'tachyon-core'
 	option fakeip '1'
 	option mixed_port '4534'
 

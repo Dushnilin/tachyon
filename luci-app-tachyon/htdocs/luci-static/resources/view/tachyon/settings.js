@@ -3195,12 +3195,12 @@ function createSettingsContent(section, capabilities) {
     "config_path",
     _("Config File Path"),
     _(
-      "Select path for sing-box config file. Change this ONLY if you know what you are doing",
+      "Select path for tachyon-core config file. Change this ONLY if you know what you are doing",
     ),
   );
-  o.value("/etc/sing-box/config.json", "Flash (/etc/sing-box/config.json)");
-  o.value("/tmp/sing-box/config.json", "RAM (/tmp/sing-box/config.json)");
-  o.default = "/etc/sing-box/config.json";
+  o.value("/etc/tachyon-core/config.json", "Flash (/etc/tachyon-core/config.json)");
+  o.value("/tmp/tachyon-core/config.json", "RAM (/tmp/tachyon-core/config.json)");
+  o.default = "/etc/tachyon-core/config.json";
   o.rmempty = false;
 
   o = section.taboption(
@@ -3209,15 +3209,15 @@ function createSettingsContent(section, capabilities) {
     "cache_path",
     _("Cache File Path"),
     _(
-      "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing",
+      "Select or enter path for tachyon-core cache file. Change this ONLY if you know what you are doing",
     ),
   );
-  o.value("/tmp/sing-box/cache.db", "RAM (/tmp/sing-box/cache.db)");
   o.value(
-    "/usr/share/sing-box/cache.db",
-    "Flash (/usr/share/sing-box/cache.db)",
+    "/usr/share/tachyon-core/cache.db",
+    "Flash (/usr/share/tachyon-core/cache.db)",
   );
-  o.default = "/tmp/sing-box/cache.db";
+  o.value("/tmp/tachyon-core/cache.db", "RAM (/tmp/tachyon-core/cache.db)");
+  o.default = "/usr/share/tachyon-core/cache.db";
   o.rmempty = false;
   o.validate = function (section_id, value) {
     if (!value) {

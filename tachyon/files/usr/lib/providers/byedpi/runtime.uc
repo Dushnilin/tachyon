@@ -3,7 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
-let runtime_constants = require("singbox.constants");
+let runtime_constants = require("tachyon_core.constants");
 let validator_module = null;
 
 let as_string = common.as_string;

@@ -6,7 +6,7 @@ SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon
 
 # 1. Test generator_outbounds add_openvpn_endpoint behavior
 ucode -L "$TACHYON_LIB" -e '
-let generator = require("singbox.generator_outbounds");
+let generator = require("tachyon_core.generator_outbounds");
 
 let config = { endpoints: [], outbounds: [] };
 let section = {

@@ -11,7 +11,7 @@
 // reboot.
 //
 // This module rebuilds the same cache straight from the normalized sources in
-// /tmp/sing-box/subscriptions (populated by subscription/cache.uc prepare), reusing
+// /tmp/tachyon-core/subscriptions (populated by subscription/cache.uc prepare), reusing
 // the singbox/subscription.uc state builders so the format stays identical.
 //
 
@@ -19,8 +19,8 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
-let runtime_subscription = require("singbox.subscription");
-let generator_routes = require("singbox.generator_routes");
+let runtime_subscription = require("tachyon_core.subscription");
+let generator_routes = require("tachyon_core.generator_routes");
 let share_link = require("subscription.share_link");
 
 let as_string = common.as_string;
@@ -28,7 +28,7 @@ let array_or_empty = common.array_or_empty;
 let object_or_empty = common.object_or_empty;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
-const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
+const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/tachyon-core/subscriptions";
 const SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") ||
     (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/section-cache";
 

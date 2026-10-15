@@ -2,8 +2,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR="$TACHYON_LIB/singbox/generator.uc"
-FAILOVER="$TACHYON_LIB/singbox/dns_failover.uc"
+GENERATOR="$TACHYON_LIB/tachyon_core/generator.uc"
+FAILOVER="$TACHYON_LIB/tachyon_core/dns_failover.uc"
 
 generate() {
   local fixture="$1"
@@ -150,7 +150,7 @@ printf '%s' "$verification" | grep -Eq '"bootstrap"[[:space:]]*:[[:space:]]*true
 
 # ─── DoH / DoT IP and domain server generation tests ──────────────────────────
 cat >"$WORK_DIR/test_doh_generation.uc" <<'UCODE'
-let dns = require("singbox.dns");
+let dns = require("tachyon_core.dns");
 
 function assert(cond, msg) {
     if (!cond) {

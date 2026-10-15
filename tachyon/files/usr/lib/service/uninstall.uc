@@ -35,12 +35,12 @@ function remove_tree(path) {
 }
 
 function clean_managed_sing_box(keep_binaries) {
-    if (fs.stat("/etc/init.d/sing-box") != null) {
-        let content = fs.readfile("/etc/init.d/sing-box");
+    if (fs.stat("/etc/init.d/tachyon-core") != null) {
+        let content = fs.readfile("/etc/init.d/tachyon-core");
         if (content && index(content, "Tachyon managed sing-box") >= 0) {
-            run_cmd(["/etc/init.d/sing-box", "stop"]);
-            run_cmd(["/etc/init.d/sing-box", "disable"]);
-            remove_file("/etc/init.d/sing-box");
+            run_cmd(["/etc/init.d/tachyon-core", "stop"]);
+            run_cmd(["/etc/init.d/tachyon-core", "disable"]);
+            remove_file("/etc/init.d/tachyon-core");
             run_shell("rm -f /etc/rc.d/*sing-box* 2>/dev/null || true");
         }
     }
@@ -52,11 +52,11 @@ function clean_managed_sing_box(keep_binaries) {
                 if (check == 0)
                     run_cmd(["opkg", "remove", "--force-depends", "--force-remove", pkg]);
             }
-            if (fs.stat("/etc/init.d/sing-box") == null) {
+            if (fs.stat("/etc/init.d/tachyon-core") == null) {
                 let check_sb = system("opkg list-installed 'sing-box' 2>/dev/null | grep -q '^sing-box '");
                 if (check_sb == 0)
                     run_cmd(["opkg", "remove", "--force-depends", "--force-remove", "sing-box"]);
-                remove_file("/usr/bin/sing-box");
+                remove_file("/usr/bin/tachyon-core");
             }
         }
         remove_file("/usr/lib/libcronet.so");
@@ -218,11 +218,11 @@ function uninstall_tachyon(purge_config, keep_binaries) {
     remove_file("/etc/uci-defaults/50_luci-tachyon");
 
     remove_tree("/var/run/tachyon");
-    run_shell("rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/tachyon* /tmp/sing-box /tmp/ai_doctor* /tmp/tg_* /tmp/warp_* 2>/dev/null || true");
+    run_shell("rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/tachyon* /tmp/tachyon-core /tmp/ai_doctor* /tmp/tg_* /tmp/warp_* 2>/dev/null || true");
 
     if (purge_config) {
         log_step("Purging Tachyon configuration and state (--purge)...");
-        run_shell("rm -rf /etc/config/tachyon* /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/sing-box 2>/dev/null || true");
+        run_shell("rm -rf /etc/config/tachyon* /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/tachyon-core 2>/dev/null || true");
     } else {
         log_step("Backing up Tachyon configuration...");
         let ts = clock()[0];

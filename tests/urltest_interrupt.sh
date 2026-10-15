@@ -56,7 +56,7 @@ JSON
 
 output="$WORK_DIR/config.json"
 mkdir -p "$output.section-cache"
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/fixture.json" "$output" "127.0.0.1"
 
 urltest_count="$(ucode -e '
@@ -135,7 +135,7 @@ JSON
 
 multi_output="$WORK_DIR/multi-config.json"
 mkdir -p "$multi_output.section-cache"
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/multi-fixture.json" "$multi_output" "127.0.0.1"
 
 ucode -e '

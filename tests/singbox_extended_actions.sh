@@ -12,7 +12,7 @@ set -eo pipefail
 # The shape is asserted here so a regression cannot reach a release again; the
 # real binaries were checked separately (stock 1.14.2 / extended 1.14.1-extended-2.7.2 / lx 1.14.2-lx.8).
 
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 generate_config() {
   local fixture="$1"

@@ -41,7 +41,7 @@ fi
 
 # Check 2: community_kind remains "subnets" in rulesets.uc
 cat >"$WORK_DIR/test_kind.uc" <<'UCODE'
-let rs = require("singbox.rulesets");
+let rs = require("tachyon_core.rulesets");
 let kind = rs.community_kind("discord");
 if (kind !== "subnets") {
     printf("community_kind(discord) returned %s, expected subnets\n", kind);
@@ -57,7 +57,7 @@ fi
 
 # Check 3: generator_routes creates DNS query rule for builtin-discord-ruleset without match_response
 cat >"$WORK_DIR/test_routes.uc" <<'UCODE'
-let gr = require("singbox.generator_routes");
+let gr = require("tachyon_core.generator_routes");
 
 gr.init({
     runtime_settings: () => ({}),

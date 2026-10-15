@@ -19,7 +19,7 @@ let as_string = common.as_string;
 // inheriting it from a require graph.
 function core_profile() {
     if (core_profile_module == null)
-        core_profile_module = require("singbox.core_profile");
+        core_profile_module = require("tachyon_core.core_profile");
     return core_profile_module;
 }
 
@@ -121,7 +121,7 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
 // Drops the field sing-box named from the outbound it named, and reports whether
 // anything changed.
 //
-// The apply path in singbox/runtime.uc calls this same function now, because its
+// The apply path in tachyon_core/runtime.uc calls this same function now, because its
 // inlined copy drifted into a crash (to_string does not exist in ucode) that took
 // the whole start down on the first rejected field, while this copy stayed tested.
 // It is the reason a build that rejects one field can still run: only the offending
@@ -250,7 +250,7 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
         return { ok: false, reason: "binary unable to report version" };
     }
 
-    let active_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let active_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let active_variant = trim(fs.readfile(active_variant_file) || "");
     let target_var = as_string(target_variant || "");
     if (target_var == "") {
@@ -266,7 +266,7 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
 
     let is_variant_switch = (target_var != "" && active_variant != "" && target_var != active_variant);
 
-    config_path = as_string(config_path || "/etc/sing-box/config.json");
+    config_path = as_string(config_path || "/etc/tachyon-core/config.json");
 
     // When changing core/variant, the existing config on disk was built for the
     // old variant/core and may contain incompatible options (e.g. endpoints[0].amnezia).
@@ -315,7 +315,7 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
         let target_supports_xhttp = core_profile().supports_xhttp(ver_str, xhttp_marker, ver_out) === true;
         let gen_cmd = helpers.command_env(gen_env) + " " +
             common.command_from_args([
-                "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/singbox/generator.uc",
+                "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/tachyon_core/generator.uc",
                 "generate-config", candidate_cfg, "127.0.0.1", "0", (target_supports_xhttp ? "1" : "0"), ""
             ]) + " >" + common.shell_quote(err_file) + " 2>&1";
         let gen_status = common.command_status(gen_cmd);

@@ -543,7 +543,7 @@ function run_leak_check_stages(wan_iface, mixed_port, want, test_mode) {
     let proxy_stage = { resolvers: [], token_ok: false, query_ok: false, service_reachable: true };
     let direct_stage = { resolvers: [], token_ok: false, query_ok: false, service_reachable: true };
     let router_stage = { resolvers: [], token_ok: false, query_ok: false, service_reachable: true };
-    let generated_config = plus ? common.read_json_file("/etc/sing-box/config.json") : null;
+    let generated_config = plus ? common.read_json_file("/etc/tachyon-core/config.json") : null;
     let wire_result = { status: "unavailable", scope: "wan_port_53", queries: 0 };
     let tls_result = { status: "unavailable", scope: "independent_doh_probe", tls_verified: false, dns_answer_valid: false };
 

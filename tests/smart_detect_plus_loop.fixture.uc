@@ -6,7 +6,7 @@ let smart_plus_job=null;let smart_plus_seen=null;
 let PENDING_SMART_DOMAINS_MAX=500;
 let process_status=smart_detect.probe_status;
 let native_require=require;
-let test_engine="sing-box";
+let test_engine="tachyon-core";
 let require=function(name){return name=="core.engine"?{get_active:function(){return test_engine;}}:native_require(name);};
 let CONFIG_NAME="fixture";
 let SMART_DETECT_SEEN_FILE="fixture-seen";
@@ -37,7 +37,7 @@ let uci_core={get_all:function(config,section){return {};}};
 let event_controller={smart_detect_queue_order:function(pending,domains){return domains;},
     smart_detect_main_domain:function(host){return "example.com";}};
 let controller={proxy_port:function(){return "4534";},dns_consecutive_fails:function(){return dns_fails;},
-    create_tick_context:function(){return {settings:{dns_type:"doh",dns_server:["resolver"]},singbox_pid:core_pid,singbox_running:test_engine=="sing-box",is_paused:false,reload_in_progress:false};}};
+    create_tick_context:function(){return {settings:{dns_type:"doh",dns_server:["resolver"]},singbox_pid:core_pid,singbox_running:test_engine=="tachyon-core",is_paused:false,reload_in_progress:false};}};
 let test_exclusions={};
 function settings(){return {...test_exclusions, smart_detect:"1",smart_detect_mode:"plus",smart_detect_sections:["vpn"]};}
 function smart_detect_get_proxy_sections(){return ["vpn"];}
@@ -53,7 +53,7 @@ let smart_probe={start:function(request){return {decision:smart_plus.probe(reque
 
 function setup(codes, proxy){
     test_exclusions={};
-    test_engine="sing-box";test_clock=1000;dns_index=0;core_pid="123";dns_fails=0;in_transaction=false;change_after_proxy=false;
+    test_engine="tachyon-core";test_clock=1000;dns_index=0;core_pid="123";dns_fails=0;in_transaction=false;change_after_proxy=false;
     smart_detect_last_run=0;calls=[];added=[];saved={};direct_codes=codes;proxy_code=proxy;
     pending_smart_plus={"api.example.com":{queued:test_clock,scheme:"https",priority:3}};
     smart_plus_last_run=0;smart_plus_job=null;smart_plus_seen=null;

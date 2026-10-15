@@ -8,7 +8,7 @@ ucode() {
 }
 
 PARSER="$ROOT_DIR/tachyon/files/usr/lib/subscription/parser.uc"
-GENERATOR="$ROOT_DIR/tachyon/files/usr/lib/singbox/generator.uc"
+GENERATOR="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc"
 
 assert_contains() {
   local file="$1"
@@ -95,7 +95,7 @@ cat >"$generator_fixture" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },

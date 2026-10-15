@@ -265,7 +265,7 @@ function srs_file_parses(path) {
     if (!is_valid_srs_file(p))
         return false;
 
-    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
     if (fs.stat(bin) == null)
         return true;
 

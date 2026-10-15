@@ -2,18 +2,18 @@
 
 let fs = require("fs");
 let common = require("core.common");
-let core_profile = require("singbox.core_profile");
+let core_profile = require("tachyon_core.core_profile");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
-let runtime_constants = require("singbox.constants");
-let runtime_country = require("singbox.country");
-let runtime_dns = require("singbox.dns");
-let runtime_route = require("singbox.route");
-let runtime_rulesets = require("singbox.rulesets");
-let runtime_servers = require("singbox.servers");
-let runtime_subscription = require("singbox.subscription");
+let runtime_constants = require("tachyon_core.constants");
+let runtime_country = require("tachyon_core.country");
+let runtime_dns = require("tachyon_core.dns");
+let runtime_route = require("tachyon_core.route");
+let runtime_rulesets = require("tachyon_core.rulesets");
+let runtime_servers = require("tachyon_core.servers");
+let runtime_subscription = require("tachyon_core.subscription");
 let runtime_url = require("core.url");
-let runtime_urltest = require("singbox.urltest");
+let runtime_urltest = require("tachyon_core.urltest");
 let source_rulesets = require("routing.rulesets");
 let command_success_from_args = common.command_success_from_args;
 
@@ -40,7 +40,7 @@ let csv_to_json_array = common.csv_to_json_array;
 // imports above because ucode binds a name when the statement runs.
 function generator_log(message, level) {
     command_success_from_args([ "logger", "-t", "tachyon",
-        "[" + as_string(level || "info") + "] sing-box generator: " + as_string(message) ]);
+        "[" + as_string(level || "info") + "] tachyon-core generator: " + as_string(message) ]);
 }
 let write_json_file = common.write_json_file;
 let strip_internal_fields = common.strip_internal_fields;
@@ -102,8 +102,8 @@ function uci_bin_to_hex(val) {
     return hex;
 }
 
-let generator_outbounds = require("singbox.generator_outbounds");
-let generator_routes = require("singbox.generator_routes");
+let generator_outbounds = require("tachyon_core.generator_outbounds");
+let generator_routes = require("tachyon_core.generator_routes");
 
 let ctx = {
     outbounds: generator_outbounds,
@@ -506,7 +506,7 @@ let cached_sb_version_banner = null;
 // and lx needs a runtime that may be absent. Everyone else is asked directly, and
 // the file is refreshed from the answer so it stops being stale.
 function sing_box_live_version_probe_disabled() {
-    let marker_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let marker_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let marker = trim(fs.readfile(marker_file) || "");
     return marker == "extended-compressed" || marker == "lx";
 }
@@ -521,7 +521,7 @@ function detect_sing_box_version() {
         return cached_sb_version;
     }
 
-    let state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    let state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
 
     if (sing_box_live_version_probe_disabled()) {
         let recorded = trim(fs.readfile(state_file) || "");
@@ -541,7 +541,7 @@ function detect_sing_box_version() {
 // router is not left waiting. Two prefixes are tried because an earlier one may be
 // absent from PATH.
 try {
-    let bases = [ "sing-box", "/usr/bin/sing-box" ];
+    let bases = [ "sing-box", "/usr/bin/tachyon-core" ];
     let preflight = getenv("SB_PREFLIGHT_BINARY");
     if (preflight && preflight != "")
         unshift(bases, preflight);
@@ -590,7 +590,7 @@ try {
 // `sing-box check` refuses the whole file over one of them.
 // Does the binary on disk name itself as our core?
 //
-// Installed as /usr/bin/sing-box the core answers in the legacy shape, "sing-box
+// Installed as /usr/bin/tachyon-core the core answers in the legacy shape, "sing-box
 // version v0.0.1-tachyon.0", and the suffix alone settles it. Run under its own
 // name it answers "tachyon-core 0.0.1" instead - a bare number carrying no fork
 // suffix, indistinguishable from a stock build of the same version - and then the
@@ -613,7 +613,7 @@ function sing_box_banner_names_tachyon_core() {
     }
     if (cached_sb_version_banner == null) {
         let banner = "";
-        for (let base in [ "sing-box", "/usr/bin/sing-box" ]) {
+        for (let base in [ "sing-box", "/usr/bin/tachyon-core" ]) {
             let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
             if (pipe) {
                 banner = as_string(pipe.read("all"));
@@ -722,7 +722,7 @@ function is_tachyon_core_version(sb_version_val) {
     // A recorded variant in state file (including SB_VARIANT_STATE_FILE during pre-flight)
     // is explicit evidence: if set to anything other than tachyon-core (e.g. lx, extended),
     // this is not tachyon-core.
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let recorded_variant = trim(as_string(fs.readfile(sb_variant_file) || ""));
     if (recorded_variant != "")
         return recorded_variant == "tachyon-core";
@@ -792,7 +792,7 @@ function is_sing_box_lx_detected(sb_version_val) {
     let s = as_string(sb_version_val);
     if (s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0)
         return true;
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
     return sb_variant_val == "lx" || sb_variant_val == "sing-box-lx";
 }
@@ -846,7 +846,7 @@ function is_certificate_sha256_supported(sb_version_val) {
     return certificate_pin_field(sb_version_val) != "";
 }
 
-const VERBOSE_LOG_PATH = "/tmp/sing-box/sing-box.log";
+const VERBOSE_LOG_PATH = "/tmp/tachyon-core/sing-box.log";
 
 function singbox_log_section(log_level, sb_version_val) {
     if (log_level == "panic" && is_tachyon_core_detected(sb_version_val))
@@ -881,10 +881,12 @@ function base_config(settings, service_address, runtime_context) {
     // next packet for that address die with "missing fakeip record". Only the
     // client could repair the mismatch, and it will not. Both routers checked
     // run /usr/share/sing-box/cache.db, so this also matches what is deployed.
-    let cache_path = option(settings, "cache_path", "/usr/share/sing-box/cache.db");
-    if (turbo_cache && (cache_path == "" || cache_path == "/usr/share/sing-box/cache.db" ||
+    let cache_path = option(settings, "cache_path", "/usr/share/tachyon-core/cache.db");
+    if (turbo_cache && (cache_path == "" || cache_path == "/usr/share/tachyon-core/cache.db" ||
+                        cache_path == "/usr/share/sing-box/cache.db" ||
+                        cache_path == "/tmp/tachyon-core/cache.db" ||
                         cache_path == "/tmp/sing-box/cache.db"))
-        cache_path = "/etc/sing-box/cache.db";
+        cache_path = "/etc/tachyon-core/cache.db";
 
     // Say it out loud rather than degrading quietly: a deliberately volatile
     // cache is a legitimate choice, it just has a cost the user has to know.
@@ -2195,6 +2197,6 @@ else if (mode == "strip-cert-pins") {
     }
 }
 else {
-    warn("Usage: singbox/generator.uc <operation> ...\n");
+    warn("Usage: tachyon_core/generator.uc <operation> ...\n");
     exit(1);
 }

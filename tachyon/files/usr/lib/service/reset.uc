@@ -39,8 +39,8 @@ const INIT_PATH = env("TACHYON_SERVICE_INIT", "/etc/init.d/" + CONFIG_NAME);
 const CONFIG_PATH = env("TACHYON_CONFIG_PATH", "/etc/config/" + CONFIG_NAME);
 const PERSISTENT_DIR = env("TACHYON_PERSISTENT_DIR", "/etc/" + CONFIG_NAME);
 const RUNTIME_STATE_DIR = env("TACHYON_RUNTIME_STATE_DIR", "/var/run/" + CONFIG_NAME);
-const SING_BOX_TMP_DIR = env("TACHYON_SING_BOX_TMP_DIR", "/tmp/sing-box");
-const SING_BOX_CONFIG_PATH = env("TACHYON_SING_BOX_CONFIG_PATH", "/etc/sing-box/config.json");
+const SING_BOX_TMP_DIR = env("TACHYON_SING_BOX_TMP_DIR", "/tmp/tachyon-core");
+const SING_BOX_CONFIG_PATH = env("TACHYON_SING_BOX_CONFIG_PATH", "/etc/tachyon-core/config.json");
 
 const PRESERVED_PERSISTENT_ENTRIES = {
     tailscale: 1

@@ -1,8 +1,8 @@
 // Run: ucode -L /usr/lib/tachyon /tmp/test-tachyon-awg-labels.uc
 // Synthetic name/keys and documentation IP only; no UCI writes or network.
 let wg = require('subscription.wireguard');
-let gen = require('singbox.generator_outbounds');
-let subscription = require('singbox.subscription');
+let gen = require('tachyon_core.generator_outbounds');
+let subscription = require('tachyon_core.subscription');
 gen.init({runtime_generate_unsupported: message => assert(false, message)});
 let bytes=''; for (let i=1; i<=32; i++) bytes+=chr(i);
 let key=b64enc(bytes);

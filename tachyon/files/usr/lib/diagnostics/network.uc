@@ -10,7 +10,7 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NA
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || constants.SB_TPROXY_INBOUND6_ADDRESS || "::1";
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/singbox/runtime.uc";
+const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;

@@ -12,12 +12,12 @@ SYSINFO_UC="$TACHYON_LIB/diagnostics/runtime.uc"
 UI_UC="$TACHYON_LIB/service/ui.uc"
 
 make_binary() {
-  cat >"$WORK_DIR/sing-box" <<SH
+  cat >"$WORK_DIR/tachyon-core" <<SH
 #!/bin/sh
 printf 'sing-box version $1\n\n'
 printf 'Tags: with_quic,with_tailscale\n'
 SH
-  chmod 0755 "$WORK_DIR/sing-box"
+  chmod 0755 "$WORK_DIR/tachyon-core"
 }
 
 json_int() {
@@ -30,9 +30,9 @@ json_str() {
 
 system_info() {
   TACHYON_LIB="$TACHYON_LIB" \
-  SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-  SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/sing-box" \
+  SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
+  SB_VERSION_STATE_FILE="$WORK_DIR/tachyon-core-version" \
+  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/tachyon-core" \
   TACHYON_SYSTEM_INFO_CACHE_FILE="$WORK_DIR/system-info.json" \
   TACHYON_SYSTEM_INFO_CACHE_TTL=0 \
   TACHYON_CONFIG_NAME=tachyon-tachyon-core-flags-test \
@@ -41,9 +41,9 @@ system_info() {
 
 check_sing_box_json() {
   TACHYON_LIB="$TACHYON_LIB" \
-  SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-  SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/sing-box" \
+  SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
+  SB_VERSION_STATE_FILE="$WORK_DIR/tachyon-core-version" \
+  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/tachyon-core" \
   TACHYON_CONFIG_NAME=tachyon-tachyon-core-flags-test \
     ucode -L "$TACHYON_LIB" "$SYSINFO_UC" check-sing-box
 }
@@ -53,19 +53,19 @@ ui_capabilities() {
   TACHYON_CONFIG_NAME=tachyon-tachyon-core-flags-test \
   TACHYON_UI_STATE_DIR="$WORK_DIR/state" \
   TACHYON_UI_SING_BOX_VERSION_CACHE_FILE="$WORK_DIR/sb-version-cache" \
-  TACHYON_UI_SING_BOX_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-  TACHYON_UI_SING_BOX_BIN_PATH="$WORK_DIR/sing-box" \
+  TACHYON_UI_SING_BOX_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
+  TACHYON_UI_SING_BOX_BIN_PATH="$WORK_DIR/tachyon-core" \
   ZAPRET_PROVIDER_NFQWS_BIN="$WORK_DIR/missing-nfqws" \
   ZAPRET2_PROVIDER_NFQWS2_BIN="$WORK_DIR/missing-nfqws2" \
   BYEDPI_BIN="$WORK_DIR/missing-ciadpi" \
     ucode -L "$TACHYON_LIB" "$UI_UC" get-ui-capabilities
 }
 
-rm -f "$WORK_DIR/sing-box-version"
+rm -f "$WORK_DIR/tachyon-core-version"
 
 # 1. Manual copy without a marker, stale "tiny" marker from a replaced binary:
 #    the version suffix must win and the binary must not be labeled tiny.
-printf 'tiny\n' >"$WORK_DIR/sing-box-variant"
+printf 'tiny\n' >"$WORK_DIR/tachyon-core-variant"
 make_binary 'v0.0.1-tachyon.0'
 info="$(PATH="$WORK_DIR:$PATH" system_info)"
 [ "$(json_int "$info" sing_box_tachyon_core)" = "1" ] ||
@@ -84,7 +84,7 @@ esac
 
 # 2. Tailscale and FPTN are compiled into the core itself, so both flags
 #    follow it without any build-tag probing.
-rm -f "$WORK_DIR/sing-box-variant"
+rm -f "$WORK_DIR/tachyon-core-variant"
 make_binary 'v0.0.1-tachyon.0'
 rm -f "$WORK_DIR/system-info.json"
 info="$(PATH="$WORK_DIR:$PATH" system_info)"
@@ -95,7 +95,7 @@ info="$(PATH="$WORK_DIR:$PATH" system_info)"
 
 # 3. The installer-written marker is the authority even over a version string
 #    that has no suffix.
-printf 'tachyon-core\n' >"$WORK_DIR/sing-box-variant"
+printf 'tachyon-core\n' >"$WORK_DIR/tachyon-core-variant"
 make_binary 'v0.0.1-tachyon.0'
 rm -f "$WORK_DIR/system-info.json"
 info="$(PATH="$WORK_DIR:$PATH" system_info)"
@@ -104,7 +104,7 @@ info="$(PATH="$WORK_DIR:$PATH" system_info)"
 
 # 4. The check must not run tachyon-core's own 0.x number through the upstream
 #    1.12.4 gate - that gate used to mark a healthy core as incompatible.
-rm -f "$WORK_DIR/sing-box-variant"
+rm -f "$WORK_DIR/tachyon-core-variant"
 check="$(PATH="$WORK_DIR:$PATH" check_sing_box_json)"
 [ "$(json_int "$check" sing_box_version_ok)" = "1" ] ||
   fail "tachyon-core version must pass the compatibility check"
@@ -114,7 +114,7 @@ check="$(PATH="$WORK_DIR:$PATH" check_sing_box_json)"
   fail "the check must not flag tachyon-core as an extended fork"
 
 # 5. The ui capabilities feed the diagnostics tab and must agree.
-printf 'tiny\n' >"$WORK_DIR/sing-box-variant"
+printf 'tiny\n' >"$WORK_DIR/tachyon-core-variant"
 make_binary 'v0.0.1-tachyon.0'
 caps="$(ui_capabilities)"
 [ "$(json_int "$caps" sing_box_tachyon_core)" = "1" ] ||
@@ -127,7 +127,7 @@ caps="$(ui_capabilities)"
   fail "ui capabilities must flag fptn for tachyon-core"
 
 # 6. A stock stable build must never pick up the new flags.
-rm -f "$WORK_DIR/sing-box-variant"
+rm -f "$WORK_DIR/tachyon-core-variant"
 make_binary '1.13.21'
 rm -f "$WORK_DIR/system-info.json"
 info="$(PATH="$WORK_DIR:$PATH" system_info)"

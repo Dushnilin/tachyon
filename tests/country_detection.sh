@@ -46,7 +46,7 @@ SH
 chmod +x "$WORK_DIR/bin/curl"
 
 cat >"$WORK_DIR/runner.uc" <<'UCODE'
-let country = require("singbox.country");
+let country = require("tachyon_core.country");
 
 function fail(message) {
     die(message + "\n");

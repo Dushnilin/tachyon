@@ -9,7 +9,7 @@ let rule_config = require("config.rule");
 let domain_config = require("config.domain");
 let connections = require("config.connections");
 let routing_rulesets = require("routing.rulesets");
-let runtime_constants = require("singbox.constants");
+let runtime_constants = require("tachyon_core.constants");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const DNS_BLOCK_PORT = int(getenv("SB_DNS_BLOCK_INBOUND_PORT") || runtime_constants.DNS_BLOCK_INBOUND_PORT);
 const DNS_BLOCK_TARGET = ":" + DNS_BLOCK_PORT;
@@ -732,9 +732,9 @@ function section_has_subnet_update_sources(section) {
     return has_community ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
         length(list_option(section, "domain_ip_lists")) > 0 ||
-        helpers.file_is_usable("/tmp/sing-box/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
+        helpers.file_is_usable("/tmp/tachyon-core/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
         helpers.file_is_usable("/etc/tachyon/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
-        helpers.file_is_usable("/tmp/sing-box/rulesets/" + sec_name + "-remote-subnets-ruleset.json", 10) ||
+        helpers.file_is_usable("/tmp/tachyon-core/rulesets/" + sec_name + "-remote-subnets-ruleset.json", 10) ||
         helpers.file_is_usable("/etc/tachyon/rulesets/" + sec_name + "-remote-subnets-ruleset.json", 10);
 }
 
@@ -3202,7 +3202,7 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
         if (!rule_config.community_service_has_subnet_list(service)) continue;
 
         let candidates = [
-            "/tmp/sing-box/rulesets/community-subnets-" + service + ".lst",
+            "/tmp/tachyon-core/rulesets/community-subnets-" + service + ".lst",
             "/etc/tachyon/rulesets/community-subnets-" + service + ".lst"
         ];
 
@@ -3306,11 +3306,11 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
             }
         }
         let list_json_candidates = [
-            "/tmp/sing-box/rulesets/" + sec_name + "-lists-ruleset.json",
+            "/tmp/tachyon-core/rulesets/" + sec_name + "-lists-ruleset.json",
             "/etc/tachyon/rulesets/" + sec_name + "-lists-ruleset.json",
-            "/tmp/sing-box/rulesets/" + sec_name + "-remote-subnets-ruleset.json",
+            "/tmp/tachyon-core/rulesets/" + sec_name + "-remote-subnets-ruleset.json",
             "/etc/tachyon/rulesets/" + sec_name + "-remote-subnets-ruleset.json",
-            "/tmp/sing-box/rulesets/lists-" + sec_name + ".json",
+            "/tmp/tachyon-core/rulesets/lists-" + sec_name + ".json",
             "/etc/tachyon/rulesets/lists-" + sec_name + ".json"
         ];
         let processed_list_paths = {};
@@ -3349,9 +3349,9 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
             ref = as_string(ref);
             if (ref == "") continue;
             let check_paths = (substr(ref, 0, 1) == "/") ? [ ref ] : [
-                "/tmp/sing-box/rulesets/community-subnets-" + ref + ".lst",
+                "/tmp/tachyon-core/rulesets/community-subnets-" + ref + ".lst",
                 "/etc/tachyon/rulesets/community-subnets-" + ref + ".lst",
-                "/tmp/sing-box/rulesets/custom-" + sec_name + ".json",
+                "/tmp/tachyon-core/rulesets/custom-" + sec_name + ".json",
                 "/etc/tachyon/rulesets/custom-" + sec_name + ".json"
             ];
             for (let jpath in check_paths) {

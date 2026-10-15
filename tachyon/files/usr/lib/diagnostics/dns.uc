@@ -4,7 +4,7 @@ let fs = require("fs");
 let constants = require("core.constants");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
-let runtime_dns = require("singbox.dns");
+let runtime_dns = require("tachyon_core.dns");
 let common = require("core.common");
 let network_mod = require("diagnostics.network");
 
@@ -15,7 +15,7 @@ const STEER_DNS_ADDRESS = getenv("STEER_DNS_ADDRESS") || "127.0.0.1";
 const STEER_DNS_PORT = getenv("STEER_DNS_PORT") || "5300";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/singbox/runtime.uc";
+const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
 
 let as_string = common.as_string;

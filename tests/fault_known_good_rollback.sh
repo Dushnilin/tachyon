@@ -150,7 +150,7 @@ grep -qiE '^error=.*(fail|restore)' <<< "$out" \
   || fail "a failed rollback still modified the active config"
 
 # --- the variant marker is restored too, to where it belongs ---------------
-# This one was hardcoded to /etc/tachyon/sing-box-variant while every other path
+# This one was hardcoded to /etc/tachyon/tachyon-core-variant while every other path
 # in the module was overridable, so a rollback wrote outside the directory it
 # was told to use - and the module could not be exercised without touching the
 # real /etc.
@@ -164,7 +164,7 @@ printf("ok=%s\n", r.ok ? "yes" : "no");
 [ "$(field "$out" ok)" = "yes" ] || fail "rollback failed while restoring the variant marker: $out"
 [ -f "$WORK_DIR/sing-box-variant" ] || fail "the variant marker was not restored to the configured path"
 grep -q '^lx$' "$WORK_DIR/sing-box-variant" || fail "the wrong variant marker was restored: $(cat "$WORK_DIR/sing-box-variant")"
-[ -e /etc/tachyon/sing-box-variant ] \
+[ -e /etc/tachyon/tachyon-core-variant ] \
   && fail "rollback wrote the variant marker to the hardcoded /etc path instead of the configured one"
 
 printf 'fault: known good rollback checks passed\n'

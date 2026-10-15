@@ -7,7 +7,7 @@ if [ -d "$ROOT_DIR/tachyon/files/usr/lib" ]; then
 else
   TACHYON_LIB="/usr/lib/tachyon"
 fi
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 PARSER_UC="$TACHYON_LIB/subscription/parser.uc"
 
 # 1. Test subscription/parser.uc share-link-outbound for VLESS with various packetEncoding casing

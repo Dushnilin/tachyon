@@ -24,14 +24,14 @@ COMMON_UC="$LIB_DIR/core/common.uc"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # --- contract: the installer must not read the binary into the heap ----------
-# The rollback backup of /usr/bin/sing-box is the one copy in the install path
+# The rollback backup of /usr/bin/tachyon-core is the one copy in the install path
 # whose payload is the binary itself. It has to go through the streaming helper;
 # a plain copy_file() there is the OOM, whatever the rest of the function does.
-grep -q 'copy_file_stream("/usr/bin/sing-box"' "$ACTION_UC" ||
+grep -q 'copy_file_stream("/usr/bin/tachyon-core"' "$ACTION_UC" ||
   fail "install_tachyon_core no longer backs up the old core through copy_file_stream, so a big binary returns to the ucode heap"
 
-if grep -n 'copy_file("/usr/bin/sing-box"' "$ACTION_UC" >/dev/null; then
-  fail "install_tachyon_core still copies /usr/bin/sing-box with copy_file(), which reads the whole binary into memory (issue #124)"
+if grep -n 'copy_file("/usr/bin/tachyon-core"' "$ACTION_UC" >/dev/null; then
+  fail "install_tachyon_core still copies /usr/bin/tachyon-core with copy_file(), which reads the whole binary into memory (issue #124)"
 fi
 
 # The helper must exist and be reachable the way the installer uses it.

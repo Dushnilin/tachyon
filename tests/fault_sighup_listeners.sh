@@ -21,45 +21,45 @@ UCODE_BIN="$(command -v ucode)"
 
 DEAD_PORT=45999
 mkdir -p "$WORK_DIR/bin"
-cp /bin/sleep "$WORK_DIR/bin/sing-box"
+cp /bin/sleep "$WORK_DIR/bin/tachyon-core"
 
 cleanup_extra() {
   [ -n "${FAKE_PID:-}" ] && kill "$FAKE_PID" 2>/dev/null
-  release_sing_box_proc_lock
+  release_core_proc_lock
   return 0
 }
 trap 'cleanup_extra; cleanup' EXIT
 
-# fault_verify_system_dead_engine.sh asserts that no process called sing-box is
+# fault_verify_system_dead_engine.sh asserts that no process called tachyon-core is
 # running, which this stand-in violates by construction.
-acquire_sing_box_proc_lock
+acquire_core_proc_lock
 
-# A stand-in that is a sing-box to process_identity (exe basename and comm are
-# both "sing-box") but survives the SIGHUP it is sent. Without the trap the
+# A stand-in that is the core to process_identity (exe basename and comm are
+# both "tachyon-core") but survives the SIGHUP it is sent. Without the trap the
 # process would die on HUP and every assertion below would pass for the wrong
 # reason - the pid check, not the listener check, would have decided.
-( trap '' HUP; exec "$WORK_DIR/bin/sing-box" 120 ) &
+( trap '' HUP; exec "$WORK_DIR/bin/tachyon-core" 120 ) &
 FAKE_PID=$!
 sleep 1
-[ "$(cat "/proc/$FAKE_PID/comm" 2>/dev/null)" = "sing-box" ] ||
-  fail "fake sing-box is not identifiable as sing-box (comm mismatch)"
-kill -0 "$FAKE_PID" 2>/dev/null || fail "fake sing-box did not start"
+[ "$(cat "/proc/$FAKE_PID/comm" 2>/dev/null)" = "tachyon-core" ] ||
+  fail "fake core is not identifiable as the core (comm mismatch)"
+kill -0 "$FAKE_PID" 2>/dev/null || fail "fake core did not start"
 
 write_config() {
-  cat >"$WORK_DIR/sing-box.json" <<JSON
+  cat >"$WORK_DIR/tachyon-core.json" <<JSON
 {
   "inbounds": $1,
   "outbounds": []
 }
 JSON
-  printf 'tachyon.settings.config_path=%s\n' "$WORK_DIR/sing-box.json" \
+  printf 'tachyon.settings.config_path=%s\n' "$WORK_DIR/tachyon-core.json" \
     >"$WORK_DIR/uci.state"
 }
 
 sighup_rc() {
   set +e
   TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
-    "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-sing-box-runtime "$FAKE_PID" \
+    "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$FAKE_PID" \
     >/dev/null 2>&1
   local rc=$?
   set -e

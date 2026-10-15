@@ -36,9 +36,9 @@ if state_ucode list-has-remote-references "local.lst /tmp/list.txt" >/dev/null 2
   fail "local-only references should not be remote"
 fi
 
-state_ucode list-has-remote-sing-box-rulesets "https://example.com/rules.srs" >/dev/null ||
+state_ucode list-has-remote-core-rulesets "https://example.com/rules.srs" >/dev/null ||
   fail "remote sing-box ruleset should be detected"
-if state_ucode list-has-remote-sing-box-rulesets "/tmp/rules.srs" >/dev/null 2>&1; then
+if state_ucode list-has-remote-core-rulesets "/tmp/rules.srs" >/dev/null 2>&1; then
   fail "local sing-box ruleset should not be remote"
 fi
 
@@ -159,10 +159,10 @@ chmod 0755 "$WORK_DIR/stable-start-bin/ubus" "$WORK_DIR/stable-start-bin/nft" "$
 
 "$WORK_DIR/stable-start-bin/sing-box" -e "system('sleep 30')" &
 sing_box_pid=$!
-printf '%s\n' "$sing_box_pid" >"$WORK_DIR/sing-box.pid"
+printf '%s\n' "$sing_box_pid" >"$WORK_DIR/tachyon-core.pid"
 if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
   REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+  SING_BOX_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
   state_ucode sing-box-service-running; then
   kill "$sing_box_pid" >/dev/null 2>&1 || true
   wait "$sing_box_pid" 2>/dev/null || true
@@ -170,7 +170,7 @@ if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
 fi
 if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
   REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+  SING_BOX_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
   state_ucode tachyon-running tachyon TachyonTable 0x00100000; then
   kill "$sing_box_pid" >/dev/null 2>&1 || true
   wait "$sing_box_pid" 2>/dev/null || true
@@ -178,7 +178,7 @@ if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
 fi
 if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
   REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+  SING_BOX_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
   state_ucode wait-tachyon-stable-start tachyon TachyonTable 0x00100000 2 2; then
   kill "$sing_box_pid" >/dev/null 2>&1 || true
   wait "$sing_box_pid" 2>/dev/null || true
@@ -422,7 +422,7 @@ assert_eq "$(md5_file "$WORK_DIR/service-trigger-default-delay.expected")" \
   "$(state_ucode service-trigger-signature-fixture "$WORK_DIR/service-trigger-default-delay.json")" \
   "default badwan reload delay signature hash"
 
-cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
+cat >"$WORK_DIR/tachyon-core-signature.json" <<'JSON'
 {
   "settings": {
     "dns_type": "tcp",
@@ -435,7 +435,7 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
     "list_update_enabled": "1",
     "update_interval": "2h",
     "cache_path": "/tmp/cache.db",
-    "config_path": "/etc/sing-box/custom.json",
+    "config_path": "/etc/tachyon-core/custom.json",
     "log_level": "debug",
     "service_listen_address": "127.0.0.1",
     "enable_yacd": "yes",
@@ -574,7 +574,7 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
 }
 JSON
 
-cat >"$WORK_DIR/sing-box-signature.expected" <<'EOF_SING_BOX_SIG'
+cat >"$WORK_DIR/tachyon-core-signature.expected" <<'EOF_SING_BOX_SIG'
 [settings.dns_type]
 tcp
 [settings.dns_strategy]
@@ -610,7 +610,7 @@ tunneled
 [settings.cache_path]
 /tmp/cache.db
 [settings.config_path]
-/etc/sing-box/custom.json
+/etc/tachyon-core/custom.json
 [settings.log_level]
 debug
 [settings.service_listen_address]
@@ -1059,8 +1059,8 @@ singbox
 
 EOF_SING_BOX_SIG
 
-assert_eq "$(md5_file "$WORK_DIR/sing-box-signature.expected")" \
-  "$(state_ucode sing-box-signature-fixture "$WORK_DIR/sing-box-signature.json")" \
+assert_eq "$(md5_file "$WORK_DIR/tachyon-core-signature.expected")" \
+  "$(state_ucode sing-box-signature-fixture "$WORK_DIR/tachyon-core-signature.json")" \
   "sing-box signature hash"
 
 cat >"$WORK_DIR/dpi-signatures.json" <<'JSON'

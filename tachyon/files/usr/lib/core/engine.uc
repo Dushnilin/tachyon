@@ -15,7 +15,7 @@
 //     switch back restores them
 //
 // It owns no process and no nftables: service/engine_runtime.uc starts and
-// stops the selected engine, and the generators (singbox/generator.uc,
+// stops the selected engine, and the generators (tachyon_core/generator.uc,
 // steer/generator.uc) turn the internal state into each engine's format.
 //
 
@@ -29,10 +29,14 @@ let command_output_from_args = common.command_output_from_args;
 let file_exists = common.file_exists;
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const DEFAULT_ENGINE = "sing-box";
+const DEFAULT_ENGINE = "tachyon-core";
 
 // Engine ids. These are stored in UCI (settings.engine) and must stay stable.
-const ENGINE_SING_BOX = "sing-box";
+const ENGINE_TACHYON_CORE = "tachyon-core";
+// Engine ids are stored in UCI (settings.engine). A config written before the
+// rename still says "sing-box"; it is normalized to the new id instead of
+// falling back to the default, so an upgrade does not silently switch engines.
+const ENGINE_SING_BOX_LEGACY = "sing-box";
 const ENGINE_STEER = "steer";
 const ENGINE_STEER_EXTENDED = "steer-extended";
 
@@ -47,27 +51,30 @@ const OPT_ENGINE_PREVIOUS = "engine_previous";
 // cannot be reached on a machine without steer.
 const ENGINE_STEER_BINARY = getenv("TACHYON_STEER_BINARY") || "/usr/sbin/steer";
 const ENGINE_BINARIES = {
-    "sing-box": "/usr/bin/sing-box",
+    "tachyon-core": "/usr/bin/tachyon-core",
     "steer": ENGINE_STEER_BINARY,
     "steer-extended": ENGINE_STEER_BINARY,
 };
 
 const ENGINE_INIT = {
-    "sing-box": "/etc/init.d/sing-box",
+    "tachyon-core": "/etc/init.d/tachyon-core",
     "steer": "/etc/init.d/steer",
     "steer-extended": "/etc/init.d/steer",
 };
 
 const ENGINE_PACKAGES = {
-    "sing-box": "sing-box",
+    // The core is shipped by the tachyon package itself; the upstream Go
+    // sing-box packages stay out of this registry now that they are not an
+    // engine we drive.
+    "tachyon-core": "tachyon",
     "steer": "steer",
     "steer-extended": "steer-extended",
 };
 
-// Config paths. sing-box keeps its generated runtime under /etc/sing-box;
+// Config paths. sing-box keeps its generated runtime under /etc/tachyon-core;
 // steer keeps its spec and state under /etc/steer and /var/lib/steer.
 const ENGINE_CONFIG = {
-    "sing-box": "/etc/sing-box/config.json",
+    "tachyon-core": "/etc/tachyon-core/config.json",
     "steer": "/etc/steer/spec.json",
     "steer-extended": "/etc/steer/spec.json",
 };
@@ -155,7 +162,10 @@ const STEER_KEEP_PATHS = [
 // migration layer; keep them stable.
 
 const CAPABILITIES = {
-    "sing-box": [
+    // The core's capability list is the protocol matrix: every protocol,
+    // transport and DNS feature Tachyon can drive through it. Renaming the
+    // engine key must not drop a single entry.
+    "tachyon-core": [
         "sections.outbound",
         "sections.subscription",
         "sections.provider",
@@ -221,7 +231,7 @@ const CAPABILITIES = {
 };
 
 function known_engines() {
-    return [ ENGINE_SING_BOX, ENGINE_STEER, ENGINE_STEER_EXTENDED ];
+    return [ ENGINE_TACHYON_CORE, ENGINE_STEER, ENGINE_STEER_EXTENDED ];
 }
 
 function engine_is_known(engine) {
@@ -406,6 +416,9 @@ function detect_all() {
 
 function normalize_engine(value) {
     value = as_string(value);
+    // a config written before the rename
+    if (value == ENGINE_SING_BOX_LEGACY)
+        return ENGINE_TACHYON_CORE;
     if (!engine_is_known(value))
         return DEFAULT_ENGINE;
     return value;
@@ -472,7 +485,8 @@ function plan_switch(target, features) {
 
 function module_exports() {
     return {
-        ENGINE_SING_BOX,
+        ENGINE_TACHYON_CORE,
+    ENGINE_SING_BOX_LEGACY,
         ENGINE_STEER,
         ENGINE_STEER_EXTENDED,
         DEFAULT_ENGINE,

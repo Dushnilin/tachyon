@@ -2,7 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 NFT_RUNTIME="$TACHYON_LIB/nft/apply.uc"
 VALIDATOR_RUNTIME="$TACHYON_LIB/config/validator.uc"
 NFT_LOG="$WORK_DIR/nft.log"
@@ -40,7 +40,7 @@ cat >"$WORK_DIR/fixture_always_on.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -95,7 +95,7 @@ cat >"$WORK_DIR/fixture_allow.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -136,7 +136,7 @@ cat >"$WORK_DIR/fixture_mac.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -327,7 +327,7 @@ cat >"$WORK_DIR/fixture_profile_safesearch.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
@@ -372,7 +372,7 @@ cat >"$WORK_DIR/fixture_quota_domains.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_path": "/tmp/sing-box/config.json",
+    "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },

@@ -102,13 +102,13 @@ if ! "$DOCKER_BIN" image inspect "$TEST_IMAGE:latest" >/dev/null 2>&1; then
 
   echo "=== Installing official sing-box 1.12.0 binary ==="
   for i in 1 2 3; do
-    "$DOCKER_BIN" exec "$TEMP_CONTAINER" curl -sSL -o /tmp/sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.12.0/sing-box-1.12.0-linux-amd64.tar.gz && break || sleep 5
+    "$DOCKER_BIN" exec "$TEMP_CONTAINER" curl -sSL -o /tmp/tachyon-core.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.12.0/sing-box-1.12.0-linux-amd64.tar.gz && break || sleep 5
   done
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" tar -zxf /tmp/sing-box.tar.gz -C /tmp
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/sing-box-1.12.0-linux-amd64/sing-box /usr/sbin/sing-box
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/sing-box-1.12.0-linux-amd64/sing-box /usr/bin/sing-box
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" chmod +x /usr/sbin/sing-box /usr/bin/sing-box
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" rm -rf /tmp/sing-box.tar.gz /tmp/sing-box-1.12.0-linux-amd64
+  "$DOCKER_BIN" exec "$TEMP_CONTAINER" tar -zxf /tmp/tachyon-core.tar.gz -C /tmp
+  "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/tachyon-core-1.12.0-linux-amd64/sing-box /usr/sbin/sing-box
+  "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/tachyon-core-1.12.0-linux-amd64/sing-box /usr/bin/tachyon-core
+  "$DOCKER_BIN" exec "$TEMP_CONTAINER" chmod +x /usr/sbin/sing-box /usr/bin/tachyon-core
+  "$DOCKER_BIN" exec "$TEMP_CONTAINER" rm -rf /tmp/tachyon-core.tar.gz /tmp/tachyon-core-1.12.0-linux-amd64
 
   "$DOCKER_BIN" commit "$TEMP_CONTAINER" "$TEST_IMAGE:latest"
   "$DOCKER_BIN" rm -f "$TEMP_CONTAINER"
@@ -167,8 +167,8 @@ echo "=== Configuring Tachyon ==="
 "$DOCKER_BIN" exec "$CONTAINER_NAME" uci commit tachyon
 
 echo "=== Starting services ==="
-timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/sing-box enable
-timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/sing-box start
+timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon-core enable
+timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon-core start
 timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon enable
 timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon start
 

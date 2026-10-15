@@ -38,7 +38,7 @@ ok
 # 2. ...and before sing-box, the same order the reload path documents: tailnet
 # routes must exist from the first packet, not after policy routing is live.
 tailscale_line="$(grep -nF 'TAILSCALE_UC, [ "start-runtime" ]' <<<"$start_main_body" | head -1 | cut -d: -f1)"
-singbox_line="$(grep -nF '/etc/init.d/sing-box", "start"' <<<"$start_main_body" | head -1 | cut -d: -f1)"
+singbox_line="$(grep -nF '/etc/init.d/tachyon-core", "start"' <<<"$start_main_body" | head -1 | cut -d: -f1)"
 [ -n "$tailscale_line" ] && [ -n "$singbox_line" ] ||
   fail "could not locate the tailscale/sing-box start lines in start_main()"
 if [ "$tailscale_line" -ge "$singbox_line" ]; then

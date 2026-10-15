@@ -12,7 +12,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-RULESETS_UC="$TACHYON_LIB/singbox/rulesets.uc"
+RULESETS_UC="$TACHYON_LIB/tachyon_core/rulesets.uc"
 [ -f "$RULESETS_UC" ] || fail "missing $RULESETS_UC"
 
 STUB_BIN="$WORK_DIR/bin"
@@ -166,7 +166,7 @@ adopt "$WORK_DIR/truncated.srs" no "second adopt of a truncated list"
 # config is refused outright, which is what left the router unable to apply
 # anything. Falling through to the remote url lets sing-box fetch the list itself,
 # which is the recovery the reporter was missing.
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 [ -f "$GENERATOR_UC" ] || fail "missing $GENERATOR_UC"
 
 # The fixture entry point redirects the built-in list folder next to its output

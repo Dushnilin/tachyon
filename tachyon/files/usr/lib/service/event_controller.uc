@@ -53,7 +53,7 @@ let is_process_name_running = helpers.is_process_name_running;
 // Every fact the controller can publish. Subscribers reference these constants
 // rather than bare strings so a typo is a load-time error, not silent silence.
 const EV = {
-    SINGBOX_STOPPED:        "singbox.stopped",
+    CORE_STOPPED:        "core.stopped",
     FIREWALL_RELOADED:      "firewall.reloaded",
     OOM_DETECTED:           "oom.detected",
     OOM_RECOVERABLE:        "oom.recoverable",
@@ -167,7 +167,7 @@ function sing_box_in_proc() {
         if (match(entry, /^[0-9]+$/)) {
             let exe = fs.readlink("/proc/" + entry + "/exe") || "";
             let slash = rindex(exe, "/");
-            if ((slash >= 0 ? substr(exe, slash + 1) : exe) == "sing-box") {
+            if ((slash >= 0 ? substr(exe, slash + 1) : exe) == "tachyon-core") {
                 pid = entry;
                 break;
             }
@@ -223,7 +223,7 @@ function is_reload_in_progress() {
 let sb_config_parse_reported = false;
 
 function parse_singbox_config() {
-    let data = fs.readfile("/etc/sing-box/config.json");
+    let data = fs.readfile("/etc/tachyon-core/config.json");
     if (data == null)
         return null;
 
@@ -234,7 +234,7 @@ function parse_singbox_config() {
         if (!sb_config_parse_reported) {
             sb_config_parse_reported = true;
             command_success_from_args([ "logger", "-t", "tachyon",
-                "[err] Watchdog: /etc/sing-box/config.json is unparseable (" + as_string(e) +
+                "[err] Watchdog: /etc/tachyon-core/config.json is unparseable (" + as_string(e) +
                 "); falling back to default inbound ports, proxy checks may probe the wrong port" ]);
         }
         return null;
@@ -534,12 +534,12 @@ function controller(bus, opts) {
 
     // ── Push source: ubus ─────────────────────────────────────────────────────
     self.handle_ubus_service_stop = function(name, reason) {
-        let active_engine = "sing-box";
+        let active_engine = "tachyon-core";
         try {
             active_engine = require("core.engine").get_active();
         } catch (e) {}
         if (as_string(name) != active_engine) return false;
-        bus.emit(EV.SINGBOX_STOPPED, { reason: as_string(reason) });
+        bus.emit(EV.CORE_STOPPED, { reason: as_string(reason) });
         return true;
     };
 
@@ -605,11 +605,11 @@ function controller(bus, opts) {
     let cached_clash_api_info = null;
     let cached_clash_cfg_mtime = 0;
     function get_clash_api_info() {
-        let st = fs.stat("/etc/sing-box/config.json");
+        let st = fs.stat("/etc/tachyon-core/config.json");
         if (!st) return null;
         if (cached_clash_api_info && cached_clash_cfg_mtime == st.mtime)
             return cached_clash_api_info;
-        let cfg = common.read_json_file("/etc/sing-box/config.json");
+        let cfg = common.read_json_file("/etc/tachyon-core/config.json");
         let api = cfg?.experimental?.clash_api;
         if (!api?.external_controller) {
             cached_clash_api_info = null;
@@ -676,16 +676,16 @@ function controller(bus, opts) {
         if (ctx.reload_in_progress) return;
         if (ctx.list_update_running) return;
 
-        let active_engine = "sing-box";
+        let active_engine = "tachyon-core";
         try {
             active_engine = require("core.engine").get_active();
         } catch (e) {}
 
-        if (active_engine != "sing-box") {
+        if (active_engine != "tachyon-core") {
             let steer_running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ||
                                 command_success_from_args([ "pgrep", "-f", "steer" ]);
             if (!steer_running)
-                bus.emit(EV.SINGBOX_STOPPED, { reason: "steer service stopped" });
+                bus.emit(EV.CORE_STOPPED, { reason: "steer service stopped" });
             return;
         }
 
@@ -706,7 +706,7 @@ function controller(bus, opts) {
         if (!has_sections) return;
 
         if (sing_box_in_proc() == "")
-            bus.emit(EV.SINGBOX_STOPPED, { reason: "process missing from /proc" });
+            bus.emit(EV.CORE_STOPPED, { reason: "process missing from /proc" });
     }
 
     // ── Probe: proxy reachability ─────────────────────────────────────────────
@@ -827,7 +827,7 @@ function controller(bus, opts) {
             return;
         }
 
-        let active_engine = "sing-box";
+        let active_engine = "tachyon-core";
         try {
             active_engine = require("core.engine").get_active();
         } catch (e) {}
@@ -924,12 +924,12 @@ function controller(bus, opts) {
         if (ctx.list_update_running) return;
         if (ctx.reload_in_progress) return;
 
-        let active_engine = "sing-box";
+        let active_engine = "tachyon-core";
         try {
             active_engine = require("core.engine").get_active();
         } catch (e) {}
 
-        if (active_engine != "sing-box") {
+        if (active_engine != "tachyon-core") {
             let steer_nft = command_output_from_args(["sh", "-c", "nft list table inet steer 2>/dev/null; exit 0"]);
             if (index(steer_nft, "table inet steer") < 0) {
                 bus.emit(EV.NFT_MISSING, { table: "inet steer" });
@@ -963,11 +963,11 @@ function controller(bus, opts) {
         if (fs.stat("/var/run/tachyon/native_internet_restored") != null) return;
         if (ctx.reload_in_progress) return;
 
-        let active_engine = "sing-box";
+        let active_engine = "tachyon-core";
         try {
             active_engine = require("core.engine").get_active();
         } catch (e) {}
-        if (active_engine != "sing-box") return;
+        if (active_engine != "tachyon-core") return;
 
         let pid = ctx.singbox_pid;
         if (pid == "" || !ctx.singbox_running) return;

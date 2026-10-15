@@ -70,11 +70,11 @@ let ec = require("service.event_controller");
 
 let b = events.bus();
 let seen = [];
-for (let t in ["singbox.stopped", "firewall.reloaded", "honeypot.hit"])
+for (let t in ["core.stopped", "firewall.reloaded", "honeypot.hit"])
     b.on(t, function(ev) { push(seen, ev.type); }, { name: "collect" });
 
 let c = ec.controller(b, {});
-c.handle_ubus_service_stop("sing-box", "test");
+c.handle_ubus_service_stop("tachyon-core", "test");
 c.handle_ubus_firewall_reload();
 c.handle_honeypot_line("10.0.0.1");
 print(join(",", seen) + "\n");
@@ -87,7 +87,7 @@ $out"
 }
 rm -f "$driver"
 
-grep -q 'singbox.stopped' <<< "$out" \
+grep -q 'core.stopped' <<< "$out" \
   || fail "handle_ubus_service_stop published nothing (got: $out)"
 grep -q 'firewall.reloaded' <<< "$out" \
   || fail "handle_ubus_firewall_reload published nothing (got: $out)"

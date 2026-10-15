@@ -719,7 +719,7 @@ const SUPPRESSION_DEADLINE = 90;
 // subscription priority and the suppression check — and a silent drift between
 // them would either suppress nothing or suppress the cause with its own effect.
 const PRIORITY_WAN     = 10;
-const PRIORITY_SINGBOX = 20;
+const PRIORITY_CORE    = 20;
 const PRIORITY_PROXY   = 40;
 const PRIORITY_DNS     = 50;
 
@@ -980,7 +980,7 @@ function execute_reconciler_subsystem(subsystem, dry_run) {
 }
 
 // ─── Recovery watch: settling ─────────────────────────────────────────────────
-// The registration half lives above heal_singbox_stopped, its first caller.
+// The registration half lives above heal_core_stopped, its first caller.
 // Settling has to live here instead, below ai_heal_report — ucode captures a
 // closure's upvalues at creation, so a function declared above ai_heal_report
 // could not call it.
@@ -1081,7 +1081,7 @@ function is_reload_in_progress() {
 }
 
 // `force_level` pins the rung instead of consulting the ladder. Only
-// heal_singbox_stopped uses it: a process that is not running is started, not
+// heal_core_stopped uses it: a process that is not running is started, not
 // escalated over.
 function safe_proxy_restart(reason, force_level) {
     let now = time();
@@ -1119,17 +1119,17 @@ function safe_proxy_restart(reason, force_level) {
     let lock_path = shell_quote(PROXY_RESTART_LOCK);
 
     if (level == ESCALATION_LIGHT) {
-        let active_engine = "sing-box";
+        let active_engine = "tachyon-core";
         try {
             active_engine = require("core.engine").get_active();
         } catch (e) {}
 
-        let init_script = "/etc/init.d/sing-box";
+        let init_script = "/etc/init.d/tachyon-core";
         if (active_engine == "steer" || active_engine == "steer-extended") {
             init_script = "/etc/init.d/steer";
         }
 
-        if (active_engine != "sing-box") {
+        if (active_engine != "tachyon-core") {
             log_message("Restarting " + active_engine + " service only (" + reason + ")", "warn");
             bg_system(init_script + " stop >/dev/null 2>&1; " +
                 init_script + " start >/dev/null 2>&1; rm -f " + lock_path);
@@ -1138,8 +1138,8 @@ function safe_proxy_restart(reason, force_level) {
             // Sequential stop/start rather than `restart`: lifecycle.uc drives the
             // service the same way, and a stop that fails must not be followed by a
             // start that races it.
-            bg_system("/etc/init.d/sing-box stop >/dev/null 2>&1; " +
-                "/etc/init.d/sing-box start >/dev/null 2>&1; rm -f " + lock_path);
+            bg_system("/etc/init.d/tachyon-core stop >/dev/null 2>&1; " +
+                "/etc/init.d/tachyon-core start >/dev/null 2>&1; rm -f " + lock_path);
         }
     } else {
         log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
@@ -1232,7 +1232,7 @@ function execute_escalation_level(key, subsystem, reason, incident) {
 // side effects stay identical.
 
 function heal_nftables(ev) {
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try { active_engine = require("core.engine").get_active(); } catch (e) {}
     if (active_engine == "steer" || active_engine == "steer-extended") {
         ai_heal_report("nftables", "Таблица правил nftables inet steer восстановлена", "Выполнен вызов steer apply", "fixed");
@@ -1334,7 +1334,7 @@ function heal_dns_stall(ev) {
 
     controller.reset_dns_streak();
 
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     } catch (e) {}
@@ -1398,10 +1398,10 @@ function heal_proxy_connectivity(ev) {
     watch_recovery("proxy", incident, "proxy_connectivity");
 }
 
-// ─── Subnet cache restore: /etc/tachyon/rulesets/ → /tmp/sing-box/rulesets/ ──
+// ─── Subnet cache restore: /etc/tachyon/rulesets/ → /tmp/tachyon-core/rulesets/ ──
 function ai_heal_subnet_cache() {
     let etc_dir = "/etc/tachyon/rulesets";
-    let tmp_dir = "/tmp/sing-box/rulesets";
+    let tmp_dir = "/tmp/tachyon-core/rulesets";
 
     let dir = fs.opendir(etc_dir);
     if (!dir) return;
@@ -1584,9 +1584,9 @@ function heal_uci_config(ev) {
 // ─── Config validation: sing-box check ────────────────────────────────────────
 function validate_singbox_config() {
     if (settings().ai_config_validation_enabled == "0") return true;
-    let st = fs.stat("/etc/sing-box/config.json");
+    let st = fs.stat("/etc/tachyon-core/config.json");
     if (!st || st.size == 0) return false;
-    let content = fs.readfile("/etc/sing-box/config.json");
+    let content = fs.readfile("/etc/tachyon-core/config.json");
     if (!content) return false;
     try {
         let obj = json(content);
@@ -1678,7 +1678,7 @@ function heal_dns_continuous(ev) {
     if (int(ev.payload.consecutive) < 3) return;
     if (suppressed_by_root_cause("heal_dns_continuous")) return;
 
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     } catch (e) {}
@@ -1980,12 +1980,12 @@ function increment_reconnect_count() {
 // version too old; repeating its binary-variant advice here is deliberate, since
 // this is the message the user sees while the loop is running.
 function singbox_service_absent() {
-    return common.command_status_from_args([ "test", "-x", "/etc/init.d/sing-box" ]) != 0;
+    return common.command_status_from_args([ "test", "-x", "/etc/init.d/tachyon-core" ]) != 0;
 }
 
 let missing_singbox_reported_at = 0;
 
-function heal_singbox_stopped(ev) {
+function heal_core_stopped(ev) {
     let now = time();
     if (now - last_restart_time < 30) return;
     last_restart_time = now;
@@ -1993,7 +1993,7 @@ function heal_singbox_stopped(ev) {
     if (singbox_service_absent()) {
         if (now - missing_singbox_reported_at > 3600) {
             missing_singbox_reported_at = now;
-            log_message("sing-box is not installed (no /etc/init.d/sing-box). Restarting cannot fix this - install a sing-box package or reinstall the sing-box-x / sing-box-extended binary variant. Watchdog will not retry until it appears.", "error");
+            log_message("sing-box is not installed (no /etc/init.d/tachyon-core). Restarting cannot fix this - install a sing-box package or reinstall the sing-box-x / sing-box-extended binary variant. Watchdog will not retry until it appears.", "error");
             let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
             if (tcfg.notify_crash != "0") {
                 send_telegram_notification("⚠️ *Watchdog:* sing-box не установлен, перезапуск не поможет. Установите пакет sing-box или бинарный вариант sing-box-x / sing-box-extended.");
@@ -2024,15 +2024,15 @@ function heal_singbox_stopped(ev) {
     // Pinned to the light rung: sing-box is not running, so there is nothing to
     // escalate over. Starting the service is the whole repair, and tearing down
     // nftables and routing would not make a stopped process start any better.
-    if (safe_proxy_restart("singbox_stopped", ESCALATION_LIGHT)) {
+    if (safe_proxy_restart("core_stopped", ESCALATION_LIGHT)) {
         // sing-box coming back is what the proxy and DNS probes are measuring,
         // so their failures during the restart are this repair's own doing.
         singbox_repair_until = time() + SUPPRESSION_DEADLINE;
         watch_recovery("proxy", {
-            type: "singbox_stopped",
+            type: "core_stopped",
             description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
             resolution: "Выполнен перезапуск служб Tachyon"
-        }, "singbox_stopped");
+        }, "core_stopped");
     }
 }
 
@@ -2073,7 +2073,7 @@ function heal_low_memory(ev) {
 
 function get_clash_url(endpoint) {
     let host = "127.0.0.1:9090";
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -2094,7 +2094,7 @@ function get_clash_url(endpoint) {
 }
 
 function get_clash_secret() {
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -2175,10 +2175,10 @@ let cached_observe_dns_mtime = 0;
 let cached_observe_dns_path = "";
 function smart_detect_observe_dns() {
     let ctx = controller.create_tick_context();
-    let cfg_path = as_string(ctx.settings.config_path || "/etc/sing-box/config.json");
-    let engine = "sing-box";
+    let cfg_path = as_string(ctx.settings.config_path || "/etc/tachyon-core/config.json");
+    let engine = "tachyon-core";
     try { engine = require("core.engine").get_active(); } catch (e) {}
-    let is_singbox = engine == "sing-box";
+    let is_singbox = engine == "tachyon-core" || engine == "sing-box";
     let state_path = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") ||
         (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/dns-failover.json";
     let failover = common.read_json_file(state_path) || {};
@@ -2732,8 +2732,8 @@ function register_subscribers() {
     subscribe(EV.WAN_DOWN, heal_wan_and_gateway,
         { name: "heal_wan_and_gateway", priority: PRIORITY_WAN, cooldown: 300 });
 
-    subscribe(EV.SINGBOX_STOPPED, heal_singbox_stopped,
-        { name: "heal_singbox_stopped", priority: PRIORITY_SINGBOX });
+    subscribe(EV.CORE_STOPPED, heal_core_stopped,
+        { name: "heal_core_stopped", priority: PRIORITY_CORE });
 
     subscribe(EV.CONFIG_CORRUPT, heal_uci_config,
         { name: "heal_uci_config", priority: 25 });
@@ -2939,7 +2939,7 @@ let mixed_port_last_notify = 0;
 // nftables ruleset every few minutes.
 function mixed_ports_from_config() {
     let settings = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
-    let config_path = trim(as_string(settings.config_path || "")) || "/etc/sing-box/config.json";
+    let config_path = trim(as_string(settings.config_path || "")) || "/etc/tachyon-core/config.json";
     let data = fs.readfile(config_path);
     if (data == null)
         return [];

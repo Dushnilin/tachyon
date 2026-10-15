@@ -8,7 +8,7 @@ TACHYON_LIB="$TACHYON_FILES/usr/lib"
 CLI_UC="$TACHYON_BIN"
 VALIDATOR="$TACHYON_LIB/config/validator.uc"
 RULE_CONFIG="$TACHYON_LIB/config/rule.uc"
-GENERATOR="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR="$TACHYON_LIB/tachyon_core/generator.uc"
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
 LIFECYCLE="$TACHYON_LIB/service/lifecycle.uc"
 
@@ -34,7 +34,7 @@ grep -Fq 'text_list_values,' "$RULE_CONFIG" ||
   fail "config.rule must export the shared comment-aware text parser"
 grep -Fq 'rule_config.text_list_values(value, "comma-space")' "$VALIDATOR" ||
   fail "domain validation must use the shared comment-aware text parser"
-grep -Fq 'rule_config.text_list_values(option(section, "domain", ""), "comma-space")' "$TACHYON_LIB/singbox/generator_routes.uc" ||
+grep -Fq 'rule_config.text_list_values(option(section, "domain", ""), "comma-space")' "$TACHYON_LIB/tachyon_core/generator_routes.uc" ||
   fail "sing-box domain generation must use the shared comment-aware text parser"
 grep -Fq 'return appendUniqueDomainTextValues(textValue, values);' "$SECTION_JS" ||
   fail "Domains field loading must preserve the original combined text"

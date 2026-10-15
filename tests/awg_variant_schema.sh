@@ -52,7 +52,7 @@ generate() {
   mkdir -p "$WORK_DIR/out.section-cache"
   SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
     SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-    ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+    ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
     "$WORK_DIR/awg_fixture.json" "$WORK_DIR/singbox_awg.json" "127.0.0.1" 0 0
 }
 

@@ -20,7 +20,7 @@ let uci_core = require("core.uci");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const SING_BOX_BIN = "/usr/bin/sing-box";
+const SING_BOX_BIN = "/usr/bin/tachyon-core";
 
 let as_string = common.as_string;
 
@@ -351,7 +351,7 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
     // Engine switch requires restart
     if (active_settings.engine != cand_settings.engine && cand_settings.engine != null) {
         restart_required = true;
-        push(reasons, "Routing engine changed ('" + (active_settings.engine || "sing-box") + "' -> '" + cand_settings.engine + "')");
+        push(reasons, "Routing engine changed ('" + (active_settings.engine || "tachyon-core") + "' -> '" + cand_settings.engine + "')");
         affected["engine"] = true;
         affected["nftables"] = true;
         affected["dns"] = true;
@@ -569,7 +569,7 @@ function check_singbox_candidate_binary(candidate_config_obj) {
         return {
             checked: false,
             status: "skipped",
-            reason: "sing-box binary not present in /usr/bin/sing-box"
+            reason: "sing-box binary not present in /usr/bin/tachyon-core"
         };
     }
 
@@ -634,11 +634,11 @@ function plan(candidate_source, options) {
     for (let e in port_check.errors) push(all_errors, e);
     for (let w in port_check.warnings) push(all_warnings, w);
 
-    // 5. Engine config dry-run check (if sing-box active and binary exists)
+    // 5. Engine config dry-run check (if tachyon-core active and binary exists)
     let engine_check = { checked: false, status: "ok" };
-    let cand_engine = candidate_uci.settings ? (candidate_uci.settings.engine || "sing-box") : "sing-box";
+    let cand_engine = candidate_uci.settings ? (candidate_uci.settings.engine || "tachyon-core") : "tachyon-core";
 
-    if (cand_engine == "sing-box" && fs.stat(SING_BOX_BIN) != null) {
+    if ((cand_engine == "tachyon-core" || cand_engine == "sing-box") && fs.stat(SING_BOX_BIN) != null) {
         // Run a lightweight structure test
         let mock_cfg = {
             log: { level: "warn" },
@@ -808,31 +808,31 @@ function selftest() {
     assert(length(w1) == 4, "words_list parses space, comma and newline");
 
     // Test 3: Raw UCI text parsing
-    let sample_uci = "config settings 'settings'\n\toption engine 'sing-box'\n\toption fakeip '1'\n\nconfig section 'unblock'\n\toption action 'proxy'\n\tlist domain 'instagram.com'\n";
+    let sample_uci = "config settings 'settings'\n\toption engine 'tachyon-core'\n\toption fakeip '1'\n\nconfig section 'unblock'\n\toption action 'proxy'\n\tlist domain 'instagram.com'\n";
     let parsed_uci = parse_uci_text_to_dict(sample_uci);
-    assert(parsed_uci.settings.engine == "sing-box", "parse_uci_text_to_dict settings.engine");
+    assert(parsed_uci.settings.engine == "tachyon-core", "parse_uci_text_to_dict settings.engine");
     assert(parsed_uci.sections["unblock"] != null, "parse_uci_text_to_dict section found");
     assert(parsed_uci.sections["unblock"].domain[0] == "instagram.com", "parse_uci_text_to_dict list domain");
 
     // Test 4: UCI diff calculation
     let active_mock = {
-        settings: { engine: "sing-box" },
+        settings: { engine: "tachyon-core" },
         sections: { "s1": { ".name": "s1", ".type": "section", action: "proxy", domain: "test.com" } },
         servers: {},
         all_by_name: {
-            "settings": { ".name": "settings", ".type": "settings", engine: "sing-box" },
+            "settings": { ".name": "settings", ".type": "settings", engine: "tachyon-core" },
             "s1": { ".name": "s1", ".type": "section", action: "proxy", domain: "test.com" }
         }
     };
     let candidate_mock = {
-        settings: { engine: "sing-box" },
+        settings: { engine: "tachyon-core" },
         sections: {
             "s1": { ".name": "s1", ".type": "section", action: "proxy", domain: "test2.com" },
             "s2": { ".name": "s2", ".type": "section", action: "bypass" }
         },
         servers: {},
         all_by_name: {
-            "settings": { ".name": "settings", ".type": "settings", engine: "sing-box" },
+            "settings": { ".name": "settings", ".type": "settings", engine: "tachyon-core" },
             "s1": { ".name": "s1", ".type": "section", action: "proxy", domain: "test2.com" },
             "s2": { ".name": "s2", ".type": "section", action: "bypass" }
         }

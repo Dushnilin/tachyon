@@ -96,7 +96,7 @@ function constants_map() {
     c.RESOLV_CONF = env("RESOLV_CONF", "/etc/resolv.conf");
     c.CHECK_PROXY_IP_DOMAIN = env("CHECK_PROXY_IP_DOMAIN", "ip.podkop.fyi");
     c.FAKEIP_TEST_DOMAIN = env("FAKEIP_TEST_DOMAIN", "fakeip.podkop.fyi");
-    c.TMP_SING_BOX_FOLDER = env("TMP_SING_BOX_FOLDER", "/tmp/sing-box");
+    c.TMP_SING_BOX_FOLDER = env("TMP_SING_BOX_FOLDER", "/tmp/tachyon-core");
     c.TMP_RULESET_FOLDER = env("TMP_RULESET_FOLDER", c.TMP_SING_BOX_FOLDER + "/rulesets");
     c.TMP_SUBSCRIPTION_FOLDER = env("TMP_SUBSCRIPTION_FOLDER", c.TMP_SING_BOX_FOLDER + "/subscriptions");
     c.CLOUDFLARE_OCTETS = env("CLOUDFLARE_OCTETS", "8.47 162.159 188.114");
@@ -144,8 +144,8 @@ function constants_map() {
     c.SB_DIRECT_OUTBOUND_TAG = env("SB_DIRECT_OUTBOUND_TAG", "direct-out");
     c.SB_BYPASS_OUTBOUND_TAG = env("SB_BYPASS_OUTBOUND_TAG", "bypass-out");
     c.SB_CLASH_API_CONTROLLER_PORT = env("SB_CLASH_API_CONTROLLER_PORT", "9090");
-    c.SB_VARIANT_STATE_FILE = env("SB_VARIANT_STATE_FILE", "/etc/tachyon/sing-box-variant");
-    c.SB_VERSION_STATE_FILE = env("SB_VERSION_STATE_FILE", "/etc/tachyon/sing-box-version");
+    c.SB_VARIANT_STATE_FILE = env("SB_VARIANT_STATE_FILE", "/etc/tachyon/tachyon-core-variant");
+    c.SB_VERSION_STATE_FILE = env("SB_VERSION_STATE_FILE", "/etc/tachyon/tachyon-core-version");
 
     c.GITHUB_RAW_URL = env("GITHUB_RAW_URL", "https://raw.githubusercontent.com/itdoginfo/allow-domains/main");
     c.SRS_MAIN_URL = env("SRS_MAIN_URL", "https://github.com/itdoginfo/allow-domains/releases/latest/download");

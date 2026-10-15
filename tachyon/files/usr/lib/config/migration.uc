@@ -8,7 +8,7 @@ let common = require("core.common");
 let uci_core = require("core.uci");
 let core_url = require("core.url");
 let constants_module = require("core.constants");
-let singbox_constants_module = require("singbox.constants");
+let singbox_constants_module = require("tachyon_core.constants");
 let domain_config = require("config.domain");
 let rule_config = require("config.rule");
 let subscription_share_link = require("subscription.share_link");
@@ -25,7 +25,7 @@ let shell_quote = common.shell_quote;
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const CONFIG_DIR = getenv("TACHYON_CONFIG_DIR") || "/etc/config";
 const TARGET_CONFIG = getenv("TACHYON_CONFIG_FILE") || (CONFIG_DIR + "/" + CONFIG_NAME);
-const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
+const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/tachyon-core/subscriptions";
 const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const TACHYON_SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-links";
 const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-metadata";
@@ -1710,6 +1710,117 @@ function migrate_cleanup_accidental_full_domain_prefixes(ctx) {
     }
 }
 
+/// The engine became a product of its own: binary, service, config directory
+/// and UCI package all carry `tachyon-core` now. An upgrade from the previous
+/// release has to land on the new names without losing the running config, so
+/// this migration rewrites what UCI stores, moves the config file when the new
+/// path is still empty, and leaves the old file in place — a downgrade still
+/// finds a working setup.
+function migrate_engine_identity(ctx) {
+    let settings = object_or_empty(object_or_empty(ctx.model).settings);
+    const OLD_CONFIG_DIR = "/etc/sing-box";
+    const NEW_CONFIG_DIR = "/etc/tachyon-core";
+    const OLD_TMP_DIR = "/tmp/sing-box";
+    const NEW_TMP_DIR = "/tmp/tachyon-core";
+    const OLD_SHARE_DIR = "/usr/share/sing-box";
+    const NEW_SHARE_DIR = "/usr/share/tachyon-core";
+
+    if (option(settings, "engine", "") == "sing-box")
+        set_option(ctx, settings, "engine", "tachyon-core");
+    if (option(settings, "engine_previous", "") == "sing-box")
+        set_option(ctx, settings, "engine_previous", "tachyon-core");
+
+    for (let key in [ "config_path", "cache_path" ]) {
+        if (!option_exists(settings, key))
+            continue;
+        let value = option(settings, key, "");
+        let updated = "";
+        if (key == "cache_path" && (value == "/tmp/sing-box/cache.db" ||
+                                    value == "/tmp/tachyon-core/cache.db" ||
+                                    value == "/usr/share/sing-box/cache.db")) {
+            updated = NEW_SHARE_DIR + "/cache.db";
+        }
+        else if (index(value, OLD_CONFIG_DIR + "/") == 0) {
+            updated = NEW_CONFIG_DIR + "/" + substr(value, length(OLD_CONFIG_DIR + "/"));
+        }
+        else if (index(value, OLD_SHARE_DIR + "/") == 0) {
+            updated = NEW_SHARE_DIR + "/" + substr(value, length(OLD_SHARE_DIR + "/"));
+        }
+        else if (index(value, OLD_TMP_DIR + "/") == 0) {
+            updated = NEW_TMP_DIR + "/" + substr(value, length(OLD_TMP_DIR + "/"));
+        }
+        if (updated == "" || updated == value)
+            continue;
+        // the file itself follows the option, so an upgrade keeps the proxy's
+        // own configuration instead of silently starting from an empty one
+        if (fs.stat(updated) == null && fs.stat(value) != null) {
+            let slash = rindex(updated, "/");
+            if (slash > 0) {
+                let dir = substr(updated, 0, slash);
+                try {
+                    fs.mkdir(dir, 0755);
+                }
+                catch (e) {
+                }
+            }
+            let moved = false;
+            try {
+                moved = fs.rename(value, updated) == true;
+            }
+            catch (e) {
+            }
+            if (!moved) {
+                try {
+                    let raw = fs.readfile(value);
+                    if (raw != null && fs.writefile(updated, raw) != null)
+                        fs.unlink(value);
+                }
+                catch (e) {
+                }
+            }
+        }
+        set_option(ctx, settings, key, updated);
+    }
+
+    // the engine's own UCI package
+    if (uci_core.exists("sing-box.main") && !uci_core.exists("tachyon-core.main")) {
+        uci_core.rename_package("sing-box", "tachyon-core");
+        uci_core.commit("tachyon-core");
+    }
+
+    // the managed init script reads conffile and workdir from the engine
+    // package, so a renamed package carrying the old paths would start the
+    // core on a file this migration just moved away
+    if (uci_core.exists("tachyon-core.main")) {
+        for (let pair in [
+            [ "conffile", OLD_CONFIG_DIR + "/", NEW_CONFIG_DIR + "/" ],
+            [ "workdir", "/usr/share/sing-box", "/usr/share/tachyon-core" ]
+        ]) {
+            let value = uci_core.get("tachyon-core", "main", pair[0]);
+            if (value == "" || index(value, pair[1]) != 0)
+                continue;
+            uci_core.set("tachyon-core", "main", pair[0], pair[2] + substr(value, length(pair[1])));
+        }
+        uci_core.commit("tachyon-core");
+    }
+
+    // the variant and version markers decide what the UI shows and which
+    // engine the config generator targets; losing them would make a working
+    // install look like it has no core at all
+    for (let pair in [
+        [ "/etc/tachyon/sing-box-variant", "/etc/tachyon/tachyon-core-variant" ],
+        [ "/etc/tachyon/sing-box-version", "/etc/tachyon/tachyon-core-version" ]
+    ]) {
+        if (fs.stat(pair[1]) == null && fs.stat(pair[0]) != null) {
+            try {
+                fs.rename(pair[0], pair[1]);
+            }
+            catch (e) {
+            }
+        }
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1718,7 +1829,8 @@ const MIGRATIONS = [
     { id: "steer_spec_v2", run: migrate_steer_spec_v2 },
     { id: "global_hosts_to_section", run: migrate_global_hosts_to_section },
     { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces },
-    { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults }
+    { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults },
+    { id: "engine_identity_tachyon_core", run: migrate_engine_identity }
 ];
 
 

@@ -25,7 +25,7 @@ function core_url_module_or_null() {
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/sing-box";
+const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/tachyon-core";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
@@ -50,8 +50,8 @@ const RELOAD_STATE_FORMAT = getenv("TACHYON_RELOAD_STATE_FORMAT") || "1";
 const RULE_CONDITION_CACHE_DIR = getenv("TACHYON_RULE_CONDITION_CACHE_DIR") || RUNTIME_STATE_DIR + "/rule-condition-cache";
 const RELOAD_LOCK_DIR = getenv("TACHYON_RELOAD_LOCK_DIR") || "/var/run/tachyon.reload.lock";
 const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
-const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/singbox/priority.uc";
-const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/singbox/dns_failover.uc";
+const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/tachyon_core/priority.uc";
+const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/tachyon_core/dns_failover.uc";
 const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("TACHYON_UI_COMPONENT_ACTION_DIR") || "/var/run/tachyon/component-actions";
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = getenv("TACHYON_COMPONENT_UPDATE_CHECK_CACHE_DIR") || RUNTIME_STATE_DIR + "/component-update-checks";
 const COMPONENT_UPDATE_CHECK_STATE_FILE = getenv("TACHYON_COMPONENT_UPDATE_CHECK_STATE_FILE") || RUNTIME_STATE_DIR + "/component-update-check.timestamp";
@@ -74,7 +74,7 @@ const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || "tachyon_inte
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x04000000";
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
 const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
 const GITHUB_RAW_URL = getenv("GITHUB_RAW_URL") || "https://raw.githubusercontent.com/itdoginfo/allow-domains/main";
 const BUILTIN_SUBNET_URLS = {
     twitter: [ getenv("SUBNETS_TWITTER") || GITHUB_RAW_URL + "/Subnets/IPv4/twitter.lst", getenv("SUBNETS_TWITTER6") || GITHUB_RAW_URL + "/Subnets/IPv6/twitter.lst" ],
@@ -100,7 +100,7 @@ function routing_rulesets_module() {
 
 function singbox_rulesets_module() {
     if (singbox_rulesets_module_value == null)
-        singbox_rulesets_module_value = require("singbox.rulesets");
+        singbox_rulesets_module_value = require("tachyon_core.rulesets");
     return singbox_rulesets_module_value;
 }
 
@@ -2061,7 +2061,7 @@ function component_action_log(job_id, offset) {
 function automatic_component_check_names() {
     let result = [ "tachyon" ];
 
-    if (fs.stat("/usr/bin/sing-box") != null)
+    if (fs.stat("/usr/bin/tachyon-core") != null)
         push(result, "sing_box");
     if (module_success([ LIB_DIR + "/providers/zapret/runtime.uc", "installed" ]))
         push(result, "zapret");
@@ -2678,7 +2678,7 @@ function import_subnets_from_remote_srs_file(url, section, settings) {
         return true;
     }
 
-    let ok = command_success_from_args([ "sing-box", "rule-set", "decompile", binary_tmpfile, "-o", json_tmpfile ]);
+    let ok = command_success_from_args([ "tachyon-core", "rule-set", "decompile", binary_tmpfile, "-o", json_tmpfile ]);
     if (!ok)
         log_message("Failed to decompile binary rule set file", "error");
     if (ok && !add_json_ruleset_subnets_to_nft_for_section(section, json_tmpfile, "Remote SRS rule set " + as_string(url))) {
@@ -2957,7 +2957,7 @@ function import_custom_ruleset_subnets_from_local(path, format, section, label) 
 
     let ok = true;
     if (as_string(format) == "binary") {
-        if (!command_success_from_args([ "sing-box", "rule-set", "decompile", path, "-o", json_tmpfile ])) {
+        if (!command_success_from_args([ "tachyon-core", "rule-set", "decompile", path, "-o", json_tmpfile ])) {
             log_message("Failed to decompile rule set " + as_string(path), "error");
             ok = false;
         }
@@ -2990,7 +2990,7 @@ function import_custom_ruleset_subnets_from_remote(url, format, section, label, 
 
     let ok = true;
     if (as_string(format) == "binary") {
-        if (!command_success_from_args([ "sing-box", "rule-set", "decompile", remote_tmpfile, "-o", json_tmpfile ])) {
+        if (!command_success_from_args([ "tachyon-core", "rule-set", "decompile", remote_tmpfile, "-o", json_tmpfile ])) {
             log_message("Failed to decompile rule set " + as_string(url), "error");
             ok = false;
         }
@@ -3359,7 +3359,7 @@ function log_file_lines_from_text(text, level, prefix) {
 }
 
 function singbox_runtime_success(args) {
-    let command_args = [ LIB_DIR + "/singbox/runtime.uc" ];
+    let command_args = [ LIB_DIR + "/tachyon_core/runtime.uc" ];
     for (let arg in args)
         push(command_args, arg);
 
@@ -3379,10 +3379,10 @@ function write_current_reload_state_clean() {
 }
 
 function reload_singbox_after_list_update() {
-    let sing_box_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "sing-box-service-runtime-pid" ]));
+    let sing_box_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
     if (sing_box_pid == "" || int(sing_box_pid) <= 0)
         return true;
-    let sing_box_config_path = option(uci_settings(), "config_path", "") || "/etc/sing-box/config.json";
+    let sing_box_config_path = option(uci_settings(), "config_path", "") || "/etc/tachyon-core/config.json";
     let sing_box_config_hash_before = file_md5(sing_box_config_path);
     if (!singbox_runtime_success([ "init-config", "0", "1", "1" ]))
         return false;
@@ -3392,7 +3392,7 @@ function reload_singbox_after_list_update() {
         module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
         module_success([ PRIORITY_UC, "stop-runtime" ]);
         let ok = service_state_success([
-            "reload-sing-box-runtime",
+            "reload-core-runtime",
             sing_box_pid,
             sing_box_config_hash_before,
             sing_box_config_hash_after,
@@ -3409,14 +3409,14 @@ function reload_singbox_after_list_update() {
 function list_update_steer_catalog(settings) {
     // steer reads plain-text lists, not sing-box rule-sets. When steer is the
     // active engine, refresh the plain-text catalog it points at.
-    let active = "sing-box";
+    let active = "tachyon-core";
     try {
         active = require("core.engine").get_active();
     }
     catch (e) {
-        active = "sing-box";
+        active = "tachyon-core";
     }
-    if (active == "sing-box")
+    if (active == "tachyon-core")
         return true;
 
     let catalog;
@@ -3653,7 +3653,7 @@ function subscription_runtime_apply_changed(context) {
         return false;
     let sing_box_config_path = option(uci_settings(), "config_path", "");
     let sing_box_config_hash_before = file_md5(sing_box_config_path);
-    let sing_box_pid_before = trim(module_output([ LIB_DIR + "/service/state.uc", "sing-box-service-runtime-pid" ]));
+    let sing_box_pid_before = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
     if (!singbox_runtime_success([ "init-config", "0", "1", "1" ])) {
         log_message("Failed to rebuild sing-box configuration after " + context, "error");
         return false;
@@ -3663,13 +3663,13 @@ function subscription_runtime_apply_changed(context) {
     // config without tearing down the process, so active TCP sessions
     // (Telegram, etc.) are preserved. Only a failed SIGHUP escalates to a full
     // restart, and only there do the helper workers have to stand down.
-    let sighup_ok = service_state_success([ "sighup-sing-box-runtime", sing_box_pid_before ]);
+    let sighup_ok = service_state_success([ "sighup-core-runtime", sing_box_pid_before ]);
     if (!sighup_ok) {
         log_message("SIGHUP reload failed; falling back to full sing-box restart", "warn");
         module_success([ PRIORITY_UC, "stop-runtime" ]);
         module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
         if (!service_state_success([
-            "reload-sing-box-runtime",
+            "reload-core-runtime",
             sing_box_pid_before,
             sing_box_config_hash_before,
             file_md5(sing_box_config_path)

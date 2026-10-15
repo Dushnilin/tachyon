@@ -6,7 +6,7 @@ set -eu
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LIB_DIR="$ROOT_DIR/tachyon/files/usr/lib"
-RT="$LIB_DIR/singbox/runtime.uc"
+RT="$LIB_DIR/tachyon_core/runtime.uc"
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -47,7 +47,7 @@ check_profile "0.0.1" "" "upstream"
 
 # ─── a stale marker file must not overrule the binary ────────────────────────
 # Found on a test router: the binary had been swapped for tachyon-core while
-# /etc/tachyon/sing-box-variant still read "lx", left over from the install
+# /etc/tachyon/tachyon-core-variant still read "lx", left over from the install
 # before it. The file describes what was installed previously, so a build that
 # names itself wins - otherwise a foreign core is handed the lx profile, with a
 # wrong pin field and a wrong schema level and no error anywhere.

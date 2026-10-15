@@ -2,7 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR="$TACHYON_LIB/tachyon_core/generator.uc"
 
 # 1. Test DNS section with fully_routed_ips priority over source_aware_dns fallback
 cat >"$WORK_DIR/dns-action.json" <<'JSON'
@@ -133,7 +133,7 @@ fi
 echo "✓ Parental quota crontab formatting and migration verified"
 
 # 3. Test dns_failover.uc probe commands stay bounded
-FAILOVER="$TACHYON_LIB/singbox/dns_failover.uc"
+FAILOVER="$TACHYON_LIB/tachyon_core/dns_failover.uc"
 # Run stop-runtime to verify orphan cleanup doesn't fail
 ucode -L "$TACHYON_LIB" "$FAILOVER" stop-runtime || true
 echo "✓ dns_failover stop-runtime verified"

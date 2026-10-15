@@ -64,7 +64,7 @@ grep -Fq 'mode == "subscription-update"' "$UPDATES_UC" ||
   fail "components/updates.uc must own subscription update"
 grep -Fq 'mode == "tachyon-running"' "$STATE_UC" ||
   fail "service/state.uc must own Tachyon running predicate"
-grep -Fq 'mode == "sing-box-service-stable"' "$STATE_UC" ||
+grep -Fq 'mode == "tachyon-core-service-stable"' "$STATE_UC" ||
   fail "service/state.uc must expose stable sing-box predicate"
 grep -Fq 'mode == "wait-tachyon-stable-start"' "$STATE_UC" ||
   fail "service/state.uc must own stable-start waiting"
@@ -76,30 +76,30 @@ grep -Fq 'mode == "acquire-runtime-dir-lock"' "$STATE_UC" ||
   fail "service/state.uc must own runtime lock acquisition"
 grep -Fq 'mode == "write-captured-reload-state"' "$STATE_UC" ||
   fail "service/state.uc must own captured reload state writes"
-grep -Fq 'mode == "reload-sing-box-runtime"' "$STATE_UC" ||
+grep -Fq 'mode == "reload-core-runtime"' "$STATE_UC" ||
   fail "service/state.uc must own sing-box runtime reload"
 grep -Fq '"wait-tachyon-stable-start"' "$LIFECYCLE_UC" ||
-  fail "service/lifecycle.uc must verify stable runtime after sing-box start/reload"
+  fail "service/lifecycle.uc must verify stable runtime after core start/reload"
 grep -Fq 'SING_BOX_START_STABLE_MIN_AGE' "$LIFECYCLE_UC" ||
-  fail "service/lifecycle.uc must use a dedicated sing-box start stability window"
-sing_box_start_line="$(awk '/command_success_from_args\(\[ "\/etc\/init.d\/sing-box", "start" \]\)/ { print NR; exit }' "$LIFECYCLE_UC")"
+  fail "service/lifecycle.uc must use a dedicated core start stability window"
+sing_box_start_line="$(awk '/tachyon-core", "start"/ { print NR; exit }' "$LIFECYCLE_UC")"
 early_stable_line="$(awk -v start="$sing_box_start_line" 'NR > start && /"wait-tachyon-stable-start"/ { print NR; exit }' "$LIFECYCLE_UC")"
 start_stable_min_age_line="$(awk -v start="$sing_box_start_line" 'NR > start && /SING_BOX_START_STABLE_MIN_AGE/ { print NR; exit }' "$LIFECYCLE_UC")"
 deferred_bootstrap_line="$(awk '/"run-deferred-bootstrap"/ { print NR; exit }' "$LIFECYCLE_UC")"
 [ -n "$sing_box_start_line" ] ||
-  fail "service/lifecycle.uc must start sing-box through init.d"
+  fail "service/lifecycle.uc must start the core through init.d"
 [ -n "$early_stable_line" ] ||
-  fail "service/lifecycle.uc must verify stable runtime immediately after sing-box start"
+  fail "service/lifecycle.uc must verify stable runtime immediately after core start"
 [ "$early_stable_line" -lt "$deferred_bootstrap_line" ] ||
   fail "service/lifecycle.uc must verify sing-box stability before deferred bootstrap work"
 [ -n "$start_stable_min_age_line" ] && [ "$start_stable_min_age_line" -lt "$deferred_bootstrap_line" ] ||
-  fail "service/lifecycle.uc must use the dedicated sing-box start stability window before deferred bootstrap work"
-sing_box_reload_line="$(awk '/"reload-sing-box-runtime"/ { print NR; exit }' "$LIFECYCLE_UC")"
+  fail "service/lifecycle.uc must use the dedicated core start stability window before deferred bootstrap work"
+sing_box_reload_line="$(awk '/"reload-core-runtime"/ { print NR; exit }' "$LIFECYCLE_UC")"
 reload_stable_min_age_line="$(awk -v start="$sing_box_reload_line" 'NR > start && /SING_BOX_START_STABLE_MIN_AGE/ { print NR; exit }' "$LIFECYCLE_UC")"
 [ -n "$sing_box_reload_line" ] ||
   fail "service/lifecycle.uc must reload sing-box through service/state.uc"
 [ -n "$reload_stable_min_age_line" ] ||
-  fail "service/lifecycle.uc must use the dedicated sing-box start stability window after sing-box reload"
+  fail "service/lifecycle.uc must use the dedicated core start stability window after sing-box reload"
 grep -Fq 'Reload verification failed after sing-box was reloaded; stopping Tachyon runtime' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must fail reload when sing-box does not stay stable"
 grep -Fq 'Reload runtime restart verification failed after Tachyon was started; rolling back DNS changes' "$LIFECYCLE_UC" ||

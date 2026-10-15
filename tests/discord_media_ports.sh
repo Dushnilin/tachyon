@@ -26,7 +26,7 @@ pass_count=0
 ok() { pass_count=$((pass_count + 1)); }
 
 IP_UC="$TACHYON_LIB/core/ip.uc"
-GEN="$TACHYON_LIB/singbox/generator_routes.uc"
+GEN="$TACHYON_LIB/tachyon_core/generator_routes.uc"
 APPLY="$TACHYON_LIB/nft/apply.uc"
 for f in "$IP_UC" "$GEN" "$APPLY"; do
   [ -f "$f" ] || fail "missing $f"

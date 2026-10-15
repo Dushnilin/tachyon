@@ -32,7 +32,7 @@ fi
 
 COMMON_UC="$TACHYON_LIB/core/common.uc"
 VALIDATOR_UC="$TACHYON_LIB/config/validator.uc"
-RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
+RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
 [ -f "$COMMON_UC" ] || fail "core/common.uc not found at $COMMON_UC"
 
 pass_count=0
@@ -48,7 +48,7 @@ trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 cat >"$SANDBOX/probe.uc" <<'PROBE'
 let common = require("core.common");
 
-// Mirrors singbox/runtime.uc's gate: a parsed version that is not version-shaped
+// Mirrors tachyon_core/runtime.uc's gate: a parsed version that is not version-shaped
 // is discarded, which is how the old misparse turned into a fatal abort.
 function gated(parsed) {
     return match(parsed, /^[vV]?[0-9]+/) ? parsed : "";
@@ -132,7 +132,7 @@ ok
 # fixing one and leaving two would have left the abort reachable.
 stale="$(grep -c 'first_line_last_field(sing_box_version_output)' "$RUNTIME_UC" || true)"
 [ "$stale" = "0" ] ||
-  fail "singbox/runtime.uc still parses the version positionally ($stale site(s))"
+  fail "tachyon_core/runtime.uc still parses the version positionally ($stale site(s))"
 ok
 
 stale="$(grep -c 'first_line_last_field(command_output_from_args(\[ "sing-box", "version" \]))' "$VALIDATOR_UC" || true)"

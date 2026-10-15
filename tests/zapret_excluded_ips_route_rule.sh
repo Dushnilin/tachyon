@@ -13,7 +13,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 RUNTIME_UC="$TACHYON_LIB/providers/nfqueue/runtime.uc"
 [ -f "$RUNTIME_UC" ] || fail "missing $RUNTIME_UC"
 

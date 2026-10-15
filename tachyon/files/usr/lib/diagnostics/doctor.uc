@@ -20,7 +20,7 @@ const TACHYON_CONFIG = getenv("TACHYON_CONFIG") || constants.TACHYON_CONFIG || "
 const TACHYON_SERVICE_NAME = getenv("TACHYON_SERVICE_NAME") || constants.TACHYON_SERVICE_NAME || "tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const LOGREAD_LINE_LIMIT = "500";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
+const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/tachyon-core";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_SING_BOX_FOLDER + "/rulesets";
 const CHECK_PROXY_IP_DOMAIN = getenv("CHECK_PROXY_IP_DOMAIN") || constants.CHECK_PROXY_IP_DOMAIN || "ip.podkop.fyi";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
@@ -38,7 +38,7 @@ const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OC
 
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
 const SERVICE_STATE_UC = LIB_DIR + "/service/state.uc";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/singbox/runtime.uc";
+const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const ZAPRET_RUNTIME_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
@@ -538,7 +538,7 @@ function is_adguardhome_primary_dns(cfg) {
 function tachyon_is_running() {
     let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
     if (wd_pid != "" && fs.stat("/proc/" + wd_pid) != null) return true;
-    let eng = "sing-box";
+    let eng = "tachyon-core";
     try { eng = require("core.engine").get_active(); } catch (e) {}
     if (eng == "steer" || eng == "steer-extended") {
         return find_process_pid("steer") != "" || command_success_from_args([ "/etc/init.d/steer", "status" ]);
@@ -555,14 +555,14 @@ function is_degraded() {
 }
 
 function kill_our_core_processes() {
-    let eng = "sing-box";
+    let eng = "tachyon-core";
     try { eng = require("core.engine").get_active(); } catch (e) {}
     if (eng == "steer" || eng == "steer-extended") {
         command_status("/etc/init.d/steer stop >/dev/null 2>&1");
         command_status("killall -9 steer >/dev/null 2>&1");
         return;
     }
-    command_status("/etc/init.d/sing-box stop >/dev/null 2>&1");
+    command_status("/etc/init.d/tachyon-core stop >/dev/null 2>&1");
     command_status("killall -9 sing-box >/dev/null 2>&1");
 }
 
@@ -915,15 +915,15 @@ function run_doctor_checks_impl(repair) {
         return { report: join("\n", report) + "\n", issues, fixed, checks };
     }
 
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     } catch (e) {}
     let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
 
     let binary_name = is_steer ? "steer" : "sing-box";
-    let init_script = is_steer ? "/etc/init.d/steer" : "/etc/init.d/sing-box";
-    let config_file_path = is_steer ? "/etc/steer/spec.json" : "/etc/sing-box/config.json";
+    let init_script = is_steer ? "/etc/init.d/steer" : "/etc/init.d/tachyon-core";
+    let config_file_path = is_steer ? "/etc/steer/spec.json" : "/etc/tachyon-core/config.json";
 
     // 1. Process Check
     let has_sections = false;
@@ -1693,7 +1693,7 @@ function run_doctor_checks_impl(repair) {
             doc_plan("drop OS caches + sing-box restart");
             doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ WILL FIX (doctor --fix): сброс кэшей памяти и перезапуск sing-box");
         } else {
-            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
             doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ FIXED: кэши памяти сброшены, sing-box перезапущен");
             fixed++;
         }
@@ -2081,7 +2081,7 @@ function run_doctor_checks_impl(repair) {
                 continue;
             let pid_info = as_string(fields[6]);
             let owner = index(pid_info, "/") >= 0 ? substr(pid_info, index(pid_info, "/") + 1) : pid_info;
-            if (owner == "" || owner == "dnsmasq" || owner == "sing-box" || owner == "AdGuardHome" || lc(owner) == "adguardhome")
+            if (owner == "" || owner == "dnsmasq" || owner == "sing-box" || owner == "tachyon-core" || owner == "AdGuardHome" || lc(owner) == "adguardhome")
                 continue;
             let already = false;
             for (let o in dns53_owners) {
@@ -2132,7 +2132,7 @@ function run_doctor_checks_impl(repair) {
                 doc_check("⚠️", "Port 53 socket collision", as_string(parasitic_count) + " sing-box sockets on :53 (" + collision_detail + ")",
                     "→ sing-box hijack-dns создаёт прозрачные write-only сокеты, перехватывающие UDP у dnsmasq; WILL FIX: restart sing-box");
             } else {
-                command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+                command_status("/etc/init.d/tachyon-core restart >/dev/null 2>&1");
                 command_status("sleep 2");
                 let ss_check = command_capture("ss -u -a -e -n 'sport = :53' 2>/dev/null").output;
                 let still_parasitic = 0;
@@ -2948,7 +2948,7 @@ function diagnose_system_conflicts(cfg, lang, causes, fn_add_fix) {
         }
     }
 
-    let rs_files = fs.glob("/tmp/sing-box/rulesets/*.srs");
+    let rs_files = fs.glob("/tmp/tachyon-core/rulesets/*.srs");
     if (rs_files) {
         for (let rs_file in rs_files) {
             let st = fs.stat(rs_file);
@@ -3547,7 +3547,7 @@ function extract_ruleset(tag) {
         return 1;
     }
 
-    let db_path = "/etc/sing-box/cache.db";
+    let db_path = "/etc/tachyon-core/cache.db";
     let f = fs.open(db_path, "r");
     if (!f) {
         warn("failed to open " + db_path + "\n");
@@ -3633,7 +3633,7 @@ function extract_ruleset(tag) {
         return 1;
     }
 
-    let out_dir = "/tmp/sing-box/rulesets";
+    let out_dir = "/tmp/tachyon-core/rulesets";
     system("mkdir -p " + out_dir);
 
     let out_path = out_dir + "/community_" + tag + ".srs";

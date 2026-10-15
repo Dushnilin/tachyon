@@ -7,7 +7,7 @@ let require=function(name){
         selected_lists:actual.selected_lists,supported:actual.supported,
         prepare_list:function(name,path){push(prepared,{name,path});return prepare_ok;}
     };
-    if(name=="singbox.rulesets")return {is_community:actual.supported,
+    if(name=="tachyon_core.rulesets")return {is_community:actual.supported,
         is_referenceable_srs_file:function(path){push(probed,path);return true;}};
     if(name=="config.connections")return {};
     if(name=="core.url")return {};

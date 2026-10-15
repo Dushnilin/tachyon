@@ -64,7 +64,7 @@ const SING_BOX_START_STABLE_MIN_AGE = int(getenv("TACHYON_SING_BOX_START_STABLE_
 const SING_BOX_START_VERIFY_TIMEOUT = int(getenv("TACHYON_SING_BOX_START_VERIFY_TIMEOUT") || "60");
 const NFT_POPULATE_ENABLED_DEFAULT = int(getenv("TACHYON_NFT_POPULATE_ENABLED") || "1");
 
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constant_value("TMP_SING_BOX_FOLDER", "/tmp/sing-box");
+const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constant_value("TMP_SING_BOX_FOLDER", "/tmp/tachyon-core");
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constant_value("TMP_RULESET_FOLDER", TMP_SING_BOX_FOLDER + "/rulesets");
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || constant_value("TMP_SUBSCRIPTION_FOLDER", TMP_SING_BOX_FOLDER + "/subscriptions");
 
@@ -87,8 +87,8 @@ const SB_TPROXY_INBOUND6_ADDRESS = constant_value("SB_TPROXY_INBOUND6_ADDRESS", 
 const SB_TPROXY_INBOUND_PORT = constant_value("SB_TPROXY_INBOUND_PORT", "1602");
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = constant_value("SB_SERVICE_MIXED_INBOUND_ADDRESS", "127.0.0.1");
 const SB_SERVICE_MIXED_INBOUND_PORT = constant_value("SB_SERVICE_MIXED_INBOUND_PORT", "4534");
-const SB_VARIANT_STATE_FILE = constant_value("SB_VARIANT_STATE_FILE", "/etc/tachyon/sing-box-variant");
-const SB_VERSION_STATE_FILE = constant_value("SB_VERSION_STATE_FILE", "/etc/tachyon/sing-box-version");
+const SB_VARIANT_STATE_FILE = constant_value("SB_VARIANT_STATE_FILE", "/etc/tachyon/tachyon-core-variant");
+const SB_VERSION_STATE_FILE = constant_value("SB_VERSION_STATE_FILE", "/etc/tachyon/tachyon-core-version");
 
 const ZAPRET_PROVIDER_NFQWS_BIN = constant_value("ZAPRET_PROVIDER_NFQWS_BIN", "/opt/zapret/nfq/nfqws");
 const ZAPRET_ROUTE_MARK_BASE = constant_value("ZAPRET_ROUTE_MARK_BASE", "0x01000000");
@@ -106,9 +106,9 @@ const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const VALIDATOR_UC = LIB_DIR + "/config/validator.uc";
 const SERVER_UC = LIB_DIR + "/server/service.uc";
 const NFT_UC = LIB_DIR + "/nft/apply.uc";
-const SINGBOX_UC = LIB_DIR + "/singbox/runtime.uc";
-const PRIORITY_UC = LIB_DIR + "/singbox/priority.uc";
-const DNS_FAILOVER_UC = LIB_DIR + "/singbox/dns_failover.uc";
+const SINGBOX_UC = LIB_DIR + "/tachyon_core/runtime.uc";
+const PRIORITY_UC = LIB_DIR + "/tachyon_core/priority.uc";
+const DNS_FAILOVER_UC = LIB_DIR + "/tachyon_core/dns_failover.uc";
 const SUBSCRIPTION_CACHE_UC = LIB_DIR + "/subscription/cache.uc";
 const UPDATES_UC = LIB_DIR + "/components/updates.uc";
 const HOSTS_UC = LIB_DIR + "/components/hosts.uc";
@@ -763,7 +763,7 @@ function prepare_subscription_caches(mode) {
 
 
 function restore_rulesets_from_cache() {
-    let runtime_rulesets_mod = require("singbox.rulesets");
+    let runtime_rulesets_mod = require("tachyon_core.rulesets");
     let etc_dir = "/etc/tachyon/rulesets";
     let tmp_dir = TMP_RULESET_FOLDER;
 
@@ -798,7 +798,7 @@ function restore_rulesets_from_cache() {
 }
 
 function prepare_community_rulesets() {
-    let runtime_rulesets_mod = require("singbox.rulesets");
+    let runtime_rulesets_mod = require("tachyon_core.rulesets");
     let core_url_mod = require("core.url");
     let connections = require("config.connections");
     let tmp_dir = TMP_RULESET_FOLDER;
@@ -925,14 +925,14 @@ function prepare_community_rulesets() {
 // the sing-box-only start work (config validation, dnsmasq pointing at the
 // sing-box DNS inbound) that must never run on a steer device.
 function active_engine_is_steer() {
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     }
     catch (e) {
-        active_engine = "sing-box";
+        active_engine = "tachyon-core";
     }
-    return active_engine != "sing-box";
+    return active_engine != "tachyon-core";
 }
 
 // Start the steer engine. Tachyon's job here is to make sure sing-box is not
@@ -943,8 +943,8 @@ function start_steer_main(active_engine) {
 
     // Make sure the sing-box service is not left running: two engines must not
     // fight over nftables and policy routing.
-    if (fs.stat("/etc/init.d/sing-box") != null)
-        command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
+    if (fs.stat("/etc/init.d/tachyon-core") != null)
+        command_status_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
 
     // Watchdog first, so auto-healing is active through a failed boot.
     let wd_status = module_status(WATCHDOG_UC, [ "start-runtime" ]);
@@ -1100,7 +1100,7 @@ function start_main() {
         }
     }
 
-    let sb_start = command_success_from_args([ "/etc/init.d/sing-box", "start" ]);
+    let sb_start = command_success_from_args([ "/etc/init.d/tachyon-core", "start" ]);
     if (!sb_start) {
         log_message("Failed to start sing-box. Aborted.", "fatal");
         return 1;
@@ -1119,7 +1119,7 @@ function start_main() {
         return status;
     }
 
-    let sb_pid = module_output(STATE_UC, [ "sing-box-service-runtime-pid" ]);
+    let sb_pid = module_output(STATE_UC, [ "tachyon-core-service-runtime-pid" ]);
     if (match(trim(sb_pid), /^[0-9]+$/) != null)
         module_success(STATE_UC, [ "write-provenance", trim(sb_pid) ]);
 
@@ -1287,12 +1287,12 @@ function stop_main() {
     if (module_success(NFT_UC, [ "tproxy-route6-present", RT_TABLE_NAME ]))
         command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
 
-    if (module_success(STATE_UC, [ "sing-box-is-foreign" ]))
+    if (module_success(STATE_UC, [ "core-is-foreign" ]))
         log_message("Sing-box PID provenance mismatch: the running sing-box was not started by Tachyon; stopping it anyway", "warn");
 
-    if (fs.stat("/etc/init.d/sing-box") != null) {
-        let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
-        command_success_from_args([ "killall", "-q", "-9", "sing-box" ]);
+    if (fs.stat("/etc/init.d/tachyon-core") != null) {
+        let sing_box_status = command_status_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
+        command_success_from_args([ "killall", "-q", "-9", "tachyon-core" ]);
         if (!active_engine_is_steer() && sing_box_status != 0)
             status = sing_box_status;
     }
@@ -1355,20 +1355,20 @@ function start() {
     // The stable-start verification below is sing-box specific. When steer
     // drives routing, its own init script already reported success, so asking
     // for a stable sing-box would always fail and roll the start back.
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     }
     catch (e) {
-        active_engine = "sing-box";
+        active_engine = "tachyon-core";
     }
-    if (active_engine != "sing-box") {
+    if (active_engine != "tachyon-core") {
         module_status(STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
         return 0;
     }
 
     status = module_status(STATE_UC, [
-        "wait-sing-box-service-stable",
+        "wait-tachyon-core-service-stable",
         as_string(SING_BOX_START_STABLE_MIN_AGE),
         as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
@@ -1446,7 +1446,7 @@ function restart_runtime_for_reload() {
     }
 
     status = module_status(STATE_UC, [
-        "wait-sing-box-service-stable",
+        "wait-tachyon-core-service-stable",
         as_string(SING_BOX_START_STABLE_MIN_AGE),
         as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
@@ -1539,7 +1539,7 @@ function release_reload_lock() {
 }
 
 function sing_box_runtime_pid() {
-    let result = module_capture(STATE_UC, [ "sing-box-service-runtime-pid" ]);
+    let result = module_capture(STATE_UC, [ "tachyon-core-service-runtime-pid" ]);
     return result.status == 0 ? trim(result.output) : "";
 }
 
@@ -1576,13 +1576,13 @@ function dns_failover_apply(candidate_state_path) {
 
     if (changed) {
         let sing_box_pid_before = sing_box_runtime_pid();
-        status = module_status(STATE_UC, [ "hup-sing-box-runtime" ]);
+        status = module_status(STATE_UC, [ "hup-core-runtime" ]);
         if (status == 0)
             status = wait_dns_failover_state(candidate_state_path, 10);
 
         if (status != 0) {
-            log_message("sing-box SIGHUP DNS reload did not become ready; trying service reload", "warn");
-            status = module_status(STATE_UC, [ "reload-sing-box-runtime", sing_box_pid_before, "dns-before", "dns-after" ]);
+            log_message("tachyon-core SIGHUP DNS reload did not become ready; trying service reload", "warn");
+            status = module_status(STATE_UC, [ "reload-core-runtime", sing_box_pid_before, "dns-before", "dns-after", "restart" ]);
             if (status == 0)
                 status = wait_dns_failover_state(candidate_state_path, 15);
         }
@@ -1592,10 +1592,10 @@ function dns_failover_apply(candidate_state_path) {
         status = 1;
 
     if (status != 0 && backup_path != "") {
-        log_message("DNS failover apply failed; restoring the previous sing-box configuration", "error");
+        log_message("DNS failover apply failed; restoring the previous tachyon-core configuration", "error");
         if (module_success(SINGBOX_UC, [ "restore-dns-config", backup_path ])) {
             let sing_box_pid_before_restore = sing_box_runtime_pid();
-            module_success(STATE_UC, [ "reload-sing-box-runtime", sing_box_pid_before_restore, "dns-failed", "dns-restored" ]);
+            module_success(STATE_UC, [ "reload-core-runtime", sing_box_pid_before_restore, "dns-failed", "dns-restored" ]);
         }
     }
 
@@ -1661,14 +1661,14 @@ function reload(reason) {
 
     // steer reloads by regenerating its spec and reloading its own service;
     // the sing-box reload pipeline below never runs while steer is active.
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     }
     catch (e) {
-        active_engine = "sing-box";
+        active_engine = "tachyon-core";
     }
-    if (active_engine != "sing-box")
+    if (active_engine != "tachyon-core")
         return reload_steer(active_engine, reason, reload_config_fingerprint);
 
     // Skip all work when config fingerprint is unchanged since the last reload.
@@ -1800,7 +1800,7 @@ function reload(reason) {
             return abort_reload(status, true);
         let sing_box_config_path = config_get(CONFIG_NAME + ".settings.config_path", "");
         let sing_box_config_hash_before = file_md5(sing_box_config_path);
-        let sing_box_pid_result = module_capture(STATE_UC, [ "sing-box-service-runtime-pid" ]);
+        let sing_box_pid_result = module_capture(STATE_UC, [ "tachyon-core-service-runtime-pid" ]);
         let sing_box_pid_before = sing_box_pid_result.status == 0 ? trim(sing_box_pid_result.output) : "";
         nft_populate_enabled = plan.needs_nft_rebuild == 1 ? 1 : 0;
         status = singbox_init_config();
@@ -1808,7 +1808,7 @@ function reload(reason) {
             return abort_reload(status, true);
         nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
         status = module_status(STATE_UC, [
-            "reload-sing-box-runtime",
+            "reload-core-runtime",
             sing_box_pid_before,
             sing_box_config_hash_before,
             file_md5(sing_box_config_path),
@@ -1817,7 +1817,7 @@ function reload(reason) {
         if (status != 0)
             return abort_reload(status, true);
         status = module_status(STATE_UC, [
-            "wait-sing-box-service-stable",
+            "wait-tachyon-core-service-stable",
             as_string(SING_BOX_START_STABLE_MIN_AGE),
             as_string(SING_BOX_START_VERIFY_TIMEOUT)
         ]);
@@ -1944,7 +1944,7 @@ function restart() {
     }
 
     status = module_status(STATE_UC, [
-        "wait-sing-box-service-stable",
+        "wait-tachyon-core-service-stable",
         as_string(SING_BOX_START_STABLE_MIN_AGE),
         as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
@@ -2002,7 +2002,7 @@ function uninstall() {
 
     if (module_success(SINGBOX_UC, [ "managed-service-installed" ])) {
         module_success(SINGBOX_UC, [ "remove-managed-service-script" ]);
-        remove_file("/usr/bin/sing-box");
+        remove_file("/usr/bin/tachyon-core");
         remove_file("/usr/lib/libcronet.so");
     }
 

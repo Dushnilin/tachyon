@@ -14,7 +14,7 @@ let helpers = require("core.helpers");
 let common = require("core.common");
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const SING_BOX_BIN = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+const SING_BOX_BIN = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
 const TMP_STALE_TTL_MINUTES = getenv("UPDATES_TMP_STALE_TTL_MINUTES") || "30";
 const TMP_FILE_STALE_TTL_MINUTES = getenv("UPDATES_TMP_FILE_STALE_TTL_MINUTES") || "10";
 const JOB_HEARTBEAT_INTERVAL = int(getenv("TACHYON_JOB_HEARTBEAT_INTERVAL") || "5");
@@ -347,7 +347,7 @@ function cleanup_stale_tmp_files() {
     command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "d", "-name", "tachyon-updates.*", "-mmin", "+" + as_string(TMP_STALE_TTL_MINUTES), "-exec", "rm", "-rf", "{}", "+" ]);
     // tachyon-??????" is the exact shape `mktemp /tmp/tachyon-XXXXXX` produces, and
     // four call sites create one: components/updates.uc, nft/apply.uc,
-    // service/lifecycle.uc and singbox/runtime.uc - the last three being the
+    // service/lifecycle.uc and tachyon_core/runtime.uc - the last three being the
     // sing-box config candidates and rule lists. The sweeper only knew about the
     // two tachyon-updates-* patterns, so none of those were ever reclaimed.
     // Measured on 192.168.1.1: ten of them, 968 KB, seven days old, sitting in a
@@ -621,14 +621,14 @@ function read_openwrt_release_value(key) {
 }
 
 function service_proxy_address() {
-    if (!file_exists(LIB_DIR + "/singbox/runtime.uc"))
+    if (!file_exists(LIB_DIR + "/tachyon_core/runtime.uc"))
         return "";
     if (file_exists(LIB_DIR + "/service/state.uc") &&
         !module_success([ LIB_DIR + "/service/state.uc", "sing-box-service-running" ]))
         return "";
-    let addr = trim(module_output([ LIB_DIR + "/singbox/runtime.uc", "service-proxy-address", "components" ]));
+    let addr = trim(module_output([ LIB_DIR + "/tachyon_core/runtime.uc", "service-proxy-address", "components" ]));
     if (addr == "")
-        addr = trim(module_output([ LIB_DIR + "/singbox/runtime.uc", "service-proxy-address", "lists" ]));
+        addr = trim(module_output([ LIB_DIR + "/tachyon_core/runtime.uc", "service-proxy-address", "lists" ]));
     return addr;
 }
 

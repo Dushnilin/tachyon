@@ -1,7 +1,7 @@
 // Run: ucode -L /usr/lib/tachyon /tmp/test-tachyon-amnezia.uc
 // Synthetic keys and documentation IPs; no UCI changes or network traffic.
 let wg = require('subscription.wireguard');
-let generator = require('singbox.generator_outbounds');
+let generator = require('tachyon_core.generator_outbounds');
 generator.init({runtime_generate_unsupported: message => assert(false, message)});
 let key = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=";
 let links = [

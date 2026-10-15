@@ -7,16 +7,16 @@
 # and that connection dies. The mapping therefore has to outlive a reboot: the
 # only client that can repair the mismatch is the client, and it will not.
 #
-# The default path used to be /tmp/sing-box/cache.db, which is tmpfs. Both
+# The default path used to be /tmp/tachyon-core/cache.db, which is tmpfs. Both
 # routers checked carry /usr/share/sing-box/cache.db instead, so the deployed
 # behaviour and the generated default disagreed - and a router following the
 # default would lose every mapping on each reboot.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GEN_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/generator.uc"
+GEN_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc"
 
-[ -f "$GEN_UC" ] || fail "singbox/generator.uc not found"
+[ -f "$GEN_UC" ] || fail "tachyon_core/generator.uc not found"
 
 # --- the default must be on persistent storage ------------------------------
 default_path="$(grep -oE 'option\(settings, "cache_path", "[^"]*"\)' "$GEN_UC" | head -1 | sed -E 's/.*"cache_path", "([^"]*)".*/\1/')"

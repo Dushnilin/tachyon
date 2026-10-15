@@ -122,7 +122,7 @@ out_json="$WORK_DIR/singbox_awg.json"
 printf 'lx\n' > "$WORK_DIR/sing-box-variant"
 SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
 SB_VERSION_STATE_FILE="$WORK_DIR/nonexistent" \
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
 
 grep -q '"type": "wireguard"' "$out_json" || fail "sing-box config missing wireguard inbound"
@@ -166,7 +166,7 @@ grep -q '"persistent_keepalive_interval": "25-35"' "$out_json" || fail "Leadaxe 
 printf 'extended\n' > "$WORK_DIR/sing-box-variant"
 SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
 SB_VERSION_STATE_FILE="$WORK_DIR/nonexistent" \
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
 
 grep -q '"persistent_keepalive_interval": 25' "$out_json" || fail "Non-lx AWG outbound must safely fallback to integer keepalive"
@@ -212,7 +212,7 @@ printf 'tachyon-core\n' > "$WORK_DIR/sing-box-variant"
 : > "$WORK_DIR/sing-box-version"
 SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
 SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
 assert_awg_server_is_endpoint
 
@@ -222,7 +222,7 @@ printf '0.0.1-tachyon.0\n' > "$WORK_DIR/sing-box-version"
 : > "$WORK_DIR/sing-box-variant"
 SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
 SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
 assert_awg_server_is_endpoint
 

@@ -15,7 +15,7 @@ fs.writeFileSync(path.join(process.argv[2],'fixture.json'),JSON.stringify({
  section:[{'.name':'proxy','.type':'section',enabled:'1',action:'proxy',domain_suffix:['example.org'],
  selector_amnezia_configs:[JSON.stringify({name:'Imported AWG',config})]}]}));
 JS
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture "$WORK_DIR/fixture.json" "$WORK_DIR/config.json" '127.0.0.1' '0'
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture "$WORK_DIR/fixture.json" "$WORK_DIR/config.json" '127.0.0.1' '0'
 node - "$WORK_DIR/config.json" <<'JS'
 const assert=require('assert').strict,fs=require('fs');
 const cfg=JSON.parse(fs.readFileSync(process.argv[2]));
@@ -31,7 +31,7 @@ console.log('PASS: named .conf full generator, native endpoint and selector');
 JS
 printf 'standard' >"$WORK_DIR/variant"
 printf '1.14.2' >"$WORK_DIR/version"
-if ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture "$WORK_DIR/fixture.json" "$WORK_DIR/rejected.json" '127.0.0.1' '0' >"$WORK_DIR/error" 2>&1; then
+if ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture "$WORK_DIR/fixture.json" "$WORK_DIR/rejected.json" '127.0.0.1' '0' >"$WORK_DIR/error" 2>&1; then
  fail 'unsupported core must reject Amnezia imports'
 fi
 printf 'PASS: unsupported core fails before apply\n'

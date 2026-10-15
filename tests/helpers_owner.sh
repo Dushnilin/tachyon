@@ -8,7 +8,7 @@ HELPERS_SH="$TACHYON_LIB/helpers.sh"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 PACKAGES_UC="$TACHYON_LIB/core/packages.uc"
 RULES_UC="$TACHYON_LIB/providers/rules.uc"
-SINGBOX_RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
+SINGBOX_RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
 COMPONENT_ACTION_UC="$TACHYON_LIB/components/action.uc"
 DIAGNOSTICS_RUNTIME_UC="$TACHYON_LIB/diagnostics/runtime.uc"
 
@@ -71,7 +71,7 @@ for mode in \
   'mode == "variant"'
 do
   grep -Fq "$mode" "$SINGBOX_RUNTIME_UC" ||
-    fail "singbox/runtime.uc missing $mode"
+    fail "tachyon_core/runtime.uc missing $mode"
 done
 if grep -R -n -E 'get_sing_box_version\(|sing_box_version_from_output\(|sing_box_version_output\(|sing_box_output_has_build_tag\(|sing_box_has_build_tag\(|is_sing_box_extended\(|is_sing_box_tiny_package_installed\(|is_sing_box_full_package_installed\(|is_sing_box_compressed_marker_set\(|is_sing_box_extended_marker_set\(|read_sing_box_version_state\(|is_sing_box_tiny_marker_set\(|is_sing_box_tiny\(|sing_box_supports_tailscale\(|get_sing_box_variant\(|updates_(write|read|clear|restore)_sing_box_(variant_marker|version_state)\(' \
   "$TACHYON_BIN" "$TACHYON_LIB" --include='*.sh' >/dev/null 2>&1; then
@@ -101,7 +101,7 @@ mark_hex="$(ucode -L "$TACHYON_LIB" "$RULES_UC" mark-hex 0x01000000 2)"
 version="$(printf 'sing-box version 1.12.4-extended\nEnvironment: test\n' |
   ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" version-from-output)"
 [ "$version" = "1.12.4-extended" ] ||
-  fail "singbox/runtime.uc version-from-output changed"
+  fail "tachyon_core/runtime.uc version-from-output changed"
 
 ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" is-extended "1.12.4-extended" >/dev/null ||
   fail "extended sing-box version should be detected"

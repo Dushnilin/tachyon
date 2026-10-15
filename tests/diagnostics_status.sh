@@ -47,7 +47,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "show"|uci", "-q"' "$DIAGNO
 fi
 grep -Fq '"tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE' "$DIAGNOSTICS_SYSTEM_INFO" ||
   fail "diagnostics Tachyon status must use stable runtime state to avoid crash-loop flicker"
-grep -Fq '"sing-box-service-stable",' "$DIAGNOSTICS_SYSTEM_INFO" ||
+grep -Fq '"tachyon-core-service-stable",' "$DIAGNOSTICS_SYSTEM_INFO" ||
   fail "diagnostics sing-box status must use stable runtime state to avoid crash-loop flicker"
 
 capabilities="$(

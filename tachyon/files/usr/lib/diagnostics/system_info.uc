@@ -21,14 +21,14 @@ const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachy
 const LOGREAD_LINE_LIMIT = "500";
 const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
 const SYSTEM_INFO_CACHE_TTL = int(getenv("TACHYON_SYSTEM_INFO_CACHE_TTL") || "3600");
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
+const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/tachyon-core";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || constants.TMP_SUBSCRIPTION_FOLDER || TMP_SING_BOX_FOLDER + "/subscriptions";
 const SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
 const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x04000000";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/sing-box-variant";
-const SING_BOX_BIN_PATH = getenv("TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH") || "/usr/bin/sing-box";
+const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant";
+const SING_BOX_BIN_PATH = getenv("TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH") || "/usr/bin/tachyon-core";
 const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OCTETS || "8.47 162.159 188.114";
 const RUNTIME_STABLE_MIN_AGE = getenv("TACHYON_RUNTIME_STABLE_MIN_AGE") || "2";
 
@@ -38,7 +38,7 @@ const SERVICE_STATE_UC = LIB_DIR + "/service/state.uc";
 const SERVICE_UI_UC = LIB_DIR + "/service/ui.uc";
 const SUBSCRIPTION_CACHE_UC = LIB_DIR + "/subscription/cache.uc";
 const PROVIDERS_STATUS_UC = LIB_DIR + "/providers/status.uc";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/singbox/runtime.uc";
+const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const ZAPRET_RUNTIME_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
@@ -315,7 +315,7 @@ function sing_box_component_action_running() {
 // to the state file: `extended-compressed` is a self-extracting stub and `lx` needs
 // a runtime that may be absent. Plain `extended` runs `sing-box version` fine, and
 // listing it here made the UI show whatever was last written to
-// /etc/tachyon/sing-box-version — a file only the component action updates. A
+// /etc/tachyon/tachyon-core-version — a file only the component action updates. A
 // sing-box installed any other way (install.sh, opkg, by hand) then displayed a
 // stale version forever, and the update badge compared against it.
 function sing_box_live_probe_disabled() {
@@ -456,7 +456,7 @@ function build_system_info() {
     let sing_box_version = "";
     let sing_box_version_output = "";
 
-    if (command_exists("sing-box")) {
+    if (command_exists("tachyon-core")) {
         let resolved = sing_box_resolved_version();
         sing_box_version = resolved.version;
         sing_box_version_output = resolved.output;
@@ -514,7 +514,7 @@ function build_system_info() {
     let direct_bypass_enabled = bool_option(settings(), "direct_bypass_enabled", false) ? 1 : 0;
     let direct_bypass_port = option(settings(), "direct_bypass_port", "2080");
     let direct_bypass_address = direct_bypass_enabled
-        ? trim(command_output_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/singbox/runtime.uc", "service-listen-address" ]))
+        ? trim(command_output_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/tachyon_core/runtime.uc", "service-listen-address" ]))
         : "";
     let torrserver_direct_status = parse_json_or_null(command_output_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/torrserver/direct.uc", "status" ]));
     if (type(torrserver_direct_status) != "object")
@@ -673,7 +673,7 @@ function get_server_capabilities() {
 
 function sing_box_process_is_running() {
     return command_success_from_args([ "pgrep", "-x", "sing-box" ]) ||
-        command_success_from_args([ "pgrep", "-f", "^/usr/bin/sing-box[[:space:]]" ]);
+        command_success_from_args([ "pgrep", "-f", "^/usr/bin/tachyon-core[[:space:]]" ]);
 }
 
 function service_status_label(running, enabled) {
@@ -697,7 +697,7 @@ function dnsmasq_has_tachyon_dns() {
 
 function get_sing_box_status() {
     let running = module_success(SERVICE_STATE_UC, [
-        "sing-box-service-stable",
+        "tachyon-core-service-stable",
         RUNTIME_STABLE_MIN_AGE
     ]) ? 1 : 0;
     let enabled = file_executable("/etc/rc.d/S99sing-box") ? 1 : 0;
@@ -710,17 +710,17 @@ function get_sing_box_status() {
 // answer as get_sing_box_status; on steer it reports the steer service and the
 // active engine, so the UI does not show a false "sing-box stopped".
 function get_engine_status() {
-    let active = "sing-box";
+    let active = "tachyon-core";
     try {
         active = require("core.engine").get_active();
     }
     catch (e) {
-        active = "sing-box";
+        active = "tachyon-core";
     }
 
-    if (active == "sing-box") {
+    if (active == "tachyon-core") {
         let running = module_success(SERVICE_STATE_UC, [
-            "sing-box-service-stable",
+            "tachyon-core-service-stable",
             RUNTIME_STABLE_MIN_AGE
         ]) ? 1 : 0;
         let enabled = file_executable("/etc/rc.d/S99sing-box") ? 1 : 0;
@@ -947,7 +947,7 @@ function check_sing_box() {
     let sing_box_process_running = 0;
     let sing_box_ports_listening = 0;
 
-    if (command_exists("sing-box")) {
+    if (command_exists("tachyon-core")) {
         sing_box_installed = 1;
         let version = "";
         if (system_info_cache_is_valid()) {
@@ -976,9 +976,9 @@ function check_sing_box() {
         }
     }
 
-    if (file_exists("/etc/init.d/sing-box")) {
+    if (file_exists("/etc/init.d/tachyon-core")) {
         sing_box_service_exist = 1;
-        if (!command_success_from_args([ "/etc/init.d/sing-box", "enabled" ]))
+        if (!command_success_from_args([ "/etc/init.d/tachyon-core", "enabled" ]))
             sing_box_autostart_disabled = 1;
     }
 

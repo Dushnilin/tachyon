@@ -6,11 +6,11 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let network_mod = require("diagnostics.network");
-let variant_state = require("singbox.variant_state");
+let variant_state = require("tachyon_core.variant_state");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
+const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/tachyon-core";
 const CHECK_PROXY_IP_DOMAIN = getenv("CHECK_PROXY_IP_DOMAIN") || constants.CHECK_PROXY_IP_DOMAIN || "ip.podkop.fyi";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
@@ -24,7 +24,7 @@ const STEER_NFT_TABLE = getenv("STEER_NFT_TABLE") || "steer";
 const SB_CLASH_API_CONTROLLER_PORT = getenv("SB_CLASH_API_CONTROLLER_PORT") || constants.SB_CLASH_API_CONTROLLER_PORT || "9090";
 const DEFAULT_LATENCY_TEST_URL = getenv("DEFAULT_LATENCY_TEST_URL") || "https://www.gstatic.com/generate_204";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/singbox/runtime.uc";
+const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const PROVIDERS_STATUS_UC = LIB_DIR + "/providers/status.uc";
 const SERVICE_UI_UC = LIB_DIR + "/service/ui.uc";
 
@@ -474,7 +474,7 @@ function cleanup_check_proxy_dir(dir) {
 
 function check_proxy() {
     let sing_box_config_path = option(settings(), "config_path", "");
-    if (!command_exists("sing-box")) {
+    if (!command_exists("tachyon-core")) {
         nolog("sing-box is not installed");
         return 1;
     }
@@ -484,7 +484,7 @@ function check_proxy() {
     }
 
     nolog("Checking sing-box configuration...");
-    if (!command_success_from_args([ "sing-box", "-c", sing_box_config_path, "check" ])) {
+    if (!command_success_from_args([ "tachyon-core", "-c", sing_box_config_path, "check" ])) {
         nolog("Invalid configuration");
         return 1;
     }
@@ -511,7 +511,7 @@ function check_proxy() {
 
     let response = "";
     for (let attempt = 1; attempt <= 5; attempt++) {
-        let args = [ "sing-box", "tools", "fetch", "ifconfig.me", "-c", check_proxy_config, "-D", check_proxy_dir, "--disable-color" ];
+        let args = [ "tachyon-core", "tools", "fetch", "ifconfig.me", "-c", check_proxy_config, "-D", check_proxy_dir, "--disable-color" ];
         if (outbound_tag != "") {
             push(args, "-o");
             push(args, outbound_tag);
@@ -813,7 +813,7 @@ function clash_api_url() {
 
 function clash_auth_args() {
     let secret = "";
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);

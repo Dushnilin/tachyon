@@ -39,7 +39,7 @@ JSON
 
 generate() {
   mkdir -p "$WORK_DIR/out.section-cache"
-  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
     "$WORK_DIR/mtproto_fixture.json" "$WORK_DIR/singbox_mtproto.json" "127.0.0.1" 0 0
 }
 

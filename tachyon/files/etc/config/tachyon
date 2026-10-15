@@ -52,15 +52,15 @@ config settings 'settings'
         option dont_touch_dhcp '0'
         option isolate_p2p '0'
         #option p2p_ports 'tcp:6881,udp:6881-6889'
-        option config_path '/etc/sing-box/config.json'
-        option cache_path '/tmp/sing-box/cache.db'
+        option config_path '/etc/tachyon-core/config.json'
+        option cache_path '/usr/share/tachyon-core/cache.db'
         option dns_local_cache '0'
         option dns_cache_size '10000'
         option log_level 'warn'
-        # Routing engine: sing-box (default) or steer / steer-extended.
+        # Routing engine: tachyon-core (default) or steer / steer-extended.
         # Switching engines parks configuration the target cannot express
         # (settings.engine_unsupported_<engine>) so a switch back restores it.
-        option engine 'sing-box'
+        option engine 'tachyon-core'
         # steer plain-text list catalog selection (see steer/lists.uc). Empty
         # means "catalog defaults".
         #list steer_list_categories 'telegram'
@@ -218,8 +218,8 @@ config settings 'settings'
 #        option client_fingerprint 'chrome'
 #        option reality_handshake_server 'www.microsoft.com'
 #        option reality_handshake_server_port '443'
-#        option reality_private_key 'PRIVATE_KEY_FROM_sing-box_generate_reality-keypair'
-#        option reality_public_key 'PUBLIC_KEY_FROM_sing-box_generate_reality-keypair'
+#        option reality_private_key 'PRIVATE_KEY_FROM_tachyon-core_generate_reality-keypair'
+#        option reality_public_key 'PUBLIC_KEY_FROM_tachyon-core_generate_reality-keypair'
 #        option reality_short_id '5a'
 #        option reality_max_time_difference '1m'
 #        option transport 'tcp'
@@ -227,7 +227,7 @@ config settings 'settings'
 #        #option isolate_lan_for_users '1'
 #        #list isolated_users 'friend-1'
 #        #list isolated_users 'friend-2'
-#        # sing-box-extended only:
+#        # extended build only:
 #        #option transport 'xhttp'
 #        #option transport_path '/xhttp'
 #        #option transport_xhttp_mode 'auto'
@@ -254,7 +254,7 @@ config settings 'settings'
 #        option enabled '1'
 #        option protocol 'tailscale'
 #        option routing_mode 'rules'
-#        # tailscale_mode: singbox (userspace endpoint inside sing-box, default)
+#        # tailscale_mode: singbox (userspace endpoint inside the core, default)
 #        # or native (system tailscaled: tailnet reachable from LAN without client,
 #        # requires Tailscale component installed on the Updates tab)
 #        option tailscale_mode 'singbox'

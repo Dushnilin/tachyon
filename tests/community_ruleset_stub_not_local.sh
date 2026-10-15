@@ -29,8 +29,8 @@ if [ -z "$TACHYON_LIB" ]; then
   fi
 fi
 
-RULESETS_UC="$TACHYON_LIB/singbox/rulesets.uc"
-GENERATOR_UC="$TACHYON_LIB/singbox/generator_routes.uc"
+RULESETS_UC="$TACHYON_LIB/tachyon_core/rulesets.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator_routes.uc"
 [ -f "$RULESETS_UC" ] || fail "singbox/rulesets.uc not found at $RULESETS_UC"
 [ -f "$GENERATOR_UC" ] || fail "singbox/generator_routes.uc not found at $GENERATOR_UC"
 
@@ -44,7 +44,7 @@ trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 # Written as a file rather than -e so the assertions read as data, not as a
 # nested quoting problem, and so the ucode runs the same way on a router.
 cat >"$SANDBOX/probe.uc" <<'PROBE'
-let rs = require("singbox.rulesets");
+let rs = require("tachyon_core.rulesets");
 let fs = require("fs");
 
 // Reports what the module actually provides, so the same probe runs against the

@@ -16,8 +16,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
-RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
+RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
 
 export SB_VARIANT_STATE_FILE="$WORK_DIR/variant"
 export SB_VERSION_STATE_FILE="$WORK_DIR/version"

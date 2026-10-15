@@ -165,7 +165,7 @@ assert(JSON.stringify(config.settings.dns_server) === JSON.stringify(['9.9.9.9']
 assert(JSON.stringify(config.settings.bootstrap_dns_server) === JSON.stringify(['1.1.1.1']), 'legacy Bootstrap DNS scalar migrated to ordered list');
 assert(config.settings.config_version === '1.0.5', 'legacy config should be marked at the current schema version');
 assert(config.settings.component_update_check_enabled === '1', 'component update checks should be enabled during migration');
-assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults']), 'legacy config should record named migrations');
+assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core']), 'legacy config should record named migrations');
 assert(config.settings.steer_spec_format === '2', 'legacy config should be marked as targeting steer spec v2');
 
 function assert(condition, message) {
@@ -344,7 +344,7 @@ const legacyOutboundCollision = sections['legacy-outbound-collision'];
 assert(legacyOutboundCollision.outbound_jsons.length === 2, 'legacy JSON outbound is appended to an existing list');
 assert(JSON.parse(legacyOutboundCollision.outbound_jsons[1]).tag === 'legacy-outbound-collision-json-2-out-1', 'legacy JSON outbound tag avoids existing list tags');
 
-assert(out.removed_caches.includes('/tmp/sing-box/subscriptions/legacy-sub.json'), 'subscription runtime cache removal');
+assert(out.removed_caches.includes('/tmp/tachyon-core/subscriptions/legacy-sub.json'), 'subscription runtime cache removal');
 assert(out.removed_caches.includes('/var/run/tachyon/section-cache/legacy-sub.json'), 'section cache removal');
 NODE
 
@@ -385,7 +385,7 @@ function assert(condition, message) {
 assert(out.changed === true, '1.0.1 config should require migration');
 assert(out.config.settings.config_version === '1.0.5', 'config schema version should advance to 1.0.5');
 assert(out.config.settings.component_update_check_enabled === '1', 'updates from 1.0.1 and below should enable component update checks');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults']), 'named migrations should be recorded');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core']), 'named migrations should be recorded');
 assert(out.config.settings.steer_spec_format === '2', 'config should be marked as targeting steer spec v2');
 assert(!Object.prototype.hasOwnProperty.call(section, 'interfaces'), 'parent interface list should be removed');
 assert(JSON.stringify(interfaces.map(item => item.name)) === JSON.stringify(['awg0', 'tun0']), 'interfaces should keep their order');
@@ -424,7 +424,7 @@ function assert(condition, message) {
 
 assert(out.config.settings.component_update_check_enabled === '0', '1.0.2 config must preserve an explicitly disabled component check');
 assert(out.config.settings.config_version === '1.0.5', '1.0.2 config should advance through the HTTP URL migration schema');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults']), 'newer configs should mark skipped migrations');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core']), 'newer configs should mark skipped migrations');
 NODE
 
 cat >"$WORK_DIR/forkop-1.0.4-http.json" <<'JSON'
@@ -490,7 +490,7 @@ assert(JSON.stringify(jsonOutbounds[1]) === JSON.stringify({
   server_port: 8080,
 }), 'unnamed HTTP URL should receive a unique http tag');
 assert(jsonOutbounds[2].type === 'direct' && jsonOutbounds[2].tag === 'http', 'existing JSON outbounds should remain unchanged');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults']), 'HTTP URL migration should be recorded');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'steer_spec_v2', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core']), 'HTTP URL migration should be recorded');
 NODE
 
 cat >"$WORK_DIR/forkop-1.0.5-http.json" <<'JSON'

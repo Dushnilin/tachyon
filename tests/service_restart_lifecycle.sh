@@ -7,7 +7,7 @@ TACHYON_INIT="$ROOT_DIR/tachyon/files/etc/init.d/tachyon"
 LIFECYCLE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/lifecycle.uc"
 INITD_UC="$ROOT_DIR/tachyon/files/usr/lib/service/initd.uc"
 APPLY_UC="$ROOT_DIR/tachyon/files/usr/lib/dns/apply.uc"
-GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/generator.uc"
+GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc"
 
 # --- 1. Static assertions on lifecycle.uc restart() -------------------------
 awk '
@@ -73,11 +73,11 @@ awk '
 # --- 4. Static assertions on generator.uc turbo cache ------------------------
 awk '
   /let turbo_cache = bool_option\(settings, "dns_turbo_cache", false\);/ { in_turbo = 1 }
-  in_turbo && index($0, "cache_path = \"/etc/sing-box/cache.db\"") { uses_etc = 1 }
+  in_turbo && index($0, "cache_path = \"/etc/tachyon-core/cache.db\"") { uses_etc = 1 }
   in_turbo && index($0, "turbo_cache &&") { promotes = 1 }
   in_turbo && /cache_dir/ { done = 1; exit }
   END { exit (promotes && uses_etc) ? 0 : 1 }
-' "$GENERATOR_UC" || fail "generator.uc must promote default cache_path to /etc/sing-box/cache.db when dns_turbo_cache is enabled"
+' "$GENERATOR_UC" || fail "generator.uc must promote default cache_path to /etc/tachyon-core/cache.db when dns_turbo_cache is enabled"
 
 # --- 5. Behavioral test: dnsmasq server remains 127.0.0.42 during restart ---
 STATE="$WORK_DIR/uci.state"

@@ -24,7 +24,7 @@ let command_status_from_args = common.command_status_from_args;
 let file_exists = common.file_exists;
 let bool_option = common.bool_option;
 let option = common.option;
-let runtime_constants = require("singbox.constants");
+let runtime_constants = require("tachyon_core.constants");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 

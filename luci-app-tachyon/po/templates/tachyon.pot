@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-15 19:52+0300\n"
-"PO-Revision-Date: 2026-10-15 19:52+0300\n"
+"POT-Creation-Date: 2026-10-15 23:44+0300\n"
+"PO-Revision-Date: 2026-10-15 23:44+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -8319,7 +8319,7 @@ msgid "Select or enter a User-Agent"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3211
-msgid "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing"
+msgid "Select or enter path for tachyon-core cache file. Change this ONLY if you know what you are doing"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2629
@@ -8327,7 +8327,7 @@ msgid "Select or enter the IP addresses of your game consoles."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:3197
-msgid "Select path for sing-box config file. Change this ONLY if you know what you are doing"
+msgid "Select path for tachyon-core config file. Change this ONLY if you know what you are doing"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:9509

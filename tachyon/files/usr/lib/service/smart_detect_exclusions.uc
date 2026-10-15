@@ -3,7 +3,7 @@
 // atomic, persistent domain snapshot and checks suffixes in memory.
 let fs = require("fs");
 let common = require("core.common");
-let presets = require("singbox.rulesets");
+let presets = require("tachyon_core.rulesets");
 let smart_plus = require("service.smart_detect_plus");
 let cache_dir = getenv("TACHYON_SMART_EXCLUSIONS_DIR") || "/etc/tachyon/smart-detect-exclusions";
 let memo = null;
@@ -77,7 +77,7 @@ function prepare_list(name, source) {
     if (!common.command_success_from_args(["mkdir", "-p", cache_dir])) return false;
     let stamp = clock();
     let temporary = sprintf("%s.%d.%d.decode", path, stamp[0], stamp[1]);
-    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
     let ok = common.command_success_from_args([bin, "rule-set", "decompile", "--output", temporary, source]);
     let data = ok ? common.read_json_file(temporary) : null;
     try { fs.unlink(temporary); } catch (e) {}

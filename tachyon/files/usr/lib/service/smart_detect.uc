@@ -1,7 +1,7 @@
 // DNS outages, resolver transitions and local curl failures are not evidence
 // that one destination needs a proxy. Shared with regression tests.
 let common = require("core.common");
-let sb_constants = require("singbox.constants");
+let sb_constants = require("tachyon_core.constants");
 
 // Codebase convention: as_string lives in core/common, not in ucode itself.
 let as_string = common.as_string;

@@ -7,7 +7,7 @@ generate_config() {
   local output="$2"
 
   mkdir -p "${output}.section-cache"
-  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
     "$fixture" "$output" "127.0.0.1"
 }
 

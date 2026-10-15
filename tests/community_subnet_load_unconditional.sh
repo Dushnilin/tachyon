@@ -73,7 +73,7 @@ grep -q 'log_warn("community subnets for "' "$APPLY_UC" ||
 # reboot, so the persistent /etc copy is what makes reload work.
 grep -q '/etc/tachyon/rulesets/community-subnets-' "$APPLY_UC" ||
   fail "the persistent community subnet cache is no longer read"
-grep -q '/tmp/sing-box/rulesets/community-subnets-' "$APPLY_UC" ||
+grep -q '/tmp/tachyon-core/rulesets/community-subnets-' "$APPLY_UC" ||
   fail "the tmp community subnet cache is no longer read"
 
 printf 'community subnets load for every section: checks passed\n'

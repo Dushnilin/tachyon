@@ -13,7 +13,7 @@ let require=function(name){assert(name=='core.uci','expected owner lookup');retu
 function module_capture(argv){captured=argv;return {status:0,output:'{"delay":123}'};}
 UCODE
 for fn in duration_to_milliseconds parse_delay_output clash_probe; do
-    awk -v name="$fn" '$0 ~ "^function " name "\\(" {active=1} active {print} active && /^}/ {exit}' "$lib/singbox/priority.uc" >> "$work/test.uc"
+    awk -v name="$fn" '$0 ~ "^function " name "\\(" {active=1} active {print} active && /^}/ {exit}' "$lib/tachyon_core/priority.uc" >> "$work/test.uc"
 done
 cat >> "$work/test.uc" <<'UCODE'
 let group={id:'fixture',check_timeout:'20s',health_url:'https://health.example/'};

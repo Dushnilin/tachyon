@@ -40,13 +40,13 @@ if (core_ip.is_cloudflare_shared_cidr("1.1.1.1/32")) exit(7);
 ' || fail "core.ip is_cloudflare_shared_cidr validation failed"
 
 # 2. Test singbox.generator_routes load_community_subnet_cidrs filtering and voice extraction
-# Create temporary /tmp/sing-box/rulesets if needed or link to TMP_DIR
-mkdir -p /tmp/sing-box/rulesets
-cp "$DISCORD_LST" /tmp/sing-box/rulesets/community-subnets-discord.lst
-cp "$OTHER_LST" /tmp/sing-box/rulesets/community-subnets-other.lst
+# Create temporary /tmp/tachyon-core/rulesets if needed or link to TMP_DIR
+mkdir -p /tmp/tachyon-core/rulesets
+cp "$DISCORD_LST" /tmp/tachyon-core/rulesets/community-subnets-discord.lst
+cp "$OTHER_LST" /tmp/tachyon-core/rulesets/community-subnets-other.lst
 
 ucode -L "$LIB_DIR" -e '
-let generator_routes = require("singbox.generator_routes");
+let generator_routes = require("tachyon_core.generator_routes");
 let discord_cidrs = generator_routes.load_community_subnet_cidrs("discord");
 if (!discord_cidrs || length(discord_cidrs) != 2) {
     warn("Unexpected discord_cidrs length: " + length(discord_cidrs) + "\n");
@@ -77,14 +77,14 @@ if (length(other_cidrs) != 2) exit(5);
 
 # 3. Test sing-box route generation for Discord section
 # Keep the test community-subnets-discord.lst present
-cp "$DISCORD_LST" /tmp/sing-box/rulesets/community-subnets-discord.lst
+cp "$DISCORD_LST" /tmp/tachyon-core/rulesets/community-subnets-discord.lst
 
 ucode -L "$LIB_DIR" -e '
 let fs = require("fs");
-let generator_routes = require("singbox.generator_routes");
+let generator_routes = require("tachyon_core.generator_routes");
 generator_routes.init({
     runtime_settings: () => ({}),
-    runtime_ruleset_folder: "/tmp/sing-box/rulesets",
+    runtime_ruleset_folder: "/tmp/tachyon-core/rulesets",
     download_detour_tag: (settings, kind) => "direct-out",
     runtime_generate_unsupported: (msg) => { warn(msg + "\n"); exit(1); }
 });
@@ -158,11 +158,11 @@ fi
 rm -f /tmp/test_discord_singbox.json
 
 # Clean up /tmp test files
-rm -f /tmp/sing-box/rulesets/community-subnets-discord.lst /tmp/sing-box/rulesets/community-subnets-other.lst
+rm -f /tmp/tachyon-core/rulesets/community-subnets-discord.lst /tmp/tachyon-core/rulesets/community-subnets-other.lst
 
 # 4. Test fallback to DEFAULT_DISCORD_VOICE_SUBNETS when ruleset file is missing / empty
 ucode -L "$LIB_DIR" -e '
-let generator_routes = require("singbox.generator_routes");
+let generator_routes = require("tachyon_core.generator_routes");
 let fallback_cf = generator_routes.load_community_subnet_cidrs("discord", "only_cloudflare");
 if (!fallback_cf || length(fallback_cf) != 4) {
     warn("Fallback voice subnets failed: " + length(fallback_cf) + "\n");
@@ -208,7 +208,7 @@ echo "$output" | grep -q '^\[' || fail "diagnostics/runtime.uc resolve-domain mu
 # 7. Test telegram fallback subnets in core.ip and generator_routes
 ucode -L "$LIB_DIR" -e '
 let core_ip = require("core.ip");
-let generator_routes = require("singbox.generator_routes");
+let generator_routes = require("tachyon_core.generator_routes");
 
 if (!core_ip.DEFAULT_TELEGRAM_SUBNETS || length(core_ip.DEFAULT_TELEGRAM_SUBNETS) != 10) {
     warn("DEFAULT_TELEGRAM_SUBNETS missing or incorrect length: " + length(core_ip.DEFAULT_TELEGRAM_SUBNETS) + "\n");

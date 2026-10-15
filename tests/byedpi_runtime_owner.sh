@@ -27,7 +27,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|"uci", "-q"' "$BYEDPI_RUNTIME_UC"
 fi
 grep -Fq 'require("core.uci")' "$BYEDPI_RUNTIME_UC" ||
   fail "providers/byedpi/runtime.uc must use core.uci for runtime UCI access"
-grep -Fq 'require("singbox.constants")' "$BYEDPI_RUNTIME_UC" ||
+grep -Fq 'require("tachyon_core.constants")' "$BYEDPI_RUNTIME_UC" ||
   fail "providers/byedpi/runtime.uc must share the sing-box runtime tag allocator"
 grep -Fq 'runtime_constants.tag(base, postfix)' "$BYEDPI_RUNTIME_UC" ||
   fail "providers/byedpi/runtime.uc must allocate section tags through singbox.constants"

@@ -4,7 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
-let core_profile = require("singbox.core_profile");
+let core_profile = require("tachyon_core.core_profile");
 
 let as_string = common.as_string;
 let bool_option = common.bool_option;
@@ -35,8 +35,8 @@ const SUBSCRIPTION_ACTION_DIR = getenv("TACHYON_UI_SUBSCRIPTION_ACTION_DIR") || 
 const ZAPRET2_TUNE_ACTION_DIR = getenv("TACHYON_UI_ZAPRET2_TUNE_ACTION_DIR") || STATE_DIR + "/zapret2-tune-actions";
 const SING_BOX_VERSION_CACHE_FILE = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || STATE_DIR + "/sing-box-version";
 const SING_BOX_VERSION_CACHE_LOCK_DIR = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_LOCK_DIR") || SING_BOX_VERSION_CACHE_FILE + ".lock";
-const SING_BOX_VARIANT_STATE_FILE = getenv("TACHYON_UI_SING_BOX_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
-const SING_BOX_BIN_PATH = getenv("TACHYON_UI_SING_BOX_BIN_PATH") || "/usr/bin/sing-box";
+const SING_BOX_VARIANT_STATE_FILE = getenv("TACHYON_UI_SING_BOX_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+const SING_BOX_BIN_PATH = getenv("TACHYON_UI_SING_BOX_BIN_PATH") || "/usr/bin/tachyon-core";
 const SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS = getenv("TACHYON_UI_SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS") || "1";
 const SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS = getenv("TACHYON_UI_SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS") || "30";
 const ACTION_FINISHED_TTL_MINUTES = getenv("TACHYON_UI_ACTION_FINISHED_TTL_MINUTES") || "60";
@@ -825,20 +825,20 @@ function sing_box_enabled() {
 
 function sing_box_running() {
     return module_success(LIB_DIR + "/service/state.uc", [
-        "sing-box-service-stable",
+        "tachyon-core-service-stable",
         RUNTIME_STABLE_MIN_AGE
     ]);
 }
 
 function tachyon_running() {
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     }
     catch (e) {
-        active_engine = "sing-box";
+        active_engine = "tachyon-core";
     }
-    if (active_engine != "sing-box") {
+    if (active_engine != "tachyon-core") {
         let engine_runtime = require("service.engine_runtime");
         return engine_runtime.run_init(active_engine, "status").ok;
     }
@@ -853,14 +853,14 @@ function tachyon_running() {
 }
 
 function dns_configured() {
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     }
     catch (e) {
-        active_engine = "sing-box";
+        active_engine = "tachyon-core";
     }
-    if (active_engine != "sing-box")
+    if (active_engine != "tachyon-core")
         return true;
 
     return index(uci_core.get("dhcp.@dnsmasq[0].server"), SB_DNS_INBOUND_ADDRESS) >= 0;
@@ -1152,7 +1152,7 @@ function process_memory_rss_mb(process_name) {
         if (!pid || match(pid, /^[0-9]+$/) == null)
             continue;
         let cmd = fs.readfile("/proc/" + pid + "/cmdline");
-        if (cmd && (index(cmd, "check") >= 0 || (process_name == "sing-box" && index(cmd, "run") < 0)))
+        if (cmd && (index(cmd, "check") >= 0 || ((process_name == "tachyon-core" || process_name == "sing-box") && index(cmd, "run") < 0)))
             continue;
         let status = fs.readfile("/proc/" + pid + "/status");
         if (!status)
@@ -1185,12 +1185,12 @@ function current_ui_state_json() {
     let capabilities = capability_flags();
     let tachyon_is_running = tachyon_running() ? 1 : 0;
     let tachyon_is_enabled = service_enabled() ? 1 : 0;
-    let active_engine = "sing-box";
+    let active_engine = "tachyon-core";
     try {
         active_engine = require("core.engine").get_active();
     }
     catch (e) {
-        active_engine = "sing-box";
+        active_engine = "tachyon-core";
     }
     let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
 
@@ -1632,7 +1632,7 @@ function action_dir(kind) {
 
 function get_clash_url(endpoint) {
     let host = "127.0.0.1:9090";
-    let config_data = fs.readfile("/etc/sing-box/config.json");
+    let config_data = fs.readfile("/etc/tachyon-core/config.json");
     if (config_data) {
         try {
             let sb_cfg = json(config_data);

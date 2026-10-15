@@ -9,7 +9,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 generate_log_level() {
   local level="$1" out="$2"
@@ -75,14 +75,14 @@ done
 # The verbose file lives on tmpfs: /etc and /usr are the overlay on the flash
 # that actually wears out, and a per-connection log would be written constantly.
 for level in info debug trace; do
-  grep -Fq '"output": "/tmp/sing-box/sing-box.log"' "$WORK_DIR/$level.out" ||
+  grep -Fq '"output": "/tmp/tachyon-core/sing-box.log"' "$WORK_DIR/$level.out" ||
     fail "log_level=$level must point the verbose log at tmpfs, not the flash overlay"
 done
 
 # Both init-script generators truncate it on start so it cannot grow forever.
 for file in "$ROOT_DIR/tachyon/files/usr/lib/components/action.uc" \
             "$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc"; do
-  grep -Fq ': > /tmp/sing-box/sing-box.log' "$file" ||
+  grep -Fq ': > /tmp/tachyon-core/sing-box.log' "$file" ||
     fail "$(basename "$file") must truncate the verbose log on service start"
 done
 

@@ -10,7 +10,7 @@
 #
 # and the user was told the downloaded variant was incompatible, when dropping that
 # one key - on that one outbound - would have let it run. The apply path in
-# singbox/runtime.uc has always done that repair; the pre-flight never did.
+# tachyon_core/runtime.uc has always done that repair; the pre-flight never did.
 #
 # The repair is driven here directly against a real config file, and the cases that
 # must NOT be repaired are checked too: a wrong field name, an out-of-range index and

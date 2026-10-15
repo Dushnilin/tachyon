@@ -624,7 +624,7 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
 
     // 3. Fallback to active sing-box config if present
     if (!found_server) {
-        let sb_config_raw = fs.readfile("/etc/sing-box/config.json");
+        let sb_config_raw = fs.readfile("/etc/tachyon-core/config.json");
         if (sb_config_raw) {
             try {
                 let sb_cfg = json(sb_config_raw);

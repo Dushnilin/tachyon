@@ -29,7 +29,7 @@ fi
 
 ucode() { command ucode -L "$TACHYON_LIB" "$@"; }
 
-RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
+RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
 ACTION_UC="$TACHYON_LIB/components/action.uc"
 for f in "$RUNTIME_UC" "$ACTION_UC"; do
   [ -f "$f" ] || fail "missing $f"

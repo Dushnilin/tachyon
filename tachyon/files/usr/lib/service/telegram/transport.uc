@@ -114,7 +114,7 @@ function settings() {
 
 function get_mixed_proxy_info() {
     let settings_data = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
-    let config_path = trim(as_string(settings_data.config_path || "")) || "/etc/sing-box/config.json";
+    let config_path = trim(as_string(settings_data.config_path || "")) || "/etc/tachyon-core/config.json";
     let data = fs.readfile(config_path);
     if (data == null) return null;
     let parsed;

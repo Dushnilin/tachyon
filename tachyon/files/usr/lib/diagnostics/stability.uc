@@ -130,7 +130,7 @@ function find_named_pid(name) {
 }
 
 function get_daemon_uptimes() {
-    let daemons = [ "sing-box", "steer", "watchdog", "telegram", "dnsmasq", "nfqws", "nfqws2", "ciadpi" ];
+    let daemons = [ "tachyon-core", "steer", "watchdog", "telegram", "dnsmasq", "nfqws", "nfqws2", "ciadpi" ];
     let result = {};
 
     for (let d in daemons) {
@@ -193,7 +193,7 @@ function get_memory_pressure() {
     else if (used_pct >= 75) pressure = "warning";
 
     // VmRSS per daemon
-    let daemons = [ "sing-box", "steer", "watchdog", "dnsmasq" ];
+    let daemons = [ "tachyon-core", "steer", "watchdog", "dnsmasq" ];
     let daemon_rss = {};
     for (let d in daemons) {
         let pid = find_named_pid(d);
@@ -232,7 +232,7 @@ function get_fd_stats() {
         max = int(parts[2]) || 0;
     }
 
-    let daemons = [ "sing-box", "steer", "watchdog", "dnsmasq" ];
+    let daemons = [ "tachyon-core", "steer", "watchdog", "dnsmasq" ];
     let daemon_fds = {};
     for (let d in daemons) {
         let pid = find_named_pid(d);
@@ -445,7 +445,7 @@ function compute_stability_score(incidents, memory, servers, jobs, daemons) {
     let penalties = [];
 
     // 1. Process health: engine and watchdog must be running
-    if (!daemons["sing-box"]?.running && !daemons["steer"]?.running) {
+    if (!daemons["tachyon-core"]?.running && !daemons["steer"]?.running) {
         score -= 40;
         push(penalties, "Routing engine is not running (-40)");
     }

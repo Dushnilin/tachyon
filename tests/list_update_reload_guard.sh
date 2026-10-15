@@ -36,17 +36,17 @@ FAKE_LIB="$WORK_DIR/lib"
 write_stub "$FAKE_LIB/service/state.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 record("service/state:" + mode);
-if (mode == "sing-box-service-runtime-pid") {
+if (mode == "tachyon-core-service-runtime-pid") {
     print("4567\n");
     exit(0);
 }
-if (mode == "reload-sing-box-runtime" ||
+if (mode == "reload-core-runtime" ||
     mode == "write-current-reload-state-clean")
     exit(0);
 exit(64);
 '
 
-write_stub "$FAKE_LIB/singbox/runtime.uc" "$stub_header"'
+write_stub "$FAKE_LIB/tachyon_core/runtime.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 record("singbox/runtime:" + mode);
 if (mode == "init-config") {
@@ -64,7 +64,7 @@ if (mode == "init-config") {
 exit(64);
 '
 
-write_stub "$FAKE_LIB/singbox/priority.uc" "$stub_header"'
+write_stub "$FAKE_LIB/tachyon_core/priority.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 record("singbox/priority:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
@@ -72,7 +72,7 @@ if (mode == "stop-runtime" || mode == "start-runtime")
 exit(64);
 '
 
-write_stub "$FAKE_LIB/singbox/dns_failover.uc" "$stub_header"'
+write_stub "$FAKE_LIB/tachyon_core/dns_failover.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 record("singbox/dns_failover:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
@@ -110,7 +110,7 @@ UNCHANGED_LOG="$WORK_DIR/unchanged.log"
 echo '{"version": 1}' > "$CONFIG_PATH"
 run_reload "0" "$UNCHANGED_LOG"
 
-if grep -Eq 'reload-sing-box-runtime|priority:stop-runtime|dns_failover:stop-runtime' "$UNCHANGED_LOG"; then
+if grep -Eq 'reload-core-runtime|priority:stop-runtime|dns_failover:stop-runtime' "$UNCHANGED_LOG"; then
   fail "reload_singbox_after_list_update must NOT reload sing-box when config is unchanged"
 fi
 
@@ -119,7 +119,7 @@ CHANGED_LOG="$WORK_DIR/changed.log"
 echo '{"version": 1}' > "$CONFIG_PATH"
 run_reload "1" "$CHANGED_LOG"
 
-grep -Fq 'service/state:reload-sing-box-runtime' "$CHANGED_LOG" ||
+grep -Fq 'service/state:reload-core-runtime' "$CHANGED_LOG" ||
   fail "reload_singbox_after_list_update must reload sing-box when config has changed"
 
 grep -Fq 'singbox/priority:stop-runtime' "$CHANGED_LOG" ||

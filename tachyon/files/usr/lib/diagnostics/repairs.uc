@@ -117,7 +117,7 @@ function apply_quick_fix(codes_str) {
                 status = (rc == 0);
                 msg = status ? "steer restarted" : "steer restart failed (exit " + rc + ")";
             } else {
-                let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+                let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
                 status = (rc == 0);
                 msg = status ? "sing-box restarted" : "sing-box restart failed (exit " + rc + ")";
             }
@@ -155,7 +155,7 @@ function apply_quick_fix(codes_str) {
                 status = (rc == 0);
                 msg = status ? "steer dnsd and dnsmasq reloaded" : "reload failed";
             } else {
-                let rc = command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+                let rc = command_status("/etc/init.d/tachyon-core restart >/dev/null 2>&1");
                 status = (rc == 0);
                 msg = status ? "sing-box DNS restarted" : "sing-box DNS restart failed (exit " + rc + ")";
             }
@@ -201,7 +201,7 @@ function apply_quick_fix(codes_str) {
             status = (rc == 0);
             msg = status ? "Zapret/ByeDPI standalone services stopped and Tachyon engines restarted" : "Zapret/ByeDPI restart failed (exit " + rc + ")";
         } else if (c == "optimize_memory") {
-            let rc = command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; rm -rf /tmp/sing-box/*.tmp 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+            let rc = command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; rm -rf /tmp/tachyon-core/*.tmp 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "Memory caches flushed and sing-box restarted" : "Memory optimization failed (exit " + rc + ")";
         } else if (c == "switch_to_doh") {

@@ -29,8 +29,8 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 TAILSCALE_RT="$TACHYON_LIB/providers/tailscale/runtime.uc"
 FPTN_RT="$TACHYON_LIB/providers/fptn/runtime.uc"
-ROUTES="$TACHYON_LIB/singbox/generator_routes.uc"
-GEN="$TACHYON_LIB/singbox/generator.uc"
+ROUTES="$TACHYON_LIB/tachyon_core/generator_routes.uc"
+GEN="$TACHYON_LIB/tachyon_core/generator.uc"
 STATE="$TACHYON_LIB/service/state.uc"
 ROUTING_DIAG="$TACHYON_LIB/diagnostics/routing.uc"
 STATUS_DIAG="$TACHYON_LIB/diagnostics/status.uc"

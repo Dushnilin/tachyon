@@ -32,7 +32,7 @@ trap cleanup EXIT INT TERM
 
 # 1. Test singbox/route.uc rules for wifi_calling_direct and bittorrent_policy (off / direct / block + legacy isolate_p2p)
 ucode -L "$TACHYON_LIB" -e '
-let route = require("singbox.route");
+let route = require("tachyon_core.route");
 
 // Legacy isolate_p2p=1 maps to direct
 let cfg_legacy = route.config({

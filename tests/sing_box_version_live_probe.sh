@@ -2,7 +2,7 @@
 # A sing-box replaced by hand must be configured for the version that is actually
 # installed.
 #
-# /etc/tachyon/sing-box-version is written by the component action alone. It used to
+# /etc/tachyon/tachyon-core-version is written by the component action alone. It used to
 # be the source of truth for the generator, so replacing the binary by hand - or
 # through install.sh or opkg - left the file at whatever the last component action
 # wrote. The generator then configured for that stale version: stock 1.13.21 state
@@ -24,8 +24,8 @@ if [ -z "$TACHYON_LIB" ]; then
   fi
 fi
 
-GEN="$TACHYON_LIB/singbox/generator.uc"
-RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
+GEN="$TACHYON_LIB/tachyon_core/generator.uc"
+RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
 for f in "$GEN" "$RUNTIME_UC"; do
   [ -f "$f" ] || fail "missing $f"
 done

@@ -1,6 +1,6 @@
 // Run on the patched router: ucode -L /usr/lib/tachyon test-tachyon-awg-manual.uc
 // Synthetic keys and documentation addresses only; no UCI writes or network traffic.
-let generator = require('singbox.generator_outbounds');
+let generator = require('tachyon_core.generator_outbounds');
 let wireguard = require('subscription.wireguard');
 generator.init({runtime_generate_unsupported: message => assert(false, message)});
 function check(ok, label) {

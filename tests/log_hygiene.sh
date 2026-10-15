@@ -58,6 +58,6 @@ reject_runtime_pattern "br_netfilter enabled detected. Disabling" \
 reject_runtime_regex 'log_message\("subscription/cache\.uc: ' \
   "runtime logs must not expose subscription/cache.uc as a user-facing prefix"
 reject_runtime_regex 'log_message\("singbox/runtime\.uc: ' \
-  "runtime logs must not expose singbox/runtime.uc as a user-facing prefix"
+  "runtime logs must not expose tachyon_core/runtime.uc as a user-facing prefix"
 
 printf 'log hygiene checks passed\n'

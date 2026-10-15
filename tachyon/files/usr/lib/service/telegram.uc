@@ -10,7 +10,7 @@ let uci_core = require("core.uci");
 let connections = require("config.connections");
 let helpers = require("core.helpers");
 let api = require("service.api");
-let dns_presets = require("singbox.dns_presets");
+let dns_presets = require("tachyon_core.dns_presets");
 let i18n = require("service.i18n");
 
 let rendering = require("service.telegram.rendering");

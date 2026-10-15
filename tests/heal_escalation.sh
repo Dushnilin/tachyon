@@ -21,9 +21,9 @@ grep -q 'const ESCALATION_HEAVY = "heavy";' "$WATCHDOG_UC" \
   || fail "ESCALATION_HEAVY is gone"
 
 # The light rung must drive the sing-box init script, not the tachyon one.
-grep -q '/etc/init.d/sing-box stop' "$WATCHDOG_UC" \
+grep -q '/etc/init.d/tachyon-core stop' "$WATCHDOG_UC" \
   || fail "the light rung no longer stops the sing-box service"
-grep -q '/etc/init.d/sing-box start' "$WATCHDOG_UC" \
+grep -q '/etc/init.d/tachyon-core start' "$WATCHDOG_UC" \
   || fail "the light rung no longer starts the sing-box service"
 
 # ── the ladder is consulted, not hardcoded ────────────────────────────────────
@@ -60,8 +60,8 @@ lock_line="$(grep -n 'write_state_file(PROXY_RESTART_LOCK, as_string(now)' "$WAT
 
 # ── a stopped sing-box is started, never escalated over ───────────────────────
 # There is no stack to tear down when the process simply is not running.
-grep -q 'safe_proxy_restart("singbox_stopped", ESCALATION_LIGHT)' "$WATCHDOG_UC" \
-  || fail "heal_singbox_stopped no longer pins the light rung; a missing process would trigger a full restart"
+grep -q 'safe_proxy_restart("core_stopped", ESCALATION_LIGHT)' "$WATCHDOG_UC" \
+  || fail "heal_core_stopped no longer pins the light rung; a missing process would trigger a full restart"
 
 # ── repairs that rewrote config on disk stay pinned heavy ─────────────────────
 # `tachyon reload` exits early when the config hash is unchanged

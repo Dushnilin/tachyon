@@ -4,14 +4,14 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let core_ip = require("core.ip");
-let runtime_dns = require("singbox.dns");
+let runtime_dns = require("tachyon_core.dns");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const STATE_FILE = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") || RUNTIME_STATE_DIR + "/dns-failover.json";
 const PID_FILE = getenv("TACHYON_DNS_FAILOVER_PID_FILE") || RUNTIME_STATE_DIR + "/dns-failover.pid";
-const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/singbox/dns_failover.uc";
+const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/tachyon_core/dns_failover.uc";
 const SERVICE_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const CHECK_DOMAIN = "example.com";
 
@@ -307,8 +307,7 @@ function apply_selections(state, selections) {
 // silence as a dead resolver; three such strikes switch the DNS server, which
 // rewrites the config, which restarts the core, which is silent again.
 function core_age_seconds() {
-    let pid = trim(as_string(common.command_output("pidof sing-box 2>/dev/null")));
-    pid = split(pid, " ")[0];
+    let pid = split(trim(as_string(common.command_output("pidof tachyon-core sing-box 2>/dev/null"))), " ")[0];
     if (match(as_string(pid), /^[0-9]+$/) == null)
         return null;
     let stat = fs.readfile("/proc/" + pid + "/stat");
@@ -330,7 +329,7 @@ function core_age_seconds() {
     let cfg = settings();
     let min_age = proc_age;
 
-    let config_path = trim(as_string(cfg.config_path || "")) || "/etc/sing-box/config.json";
+    let config_path = trim(as_string(cfg.config_path || "")) || "/etc/tachyon-core/config.json";
     let config_stat = fs.stat(config_path);
     if (config_stat != null && config_stat.mtime > 0) {
         let config_age = int(time()) - int(config_stat.mtime);
@@ -423,6 +422,13 @@ function worker() {
         }
 
         if (now >= next_recovery) {
+            let age = core_age_seconds();
+            if (age == null || age < CORE_GRACE_SECONDS) {
+                strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
+                next_recovery = now_seconds() + recovery_interval;
+                command_success_from_args([ "sleep", as_string(sleep_interval) ]);
+                continue;
+            }
             let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, true, strikes, failure_threshold, recovery_threshold);
             let main = choose_index("main", state, int(state.main_index), timeout_seconds, true, strikes, failure_threshold, recovery_threshold);
             let has_changes = bootstrap.index != int(state.bootstrap_index) || main.index != int(state.main_index);

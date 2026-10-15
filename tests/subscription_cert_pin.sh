@@ -166,7 +166,7 @@ for spec in "1.15.0:certificate_sha256" "1.14.2-lx.12:certificate_public_key_sha
   version="${spec%%:*}"
   field="${spec##*:}"
   SB_VERSION_OVERRIDE="$version" ucode -e '
-let generator = require("singbox.generator_outbounds");
+let generator = require("tachyon_core.generator_outbounds");
 let outbound = generator.manual_vless_outbound(ARGV[0], "pin-test");
 if (type(outbound.tls) != "object") exit(1);
 if (type(outbound.tls[ARGV[2]]) != "array") exit(2);
@@ -179,35 +179,35 @@ if (outbound.tls[ARGV[2]][0] !== ARGV[1]) exit(3);
   other="certificate_sha256"
   [ "$field" = "certificate_sha256" ] && other="certificate_public_key_sha256"
   SB_VERSION_OVERRIDE="$version" ucode -e '
-let generator = require("singbox.generator_outbounds");
+let generator = require("tachyon_core.generator_outbounds");
 let outbound = generator.manual_vless_outbound(ARGV[0], "pin-test");
 exit(type(outbound.tls[ARGV[1]]) == "object" ? 1 : 0);
 ' "$vless_link" "$other" \
     || fail "$version must not also emit $other, the build rejects it"
 done
 
-# 6. Verify singbox/runtime.uc supports-cert-pin version gates
-ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.0" ||
+# 6. Verify tachyon_core/runtime.uc supports-cert-pin version gates
+ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.0" ||
   fail "supports-cert-pin must succeed on 1.15.0"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.2" ||
+ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.2" ||
   fail "supports-cert-pin must succeed on 1.15.2"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "v1.16.1" ||
+ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "v1.16.1" ||
   fail "supports-cert-pin must succeed on v1.16.1"
 # lx is below 1.15, so it has no certificate_sha256 - but it does accept
 # certificate_public_key_sha256 (checked against the real 1.14.2-lx.12 binary),
 # and the generator writes that field, so pinning is available to it. The old
 # expectation here was that lx had no pin at all, which turned a field choice
 # into a missing feature.
-ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.2-lx.4" ||
+ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.2-lx.4" ||
   fail "supports-cert-pin must succeed on 1.14.2-lx.4 (it accepts the public-key field)"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.0-lx.32" ||
+ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.0-lx.32" ||
   fail "supports-cert-pin must succeed on 1.14.0-lx.32"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "v0.0.1-tachyon.0" ||
+ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "v0.0.1-tachyon.0" ||
   fail "supports-cert-pin must succeed on Tachyon's own core (it accepts the public-key field)"
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.2"; then
+if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.2"; then
   fail "stock 1.14.2 has neither pin field's upstream support and must not claim pinning"
 fi
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "sing-box-lx"; then
+if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "sing-box-lx"; then
   fail "supports-cert-pin must not claim pinning from a bare variant name with no version"
 fi
 
@@ -216,19 +216,19 @@ fi
 # build-level exclusion would strip pins from every future lx release.
 printf 'lx\n' > "$WORK_DIR/variant_lx"
 if SB_VARIANT_STATE_FILE="$WORK_DIR/variant_lx" \
-  ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.0"; then :; else
+  ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.0"; then :; else
   fail "supports-cert-pin must succeed on 1.15.0 even when the variant marker says lx - the field is gated by version, not by build (issue #79)"
 fi
 
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.13.0"; then
+if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.13.0"; then
   fail "supports-cert-pin must fail on 1.13.0"
 fi
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.14.9"; then
+if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.9"; then
   fail "supports-cert-pin must fail on 1.14.9"
 fi
 
 # 7. Generator: pins are kept where a usable field exists (issue #79)
-GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/generator.uc"
+GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc"
 
 ucode "$GENERATOR_UC" is-cert-pin-supported "1.15.0" ||
   fail "generator is-cert-pin-supported must succeed on 1.15.0"
@@ -276,7 +276,7 @@ fi
 printf '%-16s %-11s %-11s\n' variant generator runtime
 for variant in 1.15.0 1.15.2 v1.16.1 1.14.2 1.14.2-lx.8 1.14.0-lx.32 1.15.0-lx.1 1.16.0-lx.3; do
   if ucode "$GENERATOR_UC" is-cert-pin-supported "$variant" 2>/dev/null; then gen=supported; else gen=unsupported; fi
-  if ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "$variant" 2>/dev/null; then rt=supported; else rt=unsupported; fi
+  if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "$variant" 2>/dev/null; then rt=supported; else rt=unsupported; fi
   printf '%-16s %-11s %-11s\n' "$variant" "$gen" "$rt"
   [ "$gen" = "$rt" ] ||
     fail "generator and runtime disagree about $variant: generator=$gen runtime=$rt - the generator would emit a field the runtime then strips (issue #79)"
@@ -291,7 +291,7 @@ done
 # field and no speculation about 1.15.
 ucode "$GENERATOR_UC" is-cert-pin-supported "1.15.0-lx.1" ||
   fail "generator must support pinning on lx 1.15 (under the public-key field)"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/singbox/runtime.uc" supports-cert-pin "1.15.0-lx.1" ||
+ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.0-lx.1" ||
   fail "runtime must support pinning on lx 1.15, same reason"
 
 # On lx, certificate_sha256 is the field to strip - it is the one the build

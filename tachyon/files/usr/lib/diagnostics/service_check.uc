@@ -18,7 +18,7 @@ const PROFILES_OVERRIDE = "/etc/tachyon/servicecheck_profiles.json";
 const PROFILES_DEFAULT = "/usr/share/tachyon/servicecheck_profiles.json";
 const STATE_DIR = "/var/run/tachyon-servicecheck";
 const TACHYON_BIN = "/usr/bin/tachyon";
-const DEFAULT_SING_BOX_CONFIG = "/etc/sing-box/config.json";
+const DEFAULT_SING_BOX_CONFIG = "/etc/tachyon-core/config.json";
 const NETNS_NAME = "fkpsc";
 const NETNS_VETH_HOST = "fkpsc0";
 const NETNS_VETH_PEER = "fkpsc1";
@@ -148,7 +148,7 @@ function download_profiles_from_repo() {
         "https://ghproxy.net/" + RAW_URL
     ];
 
-    let proxy_address = trim(as_string(common.command_output("/usr/lib/tachyon/singbox/runtime.uc service-proxy-address components 2>/dev/null") || ""));
+    let proxy_address = trim(as_string(common.command_output("/usr/lib/tachyon/tachyon_core/runtime.uc service-proxy-address components 2>/dev/null") || ""));
 
     let content = "";
     for (let mirror in MIRRORS) {
@@ -1559,7 +1559,7 @@ function custom_check(host, port, mode, client_ip) {
     }
     else if (live_route.seen) {
         through_sing_box = true;
-        route_status = "sing-box";
+        route_status = "tachyon-core";
         evidence = "clash_api";
         item.outbound = live_route.outbound;
         route_message = live_route.outbound != ""
@@ -1568,7 +1568,7 @@ function custom_check(host, port, mode, client_ip) {
     }
     else if (item.dns_fakeip) {
         through_sing_box = true;
-        route_status = "sing-box";
+        route_status = "tachyon-core";
         evidence = "fakeip";
         route_message = "Домен получил FakeIP, который обслуживается sing-box.";
     }

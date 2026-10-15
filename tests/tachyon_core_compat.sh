@@ -20,9 +20,9 @@
 set -eo pipefail
 
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
-RT="$LIB_DIR/singbox/runtime.uc"
+RT="$LIB_DIR/tachyon_core/runtime.uc"
 VAL="$LIB_DIR/config/validator.uc"
-[ -f "$RT" ] || fail "singbox/runtime.uc not found"
+[ -f "$RT" ] || fail "tachyon_core/runtime.uc not found"
 [ -f "$VAL" ] || fail "config/validator.uc not found"
 
 CORE_VERSION="v0.0.1-tachyon.0"
@@ -77,10 +77,10 @@ out="$(rt supports-cert-pin "1.15.0")"
 [ "$out" = "yes" ] || fail "pinning stopped working for sing-box 1.15 itself"
 
 # And the generator must not hand the core a field it rejects.
-GEN="$LIB_DIR/singbox/generator.uc"
+GEN="$LIB_DIR/tachyon_core/generator.uc"
 grep -q 'certificate_public_key_sha256' "$GEN" \
   || fail "the generator has no public-key pin field, so the core's pins cannot be written"
-grep -q 'tls\[pin_field\]' "$LIB_DIR/singbox/generator_outbounds.uc" \
+grep -q 'tls\[pin_field\]' "$LIB_DIR/tachyon_core/generator_outbounds.uc" \
   || fail "outbound generation still hardcodes certificate_sha256, which the core rejects"
 
 out="$(rt supports-xhttp "1.14.2" "sing-box version 1.14.2")"
@@ -97,7 +97,7 @@ if ! grep -q 'sing_box_version_is_foreign_core(sing_box_version)' "$VAL"; then
   fail "the validator still applies the sing-box minimum to a foreign core version and will refuse to start"
 fi
 if ! grep -q 'sing_box_version_is_foreign_core' "$RT"; then
-  fail "singbox/runtime.uc no longer carries the foreign-core predicate"
+  fail "tachyon_core/runtime.uc no longer carries the foreign-core predicate"
 fi
 
 # ─── an unknown nested tls field must be repairable ─────────────────────────
@@ -122,7 +122,7 @@ printf 'fault: tachyon-core compatibility checks passed\n'
 # http_clients, route.default_http_client and dns.optimistic are accepted,
 # cache_file carries store_dns, buffer_size and flush_interval, and the TLS
 # allowlist carries certificate_sha256.
-GEN="$LIB_DIR/singbox/generator.uc"
+GEN="$LIB_DIR/tachyon_core/generator.uc"
 
 gate() {
   ucode -L "$LIB_DIR" "$GEN" "$1" "$CORE_VERSION" >/dev/null 2>&1 && echo yes || echo no

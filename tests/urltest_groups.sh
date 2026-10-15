@@ -3,7 +3,7 @@
 set -eo pipefail
 
 PARSER_UC="$TACHYON_LIB/subscription/parser.uc"
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 CACHE_UC="$TACHYON_LIB/subscription/cache.uc"
 
 normalize_subscription() {

@@ -7,7 +7,7 @@ if [ -d "$ROOT_DIR/tachyon/files/usr/lib" ]; then
 else
   TACHYON_LIB="/usr/lib/tachyon"
 fi
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {

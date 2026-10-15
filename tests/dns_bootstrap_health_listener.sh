@@ -22,7 +22,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR="$TACHYON_LIB/tachyon_core/generator.uc"
 
 generate() {
   local fixture="$1"
@@ -141,7 +141,7 @@ ok
 # The port formula itself is part of the contract: without it the worker and
 # the config would drift apart again.
 TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
-let dns = require("singbox.dns");
+let dns = require("tachyon_core.dns");
 function assert(v, m) { if (!v) { warn("FAIL: ", m, "\n"); exit(1); } }
 assert(dns.health_port("bootstrap", 0) == 10054, "bootstrap port 0 must be 10054");
 assert(dns.health_port("main", 0) == 10053, "main port 0 must be 10053");

@@ -8,7 +8,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
-let dns_presets = require("singbox.dns_presets");
+let dns_presets = require("tachyon_core.dns_presets");
 let api = require("service.api");
 let i18n = require("service.i18n");
 

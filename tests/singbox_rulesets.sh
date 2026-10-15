@@ -2,7 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-RULESETS_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/rulesets.uc"
+RULESETS_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/rulesets.uc"
 
 assert_eq() {
   local expected="$1"
@@ -45,11 +45,11 @@ if ucode -L "$TACHYON_LIB" "$RULESETS_UC" is-plain-list-reference 'https://examp
   fail ".json URL should not be recognized as a plain list"
 fi
 
-ucode -L "$TACHYON_LIB" -e 'let rulesets = require("singbox.rulesets"); if (rulesets.kind_from_reference_hint("geoip") != "subnets") exit(1);'
-ucode -L "$TACHYON_LIB" -e 'let rulesets = require("singbox.rulesets"); if (type(rulesets.COMMUNITY_SERVICES) != "object" || !rulesets.COMMUNITY_SERVICES.discord) exit(1);'
-ucode -L "$TACHYON_LIB" -e 'let rulesets = require("singbox.rulesets"); if (!rulesets.COMMUNITY_SERVICES.twitch) exit(1);'
+ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); if (rulesets.kind_from_reference_hint("geoip") != "subnets") exit(1);'
+ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); if (type(rulesets.COMMUNITY_SERVICES) != "object" || !rulesets.COMMUNITY_SERVICES.discord) exit(1);'
+ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); if (!rulesets.COMMUNITY_SERVICES.twitch) exit(1);'
 assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/twitch.srs" \
-  "$(ucode -L "$TACHYON_LIB" -e 'let rulesets = require("singbox.rulesets"); print(rulesets.community_url("twitch"));')" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); print(rulesets.community_url("twitch"));')" \
   "twitch community ruleset url"
 
 assert_eq mixed \

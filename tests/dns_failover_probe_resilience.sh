@@ -15,7 +15,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-FAILOVER_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/dns_failover.uc"
+FAILOVER_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/dns_failover.uc"
 
 [ -f "$FAILOVER_UC" ] || fail "dns_failover.uc not found"
 

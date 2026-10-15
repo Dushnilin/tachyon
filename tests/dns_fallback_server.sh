@@ -2,8 +2,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-GENERATOR="$TACHYON_LIB/singbox/generator.uc"
-FAILOVER="$TACHYON_LIB/singbox/dns_failover.uc"
+GENERATOR="$TACHYON_LIB/tachyon_core/generator.uc"
+FAILOVER="$TACHYON_LIB/tachyon_core/dns_failover.uc"
 
 generate() {
   local fixture="$1"
@@ -158,7 +158,7 @@ assert(count_prefix(multi.dns.servers, "dns-health-bootstrap-") == 1, "single bo
 
 # ─── Test 5: is_explicit_fallback_index logic via dns.uc ─────────────────────
 ucode -L "$TACHYON_LIB" -e '
-let runtime_dns = require("singbox.dns");
+let runtime_dns = require("tachyon_core.dns");
 let common = require("core.common");
 
 function assert(value, message) {
@@ -200,7 +200,7 @@ assert(runtime_dns.is_wan_fallback_index(settings_no_fallback, 2) == true, "inde
 
 # ─── Test 6: server_list includes dns_fallback_server entries ─────────────────
 ucode -L "$TACHYON_LIB" -e '
-let runtime_dns = require("singbox.dns");
+let runtime_dns = require("tachyon_core.dns");
 
 function assert(value, message) {
   if (!value) { warn("FAIL: ", message, "\n"); exit(1); }

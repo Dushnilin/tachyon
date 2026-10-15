@@ -3,10 +3,10 @@
 #
 # Reported from the field as:
 #
-#   [fatal] Generated sing-box configuration is invalid: /usr/bin/sing-box: line 3:
+#   [fatal] Generated sing-box configuration is invalid: /usr/bin/tachyon-core: line 3:
 #           syntax error: unexpected word (expecting ")"). Aborted.
 #
-# That is the shell reporting on /usr/bin/sing-box: the file is a script, not the
+# That is the shell reporting on /usr/bin/tachyon-core: the file is a script, not the
 # engine - a wrapper, a half-extracted stub, a failed upgrade. Nothing was wrong with
 # the configuration, and the message sent the user looking there instead.
 #
@@ -23,14 +23,14 @@ if [ -z "$TACHYON_LIB" ]; then
   fi
 fi
 
-RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
+RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
 [ -f "$RUNTIME_UC" ] || fail "missing $RUNTIME_UC"
 
 pass_count=0
 ok() { pass_count=$((pass_count + 1)); }
 
 cat >"$WORK_DIR/binprobe.uc" <<'UCODE'
-let r = require("singbox.binary_diag");
+let r = require("tachyon_core.binary_diag");
 
 let errors = [];
 let note = function(m) { push(errors, m); };
@@ -63,7 +63,7 @@ else if (index(problem_macho, "macOS") < 0 || index(problem_macho, "Mach-O") < 0
     note("the report must name the wrong platform, got: " + problem_macho);
 
 // The path arrives from `command -v` with its trailing newline. A stat of
-// "/usr/bin/sing-box\n" fails on a file that is very much there, and the old code
+// "/usr/bin/tachyon-core\n" fails on a file that is very much there, and the old code
 // reported exactly that as "binary is missing".
 if (r.sing_box_binary_problem(binary + "\n") != "")
     note("a path with a trailing newline must still find the binary, got: " +
@@ -76,11 +76,11 @@ let blames = function(reason, should_be_binary, label) {
         note(label + ": got " + (got ? "blamed the binary" : "blamed the config"));
 };
 
-blames("/usr/bin/sing-box: line 3: syntax error: unexpected word (expecting \")\").", true,
+blames("/usr/bin/tachyon-core: line 3: syntax error: unexpected word (expecting \")\").", true,
     "a shell error from the binary must be recognised");
 blames("Permission denied", true,
     "an unusable binary must be recognised from a permission error");
-blames("sh: /usr/bin/sing-box: Exec format error", true,
+blames("sh: /usr/bin/tachyon-core: Exec format error", true,
     "a binary the kernel cannot exec must be recognised");
 blames('outbounds[3].default: json: unknown field "default"', false,
     "a real configuration error must not be blamed on the binary");
@@ -128,7 +128,7 @@ ok
 # The diagnosis must come first: blaming the configuration before classifying
 # the binary is the original bug this test exists for.
 classify_line="$(grep -n 'let bin_problem = sing_box_binary_problem' "$RUNTIME_UC" | head -1 | cut -d: -f1)"
-blame_line="$(grep -n 'Generated sing-box configuration is invalid' "$RUNTIME_UC" | head -1 | cut -d: -f1)"
+blame_line="$(grep -n 'Generated tachyon-core configuration is invalid' "$RUNTIME_UC" | head -1 | cut -d: -f1)"
 [ -n "$classify_line" ] && [ -n "$blame_line" ] || fail "could not locate classification or blame"
 if [ "$classify_line" -ge "$blame_line" ]; then
   fail "the binary is classified (line $classify_line) only after the configuration is blamed (line $blame_line)"
@@ -137,7 +137,7 @@ ok
 
 # Both messages have to survive: a genuine configuration error must still be reported
 # as one.
-grep -q 'Generated sing-box configuration is invalid' "$RUNTIME_UC" ||
+grep -q 'Generated tachyon-core configuration is invalid' "$RUNTIME_UC" ||
   fail "the genuine configuration error message was replaced instead of supplemented"
 ok
 

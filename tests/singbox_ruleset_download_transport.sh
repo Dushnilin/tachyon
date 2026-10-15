@@ -22,7 +22,7 @@ if [ -d "$ROOT_DIR/tachyon/files/usr/lib" ]; then
 else
   TACHYON_LIB="/usr/lib/tachyon"
 fi
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 
 # A proxy section to detour through, plus a section whose community list and

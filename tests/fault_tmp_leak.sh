@@ -13,7 +13,7 @@
 #   components/updates.uc:318
 #   nft/apply.uc:2504
 #   service/lifecycle.uc:1658
-#   singbox/runtime.uc:128
+#   tachyon_core/runtime.uc:128
 #
 # Not one of those matched the sweeper, so nothing it made was ever deleted.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"

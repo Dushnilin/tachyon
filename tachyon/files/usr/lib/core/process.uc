@@ -179,7 +179,12 @@ function is_tachyon_process(pid) {
     return true;
 }
 
-// Check if a PID is a sing-box process (by /proc/PID/exe or /proc/PID/comm).
+// The core answers to `tachyon-core`. A router upgraded from the previous
+// release can still have the old process or its `/usr/bin/sing-box` symlink
+// running, so both names count as the engine here.
+const CORE_PROCESS_NAMES = [ "tachyon-core", "sing-box" ];
+
+// Check if a PID is a proxy-core process (by /proc/PID/exe or /proc/PID/comm).
 function is_sing_box(pid) {
     pid = as_string(pid);
     if (match(pid, /^[0-9]+$/) == null)
@@ -189,12 +194,14 @@ function is_sing_box(pid) {
     if (exe != null && exe != "") {
         let slash = rindex(exe, "/");
         let basename = slash >= 0 ? substr(exe, slash + 1) : exe;
-        if (basename == "sing-box")
+        // the /usr/bin/sing-box symlink resolves to the core, so an upgraded
+        // router reports the old name here even though it runs the new binary
+        if (index(CORE_PROCESS_NAMES, basename) >= 0)
             return true;
     }
 
     let comm = trim(as_string(fs.readfile(sprintf(PROC_COMM_FORMAT, pid)) || ""));
-    if (comm == "sing-box")
+    if (index(CORE_PROCESS_NAMES, comm) >= 0)
         return true;
 
     return false;

@@ -4,7 +4,7 @@ set -eo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$TEST_DIR/.." && pwd)"
-GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
+GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -402,8 +402,8 @@ if (!legacy_rule) {
 SB_BIN=""
 if command -v sing-box >/dev/null 2>&1; then
   SB_BIN="sing-box"
-elif [ -x "/tmp/sing-box-bin" ]; then
-  SB_BIN="/tmp/sing-box-bin"
+elif [ -x "/tmp/tachyon-core-bin" ]; then
+  SB_BIN="/tmp/tachyon-core-bin"
 fi
 
 if [ -n "$SB_BIN" ]; then

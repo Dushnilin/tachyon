@@ -202,7 +202,7 @@ function get_variant_target_path() {
     if (_override_variant_path != null) return _override_variant_path;
     let p = getenv("SB_VARIANT_STATE_FILE");
     if (p != null && p != "") return p;
-    return "/etc/tachyon/sing-box-variant";
+    return "/etc/tachyon/tachyon-core-variant";
 }
 
 function get_variant_backup_path() {
@@ -254,22 +254,29 @@ function get_active_engine() {
         try {
             c.load(CONFIG_NAME);
             let eng = c.get(CONFIG_NAME, "settings", "engine");
-            if (eng != null && eng != "") return eng;
+            if (eng != null && eng != "")
+                return eng == "sing-box" ? "tachyon-core" : eng;
         } catch (e) {}
     }
-    return "sing-box";
+    return "tachyon-core";
 }
 
 function get_engine_pid(engine_id) {
     engine_id = engine_id || get_active_engine();
-    let proc_name = engine_id == "steer" ? "steer" : "sing-box";
-    let p = fs.popen("pidof " + shell_quote(proc_name) + " 2>/dev/null", "r");
-    if (!p) return 0;
-    let out = trim(as_string(p.read("line")));
-    p.close();
-    if (out == "") return 0;
-    let pids = split(out, /[ \t]+/);
-    return length(pids) > 0 ? int(pids[0]) : 0;
+    let names = (engine_id == "steer" || engine_id == "steer-extended")
+        ? [ "steer" ]
+        : [ "tachyon-core", "sing-box" ];
+    for (let proc_name in names) {
+        let p = fs.popen("pidof " + shell_quote(proc_name) + " 2>/dev/null", "r");
+        if (!p) continue;
+        let out = trim(as_string(p.read("line")));
+        p.close();
+        if (out != "") {
+            let pids = split(out, /[ \t]+/);
+            if (length(pids) > 0) return int(pids[0]);
+        }
+    }
+    return 0;
 }
 
 function probe_system_health(engine_id) {
@@ -354,8 +361,8 @@ function promote(reason, metrics) {
     }
 
     // 2. Copy variant if present
-    if (fs.stat("/etc/tachyon/sing-box-variant") != null) {
-        copy_file_atomic("/etc/tachyon/sing-box-variant", get_variant_backup_path());
+    if (fs.stat("/etc/tachyon/tachyon-core-variant") != null) {
+        copy_file_atomic("/etc/tachyon/tachyon-core-variant", get_variant_backup_path());
     }
 
     // 3. Calculate hash
@@ -734,7 +741,7 @@ function format_text_status(st) {
         push(lines, sprintf("  Promoted At:     %s (Epoch: %s)", as_string(m.promoted_at), as_string(m.promoted_at)));
         push(lines, sprintf("  Reason:          %s", m.promotion_reason || "unknown"));
         push(lines, sprintf("  Config SHA256:   %s", m.config_hash || "none"));
-        push(lines, sprintf("  Routing Engine:  %s", m.engine || "sing-box"));
+        push(lines, sprintf("  Routing Engine:  %s", m.engine || "tachyon-core"));
         if (m.stable_duration) {
             push(lines, sprintf("  Observed Stable: %ds", m.stable_duration));
         }
@@ -795,7 +802,7 @@ function selftest() {
     assert(has_known_good() == false, "Initially has_known_good is false");
 
     // Write sample config
-    let initial_uci = "config settings 'settings'\n\toption engine 'sing-box'\n";
+    let initial_uci = "config settings 'settings'\n\toption engine 'tachyon-core'\n";
     fs.writefile(tmp_cfg_file, initial_uci);
 
     // Test 2: Promote active config to Known Good
@@ -806,7 +813,7 @@ function selftest() {
     let manifest = get_known_good_manifest();
     assert(manifest != null, "manifest is readable");
     assert(manifest.promotion_reason == "test_initial_bless", "manifest reason recorded");
-    assert(manifest.engine == "sing-box", "manifest engine recorded");
+    assert(manifest.engine == "tachyon-core", "manifest engine recorded");
 
     // Test 3: Status reports active == LKG
     let st = get_status();
@@ -814,7 +821,7 @@ function selftest() {
     assert(st.is_active_config_known_good == true, "active config is LKG");
 
     // Test 4: Modify active config -> starts observation
-    let modified_uci = "config settings 'settings'\n\toption engine 'sing-box'\nconfig section 's1'\n\toption action 'proxy'\n";
+    let modified_uci = "config settings 'settings'\n\toption engine 'tachyon-core'\nconfig section 's1'\n\toption action 'proxy'\n";
     fs.writefile(tmp_cfg_file, modified_uci);
 
     let obs_start = start_observation("user_edit_section", 10);

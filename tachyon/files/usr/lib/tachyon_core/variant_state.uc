@@ -1,15 +1,15 @@
 // Which core is installed right now, for callers that cannot ask
-// singbox/runtime.uc: its command-line dispatch runs on load and would take
+// tachyon_core/runtime.uc: its command-line dispatch runs on load and would take
 // the generator down, and diagnostics only needs the state files anyway.
 //
 // The marker file is what components/action.uc wrote when it put this binary
 // in place; the version covers a build that names itself in its number
 // ("-lx", "-tachyon."). The pure table lookup lives in singbox/core_profile.uc.
 let fs = require("fs");
-let core_profile = require("singbox.core_profile");
+let core_profile = require("tachyon_core.core_profile");
 
-const VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
-const VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+const VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+const VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
 
 function current_profile() {
     let version = trim(fs.readfile(VERSION_STATE_FILE) || "");
@@ -17,7 +17,7 @@ function current_profile() {
     // A build that names itself in its version outranks the marker: the marker
     // describes what was installed previously and can lag behind a swapped
     // binary. Same order as sing_box_core_identity_marker() in
-    // singbox/runtime.uc, minus the banner probe - the generator never spawns.
+    // tachyon_core/runtime.uc, minus the banner probe - the generator never spawns.
     let from_version = core_profile.profile_by_version(version);
     return from_version != "" ? from_version : core_profile.profile(version, marker);
 }

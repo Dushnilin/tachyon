@@ -42,7 +42,7 @@ ucode -L "$TACHYON_LIB" "$PARSER" normalize-uri-list "$WORK_DIR/links" "$CACHE.j
 printf '%s' 'https://example.com/sub' >"$CACHE.url"
 printf '%s' 'Happ' >"$CACHE.user_agent"
 TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
-  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
     "$WORK_DIR/fixture.json" "$WORK_DIR/config.json" '127.0.0.1' '0'
 node - "$WORK_DIR" <<'JS'
 const fs = require('fs');
@@ -69,7 +69,7 @@ JS
 printf 'standard' >"$WORK_DIR/variant"
 printf '1.14.2' >"$WORK_DIR/version"
 if TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
-  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
     "$WORK_DIR/fixture.json" "$WORK_DIR/rejected.json" '127.0.0.1' '0' >"$WORK_DIR/error" 2>&1; then
   fail 'full vpn:// generation must reject non-LX core'
 fi

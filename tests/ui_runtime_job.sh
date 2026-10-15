@@ -50,7 +50,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$UI_UC" >/dev/null 2
 fi
 grep -Fq '"tachyon-stably-running"' "$UI_UC" ||
   fail "UI Tachyon status must use stable runtime state to avoid crash-loop flicker"
-grep -Fq '"sing-box-service-stable"' "$UI_UC" ||
+grep -Fq '"tachyon-core-service-stable"' "$UI_UC" ||
   fail "UI sing-box status must use stable runtime state to avoid crash-loop flicker"
 if sed -n '/^function ensure_dir(/,/^}/p' "$UI_UC" | grep -Fq 'mkdir", "-p'; then
   fail "UI state refresh must not spawn mkdir for existing directories"

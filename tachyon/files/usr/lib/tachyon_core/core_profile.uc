@@ -2,7 +2,7 @@
 //
 // This is a pure table lookup: it never reads a marker file and never runs the
 // installed binary. Callers pass the version and marker they already know about,
-// and singbox/runtime.uc fills those in from the live system before calling in.
+// and tachyon_core/runtime.uc fills those in from the live system before calling in.
 // Keeping the two apart is what lets the generator use this module - requiring
 // runtime.uc from a generator would run its command-line dispatch on load and
 // take the whole process down with a usage message.
@@ -84,7 +84,7 @@ const CORE_PROFILES = {
         // A build that carries the suffix in its version is recognised on sight.
         // The released one does not - it reports a bare "0.0.1" - and is
         // recognised by its marker or by the name in its banner instead, which
-        // is singbox/runtime.uc's job, not this module's.
+        // is tachyon_core/runtime.uc's job, not this module's.
         version_contains: "-tachyon.",
         foreign_series: true,
         pin_field: "certificate_sha256",

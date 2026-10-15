@@ -710,7 +710,7 @@ function remove_tree(path) {
 // Override point for tests, same idea as TACHYON_LIB/TACHYON_CONFIG elsewhere:
 // the suite runs unprivileged and cannot write /etc.
 function singbox_config_path() {
-    return getenv("TACHYON_SINGBOX_CONFIG") || "/etc/sing-box/config.json";
+    return getenv("TACHYON_SINGBOX_CONFIG") || "/etc/tachyon-core/config.json";
 }
 
 function get_mixed_inbound_info() {

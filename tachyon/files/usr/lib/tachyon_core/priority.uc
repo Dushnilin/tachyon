@@ -20,7 +20,7 @@ const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
 const PRIORITY_PID_FILE = getenv("TACHYON_PRIORITY_PID_FILE") || RUNTIME_STATE_DIR + "/priority.pid";
-const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/singbox/priority.uc";
+const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/tachyon_core/priority.uc";
 const DIAGNOSTICS_UC = getenv("TACHYON_DIAGNOSTICS_UC") || LIB_DIR + "/diagnostics/runtime.uc";
 
 let ensure_dir = common.ensure_dir;

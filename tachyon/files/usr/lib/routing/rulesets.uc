@@ -667,7 +667,7 @@ function compile_plain_list(plain_path, ruleset_srs_path, ruleset_json_path) {
     }
 
     let rulesets_mod = null;
-    try { rulesets_mod = require("singbox.rulesets"); } catch (e) {}
+    try { rulesets_mod = require("tachyon_core.rulesets"); } catch (e) {}
     if (rulesets_mod && rulesets_mod.ensure_empty_srs_stub)
         rulesets_mod.ensure_empty_srs_stub(ruleset_srs_path);
     fs.unlink(ruleset_json_path);

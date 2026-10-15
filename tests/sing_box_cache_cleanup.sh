@@ -68,38 +68,38 @@ if should_clear "tiny" "tiny"; then
 fi
 
 # 3. Test actual file removal by clear-sing-box-cache
-mkdir -p /tmp/sing-box
-touch /tmp/sing-box/cache.db
-touch /tmp/sing-box/cache.db.lock
-touch /tmp/sing-box/cache.db-journal
+mkdir -p /tmp/tachyon-core
+touch /tmp/tachyon-core/cache.db
+touch /tmp/tachyon-core/cache.db.lock
+touch /tmp/tachyon-core/cache.db-journal
 
-[ -f /tmp/sing-box/cache.db ] || fail "failed to create test cache.db fixture"
+[ -f /tmp/tachyon-core/cache.db ] || fail "failed to create test cache.db fixture"
 
 ucode "$ACTION_UC" clear-sing-box-cache "unit-test"
 
-if [ -f /tmp/sing-box/cache.db ] || [ -f /tmp/sing-box/cache.db.lock ] || [ -f /tmp/sing-box/cache.db-journal ]; then
-  fail "clear-sing-box-cache failed to remove /tmp/sing-box/cache.db*"
+if [ -f /tmp/tachyon-core/cache.db ] || [ -f /tmp/tachyon-core/cache.db.lock ] || [ -f /tmp/tachyon-core/cache.db-journal ]; then
+  fail "clear-sing-box-cache failed to remove /tmp/tachyon-core/cache.db*"
 fi
 
 # 4. Test rollback-safe backup and restore of cache.db across variant switch failure
-printf 'prev-variant-fakeip-records' > /tmp/sing-box/cache.db
+printf 'prev-variant-fakeip-records' > /tmp/tachyon-core/cache.db
 ucode "$ACTION_UC" backup-sing-box-cache
-[ ! -f /tmp/sing-box/cache.db ] || fail "backup-sing-box-cache should move cache.db to .rollback-bak"
-[ -f /tmp/sing-box/cache.db.rollback-bak ] || fail "backup-sing-box-cache did not create .rollback-bak"
+[ ! -f /tmp/tachyon-core/cache.db ] || fail "backup-sing-box-cache should move cache.db to .rollback-bak"
+[ -f /tmp/tachyon-core/cache.db.rollback-bak ] || fail "backup-sing-box-cache did not create .rollback-bak"
 
 # Simulate failed new variant creating an incompatible cache.db before rollback
-printf 'corrupt-new-variant-db' > /tmp/sing-box/cache.db
-touch /tmp/sing-box/cache.db-lock
+printf 'corrupt-new-variant-db' > /tmp/tachyon-core/cache.db
+touch /tmp/tachyon-core/cache.db-lock
 ucode "$ACTION_UC" restore-sing-box-cache-backup
-[ -f /tmp/sing-box/cache.db ] || fail "restore-sing-box-cache-backup did not restore cache.db"
-[ ! -f /tmp/sing-box/cache.db.rollback-bak ] || fail "restore-sing-box-cache-backup left .rollback-bak behind"
-[ ! -f /tmp/sing-box/cache.db-lock ] || fail "restore-sing-box-cache-backup did not clean lock file"
-[ "$(cat /tmp/sing-box/cache.db)" = "prev-variant-fakeip-records" ] ||
+[ -f /tmp/tachyon-core/cache.db ] || fail "restore-sing-box-cache-backup did not restore cache.db"
+[ ! -f /tmp/tachyon-core/cache.db.rollback-bak ] || fail "restore-sing-box-cache-backup left .rollback-bak behind"
+[ ! -f /tmp/tachyon-core/cache.db-lock ] || fail "restore-sing-box-cache-backup did not clean lock file"
+[ "$(cat /tmp/tachyon-core/cache.db)" = "prev-variant-fakeip-records" ] ||
   fail "restore-sing-box-cache-backup did not preserve original cache.db contents"
 
 # Simulate successful switch cleanup
 ucode "$ACTION_UC" backup-sing-box-cache
 ucode "$ACTION_UC" cleanup-sing-box-cache-backup
-[ ! -f /tmp/sing-box/cache.db.rollback-bak ] || fail "cleanup-sing-box-cache-backup did not remove .rollback-bak"
+[ ! -f /tmp/tachyon-core/cache.db.rollback-bak ] || fail "cleanup-sing-box-cache-backup did not remove .rollback-bak"
 
 printf 'PASS: sing_box_cache_cleanup\n'

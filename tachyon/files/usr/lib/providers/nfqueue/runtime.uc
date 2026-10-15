@@ -4,7 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
-let runtime_constants = require("singbox.constants");
+let runtime_constants = require("tachyon_core.constants");
 let connections = require("config.connections");
 
 let as_string = common.as_string;
@@ -550,7 +550,7 @@ function runtime_config_status(cfg, sections) {
     let is_steer = index(engine_name, "steer") == 0;
     try {
         let engine = require("core.engine");
-        if (engine && engine.get_active() != "sing-box")
+        if (engine && engine.get_active() != "tachyon-core")
             is_steer = true;
     } catch (e) {}
 

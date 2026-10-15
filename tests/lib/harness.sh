@@ -27,22 +27,22 @@ fail() {
 # exe basename and on comm), another asserts that no such process exists. Under
 # run_all's -P4 those two run at the same time and each one breaks the other.
 # mkdir is atomic on POSIX, so it serves as the lock; no framework needed.
-SING_BOX_PROC_LOCK="${TMPDIR:-/tmp}/tachyon-test-singbox-proc.lock"
+CORE_PROC_LOCK="${TMPDIR:-/tmp}/tachyon-test-core-proc.lock"
 
-acquire_sing_box_proc_lock() {
+acquire_core_proc_lock() {
   local waited=0
-  while ! mkdir "$SING_BOX_PROC_LOCK" 2>/dev/null; do
+  while ! mkdir "$CORE_PROC_LOCK" 2>/dev/null; do
     sleep 1
     waited=$((waited + 1))
     if [ "$waited" -ge 120 ]; then
-      printf 'FAIL: timed out waiting for %s (stale lock?)\n' "$SING_BOX_PROC_LOCK" >&2
+      printf 'FAIL: timed out waiting for %s (stale lock?)\n' "$CORE_PROC_LOCK" >&2
       exit 1
     fi
   done
 }
 
-release_sing_box_proc_lock() {
-  rmdir "$SING_BOX_PROC_LOCK" 2>/dev/null || true
+release_core_proc_lock() {
+  rmdir "$CORE_PROC_LOCK" 2>/dev/null || true
 }
 
 # Deliberately no `ucode()` wrapper here. A shell function named after a real

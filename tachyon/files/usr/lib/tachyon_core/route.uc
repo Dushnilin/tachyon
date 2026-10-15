@@ -2,7 +2,7 @@
 
 let common = require("core.common");
 let connections = require("config.connections");
-let runtime_constants = require("singbox.constants");
+let runtime_constants = require("tachyon_core.constants");
 
 let option = common.option;
 let bool_option = common.bool_option;

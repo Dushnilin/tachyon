@@ -17,7 +17,7 @@ fail() {
 }
 
 mkdir -p "$WORK_DIR/bin"
-cat >"$WORK_DIR/bin/sing-box" <<'SINGBOX'
+cat >"$WORK_DIR/bin/tachyon-core" <<'SINGBOX'
 #!/usr/bin/env bash
 set -eo pipefail
 
@@ -43,7 +43,7 @@ case "$*" in
     ;;
 esac
 SINGBOX
-chmod 0755 "$WORK_DIR/bin/sing-box"
+chmod 0755 "$WORK_DIR/bin/tachyon-core"
 
 cat >"$WORK_DIR/bin/logger" <<'LOGGER'
 #!/usr/bin/env bash

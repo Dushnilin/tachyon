@@ -388,8 +388,8 @@ function fptn_sections() {
 // The explicit choice exists only so the two tunnels cannot fight when both
 // are possible.
 function fptn_transport_mode() {
-    let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || ""));
-    let version = trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version") || ""));
+    let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || ""));
+    let version = trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || ""));
     if (variant != "tachyon-core" && match(version, /-tachyon\./) == null)
         return "component";
 

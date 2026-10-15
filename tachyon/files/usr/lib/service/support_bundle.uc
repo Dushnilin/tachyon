@@ -253,8 +253,8 @@ function collect_metadata() {
 function collect_versions() {
     let vers = {
         ucode: command_output("ucode -v"),
-        sing_box: command_output("/usr/bin/sing-box version"),
-        sing_box_variant: trim(as_string(read_file_safe("/etc/tachyon/sing-box-variant") || "")),
+        sing_box: command_output("/usr/bin/tachyon-core version"),
+        sing_box_variant: trim(as_string(read_file_safe("/etc/tachyon/tachyon-core-variant") || "")),
         zapret: command_output("nfqws --version"),
         zapret2: command_output("nfqws2 --version"),
         byedpi: command_output("ciadpi -v"),
@@ -396,8 +396,8 @@ function stage_bundle(stage_dir) {
     }
 
     // Engine config JSON (sanitized)
-    let singbox_cfg = read_file_safe("/etc/sing-box/config.json");
-    if (singbox_cfg == null) singbox_cfg = read_file_safe("/var/etc/sing-box/config.json");
+    let singbox_cfg = read_file_safe("/etc/tachyon-core/config.json");
+    if (singbox_cfg == null) singbox_cfg = read_file_safe("/var/etc/tachyon-core/config.json");
     if (singbox_cfg != null) {
         try {
             let parsed = json(singbox_cfg);

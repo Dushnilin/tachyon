@@ -70,7 +70,7 @@ awk '/^function subscription_runtime_apply_changed\(/,/^}/' "$UPDATES_UC" >"$app
 # in-place reload; stopping it there only leaves DNS unwatched.
 pre_sighup="$WORK_DIR/pre-sighup.uc"
 awk '/^function subscription_runtime_apply_changed\(/{inside=1}
-     inside && /sighup-sing-box-runtime/{print; exit}
+     inside && /sighup-core-runtime/{print; exit}
      inside{print}' "$UPDATES_UC" >"$pre_sighup"
 
 if grep -n 'stop-runtime' "$pre_sighup" >/dev/null; then
@@ -85,9 +85,9 @@ fi
 # has to keep the stop/start pair. Losing it is the opposite regression: DNS
 # failover would mark its upstreams dead during the restart window.
 awk '/^function subscription_runtime_apply_changed\(/,/^}/' "$UPDATES_UC" |
-  awk '/sighup-sing-box-runtime/{inside=1} inside' >"$WORK_DIR/fallback.uc"
+  awk '/sighup-core-runtime/{inside=1} inside' >"$WORK_DIR/fallback.uc"
 
-grep -q 'reload-sing-box-runtime' "$WORK_DIR/fallback.uc" ||
+grep -q 'reload-core-runtime' "$WORK_DIR/fallback.uc" ||
   fail "a failed SIGHUP no longer escalates to a full sing-box restart"
 
 grep -q 'DNS_FAILOVER_UC, "stop-runtime"' "$WORK_DIR/fallback.uc" ||

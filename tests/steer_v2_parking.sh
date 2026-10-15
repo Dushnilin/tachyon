@@ -27,7 +27,7 @@ LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 
 out="$(ucode -L "$LIB_DIR" -e '
 let e = require("core.engine");
-for (let eng in [ "sing-box", "steer", "steer-extended" ]) {
+for (let eng in [ "tachyon-core", "steer", "steer-extended" ]) {
     printf("%s zapret=%s lua=%s urltest=%s\n", eng,
         e.supports(eng, "outbound.zapret") ? "y" : "n",
         e.supports(eng, "outbound.zapret_lua") ? "y" : "n",
@@ -39,13 +39,13 @@ for (let eng in [ "sing-box", "steer", "steer-extended" ]) {
 # field it took six separate greps, which is six ways to mistype a field name and
 # still have the test read like it was checking something.
 #
-#   sing-box    zapret=y  plain zapret is expressible and predates the split
-#   sing-box    lua=y     it drives the nfqws2 binary itself
+#   tachyon-core zapret=y  plain zapret is expressible and predates the split
+#   tachyon-core lua=y     it drives the nfqws2 binary itself
 #   steer       lua=n     spec v2 has no nfqws_bin key, so the Lua strategy
 #                          cannot be expressed and the section must be parked
 #   steer       urltest=n a latency group measures outputs, not the nodes of one
 #                          subscription - see the note below
-expected_caps='sing-box zapret=y lua=y urltest=y
+expected_caps='tachyon-core zapret=y lua=y urltest=y
 steer zapret=y lua=n urltest=n
 steer-extended zapret=y lua=n urltest=n'
 
@@ -58,7 +58,7 @@ $expected_caps"
 # ─── urltest stays parked, and this is why ───────────────────────────────────
 # Spec v2 does have `pick: latency`, which looks like the urltest analog. It is
 # not, and that is worth pinning in a test rather than in a comment: a group
-# measures its MEMBERS, members are outputs that have a device, and a sing-box
+# measures its MEMBERS, members are outputs that have a device, and a tachyon-core
 # urltest group is made of the individual nodes of one subscription - not
 # outputs, with no name in the outputs namespace. Tachyon merges every provider
 # of a section into one subscription file, so the section is a single tunnel and

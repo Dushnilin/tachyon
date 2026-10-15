@@ -5,13 +5,13 @@ let common = require("core.common");
 let helpers = require("core.helpers");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
-let runtime_constants = require("singbox.constants");
-let runtime_dns = require("singbox.dns");
-let runtime_route = require("singbox.route");
-let runtime_rulesets = require("singbox.rulesets");
-let runtime_subscription = require("singbox.subscription");
-let runtime_servers = require("singbox.servers");
-let runtime_urltest = require("singbox.urltest");
+let runtime_constants = require("tachyon_core.constants");
+let runtime_dns = require("tachyon_core.dns");
+let runtime_route = require("tachyon_core.route");
+let runtime_rulesets = require("tachyon_core.rulesets");
+let runtime_subscription = require("tachyon_core.subscription");
+let runtime_servers = require("tachyon_core.servers");
+let runtime_urltest = require("tachyon_core.urltest");
 let connections = require("config.connections");
 let rule_config = require("config.rule");
 let source_rulesets = require("routing.rulesets");
@@ -759,11 +759,11 @@ function group_member_leaf_tags(members, config) {
 }
 
 function is_extended_variant_detected() {
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
     if (sb_variant_val == "extended" || sb_variant_val == "extended-compressed")
         return true;
-    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
     let sb_version_val = trim(fs.readfile(sb_version_file) || "");
     return index(sb_version_val, "extended") >= 0;
 }
@@ -2302,9 +2302,9 @@ function add_protocol_matchers(rule, section) {
 function load_community_subnet_cidrs(community, filter_mode) {
     let service = as_string(community);
     let paths = [
-        "/tmp/sing-box/rulesets/community-subnets-" + service + ".lst",
+        "/tmp/tachyon-core/rulesets/community-subnets-" + service + ".lst",
         "/etc/tachyon/rulesets/community-subnets-" + service + ".lst",
-        (ctx.runtime_ruleset_folder || runtime_ruleset_folder || "/tmp/sing-box/rulesets") + "/community-subnets-" + service + ".lst"
+        (ctx.runtime_ruleset_folder || runtime_ruleset_folder || "/tmp/tachyon-core/rulesets") + "/community-subnets-" + service + ".lst"
     ];
     let cidrs = [];
     for (let path in paths) {

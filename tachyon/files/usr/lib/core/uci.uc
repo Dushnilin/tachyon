@@ -637,6 +637,55 @@ function harden_config_mode(package_name) {
     system("chmod 0600 " + common.shell_quote(path) + " 2>/dev/null");
 }
 
+/// Move a whole package under a new name. Used once: the engine's own
+/// settings lived in a `sing-box` package and now live in `tachyon-core`, so
+/// an upgrade renames the package instead of leaving the settings behind.
+function rename_package(old_name, new_name) {
+    old_name = as_string(old_name);
+    new_name = as_string(new_name);
+    if (old_name == "" || new_name == "" || old_name == new_name)
+        return false;
+
+    if (fixture_enabled()) {
+        let prefix = old_name + ".";
+        let changed = false;
+        let lines = [];
+        for (let line in state_lines()) {
+            if (line == "")
+                continue;
+            let equals = index(line, "=");
+            let key = equals >= 0 ? substr(line, 0, equals) : line;
+            let val = equals >= 0 ? substr(line, equals + 1) : "";
+            if (substr(key, 0, length(prefix)) == prefix) {
+                let rest = substr(key, length(prefix));
+                key = new_name + "." + rest;
+                if (index(rest, ".") < 0 && val == old_name)
+                    val = new_name;
+                changed = true;
+                push(lines, equals >= 0 ? (key + "=" + val) : key);
+                continue;
+            }
+            push(lines, line);
+        }
+        return changed ? state_write_lines(lines) : false;
+    }
+
+    let old_path = "/etc/config/" + old_name;
+    let new_path = "/etc/config/" + new_name;
+    let data = fs.readfile(old_path);
+    if (data == null)
+        return false;
+
+    let updated = replace(as_string(data), "config " + old_name + " ", "config " + new_name + " ");
+    updated = replace(updated, "config " + old_name + "\t", "config " + new_name + "\t");
+    if (fs.writefile(new_path, updated) == null)
+        return false;
+    try { fs.unlink(old_path); } catch (e) {}
+    runtime_cursor = false;
+    loaded_packages = {};
+    return true;
+}
+
 function commit(package_name) {
     if (fixture_enabled())
         return state_commit(package_name);
@@ -727,6 +776,7 @@ return {
     set,
     add_list,
     del_list,
+    rename_package,
     commit,
     sections,
     section_objects

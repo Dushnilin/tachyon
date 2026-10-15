@@ -13,7 +13,7 @@ UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 SUBSCRIPTION_CACHE_UC="$ROOT_DIR/tachyon/files/usr/lib/subscription/cache.uc"
 NFQUEUE_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/nfqueue/runtime.uc"
 BYEDPI_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/byedpi/runtime.uc"
-PRIORITY_UC="$ROOT_DIR/tachyon/files/usr/lib/singbox/priority.uc"
+PRIORITY_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/priority.uc"
 
 require_pattern() {
   local pattern="$1"
