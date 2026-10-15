@@ -1223,6 +1223,16 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
     body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
+    let quic_mode = common.disable_quic_mode(option(settings, "disable_quic", "0"));
+    if (quic_mode != "off")
+        body = signature_add_value(body, "settings.disable_quic", quic_mode);
+    if (bool_option(settings, "webrtc_leak_protect", false))
+        body = signature_add_value(body, "settings.webrtc_leak_protect", "1");
+    if (option(settings, "qos_priority_engine", "1") == "0")
+        body = signature_add_value(body, "settings.qos_priority_engine", "0");
+    let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    if (proxy_mode != "" && proxy_mode != "tproxy")
+        body = signature_add_value(body, "settings.proxy_mode", proxy_mode);
     if (bool_option(settings, "smart_detect", false) && option(settings, "smart_detect_mode", "default") == "plus")
         body = signature_add_value(body, "settings.smart_detect_plus", "1");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));

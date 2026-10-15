@@ -694,14 +694,11 @@ function section_priority_prefix(section) {
     return "tachyon_rule_" + as_string(section[".name"]);
 }
 
-// udp_ip_ports / udp_ip6_ports carry ip.port entries that must only ever match
-// UDP. The ip_ports set feeds both the TCP and the UDP matcher, so anything put
-// there is pulled into the section on TCP too. Discord's community list is where
-// that matters: it contains shared Cloudflare Anycast ranges that host plenty of
-// services other than Discord, and 443 is part of the voice port list, so a
-// Cloudflare-addressed TCP:443 connection to an unrelated site would land in the
-// Discord section and pick up its desync strategy. Keeping the shared ranges in a
-// UDP-only set confines them to what they are actually there for.
+// ip_ports / ip6_ports feed the TCP ip.port matchers, while udp_ip_ports /
+// udp_ip6_ports feed the UDP ip.port matchers. Transport-neutral section
+// ip+port entries populate both pairs; protocol-specific entries (such as
+// Discord's Cloudflare Anycast UDP voice ports vs TCP media ports, or
+// transport-scoped JSON rulesets) populate only their respective pair.
 function section_priority_sets(section) {
     let prefix = section_priority_prefix(section);
     return {
@@ -2301,6 +2298,11 @@ function nft_add_values_to_family_sets(values, table, ipv4_set, ipv6_set, kind, 
     return ok4 && ok6;
 }
 
+function nft_add_values_to_section_port_sets(values, table, sets, ports_csv, chunk_size_text) {
+    return nft_add_values_to_family_sets(values, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports_csv, chunk_size_text) &&
+        nft_add_values_to_family_sets(values, table, sets.udp_ip_ports, sets.udp_ip6_ports, "ip-port-from-ip", ports_csv, chunk_size_text);
+}
+
 function nft_add_community_subnet_file_to_family_sets(path, table, ipv4_set, ipv6_set, service, chunk_size_text, ip_ports_v4, ip_ports_v6, udp_ports_v4, udp_ports_v6) {
     let non_cf = nft_community_subnet_lines(path, service, "exclude_cloudflare");
     let ok = true;
@@ -2332,12 +2334,16 @@ function nft_add_community_subnet_file_to_family_sets(path, table, ipv4_set, ipv
     return ok;
 }
 
-function nft_add_inline_ip_cidr_matchers(csv, ports_csv, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set) {
+function nft_add_inline_ip_cidr_matchers(csv, ports_csv, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set, udp_ip_port_set, udp_ip_port6_set) {
     if (as_string(csv) == "")
         return true;
 
-    if (as_string(ports_csv) != "")
-        return nft_add_csv_chunks_to_family_sets(csv, table, ip_port_set, default_arg(ip_port6_set, "tachyon_ip6_ports"), "ip-port-from-ip", ports_csv, chunk_size_text);
+    if (as_string(ports_csv) != "") {
+        let ok = nft_add_csv_chunks_to_family_sets(csv, table, ip_port_set, default_arg(ip_port6_set, "tachyon_ip6_ports"), "ip-port-from-ip", ports_csv, chunk_size_text);
+        if (ok && as_string(udp_ip_port_set) != "")
+            ok = nft_add_csv_chunks_to_family_sets(csv, table, udp_ip_port_set, default_arg(udp_ip_port6_set, ip_port6_set), "ip-port-from-ip", ports_csv, chunk_size_text);
+        return ok;
+    }
 
     return nft_add_csv_chunks_to_family_sets(csv, table, common_set, default_arg(common6_set, "tachyon_subnets6"), "ips", "", chunk_size_text);
 }
@@ -2997,6 +3003,16 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
     body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
+    let quic_mode = disable_quic_mode(option(settings, "disable_quic", "0"));
+    if (quic_mode != "off")
+        body = signature_add_value(body, "settings.disable_quic", quic_mode);
+    if (bool_option(settings, "webrtc_leak_protect", false))
+        body = signature_add_value(body, "settings.webrtc_leak_protect", "1");
+    if (option(settings, "qos_priority_engine", "1") == "0")
+        body = signature_add_value(body, "settings.qos_priority_engine", "0");
+    let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    if (proxy_mode != "" && proxy_mode != "tproxy")
+        body = signature_add_value(body, "settings.proxy_mode", proxy_mode);
     if (bool_option(settings, "smart_detect", false) && option(settings, "smart_detect_mode", "default") == "plus")
         body = signature_add_value(body, "settings.smart_detect_plus", "1");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
@@ -3258,7 +3274,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
         return true;
 
     if (section_needs_priority_sets(section)) {
-        if (!nft_add_inline_ip_cidr_matchers(ip_values, ports, table, sets.subnets, sets.ip_ports, 5000, sets.subnets6, sets.ip6_ports))
+        if (!nft_add_inline_ip_cidr_matchers(ip_values, ports, table, sets.subnets, sets.ip_ports, 5000, sets.subnets6, sets.ip6_ports, sets.udp_ip_ports, sets.udp_ip6_ports))
             return false;
 
         if (ports != "" && !section_has_destination_matchers(section) &&
@@ -3284,7 +3300,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
             }
             if (length(subnets) > 0) {
                 if (ports != "")
-                    nft_add_values_to_family_sets(subnets, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, "5000");
+                    nft_add_values_to_section_port_sets(subnets, table, sets, ports, "5000");
                 else
                     nft_add_values_to_family_sets(subnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
             }
@@ -3320,7 +3336,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                     }
                     if (length(jsubnets) > 0) {
                         if (ports != "")
-                            nft_add_values_to_family_sets(jsubnets, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, "5000");
+                            nft_add_values_to_section_port_sets(jsubnets, table, sets, ports, "5000");
                         else
                             nft_add_values_to_family_sets(jsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
                     }
@@ -3356,7 +3372,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                             }
                             if (length(jsubnets) > 0) {
                                 if (ports != "")
-                                    nft_add_values_to_family_sets(jsubnets, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, "5000");
+                                    nft_add_values_to_section_port_sets(jsubnets, table, sets, ports, "5000");
                                 else
                                     nft_add_values_to_family_sets(jsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
                             }
@@ -3371,7 +3387,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                             }
                             if (length(lsubnets) > 0) {
                                 if (ports != "")
-                                    nft_add_values_to_family_sets(lsubnets, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, "5000");
+                                    nft_add_values_to_section_port_sets(lsubnets, table, sets, ports, "5000");
                                 else
                                     nft_add_values_to_family_sets(lsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
                             }
@@ -3404,8 +3420,10 @@ function nft_add_subnet_file_for_section(section, filepath, table, common_set, i
     if (!nft_create_priority_sets(table, sets))
         return false;
 
-    if (ports != "")
-        return nft_add_file_chunks_to_family_sets(filepath, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, chunk_size_text);
+    if (ports != "") {
+        return nft_add_file_chunks_to_family_sets(filepath, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, chunk_size_text) &&
+            nft_add_file_chunks_to_family_sets(filepath, table, sets.udp_ip_ports, sets.udp_ip6_ports, "ip-port-from-ip", ports, chunk_size_text);
+    }
 
     return nft_add_file_chunks_to_family_sets(filepath, table, sets.subnets, sets.subnets6, "ips", "", chunk_size_text);
 }
@@ -3495,7 +3513,7 @@ function nft_add_community_subnet_file_for_section(section, service, filepath, t
 
     if (section_needs_priority_sets(section) && ports != "" && !section_has_destination_matchers(section)) {
         let lines = nft_community_subnet_lines(filepath, service, "all");
-        return nft_add_values_to_family_sets(lines, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, chunk_size_text);
+        return nft_add_values_to_section_port_sets(lines, table, sets, ports, chunk_size_text);
     }
 
     let udp_port_v4 = section_needs_priority_sets(section) ? sets.udp_ip_ports : "";

@@ -634,6 +634,8 @@ assert_contains "$NFT_LOG" $'198.51.100.1 . 80,198.51.100.1 . 443-444,203.0.113.
 assert_contains "$NFT_LOG" $'203.0.113.0/24 . 443-444' "populate inline ip-port second chunk"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_ip_ports\t{ 198.51.100.1 . 80,198.51.100.1 . 443-444,203.0.113.0/24 . 80,203.0.113.0/24 . 443-444 }' "populate inline priority ip-port set"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_ip6_ports\t{ 2001:db8::1 . 80,2001:db8::1 . 443-444 }' "populate inline priority ip6-port set"
+assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_udp_ip_ports\t{ 198.51.100.1 . 80,198.51.100.1 . 443-444,203.0.113.0/24 . 80,203.0.113.0/24 . 443-444 }' "populate inline priority udp-ip-port set (#158)"
+assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_udp_ip6_ports\t{ 2001:db8::1 . 80,2001:db8::1 . 443-444 }' "populate inline priority udp-ip6-port set (#158)"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_no_ports_subnets\t{ 198.51.100.200 }' "populate inline ip without ports"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_inline_no_ports_subnets6\t{ 2001:db8::200 }' "populate inline ip6 without ports"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_rule_ports_only_ports\t{ 53,853,5353 }' "populate ports-only set"
@@ -912,6 +914,38 @@ JSON
 sig_with_excluded="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/signature-excluded-clients-fixture.json")"
 if [ "$sig_with_excluded" = "$expected_signature" ]; then
   fail "nft runtime signature must change when excluded_clients is set"
+fi
+
+cat >"$WORK_DIR/signature-quic-tunneled-fixture.json" <<'JSON'
+{
+  "settings": {
+    "disable_quic": "tunneled"
+  }
+}
+JSON
+cat >"$WORK_DIR/signature-quic-all-fixture.json" <<'JSON'
+{
+  "settings": {
+    "disable_quic": "all"
+  }
+}
+JSON
+cat >"$WORK_DIR/signature-quic-off-fixture.json" <<'JSON'
+{
+  "settings": {
+    "disable_quic": "off"
+  }
+}
+JSON
+sig_quic_tunneled="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/signature-quic-tunneled-fixture.json")"
+sig_quic_all="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/signature-quic-all-fixture.json")"
+sig_quic_off="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/signature-quic-off-fixture.json")"
+assert_eq "$expected_signature" "$sig_quic_off" "nft runtime signature treats disable_quic=off as default (#159)"
+if [ "$sig_quic_tunneled" = "$sig_quic_off" ]; then
+  fail "nft runtime signature must change between disable_quic=tunneled and disable_quic=off (#159)"
+fi
+if [ "$sig_quic_all" = "$sig_quic_off" ] || [ "$sig_quic_all" = "$sig_quic_tunneled" ]; then
+  fail "nft runtime signature must distinguish disable_quic=all from off and tunneled (#159)"
 fi
 
 : > "$NFT_LOG"
