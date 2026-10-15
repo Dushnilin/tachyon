@@ -2515,6 +2515,21 @@ function renderGlobeIcon24() {
     { width: "14", height: "14" }
   );
 }
+function renderFileTextIcon14() {
+  return createIcon(
+    "lucide lucide-file-text-icon lucide-file-text",
+    [
+      svgEl("path", {
+        d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      }),
+      svgEl("path", { d: "M14 2v4a2 2 0 0 0 2 2h4" }),
+      svgEl("path", { d: "M10 9H8" }),
+      svgEl("path", { d: "M16 13H8" }),
+      svgEl("path", { d: "M16 17H8" })
+    ],
+    { width: "14", height: "14" }
+  );
+}
 function renderInfoIcon24() {
   return createIcon(
     "lucide lucide-info-icon lucide-info",
@@ -11264,17 +11279,27 @@ var styles = `
     unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F;
 }
 
+#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node {
+    display: block;
+    width: 100%;
+    max-width: none;
+}
+
 #cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > .cbi-value-title {
     display: none;
 }
 
-#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > .cbi-value-field {
+#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > .cbi-value-field,
+#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > .cbi-value-field > output,
+#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > .cbi-value-field > div,
+#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > div,
+#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > output {
+    display: block;
     margin-left: 0;
     width: 100%;
-}
-
-#cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > div {
-    width: 100%;
+    max-width: none;
+    flex: 1 1 100%;
+    box-sizing: border-box;
 }
 
 #cbi-${TACHYON_UCI_PACKAGE}-dashboard > h3 {
@@ -26438,7 +26463,17 @@ function renderInlineReleaseMarkdown(text) {
         )
       );
     } else if (match[4] !== void 0 && match[5] !== void 0) {
-      nodes.push(E("strong", {}, match[4]));
+      nodes.push(
+        E(
+          "a",
+          {
+            href: match[5],
+            target: "_blank",
+            rel: "noopener noreferrer"
+          },
+          match[4]
+        )
+      );
     }
     lastIndex = tokenRegex.lastIndex;
   }
@@ -26562,6 +26597,7 @@ function renderFormattedReleaseNotes(container, rawText) {
 }
 async function openReleaseNotesModal(opts) {
   let currentNotes = (opts.notes || "").trim();
+  const isTruncatedNotes = currentNotes.endsWith("\n...");
   let currentVersion = (opts.version || "").trim();
   const versionBadgeEl = E(
     "span",
@@ -26578,11 +26614,11 @@ async function openReleaseNotesModal(opts) {
     "div",
     {
       class: "tachyon-update-modal__log",
-      style: "white-space: normal; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.45; max-height: 420px; overflow-y: auto; padding: 12px 14px;"
+      style: "white-space: normal; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.45; max-height: 60vh; overflow-y: auto; padding: 12px 14px;"
     },
     []
   );
-  if (currentNotes) {
+  if (currentNotes && !isTruncatedNotes) {
     renderFormattedReleaseNotes(notesContainerEl, currentNotes);
   } else {
     notesContainerEl.textContent = _("Loading release description...");
@@ -26619,7 +26655,7 @@ async function openReleaseNotesModal(opts) {
     actionsContainer
   ]);
   ui.showModal(`${_("What's new?")}: ${opts.title}`, modalBodyEl);
-  if (!currentNotes) {
+  if (!currentNotes || isTruncatedNotes) {
     try {
       const cacheKey = `${opts.component}:1`;
       let releases = versionPickerReleasesCache[cacheKey];
@@ -26637,7 +26673,10 @@ async function openReleaseNotesModal(opts) {
       if (releases && releases.length > 0) {
         const wanted = normalizeTagForMatch(currentVersion);
         const matched = (wanted ? releases.find((r) => normalizeTagForMatch(r.tag) === wanted) : void 0) || releases[0];
-        currentNotes = (matched.body || "").trim();
+        const fetchedBody = (matched.body || "").trim();
+        if (fetchedBody) {
+          currentNotes = fetchedBody;
+        }
         if (!currentVersion && matched.tag) {
           currentVersion = matched.tag;
           versionBadgeEl.textContent = currentVersion;
@@ -26645,9 +26684,35 @@ async function openReleaseNotesModal(opts) {
       }
       renderFormattedReleaseNotes(notesContainerEl, currentNotes);
     } catch {
-      notesContainerEl.textContent = _("Failed to load release description.");
+      if (currentNotes) {
+        renderFormattedReleaseNotes(notesContainerEl, currentNotes);
+      } else {
+        notesContainerEl.textContent = _("Failed to load release description.");
+      }
     }
   }
+}
+function renderWhatsNewIconButton(opts) {
+  return E(
+    "button",
+    {
+      type: "button",
+      class: "tachyon_updates-page__component__repo-link",
+      title: _("What's new?"),
+      "aria-label": _("What's new?"),
+      click: (e) => {
+        e.preventDefault();
+        void openReleaseNotesModal(opts);
+      }
+    },
+    renderFileTextIcon14()
+  );
+}
+function formatReleasePublishedDate(published) {
+  const raw = String(published || "").trim();
+  if (!raw) return "";
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : raw;
 }
 function renderVersionPickerDropdown(component) {
   const container = E("div", { class: "tachyon-version-picker" });
@@ -26712,8 +26777,11 @@ function renderVersionPickerDropdown(component) {
         children.push(
           E(
             "span",
-            { class: "tachyon-version-picker__date" },
-            release.published
+            {
+              class: "tachyon-version-picker__date",
+              title: release.published
+            },
+            formatReleasePublishedDate(release.published)
           )
         );
       }
@@ -26727,26 +26795,21 @@ function renderVersionPickerDropdown(component) {
         );
       }
       children.push(
-        renderButton({
-          text: _("What's new?"),
-          loading: false,
-          disabled: false,
-          onClick: () => void openReleaseNotesModal({
+        E("span", { class: "tachyon-version-picker__actions" }, [
+          renderWhatsNewIconButton({
             component,
             title: getComponentCardTitle(component),
             version: release.tag,
             notes: release.body,
             releaseUrl: release.release_url
+          }),
+          renderButton({
+            text: _("Install"),
+            loading: false,
+            disabled: isAnyActionLoading(),
+            onClick: () => void handleInstallVersion(component, release.tag)
           })
-        })
-      );
-      children.push(
-        renderButton({
-          text: _("Install"),
-          loading: false,
-          disabled: isAnyActionLoading(),
-          onClick: () => void handleInstallVersion(component, release.tag)
-        })
+        ])
       );
       list.appendChild(
         E("div", { class: "tachyon-version-picker__item" }, children)
@@ -26792,6 +26855,9 @@ function renderComponentCard(card) {
   const anyActionLoading = isAnyActionLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const checkResult = getVisibleCheckResult(card.component);
+  const canShowWhatsNew = Boolean(
+    card.supportsVersions || card.repoUrl && card.component !== "tailscale"
+  );
   const headerChildren = [
     E("b", { class: "tachyon_updates-page__component__title" }, card.title)
   ];
@@ -26818,6 +26884,17 @@ function renderComponentCard(card) {
         },
         renderGlobeIcon24()
       )
+    );
+  }
+  if (canShowWhatsNew) {
+    headerChildren.push(
+      renderWhatsNewIconButton({
+        component: card.component,
+        title: card.title,
+        version: checkResult?.latest_version || card.latestVersion || card.version,
+        notes: checkResult?.release_notes,
+        releaseUrl: checkResult?.release_url
+      })
     );
   }
   const header = E(
@@ -26899,22 +26976,6 @@ function renderComponentCard(card) {
       }
     }
     if (labelText) {
-      if (card.supportsVersions || checkResult.release_notes || checkResult.release_url || card.repoUrl && card.component !== "tailscale") {
-        latestValueNodes.push(
-          renderButton({
-            text: _("What's new?"),
-            loading: false,
-            disabled: false,
-            onClick: () => void openReleaseNotesModal({
-              component: card.component,
-              title: card.title,
-              version: checkResult.latest_version || card.latestVersion || card.version,
-              notes: checkResult.release_notes,
-              releaseUrl: checkResult.release_url
-            })
-          })
-        );
-      }
       const rowChildren = [
         E(
           "span",
@@ -27030,36 +27091,8 @@ function renderComponentCard(card) {
       ])
     );
   }
-  const canShowWhatsNew = Boolean(
-    card.supportsVersions || card.repoUrl && card.component !== "tailscale"
-  );
-  if (canShowWhatsNew) {
-    const isPickerOpen = card.supportsVersions && activeVersionPickerComponent === card.component;
-    const versionButtons = [];
-    if (card.supportsVersions) {
-      versionButtons.push(
-        renderButton({
-          text: isPickerOpen ? _("Hide versions") : _("Versions"),
-          loading: isPickerOpen && versionPickerLoading,
-          disabled: systemInfoLoading || anyActionLoading,
-          onClick: () => void toggleVersionPicker(card.component)
-        })
-      );
-    }
-    versionButtons.push(
-      renderButton({
-        text: _("What's new?"),
-        loading: false,
-        disabled: systemInfoLoading,
-        onClick: () => void openReleaseNotesModal({
-          component: card.component,
-          title: card.title,
-          version: checkResult?.latest_version || card.latestVersion || card.version,
-          notes: checkResult?.release_notes,
-          releaseUrl: checkResult?.release_url
-        })
-      })
-    );
+  if (card.supportsVersions) {
+    const isPickerOpen = activeVersionPickerComponent === card.component;
     actionElements.push(
       E(
         "div",
@@ -27067,7 +27100,14 @@ function renderComponentCard(card) {
           class: "tachyon_updates-page__component__versions",
           style: "display: flex; gap: 8px; flex-wrap: wrap;"
         },
-        versionButtons
+        [
+          renderButton({
+            text: isPickerOpen ? _("Hide versions") : _("Versions"),
+            loading: isPickerOpen && versionPickerLoading,
+            disabled: systemInfoLoading || anyActionLoading,
+            onClick: () => void toggleVersionPicker(card.component)
+          })
+        ]
       )
     );
     if (isPickerOpen) {
@@ -27168,6 +27208,8 @@ function renderEngineCard() {
     );
   }
   const engineRepoUrl = isSingBoxActive ? systemInfo.sing_box_repo_url || (tachyonCore ? "https://github.com/Dushnilin/tachyon-core" : singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box) : systemInfo.steer_repo_url || COMPONENT_REPO_URLS.steer;
+  const checkComponent = isSingBoxActive ? "sing_box" : active === "steer-extended" ? "steer-extended" : "steer";
+  const checkResult = getVisibleCheckResult(checkComponent);
   const headerChildren = [
     E(
       "b",
@@ -27199,13 +27241,20 @@ function renderEngineCard() {
       )
     );
   }
+  headerChildren.push(
+    renderWhatsNewIconButton({
+      component: checkComponent,
+      title: engineTitleLabel,
+      version: checkResult?.latest_version || engineVersion,
+      notes: checkResult?.release_notes,
+      releaseUrl: checkResult?.release_url
+    })
+  );
   const header = E(
     "div",
     { class: "tachyon_updates-page__component__header" },
     headerChildren
   );
-  const checkComponent = isSingBoxActive ? "sing_box" : active === "steer-extended" ? "steer-extended" : "steer";
-  const checkResult = getVisibleCheckResult(checkComponent);
   const detailsChildren = [];
   if (checkResult?.status) {
     let labelText = "";
@@ -27280,20 +27329,6 @@ function renderEngineCard() {
       }
     }
     if (labelText) {
-      latestValueNodes.push(
-        renderButton({
-          text: _("What's new?"),
-          loading: false,
-          disabled: false,
-          onClick: () => void openReleaseNotesModal({
-            component: checkComponent,
-            title: engineTitleLabel,
-            version: checkResult.latest_version || engineVersion,
-            notes: checkResult.release_notes,
-            releaseUrl: checkResult.release_url
-          })
-        })
-      );
       const rowChildren = [
         E(
           "span",
@@ -27626,41 +27661,25 @@ function renderEngineCard() {
   const pickerHonoursTag = selectedVariant.id !== "sing-box-stable" && selectedVariant.id !== "sing-box-tiny";
   const pickerComponent = getVariantComponent(selectedVariant.id);
   const isPickerOpen = pickerHonoursTag && activeVersionPickerComponent === pickerComponent;
-  const engineVersionButtons = [];
   if (pickerHonoursTag) {
-    engineVersionButtons.push(
-      renderButton({
-        text: isPickerOpen ? _("Hide versions") : _("Versions"),
-        loading: isPickerOpen && versionPickerLoading,
-        disabled: singBoxLoading || anyActionLoading || steerBusy,
-        onClick: () => void toggleVersionPicker(pickerComponent)
-      })
+    actionElements.push(
+      E(
+        "div",
+        {
+          class: "tachyon_updates-page__component__versions",
+          style: "display: flex; gap: 8px; flex-wrap: wrap;"
+        },
+        [
+          renderButton({
+            text: isPickerOpen ? _("Hide versions") : _("Versions"),
+            loading: isPickerOpen && versionPickerLoading,
+            disabled: singBoxLoading || anyActionLoading || steerBusy,
+            onClick: () => void toggleVersionPicker(pickerComponent)
+          })
+        ]
+      )
     );
   }
-  engineVersionButtons.push(
-    renderButton({
-      text: _("What's new?"),
-      loading: false,
-      disabled: singBoxLoading,
-      onClick: () => void openReleaseNotesModal({
-        component: pickerComponent,
-        title: selectedVariant.label,
-        version: checkResult?.latest_version || engineVersion,
-        notes: checkResult?.release_notes,
-        releaseUrl: checkResult?.release_url
-      })
-    })
-  );
-  actionElements.push(
-    E(
-      "div",
-      {
-        class: "tachyon_updates-page__component__versions",
-        style: "display: flex; gap: 8px; flex-wrap: wrap;"
-      },
-      engineVersionButtons
-    )
-  );
   if (isPickerOpen) {
     actionElements.push(renderVersionPickerDropdown(pickerComponent));
   }
@@ -28105,9 +28124,13 @@ var styles6 = `
     justify-content: center;
     width: 20px;
     height: 20px;
+    padding: 0;
+    border: none;
+    background: transparent;
     border-radius: 3px;
     color: var(--text-color-medium, #888);
     text-decoration: none;
+    cursor: pointer;
     transition: color 0.15s, background-color 0.15s;
     flex-shrink: 0;
 }
@@ -28389,11 +28412,13 @@ var styles6 = `
     font-weight: bold;
     font-size: 13px;
     color: var(--text-color-high, inherit);
+    white-space: nowrap;
 }
 
 .tachyon-version-picker__date {
     font-size: 11px;
     color: var(--text-color-medium, #6c757d);
+    white-space: nowrap;
 }
 
 .tachyon-version-picker__prerelease {
@@ -28402,6 +28427,15 @@ var styles6 = `
     border: 1px solid var(--color-yellow-base, #f39c12);
     border-radius: 3px;
     padding: 1px 4px;
+    white-space: nowrap;
+}
+
+.tachyon-version-picker__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .tachyon-version-picker__custom {

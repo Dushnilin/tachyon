@@ -211,10 +211,7 @@ let release_notes_by_key = {};
 let last_release_notes = "";
 
 function normalize_release_notes(raw_body) {
-    let notes = trim(replace(as_string(raw_body || ""), /\r/g, ""));
-    if (length(notes) > 3500)
-        notes = substr(notes, 0, 3500) + "\n...";
-    return notes;
+    return trim(replace(as_string(raw_body || ""), /\r/g, ""));
 }
 
 function remember_release_json(raw_json) {

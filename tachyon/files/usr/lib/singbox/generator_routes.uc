@@ -782,8 +782,6 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
         tolerance: int(connections.urltest_tolerance(section, urltest_id), 10),
         interrupt_exist_connections: connections.urltest_interrupt_exist_connections(section, urltest_id)
     };
-    if (is_extended_variant_detected() && length(urltest_outbounds) > 0)
-        urltest_outbound.default = urltest_outbounds[0];
     let idle_timeout = urltest_idle_timeout(section, urltest_id);
     if (idle_timeout != "")
         urltest_outbound.idle_timeout = idle_timeout;
@@ -1710,13 +1708,24 @@ function section_dns_server(section) {
     return runtime_constants.FAKEIP_DNS_SERVER_TAG;
 }
 
+function section_is_ipv4_only_dpi(section) {
+    let action = option(section, "action", "");
+    if (action != "zapret" && action != "zapret2")
+        return false;
+    let opt_key = action == "zapret2" ? "nfqws2_opt" : "nfqws_opt";
+    let raw = trim(option(section, opt_key, ""));
+    if (raw == "" || index(raw, "--filter-l3=ipv4") < 0)
+        return false;
+    return match(raw, /--filter-l3=[^\s]*ipv6/) == null;
+}
+
 // The fakeip server synthesises addresses and answers A and AAAA only. Without
 // an explicit query_type every other type went there too and got nothing, so the
 // client waited out its own timeout: MX for mail, SRV for service discovery,
 // TXT for SPF/DKIM. Browsers never noticed, they only ask A and AAAA.
-function add_fakeip_query_type(rule, server_tag) {
+function add_fakeip_query_type(rule, server_tag, ipv4_only) {
     if (server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG)
-        rule.query_type = [ "A", "AAAA" ];
+        rule.query_type = ipv4_only ? [ "A" ] : [ "A", "AAAA" ];
     return rule;
 }
 
@@ -2541,32 +2550,60 @@ function add_combined_route_for_section(config, section) {
         push_section_geoip_remainder(config, create_section_route_rule(), target, excluded_cidrs, geo_tags, country_mode);
 
     let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
+    let dns_server_tag = section_dns_server(section);
+    let ipv4_only_dpi = section_is_ipv4_only_dpi(section) &&
+        dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;
     if (length(domain) > 0 || length(domain_suffix) > 0 || length(domain_keyword) > 0 || length(domain_regex) > 0) {
         let dns_rule = {
             action: "route",
-            server: section_dns_server(section),
+            server: dns_server_tag,
             rewrite_ttl
         };
-        add_fakeip_query_type(dns_rule, section_dns_server(section));
+        add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
         add_domain_array(dns_rule, "domain", domain);
         add_domain_array(dns_rule, "domain_suffix", domain_suffix);
         add_domain_array(dns_rule, "domain_keyword", domain_keyword);
         add_domain_array(dns_rule, "domain_regex", domain_regex);
         add_source_dns_matchers(dns_rule, source_ip_cidr);
         push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+        if (ipv4_only_dpi) {
+            let aaaa_rule = {
+                action: "route",
+                server: runtime_constants.DNS_SERVER_TAG,
+                rewrite_ttl,
+                query_type: [ "AAAA" ]
+            };
+            add_domain_array(aaaa_rule, "domain", domain);
+            add_domain_array(aaaa_rule, "domain_suffix", domain_suffix);
+            add_domain_array(aaaa_rule, "domain_keyword", domain_keyword);
+            add_domain_array(aaaa_rule, "domain_regex", domain_regex);
+            add_source_dns_matchers(aaaa_rule, source_ip_cidr);
+            push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+        }
     }
     let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
     if (is_1_14) {
         if (length(dns_query_rule_set_tags) > 0) {
             let dns_rule = {
                 action: "route",
-                server: section_dns_server(section),
+                server: dns_server_tag,
                 rewrite_ttl,
                 rule_set: single_or_array(dns_query_rule_set_tags)
             };
-            add_fakeip_query_type(dns_rule, section_dns_server(section));
+            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+            if (ipv4_only_dpi) {
+                let aaaa_rule = {
+                    action: "route",
+                    server: runtime_constants.DNS_SERVER_TAG,
+                    rewrite_ttl,
+                    query_type: [ "AAAA" ],
+                    rule_set: single_or_array(dns_query_rule_set_tags)
+                };
+                add_source_dns_matchers(aaaa_rule, source_ip_cidr);
+                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+            }
         }
         if (length(dns_response_rule_set_tags) > 0) {
             let eval_rule = {
@@ -2578,7 +2615,7 @@ function add_combined_route_for_section(config, section) {
 
             let dns_rule = {
                 action: "route",
-                server: section_dns_server(section),
+                server: dns_server_tag,
                 rewrite_ttl,
                 rule_set: single_or_array(dns_response_rule_set_tags),
                 match_response: true
@@ -2597,13 +2634,24 @@ function add_combined_route_for_section(config, section) {
         if (length(all_dns_tags) > 0) {
             let dns_rule = {
                 action: "route",
-                server: section_dns_server(section),
+                server: dns_server_tag,
                 rewrite_ttl,
                 rule_set: single_or_array(all_dns_tags)
             };
-            add_fakeip_query_type(dns_rule, section_dns_server(section));
+            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+            if (ipv4_only_dpi) {
+                let aaaa_rule = {
+                    action: "route",
+                    server: runtime_constants.DNS_SERVER_TAG,
+                    rewrite_ttl,
+                    query_type: [ "AAAA" ],
+                    rule_set: single_or_array(all_dns_tags)
+                };
+                add_source_dns_matchers(aaaa_rule, source_ip_cidr);
+                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+            }
         }
     }
 }

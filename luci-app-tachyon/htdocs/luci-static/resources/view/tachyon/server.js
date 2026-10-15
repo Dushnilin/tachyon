@@ -1619,11 +1619,12 @@ function normalizeSha256(value) {
 }
 
 function shouldUseGeneratedTlsCertificatePin(sectionId) {
-  const certificatePath =
+  const certificatePath = `${
     uci.get(UCI_PACKAGE, sectionId, "tls_certificate_path") ||
-    defaultTlsCertificatePath(sectionId);
+    defaultTlsCertificatePath(sectionId)
+  }`.trim();
 
-  return `${certificatePath}` === defaultTlsCertificatePath(sectionId);
+  return !/^\/etc\/(acme|letsencrypt|ssl\/certs)\//.test(certificatePath);
 }
 
 function loadGeneratedTlsCertificatePin(sectionId) {

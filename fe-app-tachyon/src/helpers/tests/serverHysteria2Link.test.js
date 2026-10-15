@@ -20,6 +20,9 @@ function loadBuildHysteria2Link(values) {
     'formatHostForUri',
     'getPublicHost',
     'normalizeSha256',
+    'serverSafeName',
+    'defaultTlsCertificatePath',
+    'shouldUseGeneratedTlsCertificatePin',
     'buildHysteria2Link',
   ];
   const ast = parse(source, {
@@ -108,6 +111,7 @@ describe('buildHysteria2Link', () => {
       'server1.public_host': 'vpn.example.com',
       'server1.listen_port': '8443',
       'server1.tls_server_name': 'sni.example.com',
+      'server1.tls_certificate_path': '/etc/ssl/certs/custom.crt',
     });
 
     const link = buildHysteria2Link(

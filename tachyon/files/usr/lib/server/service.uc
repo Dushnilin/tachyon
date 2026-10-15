@@ -1104,9 +1104,11 @@ function generate_tls_keypair_cli(section) {
     let certificate_path = config_get(section, "tls_certificate_path", default_dir + "/" + safe_name + ".crt");
     let key_path = config_get(section, "tls_key_path", default_dir + "/" + safe_name + ".key");
 
-    if (!server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path)) {
-        error_response("Failed to generate TLS certificate");
-        exit(1);
+    if (!run("[ -s " + shell_quote(certificate_path) + " ] && [ -s " + shell_quote(key_path) + " ]")) {
+        if (!server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path)) {
+            error_response("Failed to generate TLS certificate");
+            exit(1);
+        }
     }
 
     let fingerprint = server_tls_certificate_sha256_from_file(certificate_path);

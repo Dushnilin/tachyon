@@ -129,7 +129,6 @@ function switch_group(section_name, outbound_name) {
         log_message("runtime switch failed: " + out, "warn");
         return false;
     }
-    command_status("conntrack -F >/dev/null 2>&1 || true");
     return true;
 }
 
@@ -229,7 +228,6 @@ function check_section_fail_policies() {
 
     if (state_changed && getenv("TACHYON_FAILOVER_SKIP_RELOAD") != "1") {
         command_success_from_args([ TACHYON_BIN, "reload" ]);
-        command_status("conntrack -F >/dev/null 2>&1 || true");
     }
 }
 

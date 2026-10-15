@@ -1299,8 +1299,6 @@ function add_connection_text_urltest(config, state, section, taken, selector_tag
         tolerance,
         interrupt_exist_connections: interrupt
     };
-    if (is_extended_variant_detected() && length(text_tags) > 0)
-        outbound.default = text_tags[0];
     runtime_subscription.remember_outbound_metadata(state, urltest_tag, "Fastest", outbound);
     runtime_subscription.remember_urltest_group_config(state, urltest_tag, {
         displayName: "Fastest",

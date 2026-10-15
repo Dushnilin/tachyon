@@ -93,9 +93,13 @@ export const styles = `
     justify-content: center;
     width: 20px;
     height: 20px;
+    padding: 0;
+    border: none;
+    background: transparent;
     border-radius: 3px;
     color: var(--text-color-medium, #888);
     text-decoration: none;
+    cursor: pointer;
     transition: color 0.15s, background-color 0.15s;
     flex-shrink: 0;
 }
@@ -377,11 +381,13 @@ export const styles = `
     font-weight: bold;
     font-size: 13px;
     color: var(--text-color-high, inherit);
+    white-space: nowrap;
 }
 
 .tachyon-version-picker__date {
     font-size: 11px;
     color: var(--text-color-medium, #6c757d);
+    white-space: nowrap;
 }
 
 .tachyon-version-picker__prerelease {
@@ -390,6 +396,15 @@ export const styles = `
     border: 1px solid var(--color-yellow-base, #f39c12);
     border-radius: 3px;
     padding: 1px 4px;
+    white-space: nowrap;
+}
+
+.tachyon-version-picker__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .tachyon-version-picker__custom {

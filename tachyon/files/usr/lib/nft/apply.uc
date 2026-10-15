@@ -467,12 +467,28 @@ function nft_create_inet_service_set(table, name) {
     return nft_create_set(table, name, "{ type inet_service; flags interval; auto-merge; }");
 }
 
+let NON_INTERVAL_PORT_SETS = {};
+
 function nft_create_ipv4_port_set(table, name) {
-    return nft_create_set(table, name, "{ type ipv4_addr . inet_service; flags interval; }");
+    if (nft_create_set(table, name, "{ type ipv4_addr . inet_service; flags interval; }"))
+        return true;
+    log_warn("Kernel lacks nft_set_pipapo support for interval concat set " + as_string(name) + "; falling back to non-interval set");
+    if (nft_create_set(table, name, "{ type ipv4_addr . inet_service; }")) {
+        NON_INTERVAL_PORT_SETS[as_string(table) + ":" + as_string(name)] = true;
+        return true;
+    }
+    return false;
 }
 
 function nft_create_ipv6_port_set(table, name) {
-    return nft_create_set(table, name, "{ type ipv6_addr . inet_service; flags interval; }");
+    if (nft_create_set(table, name, "{ type ipv6_addr . inet_service; flags interval; }"))
+        return true;
+    log_warn("Kernel lacks nft_set_pipapo support for interval concat set " + as_string(name) + "; falling back to non-interval set");
+    if (nft_create_set(table, name, "{ type ipv6_addr . inet_service; }")) {
+        NON_INTERVAL_PORT_SETS[as_string(table) + ":" + as_string(name)] = true;
+        return true;
+    }
+    return false;
 }
 
 function nft_create_ifname_set(table, name) {
@@ -483,7 +499,25 @@ function nft_create_ether_set(table, name) {
     return nft_create_set(table, name, "{ type ether_addr; flags interval; }");
 }
 
+function nft_filter_non_interval_elements(elements) {
+    let kept = [];
+    for (let item in split(as_string(elements), ",")) {
+        item = trim(item);
+        if (item == "")
+            continue;
+        if (index(item, "/") >= 0 || index(item, "-") >= 0)
+            continue;
+        push(kept, item);
+    }
+    return join(", ", kept);
+}
+
 function nft_add_set_elements(table, set_name, elements) {
+    if (NON_INTERVAL_PORT_SETS[as_string(table) + ":" + as_string(set_name)]) {
+        elements = nft_filter_non_interval_elements(elements);
+        if (elements == "")
+            return true;
+    }
     let stamp = clock();
     let tmp_path = sprintf("/tmp/nft_elements.%d.%d.tmp", stamp[0], stamp[1]);
     let rules_content = sprintf("add element inet %s %s { %s }\n", table, set_name, as_string(elements));

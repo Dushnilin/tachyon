@@ -250,6 +250,12 @@ function resolve_rule_for_section(section, route_rule) {
     resolve_rule.server = (action == "zapret" || action == "zapret2")
         ? runtime_constants.BOOTSTRAP_DNS_SERVER_TAG
         : runtime_constants.DNS_SERVER_TAG;
+    if (action == "zapret" || action == "zapret2") {
+        let opt_key = action == "zapret2" ? "nfqws2_opt" : "nfqws_opt";
+        let raw_opt = trim(option(section, opt_key, ""));
+        if (raw_opt != "" && index(raw_opt, "--filter-l3=ipv4") >= 0 && match(raw_opt, /--filter-l3=[^\s]*ipv6/) == null)
+            resolve_rule.strategy = "ipv4_only";
+    }
 
     return { rule: resolve_rule };
 }

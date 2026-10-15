@@ -3272,8 +3272,8 @@ function list_component_releases(component, count, page) {
     if (page < 1) page = 1;
 
     let cache_file = (page == 1)
-        ? ("/tmp/tachyon-releases-v2-" + component + ".json")
-        : ("/tmp/tachyon-releases-v2-" + component + "-p" + page + ".json");
+        ? ("/tmp/tachyon-releases-v3-" + component + ".json")
+        : ("/tmp/tachyon-releases-v3-" + component + "-p" + page + ".json");
     let cached_stat = fs.stat(cache_file);
     if (cached_stat != null && (time() - cached_stat.mtime) < 600) {
         let cached_data = read_file(cache_file);
@@ -3334,8 +3334,6 @@ function list_component_releases(component, count, page) {
                 let published = trim(as_string(r.published_at || r.created_at || ""));
                 let html_url = trim(as_string(r.html_url || ""));
                 let body = trim(replace(as_string(r.body || ""), /\r/g, ""));
-                if (length(body) > 3500)
-                    body = substr(body, 0, 3500) + "\n...";
                 if (tag == "") continue;
                 let prerelease = !!r.prerelease;
                 push(releases, { tag, name, published, prerelease, release_url: html_url, body });

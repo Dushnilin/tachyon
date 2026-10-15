@@ -1849,7 +1849,6 @@ function clash_api(action, arg1, arg2, arg3) {
             }
             if (!restarted_vless)
                 command_status("/etc/init.d/steer restart >/dev/null 2>&1");
-            command_status("conntrack -F >/dev/null 2>&1 || true");
             save_persistent_selector_choice(target_group, target_proxy);
             save_persistent_selector_choice(target_group + "-out", target_proxy);
             let result = status_capture([ "clash-set-group-proxy-result", target_group, target_proxy ], "\n204");
@@ -2048,7 +2047,6 @@ function clash_api(action, arg1, arg2, arg3) {
         push(args, payload);
         let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], command_output(command_from_args(args)));
         if (result.status == 0) {
-            command_status("conntrack -F >/dev/null 2>&1 || true");
             save_persistent_selector_choice(arg1, arg2);
         }
         if (result.output != "")
