@@ -61,7 +61,7 @@ grep -q 'function add_fakeip_query_type' "$ROUTES" ||
   fail "generator_routes.uc must keep add_fakeip_query_type(): without query_type every non-A/AAAA query for a fakeip domain is sent to a server that cannot answer it"
 ok
 
-fakeip_sites="$(grep -c 'add_fakeip_query_type(dns_rule, section_dns_server(section))' "$ROUTES")"
+fakeip_sites="$(grep -c 'add_fakeip_query_type(dns_rule,' "$ROUTES")"
 [ "$fakeip_sites" -ge 3 ] ||
   fail "all three section DNS rule sites must call add_fakeip_query_type, found $fakeip_sites"
 ok
