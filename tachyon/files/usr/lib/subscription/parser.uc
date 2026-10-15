@@ -1052,11 +1052,78 @@ function process_http(raw, url) {
     return outbound;
 }
 
+const SHADOWSOCKS_METHODS = {
+    "2022-blake3-aes-128-gcm": 16,
+    "2022-blake3-aes-256-gcm": 32,
+    "2022-blake3-chacha20-poly1305": 32,
+    "aes-128-gcm": 0,
+    "aes-192-gcm": 0,
+    "aes-256-gcm": 0,
+    "chacha20-ietf-poly1305": 0,
+    "xchacha20-ietf-poly1305": 0,
+    "none": 0,
+    "aes-128-ctr": 0,
+    "aes-192-ctr": 0,
+    "aes-256-ctr": 0,
+    "aes-128-cfb": 0,
+    "aes-192-cfb": 0,
+    "aes-256-cfb": 0,
+    "rc4-md5": 0,
+    "chacha20-ietf": 0,
+    "xchacha20": 0
+};
+
+function normalize_shadowsocks_method(method) {
+    let m = lc(trim(as_string(method)));
+    if (m == "aead_aes_128_gcm") return "aes-128-gcm";
+    if (m == "aead_aes_192_gcm") return "aes-192-gcm";
+    if (m == "aead_aes_256_gcm") return "aes-256-gcm";
+    if (m == "aead_chacha20_poly1305") return "chacha20-ietf-poly1305";
+    if (m == "chacha20-poly1305") return "chacha20-ietf-poly1305";
+    if (m == "xchacha20-poly1305") return "xchacha20-ietf-poly1305";
+    if (m == "dummy" || m == "plain") return "none";
+    return m;
+}
+
+function valid_shadowsocks_method(method) {
+    return (normalize_shadowsocks_method(method) in SHADOWSOCKS_METHODS);
+}
+
+function valid_shadowsocks_password(method, password) {
+    let m = normalize_shadowsocks_method(method);
+    if (!(m in SHADOWSOCKS_METHODS))
+        return false;
+    if (m == "none")
+        return true;
+    if (password == "")
+        return false;
+    let req_len = SHADOWSOCKS_METHODS[m];
+    if (req_len <= 0)
+        return true;
+    let parts = split(password, ":");
+    if (m == "2022-blake3-chacha20-poly1305" && length(parts) > 1)
+        return false;
+    for (let i = 0; i < length(parts); i++) {
+        let part = parts[i];
+        if (part == "" || (length(part) % 4) != 0 || !match(part, /^[A-Za-z0-9+\/]+=*$/))
+            return false;
+        let decoded = b64dec(part);
+        if (decoded == null || length(decoded) != req_len)
+            return false;
+    }
+    return true;
+}
+
 function is_shadowsocks_userinfo_format(value) {
     if (type(value) != "string")
         return false;
     let first = index(value, ":");
-    if (first <= 0 || first >= length(value) - 1)
+    if (first <= 0)
+        return false;
+    let method = substr(value, 0, first);
+    if (valid_shadowsocks_method(method))
+        return true;
+    if (first >= length(value) - 1)
         return false;
     let rest = substr(value, first + 1);
     let second = index(rest, ":");
@@ -1111,9 +1178,9 @@ function process_shadowsocks(raw) {
     let host_port = parse_host_port(hostport);
     if (cred_colon <= 0)
         return null;
-    let method = substr(userinfo, 0, cred_colon);
+    let method = normalize_shadowsocks_method(substr(userinfo, 0, cred_colon));
     let password = substr(userinfo, cred_colon + 1);
-    if (method == "" || method == "ss" || password == "" || host_port[0] == "" || is_dummy_server(host_port[0], host_port[1]) || !valid_port(host_port[1]))
+    if (!valid_shadowsocks_password(method, password) || host_port[0] == "" || is_dummy_server(host_port[0], host_port[1]) || !valid_port(host_port[1]))
         return null;
 
     let params = parse_query(query);
@@ -1689,9 +1756,9 @@ function parse_clash_record(record) {
     };
 
     if (proxy_type == "ss" || proxy_type == "shadowsocks") {
-        let method = as_string(record.cipher);
+        let method = normalize_shadowsocks_method(record.cipher);
         let password = as_string(record.password);
-        if (method == "" || method == "ss" || password == "")
+        if (!valid_shadowsocks_password(method, password))
             return null;
         let outbound = { type: "shadowsocks", tag: name, server: server, server_port: port, method: method, password: password };
         if (is_true(record.uot) || is_true(record.udp_over_tcp) || is_true(record["udp-over-tcp"]))

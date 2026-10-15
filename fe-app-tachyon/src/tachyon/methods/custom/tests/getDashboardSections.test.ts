@@ -1503,4 +1503,31 @@ describe('getDashboardSections', () => {
     expect(result.success).toBe(true);
     expect(result.data[0].configError).toBeUndefined();
   });
+
+  it('falls back to fs.read_direct when fs.read fails on large section-cache files (>256 KB)', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    const fsReadDirect = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          transports: { 'main-1-out': 'xhttp' },
+          details: { 'main-1-out': 'packet-up+xmux' },
+        },
+      }),
+    );
+    vi.stubGlobal('fs', {
+      read: mocks.fsRead,
+      read_direct: fsReadDirect,
+    });
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(fsReadDirect).toHaveBeenCalledWith(
+      '/var/run/tachyon/section-cache/main.json',
+      'text',
+    );
+    const node = result.data[0].outbounds.find((o) => o.code === 'main-1-out');
+    expect(node?.transport).toBe('xhttp');
+    expect(node?.details).toBe('packet-up+xmux');
+  });
 });

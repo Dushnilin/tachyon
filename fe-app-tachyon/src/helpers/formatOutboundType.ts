@@ -106,6 +106,43 @@ export function resolvePrefixBadgeStyle(prefix?: string): PrefixPalette {
   return base;
 }
 
+function translatePresetColorName(name: string): string {
+  switch (name) {
+    case 'Blue':
+      return _('Blue');
+    case 'Green':
+      return _('Green');
+    case 'Purple':
+      return _('Purple');
+    case 'Orange':
+      return _('Orange');
+    case 'Cyan':
+      return _('Cyan');
+    case 'Rose':
+      return _('Rose');
+    case 'Amber':
+      return _('Amber');
+    case 'Indigo':
+      return _('Indigo');
+    case 'Teal':
+      return _('Teal');
+    case 'Dark':
+      return _('Dark');
+    case 'White':
+      return _('White');
+    case 'Light Blue':
+      return _('Light Blue');
+    case 'Light Green':
+      return _('Light Green');
+    case 'Light Yellow':
+      return _('Light Yellow');
+    case 'Light Pink':
+      return _('Light Pink');
+    default:
+      return name;
+  }
+}
+
 export function openPrefixColorPickerModal(prefix: string, event?: MouseEvent) {
   if (event) {
     event.stopPropagation();
@@ -202,7 +239,7 @@ export function openPrefixColorPickerModal(prefix: string, event?: MouseEvent) {
                 updatePreview();
               },
             },
-            p.name,
+            translatePresetColorName(p.name),
           ),
         ),
       ),
@@ -229,7 +266,7 @@ export function openPrefixColorPickerModal(prefix: string, event?: MouseEvent) {
                 updatePreview();
               },
             },
-            t.name,
+            translatePresetColorName(t.name),
           ),
         ),
       ),
@@ -343,9 +380,10 @@ export function parseNodeProtocolBreakdown(
   const rows: Array<{ label: string; value: string }> = [];
   const proto = (type || '').trim().toUpperCase();
   if (proto) {
-    rows.push({ label: 'Protocol', value: proto });
+    rows.push({ label: _('Protocol'), value: proto });
   }
   const seen = new Set<string>();
+  let hasTransportRow = false;
   for (const part of rawParts) {
     const low = part.toLowerCase();
     if (seen.has(low)) continue;
@@ -357,9 +395,9 @@ export function parseNodeProtocolBreakdown(
       low === 'none' ||
       low.startsWith('reality')
     ) {
-      rows.push({ label: 'Security', value: part.toUpperCase() });
+      rows.push({ label: _('Security'), value: part.toUpperCase() });
     } else if (low.startsWith('xtls-') || low.startsWith('flow:')) {
-      rows.push({ label: 'Flow', value: part.replace(/^flow:\s*/i, '') });
+      rows.push({ label: _('Flow'), value: part.replace(/^flow:\s*/i, '') });
     } else if (
       low.startsWith('xhttp') ||
       low === 'ws' ||
@@ -369,34 +407,35 @@ export function parseNodeProtocolBreakdown(
       low === 'quic' ||
       low === 'tcp'
     ) {
-      rows.push({ label: 'Transport', value: part });
+      hasTransportRow = true;
+      rows.push({ label: _('Transport'), value: part });
     } else if (low.startsWith('xmux')) {
       rows.push({
-        label: 'XMUX',
+        label: _('XMUX'),
         value: part.replace(/^xmux\s*\((.*)\)$/i, '$1'),
       });
     } else if (low.startsWith('utls:')) {
-      rows.push({ label: 'uTLS Fingerprint', value: part.slice(5).trim() });
+      rows.push({ label: _('uTLS Fingerprint'), value: part.slice(5).trim() });
     } else if (low.startsWith('alpn:')) {
-      rows.push({ label: 'ALPN', value: part.slice(5).trim() });
+      rows.push({ label: _('ALPN'), value: part.slice(5).trim() });
     } else if (low.startsWith('sni:')) {
-      rows.push({ label: 'SNI / Host', value: part.slice(4).trim() });
+      rows.push({ label: _('SNI / Host'), value: part.slice(4).trim() });
     } else if (low.startsWith('pin:')) {
-      rows.push({ label: 'Pinning', value: part.slice(4).trim() });
+      rows.push({ label: _('Pinning'), value: part.slice(4).trim() });
     } else if (low.startsWith('mux:')) {
-      rows.push({ label: 'Multiplex', value: part.slice(4).trim() });
+      rows.push({ label: _('Multiplex'), value: part.slice(4).trim() });
     } else if (low.startsWith(':')) {
-      rows.push({ label: 'Port', value: part.slice(1).trim() });
+      rows.push({ label: _('Port'), value: part.slice(1).trim() });
     } else {
-      rows.push({ label: 'Info', value: part });
+      rows.push({ label: _('Info'), value: part });
     }
   }
   if (
-    !rows.some((r) => r.label === 'Transport') &&
+    !hasTransportRow &&
     transport &&
     transport.toLowerCase() !== proto.toLowerCase()
   ) {
-    rows.push({ label: 'Transport', value: transport.toUpperCase() });
+    rows.push({ label: _('Transport'), value: transport.toUpperCase() });
   }
   return { base, rows };
 }

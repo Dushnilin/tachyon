@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-15 13:58+0300\n"
-"PO-Revision-Date: 2026-10-15 13:58+0300\n"
+"POT-Creation-Date: 2026-10-15 17:03+0300\n"
+"PO-Revision-Date: 2026-10-15 17:03+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -395,6 +395,9 @@ msgstr "Всегда блокировать эти домены для всех 
 msgid "Always visible"
 msgstr "Всегда включено"
 
+msgid "Amber"
+msgstr "Янтарный"
+
 msgid "Amnezia .conf"
 msgstr "Amnezia .conf"
 
@@ -757,6 +760,9 @@ msgstr "Блокирует доступ к приватным/локальным
 
 msgid "Blocks port 853 (DNS-over-TLS) and prevents bypass via encrypted DNS or Private Relay on smartphones for devices in this profile."
 msgstr "Блокирует порт 853 (DNS-over-TLS) и предотвращает обход через шифрованный DNS или Private Relay на смартфонах для устройств этого профиля."
+
+msgid "Blue"
+msgstr "Синий"
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
@@ -1301,6 +1307,9 @@ msgstr "Настройте порядок и видимость вкладок �
 msgid "Customize which component cards are displayed in the Components tab. Checkboxes show or hide components."
 msgstr "Настройте отображение карточек на вкладке «Компоненты». Галочки показывают или скрывают компоненты."
 
+msgid "Cyan"
+msgstr "Голубой"
+
 msgid "DHCP has DNS server"
 msgstr "DHCP содержит DNS сервер"
 
@@ -1486,6 +1495,9 @@ msgstr "Дневной лимит трафика (МБ)"
 
 msgid "Daily quota applies only when Target Scope is All Internet"
 msgstr "Суточная квота действует только при выборе области «Весь интернет»"
+
+msgid "Dark"
+msgstr "Тёмный"
 
 msgid "Dashboard"
 msgstr "Дашборд"
@@ -2402,6 +2414,9 @@ msgstr "Исправлено"
 msgid "Fleet Latency"
 msgstr "Средняя задержка серверов"
 
+msgid "Flow"
+msgstr "Поток (Flow)"
+
 msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
 
@@ -2530,6 +2545,9 @@ msgstr "Глобальная проверка"
 
 msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
+
+msgid "Green"
+msgstr "Зелёный"
 
 msgid "Group"
 msgstr "Группа"
@@ -2667,7 +2685,7 @@ msgid "History cleared"
 msgstr "История очищена"
 
 msgid "Home Router / Office / Dacha"
-msgstr ""
+msgstr "Домашний роутер / Офис / Дача"
 
 msgid "Host"
 msgstr "Хост"
@@ -2824,6 +2842,12 @@ msgstr "Включить серверы"
 
 msgid "Independent DoH/TLS probe"
 msgstr "Независимая проверка DoH/TLS"
+
+msgid "Indigo"
+msgstr "Индиго"
+
+msgid "Info"
+msgstr "Параметры"
 
 msgid "Information"
 msgstr "Информация"
@@ -3329,6 +3353,18 @@ msgstr "Обнаружены устаревшие пути zapret, требуе�
 msgid "Level name"
 msgstr "Имя уровня"
 
+msgid "Light Blue"
+msgstr "Светло-синий"
+
+msgid "Light Green"
+msgstr "Светло-зелёный"
+
+msgid "Light Pink"
+msgstr "Светло-розовый"
+
+msgid "Light Yellow"
+msgstr "Светло-жёлтый"
+
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
 
@@ -3598,6 +3634,9 @@ msgstr "Переместить ниже"
 
 msgid "Move Up"
 msgstr "Переместить выше"
+
+msgid "Multiplex"
+msgstr "Мультиплексирование"
 
 msgid "Must be a comma-separated list of numeric IDs"
 msgstr "Должен быть список числовых ID через запятую"
@@ -4026,7 +4065,7 @@ msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
 msgstr "Дополнительный контекст (напр. \"Ростелеком, долго грузится YouTube 4K\")..."
 
 msgid "Optional name displayed at the top of all Telegram bot messages to identify this router when multiple routers share the same bot token."
-msgstr ""
+msgstr "Необязательное имя, отображаемое в верхней части всех сообщений Telegram-бота для идентификации этого роутера, когда один токен бота используется на нескольких роутерах."
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -4054,6 +4093,9 @@ msgstr "При необходимости укажите отдельные ус
 
 msgid "Or paste hosts file content:"
 msgstr "Или вставьте содержимое файла hosts:"
+
+msgid "Orange"
+msgstr "Оранжевый"
 
 msgid "Other peers"
 msgstr "Другие пиры"
@@ -4210,6 +4252,9 @@ msgstr "Закрепить на дашборде"
 
 msgid "Ping"
 msgstr "Пинг"
+
+msgid "Pinning"
+msgstr "Привязка сертификата"
 
 msgid "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers."
 msgstr "Обычные UDP DNS-серверы, используемые как резерв при недоступности всех основных DNS. Всегда работают без шифрования (без DoH/DoT). Пример: 1.1.1.1, 8.8.8.8. В отличие от аварийного DNS провайдера, это выбранные вами серверы."
@@ -4450,6 +4495,9 @@ msgstr "Публичный IP не требуется для этой конфи
 
 msgid "Public host"
 msgstr "Публичный хост"
+
+msgid "Purple"
+msgstr "Фиолетовый"
 
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
@@ -4766,6 +4814,9 @@ msgstr "Многоразовый или эфемерный pre-auth ключ д�
 msgid "Rollback"
 msgstr "Откатить"
 
+msgid "Rose"
+msgstr "Розовый"
+
 msgid "Route"
 msgstr "Маршрут"
 
@@ -4827,7 +4878,7 @@ msgid "Router DNS queries were observed by the test service."
 msgstr "Тестовый сервис зафиксировал запросы через DNS роутера."
 
 msgid "Router Name"
-msgstr ""
+msgstr "Имя роутера"
 
 msgid "Router Traffic Target Section"
 msgstr "Секция для трафика роутера"
@@ -4933,6 +4984,9 @@ msgstr "Подменять LAN-адреса при выходе через tails
 
 msgid "SNI"
 msgstr "SNI"
+
+msgid "SNI / Host"
+msgstr "SNI / Хост"
 
 msgid "SSH"
 msgstr "SSH"
@@ -5936,6 +5990,9 @@ msgstr "Целевой сервис / Набор"
 msgid "Target accessible — no DPI blocking detected."
 msgstr "Цель доступна — блокировок DPI не обнаружено."
 
+msgid "Teal"
+msgstr "Бирюзовый"
+
 msgid "Teen (🧑)"
 msgstr "Подросток (🧑)"
 
@@ -6728,6 +6785,9 @@ msgstr "Если включено, блокировка поддомена (на
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."
 
+msgid "White"
+msgstr "Белый"
+
 msgid "Why Discord fails?"
 msgstr "Почему не работает Discord?"
 
@@ -6748,6 +6808,9 @@ msgstr "Рабочих"
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
+
+msgid "XMUX"
+msgstr "XMUX"
 
 msgid "YACD Secret Key"
 msgstr "Секретный ключ YACD"
@@ -6943,6 +7006,9 @@ msgstr "стратегия настроена для секции с дейст�
 
 msgid "tiny"
 msgstr "tiny"
+
+msgid "uTLS Fingerprint"
+msgstr "Отпечаток uTLS"
 
 msgid "unique UCI identifier"
 msgstr "уникальный идентификатор UCI"

@@ -1681,6 +1681,42 @@ function resolvePrefixBadgeStyle(prefix) {
   }
   return base;
 }
+function translatePresetColorName(name) {
+  switch (name) {
+    case "Blue":
+      return _("Blue");
+    case "Green":
+      return _("Green");
+    case "Purple":
+      return _("Purple");
+    case "Orange":
+      return _("Orange");
+    case "Cyan":
+      return _("Cyan");
+    case "Rose":
+      return _("Rose");
+    case "Amber":
+      return _("Amber");
+    case "Indigo":
+      return _("Indigo");
+    case "Teal":
+      return _("Teal");
+    case "Dark":
+      return _("Dark");
+    case "White":
+      return _("White");
+    case "Light Blue":
+      return _("Light Blue");
+    case "Light Green":
+      return _("Light Green");
+    case "Light Yellow":
+      return _("Light Yellow");
+    case "Light Pink":
+      return _("Light Pink");
+    default:
+      return name;
+  }
+}
 function openPrefixColorPickerModal(prefix, event) {
   if (event) {
     event.stopPropagation();
@@ -1766,7 +1802,7 @@ function openPrefixColorPickerModal(prefix, event) {
                 updatePreview();
               }
             },
-            p.name
+            translatePresetColorName(p.name)
           )
         )
       )
@@ -1793,7 +1829,7 @@ function openPrefixColorPickerModal(prefix, event) {
                 updatePreview();
               }
             },
-            t.name
+            translatePresetColorName(t.name)
           )
         )
       )
@@ -1891,43 +1927,45 @@ function parseNodeProtocolBreakdown(type, transport, details) {
   const rows = [];
   const proto = (type || "").trim().toUpperCase();
   if (proto) {
-    rows.push({ label: "Protocol", value: proto });
+    rows.push({ label: _("Protocol"), value: proto });
   }
   const seen = /* @__PURE__ */ new Set();
+  let hasTransportRow = false;
   for (const part of rawParts) {
     const low = part.toLowerCase();
     if (seen.has(low)) continue;
     seen.add(low);
     if (low === proto.toLowerCase()) continue;
     if (low === "reality" || low === "tls" || low === "none" || low.startsWith("reality")) {
-      rows.push({ label: "Security", value: part.toUpperCase() });
+      rows.push({ label: _("Security"), value: part.toUpperCase() });
     } else if (low.startsWith("xtls-") || low.startsWith("flow:")) {
-      rows.push({ label: "Flow", value: part.replace(/^flow:\s*/i, "") });
+      rows.push({ label: _("Flow"), value: part.replace(/^flow:\s*/i, "") });
     } else if (low.startsWith("xhttp") || low === "ws" || low === "grpc" || low === "http" || low === "httpupgrade" || low === "quic" || low === "tcp") {
-      rows.push({ label: "Transport", value: part });
+      hasTransportRow = true;
+      rows.push({ label: _("Transport"), value: part });
     } else if (low.startsWith("xmux")) {
       rows.push({
-        label: "XMUX",
+        label: _("XMUX"),
         value: part.replace(/^xmux\s*\((.*)\)$/i, "$1")
       });
     } else if (low.startsWith("utls:")) {
-      rows.push({ label: "uTLS Fingerprint", value: part.slice(5).trim() });
+      rows.push({ label: _("uTLS Fingerprint"), value: part.slice(5).trim() });
     } else if (low.startsWith("alpn:")) {
-      rows.push({ label: "ALPN", value: part.slice(5).trim() });
+      rows.push({ label: _("ALPN"), value: part.slice(5).trim() });
     } else if (low.startsWith("sni:")) {
-      rows.push({ label: "SNI / Host", value: part.slice(4).trim() });
+      rows.push({ label: _("SNI / Host"), value: part.slice(4).trim() });
     } else if (low.startsWith("pin:")) {
-      rows.push({ label: "Pinning", value: part.slice(4).trim() });
+      rows.push({ label: _("Pinning"), value: part.slice(4).trim() });
     } else if (low.startsWith("mux:")) {
-      rows.push({ label: "Multiplex", value: part.slice(4).trim() });
+      rows.push({ label: _("Multiplex"), value: part.slice(4).trim() });
     } else if (low.startsWith(":")) {
-      rows.push({ label: "Port", value: part.slice(1).trim() });
+      rows.push({ label: _("Port"), value: part.slice(1).trim() });
     } else {
-      rows.push({ label: "Info", value: part });
+      rows.push({ label: _("Info"), value: part });
     }
   }
-  if (!rows.some((r) => r.label === "Transport") && transport && transport.toLowerCase() !== proto.toLowerCase()) {
-    rows.push({ label: "Transport", value: transport.toUpperCase() });
+  if (!hasTransportRow && transport && transport.toLowerCase() !== proto.toLowerCase()) {
+    rows.push({ label: _("Transport"), value: transport.toUpperCase() });
   }
   return { base, rows };
 }
@@ -6115,10 +6153,19 @@ async function readDashboardSectionCache(sectionName) {
   if (!isSafeSectionName(sectionName)) {
     return void 0;
   }
+  const path = `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`;
   try {
-    const raw = await fs.read(
-      `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`
-    );
+    const raw = await fs.read(path).catch(async () => {
+      const directFs = fs;
+      if (typeof directFs.read_direct === "function") {
+        return directFs.read_direct(path, "text");
+      }
+      if (typeof directFs.exec_direct === "function") {
+        return directFs.exec_direct("/bin/cat", [path], "text");
+      }
+      const res = await fs.exec("/bin/cat", [path]);
+      return res?.stdout || "";
+    });
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return void 0;

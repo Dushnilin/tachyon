@@ -970,8 +970,18 @@ function readOutboundMetadataFromSectionCache(section_id) {
     });
   }
 
+  const cachePath = `${SECTION_CACHE_DIR}/${targetId}.json`;
   return fs
-    .read(`${SECTION_CACHE_DIR}/${targetId}.json`)
+    .read(cachePath)
+    .catch(() =>
+      typeof fs.read_direct === "function"
+        ? fs.read_direct(cachePath, "text")
+        : typeof fs.exec_direct === "function"
+          ? fs.exec_direct("/bin/cat", [cachePath], "text")
+          : fs
+              .exec("/bin/cat", [cachePath])
+              .then((res) => (res && res.stdout) || "{}"),
+    )
     .then((raw) => filteredOutboundMetadataFromCache(JSON.parse(raw || "{}")))
     .catch(() => ({
       names: {},
