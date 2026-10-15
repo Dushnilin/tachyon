@@ -161,22 +161,17 @@ function repair_unknown_outbound_field(config_file, reason) {
         if (type(cfg) != "object") return false;
 
         let target = null;
-        let list_ref = null;
         if (out_m) {
             if (type(cfg.outbounds) != "array" || index >= length(cfg.outbounds)) return false;
-            list_ref = cfg.outbounds;
             target = cfg.outbounds[index];
         } else if (ep_m) {
             if (type(cfg.endpoints) != "array" || index >= length(cfg.endpoints)) return false;
-            list_ref = cfg.endpoints;
             target = cfg.endpoints[index];
         } else if (inb_m) {
             if (type(cfg.inbounds) != "array" || index >= length(cfg.inbounds)) return false;
-            list_ref = cfg.inbounds;
             target = cfg.inbounds[index];
         }
         if (type(target) != "object") return false;
-        let target_type = as_string(target.type || "");
 
         let parts = split(field, ".");
         let leaf = parts[length(parts) - 1];
@@ -195,34 +190,6 @@ function repair_unknown_outbound_field(config_file, reason) {
         }
 
         delete target[leaf];
-
-        // Also strip the same rejected field path from other items of the exact
-        // same type (e.g., all urltest outbounds), without touching items of a
-        // different type (e.g., selector outbounds where `default` is valid).
-        if (target_type != "" && type(list_ref) == "array") {
-            for (let item in list_ref) {
-                if (type(item) != "object" || as_string(item.type || "") != target_type)
-                    continue;
-                let cur = item;
-                for (let step = 0; step < length(parts) - 1; step++) {
-                    if (type(cur) != "object") {
-                        cur = null;
-                        break;
-                    }
-                    cur = cur[parts[step]];
-                }
-                if (type(cur) == "object" && cur[leaf] != null) {
-                    if (ep_m && leaf == "amnezia" && type(cur.amnezia) == "object") {
-                        for (let k, v in cur.amnezia) {
-                            if (cur[k] == null)
-                                cur[k] = v;
-                        }
-                    }
-                    delete cur[leaf];
-                }
-            }
-        }
-
         fs.writefile(config_file, sprintf("%J", cfg));
         return true;
     }
