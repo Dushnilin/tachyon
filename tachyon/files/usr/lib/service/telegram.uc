@@ -134,8 +134,8 @@ function diagnose() {
     return runtime.diagnose();
 }
 
-function send_api(message) {
-    return runtime.send_api(message);
+function send_api(message, smart_entries) {
+    return runtime.send_api(message, smart_entries);
 }
 
 function notify_updates_cli() {
@@ -177,6 +177,13 @@ if (length(ARGV) > 0) {
         exit(diagnose());
     else if (mode == "notify-updates")
         exit(notify_updates_cli());
+    else if (mode == "send-smart") {
+        let start_arg = (ARGV[0] == "" || ARGV[0] == null) ? 2 : 1;
+        let entries = null;
+        try { entries = json(ARGV[start_arg + 1]); } catch (e) {}
+        if (!ARGV[start_arg] || type(entries) != "array") exit(1);
+        exit(send_api(ARGV[start_arg], entries));
+    }
     else if (mode == "send") {
         // Collect remaining args after "send" as the message text.
         // Handles both direct ucode call (ARGV[0]=="send") and /usr/bin/tachyon dispatch (ARGV[0]=="", ARGV[1]=="send").
@@ -194,7 +201,7 @@ if (length(ARGV) > 0) {
         exit(0);
     }
     else {
-        warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status|diagnose|notify-updates|send|mask-token ...> ...\n");
+        warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status|diagnose|notify-updates|send|send-smart|mask-token ...> ...\n");
         exit(1);
     }
 }

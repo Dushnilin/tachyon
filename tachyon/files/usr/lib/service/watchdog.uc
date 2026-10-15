@@ -160,7 +160,7 @@ function write_state_file(path, value, description) {
 }
 
 
-function send_telegram_notification(message, cooldown_key, cooldown_seconds) {
+function send_telegram_notification(message, cooldown_key, cooldown_seconds, smart_entries) {
     let now = time();
     if (cooldown_key != null && cooldown_key != "") {
         let last_sent = int(telegram_msg_history[cooldown_key] || 0);
@@ -178,7 +178,18 @@ function send_telegram_notification(message, cooldown_key, cooldown_seconds) {
     telegram_msg_count++;
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
-        system(common.background_command("/usr/bin/tachyon telegram send " + shell_quote(message)));
+        if (smart_entries) {
+            let c = uci_core.cursor();
+            c.unload(CONFIG_NAME);
+            c.load(CONFIG_NAME);
+            for (let entry in smart_entries) {
+                let sec = c.get_all(CONFIG_NAME, entry.section);
+                entry.snapshot = sprintf("%J", [sec?.user_domains, sec?.user_domains_text]);
+            }
+        }
+        let command = "/usr/bin/tachyon telegram " + (smart_entries ? "send-smart " : "send ") + shell_quote(message);
+        if (smart_entries) command += " " + shell_quote(sprintf("%J", smart_entries));
+        system(common.background_command(command));
     }
 }
 
@@ -422,7 +433,7 @@ function smart_detect_apply_plus_domains(entries) {
             push(lines, "🔍 *Smart Detect*: `" + (entry.source_domain || entry.domain) +
                 "` недоступен напрямую, работает через прокси.\nДомен `" + entry.domain +
                 "` добавлен в секцию *" + entry.section + "*.");
-        send_telegram_notification(join("\n\n", lines));
+        send_telegram_notification(join("\n\n", lines), null, null, added);
     }
     return written;
 }
@@ -461,7 +472,7 @@ function smart_detect_apply_domains(entries) {
         // between commits.
         if (per_section[sec_name] == null) per_section[sec_name] = [];
         push(per_section[sec_name], domain);
-        push(written, { section: sec_name, domain: domain });
+        push(written, { section: sec_name, domain: domain, source_domain: entry.source_domain || domain });
     }
 
     if (length(written) == 0) return [];
@@ -482,7 +493,7 @@ function smart_detect_apply_domains(entries) {
         }
         send_telegram_notification(
             "🔍 *Smart Detect*: недоступно напрямую, работает через прокси.\n" +
-            join("\n", lines)
+            join("\n", lines), null, null, written
         );
     }
     else {

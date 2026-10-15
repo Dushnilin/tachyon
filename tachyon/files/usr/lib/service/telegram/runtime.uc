@@ -106,7 +106,7 @@ function in_quiet_hours(cfg) {
     }
 }
 
-function send_api(message) {
+function send_api(message, smart_entries) {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 1;
     
@@ -116,7 +116,13 @@ function send_api(message) {
     let admins = split(cfg.admin_ids, /,/);
     for (let admin in admins) {
         let chat_id = trim(admin);
-        if (chat_id != "") send_message(cfg.bot_token, chat_id, message, "Markdown", null);
+        if (chat_id != "") {
+            let actions = smart_entries ? require("service.telegram.smart_detect_actions") : null;
+            let id = actions ? actions.create(smart_entries, chat_id) : null;
+            let res = send_message(cfg.bot_token, chat_id, message, "Markdown", id ? actions.keyboard(id, i18n.bind(cfg.language)) : null);
+            if (id && res?.ok && res.result?.message_id)
+                actions.bind_message(id, chat_id, res.result.message_id);
+        }
     }
     return 0;
 }
@@ -349,6 +355,24 @@ function process_updates(token, admin_ids) {
             if (!chat_id) continue;
             if (!is_admin(chat_id, admin_ids)) {
                 tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id, text: "Access Denied" });
+                continue;
+            }
+            if (index(as_string(cb.data), "/sd ") == 0) {
+                // A permitted group chat does not authorize every group member.
+                if (!cb.message || !is_admin(cb.from?.id, admin_ids)) {
+                    tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id, text: "Access Denied" });
+                    continue;
+                }
+                let actions = require("service.telegram.smart_detect_actions");
+                let result = actions.apply(cb.data, chat_id, cb.message.message_id);
+                tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id,
+                    text: t(result.key) + (result.domain ? ": " + result.domain : "") });
+                if (result.changed) {
+                    tg_request(token, "editMessageReplyMarkup", { chat_id: int(chat_id), message_id: cb.message.message_id,
+                        reply_markup: { inline_keyboard: actions.keyboard(result.id, t) } });
+                    if (!command_success_from_args([BIN_PATH, "reload"]))
+                        send_message(token, chat_id, t("sd_reload_failed"), null, null);
+                }
                 continue;
             }
             try {
