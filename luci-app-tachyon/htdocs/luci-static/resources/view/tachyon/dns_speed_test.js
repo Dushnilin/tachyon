@@ -460,8 +460,13 @@ function createController() {
     attachList(node, opts) {
       if (!node) return;
       const alwaysEnabled = Boolean(opts && opts.alwaysEnabled);
+      // LuCI registers the lists while the form is still detached. Replace a
+      // rerender of the same field, but keep the other off-document lists.
       listEntries = listEntries.filter(
-        (entry) => entry.node && entry.node.isConnected && entry.node !== node,
+        (entry) =>
+          entry.node &&
+          entry.node !== node &&
+          (!node.id || entry.node.id !== node.id),
       );
       listEntries.push({ node, alwaysEnabled });
       node.classList.add("tachyon-dns-speed-list");

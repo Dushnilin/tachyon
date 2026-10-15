@@ -18,6 +18,14 @@ The saved rule uses the registrable main domain from the bundled Public Suffix L
 
 Candidates use a bounded priority/FIFO queue (500 entries, 300-second TTL) and a five-minute cooldown file in RAM, `/var/run/tachyon/smart_detect_plus_seen.json`. At most one background probe is active, with at least ten seconds between starts. The old `/etc` cooldown file is read for migration but no longer updated. Restarting the watchdog retains the RAM cooldown; reboot clears it. Learned UCI domains remain persistent. Multiline/list UCI domain values and legacy text values are merged without exact case-insensitive domain duplicates, preserving comments and prefixed conditions. Pending UCI edits defer automatic writes; unchanged lists do not trigger reload. A failed commit/reload is not reported as a successful addition.
 
+## Telegram notification actions
+
+New automatic-addition notifications include **Exclude** and **Undo** buttons for each domain. Undo removes only that automatic addition from its section. Exclude also adds the detected hostname to `smart_detect_exclude`: with `smart_detect_expand_to_root` enabled it uses the registrable domain from the Public Suffix List; when disabled it keeps the exact hostname. The current setting is read when the button is pressed. Undo does not create a permanent exclusion, so later detection can add the domain again.
+
+Actions require both an authorized recipient chat and an authorized sender. A receipt binds each action to the original notification and its saved section domain list. Pending UCI changes, a changed domain list, an expired receipt, or a repeated press cannot remove current rules. Unrelated manual domains and legacy text rules are preserved. A successful action commits once and reloads routing once; a reload failure is reported separately from saving the change.
+
+Receipts contain domains and rule snapshots, not bot credentials. They live in a private RAM directory, `/var/run/tachyon-smart-actions`, expire after 24 hours, and are limited to 128 notifications. A reboot or eviction makes old buttons obsolete. Existing notifications sent before this feature have no action buttons. A multi-domain batch stays one notification with a separate button pair per addition.
+
 ## Shared safeguards and limits
 
 Both modes retain the upstream DNS/runtime guard: pause during known DNS failure or a reload/failover transaction, allow 30 seconds to settle after DNS/runtime changes, and recheck state after probes. Switching modes preserves learned domains. Automatic removal after Direct recovery is not implemented.

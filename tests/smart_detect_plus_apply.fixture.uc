@@ -18,7 +18,8 @@ let smart_detect={probe_status:function(){reloads++;return reload_ok?0:1;}};
 let common={object_or_empty:function(v){return v||{};}};
 function log_message(msg,lvl){}
 let notifications=[];
-function send_telegram_notification(msg){push(notifications,msg);}
+let notification_entries=[];
+function send_telegram_notification(msg, key, cooldown, entries){push(notifications,msg);push(notification_entries,entries);}
 let checks=0;
 function check(ok,name){if(!ok)die("FAIL: "+name+"\n");checks++;}
 /* IMPLEMENTATION */
@@ -48,6 +49,7 @@ check(length(notifications)==0,"disabled Telegram receives no notifications");
 values.settings.smart_detect_mode="plus";commit_ok=true;
 values.telegram={enabled:"1",bot_token:"fixture",admin_ids:"fixture"};
 smart_detect_apply_plus_domains([{section:"vpn",domain:"site.example",source_domain:"api.site.example"}]);
+check(notification_entries[0][0].domain=="site.example"&&notification_entries[0][0].source_domain=="api.site.example", "Plus notification actions keep original hostname and saved target");
 check(length(notifications)==1&&notifications[0]=="🔍 *Smart Detect*: `api.site.example` недоступен напрямую, работает через прокси.\nДомен `site.example` добавлен в секцию *vpn*.","Plus keeps Smart Detect title, original hostname and saved main domain");
 smart_detect_apply_plus_domains([{section:"vpn",domain:"site.example"}]);
 check(length(notifications)==1,"covered domains do not send duplicate notifications");
