@@ -949,39 +949,30 @@ function check_sing_box() {
 
     if (command_exists("sing-box")) {
         sing_box_installed = 1;
-        let version = strip_leading_v(replace(module_output(SINGBOX_RUNTIME_UC, [ "version" ]), /[\r\n]+$/g, ""));
-        if (version != "") {
-            if (match(version, /-tachyon\./) != null ||
-                match(version, /^0\.0\./) != null ||
-                sing_box_marker_is("tachyon-core") ||
-                module_success(SINGBOX_RUNTIME_UC, [ "is-foreign-core", version ])) {
-                // tachyon-core numbers its own releases (0.x), so the upstream
-                // compatibility gate would mark a healthy core as too old; the
-                // capability model, not the version number, decides its features.
-                sing_box_tachyon_core = 1;
-                sing_box_version_ok = 1;
-                sing_box_cert_pin = 1;
-            }
-            else {
-                if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", version ]))
-                    sing_box_extended = 1;
-                else if (sing_box_marker_is("extended-compressed") || module_success(SINGBOX_RUNTIME_UC, [ "is-extended", version ]))
-                    sing_box_extended = 1;
-                if (module_success(HELPERS_UC, [ "version-at-least", version, "1.12.4" ]))
-                    sing_box_version_ok = 1;
-                if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", version ]))
-                    sing_box_cert_pin = 1;
-            }
+        let version = "";
+        if (system_info_cache_is_valid()) {
+            let cache = read_json_file(SYSTEM_INFO_CACHE_FILE);
+            version = strip_leading_v(as_string(cache.sing_box_version));
+            sing_box_extended = int(cache.sing_box_extended) ? 1 : 0;
+            sing_box_cert_pin = int(cache.sing_box_cert_pin) ? 1 : 0;
+            sing_box_tachyon_core = int(cache.sing_box_tachyon_core) ? 1 : 0;
         }
-        else if (sing_box_marker_is("tachyon-core")) {
-            sing_box_tachyon_core = 1;
+
+        if (version == "" || version == "unknown" || version == "not installed") {
+            let resolved = sing_box_resolved_version();
+            version = strip_leading_v(as_string(resolved.version));
+            let flags = sing_box_capability_flags(version, resolved.output);
+            sing_box_extended = flags.extended;
+            sing_box_cert_pin = flags.cert_pin;
+            sing_box_tachyon_core = flags.tachyon_core;
+        }
+
+        if (sing_box_tachyon_core == 1) {
             sing_box_version_ok = 1;
-            sing_box_cert_pin = 1;
         }
-        else if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")) {
-            sing_box_extended = 1;
-            if (module_success(SINGBOX_RUNTIME_UC, [ "supports-cert-pin", "" ]))
-                sing_box_cert_pin = 1;
+        else if (version != "" && version != "unknown" && version != "not installed") {
+            if (module_success(HELPERS_UC, [ "version-at-least", version, "1.12.4" ]))
+                sing_box_version_ok = 1;
         }
     }
 
