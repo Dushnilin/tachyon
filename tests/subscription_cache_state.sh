@@ -504,4 +504,39 @@ runtime_env cache_ucode persist-source-cache \
 [ ! -e "$WORK_DIR/runtime/persistent/proxy-subscription-1.metadata.json" ] ||
   fail "changed subscription URL with empty metadata must drop stale metadata"
 
+# A cache fetched under other settings used to be deleted before the download,
+# so a failed download left the source with no nodes at all. It must stay on
+# disk, reported as usable but not current.
+mkdir -p "$WORK_DIR/status-runtime" "$WORK_DIR/status-persistent"
+cat >"$WORK_DIR/status-runtime/proxy-subscription-1.json" <<'JSON'
+{"outbounds":[{"type":"direct","tag":"one"}]}
+JSON
+printf '%s' 'https://example.com/old.txt' >"$WORK_DIR/status-runtime/proxy-subscription-1.url"
+printf '%s' 'v2rayN' >"$WORK_DIR/status-runtime/proxy-subscription-1.user_agent"
+cat >"$WORK_DIR/status-expected.json" <<'JSON'
+{"url":"https://example.com/new.txt","user_agent":"Happ","hwid":"","device_headers_signature":""}
+JSON
+
+status_out="$(
+  TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/status-runtime" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/status-persistent" \
+    cache_ucode cached-source-status-fixture \
+      proxy-subscription-1 \
+      "$WORK_DIR/status-expected.json"
+)" || fail "cached source status should answer for a usable cache"
+assert_eq "usable=1 current=0" "$status_out" \
+  "cache fetched with other settings is usable but not current"
+[ -s "$WORK_DIR/status-runtime/proxy-subscription-1.json" ] ||
+  fail "a usable cache fetched with other settings must survive until a download succeeds"
+
+printf '%s' 'https://example.com/new.txt' >"$WORK_DIR/status-runtime/proxy-subscription-1.url"
+printf '%s' 'Happ' >"$WORK_DIR/status-runtime/proxy-subscription-1.user_agent"
+assert_eq "usable=1 current=1" \
+  "$(TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/status-runtime" \
+      TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/status-persistent" \
+      cache_ucode cached-source-status-fixture \
+        proxy-subscription-1 \
+        "$WORK_DIR/status-expected.json")" \
+  "cache matching the configured profile is current"
+
 printf 'subscription cache state checks passed\n'

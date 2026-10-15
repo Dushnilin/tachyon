@@ -1488,18 +1488,6 @@ function runtime_metadata_path(source_section) {
     return TMP_SUBSCRIPTION_FOLDER + "/" + as_string(source_section) + ".metadata.json";
 }
 
-function remove_subscription_source_runtime_cache(source_section) {
-    if (!cache_section_is_safe(source_section))
-        return;
-
-    unlink_path(source_json_path(TMP_SUBSCRIPTION_FOLDER, source_section));
-    unlink_path(source_url_path(TMP_SUBSCRIPTION_FOLDER, source_section));
-    unlink_path(source_user_agent_path(TMP_SUBSCRIPTION_FOLDER, source_section));
-    unlink_path(source_hwid_path(TMP_SUBSCRIPTION_FOLDER, source_section));
-    unlink_path(source_device_headers_path(TMP_SUBSCRIPTION_FOLDER, source_section));
-    unlink_path(runtime_metadata_path(source_section));
-}
-
 function persist_subscription_cache(source_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_path, effective_device_headers_signature) {
     if (!cache_section_is_safe(source_section) || !subscription_cache_is_usable(subscription_json_path))
         return false;
@@ -2025,14 +2013,18 @@ function cached_source_status(source_section, parsed) {
     let cached_device_headers = read_text(device_headers_path);
     if (had_usable_cache &&
         !source_cache_profile_matches(parsed, cached_url, cached_user_agent, cached_hwid, get_subscription_user_agent(""), cached_device_headers)) {
-        remove_subscription_source_runtime_cache(source_section);
+        // Usable, but fetched under other settings. The file stays: if the
+        // download fails it is the only node list left, and `current` is false
+        // so nothing treats it as up to date. Deleting it here left the source
+        // with nothing at all whenever the network was down at the same time
+        // as the settings change.
         return {
-            usable: false,
+            usable: true,
             current: false,
-            cached_url: "",
-            cached_user_agent: "",
-            cached_hwid: "",
-            cached_device_headers: ""
+            cached_url,
+            cached_user_agent,
+            cached_hwid,
+            cached_device_headers
         };
     }
 
@@ -2061,8 +2053,7 @@ function update_subscription_source(section_name_value, index_value, entry, phas
     let source_section = source_id(section_name_value, index);
     let status = cached_source_status(source_section, parsed);
     if (status.usable && !status.current) {
-        log_message("Discarding stale subscription cache for rule '" + section_name_value + "' source '" + index + "' because source settings changed", "info");
-        remove_subscription_source_runtime_cache(source_section);
+        log_message("Subscription cache for rule '" + section_name_value + "' source '" + index + "' was fetched with other settings and is kept only as a fallback until a download succeeds", "info");
     }
 
     let proxy = get_subscription_download_proxy_address(section_name_value, sections, parsed, phase || "runtime");
@@ -2413,8 +2404,8 @@ function ensure_subscription_source_for_prepare(state, section, source_index, en
 
     unlink_path(metadata_output_path);
 
-    if (cached.usable && cached.current) {
-        log_message("Keeping cached subscription for rule '" + section_name_value + "' until a fresh download succeeds", "warn");
+    if (cached.usable) {
+        log_message("Keeping the last usable subscription cache for rule '" + section_name_value + "' until a fresh download succeeds", "warn");
         append_available_cached_metadata(metadata_tmpfile, section_name_value, source_index, source_section);
         return true;
     }
@@ -2854,6 +2845,10 @@ else if (mode == "section-current-usable-cache-fixture") {
         }
     }
     exit(section_current_usable_cache(selected, ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+}
+else if (mode == "cached-source-status-fixture") {
+    let status = cached_source_status(as_string(ARGV[1]), object_or_empty(read_json(ARGV[2])));
+    print("usable=", status.usable ? "1" : "0", " current=", status.current ? "1" : "0", "\n");
 }
 else if (mode == "user-agent-supported") {
     exit(user_agent_supported(ARGV[1], ARGV[2]) ? 0 : 1);
