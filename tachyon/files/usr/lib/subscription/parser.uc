@@ -3468,6 +3468,7 @@ function module_exports() {
     return {
         share_link_outbound,
         parse_share_link,
+        add_transport,
         parse_subscription_source_entry,
         validate_subscription,
         normalize_content_validated,

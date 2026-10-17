@@ -9,6 +9,7 @@ let runtime_dns = require("tachyon_core.dns");
 let core_profile = require("tachyon_core.core_profile");
 let runtime_url = require("core.url");
 let subscription_share_link = require("subscription.share_link");
+let subscription_parser = require("subscription.parser");
 let connections = require("config.connections");
 let subscription_wireguard = require("subscription.wireguard");
 let subscription_amnezia = require("subscription.amnezia_config");
@@ -610,16 +611,14 @@ function apply_link_transport(outbound, query) {
         optional_query_string(result, "host", query.host);
     }
     else if (transport == "xhttp") {
-        let mode = as_string(query.mode || "auto");
-        if (mode != "auto" && mode != "packet-up" && mode != "stream-up" && mode != "stream-one")
-            mode = "auto";
-        result.mode = mode;
-        result.path = as_string(query.path || "") != "" ? as_string(query.path) : "/";
-        result.x_padding_bytes = "100-1000";
-        result.no_grpc_header = false;
-        result.sc_max_each_post_bytes = "1000000";
-        result.sc_min_posts_interval_ms = "30";
-        optional_query_string(result, "host", as_string(query.host || "") != "" ? query.host : query.sni);
+        // xHTTP settings travel in `extra` (JSON) on real share links: xmux,
+        // padding, sc* limits. The subscription parser already knows all of
+        // that mapping — hand the query over to it instead of keeping a second,
+        // dumber copy that silently drops everything extra carries.
+        let built = subscription_parser.add_transport({ query: object_or_empty(query) });
+        if (type(built) != "object")
+            return;
+        result = built;
     }
     else {
         warn("unknown manual proxy link transport '", transport, "' ignored\n");
@@ -1134,7 +1133,12 @@ function manual_link_outbound(link, tag_name, display_info) {
     if (scheme == "vmess")
         return manual_vmess_outbound(link, tag_name);
 
-    link = url_strip_fragment_value(url_decode(link));
+    // Strip the fragment, nothing else. Decoding the whole link up front used
+    // to run before the query was split, so a percent-encoded `&` (extra=...,
+    // plugin=..., any JSON blob) turned into a real one and cut the link in
+    // half. Every parser below decodes what it needs itself — userinfo()
+    // and query_params() decode per field.
+    link = url_strip_fragment_value(link);
     scheme = url_scheme(link);
     if (scheme == "http" || scheme == "https")
         return manual_http_outbound(link, tag_name);
