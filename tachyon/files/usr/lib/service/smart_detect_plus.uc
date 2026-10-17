@@ -145,6 +145,77 @@ function smart_detect_stalled_candidates(previous, connections, now) {
     return { tracked, domains, priorities };
 }
 
+const SILENT_DROP_MIN_UPLOAD = 30;
+const SILENT_DROP_MIN_DURATION_MS = 1200;
+const SILENT_DROP_STRIKES = 3;
+const SILENT_DROP_WINDOW = 180;
+
+// Short-lived direct connections that send a ClientHello / HTTP request
+// (upload > 30B, download == 0) and get dropped or retried on a new socket
+// before surviving two 12s poll ticks slip past per-socket stall tracking.
+// Accumulating three zero-reply attempts per domain catches those blackholes
+// while clearing the streak immediately if any connection receives payload.
+function smart_detect_silent_drops(previous, connections, now) {
+    previous = type(previous) == "object" ? previous : {};
+    let state = {};
+    let domains = {};
+    let priorities = {};
+
+    for (let dom in keys(previous)) {
+        let entry = previous[dom];
+        if (type(entry) == "object" && now - int(entry.last_seen || 0) <= SILENT_DROP_WINDOW)
+            state[dom] = entry;
+    }
+
+    for (let conn in connections) {
+        let meta = conn.metadata || {};
+        let port = as_string(meta.destinationPort);
+        let in_type = as_string(meta.type);
+        if (meta.network != "tcp" || (port != "443" && port != "80") ||
+            (index(in_type, "tproxy/") != 0 && index(in_type, "tun/") != 0 && index(in_type, "redirect/") != 0) ||
+            index(conn.chains || [], "direct-out") < 0 || !conn.id)
+            continue;
+
+        let domain = smart_detect_normalize_domain(meta.host);
+        if (domain == null)
+            continue;
+
+        let upload = int(conn.upload || 0);
+        let download = int(conn.download || 0);
+        if (download > 0) {
+            delete state[domain];
+            continue;
+        }
+
+        if (upload <= SILENT_DROP_MIN_UPLOAD)
+            continue;
+        if (conn.duration_ms != null && int(conn.duration_ms) < SILENT_DROP_MIN_DURATION_MS)
+            continue;
+
+        let entry = state[domain];
+        if (!entry) {
+            if (length(state) >= 256)
+                continue;
+            entry = { count: 0, last_seen: now, last_emit: 0, seen_ids: {} };
+            state[domain] = entry;
+        }
+        entry.last_seen = now;
+        if (entry.seen_ids[conn.id])
+            continue;
+        entry.seen_ids[conn.id] = true;
+        entry.count = int(entry.count || 0) + 1;
+
+        if (entry.count >= SILENT_DROP_STRIKES && (entry.last_emit == 0 || now - entry.last_emit >= 300)) {
+            domains[domain] = (port == "80") ? "http" : "https";
+            priorities[domain] = 3;
+            entry.count = 0;
+            entry.last_emit = now;
+        }
+    }
+
+    return { state, domains, priorities };
+}
+
 // Merge observations without resetting FIFO age. A full queue keeps stronger
 // evidence by replacing the newest candidate at the lowest priority.
 function smart_detect_queue_candidate(pending, payload, now, limit) {
@@ -218,6 +289,7 @@ return {
     main_domain: smart_detect_main_domain,
     domain_values: smart_detect_domain_values,
     stalled_candidates: smart_detect_stalled_candidates,
+    silent_drops: smart_detect_silent_drops,
     queue_candidate: smart_detect_queue_candidate,
     queue_order: smart_detect_queue_order
 };

@@ -130,33 +130,35 @@ function process_running(pid, expected_name) {
 // the per-healer detection prologues used to make.
 
 function get_sing_box_pid() {
-    for (let path in [ "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
+    for (let path in [ "/var/run/tachyon-core.pid", "/var/run/tachyon-core/tachyon-core.pid", "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
         let pid = trim(fs.readfile(path) || "");
-        if (pid != "" && process_running(pid, "sing-box")) return pid;
+        if (pid != "" && process_running(pid, "tachyon-core")) return pid;
     }
 
-    let ubus_res = command_capture("ubus call service list '{\"name\":\"sing-box\"}' 2>/dev/null");
-    if (ubus_res.status == 0 && ubus_res.output != "") {
-        let matched = match(ubus_res.output, /"pid":\s*([0-9]+)/);
-        if (matched && matched[1] != "") {
-            let pid = matched[1];
-            if (process_running(pid, "sing-box")) return pid;
+    for (let svc in [ "tachyon-core", "sing-box" ]) {
+        let ubus_res = command_capture("ubus call service list '{\"name\":\"" + svc + "\"}' 2>/dev/null");
+        if (ubus_res.status == 0 && ubus_res.output != "") {
+            let matched = match(ubus_res.output, /"pid":\s*([0-9]+)/);
+            if (matched && matched[1] != "") {
+                let pid = matched[1];
+                if (process_running(pid, "tachyon-core")) return pid;
+            }
         }
     }
 
-    let pidof_res = command_capture("pidof sing-box 2>/dev/null");
+    let pidof_res = command_capture("pidof tachyon-core sing-box 2>/dev/null");
     if (pidof_res.status == 0 && pidof_res.output != "") {
         let fields = split(trim(pidof_res.output), /[ \t]+/);
         if (length(fields) > 0 && fields[0] != "") {
             let pid = fields[0];
-            if (process_running(pid, "sing-box")) return pid;
+            if (process_running(pid, "tachyon-core")) return pid;
         }
     }
 
     return "";
 }
 
-// Scans /proc for a sing-box executable. Slower than get_sing_box_pid(), used
+// Scans /proc for a tachyon-core or sing-box executable. Slower than get_sing_box_pid(), used
 // only to confirm a suspected stop before publishing the fact.
 function sing_box_in_proc() {
     let proc = fs.opendir("/proc");
@@ -167,7 +169,8 @@ function sing_box_in_proc() {
         if (match(entry, /^[0-9]+$/)) {
             let exe = fs.readlink("/proc/" + entry + "/exe") || "";
             let slash = rindex(exe, "/");
-            if ((slash >= 0 ? substr(exe, slash + 1) : exe) == "tachyon-core") {
+            let base = slash >= 0 ? substr(exe, slash + 1) : exe;
+            if (base == "tachyon-core" || base == "sing-box") {
                 pid = entry;
                 break;
             }
@@ -628,6 +631,7 @@ function controller(bus, opts) {
         if (!smart_plus.capture_enabled(ctx.settings) || ctx.is_paused ||
             ctx.reload_in_progress || !ctx.singbox_running) {
             state.smart_detect_connections = {};
+            state.smart_detect_silent_drops = {};
             last_smart_detect_poll = 0;
             return;
         }
@@ -656,10 +660,16 @@ function controller(bus, opts) {
         data = null;
         if (type(snapshot?.connections) != "array") return;
         let result = smart_plus.stalled_candidates(state.smart_detect_connections, snapshot.connections, ctx.now);
+        let drops = smart_plus.silent_drops(state.smart_detect_silent_drops, snapshot.connections, ctx.now);
         snapshot = null;
         state.smart_detect_connections = result.tracked;
+        state.smart_detect_silent_drops = drops.state;
         for (let domain in keys(result.domains))
             bus.emit(EV.SMARTDETECT_CANDIDATE, { domain, scheme: result.domains[domain], priority: result.priorities[domain], reason: "download stalled" });
+        for (let domain in keys(drops.domains)) {
+            if (!result.domains[domain])
+                bus.emit(EV.SMARTDETECT_CANDIDATE, { domain, scheme: drops.domains[domain], priority: drops.priorities[domain], reason: "silent drop" });
+        }
     }
 
     self.set_tick_context = function(ctx) { current_tick_ctx = ctx; };
