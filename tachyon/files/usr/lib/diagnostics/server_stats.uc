@@ -412,6 +412,18 @@ function get_summary() {
     };
 }
 
+// Composite ranking: latency first, then stability. jitter_ms is collected by
+// record_measurement but was never scored — a node with the same average and
+// wild swings now loses to a steady one.
+function candidate_score(entry) {
+    if (type(entry) != "object")
+        entry = {};
+    return (entry.avg_latency || entry.last_latency || 9999)
+        + (entry.jitter_ms || 0)
+        + ((entry.consecutive_failures || 0) * 100)
+        - ((entry.success_rate || 0) * 2);
+}
+
 function get_best_candidates(target_section, limit) {
     let db = load_stats_db();
     sync_runtime_proxies_to_db(db);
@@ -429,11 +441,9 @@ function get_best_candidates(target_section, limit) {
         }
     }
 
-    // Sort by composite score: lowest latency with penalty for consecutive failures and low success rate
+    // Sort by composite score: lowest latency and jitter with penalty for consecutive failures and low success rate
     sort(pool, function(a, b) {
-        let score_a = (a.avg_latency || a.last_latency || 9999) + (a.consecutive_failures * 100) - (a.success_rate * 2);
-        let score_b = (b.avg_latency || b.last_latency || 9999) + (b.consecutive_failures * 100) - (b.success_rate * 2);
-        return score_a - score_b;
+        return candidate_score(a) - candidate_score(b);
     });
 
     let result = [];
@@ -488,6 +498,7 @@ function module_exports() {
         get_summary,
         probe_and_record,
         probe_all_servers,
+        candidate_score,
         get_best_candidates,
         query_servers,
         record_probe_result,

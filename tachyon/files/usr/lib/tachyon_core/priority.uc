@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let reachability_guard = require("diagnostics.reachability_guard");
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -262,6 +263,13 @@ function choose_from_level_range(group, start_index, end_index, probe, skip_tag)
     return null;
 }
 
+// A same-level switch costs every live connection, so it has to buy something.
+// Single-shot RTT noise on a home line is tens of milliseconds; without a
+// tolerance the group ping-pongs on noise and the user pays a reconnect every
+// fastest_check_interval for a "gain" that was never real. Same default the
+// sing-box urltest and the steer group pick use.
+const FASTEST_SWITCH_TOLERANCE_MS = 50;
+
 function choose_fastest_same_level(group, level_index, active_tag, probe) {
     let level = object_or_empty(array_or_empty(group.levels)[level_index]);
     let active = null;
@@ -284,7 +292,7 @@ function choose_fastest_same_level(group, level_index, active_tag, probe) {
 
     if (best == null || best.tag == active_tag)
         return null;
-    if (active == null || !active.alive || best.delay < active.delay)
+    if (active == null || !active.alive || best.delay + FASTEST_SWITCH_TOLERANCE_MS <= active.delay)
         return best;
     return null;
 }
@@ -320,6 +328,11 @@ function init_group_state(group) {
         active: "",
         levelIndex: -1,
         activeDelay: 0,
+        guard: reachability_guard.create({
+            fail_threshold: 3,
+            recover_threshold: 8,
+            dwell_seconds: 120
+        }),
         nextActiveCheck: now_seconds(),
         nextRecoveryCheck: now_seconds() + duration_to_seconds(group.recovery_check_interval, 15),
         nextFastestCheck: now_seconds() + duration_to_seconds(group.fastest_check_interval, 180)
@@ -331,7 +344,11 @@ function tick_group(state, group) {
 
     if (state.active == "" && now >= state.nextActiveCheck) {
         let selected = choose_from_level_range(group, 0, length(group.levels) - 1, clash_probe);
-        switch_group(state, group, selected);
+        if (switch_group(state, group, selected) && state.levelIndex > 0 && state.guard) {
+            state.guard.escalated = true;
+            state.guard.escalated_at = now;
+            state.guard.ok_streak = 0;
+        }
         state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 5);
         return;
     }
@@ -340,8 +357,12 @@ function tick_group(state, group) {
         let active = clash_probe(state.active, group);
         if (active.alive) {
             state.activeDelay = active.delay;
+            if (state.levelIndex == 0 && state.guard)
+                reachability_guard.observe(state.guard, { direct_domestic: true, direct_foreign: true, tunnel_foreign: true, now: now });
         }
         else {
+            if (state.guard)
+                reachability_guard.observe(state.guard, { direct_domestic: true, direct_foreign: false, tunnel_foreign: false, now: now });
             let selected = choose_from_level_range(
                 group,
                 state.levelIndex,
@@ -350,6 +371,12 @@ function tick_group(state, group) {
                 state.active
             );
             if (switch_group(state, group, selected)) {
+                if (state.levelIndex > 0 && state.guard && !state.guard.escalated) {
+                    state.guard.escalated = true;
+                    state.guard.escalated_at = now;
+                    state.guard.ok_streak = 0;
+                    push(state.guard.transitions, now);
+                }
                 state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
                 state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
             }
@@ -363,7 +390,17 @@ function tick_group(state, group) {
 
     if (state.active != "" && state.levelIndex > 0 && now >= state.nextRecoveryCheck) {
         let selected = choose_from_level_range(group, 0, state.levelIndex - 1, clash_probe);
-        if (switch_group(state, group, selected))
+        let ready_to_return = selected != null;
+        if (state.guard) {
+            let snap = reachability_guard.observe(state.guard, {
+                direct_domestic: true,
+                direct_foreign: selected != null,
+                tunnel_foreign: selected != null,
+                now: now
+            });
+            ready_to_return = (selected != null && !snap.escalated);
+        }
+        if (ready_to_return && switch_group(state, group, selected))
             state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
         state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
     }
