@@ -9823,8 +9823,11 @@ function createSectionContent(section) {
     })),
   );
   o.validate = function (section_id, value) {
+    // The stock combobox also re-validates its empty "add" input on blur and
+    // keyup; that empty string is not the list. The save path passes the real
+    // array of picked members, so only that one has to be non-empty.
     const members = L.toArray(value != null ? value : []);
-    if (!members.filter(Boolean).length) {
+    if (value !== "" && !members.filter(Boolean).length) {
       return _("Select at least one section to merge");
     }
     return true;
