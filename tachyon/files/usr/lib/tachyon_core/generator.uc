@@ -1150,7 +1150,8 @@ function add_mixed_proxy_for_section(config, section, service_address) {
         ip_is_private: true,
         outbound: runtime_constants.DIRECT_OUTBOUND_TAG
     });
-    let section_outbound = runtime_constants.outbound_tag(section[".name"]);
+    let section_outbound = generator_routes.group_outbound_tag_for_section(section) ||
+        runtime_constants.outbound_tag(section[".name"]);
     generator_routes.push_section_route_rule(config, {
         action: "route",
         inbound: inbound.tag,
