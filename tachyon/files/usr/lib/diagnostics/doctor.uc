@@ -1239,31 +1239,35 @@ function run_doctor_checks_impl(repair) {
             doc_check("✅", "dnsmasq params", "bypassed (DHCP-only mode, port 0)", "");
         } else {
             let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-            let localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
-            let rebind_protection = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-            if (noresolv == "1" && localuse == "1" && rebind_protection == "0") {
-                doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
+            let raw_localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
+            // OpenWrt defaults localuse to 1 when omitted in UCI
+            let eff_localuse = (raw_localuse == null || raw_localuse == "") ? "1" : as_string(raw_localuse);
+            let raw_rebind = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+            let eff_rebind = (raw_rebind == null || raw_rebind == "") ? "1" : as_string(raw_rebind);
+            if (noresolv == "1" && eff_localuse == "1") {
+                let detail = sprintf("OK (noresolv=1, localuse=%s, rebind_protection=%s)",
+                    (raw_localuse == null || raw_localuse == "") ? "1 (default)" : eff_localuse,
+                    eff_rebind);
+                doc_check("✅", "dnsmasq params", detail, "");
             } else {
                 issues++;
-                // noresolv/localuse are required for the sing-box DNS redirect to
-                // work; rebind_protection=0 is a deliberate compatibility downgrade
-                // for FakeIP answers — it must never be applied silently by a
-                // diagnostic pass.
                 if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("uci set dhcp noresolv=1 localuse=1 rebind_protection=0 + dnsmasq restart");
-                    doc_check("⚠️", "dnsmasq params", "incorrect", "→ WILL FIX (doctor --fix): noresolv=1, localuse=1, rebind_protection=0");
+                    doc_plan("uci set dhcp noresolv=1 localuse=1 + dnsmasq restart");
+                    doc_check("⚠️", "dnsmasq params",
+                        sprintf("incorrect (noresolv=%s, localuse=%s)", noresolv || "0", eff_localuse),
+                        "→ WILL FIX (doctor --fix): noresolv=1, localuse=1");
                 } else {
                     doc_set("dhcp.@dnsmasq[0].noresolv", "1");
-                    doc_set("dhcp.@dnsmasq[0].localuse", "1");
-                    doc_set("dhcp.@dnsmasq[0].rebind_protection", "0");
+                    if (eff_localuse != "1")
+                        doc_set("dhcp.@dnsmasq[0].localuse", "1");
                     doc_commit("dhcp");
                     command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
                     command_status("sleep 1");
                     let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-                    let localuse2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
-                    let rebind_protection2 = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-                    if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
-                        doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
+                    let raw_lu2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
+                    let eff_lu2 = (raw_lu2 == null || raw_lu2 == "") ? "1" : as_string(raw_lu2);
+                    if (noresolv2 == "1" && eff_lu2 == "1") {
+                        doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1");
                         fixed++;
                     } else {
                         doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
@@ -2302,8 +2306,33 @@ function run_doctor_checks(repair) {
     return result;
 }
 
+let LAST_LLM_ERROR = "";
+
+function sanitize_llm_error(msg, api_key) {
+    msg = trim(as_string(msg || ""));
+    if (api_key && length(api_key) >= 4) {
+        msg = replace(msg, api_key, "[REDACTED]");
+    }
+    msg = replace(msg, /sk-[A-Za-z0-9_\-]{8,}/g, "sk-***");
+    msg = replace(msg, /Bearer[ \t]+[A-Za-z0-9._\-]+/g, "Bearer ***");
+    if (length(msg) > 280)
+        msg = substr(msg, 0, 280) + "...";
+    return msg;
+}
+
+function model_supports_temperature(provider, model) {
+    let m = lc(trim(as_string(model || "")));
+    if (m == "")
+        return true;
+    // OpenAI reasoning / GPT-5+ / o-series / search models reject custom temperature != 1
+    if (match(m, /^(o1|o3|o4|gpt-5|gpt-6)/) || index(m, "-search") >= 0 || index(m, "codex") >= 0 || index(m, "reasoner") >= 0)
+        return false;
+    return true;
+}
+
 function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     provider = lc(trim(as_string(provider)));
+    LAST_LLM_ERROR = "";
 
     if (provider == "anthropic" || provider == "claude") {
         let api_url = "https://api.anthropic.com/v1/messages";
@@ -2336,12 +2365,20 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         remove_file(payload_path);
 
         if (result.status != 0 || result.output == "") {
+            LAST_LLM_ERROR = sprintf("network/curl error (exit %d)", result.status);
             return null;
         }
 
         let response_data = parse_json_or_null(result.output);
         if (response_data && type(response_data.content) == "array" && length(response_data.content) > 0) {
             return response_data.content[0].text;
+        }
+        if (response_data && type(response_data.error) == "object") {
+            let err_type = as_string(response_data.error.type || "api_error");
+            let err_msg = sanitize_llm_error(response_data.error.message || "", api_key);
+            LAST_LLM_ERROR = err_type + (err_msg != "" ? (": " + err_msg) : "");
+        } else {
+            LAST_LLM_ERROR = "unexpected API response format";
         }
 
         return null;
@@ -2381,55 +2418,90 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         model = model_override || "gpt-6-luna";
     }
 
-    let payload = {
-        model: model,
-        messages: [
-            {
-                role: "user",
-                content: prompt_text
-            }
-        ],
-        temperature: 0.3
+    let send_chat_request = function(include_temperature) {
+        let payload = {
+            model: model,
+            messages: [
+                {
+                    role: "user",
+                    content: prompt_text
+                }
+            ]
+        };
+        if (include_temperature)
+            payload.temperature = 0.3;
+
+        let payload_path = "/tmp/llm_payload.json";
+        common.write_json_file(payload_path, payload);
+
+        let curl_args = [
+            "curl", "-s", "-X", "POST",
+            "-H", "Content-Type: application/json",
+            "-H", "Authorization: Bearer " + api_key,
+            "--connect-timeout", "10",
+            "-m", "60",
+            "-d", "@" + payload_path,
+            api_url
+        ];
+
+        // OpenRouter recommends these headers for identification and rate-limit ranking
+        if (provider == "openrouter") {
+            push(curl_args, "-H");
+            push(curl_args, "HTTP-Referer: https://github.com/Dushnilin/tachyon");
+            push(curl_args, "-H");
+            push(curl_args, "X-Title: Tachyon AI Doctor");
+        }
+
+        let res = command_capture(command_from_args(curl_args));
+        remove_file(payload_path);
+        return res;
     };
 
-    let payload_path = "/tmp/llm_payload.json";
-    common.write_json_file(payload_path, payload);
-
-    let curl_args = [
-        "curl", "-s", "-X", "POST",
-        "-H", "Content-Type: application/json",
-        "-H", "Authorization: Bearer " + api_key,
-        "--connect-timeout", "10",
-        "-m", "60",
-        "-d", "@" + payload_path,
-        api_url
-    ];
-
-    // OpenRouter recommends these headers for identification and rate-limit ranking
-    if (provider == "openrouter") {
-        push(curl_args, "-H");
-        push(curl_args, "HTTP-Referer: https://github.com/Dushnilin/tachyon");
-        push(curl_args, "-H");
-        push(curl_args, "X-Title: Tachyon AI Doctor");
-    }
-
-    let result = command_capture(command_from_args(curl_args));
-    remove_file(payload_path);
+    let use_temp = model_supports_temperature(provider, model);
+    let result = send_chat_request(use_temp);
 
     if (result.status != 0 || result.output == "") {
+        LAST_LLM_ERROR = sprintf("network/curl error (exit %d)", result.status);
         warn(sprintf("LLM query failed: provider=%s url=%s status=%d output_len=%d", provider, api_url, result.status, length(result.output || "")));
         return null;
     }
 
     let response_data = parse_json_or_null(result.output);
+    // Automatic retry without temperature if the model rejects temperature (e.g. invalid_request_error / unsupported_value / temperature)
+    if (use_temp && response_data && type(response_data.error) == "object") {
+        let err_param = lc(as_string(response_data.error.param || ""));
+        let err_code = lc(as_string(response_data.error.code || ""));
+        let err_msg_lc = lc(as_string(response_data.error.message || ""));
+        if (err_param == "temperature" || index(err_msg_lc, "temperature") >= 0 || err_code == "unsupported_value") {
+            result = send_chat_request(false);
+            if (result.status == 0 && result.output != "")
+                response_data = parse_json_or_null(result.output);
+        }
+    }
+
     if (response_data && type(response_data.choices) == "array" && length(response_data.choices) > 0) {
         return response_data.choices[0].message.content;
     }
 
+    if (response_data && type(response_data.error) == "object") {
+        let e_type = as_string(response_data.error.type || response_data.error.code || "api_error");
+        let e_code = as_string(response_data.error.code || "");
+        let e_param = as_string(response_data.error.param || "");
+        let e_msg = sanitize_llm_error(response_data.error.message || "", api_key);
+        let parts = [ e_type ];
+        if (e_code != "" && e_code != e_type) push(parts, e_code);
+        if (e_param != "") push(parts, "param=" + e_param);
+        LAST_LLM_ERROR = join(" / ", parts) + (e_msg != "" ? (": " + e_msg) : "");
+        warn(sprintf("LLM API error: provider=%s %s", provider, LAST_LLM_ERROR));
+        return null;
+    }
+
     // Log the raw response for debugging when parsing fails
     if (!response_data) {
+        LAST_LLM_ERROR = "invalid JSON response from LLM endpoint";
         warn(sprintf("LLM response parse failed: provider=%s raw_start=%s", provider, substr(trim(result.output), 0, 200)));
     } else if (!response_data.choices) {
+        LAST_LLM_ERROR = "LLM response missing choices";
         warn(sprintf("LLM response missing choices: provider=%s keys=%s", provider, join(",", keys(response_data))));
     }
     return null;
@@ -3353,7 +3425,7 @@ function ai_doctor(user_query) {
     // even when sing-box was up. pidof matches the process name exactly and
     // works on busybox, and unlike pgrep -f it cannot pick up an unrelated
     // command line that merely mentions sing-box.
-    let singbox_running = trim(command_output("pidof sing-box 2>/dev/null")) != "";
+    let singbox_running = trim(command_output("pidof tachyon-core sing-box 2>/dev/null")) != "";
     let uptime_out = trim(command_output("cat /proc/uptime 2>/dev/null"));
     let uptime_min = uptime_out != "" ? int(split(uptime_out, ".")[0]) / 60 : 0;
 
@@ -3498,6 +3570,18 @@ function ai_doctor(user_query) {
 
     let ai_res = query_llm(provider, api_key, custom_url, prompt, model_override);
     if (!ai_res) {
+        if (LAST_LLM_ERROR != "") {
+            let err_banner = lang == "en"
+                ? sprintf("⚠️ *LLM API Error (%s)*: %s\n_Switched to local heuristic diagnosis._\n\n", provider, LAST_LLM_ERROR)
+                : sprintf("⚠️ *Ошибка API ИИ-провайдера (%s)*: %s\n_Выполнен переход к локальному анализу._\n\n", provider, LAST_LLM_ERROR);
+            local_res.report = err_banner + as_string(local_res.report || "");
+            local_res.llm_error = LAST_LLM_ERROR;
+            let f_err = fs.open("/tmp/ai_doctor_last.json", "w");
+            if (f_err) {
+                f_err.write(sprintf("%J\n", local_res));
+                f_err.close();
+            }
+        }
         print(sprintf("%J\n", local_res));
         return 0;
     }
