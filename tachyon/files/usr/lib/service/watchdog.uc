@@ -696,7 +696,50 @@ let last_fast_check = 0;
 let last_normal_check = 0;
 let last_slow_check = 0;
 
+// ─── Health problem trackers ──────────────────────────────────────────────────
+// The probe facts are observations, not verdicts. PROXY_DOWN fires on a single
+// timed-out curl and PROXY_UP on the next success, so relaying them straight
+// into the status made `status` swing with every sample - and it was derived
+// from a 300s incident clock, so it could equally read "healthy" while the
+// proxy was down and nothing had repaired it yet. Each signal therefore runs
+// through its own tracker that only flips on a confirmed run of observations;
+// the status file publishes that state instead of the raw clock.
+//
+// Observation-only subscribers below never repair, they only keep the trackers
+// fed, and they deliberately carry no cooldown: a cooldown here would drop the
+// very samples the tracker is counting.
+let hysteresis = require("diagnostics.hysteresis");
 
+let proxy_health_tracker = hysteresis.create(3, 2);
+let dns_health_tracker = hysteresis.create(3, 2);
+// WAN_DOWN already carries WAN_FAIL_THRESHOLD consecutive misses, so this
+// tracker only has to confirm the recovery.
+let wan_health_tracker = hysteresis.create(1, 2);
+
+function track_proxy_up(ev) { hysteresis.observe(proxy_health_tracker, true); }
+function track_proxy_down(ev) { hysteresis.observe(proxy_health_tracker, false); }
+function track_dns_up(ev) { hysteresis.observe(dns_health_tracker, true); }
+function track_dns_down(ev) { hysteresis.observe(dns_health_tracker, false); }
+function track_wan_up(ev) { hysteresis.observe(wan_health_tracker, true); }
+function track_wan_down(ev) { hysteresis.observe(wan_health_tracker, false); }
+
+function health_problem_states() {
+    return {
+        proxy: hysteresis.snapshot(proxy_health_tracker),
+        dns: hysteresis.snapshot(dns_health_tracker),
+        wan: hysteresis.snapshot(wan_health_tracker)
+    };
+}
+
+// The worst signal wins: one confirmed problem is a degraded system, and a
+// check still settling its recovery is not clear either.
+function health_problem_state() {
+    return hysteresis.worst([
+        proxy_health_tracker.state,
+        dns_health_tracker.state,
+        wan_health_tracker.state
+    ]);
+}
 
 // ─── Root-cause suppression ───────────────────────────────────────────────────
 // A dead WAN takes the proxy, DNS and the health check down with it. Each of
@@ -856,15 +899,29 @@ function is_emergency_failsafe_active() {
 let ai_incidents_count = 0;
 let last_ai_incident = null;
 
+// Written by the daemon every normal tier; the CLI modes read it back so a
+// freshly exec'd process reports what the daemon actually observed instead of
+// the empty state it starts with.
+const AI_STATUS_FILE = "/tmp/tachyon_ai_status.json";
+
 function ai_export_status() {
-    if (last_ai_incident == null || (time() - last_ai_incident.timestamp >= 300)) controller.note_healthy();
+    let now = time();
+    if (last_ai_incident == null || (now - last_ai_incident.timestamp >= 300)) controller.note_healthy();
     // Streaks live in the controller state (probe counters). They are the
     // evidence AI Doctor reads to see instability that a point-in-time check
     // cannot: without them the status file always reported zero failures.
     let st = controller.state || {};
+    // `status` comes from the problem trackers rather than from the incident
+    // clock alone, so it can no longer read "healthy" while a signal is
+    // failing and has simply not been repaired in the last 300s.
+    let health_state = health_problem_state();
     let status_obj = {
-        timestamp: time(),
-        status: is_emergency_failsafe_active() ? "emergency_failsafe" : (last_ai_incident != null && (time() - last_ai_incident.timestamp < 300) ? "repaired" : "healthy"),
+        timestamp: now,
+        status: hysteresis.status_label(health_state,
+            last_ai_incident != null && (now - last_ai_incident.timestamp < 300),
+            is_emergency_failsafe_active()),
+        health_state: health_state,
+        problem_states: health_problem_states(),
         ai_active: true,
         emergency_failsafe: is_emergency_failsafe_active(),
         escalation_ladder: escalation_ladder,
@@ -876,7 +933,7 @@ function ai_export_status() {
         healthy_streak: int(st.healthy_streak || 0),
         active_repairs: (time() < wan_repair_until || time() < singbox_repair_until) ? "active" : "none"
     };
-    fs.writefile("/tmp/tachyon_ai_status.json", sprintf("%J\n", status_obj));
+    fs.writefile(AI_STATUS_FILE, sprintf("%J\n", status_obj));
 }
 
 // `outcome` is what actually happened, not what was attempted:
@@ -2788,6 +2845,17 @@ function register_subscribers() {
         { name: "note_wan_recovered", priority: 5 });
     subscribe(EV.NFQUEUE_UP, note_nfqueue_recovered,
         { name: "note_nfqueue_recovered", priority: 5 });
+
+    // Problem trackers: observation only, never a repair, and first in line so
+    // the sample is recorded even when a healer later in the chain throws or
+    // stands down. No cooldown on any of them - a cooldown here would drop the
+    // very observations the tracker counts.
+    subscribe(EV.PROXY_UP, track_proxy_up, { name: "track_proxy_up", priority: 1 });
+    subscribe(EV.PROXY_DOWN, track_proxy_down, { name: "track_proxy_down", priority: 1 });
+    subscribe(EV.DNS_UP, track_dns_up, { name: "track_dns_up", priority: 1 });
+    subscribe(EV.DNS_DOWN, track_dns_down, { name: "track_dns_down", priority: 1 });
+    subscribe(EV.WAN_UP, track_wan_up, { name: "track_wan_up", priority: 1 });
+    subscribe(EV.WAN_DOWN, track_wan_down, { name: "track_wan_down", priority: 1 });
     // Every settled recovery re-checks the failsafe: whichever signal comes back
     // first (proxy, DNS, WAN) is enough, and the handler is a no-op while the
     // failsafe is not engaged.
@@ -3318,7 +3386,7 @@ function get_status() {
 }
 
 function print_ai_status() {
-    let data = fs.readfile("/tmp/tachyon_ai_status.json");
+    let data = fs.readfile(AI_STATUS_FILE);
     if (data) {
         print(data);
     } else {
@@ -3368,10 +3436,28 @@ function print_ai_status_full() {
         }
     }
 
-    let status = is_emergency_failsafe_active() ? "emergency_failsafe" : (last_ai_incident != null && (now - last_ai_incident.timestamp < 300) ? "repaired" : "healthy");
+    // The trackers only accumulate inside the daemon, and a freshly exec'd CLI
+    // process has never observed anything: deriving them here would always
+    // report a clear system while the daemon's own file says otherwise. The
+    // published state wins, with the local derivation as the fallback for a
+    // run that has no status file yet.
+    let published = common.object_or_empty(common.read_json_file(AI_STATUS_FILE));
+    let health_state = published.health_state != null
+        ? as_string(published.health_state)
+        : health_problem_state();
+    let problem_states = published.problem_states != null
+        ? published.problem_states
+        : health_problem_states();
+    let status = published.status != null
+        ? as_string(published.status)
+        : hysteresis.status_label(health_state,
+            last_ai_incident != null && (now - last_ai_incident.timestamp < 300),
+            is_emergency_failsafe_active());
 
     let result = {
         status: status,
+        health_state: health_state,
+        problem_states: problem_states,
         ai_active: true,
         emergency_failsafe: is_emergency_failsafe_active(),
         escalation_ladder: escalation_ladder,
