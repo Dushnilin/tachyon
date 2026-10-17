@@ -2176,6 +2176,58 @@ function validate_guest_mode(guest_mode) {
     validate_time_format(end_time, "guest_mode." + name + ".end_time");
 }
 
+// A section may claim one of its own condition values as global: the value is
+// then reserved for it alone and must not appear in any other section. The
+// claim lives on the owner as list global_rules '<kind>:<value>' and only counts
+// while the owner still uses the value - see connections.active_global_rules.
+// This is cross-section by nature, so it runs once over all sections instead of
+// per validate_rule(), and it deliberately covers disabled sections too: the
+// invariant has to hold for a section someone re-enables tomorrow.
+function validate_global_rules(sections) {
+    let owners = {};
+    let claim_count = 0;
+
+    for (let section in sections) {
+        let name = section_name(section);
+
+        for (let entry in connections.global_rules(section)) {
+            claim_count++;
+            let claim = connections.global_rule_claim(entry);
+            if (claim == null)
+                fail_validation("Rule '" + name + "' has a malformed global rule '" + entry +
+                    "'. Expected '<option>:<value>' with a supported option. Aborted.");
+
+            // A claim that no longer matches the owner's own conditions is inert
+            // and reserves nothing, so it neither blocks others nor collides here.
+            let values = connections.condition_values(section, claim.kind);
+            if (values != null && values[claim.value] == true)
+                owners[claim.kind + ":" + claim.value] = name;
+        }
+    }
+
+    if (!claim_count)
+        return;
+
+    for (let section in sections) {
+        let name = section_name(section);
+
+        for (let kind in connections.GLOBAL_RULE_OPTIONS) {
+            let values = connections.condition_values(section, kind);
+            if (values == null)
+                continue;
+
+            for (let value in keys(values)) {
+                let owner = owners[kind + ":" + value];
+                if (owner == null || owner == name)
+                    continue;
+                fail_validation("Rule '" + name + "' uses '" + value + "' (" + kind +
+                    "), which rule '" + owner + "' has claimed as a global rule. Remove it from '" +
+                    name + "' or drop the global claim in '" + owner + "'. Aborted.");
+            }
+        }
+    }
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
@@ -2235,6 +2287,8 @@ function validate_runtime_config(context) {
 
     for (let section in sections)
         validate_rule(section, sections, context);
+
+    validate_global_rules(sections);
 
     for (let profile in profiles)
         validate_profile(profile, profiles);

@@ -25,6 +25,42 @@ const ITEM_TYPES = [
     "priority_level"
 ];
 
+// Conditions a section may claim as global: the claim reserves the value for
+// that section alone and every other section must drop it. Several UCI keys can
+// fold into one kind - a rule set lives in rule_set or in rule_set_with_subnets,
+// and a legacy config can still carry domains in the CSV text field instead of
+// the list. Keys are storage keys, not widget names; the LuCI side maps its
+// widget names onto the same kinds.
+const GLOBAL_RULE_OPTIONS = {
+    community_lists: [ "community_lists" ],
+    rule_set: [ "rule_set", "rule_set_with_subnets" ],
+    domain_ip_lists: [ "domain_ip_lists" ],
+    geoip_country: [ "geoip_country" ],
+    ports: [ "ports" ],
+    dscp: [ "dscp" ],
+    domain: [
+        "domain",
+        "domain_suffix",
+        "domain_suffix_text",
+        "domain_keyword",
+        "domain_keyword_text",
+        "domain_regex",
+        "domain_regex_text",
+        "domain_text"
+    ],
+    user_domains: [ "user_domains", "user_domains_text" ],
+    ip_cidr: [ "ip_cidr", "ip_cidr_text" ]
+};
+
+// These kinds live in a textarea (newline/comma separated), the rest in a UCI
+// list or a whitespace separated single option. One splitter for both the value
+// set and a claim keeps the two sides reading UCI the same way.
+const GLOBAL_RULE_TEXT_OPTIONS = {
+    domain: true,
+    user_domains: true,
+    ip_cidr: true
+};
+
 let item_sections = null;
 
 function raw_option(section, key) {
@@ -702,6 +738,83 @@ function rule_config_or_null() {
     } catch (e) {
         return null;
     }
+}
+
+function global_rule_kinds() {
+    let kinds = [];
+    for (let kind in GLOBAL_RULE_OPTIONS)
+        push(kinds, kind);
+    return kinds;
+}
+
+// A claim is stored as list global_rules '<kind>:<value>'. The value may itself
+// carry colons (a rule-set URL, a 'full:' domain prefix), so only the first one
+// separates - the kind never contains one.
+function global_rule_claim(entry) {
+    entry = trim(as_string(entry));
+    let colon = index(entry, ":");
+    if (colon <= 0)
+        return null;
+
+    let kind = substr(entry, 0, colon);
+    let value = trim(substr(entry, colon + 1));
+    if (value == "" || GLOBAL_RULE_OPTIONS[kind] == null)
+        return null;
+
+    return { kind, value };
+}
+
+function global_rules(section) {
+    return whitespace_list_value(section, "global_rules");
+}
+
+function condition_values(section, kind) {
+    let keys = GLOBAL_RULE_OPTIONS[kind];
+    if (keys == null)
+        return null;
+
+    let values = {};
+    let rule_config = GLOBAL_RULE_TEXT_OPTIONS[kind] ? rule_config_or_null() : null;
+
+    for (let key in keys) {
+        let raw = raw_option(section, key);
+        if (raw == null)
+            continue;
+
+        let items;
+        if (type(raw) == "array")
+            items = raw;
+        else if (rule_config)
+            items = rule_config.text_list_values(raw);
+        else
+            items = split(trim(as_string(raw)), /[ \t\r\n]+/);
+
+        for (let item in items) {
+            item = trim(as_string(item));
+            if (item != "")
+                values[item] = true;
+        }
+    }
+
+    return values;
+}
+
+// Claims the owner still actually uses. A claim whose value was later removed
+// from its section goes inert instead of failing validation - otherwise deleting
+// one condition would block every apply and a stale claim would keep starving
+// other sections of the value forever.
+function active_global_rules(section) {
+    let active = [];
+    for (let entry in global_rules(section)) {
+        let claim = global_rule_claim(entry);
+        if (claim == null)
+            continue;
+
+        let values = condition_values(section, claim.kind);
+        if (values != null && values[claim.value] == true)
+            push(active, claim);
+    }
+    return active;
 }
 
 function rule_condition_csv(section, key, kind) {
@@ -1722,6 +1835,12 @@ return {
     whitespace_list_value,
     GEOIP_COUNTRY_MODES,
     GEOIP_COUNTRY_CLOSED_MODES,
+    GLOBAL_RULE_OPTIONS,
+    global_rule_kinds,
+    global_rule_claim,
+    global_rules,
+    condition_values,
+    active_global_rules,
     cascade_delete_section,
     set_item_sections,
     set_item_sections_from_cursor,

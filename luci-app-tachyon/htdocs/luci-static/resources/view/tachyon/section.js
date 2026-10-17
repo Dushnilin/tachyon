@@ -1313,23 +1313,13 @@ function loadOutboundNameChoices(section_id) {
       });
 
       outboundTypeByNameCache.set(targetId, typeMap);
-      if (targetId !== "Main") {
-        const mainTypeMap = outboundTypeByNameCache.get("Main") || new Map();
-        typeMap.forEach((v, k) => mainTypeMap.set(k, v));
-        outboundTypeByNameCache.set("Main", mainTypeMap);
-      }
 
       choices.sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
 
       outboundNameChoicesCache.set(targetId, choices);
       outboundNameChoicesFetchedAt.set(targetId, Date.now());
-      if (targetId !== "Main") {
-        outboundNameChoicesCache.set("Main", choices);
-        outboundNameChoicesFetchedAt.set("Main", Date.now());
-      }
 
       refreshDashboardFilterChoiceWidgets(targetId);
-      refreshDashboardFilterChoiceWidgets("Main");
 
       return choices;
     })
@@ -2435,7 +2425,12 @@ function fptnTokenServerNames(value) {
   if (hashIdx >= 0) {
     token = token.slice(0, hashIdx);
   }
-  if (token.startsWith("fptnb:") || token.startsWith("fptnb//") || token.startsWith("fptnb://")) return [];
+  if (
+    token.startsWith("fptnb:") ||
+    token.startsWith("fptnb//") ||
+    token.startsWith("fptnb://")
+  )
+    return [];
 
   let body = null;
   if (token.startsWith("fptn://")) body = token.slice(7);
@@ -3252,7 +3247,7 @@ function addLiveServerFilterPreviewOption(optionTarget, config = {}) {
           E(
             "div",
             { style: "display:flex;flex-wrap:wrap;gap:4px;" },
-            list.slice(0, 60).map((srv) =>
+            list.map((srv) =>
               E(
                 "span",
                 {
@@ -9117,11 +9112,280 @@ var DOMAIN_LIST_HINTS = {
   cloudfront: "IP-адреса CloudFront/Amazon (ASN)",
 };
 
-function loadRulesetValues(option) {
+// --- global (section-exclusive) rules ---------------------------------------
+// A section may claim one of its own condition values as global: the claim
+// reserves the value for that section alone, every other picker stops offering
+// it and the owning row gets a small "Global rule enabled" mark. Storage keys,
+// not widget names - GLOBAL_RULE_WIDGET_KINDS maps the LuCI names (including the
+// DNS aliases that write into another option's storage) onto the same kinds
+// config/connections.uc knows.
+const GLOBAL_RULE_OPTION_KEYS = {
+  community_lists: ["community_lists"],
+  rule_set: ["rule_set", "rule_set_with_subnets"],
+  domain_ip_lists: ["domain_ip_lists"],
+  geoip_country: ["geoip_country"],
+  ports: ["ports"],
+  dscp: ["dscp"],
+  domain: [
+    "domain",
+    "domain_suffix",
+    "domain_suffix_text",
+    "domain_keyword",
+    "domain_keyword_text",
+    "domain_regex",
+    "domain_regex_text",
+    "domain_text",
+  ],
+  user_domains: ["user_domains", "user_domains_text"],
+  ip_cidr: ["ip_cidr", "ip_cidr_text"],
+};
+
+const GLOBAL_RULE_TEXT_KINDS = new Set(["domain", "user_domains", "ip_cidr"]);
+
+const GLOBAL_RULE_WIDGET_KINDS = {
+  community_lists: "community_lists",
+  rule_set: "rule_set",
+  _dns_rule_set: "rule_set",
+  domain_ip_lists: "domain_ip_lists",
+  _dns_domain_ip_lists: "domain_ip_lists",
+  geoip_country: "geoip_country",
+  ports: "ports",
+  dscp: "dscp",
+  domain: "domain",
+  user_domains: "user_domains",
+  ip_cidr: "ip_cidr",
+};
+
+// Labels are resolved per call, not once at module load: like the rest of this
+// file, nothing here may assume _() is usable before the view runs.
+function globalRuleKindLabel(kind) {
+  const labels = {
+    community_lists: _("Built-in rule sets"),
+    rule_set: _("Rule sets"),
+    domain_ip_lists: _("Domain and IP lists"),
+    geoip_country: _("GeoIP Countries"),
+    ports: _("Ports"),
+    dscp: _("DSCP marks (QoS)"),
+    domain: _("Domains"),
+    user_domains: _("Auto-detected Domains"),
+    ip_cidr: _("IPs"),
+  };
+  return labels[kind] || kind;
+}
+
+// Three kinds live in a textarea (newline/comma separated), the rest in a UCI
+// list or a whitespace separated single option. One splitter keeps reading UCI
+// identical between the value set, the picker and the exclusivity guard.
+function splitGlobalRuleConditionValues(kind, raw) {
+  if (raw == null || raw === "") {
+    return [];
+  }
+
+  const items = Array.isArray(raw)
+    ? raw
+    : `${raw}`.split(GLOBAL_RULE_TEXT_KINDS.has(kind) ? /[\n,]/ : /\s+/);
+
+  return items.map((item) => `${item}`.trim()).filter(Boolean);
+}
+
+function globalRuleConditionValues(sectionId, kind) {
+  const keys = GLOBAL_RULE_OPTION_KEYS[kind];
+  if (!keys) {
+    return new Set();
+  }
+
+  const values = new Set();
+  keys.forEach((key) => {
+    splitGlobalRuleConditionValues(
+      kind,
+      uci.get(UCI_PACKAGE, sectionId, key),
+    ).forEach((value) => values.add(value));
+  });
+  return values;
+}
+
+// A claim is stored as "<kind>:<value>"; the value may itself carry colons (a
+// rule-set URL, a "full:" domain prefix), so only the first one separates.
+function parseGlobalRule(entry) {
+  const raw = `${entry || ""}`.trim();
+  const colon = raw.indexOf(":");
+  if (colon <= 0) {
+    return null;
+  }
+
+  const kind = raw.slice(0, colon);
+  const value = raw.slice(colon + 1).trim();
+  if (!value || !GLOBAL_RULE_OPTION_KEYS[kind]) {
+    return null;
+  }
+
+  return { kind, value };
+}
+
+// Only a claim whose owner still uses the value counts. A stale claim reserves
+// nothing, so removing a condition later neither blocks other sections nor
+// leaves a badge behind.
+function activeGlobalRules(sectionId) {
+  const active = [];
+  normalizeOptionValues(
+    uci.get(UCI_PACKAGE, sectionId, "global_rules"),
+  ).forEach((entry) => {
+    const claim = parseGlobalRule(entry);
+    if (
+      claim &&
+      globalRuleConditionValues(sectionId, claim.kind).has(claim.value)
+    ) {
+      active.push(claim);
+    }
+  });
+  return active;
+}
+
+// "<kind>:<value>" -> owning section label, for every section but this one.
+function globalRuleClaimsByOtherSections(sectionId) {
+  const owners = new Map();
+  (uci.sections(UCI_PACKAGE, "section") || []).forEach((section) => {
+    const otherId = getUciSectionName(section);
+    if (!otherId || otherId === sectionId) {
+      return;
+    }
+    activeGlobalRules(otherId).forEach((claim) => {
+      owners.set(`${claim.kind}:${claim.value}`, getUciSectionLabel(section));
+    });
+  });
+  return owners;
+}
+
+function foreignGlobalValues(kind, sectionId) {
+  const values = new Set();
+  globalRuleClaimsByOtherSections(sectionId).forEach((_owner, key) => {
+    const claim = parseGlobalRule(key);
+    if (claim && claim.kind === kind) {
+      values.add(claim.value);
+    }
+  });
+  return values;
+}
+
+// Condition pickers may not offer a value another section claims as global.
+// Wrapped around the option's own validate so format checks still run first.
+function enforceGlobalRuleExclusivity(option, kind) {
+  const original =
+    typeof option.validate === "function" ? option.validate : null;
+
+  option.validate = function (section_id, value) {
+    const result = original ? original.apply(this, [section_id, value]) : true;
+    if (result !== true) {
+      return result;
+    }
+
+    const owners = globalRuleClaimsByOtherSections(section_id);
+    for (const item of splitGlobalRuleConditionValues(kind, value)) {
+      const owner = owners.get(`${kind}:${item}`);
+      if (owner) {
+        return _(
+          '"%s" is the global rule of section "%s" and cannot be used here',
+        ).format(item, owner);
+      }
+    }
+    return true;
+  };
+}
+
+// Drops a claimed value from every other section's storage for that kind and
+// returns the labels of the sections that actually lost it. Returning the same
+// value to a list it is not in is a no-op, so a value can never be stripped
+// twice and an untouched section is never marked dirty.
+function removeGlobalRuleValueFromSection(sectionId, kind, value) {
+  let changed = false;
+
+  (GLOBAL_RULE_OPTION_KEYS[kind] || []).forEach((key) => {
+    const raw = uci.get(UCI_PACKAGE, sectionId, key);
+    if (raw == null) {
+      return;
+    }
+
+    const before = splitGlobalRuleConditionValues(kind, raw);
+    const after = before.filter((item) => item !== value);
+    if (after.length === before.length) {
+      return;
+    }
+
+    changed = true;
+    if (after.length) {
+      uci.set(
+        UCI_PACKAGE,
+        sectionId,
+        key,
+        Array.isArray(raw)
+          ? after
+          : after.join(GLOBAL_RULE_TEXT_KINDS.has(kind) ? "\n" : " "),
+      );
+    } else {
+      uci.unset(UCI_PACKAGE, sectionId, key);
+    }
+  });
+
+  return changed;
+}
+
+// Saving a claim makes it effective right away: the value leaves every other
+// section instead of waiting for the next time each of those is opened.
+function releaseGlobalRuleFromOtherSections(sectionId, claim) {
+  const key = `${claim.kind}:${claim.value}`;
+  const removed = [];
+
+  (uci.sections(UCI_PACKAGE, "section") || []).forEach((section) => {
+    const otherId = getUciSectionName(section);
+    if (!otherId || otherId === sectionId) {
+      return;
+    }
+
+    const current = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, otherId, "global_rules"),
+    );
+    const remaining = current.filter((entry) => entry !== key);
+    if (remaining.length !== current.length) {
+      if (remaining.length) {
+        uci.set(UCI_PACKAGE, otherId, "global_rules", remaining);
+      } else {
+        uci.unset(UCI_PACKAGE, otherId, "global_rules");
+      }
+    }
+
+    if (removeGlobalRuleValueFromSection(otherId, claim.kind, claim.value)) {
+      removed.push(getUciSectionLabel(section));
+    }
+  });
+
+  return removed;
+}
+
+function globalRuleChoices(sectionId) {
+  const choices = [];
+  Object.keys(GLOBAL_RULE_OPTION_KEYS).forEach((kind) => {
+    globalRuleConditionValues(sectionId, kind).forEach((value) => {
+      choices.push({
+        value: `${kind}:${value}`,
+        label: `${globalRuleKindLabel(kind)}: ${value}`,
+      });
+    });
+  });
+  return choices;
+}
+
+function loadRulesetValues(option, sectionId) {
   delete option.keylist;
   delete option.vallist;
 
+  const blocked = sectionId
+    ? foreignGlobalValues("community_lists", sectionId)
+    : new Set();
+
   Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
+    if (blocked.has(key)) {
+      return;
+    }
     const displayLabel = label;
     const hint = DOMAIN_LIST_HINTS[key];
     option.value(key, hint ? `${displayLabel} — ${hint}` : displayLabel);
@@ -9384,6 +9648,22 @@ function configureDependentServerDisable(map) {
 function createSectionContent(section) {
   let o;
 
+  // One hook keeps every condition picker in sync with global-rule ownership:
+  // whatever stores a claimable condition gets the exclusivity guard, including
+  // the DNS aliases that write into another option's storage. The guard itself
+  // is installed at the end of this function - the text and dynamic condition
+  // helpers assign their own validate after creation and would overwrite it.
+  const globalRuleExclusivityTargets = [];
+  const baseTaboption = section.taboption;
+  section.taboption = function (...args) {
+    const option = baseTaboption.apply(this, args);
+    const kind = GLOBAL_RULE_WIDGET_KINDS[args[2]];
+    if (kind) {
+      globalRuleExclusivityTargets.push({ option, kind });
+    }
+    return option;
+  };
+
   section.tab("settings", _("Settings"));
   section.tab("conditions", _("Conditions"));
   section.tab("servers", _("Servers"));
@@ -9417,6 +9697,35 @@ function createSectionContent(section) {
     return getRuleActionDisplayValue(section_id);
   };
   o.width = "7rem";
+
+  // The mark the user asked for on the section row itself: one glance tells
+  // which section owns global rules, and the text stays out of the way when no
+  // claim exists.
+  o = section.taboption(
+    "settings",
+    form.DummyValue,
+    "_global_rules",
+    _("Global rule"),
+  );
+  o.modalonly = false;
+  o.rawhtml = true;
+  o.width = "9rem";
+  o.cfgvalue = function (section_id) {
+    if (!activeGlobalRules(section_id).length) {
+      // Always something renderable: an empty cfgvalue is falsy, and a cell
+      // that only renders a non-empty value would show a placeholder in every
+      // row that has no claim.
+      return "&nbsp;";
+    }
+    return (
+      '<span class="badge" style="background:rgba(49,151,149,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid rgba(49,151,149,0.3);">' +
+      _("Global rule enabled") +
+      "</span>"
+    );
+  };
+  o.textvalue = function (section_id) {
+    return activeGlobalRules(section_id).length ? _("Global rule enabled") : "";
+  };
 
   o = section.taboption(
     "settings",
@@ -13353,6 +13662,16 @@ function createSectionContent(section) {
     "fptn",
     "bypass",
   ].forEach((act) => o.depends("action", act));
+  // The country list is a fixed catalog, so a country another section claims as
+  // global simply disappears from the dropdown instead of failing on save.
+  const geoipCountryChoices = (o.keylist || []).map((value, index) => ({
+    value,
+    label: (o.vallist && o.vallist[index]) || value,
+  }));
+  configureLiveDynamicListChoices(o, (section_id) => {
+    const blocked = foreignGlobalValues("geoip_country", section_id);
+    return geoipCountryChoices.filter((choice) => !blocked.has(choice.value));
+  });
 
   const domainConditionOption = addTextConditionField(section, {
     key: "domain_suffix",
@@ -13417,7 +13736,7 @@ function createSectionContent(section) {
   dependsOnRoutingAction(builtInRulesetOption);
   builtInRulesetOption.depends("action", "dns");
   builtInRulesetOption.load = function (section_id) {
-    loadRulesetValues(this);
+    loadRulesetValues(this, section_id);
     return getBuiltInRulesetReferences(section_id);
   };
   builtInRulesetOption.write = function (section_id, values) {
@@ -13575,6 +13894,85 @@ function createSectionContent(section) {
     return validatePlainListReference(value);
   };
 
+  // Which of this section's own conditions become global. Declared after the
+  // condition pickers so the choices come from what this section already uses,
+  // and the guard never has to accept a value the section does not have.
+  const globalRulesOption = section.taboption(
+    "conditions",
+    form.DynamicList,
+    "global_rules",
+    _("Global rules"),
+    _(
+      'Values listed here belong to this section alone: every other section stops offering them and loses them on save, and this section gets a "Global rule enabled" mark. Only values already used by this section can be claimed.',
+    ),
+  );
+  globalRulesOption.modalonly = true;
+  globalRulesOption.placeholder = _("Condition value");
+  globalRulesOption.load = function (section_id) {
+    return normalizeOptionValues(
+      uci.get(UCI_PACKAGE, section_id, "global_rules"),
+    );
+  };
+  globalRulesOption.validate = function (section_id, value) {
+    for (const entry of uniqueDynamicListItems(normalizeOptionValues(value))) {
+      const claim = parseGlobalRule(entry);
+      if (!claim) {
+        return _(
+          'Invalid global rule "%s": expected "option: value" with a supported option',
+        ).format(entry);
+      }
+      if (!globalRuleConditionValues(section_id, claim.kind).has(claim.value)) {
+        return _(
+          '"%s" is not part of this section - add it to its conditions first',
+        ).format(claim.value);
+      }
+      // Normally impossible - a condition the other section claims cannot be
+      // entered here - but a hand-edited or imported config can carry the
+      // value on both sides, and writing the claim would then strip it from
+      // the section that actually owns it.
+      const owner = globalRuleClaimsByOtherSections(section_id).get(
+        `${claim.kind}:${claim.value}`,
+      );
+      if (owner) {
+        return _(
+          '"%s" is the global rule of section "%s" and cannot be used here',
+        ).format(claim.value, owner);
+      }
+    }
+    return true;
+  };
+  globalRulesOption.write = function (section_id, value) {
+    const entries = uniqueDynamicListItems(
+      normalizeOptionValues(value).filter((entry) => parseGlobalRule(entry)),
+    );
+    writeListOption(section_id, "global_rules", entries);
+
+    const removed = new Set();
+    entries.forEach((entry) => {
+      releaseGlobalRuleFromOtherSections(
+        section_id,
+        parseGlobalRule(entry),
+      ).forEach((label) => removed.add(label));
+    });
+    if (removed.size) {
+      ui.addNotification(
+        null,
+        E(
+          "p",
+          _("Removed from other sections as global: %s").format(
+            [...removed].join(", "),
+          ),
+        ),
+      );
+    }
+  };
+  globalRulesOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, "global_rules");
+  };
+  configureLiveDynamicListChoices(globalRulesOption, (section_id) =>
+    globalRuleChoices(section_id),
+  );
+
   const sourceIpOption = addLocalDeviceSubnetDynamicField(section, {
     key: "source_ip_cidr",
     label: _("Device filter"),
@@ -13700,6 +14098,10 @@ function createSectionContent(section) {
   dependsOnRoutingAction(protocolOption);
 
   addDashboardServerFilterOptions(section);
+
+  globalRuleExclusivityTargets.forEach(({ option, kind }) =>
+    enforceGlobalRuleExclusivity(option, kind),
+  );
 }
 
 function loadSectionTableOptions(sectionRef) {
@@ -15233,6 +15635,10 @@ function copySectionOptions(sourceId, targetId, overrides = {}) {
 
   Object.entries(source).forEach(([key, value]) => {
     if (key.startsWith(".")) return;
+    // A global-rule claim stays with the original. Copying it would leave two
+    // sections claiming one value, which is exactly what validation rejects -
+    // the clone would brick the apply before anyone opened it.
+    if (key === "global_rules") return;
     if (Object.prototype.hasOwnProperty.call(overrides, key)) return;
     if (value === undefined || value === null) return;
     uci.set(UCI_PACKAGE, targetId, key, value);
