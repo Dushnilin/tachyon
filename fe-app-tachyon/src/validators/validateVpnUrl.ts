@@ -4,10 +4,11 @@ import { store } from '../tachyon/services/store.service';
 export function supportsVpnUrl() {
   const state = store.get();
   const info = state.diagnosticsSystemInfo || {};
-  const engine = state.activeEngine || info.active_engine || 'sing-box';
+  const engine = state.activeEngine || info.active_engine || 'tachyon-core';
   return (
-    engine === 'sing-box' &&
-    (Number(info.sing_box_lx) === 1 ||
+    (engine === 'tachyon-core' || engine === 'sing-box') &&
+    (engine === 'tachyon-core' ||
+      Number(info.sing_box_lx) === 1 ||
       Number(info.sing_box_tachyon_core) === 1 ||
       /-lx(?:[.-]|$)/.test(String(info.sing_box_version || '')) ||
       /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || '')))

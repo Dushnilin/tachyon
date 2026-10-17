@@ -410,14 +410,14 @@ function forkop_running() {
 
     if (result.status != 0) {
         if (backend == "podkop")
-            return run_quiet([ "pgrep", "-f", "sing-box" ]);
+            return run_quiet([ "pgrep", "-f", "tachyon-core|sing-box" ]);
         return false;
     }
     let status = object_or_empty(parse_json(result.output));
     if (status.running === true || int(status.running) == 1)
         return true;
     if (backend == "podkop" && status.running == null)
-        return run_quiet([ "pgrep", "-f", "sing-box" ]);
+        return run_quiet([ "pgrep", "-f", "tachyon-core|sing-box" ]);
     return false;
 }
 

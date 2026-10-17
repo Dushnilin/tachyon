@@ -481,7 +481,7 @@ function error_result(text) {
 function execute_health() {
     let ai_raw = read_file("/tmp/tachyon_ai_status.json") || "{}";
     let ai = parse_json_safe(ai_raw) || {};
-    let sb_pid = trim(command_output("pidof sing-box"));
+    let sb_pid = trim(command_output("pidof tachyon-core sing-box"));
     let wd_pid = trim(read_file("/var/run/tachyon_watchdog.pid") || "");
     return json_result({
         status: ai.status || (sb_pid != "" ? "healthy" : "critical"),
@@ -496,7 +496,7 @@ function execute_snapshot() {
     let res = module_capture(["get-system-info"]);
     let sys_info = parse_json_safe(res.output);
 
-    let sb_pid = trim(command_output("pidof sing-box"));
+    let sb_pid = trim(command_output("pidof tachyon-core sing-box"));
     let wd_pid = trim(read_file("/var/run/tachyon_watchdog.pid") || "");
 
     let mem_info = read_file("/proc/meminfo") || "";

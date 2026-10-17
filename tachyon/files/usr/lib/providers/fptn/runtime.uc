@@ -451,7 +451,7 @@ function status_json() {
     let rule_count = enabled_rule_count();
 
     if (native_core_mode()) {
-        let sing_box_up = command_status("pidof sing-box >/dev/null 2>&1") == 0;
+        let sing_box_up = command_status("pidof tachyon-core sing-box >/dev/null 2>&1") == 0;
         write_json({
             installed: 1,
             configured: rule_count > 0,

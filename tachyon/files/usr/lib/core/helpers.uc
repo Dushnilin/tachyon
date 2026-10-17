@@ -89,7 +89,10 @@ function is_process_name_running(pid, expected_name) {
     let comm = fs.readfile("/proc/" + pid + "/comm");
     if (comm == null)
         return false;
-    return trim(comm) == expected_name;
+    let name = trim(comm);
+    if (expected_name == "sing-box" || expected_name == "tachyon-core")
+        return name == "sing-box" || name == "tachyon-core";
+    return name == expected_name;
 }
 
 function file_remove_cr(path) {

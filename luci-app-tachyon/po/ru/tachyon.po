@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-15 02:44+0300\n"
-"PO-Revision-Date: 2026-10-15 02:44+0300\n"
+"POT-Creation-Date: 2026-10-17 13:25+0300\n"
+"PO-Revision-Date: 2026-10-17 13:25+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -16,6 +16,12 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "\"%s\" is not part of this section - add it to its conditions first"
+msgstr "\"%s\" в этой секции не используется - сначала добавьте его в условия"
+
+msgid "\"%s\" is the global rule of section \"%s\" and cannot be used here"
+msgstr "\"%s\" - это глобальное правило секции \"%s\", здесь его нельзя использовать"
 
 msgid "%s: select an Amnezia .conf file up to 64 KiB"
 msgstr "%s: выберите файл Amnezia .conf размером до 64 КиБ"
@@ -1108,6 +1114,9 @@ msgstr "Компоненты"
 
 msgid "Concurrency"
 msgstr "Параллелизм"
+
+msgid "Condition value"
+msgstr "Значение условия"
 
 msgid "Conditions"
 msgstr "Условия"
@@ -2546,6 +2555,15 @@ msgstr "Глобальная проверка"
 msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
 
+msgid "Global rule"
+msgstr "Глобальное правило"
+
+msgid "Global rule enabled"
+msgstr "Включено глобальное правило"
+
+msgid "Global rules"
+msgstr "Глобальные правила"
+
 msgid "Green"
 msgstr "Зелёный"
 
@@ -3169,6 +3187,9 @@ msgstr "Недопустимый домен: пустое значение пр�
 
 msgid "Invalid format. Use an IP address or CIDR subnet"
 msgstr "Неверный формат. Используйте IP-адрес или подсеть CIDR"
+
+msgid "Invalid global rule \"%s\": expected \"option: value\" with a supported option"
+msgstr "Некорректное глобальное правило \"%s\": нужна запись вида \"опция: значение\" с поддерживаемой опцией"
 
 msgid "Invalid line: \"%s\". Use: domain ip or ip domain"
 msgstr "Неверная строка: \"%s\". Используйте: domain ip или ip domain"
@@ -4675,6 +4696,9 @@ msgstr "Удалить серверы, чьи имена соответству�
 
 msgid "Remove the specified servers from this level."
 msgstr "Удалить указанные серверы с этого уровня."
+
+msgid "Removed from other sections as global: %s"
+msgstr "Удалено из других секций как глобальное: %s"
 
 msgid "Removed lines (-):"
 msgstr "Удалённые строки (-):"
@@ -6628,6 +6652,9 @@ msgstr "Значение должно быть положительным цел
 
 msgid "Value must not contain control characters"
 msgstr "Значение не должно содержать символы управления"
+
+msgid "Values listed here belong to this section alone: every other section stops offering them and loses them on save, and this section gets a \"Global rule enabled\" mark. Only values already used by this section can be claimed."
+msgstr "Перечисленные здесь значения принадлежат только этой секции: во всех остальных секциях они исчезают из списка выбора и удаляются при сохранении, а на самой секции появляется отметка «Включено глобальное правило». Заявить можно только те значения, которые эта секция уже использует."
 
 msgid "Verdict"
 msgstr "Статус"

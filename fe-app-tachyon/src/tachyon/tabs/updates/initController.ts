@@ -2310,7 +2310,7 @@ function renderEngineCard(): Node {
   );
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
-  const active = info?.active || 'sing-box';
+  const active = info?.active || 'tachyon-core';
   const installing = steerBusy;
   const singBoxLoading = isSystemInfoLoading();
 
@@ -2344,7 +2344,7 @@ function renderEngineCard(): Node {
     !singBoxLx &&
     !tachyonCore;
 
-  const isSingBoxActive = active === 'sing-box';
+  const isSingBoxActive = active === 'tachyon-core' || active === 'sing-box';
 
   const engineVersion = isSingBoxActive
     ? singBoxLoading
@@ -2404,7 +2404,9 @@ function renderEngineCard(): Node {
   ];
   if (engineBadgeNode) headerChildren.push(engineBadgeNode);
   const engineTitleLabel =
-    isSingBoxActive && tachyonCore ? 'tachyon-core' : engineLabel(active);
+    (isSingBoxActive && tachyonCore) || active === 'tachyon-core'
+      ? 'tachyon-core'
+      : engineLabel(active);
   headerChildren.push(
     E(
       'span',
@@ -2560,11 +2562,11 @@ function renderEngineCard(): Node {
         )
       : null;
 
-  // ── Variant selector: all sing-box flavours + steer in one dropdown ────────
+  // ── Variant selector: tachyon-core + sing-box flavours + steer in one dropdown ────────
   interface SelectableVariant {
     id: string;
     label: string;
-    group: 'sing-box' | 'steer';
+    group: 'tachyon-core' | 'sing-box' | 'steer';
     installed: boolean;
     active: boolean;
   }
@@ -2582,6 +2584,13 @@ function renderEngineCard(): Node {
             : 'sing-box-stable';
 
   const selectableVariants: SelectableVariant[] = [
+    {
+      id: 'tachyon-core',
+      label: 'tachyon-core',
+      group: 'tachyon-core',
+      installed: singBoxInstalled && tachyonCore,
+      active: isSingBoxActive && tachyonCore,
+    },
     {
       id: 'sing-box-stable',
       label: 'sing-box (Stable)',
@@ -2618,13 +2627,6 @@ function renderEngineCard(): Node {
       active: isSingBoxActive && singBoxLx,
     },
     {
-      id: 'tachyon-core',
-      label: 'tachyon-core',
-      group: 'sing-box',
-      installed: singBoxInstalled && tachyonCore,
-      active: isSingBoxActive && tachyonCore,
-    },
-    {
       id: 'steer',
       label: 'Steer (Base)',
       group: 'steer',
@@ -2651,6 +2653,9 @@ function renderEngineCard(): Node {
     class: 'cbi-input-select',
     style: 'min-width: 210px;',
   }) as HTMLSelectElement;
+  const tcGroup = E('optgroup', {
+    label: 'Tachyon Core',
+  }) as HTMLOptGroupElement;
   const sbGroup = E('optgroup', { label: 'sing-box' }) as HTMLOptGroupElement;
   const stGroup = E('optgroup', { label: 'Steer' }) as HTMLOptGroupElement;
 
@@ -2666,8 +2671,14 @@ function renderEngineCard(): Node {
       `${entry.label}${suffix}`,
     ) as HTMLOptionElement;
     opt.selected = entry.id === selectedVariant.id;
-    (entry.group === 'sing-box' ? sbGroup : stGroup).appendChild(opt);
+    (entry.group === 'tachyon-core'
+      ? tcGroup
+      : entry.group === 'sing-box'
+        ? sbGroup
+        : stGroup
+    ).appendChild(opt);
   });
+  picker.appendChild(tcGroup);
   picker.appendChild(sbGroup);
   picker.appendChild(stGroup);
   picker.addEventListener('change', (e) => {
@@ -2682,7 +2693,8 @@ function renderEngineCard(): Node {
 
   function getVariantEngine(
     id: string,
-  ): 'sing-box' | 'steer' | 'steer-extended' {
+  ): 'tachyon-core' | 'sing-box' | 'steer' | 'steer-extended' {
+    if (id === 'tachyon-core') return 'tachyon-core';
     if (id === 'steer') return 'steer';
     if (id === 'steer-extended') return 'steer-extended';
     return 'sing-box';
@@ -2713,7 +2725,9 @@ function renderEngineCard(): Node {
     }
   }
 
-  const isSelectedSingBox = selectedVariant.group === 'sing-box';
+  const isSelectedSingBox =
+    selectedVariant.group === 'tachyon-core' ||
+    selectedVariant.group === 'sing-box';
   const isSelectedSteer = selectedVariant.group === 'steer';
   const isSelectedActive = selectedVariant.active;
   const isSelectedInstalled = selectedVariant.installed;
@@ -2799,6 +2813,7 @@ function renderEngineCard(): Node {
     style: 'font-size:12px;color:var(--text-color-medium,#666);margin-top:4px;',
   });
   if (
+    selectedVariant.id === 'tachyon-core' ||
     selectedVariant.id === 'sing-box-extended' ||
     selectedVariant.id === 'sing-box-extended-compressed' ||
     selectedVariant.id === 'sing-box-lx'
@@ -3153,7 +3168,8 @@ async function runComponentAction(
   action: Tachyon.ComponentAction,
   _key: string,
 ): Promise<void> {
-  const engineTarget = 'sing-box';
+  const engineTarget =
+    action === 'install_tachyon_core' ? 'tachyon-core' : 'sing-box';
   const installKey =
     getComponentActionKey(component, action) ??
     getComponentInstallKey(component);

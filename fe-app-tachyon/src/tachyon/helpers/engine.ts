@@ -1,6 +1,10 @@
 import type { Tachyon } from '../types';
 
-export type ActiveEngine = 'sing-box' | 'steer' | 'steer-extended';
+export type ActiveEngine =
+  | 'tachyon-core'
+  | 'sing-box'
+  | 'steer'
+  | 'steer-extended';
 
 /**
  * Whether a capability is available for the given engine. The capability names

@@ -94,7 +94,7 @@ function uci_sections(type_name) {
 
 function active_engine_name() {
     let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
-    return (engine != null && engine != "") ? as_string(engine) : "sing-box";
+    return (engine != null && engine != "") ? as_string(engine) : "tachyon-core";
 }
 
 function active_engine_is_steer() {
@@ -456,7 +456,7 @@ function build_system_info() {
     let sing_box_version = "";
     let sing_box_version_output = "";
 
-    if (command_exists("tachyon-core")) {
+    if (command_exists("tachyon-core") || command_exists("sing-box")) {
         let resolved = sing_box_resolved_version();
         sing_box_version = resolved.version;
         sing_box_version_output = resolved.output;
@@ -672,8 +672,9 @@ function get_server_capabilities() {
 
 
 function sing_box_process_is_running() {
-    return command_success_from_args([ "pgrep", "-x", "sing-box" ]) ||
-        command_success_from_args([ "pgrep", "-f", "^/usr/bin/tachyon-core[[:space:]]" ]);
+    return command_success_from_args([ "pgrep", "-x", "tachyon-core" ]) ||
+        command_success_from_args([ "pgrep", "-x", "sing-box" ]) ||
+        command_success_from_args([ "pgrep", "-f", "^/usr/bin/(tachyon-core|sing-box)[[:space:]]" ]);
 }
 
 function service_status_label(running, enabled) {

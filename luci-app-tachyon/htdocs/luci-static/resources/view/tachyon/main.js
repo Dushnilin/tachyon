@@ -765,8 +765,8 @@ var store = new StoreService(initialStore);
 function supportsVpnUrl() {
   const state = store.get();
   const info = state.diagnosticsSystemInfo || {};
-  const engine = state.activeEngine || info.active_engine || "sing-box";
-  return engine === "sing-box" && (Number(info.sing_box_lx) === 1 || Number(info.sing_box_tachyon_core) === 1 || /-lx(?:[.-]|$)/.test(String(info.sing_box_version || "")) || /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || "")));
+  const engine = state.activeEngine || info.active_engine || "tachyon-core";
+  return (engine === "tachyon-core" || engine === "sing-box") && (engine === "tachyon-core" || Number(info.sing_box_lx) === 1 || Number(info.sing_box_tachyon_core) === 1 || /-lx(?:[.-]|$)/.test(String(info.sing_box_version || "")) || /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || "")));
 }
 function validateVpnUrl(url) {
   const invalid2 = () => ({
@@ -27220,7 +27220,7 @@ function renderEngineCard() {
   );
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
-  const active = info?.active || "sing-box";
+  const active = info?.active || "tachyon-core";
   const installing = steerBusy;
   const singBoxLoading = isSystemInfoLoading();
   const base = info?.engines.find((e) => e.engine === "steer");
@@ -27236,7 +27236,7 @@ function renderEngineCard() {
   const singBoxLx = Boolean(systemInfo.sing_box_lx);
   const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !singBoxExtendedCompressed && !singBoxLx;
   const singBoxStable = singBoxInstalled && !singBoxTiny && !singBoxExtended && !singBoxExtendedCompressed && !singBoxLx && !tachyonCore;
-  const isSingBoxActive = active === "sing-box";
+  const isSingBoxActive = active === "tachyon-core" || active === "sing-box";
   const engineVersion = isSingBoxActive ? singBoxLoading ? _("Loading...") : formatSingBoxVersion(systemInfo) : systemInfo.steer_version || (baseInstalled || extendedInstalled ? _("Installed") : _("Not installed"));
   let engineBadgeNode = null;
   if (isSingBoxActive) {
@@ -27265,7 +27265,7 @@ function renderEngineCard() {
     )
   ];
   if (engineBadgeNode) headerChildren.push(engineBadgeNode);
-  const engineTitleLabel = isSingBoxActive && tachyonCore ? "tachyon-core" : engineLabel(active);
+  const engineTitleLabel = isSingBoxActive && tachyonCore || active === "tachyon-core" ? "tachyon-core" : engineLabel(active);
   headerChildren.push(
     E(
       "span",
@@ -27412,6 +27412,13 @@ function renderEngineCard() {
   const currentSingBoxVariant = tachyonCore ? "tachyon-core" : singBoxTiny ? "sing-box-tiny" : singBoxExtendedCompressed ? "sing-box-extended-compressed" : singBoxLx ? "sing-box-lx" : singBoxExtended ? "sing-box-extended" : "sing-box-stable";
   const selectableVariants = [
     {
+      id: "tachyon-core",
+      label: "tachyon-core",
+      group: "tachyon-core",
+      installed: singBoxInstalled && tachyonCore,
+      active: isSingBoxActive && tachyonCore
+    },
+    {
       id: "sing-box-stable",
       label: "sing-box (Stable)",
       group: "sing-box",
@@ -27447,13 +27454,6 @@ function renderEngineCard() {
       active: isSingBoxActive && singBoxLx
     },
     {
-      id: "tachyon-core",
-      label: "tachyon-core",
-      group: "sing-box",
-      installed: singBoxInstalled && tachyonCore,
-      active: isSingBoxActive && tachyonCore
-    },
-    {
       id: "steer",
       label: "Steer (Base)",
       group: "steer",
@@ -27474,6 +27474,9 @@ function renderEngineCard() {
     class: "cbi-input-select",
     style: "min-width: 210px;"
   });
+  const tcGroup = E("optgroup", {
+    label: "Tachyon Core"
+  });
   const sbGroup = E("optgroup", { label: "sing-box" });
   const stGroup = E("optgroup", { label: "Steer" });
   selectableVariants.forEach((entry) => {
@@ -27484,8 +27487,9 @@ function renderEngineCard() {
       `${entry.label}${suffix}`
     );
     opt.selected = entry.id === selectedVariant.id;
-    (entry.group === "sing-box" ? sbGroup : stGroup).appendChild(opt);
+    (entry.group === "tachyon-core" ? tcGroup : entry.group === "sing-box" ? sbGroup : stGroup).appendChild(opt);
   });
+  picker.appendChild(tcGroup);
   picker.appendChild(sbGroup);
   picker.appendChild(stGroup);
   picker.addEventListener("change", (e) => {
@@ -27496,6 +27500,7 @@ function renderEngineCard() {
     style: "font-size:12px;color:var(--text-color-medium,#b58900);margin-top:6px;display:none;"
   });
   function getVariantEngine(id) {
+    if (id === "tachyon-core") return "tachyon-core";
     if (id === "steer") return "steer";
     if (id === "steer-extended") return "steer-extended";
     return "sing-box";
@@ -27521,7 +27526,7 @@ function renderEngineCard() {
         return "install_stable";
     }
   }
-  const isSelectedSingBox = selectedVariant.group === "sing-box";
+  const isSelectedSingBox = selectedVariant.group === "tachyon-core" || selectedVariant.group === "sing-box";
   const isSelectedSteer = selectedVariant.group === "steer";
   const isSelectedActive = selectedVariant.active;
   const isSelectedInstalled = selectedVariant.installed;
@@ -27591,7 +27596,7 @@ function renderEngineCard() {
   const featureHint = E("div", {
     style: "font-size:12px;color:var(--text-color-medium,#666);margin-top:4px;"
   });
-  if (selectedVariant.id === "sing-box-extended" || selectedVariant.id === "sing-box-extended-compressed" || selectedVariant.id === "sing-box-lx") {
+  if (selectedVariant.id === "tachyon-core" || selectedVariant.id === "sing-box-extended" || selectedVariant.id === "sing-box-extended-compressed" || selectedVariant.id === "sing-box-lx") {
     featureHint.textContent = _(
       "✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
     );
@@ -27860,7 +27865,7 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
   }
 }
 async function runComponentAction(component, action, _key) {
-  const engineTarget = "sing-box";
+  const engineTarget = action === "install_tachyon_core" ? "tachyon-core" : "sing-box";
   const installKey = getComponentActionKey(component, action) ?? getComponentInstallKey(component);
   await runEngineFlow(
     [

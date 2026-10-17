@@ -1562,10 +1562,12 @@ function get_sing_box_version() {
     if (version_state != "")
         return version_state;
 
-    if (!command_success_from_args([ "sh", "-c", "command -v sing-box" ]))
+    let bin = command_success_from_args([ "sh", "-c", "command -v tachyon-core" ]) ? "tachyon-core" :
+        (command_success_from_args([ "sh", "-c", "command -v sing-box" ]) ? "sing-box" : "");
+    if (bin == "")
         return "";
 
-    let v = sing_box_version_from_output(command_output_from_args([ "tachyon-core", "version" ]));
+    let v = sing_box_version_from_output(command_output_from_args([ bin, "version" ]));
     if (v != "")
         fs.writefile(SB_VERSION_STATE_FILE, v + "\n");
     return v;
