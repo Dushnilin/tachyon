@@ -1206,7 +1206,9 @@ function current_ui_state_json() {
     } else {
         sing_box_is_running = tachyon_is_running ? 1 : (sing_box_running() ? 1 : 0);
         sing_box_is_enabled = sing_box_enabled() ? 1 : 0;
-        sing_box_rss = sing_box_is_running ? process_memory_rss_mb("sing-box") : 0;
+        // Движок называется tachyon-core, лэйаут sing-box остался на старых
+        // роутерах - память ядра есть где-то под одним из двух имён.
+        sing_box_rss = sing_box_is_running ? process_memory_rss_mb("tachyon-core") + process_memory_rss_mb("sing-box") : 0;
     }
 
     let tachyon_status = service_status_text(tachyon_is_running, tachyon_is_enabled);
