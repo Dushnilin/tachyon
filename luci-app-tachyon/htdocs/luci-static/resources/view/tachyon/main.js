@@ -5859,10 +5859,8 @@ function getUrlTestIds(section) {
 function isUrlTestEnabled(section) {
   return getUrlTestIds(section).length > 0;
 }
-function shouldHideNaServers(configSections) {
-  return configSections.some(
-    (s) => isConnectionAction(s.action) && s.dashboard_hide_na_servers === "1"
-  );
+function shouldHideNaServers(section) {
+  return section.enabled !== "0" && isConnectionAction(section.action) && section.dashboard_hide_na_servers === "1";
 }
 function isNaOutbound(outbound) {
   if (outbound.runtimeAvailable === false) return true;
@@ -6893,7 +6891,7 @@ async function getDashboardSections(options = {}) {
           cachedProxyLinks,
           hiddenOutboundTags
         );
-        const hideNa = shouldHideNaServers(configSections);
+        const hideNa = shouldHideNaServers(section);
         const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
         const filteredOutbounds = hideNa && hasTestedServers ? outbounds.filter((o) => !isNaOutbound(o)) : outbounds;
         return {
