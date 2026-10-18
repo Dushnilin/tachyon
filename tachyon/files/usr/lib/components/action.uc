@@ -391,7 +391,7 @@ function managed_sing_box_service_text() {
         "    local mem_limit_mb=\"0\"\n" +
         "    config_get mem_limit_mb \"main\" \"memory_limit_mb\" \"0\"\n" +
         "    if [ \"$mem_limit_mb\" = \"0\" ] || [ -z \"$mem_limit_mb\" ]; then\n" +
-        "        mem_limit_mb=\"$(uci -q get tachyon.settings.memory_limit_mb || echo 0)\"\n" +
+        "        mem_limit_mb=\"$(uci get tachyon.settings.memory_limit_mb 2>/dev/null || echo 0)\"\n" +
         "    fi\n\n" +
         "    local scale_pct=\"\"\n" +
         "    if [ -s \"/etc/tachyon/mem_scale\" ]; then\n" +

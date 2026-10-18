@@ -729,7 +729,7 @@ function managed_service_text() {
         "    local mem_limit_mb=\"0\"\n" +
         "    config_get mem_limit_mb \"main\" \"memory_limit_mb\" \"0\"\n" +
         "    if [ \"$mem_limit_mb\" = \"0\" ] || [ -z \"$mem_limit_mb\" ]; then\n" +
-        "        mem_limit_mb=\"$(uci -q get tachyon.settings.memory_limit_mb || echo 0)\"\n" +
+        "        mem_limit_mb=\"$(uci get tachyon.settings.memory_limit_mb 2>/dev/null || echo 0)\"\n" +
         "    fi\n\n" +
         "    local scale_pct=\"\"\n" +
         "    if [ -s \"/etc/tachyon/mem_scale\" ]; then\n" +
@@ -860,6 +860,14 @@ function configure_service() {
             exit(1);
         changed = true;
         log_message("tachyon-core service config path set to " + config_path, "info");
+    }
+
+    let mem_limit_mb = option(settings, "memory_limit_mb", "0");
+    let current_mem_limit_mb = uci_get_option("tachyon-core", "main", "memory_limit_mb") || "0";
+    if (current_mem_limit_mb != mem_limit_mb) {
+        if (!uci_set_option("tachyon-core", "main", "memory_limit_mb", mem_limit_mb))
+            exit(1);
+        changed = true;
     }
 
     if (changed && !uci_commit("tachyon-core"))
