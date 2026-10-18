@@ -2732,7 +2732,7 @@ function verify_system() {
     // sb_pid from outside this if/else. An out-of-scope read yields null, and
     // null != "" is true, so the probe ran against a dead sing-box, scored a
     // false FAIL, and local_rule_doctor escalated that to restore_native_internet.
-    let sb_pid = is_steer_active ? "" : find_process_pid("sing-box");
+    let sb_pid = is_steer_active ? "" : (find_process_pid("tachyon-core") || find_process_pid("sing-box"));
     if (is_steer_active) {
         let steer_pid = find_process_pid("steer");
         add("steer process", steer_pid != "" ? "pass" : "fail",

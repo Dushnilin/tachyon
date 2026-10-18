@@ -948,7 +948,7 @@ function check_sing_box() {
     let sing_box_process_running = 0;
     let sing_box_ports_listening = 0;
 
-    if (command_exists("tachyon-core")) {
+    if (command_exists("tachyon-core") || command_exists("sing-box")) {
         sing_box_installed = 1;
         let version = "";
         if (system_info_cache_is_valid()) {

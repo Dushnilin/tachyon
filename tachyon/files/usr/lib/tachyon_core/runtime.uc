@@ -711,7 +711,8 @@ function managed_service_text() {
         "# " + SB_MANAGED_SERVICE_MARKER + "\n\n" +
         "USE_PROCD=1\n" +
         "START=99\n" +
-        "PROG=\"/usr/bin/tachyon-core\"\n\n" +
+        "PROG=\"/usr/bin/tachyon-core\"\n" +
+        "[ -x \"$PROG\" ] || PROG=\"/usr/bin/sing-box\"\n\n" +
         "start_service() {\n" +
         "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
         "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
@@ -722,6 +723,7 @@ function managed_service_text() {
         "    local log_stderr\n\n" +
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
+        "    [ -x \"$PROG\" ] || PROG=\"$(command -v tachyon-core 2>/dev/null || command -v sing-box 2>/dev/null || echo /usr/bin/tachyon-core)\"\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/tachyon-core/config.json\"\n" +
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
         "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
@@ -787,6 +789,14 @@ function prepare_service_disabled() {
 
 function configure_service() {
     let settings = uci_settings();
+
+    if (fs.stat("/usr/bin/sing-box") != null && fs.stat("/usr/bin/tachyon-core") == null) {
+        try {
+            fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core");
+        }
+        catch (e) {
+        }
+    }
 
     if ((!managed_service_installed() || managed_service_script_stale()) && !install_managed_service_script()) {
         log_message("Failed to install managed tachyon-core service. Aborted.", "fatal");
