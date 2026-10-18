@@ -2660,11 +2660,17 @@ function setup_honeypot_listener() {
     let fifo_fd = fs.open("/tmp/tachyon_honeypot.fifo", "r+");
     if (uloop && fifo_fd) {
         try {
+            // One line per readiness event. The FIFO is held open read+write by
+            // this very process, so it never reaches EOF: the old
+            // "while (read('line') != null)" delivered the first line and then
+            // sat inside fgets() until the next writer showed up, with every
+            // uloop timer (the whole watchdog) frozen behind it. uloop is
+            // level-triggered, so it calls back again for anything still
+            // pending. Honeypot writers send one short line per hit.
             uloop.handle(fifo_fd.fileno(), function(events) {
-                let line;
-                while ((line = fifo_fd.read("line")) != null) {
+                let line = fifo_fd.read("line");
+                if (line != null)
                     controller.handle_honeypot_line(line);
-                }
             }, uloop.ULOOP_READ);
         } catch (e) {
             log_message("Failed to bind honeypot fifo to uloop: " + as_string(e), "warn");
@@ -2713,11 +2719,16 @@ function setup_syslog_listener() {
     if (!log_pipe) return null;
 
     try {
+        // One line per readiness event: logread -f never sends EOF, so the old
+        // "while (read('line') != null)" consumed what was available and then
+        // blocked in fgets() until the next syslog line, freezing every uloop
+        // timer on a quiet router. logread emits a line per write(), so a line
+        // that shares a stdio buffer with its predecessor is picked up on the
+        // next event - a delay of one syslog line, not a loss.
         uloop.handle(log_pipe.fileno(), function(events) {
-            let line;
-            while ((line = log_pipe.read("line")) != null) {
+            let line = log_pipe.read("line");
+            if (line != null)
                 controller.handle_log_line(trim(as_string(line)));
-            }
         }, uloop.ULOOP_READ);
     } catch (e) {
         log_message("Failed to register syslog listener: " + as_string(e), "warn");

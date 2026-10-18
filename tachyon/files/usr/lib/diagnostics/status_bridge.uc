@@ -21,50 +21,48 @@ function normalize_status(status) {
     return (status >> 8) & 255;
 }
 
-function status_capture(args, input) {
+function status_command(args) {
     let full = [ "ucode", "-L", LIB_DIR, STATUS_UC ];
     for (let a in args) push(full, as_string(a));
-    let cmd = command_from_args(full);
+    return command_from_args(full);
+}
+
+// status.uc reads its input from stdin. A write-only popen() pipe delivers the
+// input but sends the child's stdout to ours, so the caller got an empty
+// string; and status_output() then ran the command a second time with no
+// stdin at all. A temp file redirected into stdin keeps one process, one
+// stdin and a captured stdout.
+function with_stdin_file(input, run) {
+    let stamp = clock();
+    let path = sprintf("/tmp/tachyon-status-in.%d.%d.%d", time(), stamp[0], stamp[1]);
+    if (fs.writefile(path, as_string(input)) == null)
+        return null;
+    fs.chmod(path, 0600);
+    let result = run(" < " + common.shell_quote(path));
+    fs.unlink(path);
+    return result;
+}
+
+function status_capture(args, input) {
+    let cmd = status_command(args);
     if (input != null) {
-        let pipe = fs.popen(cmd, "w");
-        if (!pipe) return { status: 1, output: "" };
-        pipe.write(as_string(input));
-        let status = normalize_status(pipe.close());
-        return { status, output: "" };
+        let res = with_stdin_file(input, (redirect) => command_capture(cmd + redirect));
+        return res || { status: 1, output: "" };
     }
     return command_capture(cmd);
 }
 
 function status_output(args, input) {
-    let full = [ "ucode", "-L", LIB_DIR, STATUS_UC ];
-    for (let a in args) push(full, as_string(a));
-    let cmd = command_from_args(full);
-    if (input != null) {
-        let pipe = fs.popen(cmd, "w");
-        if (pipe) {
-            pipe.write(as_string(input));
-            pipe.close();
-        }
-    }
-    let res = command_capture(cmd);
+    let res = status_capture(args, input);
     return res.status == 0 ? res.output : "";
 }
 
 function status_success(args, input) {
-    let full = [ "ucode", "-L", LIB_DIR, STATUS_UC ];
-    for (let a in args) push(full, as_string(a));
-    let cmd = command_from_args(full);
-    if (input != null) {
-        let pipe = fs.popen(cmd, "w");
-        if (pipe) {
-            pipe.write(as_string(input));
-            let status = normalize_status(pipe.close());
-            return status == 0;
-        }
-        return false;
-    }
-    return command_status(cmd) == 0;
+    if (input != null)
+        return status_capture(args, input).status == 0;
+    return command_status(status_command(args)) == 0;
 }
+
 
 return {
     normalize_status,

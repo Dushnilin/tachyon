@@ -27,6 +27,11 @@ const COMPONENT_UPDATE_CHECK_TIMESTAMP = "/var/run/tachyon/component-update-chec
 // raised "left-hand side is not a function" after every successful long-poll,
 // so the worker slept poll_interval seconds between each batch of updates.
 const BLOCKED_POLL_INTERVAL = 60;
+// Also left behind by that split: load/save_blocked_counts() read and wrote
+// an undeclared name (null), so the previous counters were always empty and a
+// schedule with notify=1 re-announced itself every BLOCKED_POLL_INTERVAL.
+// tmpfs on purpose: the counters are meaningless across a reboot.
+const BLOCKED_STATE_FILE = getenv("TACHYON_TELEGRAM_BLOCKED_STATE_FILE") || "/var/run/tachyon_telegram_blocked.json";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
