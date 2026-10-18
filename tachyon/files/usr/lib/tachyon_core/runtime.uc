@@ -703,7 +703,7 @@ function managed_service_installed() {
 // считается отсутствием, и скрипт перегенерируется.
 function managed_service_script_stale() {
     let data = fs.readfile("/etc/init.d/tachyon-core");
-    return data != null && index(as_string(data), "config_load \"tachyon-core\"") < 0;
+    return data != null && (index(as_string(data), "config_load \"tachyon-core\"") < 0 || index(as_string(data), "GOMEMLIMIT") < 0);
 }
 
 function managed_service_text() {
@@ -726,13 +726,42 @@ function managed_service_text() {
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
         "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
+        "    local mem_limit_mb=\"0\"\n" +
+        "    config_get mem_limit_mb \"main\" \"memory_limit_mb\" \"0\"\n" +
+        "    if [ \"$mem_limit_mb\" = \"0\" ] || [ -z \"$mem_limit_mb\" ]; then\n" +
+        "        mem_limit_mb=\"$(uci -q get tachyon.settings.memory_limit_mb || echo 0)\"\n" +
+        "    fi\n\n" +
+        "    local scale_pct=\"\"\n" +
+        "    if [ -s \"/etc/tachyon/mem_scale\" ]; then\n" +
+        "        scale_pct=\"$(awk -v s=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\" 'BEGIN { if (!s) exit; pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
+        "    fi\n\n" +
+        "    local gomemlimit=\"\"\n" +
+        "    local mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
+        "    if [ \"$mem_limit_mb\" -gt 0 ] 2>/dev/null; then\n" +
+        "        gomemlimit=\"$mem_limit_mb\"\n" +
+        "    elif [ \"$mem_total_kb\" -gt 0 ]; then\n" +
+        "        if [ \"$mem_total_kb\" -le 524288 ] || { [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; }; then\n" +
+        "            gomemlimit=$(( mem_total_kb / 1024 * 50 / 100 ))\n" +
+        "            [ \"$gomemlimit\" -lt 24 ] && gomemlimit=24\n" +
+        "        fi\n" +
+        "    fi\n\n" +
+        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
+        "        if [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; then\n" +
+        "            gomemlimit=$(( gomemlimit * scale_pct / 100 ))\n" +
+        "            [ \"$gomemlimit\" -lt 16 ] && gomemlimit=16\n" +
+        "        fi\n" +
+        "    fi\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"unlimited\"\n" +
         "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
-        "    procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
+        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
+        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\" GOMEMLIMIT=\"${gomemlimit}MiB\"\n" +
+        "    else\n" +
+        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
+        "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
         "    procd_close_instance\n" +
