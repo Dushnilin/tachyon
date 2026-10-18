@@ -1106,6 +1106,15 @@ function start_main() {
         return 1;
     }
 
+    // rc.common отдаёт успех и тогда, когда start_service() вышел до
+    // procd_open_instance - так делает скрипт, читающий переименованный
+    // UCI-пакет. Без этой проверки wait-tachyon-stable-start выжигает весь
+    // таймаут, а в логе нет ни одной строки про причину.
+    if (index(command_output_from_args([ "ubus", "call", "service", "list", "{\"name\":\"tachyon-core\"}" ]), "instances") < 0) {
+        log_message("tachyon-core service registered no procd instance after start; check config_load in /etc/init.d/tachyon-core", "fatal");
+        return 1;
+    }
+
     status = module_status(STATE_UC, [
         "wait-tachyon-stable-start",
         RT_TABLE_NAME,

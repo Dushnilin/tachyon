@@ -380,13 +380,13 @@ function managed_sing_box_service_text() {
         "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
         "    modprobe tun 2>/dev/null || true\n" +
         "    modprobe inet_diag 2>/dev/null || true\n\n" +
-        "    config_load \"sing-box\"\n" +
+        "    config_load \"tachyon-core\"\n" +
         "    local enabled config_file working_directory\n" +
         "    local log_stderr\n\n" +
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/tachyon-core/config.json\"\n" +
-        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
+        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
         "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
         "    : > /tmp/tachyon-core/sing-box.log 2>/dev/null\n\n" +
@@ -402,7 +402,7 @@ function managed_sing_box_service_text() {
         "    procd_close_instance\n" +
         "}\n\n" +
         "service_triggers() {\n" +
-        "    procd_add_reload_trigger \"sing-box\"\n" +
+        "    procd_add_reload_trigger \"tachyon-core\"\n" +
         "}\n";
 }
 
@@ -448,6 +448,12 @@ function prepare_sing_box_service_disabled() {
     if (file_exists("/etc/init.d/tachyon-core")) {
         command_success_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
         command_success_from_args([ "/etc/init.d/tachyon-core", "disable" ]);
+    }
+    // Старый лэйаут держит ядро через /etc/init.d/sing-box, и этот инстанс
+    // не пускает новый бинарь к cache.db - останавливаем и его.
+    if (file_exists("/etc/init.d/sing-box")) {
+        command_success_from_args([ "/etc/init.d/sing-box", "stop" ]);
+        command_success_from_args([ "/etc/init.d/sing-box", "disable" ]);
     }
 }
 

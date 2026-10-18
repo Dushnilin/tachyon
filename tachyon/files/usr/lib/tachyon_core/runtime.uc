@@ -697,6 +697,15 @@ function managed_service_installed() {
     return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0 && index(as_string(data), "GOGC=\"50\"") >= 0;
 }
 
+// Маркер и GOGC есть в каждом поколении скрипта, включая сломанный, который
+// читал переименованный UCI-пакет и молча выходил до procd_open_instance.
+// Рабочий скрипт от сломанного отличает только имя пакета - несовпадение
+// считается отсутствием, и скрипт перегенерируется.
+function managed_service_script_stale() {
+    let data = fs.readfile("/etc/init.d/tachyon-core");
+    return data != null && index(as_string(data), "config_load \"tachyon-core\"") < 0;
+}
+
 function managed_service_text() {
     return "#!/bin/sh /etc/rc.common\n" +
         "# " + SB_MANAGED_SERVICE_MARKER + "\n\n" +
@@ -770,12 +779,16 @@ function prepare_service_disabled() {
         command_success_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
         command_success_from_args([ "/etc/init.d/tachyon-core", "disable" ]);
     }
+    if (file_exists("/etc/init.d/sing-box")) {
+        command_success_from_args([ "/etc/init.d/sing-box", "stop" ]);
+        command_success_from_args([ "/etc/init.d/sing-box", "disable" ]);
+    }
 }
 
 function configure_service() {
     let settings = uci_settings();
 
-    if (!managed_service_installed() && !install_managed_service_script()) {
+    if ((!managed_service_installed() || managed_service_script_stale()) && !install_managed_service_script()) {
         log_message("Failed to install managed tachyon-core service. Aborted.", "fatal");
         exit(1);
     }
@@ -826,6 +839,13 @@ function configure_service() {
     if (file_exists("/etc/rc.d/S99sing-box") || file_exists("/etc/rc.d/S99tachyon-core")) {
         log_message("Disabling standalone tachyon-core autostart", "info");
         command_success_from_args([ "/etc/init.d/tachyon-core", "disable" ]);
+    }
+
+    // Досервисный /etc/init.d/sing-box может всё ещё гонять то же ядро - два
+    // инстанса дерутся за lock cache.db, и второй падает с cache-file timeout.
+    if (file_exists("/etc/init.d/sing-box")) {
+        command_success_from_args([ "/etc/init.d/sing-box", "stop" ]);
+        command_success_from_args([ "/etc/init.d/sing-box", "disable" ]);
     }
 
     for (let comp_svc in [ "forkop", "podkop", "netshift" ]) {

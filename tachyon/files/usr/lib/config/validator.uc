@@ -2495,7 +2495,7 @@ function managed_sing_box_service_script(marker) {
         "    modprobe tun 2>/dev/null || true\n" +
         "    modprobe inet_diag 2>/dev/null || true\n" +
         "\n" +
-        "    config_load \"sing-box\"\n" +
+        "    config_load \"tachyon-core\"\n" +
         "    local enabled config_file working_directory\n" +
         "    local log_stderr\n" +
         "\n" +
@@ -2503,7 +2503,7 @@ function managed_sing_box_service_script(marker) {
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n" +
         "\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/tachyon-core/config.json\"\n" +
-        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
+        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n" +
         "\n" +
         "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
@@ -2522,7 +2522,7 @@ function managed_sing_box_service_script(marker) {
         "}\n" +
         "\n" +
         "service_triggers() {\n" +
-        "    procd_add_reload_trigger \"sing-box\"\n" +
+        "    procd_add_reload_trigger \"tachyon-core\"\n" +
         "}\n";
 }
 
