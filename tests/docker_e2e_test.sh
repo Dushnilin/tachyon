@@ -101,9 +101,16 @@ if ! "$DOCKER_BIN" image inspect "$TEST_IMAGE:latest" >/dev/null 2>&1; then
   "$DOCKER_BIN" exec "$TEMP_CONTAINER" git config --global --add safe.directory '*' || true
 
   echo "=== Installing official sing-box 1.12.0 binary ==="
-  for i in 1 2 3; do
-    "$DOCKER_BIN" exec "$TEMP_CONTAINER" curl -sSL -o /tmp/tachyon-core.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.12.0/sing-box-1.12.0-linux-amd64.tar.gz && break || sleep 5
-  done
+  # The container's route to github.com is flaky; fetch the tarball on the
+  # host once, keep it in .wsl-build, and copy it into the container.
+  SB_TGZ="$ROOT_DIR/.wsl-build/sing-box-1.12.0-linux-amd64.tar.gz"
+  mkdir -p "$ROOT_DIR/.wsl-build"
+  if [ ! -s "$SB_TGZ" ]; then
+    for i in $(seq 1 10); do
+      curl.exe -sSL -o "$SB_TGZ" https://github.com/SagerNet/sing-box/releases/download/v1.12.0/sing-box-1.12.0-linux-amd64.tar.gz && break || { rm -f "$SB_TGZ"; sleep 15; }
+    done
+  fi
+  "$DOCKER_BIN" cp "$SB_TGZ" "$TEMP_CONTAINER:/tmp/tachyon-core.tar.gz"
   "$DOCKER_BIN" exec "$TEMP_CONTAINER" tar -zxf /tmp/tachyon-core.tar.gz -C /tmp
   "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/tachyon-core-1.12.0-linux-amd64/sing-box /usr/sbin/sing-box
   "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/tachyon-core-1.12.0-linux-amd64/sing-box /usr/bin/tachyon-core
