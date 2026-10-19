@@ -169,7 +169,10 @@ function build_system_info() { return sysinfo_mod.build_system_info(); }
 function show_config(visibility) { return sysinfo_mod.show_config(visibility); }
 function provider_installed(runtime_uc) { return sysinfo_mod.provider_installed(runtime_uc); }
 function sing_box_resolved_version() { return sysinfo_mod.sing_box_resolved_version(); }
-function sing_box_capability_flags(version) { return sysinfo_mod.sing_box_capability_flags(version); }
+// Caller at2219 passes (version, version_output); system_info reads the banner
+// from the second argument, so dropping it here silently forced the empty-banner
+// branch (and its component-action tailscale guess) on every doctor run.
+function sing_box_capability_flags(version, version_output) { return sysinfo_mod.sing_box_capability_flags(version, version_output); }
 function dns_check_router_resolver_available(router_ip) { return dns_mod.dns_check_router_resolver_available(router_ip); }
 function clash_api_url() { return routing_mod.clash_api_url(); }
 function singbox_config_path() { return common.singbox_config_path(); }
@@ -295,15 +298,13 @@ function network_show_data() {
 function helper_output(mode, args) {
     let full = [ mode ];
     for (let arg in args) push(full, as_string(arg));
-    return replace(module_output(HELPERS_UC, full), /[
-]+$/g, "");
+    return replace(module_output(HELPERS_UC, full), /[\n]+$/g, "");
 }
 
 function file_exists(path) { return fs.stat(as_string(path)) != null; }
 function command_exists(name) { return command_status("which " + shell_quote(name) + " >/dev/null 2>&1") == 0; }
 function stdout_is_tty() { return command_status("test -t 1") == 0; }
-function nolog(message) { if (stdout_is_tty()) print(as_string(message), "
-"); }
+function nolog(message) { if (stdout_is_tty()) print(as_string(message), "\n"); }
 
 function dns_check_resolve_host(host, resolver, timeout_seconds) {
     return dns_mod.dns_check_resolve_host(host, resolver, timeout_seconds);

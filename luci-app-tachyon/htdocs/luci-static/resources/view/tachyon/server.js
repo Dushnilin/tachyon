@@ -3831,11 +3831,18 @@ function configureServerSection(sectionRef, options = {}) {
           }
         }
         return origCallDelete.apply(this, arguments).catch((err) => {
+          const msg = typeof err?.message === "string" ? err.message : "";
+          // ubus code 4 is UBUS_STATUS_NOT_FOUND. The numeric code survives
+          // translation; the text after the colon does not, so it only counts
+          // when the message carries no code at all (older transports). A code
+          // that is present but different is authoritative, and the trailing
+          // \b keeps "ubus code 40"/"41" from matching this guard.
+          const coded = /\bubus code \d+\b/.test(msg);
           if (
             config === UCI_PACKAGE &&
-            (err?.message?.includes("ubus code 4") ||
-              err?.message?.includes("Ресурс не найден") ||
-              err?.message?.includes("Not found"))
+            (/\bubus code 4\b/.test(msg) ||
+              (!coded &&
+                (msg.includes("Ресурс не найден") || msg.includes("Not found"))))
           ) {
             return 0;
           }

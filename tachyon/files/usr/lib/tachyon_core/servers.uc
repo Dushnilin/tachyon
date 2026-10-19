@@ -213,18 +213,23 @@ function apply_tls(inbound, section, protocol) {
         maybe_string(reality, "max_time_difference", option(section, "reality_max_time_difference", "1m"));
         tls.reality = reality;
 
-        // tachyon-core <= 0.1.3 validator compatibility: validate_server_tls requires
-        // certificate_path or inline certificate even when reality is enabled, whereas core-runtime
-        // parses only the reality block and ignores certificate and key.
+        // tachyon-core's validate_server_tls (still current at 0.1.3) rejects a server
+        // TLS block with a missing certificate or a missing key, and it never looks at
+        // tls.reality: both sides are checked independently, with no key-vs-cert match.
+        // core-runtime is the opposite — on a reality inbound it reads only the reality
+        // block and never touches certificate or key. So fill in whatever the validator
+        // needs for the sides the operator did not configure, while keeping a
+        // configured side instead of discarding half of it.
         let cert_path = option(section, "tls_certificate_path", "");
         let k_path = option(section, "tls_key_path", "");
-        if (cert_path != "" && k_path != "") {
+        if (cert_path != "")
             maybe_string(tls, "certificate_path", cert_path);
-            maybe_string(tls, "key_path", k_path);
-        } else {
+        else
             tls.certificate = REALITY_FALLBACK_CERTIFICATE;
+        if (k_path != "")
+            maybe_string(tls, "key_path", k_path);
+        else
             tls.key = REALITY_FALLBACK_KEY;
-        }
     }
 
     inbound.tls = tls;
