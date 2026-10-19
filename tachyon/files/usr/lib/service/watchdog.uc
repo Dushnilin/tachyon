@@ -169,6 +169,13 @@ function send_telegram_notification(message, cooldown_key, cooldown_seconds, sma
             return;
         }
         telegram_msg_history[cooldown_key] = now;
+        // Keys can embed a domain or section name; the watchdog never exits, so
+        // drop day-old cooldowns once the map is clearly larger than the live set.
+        if (length(telegram_msg_history) > 64) {
+            for (let key in keys(telegram_msg_history))
+                if (now - int(telegram_msg_history[key] || 0) > 86400)
+                    delete telegram_msg_history[key];
+        }
     }
     if (now - telegram_msg_window > 300) {
         telegram_msg_count = 0;
@@ -656,10 +663,12 @@ function run_zero_rtt_prefetching() {
 let uloop = null;
 let ubus = null;
 let jobs = null;
+let transaction = null;
 // Optional modules: absent in the Docker test image and on a router without
 // libubus, where the watchdog degrades to the polling path below.
 try { uloop = require("uloop"); } catch (e) {}
 try { jobs = require("core.jobs"); } catch (e) {}
+try { transaction = require("core.transaction"); } catch (e) {}
 try { ubus = require("ubus"); } catch (e) {}
 
 // ─── Event bus and observation controller ─────────────────────────────────────
@@ -2412,8 +2421,10 @@ function smart_detect_process_pending() {
 
     let stale_cutoff = now - PENDING_SMART_DOMAINS_TTL;
     for (let dom in keys(pending_smart_domains)) {
-        if (pending_smart_domains[dom] < stale_cutoff)
+        if (pending_smart_domains[dom] < stale_cutoff) {
             delete pending_smart_domains[dom];
+            delete smart_detect_streaks[dom];
+        }
     }
 
     let domain_list = keys(pending_smart_domains);
@@ -3262,6 +3273,55 @@ function reap_dead_jobs() {
     let removed = jobs.gc();
     if (removed > 0)
         log_message(sprintf("Reaped %d stale job state file(s)", removed), "info");
+    // transaction.gc() had no caller at all, so finished and rolled-back
+    // transactions (and any snapshot copies they still held) piled up in
+    // /var/run, which is RAM. It also recovers transactions whose executor died.
+    if (transaction != null && type(transaction.gc) == "function") {
+        let tx_result = transaction.gc();
+        if (tx_result && (tx_result.cleaned > 0 || tx_result.recovered > 0))
+            log_message(sprintf("Transaction gc: cleaned %d, recovered %d", tx_result.cleaned, tx_result.recovered), "info");
+    }
+}
+
+// Logs that live on tmpfs are RAM. sing-box at info/debug logs every
+// connection to /tmp/tachyon-core/sing-box.log and the DPI daemons append to
+// /var/run/tachyon/<provider>/*.log with no rotation of any kind, so they grow
+// until /tmp is full. Rewriting the file through the same inode keeps a daemon
+// that holds it open (O_APPEND) writing into the shortened file.
+const TMPFS_LOG_MAX_BYTES = 524288;
+const TMPFS_LOG_KEEP_BYTES = 102400;
+const TMPFS_LOG_PROVIDER_DIRS = [ "zapret", "zapret2", "byedpi", "fptn", "tailscale" ];
+
+function trim_tmpfs_log(path) {
+    let st = fs.stat(path);
+    if (st == null || st.type != "file" || st.size <= TMPFS_LOG_MAX_BYTES)
+        return false;
+    let f = fs.open(path, "r");
+    if (!f)
+        return false;
+    f.seek(-TMPFS_LOG_KEEP_BYTES, 2);
+    let tail = f.read(TMPFS_LOG_KEEP_BYTES);
+    f.close();
+    if (tail == null)
+        return false;
+    // Start at a line boundary so the first kept line is not a fragment.
+    let nl = index(tail, "\n");
+    if (nl >= 0 && nl + 1 < length(tail))
+        tail = substr(tail, nl + 1);
+    return fs.writefile(path, tail) != null;
+}
+
+function trim_runtime_logs() {
+    let trimmed = 0;
+    let paths = [ "/tmp/tachyon-core/sing-box.log" ];
+    for (let dir in TMPFS_LOG_PROVIDER_DIRS)
+        for (let path in (fs.glob("/var/run/tachyon/" + dir + "/*.log") || []))
+            push(paths, path);
+    for (let path in paths)
+        if (trim_tmpfs_log(path))
+            trimmed++;
+    if (trimmed > 0)
+        log_message(sprintf("Trimmed %d oversized tmpfs log file(s)", trimmed), "info");
 }
 
 function check_watchdog_outdated() {
@@ -3282,6 +3342,7 @@ function perform_slow_checks() {
     safe_call(check_tailscale_worker, "check_tailscale_worker");
     safe_call(check_section_failover, "check_section_failover");
     safe_call(reap_dead_jobs, "reap_dead_jobs");
+    safe_call(trim_runtime_logs, "trim_runtime_logs");
     safe_call(check_watchdog_outdated, "check_watchdog_outdated");
 }
 

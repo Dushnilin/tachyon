@@ -146,6 +146,7 @@ function smart_detect_stalled_candidates(previous, connections, now) {
 }
 
 const SILENT_DROP_MIN_UPLOAD = 30;
+const SILENT_DROP_MAX_SEEN_IDS = 64;
 const SILENT_DROP_MIN_DURATION_MS = 1200;
 const SILENT_DROP_STRIKES = 3;
 const SILENT_DROP_WINDOW = 180;
@@ -202,6 +203,11 @@ function smart_detect_silent_drops(previous, connections, now) {
         entry.last_seen = now;
         if (entry.seen_ids[conn.id])
             continue;
+        // seen_ids only stops one connection counting twice. A domain stuck in
+        // a retry loop mints a new id every attempt, and this state lives as long
+        // as the watchdog, so bound it; resetting merely lets an id be re-counted.
+        if (length(entry.seen_ids) >= SILENT_DROP_MAX_SEEN_IDS)
+            entry.seen_ids = {};
         entry.seen_ids[conn.id] = true;
         entry.count = int(entry.count || 0) + 1;
 

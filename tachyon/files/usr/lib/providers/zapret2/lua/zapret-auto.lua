@@ -23,6 +23,30 @@ function standard_hostkey(desync)
 	return hostkey
 end
 
+-- autostate is bounded: this process runs for weeks and, left alone, keeps a
+-- record for every hostname and IP it has ever seen. Past the cap, records
+-- idle for AUTOSTATE_IDLE seconds go first; if that frees nothing the table
+-- is reset (strategies are simply relearned).
+local AUTOSTATE_MAX_HOSTS = 4096
+local AUTOSTATE_IDLE = 3600
+
+local function autostate_evict(tbl)
+	local tnow = os.time()
+	local n = 0
+	for k, rec in pairs(tbl) do
+		if tnow - (rec.last_used or 0) > AUTOSTATE_IDLE then
+			tbl[k] = nil
+		else
+			n = n + 1
+		end
+	end
+	if n >= AUTOSTATE_MAX_HOSTS then
+		for k in pairs(tbl) do tbl[k] = nil end
+		n = 0
+	end
+	return n
+end
+
 -- per-host storage
 -- arg: key - a string - table name inside autostate table. to allow multiple orchestrator instances to use single host storage
 -- arg: hostkey - hostkey generator function name
@@ -50,10 +74,18 @@ function automate_host_record(desync)
 	end
 	if not autostate[askey] then
 		autostate[askey] = {}
+		autostate_count = autostate_count or {}
+		autostate_count[askey] = 0
 	end
 	if not autostate[askey][hostkey] then
+		autostate_count = autostate_count or {}
+		if (autostate_count[askey] or 0) >= AUTOSTATE_MAX_HOSTS then
+			autostate_count[askey] = autostate_evict(autostate[askey])
+		end
 		autostate[askey][hostkey] = {}
+		autostate_count[askey] = (autostate_count[askey] or 0) + 1
 	end
+	autostate[askey][hostkey].last_used = os.time()
 	return autostate[askey][hostkey]
 end
 -- per-connection storage

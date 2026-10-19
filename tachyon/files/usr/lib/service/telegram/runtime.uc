@@ -409,13 +409,15 @@ function process_updates(token, admin_ids) {
                     if (file_url) {
                         let dl_path = "/tmp/restore_" + doc.file_id + ".tar.gz";
                         let proxy = get_proxy_args();
-                        let dl_args = [ "curl", "-s", "-o", dl_path ];
+                        let dl_args = [ "curl", "-sf", "--max-time", "120", "--max-filesize", "20971520", "-o", dl_path ];
                         for (let p in proxy) push(dl_args, p);
                         push(dl_args, file_url);
-                        command_status(command_from_args(dl_args));
-                        if (fs.stat(dl_path)) {
+                        let dl_status = command_status(command_from_args(dl_args));
+                        if (dl_status == 0 && fs.stat(dl_path)) {
                             apply_backup_restore(token, chat_id, dl_path);
                         } else {
+                            // A partial body must not sit in tmpfs.
+                            try { fs.unlink(dl_path); } catch (e) {}
                             send_message(token, chat_id, "❌ <b>" + t("backup_download_error") + "</b>", "HTML");
                         }
                     } else {

@@ -541,6 +541,7 @@ function nft_add_set_elements(table, set_name, elements) {
         let err_msg = trim(as_string(fs.readfile("/tmp/nft_err.log") || ""));
         log_warn("nft add element failed: cmd='" + cmd_str + "', code=" + res + ", err='" + err_msg + "'");
     }
+    fs.unlink("/tmp/nft_err.log");
     return res == 0;
 }
 

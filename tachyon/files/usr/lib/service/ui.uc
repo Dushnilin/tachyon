@@ -715,12 +715,37 @@ function cleanup_dir(dir) {
     }
 }
 
+// The zapret2 tune directory also holds output logs and its job files are not
+// guaranteed to satisfy valid_action_state(), so cleanup_dir() (which deletes
+// anything that fails that check) is the wrong tool. Sweep by age only, and
+// never touch a job that still says it is running.
+function sweep_stale_files(dir) {
+    dir = as_string(dir);
+    let now = now_seconds();
+    let ttl_minutes = unsigned_number(ACTION_FINISHED_TTL_MINUTES);
+    if (ttl_minutes == null)
+        return;
+
+    for (let path in (fs.glob(dir + "/*") || [])) {
+        let stat = fs.stat(path);
+        if (stat == null || stat.type != "file" || now - int(stat.mtime || 0) <= ttl_minutes * 60)
+            continue;
+        if (substr(path, length(path) - 5) == ".json") {
+            let value = read_json_file(path);
+            if (type(value) == "object" && value.running === true)
+                continue;
+        }
+        remove_state_file(path);
+    }
+}
+
 function refresh_action_dirs() {
     ensure_dirs();
     cleanup_dir(SERVICE_ACTION_DIR);
     cleanup_dir(LATENCY_ACTION_DIR);
     cleanup_dir(COMPONENT_ACTION_DIR);
     cleanup_dir(SUBSCRIPTION_ACTION_DIR);
+    sweep_stale_files(ZAPRET2_TUNE_ACTION_DIR);
 
     for (let path in fs.glob(SERVICE_ACTION_DIR + "/*.json"))
         refresh_pid_job_state(path, "Service action worker exited unexpectedly");

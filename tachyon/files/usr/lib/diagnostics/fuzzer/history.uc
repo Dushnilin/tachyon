@@ -26,10 +26,40 @@ function get_job_dir(job_id) {
     return JOBS_DIR + "/" + job_id;
 }
 
+const JOB_DIR_MAX_AGE_SECONDS = 3600;
+
+function job_dir_in_use(dir) {
+    for (let name in [ "worker.pid", "engine.pid", "probe.pid" ]) {
+        let pid = trim(as_string(fs.readfile(dir + "/" + name) || ""));
+        if (match(pid, /^[0-9]+$/) != null && fs.stat("/proc/" + pid) != null)
+            return true;
+    }
+    return false;
+}
+
+// cleanup_temp_daemons() runs repeatedly inside one job, so the directory
+// itself cannot be removed there. The next job start is the natural moment to
+// reclaim the ones left by finished runs; /var/run is RAM.
+function gc_job_dirs(keep_job_id) {
+    let now = time();
+    for (let entry in (fs.lsdir(JOBS_DIR) || [])) {
+        if (entry == "." || entry == ".." || entry == as_string(keep_job_id))
+            continue;
+        let dir = JOBS_DIR + "/" + entry;
+        let st = fs.stat(dir);
+        if (st == null || st.type != "directory" || now - int(st.mtime || 0) < JOB_DIR_MAX_AGE_SECONDS)
+            continue;
+        if (job_dir_in_use(dir))
+            continue;
+        command_success_from_args([ "rm", "-rf", dir ]);
+    }
+}
+
 function ensure_job_dir(job_id) {
     if (!job_id || job_id == "") return null;
     let d = JOBS_DIR + "/" + job_id;
     system(sprintf("mkdir -p %s 2>/dev/null", shell_quote(d)));
+    gc_job_dirs(job_id);
     return d;
 }
 

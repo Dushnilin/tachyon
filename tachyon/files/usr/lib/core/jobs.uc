@@ -983,6 +983,18 @@ function gc() {
             removed++;
         }
     }
+
+    // build_worker_wrapper() drops /tmp/tachyon-job-<id>.pid for every job and
+    // no exit path removes it; /tmp is RAM. A pid file is only useful while its
+    // job state exists, so sweep the ones that outlived it.
+    for (let pid_path in (fs.glob("/tmp/tachyon-job-*.pid") || [])) {
+        let name = substr(pid_path, rindex(pid_path, "/") + 1);
+        let id = substr(name, length("tachyon-job-"), length(name) - length("tachyon-job-") - length(".pid"));
+        if (id != "" && fs.stat(job_state_path(id)) == null) {
+            try { fs.unlink(pid_path); } catch (e) {}
+            removed++;
+        }
+    }
     return removed;
 }
 

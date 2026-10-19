@@ -1274,21 +1274,12 @@ function clash_api(action, arg1, arg2, arg3) {
                     history: sec_hist
                 };
 
-                if (uci_node == "auto" || uci_node == "urltest" || uci_node == null || uci_node == "") {
-                    let target_candidate_indices = [];
-                    let best_node_to_apply = null;
-                    if (proxies[now_tag] != null && proxies[now_tag].type == "URLTest") {
-                        let active_grp = proxies[now_tag];
-                        for (let child in active_grp.all) {
-                            if (ctx.tag_to_idx[child] != null)
-                                push(target_candidate_indices, ctx.tag_to_idx[child]);
-                        }
-                        if (active_grp.now != null && ctx.tag_to_idx[active_grp.now] != null)
-                            best_node_to_apply = ctx.tag_to_idx[active_grp.now];
-                    }
-                    if (best_node_to_apply != null)
-                        steer_apply_best_nodes(sname, best_node_to_apply, target_candidate_indices);
-                }
+                // Deliberately read-only. This branch used to call
+                // steer_apply_best_nodes() for auto sections, so a dashboard
+                // refresh could rewrite /etc/steer/spec.json, restart the vless
+                // workers and run `conntrack -F`. Applying the best node belongs
+                // to the latency probes (clash_api probe paths below), which
+                // already do it after measuring.
             }
             print(sprintf("%J\n", { proxies: proxies }));
             return 0;

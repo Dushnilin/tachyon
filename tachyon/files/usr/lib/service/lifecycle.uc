@@ -499,7 +499,22 @@ function config_commit() {
     return 0;
 }
 
+// RELOAD_STATE_SNAPSHOT_FILE is named after this process's own clock(), so a
+// reload that was killed half way leaves a file no later process can compute
+// the name of. They sit in /var/run (RAM) until reboot; reclaim the old ones.
+function sweep_stale_reload_snapshots() {
+    let now = time();
+    for (let path in (fs.glob(RUNTIME_STATE_DIR + "/reload-state.snapshot.*") || [])) {
+        if (path == RELOAD_STATE_SNAPSHOT_FILE)
+            continue;
+        let st = fs.stat(path);
+        if (st != null && now - int(st.mtime || 0) > 600)
+            remove_file(path);
+    }
+}
+
 function mark_runtime_stopped_clean() {
+    sweep_stale_reload_snapshots();
     let status = 0;
     if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "1"))
         status = 1;

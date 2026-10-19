@@ -82,13 +82,21 @@ function package_version() {
 
 function fetch_url(url) {
     let tmp = "/tmp/tachyon-olcrtc-sub";
-    if (command_success_from_args(["curl", "-fsSL", "-o", tmp, "--connect-timeout", "20", "--max-time", "20", url]))
-        return trim(fs.readfile(tmp) || "");
-    if (command_success_from_args(["wget", "-q", "-O", tmp, "--timeout=20", url]))
-        return trim(fs.readfile(tmp) || "");
-    if (command_success_from_args(["uclient-fetch", "-q", "-O", tmp, "--timeout=20", url]))
-        return trim(fs.readfile(tmp) || "");
-    return "";
+    let attempts = [
+        [ "curl", "-fsSL", "-o", tmp, "--connect-timeout", "20", "--max-time", "20", url ],
+        [ "wget", "-q", "-O", tmp, "--timeout=20", url ],
+        [ "uclient-fetch", "-q", "-O", tmp, "--timeout=20", url ]
+    ];
+    // The subscription body was left in /tmp (RAM) after every fetch.
+    let body = "";
+    for (let argv in attempts) {
+        if (command_success_from_args(argv)) {
+            body = trim(fs.readfile(tmp) || "");
+            break;
+        }
+    }
+    fs.unlink(tmp);
+    return body;
 }
 
 function first_uri_from_subscription(data) {

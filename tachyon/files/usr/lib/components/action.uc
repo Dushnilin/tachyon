@@ -394,8 +394,8 @@ function managed_sing_box_service_text() {
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
-        "    procd_set_param limits core=\"unlimited\"\n" +
-        "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
+        "    procd_set_param limits core=\"0\"\n" +
+        "    procd_set_param limits nofile=\"65535 65535\"\n" +
         "    procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +

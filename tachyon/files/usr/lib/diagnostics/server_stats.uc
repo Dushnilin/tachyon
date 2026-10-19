@@ -32,6 +32,7 @@ function safe_json_parse(text) {
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const STATS_STORAGE_PATH = getenv("TACHYON_SERVER_STATS_PATH") || "/var/run/tachyon/server_stats.json";
 const TACHYON_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
+const STALE_TAG_GRACE_SECONDS = int(getenv("TACHYON_SERVER_STATS_TAG_GRACE") || "3600");
 
 // --- Monotonic & Wall Time Helpers ---
 
@@ -222,6 +223,23 @@ function sync_runtime_proxies_to_db(db) {
             if (last_hist && last_hist.delay > 0) {
                 update_server_entry(db.servers[tag], last_hist.delay, true, "");
             }
+        }
+    }
+
+    // A subscription that embeds load or a date in node names mints a new tag
+    // on every refresh, and the old ones stayed here forever. This file lives
+    // in /var/run (RAM), is re-read and re-serialised by every stats call, and
+    // dead tags were still being probed. Only prune against a non-empty
+    // runtime view: a failed fetch must not wipe the history. A tag gets an
+    // hour of grace after it last appeared.
+    if (length(keys(proxies)) > 0) {
+        let cutoff = get_now_ts() - STALE_TAG_GRACE_SECONDS;
+        for (let tag in keys(db.servers)) {
+            if (proxies[tag] != null)
+                continue;
+            let entry = db.servers[tag];
+            if ((int(entry.last_checked) || 0) < cutoff)
+                delete db.servers[tag];
         }
     }
     return count;

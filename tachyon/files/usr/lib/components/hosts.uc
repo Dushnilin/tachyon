@@ -115,13 +115,16 @@ function download_with_retry(url, output_path, label) {
     return null;
 }
 
-function parse_hosts_file(path) {
-    let entries = [];
+// Streams every parsed entry to emit(ip, domain) and returns how many it
+// produced. Nothing is accumulated: a 150k-domain list used to become 150k
+// ucode objects, which is tens of megabytes of heap on a 128 MB router.
+function parse_hosts_file(path, emit) {
+    let count = 0;
     let fh = null;
     try {
         fh = fs.open(path, "r");
         if (fh == null)
-            return entries;
+            return count;
 
         let line;
         while ((line = fh.read("line")) != null) {
@@ -140,49 +143,46 @@ function parse_hosts_file(path) {
                 let ip = p1;
                 for (let i = 1; i < length(parts); i++) {
                     let domain = parts[i];
-                    if (domain != "" && substr(domain, 0, 1) != "#" && index(domain, ":") == -1)
-                        push(entries, { ip: ip, domain: domain });
+                    if (domain != "" && substr(domain, 0, 1) != "#" && index(domain, ":") == -1) {
+                        emit(ip, domain);
+                        count++;
+                    }
                 }
             } else if (core_ip.valid_ip(p2)) {
                 let domain = p1;
                 let ip = p2;
-                if (index(domain, ":") == -1)
-                    push(entries, { ip: ip, domain: domain });
+                if (index(domain, ":") == -1) {
+                    emit(ip, domain);
+                    count++;
+                }
             }
         }
     } catch(e) {
         log("Error parsing hosts file " + path + ": " + as_string(e), "error");
     }
     if (fh) fh.close();
-    return entries;
+    return count;
 }
 
-function write_hosts_cache(entries, source_urls) {
+// The finished temp file replaces the cache only if it differs. The cache sits
+// on flash (/etc), and a scheduled update of unchanged lists used to rewrite
+// several megabytes of identical data every run. cmp keeps both files out of
+// the ucode heap.
+function install_hosts_cache(tmp_path) {
     mkdir_p(HOSTS_CACHE_DIR);
-
-    let pid = fs.readlink("/proc/self") || "0";
-    let tmp_path = HOSTS_CACHE_FILE + ".tmp." + pid;
-    let fh = fs.open(tmp_path, "w");
-    if (fh == null) {
-        log("Failed to open " + tmp_path + " for writing", "error");
+    if (fs.stat(HOSTS_CACHE_FILE) != null &&
+        system("cmp -s " + shell_quote(tmp_path) + " " + shell_quote(HOSTS_CACHE_FILE)) == 0) {
+        remove_file(tmp_path);
+        return true;
+    }
+    let staging = HOSTS_CACHE_FILE + ".tmp." + (fs.readlink("/proc/self") || "0");
+    if (!run("cp " + shell_quote(tmp_path) + " " + shell_quote(staging))) {
+        remove_file(staging);
+        remove_file(tmp_path);
         return false;
     }
-
-    fh.write("# Tachyon hosts lists — combined cache\n");
-    if (source_urls != null) {
-        for (let url in source_urls)
-            fh.write("# Source: " + url + "\n");
-    }
-    fh.write("# Entries: " + length(entries) + "\n");
-    fh.write("#\n");
-
-    for (let entry in entries)
-        fh.write(entry.ip + " " + entry.domain + "\n");
-
-    fh.close();
-    run("mv " + shell_quote(tmp_path) + " " + shell_quote(HOSTS_CACHE_FILE));
-    log("Wrote " + length(entries) + " hosts entries to " + HOSTS_CACHE_FILE);
-    return true;
+    remove_file(tmp_path);
+    return run("mv " + shell_quote(staging) + " " + shell_quote(HOSTS_CACHE_FILE));
 }
 
 function get_hosts_urls() {

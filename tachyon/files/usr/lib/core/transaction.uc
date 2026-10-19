@@ -614,6 +614,12 @@ function rollback(tx, reason) {
         transition(tx, PHASE_ROLLED_BACK);
         tx.status = STATUS_ROLLED_BACK;
         tx.completed_at = now_seconds();
+        // commit() reclaims the snapshot copies, rollback() never did, so every
+        // rolled-back transaction kept full copies of its files in tmpfs until
+        // a gc that nothing ran. Only after a verified rollback: a failed one
+        // keeps them, they are what an operator would restore from.
+        if (!tx.opts || !tx.opts.keep_snapshots)
+            cleanup_snapshots(tx);
         save(tx);
         tx_log(tx, "info", "Rollback completed successfully");
         return { ok: false, rolled_back: true, reason: reason };

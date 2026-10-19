@@ -703,7 +703,12 @@ function managed_service_installed() {
 // считается отсутствием, и скрипт перегенерируется.
 function managed_service_script_stale() {
     let data = fs.readfile("/etc/init.d/tachyon-core");
-    return data != null && index(as_string(data), "config_load \"tachyon-core\"") < 0;
+    if (data == null)
+        return false;
+    data = as_string(data);
+    // A script from before the limits were lowered (core dump unlimited, a
+    // million descriptors) is regenerated the same way as a broken one.
+    return index(data, "config_load \"tachyon-core\"") < 0 || index(data, "core=\"unlimited\"") >= 0;
 }
 
 function managed_service_text() {
@@ -730,8 +735,8 @@ function managed_service_text() {
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
-        "    procd_set_param limits core=\"unlimited\"\n" +
-        "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
+        "    procd_set_param limits core=\"0\"\n" +
+        "    procd_set_param limits nofile=\"65535 65535\"\n" +
         "    procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
