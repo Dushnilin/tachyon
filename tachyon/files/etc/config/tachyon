@@ -56,6 +56,7 @@ config settings 'settings'
         option cache_path '/usr/share/tachyon-core/cache.db'
         option dns_local_cache '0'
         option dns_cache_size '10000'
+        option memory_limit_mb '0'
         option log_level 'warn'
         # Routing engine: tachyon-core (default) or steer / steer-extended.
         # Switching engines parks configuration the target cannot express

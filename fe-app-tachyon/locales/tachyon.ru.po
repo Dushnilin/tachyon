@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-19 10:50+0300\n"
-"PO-Revision-Date: 2026-10-19 10:50+0300\n"
+"POT-Creation-Date: 2026-10-19 10:54+0300\n"
+"PO-Revision-Date: 2026-10-19 10:54+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1802,6 +1802,9 @@ msgstr "Такой тег JSON outbound уже используется"
 msgid "Duplicate value"
 msgstr "Дублирующееся значение"
 
+msgid "Dynamic GOMEMLIMIT memory cap in MB for sing-box / tachyon-core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
+msgstr ""
+
 msgid "EXCELLENT"
 msgstr "ОТЛИЧНО"
 
@@ -3589,6 +3592,9 @@ msgstr "Медиана"
 
 msgid "Median; successful queries: %s / %s. Click for details."
 msgstr "Медиана; успешные запросы: %s / %s. Нажмите для подробностей."
+
+msgid "Memory Limit (MB)"
+msgstr ""
 
 msgid "Memory Usage"
 msgstr "Использование памяти"
