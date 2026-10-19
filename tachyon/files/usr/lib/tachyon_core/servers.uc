@@ -162,6 +162,27 @@ function maybe_string(object, key, value) {
         object[key] = value;
 }
 
+const REALITY_FALLBACK_CERTIFICATE = [
+    "-----BEGIN CERTIFICATE-----",
+    "MIIBTzCB9aADAgECAhAdIIOcW0lViVbVrptPiDKtMAoGCCqGSM49BAMCMBQxEjAQ",
+    "BgNVBAMMCWxvY2FsaG9zdDAeFw0yNjEwMTkwMDI4MzNaFw0yNzEwMTQwMTI4MzNa",
+    "MBQxEjAQBgNVBAMMCWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA",
+    "BLFw0A61eMnSgStndfixJXTzu5nRLXIJVJnPgUPzKvUbs6JE0y7Fmx6U/URMf4yn",
+    "rxuuLQS7iKRDXGf3lVba1gOjKTAnMBQGA1UdEQQNMAuCCWxvY2FsaG9zdDAPBgNV",
+    "HRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQDUBUZKKNCiB2hQlSLSO5bz",
+    "h5xULIK0AoFWZ4P7Y/05CwIhAJOgTTkDN8bornbn/AcbabFQjRwhWJNH8Yz3wY0o",
+    "LPFY",
+    "-----END CERTIFICATE-----"
+];
+
+const REALITY_FALLBACK_KEY = [
+    "-----BEGIN PRIVATE KEY-----",
+    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgyxay+uvi+neaI1aC",
+    "l0d/KM8aquKceX5dKMXeNo0k25ShRANCAASxcNAOtXjJ0oErZ3X4sSV087uZ0S1y",
+    "CVSZz4FD8yr1G7OiRNMuxZselP1ETH+Mp68bri0Eu4ikQ1xn95VW2tYD",
+    "-----END PRIVATE KEY-----"
+];
+
 function apply_tls(inbound, section, protocol) {
     let security = effective_security(section, protocol);
     if (security == "" || security == "none")
@@ -191,6 +212,19 @@ function apply_tls(inbound, section, protocol) {
             reality.short_id = short_id;
         maybe_string(reality, "max_time_difference", option(section, "reality_max_time_difference", "1m"));
         tls.reality = reality;
+
+        // tachyon-core <= 0.1.3 validator compatibility: validate_server_tls requires
+        // certificate_path or inline certificate even when reality is enabled, whereas core-runtime
+        // parses only the reality block and ignores certificate and key.
+        let cert_path = option(section, "tls_certificate_path", "");
+        let k_path = option(section, "tls_key_path", "");
+        if (cert_path != "" && k_path != "") {
+            maybe_string(tls, "certificate_path", cert_path);
+            maybe_string(tls, "key_path", k_path);
+        } else {
+            tls.certificate = REALITY_FALLBACK_CERTIFICATE;
+            tls.key = REALITY_FALLBACK_KEY;
+        }
     }
 
     inbound.tls = tls;
