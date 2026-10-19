@@ -244,7 +244,11 @@ function urltest_settings_for(section_name) {
                 return;
             if (as_string(child.section || "") != section_name)
                 return;
-            found.push({
+            // push(array, value) rather than the JS method form on the array:
+            // ucode arrays have no methods, so the method form threw here, the
+            // catch below swallowed it, and this function reported "no
+            // settings" for every section that had some.
+            push(found, {
                 name: as_string(child.name || child.display_name || ""),
                 check_interval: as_string(child.check_interval || child.urltest_check_interval || "3m"),
                 tolerance: as_string(child.tolerance || child.urltest_tolerance || "50"),
@@ -345,10 +349,13 @@ function steer_run(subcommand, args) {
     let argv = [ bin, subcommand ];
     for (let arg in (type(args) == "array" ? args : []))
         push(argv, arg);
-    let command = common.command_from_args(argv);
-    let output = common.command_output(command + " 2>&1");
-    let status = common.command_status(command + " 2>&1");
-    return { ok: status == 0, status, subcommand, output };
+    // One execution, not two. command_output() and command_status() each ran
+    // the command on its own, so `steer apply` applied twice and every status
+    // poll paid for two engine runs. command_capture() takes the output and
+    // the exit status from the same run, and keeps the same 2>&1 shape the
+    // output side had before.
+    let result = common.command_capture(common.command_from_args(argv) + " 2>&1");
+    return { ok: result.status == 0, status: result.status, subcommand, output: result.output };
 }
 
 function steer_apply(dry_run) {
@@ -707,6 +714,7 @@ function module_exports() {
         restart_tachyon_service,
         build_steer_spec,
         generate_steer_spec,
+        urltest_settings_for,
         steer_run,
         steer_apply,
         steer_status,

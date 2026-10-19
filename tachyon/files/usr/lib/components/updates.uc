@@ -2844,6 +2844,14 @@ function import_all_preset_lists(settings) {
     return ok;
 }
 
+// Consumed once, after every list loop has finished and still under the reload
+// lock. The reload used to live inside the per-community loop below, so S
+// communities across N sections fired S*N concurrent background
+// `tachyon reload` processes - each one a config regeneration plus a core
+// restart - while this update was holding the very lock that is supposed to
+// serialise them.
+let builtin_subnets_need_reload = false;
+
 function import_builtin_subnets_from_rule(section, settings) {
     if (!bool_option(section, "enabled", true))
         return true;
@@ -2934,11 +2942,18 @@ function import_builtin_subnets_from_rule(section, settings) {
         }
 
         if (length(combined_lines) > 0) {
+            let data = join("\n", combined_lines) + "\n";
+            // A list that came back byte-identical to what is already on disk is
+            // not worth waking the core for: that content is already loaded, and
+            // every reload costs a config regeneration plus a core restart.
+            let changed = !common.content_unchanged(cached_file, data) ||
+                !common.content_unchanged(persistent_file, data);
             ensure_dir(TMP_RULESET_FOLDER);
-            write_file(cached_file, join("\n", combined_lines) + "\n");
+            write_file(cached_file, data);
             ensure_dir("/etc/tachyon/rulesets");
-            write_file(persistent_file, join("\n", combined_lines) + "\n");
-            system(common.background_command("/etc/init.d/tachyon reload"));
+            write_file(persistent_file, data);
+            if (changed)
+                builtin_subnets_need_reload = true;
         }
     }
 
@@ -3526,6 +3541,15 @@ function list_update() {
     for (let section in sections)
         if (!apply_domain_ip_list_subnets_to_nft_from_rule(section))
             ok = false;
+
+    // Exactly one reload for the whole update, and only if something on disk
+    // actually changed. It used to sit inside the per-community loop above, so
+    // it fired S*N times - concurrently, while this update still held the
+    // reload lock - and a run whose lists came back identical reloaded anyway.
+    if (builtin_subnets_need_reload) {
+        builtin_subnets_need_reload = false;
+        system(common.background_command("/etc/init.d/tachyon reload"));
+    }
 
     release_runtime_lock(RELOAD_LOCK_DIR);
 
