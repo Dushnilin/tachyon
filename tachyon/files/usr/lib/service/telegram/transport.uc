@@ -28,6 +28,7 @@ let command_from_args = common.command_from_args;
 let command_capture = common.command_capture;
 let command_output_from_args = common.command_output_from_args;
 let command_success_from_args = common.command_success_from_args;
+let core_binary_running = common.core_binary_running;
 let write_text_file = helpers.write_text_file;
 
 let cb_map_cache = null;
@@ -190,7 +191,7 @@ function direct_fallback_enabled() {
 
 function get_proxy_args() {
     let cfg = settings();
-    if (command_success_from_args(["pidof", "sing-box"])) {
+    if (core_binary_running()) {
         let ep = get_mixed_proxy_endpoint() || ("127.0.0.1:" + get_mixed_port());
         if (!mixed_port_alive()) {
             if (direct_fallback_enabled())

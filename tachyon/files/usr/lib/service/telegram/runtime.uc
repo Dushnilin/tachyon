@@ -60,6 +60,7 @@ let object_or_empty = common.object_or_empty;
 let option = common.option;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
+let core_binary_running = common.core_binary_running;
 let command_from_args = common.command_from_args;
 let command_capture = common.command_capture;
 let command_output_from_args = common.command_output_from_args;
@@ -770,7 +771,7 @@ function diagnose() {
     }
 
     // 3. sing-box running
-    let sb_running = command_success_from_args(["pidof", "sing-box"]);
+    let sb_running = core_binary_running();
     push(checks, {
         name: "sing_box",
         ok: sb_running,

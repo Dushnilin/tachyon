@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-19 10:54+0300\n"
-"PO-Revision-Date: 2026-10-19 10:54+0300\n"
+"POT-Creation-Date: 2026-10-19 11:19+0300\n"
+"PO-Revision-Date: 2026-10-19 11:19+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -140,8 +140,8 @@ msgstr "Не удалось сгенерировать стратегии чер
 msgid "ALPN"
 msgstr "ALPN"
 
-msgid "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"
-msgstr "API-ключ для OpenAI (sk-...) или DeepSeek (опционально для Ollama / LM Studio)"
+msgid "API Key for OpenAI (sk-...), Anthropic, DeepSeek, OpenRouter, or Gemini (optional for Ollama / LM Studio)"
+msgstr ""
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -1277,8 +1277,8 @@ msgstr "Пользовательский MTU, например 1500 (остав�
 msgid "Custom OpenAI-Compatible API"
 msgstr "Пользовательский OpenAI-совместимый API"
 
-msgid "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions)"
-msgstr "Пользовательский URL эндпоинта OpenAI-совместимого API (напр. http://192.168.1.100:11434/v1/chat/completions)"
+msgid "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions or https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)"
+msgstr ""
 
 msgid "Custom device headers"
 msgstr "Пользовательские заголовки устройства"
@@ -2567,6 +2567,9 @@ msgstr "Включено глобальное правило"
 msgid "Global rules"
 msgstr "Глобальные правила"
 
+msgid "Google Gemini API (gemini-2.5-flash / pro)"
+msgstr ""
+
 msgid "Green"
 msgstr "Зелёный"
 
@@ -3635,8 +3638,8 @@ msgstr "Имя пользователя смешанного прокси"
 msgid "Mode"
 msgstr "Режим"
 
-msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
-msgstr "Имя используемой модели. Оставьте пустым, чтобы использовать модель по умолчанию (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
+msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
+msgstr ""
 
 msgid "Modules"
 msgstr "Модули"
@@ -7192,6 +7195,15 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"
+msgstr "API-ключ для OpenAI (sk-...) или DeepSeek (опционально для Ollama / LM Studio)"
+
+msgid "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions)"
+msgstr "Пользовательский URL эндпоинта OpenAI-совместимого API (напр. http://192.168.1.100:11434/v1/chat/completions)"
+
+msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
+msgstr "Имя используемой модели. Оставьте пустым, чтобы использовать модель по умолчанию (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
 
 msgid "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing"
 msgstr "Выберите или введите путь к файлу кэша sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"

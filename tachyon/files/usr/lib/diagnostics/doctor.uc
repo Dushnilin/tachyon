@@ -517,6 +517,22 @@ function find_process_pid(name) {
     return length(pids) > 0 && pids[0] != "" ? pids[0] : "";
 }
 
+// The core binary may be named tachyon-core or sing-box depending on which
+// package is installed; every "is the core running" probe must accept both,
+// otherwise the doctor reports a running core as stopped and proposes
+// killing the very process that is serving traffic.
+function find_core_process_pid() {
+    let pid = find_process_pid("tachyon-core");
+    return pid != "" ? pid : find_process_pid("sing-box");
+}
+
+// ss and log lines name the core process however the binary is installed;
+// match both spellings or a tachyon-core instance is invisible here.
+function line_names_core(line) {
+    return index(line, "tachyon-core") >= 0 ||
+        index(line, "sing-box") >= 0 || index(line, "sing_box") >= 0;
+}
+
 function is_container_process(pid) {
     pid = as_string(pid);
     if (pid == "")
@@ -560,7 +576,7 @@ function tachyon_is_running() {
     if (eng == "steer" || eng == "steer-extended") {
         return find_process_pid("steer") != "" || command_success_from_args([ "/etc/init.d/steer", "status" ]);
     }
-    return find_process_pid("sing-box") != "";
+    return find_core_process_pid() != "";
 }
 
 function tachyon_is_enabled() {
@@ -580,6 +596,8 @@ function kill_our_core_processes() {
         return;
     }
     command_status("/etc/init.d/tachyon-core stop >/dev/null 2>&1");
+    // Both names: whichever package is installed must be stopped.
+    command_status("killall -9 tachyon-core >/dev/null 2>&1");
     command_status("killall -9 sing-box >/dev/null 2>&1");
 }
 
@@ -784,16 +802,16 @@ function run_recovery_checks() {
         doc_check("✅", "resolv.conf", desc, "");
     }
 
-    // A stray sing-box (crashed service, half-removed install) must not sit
-    // between the LAN and the WAN.
-    if (find_process_pid("sing-box") != "") {
+    // A stray core (crashed service, half-removed install) must not sit
+    // between the LAN and the WAN, however the binary is named.
+    if (find_core_process_pid() != "") {
         if (DOCTOR_REPAIR_MODE)
             kill_our_core_processes();
         else
-            doc_plan("kill leftover sing-box processes");
-        mark_fixed("sing-box process", "leftover", "остановлен");
+            doc_plan("kill leftover core processes");
+        mark_fixed("core process", "leftover", "остановлен");
     } else {
-        doc_check("✅", "sing-box process", "absent", "");
+        doc_check("✅", "core process", "absent", "");
     }
 
     // Final verification: DNS through dnsmasq and straight upstream.
@@ -954,7 +972,7 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    let pid = find_process_pid(binary_name);
+    let pid = is_steer ? find_process_pid("steer") : find_core_process_pid();
     if (pid != "") {
         doc_check("✅", (is_steer ? active_engine : binary_name) + " process", "running (PID " + pid + ")", "");
     } else if (!has_sections && !is_steer) {
@@ -969,7 +987,7 @@ function run_doctor_checks_impl(repair) {
             command_status("sleep 1");
             command_status(init_script + " start >/dev/null 2>&1");
             command_status("sleep 3");
-            pid = find_process_pid(binary_name);
+            pid = is_steer ? find_process_pid("steer") : find_core_process_pid();
             if (pid != "") {
                 doc_check("❌", (is_steer ? active_engine : binary_name) + " process", "stopped", "→ FIXED: запущен");
                 fixed++;
@@ -1832,7 +1850,7 @@ function run_doctor_checks_impl(repair) {
     let ports_to_check = [mixed_port_str, "9090"];
     for (let port in ports_to_check) {
         if (index(netstat_out, ":" + port + " ") >= 0) {
-            let sb_pid = find_process_pid("sing-box");
+            let sb_pid = find_core_process_pid();
             if (sb_pid == "") {
                 let conflict_pids = [];
                 let conflict_names = [];
@@ -2130,7 +2148,7 @@ function run_doctor_checks_impl(repair) {
         for (let line in split(ss_output, "\n")) {
             if (index(line, "UNCONN") < 0)
                 continue;
-            if (index(line, "sing-box") < 0 && index(line, "sing_box") < 0)
+            if (!line_names_core(line))
                 continue;
             let fields = split(trim(line), /[ \t]+/);
             if (length(fields) < 5)
@@ -2157,7 +2175,7 @@ function run_doctor_checks_impl(repair) {
                 let still_parasitic = 0;
                 for (let line2 in split(ss_check, "\n")) {
                     if (index(line2, "UNCONN") < 0) continue;
-                    if (index(line2, "sing-box") < 0 && index(line2, "sing_box") < 0) continue;
+                    if (!line_names_core(line2)) continue;
                     let f2 = split(trim(line2), /[ \t]+/);
                     if (length(f2) >= 5 && int(f2[1]) > 0) still_parasitic++;
                 }
@@ -2808,7 +2826,7 @@ function verify_system() {
     // sb_pid from outside this if/else. An out-of-scope read yields null, and
     // null != "" is true, so the probe ran against a dead sing-box, scored a
     // false FAIL, and local_rule_doctor escalated that to restore_native_internet.
-    let sb_pid = is_steer_active ? "" : (find_process_pid("tachyon-core") || find_process_pid("sing-box"));
+    let sb_pid = is_steer_active ? "" : find_core_process_pid();
     if (is_steer_active) {
         let steer_pid = find_process_pid("steer");
         add("steer process", steer_pid != "" ? "pass" : "fail",
@@ -2874,13 +2892,13 @@ function verify_system() {
             stability.wan_flaps++;
         if (index(l, "wan.down") >= 0 || index(l, "watchdog: wan check failed") >= 0)
             stability.wan_flaps++;
-        if (index(l, "sing-box") >= 0 &&
+        if (line_names_core(l) &&
             (index(l, "panic:") >= 0 || index(l, "fatal error:") >= 0 || index(l, "sigsegv") >= 0 || index(l, "died unexpectedly") >= 0))
             stability.singbox_restarts++;
         if (index(l, "dnsmasq") >= 0 &&
             (index(l, "failed to create listening socket") >= 0 || index(l, "address already in use") >= 0 || index(l, "failed to start") >= 0))
             stability.dnsmasq_restarts++;
-        if (index(l, "tachyon") >= 0 && index(l, "sing-box") < 0 && index(l, "watchdog: crashed") >= 0)
+        if (index(l, "tachyon") >= 0 && !line_names_core(l) && index(l, "watchdog: crashed") >= 0)
             stability.tachyon_restarts++;
     }
 

@@ -53,6 +53,7 @@ let tailscale_last_alert = 0;
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
+let core_binary_running = common.core_binary_running;
 let command_output_from_args = common.command_output_from_args;
 let is_process_name_running = helpers.is_process_name_running;
 
@@ -3079,11 +3080,10 @@ function mixed_proxy_port_listening() {
 }
 
 function check_mixed_proxy_port() {
-    let sb_pid = trim(command_output_from_args(["pidof", "sing-box"]));
-    if (sb_pid == "") {
+    if (!core_binary_running()) {
         // Core down entirely is the proxy-health loop's domain.
         if (mixed_port_fail_streak > 0)
-            log_message("Mixed port watch: sing-box stopped, standing down.", "debug");
+            log_message("Mixed port watch: core stopped, standing down.", "debug");
         mixed_port_fail_streak = 0;
         return;
     }

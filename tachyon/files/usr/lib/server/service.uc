@@ -841,7 +841,10 @@ function get_router_awg_network(lan_ip) {
 }
 
 function get_router_ddns_domain() {
-    let services = uci.sections("ddns", "service");
+    // uci.sections() returns section *names* (strings); iterating them as
+    // objects (s["enabled"]) threw a type error and aborted the caller, which
+    // kept tachyon-core from starting whenever any DDNS service was enabled.
+    let services = uci.section_objects("ddns", "service");
     if (type(services) == "array") {
         for (let s in services) {
             let enabled = as_string(s["enabled"] ?? "1");
