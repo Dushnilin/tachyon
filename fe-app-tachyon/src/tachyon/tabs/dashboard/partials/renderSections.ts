@@ -565,11 +565,14 @@ function renderDefaultState({
       .join(' ');
 
     if (isConnectionNode) {
+      const isAlive = Boolean(
+        outbound.runtimeAvailable || (outbound.latency && outbound.latency > 0),
+      );
       const statusText = latencyFetching
         ? _('Checking...')
         : outbound.latency === -1 || outbound.latency < 0
           ? _('Not responding')
-          : outbound.runtimeAvailable
+          : isAlive
             ? _('Connected')
             : _('Not connected');
 
@@ -577,7 +580,7 @@ function renderDefaultState({
         ? 'var(--warn-color-medium, orange)'
         : outbound.latency === -1 || outbound.latency < 0
           ? 'var(--error-color-medium, red)'
-          : outbound.runtimeAvailable
+          : isAlive
             ? 'var(--success-color-medium, green)'
             : 'var(--error-color-medium, red)';
 

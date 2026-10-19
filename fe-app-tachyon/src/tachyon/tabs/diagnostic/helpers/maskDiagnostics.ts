@@ -35,6 +35,10 @@ const TACHYON_MASK_AFTER_TOKEN = [
   'list subscription_urls',
   'list urltest_proxy_links',
   'list selector_proxy_links',
+  'list selector_amnezia_configs',
+  'option selector_amnezia_configs',
+  'list amnezia_configs',
+  'option amnezia_config',
   'list server_users',
   'option server_uuid',
   'option server_username',
@@ -174,6 +178,8 @@ function maskOptionPath(line: string, token: string) {
   return `${line.slice(0, slash)}/*******'${line.slice(quote + 1)}`;
 }
 
+const WG_KEY_PATTERN = /((?:PrivateKey|PresharedKey)\s*=\s*)[A-Za-z0-9+/=]+/gi;
+
 function maskGlobalCheckLine(line: string) {
   let maskedLine = line;
 
@@ -187,6 +193,7 @@ function maskGlobalCheckLine(line: string) {
 
   maskedLine = maskOptionPath(maskedLine, "option dns_server '");
   maskedLine = maskOptionPath(maskedLine, "list dns_server '");
+  maskedLine = maskedLine.replace(WG_KEY_PATTERN, '$1*******');
   return maskedLine;
 }
 
@@ -248,7 +255,11 @@ export function maskGlobalCheckText(text: string = '') {
 
       const maskedLine = maskGlobalCheckLine(line);
 
-      if (line.includes('option outbound_json')) {
+      if (
+        line.includes('option outbound_json') ||
+        line.includes('selector_amnezia_configs') ||
+        line.includes('amnezia_config')
+      ) {
         const firstQuote = line.indexOf("'");
 
         if (firstQuote >= 0 && line.slice(firstQuote + 1).indexOf("'") < 0) {
@@ -288,7 +299,8 @@ function maskLogLine(line: string) {
   return line
     .replace(LOG_URL, '*******')
     .replace(LOG_HOST_PORT, '*******$2')
-    .replace(LOG_BARE_HOST, '*******');
+    .replace(LOG_BARE_HOST, '*******')
+    .replace(WG_KEY_PATTERN, '$1*******');
 }
 
 export function maskLogText(text: string = '') {
