@@ -3456,6 +3456,7 @@ function createSettingsContent(section, capabilities) {
   o.value("anthropic", "Anthropic (Claude API)");
   o.value("deepseek", "DeepSeek API");
   o.value("openrouter", "OpenRouter (openrouter.ai)");
+  o.value("gemini", _("Google Gemini API (gemini-2.5-flash / pro)"));
   o.value("ollama", _("Ollama (Local PC / Server)"));
   o.value("lmstudio", _("LM Studio (Local PC / Server)"));
   o.value("custom", _("Custom OpenAI-Compatible API"));
@@ -3467,7 +3468,7 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_model",
     _("AI Model"),
     _(
-      "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2).",
+      "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2).",
     ),
   );
   o.depends("enable_ai_doctor", "1");
@@ -3492,7 +3493,7 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_api_key",
     _("AI API Key"),
     _(
-      "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)",
+      "API Key for OpenAI (sk-...), Anthropic, DeepSeek, OpenRouter, or Gemini (optional for Ollama / LM Studio)",
     ),
   );
   o.depends("enable_ai_doctor", "1");
@@ -3505,7 +3506,7 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_custom_url",
     _("Custom API Endpoint URL"),
     _(
-      "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions)",
+      "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions or https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)",
     ),
   );
   o.depends("ai_doctor_provider", "custom");
