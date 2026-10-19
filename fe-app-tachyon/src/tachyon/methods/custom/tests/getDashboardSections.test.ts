@@ -229,6 +229,102 @@ describe('getDashboardSections', () => {
     ]);
   });
 
+  it('scopes hide_na_servers to the configuring section and keeps N/A servers visible in other sections', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'main',
+        dashboard_hide_na_servers: '1',
+      }),
+      proxySection({
+        '.name': 'other',
+        dashboard_hide_na_servers: '0',
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Main 1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', { name: 'Main 2 untested' }),
+          'other-out': proxy('Selector', {
+            name: 'other-out',
+            now: 'other-1-out',
+            all: ['other-1-out', 'other-2-out'],
+          }),
+          'other-1-out': proxy('VLESS', {
+            name: 'Other 1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 150 }],
+          }),
+          'other-2-out': proxy('VLESS', { name: 'Other 2 untested' }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(2);
+
+    const [mainSec, otherSec] = result.data;
+    expect(mainSec.outbounds.map((item) => item.code)).toEqual(['main-1-out']);
+    expect(otherSec.outbounds.map((item) => item.code)).toEqual([
+      'other-urltest-out',
+      'other-1-out',
+      'other-2-out',
+    ]);
+  });
+
+  it('does not hide N/A servers if the section configuring hide_na_servers is disabled', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'disabled_sec',
+        enabled: '0',
+        action: 'fptn',
+        dashboard_hide_na_servers: '1',
+      }),
+      proxySection({
+        '.name': 'main',
+        enabled: '1',
+        dashboard_hide_na_servers: '0',
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Main 1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', { name: 'Main 2 untested' }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+
+    const [mainSec] = result.data;
+    expect(mainSec.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-2-out',
+    ]);
+  });
+
   it('hydrates URLTest details from the section cache and Clash API', async () => {
     mocks.getConfigSections.mockResolvedValue([proxySection()]);
     mocks.getClashApiProxies.mockResolvedValue({

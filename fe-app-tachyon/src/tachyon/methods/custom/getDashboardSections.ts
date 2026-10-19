@@ -469,9 +469,11 @@ function isUrlTestEnabled(section: Tachyon.ConfigSection) {
   return getUrlTestIds(section).length > 0;
 }
 
-function shouldHideNaServers(configSections: Tachyon.ConfigSection[]) {
-  return configSections.some(
-    (s) => isConnectionAction(s.action) && s.dashboard_hide_na_servers === '1',
+function shouldHideNaServers(section: Tachyon.ConfigSection) {
+  return (
+    section.enabled !== '0' &&
+    isConnectionAction(section.action) &&
+    section.dashboard_hide_na_servers === '1'
   );
 }
 
@@ -1981,7 +1983,7 @@ export async function getDashboardSections(
               hiddenOutboundTags,
             );
 
-          const hideNa = shouldHideNaServers(configSections);
+          const hideNa = shouldHideNaServers(section);
           const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
           const filteredOutbounds =
             hideNa && hasTestedServers

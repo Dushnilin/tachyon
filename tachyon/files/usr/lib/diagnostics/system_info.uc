@@ -626,7 +626,8 @@ function build_system_info() {
         dashboard_hide_na_servers: (() => {
             let sections = uci_core.section_objects(CONFIG_NAME, "section");
             for (let s in sections)
-                if (uci_core.get(CONFIG_NAME, s, "dashboard_hide_na_servers") == "1")
+                if (uci_core.get(CONFIG_NAME, s, "enabled") != "0" &&
+                    uci_core.get(CONFIG_NAME, s, "dashboard_hide_na_servers") == "1")
                     return 1;
             return 0;
         })(),
