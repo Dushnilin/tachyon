@@ -7,6 +7,7 @@ interface IRenderWidgetProps {
     value: string;
     attributes?: {
       class?: string;
+      title?: string;
     };
   }>;
 }
@@ -42,31 +43,33 @@ function renderDefaultState({ title, items }: IRenderWidgetProps) {
       { class: 'tachyon_dashboard-page__widgets-section__item__title' },
       title,
     ),
-    ...items.map((item) =>
-      E(
-        'div',
-        {
-          class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ''}`,
-        },
-        [
-          E(
-            'span',
-            {
-              class: 'tachyon_dashboard-page__widgets-section__item__row__key',
-            },
-            `${item.key}: `,
-          ),
-          E(
-            'span',
-            {
-              class:
-                'tachyon_dashboard-page__widgets-section__item__row__value',
-            },
-            item.value,
-          ),
-        ],
-      ),
-    ),
+    ...items.map((item) => {
+      const rowAttrs: Record<string, string> = {
+        class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ''}`,
+      };
+      if (item?.attributes?.title) {
+        rowAttrs.title = item.attributes.title;
+      }
+      return E('div', rowAttrs, [
+        E(
+          'span',
+          {
+            class: 'tachyon_dashboard-page__widgets-section__item__row__key',
+          },
+          `${item.key}: `,
+        ),
+        E(
+          'span',
+          {
+            class: 'tachyon_dashboard-page__widgets-section__item__row__value',
+            ...(item?.attributes?.title
+              ? { title: item.attributes.title }
+              : {}),
+          },
+          item.value,
+        ),
+      ]);
+    }),
   ]);
 }
 

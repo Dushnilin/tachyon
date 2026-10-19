@@ -84,6 +84,21 @@ export async function fetchServicesInfo() {
         singboxMemoryMb: singbox.success
           ? singbox.data.memory_rss_mb
           : previousData.singboxMemoryMb,
+        singboxPid: singbox.success
+          ? singbox.data.pid
+          : previousData.singboxPid,
+        singboxUptimeSeconds: singbox.success
+          ? singbox.data.uptime_seconds
+          : previousData.singboxUptimeSeconds,
+        singboxUptimePretty: singbox.success
+          ? singbox.data.uptime_pretty
+          : previousData.singboxUptimePretty,
+        engineVariant: singbox.success
+          ? singbox.data.engine_variant
+          : previousData.engineVariant,
+        engineVersion: singbox.success
+          ? singbox.data.engine_version
+          : previousData.engineVersion,
         tachyonRunning: tachyon.success
           ? tachyon.data.running
           : previousData.tachyonRunning,
@@ -96,15 +111,30 @@ export async function fetchServicesInfo() {
         tachyonMemoryMb: tachyon.success
           ? tachyon.data.memory_rss_mb
           : previousData.tachyonMemoryMb,
+        tachyonPid: tachyon.success
+          ? tachyon.data.pid
+          : previousData.tachyonPid,
+        tachyonUptimeSeconds: tachyon.success
+          ? tachyon.data.uptime_seconds
+          : previousData.tachyonUptimeSeconds,
+        tachyonUptimePretty: tachyon.success
+          ? tachyon.data.uptime_pretty
+          : previousData.tachyonUptimePretty,
         watchdogRunning: watchdog.success
           ? Number((watchdog.data as { running: boolean }).running)
           : previousData.watchdogRunning,
         zapret2Running: previousData.zapret2Running,
         zapret2MemoryMb: previousData.zapret2MemoryMb,
+        zapret2Pid: previousData.zapret2Pid,
+        zapret2UptimeSeconds: previousData.zapret2UptimeSeconds,
+        zapret2UptimePretty: previousData.zapret2UptimePretty,
         dnsmasqRunning: previousData.dnsmasqRunning,
         dnsmasqMemoryMb: previousData.dnsmasqMemoryMb,
         dnsmasqLocalCacheEnabled: previousData.dnsmasqLocalCacheEnabled,
         dnsmasqCacheSize: previousData.dnsmasqCacheSize,
+        dnsmasqPid: previousData.dnsmasqPid,
+        dnsmasqUptimeSeconds: previousData.dnsmasqUptimeSeconds,
+        dnsmasqUptimePretty: previousData.dnsmasqUptimePretty,
       },
     },
     activeEngine,

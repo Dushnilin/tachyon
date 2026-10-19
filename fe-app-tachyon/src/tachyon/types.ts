@@ -840,6 +840,9 @@ export namespace Tachyon {
     status: string;
     dns_configured?: number;
     memory_rss_mb?: number;
+    pid?: number;
+    uptime_seconds?: number;
+    uptime_pretty?: string;
   }
 
   export interface GetOutboundMetadata {
@@ -858,6 +861,11 @@ export namespace Tachyon {
     enabled: number;
     status: string;
     memory_rss_mb?: number;
+    pid?: number;
+    uptime_seconds?: number;
+    uptime_pretty?: string;
+    engine_variant?: string;
+    engine_version?: string;
   }
 
   export interface GetEngineStatus {
@@ -1038,12 +1046,18 @@ export namespace Tachyon {
       zapret2?: {
         running: number;
         memory_rss_mb?: number;
+        pid?: number;
+        uptime_seconds?: number;
+        uptime_pretty?: string;
       };
       dnsmasq?: {
         running: number;
         memory_rss_mb?: number;
         local_cache_enabled?: number;
         cache_size?: number;
+        pid?: number;
+        uptime_seconds?: number;
+        uptime_pretty?: string;
       };
     };
     capabilities: GetUiCapabilities;

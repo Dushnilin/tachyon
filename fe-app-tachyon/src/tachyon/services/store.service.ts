@@ -168,14 +168,28 @@ export interface StoreType {
       tachyonEnabled: number;
       tachyonStatus: string;
       tachyonMemoryMb?: number;
+      tachyonPid?: number;
+      tachyonUptimeSeconds?: number;
+      tachyonUptimePretty?: string;
       watchdogRunning: number;
       singboxMemoryMb?: number;
+      singboxPid?: number;
+      singboxUptimeSeconds?: number;
+      singboxUptimePretty?: string;
+      engineVariant?: string;
+      engineVersion?: string;
       zapret2Running?: number;
       zapret2MemoryMb?: number;
+      zapret2Pid?: number;
+      zapret2UptimeSeconds?: number;
+      zapret2UptimePretty?: string;
       dnsmasqRunning?: number;
       dnsmasqMemoryMb?: number;
       dnsmasqLocalCacheEnabled?: number;
       dnsmasqCacheSize?: number;
+      dnsmasqPid?: number;
+      dnsmasqUptimeSeconds?: number;
+      dnsmasqUptimePretty?: string;
     };
   };
   tailscaleWidget: {

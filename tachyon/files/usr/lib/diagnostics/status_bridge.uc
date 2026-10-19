@@ -27,7 +27,7 @@ function status_command(args) {
     return command_from_args(full);
 }
 
-// status.uc reads its input from stdin. A write-only popen() pipe delivers the
+// status.uc reads its input from stdin. A write-only popen pipe delivers the
 // input but sends the child's stdout to ours, so the caller got an empty
 // string; and status_output() then ran the command a second time with no
 // stdin at all. A temp file redirected into stdin keeps one process, one

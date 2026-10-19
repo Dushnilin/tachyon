@@ -3627,30 +3627,31 @@ function renderDefaultState2({ title, items }) {
       { class: "tachyon_dashboard-page__widgets-section__item__title" },
       title
     ),
-    ...items.map(
-      (item) => E(
-        "div",
-        {
-          class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
-        },
-        [
-          E(
-            "span",
-            {
-              class: "tachyon_dashboard-page__widgets-section__item__row__key"
-            },
-            `${item.key}: `
-          ),
-          E(
-            "span",
-            {
-              class: "tachyon_dashboard-page__widgets-section__item__row__value"
-            },
-            item.value
-          )
-        ]
-      )
-    )
+    ...items.map((item) => {
+      const rowAttrs = {
+        class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
+      };
+      if (item?.attributes?.title) {
+        rowAttrs.title = item.attributes.title;
+      }
+      return E("div", rowAttrs, [
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__widgets-section__item__row__key"
+          },
+          `${item.key}: `
+        ),
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__widgets-section__item__row__value",
+            ...item?.attributes?.title ? { title: item.attributes.title } : {}
+          },
+          item.value
+        )
+      ]);
+    })
   ]);
 }
 function renderWidget(props) {
@@ -7680,17 +7681,31 @@ function applyServiceState(uiState) {
       data: {
         singbox: uiState.service.sing_box.running,
         singboxMemoryMb: uiState.service.sing_box.memory_rss_mb,
+        singboxPid: uiState.service.sing_box.pid,
+        singboxUptimeSeconds: uiState.service.sing_box.uptime_seconds,
+        singboxUptimePretty: uiState.service.sing_box.uptime_pretty,
+        engineVariant: uiState.service.sing_box.engine_variant,
+        engineVersion: uiState.service.sing_box.engine_version,
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
         tachyonMemoryMb: uiState.service.tachyon.memory_rss_mb,
+        tachyonPid: uiState.service.tachyon.pid,
+        tachyonUptimeSeconds: uiState.service.tachyon.uptime_seconds,
+        tachyonUptimePretty: uiState.service.tachyon.uptime_pretty,
         watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning,
         zapret2Running: uiState.service.zapret2 ? uiState.service.zapret2.running : void 0,
         zapret2MemoryMb: uiState.service.zapret2 ? uiState.service.zapret2.memory_rss_mb : void 0,
+        zapret2Pid: uiState.service.zapret2?.pid,
+        zapret2UptimeSeconds: uiState.service.zapret2?.uptime_seconds,
+        zapret2UptimePretty: uiState.service.zapret2?.uptime_pretty,
         dnsmasqRunning: uiState.service.dnsmasq ? uiState.service.dnsmasq.running : void 0,
         dnsmasqMemoryMb: uiState.service.dnsmasq ? uiState.service.dnsmasq.memory_rss_mb : void 0,
         dnsmasqLocalCacheEnabled: uiState.service.dnsmasq ? uiState.service.dnsmasq.local_cache_enabled : void 0,
-        dnsmasqCacheSize: uiState.service.dnsmasq ? uiState.service.dnsmasq.cache_size : void 0
+        dnsmasqCacheSize: uiState.service.dnsmasq ? uiState.service.dnsmasq.cache_size : void 0,
+        dnsmasqPid: uiState.service.dnsmasq?.pid,
+        dnsmasqUptimeSeconds: uiState.service.dnsmasq?.uptime_seconds,
+        dnsmasqUptimePretty: uiState.service.dnsmasq?.uptime_pretty
       }
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
@@ -9119,17 +9134,31 @@ async function fetchServicesInfo() {
       data: {
         singbox: singbox.success ? singbox.data.running : isSteer && engineStatus.success ? 1 : previousData.singbox,
         singboxMemoryMb: singbox.success ? singbox.data.memory_rss_mb : previousData.singboxMemoryMb,
+        singboxPid: singbox.success ? singbox.data.pid : previousData.singboxPid,
+        singboxUptimeSeconds: singbox.success ? singbox.data.uptime_seconds : previousData.singboxUptimeSeconds,
+        singboxUptimePretty: singbox.success ? singbox.data.uptime_pretty : previousData.singboxUptimePretty,
+        engineVariant: singbox.success ? singbox.data.engine_variant : previousData.engineVariant,
+        engineVersion: singbox.success ? singbox.data.engine_version : previousData.engineVersion,
         tachyonRunning: tachyon.success ? tachyon.data.running : previousData.tachyonRunning,
         tachyonEnabled: tachyon.success ? tachyon.data.enabled : previousData.tachyonEnabled,
         tachyonStatus: tachyon.success ? tachyon.data.status : previousData.tachyonStatus,
         tachyonMemoryMb: tachyon.success ? tachyon.data.memory_rss_mb : previousData.tachyonMemoryMb,
+        tachyonPid: tachyon.success ? tachyon.data.pid : previousData.tachyonPid,
+        tachyonUptimeSeconds: tachyon.success ? tachyon.data.uptime_seconds : previousData.tachyonUptimeSeconds,
+        tachyonUptimePretty: tachyon.success ? tachyon.data.uptime_pretty : previousData.tachyonUptimePretty,
         watchdogRunning: watchdog.success ? Number(watchdog.data.running) : previousData.watchdogRunning,
         zapret2Running: previousData.zapret2Running,
         zapret2MemoryMb: previousData.zapret2MemoryMb,
+        zapret2Pid: previousData.zapret2Pid,
+        zapret2UptimeSeconds: previousData.zapret2UptimeSeconds,
+        zapret2UptimePretty: previousData.zapret2UptimePretty,
         dnsmasqRunning: previousData.dnsmasqRunning,
         dnsmasqMemoryMb: previousData.dnsmasqMemoryMb,
         dnsmasqLocalCacheEnabled: previousData.dnsmasqLocalCacheEnabled,
-        dnsmasqCacheSize: previousData.dnsmasqCacheSize
+        dnsmasqCacheSize: previousData.dnsmasqCacheSize,
+        dnsmasqPid: previousData.dnsmasqPid,
+        dnsmasqUptimeSeconds: previousData.dnsmasqUptimeSeconds,
+        dnsmasqUptimePretty: previousData.dnsmasqUptimePretty
       }
     },
     activeEngine
@@ -11059,22 +11088,69 @@ async function renderSystemInfoWidget() {
     "renderSystemInfoWidget"
   );
 }
+function formatServiceRowValue(options) {
+  if (!options.running) {
+    const versionPart = options.version ? ` [v${options.version.replace(/^v/, "")}]` : "";
+    return `✗${versionPart}`;
+  }
+  const parts = ["✓"];
+  if (options.memoryMb) {
+    parts[0] += ` (${options.memoryMb} MB)`;
+  }
+  if (options.uptimePretty) {
+    parts.push(options.uptimePretty);
+  }
+  let res = parts.join(" • ");
+  if (options.version) {
+    res += ` [v${options.version.replace(/^v/, "")}]`;
+  }
+  if (options.extraSuffix) {
+    res += options.extraSuffix;
+  }
+  return res;
+}
+function formatServiceTooltip(options) {
+  const parts = [];
+  if (options.pid) {
+    parts.push(`PID: ${options.pid}`);
+  }
+  if (options.uptimePretty) {
+    parts.push(`${_("Uptime")}: ${options.uptimePretty}`);
+  }
+  return parts.length > 0 ? parts.join(" • ") : void 0;
+}
 async function renderServicesInfoWidget() {
   renderStoreWidget(
     "dashboard-widget-service-info",
     "servicesInfoWidget",
     _("Services info"),
     (data) => {
+      const tachyonTooltip = formatServiceTooltip({
+        pid: data.tachyonPid,
+        uptimePretty: data.tachyonUptimePretty
+      });
+      const singboxTooltip = formatServiceTooltip({
+        pid: data.singboxPid,
+        uptimePretty: data.singboxUptimePretty
+      });
       const items = [
         {
           key: "Tachyon",
-          value: data.tachyonRunning ? data.tachyonMemoryMb ? `✓ (${data.tachyonMemoryMb} MB)` : "✓" : "✗",
+          value: formatServiceRowValue({
+            running: data.tachyonRunning,
+            memoryMb: data.tachyonMemoryMb,
+            uptimePretty: data.tachyonUptimePretty
+          }),
           attributes: {
-            class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+            class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+            ...tachyonTooltip ? { title: tachyonTooltip } : {}
           }
         },
         {
           key: (() => {
+            if (data.engineVariant) {
+              return data.engineVariant;
+            }
             if (store.get().activeEngine === "steer" || store.get().activeEngine === "steer-extended") {
               return "Steer";
             }
@@ -11082,20 +11158,41 @@ async function renderServicesInfoWidget() {
             if (systemInfo.sing_box_tachyon_core) {
               return "Tachyon Core";
             }
+            if (systemInfo.sing_box_lx) {
+              return "Sing-box LX";
+            }
+            if (systemInfo.sing_box_extended) {
+              return "Sing-box Ext";
+            }
             return "Sing-box";
           })(),
-          value: data.singbox ? data.singboxMemoryMb ? `✓ (${data.singboxMemoryMb} MB)` : "✓" : "✗",
+          value: formatServiceRowValue({
+            running: data.singbox,
+            memoryMb: data.singboxMemoryMb,
+            uptimePretty: data.singboxUptimePretty,
+            version: data.engineVersion
+          }),
           attributes: {
-            class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+            class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+            ...singboxTooltip ? { title: singboxTooltip } : {}
           }
         }
       ];
       if (data.zapret2Running) {
+        const zapret2Tooltip = formatServiceTooltip({
+          pid: data.zapret2Pid,
+          uptimePretty: data.zapret2UptimePretty
+        });
         items.push({
           key: "Zapret2",
-          value: data.zapret2MemoryMb ? `✓ (${data.zapret2MemoryMb} MB)` : "✓",
+          value: formatServiceRowValue({
+            running: data.zapret2Running,
+            memoryMb: data.zapret2MemoryMb,
+            uptimePretty: data.zapret2UptimePretty
+          }),
           attributes: {
-            class: "tachyon_dashboard-page__widgets-section__item__row--success"
+            class: "tachyon_dashboard-page__widgets-section__item__row--success",
+            ...zapret2Tooltip ? { title: zapret2Tooltip } : {}
           }
         });
       }
@@ -11105,11 +11202,21 @@ async function renderServicesInfoWidget() {
           const approxMb = (data.dnsmasqCacheSize * 120 / (1024 * 1024)).toFixed(1);
           cacheDetail = ` [${_("Cache")}: ${approxMb} MB]`;
         }
+        const dnsmasqTooltip = formatServiceTooltip({
+          pid: data.dnsmasqPid,
+          uptimePretty: data.dnsmasqUptimePretty
+        });
         items.push({
           key: "Dnsmasq (DNS)",
-          value: data.dnsmasqRunning ? data.dnsmasqMemoryMb ? `✓ (${data.dnsmasqMemoryMb} MB)${cacheDetail}` : `✓${cacheDetail}` : "✗",
+          value: formatServiceRowValue({
+            running: data.dnsmasqRunning,
+            memoryMb: data.dnsmasqMemoryMb,
+            uptimePretty: data.dnsmasqUptimePretty,
+            extraSuffix: cacheDetail
+          }),
           attributes: {
-            class: data.dnsmasqRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+            class: data.dnsmasqRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+            ...dnsmasqTooltip ? { title: dnsmasqTooltip } : {}
           }
         });
       }
