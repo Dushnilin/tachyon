@@ -1,3 +1,5 @@
+import { capMapSize } from '../helpers/capCollectionSize';
+
 const UI_ACTION_NOTIFICATION_STORAGE_KEY =
   'tachyon:owned-ui-action-notifications:v1';
 const MAX_STORED_UI_ACTION_NOTIFICATIONS = 100;
@@ -100,6 +102,7 @@ export class UiActionNotificationTracker {
         notification,
       );
     }
+    capMapSize(this.notifications, MAX_STORED_UI_ACTION_NOTIFICATIONS);
   }
 
   markOwned(kind: UiActionNotificationKind, jobId: string) {
@@ -110,6 +113,7 @@ export class UiActionNotificationTracker {
     const key = getNotificationKey(kind, jobId);
     const current = this.notifications.get(key);
 
+    this.notifications.delete(key);
     this.notifications.set(key, {
       kind,
       jobId,
@@ -131,6 +135,7 @@ export class UiActionNotificationTracker {
       return false;
     }
 
+    this.notifications.delete(key);
     this.notifications.set(key, {
       ...current,
       notified: true,
@@ -141,6 +146,7 @@ export class UiActionNotificationTracker {
   }
 
   private persist() {
+    capMapSize(this.notifications, MAX_STORED_UI_ACTION_NOTIFICATIONS);
     writeStoredNotifications(
       this.storage,
       Array.from(this.notifications.values()),

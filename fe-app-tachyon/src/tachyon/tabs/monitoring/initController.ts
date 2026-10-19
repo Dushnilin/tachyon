@@ -59,6 +59,38 @@ let serviceStateUnsubscribe: (() => void) | null = null;
 let renderTimer: ReturnType<typeof setInterval> | null = null;
 let connectionsPollTimer: ReturnType<typeof setInterval> | null = null;
 let connectionsSocketUrl = '';
+// Unsubscribe by callback identity, never by URL: monitoring and dashboard
+// both listen on the same /connections URL, and socket.disconnect(url) wiped
+// the whole listener set for it - taking the dashboard's subscription with it.
+// Holding the exact refs handed to socket.subscribe() lets the stop and error
+// paths drop only this tab's handler; the manager closes the socket itself once
+// the last listener for the URL is gone.
+let connectionsSocketSubscription: {
+  listener: Parameters<typeof socket.subscribe>[1];
+  onError: Parameters<typeof socket.subscribe>[2];
+} | null = null;
+
+function unsubscribeConnectionsSocket() {
+  if (connectionsSocketSubscription && connectionsSocketUrl) {
+    socket.unsubscribe(
+      connectionsSocketUrl,
+      connectionsSocketSubscription.listener,
+      connectionsSocketSubscription.onError,
+    );
+  }
+  connectionsSocketSubscription = null;
+}
+
+// Same signature as socket.subscribe(), so the call site stays unchanged apart
+// from the name: what matters is that the callbacks are remembered here.
+function trackConnectionsSocketSubscription(
+  url: string,
+  listener: Parameters<typeof socket.subscribe>[1],
+  onError: Parameters<typeof socket.subscribe>[2],
+) {
+  connectionsSocketSubscription = { listener, onError };
+  socket.subscribe(url, listener, onError);
+}
 let directConnectionsSocketFailedAt = 0;
 const DIRECT_SOCKET_COOLDOWN_MS = 60_000;
 
@@ -1043,9 +1075,10 @@ async function connectToConnectionsSocket(updatesId: number) {
     return;
   }
 
+  unsubscribeConnectionsSocket();
   connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
 
-  socket.subscribe(
+  trackConnectionsSocketSubscription(
     connectionsSocketUrl,
     (msg) => {
       if (
@@ -1081,7 +1114,7 @@ async function connectToConnectionsSocket(updatesId: number) {
       );
 
       if (connectionsSocketUrl) {
-        socket.disconnect(connectionsSocketUrl);
+        unsubscribeConnectionsSocket();
         connectionsSocketUrl = '';
       }
 
@@ -1113,7 +1146,7 @@ function stopConnectionsUpdates() {
   }
 
   if (connectionsSocketUrl) {
-    socket.disconnect(connectionsSocketUrl);
+    unsubscribeConnectionsSocket();
     connectionsSocketUrl = '';
   }
 }

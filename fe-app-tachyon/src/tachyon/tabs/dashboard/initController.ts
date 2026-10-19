@@ -91,6 +91,35 @@ const followedLatencyJobs = new Set<string>();
 const handledSubscriptionJobs = new Set<string>();
 const handledLatencyJobs = new Set<string>();
 
+// Teardown has to name the exact callbacks it registered. `/connections` is
+// shared with the monitoring tab, so both a whole-manager reset and a
+// whole-URL disconnect took the other tab's live listener down with them, and
+// neither tab ever re-subscribed. Track what this tab handed to
+// socket.subscribe() and unsubscribe exactly that: the manager drops the last
+// listener for a URL on its own, so the shared socket stays up for whoever is
+// still listening.
+let clashSocketSubscriptions: Array<{
+  url: string;
+  listener: Parameters<typeof socket.subscribe>[1];
+  onError: Parameters<typeof socket.subscribe>[2];
+}> = [];
+
+function trackClashSocketSubscription(
+  url: string,
+  listener: Parameters<typeof socket.subscribe>[1],
+  onError: Parameters<typeof socket.subscribe>[2],
+) {
+  socket.subscribe(url, listener, onError);
+  clashSocketSubscriptions.push({ url, listener, onError });
+}
+
+function unsubscribeClashSockets() {
+  for (const { url, listener, onError } of clashSocketSubscriptions) {
+    socket.unsubscribe(url, listener, onError);
+  }
+  clashSocketSubscriptions = [];
+}
+
 const customProxyLatencies = new Map<string, number>();
 const singleTestingOutboundCodes: Record<string, boolean> = {};
 let isTestingAllSections = false;
@@ -539,7 +568,9 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
-  socket.subscribe(
+  unsubscribeClashSockets();
+
+  trackClashSocketSubscription(
     `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
     (msg) => {
       if (
@@ -577,7 +608,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
     },
   );
 
-  socket.subscribe(
+  trackClashSocketSubscription(
     `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
     (msg) => {
       if (
@@ -651,7 +682,9 @@ function stopDashboardDataUpdates() {
   }
 
   sectionsRefreshQueued = false;
-  socket.resetAll();
+  // Only this tab's listeners, not socket.resetAll(): the monitoring tab holds
+  // its own subscription to the same /connections URL and would go silent.
+  unsubscribeClashSockets();
 }
 
 function startDashboardDataUpdates() {

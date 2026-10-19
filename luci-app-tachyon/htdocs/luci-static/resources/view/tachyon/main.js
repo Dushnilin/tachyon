@@ -7247,6 +7247,27 @@ var TachyonLogWatcher = class _TachyonLogWatcher {
   }
 };
 
+// src/tachyon/helpers/capCollectionSize.ts
+var DEFAULT_MAX_ENTRIES = 500;
+function capSetSize(set, max = DEFAULT_MAX_ENTRIES) {
+  while (set.size > max) {
+    const oldest = set.values().next().value;
+    if (oldest === void 0) {
+      return;
+    }
+    set.delete(oldest);
+  }
+}
+function capMapSize(map, max = DEFAULT_MAX_ENTRIES) {
+  while (map.size > max) {
+    const oldest = map.keys().next().value;
+    if (oldest === void 0) {
+      return;
+    }
+    map.delete(oldest);
+  }
+}
+
 // src/tachyon/services/logNotificationDeduper.service.ts
 var LOG_NOTIFICATION_STORAGE_KEY = "tachyon:shown-log-error-notifications:v1";
 var MAX_STORED_LOG_NOTIFICATIONS = 500;
@@ -7320,6 +7341,7 @@ var LogNotificationDeduper = class {
   constructor(storage = getSessionStorage()) {
     this.storage = storage;
     this.seenKeys = new Set(readStoredKeys(storage));
+    capSetSize(this.seenKeys, MAX_STORED_LOG_NOTIFICATIONS);
   }
   shouldNotify(line) {
     if (!getTachyonLogNotification(line)) {
@@ -7330,6 +7352,7 @@ var LogNotificationDeduper = class {
       return false;
     }
     this.seenKeys.add(key);
+    capSetSize(this.seenKeys, MAX_STORED_LOG_NOTIFICATIONS);
     writeStoredKeys(this.storage, Array.from(this.seenKeys));
     return true;
   }
@@ -8245,6 +8268,7 @@ var UiActionNotificationTracker = class {
         notification
       );
     }
+    capMapSize(this.notifications, MAX_STORED_UI_ACTION_NOTIFICATIONS);
   }
   markOwned(kind, jobId) {
     if (!jobId) {
@@ -8252,6 +8276,7 @@ var UiActionNotificationTracker = class {
     }
     const key = getNotificationKey(kind, jobId);
     const current = this.notifications.get(key);
+    this.notifications.delete(key);
     this.notifications.set(key, {
       kind,
       jobId,
@@ -8269,6 +8294,7 @@ var UiActionNotificationTracker = class {
     if (!current || current.notified) {
       return false;
     }
+    this.notifications.delete(key);
     this.notifications.set(key, {
       ...current,
       notified: true,
@@ -8278,6 +8304,7 @@ var UiActionNotificationTracker = class {
     return true;
   }
   persist() {
+    capMapSize(this.notifications, MAX_STORED_UI_ACTION_NOTIFICATIONS);
     writeStoredNotifications(
       this.storage,
       Array.from(this.notifications.values())
@@ -9348,27 +9375,6 @@ function getServiceAvailability({
   return running ? "running" : "stopped";
 }
 
-// src/tachyon/helpers/capCollectionSize.ts
-var DEFAULT_MAX_ENTRIES = 500;
-function capSetSize(set, max = DEFAULT_MAX_ENTRIES) {
-  while (set.size > max) {
-    const oldest = set.values().next().value;
-    if (oldest === void 0) {
-      return;
-    }
-    set.delete(oldest);
-  }
-}
-function capMapSize(map, max = DEFAULT_MAX_ENTRIES) {
-  while (map.size > max) {
-    const oldest = map.keys().next().value;
-    if (oldest === void 0) {
-      return;
-    }
-    map.delete(oldest);
-  }
-}
-
 // src/tachyon/tabs/dashboard/initController.ts
 var expandedSections = getExpandedSections();
 function toggleSectionExpanded(sectionCode) {
@@ -9401,6 +9407,17 @@ var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
 var handledSubscriptionJobs = /* @__PURE__ */ new Set();
 var handledLatencyJobs = /* @__PURE__ */ new Set();
+var clashSocketSubscriptions = [];
+function trackClashSocketSubscription(url, listener, onError) {
+  socket.subscribe(url, listener, onError);
+  clashSocketSubscriptions.push({ url, listener, onError });
+}
+function unsubscribeClashSockets() {
+  for (const { url, listener, onError } of clashSocketSubscriptions) {
+    socket.unsubscribe(url, listener, onError);
+  }
+  clashSocketSubscriptions = [];
+}
 var customProxyLatencies = /* @__PURE__ */ new Map();
 var singleTestingOutboundCodes = {};
 var isTestingAllSections = false;
@@ -9730,7 +9747,8 @@ async function connectToClashSockets(dataUpdatesId) {
     );
     return;
   }
-  socket.subscribe(
+  unsubscribeClashSockets();
+  trackClashSocketSubscription(
     `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
     (msg) => {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
@@ -9758,7 +9776,7 @@ async function connectToClashSockets(dataUpdatesId) {
       );
     }
   );
-  socket.subscribe(
+  trackClashSocketSubscription(
     `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
     (msg) => {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
@@ -9818,7 +9836,7 @@ function stopDashboardDataUpdates() {
     connectionsRefreshTimer = null;
   }
   sectionsRefreshQueued = false;
-  socket.resetAll();
+  unsubscribeClashSockets();
 }
 function startDashboardDataUpdates() {
   if (dashboardDataUpdatesStarted || !dashboardMounted || getDashboardServiceAvailability() === "stopped") {
@@ -14950,6 +14968,7 @@ function renderServiceCheckModal() {
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts
+var MAX_CHAT_HISTORY_MESSAGES = 100;
 var chatHistory = [
   {
     sender: "assistant",
@@ -14962,6 +14981,12 @@ var chatHistory = [
     })
   }
 ];
+function appendChatMessage(msg) {
+  chatHistory.push(msg);
+  if (chatHistory.length > MAX_CHAT_HISTORY_MESSAGES) {
+    chatHistory.splice(1, chatHistory.length - MAX_CHAT_HISTORY_MESSAGES);
+  }
+}
 function renderAiChatModal() {
   const messageListContainer = E("div", {
     style: "height: 360px; overflow-y: auto; padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.2)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; width: 100%; box-sizing: border-box;"
@@ -15017,7 +15042,7 @@ function renderAiChatModal() {
         minute: "2-digit"
       })
     };
-    chatHistory.push(userMsg);
+    appendChatMessage(userMsg);
     chatInput.value = "";
     renderMessages();
     const typingMsg = {
@@ -15055,7 +15080,7 @@ function renderAiChatModal() {
           }
         }
       }
-      chatHistory.push({
+      appendChatMessage({
         sender: "assistant",
         text: answerText,
         timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
@@ -15066,7 +15091,7 @@ function renderAiChatModal() {
     } catch (e) {
       chatHistory.pop();
       const errMsg = e instanceof Error ? e.message : _("Server unavailable");
-      chatHistory.push({
+      appendChatMessage({
         sender: "assistant",
         text: "❌ " + _("AI service error") + ": " + errMsg,
         timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
@@ -22855,6 +22880,21 @@ var serviceStateUnsubscribe = null;
 var renderTimer = null;
 var connectionsPollTimer = null;
 var connectionsSocketUrl = "";
+var connectionsSocketSubscription = null;
+function unsubscribeConnectionsSocket() {
+  if (connectionsSocketSubscription && connectionsSocketUrl) {
+    socket.unsubscribe(
+      connectionsSocketUrl,
+      connectionsSocketSubscription.listener,
+      connectionsSocketSubscription.onError
+    );
+  }
+  connectionsSocketSubscription = null;
+}
+function trackConnectionsSocketSubscription(url, listener, onError) {
+  connectionsSocketSubscription = { listener, onError };
+  socket.subscribe(url, listener, onError);
+}
 var directConnectionsSocketFailedAt = 0;
 var DIRECT_SOCKET_COOLDOWN_MS = 6e4;
 function canUseConnectionsSocket() {
@@ -23628,8 +23668,9 @@ async function connectToConnectionsSocket(updatesId) {
   if (!monitoringMounted || mountId !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
     return;
   }
+  unsubscribeConnectionsSocket();
   connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
-  socket.subscribe(
+  trackConnectionsSocketSubscription(
     connectionsSocketUrl,
     (msg) => {
       if (updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
@@ -23653,7 +23694,7 @@ async function connectToConnectionsSocket(updatesId) {
         _err
       );
       if (connectionsSocketUrl) {
-        socket.disconnect(connectionsSocketUrl);
+        unsubscribeConnectionsSocket();
         connectionsSocketUrl = "";
       }
       startConnectionsPolling();
@@ -23678,7 +23719,7 @@ function stopConnectionsUpdates() {
     connectionsPollTimer = null;
   }
   if (connectionsSocketUrl) {
-    socket.disconnect(connectionsSocketUrl);
+    unsubscribeConnectionsSocket();
     connectionsSocketUrl = "";
   }
 }

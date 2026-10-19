@@ -1,12 +1,13 @@
 #!/usr/bin/env ucode
 //
-// Effective GOMEMLIMIT for a tachyon-core process, in MiB.
+// Effective GOMEMLIMIT for Go-based core runs (sing-box and its variants), in MiB.
 //
 // The init-script generators compute this in shell for the long-lived daemon.
-// Short-lived core runs - `tachyon-core check`, `rule-set match`, `tools fetch` -
-// never see procd's environment, so without an explicit value they start a
-// second Go runtime with no memory ceiling while the daemon already holds its
-// own. On 128/256 MB routers that spike is what the OOM killer lands on.
+// Short-lived CLI runs - `check`, `rule-set match`, `tools fetch` - never see
+// procd's environment, so when the active engine is Go-based (`sing-box`) they
+// would otherwise start a second Go runtime with no memory ceiling while the
+// daemon already holds its own. On 128/256 MB routers that spike is what the
+// OOM killer lands on. (Native Rust `tachyon-core` ignores GOMEMLIMIT.)
 //
 // Lives in core/ rather than service/oom_scale.uc because tachyon_core/* must
 // not reach into service/*, and two of the three callers sit in tachyon_core

@@ -2740,8 +2740,11 @@ function run_deferred_subscription_bootstrap(deferred_sections) {
 
 function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
     remaining_sections = trim(as_string(remaining_sections));
+    let attempts = 0;
+    let max_attempts = 20;
 
-    while (remaining_sections != "") {
+    while (remaining_sections != "" && attempts < max_attempts) {
+        attempts++;
         system("sleep 30");
         if (!sing_box_service_running()) {
             log_message("Stopping subscription bootstrap retry worker because sing-box is not running", "warn");
@@ -2764,6 +2767,9 @@ function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
 
         remaining_sections = result.remaining;
     }
+
+    if (remaining_sections != "" && attempts >= max_attempts)
+        log_message("Giving up subscription bootstrap retry after " + attempts + " attempts for: " + remaining_sections, "warn");
 
     unlink_path(TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE);
 }

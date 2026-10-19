@@ -8,6 +8,8 @@ interface ChatMessage {
   timestamp: string;
 }
 
+const MAX_CHAT_HISTORY_MESSAGES = 100;
+
 const chatHistory: ChatMessage[] = [
   {
     sender: 'assistant',
@@ -20,6 +22,13 @@ const chatHistory: ChatMessage[] = [
     }),
   },
 ];
+
+function appendChatMessage(msg: ChatMessage) {
+  chatHistory.push(msg);
+  if (chatHistory.length > MAX_CHAT_HISTORY_MESSAGES) {
+    chatHistory.splice(1, chatHistory.length - MAX_CHAT_HISTORY_MESSAGES);
+  }
+}
 
 export function renderAiChatModal() {
   const messageListContainer = E('div', {
@@ -88,7 +97,7 @@ export function renderAiChatModal() {
         minute: '2-digit',
       }),
     };
-    chatHistory.push(userMsg);
+    appendChatMessage(userMsg);
     chatInput.value = '';
     renderMessages();
 
@@ -134,7 +143,7 @@ export function renderAiChatModal() {
         }
       }
 
-      chatHistory.push({
+      appendChatMessage({
         sender: 'assistant',
         text: answerText,
         timestamp: new Date().toLocaleTimeString([], {
@@ -145,7 +154,7 @@ export function renderAiChatModal() {
     } catch (e: unknown) {
       chatHistory.pop();
       const errMsg = e instanceof Error ? e.message : _('Server unavailable');
-      chatHistory.push({
+      appendChatMessage({
         sender: 'assistant',
         text: '❌ ' + _('AI service error') + ': ' + errMsg,
         timestamp: new Date().toLocaleTimeString([], {

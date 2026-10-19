@@ -1,3 +1,5 @@
+import { capSetSize } from '../helpers/capCollectionSize';
+
 const LOG_NOTIFICATION_STORAGE_KEY = 'tachyon:shown-log-error-notifications:v1';
 const MAX_STORED_LOG_NOTIFICATIONS = 500;
 
@@ -112,6 +114,7 @@ export class LogNotificationDeduper {
   constructor(storage: Storage | null = getSessionStorage()) {
     this.storage = storage;
     this.seenKeys = new Set(readStoredKeys(storage));
+    capSetSize(this.seenKeys, MAX_STORED_LOG_NOTIFICATIONS);
   }
 
   shouldNotify(line: string) {
@@ -126,6 +129,7 @@ export class LogNotificationDeduper {
     }
 
     this.seenKeys.add(key);
+    capSetSize(this.seenKeys, MAX_STORED_LOG_NOTIFICATIONS);
     writeStoredKeys(this.storage, Array.from(this.seenKeys));
     return true;
   }
