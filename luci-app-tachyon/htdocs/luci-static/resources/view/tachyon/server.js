@@ -1163,6 +1163,43 @@ function restoreServerEditState(snapshot) {
   setUciSectionState("deletes", snapshot.sectionId, snapshot.deletes);
 }
 
+function sanitizeUciDeletes(targetSectionId) {
+  const state = uci.state;
+  if (!state || !state.deletes?.[UCI_PACKAGE]) {
+    return;
+  }
+
+  const creates = state.creates?.[UCI_PACKAGE] || {};
+  const values = state.values?.[UCI_PACKAGE] || {};
+  const deletes = state.deletes[UCI_PACKAGE];
+
+  for (const sid in deletes) {
+    if (creates[sid] || !values[sid]) {
+      delete deletes[sid];
+      continue;
+    }
+
+    if (deletes[sid] !== true && typeof deletes[sid] === "object") {
+      for (const opt in deletes[sid]) {
+        if (!values[sid].hasOwnProperty(opt)) {
+          delete deletes[sid][opt];
+        }
+      }
+      if (isEmptyObject(deletes[sid])) {
+        delete deletes[sid];
+      }
+    }
+  }
+
+  if (targetSectionId && (creates[targetSectionId] || !values[targetSectionId])) {
+    delete deletes[targetSectionId];
+  }
+
+  if (isEmptyObject(state.deletes[UCI_PACKAGE])) {
+    delete state.deletes[UCI_PACKAGE];
+  }
+}
+
 function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   setValue(sectionId, "protocol", protocol);
   setDefault(sectionId, "enabled", "1");
@@ -3690,6 +3727,7 @@ function configureServerSection(sectionRef, options = {}) {
   };
 
   sectionRef.renderMoreOptionsModal = function (sectionId, ev) {
+    sanitizeUciDeletes(sectionId);
     this.serverEditSnapshots ??= {};
     this.serverEditSnapshots[sectionId] = captureServerEditState(sectionId);
 
@@ -3716,6 +3754,7 @@ function configureServerSection(sectionRef, options = {}) {
     const prevMap = mapNode ? dom.findClassInstance(mapNode) : this.map;
 
     prevMap.addedSection = sectionId;
+    sanitizeUciDeletes(sectionId);
 
     const capabilitiesTask =
       typeof options.loadCapabilities === "function"
@@ -3753,6 +3792,8 @@ function configureServerSection(sectionRef, options = {}) {
       restoreServerEditState(snapshot);
     }
 
+    sanitizeUciDeletes(sectionId);
+
     return form.GridSection.prototype.handleModalCancel.call(
       this,
       modalMap,
@@ -3774,7 +3815,49 @@ function configureServerSection(sectionRef, options = {}) {
       return Promise.resolve();
     }
 
-    let saveTasks = targetMap.save(null, true);
+    const targetSectionId =
+      targetMap.section || targetMap.children?.[0]?.section;
+
+    sanitizeUciDeletes(targetSectionId);
+
+    const origCallDelete = uci.callDelete;
+    if (typeof origCallDelete === "function") {
+      uci.callDelete = function (config, section, options) {
+        if (config === UCI_PACKAGE) {
+          const creates = uci.state?.creates?.[UCI_PACKAGE];
+          const values = uci.state?.values?.[UCI_PACKAGE];
+          if (creates?.[section] || !values?.[section]) {
+            return Promise.resolve(0);
+          }
+        }
+        return origCallDelete.apply(this, arguments).catch((err) => {
+          if (
+            config === UCI_PACKAGE &&
+            (err?.message?.includes("ubus code 4") ||
+              err?.message?.includes("Ресурс не найден") ||
+              err?.message?.includes("Not found"))
+          ) {
+            return 0;
+          }
+          return Promise.reject(err);
+        });
+      };
+    }
+
+    const beforeUciSave = () => {
+      sanitizeUciDeletes(targetSectionId);
+    };
+
+    let saveTasks;
+    try {
+      saveTasks = targetMap.save(beforeUciSave, true);
+    } catch (e) {
+      if (origCallDelete) {
+        uci.callDelete = origCallDelete;
+      }
+      return Promise.reject(e);
+    }
+
     let curr = targetMap;
     while (curr.parent) {
       curr = curr.parent;
@@ -3785,7 +3868,12 @@ function configureServerSection(sectionRef, options = {}) {
 
     return saveTasks
       .then(() => this.handleModalCancel(targetMap, ev, true))
-      .catch((error) => showServerValidationMessage(error));
+      .catch((error) => showServerValidationMessage(error))
+      .finally(() => {
+        if (origCallDelete) {
+          uci.callDelete = origCallDelete;
+        }
+      });
   };
 
   sectionRef.renderRowActions = function (sectionId) {
