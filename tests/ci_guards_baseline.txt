@@ -13,7 +13,6 @@ raw_background|tachyon/files/usr/lib/service/initd.uc|1
 raw_background|tachyon/files/usr/lib/service/state.uc|1
 raw_background|tachyon/files/usr/lib/service/watchdog.uc|1
 raw_popen|tachyon/files/usr/lib/components/helpers.uc|1
-raw_popen|tachyon/files/usr/lib/diagnostics/status_bridge.uc|1
 raw_system|tachyon/files/usr/lib/components/action.uc|3
 raw_system|tachyon/files/usr/lib/components/hosts.uc|2
 raw_system|tachyon/files/usr/lib/components/updates.uc|5

@@ -171,7 +171,7 @@ function parse_hosts_file(path, emit) {
 function install_hosts_cache(tmp_path) {
     mkdir_p(HOSTS_CACHE_DIR);
     if (fs.stat(HOSTS_CACHE_FILE) != null &&
-        system("cmp -s " + shell_quote(tmp_path) + " " + shell_quote(HOSTS_CACHE_FILE)) == 0) {
+        run("cmp -s " + shell_quote(tmp_path) + " " + shell_quote(HOSTS_CACHE_FILE))) {
         remove_file(tmp_path);
         return true;
     }
