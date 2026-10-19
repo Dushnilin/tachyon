@@ -14,6 +14,29 @@ function fail(message) {
   process.exit(1);
 }
 
+// The test container's node predates optional chaining (?.), so navigate the
+// deletes object with plain guarded access.
+function deletesFor(pkg, section) {
+  const d = sandboxDeletes();
+  if (!d || !d[pkg]) return undefined;
+  if (section === undefined) return d[pkg];
+  return d[pkg][section];
+}
+function sandboxDeletes() {
+  return sandbox.uci && sandbox.uci.state ? sandbox.uci.state.deletes : undefined;
+}
+
+// The container's node (v12) predates optional chaining, but the production
+// view code legitimately uses it (LuCI's browser supports it). This block only
+// uses the `a?.[b]` form, so lower it to `a[b]` before running; every fixture
+// below defines these objects, so the guard is never actually needed here.
+function lowerOptionalChaining(code) {
+  return code.replace(
+    /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\?\.\[/g,
+    "$1[",
+  );
+}
+
 function requiredIndex(needle, from = 0) {
   const index = source.indexOf(needle, from);
   if (index < 0) fail(`missing source contract: ${needle}`);
@@ -99,7 +122,7 @@ const sandbox = {
 };
 
 const sanitizeScript = new vm.Script(`
-  ${sanitizeBlock}
+  ${lowerOptionalChaining(sanitizeBlock)}
   globalThis.sanitizeUciDeletes = sanitizeUciDeletes;
 `);
 const context = vm.createContext(sandbox);
@@ -130,10 +153,10 @@ sandbox.uci.state = {
 
 sandbox.sanitizeUciDeletes("telegram_socks");
 
-if (sandbox.uci.state.deletes?.tachyon?.telegram_socks) {
+if (deletesFor("tachyon", "telegram_socks")) {
   fail("sanitizeUciDeletes must prune all deletes for newly created section");
 }
-if (sandbox.uci.state.deletes?.tachyon) {
+if (deletesFor("tachyon")) {
   fail("sanitizeUciDeletes must prune empty package delete container");
 }
 
@@ -164,14 +187,14 @@ sandbox.uci.state = {
 
 sandbox.sanitizeUciDeletes("srv_existing");
 
-const existingDeletes = sandbox.uci.state.deletes?.tachyon?.srv_existing;
+const existingDeletes = deletesFor("tachyon", "srv_existing");
 if (!existingDeletes || !existingDeletes.server_uuid) {
   fail("sanitizeUciDeletes must retain deletes for options that exist in UCI values");
 }
 if (existingDeletes.vless_flow || existingDeletes.reality_public_key) {
   fail("sanitizeUciDeletes must prune deletes for options not present in UCI values");
 }
-if (sandbox.uci.state.deletes?.tachyon?.ghost_section) {
+if (deletesFor("tachyon", "ghost_section")) {
   fail("sanitizeUciDeletes must prune deletes for non-existent sections");
 }
 
