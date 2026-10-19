@@ -2348,10 +2348,22 @@ function context_from_runtime() {
     };
 }
 
+function find_core_binary() {
+    if (command_exists("tachyon-core"))
+        return "tachyon-core";
+    if (command_exists("sing-box"))
+        return "sing-box";
+    return "";
+}
+
+function core_exists() {
+    return command_exists("tachyon-core") || command_exists("sing-box");
+}
+
 function sing_box_variant_marker(ctx, value) {
     let path = as_string(ctx.sing_box_variant_state_file);
     if (path == "")
-        path = "/etc/tachyon/tachyon-core-variant";
+        path = fs.stat("/etc/tachyon/tachyon-core-variant") != null ? "/etc/tachyon/tachyon-core-variant" : "/etc/tachyon/sing-box-variant";
 
     let data = fs.readfile(path);
     return trim(as_string(data)) == as_string(value);
@@ -2376,7 +2388,7 @@ function sing_box_tachyon_core_marker_set(ctx) {
 function sing_box_version_state(ctx) {
     let path = as_string(ctx.sing_box_version_state_file);
     if (path == "")
-        path = "/etc/tachyon/tachyon-core-version";
+        path = fs.stat("/etc/tachyon/tachyon-core-version") != null ? "/etc/tachyon/tachyon-core-version" : "/etc/tachyon/sing-box-version";
 
     let data = fs.readfile(path);
     if (data == null)
@@ -2387,13 +2399,14 @@ function sing_box_version_state(ctx) {
 }
 
 function get_sing_box_version(ctx) {
-    if (!command_exists("tachyon-core"))
+    let bin = find_core_binary();
+    if (bin == "")
         return "";
 
     if (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx))
         return sing_box_version_state(ctx);
 
-    return common.parse_sing_box_version(command_output_from_args([ "tachyon-core", "version" ]));
+    return common.parse_sing_box_version(command_output_from_args([ bin, "version" ]));
 }
 
 function sing_box_version_is_extended(version) {
@@ -2415,7 +2428,7 @@ function sing_box_version_is_foreign_core(version) {
 }
 
 function sing_box_is_extended(ctx, version) {
-    if (as_string(version) == "" && command_exists("tachyon-core") &&
+    if (as_string(version) == "" && core_exists() &&
         (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         return true;
 
@@ -2426,7 +2439,7 @@ function sing_box_is_extended(ctx, version) {
 function sing_box_is_lx(ctx, version) {
     if (sing_box_version_is_lx(version) || sing_box_version_is_foreign_core(version))
         return true;
-    if (as_string(version) == "" && command_exists("tachyon-core") && (sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
+    if (as_string(version) == "" && core_exists() && (sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
         return true;
 
     return sing_box_version_is_lx(version != null ? version : get_sing_box_version(ctx)) || sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx));
@@ -2435,7 +2448,7 @@ function sing_box_is_lx(ctx, version) {
 function sing_box_is_tachyon_core(ctx, version) {
     if (sing_box_version_is_foreign_core(version))
         return true;
-    if (as_string(version) == "" && command_exists("tachyon-core") && sing_box_tachyon_core_marker_set(ctx))
+    if (as_string(version) == "" && core_exists() && sing_box_tachyon_core_marker_set(ctx))
         return true;
 
     return sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx)) || sing_box_tachyon_core_marker_set(ctx);
@@ -2449,7 +2462,7 @@ function sing_box_is_tachyon_core(ctx, version) {
 function sing_box_capability_marker(ctx, version) {
     let path = as_string(ctx.sing_box_variant_state_file);
     if (path == "")
-        path = "/etc/tachyon/tachyon-core-variant";
+        path = fs.stat("/etc/tachyon/tachyon-core-variant") != null ? "/etc/tachyon/tachyon-core-variant" : "/etc/tachyon/sing-box-variant";
 
     let data = fs.readfile(path);
     let marker = data == null ? "" : trim(as_string(data));
@@ -2464,16 +2477,20 @@ function sing_box_capability_marker(ctx, version) {
 function sing_box_supports_tailscale(ctx, version, version_output) {
     let answer = core_profile().supports_tailscale(as_string(version),
         sing_box_capability_marker(ctx, version), as_string(version_output));
-    if (answer == null)
-        answer = core_profile().output_has_build_tag(command_output_from_args([ "tachyon-core", "version" ]), "with_tailscale");
+    if (answer == null) {
+        let bin = find_core_binary();
+        answer = bin != "" ? core_profile().output_has_build_tag(command_output_from_args([ bin, "version" ]), "with_tailscale") : false;
+    }
     return answer;
 }
 
 function sing_box_supports_xhttp(ctx, version, version_output) {
     let answer = core_profile().supports_xhttp(as_string(version),
         sing_box_capability_marker(ctx, version), as_string(version_output));
-    if (answer == null)
-        answer = core_profile().output_has_build_tag(command_output_from_args([ "tachyon-core", "version" ]), "with_xhttp");
+    if (answer == null) {
+        let bin = find_core_binary();
+        answer = bin != "" ? core_profile().output_has_build_tag(command_output_from_args([ bin, "version" ]), "with_xhttp") : false;
+    }
     return answer;
 }
 
@@ -2488,6 +2505,7 @@ function managed_sing_box_service_script(marker) {
         "USE_PROCD=1\n" +
         "START=99\n" +
         "PROG=\"/usr/bin/tachyon-core\"\n" +
+        "[ -x \"$PROG\" ] || PROG=\"/usr/bin/sing-box\"\n" +
         "\n" +
         "start_service() {\n" +
         "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
@@ -2502,8 +2520,10 @@ function managed_sing_box_service_script(marker) {
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n" +
         "\n" +
+        "    [ -x \"$PROG\" ] || PROG=\"$(command -v tachyon-core 2>/dev/null || command -v sing-box 2>/dev/null || echo /usr/bin/tachyon-core)\"\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/tachyon-core/config.json\"\n" +
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
+        "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n" +
         "\n" +
         "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
@@ -2802,12 +2822,13 @@ function check_runtime_requirements() {
     log_message("Checking required packages and runtime settings", "info");
 
     let ctx = context_from_runtime();
-    let sing_box_version_output = command_exists("tachyon-core") ? command_output_from_args([ "tachyon-core", "version" ]) : "";
+    let bin = find_core_binary();
+    let sing_box_version_output = bin != "" ? command_output_from_args([ bin, "version" ]) : "";
     let sing_box_version = (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)) ? sing_box_version_state(ctx) : common.parse_sing_box_version(sing_box_version_output);
     let coreutils_base64_version = first_line_field_from_text(command_output("base64 --version 2>/dev/null"), 4);
 
     if (sing_box_version == "") {
-        if (!command_exists("tachyon-core") || !(sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
+        if (!core_exists() || !(sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
             fail_requirement("Package 'sing-box' is not installed. Aborted.", "error");
     }
     else if (!sing_box_version_is_foreign_core(sing_box_version) &&
@@ -2822,11 +2843,11 @@ function check_runtime_requirements() {
         fail_requirement("Package 'sing-box' version (" + sing_box_version + ") is lower than the required minimum (" + ctx.sing_box_required_version + "). Update sing-box: opkg update && opkg remove sing-box && opkg install sing-box. Aborted.", "error");
     }
 
-    if (!service_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx)))
+    if (!service_exists("tachyon-core") && !service_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx) || sing_box_tachyon_core_marker_set(ctx) || core_exists()))
         install_managed_sing_box_service_script(ctx);
 
-    if (!service_exists("sing-box"))
-        fail_requirement("Service 'sing-box' is missing. Install a sing-box package or reinstall sing-box-lx / sing-box-extended binary variant. Aborted.", "error");
+    if (!service_exists("tachyon-core") && !service_exists("sing-box"))
+        fail_requirement("Service 'tachyon-core' is missing. Install a sing-box package or reinstall sing-box-lx / sing-box-extended binary variant. Aborted.", "error");
 
     validate_extended_server_features(ctx, sing_box_version, sing_box_version_output);
     validate_section_action_variant_support(ctx, sing_box_version);

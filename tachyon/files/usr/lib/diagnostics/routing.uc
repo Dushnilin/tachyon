@@ -474,7 +474,8 @@ function cleanup_check_proxy_dir(dir) {
 
 function check_proxy() {
     let sing_box_config_path = option(settings(), "config_path", "");
-    if (!command_exists("tachyon-core")) {
+    let bin = command_exists("tachyon-core") ? "tachyon-core" : (command_exists("sing-box") ? "sing-box" : "");
+    if (bin == "") {
         nolog("sing-box is not installed");
         return 1;
     }
@@ -484,7 +485,7 @@ function check_proxy() {
     }
 
     nolog("Checking sing-box configuration...");
-    if (!command_success_from_args([ "tachyon-core", "-c", sing_box_config_path, "check" ])) {
+    if (!command_success_from_args([ bin, "-c", sing_box_config_path, "check" ])) {
         nolog("Invalid configuration");
         return 1;
     }
@@ -511,7 +512,7 @@ function check_proxy() {
 
     let response = "";
     for (let attempt = 1; attempt <= 5; attempt++) {
-        let args = [ "tachyon-core", "tools", "fetch", "ifconfig.me", "-c", check_proxy_config, "-D", check_proxy_dir, "--disable-color" ];
+        let args = [ bin, "tools", "fetch", "ifconfig.me", "-c", check_proxy_config, "-D", check_proxy_dir, "--disable-color" ];
         if (outbound_tag != "") {
             push(args, "-o");
             push(args, outbound_tag);
