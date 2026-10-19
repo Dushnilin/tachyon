@@ -333,6 +333,23 @@ function check_dns_available() {
     return dns_mod.check_dns_available();
 }
 
+function is_valid_resolv_conf() {
+    let resolv_link = "";
+    try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
+    let content = trim(fs.readfile("/etc/resolv.conf") || "");
+    let has_nameserver = match(content, /nameserver\s+[0-9a-fA-F:.]+/);
+
+    if (resolv_link == "/tmp/resolv.conf" || resolv_link == "../tmp/resolv.conf" ||
+        resolv_link == "/tmp/resolv.conf.d/resolv.conf.auto" || resolv_link == "../tmp/resolv.conf.d/resolv.conf.auto" ||
+        resolv_link == "/tmp/resolv.conf.auto" || resolv_link == "../tmp/resolv.conf.auto") {
+        return { ok: true, is_link: true, target: resolv_link };
+    }
+    if (has_nameserver) {
+        return { ok: true, is_link: resolv_link != "", target: resolv_link != "" ? resolv_link : "regular file" };
+    }
+    return { ok: false, is_link: resolv_link != "", target: resolv_link };
+}
+
 function check_fakeip() {
     return dns_mod.check_fakeip();
 }
@@ -744,11 +761,10 @@ function run_recovery_checks() {
         doc_check("✅", "dnsmasq drop-ins", "absent", "");
     }
 
-    // resolv.conf must be the stock symlink and point at a working upstream.
+    // resolv.conf must be a valid symlink or a functional file with working nameservers.
+    let resolv_info = is_valid_resolv_conf();
     let resolv_fixed = false;
-    let resolv_link = "";
-    try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
-    if (resolv_link != "/tmp/resolv.conf" && resolv_link != "../tmp/resolv.conf") {
+    if (!resolv_info.ok) {
         doc_unlink("/etc/resolv.conf");
         if (doc_symlink("/tmp/resolv.conf", "/etc/resolv.conf"))
             resolv_fixed = true;
@@ -764,7 +780,8 @@ function run_recovery_checks() {
     if (resolv_fixed) {
         mark_fixed("resolv.conf", "broken", "восстановлена ссылка и nameserver");
     } else {
-        doc_check("✅", "resolv.conf", "OK (-> /tmp/resolv.conf)", "");
+        let desc = resolv_info.is_link ? ("OK (-> " + resolv_info.target + ")") : "OK (regular file)";
+        doc_check("✅", "resolv.conf", desc, "");
     }
 
     // A stray sing-box (crashed service, half-removed install) must not sit
@@ -1369,18 +1386,16 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 4c. Resolv.conf symlink
-    let resolv_link = "";
-    // Throws when /etc/resolv.conf is a regular file rather than a symlink,
-    // which is precisely the broken state the branch below repairs.
-    try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
-    if (resolv_link == "/tmp/resolv.conf" || resolv_link == "../tmp/resolv.conf") {
-        doc_check("✅", "resolv.conf symlink", "OK (-> " + resolv_link + ")", "");
+    // 4c. Resolv.conf check
+    let resolv_info = is_valid_resolv_conf();
+    if (resolv_info.ok) {
+        let desc = resolv_info.is_link ? ("OK (-> " + resolv_info.target + ")") : "OK (regular file)";
+        doc_check("✅", "resolv.conf", desc, "");
     } else {
         issues++;
         if (!DOCTOR_REPAIR_MODE) {
             doc_plan("restore /etc/resolv.conf -> /tmp/resolv.conf symlink");
-            doc_check("⚠️", "resolv.conf symlink", "broken", "→ WILL FIX (doctor --fix): восстановление ссылки");
+            doc_check("⚠️", "resolv.conf", "broken", "→ WILL FIX (doctor --fix): восстановление ссылки");
         } else {
             fs.unlink("/etc/resolv.conf");
             let sym_ok = false;
@@ -1393,10 +1408,10 @@ function run_doctor_checks_impl(repair) {
                 // doc_check() below, which is this module's output channel.
             }
             if (sym_ok) {
-                doc_check("❌", "resolv.conf symlink", "broken", "→ FIXED: восстановлена ссылка на /tmp/resolv.conf");
+                doc_check("❌", "resolv.conf", "broken", "→ FIXED: восстановлена ссылка на /tmp/resolv.conf");
                 fixed++;
             } else {
-                doc_check("❌", "resolv.conf symlink", "broken", "→ не удалось восстановить ссылку");
+                doc_check("❌", "resolv.conf", "broken", "→ не удалось восстановить ссылку");
             }
         }
     }
@@ -2249,9 +2264,35 @@ function doctor_history_record(result) {
     for (let c in (result.checks || [])) {
         if (c.status == "fail") { first_fail = as_string(c.name); break; }
     }
+    let now = time();
+    let issues = int(result.issues || 0);
+
+    // Debounce repeated diagnostic runs within 5 minutes (300s):
+    // If the last entry was recorded recently, update it in place so that
+    // multiple chat messages or rapid diagnostics runs do not artificially inflate the incident counter.
+    if (length(data.entries) > 0) {
+        let last = data.entries[length(data.entries) - 1];
+        if (now - int(last.ts || 0) < 300) {
+            last.ts = now;
+            last.issues = issues;
+            last.fixed = int(result.fixed || 0);
+            last.planned = length(result.planned_fixes || []);
+            if (first_fail != "")
+                last.first_fail = first_fail;
+            let tmp_path = DOCTOR_HISTORY_FILE + ".tmp." + int(clock()[0]);
+            let f = fs.open(tmp_path, "w");
+            if (f) {
+                f.write(sprintf("%J\n", data));
+                f.close();
+                fs.rename(tmp_path, DOCTOR_HISTORY_FILE);
+            }
+            return;
+        }
+    }
+
     push(data.entries, {
-        ts: time(),
-        issues: int(result.issues || 0),
+        ts: now,
+        issues: issues,
         fixed: int(result.fixed || 0),
         planned: length(result.planned_fixes || []),
         first_fail: first_fail
@@ -2273,13 +2314,20 @@ function doctor_history_trend(result) {
     let data = doctor_history_load();
     let day_ago = time() - 86400;
     let recent_failures = 0;
+    let last_ts = 0;
     for (let e in data.entries) {
-        if (int(e.ts || 0) >= day_ago && int(e.issues || 0) > 0)
-            recent_failures++;
+        let ts = int(e.ts || 0);
+        if (ts >= day_ago && int(e.issues || 0) > 0) {
+            // Count distinct incidents separated by at least 10 minutes (600s)
+            if (last_ts == 0 || (ts - last_ts) >= 600) {
+                recent_failures++;
+                last_ts = ts;
+            }
+        }
     }
     if (recent_failures < 2)
         return "";
-    return sprintf("⚠️ Это %d-й диагностики-запуск с проблемами за последние 24 часа — сбой повторяющийся, проверьте историю.", recent_failures);
+    return sprintf("⚠️ Зафиксировано %d инцидент(а/ов) с проблемами за последние 24 часа — сбой повторяющийся, проверьте историю.", recent_failures);
 }
 
 function run_doctor_checks(repair) {
@@ -2390,6 +2438,9 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     if (provider == "deepseek") {
         api_url = "https://api.deepseek.com/chat/completions";
         model = model_override || "deepseek-chat";
+    } else if (provider == "gemini") {
+        api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+        model = model_override || "gemini-2.5-flash";
     } else if (provider == "openrouter") {
         api_url = "https://openrouter.ai/api/v1/chat/completions";
         model = model_override || "deepseek/deepseek-chat";
@@ -2409,10 +2460,35 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
             api_url = "http://192.168.1.100:1234/v1/chat/completions";
         }
         model = model_override || "local-model";
-    } else if (provider == "custom" && custom_url != "") {
+    } else if (provider == "custom") {
+        if (custom_url == "") {
+            LAST_LLM_ERROR = "Custom API URL is not configured";
+            warn("LLM API error: " + LAST_LLM_ERROR);
+            return null;
+        }
         custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
-        api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
-        model = model_override || "gpt-6-luna";
+        if (!match(custom_url, /^https?:\/\//)) {
+            LAST_LLM_ERROR = "Invalid custom API URL (must start with http:// or https://)";
+            warn("LLM API error: " + LAST_LLM_ERROR);
+            return null;
+        }
+        if (index(custom_url, "generativelanguage.googleapis.com") >= 0) {
+            if (!match(custom_url, /\/chat\/completions$/)) {
+                if (index(custom_url, "/openai") >= 0) {
+                    api_url = custom_url + "/chat/completions";
+                } else if (index(custom_url, "/v1beta") >= 0) {
+                    api_url = replace(custom_url, /\/v1beta.*$/, "") + "/v1beta/openai/chat/completions";
+                } else {
+                    api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+                }
+            } else {
+                api_url = custom_url;
+            }
+            model = model_override || "gemini-2.5-flash";
+        } else {
+            api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
+            model = model_override || "gpt-6-luna";
+        }
     } else {
         api_url = "https://api.openai.com/v1/chat/completions";
         model = model_override || "gpt-6-luna";
@@ -2839,6 +2915,7 @@ function ai_doctor_last() {
 
 const DOCTOR_FIX_PRIORITIES = {
     "fix_system_time": 5,
+    "fix_uci_config": 8,
     "fix_wan_interface": 10,
     "restart_network": 15,
     "fix_gateway": 20,
@@ -2847,13 +2924,18 @@ const DOCTOR_FIX_PRIORITIES = {
     "fix_bootstrap_dns": 38,
     "switch_to_doh": 40,
     "clear_dns_cache": 45,
+    "restart_singbox_dns": 48,
+    "restart_steer_dns": 48,
     "start_singbox": 50,
+    "start_steer": 50,
+    "start_watchdog": 52,
     "restart_zapret": 60,
     "restart_providers": 62,
     "optimize_mtu": 65,
     "rebuild_rules": 70,
-    "update_subscriptions": 80,
+    "reset_firewall": 72,
     "upgrade_to_singbox_extended": 75,
+    "update_subscriptions": 80,
     "flush_conntrack": 85,
     "optimize_memory": 90,
     "enable_safe_bypass": 95,
@@ -3494,6 +3576,7 @@ function ai_doctor(user_query) {
             "You are \"Tachyon AI Doctor\", an AI assistant for anti-censorship and proxy services on OpenWrt.\n" +
             "Analyze the diagnostic report and system logs below.\n\n%s\n\n" +
             "Formulate a concise diagnosis (in English, max 3-4 bullet points).\n" +
+            "For each issue or recommendation, cite concrete evidence or symptoms from the diagnostic report (e.g., specific error message, failed check, or log entry).\n" +
             "If automatic quick fix is possible, include at the very end of your response:\n" +
             "FIX: code1, code2\n\n" +
             "IMPORTANT: do NOT report \"everything is fine\" when the Live Verification or Stability section shows any FAIL check, WAN flaps, or repeated service restarts — those are real problems even if the point-in-time checks passed.\n\n" +
@@ -3528,6 +3611,7 @@ function ai_doctor(user_query) {
             "Вы — ИИ-ассистент \"Tachyon AI Doctor\" для сервиса обхода блокировок на OpenWrt.\n" +
             "Проанализируйте диагностический отчет и логи ниже.\n\n%s\n\n" +
             "Сформулируйте краткий диагноз (на русском, максимум 3-4 пункта).\n" +
+            "Для каждого замечания или рекомендации обязательно приводите конкретные подтверждения и симптомы из отчёта (точную ошибку, упавшую проверку или строку логов).\n" +
             "Если авто-исправление возможно, укажите в самом конце ответа строчку:\n" +
             "FIX: код1, код2\n\n" +
             "ВАЖНО: не пишите «всё в порядке», если в секции Live Verification или Stability есть хоть один провал, флапы WAN или повторные перезапуски сервисов — это реальные проблемы, даже если мгновенные проверки прошли.\n\n" +
@@ -3592,13 +3676,19 @@ function ai_doctor(user_query) {
     if (fix_idx >= 0) {
         let fix_part = trim(substr(text, fix_idx + 4));
         let raw_codes = split(fix_part, /[,\r\n]+/);
+        let seen = {};
         for (let code in raw_codes) {
-            let clean_code = trim(replace(code, /[._`*]/g, ""));
-            let first_token = split(clean_code, /[ \t]+/)[0];
-            if (first_token != "") {
-                push(quick_fixes, first_token);
+            let clean_code = trim(replace(code, /[`*#]/g, ""));
+            clean_code = replace(clean_code, /^[ \t\-_.:]+|[ \t\-_.:]+$/g, "");
+            let first_token = lc(trim(split(clean_code, /[ \t,;:]+/)[0]));
+            if (first_token != "" && DOCTOR_FIX_PRIORITIES[first_token] != null) {
+                if (!seen[first_token]) {
+                    seen[first_token] = true;
+                    push(quick_fixes, first_token);
+                }
             }
         }
+        try { quick_fixes = prioritize_quick_fixes(quick_fixes); } catch(e) {}
         text = trim(substr(text, 0, fix_idx));
     }
     let quick_fix = length(quick_fixes) > 0 ? join(",", quick_fixes) : "";

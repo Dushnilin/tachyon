@@ -42,6 +42,7 @@ uci commit tachyon
 | **OpenAI** | `openai` | `gpt-4o-mini` | `gpt-4o`, `gpt-4.1-mini`, `o4-mini` |
 | **Anthropic** | `anthropic` | `claude-3-5-haiku-20241022` | `claude-3-5-sonnet-20241022`, `claude-3-7-sonnet-20250219` |
 | **DeepSeek** | `deepseek` | `deepseek-chat` | `deepseek-reasoner` |
+| **Gemini** | `gemini` | `gemini-2.5-flash` | `gemini-2.5-pro`, `gemini-1.5-flash` |
 | **Custom API** | `custom` | `gpt-4o-mini` | Любая модель вашего сервера (`llama-3.3-70b`, `qwen-2.5-72b`) |
 
 ### 1.3. Коды быстрого исправления (Quick Fix Codes — 13 кодов)
