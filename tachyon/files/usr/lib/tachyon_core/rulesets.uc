@@ -2,7 +2,8 @@
 
 let common = require("core.common");
 let fs = require("fs");
-let command_success_from_args = common.command_success_from_args;
+let gomemlimit = require("core.gomemlimit");
+let command_from_args = common.command_from_args;
 
 const EMPTY_SRS_B64 = "U1JTAXjaYgAEAAD//wABAAE=";
 const EMPTY_SRS_PATH = "/usr/share/tachyon/rulesets/empty.srs";
@@ -269,9 +270,12 @@ function srs_file_parses(path) {
     if (fs.stat(bin) == null)
         return true;
 
-    return command_success_from_args([
-        bin, "rule-set", "match", "--format", "binary", p, "tachyon-validation.invalid"
-    ]);
+    // rule-set match is a second Go runtime next to the running daemon; without
+    // a ceiling it is free to balloon exactly like `check` does.
+    return common.command_status(
+        gomemlimit.gomemlimit_env() +
+        command_from_args([ bin, "rule-set", "match", "--format", "binary", p, "tachyon-validation.invalid" ])
+    ) == 0;
 }
 
 function is_populated_srs_file(path) {

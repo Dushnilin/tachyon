@@ -7,6 +7,7 @@ let uci_core = require("core.uci");
 let common = require("core.common");
 let network_mod = require("diagnostics.network");
 let variant_state = require("tachyon_core.variant_state");
+let gomemlimit = require("core.gomemlimit");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -210,8 +211,7 @@ function helper_output(mode, args) {
     let full = [ mode ];
     for (let arg in args)
         push(full, as_string(arg));
-    return replace(module_output(HELPERS_UC, full), /[
-]+$/g, "");
+    return replace(module_output(HELPERS_UC, full), /[\r\n]+$/g, "");
 }
 
 function uci_show_quote(value) {
@@ -517,7 +517,9 @@ function check_proxy() {
             push(args, "-o");
             push(args, outbound_tag);
         }
-        response = command_output(command_from_args(args) + " 2>/dev/null");
+        // A full core run next to the daemon, rulesets included - same ceiling
+        // as `check`, and this one is retried five times.
+        response = command_output(gomemlimit.gomemlimit_env() + command_from_args(args) + " 2>/dev/null");
         if (status_success([ "proxy-response-is-retryable-error" ], response))
             continue;
 

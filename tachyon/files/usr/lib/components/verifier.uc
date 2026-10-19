@@ -23,6 +23,22 @@ function core_profile() {
     return core_profile_module;
 }
 
+// Lazy for the same reason as core_profile(), and additionally guarded: the
+// partial -L tree that components_updater_job stages has no core/gomemlimit.uc,
+// and a hard require here would break that update path outright. There the
+// ceiling is simply skipped - exactly as it was before - while a full install,
+// which is where a second Go runtime competes with the running daemon, gets it.
+let gomemlimit_module = false;
+function gomemlimit_env_map() {
+    if (gomemlimit_module === false) {
+        try { gomemlimit_module = require("core.gomemlimit"); }
+        catch (e) { gomemlimit_module = null; }
+    }
+    if (gomemlimit_module == null) return {};
+    try { return gomemlimit_module.gomemlimit_env_map(); }
+    catch (e) { return {}; }
+}
+
 // ============================================================================
 // Fingerprints
 // ============================================================================
@@ -233,6 +249,11 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
         GODEBUG: "madvdontneed=1",
         GOGC: "30"
     };
+    // A config check loads every .srs the config references while the daemon
+    // already holds its own copy. Without a ceiling here the second Go runtime
+    // balloons by 40-80 MB of RSS and the OOM killer lands on the daemon.
+    for (let name, value in gomemlimit_env_map())
+        env_map[name] = value;
     let lib_path = as_string(library_dir || "");
     if (lib_path != "") {
         if (lib_path == "/usr/lib")
