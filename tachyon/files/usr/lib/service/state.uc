@@ -13,6 +13,7 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const DEFAULT_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/var/run/tachyon/reload.pending";
 const DEFAULT_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
+const CORE_LOG_PATH = "/tmp/tachyon-core/sing-box.log";
 const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
 const ZAPRET2_DEFAULT_NFQWS2_OPT = getenv("ZAPRET2_DEFAULT_NFQWS2_OPT") || "";
 const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "";
@@ -562,6 +563,26 @@ function sing_box_mixed_ports_listening(ports) {
     return true;
 }
 
+// Read the core log from a byte offset and report whether the core emitted a
+// reload-failure marker. A SIGHUP that trips on one inbound (e.g. a WireGuard
+// bind "Address in use") leaves the *old* config running: the process stays
+// alive and every port the old config declared is still listening, so a
+// liveness/port probe reads success while none of the new settings applied.
+// The core says so itself in its log ("keeping running configuration"); that
+// is the only reliable signal, so the tail written since the SIGHUP is scanned.
+function core_log_reload_failed(since_offset) {
+    let data = fs.readfile(CORE_LOG_PATH);
+    if (data == null)
+        return false;
+    data = as_string(data);
+    if (length(data) <= since_offset)
+        return false;
+    let tail = substr(data, since_offset);
+    return index(tail, "keeping running configuration") >= 0 ||
+        index(tail, "start error") >= 0 ||
+        index(tail, "reload failed") >= 0;
+}
+
 // Send SIGHUP to the running sing-box process and wait for it to stay alive
 // AND to still be listening.
 // sing-box 1.10+ reloads its configuration in-place on SIGHUP without tearing
@@ -583,6 +604,10 @@ function try_sighup_reload(pid) {
 
     // Send SIGHUP; ignore the kill exit code — the process may have just
     // finished a reload and the transient exit-code is unreliable.
+    let log_offset = 0;
+    let log_stat = fs.stat(CORE_LOG_PATH);
+    if (log_stat != null)
+        log_offset = int(log_stat.size || 0);
     command_success_from_args([ "kill", "-HUP", as_string(pid) ]);
 
     // Give sing-box up to 15 s to ingest the new config and bring its inbounds
@@ -601,6 +626,10 @@ function try_sighup_reload(pid) {
         // have to be back before this counts as a working reload.
         let process_ok = current_pid == pid || pid_is_sing_box(current_pid);
         if (process_ok && sing_box_mixed_ports_listening(ports)) {
+            // The old config also has these ports up, so a still-listening
+            // probe is not proof the new config loaded. The core's own log is.
+            if (core_log_reload_failed(log_offset))
+                return false;
             common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
             return true;
         }
@@ -610,6 +639,8 @@ function try_sighup_reload(pid) {
     // not running deaf.
     let final_pid = sing_box_service_pid_runtime();
     if (final_pid <= 0 || !pid_is_sing_box(final_pid))
+        return false;
+    if (core_log_reload_failed(log_offset))
         return false;
     if (sing_box_mixed_ports_listening(ports)) {
         common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");

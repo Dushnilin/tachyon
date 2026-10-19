@@ -394,6 +394,13 @@ function dnsmasq_configure(force) {
         return true;
     }
 
+    // The restart churn (stop_main, netifd, dnsmasq) routinely clobbers the
+    // /etc/resolv.conf symlink into a regular file. Restore it here, before the
+    // early returns below — "unclean shutdown, already configured" and
+    // "sing-box not running yet" both used to skip the restore on the happy
+    // path only, leaving a plain-file resolv.conf after every such restart.
+    restore_resolv_conf_symlink();
+
     if (uci_get("dhcp.@dnsmasq[0].port") == "0" && (run("pidof AdGuardHome >/dev/null 2>&1") || run("pidof adguardhome >/dev/null 2>&1"))) {
         log("dnsmasq configuration skipped: AdGuardHome is active and dnsmasq DNS is disabled (port 0)", "info");
         return true;
