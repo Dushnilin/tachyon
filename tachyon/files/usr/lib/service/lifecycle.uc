@@ -1851,7 +1851,7 @@ function reload(reason) {
             return status;
         }
 
-        let reload_sb_pid = trim(command_output_from_args([ "pidof", "sing-box" ]));
+        let reload_sb_pid = trim(module_output(STATE_UC, [ "tachyon-core-service-runtime-pid" ]));
         if (match(reload_sb_pid, /^[0-9]+$/) != null)
             module_success(STATE_UC, [ "write-provenance", reload_sb_pid ]);
         common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");

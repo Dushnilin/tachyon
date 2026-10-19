@@ -3168,8 +3168,11 @@ function renderDefaultState({
       outboundSwitching ? "tachyon_dashboard-page__outbound-grid__item--switching" : ""
     ].filter(Boolean).join(" ");
     if (isConnectionNode) {
-      const statusText = latencyFetching ? _("Checking...") : outbound.latency === -1 || outbound.latency < 0 ? _("Not responding") : outbound.runtimeAvailable ? _("Connected") : _("Not connected");
-      const statusColor = latencyFetching ? "var(--warn-color-medium, orange)" : outbound.latency === -1 || outbound.latency < 0 ? "var(--error-color-medium, red)" : outbound.runtimeAvailable ? "var(--success-color-medium, green)" : "var(--error-color-medium, red)";
+      const isAlive = Boolean(
+        outbound.runtimeAvailable || outbound.latency && outbound.latency > 0
+      );
+      const statusText = latencyFetching ? _("Checking...") : outbound.latency === -1 || outbound.latency < 0 ? _("Not responding") : isAlive ? _("Connected") : _("Not connected");
+      const statusColor = latencyFetching ? "var(--warn-color-medium, orange)" : outbound.latency === -1 || outbound.latency < 0 ? "var(--error-color-medium, red)" : isAlive ? "var(--success-color-medium, green)" : "var(--error-color-medium, red)";
       const latencyDisplay = outbound.latency && outbound.latency > 0 ? `${outbound.latency} ms` : "";
       return E(
         "div",
@@ -20531,6 +20534,10 @@ var TACHYON_MASK_AFTER_TOKEN = [
   "list subscription_urls",
   "list urltest_proxy_links",
   "list selector_proxy_links",
+  "list selector_amnezia_configs",
+  "option selector_amnezia_configs",
+  "list amnezia_configs",
+  "option amnezia_config",
   "list server_users",
   "option server_uuid",
   "option server_username",
@@ -20646,6 +20653,7 @@ function maskOptionPath(line, token) {
   const quote = quoteOffset + slash + 1;
   return `${line.slice(0, slash)}/*******'${line.slice(quote + 1)}`;
 }
+var WG_KEY_PATTERN = /((?:PrivateKey|PresharedKey)\s*=\s*)[A-Za-z0-9+/=]+/gi;
 function maskGlobalCheckLine(line) {
   let maskedLine = line;
   for (const token of TACHYON_MASK_AFTER_TOKEN) {
@@ -20656,6 +20664,7 @@ function maskGlobalCheckLine(line) {
   }
   maskedLine = maskOptionPath(maskedLine, "option dns_server '");
   maskedLine = maskOptionPath(maskedLine, "list dns_server '");
+  maskedLine = maskedLine.replace(WG_KEY_PATTERN, "$1*******");
   return maskedLine;
 }
 function maskMultilineContinuation(line) {
@@ -20700,7 +20709,7 @@ function maskGlobalCheckText(text = "") {
       return maskMultilineContinuation(line);
     }
     const maskedLine = maskGlobalCheckLine(line);
-    if (line.includes("option outbound_json")) {
+    if (line.includes("option outbound_json") || line.includes("selector_amnezia_configs") || line.includes("amnezia_config")) {
       const firstQuote = line.indexOf("'");
       if (firstQuote >= 0 && line.slice(firstQuote + 1).indexOf("'") < 0) {
         inMaskedMultiline = true;
@@ -20718,7 +20727,7 @@ var LOG_BARE_HOST = new RegExp(
   "gi"
 );
 function maskLogLine(line) {
-  return line.replace(LOG_URL, "*******").replace(LOG_HOST_PORT, "*******$2").replace(LOG_BARE_HOST, "*******");
+  return line.replace(LOG_URL, "*******").replace(LOG_HOST_PORT, "*******$2").replace(LOG_BARE_HOST, "*******").replace(WG_KEY_PATTERN, "$1*******");
 }
 function maskLogText(text = "") {
   return `${text}`.split("\n").map(maskLogLine).join("\n");

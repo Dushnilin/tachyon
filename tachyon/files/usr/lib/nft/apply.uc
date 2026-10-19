@@ -3507,6 +3507,10 @@ function nft_add_community_subnet_file_for_section(section, service, filepath, t
 
     let ports = section_rule_ports_csv(section);
     let sets = section_priority_sets(section);
+
+    if (section_needs_priority_sets(section) && !nft_create_priority_sets(table, sets))
+        return false;
+
     let common_v4 = section_needs_priority_sets(section) ? sets.subnets : common_set;
     let common_v6 = section_needs_priority_sets(section) ? sets.subnets6 : default_arg(common6_set, "tachyon_subnets6");
     let ip_port_v4 = section_needs_priority_sets(section) ? sets.ip_ports : ip_port_set;

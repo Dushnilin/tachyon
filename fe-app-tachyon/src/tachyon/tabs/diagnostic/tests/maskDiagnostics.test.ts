@@ -159,4 +159,27 @@ describe('diagnostic masking', () => {
     expect(masked).toContain('/usr/lib/tachyon/service/watchdog.uc');
     expect(masked).toContain('/etc/sing-box/config.json');
   });
+
+  it('masks Amnezia and WireGuard configs and private keys in bug reports', () => {
+    const raw = [
+      "config section 'proton'",
+      '\tlist selector_amnezia_configs \'{"name":"NL_148","config":"[Interface]\\nPrivateKey = aGVsbG93b3JsZGtleQ==\\nAddress = 10.2.0.2/32\\n[Peer]\\nEndpoint = 1.2.3.4:51820\\nAllowedIPs = 0.0.0.0/0"}\'',
+      "config section 'warp_RR'",
+      "\toption amnezia_config '[Interface]\\nPrivateKey = c2VjcmV0a2V5MTIzNDU=\\n[Peer]'",
+      '',
+    ].join('\n');
+
+    const masked = maskGlobalCheckText(raw);
+
+    expect(masked).not.toContain('aGVsbG93b3JsZGtleQ==');
+    expect(masked).not.toContain('c2VjcmV0a2V5MTIzNDU=');
+    expect(masked).toContain("list selector_amnezia_configs '*******'");
+    expect(masked).toContain("option amnezia_config '*******'");
+
+    const logWithKey =
+      'daemon.info sing-box[123]: Interface generated PrivateKey = dGhpc2lzYXNlY3JldGtleQ==';
+    const maskedLog = maskLogText(logWithKey);
+    expect(maskedLog).not.toContain('dGhpc2lzYXNlY3JldGtleQ==');
+    expect(maskedLog).toContain('PrivateKey = *******');
+  });
 });
