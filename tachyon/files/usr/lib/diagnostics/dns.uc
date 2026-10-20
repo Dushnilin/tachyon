@@ -374,10 +374,10 @@ function resolve_domain_cli(domain) {
         parse_nslookup_output(command_output_from_args([ "nslookup", domain ]));
 
     if (length(ips) == 0) {
-        let settings = uci_settings();
-        let all_dns = get_all_dns_servers(settings);
+        let cfg = settings();
+        let bootstrap_list = get_all_dns_servers(cfg, "bootstrap_dns_server");
         let fallback_resolvers = [];
-        for (let b in array_or_empty(all_dns.bootstrap)) {
+        for (let b in bootstrap_list) {
             let h = url_host(b);
             if (h == "") h = trim(as_string(b));
             if (valid_ipv4(h) && !is_fakeip(h))

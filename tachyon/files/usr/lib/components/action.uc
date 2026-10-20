@@ -1548,7 +1548,8 @@ function restore_file_backup(target_path, backup_path) {
 function restore_sing_box_service_from_marker(marker) {
     prepare_sing_box_service_disabled();
     if (as_string(marker) == "extended-compressed" || as_string(marker) == "lx" ||
-        file_nonempty("/usr/bin/tachyon-core") || file_nonempty("/usr/bin/sing-box"))
+        (!file_exists("/etc/init.d/tachyon-core") && file_nonempty("/usr/bin/tachyon-core")) ||
+        file_nonempty("/usr/bin/sing-box"))
         return install_managed_sing_box_service_script();
     remove_managed_sing_box_service_script();
     return true;
@@ -2447,7 +2448,11 @@ function install_tachyon_core(action, target_tag) {
     stop_tachyon_before_sing_box_change();
 
     let backup_binary = "";
-    if (file_exists("/usr/bin/tachyon-core") || file_exists("/usr/bin/sing-box")) {
+    if (file_exists("/usr/bin/tachyon-core") && !is_symlink_path("/usr/bin/tachyon-core")) {
+        let candidate_backup = cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid();
+        if (copy_file_stream("/usr/bin/tachyon-core", candidate_backup))
+            backup_binary = candidate_backup;
+    } else if (file_exists("/usr/bin/sing-box")) {
         let backed = backup_existing_sing_box_binary(cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid());
         if (backed != null)
             backup_binary = backed;
@@ -2733,7 +2738,9 @@ function install_package_sing_box(action, tiny) {
     let cronet_touched = false;
     let backup_on_tmpfs = previous_variant == "extended-compressed";
     if (file_exists("/usr/bin/tachyon-core") || file_exists("/usr/bin/sing-box")) {
-        let backed = backup_existing_sing_box_binary(cmp.tmp_dir_path() + "/sing-box.tachyon-backup");
+        backup_binary = backup_on_tmpfs ? cmp.tmp_dir_path() + "/sing-box.tachyon-backup" :
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup";
+        let backed = backup_existing_sing_box_binary(backup_binary);
         if (backed == null)
             action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
         backup_binary = backed;

@@ -386,7 +386,14 @@ function download_via_proxy_any_enabled(settings, sections) {
 
 function download_detour_tag(settings, purpose) {
     let section_name = download_via_proxy_section(settings, purpose);
-    return section_name == "" ? "" : outbound_tag(section_name);
+    if (section_name == "")
+        return "";
+    let all_enabled = type(enabled_sections) == "function" ? enabled_sections() : [];
+    for (let s in all_enabled) {
+        if (s[".name"] == section_name)
+            return generator_routes.group_outbound_tag_for_section(s) || outbound_tag(section_name);
+    }
+    return outbound_tag(section_name);
 }
 
 // A proxy endpoint's own hostname must never be answered from FakeIP. If a
@@ -1100,7 +1107,7 @@ for (let inbound in dns_config.inbounds)
 function mixed_proxy_enabled_action(action) {
     return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
         action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-        action == "wdtt" || action == "olcrtc";
+        action == "wdtt" || action == "olcrtc" || action == "group";
 }
 
 function add_mixed_proxy_for_section(config, section, service_address) {
@@ -1267,11 +1274,13 @@ function add_subscription_download_service_mixed_proxies(config, sections) {
         if (port <= 0)
             runtime_generate_unsupported("subscription download proxy port could not be resolved");
 
+        let target_sec = generator_routes.section_by_name(sections, target);
+        let target_tag = (target_sec && generator_routes.group_outbound_tag_for_section(target_sec)) || outbound_tag(target);
         add_service_mixed_proxy_inbound(
             config,
             runtime_constants.inbound_tag("service-subscription-" + target),
             port,
-            outbound_tag(target)
+            target_tag
         );
     }
 }
@@ -1289,7 +1298,12 @@ function add_service_mixed_proxy(config, settings, sections) {
         if (s.enabled != "0" && (action == "connection" || action == "subscription" || action == "provider" || action == "fptn" || action == "awg")) {
             has_any_proxy = true;
             if (default_proxy_tag == "")
-                default_proxy_tag = outbound_tag(s[".name"]);
+                default_proxy_tag = s[".name"] + "-out";
+        }
+        else if (s.enabled != "0" && action == "group" && generator_routes.group_outbound_tag_for_section(s) != "") {
+            has_any_proxy = true;
+            if (default_proxy_tag == "")
+                default_proxy_tag = generator_routes.group_outbound_tag_for_section(s);
         }
     }
 
@@ -1330,7 +1344,9 @@ function add_router_traffic_redirect(config, settings) {
         listen_port: runtime_constants.REDIRECT_INBOUND_PORT
     });
 
-    let sec_out = outbound_tag(section_name);
+    let all_enabled = type(enabled_sections) == "function" ? enabled_sections() : [];
+    let sec_obj = generator_routes.section_by_name(all_enabled, section_name);
+    let sec_out = (sec_obj && generator_routes.group_outbound_tag_for_section(sec_obj)) || outbound_tag(section_name);
     if (sec_out != "") {
         let target_idx = 0;
         if (type(config.route) == "object" && type(config.route.rules) == "array") {

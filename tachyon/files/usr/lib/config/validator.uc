@@ -556,7 +556,7 @@ function download_section_action_available(action, byedpi_installed, zapret_inst
         return true;
     if (action == "fptn" || action == "awg" || action == "warp" ||
         action == "anytls" || action == "snell" || action == "mieru" ||
-        action == "sudoku" || action == "masque" || action == "openvpn")
+        action == "sudoku" || action == "masque" || action == "openvpn" || action == "group")
         return true;
     if (action == "byedpi")
         return bool_flag(byedpi_installed);
@@ -826,7 +826,7 @@ function rule_action_supported(action) {
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
-        "zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn" ], as_string(action));
+        "zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn", "group" ], as_string(action));
 }
 
 // A group member must be a section that actually produces proxy outbounds:

@@ -678,6 +678,32 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
     // Proxy action: resolve selector or server
     let sec_name = matched_section ? matched_section[".name"] : "default";
     let group_tag = sec_name + "-out";
+    let group_type = "selector";
+
+    if (matched_action == "group") {
+        group_tag = sec_name + "-urltest-out";
+        group_type = "urltest";
+    } else if (uci_cfg && type(uci_cfg.sections) == "array") {
+        for (let gsec in uci_cfg.sections) {
+            if (gsec.enabled == "0" || gsec.action != "group")
+                continue;
+            let members = type(gsec.group_members) == "array"
+                ? gsec.group_members
+                : (gsec.group_members ? split(trim(as_string(gsec.group_members)), /[ \t,]+/) : []);
+            let in_group = false;
+            for (let m in members) {
+                if (trim(as_string(m)) == sec_name) {
+                    in_group = true;
+                    break;
+                }
+            }
+            if (in_group) {
+                group_tag = gsec[".name"] + "-urltest-out";
+                group_type = "urltest";
+                break;
+            }
+        }
+    }
 
     // 1. Check persistent selector state
     let selector_state = common.read_json_file("/etc/tachyon/selector_state.json") ||
@@ -727,7 +753,7 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
                     if (outb.type != "direct" && outb.type != "dns" && outb.type != "block" && outb.type != "selector" && outb.type != "urltest") {
                         return {
                             group_tag: group_tag,
-                            group_type: "selector",
+                            group_type: group_type,
                             selected_node: outb.tag || "Proxy-Node",
                             node_type: outb.type || "proxy",
                             server_address: outb.server || "unknown",
@@ -749,7 +775,7 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
 
     return {
         group_tag: group_tag,
-        group_type: "selector",
+        group_type: group_type,
         selected_node: node_name,
         node_type: node_proto,
         server_address: node_server,

@@ -491,7 +491,8 @@ export namespace Tachyon {
     | 'masque'
     | 'openvpn'
     | 'dns'
-    | 'hosts';
+    | 'hosts'
+    | 'group';
   type LegacyConnectionType = 'proxy' | 'vpn' | 'block' | 'exclusion';
   type ProxyConfigType =
     | 'urltest'
@@ -652,6 +653,7 @@ export namespace Tachyon {
     regex?: string[];
     outbound_detour_enabled?: '0' | '1';
     outbound_detour_section?: string;
+    group_members?: string | string[];
     download_via_proxy_enabled?: '0' | '1';
     download_via_proxy_section?: string;
     auto_user_agent?: '0' | '1';

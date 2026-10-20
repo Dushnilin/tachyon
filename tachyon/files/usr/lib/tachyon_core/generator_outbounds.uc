@@ -1831,6 +1831,12 @@ function outbound_detour_tag_for_section(section) {
     // config down at sing-box check time.
     if (ctx.deferred_sections && ctx.deferred_sections[detour_section])
         return "";
+    if (ctx.routes && type(ctx.routes.enabled_sections) == "function") {
+        for (let s in ctx.routes.enabled_sections()) {
+            if (as_string(s[".name"]) == detour_section && option(s, "action", "") == "group")
+                return ctx.routes.urltest_outbound_tag(detour_section, "urltest");
+        }
+    }
     return outbound_tag(detour_section);
 }
 

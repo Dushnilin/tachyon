@@ -36,6 +36,7 @@ const ROUTING_ACTIONS = [
   "masque",
   "openvpn",
   "hosts",
+  "group",
 ];
 const CONNECTIONS_BLOCKED_INTERFACES = [
   "br-lan",
@@ -113,6 +114,7 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
       "masque",
       "openvpn",
       "fptn",
+      "group",
     ].includes(action)
   );
 }
@@ -169,6 +171,7 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       "masque",
       "openvpn",
       "fptn",
+      "group",
     ].includes(action)
   ) {
     return true;
@@ -2611,6 +2614,7 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       "masque",
       "openvpn",
       "fptn",
+      "group",
     ].includes(action)
   ) {
     return true;
@@ -13370,6 +13374,7 @@ function createSectionContent(section) {
   o.depends("action", "zapret");
   o.depends("action", "zapret2");
   o.depends("action", "outbound");
+  o.depends("action", "group");
   o.modalonly = true;
 
   o = section.taboption(
@@ -13389,6 +13394,7 @@ function createSectionContent(section) {
   o.depends("action", "olcrtc");
   o.depends("action", "zapret");
   o.depends("action", "zapret2");
+  o.depends("action", "group");
   o.modalonly = true;
 
   o = section.taboption(
@@ -13405,6 +13411,7 @@ function createSectionContent(section) {
   o.depends({ action: "byedpi", mixed_proxy_enabled: "1" });
   o.depends({ action: "zapret", mixed_proxy_enabled: "1" });
   o.depends({ action: "zapret2", mixed_proxy_enabled: "1" });
+  o.depends({ action: "group", mixed_proxy_enabled: "1" });
   o.modalonly = true;
   o.validate = function (_section_id, value) {
     if (!value || value.length === 0) {
@@ -13434,6 +13441,7 @@ function createSectionContent(section) {
   o.depends({ action: "byedpi", mixed_proxy_enabled: "1" });
   o.depends({ action: "zapret", mixed_proxy_enabled: "1" });
   o.depends({ action: "zapret2", mixed_proxy_enabled: "1" });
+  o.depends({ action: "group", mixed_proxy_enabled: "1" });
   o.modalonly = true;
 
   o = section.taboption(
@@ -13470,6 +13478,11 @@ function createSectionContent(section) {
   });
   o.depends({
     action: "zapret2",
+    mixed_proxy_enabled: "1",
+    mixed_proxy_auth_enabled: "1",
+  });
+  o.depends({
+    action: "group",
     mixed_proxy_enabled: "1",
     mixed_proxy_auth_enabled: "1",
   });
@@ -13519,6 +13532,11 @@ function createSectionContent(section) {
     mixed_proxy_enabled: "1",
     mixed_proxy_auth_enabled: "1",
   });
+  o.depends({
+    action: "group",
+    mixed_proxy_enabled: "1",
+    mixed_proxy_auth_enabled: "1",
+  });
   o.modalonly = true;
   o.validate = function (_section_id, value) {
     if (!value || value.length === 0) {
@@ -13541,6 +13559,7 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.depends("action", "connection");
   o.depends("action", "fptn");
+  o.depends("action", "group");
   o.modalonly = true;
   o.cfgvalue = function (section_id) {
     const value = uci.get(
@@ -13606,6 +13625,7 @@ function createSectionContent(section) {
     "olcrtc",
     "fptn",
     "bypass",
+    "group",
   ].forEach((act) => geoipModeOption.depends("action", act));
 
   o = section.taboption(
@@ -13664,6 +13684,7 @@ function createSectionContent(section) {
     "olcrtc",
     "fptn",
     "bypass",
+    "group",
   ].forEach((act) => o.depends("action", act));
   // The country list is a fixed catalog, so a country another section claims as
   // global simply disappears from the dropdown instead of failing on save.
@@ -14158,6 +14179,7 @@ const ACTION_COLORS = {
   masque: "#8e44ad",
   openvpn: "#e74c3c",
   hosts: "#2ecc71",
+  group: "#2980b9",
 };
 
 const CLOUDFLARE_SHARED_CIDRS = [

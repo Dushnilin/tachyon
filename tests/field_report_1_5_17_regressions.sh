@@ -238,7 +238,7 @@ cat >"$WORK_DIR/ss_ws_sub.json" <<'EOF'
   ]
 }
 EOF
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/subscription/parser.uc" normalize-json-file "$WORK_DIR/ss_ws_sub.json" "$WORK_DIR/ss_ws_out.json" || fail 'failed to normalize Shadowsocks+WS subscription JSON'
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/subscription/parser.uc" normalize-content-validated "$WORK_DIR/ss_ws_sub.json" "$WORK_DIR/ss_ws_out.json" || fail 'failed to normalize Shadowsocks+WS subscription JSON'
 grep -Eq '"type":[[:space:]]*"shadowsocks"' "$WORK_DIR/ss_ws_out.json" || fail "expected shadowsocks type in normalized JSON: $(cat "$WORK_DIR/ss_ws_out.json")"
 grep -Eq '"plugin":[[:space:]]*"v2ray-plugin"' "$WORK_DIR/ss_ws_out.json" || fail "expected v2ray-plugin in normalized JSON: $(cat "$WORK_DIR/ss_ws_out.json")"
 grep -Fq 'mode=websocket;tls;host=cdn.example.com;path=/ws-stream' "$WORK_DIR/ss_ws_out.json" || fail "expected plugin_opts in normalized JSON: $(cat "$WORK_DIR/ss_ws_out.json")"

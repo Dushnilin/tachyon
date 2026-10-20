@@ -536,9 +536,13 @@ function sing_box_expected_ports() {
             if (!has_int(udp, port))
                 push(udp, port);
         }
-        else if (t == "mixed" || t == "vless" || t == "vmess" || t == "trojan" ||
-                 t == "shadowsocks" || t == "socks" || t == "http" || t == "anytls" ||
-                 t == "naive" || t == "shadowtls" || t == "fptn" || t == "mtproxy") {
+        else if (inbound.type != "mixed" &&
+                 t != "vless" && t != "vmess" && t != "trojan" &&
+                 t != "shadowsocks" && t != "socks" && t != "http" && t != "anytls" &&
+                 t != "naive" && t != "shadowtls" && t != "fptn" && t != "mtproxy") {
+            continue;
+        }
+        else {
             if (!has_int(tcp, port))
                 push(tcp, port);
         }
@@ -719,7 +723,7 @@ function try_sighup_reload(pid) {
         // mean "something is running". That alone is not enough - the inbounds
         // have to be back before this counts as a working reload.
         let process_ok = current_pid == pid || pid_is_sing_box(current_pid);
-        if (process_ok && sing_box_expected_ports_listening(ports)) {
+        if (process_ok && sing_box_mixed_ports_listening(ports)) {
             // The old config also has these ports up, so a still-listening
             // probe is not proof the new config loaded. The core's own log is.
             if (core_log_reload_failed(log_offset, logread_before))
@@ -736,7 +740,7 @@ function try_sighup_reload(pid) {
         return false;
     if (core_log_reload_failed(log_offset, logread_before))
         return false;
-    if (sing_box_expected_ports_listening(ports)) {
+    if (sing_box_mixed_ports_listening(ports)) {
         common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
         return true;
     }

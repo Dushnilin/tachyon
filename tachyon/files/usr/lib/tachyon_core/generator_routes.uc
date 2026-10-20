@@ -32,6 +32,10 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 let runtime_ruleset_folder = getenv("TACHYON_RULESET_FOLDER") || "/usr/share/tachyon/rulesets";
 
 let ctx = {};
+let section_leaf_tags = {};
+let section_group_map = {};
+let section_state_map = {};
+let active_group_tags = {};
 
 function settings_update_interval() {
     let settings = ctx.runtime_settings();
@@ -49,6 +53,10 @@ function remote_ruleset_update_interval() {
 
 function init(c) {
     ctx = c;
+    section_leaf_tags = {};
+    section_group_map = {};
+    section_state_map = {};
+    active_group_tags = {};
 }
 
 function valid_section_name(name) {
@@ -702,9 +710,6 @@ function priority_outbound_tag(section_name, group_id) {
 // leaves. add_proxy_selector records each section's leaf candidates; the
 // post-pass add_group_urltest_outbounds builds the urltest and fills
 // section_group_map, which route generation reads.
-let section_leaf_tags = {};
-let section_group_map = {};
-
 function remember_section_leaf_tags(name, tags) {
     section_leaf_tags[name] = tags;
 }
@@ -719,9 +724,14 @@ function find_outbound_by_tag(config, want) {
     return null;
 }
 
-// urltest tag of the group this section belongs to, or "" when the section is
+// urltest tag of the group this section belongs to (or the group's own urltest
+// tag when the section itself has action 'group'), or "" when the section is
 // not a group member (or its group produced no urltest).
 function group_outbound_tag_for_section(section) {
+    if (type(section) != "object")
+        return "";
+    if (option(section, "action", "") == "group")
+        return as_string(active_group_tags[section[".name"]] || "");
     let group_name = as_string(section_group_map[section[".name"]]);
     if (group_name == "")
         return "";
@@ -813,6 +823,70 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
     };
 }
 
+function routed_dns_server_tag(section_name) {
+    return runtime_constants.tag(section_name, "routed-dns-server");
+}
+
+function add_routed_dns_server_for_section(config, section) {
+    if (!connections.routed_dns_enabled(section))
+        return;
+    let section_name = section[".name"];
+    let action = option(section, "action", "");
+    let servers = connections.routed_dns_servers(section);
+    let dns_type = connections.routed_dns_type(section);
+    let tag_name = routed_dns_server_tag(section_name);
+    let detour = action == "bypass" ? null : (group_outbound_tag_for_section(section) || outbound_tag(section_name));
+
+    for (let i = 0; i < length(servers); i++) {
+        let s_val = servers[i];
+        // The rule references the un-indexed tag, so the first server has to
+        // carry it however many are configured — with a single server this is
+        // the same tag as before, with several the rest get -2, -3, …
+        let server_tag = i == 0
+            ? tag_name
+            : runtime_constants.tag(section_name, "routed-dns-server-" + (i + 1));
+        let server = runtime_dns.server_from_options(
+            server_tag,
+            dns_type,
+            s_val,
+            detour
+        );
+        if (server.unsupported)
+            ctx.runtime_generate_unsupported(server.unsupported);
+        push(config.dns.servers, server);
+    }
+}
+
+function merge_member_state_into_group(group_state, member, config) {
+    let name = member[".name"];
+    let member_state = section_state_map[name];
+    if (type(member_state) == "object") {
+        for (let k, v in object_or_empty(member_state.links))
+            group_state.links[k] = v;
+        for (let k, v in object_or_empty(member_state.servers))
+            group_state.servers[k] = v;
+        for (let item in array_or_empty(member_state.subscriptionMetadata))
+            push(group_state.subscriptionMetadata, item);
+        let member_meta = object_or_empty(member_state.outboundMetadata);
+        for (let field in [ "names", "countries", "protocols", "transports", "securities", "prefixes", "ports", "details" ]) {
+            if (!group_state.outboundMetadata[field])
+                group_state.outboundMetadata[field] = {};
+            for (let k, v in object_or_empty(member_meta[field]))
+                group_state.outboundMetadata[field][k] = v;
+        }
+        return;
+    }
+
+    let own_tag = outbound_tag(name);
+    let outbound = find_outbound_by_tag(config, own_tag);
+    if (outbound != null && ctx.outbounds.urltest_leaf_candidate_outbound(outbound)) {
+        let display_name = trim(option(member, "label", option(member, "name", "")));
+        if (display_name == "")
+            display_name = name;
+        runtime_subscription.remember_outbound_metadata(group_state, own_tag, display_name, outbound);
+    }
+}
+
 // Post-pass: after every section has generated its outbounds, build one flat
 // urltest per group section over the union of member leaves and record the
 // member -> group mapping used to repoint route rules. Deferred (quarantined)
@@ -841,9 +915,18 @@ function add_group_urltest_outbounds(config, sections) {
         }
 
         let state = runtime_subscription.new_section_state(group_name);
+        for (let member in members)
+            merge_member_state_into_group(state, member, config);
+
         let result = add_urltest_outbound(config, section, "urltest", tags, state);
         if (result.tag == "")
             continue;
+
+        state.urltestCandidateTags = unique_string_array(result.outbounds);
+        if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(group_name), state))
+            ctx.runtime_generate_unsupported("failed to write section cache for " + group_name);
+
+        active_group_tags[group_name] = result.tag;
         for (let member in members) {
             let name = member[".name"];
             if (section_group_map[name] != null)
@@ -852,6 +935,7 @@ function add_group_urltest_outbounds(config, sections) {
             else
                 section_group_map[name] = group_name;
         }
+        add_routed_dns_server_for_section(config, section);
     }
 }
 
@@ -1032,7 +1116,8 @@ function section_excluded_candidate_tags(section, candidate_tags, state) {
 
 function add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag) {
     let section_name = section[".name"];
-    remember_section_leaf_tags(section_name, urltest_candidate_tags);
+    if (type(state) == "object")
+        section_state_map[section_name] = state;
     let selector_tag = outbound_tag(section_name);
     let selector_outbounds = selector_tags;
     let selector_default = selector_tags[0];
@@ -1094,6 +1179,20 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
             "falling back to all available subscription servers\n");
         filtered_outbounds = selector_tags;
     }
+
+    let effective_leaf_tags = group_candidate_tags;
+    if ((mode == "include" || mode == "mixed") && length(filtered_outbounds) > 0) {
+        let allowed_set = object_keys_set(filtered_outbounds);
+        let narrowed = [];
+        for (let t in group_candidate_tags) {
+            if (allowed_set[t])
+                push(narrowed, t);
+        }
+        if (length(narrowed) > 0)
+            effective_leaf_tags = narrowed;
+    }
+    remember_section_leaf_tags(section_name, effective_leaf_tags);
+
     selector_outbounds = filtered_outbounds;
     selector_default = selector_outbounds[0];
     if (length(urltest_tags) > 0 || length(priority_tags) > 0) {
@@ -1739,10 +1838,6 @@ function add_fakeip_query_type(rule, server_tag, ipv4_only) {
     return rule;
 }
 
-function routed_dns_server_tag(section_name) {
-    return runtime_constants.tag(section_name, "routed-dns-server");
-}
-
 function single_or_array(values) {
     return length(values) == 1 ? values[0] : values;
 }
@@ -1757,7 +1852,14 @@ function dns_action_detour_tag(section) {
     if (!bool_option(section, "dns_detour_enabled", false))
         return "";
     let target_section = option(section, "dns_detour_section", "");
-    return target_section == "" ? "" : outbound_tag(target_section);
+    if (target_section == "")
+        return "";
+    if (as_string(active_group_tags[target_section] || "") != "")
+        return as_string(active_group_tags[target_section]);
+    let group_name = as_string(section_group_map[target_section] || "");
+    if (group_name != "")
+        return urltest_outbound_tag(group_name, "urltest");
+    return outbound_tag(target_section);
 }
 
 function section_dns_servers(section) {
@@ -1793,36 +1895,6 @@ function add_dns_server_for_section(config, section) {
         push(server_tags, tag_name);
     }
     return server_tags;
-}
-
-function add_routed_dns_server_for_section(config, section) {
-    if (!connections.routed_dns_enabled(section))
-        return;
-    let section_name = section[".name"];
-    let action = option(section, "action", "");
-    let servers = connections.routed_dns_servers(section);
-    let dns_type = connections.routed_dns_type(section);
-    let tag_name = routed_dns_server_tag(section_name);
-    let detour = action == "bypass" ? null : outbound_tag(section_name);
-
-    for (let i = 0; i < length(servers); i++) {
-        let s_val = servers[i];
-        // The rule references the un-indexed tag, so the first server has to
-        // carry it however many are configured — with a single server this is
-        // the same tag as before, with several the rest get -2, -3, …
-        let server_tag = i == 0
-            ? tag_name
-            : runtime_constants.tag(section_name, "routed-dns-server-" + (i + 1));
-        let server = runtime_dns.server_from_options(
-            server_tag,
-            dns_type,
-            s_val,
-            detour
-        );
-        if (server.unsupported)
-            ctx.runtime_generate_unsupported(server.unsupported);
-        push(config.dns.servers, server);
-    }
 }
 
 function source_dns_inbound_matcher() {
@@ -2797,8 +2869,11 @@ function add_route_for_section(config, section) {
         /* hosts-only action — entries are consumed globally via combined cache */
     }
     else if (action == "group") {
-        /* group container — members keep their own rules, repointed at the
-           group urltest; the group itself matches no traffic */
+        // Members keep their own rules repointed at the group urltest; if the
+        // group section itself also has matchers configured, route them through
+        // the group urltest too.
+        if (group_outbound_tag_for_section(section) != "" || override != null)
+            add_combined_route_for_section(config, section);
     }
     else
         add_combined_route_for_section(config, section);
@@ -2844,12 +2919,21 @@ function failover_default_name(candidates) {
 
 const FAILOVER_GROUP_TAG = "tachyon-failover";
 
+function section_by_name(sections, name) {
+    name = as_string(name);
+    for (let section in sections)
+        if (as_string(section[".name"]) == name)
+            return section;
+    return null;
+}
+
 function add_service_route_rules(config, sections) {
     let settings = object_or_empty(ctx.uci_cursor().get_all(CONFIG_NAME, "settings"));
     if (bool_option(settings, "dns_detour_enabled", false)) {
         let detour_section = option(settings, "dns_detour_section", "");
         if (detour_section != "" && !(ctx.deferred_sections && ctx.deferred_sections[detour_section])) {
-            let detour_target = outbound_tag(detour_section);
+            let detour_sec_obj = section_by_name(sections, detour_section);
+            let detour_target = (detour_sec_obj && group_outbound_tag_for_section(detour_sec_obj)) || outbound_tag(detour_section);
             let dns_servers = list_option(settings, "dns_server");
             if (length(dns_servers) == 0) {
                 let single_dns = option(settings, "dns_server", "");
@@ -2906,7 +2990,8 @@ function add_service_route_rules(config, sections) {
     let candidates = failover_candidate(sections);
     let proxy_candidates = [];
     for (let section in candidates) {
-        if (connections.is_remote_proxy_action(option(section, "action", "")))
+        let act = option(section, "action", "");
+        if (connections.is_remote_proxy_action(act))
             push(proxy_candidates, section);
     }
     let target_candidates = length(proxy_candidates) > 0 ? proxy_candidates : candidates;
@@ -2925,11 +3010,12 @@ function add_service_route_rules(config, sections) {
             let member_tags = [];
             for (let section in target_candidates)
                 push(member_tags, outbound_tag(section[".name"]));
+            let def_name = failover_default_name(target_candidates);
             push(config.outbounds, {
                 type: "selector",
                 tag: FAILOVER_GROUP_TAG,
                 outbounds: member_tags,
-                default: outbound_tag(failover_default_name(target_candidates)),
+                default: outbound_tag(def_name),
                 interrupt_exist_connections: true
             });
             catchall_target = FAILOVER_GROUP_TAG;
@@ -2964,14 +3050,6 @@ function enabled_servers() {
             push(result, section);
     });
     return result;
-}
-
-function section_by_name(sections, name) {
-    name = as_string(name);
-    for (let section in sections)
-        if (as_string(section[".name"]) == name)
-            return section;
-    return null;
 }
 
 function add_server_routes(config, servers, sections) {

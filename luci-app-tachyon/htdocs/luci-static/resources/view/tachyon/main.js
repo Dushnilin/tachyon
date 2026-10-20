@@ -5833,7 +5833,7 @@ var ACTION_DISPLAY_NAMES = {
 };
 function isConnectionAction(action) {
   return Boolean(
-    action && (SINGLE_ENDPOINT_ACTIONS.has(action) || ["connection", "proxy", "outbound", "fptn"].includes(action))
+    action && (SINGLE_ENDPOINT_ACTIONS.has(action) || ["connection", "proxy", "outbound", "fptn", "group"].includes(action))
   );
 }
 function isServiceAction(action) {
@@ -5858,7 +5858,13 @@ function hasConfiguredPriorityList(section) {
 }
 function getUrlTestIds(section) {
   const values = getListValues(section.urltests);
-  return values.length ? values : section.urltest_enabled === "1" ? ["urltest"] : [];
+  if (values.length) {
+    return values;
+  }
+  if (section.action === "group") {
+    return ["urltest"];
+  }
+  return section.urltest_enabled === "1" ? ["urltest"] : [];
 }
 function isUrlTestEnabled(section) {
   return getUrlTestIds(section).length > 0;
@@ -5871,9 +5877,12 @@ function isNaOutbound(outbound) {
   return !outbound.latency && outbound.latency !== -1;
 }
 function shouldUseProxyGroup(section) {
-  return section.action === "fptn" || Boolean(section.access_token) || getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
+  return section.action === "group" || getListValues(section.group_members).length > 0 || section.action === "fptn" || Boolean(section.access_token) || getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
 }
 function getSectionProxyConfigType(section) {
+  if (section.action === "group") {
+    return "urltest";
+  }
   if (hasSubscriptionSources(section)) {
     return "subscription";
   }
@@ -6036,11 +6045,8 @@ function getPriorityTag(sectionName, id) {
   return getOutboundTagBySection(`${sectionName}-priority-${id}`);
 }
 function getUrlTestDisplayName(section, id, settings) {
-  return itemSettingString(
-    settings,
-    "display_name",
-    id === "urltest" && !hasConfiguredUrlTestList(section) ? _("Fastest") : id
-  );
+  const fallback = id === "urltest" && !hasConfiguredUrlTestList(section) ? section.action === "group" ? section.label || section.name || _("Fastest") : _("Fastest") : id;
+  return itemSettingString(settings, "display_name", fallback);
 }
 function getUrlTestConfigs(section) {
   const settingsMap = itemSettingsMap(section.urltest_settings);
@@ -6476,10 +6482,16 @@ function buildPriorityInfo({
     outbounds
   };
 }
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map(), hiddenOutboundTags = {}) {
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map(), hiddenOutboundTags = {}, memberSections = []) {
   const sectionName = section[".name"];
-  const configuredPrefixes = getConfiguredSubscriptionPrefixes(section);
+  const configuredPrefixes = uniqueCodes([
+    ...getConfiguredSubscriptionPrefixes(section),
+    ...memberSections.flatMap((m) => getConfiguredSubscriptionPrefixes(m))
+  ]);
   getConfiguredSubscriptionPrefixStyles(section);
+  for (const m of memberSections) {
+    getConfiguredSubscriptionPrefixStyles(m);
+  }
   const proxyByCode = getProxyEntryByCode(proxies);
   const selectorTag = getOutboundTagBySection(sectionName);
   const selector = proxyByCode.get(selectorTag);
@@ -6500,6 +6512,13 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
     entry: proxyByCode.get(config.code)
   }));
   const manualLinkByCode = buildManualLinkByCode(section);
+  for (const m of memberSections) {
+    for (const [k, v] of buildManualLinkByCode(m)) {
+      if (!manualLinkByCode.has(k)) {
+        manualLinkByCode.set(k, v);
+      }
+    }
+  }
   const rawSelectorCodes = selector?.value?.all ?? [];
   const selectorCodes = rawSelectorCodes.filter(
     (code) => !hiddenOutboundTags[code]
@@ -6508,7 +6527,15 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
   const priorityCodes = priorityConfigs.map((config) => config.code);
   const showDetectedCountries = urlTestConfigs.some((config) => config.showDetectedCountries) || priorityConfigs.some((config) => config.showDetectedCountries);
   const builtInUrltestCode = urlTestCodes[0] || "";
-  const fallbackCodes = uniqueCodes([
+  const fallbackCodes = section.action === "group" ? uniqueCodes([
+    ...urlTestCodes,
+    ...priorityCodes,
+    ...urlTestEntries.flatMap(
+      ({ config, entry }) => urltestGroups[config.code]?.outbounds || entry?.value.all || []
+    ),
+    ...Array.from(cachedProxyLinks.keys()),
+    ...Array.from(manualLinkByCode.keys())
+  ]).filter((code) => !hiddenOutboundTags[code]) : uniqueCodes([
     ...urlTestCodes,
     ...priorityCodes,
     ...Array.from(cachedProxyLinks.keys()),
@@ -6876,7 +6903,7 @@ async function getDashboardSections(options = {}) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
         const subscriptionEnabled = subscriptionSourceCount > 0;
         const dashboardCache = await readDashboardSectionCache(sectionName);
-        const outboundMetadata = getOutboundMetadata(dashboardCache);
+        let outboundMetadata = getOutboundMetadata(dashboardCache);
         const subscriptionMetadata = subscriptionEnabled ? getSubscriptionMetadata(
           section,
           subscriptionSourceCount,
@@ -6886,6 +6913,54 @@ async function getDashboardSections(options = {}) {
         const urltestGroups = getUrlTestGroups(dashboardCache);
         const priorityGroups = getPriorityGroups(dashboardCache);
         const hiddenOutboundTags = dashboardCache?.hiddenOutboundTags ?? {};
+        const memberNames = sectionAction === "group" ? getListValues(section.group_members).map((m) => m.trim()) : [];
+        const memberSections = memberNames.length > 0 ? configSections.filter((s) => memberNames.includes(s[".name"])) : [];
+        if (memberSections.length > 0) {
+          const memberCaches = await Promise.all(
+            memberSections.map((m) => readDashboardSectionCache(m[".name"]))
+          );
+          for (const mCache of memberCaches) {
+            if (!mCache) continue;
+            const mMeta = getOutboundMetadata(mCache);
+            if (mMeta) {
+              outboundMetadata = {
+                names: { ...mMeta.names, ...outboundMetadata?.names },
+                countries: {
+                  ...mMeta.countries,
+                  ...outboundMetadata?.countries
+                },
+                transports: {
+                  ...mMeta.transports,
+                  ...outboundMetadata?.transports
+                },
+                protocols: {
+                  ...mMeta.protocols,
+                  ...outboundMetadata?.protocols
+                },
+                securities: {
+                  ...mMeta.securities,
+                  ...outboundMetadata?.securities
+                },
+                ports: { ...mMeta.ports, ...outboundMetadata?.ports },
+                details: {
+                  ...mMeta.details,
+                  ...outboundMetadata?.details
+                },
+                prefixes: {
+                  ...mMeta.prefixes,
+                  ...outboundMetadata?.prefixes
+                }
+              };
+            }
+            if (includeSubscriptionCopyState) {
+              for (const [k, v] of getCachedProxyLinks(mCache)) {
+                if (!cachedProxyLinks.has(k)) {
+                  cachedProxyLinks.set(k, v);
+                }
+              }
+            }
+          }
+        }
         const { selector, latencyTestCode, latencyTestCodes, outbounds } = buildProxyGroupOutbounds(
           section,
           proxies,
@@ -6893,14 +6968,15 @@ async function getDashboardSections(options = {}) {
           urltestGroups,
           priorityGroups,
           cachedProxyLinks,
-          hiddenOutboundTags
+          hiddenOutboundTags,
+          memberSections
         );
         const hideNa = shouldHideNaServers(section);
         const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
         const filteredOutbounds = hideNa && hasTestedServers ? outbounds.filter((o) => !isNaOutbound(o)) : outbounds;
         return {
           withTagSelect: true,
-          code: selector?.code || sectionName,
+          code: selector?.code || latencyTestCode || sectionName,
           sectionName,
           displayName,
           action: sectionAction,

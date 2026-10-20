@@ -222,8 +222,79 @@ if (alpha_rule.outbound != "grp-urltest-out" || beta_rule.outbound != "grp-urlte
     die("member rules must route through the group urltest, got alpha=" +
         (alpha_rule.outbound || "null") + " beta=" + (beta_rule.outbound || "null") + "\n");
 if (group_rule_count != 2)
-    die("the group itself must not add route rules; expected 2, got " + group_rule_count + "\n");
+    die("the group itself must not add route rules when it has no conditions; expected 2, got " + group_rule_count + "\n");
+
+let grp_cache = json(fs.readfile(ARGV[0] + ".section-cache/grp.json"));
+if (!grp_cache || type(grp_cache.outboundMetadata) != "object" || type(grp_cache.outboundMetadata.names) != "object")
+    die("group section cache grp.json must be written with outboundMetadata.names\n");
+for (let want in [ "alpha-1-out", "alpha-2-out", "beta-1-out" ])
+    if (!grp_cache.outboundMetadata.names[want])
+        die("group section cache grp.json is missing metadata for " + want + "\n");
 ' "$group_config" || fail "generated section group behavior"
+
+# ─── generator: routing conditions on group section + mixed proxy + filter ────
+
+cat >"$WORK_DIR/group-direct-rules-fixture.json" <<JSON
+{
+  "settings": { ".name": "settings", ".type": "settings", "log_level": "warn" },
+  "section": [
+    { ".name": "alpha", ".type": "section", "enabled": "1", "action": "connection",
+      "selector_proxy_links": [ "$LINK_A1", "$LINK_A2" ],
+      "dashboard_filter_mode": "exclude",
+      "dashboard_exclude_outbounds": [ "Alpha Two" ] },
+    { ".name": "beta", ".type": "section", "enabled": "1", "action": "connection",
+      "selector_proxy_links": [ "$LINK_B1" ] },
+    { ".name": "grp", ".type": "section", "enabled": "1", "action": "group",
+      "group_members": [ "alpha", "beta" ],
+      "domain_suffix": [ "group-direct.example" ],
+      "mixed_proxy_enabled": "1",
+      "mixed_proxy_port": "4599" }
+  ]
+}
+JSON
+
+group_direct_config="$WORK_DIR/group-direct-config.json"
+mkdir -p "${group_direct_config}.section-cache"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/group-direct-rules-fixture.json" "$group_direct_config" "127.0.0.1"
+
+ucode -e '
+let fs = require("fs");
+function outbound_by_tag(config, want) {
+    for (let outbound in config.outbounds || [])
+        if (outbound && outbound.tag == want)
+            return outbound;
+    return null;
+}
+function contains(values, needle) {
+    for (let value in values || [])
+        if (value == needle)
+            return true;
+    return false;
+}
+let config = json(fs.readfile(ARGV[0]));
+let group = outbound_by_tag(config, "grp-urltest-out");
+if (!group || group.type != "urltest")
+    die("grp-urltest-out missing\n");
+if (contains(group.outbounds || [], "alpha-2-out"))
+    die("filtered-out member leaf alpha-2-out must not be in grp-urltest-out\n");
+for (let want in [ "alpha-1-out", "beta-1-out" ])
+    if (!contains(group.outbounds || [], want))
+        die("expected leaf " + want + " in grp-urltest-out\n");
+
+let direct_rule = null;
+let mixed_rule = null;
+for (let rule in config.route.rules || []) {
+    if (contains(rule.domain_suffix || [], "group-direct.example"))
+        direct_rule = rule;
+    if ((rule.inbound == "grp-mixed-in" || contains(rule.inbound || [], "grp-mixed-in")) && !rule.ip_is_private)
+        mixed_rule = rule;
+}
+if (!direct_rule || direct_rule.outbound != "grp-urltest-out")
+    die("routing conditions on the group section itself must route to grp-urltest-out\n");
+if (!mixed_rule || mixed_rule.outbound != "grp-urltest-out")
+    die("mixed proxy on the group section must route to grp-urltest-out\n");
+' "$group_direct_config" || fail "generated section group direct rules, filter, and mixed proxy"
 
 # ─── generator: manual action=awg endpoint included in group urltest ──────────
 
