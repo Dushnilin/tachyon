@@ -1650,6 +1650,7 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
                 "--speed-time", timeout,
                 "--speed-limit", "1",
                 "--max-redirs", "5",
+                "-b", "/dev/null",
                 "--max-filesize", "15728640"
             ];
 

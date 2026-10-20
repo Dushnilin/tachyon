@@ -217,7 +217,17 @@ const KNOWN_COMMUNITY_DOMAINS = {
     twitter: [ "twitter.com", "x.com", "twimg.com", "t.co", "x.co" ],
     youtube: [ "youtube.com", "googlevideo.com", "ytimg.com", "youtu.be", "ggpht.com" ],
     roblox: [ "roblox.com", "rbxcdn.com", "robloxlabs.com" ],
-    cloudflare: [ "cloudflare.com", "cloudflare-dns.com", "workers.dev" ]
+    cloudflare: [ "cloudflare.com", "cloudflare-dns.com", "workers.dev" ],
+    geosite_ru: [
+        "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
+        "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
+        "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru", "2ch.hk", "pikabu.ru"
+    ],
+    russia_inside: [
+        "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
+        "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
+        "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru"
+    ]
 };
 
 const KNOWN_COMMUNITY_SUBNETS = {
@@ -279,6 +289,24 @@ function check_community_ip_match(target_ip, community_name) {
                 }
             }
         }
+    }
+    return false;
+}
+
+function target_matches_country(target_info, cc, is_domain, is_ip) {
+    cc = lc(trim(as_string(cc)));
+    if (cc == "") return false;
+    if (cc == "non-ru") cc = "ru";
+
+    if (is_domain) {
+        if (domain_matches_suffix(target_info.host, cc)) return true;
+        if (cc == "ru" && (domain_matches_suffix(target_info.host, "su") || domain_matches_suffix(target_info.host, "xn--p1ai") || domain_matches_suffix(target_info.host, "рф"))) return true;
+        if (check_community_domain_match(target_info.host, "geosite_" + cc)) return true;
+        if (cc == "ru" && check_community_domain_match(target_info.host, "russia_inside")) return true;
+    }
+    if (is_ip) {
+        if (check_community_ip_match(target_info.host, "geoip_" + cc)) return true;
+        if (cc == "ru" && check_community_ip_match(target_info.host, "russia_inside")) return true;
     }
     return false;
 }
@@ -457,13 +485,45 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
     let is_domain = target_info.type == "domain";
     let is_ip = target_info.type == "ipv4" || target_info.type == "ipv6" || target_info.type == "cidr";
 
+    // GeoIP filter on section if configured
+    let raw_geo = parse_items_list(section.geoip_country);
+    let geo_countries = [];
+    for (let item in raw_geo) {
+        item = lc(trim(item));
+        if (item == "" || item == "all") continue;
+        if (item == "non-ru") item = "ru";
+        if (match(item, /^[a-z]{2}$/) != null)
+            push(geo_countries, item);
+    }
+    let geo_mode = lc(trim(as_string(section.geoip_mode || "")));
+    if (length(geo_countries) > 0 && geo_mode == "")
+        geo_mode = "exclude";
+
+    let geoip_filter_active = length(geo_countries) > 0 && geo_mode != "";
+    let check_geo_filter_pass = function() {
+        if (!geoip_filter_active) return true;
+        let in_country = false;
+        for (let cc in geo_countries) {
+            if (target_matches_country(target_info, cc, is_domain, is_ip)) {
+                in_country = true;
+                break;
+            }
+        }
+        if (geo_mode == "exclude" || geo_mode == "exclude_direct")
+            return !in_country;
+        if (geo_mode == "include" || geo_mode == "include_all")
+            return in_country;
+        return true;
+    };
+
     // 1. Domain matching
     if (is_domain) {
         // Exact domain
         let domains = parse_items_list(section.domain);
         for (let d in domains) {
             if (domain_matches_exact(target_info.host, d)) {
-                return { rule_type: "domain", rule_value: d };
+                if (check_geo_filter_pass())
+                    return { rule_type: "domain", rule_value: d };
             }
         }
 
@@ -471,7 +531,8 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
         let suffixes = parse_items_list(section.domain_suffix);
         for (let s in suffixes) {
             if (domain_matches_suffix(target_info.host, s)) {
-                return { rule_type: "domain_suffix", rule_value: s };
+                if (check_geo_filter_pass())
+                    return { rule_type: "domain_suffix", rule_value: s };
             }
         }
 
@@ -479,7 +540,8 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
         let keywords = parse_items_list(section.domain_keyword);
         for (let kw in keywords) {
             if (domain_matches_keyword(target_info.host, kw)) {
-                return { rule_type: "domain_keyword", rule_value: kw };
+                if (check_geo_filter_pass())
+                    return { rule_type: "domain_keyword", rule_value: kw };
             }
         }
 
@@ -487,7 +549,8 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
         let regexes = parse_items_list(section.domain_regex);
         for (let rx in regexes) {
             if (domain_matches_regex(target_info.host, rx)) {
-                return { rule_type: "domain_regex", rule_value: rx };
+                if (check_geo_filter_pass())
+                    return { rule_type: "domain_regex", rule_value: rx };
             }
         }
 
@@ -495,7 +558,8 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
         let comm_lists = parse_items_list(section.community_lists || section.community);
         for (let comm in comm_lists) {
             if (check_community_domain_match(target_info.host, comm)) {
-                return { rule_type: "community_list", rule_value: comm };
+                if (check_geo_filter_pass())
+                    return { rule_type: "community_list", rule_value: comm };
             }
         }
 
@@ -503,7 +567,8 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
         let rule_sets = parse_items_list(section.rule_set);
         for (let rs in rule_sets) {
             if (check_community_domain_match(target_info.host, rs)) {
-                return { rule_type: "rule_set", rule_value: rs };
+                if (check_geo_filter_pass())
+                    return { rule_type: "rule_set", rule_value: rs };
             }
         }
     }
@@ -513,7 +578,8 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
         let ip_cidrs = parse_items_list(section.ip_cidr || section.ip || section.subnets);
         for (let cidr in ip_cidrs) {
             if (ipv4_in_cidr(target_info.host, cidr)) {
-                return { rule_type: "ip_cidr", rule_value: cidr };
+                if (check_geo_filter_pass())
+                    return { rule_type: "ip_cidr", rule_value: cidr };
             }
         }
 
@@ -521,7 +587,36 @@ function evaluate_section_match(section, client_info, target_info, port, proto) 
         let comm_subnets = parse_items_list(section.community_subnets || section.community_lists || section.community);
         for (let comm in comm_subnets) {
             if (check_community_ip_match(target_info.host, comm)) {
-                return { rule_type: "community_subnets", rule_value: comm };
+                if (check_geo_filter_pass())
+                    return { rule_type: "community_subnets", rule_value: comm };
+            }
+        }
+    }
+
+    // 3. Match All
+    if (section.match_all == "1") {
+        if (check_geo_filter_pass())
+            return { rule_type: "match_all", rule_value: "all_traffic" };
+    }
+
+    // 4. Standalone GeoIP rule (for sections without explicit domain/IP matchers or in closed mode)
+    if (geoip_filter_active) {
+        let has_domain_matchers = length(parse_items_list(section.domain)) > 0 ||
+            length(parse_items_list(section.domain_suffix)) > 0 ||
+            length(parse_items_list(section.domain_keyword)) > 0 ||
+            length(parse_items_list(section.domain_regex)) > 0;
+        let has_ip_matchers = length(parse_items_list(section.ip_cidr || section.ip || section.subnets)) > 0;
+        let has_comm_matchers = length(parse_items_list(section.community_lists || section.community || section.rule_set)) > 0;
+        let is_geo_catch_all = !has_domain_matchers && !has_ip_matchers && !has_comm_matchers;
+        let is_closed_geo = geo_mode == "include_all" || geo_mode == "exclude_direct";
+
+        if (is_geo_catch_all || is_closed_geo) {
+            if (check_geo_filter_pass()) {
+                let is_invert = geo_mode == "exclude" || geo_mode == "exclude_direct";
+                return {
+                    rule_type: is_invert ? "geoip_exclude" : "geoip_include",
+                    rule_value: (is_invert ? "!" : "") + join(",", geo_countries)
+                };
             }
         }
     }
@@ -1246,6 +1341,33 @@ function selftest() {
     assert(index(text, "TACHYON ROUTE DECISION EXPLAINER") >= 0, "text formatter header");
     assert(index(text, "instagram.com") >= 0, "text formatter includes target");
 
+    // Test 9: GeoIP country target detection
+    assert(target_matches_country({ host: "yandex.ru" }, "ru", true, false) == true, "yandex.ru matches ru country");
+    assert(target_matches_country({ host: "kinopoisk.ru" }, "ru", true, false) == true, "kinopoisk.ru matches ru country");
+    assert(target_matches_country({ host: "4pda.to" }, "ru", true, false) == false, "4pda.to does not match ru country");
+    assert(target_matches_country({ host: "1.1.1.1" }, "ru", false, true) == false, "1.1.1.1 does not match ru country");
+
+    // Test 10: Section match with GeoIP exclusion (Issue #179)
+    let sec_main = {
+        ".name": "sec_main",
+        enabled: "1",
+        action: "connection",
+        geoip_country: [ "ru" ],
+        geoip_mode: "exclude"
+    };
+    let dummy_client = { ip: "192.168.1.100", mac: null, is_router: false, is_excluded: false };
+
+    let m_4pda = evaluate_section_match(sec_main, dummy_client, { host: "4pda.to", type: "domain" }, 443, "tcp");
+    assert(m_4pda != null, "4pda.to matches geoip exclude section");
+    assert(m_4pda.rule_type == "geoip_exclude", "4pda rule type is geoip_exclude");
+    assert(m_4pda.rule_value == "!ru", "4pda rule value is !ru");
+
+    let m_yandex = evaluate_section_match(sec_main, dummy_client, { host: "yandex.ru", type: "domain" }, 443, "tcp");
+    assert(m_yandex == null, "yandex.ru is excluded from geoip exclude section");
+
+    let m_all = evaluate_section_match({ enabled: "1", match_all: "1" }, dummy_client, { host: "example.org", type: "domain" }, 443, "tcp");
+    assert(m_all != null && m_all.rule_type == "match_all", "match_all rule matches");
+
     print(sprintf("Route explain selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;
 }
@@ -1294,5 +1416,7 @@ return {
     domain_matches_regex,
     check_community_domain_match,
     check_community_ip_match,
+    target_matches_country,
+    evaluate_section_match,
     selftest
 };

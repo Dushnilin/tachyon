@@ -353,12 +353,15 @@ function item_list(section, key, item, option_name, fallback) {
 }
 
 function is_legacy_connection_action(action) {
-    action = as_string(action);
-    return action == "proxy" || action == "outbound" || action == "vpn";
+    action = lc(as_string(action));
+    return action == "proxy" || action == "outbound" || action == "vpn" ||
+        action == "socks" || action == "socks5" || action == "socks4" || action == "http" ||
+        action == "shadowsocks" || action == "ss" || action == "vless" || action == "vmess" ||
+        action == "trojan" || action == "hysteria2" || action == "hy2" || action == "tuic";
 }
 
 function is_connections_action(action) {
-    action = as_string(action);
+    action = lc(as_string(action));
     return action == "connection" || is_legacy_connection_action(action);
 }
 

@@ -146,6 +146,8 @@ function prepare_strategy_args(raw_opt) {
         push(filter_prefix, "--filter-tcp=443");
         push(filter_prefix, "--filter-l7=tls");
         push(filter_prefix, "--payload=tls_client_hello");
+    } else if (index(first_profile, "--filter-udp") >= 0 && index(first_profile, "--filter-tcp") < 0 && index(first_profile, "--filter-l7") < 0 && index(first_profile, "--payload") < 0 && index(first_profile, "--lua-desync") >= 0) {
+        push(filter_prefix, "--payload=all");
     }
     let words = [];
     for (let arg in extra_args) push(words, arg);

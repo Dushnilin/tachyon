@@ -1060,6 +1060,8 @@ function capability_flags() {
         byedpi_installed: file_executable(BYEDPI_BIN) ? 1 : 0,
         wdtt_installed: (file_executable("/usr/bin/qwdtt") || file_executable("/usr/bin/wdtt") || file_executable("/usr/bin/qwdtt-client")) ? 1 : 0,
         olcrtc_installed: file_executable("/usr/bin/olcrtc") ? 1 : 0,
+        i18n_ru_installed: fs.stat("/usr/lib/lua/luci/i18n/tachyon.ru.lmo") != null ? 1 : 0,
+        luci_lang: trim(as_string(uci_core.get("luci.main.lang") || "auto")) || "auto",
         server_inbounds_enabled_count: 0
     };
 
@@ -1204,6 +1206,53 @@ function truthy(value) {
     return value == "1" || value == "true" || value == "on" || value == "yes";
 }
 
+function get_process_uptime(pid) {
+    let spid = as_string(pid || "");
+    if (!spid || match(spid, /^[0-9]+$/) == null)
+        return null;
+    let st = fs.stat("/proc/" + spid);
+    if (!st || !st.mtime)
+        return null;
+    let sec = now_seconds() - int(st.mtime);
+    return sec >= 0 ? sec : 0;
+}
+
+function format_uptime_pretty(sec) {
+    if (sec == null || sec < 0)
+        return "";
+    sec = int(sec);
+    if (sec < 60)
+        return sec + "с";
+    let min = int(sec / 60);
+    if (min < 60)
+        return min + "м";
+    let hours = int(min / 60);
+    let rem_min = min % 60;
+    if (hours < 24)
+        return hours + "ч " + rem_min + "м";
+    let days = int(hours / 24);
+    let rem_hours = hours % 24;
+    return days + "д " + rem_hours + "ч";
+}
+
+function get_service_primary_pid(process_name, is_core) {
+    let pids = get_process_pids(process_name);
+    for (let p in pids) {
+        let pid = trim(as_string(p));
+        if (!pid || match(pid, /^[0-9]+$/) == null)
+            continue;
+        let cmd = fs.readfile("/proc/" + pid + "/cmdline");
+        if (cmd) {
+            if (index(cmd, "check") >= 0)
+                continue;
+            if (is_core && index(cmd, "run") < 0)
+                continue;
+        }
+        return int(pid);
+    }
+    return length(pids) > 0 ? int(pids[0]) : null;
+}
+
 function current_ui_state_json() {
     maybe_refresh_action_dirs(false);
 
@@ -1257,6 +1306,78 @@ function current_ui_state_json() {
     let dns_local_cache = truthy(uci_core.get(CONFIG_NAME + ".settings.dns_local_cache"));
     let dns_cache_size = dns_local_cache ? int(uci_core.get(CONFIG_NAME + ".settings.dns_cache_size") || 10000) : 0;
 
+    let engine_version = "";
+    let engine_variant = "";
+    if (is_steer) {
+        engine_variant = (active_engine == "steer-extended") ? "Steer Ext" : "Steer";
+        try {
+            let steer_out = bounded_command_output_from_args([ "/usr/bin/steer", "version" ], 2);
+            let steer_info = sing_box_version_info_from_output(steer_out);
+            if (steer_info && steer_info.version)
+                engine_version = steer_info.version;
+        } catch (e) {}
+    } else {
+        let info = sing_box_version_info();
+        if (info && info.version)
+            engine_version = info.version;
+        if (capabilities.sing_box_tachyon_core)
+            engine_variant = "Tachyon Core";
+        else if (capabilities.sing_box_lx)
+            engine_variant = "Sing-box LX";
+        else if (capabilities.sing_box_extended)
+            engine_variant = "Sing-box Ext";
+        else if (capabilities.sing_box_tiny)
+            engine_variant = "Sing-box Tiny";
+        else
+            engine_variant = "Sing-box";
+    }
+
+    let tachyon_pid = null;
+    let tachyon_pid_raw = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
+    if (tachyon_is_running && tachyon_pid_raw && match(tachyon_pid_raw, /^[0-9]+$/) != null && fs.stat("/proc/" + tachyon_pid_raw) != null) {
+        tachyon_pid = int(tachyon_pid_raw);
+    }
+    let tachyon_uptime = tachyon_pid ? get_process_uptime(tachyon_pid) : null;
+    let tachyon_uptime_pretty = format_uptime_pretty(tachyon_uptime);
+
+    let sing_box_pid = null;
+    if (sing_box_is_running) {
+        if (is_steer) {
+            sing_box_pid = get_service_primary_pid("steer", false);
+        } else {
+            sing_box_pid = get_service_primary_pid("tachyon-core", true);
+            if (!sing_box_pid)
+                sing_box_pid = get_service_primary_pid("sing-box", true);
+        }
+    }
+    let sing_box_uptime = sing_box_pid ? get_process_uptime(sing_box_pid) : null;
+    let sing_box_uptime_pretty = format_uptime_pretty(sing_box_uptime);
+
+    let zapret2_pid = null;
+    if (zapret2_rss > 0) {
+        zapret2_pid = get_service_primary_pid("nfqws2", false);
+    }
+    let zapret2_uptime = zapret2_pid ? get_process_uptime(zapret2_pid) : null;
+    let zapret2_uptime_pretty = format_uptime_pretty(zapret2_uptime);
+
+    let dnsmasq_pid = null;
+    if (dnsmasq_is_running) {
+        for (let p in dnsmasq_pids) {
+            let pid = trim(as_string(p));
+            if (!pid || match(pid, /^[0-9]+$/) == null)
+                continue;
+            let cmd = fs.readfile("/proc/" + pid + "/cmdline");
+            if (cmd && index(cmd, "dnsmasq") >= 0 && index(cmd, "ujail") < 0) {
+                dnsmasq_pid = int(pid);
+                break;
+            }
+        }
+        if (!dnsmasq_pid && length(dnsmasq_pids) > 0)
+            dnsmasq_pid = int(dnsmasq_pids[0]);
+    }
+    let dnsmasq_uptime = dnsmasq_pid ? get_process_uptime(dnsmasq_pid) : null;
+    let dnsmasq_uptime_pretty = format_uptime_pretty(dnsmasq_uptime);
+
     write_json({
         active_engine: active_engine,
         service: {
@@ -1265,23 +1386,37 @@ function current_ui_state_json() {
                 enabled: tachyon_is_enabled,
                 status: tachyon_status,
                 dns_configured: dns_configured() ? 1 : 0,
-                memory_rss_mb: tachyon_rss
+                memory_rss_mb: tachyon_rss,
+                pid: tachyon_pid,
+                uptime_seconds: tachyon_uptime,
+                uptime_pretty: tachyon_uptime_pretty
             },
             sing_box: {
                 running: sing_box_is_running,
                 enabled: sing_box_is_enabled,
                 status: sing_box_status,
-                memory_rss_mb: sing_box_rss
+                memory_rss_mb: sing_box_rss,
+                pid: sing_box_pid,
+                uptime_seconds: sing_box_uptime,
+                uptime_pretty: sing_box_uptime_pretty,
+                engine_variant: engine_variant,
+                engine_version: engine_version
             },
             zapret2: {
                 running: zapret2_rss > 0 ? 1 : 0,
-                memory_rss_mb: zapret2_rss
+                memory_rss_mb: zapret2_rss,
+                pid: zapret2_pid,
+                uptime_seconds: zapret2_uptime,
+                uptime_pretty: zapret2_uptime_pretty
             },
             dnsmasq: {
                 running: dnsmasq_is_running,
                 memory_rss_mb: dnsmasq_rss,
                 local_cache_enabled: dns_local_cache ? 1 : 0,
-                cache_size: dns_cache_size
+                cache_size: dns_cache_size,
+                pid: dnsmasq_pid,
+                uptime_seconds: dnsmasq_uptime,
+                uptime_pretty: dnsmasq_uptime_pretty
             }
         },
         capabilities,
@@ -1691,7 +1826,7 @@ function latency_boot_sweep() {
     for (let section in sections) {
         if (!bool_option(section, "enabled", true))
             continue;
-        if (length(connections.urltests(section)) > 0) {
+        if (length(connections.urltests(section)) > 0 || option(section, "action", "connection") == "connection") {
             has_groups = true;
             break;
         }
@@ -1715,6 +1850,10 @@ function latency_boot_sweep() {
         return;
     }
 
+    let persistent_choices = common.read_json_file(getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json");
+    if (type(persistent_choices) != "object")
+        persistent_choices = {};
+
     for (let section in sections) {
         if (!bool_option(section, "enabled", true))
             continue;
@@ -1735,6 +1874,39 @@ function latency_boot_sweep() {
             command_status(command_from_args([ BIN_PATH, "clash_api", "get_group_latency", group_tag, method_plan.timeout, path ]) + " >/dev/null 2>&1");
             if (fs.stat(path) != null)
                 write_finished_action_state(path, true, "Boot latency sweep completed", 0);
+        }
+
+        if (option(section, "action", "connection") == "connection" && persistent_choices[section_name + "-out"] == null) {
+            let selector_tag = section_name + "-out";
+            let sel_id = "boot-sweep-" + section_name + "-selector";
+            let sel_path = job_state_path_value(LATENCY_ACTION_DIR, sel_id);
+            let method_plan = latency_clash_method("group");
+            let raw_delays = command_output(command_from_args([ BIN_PATH, "clash_api", "get_group_latency", selector_tag, method_plan.timeout, sel_path ]) + " 2>/dev/null");
+            if (sel_path != "" && fs.stat(sel_path) != null)
+                write_finished_action_state(sel_path, true, "Boot selector latency sweep completed", 0);
+            try {
+                let delays = json(trim(as_string(raw_delays)));
+                if (type(delays) == "object") {
+                    let cache = common.read_json_file("/tmp/tachyon-core/subscriptions/" + section_name + ".json");
+                    let outbounds_map = (type(cache) == "object" && type(cache.outbounds) == "object") ? cache.outbounds : {};
+                    let candidates = keys(outbounds_map);
+                    if (length(candidates) > 0) {
+                        let first_tag = as_string(candidates[0]);
+                        if (int(delays[first_tag] || 0) <= 0) {
+                            let fallback_tag = "";
+                            for (let cand in candidates) {
+                                if (int(delays[cand] || 0) > 0) {
+                                    fallback_tag = as_string(cand);
+                                    break;
+                                }
+                            }
+                            if (fallback_tag != "" && fallback_tag != first_tag) {
+                                command_status(command_from_args([ BIN_PATH, "clash_api", "set_group_proxy", selector_tag, fallback_tag ]) + " >/dev/null 2>&1");
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
         }
     }
 

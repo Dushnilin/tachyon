@@ -1170,6 +1170,7 @@ function start_main() {
 
     restore_selector_state(null);
 
+    try { fs.unlink("/var/run/tachyon/boot-sweep-done"); } catch (e) {}
     module_background(UI_UC, [ "latency-boot-sweep" ]);
     module_background(UPDATES_UC, [ "list-update" ]);
     module_background(LIB_DIR + "/service/lifecycle.uc", [ "discover-awg-mtu" ]);

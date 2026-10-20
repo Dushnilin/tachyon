@@ -503,64 +503,119 @@ function has_int(values, needle) {
     return false;
 }
 
-// Mixed-inbound ports the generated config declares. Read from the config
-// rather than hardcoded, so this stays in step with the generator and stands
-// down when no section enables the mixed proxy at all.
-function sing_box_mixed_ports() {
+// Inbound and endpoint ports the generated config declares. Read from the config
+// rather than hardcoded, so this stays in step with the generator and verifies
+// both mixed proxy ports and configured Server Inbounds after SIGHUP.
+function sing_box_expected_ports() {
     let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
     let config_path = trim(as_string(settings.config_path || "")) || "/etc/tachyon-core/config.json";
     let data = fs.readfile(config_path);
     if (data == null)
-        return [];
+        return { tcp: [], udp: [] };
 
     let parsed;
     try {
         parsed = json(data);
     }
     catch (e) {
-        return [];
+        return { tcp: [], udp: [] };
     }
-    if (parsed == null || parsed.inbounds == null)
-        return [];
+    if (parsed == null)
+        return { tcp: [], udp: [] };
 
-    let ports = [];
-    for (let inbound in parsed.inbounds) {
-        if (inbound.type != "mixed" || inbound.listen_port == null)
+    let tcp = [];
+    let udp = [];
+    for (let inbound in (parsed.inbounds || [])) {
+        if (type(inbound) != "object" || inbound.listen_port == null)
             continue;
         let port = int(inbound.listen_port, 10);
-        if (port > 0 && !has_int(ports, port))
-            push(ports, port);
-    }
-    return ports;
-}
-
-// Are the ports the config promises actually in LISTEN? /proc/net/tcp is
-// read directly: this runs inside the SIGHUP poll loop and a netstat fork per
-// iteration is exactly the kind of churn a reload should not add.
-function sing_box_mixed_ports_listening(ports) {
-    if (length(ports) == 0)
-        return true;
-
-    let listening = {};
-    for (let path in [ "/proc/net/tcp", "/proc/net/tcp6" ]) {
-        let content = fs.readfile(path);
-        if (content == null)
+        if (port <= 0)
             continue;
-        for (let line in split(content, "\n")) {
-            let fields = split(trim(line), /[ \t]+/);
-            if (length(fields) < 4 || (fields[3] != "0A" && fields[3] != "0a"))
-                continue;
-            let colon = index(fields[1], ":");
-            if (colon <= 0)
-                continue;
-            listening[int(substr(fields[1], colon + 1), 16)] = true;
+        let t = lc(as_string(inbound.type || ""));
+        if (t == "hysteria2" || t == "tuic" || t == "wireguard" || t == "awg") {
+            if (!has_int(udp, port))
+                push(udp, port);
+        }
+        else if (t == "mixed" || t == "vless" || t == "vmess" || t == "trojan" ||
+                 t == "shadowsocks" || t == "socks" || t == "http" || t == "anytls" ||
+                 t == "naive" || t == "shadowtls" || t == "fptn" || t == "mtproxy") {
+            if (!has_int(tcp, port))
+                push(tcp, port);
         }
     }
+    for (let endpoint in (parsed.endpoints || [])) {
+        if (type(endpoint) != "object" || endpoint.listen_port == null)
+            continue;
+        let port = int(endpoint.listen_port, 10);
+        if (port <= 0)
+            continue;
+        let t = lc(as_string(endpoint.type || ""));
+        if ((t == "wireguard" || t == "awg") && !has_int(udp, port))
+            push(udp, port);
+    }
+    return { tcp, udp };
+}
 
-    for (let port in ports)
-        if (!listening[int(port)])
-            return false;
+function sing_box_mixed_ports() {
+    return sing_box_expected_ports().tcp;
+}
+
+// Are the ports the config promises actually in LISTEN? /proc/net/tcp and
+// /proc/net/udp are read directly: this runs inside the SIGHUP poll loop and a
+// netstat fork per iteration is exactly the kind of churn a reload should not add.
+function sing_box_expected_ports_listening(expected) {
+    let tcp_ports = type(expected) == "array" ? expected : (expected.tcp || []);
+    let udp_ports = type(expected) == "object" ? (expected.udp || []) : [];
+    if (length(tcp_ports) == 0 && length(udp_ports) == 0)
+        return true;
+
+    if (length(tcp_ports) > 0) {
+        let listening_tcp = {};
+        for (let path in [ "/proc/net/tcp", "/proc/net/tcp6" ]) {
+            let content = fs.readfile(path);
+            if (content == null)
+                continue;
+            for (let line in split(content, "\n")) {
+                let fields = split(trim(line), /[ \t]+/);
+                if (length(fields) < 4 || (fields[3] != "0A" && fields[3] != "0a"))
+                    continue;
+                let colon = index(fields[1], ":");
+                if (colon <= 0)
+                    continue;
+                listening_tcp[int(substr(fields[1], colon + 1), 16)] = true;
+            }
+        }
+        for (let port in tcp_ports)
+            if (!listening_tcp[int(port)])
+                return false;
+    }
+
+    if (length(udp_ports) > 0) {
+        let listening_udp = {};
+        for (let path in [ "/proc/net/udp", "/proc/net/udp6" ]) {
+            let content = fs.readfile(path);
+            if (content == null)
+                continue;
+            for (let line in split(content, "\n")) {
+                let fields = split(trim(line), /[ \t]+/);
+                if (length(fields) < 4 || (fields[3] != "07" && fields[3] != "01"))
+                    continue;
+                let colon = index(fields[1], ":");
+                if (colon <= 0)
+                    continue;
+                listening_udp[int(substr(fields[1], colon + 1), 16)] = true;
+            }
+        }
+        for (let port in udp_ports)
+            if (!listening_udp[int(port)])
+                return false;
+    }
+
     return true;
+}
+
+function sing_box_mixed_ports_listening(ports) {
+    return sing_box_expected_ports_listening(ports);
 }
 
 // Read the core log from a byte offset and report whether the core emitted a
@@ -570,17 +625,55 @@ function sing_box_mixed_ports_listening(ports) {
 // liveness/port probe reads success while none of the new settings applied.
 // The core says so itself in its log ("keeping running configuration"); that
 // is the only reliable signal, so the tail written since the SIGHUP is scanned.
-function core_log_reload_failed(since_offset) {
+function core_logread_tail() {
+    let out = command_output_from_args([ "logread", "-l", "80" ]);
+    if (out == "")
+        return "";
+    let lines = [];
+    for (let line in split(out, "\n")) {
+        if (index(line, "tachyon-core") >= 0 || index(line, "sing-box") >= 0)
+            push(lines, line);
+    }
+    return join("\n", lines);
+}
+
+function text_has_reload_failure(text) {
+    text = as_string(text);
+    return index(text, "keeping running configuration") >= 0 ||
+        index(text, "rolled back to the configuration") >= 0 ||
+        index(text, "failed to start box after SIGHUP reload") >= 0 ||
+        index(text, "reload rejected by check") >= 0 ||
+        index(text, "in-place hot reload failed") >= 0 ||
+        index(text, "start error") >= 0 ||
+        index(text, "reload failed") >= 0;
+}
+
+function core_log_reload_failed(since_offset, logread_before) {
     let data = fs.readfile(CORE_LOG_PATH);
-    if (data == null)
-        return false;
-    data = as_string(data);
-    if (length(data) <= since_offset)
-        return false;
-    let tail = substr(data, since_offset);
-    return index(tail, "keeping running configuration") >= 0 ||
-        index(tail, "start error") >= 0 ||
-        index(tail, "reload failed") >= 0;
+    if (data != null) {
+        data = as_string(data);
+        if (length(data) > since_offset) {
+            let tail = substr(data, since_offset);
+            if (text_has_reload_failure(tail))
+                return true;
+        }
+    }
+    if (logread_before != null) {
+        let current_logread = core_logread_tail();
+        if (current_logread != "" && current_logread != logread_before) {
+            let new_part = current_logread;
+            if (logread_before != "") {
+                let before_lines = split(logread_before, "\n");
+                let last_before = before_lines[length(before_lines) - 1];
+                let idx = last_before != "" ? rindex(current_logread, last_before) : -1;
+                if (idx >= 0)
+                    new_part = substr(current_logread, idx + length(last_before));
+            }
+            if (text_has_reload_failure(new_part))
+                return true;
+        }
+    }
+    return false;
 }
 
 // Send SIGHUP to the running sing-box process and wait for it to stay alive
@@ -608,12 +701,13 @@ function try_sighup_reload(pid) {
     let log_stat = fs.stat(CORE_LOG_PATH);
     if (log_stat != null)
         log_offset = int(log_stat.size || 0);
+    let logread_before = core_logread_tail();
     command_success_from_args([ "kill", "-HUP", as_string(pid) ]);
 
     // Give sing-box up to 15 s to ingest the new config and bring its inbounds
     // back. We poll every 500 ms and only call it a success when the process
-    // is alive AND every mixed port the config declares is listening again.
-    let ports = sing_box_mixed_ports();
+    // is alive AND every inbound/endpoint port the config declares is listening.
+    let ports = sing_box_expected_ports();
     let deadline = 30;
     while (deadline > 0) {
         command_success_from_args([ "sleep", "0.5" ]);
@@ -625,10 +719,10 @@ function try_sighup_reload(pid) {
         // mean "something is running". That alone is not enough - the inbounds
         // have to be back before this counts as a working reload.
         let process_ok = current_pid == pid || pid_is_sing_box(current_pid);
-        if (process_ok && sing_box_mixed_ports_listening(ports)) {
+        if (process_ok && sing_box_expected_ports_listening(ports)) {
             // The old config also has these ports up, so a still-listening
             // probe is not proof the new config loaded. The core's own log is.
-            if (core_log_reload_failed(log_offset))
+            if (core_log_reload_failed(log_offset, logread_before))
                 return false;
             common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
             return true;
@@ -640,9 +734,9 @@ function try_sighup_reload(pid) {
     let final_pid = sing_box_service_pid_runtime();
     if (final_pid <= 0 || !pid_is_sing_box(final_pid))
         return false;
-    if (core_log_reload_failed(log_offset))
+    if (core_log_reload_failed(log_offset, logread_before))
         return false;
-    if (sing_box_mixed_ports_listening(ports)) {
+    if (sing_box_expected_ports_listening(ports)) {
         common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
         return true;
     }
@@ -1875,7 +1969,59 @@ function append_sing_box_server_signature_body(body, server) {
         [ "tailscale_use_exit_node", "0" ],
         [ "tailscale_accept_routes", "" ],
         [ "tailscale_advertise_routes", "" ],
-        [ "tailscale_advertise_exit_node", "" ]
+        [ "tailscale_advertise_exit_node", "" ],
+        [ "shadowtls_handshake_server", "" ],
+        [ "shadowtls_handshake_server_port", "" ],
+        [ "shadowtls_version", "" ],
+        [ "awg_local_address", "" ],
+        [ "awg_private_key", "" ],
+        [ "awg_mtu", "" ],
+        [ "awg_server_address", "" ],
+        [ "awg_server_port", "" ],
+        [ "awg_peer_public_key", "" ],
+        [ "awg_peer_allowed_ips", "" ],
+        [ "awg_allowed_ips", "" ],
+        [ "awg_client_address", "" ],
+        [ "awg_preshared_key", "" ],
+        [ "awg_keepalive", "" ],
+        [ "awg_jc", "" ],
+        [ "awg_jmin", "" ],
+        [ "awg_jmax", "" ],
+        [ "awg_s1", "" ],
+        [ "awg_s2", "" ],
+        [ "awg_s3", "" ],
+        [ "awg_s4", "" ],
+        [ "awg_h1", "" ],
+        [ "awg_h2", "" ],
+        [ "awg_h3", "" ],
+        [ "awg_h4", "" ],
+        [ "awg_i1", "" ],
+        [ "awg_i2", "" ],
+        [ "awg_i3", "" ],
+        [ "awg_i4", "" ],
+        [ "awg_i5", "" ],
+        [ "awg_j1", "" ],
+        [ "awg_j2", "" ],
+        [ "awg_j3", "" ],
+        [ "awg_itime", "" ],
+        [ "awg_version", "" ],
+        [ "awg_header_protection_key", "" ],
+        [ "awg_content_padding_addition", "" ],
+        [ "awg_rekey_after_time", "" ],
+        [ "awg_rekey_timeout", "" ],
+        [ "awg_reject_after_time", "" ],
+        [ "awg_keepalive_timeout", "" ],
+        [ "awg_max_handshake_attempts", "" ],
+        [ "awg_random_trailers", "" ],
+        [ "awg_disable_cookies", "" ],
+        [ "isolate_lan_for_users", "" ],
+        [ "block_private_for_users", "" ],
+        [ "isolated_users", "" ],
+        [ "blocked_users", "" ],
+        [ "isolated_subnets", "" ],
+        [ "custom_route_rules", "" ],
+        [ "custom_rules_json", "" ],
+        [ "open_firewall_port", "" ]
     ];
 
     for (let field in fields)

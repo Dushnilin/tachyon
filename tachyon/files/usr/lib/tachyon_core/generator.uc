@@ -1887,6 +1887,22 @@ function normalize_wireguard_addresses(config) {
     }
 }
 
+function normalize_hysteria2_server_ports(config) {
+    if (type(config.outbounds) != "array")
+        return;
+    for (let outbound in config.outbounds) {
+        if (type(outbound) == "object" && outbound.type == "hysteria2" &&
+            (outbound.server_port == null || outbound.server_port == 0) &&
+            outbound.server_ports != null) {
+            let raw = type(outbound.server_ports) == "array" ? outbound.server_ports[0] : outbound.server_ports;
+            let parts = split(as_string(raw), ":");
+            let p = int(parts[0], 10);
+            if (p > 0)
+                outbound.server_port = p;
+        }
+    }
+}
+
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     // Quarantine reuses the same skip set the deferred sections use: every
@@ -1992,6 +2008,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     strip_internal_fields(config);
     strip_certificate_pins_if_unsupported(config);
     normalize_wireguard_addresses(config);
+    normalize_hysteria2_server_ports(config);
     if (!atomic_write_json_file(output_path, config)) {
         warn("failed to write ", output_path, "\n");
         exit(1);

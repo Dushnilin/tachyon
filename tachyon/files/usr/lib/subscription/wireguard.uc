@@ -121,8 +121,9 @@ function from_conf_endpoints(text, raw, name) {
             if (!name) name = trim(substr(line, 1));
             continue;
         }
-        if (line == '[Interface]') { current = interface; continue; }
-        if (line == '[Peer]') { current = {}; push(peers, current); continue; }
+        let lower_line = lc(line);
+        if (lower_line == '[interface]') { current = interface; continue; }
+        if (lower_line == '[peer]') { current = {}; push(peers, current); continue; }
         if (substr(line, 0, 1) == '[') return [];
         let eq = index(line, '=');
         if (eq < 1 || current == null) continue;
@@ -130,6 +131,8 @@ function from_conf_endpoints(text, raw, name) {
         // Only data fields are read. PostUp/PreDown and other hooks are ignored.
         current[key] = trim(substr(line, eq + 1));
     }
+    if (!length(peers) && (interface.publickey || interface.public_key || interface.peer_public_key) && interface.endpoint)
+        push(peers, {});
     if (!length(peers)) return [];
     let endpoints = [];
     for (let i = 0; i < length(peers); i++) {

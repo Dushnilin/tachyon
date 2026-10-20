@@ -132,10 +132,18 @@ function applyServiceState(uiState: Tachyon.UiState) {
       data: {
         singbox: uiState.service.sing_box.running,
         singboxMemoryMb: uiState.service.sing_box.memory_rss_mb,
+        singboxPid: uiState.service.sing_box.pid,
+        singboxUptimeSeconds: uiState.service.sing_box.uptime_seconds,
+        singboxUptimePretty: uiState.service.sing_box.uptime_pretty,
+        engineVariant: uiState.service.sing_box.engine_variant,
+        engineVersion: uiState.service.sing_box.engine_version,
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
         tachyonMemoryMb: uiState.service.tachyon.memory_rss_mb,
+        tachyonPid: uiState.service.tachyon.pid,
+        tachyonUptimeSeconds: uiState.service.tachyon.uptime_seconds,
+        tachyonUptimePretty: uiState.service.tachyon.uptime_pretty,
         watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning,
         zapret2Running: uiState.service.zapret2
           ? uiState.service.zapret2.running
@@ -143,6 +151,9 @@ function applyServiceState(uiState: Tachyon.UiState) {
         zapret2MemoryMb: uiState.service.zapret2
           ? uiState.service.zapret2.memory_rss_mb
           : undefined,
+        zapret2Pid: uiState.service.zapret2?.pid,
+        zapret2UptimeSeconds: uiState.service.zapret2?.uptime_seconds,
+        zapret2UptimePretty: uiState.service.zapret2?.uptime_pretty,
         dnsmasqRunning: uiState.service.dnsmasq
           ? uiState.service.dnsmasq.running
           : undefined,
@@ -155,6 +166,9 @@ function applyServiceState(uiState: Tachyon.UiState) {
         dnsmasqCacheSize: uiState.service.dnsmasq
           ? uiState.service.dnsmasq.cache_size
           : undefined,
+        dnsmasqPid: uiState.service.dnsmasq?.pid,
+        dnsmasqUptimeSeconds: uiState.service.dnsmasq?.uptime_seconds,
+        dnsmasqUptimePretty: uiState.service.dnsmasq?.uptime_pretty,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),

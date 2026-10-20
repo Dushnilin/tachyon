@@ -3630,30 +3630,31 @@ function renderDefaultState2({ title, items }) {
       { class: "tachyon_dashboard-page__widgets-section__item__title" },
       title
     ),
-    ...items.map(
-      (item) => E(
-        "div",
-        {
-          class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
-        },
-        [
-          E(
-            "span",
-            {
-              class: "tachyon_dashboard-page__widgets-section__item__row__key"
-            },
-            `${item.key}: `
-          ),
-          E(
-            "span",
-            {
-              class: "tachyon_dashboard-page__widgets-section__item__row__value"
-            },
-            item.value
-          )
-        ]
-      )
-    )
+    ...items.map((item) => {
+      const rowAttrs = {
+        class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
+      };
+      if (item?.attributes?.title) {
+        rowAttrs.title = item.attributes.title;
+      }
+      return E("div", rowAttrs, [
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__widgets-section__item__row__key"
+          },
+          `${item.key}: `
+        ),
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__widgets-section__item__row__value",
+            ...item?.attributes?.title ? { title: item.attributes.title } : {}
+          },
+          item.value
+        )
+      ]);
+    })
   ]);
 }
 function renderWidget(props) {
@@ -7704,17 +7705,31 @@ function applyServiceState(uiState) {
       data: {
         singbox: uiState.service.sing_box.running,
         singboxMemoryMb: uiState.service.sing_box.memory_rss_mb,
+        singboxPid: uiState.service.sing_box.pid,
+        singboxUptimeSeconds: uiState.service.sing_box.uptime_seconds,
+        singboxUptimePretty: uiState.service.sing_box.uptime_pretty,
+        engineVariant: uiState.service.sing_box.engine_variant,
+        engineVersion: uiState.service.sing_box.engine_version,
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
         tachyonMemoryMb: uiState.service.tachyon.memory_rss_mb,
+        tachyonPid: uiState.service.tachyon.pid,
+        tachyonUptimeSeconds: uiState.service.tachyon.uptime_seconds,
+        tachyonUptimePretty: uiState.service.tachyon.uptime_pretty,
         watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning,
         zapret2Running: uiState.service.zapret2 ? uiState.service.zapret2.running : void 0,
         zapret2MemoryMb: uiState.service.zapret2 ? uiState.service.zapret2.memory_rss_mb : void 0,
+        zapret2Pid: uiState.service.zapret2?.pid,
+        zapret2UptimeSeconds: uiState.service.zapret2?.uptime_seconds,
+        zapret2UptimePretty: uiState.service.zapret2?.uptime_pretty,
         dnsmasqRunning: uiState.service.dnsmasq ? uiState.service.dnsmasq.running : void 0,
         dnsmasqMemoryMb: uiState.service.dnsmasq ? uiState.service.dnsmasq.memory_rss_mb : void 0,
         dnsmasqLocalCacheEnabled: uiState.service.dnsmasq ? uiState.service.dnsmasq.local_cache_enabled : void 0,
-        dnsmasqCacheSize: uiState.service.dnsmasq ? uiState.service.dnsmasq.cache_size : void 0
+        dnsmasqCacheSize: uiState.service.dnsmasq ? uiState.service.dnsmasq.cache_size : void 0,
+        dnsmasqPid: uiState.service.dnsmasq?.pid,
+        dnsmasqUptimeSeconds: uiState.service.dnsmasq?.uptime_seconds,
+        dnsmasqUptimePretty: uiState.service.dnsmasq?.uptime_pretty
       }
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
@@ -9147,17 +9162,31 @@ async function fetchServicesInfo() {
       data: {
         singbox: singbox.success ? singbox.data.running : isSteer && engineStatus.success ? 1 : previousData.singbox,
         singboxMemoryMb: singbox.success ? singbox.data.memory_rss_mb : previousData.singboxMemoryMb,
+        singboxPid: singbox.success ? singbox.data.pid : previousData.singboxPid,
+        singboxUptimeSeconds: singbox.success ? singbox.data.uptime_seconds : previousData.singboxUptimeSeconds,
+        singboxUptimePretty: singbox.success ? singbox.data.uptime_pretty : previousData.singboxUptimePretty,
+        engineVariant: singbox.success ? singbox.data.engine_variant : previousData.engineVariant,
+        engineVersion: singbox.success ? singbox.data.engine_version : previousData.engineVersion,
         tachyonRunning: tachyon.success ? tachyon.data.running : previousData.tachyonRunning,
         tachyonEnabled: tachyon.success ? tachyon.data.enabled : previousData.tachyonEnabled,
         tachyonStatus: tachyon.success ? tachyon.data.status : previousData.tachyonStatus,
         tachyonMemoryMb: tachyon.success ? tachyon.data.memory_rss_mb : previousData.tachyonMemoryMb,
+        tachyonPid: tachyon.success ? tachyon.data.pid : previousData.tachyonPid,
+        tachyonUptimeSeconds: tachyon.success ? tachyon.data.uptime_seconds : previousData.tachyonUptimeSeconds,
+        tachyonUptimePretty: tachyon.success ? tachyon.data.uptime_pretty : previousData.tachyonUptimePretty,
         watchdogRunning: watchdog.success ? Number(watchdog.data.running) : previousData.watchdogRunning,
         zapret2Running: previousData.zapret2Running,
         zapret2MemoryMb: previousData.zapret2MemoryMb,
+        zapret2Pid: previousData.zapret2Pid,
+        zapret2UptimeSeconds: previousData.zapret2UptimeSeconds,
+        zapret2UptimePretty: previousData.zapret2UptimePretty,
         dnsmasqRunning: previousData.dnsmasqRunning,
         dnsmasqMemoryMb: previousData.dnsmasqMemoryMb,
         dnsmasqLocalCacheEnabled: previousData.dnsmasqLocalCacheEnabled,
-        dnsmasqCacheSize: previousData.dnsmasqCacheSize
+        dnsmasqCacheSize: previousData.dnsmasqCacheSize,
+        dnsmasqPid: previousData.dnsmasqPid,
+        dnsmasqUptimeSeconds: previousData.dnsmasqUptimeSeconds,
+        dnsmasqUptimePretty: previousData.dnsmasqUptimePretty
       }
     },
     activeEngine
@@ -11078,22 +11107,69 @@ async function renderSystemInfoWidget() {
     "renderSystemInfoWidget"
   );
 }
+function formatServiceRowValue(options) {
+  if (!options.running) {
+    const versionPart = options.version ? ` [v${options.version.replace(/^v/, "")}]` : "";
+    return `✗${versionPart}`;
+  }
+  const parts = ["✓"];
+  if (options.memoryMb) {
+    parts[0] += ` (${options.memoryMb} MB)`;
+  }
+  if (options.uptimePretty) {
+    parts.push(options.uptimePretty);
+  }
+  let res = parts.join(" • ");
+  if (options.version) {
+    res += ` [v${options.version.replace(/^v/, "")}]`;
+  }
+  if (options.extraSuffix) {
+    res += options.extraSuffix;
+  }
+  return res;
+}
+function formatServiceTooltip(options) {
+  const parts = [];
+  if (options.pid) {
+    parts.push(`PID: ${options.pid}`);
+  }
+  if (options.uptimePretty) {
+    parts.push(`${_("Uptime")}: ${options.uptimePretty}`);
+  }
+  return parts.length > 0 ? parts.join(" • ") : void 0;
+}
 async function renderServicesInfoWidget() {
   renderStoreWidget(
     "dashboard-widget-service-info",
     "servicesInfoWidget",
     _("Services info"),
     (data) => {
+      const tachyonTooltip = formatServiceTooltip({
+        pid: data.tachyonPid,
+        uptimePretty: data.tachyonUptimePretty
+      });
+      const singboxTooltip = formatServiceTooltip({
+        pid: data.singboxPid,
+        uptimePretty: data.singboxUptimePretty
+      });
       const items = [
         {
           key: "Tachyon",
-          value: data.tachyonRunning ? data.tachyonMemoryMb ? `✓ (${data.tachyonMemoryMb} MB)` : "✓" : "✗",
+          value: formatServiceRowValue({
+            running: data.tachyonRunning,
+            memoryMb: data.tachyonMemoryMb,
+            uptimePretty: data.tachyonUptimePretty
+          }),
           attributes: {
-            class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+            class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+            ...tachyonTooltip ? { title: tachyonTooltip } : {}
           }
         },
         {
           key: (() => {
+            if (data.engineVariant) {
+              return data.engineVariant;
+            }
             if (store.get().activeEngine === "steer" || store.get().activeEngine === "steer-extended") {
               return "Steer";
             }
@@ -11101,20 +11177,41 @@ async function renderServicesInfoWidget() {
             if (systemInfo.sing_box_tachyon_core) {
               return "Tachyon Core";
             }
+            if (systemInfo.sing_box_lx) {
+              return "Sing-box LX";
+            }
+            if (systemInfo.sing_box_extended) {
+              return "Sing-box Ext";
+            }
             return "Sing-box";
           })(),
-          value: data.singbox ? data.singboxMemoryMb ? `✓ (${data.singboxMemoryMb} MB)` : "✓" : "✗",
+          value: formatServiceRowValue({
+            running: data.singbox,
+            memoryMb: data.singboxMemoryMb,
+            uptimePretty: data.singboxUptimePretty,
+            version: data.engineVersion
+          }),
           attributes: {
-            class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+            class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+            ...singboxTooltip ? { title: singboxTooltip } : {}
           }
         }
       ];
       if (data.zapret2Running) {
+        const zapret2Tooltip = formatServiceTooltip({
+          pid: data.zapret2Pid,
+          uptimePretty: data.zapret2UptimePretty
+        });
         items.push({
           key: "Zapret2",
-          value: data.zapret2MemoryMb ? `✓ (${data.zapret2MemoryMb} MB)` : "✓",
+          value: formatServiceRowValue({
+            running: data.zapret2Running,
+            memoryMb: data.zapret2MemoryMb,
+            uptimePretty: data.zapret2UptimePretty
+          }),
           attributes: {
-            class: "tachyon_dashboard-page__widgets-section__item__row--success"
+            class: "tachyon_dashboard-page__widgets-section__item__row--success",
+            ...zapret2Tooltip ? { title: zapret2Tooltip } : {}
           }
         });
       }
@@ -11124,11 +11221,21 @@ async function renderServicesInfoWidget() {
           const approxMb = (data.dnsmasqCacheSize * 120 / (1024 * 1024)).toFixed(1);
           cacheDetail = ` [${_("Cache")}: ${approxMb} MB]`;
         }
+        const dnsmasqTooltip = formatServiceTooltip({
+          pid: data.dnsmasqPid,
+          uptimePretty: data.dnsmasqUptimePretty
+        });
         items.push({
           key: "Dnsmasq (DNS)",
-          value: data.dnsmasqRunning ? data.dnsmasqMemoryMb ? `✓ (${data.dnsmasqMemoryMb} MB)${cacheDetail}` : `✓${cacheDetail}` : "✗",
+          value: formatServiceRowValue({
+            running: data.dnsmasqRunning,
+            memoryMb: data.dnsmasqMemoryMb,
+            uptimePretty: data.dnsmasqUptimePretty,
+            extraSuffix: cacheDetail
+          }),
           attributes: {
-            class: data.dnsmasqRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+            class: data.dnsmasqRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+            ...dnsmasqTooltip ? { title: dnsmasqTooltip } : {}
           }
         });
       }
@@ -28863,6 +28970,150 @@ ${PartialStyles}
         margin: 8px auto;
     }
 }
+
+/* Header language selector */
+.tachyon-map-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.tachyon-lang-selector {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.tachyon-lang-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.35));
+    background: var(--background-color-high, rgba(128, 128, 128, 0.08));
+    color: inherit;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.tachyon-lang-btn:hover:not(:disabled) {
+    background: var(--background-color-low, rgba(128, 128, 128, 0.16));
+    border-color: var(--primary-color-high, #1976d2);
+}
+
+.tachyon-lang-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.tachyon-lang-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tachyon-lang-code {
+    letter-spacing: 0.03em;
+}
+
+.tachyon-lang-caret {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.tachyon-lang-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 210px;
+    padding: 6px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.3));
+    background: var(--background-color-high, #fff);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    z-index: 1000;
+}
+
+.tachyon-lang-menu[hidden] {
+    display: none !important;
+}
+
+.tachyon-lang-menu__header {
+    padding: 4px 8px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+    border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.15));
+    margin-bottom: 4px;
+}
+
+.tachyon-lang-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 7px 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+
+.tachyon-lang-option:hover {
+    background: var(--background-color-low, rgba(128, 128, 128, 0.12));
+}
+
+.tachyon-lang-option.is-active {
+    background: rgba(25, 118, 210, 0.1);
+}
+
+.tachyon-lang-option__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.tachyon-lang-option__native {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.tachyon-lang-option__sub {
+    font-size: 11px;
+    opacity: 0.65;
+}
+
+.tachyon-lang-option__badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.tachyon-lang-option__badge--active {
+    color: var(--primary-color-high, #1976d2);
+}
+
+.tachyon-lang-option__badge--install {
+    background: rgba(25, 118, 210, 0.14);
+    color: var(--primary-color-high, #1976d2);
+}
 `;
 
 // src/helpers/injectGlobalStyles.ts
@@ -28911,6 +29162,169 @@ function applyAutofillProtection() {
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
+// src/tachyon/languageSelector.ts
+var TACHYON_LANGUAGES = [
+  {
+    code: "en",
+    label: "English",
+    nativeLabel: "English",
+    shortCode: "EN",
+    requiresPackage: false,
+    flagSvg: `<svg viewBox="0 0 60 30" width="20" height="14" aria-hidden="true" style="border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,0.18);display:block;flex-shrink:0"><clipPath id="tachyon-uk-clip"><path d="M0,0 v30 h60 v-30 z"/></clipPath><clipPath id="tachyon-uk-diag"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath><g clip-path="url(#tachyon-uk-clip)"><path d="M0,0 v30 h60 v-30 z" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#tachyon-uk-diag)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></g></svg>`
+  },
+  {
+    code: "ru",
+    label: "Russian",
+    nativeLabel: "Русский",
+    shortCode: "RU",
+    requiresPackage: true,
+    flagSvg: `<svg viewBox="0 0 60 40" width="20" height="14" aria-hidden="true" style="border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,0.18);display:block;flex-shrink:0"><rect width="60" height="13.34" y="0" fill="#ffffff"/><rect width="60" height="13.34" y="13.33" fill="#0039a6"/><rect width="60" height="13.34" y="26.66" fill="#d52b1e"/></svg>`
+  }
+];
+function detectActiveLanguageCode(capabilities) {
+  const luciLang = (capabilities?.luciLang || "").trim().toLowerCase();
+  const ruInstalled = capabilities?.i18nRuInstalled !== false;
+  if (luciLang === "en") {
+    return "en";
+  }
+  if (luciLang === "ru" && ruInstalled) {
+    return "ru";
+  }
+  try {
+    const probed = typeof _ === "function" ? _("Settings") : "Settings";
+    if (probed && probed !== "Settings") {
+      return "ru";
+    }
+  } catch {
+  }
+  return "en";
+}
+var outsideClickBound = false;
+function mountLanguageSelector(capabilities) {
+  if (typeof document === "undefined") return;
+  const mapHeader = document.querySelector("#cbi-tachyon > h2") || document.querySelector(".cbi-map > h2");
+  if (!mapHeader) return;
+  mapHeader.classList.add("tachyon-map-header");
+  let wrapper = mapHeader.querySelector(".tachyon-lang-selector");
+  if (!wrapper) {
+    wrapper = document.createElement("div");
+    wrapper.className = "tachyon-lang-selector";
+    mapHeader.appendChild(wrapper);
+  }
+  const activeCode = detectActiveLanguageCode(capabilities);
+  const activeOption = TACHYON_LANGUAGES.find((item) => item.code === activeCode) || TACHYON_LANGUAGES[0];
+  const ruInstalled = Boolean(capabilities?.i18nRuInstalled);
+  wrapper.innerHTML = `
+    <button type="button" class="tachyon-lang-btn" title="${_("Change interface language")}" aria-haspopup="listbox" aria-expanded="false">
+      <span class="tachyon-lang-flag">${activeOption.flagSvg}</span>
+      <span class="tachyon-lang-code">${activeOption.shortCode}</span>
+      <span class="tachyon-lang-caret">▾</span>
+    </button>
+    <div class="tachyon-lang-menu" role="listbox" hidden>
+      <div class="tachyon-lang-menu__header">${_("Interface language")}</div>
+      ${TACHYON_LANGUAGES.map((lang) => {
+    const isCurrent = lang.code === activeOption.code;
+    const needsInstall = lang.code === "ru" && lang.requiresPackage && !ruInstalled;
+    const badgeText = isCurrent ? "✓" : needsInstall ? _("Install") : "";
+    const badgeClass = isCurrent ? "tachyon-lang-option__badge--active" : needsInstall ? "tachyon-lang-option__badge--install" : "";
+    return `
+          <button type="button" class="tachyon-lang-option ${isCurrent ? "is-active" : ""}" data-lang="${lang.code}" role="option" aria-selected="${isCurrent}">
+            <span class="tachyon-lang-flag">${lang.flagSvg}</span>
+            <span class="tachyon-lang-option__text">
+              <span class="tachyon-lang-option__native">${lang.nativeLabel}</span>
+              <span class="tachyon-lang-option__sub">${lang.label}</span>
+            </span>
+            ${badgeText ? `<span class="tachyon-lang-option__badge ${badgeClass}">${badgeText}</span>` : ""}
+          </button>
+        `;
+  }).join("")}
+    </div>
+  `;
+  const btn = wrapper.querySelector(".tachyon-lang-btn");
+  const menu = wrapper.querySelector(".tachyon-lang-menu");
+  if (!btn || !menu) return;
+  const closeMenu = () => {
+    menu.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    wrapper?.classList.remove("is-open");
+  };
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    wrapper?.classList.toggle("is-open", willOpen);
+  });
+  menu.querySelectorAll(".tachyon-lang-option").forEach((optBtn) => {
+    optBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const targetLang = optBtn.getAttribute("data-lang") || "en";
+      const targetOption = TACHYON_LANGUAGES.find(
+        (item) => item.code === targetLang
+      );
+      closeMenu();
+      if (!targetOption) return;
+      const needsInstall = targetOption.code === "ru" && targetOption.requiresPackage && !ruInstalled;
+      if (targetOption.code === activeOption.code && !needsInstall) {
+        return;
+      }
+      btn.disabled = true;
+      btn.classList.add("is-loading");
+      const codeSpan = btn.querySelector(".tachyon-lang-code");
+      if (codeSpan) {
+        codeSpan.textContent = "...";
+      }
+      showToast(
+        needsInstall ? _("Installing language pack and switching language...") : _("Switching interface language..."),
+        "success"
+      );
+      try {
+        const started = await TachyonShellMethods.componentActionStart(
+          "tachyon",
+          "set_language",
+          targetOption.code
+        );
+        if (!started.success) {
+          throw new Error(started.error || _("Failed to change language"));
+        }
+        const finished = await TachyonShellMethods.waitComponentActionJob(
+          started.data.job_id,
+          "tachyon",
+          "set_language"
+        );
+        if (!finished.success || !finished.data.success) {
+          const errMsg = !finished.success ? finished.error : finished.data.message;
+          throw new Error(errMsg || _("Failed to change language"));
+        }
+        showToast(_("Language updated. Reloading page..."), "success");
+        window.setTimeout(() => {
+          window.location.reload();
+        }, 400);
+      } catch (err) {
+        btn.disabled = false;
+        btn.classList.remove("is-loading");
+        if (codeSpan) {
+          codeSpan.textContent = activeOption.shortCode;
+        }
+        const msg = err instanceof Error ? err.message : _("Failed to change language");
+        showToast(msg, "error");
+      }
+    });
+  });
+  if (!outsideClickBound) {
+    outsideClickBound = true;
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".tachyon-lang-selector.is-open").forEach((el) => {
+        el.classList.remove("is-open");
+        const m = el.querySelector(".tachyon-lang-menu");
+        const b = el.querySelector(".tachyon-lang-btn");
+        if (m) m.hidden = true;
+        if (b) b.setAttribute("aria-expanded", "false");
+      });
+    });
+  }
+}
+
 // src/main.ts
 if (typeof structuredClone !== "function")
   globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
@@ -28924,6 +29338,7 @@ return baseclass.extend({
   LATENCY_TEST_URL_OPTIONS,
   MonitoringTab,
   TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT,
+  TACHYON_LANGUAGES,
   TACHYON_UCI_PACKAGE,
   TachyonShellMethods,
   UpdatesTab,
@@ -28936,6 +29351,7 @@ return baseclass.extend({
   getProxyUrlName,
   getProxyUrlTransport,
   injectGlobalStyles,
+  mountLanguageSelector,
   parseValueList,
   renderDnsBenchmarkModal,
   showToast,

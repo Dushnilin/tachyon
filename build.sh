@@ -295,6 +295,8 @@ build_backend_root() {
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/lib/cgi-bin/tachyon-agent" \
     "$output_root/usr/lib/cgi-bin/tachyon-agent"
   install -d -m 0755 "$output_root/www/cgi-bin"
+  install -m 0755 "$ROOT_DIR/tachyon/files/www/cgi-bin/tachyon-sub" \
+    "$output_root/www/cgi-bin/tachyon-sub"
   # No symlink in $output_root/www/cgi-bin: the AI agent gateway is published
   # at service start only when agent_api_token is set (issue #76).
   install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/servicecheck_profiles.json" \
@@ -323,7 +325,8 @@ build_backend_root() {
     "$output_root/etc/init.d/tachyon-steer-zapret" \
     "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
     "$output_root/usr/share/tachyon/steer-nfqws" \
-    "$output_root/usr/lib/cgi-bin/tachyon-agent"
+    "$output_root/usr/lib/cgi-bin/tachyon-agent" \
+    "$output_root/www/cgi-bin/tachyon-sub"
   # Contains the Telegram bot token placeholder and receives user secrets.
   chmod 0600 "$output_root/etc/config/tachyon" "$output_root/usr/lib/tachyon/defaults/config"
 }

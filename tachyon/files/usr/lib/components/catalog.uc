@@ -688,6 +688,48 @@ function resolve_tachyon_release(latest_version) {
     };
 }
 
+function resolve_tachyon_i18n_release(version_tag, lang_code) {
+    let lang = lc(trim(as_string(lang_code || "ru")));
+    if (match(lang, /^[a-z]{2,3}(_[a-zA-Z]{2})?$/) == null)
+        return null;
+
+    let asset_ext = helpers.is_apk() ? "apk" : "ipk";
+    let tag = trim(as_string(version_tag || ""));
+    if (tag == "")
+        tag = latest_tachyon_version();
+    if (tag == "")
+        return null;
+
+    let ver_clean = replace(tag, /^v/, "");
+    let pkg_name = "luci-i18n-tachyon-" + lang + "_" + ver_clean + "." + asset_ext;
+    let parts = split(TACHYON_RELEASE_REPO, "/");
+    let release_json = "";
+    if (length(parts) == 2 && parts[0] != "" && parts[1] != "")
+        release_json = downloader.fetch_github_release_by_tag_json(parts[0], parts[1], tag);
+    if (release_json == "")
+        release_json = latest_tachyon_release_json();
+
+    if (release_json != "") {
+        let asset_url = trim(helpers.helper_output_input(release_json, "release-asset-url", [ pkg_name ]));
+        if (asset_url != "") {
+            return {
+                tag: tag,
+                package_name: pkg_name,
+                package_url: asset_url,
+                release_url: "https://github.com/" + TACHYON_RELEASE_REPO + "/releases/tag/" + tag
+            };
+        }
+    }
+
+    let base_dl = "https://github.com/" + TACHYON_RELEASE_REPO + "/releases/download/" + tag + "/";
+    return {
+        tag: tag,
+        package_name: pkg_name,
+        package_url: base_dl + pkg_name,
+        release_url: "https://github.com/" + TACHYON_RELEASE_REPO + "/releases/tag/" + tag
+    };
+}
+
 function module_exports() {
     return {
         latest_tachyon_release_json,
@@ -712,7 +754,8 @@ function module_exports() {
         steer_module_assets_from_release,
         steer_module_names,
         steer_modules_from_settings,
-        resolve_tachyon_release
+        resolve_tachyon_release,
+        resolve_tachyon_i18n_release
     };
 }
 

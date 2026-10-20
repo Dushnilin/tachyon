@@ -1072,6 +1072,10 @@ function write_inbound_item_json(args) {
         runtime_type = expected_type;
     }
 
+    let runtime_ok_flag = inbound_runtime_ok(protocol, runtime_exists, runtime_type, runtime_listen, runtime_port_text, expected_type, listen, listen_port);
+    let raw_listening = number_value(args[12]);
+    let effective_listening = (runtime_ok_flag == 1 || raw_listening < 0) ? raw_listening : 0;
+
     write_json({
         section,
         label,
@@ -1088,8 +1092,8 @@ function write_inbound_item_json(args) {
         runtime_type,
         runtime_listen,
         runtime_port: number_value(runtime_port_text),
-        runtime_ok: inbound_runtime_ok(protocol, runtime_exists, runtime_type, runtime_listen, runtime_port_text, expected_type, listen, listen_port),
-        listening: number_value(args[12]),
+        runtime_ok: runtime_ok_flag,
+        listening: effective_listening,
         firewall_required: number_value(args[13]),
         firewall_open: number_value(args[14]),
         port_conflict: number_value(args[15]),

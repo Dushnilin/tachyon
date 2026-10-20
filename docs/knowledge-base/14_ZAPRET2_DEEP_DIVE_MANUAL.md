@@ -47,9 +47,12 @@ Tachyon запускает `nfqws2` со стандартным набором L
 
 ### 3.2. `fake` (Инжекция фейковых пакетов)
 Отправка ложного ClientHello с некорректным SNI или контрольной суммой перед настоящим пакетом.
-- **Синтаксис:** `--lua-desync=fake[:ttl=<N>][:fooling=<метод>]`
+- **Синтаксис:** `--lua-desync=fake:blob=<имя_блоба>[:ttl=<N>][:fooling=<метод>][:payload=<тип>][:repeats=<N>]`
 - **Параметры:**
+  - `blob=<имя_блоба>` — **обязательный** аргумент, задающий имя блоба полезной нагрузки фейка (например, `blob=tls_max`, `blob=stun_fake`, `blob=quic_google`, `blob=discord_udp`).
+  - `payload=<тип>` — фильтрация полезной нагрузки. По умолчанию `fake()` обрабатывает только известные (`known`) протоколы (HTTP, TLS, QUIC, STUN и др.). Для кастомного UDP и игрового трафика (где C-диссектор выставляет `l7payload == "unknown"`), **обязательно** указывать `payload=all` (или `payload=unknown`), иначе фейки инжектироваться не будут!
   - `ttl=6` / `ttl=8` — Time-To-Live фейкового пакета. Должен быть достаточным, чтобы долететь до ТСПУ провайдера, но недостаточным, чтобы дойти до сервера назначения.
+  - `repeats=<N>` — количество повторов инжекции фейкового пакета (например, `repeats=6`).
   - `fooling=badseq` — отправка фейка с невалидным TCP Sequence номером.
   - `fooling=md5sig` — добавление TCP Option 19 (MD5 Signature) в фейковый пакет. ТСПУ часто пассивно анализирует такой пакет и сбрасывает стейт сессии, а сервер назначения дропает его из-за отсутствия MD5-ключа.
 
@@ -80,12 +83,18 @@ Tachyon запускает `nfqws2` со стандартным набором L
 
 ### Discord (Gateway, API и Голосовые каналы UDP)
 ```text
---filter-tcp=443 --lua-desync=multisplit:pos=1,sniext+4:seqovl=1:fooling=badseq --new --filter-udp=50000-65535 --lua-desync=fake:ttl=8
+--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=multisplit:pos=1,sniext+4:seqovl=1:fooling=badseq --new --filter-udp=3478-3480,50000-65535 --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=discord_udp:repeats=6
 ```
 *Комбинированный профиль: TCP 443 для шлюза сообщений и UDP-фейк для RTC Voice серверов.*
 
 ### Instagram & Meta (TLS 1.3 / ECH)
 ```text
---lua-desync=fake:ttl=8 --lua-desync=multisplit:pos=midsld:fooling=badseq
+--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=tls_max:repeats=6:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq
 ```
 *Низко-TTL фейк перегружает стейт ТСПУ, после чего фрагментированный TLS 1.3 хэндшейк проходит без сброса.*
+
+### Онлайн-игры и кастомный UDP (Fortnite, CS2, голосовой трафик)
+```text
+--filter-udp=1024-65535 --out-range=-d2 --lua-desync=fake:blob=stun_fake:payload=all
+```
+*Для игровых сессий (например, матчмейкинг Fortnite — Issue #177), где протокол нестандартный и C-диссектор не знает L7-сигнатур (`l7payload == "unknown"`). Без явного указания `:payload=all` внутри `--lua-desync=fake:...` ядро zapret2 по умолчанию игнорирует неизвестные полезные нагрузки (поведение без `--dpi-desync-any-protocol=1` в zapret v1), и фейки не отправляются.*

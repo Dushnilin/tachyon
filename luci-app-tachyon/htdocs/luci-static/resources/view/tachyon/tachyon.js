@@ -268,6 +268,8 @@ const EntryPoint = {
       zapretInstalled: false,
       zapret2Installed: false,
       byedpiInstalled: false,
+      i18nRuInstalled: false,
+      luciLang: "auto",
       serverInboundsEnabledCount: -1,
     };
     let uiCapabilitiesPromise = null;
@@ -317,6 +319,10 @@ const EntryPoint = {
           },
         });
       }
+
+      if (typeof main.mountLanguageSelector === "function") {
+        main.mountLanguageSelector(uiCapabilities);
+      }
     };
 
     const updateUiCapabilities = function (data) {
@@ -346,6 +352,14 @@ const EntryPoint = {
       uiCapabilities.byedpiInstalled = Boolean(
         Number(data?.byedpi_installed) === 1,
       );
+      if (typeof data?.i18n_ru_installed !== "undefined") {
+        uiCapabilities.i18nRuInstalled = Boolean(
+          Number(data.i18n_ru_installed) === 1,
+        );
+      }
+      if (typeof data?.luci_lang === "string" && data.luci_lang.trim()) {
+        uiCapabilities.luciLang = data.luci_lang.trim();
+      }
       const serverInboundsEnabledCount =
         typeof data?.server_inbounds_enabled_count !== "undefined"
           ? Number(data.server_inbounds_enabled_count)
@@ -632,6 +646,7 @@ const EntryPoint = {
           _("Add a server inbound"),
         );
         serverSectionRef = s;
+        server.configureServerSubscription(s);
         server.configureServerSection(s, {
           loadCapabilities: loadUiCapabilities,
         });
@@ -776,6 +791,11 @@ const EntryPoint = {
     await loadUiCapabilities().catch(() => null);
 
     const rendered = await tachyonMap.render();
+    if (typeof main.mountLanguageSelector === "function") {
+      window.requestAnimationFrame(() => {
+        main.mountLanguageSelector(uiCapabilities);
+      });
+    }
     main.coreService({
       waitForLogWatcherStart: loadUiCapabilities,
       logWatcherStartDelayMs: 5000,

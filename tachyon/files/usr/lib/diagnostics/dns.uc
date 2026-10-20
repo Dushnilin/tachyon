@@ -339,9 +339,14 @@ function resolve_domain_cli(domain) {
     let ips = [];
     let seen = {};
 
+    let is_fakeip = function(ip) {
+        ip = lc(trim(as_string(ip)));
+        return match(ip, /^198\.(18|19)\./) != null || match(ip, /^fc[0-3][0-9a-f]:/) != null;
+    };
+
     let add_ip = function(ip) {
         ip = trim(as_string(ip));
-        if (ip == "" || ip == "127.0.0.1" || ip == "::1" || ip == "0.0.0.0" || seen[ip])
+        if (ip == "" || ip == "127.0.0.1" || ip == "::1" || ip == "0.0.0.0" || is_fakeip(ip) || seen[ip])
             return;
         if (!core_ip.valid_ip(ip))
             return;
@@ -349,12 +354,8 @@ function resolve_domain_cli(domain) {
         push(ips, ip);
     };
 
-    let cmd_local = command_output_from_args([ "nslookup", domain, "127.0.0.1" ]);
-    let cmd_def = command_output_from_args([ "nslookup", domain ]);
-    let outputs = [ cmd_local, cmd_def ];
-
-    for (let out in outputs) {
-        if (!out) continue;
+    let parse_nslookup_output = function(out) {
+        if (!out) return;
         let past_header = false;
         for (let line in split(out, "\n")) {
             line = trim(as_string(line));
@@ -365,6 +366,36 @@ function resolve_domain_cli(domain) {
                 if (m && m[1] && m[1] != "127.0.0.1" && m[1] != "::1")
                     add_ip(m[1]);
             }
+        }
+    };
+
+    parse_nslookup_output(command_output_from_args([ "nslookup", domain, "127.0.0.1" ]));
+    if (length(ips) == 0)
+        parse_nslookup_output(command_output_from_args([ "nslookup", domain ]));
+
+    if (length(ips) == 0) {
+        let settings = uci_settings();
+        let all_dns = get_all_dns_servers(settings);
+        let fallback_resolvers = [];
+        for (let b in array_or_empty(all_dns.bootstrap)) {
+            let h = url_host(b);
+            if (h == "") h = trim(as_string(b));
+            if (valid_ipv4(h) && !is_fakeip(h))
+                push(fallback_resolvers, h);
+        }
+        for (let pub_dns in [ "77.88.8.8", "1.1.1.1", "8.8.8.8" ])
+            push(fallback_resolvers, pub_dns);
+
+        for (let srv in fallback_resolvers) {
+            let resolved = dns_check_resolve_host(domain, srv, 2);
+            if (resolved != "") {
+                add_ip(resolved);
+                if (length(ips) > 0)
+                    break;
+            }
+            parse_nslookup_output(command_output_from_args([ "nslookup", domain, srv ]));
+            if (length(ips) > 0)
+                break;
         }
     }
 

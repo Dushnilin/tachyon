@@ -195,8 +195,20 @@ function apply_tls(inbound, section, protocol) {
         tls.alpn = alpn;
 
     if (security == "tls") {
-        maybe_string(tls, "certificate_path", option(section, "tls_certificate_path", ""));
-        maybe_string(tls, "key_path", option(section, "tls_key_path", ""));
+        let cert_path = trim(as_string(option(section, "tls_certificate_path", "")));
+        let k_path = trim(as_string(option(section, "tls_key_path", "")));
+        if (cert_path != "" && fs.stat(cert_path) == null && index(cert_path, "/etc/tachyon/certs/") == 0)
+            common.write_file(cert_path, join("\n", REALITY_FALLBACK_CERTIFICATE) + "\n");
+        if (k_path != "" && fs.stat(k_path) == null && index(k_path, "/etc/tachyon/certs/") == 0)
+            common.write_file(k_path, join("\n", REALITY_FALLBACK_KEY) + "\n");
+        if (cert_path != "" && fs.stat(cert_path) != null)
+            maybe_string(tls, "certificate_path", cert_path);
+        else
+            tls.certificate = REALITY_FALLBACK_CERTIFICATE;
+        if (k_path != "" && fs.stat(k_path) != null)
+            maybe_string(tls, "key_path", k_path);
+        else
+            tls.key = REALITY_FALLBACK_KEY;
     }
     else if (security == "reality") {
         let reality = {

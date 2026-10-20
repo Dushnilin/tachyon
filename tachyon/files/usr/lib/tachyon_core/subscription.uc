@@ -203,6 +203,8 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
         state.outboundMetadata.protocols[tag_name] = protocol;
 
     let transport = lc(as_string(object_or_empty(outbound.transport).type || ""));
+    if (transport == "" && protocol == "shadowsocks" && index(lc(as_string(outbound.plugin_opts || "")), "websocket") >= 0)
+        transport = "ws";
     if (transport == "h2")
         transport = "http";
     else if (transport == "raw")

@@ -2255,28 +2255,87 @@ async function renderSystemInfoWidget() {
   );
 }
 
+export function formatServiceRowValue(options: {
+  running: boolean | number;
+  memoryMb?: number;
+  uptimePretty?: string;
+  version?: string;
+  extraSuffix?: string;
+}): string {
+  if (!options.running) {
+    const versionPart = options.version
+      ? ` [v${options.version.replace(/^v/, '')}]`
+      : '';
+    return `\u2717${versionPart}`;
+  }
+
+  const parts: string[] = ['\u2713'];
+  if (options.memoryMb) {
+    parts[0] += ` (${options.memoryMb} MB)`;
+  }
+  if (options.uptimePretty) {
+    parts.push(options.uptimePretty);
+  }
+  let res = parts.join(' \u2022 ');
+  if (options.version) {
+    res += ` [v${options.version.replace(/^v/, '')}]`;
+  }
+  if (options.extraSuffix) {
+    res += options.extraSuffix;
+  }
+  return res;
+}
+
+export function formatServiceTooltip(options: {
+  pid?: number;
+  uptimePretty?: string;
+}): string | undefined {
+  const parts: string[] = [];
+  if (options.pid) {
+    parts.push(`PID: ${options.pid}`);
+  }
+  if (options.uptimePretty) {
+    parts.push(`${_('Uptime')}: ${options.uptimePretty}`);
+  }
+  return parts.length > 0 ? parts.join(' \u2022 ') : undefined;
+}
+
 async function renderServicesInfoWidget() {
   renderStoreWidget(
     'dashboard-widget-service-info',
     'servicesInfoWidget',
     _('Services info'),
     (data) => {
+      const tachyonTooltip = formatServiceTooltip({
+        pid: data.tachyonPid,
+        uptimePretty: data.tachyonUptimePretty,
+      });
+
+      const singboxTooltip = formatServiceTooltip({
+        pid: data.singboxPid,
+        uptimePretty: data.singboxUptimePretty,
+      });
+
       const items = [
         {
           key: 'Tachyon',
-          value: data.tachyonRunning
-            ? data.tachyonMemoryMb
-              ? `\u2713 (${data.tachyonMemoryMb} MB)`
-              : '\u2713'
-            : '\u2717',
+          value: formatServiceRowValue({
+            running: data.tachyonRunning,
+            memoryMb: data.tachyonMemoryMb,
+            uptimePretty: data.tachyonUptimePretty,
+          }),
           attributes: {
             class: data.tachyonRunning
               ? 'tachyon_dashboard-page__widgets-section__item__row--success'
               : 'tachyon_dashboard-page__widgets-section__item__row--error',
+            ...(tachyonTooltip ? { title: tachyonTooltip } : {}),
           },
         },
         {
           key: (() => {
+            if (data.engineVariant) {
+              return data.engineVariant;
+            }
             if (
               store.get().activeEngine === 'steer' ||
               store.get().activeEngine === 'steer-extended'
@@ -2287,30 +2346,46 @@ async function renderServicesInfoWidget() {
             if (systemInfo.sing_box_tachyon_core) {
               return 'Tachyon Core';
             }
+            if (systemInfo.sing_box_lx) {
+              return 'Sing-box LX';
+            }
+            if (systemInfo.sing_box_extended) {
+              return 'Sing-box Ext';
+            }
             return 'Sing-box';
           })(),
-          value: data.singbox
-            ? data.singboxMemoryMb
-              ? `\u2713 (${data.singboxMemoryMb} MB)`
-              : '\u2713'
-            : '\u2717',
+          value: formatServiceRowValue({
+            running: data.singbox,
+            memoryMb: data.singboxMemoryMb,
+            uptimePretty: data.singboxUptimePretty,
+            version: data.engineVersion,
+          }),
           attributes: {
             class: data.singbox
               ? 'tachyon_dashboard-page__widgets-section__item__row--success'
               : 'tachyon_dashboard-page__widgets-section__item__row--error',
+            ...(singboxTooltip ? { title: singboxTooltip } : {}),
           },
         },
       ];
 
       if (data.zapret2Running) {
+        const zapret2Tooltip = formatServiceTooltip({
+          pid: data.zapret2Pid,
+          uptimePretty: data.zapret2UptimePretty,
+        });
+
         items.push({
           key: 'Zapret2',
-          value: data.zapret2MemoryMb
-            ? `\u2713 (${data.zapret2MemoryMb} MB)`
-            : '\u2713',
+          value: formatServiceRowValue({
+            running: data.zapret2Running,
+            memoryMb: data.zapret2MemoryMb,
+            uptimePretty: data.zapret2UptimePretty,
+          }),
           attributes: {
             class:
               'tachyon_dashboard-page__widgets-section__item__row--success',
+            ...(zapret2Tooltip ? { title: zapret2Tooltip } : {}),
           },
         });
       }
@@ -2324,17 +2399,25 @@ async function renderServicesInfoWidget() {
           ).toFixed(1);
           cacheDetail = ` [${_('Cache')}: ${approxMb} MB]`;
         }
+
+        const dnsmasqTooltip = formatServiceTooltip({
+          pid: data.dnsmasqPid,
+          uptimePretty: data.dnsmasqUptimePretty,
+        });
+
         items.push({
           key: 'Dnsmasq (DNS)',
-          value: data.dnsmasqRunning
-            ? data.dnsmasqMemoryMb
-              ? `\u2713 (${data.dnsmasqMemoryMb} MB)${cacheDetail}`
-              : `\u2713${cacheDetail}`
-            : '\u2717',
+          value: formatServiceRowValue({
+            running: data.dnsmasqRunning,
+            memoryMb: data.dnsmasqMemoryMb,
+            uptimePretty: data.dnsmasqUptimePretty,
+            extraSuffix: cacheDetail,
+          }),
           attributes: {
             class: data.dnsmasqRunning
               ? 'tachyon_dashboard-page__widgets-section__item__row--success'
               : 'tachyon_dashboard-page__widgets-section__item__row--error',
+            ...(dnsmasqTooltip ? { title: dnsmasqTooltip } : {}),
           },
         });
       }

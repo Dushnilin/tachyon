@@ -5073,9 +5073,384 @@ function createServerContent(section, options = {}) {
   });
 }
 
+function subscriptionServerProtocol(server) {
+  if ((server.protocol || "vless") !== "json_inbound") {
+    return server.protocol || "vless";
+  }
+  try {
+    return JSON.parse(server.inbound_json || "{}").type === "mieru"
+      ? "mieru"
+      : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function subscriptionServerSupported(server) {
+  return [
+    "vless",
+    "vmess",
+    "trojan",
+    "shadowsocks",
+    "socks",
+    "mixed",
+    "http",
+    "naive",
+    "hysteria2",
+    "tuic",
+    "anytls",
+    "shadowtls",
+    "fptn",
+    "mtproto",
+    "mieru",
+  ].includes(subscriptionServerProtocol(server));
+}
+
+function subscriptionUrl(options) {
+  const host = normalizeHost(options.host);
+  const port = Number(options.port);
+  if (
+    !isHost(host) ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535 ||
+    !/^[0-9a-f]{64}$/.test(options.token) ||
+    !["http", "https"].includes(options.scheme) ||
+    !["plain", "base64"].includes(options.format)
+  )
+    return "";
+  const defaultPort = options.scheme === "https" ? 443 : 80;
+  return `${options.scheme}://${formatHostForUri(host)}${port === defaultPort ? "" : `:${port}`}/cgi-bin/tachyon-sub/${options.token}?format=${options.format}`;
+}
+
+function subscriptionToken() {
+  // A subscription grants access to all selected credentials. Never fall back to Math.random().
+  if (!window.crypto?.getRandomValues)
+    throw new Error(_("Secure random generator is unavailable"));
+  return Array.from(window.crypto.getRandomValues(new Uint8Array(32)))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function showSubscriptionModal(section) {
+  const get = (key) =>
+    uci.get(UCI_PACKAGE, "settings", `server_subscription_${key}`);
+  const servers = uci.sections(UCI_PACKAGE, "server");
+  let token;
+  try {
+    token = /^[0-9a-f]{64}$/.test(get("token") || "")
+      ? get("token")
+      : subscriptionToken();
+  } catch (error) {
+    ui.addNotification(null, E("p", {}, error.message), "error");
+    return;
+  }
+  const enabled = E("input", {
+    type: "checkbox",
+  });
+  enabled.checked = get("enabled") === "1";
+  const host = E("input", {
+    class: "cbi-input-text",
+    type: "text",
+    value:
+      get("host") ||
+      servers.find((s) => s.public_host)?.public_host ||
+      window.location.hostname,
+  });
+  const scheme = E("select", { class: "cbi-input-select" }, [
+    E("option", { value: "https" }, "HTTPS"),
+    E("option", { value: "http" }, "HTTP"),
+  ]);
+  scheme.value = get("scheme") || "https";
+  const port = E("input", {
+    class: "cbi-input-text",
+    type: "number",
+    min: 1,
+    max: 65535,
+    value: get("port") || "443",
+  });
+  const format = E("select", { class: "cbi-input-select" }, [
+    E("option", { value: "base64" }, "Base64"),
+    E("option", { value: "plain" }, _("Connection URLs (text)")),
+  ]);
+  format.value = get("format") || "base64";
+  const all = E("input", {
+    type: "checkbox",
+  });
+  all.checked = get("mode") !== "selected";
+  const selected = asList(get("servers"));
+  const choices = servers.map((server) => {
+    const supported = subscriptionServerSupported(server);
+    const active = !["0", "false"].includes(`${server.enabled ?? "1"}`);
+    const available = supported && active;
+    const checkbox = E("input", {
+      type: "checkbox",
+    });
+    checkbox.checked =
+      available && (all.checked || selected.includes(server[".name"]));
+    checkbox.disabled = !available || all.checked;
+    const suffix = !supported
+      ? _("No subscription URL")
+      : !active
+        ? _("Disabled")
+        : subscriptionServerProtocol(server);
+    return {
+      id: server[".name"],
+      available,
+      checkbox,
+      node: E(
+        "label",
+        { style: "display:flex;gap:.5em;align-items:center;margin:.45em 0" },
+        [
+          checkbox,
+          E("span", {}, `${server.label || server[".name"]} — ${suffix}`),
+        ],
+      ),
+    };
+  });
+  all.addEventListener("change", () =>
+    choices.forEach((choice) => {
+      choice.checkbox.disabled = !choice.available || all.checked;
+      if (all.checked && choice.available) choice.checkbox.checked = true;
+    }),
+  );
+  const url = E("input", {
+    class: "cbi-input-text",
+    type: "password",
+    readonly: true,
+    "aria-label": _("Subscription URL"),
+    autocomplete: "off",
+    style: "width:100%;box-sizing:border-box",
+  });
+  const qr = E("div", { style: "display:none;margin-top:1em" });
+  const update = () => {
+    url.value = subscriptionUrl({
+      host: host.value,
+      port: port.value,
+      scheme: scheme.value,
+      format: format.value,
+      token,
+    });
+    if (qr.style.display !== "none")
+      dom.content(
+        qr,
+        url.value
+          ? E("img", {
+              src: qrSvgDataUri(url.value),
+              alt: _("Subscription QR code"),
+              style: "max-width:100%;width:220px",
+            })
+          : [],
+      );
+  };
+  [host, port, scheme, format].forEach((input) =>
+    input.addEventListener("input", update),
+  );
+  const field = (title, input) =>
+    E("label", { style: "display:block;margin:.8em 0" }, [
+      E("span", { style: "display:block;margin-bottom:.3em" }, title),
+      input,
+    ]);
+  const copy = E(
+    "button",
+    { type: "button", class: "cbi-button", click: () => copyText(url.value) },
+    _("Copy"),
+  );
+  const qrButton = E(
+    "button",
+    {
+      type: "button",
+      class: "cbi-button",
+      click: () => {
+        qr.style.display = qr.style.display === "none" ? "block" : "none";
+        update();
+      },
+    },
+    _("QR code"),
+  );
+  const rotate = E(
+    "button",
+    {
+      type: "button",
+      class: "cbi-button",
+      click: () => {
+        token = subscriptionToken();
+        update();
+        notice.textContent = _(
+          "The old URL will stop working after Save & Apply.",
+        );
+      },
+    },
+    _("Change subscription URL"),
+  );
+  const notice = E(
+    "p",
+    { role: "status" },
+    _("Use Save & Apply on the main page to activate these settings."),
+  );
+  const save = E(
+    "button",
+    {
+      type: "button",
+      class: "cbi-button cbi-button-positive",
+      click: async () => {
+        update();
+        if (
+          enabled.checked &&
+          (!url.value ||
+            !choices.some(
+              (choice) => choice.available && choice.checkbox.checked,
+            ))
+        ) {
+          ui.addNotification(
+            null,
+            E(
+              "p",
+              {},
+              _(
+                "Enter a valid public host and port, and select at least one enabled server.",
+              ),
+            ),
+            "error",
+          );
+          return;
+        }
+        save.disabled = true;
+        try {
+          const values = {
+            enabled: enabled.checked ? "1" : "0",
+            host: normalizeHost(host.value),
+            port: `${Number(port.value)}`,
+            scheme: scheme.value,
+            format: format.value,
+            mode: all.checked ? "all" : "selected",
+            token,
+          };
+          Object.entries(values).forEach(([key, value]) =>
+            uci.set(
+              UCI_PACKAGE,
+              "settings",
+              `server_subscription_${key}`,
+              value,
+            ),
+          );
+          uci.set(
+            UCI_PACKAGE,
+            "settings",
+            "server_subscription_servers",
+            choices
+              .filter((choice) => choice.available && choice.checkbox.checked)
+              .map((choice) => choice.id),
+          );
+          // Stage UCI directly; parsing the whole page would also write unrelated defaults.
+          await uci.save();
+          await ui.changes.init();
+          ui.hideModal();
+          ui.addNotification(
+            null,
+            E(
+              "p",
+              {},
+              _(
+                "Subscription settings saved. Use Save & Apply to activate them.",
+              ),
+            ),
+            "info",
+          );
+        } catch (error) {
+          ui.addNotification(null, E("p", {}, error.message), "error");
+        } finally {
+          save.disabled = false;
+        }
+      },
+    },
+    _("Save"),
+  );
+  update();
+  ui.showModal(
+    _("Configure subscription"),
+    [
+      E(
+        "p",
+        {},
+        _(
+          "One URL imports the selected enabled servers and updates their connection settings in the client.",
+        ),
+      ),
+      field(_("Enable subscription"), enabled),
+      field(_("Public host"), host),
+      E("div", { style: "display:flex;gap:1em;flex-wrap:wrap" }, [
+        field(_("Protocol"), scheme),
+        field(_("Port"), port),
+        field(_("Format"), format),
+      ]),
+      E(
+        "p",
+        { class: "alert-message notice" },
+        _(
+          "The public address must reach this router's subscription endpoint. HTTPS needs a valid certificate. This setting does not open WAN ports or publish LuCI.",
+        ),
+      ),
+      field(_("Include all enabled servers"), all),
+      ...choices.map((choice) => choice.node),
+      field(_("Subscription URL"), url),
+      E("div", { style: "display:flex;gap:.5em;flex-wrap:wrap" }, [
+        copy,
+        qrButton,
+        rotate,
+      ]),
+      qr,
+      notice,
+      E(
+        "div",
+        {
+          class: "right",
+          style:
+            "margin-top:1em;display:flex;gap:.5em;justify-content:flex-end",
+        },
+        [
+          E(
+            "button",
+            {
+              type: "button",
+              class: "cbi-button",
+              click: () => ui.hideModal(),
+            },
+            _("Cancel"),
+          ),
+          save,
+        ],
+      ),
+    ],
+    "fkp-subscription-dialog",
+  );
+}
+
+function configureServerSubscription(section) {
+  const description = section.description;
+  section.description = E("div", {}, [
+    E("div", { style: "margin-bottom:1em" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "cbi-button cbi-button-action",
+          click: (event) => {
+            event.preventDefault();
+            showSubscriptionModal(section);
+          },
+        },
+        _("Configure subscription"),
+      ),
+    ]),
+    E("div", {}, description),
+  ]);
+}
+
 return baseclass.extend({
   applyServerCapabilities,
   configureServerSection,
+  configureServerSubscription,
   createServerContent,
   preloadServerModalData,
 });

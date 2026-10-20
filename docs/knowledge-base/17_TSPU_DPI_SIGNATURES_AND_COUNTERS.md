@@ -26,8 +26,9 @@
   2. UDP 50000-65535 — голосовые сессии WebRTC / Voice.
 - **Эффективное противодействие:**
   - Мультипрофиль `zapret2`:
-    - Для TCP 443: `--filter-tcp=443 --lua-desync=multisplit:pos=1,sniext+4:seqovl=1:fooling=badseq`
-    - Для UDP Voice: `--filter-udp=50000-65535 --lua-desync=fake:ttl=8`
+    - Для TCP 443: `--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=multisplit:pos=1,sniext+4:seqovl=1:fooling=badseq`
+    - Для UDP Voice: `--filter-udp=3478-3480,50000-65535 --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=discord_udp:repeats=6`
+    - Для игрового / произвольного UDP (Fortnite, кастомные сессии): `--filter-udp=1024-65535 --out-range=-d2 --lua-desync=fake:blob=stun_fake:payload=all` (параметр `:payload=all` обязателен, иначе неизвестный L7-трафик пропускается без фейков)
 
 ### 2.3. Instagram & Meta (TLS 1.3 / ECH)
 - **Механика блокировки:** ТСПУ сбрасывает TCP-соединение инжекцией RST-пакета сразу после получения первого ClientHello с открытым SNI `instagram.com`.

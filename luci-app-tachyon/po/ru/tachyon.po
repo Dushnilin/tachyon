@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-19 22:58+0300\n"
-"PO-Revision-Date: 2026-10-19 22:58+0300\n"
+"POT-Creation-Date: 2026-10-20 21:43+0300\n"
+"PO-Revision-Date: 2026-10-20 21:43+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -899,6 +899,12 @@ msgstr "Путь к сертификату"
 msgid "Certificate pin is unavailable. Apply or restart the server to generate the default certificate, then open this dialog again."
 msgstr "Пин сертификата недоступен. Примените настройки или перезапустите сервер для генерации сертификата, затем откройте это окно снова."
 
+msgid "Change interface language"
+msgstr "Сменить язык интерфейса"
+
+msgid "Change subscription URL"
+msgstr "Сменить ссылку подписки"
+
 msgid "Check Connection"
 msgstr "Проверить подключение"
 
@@ -1142,6 +1148,9 @@ msgstr "Конфигурация сервиса Tachyon"
 msgid "Configure User-Agent in the item settings"
 msgstr "Настройте User-Agent в параметрах элемента"
 
+msgid "Configure subscription"
+msgstr "Настроить подписку"
+
 msgid "Configured detour"
 msgstr "Настроенный маршрут"
 
@@ -1165,6 +1174,9 @@ msgstr "Маршрут соединения"
 
 msgid "Connection URL"
 msgstr "URL подключения"
+
+msgid "Connection URLs (text)"
+msgstr "Ссылки на подключения (текст)"
 
 msgid "Connection error: %s"
 msgstr "Ошибка соединения: %s"
@@ -1907,6 +1919,9 @@ msgstr "Включить встроенный DNS-резолвер для дом
 msgid "Enable list updates"
 msgstr "Включить обновление списков"
 
+msgid "Enable subscription"
+msgstr "Включить подписку"
+
 msgid "Enabled"
 msgstr "Включено"
 
@@ -1981,6 +1996,9 @@ msgstr "Введите положительное целое число в ме�
 
 msgid "Enter a target domain or IP address to trace how Tachyon routes its traffic across all 7 pipeline stages."
 msgstr "Введите целевой домен или IP-адрес, чтобы отследить маршрутизацию трафика в Tachyon по всем 7 этапам конвейера."
+
+msgid "Enter a valid public host and port, and select at least one enabled server."
+msgstr "Укажите корректный публичный хост и порт, затем выберите хотя бы один включённый сервер."
 
 msgid "Enter a valid time in HH:MM format (00:00 to 23:59)"
 msgstr "Введите корректное время в формате ЧЧ:ММ (от 00:00 до 23:59)"
@@ -2149,6 +2167,9 @@ msgstr "Не удалось применить стратегию"
 
 msgid "Failed to auto-apply strategy"
 msgstr "Не удалось автоматически применить стратегию"
+
+msgid "Failed to change language"
+msgstr "Не удалось сменить язык"
 
 msgid "Failed to clear fuzzer history"
 msgstr "Не удалось очистить историю фаззера"
@@ -2455,6 +2476,9 @@ msgstr "Принудительно включает безопасный пои�
 
 msgid "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding."
 msgstr "Принудительно направлять DNS-запросы через DoQ с Encrypted Client Hello (ECH) для скрытия SNI."
+
+msgid "Format"
+msgstr "Формат"
 
 msgid "Found"
 msgstr "Найдено"
@@ -2843,6 +2867,9 @@ msgstr "Inbound JSON должен быть объектом с полем type"
 msgid "Include IP addresses and subnets"
 msgstr "Включить IP-адреса и подсети"
 
+msgid "Include all enabled servers"
+msgstr "Включать все активные серверы"
+
 msgid "Include by proxy parameters"
 msgstr "Включить по параметрам прокси"
 
@@ -2936,6 +2963,9 @@ msgstr "Установленная сборка → Доступная сбор�
 msgid "Installed version is newer than release"
 msgstr "Установлена версия новее релиза"
 
+msgid "Installing language pack and switching language..."
+msgstr "Установка русификатора и переключение языка..."
+
 msgid "Installing packages"
 msgstr "Установка пакетов"
 
@@ -2947,6 +2977,9 @@ msgstr "Мониторинг интерфейсов"
 
 msgid "Interface Monitoring Delay"
 msgstr "Задержка мониторинга интерфейсов"
+
+msgid "Interface language"
+msgstr "Язык интерфейса"
 
 msgid "Interface monitoring for Bad WAN"
 msgstr "Мониторинг интерфейсов при нестабильном подключении (Bad WAN)"
@@ -3349,6 +3382,9 @@ msgstr "ЛОКАЛЬНАЯ СЕТЬ (LAN)"
 
 msgid "Language for AI Doctor diagnosis responses"
 msgstr "Язык ответов диагностики ИИ-доктора"
+
+msgid "Language updated. Reloading page..."
+msgstr "Язык обновлён. Перезагрузка страницы..."
 
 msgid "Laptop / PC (💻)"
 msgstr "Ноутбук / ПК (💻)"
@@ -3866,6 +3902,9 @@ msgstr "Снапшотов пока нет"
 msgid "No strategies match the active filter."
 msgstr "Нет стратегий, соответствующих выбранному фильтру."
 
+msgid "No subscription URL"
+msgstr "Нет ссылки для подписки"
+
 msgid "No test DNS names were observed on WAN port 53. This alone does not prove encryption or absence of other leaks."
 msgstr "Тестовые DNS-имена не обнаружены на порту 53 WAN. Это само по себе не доказывает шифрование или отсутствие других утечек."
 
@@ -4009,6 +4048,9 @@ msgstr "Транспорт OlcRTC"
 
 msgid "Ollama (Local PC / Server)"
 msgstr "Ollama (локальный ПК / сервер)"
+
+msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
+msgstr "Одна ссылка импортирует выбранные включённые серверы и обновляет их настройки подключения в клиенте."
 
 msgid "One domain per line. These settings are saved in this browser and do not change DNS routing."
 msgstr "По одному домену на строку. Список сохраняется в этом браузере и не меняет маршрутизацию DNS."
@@ -4528,6 +4570,9 @@ msgstr "Публичный хост"
 
 msgid "Purple"
 msgstr "Фиолетовый"
+
+msgid "QR code"
+msgstr "QR-код"
 
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
@@ -5120,6 +5165,9 @@ msgstr "Секции"
 msgid "Sections merged into one flat URLTest group: their rules keep matching traffic, but all their servers are selected together by one URLTest. DPI, marker and route-only sections cannot be members."
 msgstr "Секции, объединённые в одну плоскую группу URLTest: их правила продолжают матчить трафик, но все их серверы выбираются одним общим URLTest. Секции DPI, маркеры и секции, управляющие только маршрутизацией, не могут быть участниками."
 
+msgid "Secure random generator is unavailable"
+msgstr "Недоступен криптографический генератор случайных чисел"
+
 msgid "Security"
 msgstr "Безопасность"
 
@@ -5711,6 +5759,9 @@ msgstr "Подсеть %s является публичным Anycast/CDN-диа
 msgid "Subnets from the list will be extracted and added to nftables"
 msgstr "Подсети из списка будут извлечены и добавлены в nftables"
 
+msgid "Subscription QR code"
+msgstr "QR-код подписки"
+
 msgid "Subscription URL"
 msgstr "URL подписки"
 
@@ -5728,6 +5779,9 @@ msgstr "Ключевые слова включения подписки"
 
 msgid "Subscription info:"
 msgstr "Информация о подписке:"
+
+msgid "Subscription settings saved. Use Save & Apply to activate them."
+msgstr "Настройки подписки сохранены. Нажмите «Сохранить и применить», чтобы включить их."
 
 msgid "Subscription update failed"
 msgstr "Обновление подписки завершилось ошибкой"
@@ -5782,6 +5836,9 @@ msgstr "Переключить DNS на DoH"
 
 msgid "Switch to auto-selection"
 msgstr "Вернуть автовыбор"
+
+msgid "Switching interface language..."
+msgstr "Переключение языка интерфейса..."
 
 msgid "Sync System Time (NTP)"
 msgstr "Синхронизировать время (NTP)"
@@ -6133,6 +6190,12 @@ msgstr "Не удалось подтвердить TLS-сертификат ил
 
 msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
 msgstr "fwmark desync управляется Tachyon для предотвращения циклов и не может быть переопределён здесь."
+
+msgid "The old URL will stop working after Save & Apply."
+msgstr "Старая ссылка перестанет работать после «Сохранить и применить»."
+
+msgid "The public address must reach this router's subscription endpoint. HTTPS needs a valid certificate. This setting does not open WAN ports or publish LuCI."
+msgstr "Публичный адрес должен вести к обработчику подписки на этом роутере. Для HTTPS нужен действующий сертификат. Эта настройка не открывает WAN-порты и не публикует LuCI."
 
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
 msgstr "Правило применяется к домену и всем его поддоменам. Используйте префиксы full:, keyword: или regex: для точного совпадения, совпадения по ключевому слову или регулярного выражения."
@@ -6577,6 +6640,9 @@ msgstr "Используйте CIDR-префиксы, например 192.168.1
 
 msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1"
 msgstr "Используйте префиксы CIDR или IP-адреса, например 192.168.1.0/24, 192.168.1.10 или 2001:db8::1"
+
+msgid "Use Save & Apply on the main page to activate these settings."
+msgstr "Чтобы включить эти настройки, нажмите «Сохранить и применить» на основной странице."
 
 msgid "Use a domain name or IP address"
 msgstr "Используйте имя домена или IP-адрес"

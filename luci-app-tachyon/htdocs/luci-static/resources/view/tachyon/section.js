@@ -14308,8 +14308,10 @@ async function readSubnetListFile(service) {
   if (_subnetListCache[service]) return _subnetListCache[service];
 
   const paths = [
+    `/tmp/tachyon-core/rulesets/community-subnets-${service}.lst`,
     `/tmp/sing-box/rulesets/community-subnets-${service}.lst`,
     `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
+    `/usr/share/tachyon/rulesets/community-subnets-${service}.lst`,
     // steer cache: decoded from .srs by steer srs-read
     `/etc/steer/lists/cache/${service}.prefixes`,
   ];
@@ -14476,36 +14478,46 @@ function detectQueryType(query) {
 }
 
 async function readRulesetFile(path) {
-  try {
-    // fs.read is the LuCI RPC file-read — requires ACL entry for /tmp/sing-box/rulesets/*
-    let content = await fs.read(path).catch(() => null);
-    if (!content) {
-      // Fallback: read via exec cat (runs as root, always has access)
-      const res = await fs.exec("/bin/cat", [path]).catch(() => null);
-      if (res && res.code === 0 && res.stdout) {
-        content = res.stdout;
-      }
-    }
-    if (!content) return null;
-    return JSON.parse(content);
-  } catch (e) {
-    console.warn("Failed to parse ruleset file JSON:", path, e);
-    return null;
+  const candidates = [path];
+  if (path.startsWith("/tmp/sing-box/rulesets/")) {
+    candidates.unshift(
+      path.replace("/tmp/sing-box/rulesets/", "/tmp/tachyon-core/rulesets/"),
+    );
+  } else if (path.startsWith("/tmp/tachyon-core/rulesets/")) {
+    candidates.push(
+      path.replace("/tmp/tachyon-core/rulesets/", "/tmp/sing-box/rulesets/"),
+    );
   }
+  for (const candidate of candidates) {
+    try {
+      let content = await fs.read(candidate).catch(() => null);
+      if (!content) {
+        const res = await fs.exec("/bin/cat", [candidate]).catch(() => null);
+        if (res && res.code === 0 && res.stdout) {
+          content = res.stdout;
+        }
+      }
+      if (!content) continue;
+      return JSON.parse(content);
+    } catch (e) {
+      console.warn("Failed to parse ruleset file JSON:", candidate, e);
+    }
+  }
+  return null;
 }
 
 async function findCachedSrsFile(secName, community) {
-  const tmpSrs = `/tmp/sing-box/rulesets/community-${community}.srs`;
-  const etcSrs = `/etc/tachyon/rulesets/community-${community}.srs`;
+  const candidates = [
+    `/tmp/tachyon-core/rulesets/community-${community}.srs`,
+    `/tmp/sing-box/rulesets/community-${community}.srs`,
+    `/etc/tachyon/rulesets/community-${community}.srs`,
+  ];
 
-  let tmpStat = await fs.stat(tmpSrs).catch(() => null);
-  if (tmpStat && tmpStat.type === "file") {
-    return tmpSrs;
-  }
-
-  let etcStat = await fs.stat(etcSrs).catch(() => null);
-  if (etcStat && etcStat.type === "file") {
-    return etcSrs;
+  for (const srsPath of candidates) {
+    const st = await fs.stat(srsPath).catch(() => null);
+    if (st && st.type === "file") {
+      return srsPath;
+    }
   }
 
   return null;
@@ -14531,13 +14543,14 @@ async function matchCommunityList(secName, community, query, type) {
       ...(type === "ip" ? ["--ip", query] : ["--domain", query]),
     ];
 
-    // Try /usr/bin/sing-box first
-    let res = await fs.exec("/usr/bin/sing-box", matchArgs).catch(() => null);
-    if (checkMatch(res)) return true;
-
-    // Fallback to /usr/sbin/sing-box
-    res = await fs.exec("/usr/sbin/sing-box", matchArgs).catch(() => null);
-    if (checkMatch(res)) return true;
+    for (const bin of [
+      "/usr/bin/tachyon-core",
+      "/usr/bin/sing-box",
+      "/usr/sbin/sing-box",
+    ]) {
+      const res = await fs.exec(bin, matchArgs).catch(() => null);
+      if (checkMatch(res)) return true;
+    }
   }
 
   // Steer fallback: when steer is active engine, sing-box may not be installed.
@@ -14573,6 +14586,11 @@ async function matchCommunityList(secName, community, query, type) {
   return false;
 }
 
+function isSyntheticFakeIp(ip) {
+  const s = (ip || "").trim().toLowerCase();
+  return /^198\.(18|19)\./.test(s) || /^fc[0-3][0-9a-f]:/.test(s);
+}
+
 async function resolveDomainToIps(domain) {
   domain = (domain || "").trim().toLowerCase();
   if (!domain) return [];
@@ -14584,33 +14602,142 @@ async function resolveDomainToIps(domain) {
       .catch(() => null);
     if (res && res.code === 0 && res.stdout) {
       const parsed = JSON.parse(res.stdout.trim());
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (e) {}
-
-  // 2. Fallback: nslookup via /usr/bin/nslookup
-  try {
-    const res = await fs.exec("/usr/bin/nslookup", [domain]).catch(() => null);
-    if (res && res.stdout) {
-      const ips = [];
-      const lines = res.stdout.split("\n");
-      for (const line of lines) {
-        const trimmed = line.trim();
-        const m = trimmed.match(/^Address\s*\d*:\s*([0-9a-fA-F:.]+)/);
-        if (m) {
-          const addr = m[1].split("#")[0].trim();
-          if (!addr.startsWith("127.") && addr !== "::1" && addr !== "") {
-            if (!ips.includes(addr)) ips.push(addr);
-          }
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter((ip) => ip && !isSyntheticFakeIp(ip));
+        if (filtered.length > 0) {
+          return filtered;
         }
       }
-      if (ips.length > 0) return ips;
     }
   } catch (e) {}
 
+  // 2. Fallback: nslookup via /usr/bin/nslookup (local then public resolver if FakeIP)
+  for (const args of [[domain], [domain, "77.88.8.8"], [domain, "1.1.1.1"]]) {
+    try {
+      const res = await fs.exec("/usr/bin/nslookup", args).catch(() => null);
+      if (res && res.stdout) {
+        const ips = [];
+        const lines = res.stdout.split("\n");
+        let pastHeader = false;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (/^(Name:|Non-authoritative answer:)/i.test(trimmed)) {
+            pastHeader = true;
+          }
+          if (!pastHeader) continue;
+          const m = trimmed.match(/^Address\s*\d*:\s*([0-9a-fA-F:.]+)/);
+          if (m) {
+            const addr = m[1].split("#")[0].trim();
+            if (
+              !addr.startsWith("127.") &&
+              addr !== "::1" &&
+              addr !== "" &&
+              !isSyntheticFakeIp(addr)
+            ) {
+              if (!ips.includes(addr)) ips.push(addr);
+            }
+          }
+        }
+        if (ips.length > 0) return ips;
+      }
+    } catch (e) {}
+  }
+
   return [];
+}
+
+function getSectionGeoCountries(secName) {
+  const raw = normalizeOptionValues(
+    uci.get(UCI_PACKAGE, secName, "geoip_country"),
+  );
+  const countries = [];
+  for (let item of raw) {
+    item = (item || "").trim().toLowerCase();
+    if (!item || item === "all") continue;
+    if (item === "non-ru") {
+      if (!countries.includes("ru")) countries.push("ru");
+      continue;
+    }
+    if (/^[a-z]{2}$/.test(item) && !countries.includes(item)) {
+      countries.push(item);
+    }
+  }
+  return countries;
+}
+
+function getSectionGeoMode(secName) {
+  const mode = (uci.get(UCI_PACKAGE, secName, "geoip_mode") || "")
+    .trim()
+    .toLowerCase();
+  if (
+    mode === "include" ||
+    mode === "exclude" ||
+    mode === "include_all" ||
+    mode === "exclude_direct"
+  ) {
+    return mode;
+  }
+  return "exclude";
+}
+
+async function matchesGeoCountrySet(secName, countries, domain, ips) {
+  for (const cc of countries) {
+    if (domain) {
+      const d = domain.toLowerCase();
+      if (d === cc || d.endsWith("." + cc)) {
+        return { matched: true, source: `tld_${cc}`, pattern: domain };
+      }
+      if (
+        cc === "ru" &&
+        (d.endsWith(".su") || d.endsWith(".xn--p1ai") || d.endsWith(".рф"))
+      ) {
+        return { matched: true, source: "tld_ru", pattern: domain };
+      }
+      if (await matchCommunityList(secName, `geosite_${cc}`, domain, "domain")) {
+        return { matched: true, source: `geosite_${cc}`, pattern: domain };
+      }
+      if (
+        cc === "ru" &&
+        (await matchCommunityList(secName, "russia_inside", domain, "domain"))
+      ) {
+        return { matched: true, source: "russia_inside", pattern: domain };
+      }
+    }
+    const geoService = `geoip_${cc}`;
+    const geoSubnets = await readSubnetListFile(geoService);
+    for (const ip of ips || []) {
+      if (!ip || isSyntheticFakeIp(ip)) continue;
+      const matchedCidr = matchIpInCidrs(ip, geoSubnets);
+      if (matchedCidr) {
+        return {
+          matched: true,
+          source: geoService,
+          pattern: `${matchedCidr} (IP: ${ip})`,
+          ip: ip,
+        };
+      }
+      if (await matchCommunityList(secName, geoService, ip, "ip")) {
+        return {
+          matched: true,
+          source: geoService,
+          pattern: `${ip}`,
+          ip: ip,
+        };
+      }
+      if (
+        cc === "ru" &&
+        (await matchCommunityList(secName, "russia_inside", ip, "ip"))
+      ) {
+        return {
+          matched: true,
+          source: "russia_inside",
+          pattern: `${ip}`,
+          ip: ip,
+        };
+      }
+    }
+  }
+  return { matched: false };
 }
 
 async function performTrace(query) {
@@ -14833,6 +14960,71 @@ async function performTrace(query) {
           }
         }
       }
+
+      const geoCountries = getSectionGeoCountries(secName);
+      if (geoCountries.length > 0) {
+        const geoMode = getSectionGeoMode(secName);
+        const geoCheck = await matchesGeoCountrySet(
+          secName,
+          geoCountries,
+          null,
+          [queryForMatching],
+        );
+        const inverts = geoMode === "exclude" || geoMode === "exclude_direct";
+        if (inverts ? !geoCheck.matched : geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: inverts
+              ? `GeoIP Exclude (!${geoCountries.join(",")})`
+              : `GeoIP Include (${geoCountries.join(",")})`,
+            pattern: geoCheck.pattern || queryForMatching,
+            matchedIp: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === "exclude_direct" && geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: "bypass",
+            ruleType: `GeoIP Exclude Direct (${geoCountries.join(",")})`,
+            pattern: geoCheck.pattern || queryForMatching,
+            matchedIp: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === "include_all") {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: `GeoIP Include All (${geoCountries.join(",")})`,
+            pattern: queryForMatching,
+            matchedIp: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+
+      if (uci.get(UCI_PACKAGE, secName, "match_all") === "1") {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: "Match All",
+          pattern: queryForMatching,
+          matchedIp: queryForMatching,
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
     }
 
     if (type === "domain") {
@@ -14952,28 +15144,28 @@ async function performTrace(query) {
   }
 
   if (type === "domain") {
-    // No direct domain rule matched. Resolve domain to IP addresses and check IP routing rules
+    // No direct domain rule matched. Resolve domain to IP addresses and check IP / GeoIP routing rules
     const resolvedIps = await resolveDomainToIps(queryForMatching);
-    if (resolvedIps && resolvedIps.length > 0) {
-      for (let i = 0; i < sections.length; i++) {
-        const sec = sections[i];
-        const secName = sec[".name"];
-        if (uci.get(UCI_PACKAGE, secName, "enabled") === "0") continue;
+    for (let i = 0; i < sections.length; i++) {
+      const sec = sections[i];
+      const secName = sec[".name"];
+      if (uci.get(UCI_PACKAGE, secName, "enabled") === "0") continue;
 
-        const label =
-          uci.get(UCI_PACKAGE, secName, "label") ||
-          uci.get(UCI_PACKAGE, secName, "name") ||
-          secName;
-        const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
+      const label =
+        uci.get(UCI_PACKAGE, secName, "label") ||
+        uci.get(UCI_PACKAGE, secName, "name") ||
+        secName;
+      const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
 
+      if (resolvedIps && resolvedIps.length > 0) {
         const ipCidr = normalizeOptionValues(
           uci.get(UCI_PACKAGE, secName, "ip_cidr"),
         );
         const listsRuleset = await readRulesetFile(
-          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
         );
         const remoteSubnetRuleset = await readRulesetFile(
-          `/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`,
+          `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
         );
         const communitySubnetsEnabled =
           uci.get(UCI_PACKAGE, secName, "community_subnets") !== "0";
@@ -15089,6 +15281,85 @@ async function performTrace(query) {
         }
       }
 
+      const geoCountries = getSectionGeoCountries(secName);
+      if (geoCountries.length > 0) {
+        const geoMode = getSectionGeoMode(secName);
+        const geoCheck = await matchesGeoCountrySet(
+          secName,
+          geoCountries,
+          queryForMatching,
+          resolvedIps,
+        );
+        const inverts = geoMode === "exclude" || geoMode === "exclude_direct";
+        const resolvedSuffix =
+          resolvedIps && resolvedIps.length > 0
+            ? ` (resolved: ${resolvedIps.join(", ")})`
+            : "";
+        if (inverts ? !geoCheck.matched : geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: inverts
+              ? `GeoIP Exclude (!${geoCountries.join(",")})`
+              : `GeoIP Include (${geoCountries.join(",")})`,
+            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === "exclude_direct" && geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: "bypass",
+            ruleType: `GeoIP Exclude Direct (${geoCountries.join(",")})`,
+            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === "include_all") {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: `GeoIP Include All (${geoCountries.join(",")})`,
+            pattern: `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: resolvedIps && resolvedIps[0],
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+
+      if (uci.get(UCI_PACKAGE, secName, "match_all") === "1") {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: "Match All",
+          pattern: queryForMatching,
+          resolvedDomain: queryForMatching,
+          resolvedIps: resolvedIps,
+          matchedIp: resolvedIps && resolvedIps[0],
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+    }
+
+    if (resolvedIps && resolvedIps.length > 0) {
       return {
         matched: false,
         resolvedDomain: queryForMatching,

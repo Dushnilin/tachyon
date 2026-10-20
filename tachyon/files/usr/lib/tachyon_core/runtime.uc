@@ -279,7 +279,7 @@ function sing_box_version_is_lx(value) {
 //     release it tracks, so no field may be enabled on the strength of it.
 function sing_box_version_is_tachyon_core(value) {
     let s = as_string(value);
-    if (index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0 || match(s, /^v?0\.0\./) != null)
+    if (index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0 || match(s, /^v?0\.[0-9]+\./) != null)
         return true;
     // The marker is what the installer wrote when it put this binary in place,
     // so it outranks any version string passed in. The banner is the ground
@@ -711,7 +711,8 @@ function managed_service_script_stale() {
     // the same way as a broken one.
     return index(data, "config_load \"tachyon-core\"") < 0 ||
         index(data, "core=\"unlimited\"") >= 0 ||
-        index(data, "GOMEMLIMIT") < 0;
+        index(data, "GOMEMLIMIT") < 0 ||
+        index(data, "PROG=\"/usr/bin/sing-box\"") < 0;
 }
 
 function managed_service_text() {
@@ -829,6 +830,7 @@ function configure_service() {
 
     if (fs.stat("/usr/bin/sing-box") != null && fs.stat("/usr/bin/tachyon-core") == null) {
         try {
+            fs.unlink("/usr/bin/tachyon-core");
             fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core");
         }
         catch (e) {

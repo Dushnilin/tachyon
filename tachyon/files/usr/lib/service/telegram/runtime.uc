@@ -770,12 +770,14 @@ function diagnose() {
         ok = false;
     }
 
-    // 3. sing-box running
+    // 3. Routing engine running
+    let engine_name = "tachyon-core";
+    try { engine_name = require("core.engine").get_active(); } catch (e) {}
     let sb_running = core_binary_running();
     push(checks, {
         name: "sing_box",
         ok: sb_running,
-        message: sb_running ? "sing-box is running" : "sing-box is NOT running — proxy routing unavailable"
+        message: sb_running ? (engine_name + " is running") : (engine_name + " is NOT running — proxy routing unavailable")
     });
 
     // 4. Mixed proxy port
@@ -794,7 +796,7 @@ function diagnose() {
         push(checks, {
             name: "proxy_port",
             ok: true,
-            message: "Mixed proxy is not configured in sing-box — bot will use direct connection"
+            message: "Mixed proxy is not configured in " + engine_name + " — bot will use direct connection"
         });
     }
 
@@ -841,7 +843,7 @@ function diagnose() {
         push(checks, {
             name: "proxy_api",
             ok: p_ok,
-            message: p_ok ? "Proxy route (" + proxy_ep + ") to Telegram API works" : "Proxy route failed — check sing-box outbound for Telegram"
+            message: p_ok ? "Proxy route (" + proxy_ep + ") to Telegram API works" : ("Proxy route failed — check " + engine_name + " outbound for Telegram")
         });
     } else if (proxy_info && !port_ok) {
         push(checks, {

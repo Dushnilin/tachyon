@@ -851,7 +851,7 @@ function valid_port(port) {
 }
 
 function normalize_port_number(value) {
-    value = trim(value);
+    value = trim(as_string(value));
     if (!is_integer_string(value))
         return "";
 
@@ -1241,10 +1241,15 @@ function process_hysteria2(raw, url) {
         password: password,
         tls: tls
     };
-    if (server_ports != null)
+    if (server_ports != null) {
         outbound.server_ports = server_ports;
-    else
+        let parts = split(server_ports[0], ":");
+        let initial_port = normalize_port_number(url.port);
+        outbound.server_port = initial_port != "" ? int(initial_port, 10) : int(parts[0], 10);
+    }
+    else {
         outbound.server_port = int(server_port, 10);
+    }
 
     if ((url.query.network || "") != "")
         outbound.network = url.query.network;
@@ -2714,15 +2719,30 @@ function xray_tag_base(original_tag, config_index, config_count) {
 
 function xray_protocol_supported(protocol) {
     protocol = lc(as_string(protocol));
-    return protocol == "vless" || protocol == "socks" || protocol == "hysteria";
+    return protocol == "vless" || protocol == "vmess" || protocol == "trojan" ||
+        protocol == "shadowsocks" || protocol == "ss" || protocol == "socks" ||
+        protocol == "http" || protocol == "hysteria" || protocol == "hysteria2" ||
+        protocol == "hy2";
+}
+
+function xray_apply_stream_tls_transport(result, outbound) {
+    let stream = object_or_empty(outbound.streamSettings);
+    let transport = xray_transport_from_stream(stream);
+    let tls = xray_tls_from_stream(stream, lc(as_string(stream.network || "")));
+    if (tls)
+        result.tls = tls;
+    if (transport)
+        result.transport = transport;
+    return result;
 }
 
 function convert_xray_vless(outbound, tag) {
-    let vnext = xray_first_array_object(object_or_empty(outbound.settings).vnext);
+    let settings = object_or_empty(outbound.settings);
+    let vnext = xray_first_array_object(settings.vnext);
     let user = xray_first_array_object(vnext.users);
-    let server = as_string(vnext.address || "");
-    let port = xray_valid_port_value(vnext.port);
-    let uuid = as_string(user.id || "");
+    let server = as_string(vnext.address || outbound.server || outbound.address || settings.address || "");
+    let port = xray_valid_port_value(vnext.port != null ? vnext.port : (outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : settings.port)));
+    let uuid = as_string(user.id || outbound.uuid || outbound.id || settings.id || "");
     if (server == "" || is_dummy_server(server, port) || port == null || uuid == "")
         return null;
 
@@ -2734,28 +2754,134 @@ function convert_xray_vless(outbound, tag) {
         uuid: uuid
     };
 
-    let flow = as_string(user.flow || "");
+    let flow = as_string(user.flow || outbound.flow || "");
     if (flow != "")
         result.flow = flow;
-    let encryption = normalize_vless_encryption(user.encryption || "");
+    let encryption = normalize_vless_encryption(user.encryption || outbound.encryption || "");
     if (encryption != "")
         result.encryption = encryption;
+
+    return xray_apply_stream_tls_transport(result, outbound);
+}
+
+function convert_xray_vmess(outbound, tag) {
+    let settings = object_or_empty(outbound.settings);
+    let vnext = xray_first_array_object(settings.vnext);
+    let user = xray_first_array_object(vnext.users);
+    let server = as_string(vnext.address || outbound.server || outbound.address || settings.address || "");
+    let port = xray_valid_port_value(vnext.port != null ? vnext.port : (outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : settings.port)));
+    let uuid = as_string(user.id || outbound.uuid || outbound.id || settings.id || "");
+    if (server == "" || is_dummy_server(server, port) || port == null || uuid == "")
+        return null;
+
+    let security = as_string(user.security || outbound.security || settings.security || "auto");
+    let result = {
+        type: "vmess",
+        tag: tag,
+        server: server,
+        server_port: port,
+        uuid: uuid,
+        security: security != "" ? security : "auto"
+    };
+
+    let alter_id = user.alterId != null ? user.alterId : (outbound.alter_id != null ? outbound.alter_id : outbound.alterId);
+    if (alter_id != null && as_string(alter_id) != "")
+        result.alter_id = int(alter_id);
+
+    return xray_apply_stream_tls_transport(result, outbound);
+}
+
+function convert_xray_trojan(outbound, tag) {
+    let settings = object_or_empty(outbound.settings);
+    let srv = xray_first_array_object(settings.servers);
+    let server = as_string(srv.address || outbound.server || outbound.address || settings.address || "");
+    let port = xray_valid_port_value(srv.port != null ? srv.port : (outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : settings.port)));
+    let password = as_string(srv.password || outbound.password || settings.password || "");
+    if (server == "" || is_dummy_server(server, port) || port == null || password == "")
+        return null;
+
+    let result = {
+        type: "trojan",
+        tag: tag,
+        server: server,
+        server_port: port,
+        password: password
+    };
+
+    return xray_apply_stream_tls_transport(result, outbound);
+}
+
+function convert_xray_shadowsocks(outbound, tag) {
+    let settings = object_or_empty(outbound.settings);
+    let srv = xray_first_array_object(settings.servers);
+    let server = as_string(srv.address || outbound.server || outbound.address || settings.address || "");
+    let port = xray_valid_port_value(srv.port != null ? srv.port : (outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : settings.port)));
+    let method = normalize_shadowsocks_method(srv.method || srv.cipher || outbound.method || outbound.cipher || settings.method || settings.cipher || "");
+    let password = as_string(srv.password || outbound.password || settings.password || "");
+    if (server == "" || is_dummy_server(server, port) || port == null || !valid_shadowsocks_password(method, password))
+        return null;
+
+    let result = {
+        type: "shadowsocks",
+        tag: tag,
+        server: server,
+        server_port: port,
+        method: method,
+        password: password
+    };
+
+    let plugin = as_string(srv.plugin || outbound.plugin || settings.plugin || "");
+    let plugin_opts = as_string(srv.pluginOpts || srv.plugin_opts || outbound.plugin_opts || outbound.pluginOpts || settings.pluginOpts || settings.plugin_opts || "");
+    if (plugin != "")
+        result.plugin = plugin;
+    if (plugin_opts != "")
+        result.plugin_opts = plugin_opts;
 
     let stream = object_or_empty(outbound.streamSettings);
     let transport = xray_transport_from_stream(stream);
     let tls = xray_tls_from_stream(stream, lc(as_string(stream.network || "")));
-    if (tls)
-        result.tls = tls;
-    if (transport)
-        result.transport = transport;
+    if (transport != null && transport.type == "ws" && result.plugin == null) {
+        result.plugin = "v2ray-plugin";
+        let opts = [ "mode=websocket" ];
+        if (tls != null && tls.enabled === true) {
+            push(opts, "tls");
+            if (as_string(tls.server_name || "") != "")
+                push(opts, "host=" + as_string(tls.server_name));
+        }
+        let ws_host = as_string(object_or_empty(transport.headers).Host || object_or_empty(transport.headers).host || "");
+        if (ws_host != "" && (tls == null || as_string(tls.server_name || "") == ""))
+            push(opts, "host=" + ws_host);
+        else if (ws_host != "" && tls != null && as_string(tls.server_name || "") != "" && ws_host != as_string(tls.server_name)) {
+            let filtered = [];
+            for (let item in opts) {
+                if (substr(item, 0, 5) != "host=")
+                    push(filtered, item);
+            }
+            opts = filtered;
+            push(opts, "host=" + ws_host);
+        }
+        let ws_path = as_string(transport.path || "/");
+        if (ws_path != "")
+            push(opts, "path=" + ws_path);
+        result.plugin_opts = join(";", opts);
+    } else {
+        if (tls)
+            result.tls = tls;
+        if (transport)
+            result.transport = transport;
+    }
+
+    if (is_true(srv.uot || outbound.uot || outbound.udp_over_tcp || settings.uot))
+        result.udp_over_tcp = true;
 
     return result;
 }
 
 function convert_xray_socks(outbound, tag) {
-    let server_config = xray_first_array_object(object_or_empty(outbound.settings).servers);
-    let server = as_string(server_config.address || "");
-    let port = xray_valid_port_value(server_config.port);
+    let settings = object_or_empty(outbound.settings);
+    let server_config = xray_first_array_object(settings.servers);
+    let server = as_string(server_config.address || outbound.server || outbound.address || settings.address || "");
+    let port = xray_valid_port_value(server_config.port != null ? server_config.port : (outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : settings.port)));
     if (server == "" || is_dummy_server(server, port) || port == null)
         return null;
 
@@ -2768,10 +2894,43 @@ function convert_xray_socks(outbound, tag) {
     };
 
     let user = xray_first_array_object(server_config.users);
-    if (as_string(user.user || "") != "")
-        result.username = as_string(user.user);
-    if (as_string(user.pass || user.password || "") != "")
-        result.password = as_string(user.pass || user.password);
+    let username = as_string(user.user || outbound.username || settings.user || "");
+    let password = as_string(user.pass || user.password || outbound.password || settings.pass || settings.password || "");
+    if (username != "")
+        result.username = username;
+    if (password != "")
+        result.password = password;
+
+    return result;
+}
+
+function convert_xray_http(outbound, tag) {
+    let settings = object_or_empty(outbound.settings);
+    let server_config = xray_first_array_object(settings.servers);
+    let server = as_string(server_config.address || outbound.server || outbound.address || settings.address || "");
+    let port = xray_valid_port_value(server_config.port != null ? server_config.port : (outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : settings.port)));
+    if (server == "" || is_dummy_server(server, port) || port == null)
+        return null;
+
+    let result = {
+        type: "http",
+        tag: tag,
+        server: server,
+        server_port: port
+    };
+
+    let user = xray_first_array_object(server_config.users);
+    let username = as_string(user.user || outbound.username || settings.user || "");
+    let password = as_string(user.pass || user.password || outbound.password || settings.pass || settings.password || "");
+    if (username != "")
+        result.username = username;
+    if (password != "")
+        result.password = password;
+
+    let stream = object_or_empty(outbound.streamSettings);
+    let tls = xray_tls_from_stream(stream, lc(as_string(stream.network || "")));
+    if (tls)
+        result.tls = tls;
 
     return result;
 }
@@ -2780,13 +2939,14 @@ function convert_xray_hysteria2(outbound, tag) {
     let settings = object_or_empty(outbound.settings);
     let stream = object_or_empty(outbound.streamSettings);
     let hysteria_settings = object_or_empty(stream.hysteriaSettings);
-    let version = int(settings.version || hysteria_settings.version || 0);
+    let protocol = lc(as_string(outbound.protocol || ""));
+    let version = int(settings.version || hysteria_settings.version || (protocol == "hysteria2" || protocol == "hy2" ? 2 : 0));
     if (version != 2)
         return null;
 
-    let server = as_string(settings.address || settings.server || "");
-    let port = xray_valid_port_value(settings.port);
-    let password = as_string(hysteria_settings.auth || settings.auth || settings.password || "");
+    let server = as_string(settings.address || settings.server || outbound.server || outbound.address || "");
+    let port = xray_valid_port_value(settings.port != null ? settings.port : (outbound.server_port != null ? outbound.server_port : outbound.port));
+    let password = as_string(hysteria_settings.auth || settings.auth || settings.password || outbound.password || "");
     if (server == "" || is_dummy_server(server, port) || port == null || password == "")
         return null;
 
@@ -2833,9 +2993,17 @@ function convert_xray_outbound(outbound, tag) {
     let protocol = lc(as_string(outbound.protocol || ""));
     if (protocol == "vless")
         return convert_xray_vless(outbound, tag);
+    if (protocol == "vmess")
+        return convert_xray_vmess(outbound, tag);
+    if (protocol == "trojan")
+        return convert_xray_trojan(outbound, tag);
+    if (protocol == "shadowsocks" || protocol == "ss")
+        return convert_xray_shadowsocks(outbound, tag);
     if (protocol == "socks")
         return convert_xray_socks(outbound, tag);
-    if (protocol == "hysteria")
+    if (protocol == "http")
+        return convert_xray_http(outbound, tag);
+    if (protocol == "hysteria" || protocol == "hysteria2" || protocol == "hy2")
         return convert_xray_hysteria2(outbound, tag);
     return null;
 }
@@ -3192,13 +3360,224 @@ function sing_box_outbound_tag(outbound) {
     return type(outbound) == "object" ? as_string(outbound.tag || "") : "";
 }
 
+function decode_base64_or_raw_conf_text(raw_config) {
+    let text = trim(as_string(raw_config));
+    if (text == "")
+        return "";
+    if (index(lc(text), "[interface]") >= 0)
+        return text;
+    let payload = replace(replace(text, /[\r\n \t]+/g, ""), /-/g, "+");
+    payload = replace(payload, /_/g, "/");
+    if (match(payload, /^[A-Za-z0-9+\/]*={0,2}$/) && length(payload) % 4 != 1) {
+        while (length(payload) % 4)
+            payload += "=";
+        try {
+            let decoded = b64dec(payload);
+            if (decoded != null && decoded != "")
+                return decoded;
+        } catch (e) {}
+    }
+    return text;
+}
+
+function expand_json_config_outbound_items(item) {
+    if (type(item) != "object")
+        return null;
+    let raw_cfg = as_string(item.config || item.awg_config || item.wg_config || "");
+    if (raw_cfg == "")
+        return null;
+
+    let item_name = trim(as_string(item.name || item.tag || item.remark || ""));
+    let endpoints = null;
+    if (starts_with(trim(raw_cfg), "vpn://")) {
+        endpoints = wireguard.from_vpn_endpoints(trim(raw_cfg));
+    } else {
+        let conf_text = decode_base64_or_raw_conf_text(raw_cfg);
+        if (conf_text != "" && index(lc(conf_text), "[peer]") < 0) {
+            let peer_pub = trim(as_string(item.public_key || item.publicKey || item.peer_public_key || item.server_public_key || ""));
+            let peer_ep = trim(as_string(item.endpoint || ""));
+            if (peer_ep == "") {
+                let srv = trim(as_string(item.server || item.host || item.address || ""));
+                let prt = as_string(item.server_port || item.port || "");
+                if (srv != "" && prt != "")
+                    peer_ep = (index(srv, ":") >= 0 && substr(srv, 0, 1) != "[") ? ("[" + srv + "]:" + prt) : (srv + ":" + prt);
+            }
+            if (peer_pub != "" && peer_ep != "") {
+                conf_text += "\n[Peer]\nPublicKey = " + peer_pub + "\nEndpoint = " + peer_ep + "\n";
+                let psk = trim(as_string(item.pre_shared_key || item.preshared_key || item.presharedKey || ""));
+                if (psk != "")
+                    conf_text += "PresharedKey = " + psk + "\n";
+                let allowed = item.allowed_ips || item.allowedIps;
+                if (type(allowed) == "array" && length(allowed) > 0)
+                    conf_text += "AllowedIPs = " + join(", ", allowed) + "\n";
+                else if (type(allowed) == "string" && trim(allowed) != "")
+                    conf_text += "AllowedIPs = " + trim(allowed) + "\n";
+            }
+        }
+        let share = starts_with(trim(raw_cfg), "[")
+            ? ("vpn://" + replace(replace(replace(b64enc(conf_text), /\+/g, "-"), /\//g, "_"), /=+$/, ""))
+            : ("vpn://" + replace(replace(replace(trim(raw_cfg), /\+/g, "-"), /\//g, "_"), /=+$/, ""));
+        endpoints = wireguard.from_conf_endpoints(conf_text, share, item_name);
+    }
+
+    if (type(endpoints) != "array" || length(endpoints) == 0)
+        return [];
+
+    let result = [];
+    for (let i = 0; i < length(endpoints); i++) {
+        let ep = endpoints[i];
+        if (item_name != "") {
+            ep.tag = i == 0 ? item_name : sprintf("%s (%d)", item_name, i + 1);
+            ep.remark = ep.tag;
+        }
+        push(result, ep);
+    }
+    return result;
+}
+
+function normalize_sing_box_wireguard_outbound(outbound) {
+    if (type(outbound) != "object")
+        return outbound;
+    let out_type = lc(trim(as_string(outbound.type || "")));
+    if (out_type != "wireguard" && out_type != "amneziawg" && out_type != "awg")
+        return outbound;
+
+    outbound.type = "wireguard";
+    let tag_val = trim(as_string(outbound.tag || outbound.name || outbound.remark || ""));
+    if (tag_val != "")
+        outbound.tag = tag_val;
+
+    if (outbound.address == null && outbound.local_address != null) {
+        outbound.address = type(outbound.local_address) == "array" ? outbound.local_address : [ as_string(outbound.local_address) ];
+        delete outbound.local_address;
+    } else if (type(outbound.address) == "string") {
+        outbound.address = [ outbound.address ];
+    }
+
+    if (type(outbound.peers) != "array" || length(outbound.peers) == 0) {
+        let srv = trim(as_string(outbound.server || outbound.host || ""));
+        let prt = int(outbound.server_port || outbound.port || 0);
+        let pub = trim(as_string(outbound.peer_public_key || outbound.public_key || outbound.publicKey || ""));
+        if (srv != "" && prt > 0 && pub != "") {
+            let peer = {
+                address: srv,
+                port: prt,
+                public_key: pub,
+                allowed_ips: type(outbound.allowed_ips) == "array" && length(outbound.allowed_ips) > 0
+                    ? outbound.allowed_ips
+                    : [ "0.0.0.0/0", "::/0" ]
+            };
+            let psk = trim(as_string(outbound.pre_shared_key || outbound.preshared_key || ""));
+            if (psk != "")
+                peer.pre_shared_key = psk;
+            if (outbound.reserved != null)
+                peer.reserved = outbound.reserved;
+            if (outbound.persistent_keepalive_interval != null)
+                peer.persistent_keepalive_interval = outbound.persistent_keepalive_interval;
+            outbound.peers = [ peer ];
+            delete outbound.server;
+            delete outbound.server_port;
+            delete outbound.peer_public_key;
+            delete outbound.pre_shared_key;
+            delete outbound.preshared_key;
+            delete outbound.reserved;
+            delete outbound.allowed_ips;
+            delete outbound.persistent_keepalive_interval;
+        }
+    } else {
+        for (let peer in outbound.peers) {
+            if (type(peer) != "object")
+                continue;
+            if (peer.address == null && peer.server != null) {
+                peer.address = peer.server;
+                delete peer.server;
+            }
+            if (peer.port == null && peer.server_port != null) {
+                peer.port = int(peer.server_port);
+                delete peer.server_port;
+            }
+            if (peer.public_key == null && peer.peer_public_key != null) {
+                peer.public_key = peer.peer_public_key;
+                delete peer.peer_public_key;
+            }
+            if (peer.allowed_ips == null)
+                peer.allowed_ips = [ "0.0.0.0/0", "::/0" ];
+        }
+    }
+
+    if (type(outbound.amnezia) == "object") {
+        for (let k, v in outbound.amnezia) {
+            if (outbound[k] == null)
+                outbound[k] = v;
+        }
+        delete outbound.amnezia;
+    }
+
+    if (outbound.mtu == null)
+        outbound.mtu = 1280;
+
+    return outbound;
+}
+
 function normalize_sing_box_json_outbounds(candidates) {
     let outbounds = [];
     let urltest_refs = {};
     let detour_refs = {};
+    let idx = 0;
 
     for (let outbound in candidates) {
+        idx++;
         if (type(outbound) != "object" || outbound_is_unsupported_stub(outbound))
+            continue;
+        let expanded_cfg = expand_json_config_outbound_items(outbound);
+        if (expanded_cfg != null) {
+            for (let ep in expanded_cfg)
+                push(outbounds, ep);
+            continue;
+        }
+        if ((outbound.type == null || as_string(outbound.type) == "") &&
+            (outbound.protocol != null || outbound.streamSettings != null || outbound.settings != null)) {
+            let xray_tag = xray_source_tag(outbound, lc(as_string(outbound.protocol || "server")) + "-" + idx);
+            let converted = convert_xray_outbound(outbound, xray_tag);
+            if (converted == null)
+                continue;
+            let disp = xray_display_name(as_string(outbound.remarks || outbound.remark || outbound.ps || outbound.name || outbound.tag || ""));
+            if (disp != "")
+                converted.remark = disp;
+            let detour = xray_outbound_detour(outbound);
+            if (detour != "")
+                converted.detour = detour;
+            outbound = converted;
+        }
+        else if (outbound.streamSettings != null && outbound.transport == null) {
+            let stream = object_or_empty(outbound.streamSettings);
+            let transport = xray_transport_from_stream(stream);
+            let tls = xray_tls_from_stream(stream, lc(as_string(stream.network || "")));
+            if (lc(as_string(outbound.type || "")) == "shadowsocks" && transport != null && transport.type == "ws" && outbound.plugin == null) {
+                outbound.plugin = "v2ray-plugin";
+                let opts = [ "mode=websocket" ];
+                if (tls != null && tls.enabled === true) {
+                    push(opts, "tls");
+                    if (as_string(tls.server_name || "") != "")
+                        push(opts, "host=" + as_string(tls.server_name));
+                }
+                let ws_host = as_string(object_or_empty(transport.headers).Host || object_or_empty(transport.headers).host || "");
+                if (ws_host != "" && (tls == null || as_string(tls.server_name || "") == ""))
+                    push(opts, "host=" + ws_host);
+                let ws_path = as_string(transport.path || "/");
+                if (ws_path != "")
+                    push(opts, "path=" + ws_path);
+                outbound.plugin_opts = join(";", opts);
+            } else {
+                if (tls != null && outbound.tls == null)
+                    outbound.tls = tls;
+                if (transport != null && outbound.transport == null)
+                    outbound.transport = transport;
+            }
+            delete outbound.streamSettings;
+        }
+        outbound = normalize_sing_box_wireguard_outbound(outbound);
+        if (outbound.type == "wireguard" && (type(outbound.peers) != "array" || length(outbound.peers) == 0))
             continue;
         outbound = normalize_sing_box_hysteria2_outbound(outbound);
         outbound = normalize_sing_box_tuic_outbound(outbound);
@@ -3249,11 +3628,15 @@ function normalize_sing_box_json_value(value, output_file) {
         });
     }
 
-    if (type(value) == "object" && type(value.outbounds) == "array")
-        candidates = value.outbounds;
+    if (type(value) == "object" && (type(value.outbounds) == "array" || type(value.endpoints) == "array")) {
+        for (let ep in array_or_empty(value.endpoints))
+            push(candidates, ep);
+        for (let ob in array_or_empty(value.outbounds))
+            push(candidates, ob);
+    }
     else if (type(value) == "array")
         candidates = value;
-    else if (type(value) == "object" && type(value.type) == "string")
+    else if (type(value) == "object" && (type(value.type) == "string" || type(value.protocol) == "string" || value.config != null || value.awg_config != null || value.wg_config != null))
         candidates = [value];
 
     outbounds = normalize_sing_box_json_outbounds(candidates);

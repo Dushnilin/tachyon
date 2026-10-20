@@ -77,8 +77,14 @@ function strategy_words(value) {
     value = replace(value, / $/, "");
     if (value == "") return [];
     let words = split(value, " ");
-    let result = [];
+    let profiles = [];
+    let current_profile = [];
     for (let word in words) {
+        if (word == "--new") {
+            push(profiles, current_profile);
+            current_profile = [];
+            continue;
+        }
         let m_lua = match(word, /^--lua-init=@(.+)$/);
         if (m_lua && m_lua[1]) {
             let lp = m_lua[1];
@@ -86,7 +92,39 @@ function strategy_words(value) {
                 word = "--lua-init=@" + lp + ".gz";
             }
         }
-        push(result, word);
+        push(current_profile, word);
+    }
+    push(profiles, current_profile);
+
+    let result = [];
+    for (let p_idx = 0; p_idx < length(profiles); p_idx++) {
+        if (p_idx > 0)
+            push(result, "--new");
+        let prof = profiles[p_idx];
+        let has_udp = false;
+        let has_tcp = false;
+        let has_l7 = false;
+        let has_payload = false;
+        let has_lua_desync = false;
+        for (let w in prof) {
+            if (index(w, "--filter-udp") == 0) has_udp = true;
+            else if (index(w, "--filter-tcp") == 0) has_tcp = true;
+            else if (index(w, "--filter-l7") == 0) has_l7 = true;
+            else if (index(w, "--payload") == 0) has_payload = true;
+            else if (index(w, "--lua-desync") == 0) has_lua_desync = true;
+        }
+        let is_udp_port_only = (has_udp && !has_tcp && !has_l7 && !has_payload && has_lua_desync);
+        let inject_payload_all = (p_idx > 0 && is_udp_port_only);
+        let injected = false;
+        for (let w in prof) {
+            if (inject_payload_all && !injected && index(w, "--lua-desync") == 0) {
+                push(result, "--payload=all");
+                injected = true;
+            }
+            if (is_udp_port_only && index(w, "--lua-desync=fake") == 0 && index(w, "payload=") < 0)
+                w += ":payload=all";
+            push(result, w);
+        }
     }
     return result;
 }
@@ -852,6 +890,7 @@ function run(provider, argv) {
 return {
     run,
     expand_strategy,
+    strategy_words,
     normalize_ctrack_timeouts,
     has_route_rule
 };

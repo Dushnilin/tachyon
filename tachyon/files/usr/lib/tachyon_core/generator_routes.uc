@@ -1896,17 +1896,26 @@ function add_dns_action_rules_for_section(config, section) {
         push_dns_matcher_rule(config, dns_rule);
     }
     if (has_inline_domains) {
-        let dns_rule = {
-            action: "route",
-            server: server_tag,
-            rewrite_ttl
-        };
-        add_domain_array(dns_rule, "domain", domain);
-        add_domain_array(dns_rule, "domain_suffix", domain_suffix);
-        add_domain_array(dns_rule, "domain_keyword", domain_keyword);
-        add_domain_array(dns_rule, "domain_regex", domain_regex);
-        add_source_dns_matchers(dns_rule, source_ip_cidr);
-        push_dns_matcher_rule(config, dns_rule);
+        let domain_matchers = [
+            [ "domain", domain ],
+            [ "domain_suffix", domain_suffix ],
+            [ "domain_keyword", domain_keyword ],
+            [ "domain_regex", domain_regex ]
+        ];
+        for (let dm in domain_matchers) {
+            let key = dm[0];
+            let values = dm[1];
+            if (length(values) == 0)
+                continue;
+            let dns_rule = {
+                action: "route",
+                server: server_tag,
+                rewrite_ttl
+            };
+            add_domain_array(dns_rule, key, values);
+            add_source_dns_matchers(dns_rule, source_ip_cidr);
+            push_dns_matcher_rule(config, dns_rule);
+        }
     }
 
     let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
@@ -2554,31 +2563,37 @@ function add_combined_route_for_section(config, section) {
     let ipv4_only_dpi = section_is_ipv4_only_dpi(section) &&
         dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;
     if (length(domain) > 0 || length(domain_suffix) > 0 || length(domain_keyword) > 0 || length(domain_regex) > 0) {
-        let dns_rule = {
-            action: "route",
-            server: dns_server_tag,
-            rewrite_ttl
-        };
-        add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
-        add_domain_array(dns_rule, "domain", domain);
-        add_domain_array(dns_rule, "domain_suffix", domain_suffix);
-        add_domain_array(dns_rule, "domain_keyword", domain_keyword);
-        add_domain_array(dns_rule, "domain_regex", domain_regex);
-        add_source_dns_matchers(dns_rule, source_ip_cidr);
-        push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
-        if (ipv4_only_dpi) {
-            let aaaa_rule = {
+        let domain_matchers = [
+            [ "domain", domain ],
+            [ "domain_suffix", domain_suffix ],
+            [ "domain_keyword", domain_keyword ],
+            [ "domain_regex", domain_regex ]
+        ];
+        for (let dm in domain_matchers) {
+            let key = dm[0];
+            let values = dm[1];
+            if (length(values) == 0)
+                continue;
+            let dns_rule = {
                 action: "route",
-                server: runtime_constants.DNS_SERVER_TAG,
-                rewrite_ttl,
-                query_type: [ "AAAA" ]
+                server: dns_server_tag,
+                rewrite_ttl
             };
-            add_domain_array(aaaa_rule, "domain", domain);
-            add_domain_array(aaaa_rule, "domain_suffix", domain_suffix);
-            add_domain_array(aaaa_rule, "domain_keyword", domain_keyword);
-            add_domain_array(aaaa_rule, "domain_regex", domain_regex);
-            add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
+            add_domain_array(dns_rule, key, values);
+            add_source_dns_matchers(dns_rule, source_ip_cidr);
+            push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+            if (ipv4_only_dpi) {
+                let aaaa_rule = {
+                    action: "route",
+                    server: runtime_constants.DNS_SERVER_TAG,
+                    rewrite_ttl,
+                    query_type: [ "AAAA" ]
+                };
+                add_domain_array(aaaa_rule, key, values);
+                add_source_dns_matchers(aaaa_rule, source_ip_cidr);
+                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+            }
         }
     }
     let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();

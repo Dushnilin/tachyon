@@ -79,4 +79,55 @@ describe('dashboard initController', () => {
       'tachyon_dashboard-page__outbound-grid__item__latency--green',
     );
   });
+
+  it('formats service row values correctly', async () => {
+    const { formatServiceRowValue } = await import('../initController');
+
+    // Stopped
+    expect(formatServiceRowValue({ running: 0 })).toBe('✗');
+    expect(formatServiceRowValue({ running: 0, version: '0.1.3' })).toBe(
+      '✗ [v0.1.3]',
+    );
+    expect(formatServiceRowValue({ running: 0, version: 'v0.1.3' })).toBe(
+      '✗ [v0.1.3]',
+    );
+
+    // Running with memory, uptime and version
+    expect(
+      formatServiceRowValue({
+        running: 1,
+        memoryMb: 16,
+        uptimePretty: '1ч 47м',
+        version: '0.1.3',
+      }),
+    ).toBe('✓ (16 MB) • 1ч 47м [v0.1.3]');
+
+    // Running with extra cache suffix
+    expect(
+      formatServiceRowValue({
+        running: 1,
+        memoryMb: 2,
+        uptimePretty: '3ч 57м',
+        extraSuffix: ' [Cache: 1.1 MB]',
+      }),
+    ).toBe('✓ (2 MB) • 3ч 57м [Cache: 1.1 MB]');
+
+    // Running with no memory but uptime
+    expect(
+      formatServiceRowValue({
+        running: 1,
+        uptimePretty: '6ч 29м',
+      }),
+    ).toBe('✓ • 6ч 29м');
+  });
+
+  it('formats service tooltips correctly', async () => {
+    const { formatServiceTooltip } = await import('../initController');
+
+    expect(formatServiceTooltip({})).toBeUndefined();
+    expect(formatServiceTooltip({ pid: 21427, uptimePretty: '1ч 47м' })).toBe(
+      'PID: 21427 • Uptime: 1ч 47м',
+    );
+    expect(formatServiceTooltip({ pid: 2450 })).toBe('PID: 2450');
+  });
 });

@@ -36,6 +36,10 @@ export { MonitoringTab } from './tachyon/tabs/monitoring';
 export { UpdatesTab } from './tachyon/tabs/updates';
 export { renderDnsBenchmarkModal } from './tachyon/tabs/diagnostic/partials';
 export {
+  mountLanguageSelector,
+  TACHYON_LANGUAGES,
+} from './tachyon/languageSelector';
+export {
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,
   DNS_SERVERS_BY_PROTOCOL,

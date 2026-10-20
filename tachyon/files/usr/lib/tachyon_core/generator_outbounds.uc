@@ -295,6 +295,13 @@ function copy_subscription_outbound(outbound, new_tag) {
         }
         copy.tls = tls;
     }
+    if (as_string(copy.type || "") == "hysteria2" && (copy.server_port == null || copy.server_port == 0) && copy.server_ports != null) {
+        let raw = type(copy.server_ports) == "array" ? copy.server_ports[0] : copy.server_ports;
+        let parts = split(as_string(raw), ":");
+        let p = int(parts[0], 10);
+        if (p > 0)
+            copy.server_port = p;
+    }
     if (as_string(copy.type || "") == "tuic" &&
         type(copy.tls) == "object" &&
         copy.tls.utls != null) {
@@ -956,7 +963,7 @@ function manual_tuic_outbound(link, tag_name) {
 function ensure_imported_vpn_lx() {
     let variant = trim(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || "");
     let version = trim(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || "");
-    if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0)
+    if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0 && match(version, /^v?0\.[0-9]+\./) == null)
         ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
 }
 
@@ -972,6 +979,13 @@ function ensure_fptn_outbound_supported() {
 function add_imported_wireguard_endpoint(config, endpoint) {
     ensure_imported_vpn_lx();
     if (type(endpoint) == "object") {
+        if (type(endpoint.amnezia) == "object") {
+            for (let k, v in endpoint.amnezia) {
+                if (endpoint[k] == null)
+                    endpoint[k] = v;
+            }
+            delete endpoint.amnezia;
+        }
         if (endpoint.address != null)
             endpoint.address = core_ip.normalize_to_cidrs(endpoint.address);
         if (type(endpoint.peers) == "array") {
@@ -1461,6 +1475,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (drop_urltest_members && (as_string(outbound.tag || "") in urltest_member_tags))
             continue;
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
+        if (keyword_filter != null && subscription_group_outbound(outbound) && !subscription_keyword_name_passes({ include: [], exclude: keyword_filter.exclude }, display_name))
+            continue;
         if (keyword_filter != null && !subscription_group_outbound(outbound) && !subscription_keyword_name_passes(keyword_filter, display_name))
             continue;
         let base = as_string(outbound.tag || outbound.remark || ("server-" + (i + 1)));
@@ -1492,6 +1508,21 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         warn("skipped unsupported subscription outbounds for rule '", section_name, "': ", subscription_skip_summary(skipped), "\n");
 
     rewrite_subscription_outbound_references(prepared, tag_map, subscription_reference_set(source_outbounds));
+    let active_hidden_refs = {};
+    for (let i = 0; i < length(prepared); i++) {
+        let outbound = prepared[i];
+        if (group_flags[i]) {
+            for (let member_tag in array_or_empty(outbound.outbounds)) {
+                let mt = as_string(member_tag);
+                if (mt != "")
+                    active_hidden_refs[mt] = true;
+            }
+        }
+        let detour_tag = as_string(outbound.detour || "");
+        if (detour_tag != "")
+            active_hidden_refs[detour_tag] = true;
+    }
+
     let added = 0;
     for (let i = 0; i < length(prepared); i++) {
         let outbound = prepared[i];
@@ -1500,6 +1531,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             warn("skipped empty subscription group for rule '", section_name, "': ", as_string(display_names[i] || outbound.tag || "unknown"), "\n");
             continue;
         }
+        if (hidden_flags[i] === true && !(as_string(outbound.tag || "") in active_hidden_refs))
+            continue;
 
         if (outbound.type == "wireguard") {
             add_imported_wireguard_endpoint(config, outbound);
@@ -1524,6 +1557,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             state.hiddenOutboundTags[outbound.tag] = true;
         }
     }
+    if (keyword_filter != null && added == 0)
+        ctx.runtime_generate_unsupported("subscription keyword filter removed all nodes for rule '" + section_name + "'");
     return added;
 }
 
@@ -1679,6 +1714,102 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
     }
 }
 
+function add_connection_inline_uci_outbound(config, state, section, taken, selector_tags, urltest_candidate_tags) {
+    let raw_type = lc(trim(option(section, "type", "")));
+    if (raw_type == "")
+        raw_type = lc(trim(option(section, "protocol", "")));
+    if (raw_type == "") {
+        let act = lc(trim(option(section, "action", "")));
+        if (act == "socks" || act == "socks5" || act == "socks4" || act == "http" ||
+            act == "shadowsocks" || act == "ss" || act == "vless" || act == "vmess" ||
+            act == "trojan" || act == "hysteria2" || act == "hy2" || act == "tuic")
+            raw_type = act;
+    }
+    if (raw_type == "socks5" || raw_type == "socks4" || raw_type == "socks4a")
+        raw_type = "socks";
+    else if (raw_type == "ss")
+        raw_type = "shadowsocks";
+    else if (raw_type == "hy2")
+        raw_type = "hysteria2";
+
+    let server = trim(option(section, "server", option(section, "address", option(section, "host", option(section, "socks_server", "")))));
+    let port_raw = trim(option(section, "server_port", option(section, "port", option(section, "socks_port", ""))));
+
+    if (raw_type == "socks" && server == "" && port_raw != "")
+        server = "127.0.0.1";
+    if (raw_type == "socks" && server != "" && port_raw == "")
+        port_raw = "1080";
+
+    if (raw_type == "" || server == "" || port_raw == "")
+        return;
+
+    let port = parse_port(port_raw);
+    if (port == null)
+        return;
+
+    let section_name = section[".name"];
+    let base_tag = connection_item_tag(section_name, raw_type, 1);
+    let tag_name = unique_tag(base_tag, taken);
+    taken[tag_name] = true;
+
+    let outbound = {
+        type: raw_type,
+        tag: tag_name,
+        server: server,
+        server_port: port
+    };
+
+    if (raw_type == "socks") {
+        let ver = trim(option(section, "version", "5"));
+        outbound.version = (ver == "4" || ver == "4a") ? ver : "5";
+        let username = option(section, "username", option(section, "user", ""));
+        let password = option(section, "password", option(section, "pass", ""));
+        if (username != "")
+            outbound.username = username;
+        if (password != "")
+            outbound.password = password;
+    }
+    else if (raw_type == "http") {
+        let username = option(section, "username", option(section, "user", ""));
+        let password = option(section, "password", option(section, "pass", ""));
+        if (username != "")
+            outbound.username = username;
+        if (password != "")
+            outbound.password = password;
+    }
+    else if (raw_type == "shadowsocks") {
+        outbound.method = option(section, "method", option(section, "cipher", "aes-256-gcm"));
+        outbound.password = option(section, "password", "");
+        let plugin = option(section, "plugin", "");
+        let plugin_opts = option(section, "plugin_opts", option(section, "plugin-opts", ""));
+        if (plugin != "")
+            outbound.plugin = plugin;
+        if (plugin_opts != "")
+            outbound.plugin_opts = plugin_opts;
+    }
+    else if (raw_type == "vless" || raw_type == "vmess") {
+        outbound.uuid = option(section, "uuid", option(section, "id", ""));
+        let flow = option(section, "flow", "");
+        if (flow != "" && raw_type == "vless")
+            outbound.flow = flow;
+    }
+    else if (raw_type == "trojan" || raw_type == "hysteria2" || raw_type == "tuic") {
+        outbound.password = option(section, "password", "");
+        if (raw_type == "tuic")
+            outbound.uuid = option(section, "uuid", "");
+    }
+
+    let display_name = trim(option(section, "label", option(section, "name", "")));
+    if (display_name == "")
+        display_name = server + ":" + port;
+
+    push(config.outbounds, outbound);
+    push(selector_tags, tag_name);
+    if (urltest_leaf_candidate_outbound(outbound))
+        push(urltest_candidate_tags, tag_name);
+    runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+}
+
 function outbound_detour_tag_for_section(section) {
     if (!bool_option(section, "outbound_detour_enabled", false))
         return "";
@@ -1763,6 +1894,7 @@ function add_connections_outbound(config, section, taken) {
     );
     add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_json_outbounds(config, state, section, taken, selector_tags, urltest_candidate_tags);
+    add_connection_inline_uci_outbound(config, state, section, taken, selector_tags, urltest_candidate_tags);
     apply_section_packet_encoding_to_connection_outbounds(
         config,
         cascade_start,

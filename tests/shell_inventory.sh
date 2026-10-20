@@ -45,7 +45,8 @@ expected_shell_scripts="$(
     'tachyon/files/etc/init.d/tachyon-torrserver-direct' \
     'tachyon/files/usr/lib/cgi-bin/tachyon-agent' \
     'tachyon/files/usr/lib/firewall.include' \
-    'tachyon/files/usr/sbin/steer-nfqws' |
+    'tachyon/files/usr/sbin/steer-nfqws' \
+    'tachyon/files/www/cgi-bin/tachyon-sub' |
     LC_ALL=C sort
 )"
 
