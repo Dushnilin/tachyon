@@ -800,7 +800,7 @@ function suppressed_by_root_cause(healer) {
         return true;
     }
     if (singbox_repair_until > now) {
-        let eng = active_engine_name();
+        let eng = (type(active_engine_name) == "function") ? active_engine_name() : "sing-box";
         log_message(sprintf("%s: standing down, %s restart is in progress", healer, eng), "info");
         return true;
     }
@@ -1197,14 +1197,14 @@ function safe_proxy_restart(reason, force_level) {
     if (level == ESCALATION_LIGHT) {
         let active_engine = active_engine_name();
 
-        let init_script = "/etc/init.d/tachyon-core";
-        if (active_engine == "steer" || active_engine == "steer-extended") {
-            init_script = "/etc/init.d/steer";
-        }
-
         log_message("Restarting " + active_engine + " service only (" + reason + ")", "warn");
-        bg_system(init_script + " stop >/dev/null 2>&1; " +
-            init_script + " start >/dev/null 2>&1; rm -f " + lock_path);
+        if (active_engine == "steer" || active_engine == "steer-extended") {
+            bg_system("/etc/init.d/steer stop >/dev/null 2>&1; " +
+                "/etc/init.d/steer start >/dev/null 2>&1; rm -f " + lock_path);
+        } else {
+            bg_system("/etc/init.d/tachyon-core stop >/dev/null 2>&1; " +
+                "/etc/init.d/tachyon-core start >/dev/null 2>&1; rm -f " + lock_path);
+        }
     } else {
         log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
         // The lock is released after the restart, not alongside it. This line used
