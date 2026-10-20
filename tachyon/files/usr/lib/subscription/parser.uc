@@ -851,7 +851,7 @@ function valid_port(port) {
 }
 
 function normalize_port_number(value) {
-    value = trim(value);
+    value = trim(as_string(value));
     if (!is_integer_string(value))
         return "";
 
