@@ -1241,10 +1241,15 @@ function process_hysteria2(raw, url) {
         password: password,
         tls: tls
     };
-    if (server_ports != null)
+    if (server_ports != null) {
         outbound.server_ports = server_ports;
-    else
+        let parts = split(server_ports[0], ":");
+        let initial_port = normalize_port_number(url.port);
+        outbound.server_port = initial_port != "" ? int(initial_port, 10) : int(parts[0], 10);
+    }
+    else {
         outbound.server_port = int(server_port, 10);
+    }
 
     if ((url.query.network || "") != "")
         outbound.network = url.query.network;

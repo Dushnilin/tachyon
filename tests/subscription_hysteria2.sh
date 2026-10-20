@@ -51,6 +51,22 @@ insecure_output="$(
 )"
 assert_contains "$insecure_output" '"insecure": true' "hy2 insecure TLS"
 
+port_hopping_output="$(
+  normalize_link \
+    "hy2-port-hopping" \
+    "hysteria2://pw@example.com:20000-40000?sni=example.com#hy2-hopping"
+)"
+assert_contains "$port_hopping_output" '"server_port": 20000' "hy2 port hopping initial server_port"
+assert_contains "$port_hopping_output" '"server_ports": [' "hy2 port hopping server_ports"
+
+mport_output="$(
+  normalize_link \
+    "hy2-mport" \
+    "hysteria2://pw@example.com:443?mport=20000-40000&sni=example.com#hy2-mport"
+)"
+assert_contains "$mport_output" '"server_port": 443' "hy2 mport explicit server_port"
+assert_contains "$mport_output" '"server_ports": [' "hy2 mport server_ports"
+
 singbox_input="$WORK_DIR/sing-box-hy2.json"
 singbox_output="$WORK_DIR/sing-box-hy2-normalized.json"
 cat >"$singbox_input" <<'JSON'

@@ -295,6 +295,13 @@ function copy_subscription_outbound(outbound, new_tag) {
         }
         copy.tls = tls;
     }
+    if (as_string(copy.type || "") == "hysteria2" && (copy.server_port == null || copy.server_port == 0) && copy.server_ports != null) {
+        let raw = type(copy.server_ports) == "array" ? copy.server_ports[0] : copy.server_ports;
+        let parts = split(as_string(raw), ":");
+        let p = int(parts[0], 10);
+        if (p > 0)
+            copy.server_port = p;
+    }
     if (as_string(copy.type || "") == "tuic" &&
         type(copy.tls) == "object" &&
         copy.tls.utls != null) {
