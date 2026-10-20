@@ -710,9 +710,12 @@ function remember_section_leaf_tags(name, tags) {
 }
 
 function find_outbound_by_tag(config, want) {
-    for (let outbound in config.outbounds)
+    for (let outbound in array_or_empty(config.outbounds))
         if (as_string(outbound.tag) == want)
             return outbound;
+    for (let endpoint in array_or_empty(config.endpoints))
+        if (as_string(endpoint.tag) == want)
+            return endpoint;
     return null;
 }
 
@@ -929,6 +932,13 @@ function is_valid_detour(config, tag) {
             if (out.routing_mark != null)
                 return false;
             if (out.type == "mieru" || is_mieru_detour(config, tag, 0))
+                return false;
+            return true;
+        }
+    }
+    for (let ep in array_or_empty(config.endpoints)) {
+        if (type(ep) == "object" && ep.tag == tag) {
+            if (ep.routing_mark != null)
                 return false;
             return true;
         }

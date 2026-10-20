@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-20 18:43+0300\n"
-"PO-Revision-Date: 2026-10-20 18:43+0300\n"
+"POT-Creation-Date: 2026-10-20 19:33+0300\n"
+"PO-Revision-Date: 2026-10-20 19:33+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -78,7 +78,7 @@ msgstr ""
 msgid "-- Select or type port/range --"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15727
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15730
 msgid ".lst Lists"
 msgstr ""
 
@@ -1636,7 +1636,7 @@ msgstr ""
 msgid "Clean Comments"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15386
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15389
 msgid "Clear"
 msgstr ""
 
@@ -1754,7 +1754,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25133
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:25175
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:26848
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15756
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15759
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:5298
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2596
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2848
@@ -1825,7 +1825,7 @@ msgstr ""
 msgid "Command-line arguments string..."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15723
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15726
 msgid "Community Lists"
 msgstr ""
 
@@ -2402,11 +2402,11 @@ msgstr ""
 msgid "DNS through section"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15532
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15535
 msgid "DNS: Resolved %s to %s"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15582
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15585
 msgid "DNS: Resolved to %s (no subnet rules matched)"
 msgstr ""
 
@@ -2455,7 +2455,7 @@ msgid "DPI throttling: stream cut off after ~16KB payload transfer"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14056
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15733
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15736
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:9168
 msgid "DSCP marks (QoS)"
 msgstr ""
@@ -2842,7 +2842,7 @@ msgid "Domain, URL, or IP (e.g. instagram.com or 1.1.1.1)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:13683
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15724
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15727
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:9169
 msgid "Domains"
 msgstr ""
@@ -3286,7 +3286,7 @@ msgstr ""
 msgid "Error running generator:"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15602
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15605
 msgid "Error running trace:"
 msgstr ""
 
@@ -4157,7 +4157,7 @@ msgstr ""
 msgid "GeoIP Mode"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15729
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15732
 msgid "GeoSite / GeoIP"
 msgstr ""
 
@@ -4478,7 +4478,7 @@ msgstr ""
 msgid "IP & DNS Leak Test"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15725
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15728
 msgid "IP Addresses (IP CIDR)"
 msgstr ""
 
@@ -5796,7 +5796,7 @@ msgstr ""
 msgid "Master and family devices with full LAN and router access. Any device NOT in this list will be treated as a guest."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15454
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15457
 msgid "Match Found"
 msgstr ""
 
@@ -6109,7 +6109,7 @@ msgstr ""
 msgid "No Blocking Detected"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15572
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15575
 msgid "No Custom Rules Matched"
 msgstr ""
 
@@ -6463,7 +6463,7 @@ msgstr ""
 msgid "Not running"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15670
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15673
 msgid "Not set"
 msgstr ""
 
@@ -7110,7 +7110,7 @@ msgid "Port range start must not exceed its end"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14048
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15732
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15735
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:9167
 msgid "Ports"
 msgstr ""
@@ -7204,7 +7204,7 @@ msgid "Prioritizes interactive DNS, VoIP/WebRTC and gaming via DSCP marking in n
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:13213
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15519
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15522
 msgid "Priority"
 msgstr ""
 
@@ -8020,7 +8020,7 @@ msgstr ""
 msgid "Routing Engine"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15381
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15384
 msgid "Routing Rule Tracer"
 msgstr ""
 
@@ -8054,7 +8054,7 @@ msgstr ""
 msgid "Routing sections, rules and strategies"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15472
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15475
 msgid "Rule"
 msgstr ""
 
@@ -8062,7 +8062,7 @@ msgstr ""
 msgid "Rule Name"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15726
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15729
 msgid "Rule Sets (.srs / .json)"
 msgstr ""
 
@@ -8316,11 +8316,11 @@ msgstr ""
 msgid "Section Matching"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15738
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15741
 msgid "Section Rules Content"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15712
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15715
 msgid "Section action"
 msgstr ""
 
@@ -8780,7 +8780,7 @@ msgstr ""
 msgid "ShadowTLS version"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15557
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15560
 msgid "Shared CDN / Anycast Warning"
 msgstr ""
 
@@ -8950,14 +8950,14 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:18821
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23361
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23404
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15484
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15487
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:836
 #: src/tachyon/tabs/monitoring/initController.ts:536
 #: src/tachyon/tabs/monitoring/initController.ts:591
 msgid "Source"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15731
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15734
 msgid "Source Devices"
 msgstr ""
 
@@ -9274,15 +9274,15 @@ msgstr ""
 msgid "Strict ECH + DoQ DNS Enforcer"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14282
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14285
 msgid "Subnet %s belongs to a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14941
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14944
 msgid "Subnet %s is a Cloudflare Anycast range used by Discord Voice. Only UDP voice traffic (ports 50000-65535, 3478, 19294-19344, 5000-5020) is routed through this section; web traffic (TCP 80/443) goes direct."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14274
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14277
 msgid "Subnet %s is a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section."
 msgstr ""
 
@@ -10044,7 +10044,7 @@ msgstr ""
 msgid "This display name is already in use"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:16094
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:16115
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2699
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2718
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2723
@@ -10198,7 +10198,7 @@ msgstr ""
 msgid "Total targets"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15385
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15388
 msgid "Trace"
 msgstr ""
 
@@ -10212,7 +10212,7 @@ msgstr ""
 msgid "Tracing routing decision pipeline..."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15429
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15432
 msgid "Tracing routing rules..."
 msgstr ""
 
@@ -10248,7 +10248,7 @@ msgstr ""
 msgid "Traffic type filter"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15573
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15576
 msgid "Traffic will go through the default route (Direct/Default)."
 msgstr ""
 
@@ -10909,7 +10909,7 @@ msgstr ""
 msgid "Value must be a positive integer"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:16097
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:16118
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2727
 msgid "Value must not contain control characters"
 msgstr ""
@@ -11394,7 +11394,7 @@ msgstr ""
 msgid "e.g. SHA256 — leave empty for default"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15384
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:15387
 msgid "e.g. google.com, 1.1.1.1, 443"
 msgstr ""
 

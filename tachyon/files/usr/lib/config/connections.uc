@@ -1781,6 +1781,23 @@ function cascade_delete_section(cursor, config_name, parent_name) {
                 cursor.delete(config_name, sname, "dns_detour_section");
                 cursor.set(config_name, sname, "dns_detour_enabled", "0");
             }
+            let gm = list_option(sec, "group_members");
+            if (length(gm) > 0) {
+                let next_gm = [];
+                let gm_changed = false;
+                for (let m in gm) {
+                    if (trim(as_string(m)) == parent_name)
+                        gm_changed = true;
+                    else
+                        push(next_gm, m);
+                }
+                if (gm_changed) {
+                    if (length(next_gm) > 0)
+                        cursor.set(config_name, sname, "group_members", next_gm);
+                    else
+                        cursor.delete(config_name, sname, "group_members");
+                }
+            }
         });
     } catch (e) {}
 

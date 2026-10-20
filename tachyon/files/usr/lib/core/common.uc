@@ -171,7 +171,7 @@ function list_option(section, key) {
 }
 
 function bool_value(value) {
-    value = lc(as_string(value));
+    value = lc(trim(as_string(value)));
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
@@ -191,7 +191,8 @@ function disable_quic_mode(value) {
 function bool_option(section, key, fallback) {
     if (fallback == null)
         fallback = false;
-    let value = option(section, key, fallback ? "1" : "0");
+    let raw = trim(option(section, key, ""));
+    let value = raw == "" ? (fallback ? "1" : "0") : raw;
     return bool_value(value);
 }
 

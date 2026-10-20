@@ -101,6 +101,24 @@ fixture "$WORK_DIR/group-disabled.json" '[
 assert_rejects "group over a disabled member" "$WORK_DIR/group-disabled.json" \
   "references disabled rule 'beta'"
 
+fixture "$WORK_DIR/group-partial-disabled.json" '[
+  { ".name": "alpha", ".type": "section", "enabled": "1", "action": "connection",
+    "selector_proxy_links": [ "'"$LINK_A1"'" ] },
+  { ".name": "beta", ".type": "section", "enabled": "0", "action": "connection",
+    "selector_proxy_links": [ "'"$LINK_B1"'" ] },
+  { ".name": "grp", ".type": "section", "enabled": "1", "action": "group",
+    "group_members": [ "alpha", "beta" ] }
+]'
+assert_accepts "group with one enabled and one disabled member" "$WORK_DIR/group-partial-disabled.json"
+
+fixture "$WORK_DIR/group-blank-enabled.json" '[
+  { ".name": "amnezia", ".type": "section", "enabled": "", "action": "connection",
+    "selector_proxy_links": [ "'"$LINK_A1"'" ] },
+  { ".name": "grp", ".type": "section", "enabled": "1", "action": "group",
+    "group_members": [ "amnezia" ] }
+]'
+assert_accepts "group with member having empty enabled string" "$WORK_DIR/group-blank-enabled.json"
+
 fixture "$WORK_DIR/group-self.json" '[
   { ".name": "grp", ".type": "section", "enabled": "1", "action": "group",
     "group_members": [ "grp" ] }
@@ -206,6 +224,72 @@ if (alpha_rule.outbound != "grp-urltest-out" || beta_rule.outbound != "grp-urlte
 if (group_rule_count != 2)
     die("the group itself must not add route rules; expected 2, got " + group_rule_count + "\n");
 ' "$group_config" || fail "generated section group behavior"
+
+# ─── generator: manual action=awg endpoint included in group urltest ──────────
+
+cat >"$WORK_DIR/group-awg-fixture.json" <<JSON
+{
+  "settings": { ".name": "settings", ".type": "settings", "log_level": "warn" },
+  "section": [
+    { ".name": "alpha", ".type": "section", "enabled": "1", "action": "connection",
+      "domain_suffix": [ "alpha.example" ],
+      "selector_proxy_links": [ "$LINK_A1" ] },
+    { ".name": "amnezia", ".type": "section", "enabled": "1", "action": "awg",
+      "domain_suffix": [ "awg.example" ],
+      "awg_private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "awg_peer_public_key": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+      "awg_server_address": "198.51.100.10",
+      "awg_server_port": "51820",
+      "awg_local_address": [ "10.8.1.2/32" ] },
+    { ".name": "grp", ".type": "section", "enabled": "1", "action": "group",
+      "group_members": [ "alpha", "amnezia" ] }
+  ]
+}
+JSON
+
+group_awg_config="$WORK_DIR/group-awg-config.json"
+mkdir -p "${group_awg_config}.section-cache"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/group-awg-fixture.json" "$group_awg_config" "127.0.0.1"
+
+ucode -e '
+let fs = require("fs");
+function outbound_by_tag(config, want) {
+    for (let outbound in config.outbounds || [])
+        if (outbound && outbound.tag == want)
+            return outbound;
+    return null;
+}
+function endpoint_by_tag(config, want) {
+    for (let ep in config.endpoints || [])
+        if (ep && ep.tag == want)
+            return ep;
+    return null;
+}
+function contains(values, needle) {
+    for (let value in values || [])
+        if (value == needle)
+            return true;
+    return false;
+}
+let config = json(fs.readfile(ARGV[0]));
+let ep = endpoint_by_tag(config, "amnezia-out");
+if (!ep || ep.type != "wireguard")
+    die("manual action=awg section must produce a wireguard endpoint amnezia-out\n");
+let group = outbound_by_tag(config, "grp-urltest-out");
+if (!group || group.type != "urltest")
+    die("group over connection + manual awg must produce grp-urltest-out\n");
+for (let want in [ "alpha-1-out", "amnezia-out" ])
+    if (!contains(group.outbounds || [], want))
+        die("group urltest is missing member leaf " + want + "\n");
+let awg_rule = null;
+for (let rule in config.route.rules || [])
+    if (contains(rule.domain_suffix || [], "awg.example"))
+        awg_rule = rule;
+if (!awg_rule || awg_rule.outbound != "grp-urltest-out")
+    die("manual awg member route rule must be repointed to grp-urltest-out, got " +
+        (awg_rule ? awg_rule.outbound : "null") + "\n");
+' "$group_awg_config" || fail "generated section group with manual awg member"
 
 # ─── parking: sing-box supports sections.group, steer does not ────────────────
 

@@ -131,7 +131,8 @@ function bool_option(section, key, fallback) {
     if (fallback == null)
         fallback = false;
 
-    let value = option(section, key, fallback ? "1" : "0");
+    let raw = trim(option(section, key, ""));
+    let value = raw == "" ? (fallback ? "1" : "0") : lc(raw);
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
@@ -848,6 +849,8 @@ function validate_group_members(section, sections) {
             "' has no members. Add at least one Connection, VPN or AmneziaWG rule. Aborted.");
 
     let seen = {};
+    let enabled_count = 0;
+    let first_disabled = "";
     for (let member_value in members) {
         let member_name = trim(as_string(member_value));
         if (member_name == "")
@@ -869,15 +872,24 @@ function validate_group_members(section, sections) {
         if (member == null)
             fail_validation("Section group '" + group_name +
                 "' references missing rule '" + member_name + "'. Aborted.");
-        if (!section_enabled(member))
-            fail_validation("Section group '" + group_name +
-                "' references disabled rule '" + member_name +
-                "'. Enable it or remove it from the group. Aborted.");
         if (!group_member_action_supported(rule_action(member)))
             fail_validation("Section group '" + group_name + "' cannot include rule '" + member_name +
                 "' with action '" + rule_action(member) +
                 "'. DPI, marker, route-only and group rules produce no proxy servers. Aborted.");
+        if (!section_enabled(member)) {
+            if (first_disabled == "")
+                first_disabled = member_name;
+            log_message("Section group '" + group_name +
+                "' skips disabled rule '" + member_name + "'", "warn");
+            continue;
+        }
+        enabled_count++;
     }
+
+    if (enabled_count == 0 && first_disabled != "")
+        fail_validation("Section group '" + group_name +
+            "' references disabled rule '" + first_disabled +
+            "'. Enable it or remove it from the group. Aborted.");
 }
 
 function duration_to_seconds_value(value) {
@@ -2572,6 +2584,7 @@ function managed_sing_box_service_script(marker) {
         "    fi\n\n" +
         "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
         "    : > /tmp/tachyon-core/sing-box.log 2>/dev/null\n" +
+        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n" +
         "\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
@@ -2585,8 +2598,18 @@ function managed_sing_box_service_script(marker) {
         "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
-        "    procd_set_param respawn\n" +
+        "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
         "    procd_close_instance\n" +
+        "}\n" +
+        "\n" +
+        "stop_service() {\n" +
+        "    local i=0\n" +
+        "    while [ \"$i\" -lt 20 ]; do\n" +
+        "        pidof tachyon-core sing-box >/dev/null 2>&1 || return 0\n" +
+        "        sleep 0.1 2>/dev/null || sleep 1\n" +
+        "        i=$(( i + 1 ))\n" +
+        "    done\n" +
+        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n" +
         "}\n" +
         "\n" +
         "service_triggers() {\n" +

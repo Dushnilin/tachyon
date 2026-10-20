@@ -379,6 +379,15 @@ function urltest_leaf_candidate_outbound(outbound) {
     let t = lc(as_string(outbound.type || ""));
     if (t == "selector" || t == "urltest" || t == "dns" || t == "block")
         return false;
+    if (t == "wireguard") {
+        let peer = array_or_empty(outbound.peers)[0];
+        if (type(peer) == "object")
+            return !is_dummy_outbound_server(peer.address, peer.port);
+        return !is_dummy_outbound_server(outbound.server, outbound.server_port);
+    }
+    if (t == "warp") {
+        return !is_dummy_outbound_server(outbound.endpoint || outbound.server, outbound.server_port);
+    }
     if (is_dummy_outbound_server(outbound.server, outbound.server_port))
         return false;
     return true;

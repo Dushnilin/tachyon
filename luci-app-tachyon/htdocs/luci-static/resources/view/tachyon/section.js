@@ -14123,7 +14123,10 @@ function loadSectionTableOptions(sectionRef) {
 
       tasks.push(
         Promise.resolve(option.load.call(option, sectionId)).then((value) => {
-          option.cfgvalue(sectionId, value);
+          option.cfgvalue(
+            sectionId,
+            value !== undefined && value !== null ? value : option.default,
+          );
         }),
       );
     }
@@ -15841,6 +15844,24 @@ function cascadeDeleteSection(section_id) {
       if (sec.dns_detour_section === section_id) {
         uci.set(UCI_PACKAGE, sName, "dns_detour_section", "");
         uci.set(UCI_PACKAGE, sName, "dns_detour_enabled", "0");
+      }
+      if (Array.isArray(sec.group_members) && sec.group_members.includes(section_id)) {
+        const nextMembers = sec.group_members.filter((m) => m !== section_id);
+        if (nextMembers.length > 0) {
+          uci.set(UCI_PACKAGE, sName, "group_members", nextMembers);
+        } else {
+          uci.unset(UCI_PACKAGE, sName, "group_members");
+        }
+      } else if (typeof sec.group_members === "string" && sec.group_members.trim() !== "") {
+        const parts = sec.group_members.trim().split(/\s+/);
+        if (parts.includes(section_id)) {
+          const nextMembers = parts.filter((m) => m !== section_id);
+          if (nextMembers.length > 0) {
+            uci.set(UCI_PACKAGE, sName, "group_members", nextMembers);
+          } else {
+            uci.unset(UCI_PACKAGE, sName, "group_members");
+          }
+        }
       }
     });
   } catch (_e) {}
