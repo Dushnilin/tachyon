@@ -82,6 +82,14 @@ function settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
 
+function active_engine_name() {
+    try {
+        return require("core.engine").get_active();
+    } catch (e) {
+        return "tachyon-core";
+    }
+}
+
 // The empty catch is the point: every caller means "make sure this path is
 // gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
 // so the alternative is a stat() race with no better outcome.
@@ -792,7 +800,8 @@ function suppressed_by_root_cause(healer) {
         return true;
     }
     if (singbox_repair_until > now) {
-        log_message(sprintf("%s: standing down, sing-box restart is in progress", healer), "info");
+        let eng = active_engine_name();
+        log_message(sprintf("%s: standing down, %s restart is in progress", healer, eng), "info");
         return true;
     }
     return false;
@@ -1186,28 +1195,16 @@ function safe_proxy_restart(reason, force_level) {
     let lock_path = shell_quote(PROXY_RESTART_LOCK);
 
     if (level == ESCALATION_LIGHT) {
-        let active_engine = "tachyon-core";
-        try {
-            active_engine = require("core.engine").get_active();
-        } catch (e) {}
+        let active_engine = active_engine_name();
 
         let init_script = "/etc/init.d/tachyon-core";
         if (active_engine == "steer" || active_engine == "steer-extended") {
             init_script = "/etc/init.d/steer";
         }
 
-        if (active_engine != "tachyon-core") {
-            log_message("Restarting " + active_engine + " service only (" + reason + ")", "warn");
-            bg_system(init_script + " stop >/dev/null 2>&1; " +
-                init_script + " start >/dev/null 2>&1; rm -f " + lock_path);
-        } else {
-            log_message("Restarting sing-box service only (" + reason + ")", "warn");
-            // Sequential stop/start rather than `restart`: lifecycle.uc drives the
-            // service the same way, and a stop that fails must not be followed by a
-            // start that races it.
-            bg_system("/etc/init.d/tachyon-core stop >/dev/null 2>&1; " +
-                "/etc/init.d/tachyon-core start >/dev/null 2>&1; rm -f " + lock_path);
-        }
+        log_message("Restarting " + active_engine + " service only (" + reason + ")", "warn");
+        bg_system(init_script + " stop >/dev/null 2>&1; " +
+            init_script + " start >/dev/null 2>&1; rm -f " + lock_path);
     } else {
         log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
         // The lock is released after the restart, not alongside it. This line used
@@ -1401,10 +1398,7 @@ function heal_dns_stall(ev) {
 
     controller.reset_dns_streak();
 
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    } catch (e) {}
+    let active_engine = active_engine_name();
 
     if (active_engine == "steer" || active_engine == "steer-extended") {
         heal_dns_stall_steer();
@@ -1416,7 +1410,7 @@ function heal_dns_stall(ev) {
 
     let incident = {
         type: "dns",
-        description: detour_healed ? "Зависание DNS из-за блокировки прямой загрузки списков правил" : "DNS resolution stalled on sing-box (port 53)",
+        description: detour_healed ? "Зависание DNS из-за блокировки прямой загрузки списков правил" : sprintf("DNS resolution stalled on %s (port 53)", active_engine),
         resolution: detour_healed ? "Включена загрузка списков через прокси и выполнен мягкий перезапуск" : "Soft-reloaded proxy runtime safely without breaking active TCP/RDP connections"
     };
 
@@ -1447,11 +1441,12 @@ function heal_proxy_connectivity(ev) {
     if (int(ev.payload.streak) < 2) return;
     if (suppressed_by_root_cause("heal_proxy_connectivity")) return;
 
+    let eng = active_engine_name();
     let proxy_addr = (ev.payload.host ? ev.payload.host : "127.0.0.1") + ":" + as_string(ev.payload.port);
     let incident = {
         type: "proxy",
-        description: "Зависание или неполный отклик прокси-порту sing-box (" + proxy_addr + ")",
-        resolution: "Выполнен перезапуск sing-box"
+        description: sprintf("Зависание или неполный отклик прокси-порта %s (%s)", eng, proxy_addr),
+        resolution: "Выполнен перезапуск " + eng
     };
 
     // Reporting used to happen here, before the restart, so a rate-limited
@@ -1651,12 +1646,19 @@ function heal_uci_config(ev) {
 // ─── Config validation: sing-box check ────────────────────────────────────────
 function validate_singbox_config() {
     if (settings().ai_config_validation_enabled == "0") return true;
-    let st = fs.stat("/etc/tachyon-core/config.json");
+    let eng = active_engine_name();
+    let cfg_path = "/etc/tachyon-core/config.json";
+    if (eng == "steer" || eng == "steer-extended") {
+        cfg_path = "/etc/steer/spec.json";
+    }
+    let st = fs.stat(cfg_path);
     if (!st || st.size == 0) return false;
-    let content = fs.readfile("/etc/tachyon-core/config.json");
+    let content = fs.readfile(cfg_path);
     if (!content) return false;
     try {
         let obj = json(content);
+        if (eng == "steer" || eng == "steer-extended")
+            return type(obj) == "object";
         return type(obj) == "object" && type(obj.outbounds) == "array";
     } catch (e) {
         return false;
@@ -1680,19 +1682,20 @@ function heal_proxy_health(ev) {
     if (fails < threshold) return;
     if (suppressed_by_root_cause("heal_proxy_health")) return;
 
+    let eng = active_engine_name();
     let incident = {
         type: "proxy_health",
         description: sprintf("Прокси не отвечает на запросы проверки доступности (%d сбоя подряд, порт %s)", fails, as_string(ev.payload.port)),
-        resolution: "Выполнен перезапуск sing-box"
+        resolution: "Выполнен перезапуск " + eng
     };
 
     // A restart on a config sing-box will refuse to load leaves the proxy down
     // for good, so validation gates the restart. It now also gates the report:
     // a refused restart is not a repair.
     if (settings().ai_config_validation_enabled != "0" && !validate_singbox_config()) {
-        log_message("sing-box config validation failed before proxy restart", "err");
+        log_message(eng + " config validation failed before proxy restart", "err");
         ai_heal_report(incident.type, incident.description,
-            "Перезапуск отменён: конфигурация sing-box не проходит валидацию", "skipped");
+            sprintf("Перезапуск отменён: конфигурация %s не проходит валидацию", eng), "skipped");
         return;
     }
     if (!safe_proxy_restart("proxy_health")) {
@@ -2019,10 +2022,11 @@ function export_metrics() {
 function heal_anomaly_reconnects(ev) {
     if (settings().ai_anomaly_detection_enabled == "0") return;
 
+    let eng = active_engine_name();
     ai_heal_report(
         "anomaly_reconnects",
-        sprintf("sing-box reconnected %d times in the last hour (threshold: %d)",
-            int(ev.payload.count), int(ev.payload.threshold)),
+        sprintf("%s reconnected %d times in the last hour (threshold: %d)",
+            eng, int(ev.payload.count), int(ev.payload.threshold)),
         "High reconnect rate detected. Check proxy server health or ISP stability.",
         "warn"
     );
@@ -2036,9 +2040,9 @@ function increment_reconnect_count() {
 }
 
 // events for one crash, and each would otherwise queue its own restart.
-// Restarting cannot install what is not on the filesystem. With the sing-box
+// Restarting cannot install what is not on the filesystem. With the proxy core
 // init script absent, every heal below fails identically, and the watchdog
-// settles into alternating "Restarting Tachyon" and "Restarting sing-box
+// settles into alternating "Restarting Tachyon" and "Restarting proxy core
 // service only" every 25 seconds forever, while the real cause - a missing
 // binary variant - is only ever reported by the validator at startup. Name the
 // cause once and leave the router alone instead.
@@ -2047,7 +2051,12 @@ function increment_reconnect_count() {
 // version too old; repeating its binary-variant advice here is deliberate, since
 // this is the message the user sees while the loop is running.
 function singbox_service_absent() {
-    return common.command_status_from_args([ "test", "-x", "/etc/init.d/tachyon-core" ]) != 0;
+    let eng = active_engine_name();
+    let init_script = "/etc/init.d/tachyon-core";
+    if (eng == "steer" || eng == "steer-extended") {
+        init_script = "/etc/init.d/steer";
+    }
+    return common.command_status_from_args([ "test", "-x", init_script ]) != 0;
 }
 
 let missing_singbox_reported_at = 0;
@@ -2057,13 +2066,15 @@ function heal_core_stopped(ev) {
     if (now - last_restart_time < 30) return;
     last_restart_time = now;
 
+    let eng = active_engine_name();
     if (singbox_service_absent()) {
         if (now - missing_singbox_reported_at > 3600) {
             missing_singbox_reported_at = now;
-            log_message("sing-box is not installed (no /etc/init.d/tachyon-core). Restarting cannot fix this - install a sing-box package or reinstall the sing-box-x / sing-box-extended binary variant. Watchdog will not retry until it appears.", "error");
+            let init_script = (eng == "steer" || eng == "steer-extended") ? "/etc/init.d/steer" : "/etc/init.d/tachyon-core";
+            log_message(sprintf("%s is not installed (no %s). Restarting cannot fix this - install a %s package or reinstall the binary variant. Watchdog will not retry until it appears.", eng, init_script, eng), "error");
             let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
             if (tcfg.notify_crash != "0") {
-                send_telegram_notification("⚠️ *Watchdog:* sing-box не установлен, перезапуск не поможет. Установите пакет sing-box или бинарный вариант sing-box-x / sing-box-extended.");
+                send_telegram_notification(sprintf("⚠️ *Watchdog:* %s не установлен, перезапуск не поможет.", eng));
             }
         }
         return;
@@ -2077,11 +2088,11 @@ function heal_core_stopped(ev) {
     let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
     if (process_running(list_update_pid, "ucode")) return;
 
-    log_message("sing-box is stopped (" + as_string(ev.payload.reason || "health check") + "). Restarting Tachyon...", "warn");
+    log_message(sprintf("%s is stopped (%s). Restarting Tachyon...", eng, as_string(ev.payload.reason || "health check")), "warn");
     increment_reconnect_count();
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
-        send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
+        send_telegram_notification(sprintf("⚠️ *Watchdog:* %s остановлен. Перезапускаю службы Tachyon...", eng));
     }
     // This healer sends its own notification above and deliberately did not file
     // an incident, so it does not start one now. It does register the watch: a
@@ -2097,7 +2108,7 @@ function heal_core_stopped(ev) {
         singbox_repair_until = time() + SUPPRESSION_DEADLINE;
         watch_recovery("proxy", {
             type: "core_stopped",
-            description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
+            description: sprintf("%s остановлен (%s)", eng, as_string(ev.payload.reason || "health check")),
             resolution: "Выполнен перезапуск служб Tachyon"
         }, "core_stopped");
     }
@@ -3080,10 +3091,11 @@ function mixed_proxy_port_listening() {
 }
 
 function check_mixed_proxy_port() {
+    let eng = active_engine_name();
     if (!core_binary_running()) {
         // Core down entirely is the proxy-health loop's domain.
         if (mixed_port_fail_streak > 0)
-            log_message("Mixed port watch: core stopped, standing down.", "debug");
+            log_message(sprintf("Mixed port watch: %s stopped, standing down.", eng), "debug");
         mixed_port_fail_streak = 0;
         return;
     }
@@ -3105,17 +3117,17 @@ function check_mixed_proxy_port() {
     }
 
     mixed_port_fail_streak++;
-    log_message(sprintf("sing-box runs but mixed port(s) %s are not listening (streak %d).",
-        join(", ", ports), mixed_port_fail_streak), "warn");
+    log_message(sprintf("%s runs but mixed port(s) %s are not listening (streak %d).",
+        eng, join(", ", ports), mixed_port_fail_streak), "warn");
 
     if (mixed_port_fail_streak == 2) {
-        log_message("Restarting sing-box to restore the mixed inbound.", "warn");
+        log_message(sprintf("Restarting %s to restore the mixed inbound.", eng), "warn");
         command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
     } else if (mixed_port_fail_streak > 2) {
         let now = time();
         if (now - mixed_port_last_notify >= 3600) {
             mixed_port_last_notify = now;
-            send_telegram_notification("⚠️ Порт " + join(", ", ports) + " не слушается при работающем sing-box. Рестарт не помог — проверьте конфигурацию ядра (лог sing-box), раздел диагностики покажет детали.");
+            send_telegram_notification(sprintf("⚠️ Порт %s не слушается при работающем %s. Рестарт не помог — проверьте конфигурацию ядра (лог %s), раздел диагностики покажет детали.", join(", ", ports), eng, eng));
         }
     }
 }
