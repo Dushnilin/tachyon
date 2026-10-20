@@ -1475,6 +1475,17 @@ function ensure_tachyon_core_package_symlink() {
     return command_success_from_args([ "ln", "-s", target, link_path ]);
 }
 
+function install_legacy_sing_box_symlink() {
+    let target = "/usr/bin/tachyon-core";
+    let legacy = "/usr/bin/sing-box";
+    if (!file_exists(target))
+        return false;
+    if (fs.readlink(legacy) == target)
+        return true;
+    remove_file(legacy);
+    return command_success_from_args([ "ln", "-s", target, legacy ]);
+}
+
 function restore_sing_box_backup(backup_binary) {
     if (as_string(backup_binary) != "" && file_nonempty(backup_binary)) {
         if (!move_file_portable(backup_binary, "/usr/bin/tachyon-core"))
@@ -2309,21 +2320,6 @@ function validate_tachyon_core_binary(binary, library_dir) {
 
     updates_log("validated " + TACHYON_CORE_LABEL + " build " + version + " from " + binary, "info");
     return version;
-}
-
-/// The core installs as `tachyon-core`. Everything that still shells out to
-/// `sing-box` — old configs, third-party scripts, a router's own cron — keeps
-/// working through this link until those are gone, so the rename never costs a
-/// working proxy on an installed router.
-function install_legacy_sing_box_symlink() {
-    let target = "/usr/bin/tachyon-core";
-    let legacy = "/usr/bin/sing-box";
-    if (!file_exists(target))
-        return false;
-    if (fs.readlink(legacy) == target)
-        return true;
-    remove_file(legacy);
-    return command_success_from_args([ "ln", "-s", target, legacy ]);
 }
 
 function install_tachyon_core(action, target_tag) {
