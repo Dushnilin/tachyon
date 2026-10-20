@@ -325,7 +325,8 @@ build_backend_root() {
     "$output_root/etc/init.d/tachyon-steer-zapret" \
     "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
     "$output_root/usr/share/tachyon/steer-nfqws" \
-    "$output_root/usr/lib/cgi-bin/tachyon-agent"
+    "$output_root/usr/lib/cgi-bin/tachyon-agent" \
+    "$output_root/www/cgi-bin/tachyon-sub"
   # Contains the Telegram bot token placeholder and receives user secrets.
   chmod 0600 "$output_root/etc/config/tachyon" "$output_root/usr/lib/tachyon/defaults/config"
 }
