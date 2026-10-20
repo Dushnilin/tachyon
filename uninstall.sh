@@ -402,6 +402,7 @@ rm -f /usr/bin/tachyon 2>/dev/null || true
 rm -f /etc/init.d/tachyon 2>/dev/null || true
 rm -f /etc/hotplug.d/iface/99-tachyon-wan-monitor 2>/dev/null || true
 rm -f /www/cgi-bin/tachyon-agent 2>/dev/null || true
+rm -f /www/cgi-bin/tachyon-sub 2>/dev/null || true
 rm -f /usr/lib/cgi-bin/tachyon-agent 2>/dev/null || true
 
 # Optional binary removal

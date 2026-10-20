@@ -8296,3 +8296,51 @@ msgstr "Plus отдельно проверяет DNS роутера и пока�
 
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
+
+msgid "Configure subscription"
+msgstr "Настроить подписку"
+
+msgid "Secure random generator is unavailable"
+msgstr "Недоступен криптографический генератор случайных чисел"
+
+msgid "No subscription URL"
+msgstr "Нет ссылки для подписки"
+
+msgid "Subscription QR code"
+msgstr "QR-код подписки"
+
+msgid "Change subscription URL"
+msgstr "Сменить ссылку подписки"
+
+msgid "The old URL will stop working after Save & Apply."
+msgstr "Старая ссылка перестанет работать после «Сохранить и применить»."
+
+msgid "Use Save & Apply on the main page to activate these settings."
+msgstr "Чтобы включить эти настройки, нажмите «Сохранить и применить» на основной странице."
+
+msgid "Enter a valid public host and port, and select at least one enabled server."
+msgstr "Укажите корректный публичный хост и порт, затем выберите хотя бы один включённый сервер."
+
+msgid "Subscription settings saved. Use Save & Apply to activate them."
+msgstr "Настройки подписки сохранены. Нажмите «Сохранить и применить», чтобы включить их."
+
+msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
+msgstr "Одна ссылка импортирует выбранные включённые серверы и обновляет их настройки подключения в клиенте."
+
+msgid "Enable subscription"
+msgstr "Включить подписку"
+
+msgid "Include all enabled servers"
+msgstr "Включать все активные серверы"
+
+msgid "The public address must reach this router's subscription endpoint. HTTPS needs a valid certificate. This setting does not open WAN ports or publish LuCI."
+msgstr "Публичный адрес должен вести к обработчику подписки на этом роутере. Для HTTPS нужен действующий сертификат. Эта настройка не открывает WAN-порты и не публикует LuCI."
+
+msgid "Format"
+msgstr "Формат"
+
+msgid "Connection URLs (text)"
+msgstr "Ссылки на подключения (текст)"
+
+msgid "QR code"
+msgstr "QR-код"

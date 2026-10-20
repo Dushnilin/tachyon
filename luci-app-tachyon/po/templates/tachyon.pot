@@ -11707,3 +11707,51 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:323
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr ""
+
+msgid "Configure subscription"
+msgstr ""
+
+msgid "Secure random generator is unavailable"
+msgstr ""
+
+msgid "No subscription URL"
+msgstr ""
+
+msgid "Subscription QR code"
+msgstr ""
+
+msgid "Change subscription URL"
+msgstr ""
+
+msgid "The old URL will stop working after Save & Apply."
+msgstr ""
+
+msgid "Use Save & Apply on the main page to activate these settings."
+msgstr ""
+
+msgid "Enter a valid public host and port, and select at least one enabled server."
+msgstr ""
+
+msgid "Subscription settings saved. Use Save & Apply to activate them."
+msgstr ""
+
+msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
+msgstr ""
+
+msgid "Enable subscription"
+msgstr ""
+
+msgid "Include all enabled servers"
+msgstr ""
+
+msgid "The public address must reach this router's subscription endpoint. HTTPS needs a valid certificate. This setting does not open WAN ports or publish LuCI."
+msgstr ""
+
+msgid "Format"
+msgstr ""
+
+msgid "Connection URLs (text)"
+msgstr ""
+
+msgid "QR code"
+msgstr ""

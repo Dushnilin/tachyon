@@ -632,6 +632,7 @@ const EntryPoint = {
           _("Add a server inbound"),
         );
         serverSectionRef = s;
+        server.configureServerSubscription(s);
         server.configureServerSection(s, {
           loadCapabilities: loadUiCapabilities,
         });

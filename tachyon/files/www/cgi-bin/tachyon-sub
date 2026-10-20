@@ -1,0 +1,3 @@
+#!/bin/sh
+# This endpoint only exports client links after its separate subscription token.
+exec /usr/bin/ucode -L "${TACHYON_LIB:-/usr/lib/tachyon}" -e 'require("server.subscription").serve();'
