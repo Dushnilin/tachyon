@@ -829,6 +829,7 @@ function configure_service() {
 
     if (fs.stat("/usr/bin/sing-box") != null && fs.stat("/usr/bin/tachyon-core") == null) {
         try {
+            fs.unlink("/usr/bin/tachyon-core");
             fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core");
         }
         catch (e) {
