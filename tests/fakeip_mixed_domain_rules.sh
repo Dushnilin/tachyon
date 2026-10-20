@@ -22,7 +22,7 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings", ".type": "settings", "enabled": "1",
-    "dns_type": "fakeip", "dns_server": [ "1.1.1.1" ],
+    "dns_type": "udp", "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1"
   },
   "section": [
@@ -43,7 +43,7 @@ JSON
 OUTPUT="$WORK_DIR/config.json"
 mkdir -p "${OUTPUT}.section-cache" "${OUTPUT}.rulesets"
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
-  "$WORK_DIR/fixture.json" "$OUTPUT" "127.0.0.1"
+  "$WORK_DIR/fixture.json" "$OUTPUT" "127.0.0.1" "0" "1"
 
 JSON_VALUE="$(cat "$OUTPUT")" node <<'NODE'
 const cfg = JSON.parse(process.env.JSON_VALUE);
@@ -71,6 +71,12 @@ if (!keywordRule) {
   process.exit(1);
 }
 
-console.log("PASS: DNS rules for mixed domain conditions generated separately");
+if (suffixRule.server !== "fakeip-server" || keywordRule.server !== "fakeip-server") {
+  console.error("FAIL: Expected server to be fakeip-server, got:", suffixRule.server, keywordRule.server);
+  process.exit(1);
+}
+
+console.log("PASS: DNS rules for mixed domain conditions generated separately with FakeIP");
 NODE
+
 
