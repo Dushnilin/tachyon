@@ -230,7 +230,7 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
         '  ]\n' +
         "}\n\n" +
         "RULES FOR STRATEGY ARGS:\n" +
-        "- For zapret2: use valid options like '--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq' or '--lua-desync=fake:ttl=4:fooling=badseq --lua-desync=multisplit:pos=1,midsld'. DO NOT include binary name.\n" +
+        "- For zapret2: use valid options like '--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq' or '--lua-desync=fake:blob=tls_max:ttl=4:fooling=badseq --lua-desync=multisplit:pos=1,midsld'. DO NOT include binary name.\n" +
         "- For zapret: use valid options like '--dpi-desync=fake,split2 --dpi-desync-split-pos=1,midsld --dpi-desync-fooling=badseq --dpi-desync-ttl=4'. DO NOT include binary name.\n" +
         "- For byedpi: use valid options like '-s 1 -d 1 --auto=t,r,s -o 1'. DO NOT include binary name.\n\n" +
         "JSON OUTPUT:",

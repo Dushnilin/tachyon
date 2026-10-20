@@ -203,6 +203,13 @@ const STRATEGIES_ZAPRET2 = [
         args: "--filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=quic_google:repeats=11",
         description: "UDP fake desync using 1200-byte Google QUIC Initial blob with 11 repeats."
     },
+    {
+        id: "z2_game_udp",
+        name: "Gaming & Generic UDP Fake Desync (Fortnite, Voice)",
+        engine: "zapret2",
+        args: "--filter-udp=1024-65535 --out-range=-d2 --lua-desync=fake:blob=stun_fake:payload=all",
+        description: "UDP fake packet desync for custom gaming and voice protocols. Uses payload=all to allow fake packet injection on unknown/proprietary UDP payloads where nfqws2 has no built-in L7 dissector."
+    },
 
     // ── 6. ADVANCED REORDER & FAKED SEGMENTS ────────────────────────────────────
     {
