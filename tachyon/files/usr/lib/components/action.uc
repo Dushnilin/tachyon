@@ -1440,31 +1440,6 @@ function move_file_to_backup(target_path, backup_path) {
 
 // Moved to line ~67 to avoid forward reference
 
-// Binary variants are fully extracted and validated before this helper is
-// called. On storage-constrained routers the temporary rollback copy can
-// be larger than the remaining /tmp space. If persistent component
-// backups are disabled, it is safer to free the old binary and install
-// the already validated replacement than to fail the update solely
-// because a second copy cannot be kept in RAM.
-function move_validated_file_to_backup_or_discard(target_path, backup_path, label) {
-    if (!file_exists(target_path))
-        return "";
-    if (move_file_to_backup(target_path, backup_path))
-        return backup_path;
-
-    remove_file(backup_path);
-    if (get_component_backup_enabled())
-        return null;
-
-    updates_log(
-        "Temporary rollback copy of " + as_string(label) +
-        " could not be created; component backups are disabled, removing the current file to free space for the validated replacement",
-        "warn"
-    );
-    remove_file(target_path);
-    return file_exists(target_path) ? null : "";
-}
-
 function is_symlink_path(path) {
     let st = fs.lstat(as_string(path));
     return st != null && (st.type == "link" || st.type == "lnk");
@@ -1502,6 +1477,44 @@ function prepare_sing_box_binary_paths_before_package_install() {
         remove_file("/usr/bin/sing-box");
     if (is_symlink_path("/usr/bin/tachyon-core"))
         remove_file("/usr/bin/tachyon-core");
+}
+
+// Binary variants are fully extracted and validated before this helper is
+// called. On storage-constrained routers the temporary rollback copy can
+// be larger than the remaining /tmp space. If persistent component
+// backups are disabled, it is safer to free the old binary and install
+// the already validated replacement than to fail the update solely
+// because a second copy cannot be kept in RAM.
+function move_validated_file_to_backup_or_discard(target_path, backup_path, label) {
+    if (!file_exists(target_path) || is_symlink_path(target_path)) {
+        if (target_path == "/usr/bin/tachyon-core" && file_exists("/usr/bin/sing-box") && !is_symlink_path("/usr/bin/sing-box")) {
+            target_path = "/usr/bin/sing-box";
+            if (is_symlink_path("/usr/bin/tachyon-core"))
+                remove_file("/usr/bin/tachyon-core");
+        } else {
+            prepare_sing_box_binary_paths_before_package_install();
+            return "";
+        }
+    }
+    if (move_file_to_backup(target_path, backup_path)) {
+        if (target_path == "/usr/bin/tachyon-core" && is_symlink_path("/usr/bin/sing-box"))
+            remove_file("/usr/bin/sing-box");
+        return backup_path;
+    }
+
+    remove_file(backup_path);
+    if (get_component_backup_enabled())
+        return null;
+
+    updates_log(
+        "Temporary rollback copy of " + as_string(label) +
+        " could not be created; component backups are disabled, removing the current file to free space for the validated replacement",
+        "warn"
+    );
+    remove_file(target_path);
+    if (target_path == "/usr/bin/tachyon-core" && is_symlink_path("/usr/bin/sing-box"))
+        remove_file("/usr/bin/sing-box");
+    return file_exists(target_path) ? null : "";
 }
 
 function backup_existing_sing_box_binary(backup_path) {
@@ -2231,7 +2244,11 @@ function install_sing_box_extended(action, compressed, target_tag) {
     let backup_cronet = "";
     let cronet_touched = false;
     if (file_exists("/usr/bin/tachyon-core") || file_exists("/usr/bin/sing-box")) {
-        backup_binary = backup_existing_sing_box_binary(cmp.tmp_dir_path() + "/sing-box.tachyon-backup");
+        backup_binary = move_validated_file_to_backup_or_discard(
+            "/usr/bin/tachyon-core",
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup",
+            "current sing-box binary"
+        );
         if (backup_binary == null) {
             remove_file(tmp_binary);
             remove_file(tmp_cronet);
@@ -2569,7 +2586,11 @@ function install_sing_box_lx(action, target_tag) {
     let backup_cronet = "";
     let cronet_touched = false;
     if (file_exists("/usr/bin/tachyon-core") || file_exists("/usr/bin/sing-box")) {
-        backup_binary = backup_existing_sing_box_binary(cmp.tmp_dir_path() + "/sing-box.tachyon-backup");
+        backup_binary = move_validated_file_to_backup_or_discard(
+            "/usr/bin/tachyon-core",
+            cmp.tmp_dir_path() + "/sing-box.tachyon-backup",
+            "current sing-box binary"
+        );
         if (backup_binary == null) {
             remove_file(tmp_binary);
             remove_file(tmp_cronet);
