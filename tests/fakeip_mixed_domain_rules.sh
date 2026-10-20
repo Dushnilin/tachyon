@@ -22,7 +22,7 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings", ".type": "settings", "enabled": "1",
-    "dns_type": "fakeip",
+    "dns_type": "fakeip", "dns_server": [ "1.1.1.1" ],
     "service_listen_address": "127.0.0.1"
   },
   "section": [
@@ -31,6 +31,10 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "domain_suffix": [ "perplexity.ai", "oracle.com" ],
       "domain_keyword": [ "customkeyword" ],
       "outbound_jsons": [ "{\"type\":\"direct\",\"tag\":\"main-out\"}" ]
+    },
+    {
+      ".name": "other", ".type": "section", "enabled": "1", "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\",\"tag\":\"other-out\"}" ]
     }
   ]
 }
@@ -38,11 +42,10 @@ JSON
 
 OUTPUT="$WORK_DIR/config.json"
 mkdir -p "${OUTPUT}.section-cache" "${OUTPUT}.rulesets"
-if command -v ucode >/dev/null 2>&1; then
-  ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
-    "$WORK_DIR/fixture.json" "$OUTPUT" "127.0.0.1"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture.json" "$OUTPUT" "127.0.0.1"
 
-  JSON_VALUE="$(cat "$OUTPUT")" node <<'NODE'
+JSON_VALUE="$(cat "$OUTPUT")" node <<'NODE'
 const cfg = JSON.parse(process.env.JSON_VALUE);
 const dnsRules = (cfg.dns && cfg.dns.rules) || [];
 
@@ -70,11 +73,4 @@ if (!keywordRule) {
 
 console.log("PASS: DNS rules for mixed domain conditions generated separately");
 NODE
-else
-  # Static check when ucode is not present in local test environment
-  grep -Fq 'for (let dm in domain_matchers)' "$TACHYON_LIB/tachyon_core/generator_routes.uc" || {
-    echo "FAIL: generator_routes.uc does not iterate over domain_matchers" >&2
-    exit 1
-  }
-  echo "PASS: generator_routes.uc contains domain_matchers iteration"
-fi
+
