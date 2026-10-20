@@ -14613,6 +14613,40 @@ async function resolveDomainToIps(domain) {
   return [];
 }
 
+function isFakeIpAddress(ip) {
+  if (typeof ip !== "string") return false;
+  ip = ip.trim();
+  return /^198\.(18|19)\./.test(ip) || /^fc00::/i.test(ip);
+}
+
+async function checkTargetMatchesCountry(secName, targetStr, targetType, resolvedIpsList, cc) {
+  cc = (cc || "").trim().toLowerCase();
+  if (!cc) return false;
+  if (cc === "non-ru") cc = "ru";
+
+  if (targetType === "domain") {
+    const d = targetStr.toLowerCase();
+    if (d === cc || d.endsWith("." + cc)) return true;
+    if (cc === "ru" && (d.endsWith(".su") || d.endsWith(".xn--p1ai") || d.endsWith(".рф"))) return true;
+    if (await matchCommunityList(secName, `geosite_${cc}`, d, "domain")) return true;
+    if (cc === "ru" && (await matchCommunityList(secName, "russia_inside", d, "domain"))) return true;
+
+    if (Array.isArray(resolvedIpsList)) {
+      for (const rip of resolvedIpsList) {
+        if (!isFakeIpAddress(rip)) {
+          if (await matchCommunityList(secName, `geoip_${cc}`, rip, "ip")) return true;
+          if (cc === "ru" && (await matchCommunityList(secName, "russia_inside", rip, "ip"))) return true;
+        }
+      }
+    }
+  } else if (targetType === "ip") {
+    if (await matchCommunityList(secName, `geoip_${cc}`, targetStr, "ip")) return true;
+    if (cc === "ru" && (await matchCommunityList(secName, "russia_inside", targetStr, "ip"))) return true;
+  }
+
+  return false;
+}
+
 async function performTrace(query) {
   query = (query || "").trim();
   if (!query) return { matched: false };
@@ -14951,9 +14985,10 @@ async function performTrace(query) {
     }
   }
 
+  let resolvedIps = null;
   if (type === "domain") {
     // No direct domain rule matched. Resolve domain to IP addresses and check IP routing rules
-    const resolvedIps = await resolveDomainToIps(queryForMatching);
+    resolvedIps = await resolveDomainToIps(queryForMatching);
     if (resolvedIps && resolvedIps.length > 0) {
       for (let i = 0; i < sections.length; i++) {
         const sec = sections[i];
@@ -14996,6 +15031,7 @@ async function performTrace(query) {
               resolvedDomain: queryForMatching,
               resolvedIps: resolvedIps,
               matchedIp: ip,
+              isFakeIp: isFakeIpAddress(ip),
               priority: i + 1,
               totalSections: totalSections,
               sharedCdnWarning: getSharedCdnWarning(matchedCidr),
@@ -15019,6 +15055,7 @@ async function performTrace(query) {
                 resolvedDomain: queryForMatching,
                 resolvedIps: resolvedIps,
                 matchedIp: ip,
+                isFakeIp: isFakeIpAddress(ip),
                 priority: i + 1,
                 totalSections: totalSections,
                 sharedCdnWarning: getSharedCdnWarning(matchedListIp),
@@ -15043,6 +15080,7 @@ async function performTrace(query) {
                 resolvedDomain: queryForMatching,
                 resolvedIps: resolvedIps,
                 matchedIp: ip,
+                isFakeIp: isFakeIpAddress(ip),
                 priority: i + 1,
                 totalSections: totalSections,
                 sharedCdnWarning: getSharedCdnWarning(matchedRemoteIp),
@@ -15064,6 +15102,7 @@ async function performTrace(query) {
                 resolvedDomain: queryForMatching,
                 resolvedIps: resolvedIps,
                 matchedIp: ip,
+                isFakeIp: isFakeIpAddress(ip),
                 priority: i + 1,
                 totalSections: totalSections,
                 sharedCdnWarning: getSharedCdnWarning(matchedCommunityCidr),
@@ -15080,6 +15119,7 @@ async function performTrace(query) {
                 resolvedDomain: queryForMatching,
                 resolvedIps: resolvedIps,
                 matchedIp: ip,
+                isFakeIp: isFakeIpAddress(ip),
                 priority: i + 1,
                 totalSections: totalSections,
                 sharedCdnWarning: getSharedCdnWarning(ip),
@@ -15088,16 +15128,137 @@ async function performTrace(query) {
           }
         }
       }
-
-      return {
-        matched: false,
-        resolvedDomain: queryForMatching,
-        resolvedIps: resolvedIps,
-      };
     }
   }
 
-  return { matched: false };
+  // ─── Catch-all & GeoIP Rule Evaluation ──────────────────────────────────
+  // If no explicit domain or IP rule matched, check for match_all or GeoIP sections
+  for (let i = 0; i < sections.length; i++) {
+    const sec = sections[i];
+    const secName = sec[".name"];
+    if (uci.get(UCI_PACKAGE, secName, "enabled") === "0") continue;
+
+    const label =
+      uci.get(UCI_PACKAGE, secName, "label") ||
+      uci.get(UCI_PACKAGE, secName, "name") ||
+      secName;
+    const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
+
+    // 1. match_all option (catch-all section)
+    if (uci.get(UCI_PACKAGE, secName, "match_all") === "1") {
+      return {
+        matched: true,
+        sectionName: secName,
+        label: label,
+        action: action,
+        ruleType: _("Match All (Catch-all)"),
+        pattern: "*",
+        resolvedDomain: type === "domain" ? queryForMatching : undefined,
+        resolvedIps: resolvedIps,
+        isFakeIp: Array.isArray(resolvedIps) && resolvedIps.some(isFakeIpAddress),
+        priority: i + 1,
+        totalSections: totalSections,
+      };
+    }
+
+    // 2. GeoIP conditions
+    let geoipCountry = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, secName, "geoip_country"),
+    );
+    if (geoipCountry.length === 1 && geoipCountry[0] === "non-ru") {
+      geoipCountry = ["ru"];
+    }
+    const geoipMode =
+      uci.get(UCI_PACKAGE, secName, "geoip_mode") ||
+      (geoipCountry.length > 0 ? "exclude" : "");
+
+    if (geoipCountry.length > 0 && geoipMode) {
+      const hasDomainMatchers =
+        normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain")).length > 0 ||
+        normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_suffix")).length > 0 ||
+        normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_keyword")).length > 0 ||
+        normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_regex")).length > 0 ||
+        normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "user_domains")).length > 0;
+      const hasIpMatchers =
+        normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "ip_cidr")).length > 0;
+      const hasCommMatchers =
+        normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "community_lists")).length > 0;
+      const isGeoCatchAll = !hasDomainMatchers && !hasIpMatchers && !hasCommMatchers;
+      const isClosedGeo =
+        geoipMode === "include_all" || geoipMode === "exclude_direct";
+
+      if (isGeoCatchAll || isClosedGeo) {
+        let inCountry = false;
+        for (const cc of geoipCountry) {
+          if (
+            await checkTargetMatchesCountry(
+              secName,
+              queryForMatching,
+              type,
+              resolvedIps,
+              cc,
+            )
+          ) {
+            inCountry = true;
+            break;
+          }
+        }
+
+        const isFake =
+          Array.isArray(resolvedIps) && resolvedIps.some(isFakeIpAddress);
+
+        if (geoipMode === "exclude" || geoipMode === "exclude_direct") {
+          if (!inCountry) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label: label,
+              action: action,
+              ruleType: _("GeoIP (Exclude: %s)").format(
+                geoipCountry.join(", ").toUpperCase(),
+              ),
+              pattern:
+                type === "domain"
+                  ? `${queryForMatching} (!${geoipCountry.join(", ").toUpperCase()})`
+                  : `!${geoipCountry.join(", ").toUpperCase()}`,
+              resolvedDomain: type === "domain" ? queryForMatching : undefined,
+              resolvedIps: resolvedIps,
+              isFakeIp: isFake,
+              priority: i + 1,
+              totalSections: totalSections,
+            };
+          }
+        } else if (geoipMode === "include" || geoipMode === "include_all") {
+          if (inCountry) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label: label,
+              action: action,
+              ruleType: _("GeoIP (Include: %s)").format(
+                geoipCountry.join(", ").toUpperCase(),
+              ),
+              pattern:
+                type === "domain"
+                  ? `${queryForMatching} (${geoipCountry.join(", ").toUpperCase()})`
+                  : geoipCountry.join(", ").toUpperCase(),
+              resolvedDomain: type === "domain" ? queryForMatching : undefined,
+              resolvedIps: resolvedIps,
+              isFakeIp: isFake,
+              priority: i + 1,
+              totalSections: totalSections,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    matched: false,
+    resolvedDomain: type === "domain" ? queryForMatching : undefined,
+    resolvedIps: resolvedIps,
+  };
 }
 
 function createTracerSearchWidget(sectionRef) {
@@ -15258,10 +15419,14 @@ function createTracerSearchWidget(sectionRef) {
                       style:
                         "margin-top: 4px; font-size: 85%; color: var(--text-color-medium, #666);",
                     },
-                    _("DNS: Resolved %s to %s").format(
-                      result.resolvedDomain,
-                      result.resolvedIps.join(", "),
-                    ),
+                    result.isFakeIp
+                      ? _("DNS: Resolved via Fake-IP (%s) — routed dynamically by engine").format(
+                          result.resolvedIps.join(", "),
+                        )
+                      : _("DNS: Resolved %s to %s").format(
+                          result.resolvedDomain,
+                          result.resolvedIps.join(", "),
+                        ),
                   ),
                 ]
               : []),
@@ -15308,9 +15473,13 @@ function createTracerSearchWidget(sectionRef) {
                       style:
                         "margin-top: 4px; font-size: 85%; color: var(--text-color-medium, #666);",
                     },
-                    _("DNS: Resolved to %s (no subnet rules matched)").format(
-                      result.resolvedIps.join(", "),
-                    ),
+                    result.resolvedIps.some(isFakeIpAddress)
+                      ? _("DNS: Fake-IP allocated: %s (synthetic routing address)").format(
+                          result.resolvedIps.join(", "),
+                        )
+                      : _("DNS: Resolved to %s (no subnet rules matched)").format(
+                          result.resolvedIps.join(", "),
+                        ),
                   ),
                 ]
               : []),

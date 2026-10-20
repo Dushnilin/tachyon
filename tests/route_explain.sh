@@ -37,6 +37,10 @@ grep -Fq 'function ipv4_in_cidr(' "$EXPLAIN_UC" ||
   fail "route_explain.uc must define ipv4_in_cidr"
 grep -Fq 'function is_private_ip(' "$EXPLAIN_UC" ||
   fail "route_explain.uc must define is_private_ip"
+grep -Fq 'function target_matches_country(' "$EXPLAIN_UC" ||
+  fail "route_explain.uc must define target_matches_country"
+grep -Fq 'function evaluate_section_match(' "$EXPLAIN_UC" ||
+  fail "route_explain.uc must define evaluate_section_match"
 grep -Fq 'function selftest()' "$EXPLAIN_UC" ||
   fail "route_explain.uc must define selftest"
 
@@ -129,6 +133,17 @@ if command -v ucode >/dev/null 2>&1; then
   agent_out=$(TACHYON_LIB="$TACHYON_LIB" ucode "$BIN_TACHYON" agent "/tachyon/agent/v1/route/explain?target=github.com&client=192.168.1.50" GET)
   assert_contains "$agent_out" '"success": true' "agent_api route/explain success"
   assert_contains "$agent_out" '"target": "github.com"' "agent_api route/explain target"
+
+  # 4.8 GeoIP evaluation verification (Issue #179)
+  geoip_test_out=$(ucode -L "$TACHYON_LIB" -e '
+    let r = require("diagnostics.route_explain");
+    let sec = { ".name": "sec_main", enabled: "1", action: "connection", geoip_country: ["ru"], geoip_mode: "exclude" };
+    let client = { ip: "192.168.1.100", mac: null, is_router: false, is_excluded: false };
+    let m1 = r.evaluate_section_match(sec, client, { host: "4pda.to", type: "domain" }, 443, "tcp");
+    let m2 = r.evaluate_section_match(sec, client, { host: "yandex.ru", type: "domain" }, 443, "tcp");
+    print(sprintf("4pda:%s,yandex:%s", m1 ? m1.rule_type : "none", m2 ? m2.rule_type : "none"));
+  ')
+  assert_eq "$geoip_test_out" "4pda:geoip_exclude,yandex:none" "GeoIP exclusion matching in route_explain"
 fi
 
 echo "All route_explain tests passed successfully!"
