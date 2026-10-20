@@ -368,7 +368,8 @@ function managed_sing_box_service_installed() {
     let data = fs.readfile("/etc/init.d/tachyon-core");
     return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0 &&
         index(as_string(data), "GOGC=\"50\"") >= 0 &&
-        index(as_string(data), "stop_service()") >= 0;
+        index(as_string(data), "stop_service()") >= 0 &&
+        index(as_string(data), "killall -q -9 tachyon-core") < 0;
 }
 
 function managed_sing_box_service_text() {
@@ -378,6 +379,23 @@ function managed_sing_box_service_text() {
         "START=99\n" +
         "PROG=\"/usr/bin/tachyon-core\"\n" +
         "[ -x \"$PROG\" ] || PROG=\"/usr/bin/sing-box\"\n\n" +
+        "_kill_daemon_instances() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box) kill -9 \"$p\" 2>/dev/null || true ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "}\n\n" +
+        "_has_running_daemon() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box) return 0 ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    return 1\n" +
+        "}\n\n" +
         "start_service() {\n" +
         "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
         "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
@@ -420,7 +438,7 @@ function managed_sing_box_service_text() {
         "    fi\n\n" +
         "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
         "    : > /tmp/tachyon-core/sing-box.log 2>/dev/null\n" +
-        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n\n" +
+        "    _kill_daemon_instances\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
@@ -439,11 +457,11 @@ function managed_sing_box_service_text() {
         "stop_service() {\n" +
         "    local i=0\n" +
         "    while [ \"$i\" -lt 20 ]; do\n" +
-        "        pidof tachyon-core sing-box >/dev/null 2>&1 || return 0\n" +
+        "        _has_running_daemon || return 0\n" +
         "        sleep 0.1 2>/dev/null || sleep 1\n" +
         "        i=$(( i + 1 ))\n" +
         "    done\n" +
-        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n" +
+        "    _kill_daemon_instances\n" +
         "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"tachyon-core\"\n" +

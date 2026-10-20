@@ -30,4 +30,15 @@ grep -Fq 'fs.mkdir(workdir, 0755)' "$SB_RUNTIME" ||
 grep -Fq 'let cfg_file = "/etc/config/" + parts.package;' "$UCI_UC" ||
   fail "core/uci.uc set_section must create missing package file in /etc/config"
 
+# 5. managed service scripts must not generate self-killing killall commands
+for f in "$SB_RUNTIME" "$ROOT_DIR/tachyon/files/usr/lib/components/action.uc" "$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc"; do
+  if grep -Fq 'killall -q -9 tachyon-core sing-box' "$f"; then
+    fail "$f must not generate killall against tachyon-core (would self-kill /etc/init.d/tachyon-core)"
+  fi
+  grep -Fq '_kill_daemon_instances()' "$f" ||
+    fail "$f must define _kill_daemon_instances()"
+  grep -Fq '_has_running_daemon()' "$f" ||
+    fail "$f must define _has_running_daemon()"
+done
+
 printf 'clean_install_sing_box_init: all checks passed\n'
