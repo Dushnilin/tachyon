@@ -21,10 +21,14 @@ grep -q 'const ESCALATION_HEAVY = "heavy";' "$WATCHDOG_UC" \
   || fail "ESCALATION_HEAVY is gone"
 
 # The light rung must drive the sing-box init script, not the tachyon one.
-grep -q '/etc/init.d/tachyon-core stop' "$WATCHDOG_UC" \
+grep -qE '(/etc/init\.d/tachyon-core|core_init_script\(\).*init_script \+) stop' "$WATCHDOG_UC" \
+  || grep -q 'init_script + " stop >/dev/null 2>&1;' "$WATCHDOG_UC" \
   || fail "the light rung no longer stops the sing-box service"
-grep -q '/etc/init.d/tachyon-core start' "$WATCHDOG_UC" \
+grep -qE '(/etc/init\.d/tachyon-core|core_init_script\(\).*init_script \+) start' "$WATCHDOG_UC" \
+  || grep -q 'init_script + " start >/dev/null 2>&1;' "$WATCHDOG_UC" \
   || fail "the light rung no longer starts the sing-box service"
+grep -q 'core_contract().init_script' "$WATCHDOG_UC" \
+  || fail "watchdog no longer resolves the core init script from core_contract"
 
 # ── the ladder is consulted, not hardcoded ────────────────────────────────────
 grep -q 'function next_escalation(reason)' "$WATCHDOG_UC" \
