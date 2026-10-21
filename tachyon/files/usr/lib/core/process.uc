@@ -184,21 +184,221 @@ function is_tachyon_process(pid) {
 // running, so both names count as the engine here.
 const CORE_PROCESS_NAMES = [ "tachyon-core", "sing-box" ];
 
+// Service identity for the proxy core. Doctor, status, watchdog, lifecycle
+// and every init-script generator read this instead of hardcoding the procd
+// name, binary paths, pid files or UCI package. The init script's comm is
+// the procd name (`tachyon-core`, 15 characters), so BusyBox `killall` of
+// that name signals the script that is starting or stopping the daemon.
+function core_contract() {
+    return {
+        procd_name: "tachyon-core",
+        init_script: "/etc/init.d/tachyon-core",
+        uci_package: "tachyon-core",
+        pid_files: [
+            "/var/run/tachyon-core.pid",
+            "/var/run/tachyon-core/tachyon-core.pid",
+            "/var/run/sing-box.pid",
+            "/var/run/sing-box/sing-box.pid"
+        ],
+        binaries: [ "/usr/bin/tachyon-core", "/usr/bin/sing-box" ],
+        comm_names: CORE_PROCESS_NAMES,
+        workdir: "/usr/share/tachyon-core",
+        config_file: "/etc/tachyon-core/config.json",
+        log_file: "/tmp/tachyon-core/sing-box.log"
+    };
+}
+
+function own_pid() {
+    let stat = trim(as_string(fs.readfile("/proc/self/stat") || ""));
+    let sp = index(stat, " ");
+    if (sp <= 0)
+        return "";
+    return substr(stat, 0, sp);
+}
+
+function exe_basename(pid) {
+    let exe = fs.readlink(sprintf(PROC_EXE_FORMAT, as_string(pid)));
+    if (exe == null || exe == "")
+        return "";
+    exe = as_string(exe);
+    let space = index(exe, " ");
+    if (space >= 0)
+        exe = substr(exe, 0, space);
+    let slash = rindex(exe, "/");
+    return slash >= 0 ? substr(exe, slash + 1) : exe;
+}
+
+// /etc/init.d/tachyon-core is a shell script whose comm is tachyon-core.
+// Matching on comm alone treats that script as the daemon.
+function is_core_initscript(pid) {
+    pid = as_string(pid);
+    if (match(pid, /^[0-9]+$/) == null)
+        return false;
+    let cmd = as_string(fs.readfile(sprintf(PROC_CMDLINE_FORMAT, pid)) || "");
+    return index(cmd, core_contract().init_script) >= 0;
+}
+
+function core_daemon_pids() {
+    let found = [];
+    let directory = fs.opendir("/proc");
+    if (!directory)
+        return found;
+    let entry;
+    let self = own_pid();
+    while ((entry = directory.read()) != null) {
+        if (match(entry, /^[0-9]+$/) == null)
+            continue;
+        if (entry == self || is_core_initscript(entry))
+            continue;
+        if (index(CORE_PROCESS_NAMES, exe_basename(entry)) >= 0)
+            push(found, entry);
+    }
+    directory.close();
+    return found;
+}
+
+// Signal daemon binaries only. Never killall: that matches the init script.
+function kill_core_daemons() {
+    let killed = 0;
+    for (let pid in core_daemon_pids()) {
+        if (common.command_success_from_args([ "kill", "-9", pid ]))
+            killed++;
+    }
+    return killed;
+}
+
+function init_script_kills_itself(text) {
+    let name = core_contract().procd_name;
+    for (let line in split(as_string(text), "\n")) {
+        if (index(line, "killall") < 0)
+            continue;
+        if (match(line, regexp("(^|[^A-Za-z0-9_-])" + name + "([^A-Za-z0-9_-]|$)")) != null)
+            return true;
+    }
+    return false;
+}
+
+// Single generator for /etc/init.d/tachyon-core. reset_log keeps the
+// component-install variant that truncates the core log before procd starts.
+function managed_core_init_script(marker, reset_log) {
+    let contract = core_contract();
+    marker = as_string(marker);
+    if (marker == "")
+        marker = "Tachyon managed sing-box service for binary variants";
+
+    let primary = contract.binaries[0];
+    let fallback = contract.binaries[1];
+    let comms = contract.comm_names[0] + " " + contract.comm_names[1];
+    let exe_case = "*/" + contract.comm_names[0] + "|*/" + contract.comm_names[1];
+    let log_prep = "";
+    if (reset_log)
+        log_prep = "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
+            "    : > " + contract.log_file + " 2>/dev/null\n";
+
+    return "#!/bin/sh /etc/rc.common\n" +
+        "# " + marker + "\n\n" +
+        "USE_PROCD=1\n" +
+        "START=99\n" +
+        "PROG=\"" + primary + "\"\n" +
+        "[ -x \"$PROG\" ] || PROG=\"" + fallback + "\"\n\n" +
+        "_kill_daemon_instances() {\n" +
+        "    for p in $(pidof " + comms + " 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            " + exe_case + ") kill -9 \"$p\" 2>/dev/null || true ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "}\n\n" +
+        "_has_running_daemon() {\n" +
+        "    for p in $(pidof " + comms + " 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            " + exe_case + ") return 0 ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    return 1\n" +
+        "}\n\n" +
+        "start_service() {\n" +
+        "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
+        "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
+        "    modprobe tun 2>/dev/null || true\n" +
+        "    modprobe inet_diag 2>/dev/null || true\n\n" +
+        "    config_load \"" + contract.uci_package + "\"\n" +
+        "    local enabled config_file working_directory\n" +
+        "    local log_stderr\n\n" +
+        "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
+        "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
+        "    [ -x \"$PROG\" ] || PROG=\"$(command -v " + contract.comm_names[0] + " 2>/dev/null || command -v " + contract.comm_names[1] + " 2>/dev/null || echo " + primary + ")\"\n" +
+        "    config_get config_file \"main\" \"conffile\" \"" + contract.config_file + "\"\n" +
+        "    config_get working_directory \"main\" \"workdir\" \"" + contract.workdir + "\"\n" +
+        "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
+        "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
+        "    local mem_limit_mb=\"0\"\n" +
+        "    config_get mem_limit_mb \"main\" \"memory_limit_mb\" \"0\"\n" +
+        "    if [ \"$mem_limit_mb\" = \"0\" ] || [ -z \"$mem_limit_mb\" ]; then\n" +
+        "        mem_limit_mb=\"$(uci get tachyon.settings.memory_limit_mb 2>/dev/null || echo 0)\"\n" +
+        "    fi\n\n" +
+        "    local scale_pct=\"\"\n" +
+        "    if [ -s \"/etc/tachyon/mem_scale\" ]; then\n" +
+        "        scale_pct=\"$(awk -v s=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\" 'BEGIN { if (!s) exit; pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
+        "    fi\n\n" +
+        "    local gomemlimit=\"\"\n" +
+        "    local mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
+        "    if [ \"$mem_limit_mb\" -gt 0 ] 2>/dev/null; then\n" +
+        "        gomemlimit=\"$mem_limit_mb\"\n" +
+        "    elif [ \"$mem_total_kb\" -gt 0 ]; then\n" +
+        "        if [ \"$mem_total_kb\" -le 524288 ] || { [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; }; then\n" +
+        "            gomemlimit=$(( mem_total_kb / 1024 * 50 / 100 ))\n" +
+        "            [ \"$gomemlimit\" -lt 24 ] && gomemlimit=24\n" +
+        "        fi\n" +
+        "    fi\n\n" +
+        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
+        "        if [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; then\n" +
+        "            gomemlimit=$(( gomemlimit * scale_pct / 100 ))\n" +
+        "            [ \"$gomemlimit\" -lt 16 ] && gomemlimit=16\n" +
+        "        fi\n" +
+        "    fi\n\n" +
+        log_prep +
+        "    _kill_daemon_instances\n\n" +
+        "    procd_open_instance\n" +
+        "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
+        "    procd_set_param file \"$config_file\"\n" +
+        "    procd_set_param stderr \"$log_stderr\"\n" +
+        "    procd_set_param limits core=\"0\"\n" +
+        "    procd_set_param limits nofile=\"65535 65535\"\n" +
+        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
+        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\" GOMEMLIMIT=\"${gomemlimit}MiB\"\n" +
+        "    else\n" +
+        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
+        "    fi\n" +
+        "    procd_set_param term_timeout 15\n" +
+        "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
+        "    procd_close_instance\n" +
+        "}\n\n" +
+        "stop_service() {\n" +
+        "    local i=0\n" +
+        "    while [ \"$i\" -lt 20 ]; do\n" +
+        "        _has_running_daemon || return 0\n" +
+        "        sleep 0.1 2>/dev/null || sleep 1\n" +
+        "        i=$(( i + 1 ))\n" +
+        "    done\n" +
+        "    _kill_daemon_instances\n" +
+        "}\n\n" +
+        "service_triggers() {\n" +
+        "    procd_add_reload_trigger \"" + contract.procd_name + "\"\n" +
+        "}\n";
+}
+
 // Check if a PID is a proxy-core process (by /proc/PID/exe or /proc/PID/comm).
 function is_sing_box(pid) {
     pid = as_string(pid);
     if (match(pid, /^[0-9]+$/) == null)
         return false;
+    if (is_core_initscript(pid))
+        return false;
 
-    let exe = fs.readlink(sprintf(PROC_EXE_FORMAT, pid));
-    if (exe != null && exe != "") {
-        let slash = rindex(exe, "/");
-        let basename = slash >= 0 ? substr(exe, slash + 1) : exe;
-        // the /usr/bin/sing-box symlink resolves to the core, so an upgraded
-        // router reports the old name here even though it runs the new binary
-        if (index(CORE_PROCESS_NAMES, basename) >= 0)
-            return true;
-    }
+    if (index(CORE_PROCESS_NAMES, exe_basename(pid)) >= 0)
+        return true;
 
     let comm = trim(as_string(fs.readfile(sprintf(PROC_COMM_FORMAT, pid)) || ""));
     if (index(CORE_PROCESS_NAMES, comm) >= 0)
@@ -285,6 +485,14 @@ function module_exports() {
         pid_alive_raw,
         is_tachyon_process,
         is_sing_box,
+        core_contract,
+        own_pid,
+        exe_basename,
+        is_core_initscript,
+        core_daemon_pids,
+        kill_core_daemons,
+        init_script_kills_itself,
+        managed_core_init_script,
 
         // Identity
         make_identity,
@@ -382,6 +590,19 @@ if (mode == "selftest") {
     let bid2 = boot_id();
     _test_assert(bid1 == bid2, "boot_id should be stable");
 
+    // Test 13: generated init never killall's its own comm
+    let contract = core_contract();
+    _test_assert(contract.procd_name == "tachyon-core", "procd name");
+    _test_assert(contract.init_script == "/etc/init.d/tachyon-core", "init script path");
+    let generated = managed_core_init_script("marker", false);
+    let generated_log = managed_core_init_script("marker", true);
+    _test_assert(index(generated, "killall") < 0, "generated init must not call killall");
+    _test_assert(!init_script_kills_itself(generated), "generated init must not kill itself");
+    _test_assert(init_script_kills_itself("killall -q -9 tachyon-core\n"), "detector flags killall of the init comm");
+    _test_assert(index(generated, "_kill_daemon_instances") >= 0, "safe killer is present");
+    _test_assert(index(generated_log, contract.log_file) >= 0, "reset-log variant truncates the core log");
+    _test_assert(index(generated, contract.log_file) < 0, "plain variant leaves the core log alone");
+
     print("process.uc selftest: " + _test_pass + " passed, " + _test_fail + " failed\n");
     exit(_test_fail > 0 ? 1 : 0);
 }
@@ -417,7 +638,17 @@ else if (mode == "alive") {
     }
     exit(pid_alive_raw(ARGV[1]) ? 0 : 1);
 }
+else if (mode == "init-script") {
+    print(managed_core_init_script(ARGV[1] || "", ARGV[2] == "reset-log"));
+}
+else if (mode == "kills-itself") {
+    if (ARGV[1] == null) {
+        warn("Usage: core/process.uc kills-itself <file>\n");
+        exit(1);
+    }
+    exit(init_script_kills_itself(fs.readfile(ARGV[1]) || "") ? 0 : 1);
+}
 else {
-    print("Usage: core/process.uc <selftest|boot-id|starttime|age|alive> ...\n");
+    print("Usage: core/process.uc <selftest|boot-id|starttime|age|alive|init-script|kills-itself> ...\n");
     exit(1);
 }

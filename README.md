@@ -175,14 +175,12 @@ Tachyon перехватывает сетевой стек через ядро *
 </div>
 
 * **Tachyon AI Doctor (v3.0)**: Глубокая модульная архитектура (`doctor.uc`, `repairs.uc`, `system_info.uc`, `routing.uc`, `dns.uc`).
-  * Анализ через облачные LLM (**OpenAI**, **Claude**, **DeepSeek**) или локальные модели (через OpenRouter / Ollama).
+  * Анализ через облачные LLM (**OpenAI**, **Claude**, **DeepSeek**, **Gemini**) или локальные модели (через OpenRouter / Ollama).
   * **Схлопывание симптомов (Symptom Collapsing)**: Интеллектуальное объединение каскадных сбоев в первопричины.
-* **14 встроенных кодов быстрого ремонта Quick Fix**:
-  * Авто-ремонт sing-box, Steer, nftables, dnsmasq, resolv.conf.
-  * Перезапуск провайдеров (`restart_providers`), очистка кэша DNS (`flush_dns`).
-  * Синхронизация системного времени NTP (`fix_system_time`).
-  * Сброс таблицы conntrack (`flush_conntrack`).
-  * DNS dead-lock repair (`fix_bootstrap_dns`).
+* **25 кодов быстрого ремонта** в `diagnostics/repairs.uc` (`tachyon apply_quick_fix`):
+  * Сервисы: `start_singbox` (алиас `start_steer`), `restart_singbox_dns` (алиас `restart_steer_dns`), `start_watchdog`, `restart_providers`, `restart_zapret`, `optimize_memory`, `upgrade_to_singbox_extended`.
+  * Сеть и DNS: `rebuild_rules`, `fix_dnsmasq`, `fix_resolv_symlink`, `clear_dns_cache`, `fix_wan_interface`, `fix_gateway`, `reset_firewall`, `restart_network`, `switch_to_doh`, `fix_bootstrap_dns`, `heal_network_stack`, `enable_safe_bypass`, `restore_native_internet`.
+  * Конфиг и платформа: `fix_uci_config`, `update_subscriptions`, `fix_system_time`, `flush_conntrack`, `optimize_mtu`.
 * **Конфликт-устойчивый откат и восстановление**: Автоматический откат к стабильной конфигурации при обнаружении ошибок синтаксиса dnsmasq или nftables.
 * **🚨 Аварийное восстановление интернета (Native Internet Fallback)** (`tachyon restore_native_internet`).
 * **🔌 Model Context Protocol (MCP) Server (`tachyon mcp`)**: Подключение роутера к Claude Desktop, Cursor, Antigravity через JSON-RPC 2.0 stdio.
@@ -213,7 +211,7 @@ Tachyon перехватывает сетевой стек через ядро *
 
 </div>
 
-* **Процесс-менеджер с валидацией происхождения (PID Provenance & Identity)**: Модуль `core/process.uc` валидирует `pid`, `starttime` и `boot_id`, гарантируя, что системные демоны не затронут переиспользованные системой PID.
+* **Процесс-менеджер с валидацией происхождения (PID Provenance & Identity)**: Модуль `core/process.uc` валидирует `pid`, `starttime` и `boot_id`, гарантируя, что системные демоны не затронут переиспользованные системой PID. Тот же модуль хранит контракт ядра (procd-имя `tachyon-core`, бинарники, pid-файлы, UCI-пакет) и единственный генератор `/etc/init.d/tachyon-core`. Скрипт останавливает демон по пути исполняемого файла и не вызывает `killall` своего comm: в BusyBox такой `killall` снимает сам init-скрипт.
 * **Транзакционный менеджер пакетов (`core/packages.uc`)**: Защита от stale lock, верификация ELF-сигнатур сжатых UPX бинарников, автоматическая очистка файла `world` в APK для разрешения конфликтов `PROVIDES/REPLACES` при обновлении пакетов.
 * **Единый структурированный логгер (`core/logging.uc`)**: Ротируемые структурированные логи.
 * **Защита от зацикливания перезапусков (Restart-Loop Prevention)**: Лимит 3 перезапусков за 10 минут, мьютекс `PROXY_RESTART_LOCK`.

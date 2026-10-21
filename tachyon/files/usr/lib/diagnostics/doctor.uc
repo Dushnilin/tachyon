@@ -524,8 +524,14 @@ function find_process_pid(name) {
 // otherwise the doctor reports a running core as stopped and proposes
 // killing the very process that is serving traffic.
 function find_core_process_pid() {
-    let pid = find_process_pid("tachyon-core");
-    return pid != "" ? pid : find_process_pid("sing-box");
+    let proc = require("core.process");
+    for (let name in proc.core_contract().comm_names) {
+        for (let pid in proc.core_daemon_pids()) {
+            if (proc.exe_basename(pid) == name)
+                return pid;
+        }
+    }
+    return "";
 }
 
 // ss and log lines name the core process however the binary is installed;
@@ -597,10 +603,11 @@ function kill_our_core_processes() {
         command_status("killall -9 steer >/dev/null 2>&1");
         return;
     }
-    command_status("/etc/init.d/tachyon-core stop >/dev/null 2>&1");
-    // Both names: whichever package is installed must be stopped.
-    command_status("killall -9 tachyon-core >/dev/null 2>&1");
-    command_status("killall -9 sing-box >/dev/null 2>&1");
+    let proc = require("core.process");
+    command_status(proc.core_contract().init_script + " stop >/dev/null 2>&1");
+    // killall of the procd name also signals /etc/init.d/tachyon-core:
+    // BusyBox matches comm. Only the real binary is signaled.
+    proc.kill_core_daemons();
 }
 
 // ─── Recovery mode: Tachyon is stopped, restore stock internet ───────────────

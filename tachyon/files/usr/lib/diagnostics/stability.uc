@@ -93,6 +93,20 @@ function get_process_uptime(pid) {
 }
 
 function find_named_pid(name) {
+    if (name == "tachyon-core" || name == "sing-box") {
+        let proc = require("core.process");
+        for (let path in proc.core_contract().pid_files) {
+            let val = safe_read_file(path);
+            if (val != "" && match(val, /^[0-9]+$/) && proc.exe_basename(val) == name && !proc.is_core_initscript(val))
+                return val;
+        }
+        for (let pid in proc.core_daemon_pids()) {
+            if (proc.exe_basename(pid) == name)
+                return pid;
+        }
+        return "";
+    }
+
     let pid_files = {
         "sing-box": [ "/var/run/sing-box.pid" ],
         "steer": [ "/var/run/steer.pid" ],

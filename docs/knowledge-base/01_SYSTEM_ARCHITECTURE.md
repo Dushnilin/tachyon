@@ -24,7 +24,7 @@ graph TD
         UCODE --> Zapret
         UCODE --> ByeDPI
         Watchdog[Autonomous Watchdog 5-15s] --> UCODE
-        AIDoctor[AI Doctor v2.5 / Local Doctor] --> Watchdog
+        AIDoctor[AI Doctor v3.0 / Local Doctor] --> Watchdog
         Telegram[Telegram Bot Daemon] --> UCODE
         RestAPI[HTTP REST Agent API / OpenAPI 3.0] --> UCODE
         LuCI[LuCI TypeScript Web UI] --> UCODE
@@ -54,6 +54,9 @@ graph TD
 1. **LuCI Web UI**: Modern TypeScript SPA (`fe-app-tachyon`) compiled into LuCI JS assets (`luci-app-tachyon`).
 2. **Interactive Telegram Bot**: Embedded polling daemon with inline keyboards for on-the-fly server switching, rule updates, and instant diagnostics.
 3. **HTTP REST Agent API**: Secure CGI endpoint (`/cgi-bin/tachyon-agent/`) with OpenAPI 3.0.3 spec for integration with LLM agents (ChatGPT Custom GPTs, Cursor, Claude Code, N8N).
+
+### 2.4. Core Service Contract (`core/process.uc`)
+Doctor, status, watchdog, lifecycle and the init-script generators share one contract: procd name `tachyon-core`, init script `/etc/init.d/tachyon-core`, UCI package `tachyon-core`, binaries `/usr/bin/tachyon-core` and `/usr/bin/sing-box`, and the pid files under `/var/run`. The generated init script stops the daemon by executable path. It does not call `killall` on its own comm: BusyBox matches `/proc/PID/comm`, and that comm is `tachyon-core` for the init script itself. A script that still contains such a `killall` is treated as stale and regenerated.
 
 ---
 
@@ -99,7 +102,7 @@ tachyon/
 
 | Process | Role | Execution Model |
 |---|---|---|
-| `sing-box` | Core proxying & packet tunneling engine | Managed by procd (`/etc/init.d/tachyon`) |
+| `tachyon-core` / `sing-box` | Core proxying and packet tunneling engine | Managed by procd (`/etc/init.d/tachyon-core`), identity from `core/process.uc` |
 | `nfqws` / `nfqws2` | Local TCP/UDP packet desynchronizer (Zapret) | Spawned into background per configured rule |
 | `ciadpi` | Local SOCKS desync proxy (ByeDPI) | Spawned on `127.0.0.1:1080` / custom port |
 | `watchdog.uc` | State supervision, loop mitigation, self-healing | Background periodic daemon (every 5–15s) |

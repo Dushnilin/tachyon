@@ -90,6 +90,14 @@ function active_engine_name() {
     }
 }
 
+function core_init_script() {
+    try {
+        return require("core.process").core_contract().init_script;
+    } catch (e) {
+        return "/etc/init.d/tachyon-core";
+    }
+}
+
 // The empty catch is the point: every caller means "make sure this path is
 // gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
 // so the alternative is a stat() race with no better outcome.
@@ -1202,8 +1210,9 @@ function safe_proxy_restart(reason, force_level) {
             bg_system("/etc/init.d/steer stop >/dev/null 2>&1; " +
                 "/etc/init.d/steer start >/dev/null 2>&1; rm -f " + lock_path);
         } else {
-            bg_system("/etc/init.d/tachyon-core stop >/dev/null 2>&1; " +
-                "/etc/init.d/tachyon-core start >/dev/null 2>&1; rm -f " + lock_path);
+            let init_script = core_init_script();
+            bg_system(init_script + " stop >/dev/null 2>&1; " +
+                init_script + " start >/dev/null 2>&1; rm -f " + lock_path);
         }
     } else {
         log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
@@ -2052,7 +2061,7 @@ function increment_reconnect_count() {
 // this is the message the user sees while the loop is running.
 function singbox_service_absent() {
     let eng = active_engine_name();
-    let init_script = "/etc/init.d/tachyon-core";
+    let init_script = core_init_script();
     if (eng == "steer" || eng == "steer-extended") {
         init_script = "/etc/init.d/steer";
     }
@@ -2070,7 +2079,7 @@ function heal_core_stopped(ev) {
     if (singbox_service_absent()) {
         if (now - missing_singbox_reported_at > 3600) {
             missing_singbox_reported_at = now;
-            let init_script = (eng == "steer" || eng == "steer-extended") ? "/etc/init.d/steer" : "/etc/init.d/tachyon-core";
+            let init_script = (eng == "steer" || eng == "steer-extended") ? "/etc/init.d/steer" : core_init_script();
             log_message(sprintf("%s is not installed (no %s). Restarting cannot fix this - install a %s package or reinstall the binary variant. Watchdog will not retry until it appears.", eng, init_script, eng), "error");
             let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
             if (tcfg.notify_crash != "0") {

@@ -1315,10 +1315,11 @@ function stop_main() {
     if (module_success(STATE_UC, [ "core-is-foreign" ]))
         log_message("Sing-box PID provenance mismatch: the running sing-box was not started by Tachyon; stopping it anyway", "warn");
 
-    if (fs.stat("/etc/init.d/tachyon-core") != null) {
-        let sing_box_status = command_status_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
-        command_success_from_args([ "killall", "-q", "-9", "tachyon-core" ]);
-        command_success_from_args([ "killall", "-q", "-9", "sing-box" ]);
+    let core_proc = require("core.process");
+    let core_init = core_proc.core_contract().init_script;
+    if (fs.stat(core_init) != null) {
+        let sing_box_status = command_status_from_args([ core_init, "stop" ]);
+        core_proc.kill_core_daemons();
         if (!active_engine_is_steer() && sing_box_status != 0)
             status = sing_box_status;
     }

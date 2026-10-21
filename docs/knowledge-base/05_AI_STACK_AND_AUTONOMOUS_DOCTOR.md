@@ -4,7 +4,7 @@
 
 Tachyon provides a dual-layer AI and autonomous resilience stack:
 1. **Autonomous Layer (Local Rule Doctor & Watchdog)**: Runs locally on the router every 5–15 seconds, detects network drops, memory leaks, DNS deadlocks, and time desync without requiring internet access or API tokens.
-2. **Cognitive Layer (AI Doctor v2.5)**: Deep diagnostics powered by LLMs (OpenAI, Anthropic Claude, DeepSeek, or local Ollama/OpenRouter models) with contextual prompt enrichment and automated Multi-Fix generation.
+2. **Cognitive Layer (AI Doctor v3.0)**: Deep diagnostics powered by LLMs (OpenAI, Anthropic Claude, DeepSeek, Gemini, or local Ollama/OpenRouter models) with contextual prompt enrichment and automated Multi-Fix generation. The modules do not embed the v3.0 string; that is the name used by the README. The behavior below is what `diagnostics/doctor.uc` and `diagnostics/repairs.uc` implement.
 3. **Agent Integration Layer (HTTP REST Agent API & OpenAPI 3.0)**: Programmatic interface for autonomous AI agents (Cursor, Claude Code, AutoGPT, ChatGPT Custom GPTs, N8N, Dify).
 
 ### Smart Detect modes
@@ -13,7 +13,7 @@ Smart Detect remains a local watchdog function, independent of LLM/RAG. Its `sma
 
 ---
 
-## 2. AI Doctor Architecture (v2.5)
+## 2. AI Doctor Architecture (v3.0)
 
 ```mermaid
 graph TD
@@ -30,7 +30,7 @@ graph TD
     R4 --> Aggregator
 
     Aggregator --> Prompt[Deep Context LLM Prompt]
-    Prompt --> LLM[LLM Provider: OpenAI / Claude / DeepSeek / Custom]
+    Prompt --> LLM[LLM Provider: OpenAI / Claude / DeepSeek / Gemini / Custom]
     
     LLM --> Verdict[Structured Diagnosis Report]
     LLM --> MultiFix[Multi-Fix Action Plan: FIX: code1, code2]
@@ -41,30 +41,37 @@ graph TD
 
 ---
 
-## 3. Local Rule Doctor & 13 Quick Fix Codes
+## 3. Local Rule Doctor & 25 Quick Fix Codes
 
-The execution engine in `diagnostics/runtime.uc` maps standardized fix codes to automated shell/ucode repair procedures:
+`diagnostics/runtime.uc` delegates to `apply_quick_fix()` in `diagnostics/repairs.uc`. Aliases: `start_steer` runs the same branch as `start_singbox`, and `restart_steer_dns` runs the same branch as `restart_singbox_dns`.
 
 | Code | Target Subsystem | Action Performed |
 |---|---|---|
-| `start_singbox` | sing-box | Restarts failed sing-box process via procd. |
-| `rebuild_rules` | nftables | Flushes and recompiles `inet TachyonTable` ruleset. |
-| `fix_dnsmasq` | dnsmasq | Restarts dnsmasq and checks `/tmp/etc/dnsmasq.conf.*`. |
-| `fix_resolv_symlink` | DNS | Restores broken `/etc/resolv.conf` -> `/tmp/resolv.conf.d/resolv.conf.auto` link. |
-| `start_watchdog` | Watchdog | Restarts the background watchdog supervisor process. |
-| `restart_singbox_dns` | sing-box DNS | Resets internal sing-box DNS server module and cache. |
-| `fix_uci_config` | UCI | Restores `/etc/config/tachyon` from the latest valid atomic backup. |
-| `fix_wan_interface` | Networking | Runs `ifup wan` to bounce the primary uplink interface. |
-| `fix_gateway` | Networking | Re-establishes default routing gateway via `/etc/init.d/network restart`. |
-| `clear_dns_cache` | Cache | Flushes dnsmasq cache, deletes sing-box `cache.db`, and restarts DNS. |
-| `update_subscriptions`| Subscriptions | Triggers asynchronous background download and refresh of proxy subscriptions. |
-| `reset_firewall` | Firewall | Full restart of OpenWrt firewall (`/etc/init.d/firewall restart`). |
-| `restart_network` | Network Stack | Full restart of OpenWrt network daemon (`/etc/init.d/network restart`). |
-| `fix_system_time` | System NTP | Resynchronizes router clock via NTP pool servers (`ntpd -q -p ...`). |
-| `flush_conntrack` | Kernel | Flushes congested `nf_conntrack` table during connection floods. |
-| `fix_bootstrap_dns` | Resolver | Unblocks sing-box primary bootstrap resolvers and breaks circular loops. |
-| `optimize_mtu` | Tunnels | Auto-calculates optimal MTU (1280–1420) for WireGuard / AmneziaWG interfaces. |
-| `restore_native_internet` | Emergency | One-click full teardown of Tachyon proxying; returns pure native WAN routing. |
+| `start_singbox` | Core / Steer | Runs `restore_dnsmasq` and restarts `/etc/init.d/tachyon-core`. On Steer, restarts `/etc/init.d/steer`. |
+| `rebuild_rules` | nftables | `/etc/init.d/tachyon reload`. |
+| `fix_dnsmasq` | dnsmasq | Restarts dnsmasq. |
+| `fix_resolv_symlink` | DNS | Points `/etc/resolv.conf` at an existing `resolv.conf.auto` (`/tmp/resolv.conf.d/resolv.conf.auto`, otherwise `/tmp/resolv.conf.auto`). |
+| `start_watchdog` | Watchdog | Restarts `/etc/init.d/tachyon`. |
+| `restart_singbox_dns` | Core DNS | Restarts `/etc/init.d/tachyon-core`. On Steer, reloads dnsd and dnsmasq. |
+| `fix_uci_config` | UCI | Restores `/etc/backup/tachyon_config`, otherwise `/etc/config/tachyon.bak`. |
+| `fix_wan_interface` | Networking | `ubus call network.interface.wan up`, `ifup wan`, and a route-cache flush. |
+| `fix_gateway` | Networking | `/etc/init.d/network restart`. |
+| `clear_dns_cache` | DNS | Restarts dnsmasq and flushes the route cache. |
+| `update_subscriptions` | Subscriptions | `tachyon subscription_update_async`. |
+| `reset_firewall` | Firewall | `/etc/init.d/firewall restart`, then `/etc/init.d/tachyon reload`. |
+| `restart_network` | Network | `/etc/init.d/network restart`. |
+| `restart_zapret` | DPI providers | Stops and disables standalone zapret, zapret2 and byedpi, then starts the Tachyon provider runtimes. |
+| `optimize_memory` | Memory | Drops the page cache, removes `/tmp/tachyon-core/*.tmp`, restarts tachyon-core. |
+| `switch_to_doh` | DNS | Sets `dns_type=doh`, commits, and reloads Tachyon. |
+| `heal_network_stack` | Network | Relinks `/etc/resolv.conf`, restarts dnsmasq and Tachyon, brings WAN up. |
+| `enable_safe_bypass` | Routing | Sets `recovery_bypass=1`, commits, and reloads Tachyon. |
+| `restore_native_internet` | Emergency | Stops Tachyon, deletes `inet TachyonTable` and the policy routes, restarts dnsmasq. |
+| `fix_system_time` | NTP | `ntpd -q` against the built-in servers, then restarts sysntpd. |
+| `flush_conntrack` | Kernel | Sets `nf_conntrack_max=65536` and runs `conntrack -F`. |
+| `fix_bootstrap_dns` | Resolver | Sets `bootstrap_dns_server=77.88.8.8`, commits, and reloads Tachyon. |
+| `restart_providers` | Providers | Starts the WDTT, OlcRTC and FPTN runtimes. |
+| `optimize_mtu` | Tunnels | Runs `tachyon discover-awg-mtu`, then reloads Tachyon. |
+| `upgrade_to_singbox_extended` | Core package | `component_action_async sing_box install_extended`. |
 
 ---
 
