@@ -45,6 +45,10 @@ for f in \
   if printf '%s\n' "$block" | grep -Fq 'killall'; then
     fail "$f managed service script contains killall, which kills /etc/init.d/tachyon-core itself"
   fi
+  grep -Fq '_kill_daemon_instances()' "$f" ||
+    fail "$f must define _kill_daemon_instances()"
+  grep -Fq '_has_running_daemon()' "$f" ||
+    fail "$f must define _has_running_daemon()"
 done
 
 printf 'clean_install_sing_box_init: all checks passed\n'

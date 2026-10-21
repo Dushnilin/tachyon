@@ -713,6 +713,7 @@ function managed_service_script_stale() {
         index(data, "core=\"unlimited\"") >= 0 ||
         index(data, "GOMEMLIMIT") < 0 ||
         index(data, "PROG=\"/usr/bin/sing-box\"") < 0 ||
+        index(data, "stop_service()") < 0 ||
         index(data, "killall -q -9 tachyon-core") >= 0;
 }
 
@@ -723,6 +724,23 @@ function managed_service_text() {
         "START=99\n" +
         "PROG=\"/usr/bin/tachyon-core\"\n" +
         "[ -x \"$PROG\" ] || PROG=\"/usr/bin/sing-box\"\n\n" +
+        "_kill_daemon_instances() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box) kill -9 \"$p\" 2>/dev/null || true ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "}\n\n" +
+        "_has_running_daemon() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box) return 0 ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    return 1\n" +
+        "}\n\n" +
         "start_service() {\n" +
         "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
         "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
@@ -763,6 +781,7 @@ function managed_service_text() {
         "            [ \"$gomemlimit\" -lt 16 ] && gomemlimit=16\n" +
         "        fi\n" +
         "    fi\n\n" +
+        "    _kill_daemon_instances\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
@@ -777,6 +796,15 @@ function managed_service_text() {
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
         "    procd_close_instance\n" +
+        "}\n\n" +
+        "stop_service() {\n" +
+        "    local i=0\n" +
+        "    while [ \"$i\" -lt 20 ]; do\n" +
+        "        _has_running_daemon || return 0\n" +
+        "        sleep 0.1 2>/dev/null || sleep 1\n" +
+        "        i=$(( i + 1 ))\n" +
+        "    done\n" +
+        "    _kill_daemon_instances\n" +
         "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"tachyon-core\"\n" +
