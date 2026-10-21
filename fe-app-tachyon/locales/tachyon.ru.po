@@ -1,15 +1,15 @@
 # RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
-# Dushnilin, 2026.
+# lQwestl, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 16:07+0300\n"
-"PO-Revision-Date: 2026-10-21 16:07+0300\n"
-"Last-Translator: Dushnilin\n"
+"POT-Creation-Date: 2026-10-21 18:30+0300\n"
+"PO-Revision-Date: 2026-10-21 18:30+0300\n"
+"Last-Translator: lQwestl\n"
 "Language-Team: none\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -5131,6 +5131,9 @@ msgstr "Секрет"
 
 msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
 msgstr "Секретный ключ для аутентификации удалённого доступа к YACD при включённом WAN-доступе."
+
+msgid "Secret key is required when WAN access is enabled"
+msgstr "Секретный ключ обязателен, когда включён WAN-доступ"
 
 msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
 msgstr "Секретный токен для авторизации операций записи (POST/PUT) на /cgi-bin/tachyon-agent/. Оставьте пустым, если аутентификация не требуется."
