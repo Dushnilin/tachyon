@@ -36,7 +36,12 @@ import {
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
 import { getExpandedSections, toggleSectionExpansion } from './actions';
-import { aggregateClientConnections } from './connections';
+import {
+  aggregateClientConnections,
+  aggregateTopDomains,
+  ITopDomain,
+} from './connections';
+import { getActiveRoute } from './activeRoute';
 import {
   computeTrafficRates,
   createInitialTrafficRatesState,
@@ -83,6 +88,7 @@ let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
 let connectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let currentConnections: IConnection[] = [];
+let currentTopDomains: ITopDomain[] = [];
 let directSocketsFailed = false;
 let trafficRatesState: TrafficRatesState = createInitialTrafficRatesState();
 let pageUnloading = false;
@@ -639,6 +645,13 @@ async function connectToClashSockets(dataUpdatesId: number) {
           },
         },
       });
+
+      if (Array.isArray(parsedMsg.connections)) {
+        currentTopDomains = aggregateTopDomains(parsedMsg.connections);
+        if (expandedSections.has('active_clients')) {
+          renderConnectionsWidget();
+        }
+      }
     },
     (_err) => {
       if (
@@ -2195,11 +2208,14 @@ async function fetchConnections() {
         });
       }
 
-      if (shouldFetchHostnames && Array.isArray(payload.connections)) {
-        currentConnections = aggregateClientConnections(
-          payload.connections,
-          hostnames,
-        );
+      if (Array.isArray(payload.connections)) {
+        if (shouldFetchHostnames) {
+          currentConnections = aggregateClientConnections(
+            payload.connections,
+            hostnames,
+          );
+        }
+        currentTopDomains = aggregateTopDomains(payload.connections);
       }
     }
   } catch (_e) {
@@ -2217,32 +2233,85 @@ function renderConnectionsWidget() {
       currentConnections,
       !expandedSections.has('active_clients'),
       () => toggleSectionExpanded('active_clients'),
+      currentTopDomains,
     ),
   );
 }
 
 async function renderBandwidthWidget() {
+  const total = store.get().trafficTotalWidget.data;
   renderStoreWidget(
     'dashboard-widget-traffic',
     'bandwidthWidget',
-    _('Traffic'),
+    _('Traffic & Speed'),
     (data) => [
-      { key: _('Uplink'), value: `${prettyBytes(data.up)}/s` },
-      { key: _('Downlink'), value: `${prettyBytes(data.down)}/s` },
+      {
+        key: _('Downlink'),
+        value: `↓ ${prettyBytes(data.down)}/s`,
+        attributes: { class: 'tachyon-stat--down' },
+      },
+      {
+        key: _('Uplink'),
+        value: `↑ ${prettyBytes(data.up)}/s`,
+        attributes: { class: 'tachyon-stat--up' },
+      },
+      {
+        key: _('Session total'),
+        value: `▼ ${prettyBytes(total.downloadTotal || 0)} • ▲ ${prettyBytes(total.uploadTotal || 0)}`,
+        attributes: { class: 'tachyon-stat--session' },
+      },
     ],
     'renderBandwidthWidget',
   );
 }
 
 async function renderTrafficTotalWidget() {
+  const sections = store.get().sectionsWidget.data;
+  const activeRoute = getActiveRoute(sections);
+
   renderStoreWidget(
     'dashboard-widget-traffic-total',
     'trafficTotalWidget',
-    _('Traffic Total'),
-    (data) => [
-      { key: _('Uplink'), value: String(prettyBytes(data.uploadTotal)) },
-      { key: _('Downlink'), value: String(prettyBytes(data.downloadTotal)) },
-    ],
+    _('Active Route'),
+    () => {
+      if (!activeRoute) {
+        return [
+          { key: _('Server'), value: _('Standby / Direct') },
+          { key: _('Selector'), value: '—' },
+        ];
+      }
+
+      const items = [
+        {
+          key: _('Server'),
+          value: activeRoute.name,
+          attributes: { class: 'tachyon-stat--bold' },
+        },
+        {
+          key: _('Selector'),
+          value: activeRoute.selector,
+        },
+        {
+          key: _('Latency'),
+          value:
+            activeRoute.latency > 0
+              ? `${activeRoute.latency}ms`
+              : _('Checking...'),
+          attributes: {
+            class: activeRoute.latency > 0 ? 'tachyon-stat--down' : '',
+          },
+        },
+      ];
+
+      if (activeRoute.type) {
+        items.push({
+          key: _('Protocol'),
+          value: activeRoute.type,
+        });
+      }
+
+      return items;
+    },
     'renderTrafficTotalWidget',
   );
 }
@@ -2251,10 +2320,18 @@ async function renderSystemInfoWidget() {
   renderStoreWidget(
     'dashboard-widget-system-info',
     'systemInfoWidget',
-    _('System info'),
+    _('Routing & Rules'),
     (data) => [
-      { key: _('Active Connections'), value: String(data.connections) },
-      { key: _('Memory Usage'), value: String(prettyBytes(data.memory)) },
+      { key: _('Mode'), value: 'TProxy + Fake-IP' },
+      {
+        key: _('Active Connections'),
+        value: `${data.connections || 0} ${_('conns')}`,
+      },
+      { key: _('Core Memory'), value: String(prettyBytes(data.memory || 0)) },
+      {
+        key: _('Active Clients'),
+        value: `${currentConnections.length} ${_('devices')}`,
+      },
     ],
     'renderSystemInfoWidget',
   );
@@ -2545,6 +2622,7 @@ async function onStoreUpdate(
 
     if (!inlineUpdated) {
       renderSectionsWidget();
+      renderTrafficTotalWidget();
     }
   }
 
@@ -2554,6 +2632,7 @@ async function onStoreUpdate(
 
   if (diff.trafficTotalWidget) {
     renderTrafficTotalWidget();
+    renderBandwidthWidget();
   }
 
   if (diff.systemInfoWidget) {

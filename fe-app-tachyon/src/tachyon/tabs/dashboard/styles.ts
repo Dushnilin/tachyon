@@ -104,14 +104,32 @@ export const styles = `
 
 .tachyon_dashboard-page__widgets-section__item {
     border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-    padding: 10px;
+    border-radius: 6px;
+    padding: 12px;
     min-width: 0;
+    background: rgba(128, 128, 128, 0.03);
+    display: flex;
+    flex-direction: column;
 }
 
-.tachyon_dashboard-page__widgets-section__item__title {}
+.tachyon_dashboard-page__widgets-section__item__title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color-high, inherit);
+    margin-bottom: 6px;
+    display: block;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+    padding-bottom: 4px;
+}
 
-.tachyon_dashboard-page__widgets-section__item__row {}
+.tachyon_dashboard-page__widgets-section__item__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 3px;
+}
 
 .tachyon_dashboard-page__widgets-section__item__row--success .tachyon_dashboard-page__widgets-section__item__row__value {
     color: var(--success-color-medium, green);
@@ -124,6 +142,69 @@ export const styles = `
 .tachyon_dashboard-page__widgets-section__item__row__key {}
 
 .tachyon_dashboard-page__widgets-section__item__row__value {}
+
+.tachyon-stat--down {
+    color: #10b981 !important;
+    font-weight: 600;
+}
+
+.tachyon-stat--up {
+    color: #3b82f6 !important;
+    font-weight: 600;
+}
+
+.tachyon-stat--session {
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+.tachyon-stat--bold {
+    font-weight: 700;
+    color: var(--text-color-high, inherit);
+}
+
+.tachyon_dashboard-page__top-domains-container {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.tachyon_dashboard-page__top-domains-header {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.75;
+    margin-bottom: 6px;
+}
+
+.tachyon_dashboard-page__top-domains-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tachyon_dashboard-page__top-domain-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(128, 128, 128, 0.12);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    color: var(--text-color-high);
+}
+
+.tachyon_dashboard-page__top-domain-chip__icon {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.tachyon_dashboard-page__top-domain-chip__badge {
+    font-size: 11px;
+    opacity: 0.7;
+    background: rgba(0, 0, 0, 0.15);
+    padding: 1px 4px;
+    border-radius: 4px;
+}
 
 .tachyon_dashboard-page__outbound-section {
     margin-top: 10px;
