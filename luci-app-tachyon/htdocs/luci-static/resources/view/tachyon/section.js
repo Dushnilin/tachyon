@@ -5754,6 +5754,7 @@ function showAmneziaConfigSettingsModal(
         // Several files at once: each becomes its own item straight away —
         // a review modal per file would be noise. Content is validated per
         // file; duplicates and anything else are caught on save.
+        const validFiles = [];
         for (const file of files) {
           if (!/\.conf$/i.test(file.name) || file.size > 65536) {
             ui.addNotification(
@@ -5767,27 +5768,73 @@ function showAmneziaConfigSettingsModal(
             );
             continue;
           }
-          const reader = new FileReader();
-          reader.onerror = () =>
-            ui.addNotification(
-              null,
-              E("p", _("Cannot read the Amnezia .conf file")),
-            );
-          reader.onload = () => {
-            const config = `${reader.result || ""}`.replace(/^\uFEFF/, "");
-            const name = file.name.replace(/\.conf$/i, "");
-            const result = validateAmneziaConfig(name, config);
+          validFiles.push(file);
+        }
+        if (!validFiles.length) return;
+        Promise.all(
+          validFiles.map(
+            (file) =>
+              new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onerror = () => resolve({ file, error: true });
+                reader.onload = () =>
+                  resolve({
+                    file,
+                    config: `${reader.result || ""}`.replace(/^\uFEFF/, ""),
+                  });
+                reader.readAsText(file);
+              }),
+          ),
+        ).then((results) => {
+          const existingNames = new Set(
+            (widget && widget.node ? dynamicListItemValues(widget.node) : [])
+              .map((v) => {
+                const parsed = parseAmneziaConfig(v);
+                return parsed && parsed.name ? parsed.name.trim() : "";
+              })
+              .filter(Boolean),
+          );
+          let addedCount = 0;
+          let lastAddedValue = "";
+          for (const res of results) {
+            if (res.error) {
+              ui.addNotification(
+                null,
+                E("p", _("Cannot read the Amnezia .conf file")),
+              );
+              continue;
+            }
+            const baseName = res.file.name.replace(/\.conf$/i, "").trim();
+            let name = baseName;
+            let suffix = 2;
+            while (existingNames.has(name)) {
+              name = `${baseName} (${suffix})`;
+              suffix += 1;
+            }
+            const result = validateAmneziaConfig(name, res.config);
             if (result !== true) {
               ui.addNotification(
                 null,
-                E("p", "%s: %s".format(file.name, result)),
+                E("p", "%s: %s".format(res.file.name, result)),
               );
-              return;
+              continue;
             }
-            addDynamicListItem(widget, JSON.stringify({ name, config }));
-          };
-          reader.readAsText(file);
-        }
+            existingNames.add(name);
+            const serialized = JSON.stringify({ name, config: res.config });
+            if (widget && widget.node) {
+              widget.addItem(widget.node, serialized, null, false);
+              lastAddedValue = serialized;
+              addedCount += 1;
+            }
+          }
+          if (addedCount > 0 && widget && widget.node) {
+            widget.dispatchCbiDynlistChange(widget.node, lastAddedValue);
+            updateButtonAddDynamicListLayout(
+              widget.node,
+              widget.options.addButtonLabel,
+            );
+          }
+        });
         return;
       }
       const file = files[0];
@@ -11779,6 +11826,16 @@ function createSectionContent(section) {
     return E("div", { style: "display:contents" }, [fileInput, btn]);
   };
 
+  const validateAwgManualRequiredText = function (section_id, value) {
+    if (
+      currentSourceOptionValues(section_id, "selector_amnezia_configs").length >
+      0
+    ) {
+      return true;
+    }
+    return validateRequiredText.call(this, section_id, value);
+  };
+
   o = section.taboption(
     "awg_manual",
     form.Value,
@@ -11787,9 +11844,9 @@ function createSectionContent(section) {
   );
 
   o.modalonly = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.depends("action", "awg");
-  o.validate = validateRequiredText;
+  o.validate = validateAwgManualRequiredText;
 
   o = section.taboption(
     "awg_manual",
@@ -11798,9 +11855,9 @@ function createSectionContent(section) {
     _("Private Key"),
   );
   o.modalonly = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.depends("action", "awg");
-  o.validate = validateRequiredText;
+  o.validate = validateAwgManualRequiredText;
 
   o = section.taboption(
     "awg_manual",
@@ -11809,9 +11866,9 @@ function createSectionContent(section) {
     _("Peer Public Key"),
   );
   o.modalonly = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.depends("action", "awg");
-  o.validate = validateRequiredText;
+  o.validate = validateAwgManualRequiredText;
 
   o = section.taboption(
     "awg_manual",
@@ -11820,9 +11877,9 @@ function createSectionContent(section) {
     _("Server Address"),
   );
   o.modalonly = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.depends("action", "awg");
-  o.validate = validateRequiredText;
+  o.validate = validateAwgManualRequiredText;
 
   o = section.taboption(
     "awg_manual",
@@ -11831,10 +11888,10 @@ function createSectionContent(section) {
     _("Server Port"),
   );
   o.modalonly = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.datatype = "port";
   o.depends("action", "awg");
-  o.validate = validateRequiredText;
+  o.validate = validateAwgManualRequiredText;
 
   o = section.taboption(
     "awg_manual",
@@ -12942,7 +12999,36 @@ function createSectionContent(section) {
       },
     );
   };
-  o.onListChange = refreshDashboardFilterChoiceWidgets;
+  o.onListChange = function (section_id) {
+    refreshDashboardFilterChoiceWidgets(section_id);
+    if (typeof document !== "undefined") {
+      [
+        "awg_local_address",
+        "awg_private_key",
+        "awg_peer_public_key",
+        "awg_server_address",
+        "awg_server_port",
+      ].forEach((optName) => {
+        const el =
+          document.getElementById(
+            `widget.cbid.${UCI_PACKAGE}.${section_id}.${optName}`,
+          ) ||
+          document.getElementById(
+            `cbid.${UCI_PACKAGE}.${section_id}.${optName}`,
+          );
+        const input =
+          el &&
+          (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
+            ? el
+            : el.querySelector("input:not([type='hidden']),select,textarea"));
+        if (input) {
+          input.classList.remove("cbi-input-invalid");
+          input.dispatchEvent(new Event("keyup", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+    }
+  };
   outboundNameSourceOptions.set("selector_amnezia_configs", o);
 
   o = section.taboption(

@@ -346,6 +346,8 @@ export namespace Tachyon {
     runtimeAvailable?: boolean;
     urlTestInfo?: UrlTestInfo;
     priorityInfo?: PriorityInfo;
+    sourceGroup?: string;
+    sourceTitle?: string;
   }
 
   export interface UrlTestMember {
@@ -571,6 +573,7 @@ export namespace Tachyon {
     preferred_server?: string;
 
     selector_proxy_links?: string[];
+    selector_amnezia_configs?: string[];
     subscription_urls?: string[];
     interfaces?: string[];
     outbound_jsons?: string[];
@@ -856,6 +859,7 @@ export namespace Tachyon {
     ports?: Record<string, string>;
     details?: Record<string, string>;
     prefixes?: Record<string, string>;
+    sources?: Record<string, string>;
   }
 
   export interface GetSingBoxStatus {

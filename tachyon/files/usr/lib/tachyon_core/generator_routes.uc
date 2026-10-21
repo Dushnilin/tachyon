@@ -868,7 +868,7 @@ function merge_member_state_into_group(group_state, member, config) {
         for (let item in array_or_empty(member_state.subscriptionMetadata))
             push(group_state.subscriptionMetadata, item);
         let member_meta = object_or_empty(member_state.outboundMetadata);
-        for (let field in [ "names", "countries", "protocols", "transports", "securities", "prefixes", "ports", "details" ]) {
+        for (let field in [ "names", "countries", "protocols", "transports", "securities", "prefixes", "ports", "details", "sources" ]) {
             if (!group_state.outboundMetadata[field])
                 group_state.outboundMetadata[field] = {};
             for (let k, v in object_or_empty(member_meta[field]))

@@ -268,13 +268,18 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
         state.outboundMetadata.details[tag_name] = b_str;
 }
 
-function remember_source_outbound(state, tag_name, display_name, outbound, source_link, prefix) {
+function remember_source_outbound(state, tag_name, display_name, outbound, source_link, prefix, source_key) {
     if (type(state) != "object")
         return;
     let is_cand = index(tag_name, "cand-") == 0 || index(tag_name, " cand-") >= 0;
     if (is_cand)
         return;
     remember_outbound_metadata(state, tag_name, display_name, outbound, prefix);
+    if (source_key != null && as_string(source_key) != "") {
+        if (!state.outboundMetadata.sources)
+            state.outboundMetadata.sources = {};
+        state.outboundMetadata.sources[tag_name] = as_string(source_key);
+    }
     let outbound_type = as_string(outbound.type || "");
     if (outbound_type != "selector" && outbound_type != "urltest") {
         if (subscription_share_link.is_copyable_link(source_link))
@@ -388,7 +393,8 @@ function new_section_state(section_name) {
             securities: {},
             prefixes: {},
             ports: {},
-            details: {}
+            details: {},
+            sources: {}
         },
         servers: {},
         urltestCandidateTags: [],

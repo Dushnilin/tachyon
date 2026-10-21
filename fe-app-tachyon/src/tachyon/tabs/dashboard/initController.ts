@@ -1842,18 +1842,20 @@ function updateLatencyProgressInline(
       return false;
     }
 
-    const isConnectionNode = [
-      'vpn',
-      'awg',
-      'warp',
-      'anytls',
-      'snell',
-      'mieru',
-      'naive',
-      'sudoku',
-      'masque',
-      'openvpn',
-    ].includes(section.action || '');
+    const isConnectionNode =
+      !section.withTagSelect &&
+      [
+        'vpn',
+        'awg',
+        'warp',
+        'anytls',
+        'snell',
+        'mieru',
+        'naive',
+        'sudoku',
+        'masque',
+        'openvpn',
+      ].includes(section.action || '');
 
     const text = isConnectionNode
       ? _('Checking Connection...')
@@ -2034,6 +2036,9 @@ async function renderSectionsWidget() {
       section,
       isCollapsed: !expandedSections.has(section.code),
       onToggleCollapse: () => toggleSectionExpanded(section.code),
+      collapsedSourceGroups: expandedSections,
+      onToggleSourceGroupCollapse: (groupKey: string) =>
+        toggleSectionExpanded(groupKey),
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName],
       ),

@@ -2863,16 +2863,18 @@ function renderMetadataAction(label, url) {
     renderLinkIcon24()
   );
 }
-function renderSubscriptionMetadata(metadata) {
+function renderSubscriptionMetadata(metadata, options) {
   if (!metadata || Object.keys(metadata).length <= 1) {
-    return void 0;
+    if (!options?.onToggleGroup) {
+      return void 0;
+    }
   }
-  const title = metadata.title || metadata.fileName;
-  const traffic = metadata.traffic;
+  const title = metadata?.title || metadata?.fileName;
+  const traffic = metadata?.traffic;
   const used = formatBytes(traffic?.used) || "0 B";
   const total = traffic?.isUnlimited ? "∞" : formatBytes(traffic?.total) || "0 B";
-  const expire = formatDate(metadata.expire);
-  const refillDate = formatDate(metadata.refillDate);
+  const expire = formatDate(metadata?.expire);
+  const refillDate = formatDate(metadata?.refillDate);
   const rows = [
     traffic ? {
       label: _("Traffic"),
@@ -2882,60 +2884,109 @@ function renderSubscriptionMetadata(metadata) {
     refillDate ? { label: _("Refill"), value: refillDate } : void 0
   ].filter(Boolean);
   const actions = [
-    renderMetadataAction("Profile", metadata.webPageUrl),
-    renderMetadataAction("Support", metadata.supportUrl),
-    renderMetadataAction("More details", metadata.announceUrl)
+    renderMetadataAction("Profile", metadata?.webPageUrl),
+    renderMetadataAction("Support", metadata?.supportUrl),
+    renderMetadataAction("More details", metadata?.announceUrl)
   ].filter(Boolean);
-  return E("div", { class: "tachyon_dashboard-page__subscription-meta" }, [
-    E("div", { class: "tachyon_dashboard-page__subscription-meta__main" }, [
-      E(
-        "div",
-        { class: "tachyon_dashboard-page__subscription-meta__heading" },
-        _("Subscription info:")
-      ),
-      title ? E(
-        "div",
-        { class: "tachyon_dashboard-page__subscription-meta__title" },
-        title
-      ) : "",
-      rows.length ? E(
-        "div",
-        { class: "tachyon_dashboard-page__subscription-meta__facts" },
-        rows.map(
-          (row) => E(
-            "div",
-            { class: "tachyon_dashboard-page__subscription-meta__fact" },
-            [
-              E(
-                "span",
-                {
-                  class: "tachyon_dashboard-page__subscription-meta__fact-key"
-                },
-                row.label
-              ),
-              E(
-                "span",
-                {
-                  class: "tachyon_dashboard-page__subscription-meta__fact-value"
-                },
-                row.value
-              )
-            ]
+  const isToggleable = Boolean(options?.onToggleGroup);
+  const isGroupCollapsed = Boolean(options?.isGroupCollapsed);
+  return E(
+    "div",
+    {
+      class: [
+        "tachyon_dashboard-page__subscription-meta",
+        isToggleable ? "tachyon_dashboard-page__subscription-meta--collapsible" : "",
+        isGroupCollapsed ? "tachyon_dashboard-page__subscription-meta--collapsed" : ""
+      ].filter(Boolean).join(" "),
+      click: isToggleable ? (event) => {
+        if (event.target && event.target.closest("a, button")) {
+          return;
+        }
+        options?.onToggleGroup?.();
+      } : void 0
+    },
+    [
+      E("div", { class: "tachyon_dashboard-page__subscription-meta__main" }, [
+        ...isToggleable ? [
+          svgEl(
+            "svg",
+            {
+              width: "15",
+              height: "15",
+              viewBox: "0 0 24 24",
+              fill: "none",
+              stroke: "currentColor",
+              "stroke-width": "2",
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round",
+              style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? "-90deg" : "0deg"})`
+            },
+            [svgEl("polyline", { points: "6 9 12 15 18 9" })]
           )
-        )
-      ) : "",
-      actions.length ? E(
-        "div",
-        { class: "tachyon_dashboard-page__subscription-meta__actions" },
-        actions
+        ] : [],
+        E(
+          "div",
+          { class: "tachyon_dashboard-page__subscription-meta__heading" },
+          _("Subscription info:")
+        ),
+        title ? E(
+          "div",
+          { class: "tachyon_dashboard-page__subscription-meta__title" },
+          title
+        ) : "",
+        typeof options?.groupCount === "number" ? E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__source-group__count"
+          },
+          `${options.groupCount}`
+        ) : "",
+        isGroupCollapsed && options?.selectedOutbound ? E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__source-group__active-badge"
+          },
+          `● ${options.selectedOutbound.displayName}`
+        ) : "",
+        rows.length ? E(
+          "div",
+          { class: "tachyon_dashboard-page__subscription-meta__facts" },
+          rows.map(
+            (row) => E(
+              "div",
+              { class: "tachyon_dashboard-page__subscription-meta__fact" },
+              [
+                E(
+                  "span",
+                  {
+                    class: "tachyon_dashboard-page__subscription-meta__fact-key"
+                  },
+                  row.label
+                ),
+                E(
+                  "span",
+                  {
+                    class: "tachyon_dashboard-page__subscription-meta__fact-value"
+                  },
+                  row.value
+                )
+              ]
+            )
+          )
+        ) : "",
+        actions.length ? E(
+          "div",
+          { class: "tachyon_dashboard-page__subscription-meta__actions" },
+          actions
+        ) : ""
+      ]),
+      !isGroupCollapsed && metadata?.announce ? E(
+        "blockquote",
+        { class: "tachyon_dashboard-page__subscription-meta__announce" },
+        metadata.announce
       ) : ""
-    ]),
-    metadata.announce ? E(
-      "blockquote",
-      { class: "tachyon_dashboard-page__subscription-meta__announce" },
-      metadata.announce
-    ) : ""
-  ]);
+    ]
+  );
 }
 function renderSubscriptionUpdateAction(section, subscriptionUpdating, onUpdateSubscription) {
   if (!section.subscriptionSourceCount) {
@@ -2987,9 +3038,11 @@ function renderDefaultState({
   onTestSingleOutbound,
   testingOutboundCodes,
   isCollapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  collapsedSourceGroups,
+  onToggleSourceGroupCollapse
 }) {
-  const isConnectionNode = [
+  const isConnectionNode = !section.withTagSelect && [
     "vpn",
     "awg",
     "warp",
@@ -3386,12 +3439,158 @@ function renderDefaultState({
       ]
     );
   }
-  const metadataNodes = (section.subscriptionMetadata || []).map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
   const subscriptionUpdateAction = renderSubscriptionUpdateAction(
     section,
     subscriptionUpdating,
     onUpdateSubscription
   );
+  function renderGridChildren() {
+    const outbounds = section.outbounds || [];
+    const metadataList = section.subscriptionMetadata || [];
+    const subSourceCount = section.subscriptionSourceCount || 0;
+    const topGroups = [];
+    const subMap = /* @__PURE__ */ new Map();
+    const manualOutbounds = [];
+    for (const ob of outbounds) {
+      if (ob.urlTestInfo || ob.priorityInfo) {
+        topGroups.push(ob);
+      } else if (ob.sourceGroup && ob.sourceGroup.startsWith("sub:")) {
+        const list = subMap.get(ob.sourceGroup) || [];
+        list.push(ob);
+        subMap.set(ob.sourceGroup, list);
+      } else {
+        manualOutbounds.push(ob);
+      }
+    }
+    const hasSubTaggedOutbounds = subMap.size > 0;
+    const hasMultipleSources = subSourceCount > 1 || subMap.size > 1 || hasSubTaggedOutbounds && manualOutbounds.length > 0;
+    if (!hasSubTaggedOutbounds && !hasMultipleSources) {
+      const metadataNodes = metadataList.map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
+      return [...metadataNodes, ...outbounds.map((ob) => renderOutbound(ob))];
+    }
+    const nodes = [];
+    for (const ob of topGroups) {
+      nodes.push(renderOutbound(ob));
+    }
+    const metadataBySubKey = /* @__PURE__ */ new Map();
+    metadataList.forEach((meta, idx) => {
+      const sourceIdx = typeof meta.sourceIndex === "number" ? meta.sourceIndex : metadataList.length === 1 && subMap.size === 1 ? Number(Array.from(subMap.keys())[0].slice(4)) || 1 : idx + 1;
+      metadataBySubKey.set(`sub:${sourceIdx}`, meta);
+    });
+    const allSubKeys = Array.from(
+      /* @__PURE__ */ new Set([
+        ...Array.from(subMap.keys()),
+        ...Array.from(metadataBySubKey.keys())
+      ])
+    ).sort((a, b) => {
+      const na = Number(a.slice(4)) || 0;
+      const nb = Number(b.slice(4)) || 0;
+      return na - nb;
+    });
+    for (const subKey of allSubKeys) {
+      const members = subMap.get(subKey) || [];
+      const meta = metadataBySubKey.get(subKey);
+      if (members.length === 0 && !meta) continue;
+      const collapseKey = `subgrp:${section.code}:${subKey}`;
+      const isGroupCollapsed = Boolean(collapsedSourceGroups?.has(collapseKey));
+      const selectedMember = members.find((m) => m.selected);
+      const subNumber = Number(subKey.slice(4)) || 1;
+      const fallbackSubTitle = allSubKeys.length > 1 ? `${_("Subscription")} #${subNumber}` : _("Subscription");
+      const headerMeta = meta && Object.keys(meta).length > 1 ? meta : {
+        title: members[0]?.prefix || fallbackSubTitle,
+        sourceIndex: subNumber
+      };
+      const metaHeader = renderSubscriptionMetadata(headerMeta, {
+        groupCount: members.length,
+        selectedOutbound: selectedMember,
+        isGroupCollapsed,
+        onToggleGroup: members.length > 0 ? () => onToggleSourceGroupCollapse?.(collapseKey) : void 0
+      });
+      if (metaHeader) {
+        nodes.push(metaHeader);
+      }
+      if (!isGroupCollapsed) {
+        for (const m of members) {
+          nodes.push(renderOutbound(m));
+        }
+      }
+    }
+    if (manualOutbounds.length > 0) {
+      if (allSubKeys.length > 0) {
+        const collapseKey = `subgrp:${section.code}:manual`;
+        const isGroupCollapsed = Boolean(
+          collapsedSourceGroups?.has(collapseKey)
+        );
+        const selectedManual = manualOutbounds.find((m) => m.selected);
+        nodes.push(
+          E(
+            "div",
+            {
+              class: [
+                "tachyon_dashboard-page__subscription-meta",
+                "tachyon_dashboard-page__subscription-meta--collapsible",
+                "tachyon_dashboard-page__source-group--manual",
+                isGroupCollapsed ? "tachyon_dashboard-page__subscription-meta--collapsed" : ""
+              ].filter(Boolean).join(" "),
+              click: () => onToggleSourceGroupCollapse?.(collapseKey)
+            },
+            [
+              E(
+                "div",
+                { class: "tachyon_dashboard-page__subscription-meta__main" },
+                [
+                  svgEl(
+                    "svg",
+                    {
+                      width: "15",
+                      height: "15",
+                      viewBox: "0 0 24 24",
+                      fill: "none",
+                      stroke: "currentColor",
+                      "stroke-width": "2",
+                      "stroke-linecap": "round",
+                      "stroke-linejoin": "round",
+                      style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? "-90deg" : "0deg"})`
+                    },
+                    [svgEl("polyline", { points: "6 9 12 15 18 9" })]
+                  ),
+                  E(
+                    "div",
+                    {
+                      class: "tachyon_dashboard-page__subscription-meta__heading"
+                    },
+                    _("Standalone servers")
+                  ),
+                  E(
+                    "span",
+                    { class: "tachyon_dashboard-page__source-group__count" },
+                    `${manualOutbounds.length}`
+                  ),
+                  isGroupCollapsed && selectedManual ? E(
+                    "span",
+                    {
+                      class: "tachyon_dashboard-page__source-group__active-badge"
+                    },
+                    `● ${selectedManual.displayName}`
+                  ) : ""
+                ]
+              )
+            ]
+          )
+        );
+        if (!isGroupCollapsed) {
+          for (const m of manualOutbounds) {
+            nodes.push(renderOutbound(m));
+          }
+        }
+      } else {
+        for (const m of manualOutbounds) {
+          nodes.push(renderOutbound(m));
+        }
+      }
+    }
+    return nodes;
+  }
   const canTestLatency = !isServiceNode && (section.withTagSelect || section.outbounds && section.outbounds.length > 0);
   return E(
     "div",
@@ -3443,7 +3642,7 @@ function renderDefaultState({
                   (o) => o.selected
                 );
                 if (!selectedOutbound) return "";
-                const isConnectionNode2 = [
+                const isConnectionNode2 = !section.withTagSelect && [
                   "vpn",
                   "awg",
                   "warp",
@@ -3570,10 +3769,11 @@ function renderDefaultState({
           )
         ]
       ),
-      !isCollapsed ? E("div", { class: "tachyon_dashboard-page__outbound-grid" }, [
-        ...metadataNodes,
-        ...section.outbounds.map((outbound) => renderOutbound(outbound))
-      ]) : ""
+      !isCollapsed ? E(
+        "div",
+        { class: "tachyon_dashboard-page__outbound-grid" },
+        renderGridChildren()
+      ) : ""
     ]
   );
 }
@@ -5962,6 +6162,9 @@ function getUrlTestIds(section) {
   if (section.action === "group") {
     return ["urltest"];
   }
+  if (section.action === "awg" && getListValues(section.selector_amnezia_configs).length > 0) {
+    return ["urltest"];
+  }
   return section.urltest_enabled === "1" ? ["urltest"] : [];
 }
 function isUrlTestEnabled(section) {
@@ -5975,7 +6178,7 @@ function isNaOutbound(outbound) {
   return !outbound.latency && outbound.latency !== -1;
 }
 function shouldUseProxyGroup(section) {
-  return section.action === "group" || getListValues(section.group_members).length > 0 || section.action === "fptn" || Boolean(section.access_token) || getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
+  return section.action === "group" || getListValues(section.group_members).length > 0 || section.action === "fptn" || Boolean(section.access_token) || getListValues(section.selector_amnezia_configs).length > 0 || getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
 }
 function getSectionProxyConfigType(section) {
   if (section.action === "group") {
@@ -6726,6 +6929,29 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
     const isGroupType = Boolean(
       priorityConfig || urlTestConfig || isRuntimeUrlTest
     );
+    let sourceGroup = isGroupType ? void 0 : outboundMetadata?.sources?.[code];
+    if (!sourceGroup && !isGroupType) {
+      if (findManualLink(manualLinkByCode, code)) {
+        sourceGroup = "manual";
+      } else {
+        const subUrls = getListValues(section.subscription_urls);
+        if (prefix && subUrls.length > 0) {
+          const subSettings = itemSettingsMap(
+            section.subscription_url_settings
+          );
+          const matchedIdx = subUrls.findIndex((u) => {
+            const st = subSettings[u];
+            return st?.prefix_nodes === "1" && typeof st.node_prefix === "string" && st.node_prefix.trim() === prefix;
+          });
+          if (matchedIdx >= 0) {
+            sourceGroup = `sub:${matchedIdx + 1}`;
+          }
+        }
+        if (!sourceGroup && subUrls.length === 1) {
+          sourceGroup = "sub:1";
+        }
+      }
+    }
     return [
       {
         code,
@@ -6745,7 +6971,8 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
         country: showDetectedCountries ? outboundMetadata?.countries?.[code] : void 0,
         runtimeAvailable: effectiveItem ? void 0 : false,
         urlTestInfo,
-        priorityInfo
+        priorityInfo,
+        sourceGroup
       }
     ];
   });
@@ -6851,7 +7078,8 @@ function getOutboundMetadata(dashboardCache) {
     securities: objectMap(metadata.securities),
     ports: objectMap(metadata.ports),
     details: objectMap(metadata.details),
-    prefixes: objectMap(metadata.prefixes)
+    prefixes: objectMap(metadata.prefixes),
+    sources: objectMap(metadata.sources)
   };
 }
 function getCachedProxyLinks(dashboardCache, includeHidden = false) {
@@ -7047,6 +7275,10 @@ async function getDashboardSections(options = {}) {
                 prefixes: {
                   ...mMeta.prefixes,
                   ...outboundMetadata?.prefixes
+                },
+                sources: {
+                  ...mMeta.sources,
+                  ...outboundMetadata?.sources
                 }
               };
             }
@@ -10939,7 +11171,7 @@ function updateLatencyProgressInline(sectionsWidget) {
     if (!label) {
       return false;
     }
-    const isConnectionNode = [
+    const isConnectionNode = !section.withTagSelect && [
       "vpn",
       "awg",
       "warp",
@@ -11101,6 +11333,8 @@ async function renderSectionsWidget() {
       section,
       isCollapsed: !expandedSections.has(section.code),
       onToggleCollapse: () => toggleSectionExpanded(section.code),
+      collapsedSourceGroups: expandedSections,
+      onToggleSourceGroupCollapse: (groupKey) => toggleSectionExpanded(groupKey),
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName]
       ),
@@ -11917,6 +12151,50 @@ var styles = `
     border-radius: 4px;
     padding: 8px 10px;
     background: var(--background-color-high, transparent);
+}
+
+.tachyon_dashboard-page__subscription-meta--collapsible {
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.tachyon_dashboard-page__subscription-meta--collapsible:hover {
+    border-color: var(--primary-color-high, dodgerblue);
+}
+
+.tachyon_dashboard-page__source-group--manual {
+    border-style: dashed;
+}
+
+.tachyon_dashboard-page__source-group__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(128, 128, 128, 0.18);
+    color: var(--text-color-medium, #888);
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__source-group__active-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--success-color-medium, #4caf50);
+    background: rgba(76, 175, 80, 0.14);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
 }
 
 .tachyon_dashboard-page__subscription-meta__main {

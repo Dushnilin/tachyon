@@ -1224,6 +1224,7 @@ function add_fptn_manual_members(config, state, section_name, tag_name, link, ta
         push(urltest_candidate_tags, member_tag);
         state.links[member_tag] = as_string(link);
         runtime_subscription.remember_outbound_metadata(state, member_tag, server.name, member);
+        state.outboundMetadata.sources[member_tag] = "manual";
     }
     return true;
 }
@@ -1252,6 +1253,7 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
 
     state.links[tag_name] = as_string(link);
     runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+    state.outboundMetadata.sources[tag_name] = "manual";
     return tag_name;
 }
 
@@ -1557,7 +1559,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             display_names[i],
             outbound,
             source_links[i],
-            node_prefix
+            node_prefix,
+            "sub:" + source_index
         );
         if (hidden_flags[i] !== true) {
             push(selector_tags, outbound.tag);
@@ -1630,6 +1633,7 @@ function add_interface_connection_outbound(config, state, section, interface_ind
     push(selector_tags, tag_name);
     push(urltest_candidate_tags, tag_name);
     runtime_subscription.remember_outbound_metadata(state, tag_name, interface_name, outbound);
+    state.outboundMetadata.sources[tag_name] = "manual";
 }
 
 function add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags) {
@@ -1720,6 +1724,7 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
             push(urltest_candidate_tags, tag_name);
         runtime_subscription.remember_outbound_metadata(state, tag_name, item.displayName, outbound);
         runtime_subscription.remember_urltest_group(state, tag_name, item.displayName, outbound);
+        state.outboundMetadata.sources[tag_name] = "manual";
     }
 }
 

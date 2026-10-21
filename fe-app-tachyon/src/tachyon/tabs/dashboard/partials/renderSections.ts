@@ -22,6 +22,8 @@ interface IRenderSectionsProps {
   section: Tachyon.OutboundGroup;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  collapsedSourceGroups?: Set<string>;
+  onToggleSourceGroupCollapse?: (groupKey: string) => void;
   onTestLatency: (tag: string | string[]) => void;
   onChooseOutbound: (
     sectionName: string,
@@ -136,19 +138,27 @@ function renderMetadataAction(label: string, url?: string) {
 
 function renderSubscriptionMetadata(
   metadata: Tachyon.SubscriptionMetadata | undefined,
+  options?: {
+    groupCount?: number;
+    selectedOutbound?: Tachyon.Outbound;
+    isGroupCollapsed?: boolean;
+    onToggleGroup?: () => void;
+  },
 ) {
   if (!metadata || Object.keys(metadata).length <= 1) {
-    return undefined;
+    if (!options?.onToggleGroup) {
+      return undefined;
+    }
   }
 
-  const title = metadata.title || metadata.fileName;
-  const traffic = metadata.traffic;
+  const title = metadata?.title || metadata?.fileName;
+  const traffic = metadata?.traffic;
   const used = formatBytes(traffic?.used) || '0 B';
   const total = traffic?.isUnlimited
     ? '∞'
     : formatBytes(traffic?.total) || '0 B';
-  const expire = formatDate(metadata.expire);
-  const refillDate = formatDate(metadata.refillDate);
+  const expire = formatDate(metadata?.expire);
+  const refillDate = formatDate(metadata?.refillDate);
 
   const rows = [
     traffic
@@ -162,71 +172,138 @@ function renderSubscriptionMetadata(
   ].filter(Boolean) as { label: string; value: string }[];
 
   const actions = [
-    renderMetadataAction('Profile', metadata.webPageUrl),
-    renderMetadataAction('Support', metadata.supportUrl),
-    renderMetadataAction('More details', metadata.announceUrl),
+    renderMetadataAction('Profile', metadata?.webPageUrl),
+    renderMetadataAction('Support', metadata?.supportUrl),
+    renderMetadataAction('More details', metadata?.announceUrl),
   ].filter(Boolean) as HTMLElement[];
 
-  return E('div', { class: 'tachyon_dashboard-page__subscription-meta' }, [
-    E('div', { class: 'tachyon_dashboard-page__subscription-meta__main' }, [
-      E(
-        'div',
-        { class: 'tachyon_dashboard-page__subscription-meta__heading' },
-        _('Subscription info:'),
-      ),
-      title
-        ? E(
-            'div',
-            { class: 'tachyon_dashboard-page__subscription-meta__title' },
-            title,
-          )
-        : '',
-      rows.length
-        ? E(
-            'div',
-            { class: 'tachyon_dashboard-page__subscription-meta__facts' },
-            rows.map((row) =>
-              E(
-                'div',
-                { class: 'tachyon_dashboard-page__subscription-meta__fact' },
-                [
-                  E(
-                    'span',
-                    {
-                      class:
-                        'tachyon_dashboard-page__subscription-meta__fact-key',
-                    },
-                    row.label,
-                  ),
-                  E(
-                    'span',
-                    {
-                      class:
-                        'tachyon_dashboard-page__subscription-meta__fact-value',
-                    },
-                    row.value,
-                  ),
-                ],
+  const isToggleable = Boolean(options?.onToggleGroup);
+  const isGroupCollapsed = Boolean(options?.isGroupCollapsed);
+
+  return E(
+    'div',
+    {
+      class: [
+        'tachyon_dashboard-page__subscription-meta',
+        isToggleable
+          ? 'tachyon_dashboard-page__subscription-meta--collapsible'
+          : '',
+        isGroupCollapsed
+          ? 'tachyon_dashboard-page__subscription-meta--collapsed'
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+      click: isToggleable
+        ? (event: MouseEvent) => {
+            if (
+              event.target &&
+              (event.target as Element).closest('a, button')
+            ) {
+              return;
+            }
+            options?.onToggleGroup?.();
+          }
+        : undefined,
+    },
+    [
+      E('div', { class: 'tachyon_dashboard-page__subscription-meta__main' }, [
+        ...(isToggleable
+          ? [
+              svgEl(
+                'svg',
+                {
+                  width: '15',
+                  height: '15',
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  'stroke-width': '2',
+                  'stroke-linecap': 'round',
+                  'stroke-linejoin': 'round',
+                  style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? '-90deg' : '0deg'})`,
+                },
+                [svgEl('polyline', { points: '6 9 12 15 18 9' })],
               ),
-            ),
-          )
-        : '',
-      actions.length
+            ]
+          : []),
+        E(
+          'div',
+          { class: 'tachyon_dashboard-page__subscription-meta__heading' },
+          _('Subscription info:'),
+        ),
+        title
+          ? E(
+              'div',
+              { class: 'tachyon_dashboard-page__subscription-meta__title' },
+              title,
+            )
+          : '',
+        typeof options?.groupCount === 'number'
+          ? E(
+              'span',
+              {
+                class: 'tachyon_dashboard-page__source-group__count',
+              },
+              `${options.groupCount}`,
+            )
+          : '',
+        isGroupCollapsed && options?.selectedOutbound
+          ? E(
+              'span',
+              {
+                class: 'tachyon_dashboard-page__source-group__active-badge',
+              },
+              `● ${options.selectedOutbound.displayName}`,
+            )
+          : '',
+        rows.length
+          ? E(
+              'div',
+              { class: 'tachyon_dashboard-page__subscription-meta__facts' },
+              rows.map((row) =>
+                E(
+                  'div',
+                  { class: 'tachyon_dashboard-page__subscription-meta__fact' },
+                  [
+                    E(
+                      'span',
+                      {
+                        class:
+                          'tachyon_dashboard-page__subscription-meta__fact-key',
+                      },
+                      row.label,
+                    ),
+                    E(
+                      'span',
+                      {
+                        class:
+                          'tachyon_dashboard-page__subscription-meta__fact-value',
+                      },
+                      row.value,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : '',
+        actions.length
+          ? E(
+              'div',
+              { class: 'tachyon_dashboard-page__subscription-meta__actions' },
+              actions,
+            )
+          : '',
+      ]),
+      !isGroupCollapsed && metadata?.announce
         ? E(
-            'div',
-            { class: 'tachyon_dashboard-page__subscription-meta__actions' },
-            actions,
+            'blockquote',
+            { class: 'tachyon_dashboard-page__subscription-meta__announce' },
+            metadata.announce,
           )
         : '',
-    ]),
-    metadata.announce
-      ? E(
-          'blockquote',
-          { class: 'tachyon_dashboard-page__subscription-meta__announce' },
-          metadata.announce,
-        )
-      : '',
-  ]);
+    ],
+  );
 }
 
 function renderSubscriptionUpdateAction(
@@ -297,19 +374,23 @@ function renderDefaultState({
   testingOutboundCodes,
   isCollapsed,
   onToggleCollapse,
+  collapsedSourceGroups,
+  onToggleSourceGroupCollapse,
 }: IRenderSectionsProps) {
-  const isConnectionNode = [
-    'vpn',
-    'awg',
-    'warp',
-    'anytls',
-    'snell',
-    'mieru',
-    'naive',
-    'sudoku',
-    'masque',
-    'openvpn',
-  ].includes(section.action || '');
+  const isConnectionNode =
+    !section.withTagSelect &&
+    [
+      'vpn',
+      'awg',
+      'warp',
+      'anytls',
+      'snell',
+      'mieru',
+      'naive',
+      'sudoku',
+      'masque',
+      'openvpn',
+    ].includes(section.action || '');
   const isServiceNode =
     ['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(
       section.action || '',
@@ -862,14 +943,204 @@ function renderDefaultState({
     );
   }
 
-  const metadataNodes = (section.subscriptionMetadata || [])
-    .map((metadata) => renderSubscriptionMetadata(metadata))
-    .filter(Boolean) as HTMLElement[];
   const subscriptionUpdateAction = renderSubscriptionUpdateAction(
     section,
     subscriptionUpdating,
     onUpdateSubscription,
   );
+
+  function renderGridChildren(): HTMLElement[] {
+    const outbounds = section.outbounds || [];
+    const metadataList = section.subscriptionMetadata || [];
+    const subSourceCount = section.subscriptionSourceCount || 0;
+
+    const topGroups: Tachyon.Outbound[] = [];
+    const subMap = new Map<string, Tachyon.Outbound[]>();
+    const manualOutbounds: Tachyon.Outbound[] = [];
+
+    for (const ob of outbounds) {
+      if (ob.urlTestInfo || ob.priorityInfo) {
+        topGroups.push(ob);
+      } else if (ob.sourceGroup && ob.sourceGroup.startsWith('sub:')) {
+        const list = subMap.get(ob.sourceGroup) || [];
+        list.push(ob);
+        subMap.set(ob.sourceGroup, list);
+      } else {
+        manualOutbounds.push(ob);
+      }
+    }
+
+    const hasSubTaggedOutbounds = subMap.size > 0;
+    const hasMultipleSources =
+      subSourceCount > 1 ||
+      subMap.size > 1 ||
+      (hasSubTaggedOutbounds && manualOutbounds.length > 0);
+
+    if (!hasSubTaggedOutbounds && !hasMultipleSources) {
+      const metadataNodes = metadataList
+        .map((metadata) => renderSubscriptionMetadata(metadata))
+        .filter(Boolean) as HTMLElement[];
+      return [...metadataNodes, ...outbounds.map((ob) => renderOutbound(ob))];
+    }
+
+    const nodes: HTMLElement[] = [];
+
+    for (const ob of topGroups) {
+      nodes.push(renderOutbound(ob));
+    }
+
+    const metadataBySubKey = new Map<string, Tachyon.SubscriptionMetadata>();
+    metadataList.forEach((meta, idx) => {
+      const sourceIdx =
+        typeof meta.sourceIndex === 'number'
+          ? meta.sourceIndex
+          : metadataList.length === 1 && subMap.size === 1
+            ? Number(Array.from(subMap.keys())[0].slice(4)) || 1
+            : idx + 1;
+      metadataBySubKey.set(`sub:${sourceIdx}`, meta);
+    });
+
+    const allSubKeys = Array.from(
+      new Set([
+        ...Array.from(subMap.keys()),
+        ...Array.from(metadataBySubKey.keys()),
+      ]),
+    ).sort((a, b) => {
+      const na = Number(a.slice(4)) || 0;
+      const nb = Number(b.slice(4)) || 0;
+      return na - nb;
+    });
+
+    for (const subKey of allSubKeys) {
+      const members = subMap.get(subKey) || [];
+      const meta = metadataBySubKey.get(subKey);
+      if (members.length === 0 && !meta) continue;
+
+      const collapseKey = `subgrp:${section.code}:${subKey}`;
+      const isGroupCollapsed = Boolean(collapsedSourceGroups?.has(collapseKey));
+      const selectedMember = members.find((m) => m.selected);
+      const subNumber = Number(subKey.slice(4)) || 1;
+      const fallbackSubTitle =
+        allSubKeys.length > 1
+          ? `${_('Subscription')} #${subNumber}`
+          : _('Subscription');
+
+      const headerMeta =
+        meta && Object.keys(meta).length > 1
+          ? meta
+          : ({
+              title: members[0]?.prefix || fallbackSubTitle,
+              sourceIndex: subNumber,
+            } as Tachyon.SubscriptionMetadata);
+
+      const metaHeader = renderSubscriptionMetadata(headerMeta, {
+        groupCount: members.length,
+        selectedOutbound: selectedMember,
+        isGroupCollapsed,
+        onToggleGroup:
+          members.length > 0
+            ? () => onToggleSourceGroupCollapse?.(collapseKey)
+            : undefined,
+      });
+
+      if (metaHeader) {
+        nodes.push(metaHeader);
+      }
+
+      if (!isGroupCollapsed) {
+        for (const m of members) {
+          nodes.push(renderOutbound(m));
+        }
+      }
+    }
+
+    if (manualOutbounds.length > 0) {
+      if (allSubKeys.length > 0) {
+        const collapseKey = `subgrp:${section.code}:manual`;
+        const isGroupCollapsed = Boolean(
+          collapsedSourceGroups?.has(collapseKey),
+        );
+        const selectedManual = manualOutbounds.find((m) => m.selected);
+
+        nodes.push(
+          E(
+            'div',
+            {
+              class: [
+                'tachyon_dashboard-page__subscription-meta',
+                'tachyon_dashboard-page__subscription-meta--collapsible',
+                'tachyon_dashboard-page__source-group--manual',
+                isGroupCollapsed
+                  ? 'tachyon_dashboard-page__subscription-meta--collapsed'
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' '),
+              click: () => onToggleSourceGroupCollapse?.(collapseKey),
+            },
+            [
+              E(
+                'div',
+                { class: 'tachyon_dashboard-page__subscription-meta__main' },
+                [
+                  svgEl(
+                    'svg',
+                    {
+                      width: '15',
+                      height: '15',
+                      viewBox: '0 0 24 24',
+                      fill: 'none',
+                      stroke: 'currentColor',
+                      'stroke-width': '2',
+                      'stroke-linecap': 'round',
+                      'stroke-linejoin': 'round',
+                      style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? '-90deg' : '0deg'})`,
+                    },
+                    [svgEl('polyline', { points: '6 9 12 15 18 9' })],
+                  ),
+                  E(
+                    'div',
+                    {
+                      class:
+                        'tachyon_dashboard-page__subscription-meta__heading',
+                    },
+                    _('Standalone servers'),
+                  ),
+                  E(
+                    'span',
+                    { class: 'tachyon_dashboard-page__source-group__count' },
+                    `${manualOutbounds.length}`,
+                  ),
+                  isGroupCollapsed && selectedManual
+                    ? E(
+                        'span',
+                        {
+                          class:
+                            'tachyon_dashboard-page__source-group__active-badge',
+                        },
+                        `● ${selectedManual.displayName}`,
+                      )
+                    : '',
+                ],
+              ),
+            ],
+          ),
+        );
+
+        if (!isGroupCollapsed) {
+          for (const m of manualOutbounds) {
+            nodes.push(renderOutbound(m));
+          }
+        }
+      } else {
+        for (const m of manualOutbounds) {
+          nodes.push(renderOutbound(m));
+        }
+      }
+    }
+
+    return nodes;
+  }
 
   const canTestLatency =
     !isServiceNode &&
@@ -933,18 +1204,20 @@ function renderDefaultState({
                     );
                     if (!selectedOutbound) return '';
 
-                    const isConnectionNode = [
-                      'vpn',
-                      'awg',
-                      'warp',
-                      'anytls',
-                      'snell',
-                      'mieru',
-                      'naive',
-                      'sudoku',
-                      'masque',
-                      'openvpn',
-                    ].includes(section.action || '');
+                    const isConnectionNode =
+                      !section.withTagSelect &&
+                      [
+                        'vpn',
+                        'awg',
+                        'warp',
+                        'anytls',
+                        'snell',
+                        'mieru',
+                        'naive',
+                        'sudoku',
+                        'masque',
+                        'openvpn',
+                      ].includes(section.action || '');
 
                     const connectionTitle =
                       (section.action &&
@@ -1121,10 +1394,11 @@ function renderDefaultState({
         ],
       ),
       !isCollapsed
-        ? E('div', { class: 'tachyon_dashboard-page__outbound-grid' }, [
-            ...metadataNodes,
-            ...section.outbounds.map((outbound) => renderOutbound(outbound)),
-          ])
+        ? E(
+            'div',
+            { class: 'tachyon_dashboard-page__outbound-grid' },
+            renderGridChildren(),
+          )
         : '',
     ],
   );

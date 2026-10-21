@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 14:25+0300\n"
-"PO-Revision-Date: 2026-10-21 14:25+0300\n"
+"POT-Creation-Date: 2026-10-21 14:39+0300\n"
+"PO-Revision-Date: 2026-10-21 14:39+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -5639,6 +5639,9 @@ msgstr "Отдельная служба Zapret2 активна"
 msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
 
+msgid "Standalone servers"
+msgstr "Отдельные серверы"
+
 msgid "Standalone service is active alongside Tachyon; policy or port conflicts are possible"
 msgstr "Сторонний сервис активен параллельно с Tachyon; возможны конфликты политик или портов"
 
@@ -5761,6 +5764,9 @@ msgstr "Подсеть %s является публичным Anycast/CDN-диа
 
 msgid "Subnets from the list will be extracted and added to nftables"
 msgstr "Подсети из списка будут извлечены и добавлены в nftables"
+
+msgid "Subscription"
+msgstr "Подписка"
 
 msgid "Subscription QR code"
 msgstr "QR-код подписки"

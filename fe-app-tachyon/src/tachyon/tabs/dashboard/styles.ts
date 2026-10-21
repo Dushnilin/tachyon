@@ -304,6 +304,50 @@ export const styles = `
     background: var(--background-color-high, transparent);
 }
 
+.tachyon_dashboard-page__subscription-meta--collapsible {
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.tachyon_dashboard-page__subscription-meta--collapsible:hover {
+    border-color: var(--primary-color-high, dodgerblue);
+}
+
+.tachyon_dashboard-page__source-group--manual {
+    border-style: dashed;
+}
+
+.tachyon_dashboard-page__source-group__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(128, 128, 128, 0.18);
+    color: var(--text-color-medium, #888);
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__source-group__active-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--success-color-medium, #4caf50);
+    background: rgba(76, 175, 80, 0.14);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+}
+
 .tachyon_dashboard-page__subscription-meta__main {
     display: flex;
     align-items: center;

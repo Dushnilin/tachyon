@@ -662,4 +662,169 @@ describe('renderSections', () => {
       ),
     ).toBeNull();
   });
+
+  it('groups subscription outbounds and standalone outbounds under collapsible headers', () => {
+    const onToggleSourceGroupCollapse = vi.fn();
+    const section: any = {
+      code: 'proxy-out',
+      sectionName: 'proxy',
+      displayName: 'Multi-Source Proxy',
+      action: 'connection',
+      withTagSelect: true,
+      subscriptionSourceCount: 2,
+      subscriptionMetadata: [
+        {
+          title: 'Provider Alpha',
+          sourceIndex: 1,
+          traffic: { used: 1024, total: 2048 },
+        },
+        {
+          title: 'Provider Beta',
+          sourceIndex: 2,
+          traffic: { used: 512, total: 4096 },
+        },
+      ],
+      outbounds: [
+        {
+          code: 'proxy-urltest-out',
+          displayName: 'Fastest',
+          latency: 40,
+          type: 'URLTest',
+          selected: true,
+          urlTestInfo: {
+            code: 'proxy-urltest-out',
+            displayName: 'Fastest',
+            outbounds: [],
+          },
+        },
+        {
+          code: 'sub1-node1',
+          displayName: 'Alpha DE',
+          latency: 40,
+          type: 'VLESS',
+          selected: false,
+          sourceGroup: 'sub:1',
+        },
+        {
+          code: 'sub2-node1',
+          displayName: 'Beta NL',
+          latency: 60,
+          type: 'VLESS',
+          selected: false,
+          sourceGroup: 'sub:2',
+        },
+        {
+          code: 'manual-1',
+          displayName: 'My Personal VPS',
+          latency: 25,
+          type: 'VLESS',
+          selected: false,
+          sourceGroup: 'manual',
+        },
+      ],
+    };
+
+    const expanded = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      collapsedSourceGroups: new Set(),
+      onToggleSourceGroupCollapse,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const headers = expanded.querySelectorAll(
+      '.tachyon_dashboard-page__subscription-meta--collapsible',
+    );
+    expect(headers).toHaveLength(3);
+    expect(headers[0].textContent).toContain('Provider Alpha');
+    expect(headers[1].textContent).toContain('Provider Beta');
+    expect(headers[2].textContent).toContain('Standalone servers');
+
+    const items = expanded.querySelectorAll(
+      '.tachyon_dashboard-page__outbound-grid__item',
+    );
+    expect(items).toHaveLength(4);
+
+    // Collapsing sub:1 hides its server card while keeping URLTest, sub:2, and manual visible
+    const collapsedSub1 = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      collapsedSourceGroups: new Set(['subgrp:proxy-out:sub:1']),
+      onToggleSourceGroupCollapse,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const visibleItems = collapsedSub1.querySelectorAll(
+      '.tachyon_dashboard-page__outbound-grid__item',
+    );
+    expect(visibleItems).toHaveLength(3);
+  });
+
+  it('renders multi-config AWG section (withTagSelect=true) as selectable server cards rather than single connection node', () => {
+    const section: any = {
+      code: 'awg-out',
+      sectionName: 'awg',
+      displayName: 'AWG Pool',
+      action: 'awg',
+      withTagSelect: true,
+      outbounds: [
+        {
+          code: 'awg-urltest-out',
+          displayName: 'AWG Pool',
+          latency: 35,
+          type: 'URLTest',
+          selected: true,
+          urlTestInfo: {
+            code: 'awg-urltest-out',
+            displayName: 'AWG Pool',
+            selectedName: 'AWG-DE-1',
+            outbounds: [],
+          },
+        },
+        {
+          code: 'awg-out/AWG-DE-1',
+          displayName: 'AWG-DE-1',
+          latency: 35,
+          type: 'AmneziaWG',
+          selected: false,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const selectable = el.querySelectorAll(
+      '.tachyon_dashboard-page__outbound-grid__item--selectable',
+    );
+    expect(selectable).toHaveLength(1);
+    expect(selectable[0].textContent).toContain('AWG-DE-1');
+  });
 });

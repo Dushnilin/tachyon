@@ -464,6 +464,12 @@ function getUrlTestIds(section: Tachyon.ConfigSection) {
   if (section.action === 'group') {
     return ['urltest'];
   }
+  if (
+    section.action === 'awg' &&
+    getListValues(section.selector_amnezia_configs).length > 0
+  ) {
+    return ['urltest'];
+  }
   return section.urltest_enabled === '1' ? ['urltest'] : [];
 }
 
@@ -493,6 +499,7 @@ function shouldUseProxyGroup(section: Tachyon.ConfigSection) {
     getListValues(section.group_members).length > 0 ||
     section.action === 'fptn' ||
     Boolean(section.access_token) ||
+    getListValues(section.selector_amnezia_configs).length > 0 ||
     getManualProxyLinks(section).length > 0 ||
     hasSubscriptionSources(section) ||
     getConnectionInterfaces(section).length > 0 ||
@@ -1607,6 +1614,36 @@ function buildProxyGroupOutbounds(
       priorityConfig || urlTestConfig || isRuntimeUrlTest,
     );
 
+    let sourceGroup = isGroupType
+      ? undefined
+      : outboundMetadata?.sources?.[code];
+    if (!sourceGroup && !isGroupType) {
+      if (findManualLink(manualLinkByCode, code)) {
+        sourceGroup = 'manual';
+      } else {
+        const subUrls = getListValues(section.subscription_urls);
+        if (prefix && subUrls.length > 0) {
+          const subSettings = itemSettingsMap(
+            section.subscription_url_settings,
+          );
+          const matchedIdx = subUrls.findIndex((u) => {
+            const st = subSettings[u];
+            return (
+              st?.prefix_nodes === '1' &&
+              typeof st.node_prefix === 'string' &&
+              st.node_prefix.trim() === prefix
+            );
+          });
+          if (matchedIdx >= 0) {
+            sourceGroup = `sub:${matchedIdx + 1}`;
+          }
+        }
+        if (!sourceGroup && subUrls.length === 1) {
+          sourceGroup = 'sub:1';
+        }
+      }
+    }
+
     return [
       {
         code,
@@ -1633,6 +1670,7 @@ function buildProxyGroupOutbounds(
         runtimeAvailable: effectiveItem ? undefined : false,
         urlTestInfo,
         priorityInfo,
+        sourceGroup,
       },
     ];
   });
@@ -1813,6 +1851,7 @@ function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
     ports: objectMap(metadata.ports),
     details: objectMap(metadata.details),
     prefixes: objectMap(metadata.prefixes),
+    sources: objectMap(metadata.sources),
   };
 }
 
@@ -2051,6 +2090,10 @@ export async function getDashboardSections(
                   prefixes: {
                     ...mMeta.prefixes,
                     ...outboundMetadata?.prefixes,
+                  },
+                  sources: {
+                    ...mMeta.sources,
+                    ...outboundMetadata?.sources,
                   },
                 };
               }
