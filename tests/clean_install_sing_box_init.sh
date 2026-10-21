@@ -30,4 +30,21 @@ grep -Fq 'fs.mkdir(workdir, 0755)' "$SB_RUNTIME" ||
 grep -Fq 'let cfg_file = "/etc/config/" + parts.package;' "$UCI_UC" ||
   fail "core/uci.uc set_section must create missing package file in /etc/config"
 
+# 5. managed service script must never run killall tachyon-core inside /etc/init.d/tachyon-core
+# (because BusyBox killall matches /proc/self/stat comm == "tachyon-core" and SIGKILLs the init script itself!)
+for f in \
+  "$TACHYON_LIB/tachyon_core/runtime.uc" \
+  "$TACHYON_LIB/components/action.uc" \
+  "$TACHYON_LIB/config/validator.uc"; do
+  block="$(awk '
+    /function managed_(sing_box_)?service_(text|script)\(/ { inside=1 }
+    inside && /^}/ { print; exit }
+    inside { print }
+  ' "$f")"
+  [ -n "$block" ] || fail "managed service generator function not found in $f"
+  if printf '%s\n' "$block" | grep -Fq 'killall'; then
+    fail "$f managed service script contains killall, which kills /etc/init.d/tachyon-core itself"
+  fi
+done
+
 printf 'clean_install_sing_box_init: all checks passed\n'

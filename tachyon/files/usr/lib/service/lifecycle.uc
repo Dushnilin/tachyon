@@ -1318,6 +1318,7 @@ function stop_main() {
     if (fs.stat("/etc/init.d/tachyon-core") != null) {
         let sing_box_status = command_status_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
         command_success_from_args([ "killall", "-q", "-9", "tachyon-core" ]);
+        command_success_from_args([ "killall", "-q", "-9", "sing-box" ]);
         if (!active_engine_is_steer() && sing_box_status != 0)
             status = sing_box_status;
     }

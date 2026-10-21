@@ -707,13 +707,13 @@ function managed_service_script_stale() {
         return false;
     data = as_string(data);
     // A script from before the limits were lowered (core dump unlimited, a
-    // million descriptors) or before GOMEMLIMIT / stop_service was wired in is
-    // regenerated the same way as a broken one.
+    // million descriptors) or before GOMEMLIMIT was wired in, or one that runs
+    // killall against its own initscript name, is regenerated.
     return index(data, "config_load \"tachyon-core\"") < 0 ||
         index(data, "core=\"unlimited\"") >= 0 ||
         index(data, "GOMEMLIMIT") < 0 ||
         index(data, "PROG=\"/usr/bin/sing-box\"") < 0 ||
-        index(data, "stop_service()") < 0;
+        index(data, "killall -q -9 tachyon-core") >= 0;
 }
 
 function managed_service_text() {
@@ -763,7 +763,6 @@ function managed_service_text() {
         "            [ \"$gomemlimit\" -lt 16 ] && gomemlimit=16\n" +
         "        fi\n" +
         "    fi\n\n" +
-        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
@@ -778,15 +777,6 @@ function managed_service_text() {
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
         "    procd_close_instance\n" +
-        "}\n\n" +
-        "stop_service() {\n" +
-        "    local i=0\n" +
-        "    while [ \"$i\" -lt 20 ]; do\n" +
-        "        pidof tachyon-core sing-box >/dev/null 2>&1 || return 0\n" +
-        "        sleep 0.1 2>/dev/null || sleep 1\n" +
-        "        i=$(( i + 1 ))\n" +
-        "    done\n" +
-        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n" +
         "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"tachyon-core\"\n" +

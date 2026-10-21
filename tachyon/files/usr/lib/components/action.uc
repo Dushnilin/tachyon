@@ -368,7 +368,7 @@ function managed_sing_box_service_installed() {
     let data = fs.readfile("/etc/init.d/tachyon-core");
     return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0 &&
         index(as_string(data), "GOGC=\"50\"") >= 0 &&
-        index(as_string(data), "stop_service()") >= 0;
+        index(as_string(data), "killall -q -9 tachyon-core") < 0;
 }
 
 function managed_sing_box_service_text() {
@@ -419,8 +419,7 @@ function managed_sing_box_service_text() {
         "        fi\n" +
         "    fi\n\n" +
         "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
-        "    : > /tmp/tachyon-core/sing-box.log 2>/dev/null\n" +
-        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n\n" +
+        "    : > /tmp/tachyon-core/sing-box.log 2>/dev/null\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param file \"$config_file\"\n" +
@@ -435,15 +434,6 @@ function managed_sing_box_service_text() {
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
         "    procd_close_instance\n" +
-        "}\n\n" +
-        "stop_service() {\n" +
-        "    local i=0\n" +
-        "    while [ \"$i\" -lt 20 ]; do\n" +
-        "        pidof tachyon-core sing-box >/dev/null 2>&1 || return 0\n" +
-        "        sleep 0.1 2>/dev/null || sleep 1\n" +
-        "        i=$(( i + 1 ))\n" +
-        "    done\n" +
-        "    killall -q -9 tachyon-core sing-box 2>/dev/null || true\n" +
         "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"tachyon-core\"\n" +
