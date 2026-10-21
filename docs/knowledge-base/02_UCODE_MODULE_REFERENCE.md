@@ -41,7 +41,7 @@ Tachyon's backend is modularized under `tachyon/files/usr/lib/tachyon/`. Modules
 
 | Module | Key Functions & Responsibilities |
 |---|---|
-| `runtime.uc` | **Local Rule Doctor & AI Doctor engine**: runs 10+ local heuristic checks, detects NTP desync, conntrack overflow, MTU issues, bootstrap DNS deadlock; applies 13+ quick fix codes (`apply_quick_fix()`), executes emergency internet restoration (`restore_native_internet()`). |
+| `runtime.uc` | **Local Rule Doctor & AI Doctor engine**: runs 10+ local heuristic checks, detects NTP desync, conntrack overflow, MTU issues, bootstrap DNS deadlock; `apply_quick_fix()` delegates to `diagnostics/repairs.uc` (25 codes), executes emergency internet restoration (`restore_native_internet()`). |
 | `service_check.uc` | Health probes: tests sing-box TCP/UDP proxying, DNS response latency, WAN internet connectivity, gateway reachability. |
 | `status.uc` | Detailed diagnostics status assembler for LuCI Diagnostic tab and CLI `tachyon doctor`. |
 

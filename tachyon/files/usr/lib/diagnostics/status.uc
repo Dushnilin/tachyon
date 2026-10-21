@@ -799,6 +799,14 @@ function public_host_flags(public_host, public_host_ips, wan_ip, wan_public) {
     print(resolved, " ", public_ip, " ", matches_wan, "\n");
 }
 
+function core_netstat_owner_is_daemon(owner) {
+    let names = require("core.process").core_contract().comm_names;
+    for (let name in names)
+        if (str_endswith(owner, "/" + name))
+            return true;
+    return false;
+}
+
 function netstat_server_port_conflict_owner_list(data, listen, port, proto) {
     let owners = [];
     let line_number = 0;
@@ -822,7 +830,7 @@ function netstat_server_port_conflict_owner_list(data, listen, port, proto) {
         if (owner == "" || owner == "-" || owner == "LISTEN")
             owner = "unknown";
         // Our own core (however the binary is named) is not a conflict.
-        if (!str_endswith(owner, "/sing-box") && !str_endswith(owner, "/tachyon-core"))
+        if (!core_netstat_owner_is_daemon(owner))
             push(owners, owner);
     }
 

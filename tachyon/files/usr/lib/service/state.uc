@@ -462,8 +462,7 @@ function sing_box_service_pid_runtime() {
     // new procd pid file first, the previous release's paths after it: an
     // upgraded router can still be running under the old service name until
     // the managed init script is rewritten
-    for (let path in [ "/var/run/tachyon-core.pid", "/var/run/tachyon-core/tachyon-core.pid",
-        "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
+    for (let path in process_identity.core_contract().pid_files) {
         let pid = int(trim(fs.readfile(path) || "0"));
         if (pid > 0 && pid_is_sing_box(pid))
             return pid;

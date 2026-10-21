@@ -45,23 +45,35 @@ uci commit tachyon
 | **Gemini** | `gemini` | `gemini-2.5-flash` | `gemini-2.5-pro`, `gemini-1.5-flash` |
 | **Custom API** | `custom` | `gpt-4o-mini` | Любая модель вашего сервера (`llama-3.3-70b`, `qwen-2.5-72b`) |
 
-### 1.3. Коды быстрого исправления (Quick Fix Codes — 13 кодов)
+### 1.3. Коды быстрого исправления (Quick Fix Codes — 25 кодов)
 
-AI Doctor может вернуть один или несколько кодов быстрого исправления через запятую:
+Список совпадает с ветками `apply_quick_fix()` в `diagnostics/repairs.uc`. AI Doctor может вернуть один или несколько кодов через запятую. `start_steer` — алиас `start_singbox`, `restart_steer_dns` — алиас `restart_singbox_dns`.
 
-1. `start_singbox` — перезапуск упавшего сервиса sing-box
-2. `rebuild_rules` — пересборка и сброс nftables-правил фильтрации
-3. `fix_dnsmasq` — перезапуск и восстановление службы dnsmasq
-4. `fix_resolv_symlink` — исправление повреждённого символического звена `/etc/resolv.conf`
-5. `start_watchdog` — перезапуск службы Watchdog
-6. `restart_singbox_dns` — перезапуск DNS-модуля sing-box при сбое ответов
-7. `fix_uci_config` — восстановление конфигурации Tachyon из бэкапа
-8. `fix_wan_interface` — перезапуск сетевого интерфейса WAN (`ifup wan`)
-9. `fix_gateway` — перезапуск сетевого стека для восстановления системного шлюза
-10. `clear_dns_cache` — очистка кэша DNS и база данных sing-box `cache.db`
-11. `update_subscriptions` — принудительный запуск обновления прокси-подписок
-12. `reset_firewall` — полный перезапуск фаервола роутера (`/etc/init.d/firewall restart`)
-13. `restart_network` — полный перезапуск сетевой службы (`/etc/init.d/network restart`)
+1. `start_singbox` — `restore_dnsmasq` и перезапуск `/etc/init.d/tachyon-core`; для Steer — перезапуск `/etc/init.d/steer`
+2. `rebuild_rules` — `/etc/init.d/tachyon reload`
+3. `fix_dnsmasq` — перезапуск dnsmasq
+4. `fix_resolv_symlink` — `ln -sf` на существующий `resolv.conf.auto` (`/tmp/resolv.conf.d/resolv.conf.auto`, иначе `/tmp/resolv.conf.auto`)
+5. `start_watchdog` — перезапуск `/etc/init.d/tachyon`
+6. `restart_singbox_dns` — перезапуск `/etc/init.d/tachyon-core`; для Steer — `reload_dnsd` и reload dnsmasq
+7. `fix_uci_config` — восстановление UCI из `/etc/backup/tachyon_config`, иначе из `/etc/config/tachyon.bak`
+8. `fix_wan_interface` — `ubus call network.interface.wan up`, `ifup wan`, сброс кэша маршрутов
+9. `fix_gateway` — `/etc/init.d/network restart`
+10. `clear_dns_cache` — перезапуск dnsmasq и сброс кэша маршрутов
+11. `update_subscriptions` — `tachyon subscription_update_async`
+12. `reset_firewall` — `/etc/init.d/firewall restart` и `/etc/init.d/tachyon reload`
+13. `restart_network` — `/etc/init.d/network restart`
+14. `restart_zapret` — остановка и отключение standalone zapret, zapret2 и byedpi, затем запуск runtime-провайдеров Tachyon
+15. `optimize_memory` — сброс page cache, удаление `/tmp/tachyon-core/*.tmp`, перезапуск tachyon-core
+16. `switch_to_doh` — `dns_type=doh`, commit, reload Tachyon
+17. `heal_network_stack` — восстановление `/etc/resolv.conf`, перезапуск dnsmasq и Tachyon, `ifup wan`
+18. `enable_safe_bypass` — `recovery_bypass=1`, commit, reload
+19. `restore_native_internet` — остановка Tachyon, удаление таблицы nftables и policy routing, перезапуск dnsmasq
+20. `fix_system_time` — `ntpd -q` и перезапуск sysntpd
+21. `flush_conntrack` — `nf_conntrack_max=65536` и `conntrack -F`
+22. `fix_bootstrap_dns` — `bootstrap_dns_server=77.88.8.8`, commit, reload
+23. `restart_providers` — старт runtime WDTT, OlcRTC и FPTN
+24. `optimize_mtu` — `tachyon discover-awg-mtu` и reload
+25. `upgrade_to_singbox_extended` — `component_action_async sing_box install_extended`
 
 Применение кодов из CLI:
 ```sh

@@ -369,103 +369,11 @@ function managed_sing_box_service_installed() {
     return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0 &&
         index(as_string(data), "GOGC=\"50\"") >= 0 &&
         index(as_string(data), "stop_service()") >= 0 &&
-        index(as_string(data), "killall -q -9 tachyon-core") < 0;
+        !require("core.process").init_script_kills_itself(as_string(data));
 }
 
 function managed_sing_box_service_text() {
-    return "#!/bin/sh /etc/rc.common\n" +
-        "# " + SB_MANAGED_SERVICE_MARKER + "\n\n" +
-        "USE_PROCD=1\n" +
-        "START=99\n" +
-        "PROG=\"/usr/bin/tachyon-core\"\n" +
-        "[ -x \"$PROG\" ] || PROG=\"/usr/bin/sing-box\"\n\n" +
-        "_kill_daemon_instances() {\n" +
-        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
-        "        [ \"$p\" != \"$$\" ] || continue\n" +
-        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
-        "            */tachyon-core|*/sing-box) kill -9 \"$p\" 2>/dev/null || true ;;\n" +
-        "        esac\n" +
-        "    done\n" +
-        "}\n\n" +
-        "_has_running_daemon() {\n" +
-        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
-        "        [ \"$p\" != \"$$\" ] || continue\n" +
-        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
-        "            */tachyon-core|*/sing-box) return 0 ;;\n" +
-        "        esac\n" +
-        "    done\n" +
-        "    return 1\n" +
-        "}\n\n" +
-        "start_service() {\n" +
-        "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
-        "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
-        "    modprobe tun 2>/dev/null || true\n" +
-        "    modprobe inet_diag 2>/dev/null || true\n\n" +
-        "    config_load \"tachyon-core\"\n" +
-        "    local enabled config_file working_directory\n" +
-        "    local log_stderr\n\n" +
-        "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
-        "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
-        "    [ -x \"$PROG\" ] || PROG=\"$(command -v tachyon-core 2>/dev/null || command -v sing-box 2>/dev/null || echo /usr/bin/tachyon-core)\"\n" +
-        "    config_get config_file \"main\" \"conffile\" \"/etc/tachyon-core/config.json\"\n" +
-        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
-        "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
-        "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
-        "    local mem_limit_mb=\"0\"\n" +
-        "    config_get mem_limit_mb \"main\" \"memory_limit_mb\" \"0\"\n" +
-        "    if [ \"$mem_limit_mb\" = \"0\" ] || [ -z \"$mem_limit_mb\" ]; then\n" +
-        "        mem_limit_mb=\"$(uci get tachyon.settings.memory_limit_mb 2>/dev/null || echo 0)\"\n" +
-        "    fi\n\n" +
-        "    local scale_pct=\"\"\n" +
-        "    if [ -s \"/etc/tachyon/mem_scale\" ]; then\n" +
-        "        scale_pct=\"$(awk -v s=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\" 'BEGIN { if (!s) exit; pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
-        "    fi\n\n" +
-        "    local gomemlimit=\"\"\n" +
-        "    local mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
-        "    if [ \"$mem_limit_mb\" -gt 0 ] 2>/dev/null; then\n" +
-        "        gomemlimit=\"$mem_limit_mb\"\n" +
-        "    elif [ \"$mem_total_kb\" -gt 0 ]; then\n" +
-        "        if [ \"$mem_total_kb\" -le 524288 ] || { [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; }; then\n" +
-        "            gomemlimit=$(( mem_total_kb / 1024 * 50 / 100 ))\n" +
-        "            [ \"$gomemlimit\" -lt 24 ] && gomemlimit=24\n" +
-        "        fi\n" +
-        "    fi\n\n" +
-        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
-        "        if [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; then\n" +
-        "            gomemlimit=$(( gomemlimit * scale_pct / 100 ))\n" +
-        "            [ \"$gomemlimit\" -lt 16 ] && gomemlimit=16\n" +
-        "        fi\n" +
-        "    fi\n\n" +
-        "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
-        "    : > /tmp/tachyon-core/sing-box.log 2>/dev/null\n" +
-        "    _kill_daemon_instances\n\n" +
-        "    procd_open_instance\n" +
-        "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
-        "    procd_set_param stderr \"$log_stderr\"\n" +
-        "    procd_set_param limits core=\"0\"\n" +
-        "    procd_set_param limits nofile=\"65535 65535\"\n" +
-        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
-        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\" GOMEMLIMIT=\"${gomemlimit}MiB\"\n" +
-        "    else\n" +
-        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
-        "    fi\n" +
-        "    procd_set_param term_timeout 15\n" +
-        "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
-        "    procd_close_instance\n" +
-        "}\n\n" +
-        "stop_service() {\n" +
-        "    local i=0\n" +
-        "    while [ \"$i\" -lt 20 ]; do\n" +
-        "        _has_running_daemon || return 0\n" +
-        "        sleep 0.1 2>/dev/null || sleep 1\n" +
-        "        i=$(( i + 1 ))\n" +
-        "    done\n" +
-        "    _kill_daemon_instances\n" +
-        "}\n\n" +
-        "service_triggers() {\n" +
-        "    procd_add_reload_trigger \"tachyon-core\"\n" +
-        "}\n";
+    return require("core.process").managed_core_init_script(SB_MANAGED_SERVICE_MARKER, true);
 }
 
 function install_managed_sing_box_service_script() {

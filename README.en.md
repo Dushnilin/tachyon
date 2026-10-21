@@ -118,14 +118,12 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 </div>
 
 * **Tachyon AI Doctor (v3.0)**: Deep modular architecture (`doctor.uc`, `repairs.uc`, `system_info.uc`, `routing.uc`, `dns.uc`).
-  * Diagnostics powered by leading LLMs (**OpenAI**, **Claude**, **DeepSeek**) or local models via OpenRouter / Ollama.
+  * Diagnostics powered by leading LLMs (**OpenAI**, **Claude**, **DeepSeek**, **Gemini**) or local models via OpenRouter / Ollama.
   * **Symptom Collapsing**: Intelligently deduplicates and groups cascading failures into root causes.
-* **14 Built-in Quick Fix Codes**:
-  * Automated repair for sing-box, Steer, nftables, dnsmasq, and resolv.conf.
-  * Provider restart (`restart_providers`), DNS cache flush (`flush_dns`).
-  * System time synchronization (`fix_system_time`).
-  * Conntrack table flush (`flush_conntrack`).
-  * Primary DNS circular deadlock resolution (`fix_bootstrap_dns`).
+* **25 quick-fix codes** in `diagnostics/repairs.uc` (`tachyon apply_quick_fix`):
+  * Services: `start_singbox` (alias `start_steer`), `restart_singbox_dns` (alias `restart_steer_dns`), `start_watchdog`, `restart_providers`, `restart_zapret`, `optimize_memory`, `upgrade_to_singbox_extended`.
+  * Network and DNS: `rebuild_rules`, `fix_dnsmasq`, `fix_resolv_symlink`, `clear_dns_cache`, `fix_wan_interface`, `fix_gateway`, `reset_firewall`, `restart_network`, `switch_to_doh`, `fix_bootstrap_dns`, `heal_network_stack`, `enable_safe_bypass`, `restore_native_internet`.
+  * Config and platform: `fix_uci_config`, `update_subscriptions`, `fix_system_time`, `flush_conntrack`, `optimize_mtu`.
 * **Conflict-Resilient Rollback**: Automatically rolls back to the last known healthy state when syntax or configuration errors occur in dnsmasq or nftables.
 * **🚨 Emergency Internet Fallback** (`tachyon restore_native_internet`).
 * **🔌 Model Context Protocol (MCP) Server (`tachyon mcp`)**: Standard JSON-RPC 2.0 stdio server enabling direct connection to Claude Desktop, Cursor, and Antigravity.
@@ -156,7 +154,7 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 
 </div>
 
-* **Process Identity & PID Provenance (`core/process.uc`)**: Validates `pid`, `starttime`, and `boot_id` before signals are sent, preventing accidental termination of recycled system PIDs.
+* **Process Identity & PID Provenance (`core/process.uc`)**: Validates `pid`, `starttime`, and `boot_id` before signals are sent, preventing accidental termination of recycled system PIDs. The same module is the core service contract (procd name `tachyon-core`, binaries, pid files, UCI package) and the only generator of `/etc/init.d/tachyon-core`. That script stops the daemon by executable path and never `killall`s its own comm: BusyBox `killall` of that name signals the init script itself.
 * **Transactional Package Manager (`core/packages.uc`)**: Stale lock cleanup, ELF header verification of UPX-compressed binaries, and automated APK `world` file scrubbing to eliminate `PROVIDES/REPLACES` upgrade conflicts.
 * **Unified Structured Logger (`core/logging.uc`)**: Rotated and structured JSON/syslog logging.
 * **Restart-Loop Protection**: Capped at 3 restarts per 10 minutes with `PROXY_RESTART_LOCK` mutex.
