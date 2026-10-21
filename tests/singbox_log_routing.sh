@@ -79,12 +79,14 @@ for level in info debug trace; do
     fail "log_level=$level must point the verbose log at tmpfs, not the flash overlay"
 done
 
-# Both init-script generators truncate it on start so it cannot grow forever.
+# Both init-script generators delegate to core.process with reset_log=true so it cannot grow forever.
 for file in "$ROOT_DIR/tachyon/files/usr/lib/components/action.uc" \
             "$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc"; do
-  grep -Fq ': > /tmp/tachyon-core/sing-box.log' "$file" ||
+  grep -Fq 'managed_core_init_script(' "$file" && grep -Fq ', true)' "$file" ||
     fail "$(basename "$file") must truncate the verbose log on service start"
 done
+grep -Fq 'contract.log_file' "$ROOT_DIR/tachyon/files/usr/lib/core/process.uc" ||
+  fail "core/process.uc must truncate the verbose log when reset_log is true"
 
 # panic stays panic for standard sing-box, but maps to fatal for tachyon-core
 got="$(generate_log_level panic "$WORK_DIR/panic.out")"

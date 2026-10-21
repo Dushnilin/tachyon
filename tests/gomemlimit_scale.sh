@@ -12,17 +12,20 @@ set -euo pipefail
 SB_RUNTIME="$TACHYON_LIB/tachyon_core/runtime.uc"
 VALIDATOR_UC="$TACHYON_LIB/config/validator.uc"
 ACTION_UC="$TACHYON_LIB/components/action.uc"
+PROCESS_UC="$TACHYON_LIB/core/process.uc"
 
 [ -f "$SB_RUNTIME" ] || fail "tachyon_core/runtime.uc not found at $SB_RUNTIME"
 [ -f "$VALIDATOR_UC" ] || fail "config/validator.uc not found at $VALIDATOR_UC"
 [ -f "$ACTION_UC" ] || fail "components/action.uc not found at $ACTION_UC"
+[ -f "$PROCESS_UC" ] || fail "core/process.uc not found at $PROCESS_UC"
 
 # 1. Structural checks
 for file in "$SB_RUNTIME" "$VALIDATOR_UC" "$ACTION_UC"; do
-  grep -Fq 'GOMEMLIMIT' "$file" || fail "missing GOMEMLIMIT in $file"
-  grep -Fq 'memory_limit_mb' "$file" || fail "missing memory_limit_mb in $file"
-  grep -Fq '/etc/tachyon/mem_scale' "$file" || fail "missing /etc/tachyon/mem_scale in $file"
+  grep -Fq 'managed_core_init_script(' "$file" || fail "missing managed_core_init_script delegation in $file"
 done
+grep -Fq 'GOMEMLIMIT' "$PROCESS_UC" || fail "missing GOMEMLIMIT in $PROCESS_UC"
+grep -Fq 'memory_limit_mb' "$PROCESS_UC" || fail "missing memory_limit_mb in $PROCESS_UC"
+grep -Fq '/etc/tachyon/mem_scale' "$PROCESS_UC" || fail "missing /etc/tachyon/mem_scale in $PROCESS_UC"
 
 # 2. Logic simulation function
 evaluate_gomemlimit() {
