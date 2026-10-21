@@ -3468,7 +3468,7 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_model",
     _("AI Model"),
     _(
-      "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2).",
+      "Model name to use. Leave empty to auto-detect or use provider default (gpt-4o-mini / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2).",
     ),
   );
   o.depends("enable_ai_doctor", "1");
@@ -3506,14 +3506,12 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_custom_url",
     _("Custom API Endpoint URL"),
     _(
-      "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions or https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)",
+      "Custom OpenAI-compatible API endpoint or base URL (e.g. http://192.168.1.100:1234 or http://192.168.1.100:11434/v1/chat/completions). Leave empty to use official provider URL.",
     ),
   );
-  o.depends("ai_doctor_provider", "custom");
-  o.depends("ai_doctor_provider", "ollama");
-  o.depends("ai_doctor_provider", "lmstudio");
+  o.depends("enable_ai_doctor", "1");
   o.rmempty = true;
-  o.placeholder = "http://192.168.1.100:11434/v1/chat/completions";
+  o.placeholder = "http://192.168.1.100:1234/v1/chat/completions";
 
   // RAG (Knowledge Base Retrieval)
   o = section.taboption(

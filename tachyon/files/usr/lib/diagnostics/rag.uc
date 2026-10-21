@@ -6,14 +6,17 @@ let command_from_args = common.command_from_args;
 let rag_index = null;
 let rag_embed_cache = null;
 
-let INDEX_BUILTIN = "/usr/lib/tachyon/rag_index.json";
+let LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+let INDEX_BUILTIN = LIB_DIR + "/rag_index.json";
 let INDEX_CUSTOM = "/etc/tachyon/rag_index.json";
 let EMBED_CACHE = "/tmp/tachyon_rag_embeddings.json";
 
 function rag_index_path() {
     if (fs.stat(INDEX_CUSTOM))
         return INDEX_CUSTOM;
-    return INDEX_BUILTIN;
+    if (fs.stat(INDEX_BUILTIN))
+        return INDEX_BUILTIN;
+    return "/usr/lib/tachyon/rag_index.json";
 }
 
 // Fingerprint of the active index file. Cached embeddings are only valid for
@@ -99,7 +102,7 @@ function get_api_url(provider, api_key, custom_url) {
 function get_embedding_model(provider, model_override) {
     provider = lc(trim(as_string(provider)));
     model_override = trim(as_string(model_override));
-    if (model_override != "")
+    if (model_override != "" && index(lc(model_override), "embed") >= 0)
         return model_override;
     if (provider == "openai")
         return "text-embedding-3-small";
@@ -239,19 +242,80 @@ function search(query_embedding, index, top_k) {
     return scored;
 }
 
+function lexical_search(query, idx_obj, top_k) {
+    if (!idx_obj || type(idx_obj.chunks) != "array" || length(idx_obj.chunks) == 0)
+        return [];
+    let q_lc = lc(trim(as_string(query || "")));
+    q_lc = replace(q_lc, /[,.;:!?()"'\/\\]+/g, " ");
+    let raw_words = split(q_lc, /[ \t\r\n]+/);
+    let terms = [];
+    let seen = {};
+    for (let w in raw_words) {
+        let t = trim(as_string(w));
+        if (length(t) >= 2 && !seen[t]) {
+            seen[t] = true;
+            push(terms, t);
+        }
+    }
+    if (length(terms) == 0)
+        return [];
+
+    let scored = [];
+    for (let i = 0; i < length(idx_obj.chunks); i++) {
+        let chunk = idx_obj.chunks[i];
+        let heading_lc = lc(as_string(chunk.heading || ""));
+        let file_lc = lc(as_string(chunk.file || ""));
+        let text_lc = lc(as_string(chunk.text || ""));
+        let hits = 0.0;
+        for (let t in terms) {
+            if (index(heading_lc, t) >= 0)
+                hits += 2.5;
+            else if (index(file_lc, t) >= 0)
+                hits += 1.5;
+            else if (index(text_lc, t) >= 0)
+                hits += 1.0;
+        }
+        if (hits > 0) {
+            let norm_score = hits / (length(terms) * 1.5);
+            if (norm_score > 0.99) norm_score = 0.99;
+            if (norm_score < 0.35) norm_score = 0.35;
+            push(scored, { chunk: chunk, score: norm_score });
+        }
+    }
+    sort(scored, function(a, b) { return b.score - a.score; });
+    let limit = top_k || 3;
+    if (length(scored) > limit)
+        scored = slice(scored, 0, limit);
+    return scored;
+}
+
+function has_valid_embedding_cache(idx_obj, provider, model_override) {
+    let cached = load_embedding_cache();
+    if (!cached || !idx_obj || type(idx_obj.chunks) != "array")
+        return false;
+    let model = get_embedding_model(provider, model_override);
+    let stamp = index_stamp();
+    return length(cached.embeddings) == length(idx_obj.chunks) &&
+           cached.model == model &&
+           cached.index_stamp == stamp;
+}
+
 function retrieve(query, provider, api_key, custom_url, model_override, top_k) {
     let idx = load_raw_index();
     if (!idx)
         return "";
 
-    if (!ensure_embeddings(idx, provider, api_key, custom_url, model_override))
-        return "";
+    let results = null;
+    if (has_valid_embedding_cache(idx, provider, model_override) &&
+        ensure_embeddings(idx, provider, api_key, custom_url, model_override)) {
+        let query_emb = embed_query(query, provider, api_key, custom_url, model_override);
+        if (query_emb)
+            results = search(query_emb, idx, top_k || 3);
+    }
 
-    let query_emb = embed_query(query, provider, api_key, custom_url, model_override);
-    if (!query_emb)
-        return "";
+    if (!results || length(results) == 0)
+        results = lexical_search(query, idx, top_k || 3);
 
-    let results = search(query_emb, idx, top_k || 3);
     let parts = [];
     for (let i = 0; i < length(results); i++) {
         let r = results[i];
@@ -287,5 +351,6 @@ return {
     status: status,
     load_raw_index: load_raw_index,
     get_embedding_model: get_embedding_model,
-    search: search
+    search: search,
+    lexical_search: lexical_search
 };

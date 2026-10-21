@@ -1,6 +1,5 @@
-import { callBaseMethod } from '../../../methods/shell/callBaseMethod';
+import { TachyonShellMethods } from '../../../methods/shell';
 import { renderButton } from '../../../../partials';
-import { Tachyon } from '../../../types';
 
 interface ChatMessage {
   sender: 'user' | 'assistant';
@@ -113,11 +112,10 @@ export function renderAiChatModal() {
     renderMessages();
 
     try {
-      const res = (await callBaseMethod(
-        Tachyon.AvailableMethods.AI_DOCTOR,
-        [text],
-        { timeout: 120000 },
-      )) as { success?: boolean; data?: unknown };
+      const res = (await TachyonShellMethods.aiDoctor(text)) as {
+        success?: boolean;
+        data?: unknown;
+      };
       chatHistory.pop();
 
       let answerText = _('Failed to receive response from AI service.');

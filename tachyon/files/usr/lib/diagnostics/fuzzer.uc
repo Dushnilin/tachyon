@@ -191,7 +191,15 @@ function rerank_strategies_by_dpi(strategies, dpi_type) { return targets.rerank_
 
 function run_probe(engine, args_str, target_key, custom_url, job_id, opts) { return probe.run_probe(engine, args_str, target_key, custom_url, job_id, opts); }
 
-function synthesize_ai_strategies(engine, target, custom_url, user_prompt) { return ai.synthesize_ai_strategies(engine, target, custom_url, user_prompt); }
+function synthesize_ai_strategies(engine, target, custom_url, user_prompt, extra_arg) {
+    if (engine == "async" || engine == "--async")
+        return ai.start_ai_synthesize_async(target, custom_url, user_prompt, extra_arg);
+    if (engine == "status" || engine == "--status")
+        return ai.get_ai_synthesize_status();
+    if (engine == "worker" || engine == "--worker")
+        return ai.run_ai_synthesize_worker(target, custom_url, user_prompt, extra_arg, "");
+    return ai.synthesize_ai_strategies(engine, target, custom_url, user_prompt);
+}
 
 function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file, mode, job_id) {
     if (job_id && job_id != "") {
@@ -839,7 +847,9 @@ if (op == "start") {
 } else if (op == "reset_patterns") {
     reset_patterns_config();
 } else if (op == "ai_synthesize" || op == "synthesize") {
-    synthesize_ai_strategies(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    synthesize_ai_strategies(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
+} else if (op == "ai_synthesize_worker") {
+    ai.run_ai_synthesize_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 } else if (op == "detect_dpi") {
     let detection = detect_dpi_type(ARGV[1], ARGV[2]);
     print(sprintf("%J\n", detection));

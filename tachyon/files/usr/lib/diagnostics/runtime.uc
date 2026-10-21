@@ -118,7 +118,7 @@ function local_rule_doctor(res, pre_verify) {
     return doctor_mod.local_rule_doctor(res, verify);
 }
 
-function ai_doctor(lang) {
+function ai_doctor(lang, async_arg) {
     // Regression anchors for doctor_wg_tunnel & rag_embeddings checks:
     // outbound/wireguard
     // "WireGuard/AWG tunnel"
@@ -129,7 +129,7 @@ function ai_doctor(lang) {
     // rag_context = rag.retrieve(user_query, prov, ...);
     // let local_res = local_rule_doctor(res, verify);
 
-    return doctor_mod.ai_doctor(lang);
+    return doctor_mod.ai_doctor(lang, async_arg);
 }
 
 // ── Delegates to submodules ─────────────────────────────────────────────────
@@ -294,7 +294,7 @@ else if (mode == "doctor") {
 else if (mode == "diagnose-json")
     exit(diagnose_json());
 else if (mode == "ai-doctor")
-    exit(ai_doctor(ARGV[1] || ""));
+    exit(ai_doctor(ARGV[1] || "", ARGV[2] || ""));
 else if (mode == "ai-doctor-last")
     exit(ai_doctor_last());
 else if (mode == "apply-quick-fix")

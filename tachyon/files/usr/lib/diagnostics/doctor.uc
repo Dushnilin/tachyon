@@ -5,6 +5,7 @@ let constants = require("core.constants");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let exec = require("core.exec");
 let rag = require("diagnostics.rag");
 let network_mod = require("diagnostics.network");
 let dns_mod = require("diagnostics.dns");
@@ -2397,13 +2398,146 @@ function model_supports_temperature(provider, model) {
     return true;
 }
 
+function strip_llm_reasoning(text) {
+    text = trim(as_string(text || ""));
+    if (text == "")
+        return "";
+    while (true) {
+        let s = index(text, "<think>");
+        if (s < 0)
+            break;
+        let e = index(text, "</think>");
+        if (e >= s)
+            text = substr(text, 0, s) + substr(text, e + 8);
+        else {
+            text = substr(text, 0, s);
+            break;
+        }
+    }
+    return trim(text);
+}
+
+function extract_llm_message_text(msg) {
+    if (!msg)
+        return "";
+    let content = msg.content;
+    if (type(content) == "string" && trim(content) != "")
+        return strip_llm_reasoning(content);
+    if (type(content) == "array") {
+        let parts = [];
+        for (let item in content) {
+            if (type(item) == "string")
+                push(parts, item);
+            else if (type(item) == "object" && item.text)
+                push(parts, as_string(item.text));
+        }
+        let joined = strip_llm_reasoning(join("\n", parts));
+        if (joined != "")
+            return joined;
+    }
+    if (type(msg.reasoning_content) == "string" && trim(msg.reasoning_content) != "")
+        return strip_llm_reasoning(msg.reasoning_content);
+    if (type(msg.reasoning) == "string" && trim(msg.reasoning) != "")
+        return strip_llm_reasoning(msg.reasoning);
+    return "";
+}
+
+function normalize_llm_endpoint_url(raw_url) {
+    let u = trim(as_string(raw_url || ""));
+    u = replace(u, /\/+$/, "");
+    if (u == "")
+        return "";
+    if (index(u, "generativelanguage.googleapis.com") >= 0) {
+        if (match(u, /\/chat\/completions$/))
+            return u;
+        if (index(u, "/openai") >= 0)
+            return u + "/chat/completions";
+        if (index(u, "/v1beta") >= 0)
+            return replace(u, /\/v1beta.*$/, "") + "/v1beta/openai/chat/completions";
+        return "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    }
+    if (match(u, /\/chat\/completions$/) || match(u, /\/messages$/))
+        return u;
+    if (match(u, /\/api\/(chat|generate|tags)$/))
+        return replace(u, /\/api\/(chat|generate|tags)$/, "/v1/chat/completions");
+    if (match(u, /\/models$/))
+        return replace(u, /\/models$/, "/chat/completions");
+    if (match(u, /^https?:\/\/[^\/]+$/))
+        return u + "/v1/chat/completions";
+    return u + "/chat/completions";
+}
+
+function discover_llm_model(chat_url, api_key) {
+    let u = trim(as_string(chat_url || ""));
+    if (!match(u, /\/chat\/completions$/))
+        return "";
+    let models_url = replace(u, /\/chat\/completions$/, "/models");
+    let curl_args = [
+        "curl", "-s", "--connect-timeout", "3", "-m", "5",
+        "-H", "Accept: application/json"
+    ];
+    if (api_key != "") {
+        push(curl_args, "-H");
+        push(curl_args, "Authorization: Bearer " + api_key);
+    }
+    push(curl_args, models_url);
+    let res = command_capture(command_from_args(curl_args));
+    if (!res || res.status != 0 || res.output == "")
+        return "";
+    let parsed = parse_json_or_null(res.output);
+    if (!parsed)
+        return "";
+    if (type(parsed.data) == "array" && length(parsed.data) > 0) {
+        for (let item in parsed.data) {
+            if (type(item) == "object" && item.id) {
+                let id_str = trim(as_string(item.id));
+                if (id_str != "" && index(lc(id_str), "embed") < 0)
+                    return id_str;
+            }
+        }
+        if (type(parsed.data[0]) == "object" && parsed.data[0].id)
+            return trim(as_string(parsed.data[0].id));
+    }
+    if (type(parsed.models) == "array" && length(parsed.models) > 0) {
+        let first = parsed.models[0];
+        if (type(first) == "object")
+            return trim(as_string(first.id || first.name || first.model || ""));
+    }
+    return "";
+}
+
+function detect_llm_provider_from_key(provider, api_key, custom_url) {
+    if (custom_url != "" || api_key == "")
+        return provider;
+    if (provider != "openai")
+        return provider;
+    if (index(api_key, "sk-or-") == 0)
+        return "openrouter";
+    if (index(api_key, "sk-ant-") == 0)
+        return "anthropic";
+    if (index(api_key, "AIza") == 0)
+        return "gemini";
+    if (index(api_key, "gsk_") == 0)
+        return "groq";
+    if (index(api_key, "xai-") == 0)
+        return "xai";
+    return provider;
+}
+
 function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
-    provider = lc(trim(as_string(provider)));
+    provider = lc(trim(as_string(provider || "openai")));
+    api_key = trim(as_string(api_key || ""));
+    custom_url = trim(as_string(custom_url || ""));
+    model_override = trim(as_string(model_override || ""));
     LAST_LLM_ERROR = "";
 
+    provider = detect_llm_provider_from_key(provider, api_key, custom_url);
+
     if (provider == "anthropic" || provider == "claude") {
-        let api_url = "https://api.anthropic.com/v1/messages";
-        let model = model_override || "claude-haiku-4-5-20251001";
+        let api_url = custom_url != "" ? custom_url : "https://api.anthropic.com/v1/messages";
+        if (custom_url != "" && !match(api_url, /\/messages$/) && !match(api_url, /\/chat\/completions$/))
+            api_url = replace(api_url, /\/+$/, "") + "/v1/messages";
+        let model = model_override != "" ? model_override : "claude-haiku-4-5-20251001";
         let payload = {
             model: model,
             max_tokens: 1024,
@@ -2423,7 +2557,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
             "-H", "x-api-key: " + api_key,
             "-H", "anthropic-version: 2023-06-01",
             "--connect-timeout", "10",
-            "-m", "60",
+            "-m", "150",
             "-d", "@" + payload_path,
             api_url
         ];
@@ -2438,7 +2572,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
 
         let response_data = parse_json_or_null(result.output);
         if (response_data && type(response_data.content) == "array" && length(response_data.content) > 0) {
-            return response_data.content[0].text;
+            return strip_llm_reasoning(response_data.content[0].text);
         }
         if (response_data && type(response_data.error) == "object") {
             let err_type = as_string(response_data.error.type || "api_error");
@@ -2452,33 +2586,29 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     }
 
     let api_url = "https://api.openai.com/v1/chat/completions";
-    let model = model_override || "gpt-6-luna";
-    
+    let default_model = "gpt-4o-mini";
+
     if (provider == "deepseek") {
         api_url = "https://api.deepseek.com/chat/completions";
-        model = model_override || "deepseek-chat";
+        default_model = "deepseek-chat";
     } else if (provider == "gemini") {
         api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-        model = model_override || "gemini-2.5-flash";
+        default_model = "gemini-2.5-flash";
     } else if (provider == "openrouter") {
         api_url = "https://openrouter.ai/api/v1/chat/completions";
-        model = model_override || "deepseek/deepseek-chat";
+        default_model = "deepseek/deepseek-chat";
+    } else if (provider == "groq") {
+        api_url = "https://api.groq.com/openai/v1/chat/completions";
+        default_model = "llama-3.3-70b-versatile";
+    } else if (provider == "xai") {
+        api_url = "https://api.x.ai/v1/chat/completions";
+        default_model = "grok-2-latest";
     } else if (provider == "ollama") {
-        if (custom_url != "") {
-            custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
-            api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
-        } else {
-            api_url = "http://192.168.1.100:11434/v1/chat/completions";
-        }
-        model = model_override || "llama3.2";
+        api_url = custom_url != "" ? normalize_llm_endpoint_url(custom_url) : "http://192.168.1.100:11434/v1/chat/completions";
+        default_model = "llama3.2";
     } else if (provider == "lmstudio") {
-        if (custom_url != "") {
-            custom_url = replace(trim(as_string(custom_url)), /\/+$/, "");
-            api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
-        } else {
-            api_url = "http://192.168.1.100:1234/v1/chat/completions";
-        }
-        model = model_override || "local-model";
+        api_url = custom_url != "" ? normalize_llm_endpoint_url(custom_url) : "http://192.168.1.100:1234/v1/chat/completions";
+        default_model = "local-model";
     } else if (provider == "custom") {
         if (custom_url == "") {
             LAST_LLM_ERROR = "Custom API URL is not configured";
@@ -2491,31 +2621,24 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
             warn("LLM API error: " + LAST_LLM_ERROR);
             return null;
         }
-        if (index(custom_url, "generativelanguage.googleapis.com") >= 0) {
-            if (!match(custom_url, /\/chat\/completions$/)) {
-                if (index(custom_url, "/openai") >= 0) {
-                    api_url = custom_url + "/chat/completions";
-                } else if (index(custom_url, "/v1beta") >= 0) {
-                    api_url = replace(custom_url, /\/v1beta.*$/, "") + "/v1beta/openai/chat/completions";
-                } else {
-                    api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-                }
-            } else {
-                api_url = custom_url;
-            }
-            model = model_override || "gemini-2.5-flash";
-        } else {
-            api_url = match(custom_url, /\/chat\/completions$/) ? custom_url : (custom_url + "/chat/completions");
-            model = model_override || "gpt-6-luna";
-        }
-    } else {
-        api_url = "https://api.openai.com/v1/chat/completions";
-        model = model_override || "gpt-6-luna";
+        api_url = normalize_llm_endpoint_url(custom_url);
+        default_model = index(custom_url, "generativelanguage.googleapis.com") >= 0 ? "gemini-2.5-flash" : "gpt-4o-mini";
+    } else if (custom_url != "") {
+        api_url = normalize_llm_endpoint_url(custom_url);
     }
 
-    let send_chat_request = function(include_temperature) {
+    let model = model_override;
+    if (model == "" && (provider == "lmstudio" || provider == "ollama" || provider == "custom" || custom_url != "")) {
+        let discovered = discover_llm_model(api_url, api_key);
+        if (discovered != "")
+            model = discovered;
+    }
+    if (model == "")
+        model = default_model;
+
+    let send_chat_request = function(target_url, target_model, include_temperature) {
         let payload = {
-            model: model,
+            model: target_model,
             messages: [
                 {
                     role: "user",
@@ -2532,12 +2655,15 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         let curl_args = [
             "curl", "-s", "-X", "POST",
             "-H", "Content-Type: application/json",
-            "-H", "Authorization: Bearer " + api_key,
             "--connect-timeout", "10",
-            "-m", "60",
+            "-m", "150",
             "-d", "@" + payload_path,
-            api_url
+            target_url
         ];
+        if (api_key != "") {
+            push(curl_args, "-H");
+            push(curl_args, "Authorization: Bearer " + api_key);
+        }
 
         // OpenRouter recommends these headers for identification and rate-limit ranking
         if (provider == "openrouter") {
@@ -2553,7 +2679,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     };
 
     let use_temp = model_supports_temperature(provider, model);
-    let result = send_chat_request(use_temp);
+    let result = send_chat_request(api_url, model, use_temp);
 
     if (result.status != 0 || result.output == "") {
         LAST_LLM_ERROR = sprintf("network/curl error (exit %d)", result.status);
@@ -2562,20 +2688,65 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     }
 
     let response_data = parse_json_or_null(result.output);
+
+    if ((!response_data || (response_data.error && index(lc(as_string(response_data.error.message || response_data.error)), "not found") >= 0)) &&
+        index(api_url, "/v1/") < 0 && match(api_url, /\/chat\/completions$/)) {
+        let alt_url = replace(api_url, /\/chat\/completions$/, "/v1/chat/completions");
+        let alt_res = send_chat_request(alt_url, model, use_temp);
+        if (alt_res && alt_res.status == 0 && alt_res.output != "") {
+            let alt_parsed = parse_json_or_null(alt_res.output);
+            if (alt_parsed) {
+                api_url = alt_url;
+                result = alt_res;
+                response_data = alt_parsed;
+            }
+        }
+    }
+
     // Automatic retry without temperature if the model rejects temperature (e.g. invalid_request_error / unsupported_value / temperature)
     if (use_temp && response_data && type(response_data.error) == "object") {
         let err_param = lc(as_string(response_data.error.param || ""));
         let err_code = lc(as_string(response_data.error.code || ""));
         let err_msg_lc = lc(as_string(response_data.error.message || ""));
         if (err_param == "temperature" || index(err_msg_lc, "temperature") >= 0 || err_code == "unsupported_value") {
-            result = send_chat_request(false);
+            result = send_chat_request(api_url, model, false);
             if (result.status == 0 && result.output != "")
                 response_data = parse_json_or_null(result.output);
         }
     }
 
+    if (response_data && type(response_data.error) == "object") {
+        let err_msg_lc = lc(as_string(response_data.error.message || response_data.error.code || ""));
+        if (index(err_msg_lc, "model") >= 0) {
+            let discovered = discover_llm_model(api_url, api_key);
+            if (discovered != "" && discovered != model) {
+                model = discovered;
+                let retry_res = send_chat_request(api_url, model, model_supports_temperature(provider, model));
+                if (retry_res && retry_res.status == 0 && retry_res.output != "") {
+                    result = retry_res;
+                    response_data = parse_json_or_null(result.output);
+                }
+            }
+        }
+    }
+
     if (response_data && type(response_data.choices) == "array" && length(response_data.choices) > 0) {
-        return response_data.choices[0].message.content;
+        let choice = response_data.choices[0];
+        let text = extract_llm_message_text(choice.message);
+        if (text == "" && type(choice.text) == "string")
+            text = strip_llm_reasoning(choice.text);
+        if (text != "")
+            return text;
+    }
+
+    if (response_data && type(response_data.message) == "object") {
+        let text = extract_llm_message_text(response_data.message);
+        if (text != "")
+            return text;
+    }
+
+    if (response_data && type(response_data.response) == "string" && trim(response_data.response) != "") {
+        return strip_llm_reasoning(response_data.response);
     }
 
     if (response_data && type(response_data.error) == "object") {
@@ -3501,7 +3672,10 @@ function local_rule_doctor(pre_res, pre_verify) {
     return doctor_res;
 }
 
-function ai_doctor(user_query) {
+const AI_DOCTOR_JOB_FILE = "/tmp/tachyon_ai_doctor_job.json";
+const AI_DOCTOR_JOB_PID = "/tmp/tachyon_ai_doctor_job.pid";
+
+function compute_ai_doctor_result(user_query) {
     let cfg = uci_settings();
     // Run the diagnostic suite exactly once: the same results feed both the
     // rule-based diagnosis and the report/verification assembly below.
@@ -3514,8 +3688,7 @@ function ai_doctor(user_query) {
     let is_local_or_custom = (prov == "ollama" || prov == "lmstudio" || (prov == "custom" && cfg.ai_doctor_custom_url != ""));
 
     if (cfg.enable_ai_doctor != "1" || (!has_key && !is_local_or_custom)) {
-        print(sprintf("%J\n", local_res));
-        return 0;
+        return local_res;
     }
 
     let report = res.report;
@@ -3685,8 +3858,7 @@ function ai_doctor(user_query) {
                 f_err.close();
             }
         }
-        print(sprintf("%J\n", local_res));
-        return 0;
+        return local_res;
     }
 
     let quick_fixes = [];
@@ -3729,6 +3901,75 @@ function ai_doctor(user_query) {
         f.close();
     }
 
+    return doctor_res;
+}
+
+function ai_doctor(user_query, async_arg) {
+    let q_str = trim(as_string(user_query || ""));
+    if (q_str == "--status" || q_str == "status") {
+        let state = read_json_file(AI_DOCTOR_JOB_FILE);
+        if (!state || type(state) != "object") {
+            print(sprintf("%J\n", { running: false, success: false, error: "No AI Doctor job found" }));
+            return 0;
+        }
+        if (state.running === true) {
+            let pid = trim(as_string(fs.readfile(AI_DOCTOR_JOB_PID) || ""));
+            let age = time() - int(state.started_at || 0);
+            if ((pid != "" && !exec.is_alive(pid)) || age > 180) {
+                let recheck = read_json_file(AI_DOCTOR_JOB_FILE);
+                if (recheck && recheck.running === false) {
+                    state = recheck;
+                } else {
+                    state.running = false;
+                    state.success = false;
+                    state.error = age > 180 ? "AI Doctor timed out" : "AI Doctor worker exited";
+                    common.write_json_file(AI_DOCTOR_JOB_FILE, state);
+                }
+            }
+        }
+        print(sprintf("%J\n", state));
+        return 0;
+    }
+
+    if (q_str == "--worker" || q_str == "worker") {
+        let res = compute_ai_doctor_result(async_arg || "");
+        res.running = false;
+        res.finished_at = time();
+        common.write_json_file(AI_DOCTOR_JOB_FILE, res);
+        remove_file(AI_DOCTOR_JOB_PID);
+        return 0;
+    }
+
+    if (q_str == "--async" || q_str == "async") {
+        let old_pid = trim(as_string(fs.readfile(AI_DOCTOR_JOB_PID) || ""));
+        if (old_pid != "" && exec.is_alive(old_pid)) {
+            exec.kill_process(old_pid, 1);
+        }
+        let job_id = sprintf("ai_doc_%d", time());
+        common.write_json_file(AI_DOCTOR_JOB_FILE, {
+            running: true,
+            job_id: job_id,
+            started_at: time()
+        });
+        let runtime_bin = LIB_DIR + "/diagnostics/runtime.uc";
+        if (fs.stat(runtime_bin) == null)
+            runtime_bin = "/usr/lib/tachyon/diagnostics/runtime.uc";
+        let spawned = exec.run_background({
+            argv: [ "ucode", "-L", LIB_DIR, runtime_bin, "ai-doctor", "--worker", as_string(async_arg || "") ],
+            name: "ai-doctor"
+        });
+        if (spawned && spawned.pid && spawned.pid != "0")
+            common.write_file(AI_DOCTOR_JOB_PID, spawned.pid + "\n");
+        print(sprintf("%J\n", {
+            success: true,
+            async: true,
+            running: true,
+            job_id: job_id
+        }));
+        return 0;
+    }
+
+    let doctor_res = compute_ai_doctor_result(user_query);
     print(sprintf("%J\n", doctor_res));
     return 0;
 }

@@ -4574,9 +4574,43 @@ var TachyonShellMethods = {
       timeout: 6e4
     }
   ),
-  aiDoctor: async () => callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR, [], {
-    timeout: 6e4
-  }),
+  aiDoctor: async (query) => {
+    const startArgs = ["--async"];
+    if (query) startArgs.push(query);
+    const startRes = await callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR, startArgs, {
+      timeout: 15e3
+    });
+    if (startRes.success && startRes.data && typeof startRes.data === "object") {
+      if (startRes.data.async) {
+        const deadline = Date.now() + 17e4;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const pollRes = await callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR, ["--status"], {
+            timeout: 1e4
+          });
+          if (pollRes.success && pollRes.data && typeof pollRes.data === "object") {
+            if (pollRes.data.running === true) continue;
+            return {
+              success: pollRes.data.success !== false,
+              data: pollRes.data
+            };
+          }
+        }
+      } else if (startRes.data.success !== void 0) {
+        return {
+          success: startRes.data.success !== false,
+          data: startRes.data
+        };
+      }
+    }
+    return callBaseMethod(
+      Tachyon.AvailableMethods.AI_DOCTOR,
+      query ? [query] : [],
+      {
+        timeout: 12e4
+      }
+    );
+  },
   aiDoctorLast: async () => callBaseMethod(Tachyon.AvailableMethods.AI_DOCTOR_LAST, [], {
     timeout: 1e4
   }),
@@ -5266,6 +5300,70 @@ var TachyonShellMethods = {
     };
   },
   fuzzerAiSynthesize: async (engine, target, customUrl, userPrompt) => {
+    const asyncArgs = [
+      Tachyon.AvailableMethods.FUZZER_AI_SYNTHESIZE,
+      "async",
+      engine,
+      target,
+      customUrl || ""
+    ];
+    if (userPrompt) asyncArgs.push(userPrompt);
+    const startRes = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: asyncArgs,
+      timeout: 15e3
+    });
+    let startParsed = null;
+    try {
+      startParsed = JSON.parse(startRes?.stdout?.trim() || "{}");
+    } catch {
+      startParsed = null;
+    }
+    if ((startRes?.code ?? 1) === 0 && startParsed && startParsed.async) {
+      const deadline = Date.now() + 17e4;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const pollRes = await executeShellCommand({
+          command: "/usr/bin/tachyon",
+          args: [Tachyon.AvailableMethods.FUZZER_AI_SYNTHESIZE, "status"],
+          timeout: 1e4
+        });
+        let pollParsed = null;
+        try {
+          pollParsed = JSON.parse(pollRes?.stdout?.trim() || "{}");
+        } catch {
+          pollParsed = null;
+        }
+        if (!pollParsed) continue;
+        if (pollParsed.running === true) continue;
+        if (pollParsed.success) {
+          return {
+            success: true,
+            data: pollParsed
+          };
+        }
+        return {
+          success: false,
+          error: pollParsed.error || _("Failed to synthesize AI strategies")
+        };
+      }
+      return {
+        success: false,
+        error: _("AI synthesis timed out waiting for LLM response")
+      };
+    }
+    if ((startRes?.code ?? 1) === 0 && startParsed && startParsed.success === true && Array.isArray(startParsed.strategies)) {
+      return {
+        success: true,
+        data: startParsed
+      };
+    }
+    if (startParsed && startParsed.success === false && startParsed.error) {
+      return {
+        success: false,
+        error: startParsed.error
+      };
+    }
     const args = [
       Tachyon.AvailableMethods.FUZZER_AI_SYNTHESIZE,
       engine,
@@ -5277,17 +5375,17 @@ var TachyonShellMethods = {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
       args,
-      timeout: 65e3
+      timeout: 12e4
     });
     let parsed = null;
     try {
       parsed = JSON.parse(
-        response.stdout?.trim() || "{}"
+        response?.stdout?.trim() || "{}"
       );
     } catch {
       parsed = null;
     }
-    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+    if ((response?.code ?? 1) === 0 && parsed && parsed.success) {
       return {
         success: true,
         data: parsed
@@ -5295,7 +5393,7 @@ var TachyonShellMethods = {
     }
     return {
       success: false,
-      error: parsed?.error || response.stderr || _("Failed to synthesize AI strategies")
+      error: parsed?.error || response?.stderr || _("Failed to synthesize AI strategies")
     };
   },
   getFuzzerPatterns: async () => {
@@ -15239,11 +15337,7 @@ function renderAiChatModal() {
     chatHistory.push(typingMsg);
     renderMessages();
     try {
-      const res = await callBaseMethod(
-        Tachyon.AvailableMethods.AI_DOCTOR,
-        [text],
-        { timeout: 12e4 }
-      );
+      const res = await TachyonShellMethods.aiDoctor(text);
       chatHistory.pop();
       let answerText = _("Failed to receive response from AI service.");
       if (res && res.success) {

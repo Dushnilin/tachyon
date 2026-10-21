@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 07:16+0300\n"
-"PO-Revision-Date: 2026-10-21 07:16+0300\n"
+"POT-Creation-Date: 2026-10-21 12:51+0300\n"
+"PO-Revision-Date: 2026-10-21 12:51+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -136,6 +136,9 @@ msgstr "ИИ успешно сгенерировал кастомные стра
 
 msgid "AI synthesis failed"
 msgstr "Не удалось сгенерировать стратегии через ИИ"
+
+msgid "AI synthesis timed out waiting for LLM response"
+msgstr ""
 
 msgid "ALPN"
 msgstr "ALPN"
@@ -1289,7 +1292,7 @@ msgstr "Пользовательский MTU, например 1500 (остав�
 msgid "Custom OpenAI-Compatible API"
 msgstr "Пользовательский OpenAI-совместимый API"
 
-msgid "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions or https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)"
+msgid "Custom OpenAI-compatible API endpoint or base URL (e.g. http://192.168.1.100:1234 or http://192.168.1.100:11434/v1/chat/completions). Leave empty to use official provider URL."
 msgstr ""
 
 msgid "Custom device headers"
@@ -3674,7 +3677,7 @@ msgstr "Имя пользователя смешанного прокси"
 msgid "Mode"
 msgstr "Режим"
 
-msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
+msgid "Model name to use. Leave empty to auto-detect or use provider default (gpt-4o-mini / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
 msgstr ""
 
 msgid "Modules"
@@ -7261,6 +7264,12 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions or https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)"
+msgstr ""
+
+msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
+msgstr ""
 
 msgid "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"
 msgstr "API-ключ для OpenAI (sk-...) или DeepSeek (опционально для Ollama / LM Studio)"

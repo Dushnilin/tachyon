@@ -396,10 +396,60 @@ export const TachyonShellMethods = {
         timeout: 60000,
       },
     ),
-  aiDoctor: async () =>
-    callBaseMethod<unknown>(Tachyon.AvailableMethods.AI_DOCTOR, [], {
-      timeout: 60000,
-    }),
+  aiDoctor: async (query?: string) => {
+    const startArgs = ['--async'];
+    if (query) startArgs.push(query);
+    const startRes = await callBaseMethod<{
+      success?: boolean;
+      async?: boolean;
+      running?: boolean;
+      job_id?: string;
+    }>(Tachyon.AvailableMethods.AI_DOCTOR, startArgs, {
+      timeout: 15000,
+    });
+
+    if (
+      startRes.success &&
+      startRes.data &&
+      typeof startRes.data === 'object'
+    ) {
+      if (startRes.data.async) {
+        const deadline = Date.now() + 170000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const pollRes = await callBaseMethod<
+            Record<string, unknown> & { running?: boolean; success?: boolean }
+          >(Tachyon.AvailableMethods.AI_DOCTOR, ['--status'], {
+            timeout: 10000,
+          });
+          if (
+            pollRes.success &&
+            pollRes.data &&
+            typeof pollRes.data === 'object'
+          ) {
+            if (pollRes.data.running === true) continue;
+            return {
+              success: pollRes.data.success !== false,
+              data: pollRes.data,
+            };
+          }
+        }
+      } else if (startRes.data.success !== undefined) {
+        return {
+          success: startRes.data.success !== false,
+          data: startRes.data,
+        };
+      }
+    }
+
+    return callBaseMethod<unknown>(
+      Tachyon.AvailableMethods.AI_DOCTOR,
+      query ? [query] : [],
+      {
+        timeout: 120000,
+      },
+    );
+  },
   aiDoctorLast: async () =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.AI_DOCTOR_LAST, [], {
       timeout: 10000,
@@ -1339,6 +1389,88 @@ export const TachyonShellMethods = {
     customUrl?: string,
     userPrompt?: string,
   ): Promise<Tachyon.MethodResponse<Tachyon.FuzzerAiSynthesizeResponse>> => {
+    const asyncArgs: string[] = [
+      Tachyon.AvailableMethods.FUZZER_AI_SYNTHESIZE,
+      'async',
+      engine,
+      target,
+      customUrl || '',
+    ];
+    if (userPrompt) asyncArgs.push(userPrompt);
+
+    const startRes = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: asyncArgs,
+      timeout: 15000,
+    });
+
+    let startParsed:
+      | (Tachyon.FuzzerAiSynthesizeResponse & {
+          async?: boolean;
+          running?: boolean;
+        })
+      | null = null;
+    try {
+      startParsed = JSON.parse(startRes?.stdout?.trim() || '{}');
+    } catch {
+      startParsed = null;
+    }
+
+    if ((startRes?.code ?? 1) === 0 && startParsed && startParsed.async) {
+      const deadline = Date.now() + 170000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const pollRes = await executeShellCommand({
+          command: '/usr/bin/tachyon',
+          args: [Tachyon.AvailableMethods.FUZZER_AI_SYNTHESIZE, 'status'],
+          timeout: 10000,
+        });
+        let pollParsed:
+          | (Tachyon.FuzzerAiSynthesizeResponse & { running?: boolean })
+          | null = null;
+        try {
+          pollParsed = JSON.parse(pollRes?.stdout?.trim() || '{}');
+        } catch {
+          pollParsed = null;
+        }
+        if (!pollParsed) continue;
+        if (pollParsed.running === true) continue;
+        if (pollParsed.success) {
+          return {
+            success: true,
+            data: pollParsed,
+          };
+        }
+        return {
+          success: false,
+          error: pollParsed.error || _('Failed to synthesize AI strategies'),
+        };
+      }
+      return {
+        success: false,
+        error: _('AI synthesis timed out waiting for LLM response'),
+      };
+    }
+
+    if (
+      (startRes?.code ?? 1) === 0 &&
+      startParsed &&
+      startParsed.success === true &&
+      Array.isArray(startParsed.strategies)
+    ) {
+      return {
+        success: true,
+        data: startParsed,
+      };
+    }
+
+    if (startParsed && startParsed.success === false && startParsed.error) {
+      return {
+        success: false,
+        error: startParsed.error,
+      };
+    }
+
     const args: string[] = [
       Tachyon.AvailableMethods.FUZZER_AI_SYNTHESIZE,
       engine,
@@ -1351,19 +1483,19 @@ export const TachyonShellMethods = {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
       args,
-      timeout: 65000,
+      timeout: 120000,
     });
 
     let parsed: Tachyon.FuzzerAiSynthesizeResponse | null = null;
     try {
       parsed = JSON.parse(
-        response.stdout?.trim() || '{}',
+        response?.stdout?.trim() || '{}',
       ) as Tachyon.FuzzerAiSynthesizeResponse;
     } catch {
       parsed = null;
     }
 
-    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+    if ((response?.code ?? 1) === 0 && parsed && parsed.success) {
       return {
         success: true,
         data: parsed,
@@ -1373,7 +1505,7 @@ export const TachyonShellMethods = {
       success: false,
       error:
         parsed?.error ||
-        response.stderr ||
+        response?.stderr ||
         _('Failed to synthesize AI strategies'),
     };
   },
