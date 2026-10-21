@@ -235,13 +235,19 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
         save_fuzzer_state(state);
     }
 
-    if (custom_url && custom_url != "" && !fuzzer_runner.is_valid_url(custom_url)) {
-        state.running = false;
-        state.error = "Invalid custom URL: malformed or forbidden characters";
-        state.finished_at = clock()[0];
-        save_fuzzer_state(state);
-        cleanup_temp_daemons(state.job_id);
-        return;
+    if (custom_url && custom_url != "") {
+        let urls = split(custom_url, /[,\n]+/);
+        for (let u in urls) {
+            let trimmed = trim(as_string(u));
+            if (trimmed != "" && !fuzzer_runner.is_valid_url(trimmed)) {
+                state.running = false;
+                state.error = sprintf("Invalid custom URL: '%s' is malformed or contains forbidden characters", trimmed);
+                state.finished_at = clock()[0];
+                save_fuzzer_state(state);
+                cleanup_temp_daemons(state.job_id);
+                return;
+            }
+        }
     }
 
     // ── Pre-fuzz DPI detection ────────────────────────────────────────────

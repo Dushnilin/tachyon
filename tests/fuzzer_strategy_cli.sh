@@ -362,4 +362,64 @@ for (const s of list) {
 console.log(`Verified STUN coverage in ${list.length} Discord UDP strategies.`);
 NODE
 
+# 12. Multi-URL custom targets resolution and validation (Issue #195)
+ucode -L "$TACHYON_LIB" -e '
+let binaries = require("diagnostics.fuzzer.binaries");
+let runner = require("diagnostics.fuzzer_runner");
+
+// A. Test newline-separated and comma-separated custom URLs list resolution
+let multi_nl = "https://youtube.com\nhttps://instagram.com\nhttps://rutracker.org";
+let list_nl = binaries.resolve_target_urls_list("custom", multi_nl);
+if (length(list_nl) != 3) {
+    warn(sprintf("Failed: expected 3 resolved URLs, got %d\n", length(list_nl)));
+    exit(1);
+}
+if (list_nl[0].url != "https://youtube.com" || list_nl[1].url != "https://instagram.com" || list_nl[2].url != "https://rutracker.org") {
+    warn("Failed: resolved URLs mismatch for newline-delimited input\n");
+    exit(1);
+}
+
+let multi_comma = "https://youtube.com, https://instagram.com,https://rutracker.org";
+let list_comma = binaries.resolve_target_urls_list("custom", multi_comma);
+if (length(list_comma) != 3) {
+    warn(sprintf("Failed: expected 3 resolved comma URLs, got %d\n", length(list_comma)));
+    exit(1);
+}
+
+// B. Test resolve_target_url returns first URL
+let primary = binaries.resolve_target_url("custom", multi_nl);
+if (primary != "https://youtube.com") {
+    warn(sprintf("Failed: resolve_target_url should return first URL, got %s\n", primary));
+    exit(1);
+}
+
+// C. Test each URL in multi-URL string is valid
+let urls = split(multi_nl, /[,\n]+/);
+for (let u in urls) {
+    let t = trim(u);
+    if (t != "" && !runner.is_valid_url(t)) {
+        warn(sprintf("Failed: valid URL %s was rejected\n", t));
+        exit(1);
+    }
+}
+
+// D. Test malformed URL in multi-URL string is caught
+let multi_bad = "https://youtube.com\nhttps://evil.com;rm -rf /\nhttps://rutracker.org";
+let bad_caught = false;
+for (let u in split(multi_bad, /[,\n]+/)) {
+    let t = trim(u);
+    if (t != "" && !runner.is_valid_url(t)) {
+        bad_caught = true;
+        break;
+    }
+}
+if (!bad_caught) {
+    warn("Failed: malformed URL in multi-URL list was not detected\n");
+    exit(1);
+}
+
+print("Multi-URL custom targets resolution and validation checks passed.\n");
+'
+
 printf 'PASS: fuzzer_strategy_cli\n'
+
