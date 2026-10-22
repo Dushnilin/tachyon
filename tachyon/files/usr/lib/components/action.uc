@@ -1020,14 +1020,44 @@ function install_zapret2(action, target_tag) {
     // config.default via uci-def-cfg.sh, which does carry run_on_boot; the only
     // thing we want to change is the standalone autostart, and that is applied
     // after the install, once the genuine config exists.
+    //
+    // On an UPGRADE (/etc/config/zapret2 already exists), upstream postinst
+    // merges /etc/config/zapret2 with default values (keeping existing options)
+    // and starts the standalone zapret2 service, whose create_ipset.sh feeds
+    // /opt/zapret2/ipset/zapret-ip-exclude.txt (containing IPv6 "::1") into an
+    // IPv4 nftables set (`type ipv4_addr`), failing with:
+    //   /dev/stdin:8:1-3: Error: Could not resolve hostname: Name has no usable address (::1)
+    //   sh: write error: Broken pipe
+    // Setting INIT_APPLY_FW='0' and NFQWS2_ENABLE='0' on an existing config
+    // before the upgrade keeps run_on_boot intact while preventing upstream
+    // postinst from running create_ipset.sh or spawning standalone nfqws2.
     if (uci_core.available()) {
         let cfg = read_file("/etc/config/zapret2") || "";
-        if (cfg != "" && index(cfg, "run_on_boot") < 0) {
-            // A stub written by an older Tachyon: repair it in place rather
-            // than let preinst wipe /opt/zapret2 over it.
-            cfg += "\n\toption run_on_boot '0'\n";
-            write_file("/etc/config/zapret2", cfg);
-            log_message("Repaired /etc/config/zapret2: added run_on_boot so upstream preinst stops wiping the install", "warn");
+        if (cfg != "") {
+            if (index(cfg, "run_on_boot") < 0) {
+                // A stub written by an older Tachyon: repair it in place rather
+                // than let preinst wipe /opt/zapret2 over it.
+                cfg += "\n\toption run_on_boot '0'\n";
+                write_file("/etc/config/zapret2", cfg);
+                log_message("Repaired /etc/config/zapret2: added run_on_boot so upstream preinst stops wiping the install", "warn");
+            }
+            if (uci_core.exists("zapret2.config")) {
+                uci_core.set("zapret2.config.run_on_boot", "0");
+                uci_core.set("zapret2.config.INIT_APPLY_FW", "0");
+                uci_core.set("zapret2.config.NFQWS2_ENABLE", "0");
+                uci_core.commit("zapret2");
+            }
+        }
+    }
+    if (file_exists("/opt/zapret2/ipset/zapret-ip-exclude.txt")) {
+        let excl = read_file("/opt/zapret2/ipset/zapret-ip-exclude.txt") || "";
+        if (index(excl, ":") >= 0) {
+            let v4_lines = [];
+            for (let line in split(excl, "\n")) {
+                if (index(line, ":") < 0)
+                    push(v4_lines, line);
+            }
+            write_file("/opt/zapret2/ipset/zapret-ip-exclude.txt", join("\n", v4_lines));
         }
     }
 
@@ -1038,8 +1068,25 @@ function install_zapret2(action, target_tag) {
 
     // Now that upstream postinst has produced the real config, keep the
     // standalone service off: Tachyon owns the engine, so /etc/init.d/zapret2
-    // must not also run it.
+    // must not also run it. Also scrub IPv6 entries from zapret-ip-exclude.txt
+    // so future upgrades never trip over "::1" in ipv4_addr sets (#205).
+    if (file_exists("/opt/zapret2/ipset/zapret-ip-exclude.txt")) {
+        let excl = read_file("/opt/zapret2/ipset/zapret-ip-exclude.txt") || "";
+        if (index(excl, ":") >= 0) {
+            let v4_lines = [];
+            for (let line in split(excl, "\n")) {
+                if (index(line, ":") < 0)
+                    push(v4_lines, line);
+            }
+            write_file("/opt/zapret2/ipset/zapret-ip-exclude.txt", join("\n", v4_lines));
+        }
+    }
     if (uci_core.available()) {
+        if (uci_core.exists("zapret2.config")) {
+            uci_core.set("zapret2.config.run_on_boot", "0");
+            uci_core.set("zapret2.config.INIT_APPLY_FW", "0");
+            uci_core.set("zapret2.config.NFQWS2_ENABLE", "0");
+        }
         if (!uci_core.exists("zapret2.main"))
             uci_core.set_section("zapret2.main", "zapret2");
         uci_core.set("zapret2.main.enabled", "0");

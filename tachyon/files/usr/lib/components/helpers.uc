@@ -202,10 +202,15 @@ function sanitize_package_log_line(message) {
         return null;
 
     // Suppress raw wget failure messages triggered during repository index refresh (apk / opkg)
+    // and harmless upstream zapret2 postinst nftables IPv6/IPv4 exclude set warnings (#205)
     if (match(str, /^ERROR:[ \t]+wget:[ \t]+exited with error/i) ||
         match(str, /^\*?[ \t]*wget(:[ \t]+|Failed)/i) ||
         match(str, /^Collected errors:/i) ||
-        match(str, /^\*?[ \t]*opkg_download:[ \t]+Check your network settings/i))
+        match(str, /^\*?[ \t]*opkg_download:[ \t]+Check your network settings/i) ||
+        match(str, /^\*?[ \t]*sh:[ \t]+write error:[ \t]+Broken pipe/i) ||
+        match(str, /^\*?[ \t]*\/dev\/stdin:[0-9]+:[0-9-]+:[ \t]+Error:[ \t]+Could not resolve hostname:[ \t]+Name has no usable address/i) ||
+        match(str, /^\*?[ \t]*(::1|fc00::\/7|fe80::\/10),?[ \t]*$/i) ||
+        match(str, /^\*?[ \t]*\^+[ \t]*$/))
         return null;
 
     // Format apk/opkg repository index warnings into calm, informative notices

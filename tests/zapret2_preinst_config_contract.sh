@@ -120,4 +120,28 @@ bare="$(grep -cE '^[[:space:]]*log\(' "$ACTION_UC" || true)"
   fail "action.uc calls bare log() ($bare site(s)); this module has no such function, so the call fails at runtime - use log_message() or updates_log()"
 ok
 
+# --- 7. issue #205: upstream postinst Broken pipe / ::1 in zapret-ip-exclude -
+# Upstream zapret2-openwrt packages IPv6 entries (::1, fc00::/7, fe80::/10) inside
+# ipset/zapret-ip-exclude.txt and feeds that file into an ipv4_addr nft set during
+# postinst start, causing nft to reject "::1" with "Could not resolve hostname"
+# and sed to print "sh: write error: Broken pipe".
+grep -q 'zapret2.config.INIT_APPLY_FW' "$ACTION_UC" ||
+  fail "action.uc must disable zapret2.config.INIT_APPLY_FW so upstream postinst does not run create_ipset.sh (#205)"
+ok
+
+grep -q 'zapret-ip-exclude.txt' "$ACTION_UC" ||
+  fail "action.uc must scrub IPv6 lines from /opt/zapret2/ipset/zapret-ip-exclude.txt (#205)"
+ok
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
+let helpers = require("components.helpers");
+function assert(v, m) { if (!v) { warn("FAIL: ", m, "\n"); exit(1); } }
+assert(helpers.sanitize_package_log_line("  * sh: write error: Broken pipe") == null, "Broken pipe must be suppressed");
+assert(helpers.sanitize_package_log_line("  * /dev/stdin:8:1-3: Error: Could not resolve hostname: Name has no usable address") == null, "nft stdin hostname error must be suppressed");
+assert(helpers.sanitize_package_log_line("  * ::1,") == null, "::1 error context line must be suppressed");
+assert(helpers.sanitize_package_log_line("  * ^^^") == null, "caret error context line must be suppressed");
+assert(helpers.sanitize_package_log_line("OK: 128.9 MiB in 180 packages") != null, "normal apk output must be preserved");
+'
+ok
+
 echo "zapret2_preinst_config_contract: $pass_count checks passed"
