@@ -275,12 +275,13 @@ function view_menu(token, chat_id, msg_id) {
 function view_status(token, chat_id, msg_id) {
     let sys = api.get_system_status();
     let conn = api.check_connection();
+    let engine_label = (sys && sys.engine_name) ? sys.engine_name : "tachyon-core";
     let text = "📊 <b>" + t("menu_status") + "</b>\n\n" +
                t("status_version") + ": <code>" + (sys.tachyon_version || "?") + "</code>\n" +
                t("status_uptime") + ": <code>" + sys.uptime + "</code>\n" +
                t("status_cpu") + ": <code>" + sys.cpu + "</code>\n" +
                "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n\n" +
-               "sing-box: <code>" + sys.singbox + (sys.singbox_variant ? " [" + sys.singbox_variant + "]" : "") + "</code>\n" +
+               escape_html(engine_label) + ": <code>" + sys.singbox + (sys.singbox_variant ? " [" + sys.singbox_variant + "]" : "") + "</code>\n" +
                (sys.zapret2_installed ? "zapret2: <code>" + sys.zapret2 + "</code>\n" : "") +
                "Watchdog: <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>\n\n" +
                "WAN: <code>" + (sys.wan_ip || "?") + "</code> " +
@@ -711,7 +712,7 @@ function exec_check_updates(token, chat_id, msg_id) {
             } else {
                 for (let comp in results) {
                     let name = comp.component || "";
-                    let title = (name == "sing_box") ? "sing-box" : name;
+                    let title = (name == "sing_box") ? "sing-box" : (name == "tachyon_core" ? "tachyon-core" : name);
                     let cur = comp.current_version || "?";
                     let lat = comp.latest_version || "?";
                     if (!comp.success) {
@@ -863,15 +864,16 @@ function view_quick_test(token, chat_id, msg_id) {
     let text = "🩺 <b>" + t("test_title") + "</b>\n\n";
     let conn = api.check_connection();
     let sys = api.get_system_status();
+    let engine_label = (sys && sys.engine_name) ? sys.engine_name : "tachyon-core";
 
     text += (conn && conn.direct ? "✅" : "❌") + " " + t("test_direct") + "\n";
     text += (conn && conn.proxy ? "✅" : "❌") + " " + t("test_proxy") + "\n";
-    text += (sys && sys.singbox_running ? "✅" : "❌") + " sing-box\n";
+    text += (sys && sys.singbox_running ? "✅" : "❌") + " " + escape_html(engine_label) + "\n";
     text += (sys && sys.tachyon_running ? "✅" : "❌") + " " + t("test_service") + "\n";
     text += (sys && sys.watchdog_running ? "✅" : "❌") + " Watchdog\n";
 
     let nft = command_capture(command_from_args(["/usr/sbin/nft", "list", "tables"]));
-    text += (nft && nft.status == 0 && match(nft.output || "", /TachyonTable/)) ? "✅" : "❌";
+    text += (nft && nft.status == 0 && match(nft.output || "", /TachyonTable|\bsteer\b/)) ? "✅" : "❌";
     text += " " + t("test_nft") + "\n";
 
     let dns_ok = false;
@@ -911,7 +913,7 @@ function view_logs(token, chat_id, msg_id, level, count) {
             if (line == "") continue;
             if (index(as_string(line), "UDP is not supported by outbound:") >= 0) {
                 if (!udp_http_notice_emitted) {
-                    push(filtered, "UDP traffic through HTTP outbounds is not supported by sing-box; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
+                    push(filtered, "UDP traffic through HTTP outbounds is not supported; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
                     udp_http_notice_emitted = true;
                 }
                 continue;
@@ -919,7 +921,7 @@ function view_logs(token, chat_id, msg_id, level, count) {
             if (level == "error" && !match(line, /\[err\]|\[error\]/i)) continue;
             if (level == "warn" && !match(line, /\[warn\]/i)) continue;
             if (level == "info" && !match(line, /\[info\]/i)) continue;
-            if (match(line, /tachyon|sing-box|watchdog/i)) push(filtered, line);
+            if (match(line, /tachyon|tachyon-core|sing-box|steer|watchdog/i)) push(filtered, line);
         }
         let start = length(filtered) - count;
         if (start < 0) start = 0;
@@ -958,12 +960,22 @@ function view_system_info(token, chat_id, msg_id) {
             text += "💻 OpenWrt: <code>" + as_string(info.openwrt_version || "N/A") + "</code>\n\n";
             text += "🔧 Tachyon: <code>" + as_string(info.tachyon_version || "N/A") + "</code>\n";
             text += "📱 LuCI App: <code>" + as_string(info.luci_app_version || "N/A") + "</code>\n\n";
-            text += "📦 sing-box: <code>" + as_string(info.sing_box_version || "N/A") + "</code>\n";
-            if (info.sing_box_lx == 1) text += "   Fork: Leadaxe (lx) 🟢\n";
-            else if (info.sing_box_compressed == 1) text += "   Fork: Extended (compressed) 🔵\n";
-            else if (info.sing_box_extended == 1) text += "   Fork: Extended (shtorm-7) 🔵\n";
-            else if (info.sing_box_tiny == 1) text += "   Variant: Tiny 🟡\n";
-            else text += "   Variant: Official / Stock ⚪\n";
+            let active_engine = "tachyon-core";
+            try { active_engine = require("core.engine").get_active(); } catch (e) {}
+            if (active_engine == "steer" || active_engine == "steer-extended") {
+                text += "📦 steer: <code>" + as_string(info.steer_version || "N/A") + "</code>\n";
+                if (info.steer_extended == "1" || active_engine == "steer-extended")
+                    text += "   Variant: Extended 🔵\n";
+            } else if (info.sing_box_tachyon_core == 1 || active_engine == "tachyon-core") {
+                text += "📦 tachyon-core: <code>" + as_string(info.tachyon_core_version || info.sing_box_version || "N/A") + "</code>\n";
+            } else {
+                text += "📦 sing-box: <code>" + as_string(info.sing_box_version || "N/A") + "</code>\n";
+                if (info.sing_box_lx == 1) text += "   Fork: Leadaxe (lx) 🟢\n";
+                else if (info.sing_box_compressed == 1) text += "   Fork: Extended (compressed) 🔵\n";
+                else if (info.sing_box_extended == 1) text += "   Fork: Extended (shtorm-7) 🔵\n";
+                else if (info.sing_box_tiny == 1) text += "   Variant: Tiny 🟡\n";
+                else text += "   Variant: Official / Stock ⚪\n";
+            }
             if (info.sing_box_tailscale == 1) text += "   Tailscale: ✅\n";
             text += "\n";
             if (info.zapret_installed == "1") text += "🛡 Zapret: <code>" + as_string(info.zapret_version || "?") + "</code>\n";

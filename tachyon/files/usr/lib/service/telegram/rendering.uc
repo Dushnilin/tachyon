@@ -385,8 +385,11 @@ function valid_updatable_component(name) {
     name = as_string(name);
     let allowed = {
         tachyon: 1,
+        tachyon_core: 1,
+        "tachyon-core": 1,
         sing_box: 1,
         "sing-box": 1,
+        steer: 1,
         zapret: 1,
         zapret2: 1,
         byedpi: 1

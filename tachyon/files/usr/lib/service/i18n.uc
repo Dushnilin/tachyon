@@ -141,7 +141,7 @@ let strings = {
         section_choose_group: "Select a group to configure the server:",
         section_group: "Group",
         section_server: "Server",
-        section_check_singbox: "Check if sing-box is running and Clash API is accessible.",
+        section_check_singbox: "Check if routing core is running and Clash API is accessible.",
         section_domains: "Domains",
         section_sources: "Sources",
         section_section: "Section",
@@ -190,7 +190,7 @@ let strings = {
         latency_none: "No latency data available.",
 
         // ─── Servers ───
-        servers_none: "No servers found or sing-box is not running.",
+        servers_none: "No servers found or routing core is not running.",
         servers_api_error: "API parsing error: ",
 
         // ─── QoS ───
@@ -307,8 +307,8 @@ let strings = {
         speed_direct: "📥 Direct:",
         speed_proxy: "📤 Via proxy:",
         speed_fail_measure: "❌ failed to measure",
-        speed_error: "❌ Failed to run test. Check if sing-box is running.",
-        speed_check_hint: "Check internet access and sing-box.",
+        speed_error: "❌ Failed to run test. Check if routing core is running.",
+        speed_check_hint: "Check internet access and routing core.",
 
         // ─── Ping ───
         ping_api_error: "❌ Failed to get data from Clash API.",
@@ -362,7 +362,7 @@ let strings = {
         conn_closed: "All active connections closed.",
 
         // ─── Outbounds ───
-        servers_not_found: "Servers not found or sing-box not running.",
+        servers_not_found: "Servers not found or routing core not running.",
         outbounds_hint: "Press the button to switch servers.",
 
         // ─── Logs ───
@@ -388,7 +388,7 @@ let strings = {
         outbound_switch_failed: "Failed to switch server",
         outbound_group: "Group",
         outbound_server: "Server",
-        outbound_check_hint: "Check if sing-box is running and Clash API is accessible.",
+        outbound_check_hint: "Check if routing core is running and Clash API is accessible.",
         section_ips: "IP addresses",
         section_list_header: "⚙️ <b>Section:</b>",
         backup_archive_empty: "Archive is empty or corrupted.",
@@ -409,7 +409,7 @@ let strings = {
         support_bundle_collecting: "Generating Support Bundle...",
         support_bundle_error: "Bundle generation error.",
         conn_closed_msg: "All active connections closed.\nThey will be re-established along new routes.",
-        conn_close_error: "Connection reset error.\nsing-box Clash API is unavailable.",
+        conn_close_error: "Connection reset error.\nClash API is unavailable.",
         updates_title: "Component Updates",
         updates_disabled: "Update check is disabled in settings.",
         updates_cache_empty: "Cache is empty. Check later.",
@@ -421,7 +421,7 @@ let strings = {
         update_cache_unavailable: "Check cache empty or unavailable.",
         btn_refresh_cache: "Refresh cache",
         api_parse_error: "API parsing error:",
-        api_connect_failed: "Failed to connect to sing-box API.",
+        api_connect_failed: "Failed to connect to Clash API.",
         logs_header: "Tachyon Logs",
         info_title: "System Information",
         info_device_label: "Device",
@@ -732,7 +732,7 @@ let strings = {
         section_choose_group: "Выберите группу для настройки сервера:\n\n",
         section_group: "Группа",
         section_server: "Сервер",
-        section_check_singbox: "Проверьте, запущен ли sing-box и доступен ли Clash API.",
+        section_check_singbox: "Проверьте, запущено ли прокси-ядро и доступен ли Clash API.",
         section_domains: "Домены",
         section_sources: "Источники (Source)",
         section_section: "Секция",
@@ -781,7 +781,7 @@ let strings = {
         latency_none: "Нет данных о задержках.",
 
         // ─── Servers ───
-        servers_none: "Серверы не найдены или sing-box не запущен.",
+        servers_none: "Серверы не найдены или прокси-ядро не запущено.",
         servers_api_error: "Ошибка парсинга API: ",
 
         // ─── QoS ───
@@ -898,8 +898,8 @@ let strings = {
         speed_direct: "📥 Прямое соединение:",
         speed_proxy: "📤 Через прокси:",
         speed_fail_measure: "❌ не удалось измерить",
-        speed_error: "❌ Не удалось выполнить тест. Проверьте, запущен ли sing-box.",
-        speed_check_hint: "Проверьте доступ в интернет и работу sing-box.",
+        speed_error: "❌ Не удалось выполнить тест. Проверьте, запущено ли прокси-ядро.",
+        speed_check_hint: "Проверьте доступ в интернет и работу прокси-ядра.",
 
         // ─── Ping ───
         ping_api_error: "❌ Не удалось получить данные из Clash API.",
@@ -953,7 +953,7 @@ let strings = {
         conn_closed: "Все активные соединения сброшены.",
 
         // ─── Outbounds ───
-        servers_not_found: "Серверы не найдены или sing-box не запущен.",
+        servers_not_found: "Серверы не найдены или прокси-ядро не запущено.",
         outbounds_hint: "Нажмите кнопку, чтобы переключить сервер.",
 
         // ─── Logs ───
@@ -980,7 +980,7 @@ let strings = {
         outbound_switch_failed: "Не удалось переключить сервер",
         outbound_group: "Группа",
         outbound_server: "Сервер",
-        outbound_check_hint: "Проверьте, запущен ли sing-box и доступен ли Clash API.",
+        outbound_check_hint: "Проверьте, запущено ли прокси-ядро и доступен ли Clash API.",
         section_ips: "IP адреса",
         section_list_header: "⚙️ <b>Секция:</b>",
         backup_archive_empty: "Архив пуст или повреждён.",
@@ -1001,7 +1001,7 @@ let strings = {
         support_bundle_collecting: "Формирую Support Bundle...",
         support_bundle_error: "Ошибка генерации Bundle.",
         conn_closed_msg: "Все активные соединения сброшены.\nОни будут переустановлены по новым маршрутам.",
-        conn_close_error: "Ошибка сброса соединений.\nsing-box Clash API недоступен.",
+        conn_close_error: "Ошибка сброса соединений.\nClash API прокси-ядра недоступен.",
         updates_title: "Обновления компонентов",
         updates_disabled: "Проверка обновлений отключена в настройках.",
         updates_cache_empty: "Кэш пуст. Зайдите позже.",
@@ -1013,7 +1013,7 @@ let strings = {
         update_cache_unavailable: "Кэш проверок пуст или недоступен.",
         btn_refresh_cache: "Обновить кэш",
         api_parse_error: "Ошибка парсинга API:",
-        api_connect_failed: "Не удалось подключиться к API sing-box.",
+        api_connect_failed: "Не удалось подключиться к Clash API прокси-ядра.",
         logs_header: "Логи Tachyon",
         info_title: "Информация о системе",
         info_device_label: "Устройство",

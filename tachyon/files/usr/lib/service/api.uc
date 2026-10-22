@@ -14,10 +14,19 @@ let core_binary_running = common.core_binary_running;
 let command_from_args = common.command_from_args;
 let command_output = common.command_output;
 
+function read_active_core_config() {
+    let cfg_path = uci_core.get(CONFIG_NAME, "settings", "config_path");
+    if (cfg_path && cfg_path != "") {
+        let d = fs.readfile(cfg_path);
+        if (d) return d;
+    }
+    return fs.readfile("/etc/tachyon-core/config.json") || fs.readfile("/etc/sing-box/config.json");
+}
+
 // Helper to get clash url
 function get_clash_url(endpoint) {
     let host = "127.0.0.1:9090"; // default fallback
-    let config_data = fs.readfile("/etc/tachyon-core/config.json");
+    let config_data = read_active_core_config();
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -42,7 +51,7 @@ function get_clash_url(endpoint) {
 }
 
 function get_clash_secret() {
-    let config_data = fs.readfile("/etc/tachyon-core/config.json");
+    let config_data = read_active_core_config();
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -127,13 +136,18 @@ function get_system_status() {
     let m = int((up_sec - (d * 86400) - (h * 3600)) / 60);
     status_obj.uptime = sprintf("%d дн. %02d:%02d", d, h, m);
 
-    // sing-box status
+    // Routing engine status
+    let engine_name = "tachyon-core";
+    try { engine_name = require("core.engine").get_active(); } catch (e) {}
+    status_obj.engine_name = engine_name;
     let sb_running = core_binary_running();
     status_obj.singbox_running = sb_running;
     status_obj.singbox = sb_running ? "🟢 running" : "🔴 stopped";
-    let sb_variant = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || ""));
-    if (sb_variant != "")
-        status_obj.singbox_variant = sb_variant;
+    if (engine_name == "sing-box") {
+        let sb_variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || fs.readfile("/etc/tachyon/tachyon-core-variant") || ""));
+        if (sb_variant != "" && sb_variant != "tachyon-core")
+            status_obj.singbox_variant = sb_variant;
+    }
 
     // zapret2 status
     let z2_installed = fs.stat("/opt/zapret2/nfq2/nfqws2") != null ||
