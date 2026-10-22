@@ -2477,7 +2477,16 @@ function createSettingsContent(section, capabilities) {
     ),
   );
   o.depends("enable_yacd_wan_access", "1");
-  o.rmempty = false;
+  o.rmempty = true;
+  o.validate = function (section_id, value) {
+    if (
+      this.section.formvalue(section_id, "enable_yacd_wan_access") === "1" &&
+      (!value || !`${value}`.trim())
+    ) {
+      return _("Secret key is required when WAN access is enabled");
+    }
+    return true;
+  };
 
   o = section.taboption(
     "services",
