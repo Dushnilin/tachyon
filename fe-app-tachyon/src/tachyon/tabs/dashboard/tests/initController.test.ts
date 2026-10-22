@@ -147,4 +147,16 @@ describe('dashboard initController', () => {
     });
     expect(stoppedItem.attributes.class).toContain('row--error');
   });
+
+  it('localizes uptime strings based on UI language', async () => {
+    const { formatLocalizedUptime } = await import('../initController');
+
+    // In English environment (vitest default):
+    expect(formatLocalizedUptime('3ч 12м')).toBe('3h 12m');
+    expect(formatLocalizedUptime('2д 5ч')).toBe('2d 5h');
+    expect(formatLocalizedUptime('45с')).toBe('45s');
+    expect(formatLocalizedUptime('15м')).toBe('15m');
+    expect(formatLocalizedUptime(undefined, 3720)).toBe('1h 2m');
+    expect(formatLocalizedUptime(undefined, 45)).toBe('45s');
+  });
 });

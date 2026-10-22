@@ -15,7 +15,7 @@ import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { renderCopyIcon24, renderLoaderCircleIcon24 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
-import { tr } from '../../helpers/i18n';
+import { tr, isRussianLanguage } from '../../helpers/i18n';
 import {
   logger,
   markUiActionOwned,
@@ -2444,6 +2444,49 @@ export function formatServiceRowValue(options: {
   return res;
 }
 
+export function formatLocalizedUptime(
+  uptimePretty?: string,
+  uptimeSeconds?: number,
+): string | undefined {
+  if (uptimeSeconds != null && uptimeSeconds >= 0) {
+    if (isRussianLanguage()) {
+      if (uptimeSeconds < 60) return `${uptimeSeconds}с`;
+      const min = Math.floor(uptimeSeconds / 60);
+      if (min < 60) return `${min}м`;
+      const hours = Math.floor(min / 60);
+      const remMin = min % 60;
+      if (hours < 24) return `${hours}ч ${remMin}м`;
+      const days = Math.floor(hours / 24);
+      const remHours = hours % 24;
+      return `${days}д ${remHours}ч`;
+    } else {
+      if (uptimeSeconds < 60) return `${uptimeSeconds}s`;
+      const min = Math.floor(uptimeSeconds / 60);
+      if (min < 60) return `${min}m`;
+      const hours = Math.floor(min / 60);
+      const remMin = min % 60;
+      if (hours < 24) return `${hours}h ${remMin}m`;
+      const days = Math.floor(hours / 24);
+      const remHours = hours % 24;
+      return `${days}d ${remHours}h`;
+    }
+  }
+
+  if (!uptimePretty) return undefined;
+
+  if (!isRussianLanguage()) {
+    return uptimePretty
+      .replace(/(\d+)\s*д/g, '$1d ')
+      .replace(/(\d+)\s*ч/g, '$1h ')
+      .replace(/(\d+)\s*м/g, '$1m ')
+      .replace(/(\d+)\s*с/g, '$1s ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  return uptimePretty;
+}
+
 export function formatServiceTooltip(options: {
   pid?: number;
   uptimePretty?: string;
@@ -2559,21 +2602,29 @@ async function renderServicesInfoWidget() {
     'servicesInfoWidget',
     tr('Информация о сервисах', 'Services info'),
     (data) => {
+      const tachyonUptime = formatLocalizedUptime(
+        data.tachyonUptimePretty,
+        data.tachyonUptimeSeconds,
+      );
       const tachyonTooltip = formatServiceTooltip({
         pid: data.tachyonPid,
-        uptimePretty: data.tachyonUptimePretty,
+        uptimePretty: tachyonUptime,
       });
 
+      const singboxUptime = formatLocalizedUptime(
+        data.singboxUptimePretty,
+        data.singboxUptimeSeconds,
+      );
       const singboxTooltip = formatServiceTooltip({
         pid: data.singboxPid,
-        uptimePretty: data.singboxUptimePretty,
+        uptimePretty: singboxUptime,
       });
 
       const items = [
         renderServiceRowItem('Tachyon', {
           running: data.tachyonRunning,
           memoryMb: data.tachyonMemoryMb,
-          uptimePretty: data.tachyonUptimePretty,
+          uptimePretty: tachyonUptime,
           tooltip: tachyonTooltip,
         }),
         renderServiceRowItem(
@@ -2602,39 +2653,47 @@ async function renderServicesInfoWidget() {
           {
             running: data.singbox,
             memoryMb: data.singboxMemoryMb,
-            uptimePretty: data.singboxUptimePretty,
+            uptimePretty: singboxUptime,
             tooltip: singboxTooltip,
           },
         ),
       ];
 
       if (data.zapret2Running) {
+        const zapret2Uptime = formatLocalizedUptime(
+          data.zapret2UptimePretty,
+          data.zapret2UptimeSeconds,
+        );
         const zapret2Tooltip = formatServiceTooltip({
           pid: data.zapret2Pid,
-          uptimePretty: data.zapret2UptimePretty,
+          uptimePretty: zapret2Uptime,
         });
 
         items.push(
           renderServiceRowItem('Zapret2', {
             running: data.zapret2Running,
             memoryMb: data.zapret2MemoryMb,
-            uptimePretty: data.zapret2UptimePretty,
+            uptimePretty: zapret2Uptime,
             tooltip: zapret2Tooltip,
           }),
         );
       }
 
       if (data.dnsmasqRunning != null) {
+        const dnsmasqUptime = formatLocalizedUptime(
+          data.dnsmasqUptimePretty,
+          data.dnsmasqUptimeSeconds,
+        );
         const dnsmasqTooltip = formatServiceTooltip({
           pid: data.dnsmasqPid,
-          uptimePretty: data.dnsmasqUptimePretty,
+          uptimePretty: dnsmasqUptime,
         });
 
         items.push(
           renderServiceRowItem('Dnsmasq (DNS)', {
             running: data.dnsmasqRunning,
             memoryMb: data.dnsmasqMemoryMb,
-            uptimePretty: data.dnsmasqUptimePretty,
+            uptimePretty: dnsmasqUptime,
             tooltip: dnsmasqTooltip,
           }),
         );
