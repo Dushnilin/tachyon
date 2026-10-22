@@ -2061,7 +2061,7 @@ function component_action_log(job_id, offset) {
 function automatic_component_check_names() {
     let result = [ "tachyon" ];
 
-    if (fs.stat("/usr/bin/tachyon-core") != null)
+    if (fs.stat("/usr/bin/tachyon-core") != null || fs.stat("/usr/bin/sing-box") != null)
         push(result, "sing_box");
     if (module_success([ LIB_DIR + "/providers/zapret/runtime.uc", "installed" ]))
         push(result, "zapret");

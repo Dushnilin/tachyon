@@ -169,6 +169,8 @@ const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRES
 const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
 const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
+const SB_LEGACY_VARIANT_STATE_FILE = "/etc/tachyon/sing-box-variant";
+const SB_LEGACY_VERSION_STATE_FILE = "/etc/tachyon/sing-box-version";
 const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || "Tachyon managed sing-box service for binary variants";
 
 let as_string = common.as_string;
@@ -323,8 +325,15 @@ function sing_box_banner_identity() {
     return sing_box_banner_identity_cache;
 }
 
+function sing_box_variant_marker() {
+    let marker = file_first_line(SB_VARIANT_STATE_FILE);
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = file_first_line(SB_LEGACY_VARIANT_STATE_FILE);
+    return marker;
+}
+
 function sing_box_marker_is(value) {
-    return file_first_line(SB_VARIANT_STATE_FILE) == as_string(value);
+    return sing_box_variant_marker() == as_string(value);
 }
 
 function sing_box_marker_is_tachyon_core() {
@@ -337,7 +346,10 @@ function sing_box_banner_is_tachyon_core() {
 
 
 function sing_box_version_state() {
-    return file_first_line(SB_VERSION_STATE_FILE);
+    let ver = file_first_line(SB_VERSION_STATE_FILE);
+    if (ver == "" && getenv("SB_VERSION_STATE_FILE") == null)
+        ver = file_first_line(SB_LEGACY_VERSION_STATE_FILE);
+    return ver;
 }
 
 function sing_box_write_version_state(version) {
@@ -353,10 +365,6 @@ function sing_box_clear_version_state() {
 function sing_box_restore_version_state(version) {
     version = as_string(version);
     return version != "" ? sing_box_write_version_state(version) : sing_box_clear_version_state();
-}
-
-function sing_box_variant_marker() {
-    return file_first_line(SB_VARIANT_STATE_FILE);
 }
 
 function sing_box_write_variant_marker(variant) {
@@ -488,7 +496,7 @@ function sing_box_core_identity_marker(build, given) {
         return "tachyon-core";
 
     let marker = as_string(given);
-    return marker != "" ? marker : file_first_line(SB_VARIANT_STATE_FILE);
+    return marker != "" ? marker : sing_box_variant_marker();
 }
 
 // The version of the installed binary, asked of the binary itself whenever it
@@ -863,7 +871,7 @@ function managed_service_text() {
 }
 
 function sing_box_compressed_marker_set() {
-    return trim(as_string(fs.readfile(SB_VARIANT_STATE_FILE) || "")) == "extended-compressed";
+    return sing_box_variant_marker() == "extended-compressed";
 }
 
 function install_managed_service_script() {
@@ -909,12 +917,10 @@ function configure_service() {
     let settings = uci_settings();
 
     if (fs.stat("/usr/bin/sing-box") != null && fs.stat("/usr/bin/tachyon-core") == null) {
-        try {
-            fs.unlink("/usr/bin/tachyon-core");
-            fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core");
-        }
-        catch (e) {
-        }
+        try { fs.unlink("/usr/bin/tachyon-core"); } catch (e) {}
+        try { fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core"); } catch (e) {}
+        if (fs.stat("/usr/bin/tachyon-core") == null)
+            command_success_from_args([ "ln", "-sf", "/usr/bin/sing-box", "/usr/bin/tachyon-core" ]);
     }
 
     if ((!managed_service_installed() || managed_service_script_stale()) && !install_managed_service_script()) {

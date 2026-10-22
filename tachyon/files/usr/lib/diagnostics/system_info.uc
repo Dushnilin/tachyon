@@ -28,7 +28,9 @@ const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "tac
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x04000000";
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant";
+const SB_LEGACY_VARIANT_STATE_FILE = "/etc/tachyon/sing-box-variant";
 const SING_BOX_BIN_PATH = getenv("TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH") || "/usr/bin/tachyon-core";
+const SING_BOX_LEGACY_BIN_PATH = "/usr/bin/sing-box";
 const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OCTETS || "8.47 162.159 188.114";
 const RUNTIME_STABLE_MIN_AGE = getenv("TACHYON_RUNTIME_STABLE_MIN_AGE") || "2";
 
@@ -193,11 +195,13 @@ function is_tachyon_core_selected() {
     if (active_engine_is_steer())
         return false;
     let marker = first_line_value(SB_VARIANT_STATE_FILE);
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = first_line_value(SB_LEGACY_VARIANT_STATE_FILE);
     if (marker == "tachyon-core")
         return true;
-    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny")
+    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable")
         return false;
-    return active_engine_name() == "tachyon-core";
+    return module_success(SINGBOX_RUNTIME_UC, [ "is-foreign-core", "" ]);
 }
 
 function check_sing_box_logs() {
@@ -667,7 +671,9 @@ function get_system_info() {
 }
 
 function get_server_capabilities() {
-    if (!file_executable(SING_BOX_BIN_PATH)) {
+    let bin_ok = file_executable(SING_BOX_BIN_PATH) ||
+        (getenv("TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH") == null && file_executable(SING_BOX_LEGACY_BIN_PATH));
+    if (!bin_ok) {
         write_json({
             sing_box_extended: 0,
             sing_box_tiny: 0,

@@ -36,7 +36,9 @@ const ZAPRET2_TUNE_ACTION_DIR = getenv("TACHYON_UI_ZAPRET2_TUNE_ACTION_DIR") || 
 const SING_BOX_VERSION_CACHE_FILE = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || STATE_DIR + "/sing-box-version";
 const SING_BOX_VERSION_CACHE_LOCK_DIR = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_LOCK_DIR") || SING_BOX_VERSION_CACHE_FILE + ".lock";
 const SING_BOX_VARIANT_STATE_FILE = getenv("TACHYON_UI_SING_BOX_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+const SING_BOX_LEGACY_VARIANT_STATE_FILE = "/etc/tachyon/sing-box-variant";
 const SING_BOX_BIN_PATH = getenv("TACHYON_UI_SING_BOX_BIN_PATH") || "/usr/bin/tachyon-core";
+const SING_BOX_LEGACY_BIN_PATH = "/usr/bin/sing-box";
 const SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS = getenv("TACHYON_UI_SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS") || "1";
 const SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS = getenv("TACHYON_UI_SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS") || "30";
 const ACTION_FINISHED_TTL_MINUTES = getenv("TACHYON_UI_ACTION_FINISHED_TTL_MINUTES") || "60";
@@ -928,8 +930,23 @@ function component_action_running_for(component) {
     return false;
 }
 
+function active_sing_box_bin_path() {
+    if (getenv("TACHYON_UI_SING_BOX_BIN_PATH") != null || file_executable(SING_BOX_BIN_PATH))
+        return SING_BOX_BIN_PATH;
+    if (file_executable(SING_BOX_LEGACY_BIN_PATH))
+        return SING_BOX_LEGACY_BIN_PATH;
+    return SING_BOX_BIN_PATH;
+}
+
+function active_sing_box_variant_marker() {
+    let marker = first_line(SING_BOX_VARIANT_STATE_FILE);
+    if (marker == "" && getenv("TACHYON_UI_SING_BOX_VARIANT_STATE_FILE") == null)
+        marker = first_line(SING_BOX_LEGACY_VARIANT_STATE_FILE);
+    return marker;
+}
+
 function sing_box_signature() {
-    let stat = fs.stat(SING_BOX_BIN_PATH);
+    let stat = fs.stat(active_sing_box_bin_path());
     if (stat == null)
         return "";
 
@@ -1003,7 +1020,8 @@ function bounded_command_output_from_args(args, timeout_seconds) {
 }
 
 function sing_box_version_info() {
-    if (!file_executable(SING_BOX_BIN_PATH))
+    let bin_path = active_sing_box_bin_path();
+    if (!file_executable(bin_path))
         return null;
 
     let signature = sing_box_signature();
@@ -1026,7 +1044,7 @@ function sing_box_version_info() {
         return cached.info;
     }
 
-    let output = bounded_command_output_from_args([ SING_BOX_BIN_PATH, "version" ], SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS);
+    let output = bounded_command_output_from_args([ bin_path, "version" ], SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS);
     let info = sing_box_version_info_from_output(output);
     write_state_file(SING_BOX_VERSION_CACHE_FILE, {
         signature,
@@ -1075,7 +1093,7 @@ function capability_flags() {
         server_inbounds_enabled_count: 0
     };
 
-    if (file_executable(SING_BOX_BIN_PATH)) {
+    if (file_executable(active_sing_box_bin_path())) {
         // The classification comes from the one profile table; the ordering of
         // the questions below is what used to live in this function by hand.
         // tachyon-core is decided first and it wins over every marker: the
@@ -1085,7 +1103,7 @@ function capability_flags() {
         let info = sing_box_version_info();
         let version = info != null ? as_string(info.version) : "";
         let banner = info != null ? as_string(info.banner) : "";
-        let marker = first_line(SING_BOX_VARIANT_STATE_FILE);
+        let marker = active_sing_box_variant_marker();
 
         let name;
         if (marker == "tachyon-core" || banner == "tachyon-core" || core_profile.profile_by_version(version) == "tachyon-core" || (banner != "sing-box" && match(version, /^[vV]?0\.[0-9]+\.[0-9]+$/) != null))

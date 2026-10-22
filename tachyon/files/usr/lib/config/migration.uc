@@ -1822,12 +1822,10 @@ function migrate_engine_identity(ctx) {
 
     // create compatibility symlink if sing-box exists and tachyon-core does not
     if (fs.stat("/usr/bin/sing-box") != null && fs.stat("/usr/bin/tachyon-core") == null) {
-        try {
-            fs.unlink("/usr/bin/tachyon-core");
-            fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core");
-        }
-        catch (e) {
-        }
+        try { fs.unlink("/usr/bin/tachyon-core"); } catch (e) {}
+        try { fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core"); } catch (e) {}
+        if (fs.stat("/usr/bin/tachyon-core") == null)
+            run("ln -sf /usr/bin/sing-box /usr/bin/tachyon-core >/dev/null 2>&1");
     }
 }
 

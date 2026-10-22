@@ -690,6 +690,8 @@ function pid_is_tachyon_core(pid) {
         return false;
 
     let marker = trim(as_string(fs.readfile(SB_VARIANT_STATE_FILE) || ""));
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
     if (marker == "tachyon-core")
         return true;
     if (marker == "lx" || marker == "extended" || marker == "extended-compressed" || marker == "tiny" || marker == "stable")

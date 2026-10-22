@@ -3065,6 +3065,7 @@ function reinstall_tachyon() {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -3115,6 +3116,7 @@ function install_tachyon() {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -3161,6 +3163,7 @@ function install_tachyon_version(target_tag) {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -3897,6 +3900,7 @@ function set_tachyon_language(lang_code) {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
