@@ -4847,7 +4847,7 @@ function renderDefaultState2({ title, items }) {
           {
             class: "tachyon_dashboard-page__widgets-section__item__row__key"
           },
-          `${item.key}: `
+          typeof item.key === "string" ? item.key ? `${item.key}: ` : "" : item.key || ""
         ),
         E(
           "span",
@@ -4871,13 +4871,40 @@ function renderWidget(props) {
   return renderDefaultState2(props);
 }
 
+// src/tachyon/helpers/i18n.ts
+function isRussianLanguage() {
+  if (typeof document !== "undefined") {
+    const docLang = (document.documentElement?.lang || document.querySelector("html")?.getAttribute("lang") || "").toLowerCase();
+    if (docLang.startsWith("ru")) return true;
+    if (docLang.startsWith("en")) return false;
+  }
+  const globalL = typeof globalThis !== "undefined" ? globalThis.L : typeof window !== "undefined" ? window.L : void 0;
+  if (typeof globalL?.env?.lang === "string") {
+    const envLang = globalL.env.lang.trim().toLowerCase();
+    if (envLang.startsWith("ru")) return true;
+    if (envLang.startsWith("en")) return false;
+  }
+  try {
+    if (typeof _ === "function") {
+      if (_("Status") === "Статус" || _("Settings") === "Настройки" || _("Overview") === "Обзор" || _("Save") === "Сохранить") {
+        return true;
+      }
+    }
+  } catch {
+  }
+  return false;
+}
+function tr(ru, en) {
+  return isRussianLanguage() ? ru : en;
+}
+
 // src/tachyon/tabs/dashboard/partials/renderConnections.ts
 function renderConnections(connections, isCollapsed, onToggleCollapse, topDomains) {
   const topDomainsSection = topDomains && topDomains.length > 0 ? E("div", { class: "tachyon_dashboard-page__top-domains-container" }, [
     E(
       "div",
       { class: "tachyon_dashboard-page__top-domains-header" },
-      _("Top active domains in bypass:")
+      tr("Популярные домены в обходе:", "Top active domains in bypass:")
     ),
     E(
       "div",
@@ -4893,7 +4920,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
           E(
             "span",
             { class: "tachyon_dashboard-page__top-domain-chip__badge" },
-            `${item.count} ${_("conns")}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ""}`
+            `${item.count} ${tr("соед.", "conns")}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ""}`
           )
         ])
       )
@@ -4931,7 +4958,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
                 },
                 [svgEl("polyline", { points: "6 9 12 15 18 9" })]
               ),
-              _("Active Clients")
+              tr("Активные клиенты", "Active Clients")
             ]
           )
         ]
@@ -4942,7 +4969,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
           class: "tachyon_dashboard-page__outbound-section centered",
           style: "height: 60px;"
         },
-        _("No active clients")
+        tr("Нет активных клиентов", "No active clients")
       )
     ]);
   }
@@ -4959,7 +4986,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
           E(
             "span",
             { style: "opacity: 0.7; font-size: 13px; margin-left: 8px;" },
-            `(${c.count} conns)`
+            `(${c.count} ${tr("соед.", "conns")})`
           )
         ]),
         E(
@@ -5001,7 +5028,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
               },
               [svgEl("polyline", { points: "6 9 12 15 18 9" })]
             ),
-            _("Active Clients")
+            tr("Активные клиенты", "Active Clients")
           ]
         )
       ]
@@ -10886,7 +10913,7 @@ function getActiveRoute(groups) {
   }
   return {
     name: selected.displayName,
-    selector: _("Manual selection"),
+    selector: tr("Ручной выбор", "Manual selection"),
     latency: selected.latency ?? -1,
     type: selected.type || "Proxy"
   };
@@ -12721,20 +12748,20 @@ async function renderBandwidthWidget() {
   renderStoreWidget(
     "dashboard-widget-traffic",
     "bandwidthWidget",
-    _("Traffic & Speed"),
+    tr("Трафик и скорость", "Traffic & Speed"),
     (data) => [
       {
-        key: _("Downlink"),
+        key: tr("Входящий", "Downlink"),
         value: `↓ ${prettyBytes(data.down)}/s`,
         attributes: { class: "tachyon-stat--down" }
       },
       {
-        key: _("Uplink"),
+        key: tr("Исходящий", "Uplink"),
         value: `↑ ${prettyBytes(data.up)}/s`,
         attributes: { class: "tachyon-stat--up" }
       },
       {
-        key: _("Session total"),
+        key: tr("За сессию", "Session total"),
         value: `▼ ${prettyBytes(total.downloadTotal || 0)} • ▲ ${prettyBytes(total.uploadTotal || 0)}`,
         attributes: { class: "tachyon-stat--session" }
       }
@@ -12773,27 +12800,30 @@ async function renderTrafficTotalWidget() {
   renderStoreWidget(
     "dashboard-widget-traffic-total",
     "trafficTotalWidget",
-    _("Active Route"),
+    tr("Активный маршрут", "Active Route"),
     () => {
       if (!activeRoute) {
         return [
-          { key: _("Server"), value: _("Standby / Direct") },
-          { key: _("Selector"), value: "—" }
+          {
+            key: tr("Сервер", "Server"),
+            value: tr("Ожидание / Напрямую", "Standby / Direct")
+          },
+          { key: tr("Селектор", "Selector"), value: "—" }
         ];
       }
       const items = [
         {
-          key: _("Server"),
+          key: tr("Сервер", "Server"),
           value: activeRoute.name,
           attributes: { class: "tachyon-stat--bold" }
         },
         {
-          key: _("Selector"),
+          key: tr("Селектор", "Selector"),
           value: activeRoute.selector
         },
         {
-          key: _("Latency"),
-          value: activeRoute.latency > 0 ? `${activeRoute.latency}ms` : isCheckingLatency ? _("Checking...") : "—",
+          key: tr("Задержка", "Latency"),
+          value: activeRoute.latency > 0 ? `${activeRoute.latency}ms` : isCheckingLatency ? tr("Проверка...", "Checking...") : "—",
           attributes: {
             class: activeRoute.latency > 0 ? "tachyon-stat--down" : ""
           }
@@ -12801,7 +12831,7 @@ async function renderTrafficTotalWidget() {
       ];
       if (activeRoute.type) {
         items.push({
-          key: _("Protocol"),
+          key: tr("Протокол", "Protocol"),
           value: activeRoute.type
         });
       }
@@ -12814,42 +12844,24 @@ async function renderSystemInfoWidget() {
   renderStoreWidget(
     "dashboard-widget-system-info",
     "systemInfoWidget",
-    _("Routing & Rules"),
+    tr("Маршрутизация и правила", "Routing & Rules"),
     (data) => [
-      { key: _("Mode"), value: "TProxy + Fake-IP" },
+      { key: tr("Режим работы", "Mode"), value: "TProxy + Fake-IP" },
       {
-        key: _("Active Connections"),
-        value: `${data.connections || 0} ${_("conns")}`
+        key: tr("Соединения", "Active Connections"),
+        value: `${data.connections || 0} ${tr("соед.", "conns")}`
       },
-      { key: _("Core Memory"), value: String(prettyBytes(data.memory || 0)) },
       {
-        key: _("Active Clients"),
-        value: `${currentConnections.length} ${_("devices")}`
+        key: tr("Память ядра", "Core Memory"),
+        value: String(prettyBytes(data.memory || 0))
+      },
+      {
+        key: tr("Активные клиенты", "Active Clients"),
+        value: `${currentConnections.length} ${tr("устройств", "devices")}`
       }
     ],
     "renderSystemInfoWidget"
   );
-}
-function formatServiceRowValue(options) {
-  if (!options.running) {
-    const versionPart = options.version ? ` [v${options.version.replace(/^v/, "")}]` : "";
-    return `✗${versionPart}`;
-  }
-  const parts = ["✓"];
-  if (options.memoryMb) {
-    parts[0] += ` (${options.memoryMb} MB)`;
-  }
-  if (options.uptimePretty) {
-    parts.push(options.uptimePretty);
-  }
-  let res = parts.join(" • ");
-  if (options.version) {
-    res += ` [v${options.version.replace(/^v/, "")}]`;
-  }
-  if (options.extraSuffix) {
-    res += options.extraSuffix;
-  }
-  return res;
 }
 function formatServiceTooltip(options) {
   const parts = [];
@@ -12857,15 +12869,94 @@ function formatServiceTooltip(options) {
     parts.push(`PID: ${options.pid}`);
   }
   if (options.uptimePretty) {
-    parts.push(`${_("Uptime")}: ${options.uptimePretty}`);
+    parts.push(`${tr("Время работы", "Uptime")}: ${options.uptimePretty}`);
   }
   return parts.length > 0 ? parts.join(" • ") : void 0;
+}
+function renderServiceRowItem(name, options) {
+  const isRunning = Boolean(options.running);
+  const keyEl = E("span", { class: "tachyon-service-key" }, [
+    E("span", {
+      class: `tachyon-service-dot ${isRunning ? "tachyon-service-dot--online" : "tachyon-service-dot--offline"}`
+    }),
+    E("span", { class: "tachyon-service-name" }, name)
+  ]);
+  const valueChildren = [];
+  if (isRunning) {
+    if (options.memoryMb != null && options.memoryMb > 0) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--ram" },
+          `${options.memoryMb} MB`
+        )
+      );
+    }
+    if (options.uptimePretty) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--uptime" },
+          options.uptimePretty
+        )
+      );
+    }
+    if (options.version) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--uptime" },
+          `v${options.version.replace(/^v/, "")}`
+        )
+      );
+    }
+    if (options.extraSuffix) {
+      valueChildren.push(
+        E("span", { style: "font-size: 11px; opacity: 0.8;" }, options.extraSuffix)
+      );
+    }
+    if (valueChildren.length === 0) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--ram" },
+          tr("Работает", "Active")
+        )
+      );
+    }
+  } else {
+    valueChildren.push(
+      E(
+        "span",
+        { class: "tachyon-service-pill tachyon-service-pill--stopped" },
+        tr("Остановлен", "Stopped")
+      )
+    );
+    if (options.version) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--uptime" },
+          `v${options.version.replace(/^v/, "")}`
+        )
+      );
+    }
+  }
+  const valueEl = E("span", { class: "tachyon-service-value" }, valueChildren);
+  return {
+    key: keyEl,
+    value: valueEl,
+    attributes: {
+      class: isRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+      ...options.tooltip ? { title: options.tooltip } : {}
+    }
+  };
 }
 async function renderServicesInfoWidget() {
   renderStoreWidget(
     "dashboard-widget-service-info",
     "servicesInfoWidget",
-    _("Services info"),
+    tr("Информация о сервисах", "Services info"),
     (data) => {
       const tachyonTooltip = formatServiceTooltip({
         pid: data.tachyonPid,
@@ -12876,20 +12967,14 @@ async function renderServicesInfoWidget() {
         uptimePretty: data.singboxUptimePretty
       });
       const items = [
-        {
-          key: "Tachyon",
-          value: formatServiceRowValue({
-            running: data.tachyonRunning,
-            memoryMb: data.tachyonMemoryMb,
-            uptimePretty: data.tachyonUptimePretty
-          }),
-          attributes: {
-            class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
-            ...tachyonTooltip ? { title: tachyonTooltip } : {}
-          }
-        },
-        {
-          key: (() => {
+        renderServiceRowItem("Tachyon", {
+          running: data.tachyonRunning,
+          memoryMb: data.tachyonMemoryMb,
+          uptimePretty: data.tachyonUptimePretty,
+          tooltip: tachyonTooltip
+        }),
+        renderServiceRowItem(
+          (() => {
             if (data.engineVariant) {
               return data.engineVariant;
             }
@@ -12908,52 +12993,41 @@ async function renderServicesInfoWidget() {
             }
             return "Sing-box";
           })(),
-          value: formatServiceRowValue({
+          {
             running: data.singbox,
             memoryMb: data.singboxMemoryMb,
-            uptimePretty: data.singboxUptimePretty
-          }),
-          attributes: {
-            class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
-            ...singboxTooltip ? { title: singboxTooltip } : {}
+            uptimePretty: data.singboxUptimePretty,
+            tooltip: singboxTooltip
           }
-        }
+        )
       ];
       if (data.zapret2Running) {
         const zapret2Tooltip = formatServiceTooltip({
           pid: data.zapret2Pid,
           uptimePretty: data.zapret2UptimePretty
         });
-        items.push({
-          key: "Zapret2",
-          value: formatServiceRowValue({
+        items.push(
+          renderServiceRowItem("Zapret2", {
             running: data.zapret2Running,
             memoryMb: data.zapret2MemoryMb,
-            uptimePretty: data.zapret2UptimePretty
-          }),
-          attributes: {
-            class: "tachyon_dashboard-page__widgets-section__item__row--success",
-            ...zapret2Tooltip ? { title: zapret2Tooltip } : {}
-          }
-        });
+            uptimePretty: data.zapret2UptimePretty,
+            tooltip: zapret2Tooltip
+          })
+        );
       }
       if (data.dnsmasqRunning != null) {
         const dnsmasqTooltip = formatServiceTooltip({
           pid: data.dnsmasqPid,
           uptimePretty: data.dnsmasqUptimePretty
         });
-        items.push({
-          key: "Dnsmasq (DNS)",
-          value: formatServiceRowValue({
+        items.push(
+          renderServiceRowItem("Dnsmasq (DNS)", {
             running: data.dnsmasqRunning,
             memoryMb: data.dnsmasqMemoryMb,
-            uptimePretty: data.dnsmasqUptimePretty
-          }),
-          attributes: {
-            class: data.dnsmasqRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
-            ...dnsmasqTooltip ? { title: dnsmasqTooltip } : {}
-          }
-        });
+            uptimePretty: data.dnsmasqUptimePretty,
+            tooltip: dnsmasqTooltip
+          })
+        );
       }
       return items;
     },
@@ -12987,7 +13061,7 @@ async function fetchTailscalePeers() {
 function peerRow(name, online) {
   return {
     key: name,
-    value: online ? _("✔ Online") : _("✘ Offline"),
+    value: online ? tr("✔ В сети", "✔ Online") : tr("✘ Не в сети", "✘ Offline"),
     attributes: {
       class: online ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
     }
@@ -13006,20 +13080,23 @@ async function renderTailscaleWidget() {
   renderStoreWidget(
     "dashboard-widget-tailscale",
     "tailscaleWidget",
-    _("Tailscale"),
+    "Tailscale",
     (data) => {
       if (!data || !data.configured) return [];
       const items = [
         {
-          key: _("State"),
-          value: data.backend_state || "—",
+          key: tr("Состояние", "State"),
+          value: data.backend_state === "Running" ? tr("Работает", "Running") : data.backend_state || "—",
           attributes: {
             class: data.backend_state === "Running" ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
           }
         }
       ];
       if (data.self && data.self.ips.length) {
-        items.push({ key: _("This router"), value: data.self.ips[0] });
+        items.push({
+          key: tr("Этот роутер", "This router"),
+          value: data.self.ips[0]
+        });
       }
       for (const peer of data.peers.slice(0, 5)) {
         if (!peer.online && !peer.name) continue;
@@ -13029,7 +13106,7 @@ async function renderTailscaleWidget() {
       }
       if (data.peers.length > 5) {
         items.push({
-          key: _("Other peers"),
+          key: tr("Другие пиры", "Other peers"),
           value: `+${data.peers.length - 5}`
         });
       }
@@ -14507,6 +14584,77 @@ var styles = `
     border-color: #10b981 !important;
     background: rgba(16, 185, 129, 0.08) !important;
     box-shadow: 0 0 0 1.5px #10b981, 0 3px 12px rgba(16, 185, 129, 0.25) !important;
+}
+
+.tachyon-service-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.tachyon-service-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+.tachyon-service-dot--online {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+}
+
+.tachyon-service-dot--offline {
+    background: #ef4444;
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+}
+
+.tachyon-service-name {
+    color: var(--text-color-high, inherit);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tachyon-service-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    justify-content: flex-end;
+}
+
+.tachyon-service-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon-service-pill--ram {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.tachyon-service-pill--uptime {
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    font-weight: 500;
+}
+
+.tachyon-service-pill--stopped {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.28);
 }
 
 `;
@@ -16883,7 +17031,7 @@ function renderServiceCheckModal() {
       targets.forEach((item, index) => {
         const rowClass = index % 2 === 0 ? "cbi-rowstyle-1" : "cbi-rowstyle-2";
         const badge = renderStatusBadge("", false, true);
-        const tr = E("tr", { class: `tr ${rowClass}` }, [
+        const tr2 = E("tr", { class: `tr ${rowClass}` }, [
           E(
             "td",
             { class: "td", style: "word-break: break-all; padding: 8px;" },
@@ -16942,14 +17090,14 @@ function renderServiceCheckModal() {
             badge
           )
         ]);
-        rowMap.push({ target: item, tr });
-        tableBody.appendChild(tr);
+        rowMap.push({ target: item, tr: tr2 });
+        tableBody.appendChild(tr2);
       });
       const applyTableFilter = () => {
-        rowMap.forEach(({ target, tr }) => {
+        rowMap.forEach(({ target, tr: tr2 }) => {
           const matchesSection = activeFilter === "ALL" || target.section === activeFilter;
           const matchesSearch = !searchQuery2 || target.domain.toLowerCase().includes(searchQuery2) || target.section.toLowerCase().includes(searchQuery2) || formatSectionName(target.section).toLowerCase().includes(searchQuery2);
-          tr.style.display = matchesSection && matchesSearch ? "" : "none";
+          tr2.style.display = matchesSection && matchesSearch ? "" : "none";
         });
       };
       const updateSummaryStats = () => {
@@ -17130,9 +17278,9 @@ function renderServiceCheckModal() {
                 break;
               }
               const itemObj = rowMap[i];
-              const { target, tr } = itemObj;
+              const { target, tr: tr2 } = itemObj;
               progressBarInner.style.width = `${Math.round((i + 1) / rowMap.length * 100)}%`;
-              const badgeCell = tr.childNodes[6];
+              const badgeCell = tr2.childNodes[6];
               badgeCell.innerHTML = "";
               badgeCell.appendChild(renderStatusBadge("", true));
               try {
@@ -17146,21 +17294,21 @@ function renderServiceCheckModal() {
                     const cItem = cResults[0];
                     itemObj.result = cItem;
                     const cBadge = renderStatusBadge(cItem.status_class);
-                    tr.childNodes[2].innerHTML = "";
-                    tr.childNodes[2].appendChild(
+                    tr2.childNodes[2].innerHTML = "";
+                    tr2.childNodes[2].appendChild(
                       document.createTextNode(cItem.ip || "?")
                     );
-                    tr.childNodes[2].appendChild(E("br"));
-                    tr.childNodes[2].appendChild(
+                    tr2.childNodes[2].appendChild(E("br"));
+                    tr2.childNodes[2].appendChild(
                       E(
                         "small",
                         { style: "opacity: 0.6;" },
                         `${cItem.dns_ms}ms`
                       )
                     );
-                    tr.childNodes[3].textContent = cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-";
-                    tr.childNodes[4].textContent = cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-";
-                    tr.childNodes[5].textContent = cItem.http_ms > 0 ? `${cItem.http_ms}` : "-";
+                    tr2.childNodes[3].textContent = cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-";
+                    tr2.childNodes[4].textContent = cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-";
+                    tr2.childNodes[5].textContent = cItem.http_ms > 0 ? `${cItem.http_ms}` : "-";
                     badgeCell.innerHTML = "";
                     badgeCell.appendChild(cBadge);
                   }
@@ -18774,7 +18922,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           )
         );
       }
-      const tr = E(
+      const tr2 = E(
         "tr",
         {
           class: `cbi-section-table-row ${isBest ? "cbi-rowstyle-1" : "cbi-rowstyle-2"}`,
@@ -18866,7 +19014,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           )
         ]
       );
-      tbody.appendChild(tr);
+      tbody.appendChild(tr2);
     });
   };
   const updateProgressUI = (state) => {

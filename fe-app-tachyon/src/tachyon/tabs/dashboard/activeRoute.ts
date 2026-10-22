@@ -1,4 +1,5 @@
 import { Tachyon } from '../../types';
+import { tr } from '../../helpers/i18n';
 
 export interface ActiveRouteInfo {
   name: string;
@@ -94,7 +95,7 @@ export function getActiveRoute(
 
   return {
     name: selected.displayName,
-    selector: _('Manual selection'),
+    selector: tr('Ручной выбор', 'Manual selection'),
     latency: selected.latency ?? -1,
     type: selected.type || 'Proxy',
   };

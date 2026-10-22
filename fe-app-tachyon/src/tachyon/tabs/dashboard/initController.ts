@@ -15,6 +15,7 @@ import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { renderCopyIcon24, renderLoaderCircleIcon24 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
+import { tr } from '../../helpers/i18n';
 import {
   logger,
   markUiActionOwned,
@@ -2152,9 +2153,13 @@ function renderStoreWidget(
     | 'tailscaleWidget',
   title: string,
   getItems: (data: any) => Array<{
-    key: string;
-    value: string;
-    attributes?: Record<string, string>;
+    key?: string | HTMLElement;
+    value: string | HTMLElement | (string | HTMLElement)[];
+    attributes?: {
+      class?: string;
+      title?: string;
+      [key: string]: string | undefined;
+    };
   }>,
   debugName: string,
 ) {
@@ -2273,20 +2278,20 @@ async function renderBandwidthWidget() {
   renderStoreWidget(
     'dashboard-widget-traffic',
     'bandwidthWidget',
-    _('Traffic & Speed'),
+    tr('Трафик и скорость', 'Traffic & Speed'),
     (data) => [
       {
-        key: _('Downlink'),
+        key: tr('Входящий', 'Downlink'),
         value: `↓ ${prettyBytes(data.down)}/s`,
         attributes: { class: 'tachyon-stat--down' },
       },
       {
-        key: _('Uplink'),
+        key: tr('Исходящий', 'Uplink'),
         value: `↑ ${prettyBytes(data.up)}/s`,
         attributes: { class: 'tachyon-stat--up' },
       },
       {
-        key: _('Session total'),
+        key: tr('За сессию', 'Session total'),
         value: `▼ ${prettyBytes(total.downloadTotal || 0)} • ▲ ${prettyBytes(total.uploadTotal || 0)}`,
         attributes: { class: 'tachyon-stat--session' },
       },
@@ -2335,32 +2340,35 @@ async function renderTrafficTotalWidget() {
   renderStoreWidget(
     'dashboard-widget-traffic-total',
     'trafficTotalWidget',
-    _('Active Route'),
+    tr('Активный маршрут', 'Active Route'),
     () => {
       if (!activeRoute) {
         return [
-          { key: _('Server'), value: _('Standby / Direct') },
-          { key: _('Selector'), value: '—' },
+          {
+            key: tr('Сервер', 'Server'),
+            value: tr('Ожидание / Напрямую', 'Standby / Direct'),
+          },
+          { key: tr('Селектор', 'Selector'), value: '—' },
         ];
       }
 
       const items = [
         {
-          key: _('Server'),
+          key: tr('Сервер', 'Server'),
           value: activeRoute.name,
           attributes: { class: 'tachyon-stat--bold' },
         },
         {
-          key: _('Selector'),
+          key: tr('Селектор', 'Selector'),
           value: activeRoute.selector,
         },
         {
-          key: _('Latency'),
+          key: tr('Задержка', 'Latency'),
           value:
             activeRoute.latency > 0
               ? `${activeRoute.latency}ms`
               : isCheckingLatency
-                ? _('Checking...')
+                ? tr('Проверка...', 'Checking...')
                 : '—',
           attributes: {
             class: activeRoute.latency > 0 ? 'tachyon-stat--down' : '',
@@ -2370,7 +2378,7 @@ async function renderTrafficTotalWidget() {
 
       if (activeRoute.type) {
         items.push({
-          key: _('Protocol'),
+          key: tr('Протокол', 'Protocol'),
           value: activeRoute.type,
         });
       }
@@ -2385,17 +2393,20 @@ async function renderSystemInfoWidget() {
   renderStoreWidget(
     'dashboard-widget-system-info',
     'systemInfoWidget',
-    _('Routing & Rules'),
+    tr('Маршрутизация и правила', 'Routing & Rules'),
     (data) => [
-      { key: _('Mode'), value: 'TProxy + Fake-IP' },
+      { key: tr('Режим работы', 'Mode'), value: 'TProxy + Fake-IP' },
       {
-        key: _('Active Connections'),
-        value: `${data.connections || 0} ${_('conns')}`,
+        key: tr('Соединения', 'Active Connections'),
+        value: `${data.connections || 0} ${tr('соед.', 'conns')}`,
       },
-      { key: _('Core Memory'), value: String(prettyBytes(data.memory || 0)) },
       {
-        key: _('Active Clients'),
-        value: `${currentConnections.length} ${_('devices')}`,
+        key: tr('Память ядра', 'Core Memory'),
+        value: String(prettyBytes(data.memory || 0)),
+      },
+      {
+        key: tr('Активные клиенты', 'Active Clients'),
+        value: `${currentConnections.length} ${tr('устройств', 'devices')}`,
       },
     ],
     'renderSystemInfoWidget',
@@ -2442,16 +2453,111 @@ export function formatServiceTooltip(options: {
     parts.push(`PID: ${options.pid}`);
   }
   if (options.uptimePretty) {
-    parts.push(`${_('Uptime')}: ${options.uptimePretty}`);
+    parts.push(`${tr('Время работы', 'Uptime')}: ${options.uptimePretty}`);
   }
   return parts.length > 0 ? parts.join(' \u2022 ') : undefined;
+}
+
+export function renderServiceRowItem(
+  name: string,
+  options: {
+    running: boolean | number;
+    memoryMb?: number;
+    uptimePretty?: string;
+    version?: string;
+    extraSuffix?: string;
+    tooltip?: string;
+  },
+) {
+  const isRunning = Boolean(options.running);
+  const keyEl = E('span', { class: 'tachyon-service-key' }, [
+    E('span', {
+      class: `tachyon-service-dot ${isRunning ? 'tachyon-service-dot--online' : 'tachyon-service-dot--offline'}`,
+    }),
+    E('span', { class: 'tachyon-service-name' }, name),
+  ]);
+
+  const valueChildren: HTMLElement[] = [];
+  if (isRunning) {
+    if (options.memoryMb != null && options.memoryMb > 0) {
+      valueChildren.push(
+        E(
+          'span',
+          { class: 'tachyon-service-pill tachyon-service-pill--ram' },
+          `${options.memoryMb} MB`,
+        ),
+      );
+    }
+    if (options.uptimePretty) {
+      valueChildren.push(
+        E(
+          'span',
+          { class: 'tachyon-service-pill tachyon-service-pill--uptime' },
+          options.uptimePretty,
+        ),
+      );
+    }
+    if (options.version) {
+      valueChildren.push(
+        E(
+          'span',
+          { class: 'tachyon-service-pill tachyon-service-pill--uptime' },
+          `v${options.version.replace(/^v/, '')}`,
+        ),
+      );
+    }
+    if (options.extraSuffix) {
+      valueChildren.push(
+        E('span', { style: 'font-size: 11px; opacity: 0.8;' }, options.extraSuffix),
+      );
+    }
+    if (valueChildren.length === 0) {
+      valueChildren.push(
+        E(
+          'span',
+          { class: 'tachyon-service-pill tachyon-service-pill--ram' },
+          tr('Работает', 'Active'),
+        ),
+      );
+    }
+  } else {
+    valueChildren.push(
+      E(
+        'span',
+        { class: 'tachyon-service-pill tachyon-service-pill--stopped' },
+        tr('Остановлен', 'Stopped'),
+      ),
+    );
+    if (options.version) {
+      valueChildren.push(
+        E(
+          'span',
+          { class: 'tachyon-service-pill tachyon-service-pill--uptime' },
+          `v${options.version.replace(/^v/, '')}`,
+        ),
+      );
+    }
+  }
+
+  const valueEl = E('span', { class: 'tachyon-service-value' }, valueChildren);
+
+  return {
+    key: keyEl,
+    value: valueEl,
+    attributes: {
+      class: isRunning
+        ? 'tachyon_dashboard-page__widgets-section__item__row--success'
+        : 'tachyon_dashboard-page__widgets-section__item__row--error',
+      ...(options.tooltip ? { title: options.tooltip } : {}),
+    },
+  };
 }
 
 async function renderServicesInfoWidget() {
   renderStoreWidget(
     'dashboard-widget-service-info',
     'servicesInfoWidget',
-    _('Services info'),
+    tr('Информация о сервисах', 'Services info'),
     (data) => {
       const tachyonTooltip = formatServiceTooltip({
         pid: data.tachyonPid,
@@ -2464,22 +2570,14 @@ async function renderServicesInfoWidget() {
       });
 
       const items = [
-        {
-          key: 'Tachyon',
-          value: formatServiceRowValue({
-            running: data.tachyonRunning,
-            memoryMb: data.tachyonMemoryMb,
-            uptimePretty: data.tachyonUptimePretty,
-          }),
-          attributes: {
-            class: data.tachyonRunning
-              ? 'tachyon_dashboard-page__widgets-section__item__row--success'
-              : 'tachyon_dashboard-page__widgets-section__item__row--error',
-            ...(tachyonTooltip ? { title: tachyonTooltip } : {}),
-          },
-        },
-        {
-          key: (() => {
+        renderServiceRowItem('Tachyon', {
+          running: data.tachyonRunning,
+          memoryMb: data.tachyonMemoryMb,
+          uptimePretty: data.tachyonUptimePretty,
+          tooltip: tachyonTooltip,
+        }),
+        renderServiceRowItem(
+          (() => {
             if (data.engineVariant) {
               return data.engineVariant;
             }
@@ -2501,18 +2599,13 @@ async function renderServicesInfoWidget() {
             }
             return 'Sing-box';
           })(),
-          value: formatServiceRowValue({
+          {
             running: data.singbox,
             memoryMb: data.singboxMemoryMb,
             uptimePretty: data.singboxUptimePretty,
-          }),
-          attributes: {
-            class: data.singbox
-              ? 'tachyon_dashboard-page__widgets-section__item__row--success'
-              : 'tachyon_dashboard-page__widgets-section__item__row--error',
-            ...(singboxTooltip ? { title: singboxTooltip } : {}),
+            tooltip: singboxTooltip,
           },
-        },
+        ),
       ];
 
       if (data.zapret2Running) {
@@ -2521,19 +2614,14 @@ async function renderServicesInfoWidget() {
           uptimePretty: data.zapret2UptimePretty,
         });
 
-        items.push({
-          key: 'Zapret2',
-          value: formatServiceRowValue({
+        items.push(
+          renderServiceRowItem('Zapret2', {
             running: data.zapret2Running,
             memoryMb: data.zapret2MemoryMb,
             uptimePretty: data.zapret2UptimePretty,
+            tooltip: zapret2Tooltip,
           }),
-          attributes: {
-            class:
-              'tachyon_dashboard-page__widgets-section__item__row--success',
-            ...(zapret2Tooltip ? { title: zapret2Tooltip } : {}),
-          },
-        });
+        );
       }
 
       if (data.dnsmasqRunning != null) {
@@ -2542,20 +2630,14 @@ async function renderServicesInfoWidget() {
           uptimePretty: data.dnsmasqUptimePretty,
         });
 
-        items.push({
-          key: 'Dnsmasq (DNS)',
-          value: formatServiceRowValue({
+        items.push(
+          renderServiceRowItem('Dnsmasq (DNS)', {
             running: data.dnsmasqRunning,
             memoryMb: data.dnsmasqMemoryMb,
             uptimePretty: data.dnsmasqUptimePretty,
+            tooltip: dnsmasqTooltip,
           }),
-          attributes: {
-            class: data.dnsmasqRunning
-              ? 'tachyon_dashboard-page__widgets-section__item__row--success'
-              : 'tachyon_dashboard-page__widgets-section__item__row--error',
-            ...(dnsmasqTooltip ? { title: dnsmasqTooltip } : {}),
-          },
-        });
+        );
       }
 
       return items;
@@ -2593,7 +2675,7 @@ async function fetchTailscalePeers() {
 function peerRow(name: string, online: boolean) {
   return {
     key: name,
-    value: online ? _('✔ Online') : _('✘ Offline'),
+    value: online ? tr('✔ В сети', '✔ Online') : tr('✘ Не в сети', '✘ Offline'),
     attributes: {
       class: online
         ? 'tachyon_dashboard-page__widgets-section__item__row--success'
@@ -2621,18 +2703,21 @@ async function renderTailscaleWidget() {
   renderStoreWidget(
     'dashboard-widget-tailscale',
     'tailscaleWidget',
-    _('Tailscale'),
+    'Tailscale',
     (data) => {
       type WidgetItem = {
-        key: string;
-        value: string;
+        key: string | HTMLElement;
+        value: string | HTMLElement | (string | HTMLElement)[];
         attributes?: Record<string, string>;
       };
       if (!data || !data.configured) return [] as WidgetItem[];
       const items: WidgetItem[] = [
         {
-          key: _('State'),
-          value: data.backend_state || '—',
+          key: tr('Состояние', 'State'),
+          value:
+            data.backend_state === 'Running'
+              ? tr('Работает', 'Running')
+              : (data.backend_state || '—'),
           attributes: {
             class:
               data.backend_state === 'Running'
@@ -2642,7 +2727,10 @@ async function renderTailscaleWidget() {
         },
       ];
       if (data.self && data.self.ips.length) {
-        items.push({ key: _('This router'), value: data.self.ips[0] });
+        items.push({
+          key: tr('Этот роутер', 'This router'),
+          value: data.self.ips[0],
+        });
       }
       for (const peer of data.peers.slice(0, 5)) {
         if (!peer.online && !peer.name) continue;
@@ -2652,7 +2740,7 @@ async function renderTailscaleWidget() {
       }
       if (data.peers.length > 5) {
         items.push({
-          key: _('Other peers'),
+          key: tr('Другие пиры', 'Other peers'),
           value: `+${data.peers.length - 5}`,
         });
       }

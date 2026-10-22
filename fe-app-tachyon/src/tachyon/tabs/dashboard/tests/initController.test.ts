@@ -130,4 +130,21 @@ describe('dashboard initController', () => {
     );
     expect(formatServiceTooltip({ pid: 2450 })).toBe('PID: 2450');
   });
+
+  it('renders modern service row items with pills and status dot', async () => {
+    const { renderServiceRowItem } = await import('../initController');
+    const runningItem = renderServiceRowItem('Tachyon Core', {
+      running: 1,
+      memoryMb: 22,
+      uptimePretty: '2ч 51м',
+      tooltip: 'PID: 1234 • Uptime: 2ч 51м',
+    });
+    expect(runningItem.attributes.class).toContain('row--success');
+    expect(runningItem.attributes.title).toBe('PID: 1234 • Uptime: 2ч 51м');
+
+    const stoppedItem = renderServiceRowItem('Zapret2', {
+      running: 0,
+    });
+    expect(stoppedItem.attributes.class).toContain('row--error');
+  });
 });

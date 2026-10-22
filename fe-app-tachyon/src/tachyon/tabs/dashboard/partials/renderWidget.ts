@@ -3,8 +3,8 @@ interface IRenderWidgetProps {
   failed: boolean;
   title: string;
   items: Array<{
-    key: string;
-    value: string;
+    key?: string | HTMLElement;
+    value: string | HTMLElement | (string | HTMLElement)[];
     attributes?: {
       class?: string;
       title?: string;
@@ -56,7 +56,9 @@ function renderDefaultState({ title, items }: IRenderWidgetProps) {
           {
             class: 'tachyon_dashboard-page__widgets-section__item__row__key',
           },
-          `${item.key}: `,
+          typeof item.key === 'string'
+            ? (item.key ? `${item.key}: ` : '')
+            : (item.key || ''),
         ),
         E(
           'span',
