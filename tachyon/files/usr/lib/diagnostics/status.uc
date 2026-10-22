@@ -1504,6 +1504,7 @@ const TACHYON_OWN_MARKS = [
 function mark_line_is_ours(line) {
     let seen = false;
     line = replace(line, /comment "[^"]*"/g, "");
+    line = replace(line, /@[a-z0-9]+,[0-9]+,[0-9]+(\s*&\s*0x[0-9a-fA-F]+)?(\s*(==|!=))?\s*0x[0-9a-fA-F]+/g, "");
     let mark_idx = index(line, "mark set");
     if (mark_idx < 0)
         mark_idx = index(line, "meta mark");
@@ -1512,11 +1513,11 @@ function mark_line_is_ours(line) {
     if (mark_idx >= 0)
         line = substr(line, mark_idx);
     for (let token in match(line, /0x[0-9a-fA-F]+/g) || []) {
-        seen = true;
         // A capture-less /g match yields [whole-match] per element.
         let value = lc(as_string(token[0]));
         if (int(value, 0) == 0)
             continue;
+        seen = true;
         let ours = false;
         for (let mark in TACHYON_OWN_MARKS) {
             if (lc(as_string(mark)) == value) {
