@@ -1866,6 +1866,66 @@ function createSettingsContent(section, capabilities) {
   };
   compVisOpt.remove = function () {};
 
+  // ── Dashboard Outbound Display & Navigation ──────────────────────────────
+
+  const _tr = function (ru, en) {
+    const lang = (
+      document.documentElement.lang ||
+      document.querySelector("html")?.getAttribute("lang") ||
+      ""
+    ).toLowerCase();
+    const isRu =
+      lang.startsWith("ru") ||
+      (typeof _ === "function" && _("Status") === "Статус");
+    return isRu ? ru : en;
+  };
+
+  o = section.taboption(
+    "navigation",
+    form.ListValue,
+    "dashboard_country_grouping",
+    _tr("Группировка серверов по странам", "Server Grouping by Country"),
+    _tr(
+      "Выберите способ группировки и навигации по серверам на дашборде.",
+      "Choose how servers are grouped and navigated on the Dashboard.",
+    ),
+  );
+  o.value("chips", _tr("Кнопки фильтра по странам (Чипсы)", "Country filter buttons (Chips)"));
+  o.value("accordion", _tr("Группы по странам (Аккордеоны)", "Country groups (Accordions)"));
+  o.value("none", _tr("Отключено (Общий список)", "Disabled (Flat list)"));
+  o.default = "chips";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "navigation",
+    form.ListValue,
+    "dashboard_sort_mode",
+    _tr("Сортировка серверов на дашборде", "Dashboard Server Sorting"),
+    _tr(
+      "Выберите порядок сортировки серверов на дашборде.",
+      "Select the server sorting order on the Dashboard.",
+    ),
+  );
+  o.value("latency", _tr("По задержке (Пинг - По умолчанию)", "By latency (Ping - Default)"));
+  o.value("country_latency", _tr("По странам, затем по задержке", "By country, then by latency"));
+  o.value("country_alpha", _tr("По алфавиту (Страна и имя)", "Alphabetical (Country and name)"));
+  o.value("default", _tr("Исходный порядок из подписки", "Original subscription order"));
+  o.default = "latency";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "navigation",
+    form.Flag,
+    "dashboard_hover_freeze",
+    _tr("Защита от случайных кликов (Hover Freeze)", "Prevent Misclicks (Hover Freeze)"),
+    _tr(
+      "Временно фиксирует позиции карточек серверов, пока курсор мыши находится над списком, предотвращая случайные клики при обновлении пинга.",
+      "Temporarily lock server card positions while the mouse cursor is over the server grid to prevent misclicks when latencies update.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
+
   // ── DNS Settings ────────────────────────────────────────────────────────
 
   const dnsBenchmarkBtn = section.taboption(

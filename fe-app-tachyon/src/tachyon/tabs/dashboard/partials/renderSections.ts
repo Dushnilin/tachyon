@@ -15,6 +15,14 @@ import { prettyBytes } from '../../../../helpers/prettyBytes';
 import { Tachyon } from '../../../types';
 import { renderFlagEmojis } from './renderFlagEmojis';
 import { formatServiceStatusMessage } from '../../../helpers/formatServiceStatusMessage';
+import {
+  groupOutboundsByCountry,
+  detectOutboundCountry,
+  OutboundCountryGroup,
+} from '../../../helpers/country';
+
+const gridHoveredSections = new Set<string>();
+const gridFrozenOutboundOrders = new Map<string, string[]>();
 
 interface IRenderSectionsProps {
   loading: boolean;
@@ -24,6 +32,8 @@ interface IRenderSectionsProps {
   onToggleCollapse?: () => void;
   collapsedSourceGroups?: Set<string>;
   onToggleSourceGroupCollapse?: (groupKey: string) => void;
+  activeCountryFilter?: string;
+  onFilterCountry?: (sectionName: string, countryCode?: string) => void;
   onTestLatency: (tag: string | string[]) => void;
   onChooseOutbound: (
     sectionName: string,
@@ -358,6 +368,269 @@ export function getLatencyTestLabel(
   )}/${total}`;
 }
 
+function renderCountryChips(
+  countryGroups: OutboundCountryGroup[],
+  totalCount: number,
+  activeFilter?: string,
+  onFilter?: (sectionName: string, countryCode?: string) => void,
+  sectionName?: string,
+): HTMLElement {
+  const isAllActive = !activeFilter || activeFilter === 'ALL';
+
+  const isRu = (
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('ru')
+  ) || false;
+  const allLabel = isRu ? 'Все' : (typeof _ === 'function' ? _('All') : 'All');
+
+  const allBtn = E(
+    'button',
+    {
+      type: 'button',
+      class: `tachyon_dashboard-page__country-chip${isAllActive ? ' tachyon_dashboard-page__country-chip--active' : ''}`,
+      click: (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (sectionName && onFilter) {
+          onFilter(sectionName, undefined);
+        }
+      },
+    },
+    [
+      E(
+        'span',
+        {
+          class:
+            'tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji',
+        },
+        '🌐',
+      ),
+      E(
+        'span',
+        { class: 'tachyon_dashboard-page__country-chip__name' },
+        allLabel,
+      ),
+      E(
+        'span',
+        { class: 'tachyon_dashboard-page__country-chip__count' },
+        `${totalCount}`,
+      ),
+    ],
+  );
+
+  const chips = [
+    allBtn,
+    ...countryGroups.map((group) => {
+      const isActive = activeFilter === group.countryCode;
+      const minLat =
+        group.bestLatency > 0 && Number.isFinite(group.bestLatency)
+          ? `${group.bestLatency}ms`
+          : '';
+
+      let latClass = '';
+      if (group.bestLatency > 0 && Number.isFinite(group.bestLatency)) {
+        if (group.bestLatency < 100) {
+          latClass = 'tachyon_dashboard-page__country-chip__latency--fast';
+        } else if (group.bestLatency <= 300) {
+          latClass = 'tachyon_dashboard-page__country-chip__latency--medium';
+        } else {
+          latClass = 'tachyon_dashboard-page__country-chip__latency--slow';
+        }
+      }
+
+      const displayName = group.countryName || group.countryCode;
+
+      return E(
+        'button',
+        {
+          type: 'button',
+          class: `tachyon_dashboard-page__country-chip${isActive ? ' tachyon_dashboard-page__country-chip--active' : ''}`,
+          title: `${displayName} (${group.outbounds.length})`,
+          click: (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (sectionName && onFilter) {
+              onFilter(sectionName, isActive ? undefined : group.countryCode);
+            }
+          },
+        },
+        [
+          E(
+            'span',
+            {
+              class:
+                'tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji',
+            },
+            group.countryFlag || '🌐',
+          ),
+          E(
+            'span',
+            { class: 'tachyon_dashboard-page__country-chip__name' },
+            displayName,
+          ),
+          E(
+            'span',
+            { class: 'tachyon_dashboard-page__country-chip__count' },
+            `${group.outbounds.length}`,
+          ),
+          minLat
+            ? E(
+                'span',
+                {
+                  class: `tachyon_dashboard-page__country-chip__latency ${latClass}`,
+                },
+                minLat,
+              )
+            : '',
+        ],
+      );
+    }),
+  ];
+
+  return E(
+    'div',
+    {
+      class: 'tachyon_dashboard-page__country-chips',
+      style: 'grid-column: 1 / -1;',
+    },
+    chips,
+  );
+}
+
+function renderCountryAccordionHeader(
+  group: OutboundCountryGroup,
+  isCollapsed: boolean,
+  onToggle?: () => void,
+): HTMLElement {
+  const selectedMember = group.outbounds.find((m) => m.selected);
+  const minLat =
+    group.bestLatency > 0 && Number.isFinite(group.bestLatency)
+      ? `${group.bestLatency}ms`
+      : '';
+
+  return E(
+    'div',
+    {
+      class: [
+        'tachyon_dashboard-page__subscription-meta',
+        'tachyon_dashboard-page__subscription-meta--collapsible',
+        'tachyon_dashboard-page__country-meta',
+        isCollapsed
+          ? 'tachyon_dashboard-page__subscription-meta--collapsed'
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+      click: onToggle,
+    },
+    [
+      E('div', { class: 'tachyon_dashboard-page__subscription-meta__main' }, [
+        svgEl(
+          'svg',
+          {
+            width: '15',
+            height: '15',
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            'stroke-width': '2',
+            'stroke-linecap': 'round',
+            'stroke-linejoin': 'round',
+            style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isCollapsed ? '-90deg' : '0deg'})`,
+          },
+          [svgEl('polyline', { points: '6 9 12 15 18 9' })],
+        ),
+        E(
+          'span',
+          {
+            class:
+              'tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji',
+            style: 'font-size: 16px;',
+          },
+          group.countryFlag,
+        ),
+        E(
+          'div',
+          { class: 'tachyon_dashboard-page__subscription-meta__heading' },
+          group.countryName,
+        ),
+        E(
+          'span',
+          { class: 'tachyon_dashboard-page__source-group__count' },
+          `${group.outbounds.length}`,
+        ),
+        isCollapsed && selectedMember
+          ? E(
+              'span',
+              {
+                class: 'tachyon_dashboard-page__source-group__active-badge',
+              },
+              `● ${selectedMember.displayName}`,
+            )
+          : '',
+      ]),
+      minLat
+        ? E(
+            'div',
+            { style: 'font-size: 12px; opacity: 0.7;' },
+            `${
+              (typeof document !== 'undefined' &&
+                (document.documentElement?.lang || '')
+                  .toLowerCase()
+                  .startsWith('ru'))
+                ? 'Мин. задержка'
+                : typeof _ === 'function'
+                  ? _('Min latency')
+                  : 'Min latency'
+            }: ${minLat}`,
+          )
+        : '',
+    ],
+  );
+}
+
+function renderAutoGroupsBlock(
+  topGroups: Tachyon.Outbound[],
+  renderOutbound: (ob: Tachyon.Outbound) => HTMLElement,
+): HTMLElement | null {
+  if (topGroups.length === 0) return null;
+
+  const isRu = (
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('ru')
+  ) || false;
+  const title = isRu
+    ? 'Режимы автовыбора'
+    : typeof _ === 'function'
+      ? _('Auto selection modes')
+      : 'Auto selection modes';
+
+  return E(
+    'div',
+    { class: 'tachyon_dashboard-page__auto-groups' },
+    [
+      E(
+        'div',
+        { class: 'tachyon_dashboard-page__auto-groups__header' },
+        [
+          E('span', { class: 'tachyon_dashboard-page__auto-groups__icon' }, '⚡'),
+          E('span', {}, title),
+          E(
+            'span',
+            { class: 'tachyon_dashboard-page__auto-groups__count' },
+            `${topGroups.length}`,
+          ),
+        ],
+      ),
+      E(
+        'div',
+        { class: 'tachyon_dashboard-page__auto-groups-grid' },
+        topGroups.map((ob) => renderOutbound(ob)),
+      ),
+    ],
+  );
+}
+
 function renderDefaultState({
   section,
   onChooseOutbound,
@@ -376,6 +649,8 @@ function renderDefaultState({
   onToggleCollapse,
   collapsedSourceGroups,
   onToggleSourceGroupCollapse,
+  activeCountryFilter,
+  onFilterCountry,
 }: IRenderSectionsProps) {
   const isConnectionNode =
     !section.withTagSelect &&
@@ -627,8 +902,12 @@ function renderDefaultState({
       outbound.runtimeAvailable !== false &&
       !selectorSwitching &&
       !outbound.selected;
+    const isAutoGroup = Boolean(outbound.urlTestInfo || outbound.priorityInfo);
     const className = [
       'tachyon_dashboard-page__outbound-grid__item',
+      isAutoGroup
+        ? 'tachyon_dashboard-page__outbound-grid__item--auto-group'
+        : '',
       outbound.selected
         ? 'tachyon_dashboard-page__outbound-grid__item--active'
         : '',
@@ -809,6 +1088,25 @@ function renderDefaultState({
                       renderFlagEmojis(outbound.prefix),
                     )
                   : '',
+                ...(outbound.selected
+                  ? [
+                      E(
+                        'span',
+                        {
+                          class:
+                            'tachyon_dashboard-page__outbound-grid__item__selected-badge',
+                        },
+                        (typeof document !== 'undefined' &&
+                        (document.documentElement?.lang || '')
+                          .toLowerCase()
+                          .startsWith('ru'))
+                          ? '✓ Активен'
+                          : typeof _ === 'function'
+                            ? _('✓ Active')
+                            : '✓ Active',
+                      ),
+                    ]
+                  : []),
               ],
             ),
             ...(canCopyLink
@@ -950,17 +1248,52 @@ function renderDefaultState({
   );
 
   function renderGridChildren(): HTMLElement[] {
-    const outbounds = section.outbounds || [];
+    const frozenOrder = gridFrozenOutboundOrders.get(section.code);
+    let effectiveOutbounds = section.outbounds || [];
+    if (
+      section.dashboardSettings?.hoverFreeze !== false &&
+      gridHoveredSections.has(section.code) &&
+      frozenOrder &&
+      frozenOrder.length > 0
+    ) {
+      const orderMap = new Map(frozenOrder.map((c, i) => [c, i]));
+      effectiveOutbounds = [...effectiveOutbounds].sort((a, b) => {
+        const idxA = orderMap.has(a.code) ? orderMap.get(a.code)! : 999999;
+        const idxB = orderMap.has(b.code) ? orderMap.get(b.code)! : 999999;
+        return idxA - idxB;
+      });
+    }
+
+    const outbounds = effectiveOutbounds;
     const metadataList = section.subscriptionMetadata || [];
     const subSourceCount = section.subscriptionSourceCount || 0;
+    const countryGrouping =
+      section.dashboardSettings?.countryGrouping || 'chips';
 
     const topGroups: Tachyon.Outbound[] = [];
+    const serverOutbounds: Tachyon.Outbound[] = [];
+
+    for (const ob of outbounds) {
+      if (ob.urlTestInfo || ob.priorityInfo) {
+        topGroups.push(ob);
+      } else {
+        serverOutbounds.push(ob);
+      }
+    }
+
+    const countryGroups = groupOutboundsByCountry(serverOutbounds);
+    const hasMultipleCountries = countryGroups.length >= 2;
+
+    const metadataNodes = metadataList
+      .map((metadata) => renderSubscriptionMetadata(metadata))
+      .filter(Boolean) as HTMLElement[];
+
     const subMap = new Map<string, Tachyon.Outbound[]>();
     const manualOutbounds: Tachyon.Outbound[] = [];
 
     for (const ob of outbounds) {
       if (ob.urlTestInfo || ob.priorityInfo) {
-        topGroups.push(ob);
+        // already handled in topGroups
       } else if (ob.sourceGroup && ob.sourceGroup.startsWith('sub:')) {
         const list = subMap.get(ob.sourceGroup) || [];
         list.push(ob);
@@ -976,17 +1309,92 @@ function renderDefaultState({
       subMap.size > 1 ||
       (hasSubTaggedOutbounds && manualOutbounds.length > 0);
 
-    if (!hasSubTaggedOutbounds && !hasMultipleSources) {
-      const metadataNodes = metadataList
-        .map((metadata) => renderSubscriptionMetadata(metadata))
-        .filter(Boolean) as HTMLElement[];
+    const autoBlock = renderAutoGroupsBlock(topGroups, renderOutbound);
+
+    // Single source sections (or sections without distinct subscription sources)
+    if (!hasMultipleSources) {
+      // Variant A: Country Filter Chips
+      if (countryGrouping === 'chips' && hasMultipleCountries) {
+        const chipsBar = renderCountryChips(
+          countryGroups,
+          serverOutbounds.length,
+          activeCountryFilter,
+          onFilterCountry,
+          section.sectionName,
+        );
+
+        const visibleServers = activeCountryFilter
+          ? serverOutbounds.filter(
+              (ob) => detectOutboundCountry(ob).code === activeCountryFilter,
+            )
+          : serverOutbounds;
+
+        return [
+          ...metadataNodes,
+          ...(autoBlock ? [autoBlock] : []),
+          chipsBar,
+          ...visibleServers.map((ob) => renderOutbound(ob)),
+        ];
+      }
+
+      // Variant B: Country Accordions
+      if (countryGrouping === 'accordion' && hasMultipleCountries) {
+        const nodes: HTMLElement[] = [
+          ...metadataNodes,
+          ...(autoBlock ? [autoBlock] : []),
+        ];
+
+        for (const group of countryGroups) {
+          const collapseKey = `countrygrp:${section.code}:${group.countryCode}`;
+          const isCountryCollapsed = Boolean(
+            collapsedSourceGroups?.has(collapseKey),
+          );
+
+          nodes.push(
+            renderCountryAccordionHeader(
+              group,
+              isCountryCollapsed,
+              () => onToggleSourceGroupCollapse?.(collapseKey),
+            ),
+          );
+
+          if (!isCountryCollapsed) {
+            for (const m of group.outbounds) {
+              nodes.push(renderOutbound(m));
+            }
+          }
+        }
+
+        return nodes;
+      }
+
+      if (autoBlock) {
+        return [
+          ...metadataNodes,
+          autoBlock,
+          ...serverOutbounds.map((ob) => renderOutbound(ob)),
+        ];
+      }
+
       return [...metadataNodes, ...outbounds.map((ob) => renderOutbound(ob))];
     }
 
-    const nodes: HTMLElement[] = [];
+    // Multiple subscription sources in one section: preserve source headers
+    const nodes: HTMLElement[] = [
+      ...metadataNodes,
+      ...(autoBlock ? [autoBlock] : []),
+    ];
 
-    for (const ob of topGroups) {
-      nodes.push(renderOutbound(ob));
+    if (countryGrouping === 'chips' && hasMultipleCountries) {
+      nodes.push(
+        renderCountryChips(
+          countryGroups,
+          serverOutbounds.length,
+          activeCountryFilter,
+          onFilterCountry,
+          section.sectionName,
+        ),
+      );
     }
 
     const metadataBySubKey = new Map<string, Tachyon.SubscriptionMetadata>();
@@ -1396,7 +1804,30 @@ function renderDefaultState({
       !isCollapsed
         ? E(
             'div',
-            { class: 'tachyon_dashboard-page__outbound-grid' },
+            {
+              class: 'tachyon_dashboard-page__outbound-grid',
+              mouseenter:
+                section.dashboardSettings?.hoverFreeze !== false
+                  ? () => {
+                      gridHoveredSections.add(section.code);
+                      gridFrozenOutboundOrders.set(
+                        section.code,
+                        (section.outbounds || []).map((o) => o.code),
+                      );
+                    }
+                  : undefined,
+              mouseleave:
+                section.dashboardSettings?.hoverFreeze !== false
+                  ? () => {
+                      gridHoveredSections.delete(section.code);
+                      setTimeout(() => {
+                        if (!gridHoveredSections.has(section.code)) {
+                          gridFrozenOutboundOrders.delete(section.code);
+                        }
+                      }, 800);
+                    }
+                  : undefined,
+            },
             renderGridChildren(),
           )
         : '',

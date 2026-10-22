@@ -18,6 +18,15 @@ function createDummyElement(tag: string) {
     childNodes: children,
     style: {} as Record<string, string>,
     className: '',
+    get classList() {
+      const self = this as any;
+      return {
+        contains(c: string) {
+          const list = (self.class || self.className || '').split(/\s+/);
+          return list.includes(c);
+        },
+      };
+    },
     get textContent(): string {
       let text = '';
       for (const c of children) {
@@ -44,9 +53,9 @@ function createDummyElement(tag: string) {
       function traverse(node: any) {
         if (!node || typeof node !== 'object') return;
         if (selector.startsWith('.')) {
-          const targetClass = selector.slice(1);
+          const targetClasses = selector.split('.').filter(Boolean);
           const classes = (node.class || node.className || '').split(/\s+/);
-          if (classes.includes(targetClass)) {
+          if (targetClasses.every((tc: string) => classes.includes(tc))) {
             results.push(node);
           }
         }
@@ -826,5 +835,145 @@ describe('renderSections', () => {
     );
     expect(selectable).toHaveLength(1);
     expect(selectable[0].textContent).toContain('AWG-DE-1');
+  });
+
+  it('renders country chips with localized names, flag emojis, count pill badges and colored latency badges', () => {
+    const section: any = {
+      code: 'proxy-out',
+      sectionName: 'proxy',
+      displayName: 'Proxy',
+      withTagSelect: true,
+      countryGrouping: 'chips',
+      outbounds: [
+        {
+          code: 'node-de-1',
+          displayName: '🇩🇪 Германия 01',
+          latency: 42,
+          selected: true,
+          country: 'DE',
+        },
+        {
+          code: 'node-de-2',
+          displayName: '🇩🇪 Германия 02',
+          latency: 85,
+          selected: false,
+          country: 'DE',
+        },
+        {
+          code: 'node-us-1',
+          displayName: '🇺🇸 США Miami',
+          latency: 180,
+          selected: false,
+          country: 'US',
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      countryGrouping: 'chips',
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const chipsContainer = el.querySelector('.tachyon_dashboard-page__country-chips');
+    expect(chipsContainer).toBeTruthy();
+
+    const chips = chipsContainer!.querySelectorAll('.tachyon_dashboard-page__country-chip');
+    // "Все" + "Германия" + "США"
+    expect(chips).toHaveLength(3);
+
+    // "Все" chip
+    const allChip = chips[0];
+    expect(allChip.classList.contains('tachyon_dashboard-page__country-chip--active')).toBe(true);
+    expect(allChip.querySelector('.tachyon_dashboard-page__country-chip__name')?.textContent).toMatch(/Все|All/);
+    expect(allChip.querySelector('.tachyon_dashboard-page__country-chip__count')?.textContent).toBe('3');
+
+    // Country chips have flag emoji with Twemoji class, localized country name, count badge and latency badge
+    const names = Array.from(chipsContainer!.querySelectorAll('.tachyon_dashboard-page__country-chip__name')).map(
+      (n: any) => n.textContent,
+    );
+    expect(names).toContain('Германия');
+    expect(names).toContain('США');
+
+    const flags = chipsContainer!.querySelectorAll('.tachyon_dashboard-page__country-chip__flag.tachyon_dashboard-page__flag-emoji');
+    expect(flags.length).toBeGreaterThanOrEqual(2);
+
+    const counts = Array.from(chipsContainer!.querySelectorAll('.tachyon_dashboard-page__country-chip__count')).map(
+      (c: any) => c.textContent,
+    );
+    expect(counts).toEqual(['3', '2', '1']);
+
+    const fastLatency = chipsContainer!.querySelector('.tachyon_dashboard-page__country-chip__latency--fast');
+    expect(fastLatency).toBeTruthy();
+    expect(fastLatency?.textContent).toBe('42ms');
+
+    const mediumLatency = chipsContainer!.querySelector('.tachyon_dashboard-page__country-chip__latency--medium');
+    expect(mediumLatency).toBeTruthy();
+    expect(mediumLatency?.textContent).toBe('180ms');
+  });
+
+  it('renders selected-badge on active outbounds (both auto-groups and regular nodes)', () => {
+    const section: any = {
+      code: 'proxy-out',
+      sectionName: 'proxy',
+      displayName: 'Proxy',
+      withTagSelect: true,
+      countryGrouping: 'none',
+      outbounds: [
+        {
+          code: 'fastest-auto',
+          displayName: '⚡ Fastest',
+          latency: 28,
+          selected: true,
+          urlTestInfo: {
+            code: 'fastest-auto',
+            displayName: 'Fastest',
+            selectedName: 'DE-01',
+            outbounds: [],
+          },
+        },
+        {
+          code: 'node-de-1',
+          displayName: '🇩🇪 Server 1',
+          latency: 42,
+          selected: false,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      countryGrouping: 'none',
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const activeItem = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item--active',
+    );
+    expect(activeItem).toBeTruthy();
+
+    const selectedBadge = activeItem!.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__selected-badge',
+    );
+    expect(selectedBadge).toBeTruthy();
+    expect(selectedBadge?.textContent).toMatch(/✓\s*(Активен|Active)/);
   });
 });

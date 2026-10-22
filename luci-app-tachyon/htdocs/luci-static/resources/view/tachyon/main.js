@@ -2817,7 +2817,337 @@ function formatServiceStatusMessage(msg) {
   return _(msg);
 }
 
+// src/tachyon/helpers/country.ts
+var translate = (key) => typeof _ === "function" ? _(key) : key;
+var FALLBACK_NAMES_RU = {
+  RU: "Россия",
+  DE: "Германия",
+  NL: "Нидерланды",
+  US: "США",
+  GB: "Великобритания",
+  UK: "Великобритания",
+  FR: "Франция",
+  FI: "Финляндия",
+  SE: "Швеция",
+  PL: "Польша",
+  TR: "Турция",
+  KZ: "Казахстан",
+  SG: "Сингапур",
+  JP: "Япония",
+  HK: "Гонконг",
+  CA: "Канада",
+  CH: "Швейцария",
+  AT: "Австрия",
+  ES: "Испания",
+  IT: "Италия",
+  UA: "Украина",
+  AE: "ОАЭ",
+  NO: "Норвегия",
+  CZ: "Чехия",
+  EE: "Эстония",
+  LV: "Латвия",
+  LT: "Литва",
+  MD: "Молдова",
+  BY: "Беларусь",
+  GE: "Грузия",
+  AM: "Армения",
+  UZ: "Узбекистан",
+  KG: "Кыргызстан",
+  RS: "Сербия",
+  BG: "Болгария",
+  RO: "Румыния",
+  HU: "Венгрия",
+  GR: "Греция",
+  CY: "Кипр",
+  IL: "Израиль",
+  IN: "Индия",
+  KR: "Южная Корея",
+  AU: "Австралия",
+  BR: "Бразилия",
+  AR: "Аргентина",
+  MX: "Мексика",
+  IS: "Исландия",
+  IE: "Ирландия",
+  PT: "Португалия",
+  BE: "Бельгия",
+  DK: "Дания"
+};
+var COMMON_ISO_CODES = /* @__PURE__ */ new Set([
+  "RU",
+  "DE",
+  "NL",
+  "US",
+  "GB",
+  "UK",
+  "FR",
+  "FI",
+  "SE",
+  "PL",
+  "TR",
+  "KZ",
+  "SG",
+  "JP",
+  "HK",
+  "CA",
+  "CH",
+  "AT",
+  "ES",
+  "IT",
+  "UA",
+  "AE",
+  "NO",
+  "CZ",
+  "EE",
+  "LV",
+  "LT",
+  "MD",
+  "BY",
+  "GE",
+  "AM",
+  "UZ",
+  "KG",
+  "RS",
+  "BG",
+  "RO",
+  "HU",
+  "GR",
+  "CY",
+  "IL",
+  "IN",
+  "KR",
+  "AU",
+  "BR",
+  "AR",
+  "MX",
+  "IS",
+  "IE",
+  "PT",
+  "BE",
+  "DK"
+]);
+function buildCountryRegex(pattern) {
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])(?:${pattern})(?:[^\\p{L}\\p{N}]|$)`, "iu");
+}
+var COUNTRY_KEYWORD_PATTERNS = [
+  { code: "RU", regex: buildCountryRegex("russia|russian|россия|рф|москва|moscow|питер|spb") },
+  { code: "DE", regex: buildCountryRegex("germany|german|германия|frankfurt|франкфурт|berlin|берлин") },
+  { code: "NL", regex: buildCountryRegex("netherlands|holland|нидерланды|голландия|amsterdam|амстердам") },
+  { code: "US", regex: buildCountryRegex("usa|united\\s*states|сша|america|америка|new\\s*york|los\\s*angeles|miami") },
+  { code: "GB", regex: buildCountryRegex("uk|united\\s*kingdom|great\\s*britain|великобритания|англия|london|лондон") },
+  { code: "TR", regex: buildCountryRegex("turkey|turkish|турция|istanbul|стамбул") },
+  { code: "FI", regex: buildCountryRegex("finland|финляндия|helsinki|хельсинки") },
+  { code: "SE", regex: buildCountryRegex("sweden|швеция|stockholm|стокгольм") },
+  { code: "PL", regex: buildCountryRegex("poland|польша|warsaw|варшава") },
+  { code: "KZ", regex: buildCountryRegex("kazakhstan|казахстан|almaty|алматы|astana|астана") },
+  { code: "FR", regex: buildCountryRegex("france|франция|paris|париж") },
+  { code: "SG", regex: buildCountryRegex("singapore|сингапур") },
+  { code: "JP", regex: buildCountryRegex("japan|япония|tokyo|токио") },
+  { code: "HK", regex: buildCountryRegex("hong\\s*kong|гонконг") },
+  { code: "CH", regex: buildCountryRegex("switzerland|швейцария|zurich|цюрих|geneva|женева") },
+  { code: "AT", regex: buildCountryRegex("austria|австрия|vienna|вена") },
+  { code: "ES", regex: buildCountryRegex("spain|испания|madrid|мадрид|barcelona|барселона") },
+  { code: "IT", regex: buildCountryRegex("italy|италия|rome|рим|milan|милан") },
+  { code: "CA", regex: buildCountryRegex("canada|канада|toronto|торонто|vancouver|ванкувер") },
+  { code: "UA", regex: buildCountryRegex("ukraine|украина|kyiv|kiev|киев") },
+  { code: "AE", regex: buildCountryRegex("uae|emirates|оаэ|эмираты|dubai|дубай") },
+  { code: "GE", regex: buildCountryRegex("georgia|грузия|tbilisi|тбилиси") },
+  { code: "AM", regex: buildCountryRegex("armenia|армения|yerevan|ереван") },
+  { code: "MD", regex: buildCountryRegex("moldova|молдова|chisinau|кишинев") },
+  { code: "BY", regex: buildCountryRegex("belarus|беларусь|белоруссия|minsk|минск") },
+  { code: "RS", regex: buildCountryRegex("serbia|сербия|belgrade|белград") },
+  { code: "IL", regex: buildCountryRegex("israel|израиль|tel\\s*aviv|тель-авив") },
+  { code: "IN", regex: buildCountryRegex("india|индия|mumbai|мумбаи|delhi|дели") },
+  { code: "CY", regex: buildCountryRegex("cyprus|кипр|limassol|лимасол|nicosia|никосия") },
+  { code: "TW", regex: buildCountryRegex("taiwan|тайвань|taipei|тайбэй") },
+  { code: "CZ", regex: buildCountryRegex("czech|чехия|prague|прага") },
+  { code: "SK", regex: buildCountryRegex("slovakia|словакия|bratislava|братислава") },
+  { code: "RO", regex: buildCountryRegex("romania|румыния|bucharest|бухарест") },
+  { code: "BG", regex: buildCountryRegex("bulgaria|болгария|sofia|софия") },
+  { code: "HU", regex: buildCountryRegex("hungary|венгрия|budapest|будапешт") },
+  { code: "LT", regex: buildCountryRegex("lithuania|литва|vilnius|вильнюс") },
+  { code: "LV", regex: buildCountryRegex("latvia|латвия|riga|рига") },
+  { code: "EE", regex: buildCountryRegex("estonia|эстония|tallinn|таллин") },
+  { code: "UZ", regex: buildCountryRegex("uzbekistan|узбекистан|tashkent|ташкент") },
+  { code: "KG", regex: buildCountryRegex("kyrgyzstan|кыргызстан|киргизия|bishkek|бишкек") },
+  { code: "TH", regex: buildCountryRegex("thailand|таиланд|тайланд|bangkok|бангкок") },
+  { code: "VN", regex: buildCountryRegex("vietnam|вьетнам|hanoi|ханой") },
+  { code: "KR", regex: buildCountryRegex("korea|корея|seoul|сеул") },
+  { code: "AU", regex: buildCountryRegex("australia|австралия|sydney|сидней|melbourne|мельбурн") },
+  { code: "BR", regex: buildCountryRegex("brazil|бразилия|sao\\s*paulo|сан-паулу") },
+  { code: "AR", regex: buildCountryRegex("argentina|аргентина|buenos\\s*aires|буэнос-айрес") },
+  { code: "CL", regex: buildCountryRegex("chile|чили|santiago|сантьяго") },
+  { code: "CO", regex: buildCountryRegex("colombia|колумбия|bogota|богота") },
+  { code: "MX", regex: buildCountryRegex("mexico|мексика") },
+  { code: "EG", regex: buildCountryRegex("egypt|египет|cairo|каир") },
+  { code: "IS", regex: buildCountryRegex("iceland|исландия|reykjavik|рейкьявик") },
+  { code: "NO", regex: buildCountryRegex("norway|норвегия|oslo|осло") },
+  { code: "DK", regex: buildCountryRegex("denmark|дания|copenhagen|копенгаген") },
+  { code: "IE", regex: buildCountryRegex("ireland|ирландия|dublin|дублин") },
+  { code: "PT", regex: buildCountryRegex("portugal|португалия|lisbon|лиссабон") },
+  { code: "BE", regex: buildCountryRegex("belgium|бельгия|brussels|брюссель") },
+  { code: "LU", regex: buildCountryRegex("luxembourg|люксембург") },
+  { code: "GR", regex: buildCountryRegex("greece|греция|athens|афины") },
+  { code: "HR", regex: buildCountryRegex("croatia|хорватия|zagreb|загреб") },
+  { code: "BA", regex: buildCountryRegex("bosnia|босния|sarajevo|сараево") },
+  { code: "AL", regex: buildCountryRegex("albania|албания|tirana|тирана") },
+  { code: "MK", regex: buildCountryRegex("macedonia|македония|skopje|скопье") },
+  { code: "AZ", regex: buildCountryRegex("azerbaijan|азербайджан|baku|баку") },
+  { code: "ID", regex: buildCountryRegex("indonesia|индонезия|jakarta|джакарта") },
+  { code: "MY", regex: buildCountryRegex("malaysia|малайзия|kuala\\s*lumpur|куала-лумпур") },
+  { code: "PH", regex: buildCountryRegex("philippines|филиппины|manila|манила") },
+  { code: "PK", regex: buildCountryRegex("pakistan|пакистан") },
+  { code: "BD", regex: buildCountryRegex("bangladesh|бангладеш|dhaka|дакка") },
+  { code: "QA", regex: buildCountryRegex("qatar|катар|doha|доха") },
+  { code: "BH", regex: buildCountryRegex("bahrain|бахрейн|manama|манама") },
+  { code: "IQ", regex: buildCountryRegex("iraq|ирак|baghdad|багдад") },
+  { code: "MN", regex: buildCountryRegex("mongolia|монголия|ulaanbaatar|улан-батор") },
+  { code: "KH", regex: buildCountryRegex("cambodia|камбоджа|phnom\\s*penh|пномпень") },
+  { code: "LK", regex: buildCountryRegex("sri\\s*lanka|шри-ланка|colombo|коломбо") },
+  { code: "BN", regex: buildCountryRegex("brunei|бруней") },
+  { code: "LI", regex: buildCountryRegex("liechtenstein|лихтенштейн") },
+  { code: "SS", regex: buildCountryRegex("south\\s*sudan|южный\\s*судан") },
+  { code: "AQ", regex: buildCountryRegex("antarctica|антарктида") }
+];
+function flagEmojiToCountryCode(str) {
+  if (!str) return void 0;
+  for (let i = 0; i + 3 < str.length; i++) {
+    if (str.charCodeAt(i) === 55356 && str.charCodeAt(i + 1) >= 56806 && str.charCodeAt(i + 1) <= 56831 && str.charCodeAt(i + 2) === 55356 && str.charCodeAt(i + 3) >= 56806 && str.charCodeAt(i + 3) <= 56831) {
+      const char1 = String.fromCharCode(str.charCodeAt(i + 1) - 56806 + 65);
+      const char2 = String.fromCharCode(str.charCodeAt(i + 3) - 56806 + 65);
+      return `${char1}${char2}`.toUpperCase();
+    }
+  }
+  return void 0;
+}
+function countryCodeToFlagEmoji(countryCode) {
+  const code = `${countryCode || ""}`.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return "";
+  }
+  return String.fromCodePoint(
+    ...code.split("").map((char) => 127462 + char.charCodeAt(0) - 65)
+  );
+}
+var PREFERRED_NAMES_RU = {
+  US: "США",
+  GB: "Великобритания",
+  UK: "Великобритания",
+  AE: "ОАЭ",
+  RU: "Россия",
+  DE: "Германия",
+  NL: "Нидерланды",
+  KR: "Южная Корея",
+  HK: "Гонконг",
+  MK: "Македония",
+  KG: "Кыргызстан",
+  CZ: "Чехия",
+  CY: "Кипр",
+  IN: "Индия",
+  SS: "Южный Судан",
+  AQ: "Антарктида",
+  BA: "Босния и Герцеговина"
+};
+function getCountryName(countryCode, locale) {
+  const code = countryCode.toUpperCase();
+  if (code === "OTHER") {
+    return translate("Other");
+  }
+  const isDocRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru");
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const effectiveLocale = locale || (isDocEn ? "en" : "ru");
+  const isRu = effectiveLocale.startsWith("ru");
+  if (isRu && PREFERRED_NAMES_RU[code]) {
+    return PREFERRED_NAMES_RU[code];
+  }
+  try {
+    if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+      const displayNames = new Intl.DisplayNames([effectiveLocale, "en"], { type: "region" });
+      const name = displayNames.of(code === "UK" ? "GB" : code);
+      if (name && name !== code) {
+        return name;
+      }
+    }
+  } catch {
+  }
+  if (isRu && FALLBACK_NAMES_RU[code]) {
+    return FALLBACK_NAMES_RU[code];
+  }
+  return code;
+}
+function detectOutboundCountry(outbound, locale) {
+  let code;
+  code = flagEmojiToCountryCode(outbound.displayName) || flagEmojiToCountryCode(outbound.prefix);
+  if (!code) {
+    const text = `${outbound.prefix || ""} ${outbound.displayName || ""}`;
+    for (const { code: c, regex } of COUNTRY_KEYWORD_PATTERNS) {
+      if (regex.test(text)) {
+        code = c;
+        break;
+      }
+    }
+  }
+  if (!code) {
+    const text = `${outbound.prefix || ""} ${outbound.displayName || ""}`;
+    const isoMatches = text.match(/(?:^|[\s[(_-])([A-Z]{2})(?:[\s\])_.-]|$)/g);
+    if (isoMatches) {
+      for (const m of isoMatches) {
+        const candidate = m.replace(/[^A-Z]/g, "").toUpperCase();
+        if (COMMON_ISO_CODES.has(candidate)) {
+          code = candidate;
+          break;
+        }
+      }
+    }
+  }
+  if (!code) {
+    const direct = `${outbound.country || ""}`.trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(direct)) {
+      code = direct;
+    }
+  }
+  if (code) {
+    const flag = countryCodeToFlagEmoji(code);
+    const name = getCountryName(code, locale);
+    return { code, flag, name };
+  }
+  return {
+    code: "OTHER",
+    flag: "🌐",
+    name: translate("Other")
+  };
+}
+function groupOutboundsByCountry(outbounds, locale) {
+  const groupsMap = /* @__PURE__ */ new Map();
+  for (const outbound of outbounds) {
+    const info = detectOutboundCountry(outbound, locale);
+    let group = groupsMap.get(info.code);
+    if (!group) {
+      group = {
+        countryCode: info.code,
+        countryFlag: info.flag,
+        countryName: info.name,
+        outbounds: [],
+        bestLatency: Number.POSITIVE_INFINITY
+      };
+      groupsMap.set(info.code, group);
+    }
+    group.outbounds.push(outbound);
+    if (Number.isFinite(outbound.latency) && outbound.latency > 0 && outbound.latency < group.bestLatency) {
+      group.bestLatency = outbound.latency;
+    }
+  }
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const sortLocale = locale || (isDocEn ? "en" : "ru");
+  return Array.from(groupsMap.values()).sort((a, b) => {
+    if (a.countryCode === "OTHER") return 1;
+    if (b.countryCode === "OTHER") return -1;
+    return a.countryName.localeCompare(b.countryName, sortLocale);
+  });
+}
+
 // src/tachyon/tabs/dashboard/partials/renderSections.ts
+var gridHoveredSections = /* @__PURE__ */ new Set();
+var gridFrozenOutboundOrders = /* @__PURE__ */ new Map();
 var CONNECTION_ACTION_LABELS = {
   awg: "AmneziaWG",
   warp: "WARP",
@@ -3048,6 +3378,205 @@ function getLatencyTestLabel(latencyProgress) {
     total
   )}/${total}`;
 }
+function renderCountryChips(countryGroups, totalCount, activeFilter, onFilter, sectionName) {
+  const isAllActive = !activeFilter || activeFilter === "ALL";
+  const isRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") || false;
+  const allLabel = isRu ? "Все" : typeof _ === "function" ? _("All") : "All";
+  const allBtn = E(
+    "button",
+    {
+      type: "button",
+      class: `tachyon_dashboard-page__country-chip${isAllActive ? " tachyon_dashboard-page__country-chip--active" : ""}`,
+      click: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (sectionName && onFilter) {
+          onFilter(sectionName, void 0);
+        }
+      }
+    },
+    [
+      E(
+        "span",
+        {
+          class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji"
+        },
+        "🌐"
+      ),
+      E(
+        "span",
+        { class: "tachyon_dashboard-page__country-chip__name" },
+        allLabel
+      ),
+      E(
+        "span",
+        { class: "tachyon_dashboard-page__country-chip__count" },
+        `${totalCount}`
+      )
+    ]
+  );
+  const chips = [
+    allBtn,
+    ...countryGroups.map((group) => {
+      const isActive = activeFilter === group.countryCode;
+      const minLat = group.bestLatency > 0 && Number.isFinite(group.bestLatency) ? `${group.bestLatency}ms` : "";
+      let latClass = "";
+      if (group.bestLatency > 0 && Number.isFinite(group.bestLatency)) {
+        if (group.bestLatency < 100) {
+          latClass = "tachyon_dashboard-page__country-chip__latency--fast";
+        } else if (group.bestLatency <= 300) {
+          latClass = "tachyon_dashboard-page__country-chip__latency--medium";
+        } else {
+          latClass = "tachyon_dashboard-page__country-chip__latency--slow";
+        }
+      }
+      const displayName = group.countryName || group.countryCode;
+      return E(
+        "button",
+        {
+          type: "button",
+          class: `tachyon_dashboard-page__country-chip${isActive ? " tachyon_dashboard-page__country-chip--active" : ""}`,
+          title: `${displayName} (${group.outbounds.length})`,
+          click: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (sectionName && onFilter) {
+              onFilter(sectionName, isActive ? void 0 : group.countryCode);
+            }
+          }
+        },
+        [
+          E(
+            "span",
+            {
+              class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji"
+            },
+            group.countryFlag || "🌐"
+          ),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__country-chip__name" },
+            displayName
+          ),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__country-chip__count" },
+            `${group.outbounds.length}`
+          ),
+          minLat ? E(
+            "span",
+            {
+              class: `tachyon_dashboard-page__country-chip__latency ${latClass}`
+            },
+            minLat
+          ) : ""
+        ]
+      );
+    })
+  ];
+  return E(
+    "div",
+    {
+      class: "tachyon_dashboard-page__country-chips",
+      style: "grid-column: 1 / -1;"
+    },
+    chips
+  );
+}
+function renderCountryAccordionHeader(group, isCollapsed, onToggle) {
+  const selectedMember = group.outbounds.find((m) => m.selected);
+  const minLat = group.bestLatency > 0 && Number.isFinite(group.bestLatency) ? `${group.bestLatency}ms` : "";
+  return E(
+    "div",
+    {
+      class: [
+        "tachyon_dashboard-page__subscription-meta",
+        "tachyon_dashboard-page__subscription-meta--collapsible",
+        "tachyon_dashboard-page__country-meta",
+        isCollapsed ? "tachyon_dashboard-page__subscription-meta--collapsed" : ""
+      ].filter(Boolean).join(" "),
+      click: onToggle
+    },
+    [
+      E("div", { class: "tachyon_dashboard-page__subscription-meta__main" }, [
+        svgEl(
+          "svg",
+          {
+            width: "15",
+            height: "15",
+            viewBox: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isCollapsed ? "-90deg" : "0deg"})`
+          },
+          [svgEl("polyline", { points: "6 9 12 15 18 9" })]
+        ),
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji",
+            style: "font-size: 16px;"
+          },
+          group.countryFlag
+        ),
+        E(
+          "div",
+          { class: "tachyon_dashboard-page__subscription-meta__heading" },
+          group.countryName
+        ),
+        E(
+          "span",
+          { class: "tachyon_dashboard-page__source-group__count" },
+          `${group.outbounds.length}`
+        ),
+        isCollapsed && selectedMember ? E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__source-group__active-badge"
+          },
+          `● ${selectedMember.displayName}`
+        ) : ""
+      ]),
+      minLat ? E(
+        "div",
+        { style: "font-size: 12px; opacity: 0.7;" },
+        `${typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") ? "Мин. задержка" : typeof _ === "function" ? _("Min latency") : "Min latency"}: ${minLat}`
+      ) : ""
+    ]
+  );
+}
+function renderAutoGroupsBlock(topGroups, renderOutbound) {
+  if (topGroups.length === 0) return null;
+  const isRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") || false;
+  const title = isRu ? "Режимы автовыбора" : typeof _ === "function" ? _("Auto selection modes") : "Auto selection modes";
+  return E(
+    "div",
+    { class: "tachyon_dashboard-page__auto-groups" },
+    [
+      E(
+        "div",
+        { class: "tachyon_dashboard-page__auto-groups__header" },
+        [
+          E("span", { class: "tachyon_dashboard-page__auto-groups__icon" }, "⚡"),
+          E("span", {}, title),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__auto-groups__count" },
+            `${topGroups.length}`
+          )
+        ]
+      ),
+      E(
+        "div",
+        { class: "tachyon_dashboard-page__auto-groups-grid" },
+        topGroups.map((ob) => renderOutbound(ob))
+      )
+    ]
+  );
+}
 function renderDefaultState({
   section,
   onChooseOutbound,
@@ -3065,7 +3594,9 @@ function renderDefaultState({
   isCollapsed,
   onToggleCollapse,
   collapsedSourceGroups,
-  onToggleSourceGroupCollapse
+  onToggleSourceGroupCollapse,
+  activeCountryFilter,
+  onFilterCountry
 }) {
   const isConnectionNode = !section.withTagSelect && [
     "vpn",
@@ -3238,8 +3769,10 @@ function renderDefaultState({
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
     const canChooseOutbound = section.withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
+    const isAutoGroup = Boolean(outbound.urlTestInfo || outbound.priorityInfo);
     const className = [
       "tachyon_dashboard-page__outbound-grid__item",
+      isAutoGroup ? "tachyon_dashboard-page__outbound-grid__item--auto-group" : "",
       outbound.selected ? "tachyon_dashboard-page__outbound-grid__item--active" : "",
       canChooseOutbound ? "tachyon_dashboard-page__outbound-grid__item--selectable" : "",
       section.withTagSelect && !canChooseOutbound ? "tachyon_dashboard-page__outbound-grid__item--disabled" : "",
@@ -3361,7 +3894,16 @@ function renderDefaultState({
                     click: (event) => openPrefixColorPickerModal(outbound.prefix, event)
                   },
                   renderFlagEmojis(outbound.prefix)
-                ) : ""
+                ) : "",
+                ...outbound.selected ? [
+                  E(
+                    "span",
+                    {
+                      class: "tachyon_dashboard-page__outbound-grid__item__selected-badge"
+                    },
+                    typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") ? "✓ Активен" : typeof _ === "function" ? _("✓ Active") : "✓ Active"
+                  )
+                ] : []
               ]
             ),
             ...canCopyLink ? [
@@ -3470,15 +4012,36 @@ function renderDefaultState({
     onUpdateSubscription
   );
   function renderGridChildren() {
-    const outbounds = section.outbounds || [];
+    const frozenOrder = gridFrozenOutboundOrders.get(section.code);
+    let effectiveOutbounds = section.outbounds || [];
+    if (section.dashboardSettings?.hoverFreeze !== false && gridHoveredSections.has(section.code) && frozenOrder && frozenOrder.length > 0) {
+      const orderMap = new Map(frozenOrder.map((c, i) => [c, i]));
+      effectiveOutbounds = [...effectiveOutbounds].sort((a, b) => {
+        const idxA = orderMap.has(a.code) ? orderMap.get(a.code) : 999999;
+        const idxB = orderMap.has(b.code) ? orderMap.get(b.code) : 999999;
+        return idxA - idxB;
+      });
+    }
+    const outbounds = effectiveOutbounds;
     const metadataList = section.subscriptionMetadata || [];
     const subSourceCount = section.subscriptionSourceCount || 0;
+    const countryGrouping = section.dashboardSettings?.countryGrouping || "chips";
     const topGroups = [];
+    const serverOutbounds = [];
+    for (const ob of outbounds) {
+      if (ob.urlTestInfo || ob.priorityInfo) {
+        topGroups.push(ob);
+      } else {
+        serverOutbounds.push(ob);
+      }
+    }
+    const countryGroups = groupOutboundsByCountry(serverOutbounds);
+    const hasMultipleCountries = countryGroups.length >= 2;
+    const metadataNodes = metadataList.map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
     const subMap = /* @__PURE__ */ new Map();
     const manualOutbounds = [];
     for (const ob of outbounds) {
       if (ob.urlTestInfo || ob.priorityInfo) {
-        topGroups.push(ob);
       } else if (ob.sourceGroup && ob.sourceGroup.startsWith("sub:")) {
         const list = subMap.get(ob.sourceGroup) || [];
         list.push(ob);
@@ -3489,13 +4052,74 @@ function renderDefaultState({
     }
     const hasSubTaggedOutbounds = subMap.size > 0;
     const hasMultipleSources = subSourceCount > 1 || subMap.size > 1 || hasSubTaggedOutbounds && manualOutbounds.length > 0;
-    if (!hasSubTaggedOutbounds && !hasMultipleSources) {
-      const metadataNodes = metadataList.map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
+    const autoBlock = renderAutoGroupsBlock(topGroups, renderOutbound);
+    if (!hasMultipleSources) {
+      if (countryGrouping === "chips" && hasMultipleCountries) {
+        const chipsBar = renderCountryChips(
+          countryGroups,
+          serverOutbounds.length,
+          activeCountryFilter,
+          onFilterCountry,
+          section.sectionName
+        );
+        const visibleServers = activeCountryFilter ? serverOutbounds.filter(
+          (ob) => detectOutboundCountry(ob).code === activeCountryFilter
+        ) : serverOutbounds;
+        return [
+          ...metadataNodes,
+          ...autoBlock ? [autoBlock] : [],
+          chipsBar,
+          ...visibleServers.map((ob) => renderOutbound(ob))
+        ];
+      }
+      if (countryGrouping === "accordion" && hasMultipleCountries) {
+        const nodes2 = [
+          ...metadataNodes,
+          ...autoBlock ? [autoBlock] : []
+        ];
+        for (const group of countryGroups) {
+          const collapseKey = `countrygrp:${section.code}:${group.countryCode}`;
+          const isCountryCollapsed = Boolean(
+            collapsedSourceGroups?.has(collapseKey)
+          );
+          nodes2.push(
+            renderCountryAccordionHeader(
+              group,
+              isCountryCollapsed,
+              () => onToggleSourceGroupCollapse?.(collapseKey)
+            )
+          );
+          if (!isCountryCollapsed) {
+            for (const m of group.outbounds) {
+              nodes2.push(renderOutbound(m));
+            }
+          }
+        }
+        return nodes2;
+      }
+      if (autoBlock) {
+        return [
+          ...metadataNodes,
+          autoBlock,
+          ...serverOutbounds.map((ob) => renderOutbound(ob))
+        ];
+      }
       return [...metadataNodes, ...outbounds.map((ob) => renderOutbound(ob))];
     }
-    const nodes = [];
-    for (const ob of topGroups) {
-      nodes.push(renderOutbound(ob));
+    const nodes = [
+      ...metadataNodes,
+      ...autoBlock ? [autoBlock] : []
+    ];
+    if (countryGrouping === "chips" && hasMultipleCountries) {
+      nodes.push(
+        renderCountryChips(
+          countryGroups,
+          serverOutbounds.length,
+          activeCountryFilter,
+          onFilterCountry,
+          section.sectionName
+        )
+      );
     }
     const metadataBySubKey = /* @__PURE__ */ new Map();
     metadataList.forEach((meta, idx) => {
@@ -3796,7 +4420,24 @@ function renderDefaultState({
       ),
       !isCollapsed ? E(
         "div",
-        { class: "tachyon_dashboard-page__outbound-grid" },
+        {
+          class: "tachyon_dashboard-page__outbound-grid",
+          mouseenter: section.dashboardSettings?.hoverFreeze !== false ? () => {
+            gridHoveredSections.add(section.code);
+            gridFrozenOutboundOrders.set(
+              section.code,
+              (section.outbounds || []).map((o) => o.code)
+            );
+          } : void 0,
+          mouseleave: section.dashboardSettings?.hoverFreeze !== false ? () => {
+            gridHoveredSections.delete(section.code);
+            setTimeout(() => {
+              if (!gridHoveredSections.has(section.code)) {
+                gridFrozenOutboundOrders.delete(section.code);
+              }
+            }, 800);
+          } : void 0
+        },
         renderGridChildren()
       ) : ""
     ]
@@ -4555,7 +5196,7 @@ var GET_UI_STATE_RPC_TIMEOUT_MS = 3e3;
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-function translate(message) {
+function translate2(message) {
   return typeof _ === "function" ? _(message) : message;
 }
 function parseJsonObjectOutput(output) {
@@ -5230,7 +5871,7 @@ var TachyonShellMethods = {
         success: true,
         component,
         action,
-        message: translate("Tachyon has been installed"),
+        message: translate2("Tachyon has been installed"),
         current_version: installedVersion,
         latest_version: expectedLatestVersion,
         changed: true,
@@ -6309,7 +6950,14 @@ function sortOutboundsForDashboard(outbounds, options = {}) {
   const pinnedRank = new Map(
     pinnedCodes.map((code, index) => [code, index])
   );
-  const sortByLatency = options.sortByLatency === true;
+  const sortMode = options.sortMode || (options.sortByLatency === true ? "latency" : "default");
+  const countryInfoMap = /* @__PURE__ */ new Map();
+  if (sortMode === "country_latency" || sortMode === "country_alpha") {
+    for (const ob of outbounds) {
+      const info = detectOutboundCountry(ob);
+      countryInfoMap.set(ob.code, { code: info.code, name: info.name });
+    }
+  }
   return outbounds.map((outbound, index) => ({ outbound, index })).sort((left, right) => {
     const leftPinned = pinnedRank.has(left.outbound.code);
     const rightPinned = pinnedRank.has(right.outbound.code);
@@ -6322,7 +6970,36 @@ function sortOutboundsForDashboard(outbounds, options = {}) {
         return rankDiff;
       }
     }
-    if (sortByLatency) {
+    if (sortMode === "country_latency") {
+      const leftCountry = countryInfoMap.get(left.outbound.code);
+      const rightCountry = countryInfoMap.get(right.outbound.code);
+      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER") return 1;
+      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER") return -1;
+      const countryDiff = leftCountry.name.localeCompare(rightCountry.name, "ru");
+      if (countryDiff !== 0) {
+        return countryDiff;
+      }
+      const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
+      if (latencyDiff !== 0) {
+        return latencyDiff;
+      }
+    } else if (sortMode === "country_alpha") {
+      const leftCountry = countryInfoMap.get(left.outbound.code);
+      const rightCountry = countryInfoMap.get(right.outbound.code);
+      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER") return 1;
+      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER") return -1;
+      const countryDiff = leftCountry.name.localeCompare(rightCountry.name, "ru");
+      if (countryDiff !== 0) {
+        return countryDiff;
+      }
+      const nameDiff = (left.outbound.displayName || left.outbound.code).localeCompare(
+        right.outbound.displayName || right.outbound.code,
+        "ru"
+      );
+      if (nameDiff !== 0) {
+        return nameDiff;
+      }
+    } else if (sortMode === "latency") {
       const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
       if (latencyDiff !== 0) {
         return latencyDiff;
@@ -6834,7 +7511,7 @@ function buildPriorityInfo({
     outbounds
   };
 }
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map(), hiddenOutboundTags = {}, memberSections = []) {
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map(), hiddenOutboundTags = {}, memberSections = [], sortMode) {
   const sectionName = section[".name"];
   const configuredPrefixes = uniqueCodes([
     ...getConfiguredSubscriptionPrefixes(section),
@@ -7032,7 +7709,8 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
       ...urlTestEntries.filter(({ config }) => config.pinDashboard).map(({ config }) => config.code),
       ...priorityEntries.filter(({ config }) => config.pinDashboard).map(({ config }) => config.code)
     ],
-    sortByLatency: shouldSortByLatency(section)
+    sortMode,
+    sortByLatency: sortMode === "latency" || shouldSortByLatency(section)
   });
   const latencyTestCodes = sortedOutbounds.filter(
     (outbound) => outbound.runtimeAvailable !== false && !isSelectorOutbound(outbound) && !outbound.priorityInfo
@@ -7269,6 +7947,10 @@ async function getDashboardSections(options = {}) {
     return serviceStatusCache.get(serviceType);
   };
   const sectionErrors = await sectionErrorsPromise;
+  const settingsSection = getSettingsSection(configSections);
+  const globalCountryGrouping = settingsSection?.dashboard_country_grouping || "chips";
+  const globalSortMode = settingsSection?.dashboard_sort_mode || "latency";
+  const globalHoverFreeze = settingsSection?.dashboard_hover_freeze !== "0";
   const data = await Promise.all(
     configSections.filter(
       (section) => section.enabled !== "0" && (isConnectionAction(section.action) || isServiceAction(section.action))
@@ -7277,6 +7959,9 @@ async function getDashboardSections(options = {}) {
       const sectionName = section[".name"];
       const sectionAction = section.action;
       const proxyConfigType = getSectionProxyConfigType(section);
+      const sectionSortByLatency = shouldSortByLatency(section);
+      const effectiveSortMode = !sectionSortByLatency && !section.dashboard_sort_mode ? "default" : section.dashboard_sort_mode || globalSortMode || "latency";
+      const effectiveCountryGrouping = section.dashboard_country_grouping || globalCountryGrouping;
       if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
         const subscriptionEnabled = subscriptionSourceCount > 0;
@@ -7351,7 +8036,8 @@ async function getDashboardSections(options = {}) {
           priorityGroups,
           cachedProxyLinks,
           hiddenOutboundTags,
-          memberSections
+          memberSections,
+          effectiveSortMode
         );
         const hideNa = shouldHideNaServers(section);
         const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
@@ -7367,6 +8053,11 @@ async function getDashboardSections(options = {}) {
           proxyConfigType,
           subscriptionSourceCount,
           subscriptionMetadata,
+          dashboardSettings: {
+            countryGrouping: effectiveCountryGrouping,
+            sortMode: effectiveSortMode,
+            hoverFreeze: globalHoverFreeze
+          },
           outbounds: filteredOutbounds
         };
       }
@@ -10022,6 +10713,7 @@ function unsubscribeClashSockets() {
   clashSocketSubscriptions = [];
 }
 var customProxyLatencies = /* @__PURE__ */ new Map();
+var activeCountryFilters = /* @__PURE__ */ new Map();
 var singleTestingOutboundCodes = {};
 var isTestingAllSections = false;
 var dashboardVisibilityPaused = false;
@@ -11517,6 +12209,15 @@ async function renderSectionsWidget() {
       onToggleCollapse: () => toggleSectionExpanded(section.code),
       collapsedSourceGroups: expandedSections,
       onToggleSourceGroupCollapse: (groupKey) => toggleSectionExpanded(groupKey),
+      activeCountryFilter: activeCountryFilters.get(section.sectionName),
+      onFilterCountry: (sectionName, countryCode) => {
+        if (countryCode) {
+          activeCountryFilters.set(sectionName, countryCode);
+        } else {
+          activeCountryFilters.delete(sectionName);
+        }
+        void renderSectionsWidget();
+      },
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName]
       ),
@@ -12684,7 +13385,13 @@ var styles = `
 }
 
 .tachyon_dashboard-page__outbound-grid__item--active {
-    border-color: var(--success-color-medium, green);
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 1.5px #10b981, 0 3px 12px rgba(16, 185, 129, 0.25) !important;
+}
+
+.tachyon_dashboard-page__outbound-grid__item--active:hover {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 2px #10b981, 0 4px 14px rgba(16, 185, 129, 0.35) !important;
 }
 
 .tachyon_dashboard-page__outbound-grid__item--disabled {
@@ -12761,6 +13468,22 @@ var styles = `
     max-width: 100%;
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+
+.tachyon_dashboard-page__outbound-grid__item__selected-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #10b981;
+    color: #ffffff;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 4px rgba(16, 185, 129, 0.35);
+    white-space: nowrap;
 }
 
 .tachyon_proto-popover-trigger {
@@ -13075,8 +13798,9 @@ var styles = `
 }
 
 .tachyon_dashboard-page__flag-emoji,
+.tachyon_dashboard-page__country-chip__flag,
 .tachyon_dashboard-page__urltest-details__country-badge {
-    font-family: "Twemoji Country Flags";
+    font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
     font-style: normal;
     font-weight: normal;
 }
@@ -13203,6 +13927,177 @@ var styles = `
         width: 100%;
         justify-content: flex-end;
     }
+}
+
+.tachyon_dashboard-page__country-chips {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    padding: 2px 0 6px 0;
+}
+
+.tachyon_dashboard-page__country-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    border-radius: 16px;
+    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.35));
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.08));
+    color: var(--text-color-high, inherit);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__country-chip:hover {
+    background: var(--background-color-high, rgba(120, 120, 120, 0.22));
+    border-color: var(--border-color-high, rgba(120, 120, 120, 0.6));
+}
+
+.tachyon_dashboard-page__country-chip--active {
+    background: var(--primary-color, #2563eb) !important;
+    color: #ffffff !important;
+    border-color: var(--primary-color, #2563eb) !important;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+}
+
+.tachyon_dashboard-page__country-chip--active:hover {
+    background: var(--primary-color-hover, #1d4ed8) !important;
+    border-color: var(--primary-color-hover, #1d4ed8) !important;
+}
+
+.tachyon_dashboard-page__country-chip__flag {
+    font-size: 16px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__country-chip__name {
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.tachyon_dashboard-page__country-chip__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.22);
+    color: var(--text-color-high, currentColor);
+    min-width: 16px;
+    text-align: center;
+}
+
+.tachyon_dashboard-page__country-chip--active .tachyon_dashboard-page__country-chip__count {
+    background: rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+}
+
+.tachyon_dashboard-page__country-chip__latency {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 10px;
+}
+
+.tachyon_dashboard-page__country-chip__latency--fast {
+    background: rgba(16, 185, 129, 0.18);
+    color: #10b981;
+}
+
+.tachyon_dashboard-page__country-chip__latency--medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.tachyon_dashboard-page__country-chip__latency--slow {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.tachyon_dashboard-page__country-chip--active .tachyon_dashboard-page__country-chip__latency {
+    background: rgba(255, 255, 255, 0.28) !important;
+    color: #ffffff !important;
+}
+
+.tachyon_dashboard-page__country-meta {
+    margin-top: 6px;
+    margin-bottom: 2px;
+}
+
+.tachyon_dashboard-page__auto-groups {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 10px 12px 12px 12px;
+    border-radius: 6px;
+    background: rgba(120, 120, 120, 0.05);
+    border: 1px dashed var(--border-color-medium, rgba(120, 120, 120, 0.25));
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__auto-groups__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-color-medium, rgba(160, 160, 160, 0.9));
+    margin-bottom: 10px;
+    padding-left: 2px;
+}
+
+.tachyon_dashboard-page__auto-groups__icon {
+    display: inline-flex;
+    align-items: center;
+    font-size: 13px;
+    color: #f59e0b;
+}
+
+.tachyon_dashboard-page__auto-groups__count {
+    font-size: 11px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgba(120, 120, 120, 0.18);
+    color: var(--text-color-high, inherit);
+    font-weight: 600;
+}
+
+.tachyon_dashboard-page__auto-groups-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
+    grid-gap: 10px;
+}
+
+.tachyon_dashboard-page__outbound-grid__item--auto-group {
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.08));
+    border-color: var(--border-color-medium, rgba(120, 120, 120, 0.35));
+}
+
+.tachyon_dashboard-page__outbound-grid__item--auto-group.tachyon_dashboard-page__outbound-grid__item--active {
+    border-color: #10b981 !important;
+    background: rgba(16, 185, 129, 0.08) !important;
+    box-shadow: 0 0 0 1.5px #10b981, 0 3px 12px rgba(16, 185, 129, 0.25) !important;
 }
 
 `;

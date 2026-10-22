@@ -9,6 +9,7 @@ import {
 } from '../../../helpers';
 import { getOutboundTagBySection } from '../../runtimeTags';
 import { TachyonShellMethods } from '../shell';
+import { detectOutboundCountry } from '../../helpers/country';
 
 interface IGetDashboardSectionsResponse {
   success: boolean;
@@ -609,6 +610,7 @@ function sortOutboundsForDashboard(
     pinnedCode?: string;
     pinnedCodes?: string[];
     sortByLatency?: boolean;
+    sortMode?: 'latency' | 'country_latency' | 'country_alpha' | 'default';
   } = {},
 ) {
   const pinnedCodes = [
@@ -618,7 +620,16 @@ function sortOutboundsForDashboard(
   const pinnedRank = new Map(
     pinnedCodes.map((code, index) => [code, index] as const),
   );
-  const sortByLatency = options.sortByLatency === true;
+  const sortMode =
+    options.sortMode || (options.sortByLatency === true ? 'latency' : 'default');
+
+  const countryInfoMap = new Map<string, { code: string; name: string }>();
+  if (sortMode === 'country_latency' || sortMode === 'country_alpha') {
+    for (const ob of outbounds) {
+      const info = detectOutboundCountry(ob);
+      countryInfoMap.set(ob.code, { code: info.code, name: info.name });
+    }
+  }
 
   return outbounds
     .map((outbound, index) => ({ outbound, index }))
@@ -640,7 +651,45 @@ function sortOutboundsForDashboard(
         }
       }
 
-      if (sortByLatency) {
+      if (sortMode === 'country_latency') {
+        const leftCountry = countryInfoMap.get(left.outbound.code)!;
+        const rightCountry = countryInfoMap.get(right.outbound.code)!;
+
+        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER') return 1;
+        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER') return -1;
+
+        const countryDiff = leftCountry.name.localeCompare(rightCountry.name, 'ru');
+        if (countryDiff !== 0) {
+          return countryDiff;
+        }
+
+        const latencyDiff =
+          getLatencySortValue(left.outbound) -
+          getLatencySortValue(right.outbound);
+
+        if (latencyDiff !== 0) {
+          return latencyDiff;
+        }
+      } else if (sortMode === 'country_alpha') {
+        const leftCountry = countryInfoMap.get(left.outbound.code)!;
+        const rightCountry = countryInfoMap.get(right.outbound.code)!;
+
+        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER') return 1;
+        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER') return -1;
+
+        const countryDiff = leftCountry.name.localeCompare(rightCountry.name, 'ru');
+        if (countryDiff !== 0) {
+          return countryDiff;
+        }
+
+        const nameDiff = (left.outbound.displayName || left.outbound.code).localeCompare(
+          right.outbound.displayName || right.outbound.code,
+          'ru',
+        );
+        if (nameDiff !== 0) {
+          return nameDiff;
+        }
+      } else if (sortMode === 'latency') {
         const latencyDiff =
           getLatencySortValue(left.outbound) -
           getLatencySortValue(right.outbound);
@@ -1414,6 +1463,7 @@ function buildProxyGroupOutbounds(
   cachedProxyLinks: Map<string, string> = new Map(),
   hiddenOutboundTags: Record<string, boolean> = {},
   memberSections: Tachyon.ConfigSection[] = [],
+  sortMode?: 'latency' | 'country_latency' | 'country_alpha' | 'default',
 ) {
   const sectionName = section['.name'];
   const configuredPrefixes = uniqueCodes([
@@ -1684,7 +1734,8 @@ function buildProxyGroupOutbounds(
         .filter(({ config }) => config.pinDashboard)
         .map(({ config }) => config.code),
     ],
-    sortByLatency: shouldSortByLatency(section),
+    sortMode,
+    sortByLatency: sortMode === 'latency' || shouldSortByLatency(section),
   });
   const latencyTestCodes = sortedOutbounds
     .filter(
@@ -2016,6 +2067,22 @@ export async function getDashboardSections(
   };
 
   const sectionErrors = await sectionErrorsPromise;
+  const settingsSection = getSettingsSection(configSections);
+  const globalCountryGrouping =
+    (settingsSection?.dashboard_country_grouping as
+      | 'chips'
+      | 'accordion'
+      | 'none'
+      | undefined) || 'chips';
+  const globalSortMode =
+    (settingsSection?.dashboard_sort_mode as
+      | 'latency'
+      | 'country_latency'
+      | 'country_alpha'
+      | 'default'
+      | undefined) || 'latency';
+  const globalHoverFreeze = settingsSection?.dashboard_hover_freeze !== '0';
+
   const data = await Promise.all(
     configSections
       .filter(
@@ -2029,6 +2096,15 @@ export async function getDashboardSections(
         const sectionName = section['.name'];
         const sectionAction = section.action;
         const proxyConfigType = getSectionProxyConfigType(section);
+        const sectionSortByLatency = shouldSortByLatency(section);
+        const effectiveSortMode =
+          !sectionSortByLatency && !section.dashboard_sort_mode
+            ? 'default'
+            : (section.dashboard_sort_mode as any) ||
+              globalSortMode ||
+              'latency';
+        const effectiveCountryGrouping =
+          (section.dashboard_country_grouping as any) || globalCountryGrouping;
 
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
@@ -2118,6 +2194,7 @@ export async function getDashboardSections(
               cachedProxyLinks,
               hiddenOutboundTags,
               memberSections,
+              effectiveSortMode,
             );
 
           const hideNa = shouldHideNaServers(section);
@@ -2138,6 +2215,11 @@ export async function getDashboardSections(
             proxyConfigType,
             subscriptionSourceCount,
             subscriptionMetadata,
+            dashboardSettings: {
+              countryGrouping: effectiveCountryGrouping,
+              sortMode: effectiveSortMode,
+              hoverFreeze: globalHoverFreeze,
+            },
             outbounds: filteredOutbounds,
           };
         }

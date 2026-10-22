@@ -127,6 +127,7 @@ function unsubscribeClashSockets() {
 }
 
 const customProxyLatencies = new Map<string, number>();
+const activeCountryFilters = new Map<string, string>();
 const singleTestingOutboundCodes: Record<string, boolean> = {};
 let isTestingAllSections = false;
 
@@ -2064,6 +2065,15 @@ async function renderSectionsWidget() {
       collapsedSourceGroups: expandedSections,
       onToggleSourceGroupCollapse: (groupKey: string) =>
         toggleSectionExpanded(groupKey),
+      activeCountryFilter: activeCountryFilters.get(section.sectionName),
+      onFilterCountry: (sectionName: string, countryCode?: string) => {
+        if (countryCode) {
+          activeCountryFilters.set(sectionName, countryCode);
+        } else {
+          activeCountryFilters.delete(sectionName);
+        }
+        void renderSectionsWidget();
+      },
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName],
       ),

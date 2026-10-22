@@ -1626,4 +1626,73 @@ describe('getDashboardSections', () => {
     expect(node?.transport).toBe('xhttp');
     expect(node?.details).toBe('packet-up+xmux');
   });
+
+  it('exposes dashboardSettings and sorts outbounds by country_latency', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.type': 'settings',
+        '.name': 'settings',
+        dashboard_country_grouping: 'chips',
+        dashboard_sort_mode: 'country_latency',
+        dashboard_hover_freeze: '1',
+      },
+      proxySection({
+        sort_by_latency: '1',
+        selector_proxy_links: [
+          'vless://de2@1.1.1.1:443#%F0%9F%87%A9%F0%9F%87%AA%20Germany%2002',
+          'vless://de1@1.1.1.2:443#%F0%9F%87%A9%F0%9F%87%AA%20Germany%2001',
+          'vless://nl1@1.1.1.3:443#%F0%9F%87%B3%F0%9F%87%B1%20Netherlands%2001',
+        ],
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-1-out': {
+            name: '🇩🇪 Germany 02',
+            type: 'Vless',
+            history: [{ time: '2026', delay: 100 }],
+            all: [],
+            now: '',
+          },
+          'main-2-out': {
+            name: '🇩🇪 Germany 01',
+            type: 'Vless',
+            history: [{ time: '2026', delay: 30 }],
+            all: [],
+            now: '',
+          },
+          'main-3-out': {
+            name: '🇳🇱 Netherlands 01',
+            type: 'Vless',
+            history: [{ time: '2026', delay: 10 }],
+            all: [],
+            now: '',
+          },
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const section = result.data[0];
+    expect(section.dashboardSettings).toEqual({
+      countryGrouping: 'chips',
+      sortMode: 'country_latency',
+      hoverFreeze: true,
+    });
+
+    // In country_latency:
+    // Germany (Германия) comes before Netherlands (Нидерланды) alphabetically in Russian.
+    // Within Germany, Germany 01 (30ms) comes before Germany 02 (100ms).
+    // Then Netherlands 01 (10ms).
+    const codes = section.outbounds.map((o) => o.displayName);
+    expect(codes).toEqual([
+      'Fastest',
+      '🇩🇪 Germany 01',
+      '🇩🇪 Germany 02',
+      '🇳🇱 Netherlands 01',
+    ]);
+  });
 });

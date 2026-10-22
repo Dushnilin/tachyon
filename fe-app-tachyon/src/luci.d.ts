@@ -12,6 +12,8 @@ type HtmlAttributes<T extends HtmlTag = 'div'> = Partial<
     'data-latency-section'?: string;
     click?: (event: MouseEvent) => void;
     onclick?: (event: MouseEvent) => void;
+    mouseenter?: (event: MouseEvent) => void;
+    mouseleave?: (event: MouseEvent) => void;
   }
 >;
 
