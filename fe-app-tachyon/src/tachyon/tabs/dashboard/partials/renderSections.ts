@@ -713,7 +713,6 @@ function renderAutoGroupsBlock(
         'div',
         { class: 'tachyon_dashboard-page__auto-groups__header' },
         [
-          E('span', { class: 'tachyon_dashboard-page__auto-groups__icon' }, '⚡'),
           E('span', {}, title),
           E(
             'span',

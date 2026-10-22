@@ -1927,7 +1927,7 @@ function createSettingsContent(section, capabilities) {
   );
   o.value("regions", _tr("По частям света (Регионы: Европа, Азия, Америка...)", "By world regions (Europe, Asia, Americas...)"));
   o.value("smart_top", _tr("Умный топ (Активная и популярные страны впереди)", "Smart top (Active and popular countries first)"));
-  o.value("latency", _tr("По качеству связи (Пинг ⚡ первыми)", "By latency (Best ping first)"));
+  o.value("latency", _tr("По качеству связи (Пинг первыми)", "By latency (Best ping first)"));
   o.value("alphabetical", _tr("По алфавиту (А–Я)", "Alphabetical (A–Z)"));
   o.default = "regions";
   o.depends("dashboard_country_grouping", "chips");

@@ -8490,7 +8490,7 @@ msgid "Smart top (Active and popular countries first)"
 msgstr "Умный топ (Активная и популярные страны впереди)"
 
 msgid "By latency (Best ping first)"
-msgstr "По качеству связи (Пинг ⚡ первыми)"
+msgstr "По качеству связи (Пинг первыми)"
 
 msgid "Alphabetical (A–Z)"
 msgstr "По алфавиту (А–Я)"
