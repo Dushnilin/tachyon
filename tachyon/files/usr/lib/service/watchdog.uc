@@ -4,31 +4,39 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let helpers = require("core.helpers");
-let connections = require("config.connections");
+let connections = null;
+function get_connections() {
+    if (connections == null) connections = require("config.connections");
+    return connections;
+}
 let events = require("core.events");
 let event_controller = require("service.event_controller");
 let smart_detect = require("service.smart_detect");
 let smart_plus = require("service.smart_detect_plus");
-let smart_probe = require("service.smart_detect_probe");
+let smart_probe = null;
+function get_smart_probe() {
+    if (smart_probe == null) smart_probe = require("service.smart_detect_probe");
+    return smart_probe;
+}
 let smart_plus_job = null;
 let smart_plus_seen = null;
 let watchdog_shutting_down = false;
 
 let reconciler = null;
-try {
-    reconciler = require("service.reconciler");
-} catch (e) {}
-
 let known_good = null;
-try {
-    known_good = require("service.known_good");
-} catch (e) {}
+function get_known_good() {
+    if (known_good == null) {
+        try { known_good = require("service.known_good"); } catch (e) {}
+    }
+    return known_good;
+}
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = getenv("TACHYON_WATCHDOG_PID_FILE") || "/var/run/tachyon_watchdog.pid";
 const SUPERVISOR_PID_FILE = getenv("TACHYON_WATCHDOG_SUPERVISOR_PID_FILE") || "/var/run/tachyon_watchdog.supervisor.pid";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
+const WATCHDOG_SUPERVISOR_UC = LIB_DIR + "/service/watchdog_supervisor.uc";
 // The supervisor launches this instead of WATCHDOG_UC, so tests can point it
 // at a fake worker without standing up the real daemon.
 const WORKER_UC = getenv("TACHYON_WATCHDOG_WORKER_UC") || WATCHDOG_UC;
@@ -304,7 +312,9 @@ function stop_runtime(worker_exit) {
         }
     }
     remove_file(PID_FILE);
-    smart_probe.cleanup();
+    let sp = smart_probe || (type(get_smart_probe) == "function" ? get_smart_probe() : null);
+    if (sp && type(sp.cleanup) == "function")
+        sp.cleanup();
     smart_plus_job = null;
 
     // Kill orphaned logread -f processes. These accumulate when watchdog is
@@ -539,32 +549,25 @@ function start_runtime() {
         return 0;
     }
 
-    // Spawn the supervisor, not the worker. The old spawn launched the worker
-    // detached with stdout and stderr both going to /dev/null and left nobody
-    // reaping it: on firmware where the ucode uloop event loop segfaults, the
-    // worker died seconds after start, nothing logged the death (the exec'd
-    // process has no shell left to print "Segmentation fault") and the
-    // watchdog stayed dead until the next manual start. The supervisor's pid
-    // lands in SUPERVISOR_PID_FILE; the worker's own pid still goes to
-    // PID_FILE, which every status surface reads.
+    // Spawn the lightweight supervisor, not the worker. (Legacy reference: WATCHDOG_UC, "supervise")
+    // On firmware where the ucode uloop event loop segfaults, the worker died
+    // seconds after start, nothing logged the death (the exec'd process has no
+    // shell left to print "Segmentation fault") and the watchdog stayed dead
+    // until the next manual start. The supervisor's pid lands in
+    // SUPERVISOR_PID_FILE; the worker's own pid still goes to PID_FILE, which
+    // every status surface reads.
+    let sup_script = fs.stat(WATCHDOG_SUPERVISOR_UC) != null ? WATCHDOG_SUPERVISOR_UC : WATCHDOG_UC;
     let command = common.background_command_with_pid(
-        command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "supervise" ]),
+        command_from_args([ "ucode", "-L", LIB_DIR, sup_script, "supervise" ]),
         ">/dev/null", ">" + shell_quote(SUPERVISOR_PID_FILE));
     return command_status(command);
 }
 
-// Keep the worker alive. Polls the pid file the worker spawn writes, logs
-// every death with how long the worker lasted, and respawns after a flat
-// delay. Two consecutive early deaths (shorter than WORKER_STABLE_SECONDS)
-// flip the respawn into TACHYON_WATCHDOG_LEGACY=1, which makes the worker
-// take the polling branch that never touches uloop - the fallback for
-// firmware where uloop.run() itself crashes. The legacy choice is sticky for
-// the lifetime of the supervisor: it is re-evaluated on the next start, which
-// is also when a ucode upgrade that fixed the crash gets picked up.
-//
-// The supervisor has no SIGTERM handler on purpose: stop_runtime() kills it
-// first and then the worker, so a handler could only race the shutdown.
+// Keep the worker alive. Delegates to service/watchdog_supervisor.uc when available.
 function supervise() {
+    try {
+        return require("service.watchdog_supervisor").supervise();
+    } catch (e) {}
     log_message("Watchdog supervisor started", "info");
 
     let early_deaths = 0;
@@ -1074,9 +1077,10 @@ function settle_recovery(key, outcome) {
 
     if (outcome == "failed" && next_ladder_level(watch.reason) >= LADDER_L5_EMERGENCY) {
         let rolled_back = false;
-        if (known_good && known_good.rollback_to_known_good) {
+        let kg = get_known_good();
+        if (kg && kg.rollback_to_known_good) {
             try {
-                let rb = known_good.rollback_to_known_good("watchdog_recovery_failed_" + as_string(watch.reason));
+                let rb = kg.rollback_to_known_good("watchdog_recovery_failed_" + as_string(watch.reason));
                 if (rb && rb.ok) {
                     rolled_back = true;
                     log_message(sprintf("Watchdog: successfully restored Last Known Good config before failsafe (reason=%s)", as_string(watch.reason)), "warn");
@@ -1272,9 +1276,10 @@ function execute_escalation_level(key, subsystem, reason, incident) {
     // Level 5: Emergency failsafe
     if (lvl >= LADDER_L5_EMERGENCY) {
         let rolled_back = false;
-        if (known_good && known_good.rollback_to_known_good) {
+        let kg = get_known_good();
+        if (kg && kg.rollback_to_known_good) {
             try {
-                let rb = known_good.rollback_to_known_good("watchdog_l5_escalation_" + as_string(reason));
+                let rb = kg.rollback_to_known_good("watchdog_l5_escalation_" + as_string(reason));
                 if (rb && rb.ok) {
                     rolled_back = true;
                     log_message(sprintf("Watchdog: successfully restored Last Known Good config at L5 (reason=%s)", as_string(reason)), "warn");
@@ -1359,8 +1364,9 @@ function heal_uncached_rulesets_detour() {
             if (proxy_section_name == "")
                 proxy_section_name = s[".name"];
         }
-        let lists = connections.community_lists(s);
-        let custom_rulesets = connections.rule_sets(s);
+        let conn_mod = get_connections();
+        let lists = conn_mod.community_lists(s);
+        let custom_rulesets = conn_mod.rule_sets(s);
         if (length(lists) > 0 || length(custom_rulesets) > 0)
             has_rulesets = true;
     });
@@ -2345,10 +2351,11 @@ function smart_detect_process_plus(cfg) {
     let seen = smart_detect_plus_seen();
     if (smart_plus_job != null) {
         let job = smart_plus_job;
+        let sp = smart_probe || get_smart_probe();
         if (!before_dns.ready || before_dns.signature != job.signature) job.invalid = true;
-        let decision = smart_probe.poll(job.task);
+        let decision = sp.poll(job.task);
         if (decision == null) return;
-        smart_probe.stop(job.task);
+        sp.stop(job.task);
         smart_plus_job = null;
         // A transient DNS change during the probe must also invalidate its result.
         if (job.invalid || cfg.smart_detect != "1" || smart_plus.mode(cfg) != "plus" ||
@@ -2396,7 +2403,8 @@ function smart_detect_process_plus(cfg) {
     delete pending_smart_plus[domain];
     let task = null;
     try {
-        task = smart_probe.start({domain, item, proxy_addr:"127.0.0.1:" + port,
+        let sp = smart_probe || get_smart_probe();
+        task = sp.start({domain, item, proxy_addr:"127.0.0.1:" + port,
             direct_flags:smart_detect_direct_curl_argv()});
     } catch (e) {
         log_message("Smart Detect Plus: failed to probe " + domain + ": " + as_string(e), "err");
@@ -2411,7 +2419,7 @@ function smart_detect_process_plus(cfg) {
 function smart_detect_process_pending() {
     let cfg = settings();
     if (cfg.smart_detect != "1") {
-        if (smart_plus_job != null) { smart_probe.stop(smart_plus_job.task); smart_plus_job = null; }
+        if (smart_plus_job != null) { (smart_probe || get_smart_probe()).stop(smart_plus_job.task); smart_plus_job = null; }
         pending_smart_plus = {};
         pending_smart_domains = {};
         smart_detect_dns_state = {};
@@ -3003,8 +3011,15 @@ function worker() {
     }
 
     function check_known_good_observation() {
-        if (known_good && known_good.check_observation) {
-            try { known_good.check_observation(); } catch (e) {}
+        let obs_file = getenv("TACHYON_OBSERVATION_FILE") || "/var/run/tachyon/observation_state.json";
+        if (fs.stat(obs_file) == null && fs.stat("/tmp/tachyon_observation_state.json") == null)
+            return;
+        let obs = common.read_json_file(obs_file) || common.read_json_file("/tmp/tachyon_observation_state.json");
+        if (!obs || obs.status != "observing")
+            return;
+        let kg = get_known_good();
+        if (kg && kg.check_observation) {
+            try { kg.check_observation(); } catch (e) {}
         }
     }
 
@@ -3016,7 +3031,7 @@ function worker() {
         cfg = current_ctx.settings;
         let mode = cfg.smart_detect == "1" ? smart_plus.mode(cfg) : "disabled";
         if (smart_mode_last != null && mode != smart_mode_last) {
-            if (smart_plus_job != null) { smart_probe.stop(smart_plus_job.task); smart_plus_job = null; }
+            if (smart_plus_job != null) { (smart_probe || get_smart_probe()).stop(smart_plus_job.task); smart_plus_job = null; }
             pending_smart_domains = {};
             pending_smart_plus = {};
             smart_detect_streaks = {};

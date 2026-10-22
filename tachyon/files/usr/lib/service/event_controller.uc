@@ -21,7 +21,11 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let helpers = require("core.helpers");
-let rule_config = require("config.rule");
+let rule_config = null;
+function get_rule_config() {
+    if (rule_config == null) rule_config = require("config.rule");
+    return rule_config;
+}
 let smart_detect = require("service.smart_detect");
 let smart_plus = require("service.smart_detect_plus");
 
@@ -1239,7 +1243,7 @@ function controller(bus, opts) {
             let s = all_sections[sec_name];
             if (s[".type"] != "section" || s.enabled != "1") continue;
             if (s.community_subnets == "0") continue;
-            if (!s.community_lists || !rule_config.has_community_subnet_list(s.community_lists)) continue;
+            if (!s.community_lists || !get_rule_config().has_community_subnet_list(s.community_lists)) continue;
 
             // A non-zero exit means the set does not exist for this section
             // (no subnet community configured) — not an emptiness problem.

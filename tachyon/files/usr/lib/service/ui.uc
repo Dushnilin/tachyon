@@ -1239,6 +1239,9 @@ function tachyon_helpers_rss_kb(tachyon_pidfiles) {
     let add_pid = function(pid) {
         if (!pid || match(pid, /^[0-9]+$/) == null || seen[pid])
             return;
+        let cmd = fs.readfile("/proc/" + pid + "/cmdline") || "";
+        if (index(cmd, "/usr/lib/tachyon/") < 0 || index(cmd, "service/ui.uc") >= 0 || index(cmd, "tachyon_entry.uc") >= 0)
+            return;
         let status = fs.readfile("/proc/" + pid + "/status");
         if (!status)
             return;
@@ -1271,6 +1274,8 @@ function tachyon_helpers_rss_kb(tachyon_pidfiles) {
             continue;
         let cmd = fs.readfile("/proc/" + pid + "/cmdline") || "";
         if (index(cmd, "/usr/lib/tachyon/") < 0 || index(cmd, "service/ui.uc") >= 0 || index(cmd, "tachyon_entry.uc") >= 0)
+            continue;
+        if (index(cmd, "worker") < 0 && index(cmd, "supervise") < 0)
             continue;
         add_pid(pid);
     }

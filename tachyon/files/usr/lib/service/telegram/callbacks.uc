@@ -7,8 +7,16 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
-let connections = require("config.connections");
-let dns_presets = require("tachyon_core.dns_presets");
+let connections = null;
+function get_connections() {
+    if (connections == null) connections = require("config.connections");
+    return connections;
+}
+let dns_presets = null;
+function get_dns_presets() {
+    if (dns_presets == null) dns_presets = require("tachyon_core.dns_presets");
+    return dns_presets;
+}
 let api = require("service.api");
 let i18n = require("service.i18n");
 
@@ -779,7 +787,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
             send_message(token, chat_id, "❌ " + t("sec_not_found") + " <code>" + sec + "</code>", "HTML");
             return view_sections(token, chat_id, null);
         }
-        connections.cascade_delete_section(c, CONFIG_NAME, sec);
+        get_connections().cascade_delete_section(c, CONFIG_NAME, sec);
         c.delete(CONFIG_NAME, sec);
         c.commit(CONFIG_NAME);
         send_message(token, chat_id, "✅ " + t("sec_deleted") + " <code>" + sec + "</code>", "HTML");
@@ -895,11 +903,12 @@ function dispatch_command(token, chat_id, text, msg_id) {
     }
 
     if (cmd == "/dns_presets" || cmd == "/dns_servers") {
+        let dp = get_dns_presets();
         let c = uci_core.cursor(); c.load(CONFIG_NAME);
         let s = c.get_all(CONFIG_NAME, "settings");
         let dns_type = option(s, "dns_type", "doh");
-        let text = dns_presets.format_presets_list(dns_type);
-        let presets = dns_presets.get_presets(dns_type);
+        let text = dp.format_presets_list(dns_type);
+        let presets = dp.get_presets(dns_type);
         let keyboard = [];
         for (let i = 0; i < length(presets); i++) {
             let p = presets[i];
@@ -912,24 +921,26 @@ function dispatch_command(token, chat_id, text, msg_id) {
         return;
     }
     if (match(cmd, /^\/dns_apply /)) {
+        let dp = get_dns_presets();
         let idx = int(trim(substr(cmd, 11)));
         let c = uci_core.cursor(); c.load(CONFIG_NAME);
         let s = c.get_all(CONFIG_NAME, "settings");
         let dns_type = option(s, "dns_type", "doh");
-        let presets = dns_presets.get_presets(dns_type);
+        let presets = dp.get_presets(dns_type);
         if (idx >= 0 && idx < length(presets)) {
             let preset = presets[idx];
-            let servers = dns_presets.get_preset_servers(preset);
+            let servers = dp.get_preset_servers(preset);
             c.delete(CONFIG_NAME, "settings", "dns_server");
             for (let srv in servers) c.add_list(CONFIG_NAME, "settings", "dns_server", srv);
             c.commit(CONFIG_NAME);
-            send_message(token, chat_id, "✅ <b>" + t("dns_servers_applied") + "</b>\n" + dns_presets.format_preset(preset, idx) + "\n\nТип: <code>" + dns_type + "</code>\n\n⚠️ " + t("dns_restart_hint"), "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ " + t("nav_back"), callback_data: "/dns_presets"}]]);
+            send_message(token, chat_id, "✅ <b>" + t("dns_servers_applied") + "</b>\n" + dp.format_preset(preset, idx) + "\n\nТип: <code>" + dns_type + "</code>\n\n⚠️ " + t("dns_restart_hint"), "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ " + t("nav_back"), callback_data: "/dns_presets"}]]);
         }
         return;
     }
     if (cmd == "/bootstrap_presets") {
-        let text = dns_presets.format_bootstrap_presets_list();
-        let presets = dns_presets.get_bootstrap_presets();
+        let dp = get_dns_presets();
+        let text = dp.format_bootstrap_presets_list();
+        let presets = dp.get_bootstrap_presets();
         let keyboard = [];
         for (let i = 0; i < length(presets); i++) {
             let p = presets[i];
@@ -941,21 +952,23 @@ function dispatch_command(token, chat_id, text, msg_id) {
         return;
     }
     if (match(cmd, /^\/bootstrap_apply /)) {
+        let dp = get_dns_presets();
         let idx = int(trim(substr(cmd, 17)));
-        let presets = dns_presets.get_bootstrap_presets();
+        let presets = dp.get_bootstrap_presets();
         if (idx >= 0 && idx < length(presets)) {
             let preset = presets[idx];
-            let servers = dns_presets.get_preset_servers(preset);
+            let servers = dp.get_preset_servers(preset);
             let c = uci_core.cursor(); c.load(CONFIG_NAME);
             c.delete(CONFIG_NAME, "settings", "bootstrap_dns_server");
             for (let srv in servers) c.add_list(CONFIG_NAME, "settings", "bootstrap_dns_server", srv);
             c.commit(CONFIG_NAME);
-            send_message(token, chat_id, "✅ <b>" + t("dns_bootstrap_applied") + "</b>\n" + dns_presets.format_preset(preset, idx) + "\n\n⚠️ " + t("dns_restart_hint"), "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ " + t("nav_back"), callback_data: "/bootstrap_presets"}]]);
+            send_message(token, chat_id, "✅ <b>" + t("dns_bootstrap_applied") + "</b>\n" + dp.format_preset(preset, idx) + "\n\n⚠️ " + t("dns_restart_hint"), "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ " + t("nav_back"), callback_data: "/bootstrap_presets"}]]);
         }
         return;
     }
     if (cmd == "/dns_protocols") {
-        let text = dns_presets.format_protocol_info();
+        let dp = get_dns_presets();
+        let text = dp.format_protocol_info();
         let keyboard = [[{ text: "⬅️ " + t("nav_back"), callback_data: "/dns_presets" }]];
         if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
         else send_message(token, chat_id, text, "HTML", keyboard);

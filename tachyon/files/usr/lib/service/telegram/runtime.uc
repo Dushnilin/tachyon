@@ -12,8 +12,31 @@ let i18n = require("service.i18n");
 
 let rendering = require("service.telegram.rendering");
 let transport = require("service.telegram.transport");
-let commands = require("service.telegram.commands");
-let callbacks = require("service.telegram.callbacks");
+let _commands = null;
+function get_commands() {
+    if (_commands == null) _commands = require("service.telegram.commands");
+    return _commands;
+}
+let _callbacks = null;
+function get_callbacks() {
+    if (_callbacks == null) _callbacks = require("service.telegram.callbacks");
+    return _callbacks;
+}
+let commands = {
+    view_set_cat: function(...args) { return get_commands().view_set_cat(...args); },
+    view_sec_list: function(...args) { return get_commands().view_sec_list(...args); },
+    view_test_rule: function(...args) { return get_commands().view_test_rule(...args); },
+    view_quiet_hours: function(...args) { return get_commands().view_quiet_hours(...args); },
+    view_set_arr: function(...args) { return get_commands().view_set_arr(...args); },
+    view_section_editor: function(...args) { return get_commands().view_section_editor(...args); }
+};
+let callbacks = {
+    handle_fptn_token_update: function(...args) { return get_callbacks().handle_fptn_token_update(...args); },
+    handle_sec_sub_add: function(...args) { return get_callbacks().handle_sec_sub_add(...args); },
+    handle_router_name_set: function(...args) { return get_callbacks().handle_router_name_set(...args); },
+    apply_backup_restore: function(...args) { return get_callbacks().apply_backup_restore(...args); },
+    dispatch_command: function(...args) { return get_callbacks().dispatch_command(...args); }
+};
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
