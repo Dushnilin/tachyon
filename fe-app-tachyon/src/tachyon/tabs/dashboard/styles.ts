@@ -98,8 +98,96 @@ export const styles = `
 .tachyon_dashboard-page__widgets-section {
     margin-top: 10px;
     display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
-    grid-gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+    grid-gap: 12px;
+}
+
+.tachyon-dual-card {
+    min-height: 140px;
+}
+
+.tachyon-dual-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.tachyon-dual-card__title-text {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color-high, inherit);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tachyon-dual-card__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    flex-shrink: 0;
+}
+
+.tachyon-dual-card__badge--neutral {
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    border: 1px solid rgba(120, 120, 120, 0.25);
+}
+
+.tachyon-dual-card__body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+    min-width: 0;
+}
+
+.tachyon-dual-card__col {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tachyon-dual-card__col:first-child {
+    padding-right: 12px;
+    border-right: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.tachyon-dual-card__column-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-color-medium, #94a3b8);
+    margin-bottom: 5px;
+    padding-bottom: 3px;
+    border-bottom: 1px dashed rgba(128, 128, 128, 0.2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 768px) {
+    .tachyon-dual-card__body {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .tachyon-dual-card__col:first-child {
+        padding-right: 0;
+        border-right: none;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+    }
 }
 
 .tachyon_dashboard-page__widgets-section__item {

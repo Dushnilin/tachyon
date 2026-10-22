@@ -22,44 +22,27 @@ export function render() {
         E('div', { class: 'tachyon_dashboard-page__widgets-section' }, [
           E(
             'div',
-            { id: 'dashboard-widget-traffic' },
+            {
+              id: 'dashboard-widgets-sections-list',
+              style: 'display: contents;',
+            },
+            [
+              renderWidget({
+                loading: true,
+                failed: false,
+                title: '',
+                items: [],
+              }),
+            ],
+          ),
+          E('div', { id: 'dashboard-widget-system-services' }, [
             renderWidget({
               loading: true,
               failed: false,
               title: '',
               items: [],
             }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-traffic-total' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-system-info' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-service-info' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
+          ]),
           E(
             'div',
             { id: 'dashboard-widget-tailscale', style: 'display:none' },

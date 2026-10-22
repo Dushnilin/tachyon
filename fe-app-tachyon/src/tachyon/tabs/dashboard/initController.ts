@@ -31,6 +31,7 @@ import {
   renderFlagEmojis,
   renderSections,
   renderWidget,
+  renderDualWidget,
   renderConnections,
   IConnection,
 } from './partials';
@@ -42,7 +43,12 @@ import {
   aggregateTopDomains,
   ITopDomain,
 } from './connections';
-import { getActiveRoute } from './activeRoute';
+import {
+  getActiveRoute,
+  getAllActiveRoutes,
+  isServiceGroup,
+  ActiveRouteInfo,
+} from './activeRoute';
 import {
   computeTrafficRates,
   createInitialTrafficRatesState,
@@ -89,6 +95,7 @@ let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
 let connectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let currentConnections: IConnection[] = [];
+let rawConnectionsList: Array<any> = [];
 let currentTopDomains: ITopDomain[] = [];
 let directSocketsFailed = false;
 let trafficRatesState: TrafficRatesState = createInitialTrafficRatesState();
@@ -634,6 +641,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
       const parsedMsg = JSON.parse(msg);
 
       if (Array.isArray(parsedMsg.connections)) {
+        rawConnectionsList = parsedMsg.connections;
         currentConnections = aggregateClientConnections(
           parsedMsg.connections,
           new Map<string, string>(),
@@ -2273,34 +2281,51 @@ function renderConnectionsWidget() {
   );
 }
 
-async function renderBandwidthWidget() {
-  const total = store.get().trafficTotalWidget.data;
-  renderStoreWidget(
-    'dashboard-widget-traffic',
-    'bandwidthWidget',
-    tr('Трафик и скорость', 'Traffic & Speed'),
-    (data) => [
-      {
-        key: tr('Входящий', 'Downlink'),
-        value: `↓ ${prettyBytes(data.down)}/s`,
-        attributes: { class: 'tachyon-stat--down' },
-      },
-      {
-        key: tr('Исходящий', 'Uplink'),
-        value: `↑ ${prettyBytes(data.up)}/s`,
-        attributes: { class: 'tachyon-stat--up' },
-      },
-      {
-        key: tr('За сессию', 'Session total'),
-        value: `▼ ${prettyBytes(total.downloadTotal || 0)} • ▲ ${prettyBytes(total.uploadTotal || 0)}`,
-        attributes: { class: 'tachyon-stat--session' },
-      },
-    ],
-    'renderBandwidthWidget',
-  );
+export function getSectionConnectionStats(
+  sectionName: string,
+  totalProxySections: number,
+  rawConns: Array<{ chains?: string[]; upload?: number | string; download?: number | string }>,
+  totals: { downloadTotal?: number; uploadTotal?: number; downSpeed?: number; upSpeed?: number },
+) {
+  if (totalProxySections <= 1) {
+    return {
+      conns: rawConns.length,
+      upload: totals.uploadTotal || 0,
+      download: totals.downloadTotal || 0,
+      downSpeed: totals.downSpeed || 0,
+      upSpeed: totals.upSpeed || 0,
+    };
+  }
+
+  const target = (sectionName || '').toLowerCase();
+  let conns = 0;
+  let upload = 0;
+  let download = 0;
+
+  for (const c of rawConns) {
+    const chains = Array.isArray(c.chains)
+      ? c.chains.map((ch: any) => String(ch).toLowerCase())
+      : [];
+    if (chains.some((ch: string) => ch === target || ch.includes(target))) {
+      conns++;
+      upload += Number(c.upload) || 0;
+      download += Number(c.download) || 0;
+    }
+  }
+
+  return {
+    conns,
+    upload,
+    download,
+    downSpeed: target === 'main' ? totals.downSpeed || 0 : 0,
+    upSpeed: target === 'main' ? totals.upSpeed || 0 : 0,
+  };
 }
 
-async function renderTrafficTotalWidget() {
+export async function renderSectionDashboardWidgets() {
+  const container = document.getElementById('dashboard-widgets-sections-list');
+  if (!container) return;
+
   const sectionsWidget = store.get().sectionsWidget;
   const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
     ...section,
@@ -2332,85 +2357,294 @@ async function renderTrafficTotalWidget() {
       };
     }),
   }));
-  const activeRoute = getActiveRoute(sectionsWithCustomLatencies);
+
+  const activeRoutes = getAllActiveRoutes(sectionsWithCustomLatencies);
   const isCheckingLatency =
     Object.keys(sectionsWidget.latencyFetchingSections || {}).length > 0 ||
     Object.keys(singleTestingOutboundCodes).length > 0;
 
-  renderStoreWidget(
-    'dashboard-widget-traffic-total',
-    'trafficTotalWidget',
-    tr('Активный маршрут', 'Active Route'),
-    () => {
-      if (!activeRoute) {
-        return [
+  const bandwidth = store.get().bandwidthWidget.data;
+  const total = store.get().trafficTotalWidget.data;
+  const loading = sectionsWidget.loading;
+  const failed = sectionsWidget.failed;
+
+  const routesToRender: ActiveRouteInfo[] =
+    activeRoutes.length > 0
+      ? activeRoutes
+      : [
           {
-            key: tr('Сервер', 'Server'),
-            value: tr('Ожидание / Напрямую', 'Standby / Direct'),
+            sectionName: 'main',
+            sectionDisplayName: 'Main',
+            name: tr('Ожидание / Напрямую', 'Standby / Direct'),
+            selector: '—',
+            latency: -1,
+            type: 'Proxy',
           },
-          { key: tr('Селектор', 'Selector'), value: '—' },
         ];
-      }
 
-      const items = [
+  const totalProxySections = routesToRender.length;
+
+  const widgets = routesToRender.map((route) => {
+    const sectionName = route.sectionName || 'main';
+    const sectionDisplayName = route.sectionDisplayName || sectionName;
+    const stats = getSectionConnectionStats(
+      sectionName,
+      totalProxySections,
+      rawConnectionsList,
+      {
+        downloadTotal: total.downloadTotal,
+        uploadTotal: total.uploadTotal,
+        downSpeed: bandwidth.down,
+        upSpeed: bandwidth.up,
+      },
+    );
+
+    const routeItems = [
+      {
+        key: tr('Сервер', 'Server'),
+        value: route.name,
+        attributes: { class: 'tachyon-stat--bold' },
+      },
+      {
+        key: tr('Селектор', 'Selector'),
+        value: route.selector,
+      },
+      {
+        key: tr('Задержка', 'Latency'),
+        value:
+          route.latency > 0
+            ? `${route.latency}ms`
+            : isCheckingLatency
+              ? tr('Проверка...', 'Checking...')
+              : '—',
+        attributes: {
+          class: route.latency > 0 ? 'tachyon-stat--down' : '',
+        },
+      },
+      {
+        key: tr('Протокол', 'Protocol'),
+        value: route.type,
+      },
+    ];
+
+    const trafficItems = [
+      {
+        key: tr('Входящий', 'Downlink'),
+        value: `↓ ${prettyBytes(stats.downSpeed)}/s`,
+        attributes: { class: 'tachyon-stat--down' },
+      },
+      {
+        key: tr('Исходящий', 'Uplink'),
+        value: `↑ ${prettyBytes(stats.upSpeed)}/s`,
+        attributes: { class: 'tachyon-stat--up' },
+      },
+      {
+        key:
+          totalProxySections <= 1
+            ? tr('За сессию', 'Session total')
+            : tr('Трафик секции', 'Section traffic'),
+        value: `▼ ${prettyBytes(stats.download || 0)} • ▲ ${prettyBytes(stats.upload || 0)}`,
+        attributes: { class: 'tachyon-stat--session' },
+      },
+      {
+        key: tr('Соединения', 'Connections'),
+        value: `${stats.conns} ${tr('соед.', 'conns')}`,
+      },
+    ];
+
+    return renderDualWidget({
+      loading,
+      failed,
+      title: `${tr('Секция', 'Section')}: ${sectionDisplayName}`,
+      badge: tr('Активна', 'Active'),
+      columns: [
         {
-          key: tr('Сервер', 'Server'),
-          value: activeRoute.name,
-          attributes: { class: 'tachyon-stat--bold' },
+          title: tr('Активный маршрут', 'Active Route'),
+          items: routeItems,
         },
         {
-          key: tr('Селектор', 'Selector'),
-          value: activeRoute.selector,
+          title: tr('Трафик и скорость', 'Traffic & Speed'),
+          items: trafficItems,
         },
-        {
-          key: tr('Задержка', 'Latency'),
-          value:
-            activeRoute.latency > 0
-              ? `${activeRoute.latency}ms`
-              : isCheckingLatency
-                ? tr('Проверка...', 'Checking...')
-                : '—',
-          attributes: {
-            class: activeRoute.latency > 0 ? 'tachyon-stat--down' : '',
-          },
-        },
-      ];
+      ],
+    });
+  });
 
-      if (activeRoute.type) {
-        items.push({
-          key: tr('Протокол', 'Protocol'),
-          value: activeRoute.type,
-        });
-      }
+  container.replaceChildren(...widgets);
+}
 
-      return items;
-    },
-    'renderTrafficTotalWidget',
+export async function renderSystemServicesWidget() {
+  const container = document.getElementById('dashboard-widget-system-services');
+  if (!container) return;
+
+  const sysState = store.get().systemInfoWidget;
+  const srvState = store.get().servicesInfoWidget;
+  const sections = store.get().sectionsWidget.data || [];
+  const proxySections = sections.filter(
+    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0,
   );
+  const activeSectionsCount = proxySections.length;
+
+  const loading = sysState.loading && srvState.loading;
+  const failed = sysState.failed && srvState.failed;
+
+  const routingItems = [
+    { key: tr('Режим работы', 'Mode'), value: 'TProxy + Fake-IP' },
+    {
+      key: tr('Всего соединений', 'Active Connections'),
+      value: `${sysState.data?.connections || 0} ${tr('соед.', 'conns')}`,
+    },
+    {
+      key: tr('Секции правил', 'Routing Sections'),
+      value: `${activeSectionsCount} ${tr('активных', 'active')}`,
+      attributes: { class: 'tachyon-stat--bold' },
+    },
+    {
+      key: tr('Активные клиенты', 'Active Clients'),
+      value: `${currentConnections.length} ${tr('устройств', 'devices')}`,
+    },
+  ];
+
+  const srvData = srvState.data;
+  const srvItems: Array<{
+    key?: string | HTMLElement;
+    value: string | HTMLElement | (string | HTMLElement)[];
+    attributes?: Record<string, string>;
+  }> = [];
+
+  if (srvData) {
+    const tachyonUptime = formatLocalizedUptime(
+      srvData.tachyonUptimePretty,
+      srvData.tachyonUptimeSeconds,
+    );
+    const tachyonTooltip = formatServiceTooltip({
+      pid: srvData.tachyonPid,
+      uptimePretty: tachyonUptime,
+    });
+
+    const singboxUptime = formatLocalizedUptime(
+      srvData.singboxUptimePretty,
+      srvData.singboxUptimeSeconds,
+    );
+    const singboxTooltip = formatServiceTooltip({
+      pid: srvData.singboxPid,
+      uptimePretty: singboxUptime,
+    });
+
+    srvItems.push(
+      renderServiceRowItem('Tachyon', {
+        running: srvData.tachyonRunning,
+        memoryMb: srvData.tachyonMemoryMb,
+        uptimePretty: tachyonUptime,
+        tooltip: tachyonTooltip,
+      }),
+      renderServiceRowItem(
+        (() => {
+          if (srvData.engineVariant) {
+            return srvData.engineVariant;
+          }
+          if (
+            store.get().activeEngine === 'steer' ||
+            store.get().activeEngine === 'steer-extended'
+          ) {
+            return 'Steer';
+          }
+          const systemInfo = store.get().diagnosticsSystemInfo;
+          if (systemInfo?.sing_box_tachyon_core) {
+            return 'Tachyon Core';
+          }
+          if (systemInfo?.sing_box_lx) {
+            return 'Sing-box LX';
+          }
+          if (systemInfo?.sing_box_extended) {
+            return 'Sing-box Ext';
+          }
+          return 'Sing-box';
+        })(),
+        {
+          running: srvData.singbox,
+          memoryMb: srvData.singboxMemoryMb,
+          uptimePretty: singboxUptime,
+          tooltip: singboxTooltip,
+        },
+      ),
+    );
+
+    if (srvData.dnsmasqRunning != null) {
+      const dnsmasqUptime = formatLocalizedUptime(
+        srvData.dnsmasqUptimePretty,
+        srvData.dnsmasqUptimeSeconds,
+      );
+      const dnsmasqTooltip = formatServiceTooltip({
+        pid: srvData.dnsmasqPid,
+        uptimePretty: dnsmasqUptime,
+      });
+
+      srvItems.push(
+        renderServiceRowItem('Dnsmasq (DNS)', {
+          running: srvData.dnsmasqRunning,
+          memoryMb: srvData.dnsmasqMemoryMb,
+          uptimePretty: dnsmasqUptime,
+          tooltip: dnsmasqTooltip,
+        }),
+      );
+    }
+
+    if (srvData.zapret2Running) {
+      const zapret2Uptime = formatLocalizedUptime(
+        srvData.zapret2UptimePretty,
+        srvData.zapret2UptimeSeconds,
+      );
+      const zapret2Tooltip = formatServiceTooltip({
+        pid: srvData.zapret2Pid,
+        uptimePretty: zapret2Uptime,
+      });
+
+      srvItems.push(
+        renderServiceRowItem('Zapret2', {
+          running: srvData.zapret2Running,
+          memoryMb: srvData.zapret2MemoryMb,
+          uptimePretty: zapret2Uptime,
+          tooltip: zapret2Tooltip,
+        }),
+      );
+    }
+  }
+
+  const widget = renderDualWidget({
+    loading,
+    failed,
+    title: tr('Система и сервисы', 'System & Services'),
+    badge: 'TProxy + Fake-IP',
+    columns: [
+      {
+        title: tr('Маршрутизация и правила', 'Routing & Rules'),
+        items: routingItems,
+      },
+      {
+        title: tr('Службы роутера', 'Router Services'),
+        items: srvItems,
+      },
+    ],
+  });
+
+  container.replaceChildren(widget);
+}
+
+async function renderBandwidthWidget() {
+  void renderSectionDashboardWidgets();
+}
+
+async function renderTrafficTotalWidget() {
+  void renderSectionDashboardWidgets();
 }
 
 async function renderSystemInfoWidget() {
-  renderStoreWidget(
-    'dashboard-widget-system-info',
-    'systemInfoWidget',
-    tr('Маршрутизация и правила', 'Routing & Rules'),
-    (data) => [
-      { key: tr('Режим работы', 'Mode'), value: 'TProxy + Fake-IP' },
-      {
-        key: tr('Соединения', 'Active Connections'),
-        value: `${data.connections || 0} ${tr('соед.', 'conns')}`,
-      },
-      {
-        key: tr('Память ядра', 'Core Memory'),
-        value: String(prettyBytes(data.memory || 0)),
-      },
-      {
-        key: tr('Активные клиенты', 'Active Clients'),
-        value: `${currentConnections.length} ${tr('устройств', 'devices')}`,
-      },
-    ],
-    'renderSystemInfoWidget',
-  );
+  void renderSystemServicesWidget();
+}
+
+async function renderServicesInfoWidget() {
+  void renderSystemServicesWidget();
 }
 
 export function formatServiceRowValue(options: {
@@ -2596,114 +2830,6 @@ export function renderServiceRowItem(
   };
 }
 
-async function renderServicesInfoWidget() {
-  renderStoreWidget(
-    'dashboard-widget-service-info',
-    'servicesInfoWidget',
-    tr('Информация о сервисах', 'Services info'),
-    (data) => {
-      const tachyonUptime = formatLocalizedUptime(
-        data.tachyonUptimePretty,
-        data.tachyonUptimeSeconds,
-      );
-      const tachyonTooltip = formatServiceTooltip({
-        pid: data.tachyonPid,
-        uptimePretty: tachyonUptime,
-      });
-
-      const singboxUptime = formatLocalizedUptime(
-        data.singboxUptimePretty,
-        data.singboxUptimeSeconds,
-      );
-      const singboxTooltip = formatServiceTooltip({
-        pid: data.singboxPid,
-        uptimePretty: singboxUptime,
-      });
-
-      const items = [
-        renderServiceRowItem('Tachyon', {
-          running: data.tachyonRunning,
-          memoryMb: data.tachyonMemoryMb,
-          uptimePretty: tachyonUptime,
-          tooltip: tachyonTooltip,
-        }),
-        renderServiceRowItem(
-          (() => {
-            if (data.engineVariant) {
-              return data.engineVariant;
-            }
-            if (
-              store.get().activeEngine === 'steer' ||
-              store.get().activeEngine === 'steer-extended'
-            ) {
-              return 'Steer';
-            }
-            const systemInfo = store.get().diagnosticsSystemInfo;
-            if (systemInfo.sing_box_tachyon_core) {
-              return 'Tachyon Core';
-            }
-            if (systemInfo.sing_box_lx) {
-              return 'Sing-box LX';
-            }
-            if (systemInfo.sing_box_extended) {
-              return 'Sing-box Ext';
-            }
-            return 'Sing-box';
-          })(),
-          {
-            running: data.singbox,
-            memoryMb: data.singboxMemoryMb,
-            uptimePretty: singboxUptime,
-            tooltip: singboxTooltip,
-          },
-        ),
-      ];
-
-      if (data.zapret2Running) {
-        const zapret2Uptime = formatLocalizedUptime(
-          data.zapret2UptimePretty,
-          data.zapret2UptimeSeconds,
-        );
-        const zapret2Tooltip = formatServiceTooltip({
-          pid: data.zapret2Pid,
-          uptimePretty: zapret2Uptime,
-        });
-
-        items.push(
-          renderServiceRowItem('Zapret2', {
-            running: data.zapret2Running,
-            memoryMb: data.zapret2MemoryMb,
-            uptimePretty: zapret2Uptime,
-            tooltip: zapret2Tooltip,
-          }),
-        );
-      }
-
-      if (data.dnsmasqRunning != null) {
-        const dnsmasqUptime = formatLocalizedUptime(
-          data.dnsmasqUptimePretty,
-          data.dnsmasqUptimeSeconds,
-        );
-        const dnsmasqTooltip = formatServiceTooltip({
-          pid: data.dnsmasqPid,
-          uptimePretty: dnsmasqUptime,
-        });
-
-        items.push(
-          renderServiceRowItem('Dnsmasq (DNS)', {
-            running: data.dnsmasqRunning,
-            memoryMb: data.dnsmasqMemoryMb,
-            uptimePretty: dnsmasqUptime,
-            tooltip: dnsmasqTooltip,
-          }),
-        );
-      }
-
-      return items;
-    },
-    'renderServicesInfoWidget',
-  );
-}
 
 let latestTailscalePeersRequestId = 0;
 
