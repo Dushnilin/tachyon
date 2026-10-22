@@ -8476,3 +8476,27 @@ msgstr "Защита от случайных кликов (Hover Freeze)"
 
 msgid "Temporarily lock server card positions while the mouse cursor is over the server grid to prevent misclicks when latencies update."
 msgstr "Временно фиксирует позиции карточек серверов, пока курсор мыши находится над списком, предотвращая случайные клики при обновлении пинга."
+
+msgid "Country Chips Grouping"
+msgstr "Организация чипсов стран"
+
+msgid "Select how country chips are organized and displayed on the Dashboard."
+msgstr "Выберите порядок и способ отображения чипсов стран на дашборде."
+
+msgid "By world regions (Europe, Asia, Americas...)"
+msgstr "По частям света (Регионы: Европа, Азия, Америка...)"
+
+msgid "Smart top (Active and popular countries first)"
+msgstr "Умный топ (Активная и популярные страны впереди)"
+
+msgid "By latency (Best ping first)"
+msgstr "По качеству связи (Пинг ⚡ первыми)"
+
+msgid "Alphabetical (A–Z)"
+msgstr "По алфавиту (А–Я)"
+
+msgid "Quick Country Search"
+msgstr "Быстрый поиск по странам"
+
+msgid "Show a search box to instantly filter the country and server list on the fly."
+msgstr "Отображать строку поиска для мгновенной фильтрации списка стран и серверов на лету."

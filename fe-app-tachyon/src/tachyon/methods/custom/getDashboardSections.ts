@@ -2074,6 +2074,14 @@ export async function getDashboardSections(
       | 'accordion'
       | 'none'
       | undefined) || 'chips';
+  const globalChipsGrouping =
+    (settingsSection?.dashboard_chips_grouping as
+      | 'regions'
+      | 'smart_top'
+      | 'latency'
+      | 'alphabetical'
+      | undefined) || 'regions';
+  const globalChipsSearch = settingsSection?.dashboard_chips_search !== '0';
   const globalSortMode =
     (settingsSection?.dashboard_sort_mode as
       | 'latency'
@@ -2105,6 +2113,12 @@ export async function getDashboardSections(
               'latency';
         const effectiveCountryGrouping =
           (section.dashboard_country_grouping as any) || globalCountryGrouping;
+        const effectiveChipsGrouping =
+          (section.dashboard_chips_grouping as any) || globalChipsGrouping;
+        const effectiveChipsSearch =
+          section.dashboard_chips_search !== undefined
+            ? section.dashboard_chips_search !== '0'
+            : globalChipsSearch;
 
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
@@ -2217,6 +2231,8 @@ export async function getDashboardSections(
             subscriptionMetadata,
             dashboardSettings: {
               countryGrouping: effectiveCountryGrouping,
+              chipsGrouping: effectiveChipsGrouping,
+              chipsSearch: effectiveChipsSearch,
               sortMode: effectiveSortMode,
               hoverFreeze: globalHoverFreeze,
             },

@@ -128,6 +128,8 @@ function unsubscribeClashSockets() {
 
 const customProxyLatencies = new Map<string, number>();
 const activeCountryFilters = new Map<string, string>();
+const activeRegionFilters = new Map<string, string>();
+const activeCountrySearchQueries = new Map<string, string>();
 const singleTestingOutboundCodes: Record<string, boolean> = {};
 let isTestingAllSections = false;
 
@@ -2071,6 +2073,23 @@ async function renderSectionsWidget() {
           activeCountryFilters.set(sectionName, countryCode);
         } else {
           activeCountryFilters.delete(sectionName);
+        }
+        void renderSectionsWidget();
+      },
+      activeRegionFilter:
+        activeRegionFilters.get(section.sectionName) || 'all',
+      onFilterRegion: (sectionName: string, region: string) => {
+        activeRegionFilters.set(sectionName, region);
+        activeCountryFilters.delete(sectionName);
+        void renderSectionsWidget();
+      },
+      countrySearchQuery:
+        activeCountrySearchQueries.get(section.sectionName) || '',
+      onSearchCountry: (sectionName: string, query: string) => {
+        if (query) {
+          activeCountrySearchQueries.set(sectionName, query);
+        } else {
+          activeCountrySearchQueries.delete(sectionName);
         }
         void renderSectionsWidget();
       },

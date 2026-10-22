@@ -8,12 +8,70 @@ export interface OutboundCountryInfo {
   name: string;
 }
 
+export type WorldRegion = 'all' | 'europe' | 'asia' | 'americas' | 'other';
+
 export interface OutboundCountryGroup {
   countryCode: string;
   countryFlag: string;
   countryName: string;
+  region: WorldRegion;
   outbounds: Tachyon.Outbound[];
   bestLatency: number;
+}
+
+export const EUROPE_CODES = new Set([
+  'RU', 'DE', 'NL', 'GB', 'UK', 'FR', 'FI', 'SE', 'PL', 'CH', 'AT', 'ES', 'IT',
+  'UA', 'NO', 'CZ', 'EE', 'LV', 'LT', 'MD', 'BY', 'RS', 'BG', 'RO', 'HU', 'GR',
+  'CY', 'IS', 'IE', 'PT', 'BE', 'DK', 'SK', 'HR', 'BA', 'AL', 'MK', 'LI', 'LU',
+  'MC', 'SM', 'VA', 'AD', 'MT', 'ME', 'SI',
+]);
+
+export const ASIA_MIDEAST_CODES = new Set([
+  'TR', 'KZ', 'SG', 'JP', 'HK', 'AE', 'GE', 'AM', 'UZ', 'KG', 'IL', 'IN', 'KR',
+  'TW', 'TH', 'VN', 'AZ', 'ID', 'MY', 'PH', 'PK', 'BD', 'QA', 'BH', 'IQ', 'MN',
+  'KH', 'LK', 'BN', 'CN', 'SA', 'OM', 'KW', 'JO', 'LB', 'TJ', 'TM', 'NP', 'MM', 'LA',
+]);
+
+export const AMERICAS_CODES = new Set([
+  'US', 'CA', 'BR', 'AR', 'MX', 'CL', 'CO', 'PE', 'VE', 'EC', 'UY', 'PY', 'BO', 'CR', 'PA',
+]);
+
+export function getCountryRegion(countryCode?: string): WorldRegion {
+  const code = `${countryCode || ''}`.trim().toUpperCase();
+  if (EUROPE_CODES.has(code)) return 'europe';
+  if (ASIA_MIDEAST_CODES.has(code)) return 'asia';
+  if (AMERICAS_CODES.has(code)) return 'americas';
+  return 'other';
+}
+
+export interface RegionMetadata {
+  id: WorldRegion;
+  label: string;
+  flag: string;
+}
+
+export function getRegionMetadata(region: WorldRegion, locale?: string): RegionMetadata {
+  const isDocRu =
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
+  const isDocEn =
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('en');
+  const isRu = (locale ? locale.startsWith('ru') : !isDocEn) || isDocRu;
+
+  switch (region) {
+    case 'europe':
+      return { id: 'europe', label: isRu ? 'Европа' : 'Europe', flag: '🇪🇺' };
+    case 'asia':
+      return { id: 'asia', label: isRu ? 'Азия и Восток' : 'Asia & Mideast', flag: '🌏' };
+    case 'americas':
+      return { id: 'americas', label: isRu ? 'Америка' : 'Americas', flag: '🌎' };
+    case 'other':
+      return { id: 'other', label: isRu ? 'Другие' : 'Other', flag: '🌍' };
+    case 'all':
+    default:
+      return { id: 'all', label: isRu ? 'Все' : 'All', flag: '🌐' };
+  }
 }
 
 const FALLBACK_NAMES_RU: Record<string, string> = {
@@ -351,6 +409,7 @@ export function groupOutboundsByCountry(
         countryCode: info.code,
         countryFlag: info.flag,
         countryName: info.name,
+        region: getCountryRegion(info.code),
         outbounds: [],
         bestLatency: Number.POSITIVE_INFINITY,
       };
@@ -377,4 +436,150 @@ export function groupOutboundsByCountry(
     if (b.countryCode === 'OTHER') return -1;
     return a.countryName.localeCompare(b.countryName, sortLocale);
   });
+}
+
+export interface OrganizedCountryGroups {
+  groups: OutboundCountryGroup[];
+  topCount?: number;
+  availableRegions: Array<{ id: WorldRegion; label: string; flag: string; count: number }>;
+}
+
+export function organizeCountryGroups(
+  countryGroups: OutboundCountryGroup[],
+  mode: 'regions' | 'smart_top' | 'latency' | 'alphabetical' = 'regions',
+  options?: {
+    activeCountryCode?: string;
+    selectedRegion?: WorldRegion;
+    locale?: string;
+    searchQuery?: string;
+  },
+): OrganizedCountryGroups {
+  const isDocEn =
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('en');
+  const sortLocale = options?.locale || (isDocEn ? 'en' : 'ru');
+
+  // Compute available regions across the full group set
+  const regionCounts: Record<WorldRegion, number> = {
+    all: 0,
+    europe: 0,
+    asia: 0,
+    americas: 0,
+    other: 0,
+  };
+
+  for (const group of countryGroups) {
+    const reg = group.region in regionCounts ? group.region : 'other';
+    const serverCount = group.outbounds.length;
+    regionCounts.all += serverCount;
+    regionCounts[reg] += serverCount;
+  }
+
+  const regionOrder: WorldRegion[] = ['all', 'europe', 'asia', 'americas', 'other'];
+  const availableRegions = regionOrder
+    .filter((r) => r === 'all' || regionCounts[r] > 0)
+    .map((r) => {
+      const meta = getRegionMetadata(r, sortLocale);
+      return {
+        ...meta,
+        count: regionCounts[r],
+      };
+    });
+
+  let workingGroups = [...countryGroups];
+
+  // Optional search query filter
+  if (options?.searchQuery) {
+    const q = options.searchQuery.trim().toLowerCase();
+    if (q) {
+      workingGroups = workingGroups.filter((g) => {
+        if (g.countryName.toLowerCase().includes(q)) return true;
+        if (g.countryCode.toLowerCase().includes(q)) return true;
+        return g.outbounds.some(
+          (ob) =>
+            (ob.displayName && ob.displayName.toLowerCase().includes(q)) ||
+            (ob.prefix && ob.prefix.toLowerCase().includes(q)),
+        );
+      });
+    }
+  }
+
+  // 1. By regions
+  if (mode === 'regions') {
+    const targetRegion = options?.selectedRegion || 'all';
+    if (targetRegion !== 'all') {
+      workingGroups = workingGroups.filter((g) => g.region === targetRegion);
+    }
+    workingGroups.sort((a, b) => {
+      if (a.countryCode === 'OTHER') return 1;
+      if (b.countryCode === 'OTHER') return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: workingGroups,
+      availableRegions,
+    };
+  }
+
+  // 2. Smart top
+  if (mode === 'smart_top') {
+    const topGroups: OutboundCountryGroup[] = [];
+    const activeCode = options?.activeCountryCode;
+    let remaining = [...workingGroups];
+
+    if (activeCode) {
+      const activeIdx = remaining.findIndex((g) => g.countryCode === activeCode);
+      if (activeIdx !== -1) {
+        topGroups.push(remaining[activeIdx]);
+        remaining.splice(activeIdx, 1);
+      }
+    }
+
+    // Top 3 remaining by outbounds count desc
+    remaining.sort((a, b) => b.outbounds.length - a.outbounds.length);
+    const topPopular = remaining.slice(0, 3);
+    topGroups.push(...topPopular);
+
+    const otherGroups = remaining.slice(3).sort((a, b) => {
+      if (a.countryCode === 'OTHER') return 1;
+      if (b.countryCode === 'OTHER') return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+
+    return {
+      groups: [...topGroups, ...otherGroups],
+      topCount: topGroups.length,
+      availableRegions,
+    };
+  }
+
+  // 3. By latency
+  if (mode === 'latency') {
+    workingGroups.sort((a, b) => {
+      const aLat =
+        a.bestLatency > 0 && Number.isFinite(a.bestLatency) ? a.bestLatency : 999999;
+      const bLat =
+        b.bestLatency > 0 && Number.isFinite(b.bestLatency) ? b.bestLatency : 999999;
+      if (aLat !== bLat) return aLat - bLat;
+      if (a.countryCode === 'OTHER') return 1;
+      if (b.countryCode === 'OTHER') return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: workingGroups,
+      availableRegions,
+    };
+  }
+
+  // 4. Alphabetical
+  workingGroups.sort((a, b) => {
+    if (a.countryCode === 'OTHER') return 1;
+    if (b.countryCode === 'OTHER') return -1;
+    return a.countryName.localeCompare(b.countryName, sortLocale);
+  });
+
+  return {
+    groups: workingGroups,
+    availableRegions,
+  };
 }

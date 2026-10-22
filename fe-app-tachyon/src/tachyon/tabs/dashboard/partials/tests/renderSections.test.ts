@@ -976,4 +976,96 @@ describe('renderSections', () => {
     expect(selectedBadge).toBeTruthy();
     expect(selectedBadge?.textContent).toMatch(/✓\s*(Активен|Active)/);
   });
+
+  it('renders region tabs and quick country search input when configured', () => {
+    const section: any = {
+      code: 'proxy-multi-reg',
+      sectionName: 'proxy',
+      displayName: 'Proxy',
+      withTagSelect: true,
+      dashboardSettings: {
+        countryGrouping: 'chips',
+        chipsGrouping: 'regions',
+        chipsSearch: true,
+      },
+      outbounds: [
+        { code: 'de-1', displayName: '🇩🇪 Germany', latency: 40, country: 'DE' },
+        { code: 'us-1', displayName: '🇺🇸 Miami', latency: 150, country: 'US' },
+        { code: 'ae-1', displayName: '🇦🇪 Dubai', latency: 110, country: 'AE' },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    // Check search input
+    const searchBar = el.querySelector('.tachyon_dashboard-page__country-search-bar');
+    expect(searchBar).toBeTruthy();
+    const searchInput = el.querySelector('.tachyon_dashboard-page__country-search-input');
+    expect(searchInput).toBeTruthy();
+
+    // Check region tabs bar
+    const regionBar = el.querySelector('.tachyon_dashboard-page__region-bar');
+    expect(regionBar).toBeTruthy();
+    const regionTabs = el.querySelectorAll('.tachyon_dashboard-page__region-tab');
+    // All + Europe + Asia + Americas = 4
+    expect(regionTabs.length).toBe(4);
+  });
+
+  it('renders smart_top mode with active country, top locations and divider', () => {
+    const section: any = {
+      code: 'proxy-smart',
+      sectionName: 'proxy',
+      displayName: 'Proxy',
+      withTagSelect: true,
+      dashboardSettings: {
+        countryGrouping: 'chips',
+        chipsGrouping: 'smart_top',
+        chipsSearch: false,
+      },
+      outbounds: [
+        { code: 'de-1', displayName: '🇩🇪 Germany 1', latency: 40, country: 'DE' },
+        { code: 'de-2', displayName: '🇩🇪 Germany 2', latency: 40, country: 'DE' },
+        { code: 'us-1', displayName: '🇺🇸 US 1', latency: 140, country: 'US' },
+        { code: 'us-2', displayName: '🇺🇸 US 2', latency: 140, country: 'US' },
+        { code: 'us-3', displayName: '🇺🇸 US 3', latency: 140, country: 'US' },
+        { code: 'nl-1', displayName: '🇳🇱 Netherlands 1', latency: 50, country: 'NL' },
+        { code: 'cy-1', displayName: '🇨🇾 Cyprus 1', latency: 80, country: 'CY', selected: true },
+        { code: 'fr-1', displayName: '🇫🇷 France 1', latency: 45, country: 'FR' },
+        { code: 'at-1', displayName: '🇦🇹 Austria 1', latency: 60, country: 'AT' },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const divider = el.querySelector('.tachyon_dashboard-page__country-chip-divider');
+    expect(divider).toBeTruthy();
+
+    // Search bar should NOT be rendered when chipsSearch is false
+    const searchBar = el.querySelector('.tachyon_dashboard-page__country-search-bar');
+    expect(searchBar).toBeFalsy();
+  });
 });

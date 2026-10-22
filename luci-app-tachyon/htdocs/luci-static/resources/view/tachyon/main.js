@@ -2819,6 +2819,138 @@ function formatServiceStatusMessage(msg) {
 
 // src/tachyon/helpers/country.ts
 var translate = (key) => typeof _ === "function" ? _(key) : key;
+var EUROPE_CODES = /* @__PURE__ */ new Set([
+  "RU",
+  "DE",
+  "NL",
+  "GB",
+  "UK",
+  "FR",
+  "FI",
+  "SE",
+  "PL",
+  "CH",
+  "AT",
+  "ES",
+  "IT",
+  "UA",
+  "NO",
+  "CZ",
+  "EE",
+  "LV",
+  "LT",
+  "MD",
+  "BY",
+  "RS",
+  "BG",
+  "RO",
+  "HU",
+  "GR",
+  "CY",
+  "IS",
+  "IE",
+  "PT",
+  "BE",
+  "DK",
+  "SK",
+  "HR",
+  "BA",
+  "AL",
+  "MK",
+  "LI",
+  "LU",
+  "MC",
+  "SM",
+  "VA",
+  "AD",
+  "MT",
+  "ME",
+  "SI"
+]);
+var ASIA_MIDEAST_CODES = /* @__PURE__ */ new Set([
+  "TR",
+  "KZ",
+  "SG",
+  "JP",
+  "HK",
+  "AE",
+  "GE",
+  "AM",
+  "UZ",
+  "KG",
+  "IL",
+  "IN",
+  "KR",
+  "TW",
+  "TH",
+  "VN",
+  "AZ",
+  "ID",
+  "MY",
+  "PH",
+  "PK",
+  "BD",
+  "QA",
+  "BH",
+  "IQ",
+  "MN",
+  "KH",
+  "LK",
+  "BN",
+  "CN",
+  "SA",
+  "OM",
+  "KW",
+  "JO",
+  "LB",
+  "TJ",
+  "TM",
+  "NP",
+  "MM",
+  "LA"
+]);
+var AMERICAS_CODES = /* @__PURE__ */ new Set([
+  "US",
+  "CA",
+  "BR",
+  "AR",
+  "MX",
+  "CL",
+  "CO",
+  "PE",
+  "VE",
+  "EC",
+  "UY",
+  "PY",
+  "BO",
+  "CR",
+  "PA"
+]);
+function getCountryRegion(countryCode) {
+  const code = `${countryCode || ""}`.trim().toUpperCase();
+  if (EUROPE_CODES.has(code)) return "europe";
+  if (ASIA_MIDEAST_CODES.has(code)) return "asia";
+  if (AMERICAS_CODES.has(code)) return "americas";
+  return "other";
+}
+function getRegionMetadata(region, locale) {
+  const isDocRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru");
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const isRu = (locale ? locale.startsWith("ru") : !isDocEn) || isDocRu;
+  switch (region) {
+    case "europe":
+      return { id: "europe", label: isRu ? "Европа" : "Europe", flag: "🇪🇺" };
+    case "asia":
+      return { id: "asia", label: isRu ? "Азия и Восток" : "Asia & Mideast", flag: "🌏" };
+    case "americas":
+      return { id: "americas", label: isRu ? "Америка" : "Americas", flag: "🌎" };
+    case "other":
+      return { id: "other", label: isRu ? "Другие" : "Other", flag: "🌍" };
+    case "all":
+    default:
+      return { id: "all", label: isRu ? "Все" : "All", flag: "🌐" };
+  }
+}
 var FALLBACK_NAMES_RU = {
   RU: "Россия",
   DE: "Германия",
@@ -3126,6 +3258,7 @@ function groupOutboundsByCountry(outbounds, locale) {
         countryCode: info.code,
         countryFlag: info.flag,
         countryName: info.name,
+        region: getCountryRegion(info.code),
         outbounds: [],
         bestLatency: Number.POSITIVE_INFINITY
       };
@@ -3143,6 +3276,107 @@ function groupOutboundsByCountry(outbounds, locale) {
     if (b.countryCode === "OTHER") return -1;
     return a.countryName.localeCompare(b.countryName, sortLocale);
   });
+}
+function organizeCountryGroups(countryGroups, mode = "regions", options) {
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const sortLocale = options?.locale || (isDocEn ? "en" : "ru");
+  const regionCounts = {
+    all: 0,
+    europe: 0,
+    asia: 0,
+    americas: 0,
+    other: 0
+  };
+  for (const group of countryGroups) {
+    const reg = group.region in regionCounts ? group.region : "other";
+    const serverCount = group.outbounds.length;
+    regionCounts.all += serverCount;
+    regionCounts[reg] += serverCount;
+  }
+  const regionOrder = ["all", "europe", "asia", "americas", "other"];
+  const availableRegions = regionOrder.filter((r) => r === "all" || regionCounts[r] > 0).map((r) => {
+    const meta = getRegionMetadata(r, sortLocale);
+    return {
+      ...meta,
+      count: regionCounts[r]
+    };
+  });
+  let workingGroups = [...countryGroups];
+  if (options?.searchQuery) {
+    const q = options.searchQuery.trim().toLowerCase();
+    if (q) {
+      workingGroups = workingGroups.filter((g) => {
+        if (g.countryName.toLowerCase().includes(q)) return true;
+        if (g.countryCode.toLowerCase().includes(q)) return true;
+        return g.outbounds.some(
+          (ob) => ob.displayName && ob.displayName.toLowerCase().includes(q) || ob.prefix && ob.prefix.toLowerCase().includes(q)
+        );
+      });
+    }
+  }
+  if (mode === "regions") {
+    const targetRegion = options?.selectedRegion || "all";
+    if (targetRegion !== "all") {
+      workingGroups = workingGroups.filter((g) => g.region === targetRegion);
+    }
+    workingGroups.sort((a, b) => {
+      if (a.countryCode === "OTHER") return 1;
+      if (b.countryCode === "OTHER") return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: workingGroups,
+      availableRegions
+    };
+  }
+  if (mode === "smart_top") {
+    const topGroups = [];
+    const activeCode = options?.activeCountryCode;
+    let remaining = [...workingGroups];
+    if (activeCode) {
+      const activeIdx = remaining.findIndex((g) => g.countryCode === activeCode);
+      if (activeIdx !== -1) {
+        topGroups.push(remaining[activeIdx]);
+        remaining.splice(activeIdx, 1);
+      }
+    }
+    remaining.sort((a, b) => b.outbounds.length - a.outbounds.length);
+    const topPopular = remaining.slice(0, 3);
+    topGroups.push(...topPopular);
+    const otherGroups = remaining.slice(3).sort((a, b) => {
+      if (a.countryCode === "OTHER") return 1;
+      if (b.countryCode === "OTHER") return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: [...topGroups, ...otherGroups],
+      topCount: topGroups.length,
+      availableRegions
+    };
+  }
+  if (mode === "latency") {
+    workingGroups.sort((a, b) => {
+      const aLat = a.bestLatency > 0 && Number.isFinite(a.bestLatency) ? a.bestLatency : 999999;
+      const bLat = b.bestLatency > 0 && Number.isFinite(b.bestLatency) ? b.bestLatency : 999999;
+      if (aLat !== bLat) return aLat - bLat;
+      if (a.countryCode === "OTHER") return 1;
+      if (b.countryCode === "OTHER") return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: workingGroups,
+      availableRegions
+    };
+  }
+  workingGroups.sort((a, b) => {
+    if (a.countryCode === "OTHER") return 1;
+    if (b.countryCode === "OTHER") return -1;
+    return a.countryName.localeCompare(b.countryName, sortLocale);
+  });
+  return {
+    groups: workingGroups,
+    availableRegions
+  };
 }
 
 // src/tachyon/tabs/dashboard/partials/renderSections.ts
@@ -3378,10 +3612,116 @@ function getLatencyTestLabel(latencyProgress) {
     total
   )}/${total}`;
 }
-function renderCountryChips(countryGroups, totalCount, activeFilter, onFilter, sectionName) {
-  const isAllActive = !activeFilter || activeFilter === "ALL";
+function renderCountryChips(countryGroups, totalCount, activeFilter, onFilter, sectionName, options) {
   const isRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") || false;
+  const mode = options?.chipsGrouping || "regions";
+  const activeRegion = options?.activeRegion || "all";
+  const searchQuery2 = options?.searchQuery || "";
+  const organized = organizeCountryGroups(countryGroups, mode, {
+    activeCountryCode: options?.activeCountryCode,
+    selectedRegion: activeRegion,
+    searchQuery: searchQuery2
+  });
+  const container = E("div", {
+    class: "tachyon_dashboard-page__country-chips-container"
+  });
+  if (options?.chipsSearch) {
+    const clearBtn = E(
+      "button",
+      {
+        type: "button",
+        class: "tachyon_dashboard-page__country-search-clear",
+        title: isRu ? "Очистить" : "Clear",
+        style: searchQuery2 ? "display: flex;" : "display: none;",
+        click: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (options.onSearch && sectionName) {
+            options.onSearch(sectionName, "");
+          }
+        }
+      },
+      "✕"
+    );
+    const searchInput = E("input", {
+      type: "text",
+      class: "tachyon_dashboard-page__country-search-input",
+      placeholder: isRu ? "Поиск страны или сервера..." : "Search country or server...",
+      value: searchQuery2,
+      oninput: (e) => {
+        const val = e.target.value;
+        clearBtn.style.display = val ? "flex" : "none";
+        if (options.onSearch && sectionName) {
+          options.onSearch(sectionName, val);
+        }
+      },
+      click: (e) => e.stopPropagation()
+    });
+    const searchBox = E(
+      "div",
+      { class: "tachyon_dashboard-page__country-search-box" },
+      [
+        E(
+          "span",
+          { class: "tachyon_dashboard-page__country-search-icon" },
+          "🔍"
+        ),
+        searchInput,
+        clearBtn
+      ]
+    );
+    const searchBar = E(
+      "div",
+      { class: "tachyon_dashboard-page__country-search-bar" },
+      [searchBox]
+    );
+    container.appendChild(searchBar);
+  }
+  if (mode === "regions" && organized.availableRegions.length > 2) {
+    const regionTabs = organized.availableRegions.map((reg) => {
+      const isRegActive = activeRegion === reg.id;
+      return E(
+        "button",
+        {
+          type: "button",
+          class: `tachyon_dashboard-page__region-tab${isRegActive ? " tachyon_dashboard-page__region-tab--active" : ""}`,
+          title: `${reg.label} (${reg.count})`,
+          click: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (options?.onFilterRegion && sectionName) {
+              options.onFilterRegion(sectionName, reg.id);
+            }
+          }
+        },
+        [
+          E("span", { class: "tachyon_dashboard-page__flag-emoji" }, reg.flag),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__region-tab__name" },
+            reg.label
+          ),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__country-chip__count" },
+            `${reg.count}`
+          )
+        ]
+      );
+    });
+    const regionBar = E(
+      "div",
+      { class: "tachyon_dashboard-page__region-bar" },
+      regionTabs
+    );
+    container.appendChild(regionBar);
+  }
+  const isAllActive = !activeFilter || activeFilter === "ALL";
   const allLabel = isRu ? "Все" : typeof _ === "function" ? _("All") : "All";
+  const currentRegionMeta = organized.availableRegions.find(
+    (r) => r.id === activeRegion
+  );
+  const allChipCount = mode === "regions" && activeRegion !== "all" && currentRegionMeta ? currentRegionMeta.count : totalCount;
   const allBtn = E(
     "button",
     {
@@ -3411,77 +3751,98 @@ function renderCountryChips(countryGroups, totalCount, activeFilter, onFilter, s
       E(
         "span",
         { class: "tachyon_dashboard-page__country-chip__count" },
-        `${totalCount}`
+        `${allChipCount}`
       )
     ]
   );
-  const chips = [
-    allBtn,
-    ...countryGroups.map((group) => {
-      const isActive = activeFilter === group.countryCode;
-      const minLat = group.bestLatency > 0 && Number.isFinite(group.bestLatency) ? `${group.bestLatency}ms` : "";
-      let latClass = "";
-      if (group.bestLatency > 0 && Number.isFinite(group.bestLatency)) {
-        if (group.bestLatency < 100) {
-          latClass = "tachyon_dashboard-page__country-chip__latency--fast";
-        } else if (group.bestLatency <= 300) {
-          latClass = "tachyon_dashboard-page__country-chip__latency--medium";
-        } else {
-          latClass = "tachyon_dashboard-page__country-chip__latency--slow";
-        }
+  const chipElements = [allBtn];
+  const renderSingleChip = (group) => {
+    const isActive = activeFilter === group.countryCode;
+    const minLat = group.bestLatency > 0 && Number.isFinite(group.bestLatency) ? `${group.bestLatency}ms` : "";
+    let latClass = "";
+    if (group.bestLatency > 0 && Number.isFinite(group.bestLatency)) {
+      if (group.bestLatency < 100) {
+        latClass = "tachyon_dashboard-page__country-chip__latency--fast";
+      } else if (group.bestLatency <= 300) {
+        latClass = "tachyon_dashboard-page__country-chip__latency--medium";
+      } else {
+        latClass = "tachyon_dashboard-page__country-chip__latency--slow";
       }
-      const displayName = group.countryName || group.countryCode;
-      return E(
-        "button",
-        {
-          type: "button",
-          class: `tachyon_dashboard-page__country-chip${isActive ? " tachyon_dashboard-page__country-chip--active" : ""}`,
-          title: `${displayName} (${group.outbounds.length})`,
-          click: (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (sectionName && onFilter) {
-              onFilter(sectionName, isActive ? void 0 : group.countryCode);
-            }
+    }
+    const displayName = group.countryName || group.countryCode;
+    return E(
+      "button",
+      {
+        type: "button",
+        class: `tachyon_dashboard-page__country-chip${isActive ? " tachyon_dashboard-page__country-chip--active" : ""}`,
+        title: `${displayName} (${group.outbounds.length})`,
+        click: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (sectionName && onFilter) {
+            onFilter(sectionName, isActive ? void 0 : group.countryCode);
           }
-        },
-        [
-          E(
-            "span",
-            {
-              class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji"
-            },
-            group.countryFlag || "🌐"
-          ),
-          E(
-            "span",
-            { class: "tachyon_dashboard-page__country-chip__name" },
-            displayName
-          ),
-          E(
-            "span",
-            { class: "tachyon_dashboard-page__country-chip__count" },
-            `${group.outbounds.length}`
-          ),
-          minLat ? E(
-            "span",
-            {
-              class: `tachyon_dashboard-page__country-chip__latency ${latClass}`
-            },
-            minLat
-          ) : ""
-        ]
+        }
+      },
+      [
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji"
+          },
+          group.countryFlag || "🌐"
+        ),
+        E(
+          "span",
+          { class: "tachyon_dashboard-page__country-chip__name" },
+          displayName
+        ),
+        E(
+          "span",
+          { class: "tachyon_dashboard-page__country-chip__count" },
+          `${group.outbounds.length}`
+        ),
+        minLat ? E(
+          "span",
+          {
+            class: `tachyon_dashboard-page__country-chip__latency ${latClass}`
+          },
+          minLat
+        ) : ""
+      ]
+    );
+  };
+  if (mode === "smart_top" && organized.topCount && organized.topCount > 0) {
+    const topGroups = organized.groups.slice(0, organized.topCount);
+    const restGroups = organized.groups.slice(organized.topCount);
+    for (const g of topGroups) {
+      chipElements.push(renderSingleChip(g));
+    }
+    if (restGroups.length > 0) {
+      chipElements.push(
+        E("div", {
+          class: "tachyon_dashboard-page__country-chip-divider",
+          title: isRu ? "Остальные страны (А–Я)" : "Other countries (A–Z)"
+        })
       );
-    })
-  ];
-  return E(
+      for (const g of restGroups) {
+        chipElements.push(renderSingleChip(g));
+      }
+    }
+  } else {
+    for (const g of organized.groups) {
+      chipElements.push(renderSingleChip(g));
+    }
+  }
+  const chipsBar = E(
     "div",
     {
-      class: "tachyon_dashboard-page__country-chips",
-      style: "grid-column: 1 / -1;"
+      class: "tachyon_dashboard-page__country-chips"
     },
-    chips
+    chipElements
   );
+  container.appendChild(chipsBar);
+  return container;
 }
 function renderCountryAccordionHeader(group, isCollapsed, onToggle) {
   const selectedMember = group.outbounds.find((m) => m.selected);
@@ -3596,7 +3957,11 @@ function renderDefaultState({
   collapsedSourceGroups,
   onToggleSourceGroupCollapse,
   activeCountryFilter,
-  onFilterCountry
+  onFilterCountry,
+  activeRegionFilter,
+  onFilterRegion,
+  countrySearchQuery,
+  onSearchCountry
 }) {
   const isConnectionNode = !section.withTagSelect && [
     "vpn",
@@ -4026,6 +4391,8 @@ function renderDefaultState({
     const metadataList = section.subscriptionMetadata || [];
     const subSourceCount = section.subscriptionSourceCount || 0;
     const countryGrouping = section.dashboardSettings?.countryGrouping || "chips";
+    const chipsGrouping = section.dashboardSettings?.chipsGrouping || "regions";
+    const chipsSearch = section.dashboardSettings?.chipsSearch !== false;
     const topGroups = [];
     const serverOutbounds = [];
     for (const ob of outbounds) {
@@ -4035,6 +4402,29 @@ function renderDefaultState({
         serverOutbounds.push(ob);
       }
     }
+    const activeOutbound = outbounds.find((o) => o.selected);
+    const activeCountryCode = activeOutbound ? detectOutboundCountry(activeOutbound).code : void 0;
+    const isOutboundMatchingFilters = (ob) => {
+      if (activeCountryFilter && detectOutboundCountry(ob).code !== activeCountryFilter) {
+        return false;
+      }
+      if (chipsGrouping === "regions" && !activeCountryFilter && activeRegionFilter && activeRegionFilter !== "all") {
+        const c = detectOutboundCountry(ob);
+        if (getCountryRegion(c.code) !== activeRegionFilter) {
+          return false;
+        }
+      }
+      if (countrySearchQuery) {
+        const q = countrySearchQuery.trim().toLowerCase();
+        if (q) {
+          const c = detectOutboundCountry(ob);
+          const matchesCountry = c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
+          const matchesServer = ob.displayName && ob.displayName.toLowerCase().includes(q) || ob.prefix && ob.prefix.toLowerCase().includes(q);
+          if (!matchesCountry && !matchesServer) return false;
+        }
+      }
+      return true;
+    };
     const countryGroups = groupOutboundsByCountry(serverOutbounds);
     const hasMultipleCountries = countryGroups.length >= 2;
     const metadataNodes = metadataList.map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
@@ -4060,11 +4450,20 @@ function renderDefaultState({
           serverOutbounds.length,
           activeCountryFilter,
           onFilterCountry,
-          section.sectionName
+          section.sectionName,
+          {
+            chipsGrouping,
+            chipsSearch,
+            activeRegion: activeRegionFilter,
+            onFilterRegion,
+            searchQuery: countrySearchQuery,
+            onSearch: onSearchCountry,
+            activeCountryCode
+          }
         );
-        const visibleServers = activeCountryFilter ? serverOutbounds.filter(
-          (ob) => detectOutboundCountry(ob).code === activeCountryFilter
-        ) : serverOutbounds;
+        const visibleServers = serverOutbounds.filter(
+          isOutboundMatchingFilters
+        );
         return [
           ...metadataNodes,
           ...autoBlock ? [autoBlock] : [],
@@ -4117,7 +4516,16 @@ function renderDefaultState({
           serverOutbounds.length,
           activeCountryFilter,
           onFilterCountry,
-          section.sectionName
+          section.sectionName,
+          {
+            chipsGrouping,
+            chipsSearch,
+            activeRegion: activeRegionFilter,
+            onFilterRegion,
+            searchQuery: countrySearchQuery,
+            onSearch: onSearchCountry,
+            activeCountryCode
+          }
         )
       );
     }
@@ -4159,7 +4567,8 @@ function renderDefaultState({
         nodes.push(metaHeader);
       }
       if (!isGroupCollapsed) {
-        for (const m of members) {
+        const visibleMembers = countryGrouping === "chips" ? members.filter(isOutboundMatchingFilters) : members;
+        for (const m of visibleMembers) {
           nodes.push(renderOutbound(m));
         }
       }
@@ -4228,12 +4637,14 @@ function renderDefaultState({
           )
         );
         if (!isGroupCollapsed) {
-          for (const m of manualOutbounds) {
+          const visibleManual = countryGrouping === "chips" ? manualOutbounds.filter(isOutboundMatchingFilters) : manualOutbounds;
+          for (const m of visibleManual) {
             nodes.push(renderOutbound(m));
           }
         }
       } else {
-        for (const m of manualOutbounds) {
+        const visibleManual = countryGrouping === "chips" ? manualOutbounds.filter(isOutboundMatchingFilters) : manualOutbounds;
+        for (const m of visibleManual) {
           nodes.push(renderOutbound(m));
         }
       }
@@ -5163,7 +5574,9 @@ var TRANSIENT_RPC_ERROR_PATTERNS = [
   "доступ запрещён",
   "доступ запрещен",
   "permission denied",
-  "unauthorized"
+  "unauthorized",
+  "object not found",
+  "-32000"
 ];
 function isTransientRpcError(message) {
   if (!message) {
@@ -7949,6 +8362,8 @@ async function getDashboardSections(options = {}) {
   const sectionErrors = await sectionErrorsPromise;
   const settingsSection = getSettingsSection(configSections);
   const globalCountryGrouping = settingsSection?.dashboard_country_grouping || "chips";
+  const globalChipsGrouping = settingsSection?.dashboard_chips_grouping || "regions";
+  const globalChipsSearch = settingsSection?.dashboard_chips_search !== "0";
   const globalSortMode = settingsSection?.dashboard_sort_mode || "latency";
   const globalHoverFreeze = settingsSection?.dashboard_hover_freeze !== "0";
   const data = await Promise.all(
@@ -7962,6 +8377,8 @@ async function getDashboardSections(options = {}) {
       const sectionSortByLatency = shouldSortByLatency(section);
       const effectiveSortMode = !sectionSortByLatency && !section.dashboard_sort_mode ? "default" : section.dashboard_sort_mode || globalSortMode || "latency";
       const effectiveCountryGrouping = section.dashboard_country_grouping || globalCountryGrouping;
+      const effectiveChipsGrouping = section.dashboard_chips_grouping || globalChipsGrouping;
+      const effectiveChipsSearch = section.dashboard_chips_search !== void 0 ? section.dashboard_chips_search !== "0" : globalChipsSearch;
       if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
         const subscriptionEnabled = subscriptionSourceCount > 0;
@@ -8055,6 +8472,8 @@ async function getDashboardSections(options = {}) {
           subscriptionMetadata,
           dashboardSettings: {
             countryGrouping: effectiveCountryGrouping,
+            chipsGrouping: effectiveChipsGrouping,
+            chipsSearch: effectiveChipsSearch,
             sortMode: effectiveSortMode,
             hoverFreeze: globalHoverFreeze
           },
@@ -10714,6 +11133,8 @@ function unsubscribeClashSockets() {
 }
 var customProxyLatencies = /* @__PURE__ */ new Map();
 var activeCountryFilters = /* @__PURE__ */ new Map();
+var activeRegionFilters = /* @__PURE__ */ new Map();
+var activeCountrySearchQueries = /* @__PURE__ */ new Map();
 var singleTestingOutboundCodes = {};
 var isTestingAllSections = false;
 var dashboardVisibilityPaused = false;
@@ -12215,6 +12636,21 @@ async function renderSectionsWidget() {
           activeCountryFilters.set(sectionName, countryCode);
         } else {
           activeCountryFilters.delete(sectionName);
+        }
+        void renderSectionsWidget();
+      },
+      activeRegionFilter: activeRegionFilters.get(section.sectionName) || "all",
+      onFilterRegion: (sectionName, region) => {
+        activeRegionFilters.set(sectionName, region);
+        activeCountryFilters.delete(sectionName);
+        void renderSectionsWidget();
+      },
+      countrySearchQuery: activeCountrySearchQueries.get(section.sectionName) || "",
+      onSearchCountry: (sectionName, query) => {
+        if (query) {
+          activeCountrySearchQueries.set(sectionName, query);
+        } else {
+          activeCountrySearchQueries.delete(sectionName);
         }
         void renderSectionsWidget();
       },
@@ -13929,13 +14365,138 @@ var styles = `
     }
 }
 
+.tachyon_dashboard-page__country-chips-container {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 0 6px 0;
+}
+
+.tachyon_dashboard-page__region-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.tachyon_dashboard-page__region-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.28));
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.06));
+    color: var(--text-color-medium, inherit);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__region-tab:hover {
+    background: var(--background-color-high, rgba(120, 120, 120, 0.16));
+    border-color: var(--border-color-high, rgba(120, 120, 120, 0.45));
+}
+
+.tachyon_dashboard-page__region-tab--active {
+    background: var(--primary-color-low, rgba(37, 99, 235, 0.16)) !important;
+    border-color: var(--primary-color, #2563eb) !important;
+    color: var(--primary-color, #2563eb) !important;
+    font-weight: 700;
+}
+
+.tachyon_dashboard-page__region-tab__name {
+    font-weight: 600;
+    font-size: 11px;
+}
+
+.tachyon_dashboard-page__country-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.tachyon_dashboard-page__country-search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 280px;
+}
+
+.tachyon_dashboard-page__country-search-icon {
+    position: absolute;
+    left: 8px;
+    font-size: 11px;
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+.tachyon_dashboard-page__country-search-input {
+    width: 100%;
+    padding: 4px 26px 4px 26px;
+    font-size: 11px;
+    line-height: 1.3;
+    border-radius: 14px;
+    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.32));
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.08));
+    color: var(--text-color-high, inherit);
+    outline: none;
+    transition: all 0.15s ease;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__country-search-input:focus {
+    border-color: var(--primary-color, #2563eb);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    background: var(--background-color-high, rgba(120, 120, 120, 0.14));
+}
+
+.tachyon_dashboard-page__country-search-clear {
+    position: absolute;
+    right: 6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(120, 120, 120, 0.28);
+    color: inherit;
+    font-size: 9px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s;
+}
+
+.tachyon_dashboard-page__country-search-clear:hover {
+    background: rgba(120, 120, 120, 0.5);
+}
+
+.tachyon_dashboard-page__country-chip-divider {
+    width: 2px;
+    height: 18px;
+    background: var(--border-color-high, rgba(120, 120, 120, 0.4));
+    margin: 0 3px;
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+
 .tachyon_dashboard-page__country-chips {
     grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
-    padding: 2px 0 6px 0;
+    padding: 2px 0 2px 0;
 }
 
 .tachyon_dashboard-page__country-chip {
@@ -31076,7 +31637,9 @@ var TACHYON_LANGUAGES = [
   }
 ];
 function detectActiveLanguageCode(capabilities) {
-  const luciLang = (capabilities?.luciLang || "").trim().toLowerCase();
+  const globalL = typeof globalThis !== "undefined" ? globalThis.L : typeof window !== "undefined" ? window.L : void 0;
+  const envLang = typeof globalL?.env?.lang === "string" ? globalL.env.lang.trim().toLowerCase() : "";
+  const luciLang = (capabilities?.luciLang || envLang || "").trim().toLowerCase();
   const ruInstalled = capabilities?.i18nRuInstalled !== false;
   if (luciLang === "en") {
     return "en";
@@ -31188,19 +31751,28 @@ function mountLanguageSelector(capabilities) {
         );
         if (!finished.success || !finished.data.success) {
           const errMsg = !finished.success ? finished.error : finished.data.message;
-          throw new Error(errMsg || _("Failed to change language"));
+          if (!isTransientRpcError(errMsg)) {
+            throw new Error(errMsg || _("Failed to change language"));
+          }
         }
         showToast(_("Language updated. Reloading page..."), "success");
         window.setTimeout(() => {
           window.location.reload();
         }, 400);
       } catch (err) {
+        const msg = err instanceof Error ? err.message : _("Failed to change language");
+        if (isTransientRpcError(msg)) {
+          showToast(_("Language updated. Reloading page..."), "success");
+          window.setTimeout(() => {
+            window.location.reload();
+          }, 600);
+          return;
+        }
         btn.disabled = false;
         btn.classList.remove("is-loading");
         if (codeSpan) {
           codeSpan.textContent = activeOption.shortCode;
         }
-        const msg = err instanceof Error ? err.message : _("Failed to change language");
         showToast(msg, "error");
       }
     });

@@ -1679,6 +1679,8 @@ describe('getDashboardSections', () => {
     const section = result.data[0];
     expect(section.dashboardSettings).toEqual({
       countryGrouping: 'chips',
+      chipsGrouping: 'regions',
+      chipsSearch: true,
       sortMode: 'country_latency',
       hoverFreeze: true,
     });

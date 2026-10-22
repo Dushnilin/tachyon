@@ -18,6 +18,8 @@ const TRANSIENT_RPC_ERROR_PATTERNS = [
   'доступ запрещен',
   'permission denied',
   'unauthorized',
+  'object not found',
+  '-32000',
 ];
 
 export function isTransientRpcError(message?: string | null) {

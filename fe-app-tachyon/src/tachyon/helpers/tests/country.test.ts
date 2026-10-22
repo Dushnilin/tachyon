@@ -5,7 +5,10 @@ import {
   detectOutboundCountry,
   flagEmojiToCountryCode,
   getCountryName,
+  getCountryRegion,
+  getRegionMetadata,
   groupOutboundsByCountry,
+  organizeCountryGroups,
 } from '../country';
 
 describe('country helper', () => {
@@ -134,16 +137,119 @@ describe('country helper', () => {
     expect(deGroup).toBeDefined();
     expect(deGroup?.outbounds.length).toBe(2);
     expect(deGroup?.bestLatency).toBe(45);
+    expect(deGroup?.region).toBe('europe');
 
     const nlGroup = groups.find((g) => g.countryCode === 'NL');
     expect(nlGroup).toBeDefined();
     expect(nlGroup?.outbounds.length).toBe(1);
     expect(nlGroup?.bestLatency).toBe(80);
+    expect(nlGroup?.region).toBe('europe');
 
     const otherGroup = groups.find((g) => g.countryCode === 'OTHER');
     expect(otherGroup).toBeDefined();
     expect(otherGroup?.outbounds.length).toBe(1);
+    expect(otherGroup?.region).toBe('other');
     // OTHER should be at the end
     expect(groups[groups.length - 1].countryCode).toBe('OTHER');
+  });
+
+  it('classifies country codes into world regions correctly', () => {
+    expect(getCountryRegion('DE')).toBe('europe');
+    expect(getCountryRegion('RU')).toBe('europe');
+    expect(getCountryRegion('CY')).toBe('europe');
+    expect(getCountryRegion('TR')).toBe('asia');
+    expect(getCountryRegion('AE')).toBe('asia');
+    expect(getCountryRegion('IN')).toBe('asia');
+    expect(getCountryRegion('US')).toBe('americas');
+    expect(getCountryRegion('BR')).toBe('americas');
+    expect(getCountryRegion('AU')).toBe('other');
+    expect(getCountryRegion('XYZ')).toBe('other');
+
+    expect(getRegionMetadata('europe', 'ru').label).toBe('Европа');
+    expect(getRegionMetadata('europe', 'en').label).toBe('Europe');
+    expect(getRegionMetadata('asia', 'ru').label).toBe('Азия и Восток');
+    expect(getRegionMetadata('americas', 'ru').label).toBe('Америка');
+  });
+
+  it('organizes country groups in regions mode', () => {
+    const outbounds: Tachyon.Outbound[] = [
+      { code: 'de-1', displayName: '🇩🇪 Germany', latency: 50, type: 'VLESS', selected: false },
+      { code: 'fr-1', displayName: '🇫🇷 France', latency: 40, type: 'VLESS', selected: false },
+      { code: 'us-1', displayName: '🇺🇸 US', latency: 150, type: 'VLESS', selected: false },
+      { code: 'ae-1', displayName: '🇦🇪 UAE', latency: 100, type: 'VLESS', selected: false },
+    ];
+    const countryGroups = groupOutboundsByCountry(outbounds);
+
+    // All regions
+    const resAll = organizeCountryGroups(countryGroups, 'regions', { selectedRegion: 'all' });
+    expect(resAll.availableRegions.length).toBe(4); // all, europe, asia, americas
+    expect(resAll.availableRegions.find((r) => r.id === 'all')?.count).toBe(4);
+    expect(resAll.availableRegions.find((r) => r.id === 'europe')?.count).toBe(2);
+    expect(resAll.groups.length).toBe(4);
+
+    // Filter to Europe
+    const resEurope = organizeCountryGroups(countryGroups, 'regions', { selectedRegion: 'europe' });
+    expect(resEurope.groups.length).toBe(2);
+    expect(resEurope.groups.map((g) => g.countryCode)).toEqual(['DE', 'FR']);
+  });
+
+  it('organizes country groups in smart_top mode with active and popular countries first', () => {
+    const outbounds: Tachyon.Outbound[] = [
+      { code: 'at-1', displayName: '🇦🇹 Austria', latency: 60, type: 'VLESS', selected: false },
+      { code: 'de-1', displayName: '🇩🇪 Germany 1', latency: 40, type: 'VLESS', selected: false },
+      { code: 'de-2', displayName: '🇩🇪 Germany 2', latency: 40, type: 'VLESS', selected: false },
+      { code: 'us-1', displayName: '🇺🇸 US 1', latency: 140, type: 'VLESS', selected: false },
+      { code: 'us-2', displayName: '🇺🇸 US 2', latency: 140, type: 'VLESS', selected: false },
+      { code: 'us-3', displayName: '🇺🇸 US 3', latency: 140, type: 'VLESS', selected: false },
+      { code: 'nl-1', displayName: '🇳🇱 Netherlands 1', latency: 50, type: 'VLESS', selected: false },
+      { code: 'nl-2', displayName: '🇳🇱 Netherlands 2', latency: 50, type: 'VLESS', selected: false },
+      { code: 'nl-3', displayName: '🇳🇱 Netherlands 3', latency: 50, type: 'VLESS', selected: false },
+      { code: 'nl-4', displayName: '🇳🇱 Netherlands 4', latency: 50, type: 'VLESS', selected: false },
+      { code: 'cy-1', displayName: '🇨🇾 Cyprus 1', latency: 80, type: 'VLESS', selected: true },
+    ];
+    const countryGroups = groupOutboundsByCountry(outbounds);
+
+    const res = organizeCountryGroups(countryGroups, 'smart_top', { activeCountryCode: 'CY' });
+    // Active country CY first
+    expect(res.groups[0].countryCode).toBe('CY');
+    // Followed by top 3 by server count: NL (4), US (3), DE (2)
+    expect(res.groups[1].countryCode).toBe('NL');
+    expect(res.groups[2].countryCode).toBe('US');
+    expect(res.groups[3].countryCode).toBe('DE');
+    expect(res.topCount).toBe(4);
+    // Followed by rest sorted alphabetically: AT (Австрия)
+    expect(res.groups[4].countryCode).toBe('AT');
+  });
+
+  it('organizes country groups by latency', () => {
+    const outbounds: Tachyon.Outbound[] = [
+      { code: 'us-1', displayName: '🇺🇸 US', latency: 150, type: 'VLESS', selected: false },
+      { code: 'de-1', displayName: '🇩🇪 Germany', latency: 35, type: 'VLESS', selected: false },
+      { code: 'nl-1', displayName: '🇳🇱 Netherlands', latency: 60, type: 'VLESS', selected: false },
+      { code: 'untested-1', displayName: '🏳️ Untested', latency: 0, type: 'VLESS', selected: false },
+    ];
+    const countryGroups = groupOutboundsByCountry(outbounds);
+
+    const res = organizeCountryGroups(countryGroups, 'latency');
+    expect(res.groups[0].countryCode).toBe('DE'); // 35ms
+    expect(res.groups[1].countryCode).toBe('NL'); // 60ms
+    expect(res.groups[2].countryCode).toBe('US'); // 150ms
+    expect(res.groups[3].countryCode).toBe('OTHER'); // untest
+  });
+
+  it('filters country groups by search query', () => {
+    const outbounds: Tachyon.Outbound[] = [
+      { code: 'de-1', displayName: '🇩🇪 Frankfurt Fast', latency: 35, type: 'VLESS', selected: false },
+      { code: 'nl-1', displayName: '🇳🇱 Amsterdam Pro', latency: 60, type: 'VLESS', selected: false },
+    ];
+    const countryGroups = groupOutboundsByCountry(outbounds);
+
+    const resFrankfurt = organizeCountryGroups(countryGroups, 'alphabetical', { searchQuery: 'frank' });
+    expect(resFrankfurt.groups.length).toBe(1);
+    expect(resFrankfurt.groups[0].countryCode).toBe('DE');
+
+    const resRu = organizeCountryGroups(countryGroups, 'alphabetical', { searchQuery: 'нидер' });
+    expect(resRu.groups.length).toBe(1);
+    expect(resRu.groups[0].countryCode).toBe('NL');
   });
 });

@@ -1120,13 +1120,138 @@ export const styles = `
     }
 }
 
+.tachyon_dashboard-page__country-chips-container {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 0 6px 0;
+}
+
+.tachyon_dashboard-page__region-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.tachyon_dashboard-page__region-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.28));
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.06));
+    color: var(--text-color-medium, inherit);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__region-tab:hover {
+    background: var(--background-color-high, rgba(120, 120, 120, 0.16));
+    border-color: var(--border-color-high, rgba(120, 120, 120, 0.45));
+}
+
+.tachyon_dashboard-page__region-tab--active {
+    background: var(--primary-color-low, rgba(37, 99, 235, 0.16)) !important;
+    border-color: var(--primary-color, #2563eb) !important;
+    color: var(--primary-color, #2563eb) !important;
+    font-weight: 700;
+}
+
+.tachyon_dashboard-page__region-tab__name {
+    font-weight: 600;
+    font-size: 11px;
+}
+
+.tachyon_dashboard-page__country-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.tachyon_dashboard-page__country-search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 280px;
+}
+
+.tachyon_dashboard-page__country-search-icon {
+    position: absolute;
+    left: 8px;
+    font-size: 11px;
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+.tachyon_dashboard-page__country-search-input {
+    width: 100%;
+    padding: 4px 26px 4px 26px;
+    font-size: 11px;
+    line-height: 1.3;
+    border-radius: 14px;
+    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.32));
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.08));
+    color: var(--text-color-high, inherit);
+    outline: none;
+    transition: all 0.15s ease;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__country-search-input:focus {
+    border-color: var(--primary-color, #2563eb);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    background: var(--background-color-high, rgba(120, 120, 120, 0.14));
+}
+
+.tachyon_dashboard-page__country-search-clear {
+    position: absolute;
+    right: 6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(120, 120, 120, 0.28);
+    color: inherit;
+    font-size: 9px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s;
+}
+
+.tachyon_dashboard-page__country-search-clear:hover {
+    background: rgba(120, 120, 120, 0.5);
+}
+
+.tachyon_dashboard-page__country-chip-divider {
+    width: 2px;
+    height: 18px;
+    background: var(--border-color-high, rgba(120, 120, 120, 0.4));
+    margin: 0 3px;
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+
 .tachyon_dashboard-page__country-chips {
     grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
-    padding: 2px 0 6px 0;
+    padding: 2px 0 2px 0;
 }
 
 .tachyon_dashboard-page__country-chip {
