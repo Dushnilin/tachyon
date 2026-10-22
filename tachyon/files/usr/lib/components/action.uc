@@ -106,6 +106,7 @@ function log_message(message, level) { return cmp.log_message(message, level); }
 function job_log_time() { return cmp.job_log_time(); }
 function job_log_append(message, level) { return cmp.job_log_append(message, level); }
 function updates_log(message, level) { return cmp.updates_log(message, level); }
+function sanitize_package_log_line(message) { return cmp.sanitize_package_log_line(message); }
 function update_job_phase(phase, message) { return cmp.update_job_phase(phase, message); }
 function job_heartbeat() { return cmp.job_heartbeat(); }
 function free_kb(path) { return cmp.free_kb(path); }
