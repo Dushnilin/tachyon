@@ -1,5 +1,6 @@
 import { TachyonShellMethods } from './methods/shell';
 import { showToast } from '../helpers/showToast';
+import { isTransientRpcError } from './helpers/isTransientRpcError';
 
 export interface TachyonLanguageOption {
   code: string;
@@ -37,7 +38,21 @@ export interface UiLanguageCapabilities {
 export function detectActiveLanguageCode(
   capabilities?: UiLanguageCapabilities,
 ): string {
-  const luciLang = (capabilities?.luciLang || '').trim().toLowerCase();
+  const globalObj = (
+    typeof globalThis !== 'undefined'
+      ? globalThis
+      : typeof window !== 'undefined'
+        ? window
+        : {}
+  ) as { L?: { env?: { lang?: string } } };
+  const globalL = globalObj.L;
+  const envLang =
+    typeof globalL?.env?.lang === 'string'
+      ? globalL.env.lang.trim().toLowerCase()
+      : '';
+  const luciLang = (capabilities?.luciLang || envLang || '')
+    .trim()
+    .toLowerCase();
   const ruInstalled = capabilities?.i18nRuInstalled !== false;
 
   if (luciLang === 'en') {
@@ -190,7 +205,9 @@ export function mountLanguageSelector(
             const errMsg = !finished.success
               ? finished.error
               : finished.data.message;
-            throw new Error(errMsg || _('Failed to change language'));
+            if (!isTransientRpcError(errMsg)) {
+              throw new Error(errMsg || _('Failed to change language'));
+            }
           }
 
           showToast(_('Language updated. Reloading page...'), 'success');
@@ -198,13 +215,20 @@ export function mountLanguageSelector(
             window.location.reload();
           }, 400);
         } catch (err) {
+          const msg =
+            err instanceof Error ? err.message : _('Failed to change language');
+          if (isTransientRpcError(msg)) {
+            showToast(_('Language updated. Reloading page...'), 'success');
+            window.setTimeout(() => {
+              window.location.reload();
+            }, 600);
+            return;
+          }
           btn.disabled = false;
           btn.classList.remove('is-loading');
           if (codeSpan) {
             codeSpan.textContent = activeOption.shortCode;
           }
-          const msg =
-            err instanceof Error ? err.message : _('Failed to change language');
           showToast(msg, 'error');
         }
       });

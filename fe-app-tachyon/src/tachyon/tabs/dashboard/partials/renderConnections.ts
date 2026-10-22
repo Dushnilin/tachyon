@@ -1,5 +1,6 @@
 import { svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
+import { tr } from '../../../helpers/i18n';
 import { ITopDomain } from '../connections';
 
 export interface IConnection {
@@ -22,7 +23,7 @@ export function renderConnections(
           E(
             'div',
             { class: 'tachyon_dashboard-page__top-domains-header' },
-            _('Top active domains in bypass:'),
+            tr('Популярные домены в обходе:', 'Top active domains in bypass:'),
           ),
           E(
             'div',
@@ -38,7 +39,7 @@ export function renderConnections(
                 E(
                   'span',
                   { class: 'tachyon_dashboard-page__top-domain-chip__badge' },
-                  `${item.count} ${_('conns')}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ''}`,
+                  `${item.count} ${tr('соед.', 'conns')}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ''}`,
                 ),
               ]),
             ),
@@ -79,7 +80,7 @@ export function renderConnections(
                 },
                 [svgEl('polyline', { points: '6 9 12 15 18 9' })],
               ),
-              _('Active Clients'),
+              tr('Активные клиенты', 'Active Clients'),
             ],
           ),
         ],
@@ -92,7 +93,7 @@ export function renderConnections(
               class: 'tachyon_dashboard-page__outbound-section centered',
               style: 'height: 60px;',
             },
-            _('No active clients'),
+            tr('Нет активных клиентов', 'No active clients'),
           ),
     ]);
   }
@@ -111,7 +112,7 @@ export function renderConnections(
           E(
             'span',
             { style: 'opacity: 0.7; font-size: 13px; margin-left: 8px;' },
-            `(${c.count} conns)`,
+            `(${c.count} ${tr('соед.', 'conns')})`,
           ),
         ]),
         E(
@@ -155,7 +156,7 @@ export function renderConnections(
               },
               [svgEl('polyline', { points: '6 9 12 15 18 9' })],
             ),
-            _('Active Clients'),
+            tr('Активные клиенты', 'Active Clients'),
           ],
         ),
       ],

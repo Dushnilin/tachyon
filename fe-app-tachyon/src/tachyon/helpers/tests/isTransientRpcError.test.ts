@@ -9,6 +9,11 @@ describe('isTransientRpcError', () => {
       true,
     );
     expect(isTransientRpcError('Failed to execute')).toBe(true);
+    expect(
+      isTransientRpcError(
+        'RPC call to file/exec failed with error -32000: Object not found at ClassConstructor.handleCallReply',
+      ),
+    ).toBe(true);
   });
 
   it('does not treat backend action failures as transient transport errors', () => {

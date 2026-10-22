@@ -12,6 +12,32 @@
 
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
 
+function _tr(ru, en) {
+  const envLang =
+    (typeof L !== "undefined" && L.env && L.env.lang) ||
+    (typeof window !== "undefined" &&
+      window.L &&
+      window.L.env &&
+      window.L.env.lang) ||
+    "";
+  const docLang = (
+    (typeof document !== "undefined" &&
+      document.documentElement &&
+      document.documentElement.lang) ||
+    (typeof document !== "undefined" &&
+      document.querySelector("html")?.getAttribute("lang")) ||
+    ""
+  ).toLowerCase();
+  const lang = (envLang || docLang).toLowerCase();
+  const isRu =
+    lang.startsWith("ru") ||
+    (typeof _ === "function" &&
+      (_("Status") === "Статус" ||
+        _("Overview") === "Обзор" ||
+        _("Save") === "Сохранить"));
+  return isRu ? ru : en;
+}
+
 function isSingBoxDuration(value) {
   return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
@@ -1269,78 +1295,78 @@ function createMenuTabsOrderWidget(option, section_id) {
   const ALL_MENU_TABS = [
     {
       id: "dashboard",
-      label: _("Dashboard"),
-      desc: _("Main overview and status widgets"),
+      label: _tr("Дашборд", "Dashboard"),
+      desc: _tr("Главный экран и виджеты статуса", "Main overview and status widgets"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "section",
-      label: _("Sections"),
-      desc: _("Routing sections, rules and strategies"),
+      label: _tr("Секции", "Sections"),
+      desc: _tr("Секции маршрутизации, правила и стратегии", "Routing sections, rules and strategies"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "server",
-      label: _("Servers"),
-      desc: _("External inbound proxy servers"),
+      label: _tr("Серверы", "Servers"),
+      desc: _tr("Внешние серверы и входящие подключения", "External inbound proxy servers"),
       defaultVisible: false,
       fixed: false,
     },
     {
       id: "profile",
-      label: _("Family Profiles"),
-      desc: _("Family profiles and device grouping"),
+      label: _tr("Семейные профили", "Family Profiles"),
+      desc: _tr("Семейные профили и группы устройств", "Family profiles and device grouping"),
       defaultVisible: false,
       fixed: false,
     },
     {
       id: "schedule",
-      label: _("Parental Control"),
-      desc: _("Access schedule and screen time limits"),
+      label: _tr("Родительский контроль", "Parental Control"),
+      desc: _tr("Расписание доступа и лимиты экранного времени", "Access schedule and screen time limits"),
       defaultVisible: false,
       fixed: false,
     },
     {
       id: "guest_mode",
-      label: _("Guest Mode"),
-      desc: _("Guest network isolation and device quotas"),
+      label: _tr("Гостевой режим", "Guest Mode"),
+      desc: _tr("Изоляция гостевой сети и квоты устройств", "Guest network isolation and device quotas"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "monitoring",
-      label: _("Monitoring"),
-      desc: _("Traffic statistics and active connections"),
+      label: _tr("Мониторинг", "Monitoring"),
+      desc: _tr("Статистика трафика и активные соединения", "Traffic statistics and active connections"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "diagnostic",
-      label: _("Diagnostics"),
-      desc: _("System diagnostics, AI Doctor and logs"),
+      label: _tr("Диагностика", "Diagnostics"),
+      desc: _tr("Системная диагностика, AI Доктор и журналы", "System diagnostics, AI Doctor and logs"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "updates",
-      label: _("Components"),
-      desc: _("Component versions and update manager"),
+      label: _tr("Компоненты", "Components"),
+      desc: _tr("Версии компонентов и менеджер обновлений", "Component versions and update manager"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "settings",
-      label: _("Settings"),
-      desc: _("Core configuration and preferences"),
+      label: _tr("Настройки", "Settings"),
+      desc: _tr("Основные настройки системы", "Core configuration and preferences"),
       defaultVisible: true,
       fixed: true,
     },
     {
       id: "telegram",
-      label: _("Telegram Bot"),
-      desc: _("Remote management Telegram daemon"),
+      label: _tr("Телеграм-бот", "Telegram Bot"),
+      desc: _tr("Удаленное управление через Telegram", "Remote management Telegram daemon"),
       defaultVisible: true,
       fixed: false,
     },
@@ -1588,77 +1614,77 @@ function createComponentsVisibilityWidget(option, section_id) {
     {
       id: "tachyon",
       label: "Tachyon",
-      desc: _("Core orchestration service and LuCI application"),
+      desc: _tr("Основной сервис оркестрации и веб-интерфейс LuCI", "Core orchestration service and LuCI application"),
       defaultVisible: true,
       fixed: true,
     },
     {
       id: "sing_box",
       label: "Sing-box",
-      desc: _("Universal proxy platform routing engine"),
+      desc: _tr("Универсальная платформа и движок маршрутизации", "Universal proxy platform routing engine"),
       defaultVisible: true,
       fixed: true,
     },
     {
       id: "zapret",
       label: "Zapret",
-      desc: _("DPI bypass engine (nfqws v1)"),
+      desc: _tr("Движок обхода DPI (nfqws v1)", "DPI bypass engine (nfqws v1)"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "zapret2",
       label: "Zapret2",
-      desc: _("Advanced DPI bypass engine with Lua scripts (nfqws2)"),
+      desc: _tr("Продвинутый движок обхода DPI со скриптами Lua (nfqws2)", "Advanced DPI bypass engine with Lua scripts (nfqws2)"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "byedpi",
       label: "ByeDPI",
-      desc: _("Local SOCKS proxy desynchronizer (ciadpi)"),
+      desc: _tr("Локальный десинхронизатор SOCKS (ciadpi)", "Local SOCKS proxy desynchronizer (ciadpi)"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "wdtt",
       label: "WDTT",
-      desc: _("WireGuard over TURN Tunnel"),
+      desc: _tr("Туннель WireGuard поверх TURN", "WireGuard over TURN Tunnel"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "olcrtc",
       label: "OlcRTC",
-      desc: _("Real-time WebRTC anti-censorship tunnel"),
+      desc: _tr("Антицензурный WebRTC-туннель реального времени", "Real-time WebRTC anti-censorship tunnel"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "fptn",
       label: "FPTN",
-      desc: _("Fast packet transport network client"),
+      desc: _tr("Клиент быстрого протокола FPTN", "Fast packet transport network client"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "tailscale",
       label: "Tailscale",
-      desc: _("Zero config mesh VPN daemon"),
+      desc: _tr("Mesh VPN демон с автоматической настройкой", "Zero config mesh VPN daemon"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "direct_bypass",
-      label: _("Direct Proxy"),
-      desc: _("Dedicated direct HTTP/SOCKS5 outbound proxy"),
+      label: _tr("Direct Proxy", "Direct Proxy"),
+      desc: _tr("Выделенный прямой прокси HTTP/SOCKS5", "Dedicated direct HTTP/SOCKS5 outbound proxy"),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "torrserver_direct",
-      label: _("TorrServer Direct"),
-      desc: _("Direct cgroup bypass for TorrServer"),
+      label: _tr("TorrServer Direct", "TorrServer Direct"),
+      desc: _tr("Прямой обход cgroup для TorrServer", "Direct cgroup bypass for TorrServer"),
       defaultVisible: true,
       fixed: false,
     },
@@ -1785,7 +1811,7 @@ function createComponentsVisibilityWidget(option, section_id) {
 }
 
 function createSettingsContent(section, capabilities) {
-  section.tab("navigation", _("Menu & Navigation"));
+  section.tab("navigation", _tr("Меню и навигация", "Menu & Navigation"));
   section.tab("dns", _("DNS Settings"));
   section.tab("network", _("Network & Interfaces"));
   section.tab("services", _("Services & Access"));
@@ -1799,19 +1825,22 @@ function createSettingsContent(section, capabilities) {
     "navigation",
     form.ListValue,
     "default_tab",
-    _("Default Tab on Startup"),
-    _("Select which tab opens automatically when entering Tachyon."),
+    _tr("Вкладка по умолчанию при входе", "Default Tab on Startup"),
+    _tr(
+      "Выберите, какая вкладка открывается автоматически при входе в Tachyon.",
+      "Select which tab opens automatically when entering Tachyon.",
+    ),
   );
-  o.value("dashboard", _("Dashboard"));
-  o.value("section", _("Sections"));
-  o.value("server", _("Servers"));
-  o.value("profile", _("Family Profiles"));
-  o.value("schedule", _("Parental Control"));
-  o.value("monitoring", _("Monitoring"));
-  o.value("diagnostic", _("Diagnostics"));
-  o.value("updates", _("Components"));
-  o.value("settings", _("Settings"));
-  o.value("telegram", _("Telegram Bot"));
+  o.value("dashboard", _tr("Дашборд", "Dashboard"));
+  o.value("section", _tr("Секции", "Sections"));
+  o.value("server", _tr("Серверы", "Servers"));
+  o.value("profile", _tr("Семейные профили", "Family Profiles"));
+  o.value("schedule", _tr("Родительский контроль", "Parental Control"));
+  o.value("monitoring", _tr("Мониторинг", "Monitoring"));
+  o.value("diagnostic", _tr("Диагностика", "Diagnostics"));
+  o.value("updates", _tr("Компоненты", "Components"));
+  o.value("settings", _tr("Настройки", "Settings"));
+  o.value("telegram", _tr("Телеграм-бот", "Telegram Bot"));
   o.default = "dashboard";
   o.rmempty = false;
 
@@ -1819,8 +1848,9 @@ function createSettingsContent(section, capabilities) {
     "navigation",
     form.Value,
     "_tabs_order_widget",
-    _("Tab Order & Visibility"),
-    _(
+    _tr("Порядок и видимость вкладок меню", "Tab Order & Visibility"),
+    _tr(
+      "Настройте порядок и видимость вкладок главного меню. Используйте стрелки для перемещения и переключатели для показа/скрытия.",
       "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs.",
     ),
   );
@@ -1842,8 +1872,9 @@ function createSettingsContent(section, capabilities) {
     "navigation",
     form.Value,
     "_components_visibility_widget",
-    _("Component Cards Visibility"),
-    _(
+    _tr("Видимость карточек компонентов", "Component Cards Visibility"),
+    _tr(
+      "Настройте, какие карточки компонентов отображаются во вкладке «Компоненты».",
       "Customize which component cards are displayed in the Components tab. Checkboxes show or hide components.",
     ),
   );
@@ -1865,6 +1896,73 @@ function createSettingsContent(section, capabilities) {
     }
   };
   compVisOpt.remove = function () {};
+
+  // ── Dashboard Outbound Display & Navigation ──────────────────────────────
+
+  o = section.taboption(
+    "navigation",
+    form.ListValue,
+    "dashboard_country_grouping",
+    _tr("Группировка серверов по странам", "Server Grouping by Country"),
+    _tr(
+      "Выберите способ группировки и навигации по серверам на дашборде.",
+      "Choose how servers are grouped and navigated on the Dashboard.",
+    ),
+  );
+  o.value("chips", _tr("Кнопки фильтра по странам (Чипсы)", "Country filter buttons (Chips)"));
+  o.value("accordion", _tr("Группы по странам (Аккордеоны)", "Country groups (Accordions)"));
+  o.value("none", _tr("Отключено (Общий список)", "Disabled (Flat list)"));
+  o.default = "chips";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "navigation",
+    form.ListValue,
+    "dashboard_chips_grouping",
+    _tr("Организация чипсов стран", "Country Chips Grouping"),
+    _tr(
+      "Выберите порядок и способ отображения чипсов стран на дашборде.",
+      "Select how country chips are organized and displayed on the Dashboard.",
+    ),
+  );
+  o.value("regions", _tr("По частям света (Регионы: Европа, Азия, Америка...)", "By world regions (Europe, Asia, Americas...)"));
+  o.value("smart_top", _tr("Умный топ (Активная и популярные страны впереди)", "Smart top (Active and popular countries first)"));
+  o.value("latency", _tr("По качеству связи (Пинг первыми)", "By latency (Best ping first)"));
+  o.value("alphabetical", _tr("По алфавиту (А–Я)", "Alphabetical (A–Z)"));
+  o.default = "regions";
+  o.depends("dashboard_country_grouping", "chips");
+  o.rmempty = false;
+
+
+  o = section.taboption(
+    "navigation",
+    form.ListValue,
+    "dashboard_sort_mode",
+    _tr("Сортировка серверов на дашборде", "Dashboard Server Sorting"),
+    _tr(
+      "Выберите порядок сортировки серверов на дашборде.",
+      "Select the server sorting order on the Dashboard.",
+    ),
+  );
+  o.value("latency", _tr("По задержке (Пинг - По умолчанию)", "By latency (Ping - Default)"));
+  o.value("country_latency", _tr("По странам, затем по задержке", "By country, then by latency"));
+  o.value("country_alpha", _tr("По алфавиту (Страна и имя)", "Alphabetical (Country and name)"));
+  o.value("default", _tr("Исходный порядок из подписки", "Original subscription order"));
+  o.default = "latency";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "navigation",
+    form.Flag,
+    "dashboard_hover_freeze",
+    _tr("Защита от случайных кликов (Hover Freeze)", "Prevent Misclicks (Hover Freeze)"),
+    _tr(
+      "Временно фиксирует позиции карточек серверов, пока курсор мыши находится над списком, предотвращая случайные клики при обновлении пинга.",
+      "Temporarily lock server card positions while the mouse cursor is over the server grid to prevent misclicks when latencies update.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
 
   // ── DNS Settings ────────────────────────────────────────────────────────
 

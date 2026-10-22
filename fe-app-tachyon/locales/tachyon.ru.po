@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-22 21:21+0300\n"
-"PO-Revision-Date: 2026-10-22 21:21+0300\n"
+"POT-Creation-Date: 2026-10-22 21:33+0300\n"
+"PO-Revision-Date: 2026-10-22 21:33+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -155,9 +155,6 @@ msgstr "Принимать маршруты"
 msgid "Access Token (FPTN)"
 msgstr "Токен доступа (FPTN)"
 
-msgid "Access schedule and screen time limits"
-msgstr "Расписание доступа и лимиты времени"
-
 msgid "Action"
 msgstr "Действие"
 
@@ -191,20 +188,11 @@ msgstr "Активно (Блокирует)"
 msgid "Active Bootstrap DNS"
 msgstr "Активный Bootstrap DNS"
 
-msgid "Active Clients"
-msgstr "Активные клиенты"
-
-msgid "Active Connections"
-msgstr "Активные соединения"
-
 msgid "Active Hours Mode"
 msgstr "Режим часов активности"
 
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
-
-msgid "Active Route"
-msgstr "Активный выход"
 
 msgid "Active engine"
 msgstr "Активный движок"
@@ -283,9 +271,6 @@ msgstr "Chat ID администраторов"
 
 msgid "Adult content"
 msgstr "Взрослый контент"
-
-msgid "Advanced DPI bypass engine with Lua scripts (nfqws2)"
-msgstr "Продвинутый движок обхода DPI с Lua-скриптами (nfqws2)"
 
 msgid "Advanced System"
 msgstr "Расширенные настройки"
@@ -559,6 +544,9 @@ msgstr "Авто-режимы (--auto)"
 
 msgid "Auto refresh"
 msgstr "Автообновление"
+
+msgid "Auto selection modes"
+msgstr ""
 
 msgid "Auto update"
 msgstr "Автообновление"
@@ -1109,9 +1097,6 @@ msgstr "Строка аргументов командной строки..."
 msgid "Community Lists"
 msgstr "Community-списки"
 
-msgid "Component Cards Visibility"
-msgstr "Видимость карточек компонентов"
-
 msgid "Component action timed out"
 msgstr "Превышено время ожидания действия компонента"
 
@@ -1120,9 +1105,6 @@ msgstr "Доступно обновление компонента"
 
 msgid "Component update check interval"
 msgstr "Интервал проверки обновлений компонентов"
-
-msgid "Component versions and update manager"
-msgstr "Версии компонентов и менеджер обновлений"
 
 msgid "Components"
 msgstr "Компоненты"
@@ -1244,15 +1226,6 @@ msgstr "Копировать лог"
 msgid "Copy proxy link"
 msgstr "Скопировать ссылку прокси"
 
-msgid "Core Memory"
-msgstr "Память ядра"
-
-msgid "Core configuration and preferences"
-msgstr "Основные настройки и параметры"
-
-msgid "Core orchestration service and LuCI application"
-msgstr "Основной сервис маршрутизации и веб-интерфейс LuCI"
-
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
 
@@ -1333,12 +1306,6 @@ msgstr "Пользовательский тег (например, v1.2.3)"
 
 msgid "Customize prefix color:"
 msgstr "Настроить цвет префикса:"
-
-msgid "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs."
-msgstr "Настройте порядок и видимость вкладок в главном меню навигации. Используйте стрелки для перемещения и галочки для показа или скрытия."
-
-msgid "Customize which component cards are displayed in the Components tab. Checkboxes show or hide components."
-msgstr "Настройте отображение карточек на вкладке «Компоненты». Галочки показывают или скрывают компоненты."
 
 msgid "Cyan"
 msgstr "Голубой"
@@ -1505,9 +1472,6 @@ msgstr "Тип DPI"
 msgid "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
 msgstr "Обнаружено замедление DPI — соединение заблокировано или задушено при передаче данных."
 
-msgid "DPI bypass engine (nfqws v1)"
-msgstr "Движок обхода блокировок DPI (nfqws v1)"
-
 msgid "DPI throttling: stream cut off after ~16KB payload transfer"
 msgstr "DPI-троттлинг: поток оборван после передачи ~16 КБ данных"
 
@@ -1553,9 +1517,6 @@ msgstr "Решение и подробности"
 msgid "Dedicated cgroup unavailable"
 msgstr "Выделенная cgroup недоступна"
 
-msgid "Dedicated direct HTTP/SOCKS5 outbound proxy"
-msgstr "Выделенный прямой исходящий HTTP/SOCKS5 прокси"
-
 msgid "Default"
 msgstr "По умолчанию"
 
@@ -1567,9 +1528,6 @@ msgstr "По умолчанию (авто)"
 
 msgid "Default (upstream)"
 msgstr "Default (штатный)"
-
-msgid "Default Tab on Startup"
-msgstr "Вкладка по умолчанию при входе"
 
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
@@ -1651,9 +1609,6 @@ msgstr "Прямой WAN"
 
 msgid "Direct WAN (ISP)"
 msgstr "Напрямую в WAN (провайдер)"
-
-msgid "Direct cgroup bypass for TorrServer"
-msgstr "Прямой обход через cgroup для TorrServer"
 
 msgid "Direct connection"
 msgstr "Прямое подключение"
@@ -1765,9 +1720,6 @@ msgstr "Готово"
 
 msgid "Dont Touch My DHCP!"
 msgstr "Не трогайте мой DHCP!"
-
-msgid "Downlink"
-msgstr "Входящий"
 
 msgid "Download"
 msgstr "Скачать"
@@ -2120,9 +2072,6 @@ msgstr "Пресет Extended"
 msgid "External NFQUEUE rules overlap with Tachyon"
 msgstr "Внешние правила NFQUEUE перекрываются с Tachyon"
 
-msgid "External inbound proxy servers"
-msgstr "Внешние входящие прокси-серверы"
-
 msgid "External nfqws config files bypass Tachyon queue management and explicit validation."
 msgstr "Внешние файлы конфигурации nfqws обходят управление очередями Tachyon и явную проверку."
 
@@ -2405,12 +2354,6 @@ msgstr "Семейный профиль"
 msgid "Family Profiles"
 msgstr "Семейные профили"
 
-msgid "Family profiles and device grouping"
-msgstr "Семейные профили и группировка устройств"
-
-msgid "Fast packet transport network client"
-msgstr "Быстрый сетевой клиент передачи пакетов (FPTN)"
-
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr "Более быстрый мониторинг состояния DNS, чем стандартный цикл. Переключает bootstrap DNS при сбое."
 
@@ -2626,9 +2569,6 @@ msgstr "Гостевой режим"
 
 msgid "Guest mode isolates guest devices from local LAN and router administration, while allowing internet access with daily quotas and schedules."
 msgstr "Гостевой режим изолирует гостевые устройства от локальной сети и панели управления роутером, сохраняя доступ в интернет с дневными квотами и расписанием."
-
-msgid "Guest network isolation and device quotas"
-msgstr "Изоляция гостевой сети и квоты устройств"
 
 msgid "HTTP"
 msgstr "HTTP"
@@ -3530,9 +3470,6 @@ msgstr "Локальный кэш DNS"
 msgid "Local DNS caching disabled (0 entries)"
 msgstr "Локальное DNS-кэширование отключено (0 записей)"
 
-msgid "Local SOCKS proxy desynchronizer (ciadpi)"
-msgstr "Локальный десинхронизатор SOCKS-прокси (ciadpi)"
-
 msgid "Location"
 msgstr "Местоположение"
 
@@ -3572,9 +3509,6 @@ msgstr "Основной DNS"
 msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
 msgstr "Основной DNS-сервер. Если выбрано несколько серверов, при таймауте происходит переключение на резервный."
 
-msgid "Main overview and status widgets"
-msgstr "Главный обзор и виджеты статуса"
-
 msgid "Managed Daemons Status"
 msgstr "Статус управляемых демонов"
 
@@ -3583,9 +3517,6 @@ msgstr "Вручную"
 
 msgid "Manual list update"
 msgstr "Ручное обновление списков"
-
-msgid "Manual selection"
-msgstr "Ручной выбор"
 
 msgid "Manual setup"
 msgstr "Ручная настройка"
@@ -3650,9 +3581,6 @@ msgstr "Медиана; успешные запросы: %s / %s. Нажмите
 msgid "Memory Limit (MB)"
 msgstr ""
 
-msgid "Menu & Navigation"
-msgstr "Меню и навигация"
-
 msgid "Message"
 msgstr "Сообщение"
 
@@ -3664,6 +3592,9 @@ msgstr "Метод"
 
 msgid "Metrics Retention (hours)"
 msgstr "Хранение метрик (часы)"
+
+msgid "Min latency"
+msgstr ""
 
 msgid "Minimum"
 msgstr "Минимум"
@@ -3811,9 +3742,6 @@ msgstr "DNS-резолверы не зафиксированы"
 
 msgid "No active DHCP clients found on local network."
 msgstr "Активные устройства в локальной сети не найдены."
-
-msgid "No active clients"
-msgstr "Нет активных клиентов"
 
 msgid "No active connections"
 msgstr "Нет активных подключений"
@@ -4181,14 +4109,17 @@ msgstr "Или вставьте содержимое файла hosts:"
 msgid "Orange"
 msgstr "Оранжевый"
 
-msgid "Other peers"
-msgstr "Другие пиры"
+msgid "Other"
+msgstr ""
 
 msgid "Output Network Interface"
 msgstr "Выходной сетевой интерфейс"
 
 msgid "Override the default OpenWrt device headers for this subscription"
 msgstr "Переопределить стандартные заголовки устройства OpenWrt для этой подписки"
+
+msgid "Overview"
+msgstr ""
 
 msgid "Overwrite existing records (if unchecked, merge with existing records)"
 msgstr "Перезаписать существующие записи (если снято — объединить с существующими)"
@@ -4643,9 +4574,6 @@ msgstr "Ошибка чтения"
 msgid "Ready to benchmark DNS providers"
 msgstr "Готов к тестированию DNS провайдеров"
 
-msgid "Real-time WebRTC anti-censorship tunnel"
-msgstr "Антицензурный туннель реального времени на базе WebRTC"
-
 msgid "Reality fake site"
 msgstr "Фейковый сайт Reality"
 
@@ -4741,9 +4669,6 @@ msgstr "Перезагрузка..."
 
 msgid "Remote Hosts Lists"
 msgstr "Удалённые списки Hosts"
-
-msgid "Remote management Telegram daemon"
-msgstr "Демон Telegram для удаленного управления"
 
 msgid "Removal completed successfully!"
 msgstr "Удаление успешно завершено!"
@@ -4970,9 +4895,6 @@ msgstr "Имя роутера"
 msgid "Router Traffic Target Section"
 msgstr "Секция для трафика роутера"
 
-msgid "Routing & Rules"
-msgstr "Правила и маршрутизация"
-
 msgid "Routing Engine"
 msgstr "Маршрутизирующий движок"
 
@@ -4993,9 +4915,6 @@ msgstr "Секция маршрутизации «%s» отключена. Ис�
 
 msgid "Routing sections"
 msgstr "Секции маршрутизации"
-
-msgid "Routing sections, rules and strategies"
-msgstr "Секции маршрутизации, правила и стратегии"
 
 msgid "Rule"
 msgstr "Правило"
@@ -5294,9 +5213,6 @@ msgstr "Выберите, отключать ли цель в период ра�
 msgid "Select which components are permitted to update automatically"
 msgstr "Выберите, какие компоненты разрешено обновлять автоматически"
 
-msgid "Select which tab opens automatically when entering Tachyon."
-msgstr "Выберите, какая вкладка открывается автоматически при входе в Tachyon."
-
 msgid "Selected"
 msgstr "Выбран"
 
@@ -5311,9 +5227,6 @@ msgstr "Выбранная секция"
 
 msgid "Selected: specified devices become guests. Inverted: all devices on the network become guests EXCEPT the trusted ones (Zero-Trust)."
 msgstr "Выборочный: указанные устройства становятся гостевыми. Инвертированный: все устройства в сети считаются гостевыми, КРОМЕ доверенных (Zero-Trust)."
-
-msgid "Selector"
-msgstr "Селектор"
 
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr "Selector и URLTest outbound должны содержать непустой массив outbounds"
@@ -5447,14 +5360,8 @@ msgstr "Сервисы и доступ"
 msgid "Services are online and ready! Reloading page..."
 msgstr "Службы запущены и готовы к работе! Перезагрузка страницы..."
 
-msgid "Services info"
-msgstr "Информация о сервисах"
-
 msgid "Services restarted. Click to reload page."
 msgstr "Службы перезапущены. Нажмите для перезагрузки страницы."
-
-msgid "Session total"
-msgstr "Всего за сессию"
 
 msgid "Settings"
 msgstr "Настройки"
@@ -5668,9 +5575,6 @@ msgstr "Сторонний сервис активен параллельно с
 
 msgid "Standard"
 msgstr "Стандартный"
-
-msgid "Standby / Direct"
-msgstr "Прямой / Ожидание"
 
 msgid "Start"
 msgstr "Старт"
@@ -5888,9 +5792,6 @@ msgstr "Отчёт о стабильности системы"
 msgid "System Stability Index"
 msgstr "Индекс стабильности системы"
 
-msgid "System diagnostics, AI Doctor and logs"
-msgstr "Системная диагностика, ИИ-Доктор и логи"
-
 msgid "System information"
 msgstr "Системная информация"
 
@@ -5956,9 +5857,6 @@ msgstr "TTL должен быть положительным числом"
 
 msgid "TTL value cannot be empty"
 msgstr "Значение TTL не может быть пустым"
-
-msgid "Tab Order & Visibility"
-msgstr "Порядок и видимость вкладок"
 
 msgid "Table"
 msgstr "Таблица"
@@ -6281,9 +6179,6 @@ msgstr "Этот параметр требует значение."
 msgid "This protocol is not implemented in tachyon-core yet"
 msgstr "Этот протокол еще не реализован в tachyon-core"
 
-msgid "This router"
-msgstr "Этот роутер"
-
 msgid "This speed test supports DoH and UDP DNS servers."
 msgstr "Этот тест скорости поддерживает DoH и UDP DNS-серверы."
 
@@ -6326,9 +6221,6 @@ msgstr "Токен обязателен, когда бот включён"
 msgid "Tolerance"
 msgstr "Допуск"
 
-msgid "Top active domains in bypass:"
-msgstr "Популярные ресурсы в обходе:"
-
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
 
@@ -6368,9 +6260,6 @@ msgstr "Трассировка правил маршрутизации..."
 msgid "Traffic"
 msgstr "Трафик"
 
-msgid "Traffic & Speed"
-msgstr "Трафик и скорость"
-
 msgid "Traffic for this level goes directly."
 msgstr "Трафик этого уровня идёт напрямую."
 
@@ -6379,9 +6268,6 @@ msgstr "Трафик от этих IP-адресов, CIDR или MAC-адрес
 
 msgid "Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section."
 msgstr "Трафик указанных протоколов (например BitTorrent, QUIC, STUN) будет обходить эту секцию."
-
-msgid "Traffic statistics and active connections"
-msgstr "Статистика трафика и активные соединения"
 
 msgid "Traffic type filter"
 msgstr "Фильтр типа трафика"
@@ -6554,9 +6440,6 @@ msgstr "Великобритания (gb)"
 msgid "United States (us)"
 msgstr "США (us)"
 
-msgid "Universal proxy platform routing engine"
-msgstr "Универсальный движок маршрутизации и проксирования"
-
 msgid "Unknown"
 msgstr "Неизвестно"
 
@@ -6646,9 +6529,6 @@ msgstr "Обновление списков..."
 
 msgid "Updating…"
 msgstr "Обновление…"
-
-msgid "Uplink"
-msgstr "Исходящий"
 
 msgid "Uploaded"
 msgstr "Отдано"
@@ -6929,9 +6809,6 @@ msgstr "Почему не работает Discord?"
 msgid "Wi-Fi Calling Direct (VoWiFi)"
 msgstr "Wi-Fi Calling напрямую (VoWiFi)"
 
-msgid "WireGuard over TURN Tunnel"
-msgstr "WireGuard over TURN Tunnel"
-
 msgid "WireGuard private key from your Cloudflare WARP account"
 msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare WARP"
 
@@ -7028,9 +6905,6 @@ msgstr "Правила маршрутизации Zapret2 настроены"
 msgid "Zapret2 routing rules are not configured"
 msgstr "Правила маршрутизации Zapret2 не настроены"
 
-msgid "Zero config mesh VPN daemon"
-msgstr "Mesh VPN-демон с нулевой конфигурацией"
-
 msgid "active"
 msgstr "активен"
 
@@ -7049,17 +6923,11 @@ msgstr "compressed"
 msgid "confidence"
 msgstr "уверенность"
 
-msgid "conns"
-msgstr "соед."
-
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
 msgid "dev."
 msgstr "устр."
-
-msgid "devices"
-msgstr "устройств"
 
 msgid "e.g. AES-256-GCM — leave empty for default"
 msgstr "напр. AES-256-GCM — оставьте пустым для значения по умолчанию"
@@ -7226,14 +7094,11 @@ msgstr "✈️ Telegram (Веб + Bot API)"
 msgid "✓ 32KB Streamed"
 msgstr "✓ 32KB Прокачано"
 
-msgid "✔ Online"
-msgstr "✔ В сети"
+msgid "✓ Active"
+msgstr ""
 
 msgid "✗ Throttled at 16KB"
 msgstr "✗ Задушено на 16KB"
-
-msgid "✘ Offline"
-msgstr "✘ Не в сети"
 
 msgid "✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
 msgstr "✨ Включает пиннинг TLS-сертификатов (pcs / certificate_sha256), XHTTP и AWG 3.x"
@@ -7306,6 +7171,156 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Access schedule and screen time limits"
+msgstr "Расписание доступа и лимиты времени"
+
+msgid "Active Clients"
+msgstr "Активные клиенты"
+
+msgid "Active Connections"
+msgstr "Активные соединения"
+
+msgid "Active Route"
+msgstr "Активный выход"
+
+msgid "Advanced DPI bypass engine with Lua scripts (nfqws2)"
+msgstr "Продвинутый движок обхода DPI с Lua-скриптами (nfqws2)"
+
+msgid "Component Cards Visibility"
+msgstr "Видимость карточек компонентов"
+
+msgid "Component versions and update manager"
+msgstr "Версии компонентов и менеджер обновлений"
+
+msgid "Core Memory"
+msgstr "Память ядра"
+
+msgid "Core configuration and preferences"
+msgstr "Основные настройки и параметры"
+
+msgid "Core orchestration service and LuCI application"
+msgstr "Основной сервис маршрутизации и веб-интерфейс LuCI"
+
+msgid "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs."
+msgstr "Настройте порядок и видимость вкладок в главном меню навигации. Используйте стрелки для перемещения и галочки для показа или скрытия."
+
+msgid "Customize which component cards are displayed in the Components tab. Checkboxes show or hide components."
+msgstr "Настройте отображение карточек на вкладке «Компоненты». Галочки показывают или скрывают компоненты."
+
+msgid "DPI bypass engine (nfqws v1)"
+msgstr "Движок обхода блокировок DPI (nfqws v1)"
+
+msgid "Dedicated direct HTTP/SOCKS5 outbound proxy"
+msgstr "Выделенный прямой исходящий HTTP/SOCKS5 прокси"
+
+msgid "Default Tab on Startup"
+msgstr "Вкладка по умолчанию при входе"
+
+msgid "Direct cgroup bypass for TorrServer"
+msgstr "Прямой обход через cgroup для TorrServer"
+
+msgid "Downlink"
+msgstr "Входящий"
+
+msgid "External inbound proxy servers"
+msgstr "Внешние входящие прокси-серверы"
+
+msgid "Family profiles and device grouping"
+msgstr "Семейные профили и группировка устройств"
+
+msgid "Fast packet transport network client"
+msgstr "Быстрый сетевой клиент передачи пакетов (FPTN)"
+
+msgid "Guest network isolation and device quotas"
+msgstr "Изоляция гостевой сети и квоты устройств"
+
+msgid "Local SOCKS proxy desynchronizer (ciadpi)"
+msgstr "Локальный десинхронизатор SOCKS-прокси (ciadpi)"
+
+msgid "Main overview and status widgets"
+msgstr "Главный обзор и виджеты статуса"
+
+msgid "Manual selection"
+msgstr "Ручной выбор"
+
+msgid "Menu & Navigation"
+msgstr "Меню и навигация"
+
+msgid "No active clients"
+msgstr "Нет активных клиентов"
+
+msgid "Other peers"
+msgstr "Другие пиры"
+
+msgid "Real-time WebRTC anti-censorship tunnel"
+msgstr "Антицензурный туннель реального времени на базе WebRTC"
+
+msgid "Remote management Telegram daemon"
+msgstr "Демон Telegram для удаленного управления"
+
+msgid "Routing & Rules"
+msgstr "Правила и маршрутизация"
+
+msgid "Routing sections, rules and strategies"
+msgstr "Секции маршрутизации, правила и стратегии"
+
+msgid "Select which tab opens automatically when entering Tachyon."
+msgstr "Выберите, какая вкладка открывается автоматически при входе в Tachyon."
+
+msgid "Selector"
+msgstr "Селектор"
+
+msgid "Services info"
+msgstr "Информация о сервисах"
+
+msgid "Session total"
+msgstr "Всего за сессию"
+
+msgid "Standby / Direct"
+msgstr "Прямой / Ожидание"
+
+msgid "System diagnostics, AI Doctor and logs"
+msgstr "Системная диагностика, ИИ-Доктор и логи"
+
+msgid "Tab Order & Visibility"
+msgstr "Порядок и видимость вкладок"
+
+msgid "This router"
+msgstr "Этот роутер"
+
+msgid "Top active domains in bypass:"
+msgstr "Популярные ресурсы в обходе:"
+
+msgid "Traffic & Speed"
+msgstr "Трафик и скорость"
+
+msgid "Traffic statistics and active connections"
+msgstr "Статистика трафика и активные соединения"
+
+msgid "Universal proxy platform routing engine"
+msgstr "Универсальный движок маршрутизации и проксирования"
+
+msgid "Uplink"
+msgstr "Исходящий"
+
+msgid "WireGuard over TURN Tunnel"
+msgstr "WireGuard over TURN Tunnel"
+
+msgid "Zero config mesh VPN daemon"
+msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "conns"
+msgstr "соед."
+
+msgid "devices"
+msgstr "устройств"
+
+msgid "✔ Online"
+msgstr "✔ В сети"
+
+msgid "✘ Offline"
+msgstr "✘ Не в сети"
 
 msgid "PID"
 msgstr "PID"
@@ -8437,3 +8452,60 @@ msgstr "Plus отдельно проверяет DNS роутера и пока�
 
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
+
+msgid "Server Grouping by Country"
+msgstr "Группировка серверов по странам"
+
+msgid "Choose how servers are grouped and navigated on the Dashboard."
+msgstr "Выберите способ группировки и навигации по серверам на дашборде."
+
+msgid "Country filter buttons (Chips)"
+msgstr "Кнопки фильтра по странам (Чипсы)"
+
+msgid "Country groups (Accordions)"
+msgstr "Группы по странам (Аккордеоны)"
+
+msgid "Disabled (Flat list)"
+msgstr "Отключено (Общий список)"
+
+msgid "Dashboard Server Sorting"
+msgstr "Сортировка серверов на дашборде"
+
+msgid "Select the server sorting order on the Dashboard."
+msgstr "Выберите порядок сортировки серверов на дашборде."
+
+msgid "By latency (Ping - Default)"
+msgstr "По задержке (Пинг - По умолчанию)"
+
+msgid "By country, then by latency"
+msgstr "По странам, затем по задержке"
+
+msgid "Alphabetical (Country and name)"
+msgstr "По алфавиту (Страна и имя)"
+
+msgid "Original subscription order"
+msgstr "Исходный порядок из подписки"
+
+msgid "Prevent Misclicks (Hover Freeze)"
+msgstr "Защита от случайных кликов (Hover Freeze)"
+
+msgid "Temporarily lock server card positions while the mouse cursor is over the server grid to prevent misclicks when latencies update."
+msgstr "Временно фиксирует позиции карточек серверов, пока курсор мыши находится над списком, предотвращая случайные клики при обновлении пинга."
+
+msgid "Country Chips Grouping"
+msgstr "Организация чипсов стран"
+
+msgid "Select how country chips are organized and displayed on the Dashboard."
+msgstr "Выберите порядок и способ отображения чипсов стран на дашборде."
+
+msgid "By world regions (Europe, Asia, Americas...)"
+msgstr "По частям света (Регионы: Европа, Азия, Америка...)"
+
+msgid "Smart top (Active and popular countries first)"
+msgstr "Умный топ (Активная и популярные страны впереди)"
+
+msgid "By latency (Best ping first)"
+msgstr "По качеству связи (Пинг первыми)"
+
+msgid "Alphabetical (A–Z)"
+msgstr "По алфавиту (А–Я)"

@@ -1,6 +1,9 @@
 import { Tachyon } from '../../types';
+import { tr } from '../../helpers/i18n';
 
 export interface ActiveRouteInfo {
+  sectionName?: string;
+  sectionDisplayName?: string;
   name: string;
   selector: string;
   latency: number;
@@ -21,7 +24,7 @@ const SERVICE_OUTBOUND_TYPES = new Set([
   'BYEDPI',
 ]);
 
-function isServiceGroup(group: Tachyon.OutboundGroup): boolean {
+export function isServiceGroup(group: Tachyon.OutboundGroup): boolean {
   if (group.serviceStatus) return true;
   if (group.action && SERVICE_ACTIONS.has(group.action.toLowerCase())) {
     return true;
@@ -35,22 +38,13 @@ function isServiceGroup(group: Tachyon.OutboundGroup): boolean {
   return false;
 }
 
-export function getActiveRoute(
-  groups: Tachyon.OutboundGroup[],
+export function getGroupActiveRoute(
+  group: Tachyon.OutboundGroup,
 ): ActiveRouteInfo | null {
-  if (!groups || groups.length === 0) return null;
-
-  const proxyGroups = groups.filter(
-    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0,
-  );
-  const candidateGroups = proxyGroups.length > 0 ? proxyGroups : [];
-  if (candidateGroups.length === 0) return null;
-
-  const group =
-    candidateGroups.find((g) => g.sectionName.toLowerCase() === 'main') ||
-    candidateGroups.find((g) => g.withTagSelect) ||
-    candidateGroups[0];
   if (!group || !group.outbounds || group.outbounds.length === 0) return null;
+
+  const sectionName = group.sectionName || '';
+  const sectionDisplayName = group.displayName || group.sectionName || 'Main';
 
   const selected =
     group.outbounds.find((o) => o.selected) || group.outbounds[0];
@@ -67,6 +61,8 @@ export function getActiveRoute(
       ) || group.outbounds.find((o) => o.displayName === selName);
 
     return {
+      sectionName,
+      sectionDisplayName,
       name: selName || member?.displayName || selected.displayName,
       selector: `${selected.displayName} (Priority)`,
       latency: member?.latency ?? -1,
@@ -85,6 +81,8 @@ export function getActiveRoute(
       ) || group.outbounds.find((o) => o.displayName === selName);
 
     return {
+      sectionName,
+      sectionDisplayName,
       name: selName || member?.displayName || selected.displayName,
       selector: `${selected.displayName} (URLTest)`,
       latency: member?.latency ?? -1,
@@ -93,9 +91,35 @@ export function getActiveRoute(
   }
 
   return {
+    sectionName,
+    sectionDisplayName,
     name: selected.displayName,
-    selector: _('Manual selection'),
+    selector: tr('Ручной выбор', 'Manual selection'),
     latency: selected.latency ?? -1,
     type: selected.type || 'Proxy',
   };
+}
+
+export function getAllActiveRoutes(
+  groups: Tachyon.OutboundGroup[],
+): ActiveRouteInfo[] {
+  if (!groups || groups.length === 0) return [];
+
+  const proxyGroups = groups.filter(
+    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0,
+  );
+
+  return proxyGroups
+    .map((g) => getGroupActiveRoute(g))
+    .filter((r): r is ActiveRouteInfo => r !== null);
+}
+
+export function getActiveRoute(
+  groups: Tachyon.OutboundGroup[],
+): ActiveRouteInfo | null {
+  const routes = getAllActiveRoutes(groups);
+  if (routes.length === 0) return null;
+
+  const main = routes.find((r) => r.sectionName?.toLowerCase() === 'main');
+  return main || routes[0];
 }

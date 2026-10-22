@@ -429,6 +429,12 @@ export namespace Tachyon {
     // sing-box rejected this section at start and the runtime quarantined it;
     // the section is not loaded and the reason is shown on the dashboard card.
     configError?: string;
+    dashboardSettings?: {
+      countryGrouping?: 'chips' | 'accordion' | 'none';
+      chipsGrouping?: 'regions' | 'smart_top' | 'latency' | 'alphabetical';
+      sortMode?: 'latency' | 'country_latency' | 'country_alpha' | 'default';
+      hoverFreeze?: boolean;
+    };
     outbounds: Outbound[];
   }
 
@@ -603,6 +609,18 @@ export namespace Tachyon {
     dashboard_exclude_ports?: string[];
     dashboard_exclude_groups?: string[];
     dashboard_hide_na_servers?: '0' | '1';
+    dashboard_country_grouping?: 'chips' | 'accordion' | 'none';
+    dashboard_chips_grouping?:
+      | 'regions'
+      | 'smart_top'
+      | 'latency'
+      | 'alphabetical';
+    dashboard_sort_mode?:
+      | 'latency'
+      | 'country_latency'
+      | 'country_alpha'
+      | 'default';
+    dashboard_hover_freeze?: '0' | '1';
     urltest_proxy_links?: string[];
     subscription_url?: string;
     subscription_user_agent?: string;

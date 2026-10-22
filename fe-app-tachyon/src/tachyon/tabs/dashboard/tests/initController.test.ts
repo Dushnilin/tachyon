@@ -130,4 +130,33 @@ describe('dashboard initController', () => {
     );
     expect(formatServiceTooltip({ pid: 2450 })).toBe('PID: 2450');
   });
+
+  it('renders modern service row items with pills and status dot', async () => {
+    const { renderServiceRowItem } = await import('../initController');
+    const runningItem = renderServiceRowItem('Tachyon Core', {
+      running: 1,
+      memoryMb: 22,
+      uptimePretty: '2ч 51м',
+      tooltip: 'PID: 1234 • Uptime: 2ч 51м',
+    });
+    expect(runningItem.attributes.class).toContain('row--success');
+    expect(runningItem.attributes.title).toBe('PID: 1234 • Uptime: 2ч 51м');
+
+    const stoppedItem = renderServiceRowItem('Zapret2', {
+      running: 0,
+    });
+    expect(stoppedItem.attributes.class).toContain('row--error');
+  });
+
+  it('localizes uptime strings based on UI language', async () => {
+    const { formatLocalizedUptime } = await import('../initController');
+
+    // In English environment (vitest default):
+    expect(formatLocalizedUptime('3ч 12м')).toBe('3h 12m');
+    expect(formatLocalizedUptime('2д 5ч')).toBe('2d 5h');
+    expect(formatLocalizedUptime('45с')).toBe('45s');
+    expect(formatLocalizedUptime('15м')).toBe('15m');
+    expect(formatLocalizedUptime(undefined, 3720)).toBe('1h 2m');
+    expect(formatLocalizedUptime(undefined, 45)).toBe('45s');
+  });
 });

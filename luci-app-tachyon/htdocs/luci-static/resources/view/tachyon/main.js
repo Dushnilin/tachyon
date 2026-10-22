@@ -2825,7 +2825,710 @@ function formatServiceStatusMessage(msg) {
   return _(msg);
 }
 
+// src/tachyon/helpers/country.ts
+var translate = (key) => typeof _ === "function" ? _(key) : key;
+var EUROPE_CODES = /* @__PURE__ */ new Set([
+  "RU",
+  "DE",
+  "NL",
+  "GB",
+  "UK",
+  "FR",
+  "FI",
+  "SE",
+  "PL",
+  "CH",
+  "AT",
+  "ES",
+  "IT",
+  "UA",
+  "NO",
+  "CZ",
+  "EE",
+  "LV",
+  "LT",
+  "MD",
+  "BY",
+  "RS",
+  "BG",
+  "RO",
+  "HU",
+  "GR",
+  "CY",
+  "IS",
+  "IE",
+  "PT",
+  "BE",
+  "DK",
+  "SK",
+  "HR",
+  "BA",
+  "AL",
+  "MK",
+  "LI",
+  "LU",
+  "MC",
+  "SM",
+  "VA",
+  "AD",
+  "MT",
+  "ME",
+  "SI"
+]);
+var ASIA_MIDEAST_CODES = /* @__PURE__ */ new Set([
+  "TR",
+  "KZ",
+  "SG",
+  "JP",
+  "HK",
+  "AE",
+  "GE",
+  "AM",
+  "UZ",
+  "KG",
+  "IL",
+  "IN",
+  "KR",
+  "TW",
+  "TH",
+  "VN",
+  "AZ",
+  "ID",
+  "MY",
+  "PH",
+  "PK",
+  "BD",
+  "QA",
+  "BH",
+  "IQ",
+  "MN",
+  "KH",
+  "LK",
+  "BN",
+  "CN",
+  "SA",
+  "OM",
+  "KW",
+  "JO",
+  "LB",
+  "TJ",
+  "TM",
+  "NP",
+  "MM",
+  "LA"
+]);
+var AMERICAS_CODES = /* @__PURE__ */ new Set([
+  "US",
+  "CA",
+  "BR",
+  "AR",
+  "MX",
+  "CL",
+  "CO",
+  "PE",
+  "VE",
+  "EC",
+  "UY",
+  "PY",
+  "BO",
+  "CR",
+  "PA"
+]);
+function getCountryRegion(countryCode) {
+  const code = `${countryCode || ""}`.trim().toUpperCase();
+  if (EUROPE_CODES.has(code)) return "europe";
+  if (ASIA_MIDEAST_CODES.has(code)) return "asia";
+  if (AMERICAS_CODES.has(code)) return "americas";
+  return "other";
+}
+function getRegionMetadata(region, locale) {
+  const isDocRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru");
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const isRu = (locale ? locale.startsWith("ru") : !isDocEn) || isDocRu;
+  switch (region) {
+    case "europe":
+      return { id: "europe", label: isRu ? "Европа" : "Europe", flag: "🇪🇺" };
+    case "asia":
+      return {
+        id: "asia",
+        label: isRu ? "Азия и Восток" : "Asia & Mideast",
+        flag: "🌏"
+      };
+    case "americas":
+      return {
+        id: "americas",
+        label: isRu ? "Америка" : "Americas",
+        flag: "🌎"
+      };
+    case "other":
+      return { id: "other", label: isRu ? "Другие" : "Other", flag: "🌍" };
+    case "all":
+    default:
+      return { id: "all", label: isRu ? "Все" : "All", flag: "🌐" };
+  }
+}
+var FALLBACK_NAMES_RU = {
+  RU: "Россия",
+  DE: "Германия",
+  NL: "Нидерланды",
+  US: "США",
+  GB: "Великобритания",
+  UK: "Великобритания",
+  FR: "Франция",
+  FI: "Финляндия",
+  SE: "Швеция",
+  PL: "Польша",
+  TR: "Турция",
+  KZ: "Казахстан",
+  SG: "Сингапур",
+  JP: "Япония",
+  HK: "Гонконг",
+  CA: "Канада",
+  CH: "Швейцария",
+  AT: "Австрия",
+  ES: "Испания",
+  IT: "Италия",
+  UA: "Украина",
+  AE: "ОАЭ",
+  NO: "Норвегия",
+  CZ: "Чехия",
+  EE: "Эстония",
+  LV: "Латвия",
+  LT: "Литва",
+  MD: "Молдова",
+  BY: "Беларусь",
+  GE: "Грузия",
+  AM: "Армения",
+  UZ: "Узбекистан",
+  KG: "Кыргызстан",
+  RS: "Сербия",
+  BG: "Болгария",
+  RO: "Румыния",
+  HU: "Венгрия",
+  GR: "Греция",
+  CY: "Кипр",
+  IL: "Израиль",
+  IN: "Индия",
+  KR: "Южная Корея",
+  AU: "Австралия",
+  BR: "Бразилия",
+  AR: "Аргентина",
+  MX: "Мексика",
+  IS: "Исландия",
+  IE: "Ирландия",
+  PT: "Португалия",
+  BE: "Бельгия",
+  DK: "Дания"
+};
+var COMMON_ISO_CODES = /* @__PURE__ */ new Set([
+  "RU",
+  "DE",
+  "NL",
+  "US",
+  "GB",
+  "UK",
+  "FR",
+  "FI",
+  "SE",
+  "PL",
+  "TR",
+  "KZ",
+  "SG",
+  "JP",
+  "HK",
+  "CA",
+  "CH",
+  "AT",
+  "ES",
+  "IT",
+  "UA",
+  "AE",
+  "NO",
+  "CZ",
+  "EE",
+  "LV",
+  "LT",
+  "MD",
+  "BY",
+  "GE",
+  "AM",
+  "UZ",
+  "KG",
+  "RS",
+  "BG",
+  "RO",
+  "HU",
+  "GR",
+  "CY",
+  "IL",
+  "IN",
+  "KR",
+  "AU",
+  "BR",
+  "AR",
+  "MX",
+  "IS",
+  "IE",
+  "PT",
+  "BE",
+  "DK"
+]);
+function buildCountryRegex(pattern) {
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])(?:${pattern})(?:[^\\p{L}\\p{N}]|$)`,
+    "iu"
+  );
+}
+var COUNTRY_KEYWORD_PATTERNS = [
+  {
+    code: "RU",
+    regex: buildCountryRegex(
+      "russia|russian|россия|рф|москва|moscow|питер|spb"
+    )
+  },
+  {
+    code: "DE",
+    regex: buildCountryRegex(
+      "germany|german|германия|frankfurt|франкфурт|berlin|берлин"
+    )
+  },
+  {
+    code: "NL",
+    regex: buildCountryRegex(
+      "netherlands|holland|нидерланды|голландия|amsterdam|амстердам"
+    )
+  },
+  {
+    code: "US",
+    regex: buildCountryRegex(
+      "usa|united\\s*states|сша|america|америка|new\\s*york|los\\s*angeles|miami"
+    )
+  },
+  {
+    code: "GB",
+    regex: buildCountryRegex(
+      "uk|united\\s*kingdom|great\\s*britain|великобритания|англия|london|лондон"
+    )
+  },
+  {
+    code: "TR",
+    regex: buildCountryRegex("turkey|turkish|турция|istanbul|стамбул")
+  },
+  {
+    code: "FI",
+    regex: buildCountryRegex("finland|финляндия|helsinki|хельсинки")
+  },
+  { code: "SE", regex: buildCountryRegex("sweden|швеция|stockholm|стокгольм") },
+  { code: "PL", regex: buildCountryRegex("poland|польша|warsaw|варшава") },
+  {
+    code: "KZ",
+    regex: buildCountryRegex(
+      "kazakhstan|казахстан|almaty|алматы|astana|астана"
+    )
+  },
+  { code: "FR", regex: buildCountryRegex("france|франция|paris|париж") },
+  { code: "SG", regex: buildCountryRegex("singapore|сингапур") },
+  { code: "JP", regex: buildCountryRegex("japan|япония|tokyo|токио") },
+  { code: "HK", regex: buildCountryRegex("hong\\s*kong|гонконг") },
+  {
+    code: "CH",
+    regex: buildCountryRegex(
+      "switzerland|швейцария|zurich|цюрих|geneva|женева"
+    )
+  },
+  { code: "AT", regex: buildCountryRegex("austria|австрия|vienna|вена") },
+  {
+    code: "ES",
+    regex: buildCountryRegex("spain|испания|madrid|мадрид|barcelona|барселона")
+  },
+  { code: "IT", regex: buildCountryRegex("italy|италия|rome|рим|milan|милан") },
+  {
+    code: "CA",
+    regex: buildCountryRegex(
+      "canada|канада|toronto|торонто|vancouver|ванкувер"
+    )
+  },
+  { code: "UA", regex: buildCountryRegex("ukraine|украина|kyiv|kiev|киев") },
+  {
+    code: "AE",
+    regex: buildCountryRegex("uae|emirates|оаэ|эмираты|dubai|дубай")
+  },
+  { code: "GE", regex: buildCountryRegex("georgia|грузия|tbilisi|тбилиси") },
+  { code: "AM", regex: buildCountryRegex("armenia|армения|yerevan|ереван") },
+  { code: "MD", regex: buildCountryRegex("moldova|молдова|chisinau|кишинев") },
+  {
+    code: "BY",
+    regex: buildCountryRegex("belarus|беларусь|белоруссия|minsk|минск")
+  },
+  { code: "RS", regex: buildCountryRegex("serbia|сербия|belgrade|белград") },
+  {
+    code: "IL",
+    regex: buildCountryRegex("israel|израиль|tel\\s*aviv|тель-авив")
+  },
+  {
+    code: "IN",
+    regex: buildCountryRegex("india|индия|mumbai|мумбаи|delhi|дели")
+  },
+  {
+    code: "CY",
+    regex: buildCountryRegex("cyprus|кипр|limassol|лимасол|nicosia|никосия")
+  },
+  { code: "TW", regex: buildCountryRegex("taiwan|тайвань|taipei|тайбэй") },
+  { code: "CZ", regex: buildCountryRegex("czech|чехия|prague|прага") },
+  {
+    code: "SK",
+    regex: buildCountryRegex("slovakia|словакия|bratislava|братислава")
+  },
+  {
+    code: "RO",
+    regex: buildCountryRegex("romania|румыния|bucharest|бухарест")
+  },
+  { code: "BG", regex: buildCountryRegex("bulgaria|болгария|sofia|софия") },
+  { code: "HU", regex: buildCountryRegex("hungary|венгрия|budapest|будапешт") },
+  { code: "LT", regex: buildCountryRegex("lithuania|литва|vilnius|вильнюс") },
+  { code: "LV", regex: buildCountryRegex("latvia|латвия|riga|рига") },
+  { code: "EE", regex: buildCountryRegex("estonia|эстония|tallinn|таллин") },
+  {
+    code: "UZ",
+    regex: buildCountryRegex("uzbekistan|узбекистан|tashkent|ташкент")
+  },
+  {
+    code: "KG",
+    regex: buildCountryRegex("kyrgyzstan|кыргызстан|киргизия|bishkek|бишкек")
+  },
+  {
+    code: "TH",
+    regex: buildCountryRegex("thailand|таиланд|тайланд|bangkok|бангкок")
+  },
+  { code: "VN", regex: buildCountryRegex("vietnam|вьетнам|hanoi|ханой") },
+  { code: "KR", regex: buildCountryRegex("korea|корея|seoul|сеул") },
+  {
+    code: "AU",
+    regex: buildCountryRegex(
+      "australia|австралия|sydney|сидней|melbourne|мельбурн"
+    )
+  },
+  {
+    code: "BR",
+    regex: buildCountryRegex("brazil|бразилия|sao\\s*paulo|сан-паулу")
+  },
+  {
+    code: "AR",
+    regex: buildCountryRegex(
+      "argentina|аргентина|buenos\\s*aires|буэнос-айрес"
+    )
+  },
+  { code: "CL", regex: buildCountryRegex("chile|чили|santiago|сантьяго") },
+  { code: "CO", regex: buildCountryRegex("colombia|колумбия|bogota|богота") },
+  { code: "MX", regex: buildCountryRegex("mexico|мексика") },
+  { code: "EG", regex: buildCountryRegex("egypt|египет|cairo|каир") },
+  {
+    code: "IS",
+    regex: buildCountryRegex("iceland|исландия|reykjavik|рейкьявик")
+  },
+  { code: "NO", regex: buildCountryRegex("norway|норвегия|oslo|осло") },
+  {
+    code: "DK",
+    regex: buildCountryRegex("denmark|дания|copenhagen|копенгаген")
+  },
+  { code: "IE", regex: buildCountryRegex("ireland|ирландия|dublin|дублин") },
+  {
+    code: "PT",
+    regex: buildCountryRegex("portugal|португалия|lisbon|лиссабон")
+  },
+  { code: "BE", regex: buildCountryRegex("belgium|бельгия|brussels|брюссель") },
+  { code: "LU", regex: buildCountryRegex("luxembourg|люксембург") },
+  { code: "GR", regex: buildCountryRegex("greece|греция|athens|афины") },
+  { code: "HR", regex: buildCountryRegex("croatia|хорватия|zagreb|загреб") },
+  { code: "BA", regex: buildCountryRegex("bosnia|босния|sarajevo|сараево") },
+  { code: "AL", regex: buildCountryRegex("albania|албания|tirana|тирана") },
+  { code: "MK", regex: buildCountryRegex("macedonia|македония|skopje|скопье") },
+  { code: "AZ", regex: buildCountryRegex("azerbaijan|азербайджан|baku|баку") },
+  {
+    code: "ID",
+    regex: buildCountryRegex("indonesia|индонезия|jakarta|джакарта")
+  },
+  {
+    code: "MY",
+    regex: buildCountryRegex("malaysia|малайзия|kuala\\s*lumpur|куала-лумпур")
+  },
+  {
+    code: "PH",
+    regex: buildCountryRegex("philippines|филиппины|manila|манила")
+  },
+  { code: "PK", regex: buildCountryRegex("pakistan|пакистан") },
+  { code: "BD", regex: buildCountryRegex("bangladesh|бангладеш|dhaka|дакка") },
+  { code: "QA", regex: buildCountryRegex("qatar|катар|doha|доха") },
+  { code: "BH", regex: buildCountryRegex("bahrain|бахрейн|manama|манама") },
+  { code: "IQ", regex: buildCountryRegex("iraq|ирак|baghdad|багдад") },
+  {
+    code: "MN",
+    regex: buildCountryRegex("mongolia|монголия|ulaanbaatar|улан-батор")
+  },
+  {
+    code: "KH",
+    regex: buildCountryRegex("cambodia|камбоджа|phnom\\s*penh|пномпень")
+  },
+  {
+    code: "LK",
+    regex: buildCountryRegex("sri\\s*lanka|шри-ланка|colombo|коломбо")
+  },
+  { code: "BN", regex: buildCountryRegex("brunei|бруней") },
+  { code: "LI", regex: buildCountryRegex("liechtenstein|лихтенштейн") },
+  { code: "SS", regex: buildCountryRegex("south\\s*sudan|южный\\s*судан") },
+  { code: "AQ", regex: buildCountryRegex("antarctica|антарктида") }
+];
+function flagEmojiToCountryCode(str) {
+  if (!str) return void 0;
+  for (let i = 0; i + 3 < str.length; i++) {
+    if (str.charCodeAt(i) === 55356 && str.charCodeAt(i + 1) >= 56806 && str.charCodeAt(i + 1) <= 56831 && str.charCodeAt(i + 2) === 55356 && str.charCodeAt(i + 3) >= 56806 && str.charCodeAt(i + 3) <= 56831) {
+      const char1 = String.fromCharCode(str.charCodeAt(i + 1) - 56806 + 65);
+      const char2 = String.fromCharCode(str.charCodeAt(i + 3) - 56806 + 65);
+      return `${char1}${char2}`.toUpperCase();
+    }
+  }
+  return void 0;
+}
+function countryCodeToFlagEmoji(countryCode) {
+  const code = `${countryCode || ""}`.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return "";
+  }
+  return String.fromCodePoint(
+    ...code.split("").map((char) => 127462 + char.charCodeAt(0) - 65)
+  );
+}
+var PREFERRED_NAMES_RU = {
+  US: "США",
+  GB: "Великобритания",
+  UK: "Великобритания",
+  AE: "ОАЭ",
+  RU: "Россия",
+  DE: "Германия",
+  NL: "Нидерланды",
+  KR: "Южная Корея",
+  HK: "Гонконг",
+  MK: "Македония",
+  KG: "Кыргызстан",
+  CZ: "Чехия",
+  CY: "Кипр",
+  IN: "Индия",
+  SS: "Южный Судан",
+  AQ: "Антарктида",
+  BA: "Босния и Герцеговина"
+};
+function getCountryName(countryCode, locale) {
+  const code = countryCode.toUpperCase();
+  if (code === "OTHER") {
+    return translate("Other");
+  }
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const effectiveLocale = locale || (isDocEn ? "en" : "ru");
+  const isRu = effectiveLocale.startsWith("ru");
+  if (isRu && PREFERRED_NAMES_RU[code]) {
+    return PREFERRED_NAMES_RU[code];
+  }
+  try {
+    if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+      const displayNames = new Intl.DisplayNames([effectiveLocale, "en"], {
+        type: "region"
+      });
+      const name = displayNames.of(code === "UK" ? "GB" : code);
+      if (name && name !== code) {
+        return name;
+      }
+    }
+  } catch {
+  }
+  if (isRu && FALLBACK_NAMES_RU[code]) {
+    return FALLBACK_NAMES_RU[code];
+  }
+  return code;
+}
+function detectOutboundCountry(outbound, locale) {
+  let code;
+  code = flagEmojiToCountryCode(outbound.displayName) || flagEmojiToCountryCode(outbound.prefix);
+  if (!code) {
+    const text = `${outbound.prefix || ""} ${outbound.displayName || ""}`;
+    for (const { code: c, regex } of COUNTRY_KEYWORD_PATTERNS) {
+      if (regex.test(text)) {
+        code = c;
+        break;
+      }
+    }
+  }
+  if (!code) {
+    const text = `${outbound.prefix || ""} ${outbound.displayName || ""}`;
+    const isoMatches = text.match(/(?:^|[\s[(_-])([A-Z]{2})(?:[\s\])_.-]|$)/g);
+    if (isoMatches) {
+      for (const m of isoMatches) {
+        const candidate = m.replace(/[^A-Z]/g, "").toUpperCase();
+        if (COMMON_ISO_CODES.has(candidate)) {
+          code = candidate;
+          break;
+        }
+      }
+    }
+  }
+  if (!code) {
+    const direct = `${outbound.country || ""}`.trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(direct)) {
+      code = direct;
+    }
+  }
+  if (code) {
+    const flag = countryCodeToFlagEmoji(code);
+    const name = getCountryName(code, locale);
+    return { code, flag, name };
+  }
+  return {
+    code: "OTHER",
+    flag: "🌐",
+    name: translate("Other")
+  };
+}
+function groupOutboundsByCountry(outbounds, locale) {
+  const groupsMap = /* @__PURE__ */ new Map();
+  for (const outbound of outbounds) {
+    const info = detectOutboundCountry(outbound, locale);
+    let group = groupsMap.get(info.code);
+    if (!group) {
+      group = {
+        countryCode: info.code,
+        countryFlag: info.flag,
+        countryName: info.name,
+        region: getCountryRegion(info.code),
+        outbounds: [],
+        bestLatency: Number.POSITIVE_INFINITY
+      };
+      groupsMap.set(info.code, group);
+    }
+    group.outbounds.push(outbound);
+    if (Number.isFinite(outbound.latency) && outbound.latency > 0 && outbound.latency < group.bestLatency) {
+      group.bestLatency = outbound.latency;
+    }
+  }
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const sortLocale = locale || (isDocEn ? "en" : "ru");
+  return Array.from(groupsMap.values()).sort((a, b) => {
+    if (a.countryCode === "OTHER") return 1;
+    if (b.countryCode === "OTHER") return -1;
+    return a.countryName.localeCompare(b.countryName, sortLocale);
+  });
+}
+function organizeCountryGroups(countryGroups, mode = "regions", options) {
+  const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
+  const sortLocale = options?.locale || (isDocEn ? "en" : "ru");
+  const regionCounts = {
+    all: 0,
+    europe: 0,
+    asia: 0,
+    americas: 0,
+    other: 0
+  };
+  for (const group of countryGroups) {
+    const reg = group.region in regionCounts ? group.region : "other";
+    const serverCount = group.outbounds.length;
+    regionCounts.all += serverCount;
+    regionCounts[reg] += serverCount;
+  }
+  const regionOrder = [
+    "all",
+    "europe",
+    "asia",
+    "americas",
+    "other"
+  ];
+  const availableRegions = regionOrder.filter((r) => r === "all" || regionCounts[r] > 0).map((r) => {
+    const meta = getRegionMetadata(r, sortLocale);
+    return {
+      ...meta,
+      count: regionCounts[r]
+    };
+  });
+  let workingGroups = [...countryGroups];
+  if (options?.searchQuery) {
+    const q = options.searchQuery.trim().toLowerCase();
+    if (q) {
+      workingGroups = workingGroups.filter((g) => {
+        if (g.countryName.toLowerCase().includes(q)) return true;
+        if (g.countryCode.toLowerCase().includes(q)) return true;
+        return g.outbounds.some(
+          (ob) => ob.displayName && ob.displayName.toLowerCase().includes(q) || ob.prefix && ob.prefix.toLowerCase().includes(q)
+        );
+      });
+    }
+  }
+  if (mode === "regions") {
+    const targetRegion = options?.selectedRegion || "all";
+    if (targetRegion !== "all") {
+      workingGroups = workingGroups.filter((g) => g.region === targetRegion);
+    }
+    workingGroups.sort((a, b) => {
+      if (a.countryCode === "OTHER") return 1;
+      if (b.countryCode === "OTHER") return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: workingGroups,
+      availableRegions
+    };
+  }
+  if (mode === "smart_top") {
+    const topGroups = [];
+    const activeCode = options?.activeCountryCode;
+    const remaining = [...workingGroups];
+    if (activeCode) {
+      const activeIdx = remaining.findIndex(
+        (g) => g.countryCode === activeCode
+      );
+      if (activeIdx !== -1) {
+        topGroups.push(remaining[activeIdx]);
+        remaining.splice(activeIdx, 1);
+      }
+    }
+    remaining.sort((a, b) => b.outbounds.length - a.outbounds.length);
+    const topPopular = remaining.slice(0, 3);
+    topGroups.push(...topPopular);
+    const otherGroups = remaining.slice(3).sort((a, b) => {
+      if (a.countryCode === "OTHER") return 1;
+      if (b.countryCode === "OTHER") return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: [...topGroups, ...otherGroups],
+      topCount: topGroups.length,
+      availableRegions
+    };
+  }
+  if (mode === "latency") {
+    workingGroups.sort((a, b) => {
+      const aLat = a.bestLatency > 0 && Number.isFinite(a.bestLatency) ? a.bestLatency : 999999;
+      const bLat = b.bestLatency > 0 && Number.isFinite(b.bestLatency) ? b.bestLatency : 999999;
+      if (aLat !== bLat) return aLat - bLat;
+      if (a.countryCode === "OTHER") return 1;
+      if (b.countryCode === "OTHER") return -1;
+      return a.countryName.localeCompare(b.countryName, sortLocale);
+    });
+    return {
+      groups: workingGroups,
+      availableRegions
+    };
+  }
+  workingGroups.sort((a, b) => {
+    if (a.countryCode === "OTHER") return 1;
+    if (b.countryCode === "OTHER") return -1;
+    return a.countryName.localeCompare(b.countryName, sortLocale);
+  });
+  return {
+    groups: workingGroups,
+    availableRegions
+  };
+}
+
 // src/tachyon/tabs/dashboard/partials/renderSections.ts
+var gridHoveredSections = /* @__PURE__ */ new Set();
+var gridFrozenOutboundOrders = /* @__PURE__ */ new Map();
 var CONNECTION_ACTION_LABELS = {
   awg: "AmneziaWG",
   warp: "WARP",
@@ -3056,6 +3759,269 @@ function getLatencyTestLabel(latencyProgress) {
     total
   )}/${total}`;
 }
+function renderCountryChips(countryGroups, totalCount, activeFilter, onFilter, sectionName, options) {
+  const isRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") || false;
+  const mode = options?.chipsGrouping || "regions";
+  const activeRegion = options?.activeRegion || "all";
+  const organized = organizeCountryGroups(countryGroups, mode, {
+    activeCountryCode: options?.activeCountryCode,
+    selectedRegion: activeRegion
+  });
+  const container = E("div", {
+    class: "tachyon_dashboard-page__country-chips-container"
+  });
+  if (mode === "regions" && organized.availableRegions.length > 2) {
+    const regionTabs = organized.availableRegions.map((reg) => {
+      const isRegActive = activeRegion === reg.id;
+      return E(
+        "button",
+        {
+          type: "button",
+          class: `tachyon_dashboard-page__region-tab${isRegActive ? " tachyon_dashboard-page__region-tab--active" : ""}`,
+          title: `${reg.label} (${reg.count})`,
+          click: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (options?.onFilterRegion && sectionName) {
+              options.onFilterRegion(sectionName, reg.id);
+            }
+          }
+        },
+        [
+          E("span", { class: "tachyon_dashboard-page__flag-emoji" }, reg.flag),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__region-tab__name" },
+            reg.label
+          ),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__country-chip__count" },
+            `${reg.count}`
+          )
+        ]
+      );
+    });
+    const regionBar = E(
+      "div",
+      { class: "tachyon_dashboard-page__region-bar" },
+      regionTabs
+    );
+    container.appendChild(regionBar);
+  }
+  const isAllActive = !activeFilter || activeFilter === "ALL";
+  const allLabel = isRu ? "Все" : typeof _ === "function" ? _("All") : "All";
+  const currentRegionMeta = organized.availableRegions.find(
+    (r) => r.id === activeRegion
+  );
+  const allChipCount = mode === "regions" && activeRegion !== "all" && currentRegionMeta ? currentRegionMeta.count : totalCount;
+  const allBtn = E(
+    "button",
+    {
+      type: "button",
+      class: `tachyon_dashboard-page__country-chip${isAllActive ? " tachyon_dashboard-page__country-chip--active" : ""}`,
+      click: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (sectionName && onFilter) {
+          onFilter(sectionName, void 0);
+        }
+      }
+    },
+    [
+      E(
+        "span",
+        {
+          class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji"
+        },
+        "🌐"
+      ),
+      E(
+        "span",
+        { class: "tachyon_dashboard-page__country-chip__name" },
+        allLabel
+      ),
+      E(
+        "span",
+        { class: "tachyon_dashboard-page__country-chip__count" },
+        `${allChipCount}`
+      )
+    ]
+  );
+  const chipElements = [allBtn];
+  const renderSingleChip = (group) => {
+    const isActive = activeFilter === group.countryCode;
+    const minLat = group.bestLatency > 0 && Number.isFinite(group.bestLatency) ? `${group.bestLatency}ms` : "";
+    let latClass = "";
+    if (group.bestLatency > 0 && Number.isFinite(group.bestLatency)) {
+      if (group.bestLatency < 100) {
+        latClass = "tachyon_dashboard-page__country-chip__latency--fast";
+      } else if (group.bestLatency <= 300) {
+        latClass = "tachyon_dashboard-page__country-chip__latency--medium";
+      } else {
+        latClass = "tachyon_dashboard-page__country-chip__latency--slow";
+      }
+    }
+    const displayName = group.countryName || group.countryCode;
+    return E(
+      "button",
+      {
+        type: "button",
+        class: `tachyon_dashboard-page__country-chip${isActive ? " tachyon_dashboard-page__country-chip--active" : ""}`,
+        title: `${displayName} (${group.outbounds.length})`,
+        click: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (sectionName && onFilter) {
+            onFilter(sectionName, isActive ? void 0 : group.countryCode);
+          }
+        }
+      },
+      [
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji"
+          },
+          group.countryFlag || "🌐"
+        ),
+        E(
+          "span",
+          { class: "tachyon_dashboard-page__country-chip__name" },
+          displayName
+        ),
+        E(
+          "span",
+          { class: "tachyon_dashboard-page__country-chip__count" },
+          `${group.outbounds.length}`
+        ),
+        minLat ? E(
+          "span",
+          {
+            class: `tachyon_dashboard-page__country-chip__latency ${latClass}`
+          },
+          minLat
+        ) : ""
+      ]
+    );
+  };
+  if (mode === "smart_top" && organized.topCount && organized.topCount > 0) {
+    const topGroups = organized.groups.slice(0, organized.topCount);
+    const restGroups = organized.groups.slice(organized.topCount);
+    for (const g of topGroups) {
+      chipElements.push(renderSingleChip(g));
+    }
+    if (restGroups.length > 0) {
+      chipElements.push(
+        E("div", {
+          class: "tachyon_dashboard-page__country-chip-divider",
+          title: isRu ? "Остальные страны (А–Я)" : "Other countries (A–Z)"
+        })
+      );
+      for (const g of restGroups) {
+        chipElements.push(renderSingleChip(g));
+      }
+    }
+  } else {
+    for (const g of organized.groups) {
+      chipElements.push(renderSingleChip(g));
+    }
+  }
+  const chipsBar = E(
+    "div",
+    {
+      class: "tachyon_dashboard-page__country-chips"
+    },
+    chipElements
+  );
+  container.appendChild(chipsBar);
+  return container;
+}
+function renderCountryAccordionHeader(group, isCollapsed, onToggle) {
+  const selectedMember = group.outbounds.find((m) => m.selected);
+  const minLat = group.bestLatency > 0 && Number.isFinite(group.bestLatency) ? `${group.bestLatency}ms` : "";
+  return E(
+    "div",
+    {
+      class: [
+        "tachyon_dashboard-page__subscription-meta",
+        "tachyon_dashboard-page__subscription-meta--collapsible",
+        "tachyon_dashboard-page__country-meta",
+        isCollapsed ? "tachyon_dashboard-page__subscription-meta--collapsed" : ""
+      ].filter(Boolean).join(" "),
+      click: onToggle
+    },
+    [
+      E("div", { class: "tachyon_dashboard-page__subscription-meta__main" }, [
+        svgEl(
+          "svg",
+          {
+            width: "15",
+            height: "15",
+            viewBox: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isCollapsed ? "-90deg" : "0deg"})`
+          },
+          [svgEl("polyline", { points: "6 9 12 15 18 9" })]
+        ),
+        E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji",
+            style: "font-size: 16px;"
+          },
+          group.countryFlag
+        ),
+        E(
+          "div",
+          { class: "tachyon_dashboard-page__subscription-meta__heading" },
+          group.countryName
+        ),
+        E(
+          "span",
+          { class: "tachyon_dashboard-page__source-group__count" },
+          `${group.outbounds.length}`
+        ),
+        isCollapsed && selectedMember ? E(
+          "span",
+          {
+            class: "tachyon_dashboard-page__source-group__active-badge"
+          },
+          `● ${selectedMember.displayName}`
+        ) : ""
+      ]),
+      minLat ? E(
+        "div",
+        { style: "font-size: 12px; opacity: 0.7;" },
+        `${typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") ? "Мин. задержка" : typeof _ === "function" ? _("Min latency") : "Min latency"}: ${minLat}`
+      ) : ""
+    ]
+  );
+}
+function renderAutoGroupsBlock(topGroups, renderOutbound) {
+  if (topGroups.length === 0) return null;
+  const isRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") || false;
+  const title = isRu ? "Режимы автовыбора" : typeof _ === "function" ? _("Auto selection modes") : "Auto selection modes";
+  return E("div", { class: "tachyon_dashboard-page__auto-groups" }, [
+    E("div", { class: "tachyon_dashboard-page__auto-groups__header" }, [
+      E("span", {}, title),
+      E(
+        "span",
+        { class: "tachyon_dashboard-page__auto-groups__count" },
+        `${topGroups.length}`
+      )
+    ]),
+    E(
+      "div",
+      { class: "tachyon_dashboard-page__auto-groups-grid" },
+      topGroups.map((ob) => renderOutbound(ob))
+    )
+  ]);
+}
 function renderDefaultState({
   section,
   onChooseOutbound,
@@ -3073,7 +4039,11 @@ function renderDefaultState({
   isCollapsed,
   onToggleCollapse,
   collapsedSourceGroups,
-  onToggleSourceGroupCollapse
+  onToggleSourceGroupCollapse,
+  activeCountryFilter,
+  onFilterCountry,
+  activeRegionFilter,
+  onFilterRegion
 }) {
   const isConnectionNode = !section.withTagSelect && [
     "vpn",
@@ -3246,8 +4216,10 @@ function renderDefaultState({
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
     const canChooseOutbound = section.withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
+    const isAutoGroup = Boolean(outbound.urlTestInfo || outbound.priorityInfo);
     const className = [
       "tachyon_dashboard-page__outbound-grid__item",
+      isAutoGroup ? "tachyon_dashboard-page__outbound-grid__item--auto-group" : "",
       outbound.selected ? "tachyon_dashboard-page__outbound-grid__item--active" : "",
       canChooseOutbound ? "tachyon_dashboard-page__outbound-grid__item--selectable" : "",
       section.withTagSelect && !canChooseOutbound ? "tachyon_dashboard-page__outbound-grid__item--disabled" : "",
@@ -3369,7 +4341,16 @@ function renderDefaultState({
                     click: (event) => openPrefixColorPickerModal(outbound.prefix, event)
                   },
                   renderFlagEmojis(outbound.prefix)
-                ) : ""
+                ) : "",
+                ...outbound.selected ? [
+                  E(
+                    "span",
+                    {
+                      class: "tachyon_dashboard-page__outbound-grid__item__selected-badge"
+                    },
+                    typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") ? "✓ Активен" : typeof _ === "function" ? _("✓ Active") : "✓ Active"
+                  )
+                ] : []
               ]
             ),
             ...canCopyLink ? [
@@ -3478,15 +4459,51 @@ function renderDefaultState({
     onUpdateSubscription
   );
   function renderGridChildren() {
-    const outbounds = section.outbounds || [];
+    const frozenOrder = gridFrozenOutboundOrders.get(section.code);
+    let effectiveOutbounds = section.outbounds || [];
+    if (section.dashboardSettings?.hoverFreeze !== false && gridHoveredSections.has(section.code) && frozenOrder && frozenOrder.length > 0) {
+      const orderMap = new Map(frozenOrder.map((c, i) => [c, i]));
+      effectiveOutbounds = [...effectiveOutbounds].sort((a, b) => {
+        const idxA = orderMap.has(a.code) ? orderMap.get(a.code) : 999999;
+        const idxB = orderMap.has(b.code) ? orderMap.get(b.code) : 999999;
+        return idxA - idxB;
+      });
+    }
+    const outbounds = effectiveOutbounds;
     const metadataList = section.subscriptionMetadata || [];
     const subSourceCount = section.subscriptionSourceCount || 0;
+    const countryGrouping = section.dashboardSettings?.countryGrouping || "chips";
+    const chipsGrouping = section.dashboardSettings?.chipsGrouping || "regions";
     const topGroups = [];
+    const serverOutbounds = [];
+    for (const ob of outbounds) {
+      if (ob.urlTestInfo || ob.priorityInfo) {
+        topGroups.push(ob);
+      } else {
+        serverOutbounds.push(ob);
+      }
+    }
+    const activeOutbound = outbounds.find((o) => o.selected);
+    const activeCountryCode = activeOutbound ? detectOutboundCountry(activeOutbound).code : void 0;
+    const isOutboundMatchingFilters = (ob) => {
+      if (activeCountryFilter && detectOutboundCountry(ob).code !== activeCountryFilter) {
+        return false;
+      }
+      if (chipsGrouping === "regions" && !activeCountryFilter && activeRegionFilter && activeRegionFilter !== "all") {
+        const c = detectOutboundCountry(ob);
+        if (getCountryRegion(c.code) !== activeRegionFilter) {
+          return false;
+        }
+      }
+      return true;
+    };
+    const countryGroups = groupOutboundsByCountry(serverOutbounds);
+    const hasMultipleCountries = countryGroups.length >= 2;
+    const metadataNodes = metadataList.map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
     const subMap = /* @__PURE__ */ new Map();
     const manualOutbounds = [];
     for (const ob of outbounds) {
       if (ob.urlTestInfo || ob.priorityInfo) {
-        topGroups.push(ob);
       } else if (ob.sourceGroup && ob.sourceGroup.startsWith("sub:")) {
         const list = subMap.get(ob.sourceGroup) || [];
         list.push(ob);
@@ -3497,13 +4514,86 @@ function renderDefaultState({
     }
     const hasSubTaggedOutbounds = subMap.size > 0;
     const hasMultipleSources = subSourceCount > 1 || subMap.size > 1 || hasSubTaggedOutbounds && manualOutbounds.length > 0;
-    if (!hasSubTaggedOutbounds && !hasMultipleSources) {
-      const metadataNodes = metadataList.map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
+    const autoBlock = renderAutoGroupsBlock(topGroups, renderOutbound);
+    if (!hasMultipleSources) {
+      if (countryGrouping === "chips" && hasMultipleCountries) {
+        const chipsBar = renderCountryChips(
+          countryGroups,
+          serverOutbounds.length,
+          activeCountryFilter,
+          onFilterCountry,
+          section.sectionName,
+          {
+            chipsGrouping,
+            activeRegion: activeRegionFilter,
+            onFilterRegion,
+            activeCountryCode
+          }
+        );
+        const visibleServers = serverOutbounds.filter(
+          isOutboundMatchingFilters
+        );
+        return [
+          ...metadataNodes,
+          ...autoBlock ? [autoBlock] : [],
+          chipsBar,
+          ...visibleServers.map((ob) => renderOutbound(ob))
+        ];
+      }
+      if (countryGrouping === "accordion" && hasMultipleCountries) {
+        const nodes2 = [
+          ...metadataNodes,
+          ...autoBlock ? [autoBlock] : []
+        ];
+        for (const group of countryGroups) {
+          const collapseKey = `countrygrp:${section.code}:${group.countryCode}`;
+          const isCountryCollapsed = Boolean(
+            collapsedSourceGroups?.has(collapseKey)
+          );
+          nodes2.push(
+            renderCountryAccordionHeader(
+              group,
+              isCountryCollapsed,
+              () => onToggleSourceGroupCollapse?.(collapseKey)
+            )
+          );
+          if (!isCountryCollapsed) {
+            for (const m of group.outbounds) {
+              nodes2.push(renderOutbound(m));
+            }
+          }
+        }
+        return nodes2;
+      }
+      if (autoBlock) {
+        return [
+          ...metadataNodes,
+          autoBlock,
+          ...serverOutbounds.map((ob) => renderOutbound(ob))
+        ];
+      }
       return [...metadataNodes, ...outbounds.map((ob) => renderOutbound(ob))];
     }
-    const nodes = [];
-    for (const ob of topGroups) {
-      nodes.push(renderOutbound(ob));
+    const nodes = [
+      ...metadataNodes,
+      ...autoBlock ? [autoBlock] : []
+    ];
+    if (countryGrouping === "chips" && hasMultipleCountries) {
+      nodes.push(
+        renderCountryChips(
+          countryGroups,
+          serverOutbounds.length,
+          activeCountryFilter,
+          onFilterCountry,
+          section.sectionName,
+          {
+            chipsGrouping,
+            activeRegion: activeRegionFilter,
+            onFilterRegion,
+            activeCountryCode
+          }
+        )
+      );
     }
     const metadataBySubKey = /* @__PURE__ */ new Map();
     metadataList.forEach((meta, idx) => {
@@ -3543,7 +4633,8 @@ function renderDefaultState({
         nodes.push(metaHeader);
       }
       if (!isGroupCollapsed) {
-        for (const m of members) {
+        const visibleMembers = countryGrouping === "chips" ? members.filter(isOutboundMatchingFilters) : members;
+        for (const m of visibleMembers) {
           nodes.push(renderOutbound(m));
         }
       }
@@ -3612,12 +4703,14 @@ function renderDefaultState({
           )
         );
         if (!isGroupCollapsed) {
-          for (const m of manualOutbounds) {
+          const visibleManual = countryGrouping === "chips" ? manualOutbounds.filter(isOutboundMatchingFilters) : manualOutbounds;
+          for (const m of visibleManual) {
             nodes.push(renderOutbound(m));
           }
         }
       } else {
-        for (const m of manualOutbounds) {
+        const visibleManual = countryGrouping === "chips" ? manualOutbounds.filter(isOutboundMatchingFilters) : manualOutbounds;
+        for (const m of visibleManual) {
           nodes.push(renderOutbound(m));
         }
       }
@@ -3804,7 +4897,24 @@ function renderDefaultState({
       ),
       !isCollapsed ? E(
         "div",
-        { class: "tachyon_dashboard-page__outbound-grid" },
+        {
+          class: "tachyon_dashboard-page__outbound-grid",
+          mouseenter: section.dashboardSettings?.hoverFreeze !== false ? () => {
+            gridHoveredSections.add(section.code);
+            gridFrozenOutboundOrders.set(
+              section.code,
+              (section.outbounds || []).map((o) => o.code)
+            );
+          } : void 0,
+          mouseleave: section.dashboardSettings?.hoverFreeze !== false ? () => {
+            gridHoveredSections.delete(section.code);
+            setTimeout(() => {
+              if (!gridHoveredSections.has(section.code)) {
+                gridFrozenOutboundOrders.delete(section.code);
+              }
+            }, 800);
+          } : void 0
+        },
         renderGridChildren()
       ) : ""
     ]
@@ -3876,7 +4986,7 @@ function renderDefaultState2({ title, items }) {
           {
             class: "tachyon_dashboard-page__widgets-section__item__row__key"
           },
-          `${item.key}: `
+          typeof item.key === "string" ? item.key ? `${item.key}: ` : "" : item.key || ""
         ),
         E(
           "span",
@@ -3899,6 +5009,97 @@ function renderWidget(props) {
   }
   return renderDefaultState2(props);
 }
+function renderDualWidget(props) {
+  if (props.loading) {
+    return renderLoadingState2();
+  }
+  if (props.failed) {
+    return renderFailedState2();
+  }
+  const headerChildren = [
+    typeof props.title === "string" ? E("span", { class: "tachyon-dual-card__title-text" }, props.title) : props.title
+  ];
+  if (props.badge) {
+    headerChildren.push(
+      typeof props.badge === "string" ? E("span", { class: "tachyon-dual-card__badge" }, props.badge) : props.badge
+    );
+  }
+  return E(
+    "div",
+    {
+      class: `tachyon_dashboard-page__widgets-section__item tachyon-dual-card ${props.attributes?.class || ""}`
+    },
+    [
+      E("div", { class: "tachyon-dual-card__header" }, headerChildren),
+      E(
+        "div",
+        { class: "tachyon-dual-card__body" },
+        props.columns.map(
+          (col) => E("div", { class: "tachyon-dual-card__col" }, [
+            col.title ? E(
+              "div",
+              { class: "tachyon-dual-card__column-title" },
+              col.title
+            ) : "",
+            ...col.items.map((item) => {
+              const rowAttrs = {
+                class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
+              };
+              if (item?.attributes?.title) {
+                rowAttrs.title = item.attributes.title;
+              }
+              return E("div", rowAttrs, [
+                E(
+                  "span",
+                  {
+                    class: "tachyon_dashboard-page__widgets-section__item__row__key"
+                  },
+                  typeof item.key === "string" ? item.key ? `${item.key}: ` : "" : item.key || ""
+                ),
+                E(
+                  "span",
+                  {
+                    class: "tachyon_dashboard-page__widgets-section__item__row__value",
+                    ...item?.attributes?.title ? { title: item.attributes.title } : {}
+                  },
+                  item.value
+                )
+              ]);
+            })
+          ])
+        )
+      )
+    ]
+  );
+}
+
+// src/tachyon/helpers/i18n.ts
+function isRussianLanguage() {
+  if (typeof document !== "undefined") {
+    const docLang = (document.documentElement?.lang || document.querySelector("html")?.getAttribute("lang") || "").toLowerCase();
+    if (docLang.startsWith("ru")) return true;
+    if (docLang.startsWith("en")) return false;
+  }
+  const globalObj = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+  const globalL = globalObj.L;
+  if (typeof globalL?.env?.lang === "string") {
+    const envLang = globalL.env.lang.trim().toLowerCase();
+    if (envLang.startsWith("ru")) return true;
+    if (envLang.startsWith("en")) return false;
+  }
+  try {
+    if (typeof _ === "function") {
+      if (_("Status") === "Статус" || _("Settings") === "Настройки" || _("Overview") === "Обзор" || _("Save") === "Сохранить") {
+        return true;
+      }
+    }
+  } catch {
+  }
+  return false;
+}
+function tr(ru, en) {
+  return isRussianLanguage() ? ru : en;
+}
 
 // src/tachyon/tabs/dashboard/partials/renderConnections.ts
 function renderConnections(connections, isCollapsed, onToggleCollapse, topDomains) {
@@ -3906,7 +5107,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
     E(
       "div",
       { class: "tachyon_dashboard-page__top-domains-header" },
-      _("Top active domains in bypass:")
+      tr("Популярные домены в обходе:", "Top active domains in bypass:")
     ),
     E(
       "div",
@@ -3922,7 +5123,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
           E(
             "span",
             { class: "tachyon_dashboard-page__top-domain-chip__badge" },
-            `${item.count} ${_("conns")}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ""}`
+            `${item.count} ${tr("соед.", "conns")}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ""}`
           )
         ])
       )
@@ -3960,7 +5161,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
                 },
                 [svgEl("polyline", { points: "6 9 12 15 18 9" })]
               ),
-              _("Active Clients")
+              tr("Активные клиенты", "Active Clients")
             ]
           )
         ]
@@ -3971,7 +5172,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
           class: "tachyon_dashboard-page__outbound-section centered",
           style: "height: 60px;"
         },
-        _("No active clients")
+        tr("Нет активных клиентов", "No active clients")
       )
     ]);
   }
@@ -3988,7 +5189,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
           E(
             "span",
             { style: "opacity: 0.7; font-size: 13px; margin-left: 8px;" },
-            `(${c.count} conns)`
+            `(${c.count} ${tr("соед.", "conns")})`
           )
         ]),
         E(
@@ -4030,7 +5231,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse, topDomain
               },
               [svgEl("polyline", { points: "6 9 12 15 18 9" })]
             ),
-            _("Active Clients")
+            tr("Активные клиенты", "Active Clients")
           ]
         )
       ]
@@ -4069,44 +5270,27 @@ function render() {
         E("div", { class: "tachyon_dashboard-page__widgets-section" }, [
           E(
             "div",
-            { id: "dashboard-widget-traffic" },
+            {
+              id: "dashboard-widgets-sections-list",
+              style: "display: contents;"
+            },
+            [
+              renderWidget({
+                loading: true,
+                failed: false,
+                title: "",
+                items: []
+              })
+            ]
+          ),
+          E("div", { id: "dashboard-widget-system-services" }, [
             renderWidget({
               loading: true,
               failed: false,
               title: "",
               items: []
             })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-traffic-total" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-system-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-service-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
+          ]),
           E(
             "div",
             { id: "dashboard-widget-tailscale", style: "display:none" },
@@ -4530,7 +5714,9 @@ var TRANSIENT_RPC_ERROR_PATTERNS = [
   "доступ запрещён",
   "доступ запрещен",
   "permission denied",
-  "unauthorized"
+  "unauthorized",
+  "object not found",
+  "-32000"
 ];
 function isTransientRpcError(message) {
   if (!message) {
@@ -4563,7 +5749,7 @@ var GET_UI_STATE_RPC_TIMEOUT_MS = 3e3;
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-function translate(message) {
+function translate2(message) {
   return typeof _ === "function" ? _(message) : message;
 }
 function parseJsonObjectOutput(output) {
@@ -5238,7 +6424,7 @@ var TachyonShellMethods = {
         success: true,
         component,
         action,
-        message: translate("Tachyon has been installed"),
+        message: translate2("Tachyon has been installed"),
         current_version: installedVersion,
         latest_version: expectedLatestVersion,
         changed: true,
@@ -6317,7 +7503,14 @@ function sortOutboundsForDashboard(outbounds, options = {}) {
   const pinnedRank = new Map(
     pinnedCodes.map((code, index) => [code, index])
   );
-  const sortByLatency = options.sortByLatency === true;
+  const sortMode = options.sortMode || (options.sortByLatency === true ? "latency" : "default");
+  const countryInfoMap = /* @__PURE__ */ new Map();
+  if (sortMode === "country_latency" || sortMode === "country_alpha") {
+    for (const ob of outbounds) {
+      const info = detectOutboundCountry(ob);
+      countryInfoMap.set(ob.code, { code: info.code, name: info.name });
+    }
+  }
   return outbounds.map((outbound, index) => ({ outbound, index })).sort((left, right) => {
     const leftPinned = pinnedRank.has(left.outbound.code);
     const rightPinned = pinnedRank.has(right.outbound.code);
@@ -6330,7 +7523,46 @@ function sortOutboundsForDashboard(outbounds, options = {}) {
         return rankDiff;
       }
     }
-    if (sortByLatency) {
+    if (sortMode === "country_latency") {
+      const leftCountry = countryInfoMap.get(left.outbound.code);
+      const rightCountry = countryInfoMap.get(right.outbound.code);
+      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER")
+        return 1;
+      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER")
+        return -1;
+      const countryDiff = leftCountry.name.localeCompare(
+        rightCountry.name,
+        "ru"
+      );
+      if (countryDiff !== 0) {
+        return countryDiff;
+      }
+      const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
+      if (latencyDiff !== 0) {
+        return latencyDiff;
+      }
+    } else if (sortMode === "country_alpha") {
+      const leftCountry = countryInfoMap.get(left.outbound.code);
+      const rightCountry = countryInfoMap.get(right.outbound.code);
+      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER")
+        return 1;
+      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER")
+        return -1;
+      const countryDiff = leftCountry.name.localeCompare(
+        rightCountry.name,
+        "ru"
+      );
+      if (countryDiff !== 0) {
+        return countryDiff;
+      }
+      const nameDiff = (left.outbound.displayName || left.outbound.code).localeCompare(
+        right.outbound.displayName || right.outbound.code,
+        "ru"
+      );
+      if (nameDiff !== 0) {
+        return nameDiff;
+      }
+    } else if (sortMode === "latency") {
       const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
       if (latencyDiff !== 0) {
         return latencyDiff;
@@ -6842,7 +8074,7 @@ function buildPriorityInfo({
     outbounds
   };
 }
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map(), hiddenOutboundTags = {}, memberSections = []) {
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map(), hiddenOutboundTags = {}, memberSections = [], sortMode) {
   const sectionName = section[".name"];
   const configuredPrefixes = uniqueCodes([
     ...getConfiguredSubscriptionPrefixes(section),
@@ -7042,7 +8274,8 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
       ...urlTestEntries.filter(({ config }) => config.pinDashboard).map(({ config }) => config.code),
       ...priorityEntries.filter(({ config }) => config.pinDashboard).map(({ config }) => config.code)
     ],
-    sortByLatency: shouldSortByLatency(section)
+    sortMode,
+    sortByLatency: sortMode === "latency" || shouldSortByLatency(section)
   });
   const latencyTestCodes = sortedOutbounds.filter(
     (outbound) => outbound.runtimeAvailable !== false && !isSelectorOutbound(outbound) && !outbound.priorityInfo
@@ -7279,6 +8512,11 @@ async function getDashboardSections(options = {}) {
     return serviceStatusCache.get(serviceType);
   };
   const sectionErrors = await sectionErrorsPromise;
+  const settingsSection = getSettingsSection(configSections);
+  const globalCountryGrouping = settingsSection?.dashboard_country_grouping || "chips";
+  const globalChipsGrouping = settingsSection?.dashboard_chips_grouping || "regions";
+  const globalSortMode = settingsSection?.dashboard_sort_mode || "latency";
+  const globalHoverFreeze = settingsSection?.dashboard_hover_freeze !== "0";
   const data = await Promise.all(
     configSections.filter(
       (section) => section.enabled !== "0" && (isConnectionAction(section.action) || isServiceAction(section.action))
@@ -7287,6 +8525,10 @@ async function getDashboardSections(options = {}) {
       const sectionName = section[".name"];
       const sectionAction = section.action;
       const proxyConfigType = getSectionProxyConfigType(section);
+      const sectionSortByLatency = shouldSortByLatency(section);
+      const effectiveSortMode = !sectionSortByLatency && !section.dashboard_sort_mode ? "default" : section.dashboard_sort_mode || globalSortMode || "latency";
+      const effectiveCountryGrouping = section.dashboard_country_grouping || globalCountryGrouping;
+      const effectiveChipsGrouping = section.dashboard_chips_grouping || globalChipsGrouping;
       if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
         const subscriptionEnabled = subscriptionSourceCount > 0;
@@ -7361,7 +8603,8 @@ async function getDashboardSections(options = {}) {
           priorityGroups,
           cachedProxyLinks,
           hiddenOutboundTags,
-          memberSections
+          memberSections,
+          effectiveSortMode
         );
         const hideNa = shouldHideNaServers(section);
         const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
@@ -7377,6 +8620,12 @@ async function getDashboardSections(options = {}) {
           proxyConfigType,
           subscriptionSourceCount,
           subscriptionMetadata,
+          dashboardSettings: {
+            countryGrouping: effectiveCountryGrouping,
+            chipsGrouping: effectiveChipsGrouping,
+            sortMode: effectiveSortMode,
+            hoverFreeze: globalHoverFreeze
+          },
           outbounds: filteredOutbounds
         };
       }
@@ -9837,15 +11086,10 @@ function isServiceGroup(group) {
   }
   return false;
 }
-function getActiveRoute(groups) {
-  if (!groups || groups.length === 0) return null;
-  const proxyGroups = groups.filter(
-    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0
-  );
-  const candidateGroups = proxyGroups.length > 0 ? proxyGroups : [];
-  if (candidateGroups.length === 0) return null;
-  const group = candidateGroups.find((g) => g.sectionName.toLowerCase() === "main") || candidateGroups.find((g) => g.withTagSelect) || candidateGroups[0];
+function getGroupActiveRoute(group) {
   if (!group || !group.outbounds || group.outbounds.length === 0) return null;
+  const sectionName = group.sectionName || "";
+  const sectionDisplayName = group.displayName || group.sectionName || "Main";
   const selected = group.outbounds.find((o) => o.selected) || group.outbounds[0];
   if (!selected) return null;
   if (selected.priorityInfo) {
@@ -9854,6 +11098,8 @@ function getActiveRoute(groups) {
       (m) => m.selected || m.displayName === selName || m.code === selected.priorityInfo?.selectedCode
     ) || group.outbounds.find((o) => o.displayName === selName);
     return {
+      sectionName,
+      sectionDisplayName,
       name: selName || member?.displayName || selected.displayName,
       selector: `${selected.displayName} (Priority)`,
       latency: member?.latency ?? -1,
@@ -9866,6 +11112,8 @@ function getActiveRoute(groups) {
       (m) => m.selected || m.displayName === selName || m.code === selected.urlTestInfo?.selectedCode
     ) || group.outbounds.find((o) => o.displayName === selName);
     return {
+      sectionName,
+      sectionDisplayName,
       name: selName || member?.displayName || selected.displayName,
       selector: `${selected.displayName} (URLTest)`,
       latency: member?.latency ?? -1,
@@ -9873,11 +11121,20 @@ function getActiveRoute(groups) {
     };
   }
   return {
+    sectionName,
+    sectionDisplayName,
     name: selected.displayName,
-    selector: _("Manual selection"),
+    selector: tr("Ручной выбор", "Manual selection"),
     latency: selected.latency ?? -1,
     type: selected.type || "Proxy"
   };
+}
+function getAllActiveRoutes(groups) {
+  if (!groups || groups.length === 0) return [];
+  const proxyGroups = groups.filter(
+    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0
+  );
+  return proxyGroups.map((g) => getGroupActiveRoute(g)).filter((r) => r !== null);
 }
 
 // src/tachyon/tabs/dashboard/metrics.ts
@@ -10046,6 +11303,8 @@ function unsubscribeClashSockets() {
   clashSocketSubscriptions = [];
 }
 var customProxyLatencies = /* @__PURE__ */ new Map();
+var activeCountryFilters = /* @__PURE__ */ new Map();
+var activeRegionFilters = /* @__PURE__ */ new Map();
 var singleTestingOutboundCodes = {};
 var isTestingAllSections = false;
 var dashboardVisibilityPaused = false;
@@ -11558,6 +12817,21 @@ async function renderSectionsWidget() {
       onToggleCollapse: () => toggleSectionExpanded(section.code),
       collapsedSourceGroups: expandedSections,
       onToggleSourceGroupCollapse: (groupKey) => toggleSectionExpanded(groupKey),
+      activeCountryFilter: activeCountryFilters.get(section.sectionName),
+      onFilterCountry: (sectionName, countryCode) => {
+        if (countryCode) {
+          activeCountryFilters.set(sectionName, countryCode);
+        } else {
+          activeCountryFilters.delete(sectionName);
+        }
+        void renderSectionsWidget();
+      },
+      activeRegionFilter: activeRegionFilters.get(section.sectionName) || "all",
+      onFilterRegion: (sectionName, region) => {
+        activeRegionFilters.set(sectionName, region);
+        activeCountryFilters.delete(sectionName);
+        void renderSectionsWidget();
+      },
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName]
       ),
@@ -11723,33 +12997,39 @@ function renderConnectionsWidget() {
     )
   );
 }
-async function renderBandwidthWidget() {
-  const total = store.get().trafficTotalWidget.data;
-  renderStoreWidget(
-    "dashboard-widget-traffic",
-    "bandwidthWidget",
-    _("Traffic & Speed"),
-    (data) => [
-      {
-        key: _("Downlink"),
-        value: `↓ ${prettyBytes(data.down)}/s`,
-        attributes: { class: "tachyon-stat--down" }
-      },
-      {
-        key: _("Uplink"),
-        value: `↑ ${prettyBytes(data.up)}/s`,
-        attributes: { class: "tachyon-stat--up" }
-      },
-      {
-        key: _("Session total"),
-        value: `▼ ${prettyBytes(total.downloadTotal || 0)} • ▲ ${prettyBytes(total.uploadTotal || 0)}`,
-        attributes: { class: "tachyon-stat--session" }
-      }
-    ],
-    "renderBandwidthWidget"
-  );
+function getSectionConnectionStats(sectionName, totalProxySections, rawConns, totals) {
+  if (totalProxySections <= 1) {
+    return {
+      conns: rawConns.length,
+      upload: totals.uploadTotal || 0,
+      download: totals.downloadTotal || 0,
+      downSpeed: totals.downSpeed || 0,
+      upSpeed: totals.upSpeed || 0
+    };
+  }
+  const target = (sectionName || "").toLowerCase();
+  let conns = 0;
+  let upload = 0;
+  let download = 0;
+  for (const c of rawConns) {
+    const chains = Array.isArray(c.chains) ? c.chains.map((ch) => String(ch).toLowerCase()) : [];
+    if (chains.some((ch) => ch === target || ch.includes(target))) {
+      conns++;
+      upload += Number(c.upload) || 0;
+      download += Number(c.download) || 0;
+    }
+  }
+  return {
+    conns,
+    upload,
+    download,
+    downSpeed: target === "main" ? totals.downSpeed || 0 : 0,
+    upSpeed: target === "main" ? totals.upSpeed || 0 : 0
+  };
 }
-async function renderTrafficTotalWidget() {
+async function renderSectionDashboardWidgets() {
+  const container = document.getElementById("dashboard-widgets-sections-list");
+  if (!container) return;
   const sectionsWidget = store.get().sectionsWidget;
   const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
     ...section,
@@ -11775,88 +13055,277 @@ async function renderTrafficTotalWidget() {
       };
     })
   }));
-  const activeRoute = getActiveRoute(sectionsWithCustomLatencies);
+  const activeRoutes = getAllActiveRoutes(sectionsWithCustomLatencies);
   const isCheckingLatency = Object.keys(sectionsWidget.latencyFetchingSections || {}).length > 0 || Object.keys(singleTestingOutboundCodes).length > 0;
-  renderStoreWidget(
-    "dashboard-widget-traffic-total",
-    "trafficTotalWidget",
-    _("Active Route"),
-    () => {
-      if (!activeRoute) {
-        return [
-          { key: _("Server"), value: _("Standby / Direct") },
-          { key: _("Selector"), value: "—" }
-        ];
+  const bandwidth = store.get().bandwidthWidget.data;
+  const total = store.get().trafficTotalWidget.data;
+  const loading2 = sectionsWidget.loading;
+  const failed2 = sectionsWidget.failed;
+  const routesToRender = activeRoutes.length > 0 ? activeRoutes : [
+    {
+      sectionName: "main",
+      sectionDisplayName: "Main",
+      name: tr("Ожидание / Напрямую", "Standby / Direct"),
+      selector: "—",
+      latency: -1,
+      type: "Proxy"
+    }
+  ];
+  const totalProxySections = routesToRender.length;
+  const widgets = routesToRender.map((route) => {
+    const sectionName = route.sectionName || "main";
+    const sectionDisplayName = route.sectionDisplayName || sectionName;
+    const stats = getSectionConnectionStats(
+      sectionName,
+      totalProxySections,
+      lastRawConnections,
+      {
+        downloadTotal: total.downloadTotal,
+        uploadTotal: total.uploadTotal,
+        downSpeed: bandwidth.down,
+        upSpeed: bandwidth.up
       }
-      const items = [
-        {
-          key: _("Server"),
-          value: activeRoute.name,
-          attributes: { class: "tachyon-stat--bold" }
-        },
-        {
-          key: _("Selector"),
-          value: activeRoute.selector
-        },
-        {
-          key: _("Latency"),
-          value: activeRoute.latency > 0 ? `${activeRoute.latency}ms` : isCheckingLatency ? _("Checking...") : "—",
-          attributes: {
-            class: activeRoute.latency > 0 ? "tachyon-stat--down" : ""
-          }
+    );
+    const routeItems = [
+      {
+        key: tr("Сервер", "Server"),
+        value: route.name,
+        attributes: { class: "tachyon-stat--bold" }
+      },
+      {
+        key: tr("Селектор", "Selector"),
+        value: route.selector
+      },
+      {
+        key: tr("Задержка", "Latency"),
+        value: route.latency > 0 ? `${route.latency}ms` : isCheckingLatency ? tr("Проверка...", "Checking...") : "—",
+        attributes: {
+          class: route.latency > 0 ? "tachyon-stat--down" : ""
         }
-      ];
-      if (activeRoute.type) {
-        items.push({
-          key: _("Protocol"),
-          value: activeRoute.type
-        });
+      },
+      {
+        key: tr("Протокол", "Protocol"),
+        value: route.type
       }
-      return items;
-    },
-    "renderTrafficTotalWidget"
+    ];
+    const trafficItems = [
+      {
+        key: tr("Входящий", "Downlink"),
+        value: `↓ ${prettyBytes(stats.downSpeed)}/s`,
+        attributes: { class: "tachyon-stat--down" }
+      },
+      {
+        key: tr("Исходящий", "Uplink"),
+        value: `↑ ${prettyBytes(stats.upSpeed)}/s`,
+        attributes: { class: "tachyon-stat--up" }
+      },
+      {
+        key: totalProxySections <= 1 ? tr("За сессию", "Session total") : tr("Трафик секции", "Section traffic"),
+        value: `▼ ${prettyBytes(stats.download || 0)} • ▲ ${prettyBytes(stats.upload || 0)}`,
+        attributes: { class: "tachyon-stat--session" }
+      },
+      {
+        key: tr("Соединения", "Connections"),
+        value: `${stats.conns} ${tr("соед.", "conns")}`
+      }
+    ];
+    return renderDualWidget({
+      loading: loading2,
+      failed: failed2,
+      title: `${tr("Секция", "Section")}: ${sectionDisplayName}`,
+      badge: tr("Активна", "Active"),
+      columns: [
+        {
+          title: tr("Активный маршрут", "Active Route"),
+          items: routeItems
+        },
+        {
+          title: tr("Трафик и скорость", "Traffic & Speed"),
+          items: trafficItems
+        }
+      ]
+    });
+  });
+  container.replaceChildren(...widgets);
+}
+async function renderSystemServicesWidget() {
+  const container = document.getElementById("dashboard-widget-system-services");
+  if (!container) return;
+  const sysState = store.get().systemInfoWidget;
+  const srvState = store.get().servicesInfoWidget;
+  const sections = store.get().sectionsWidget.data || [];
+  const proxySections = sections.filter(
+    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0
   );
+  const activeSectionsCount = proxySections.length;
+  const loading2 = sysState.loading && srvState.loading;
+  const failed2 = sysState.failed && srvState.failed;
+  const routingItems = [
+    { key: tr("Режим работы", "Mode"), value: "TProxy + Fake-IP" },
+    {
+      key: tr("Всего соединений", "Active Connections"),
+      value: `${sysState.data?.connections || 0} ${tr("соед.", "conns")}`
+    },
+    {
+      key: tr("Секции правил", "Routing Sections"),
+      value: `${activeSectionsCount} ${tr("активных", "active")}`,
+      attributes: { class: "tachyon-stat--bold" }
+    },
+    {
+      key: tr("Активные клиенты", "Active Clients"),
+      value: `${currentConnections.length} ${tr("устройств", "devices")}`
+    }
+  ];
+  const srvData = srvState.data;
+  const srvItems = [];
+  if (srvData) {
+    const tachyonUptime = formatLocalizedUptime(
+      srvData.tachyonUptimePretty,
+      srvData.tachyonUptimeSeconds
+    );
+    const tachyonTooltip = formatServiceTooltip({
+      pid: srvData.tachyonPid,
+      uptimePretty: tachyonUptime
+    });
+    const singboxUptime = formatLocalizedUptime(
+      srvData.singboxUptimePretty,
+      srvData.singboxUptimeSeconds
+    );
+    const singboxTooltip = formatServiceTooltip({
+      pid: srvData.singboxPid,
+      uptimePretty: singboxUptime
+    });
+    srvItems.push(
+      renderServiceRowItem("Tachyon", {
+        running: srvData.tachyonRunning,
+        memoryMb: srvData.tachyonMemoryMb,
+        uptimePretty: tachyonUptime,
+        tooltip: tachyonTooltip
+      }),
+      renderServiceRowItem(
+        (() => {
+          if (srvData.engineVariant) {
+            return srvData.engineVariant;
+          }
+          if (store.get().activeEngine === "steer" || store.get().activeEngine === "steer-extended") {
+            return "Steer";
+          }
+          const systemInfo = store.get().diagnosticsSystemInfo;
+          if (systemInfo?.sing_box_tachyon_core) {
+            return "Tachyon Core";
+          }
+          if (systemInfo?.sing_box_lx) {
+            return "Sing-box LX";
+          }
+          if (systemInfo?.sing_box_extended) {
+            return "Sing-box Ext";
+          }
+          return "Sing-box";
+        })(),
+        {
+          running: srvData.singbox,
+          memoryMb: srvData.singboxMemoryMb,
+          uptimePretty: singboxUptime,
+          tooltip: singboxTooltip
+        }
+      )
+    );
+    if (srvData.dnsmasqRunning != null) {
+      const dnsmasqUptime = formatLocalizedUptime(
+        srvData.dnsmasqUptimePretty,
+        srvData.dnsmasqUptimeSeconds
+      );
+      const dnsmasqTooltip = formatServiceTooltip({
+        pid: srvData.dnsmasqPid,
+        uptimePretty: dnsmasqUptime
+      });
+      srvItems.push(
+        renderServiceRowItem("Dnsmasq (DNS)", {
+          running: srvData.dnsmasqRunning,
+          memoryMb: srvData.dnsmasqMemoryMb,
+          uptimePretty: dnsmasqUptime,
+          tooltip: dnsmasqTooltip
+        })
+      );
+    }
+    if (srvData.zapret2Running) {
+      const zapret2Uptime = formatLocalizedUptime(
+        srvData.zapret2UptimePretty,
+        srvData.zapret2UptimeSeconds
+      );
+      const zapret2Tooltip = formatServiceTooltip({
+        pid: srvData.zapret2Pid,
+        uptimePretty: zapret2Uptime
+      });
+      srvItems.push(
+        renderServiceRowItem("Zapret2", {
+          running: srvData.zapret2Running,
+          memoryMb: srvData.zapret2MemoryMb,
+          uptimePretty: zapret2Uptime,
+          tooltip: zapret2Tooltip
+        })
+      );
+    }
+  }
+  const widget = renderDualWidget({
+    loading: loading2,
+    failed: failed2,
+    title: tr("Система и сервисы", "System & Services"),
+    badge: "TProxy + Fake-IP",
+    columns: [
+      {
+        title: tr("Маршрутизация и правила", "Routing & Rules"),
+        items: routingItems
+      },
+      {
+        title: tr("Службы роутера", "Router Services"),
+        items: srvItems
+      }
+    ]
+  });
+  container.replaceChildren(widget);
+}
+async function renderBandwidthWidget() {
+  void renderSectionDashboardWidgets();
+}
+async function renderTrafficTotalWidget() {
+  void renderSectionDashboardWidgets();
 }
 async function renderSystemInfoWidget() {
-  renderStoreWidget(
-    "dashboard-widget-system-info",
-    "systemInfoWidget",
-    _("Routing & Rules"),
-    (data) => [
-      { key: _("Mode"), value: "TProxy + Fake-IP" },
-      {
-        key: _("Active Connections"),
-        value: `${data.connections || 0} ${_("conns")}`
-      },
-      { key: _("Core Memory"), value: String(prettyBytes(data.memory || 0)) },
-      {
-        key: _("Active Clients"),
-        value: `${currentConnections.length} ${_("devices")}`
-      }
-    ],
-    "renderSystemInfoWidget"
-  );
+  void renderSystemServicesWidget();
 }
-function formatServiceRowValue(options) {
-  if (!options.running) {
-    const versionPart = options.version ? ` [v${options.version.replace(/^v/, "")}]` : "";
-    return `✗${versionPart}`;
+async function renderServicesInfoWidget() {
+  void renderSystemServicesWidget();
+}
+function formatLocalizedUptime(uptimePretty, uptimeSeconds) {
+  if (uptimeSeconds != null && uptimeSeconds >= 0) {
+    if (isRussianLanguage()) {
+      if (uptimeSeconds < 60) return `${uptimeSeconds}с`;
+      const min = Math.floor(uptimeSeconds / 60);
+      if (min < 60) return `${min}м`;
+      const hours = Math.floor(min / 60);
+      const remMin = min % 60;
+      if (hours < 24) return `${hours}ч ${remMin}м`;
+      const days = Math.floor(hours / 24);
+      const remHours = hours % 24;
+      return `${days}д ${remHours}ч`;
+    } else {
+      if (uptimeSeconds < 60) return `${uptimeSeconds}s`;
+      const min = Math.floor(uptimeSeconds / 60);
+      if (min < 60) return `${min}m`;
+      const hours = Math.floor(min / 60);
+      const remMin = min % 60;
+      if (hours < 24) return `${hours}h ${remMin}m`;
+      const days = Math.floor(hours / 24);
+      const remHours = hours % 24;
+      return `${days}d ${remHours}h`;
+    }
   }
-  const parts = ["✓"];
-  if (options.memoryMb) {
-    parts[0] += ` (${options.memoryMb} MB)`;
+  if (!uptimePretty) return void 0;
+  if (!isRussianLanguage()) {
+    return uptimePretty.replace(/(\d+)\s*д/g, "$1d ").replace(/(\d+)\s*ч/g, "$1h ").replace(/(\d+)\s*м/g, "$1m ").replace(/(\d+)\s*с/g, "$1s ").replace(/\s+/g, " ").trim();
   }
-  if (options.uptimePretty) {
-    parts.push(options.uptimePretty);
-  }
-  let res = parts.join(" • ");
-  if (options.version) {
-    res += ` [v${options.version.replace(/^v/, "")}]`;
-  }
-  if (options.extraSuffix) {
-    res += options.extraSuffix;
-  }
-  return res;
+  return uptimePretty;
 }
 function formatServiceTooltip(options) {
   const parts = [];
@@ -11864,108 +13333,114 @@ function formatServiceTooltip(options) {
     parts.push(`PID: ${options.pid}`);
   }
   if (options.uptimePretty) {
-    parts.push(`${_("Uptime")}: ${options.uptimePretty}`);
+    parts.push(`${tr("Время работы", "Uptime")}: ${options.uptimePretty}`);
   }
   return parts.length > 0 ? parts.join(" • ") : void 0;
 }
-async function renderServicesInfoWidget() {
-  renderStoreWidget(
-    "dashboard-widget-service-info",
-    "servicesInfoWidget",
-    _("Services info"),
-    (data) => {
-      const tachyonTooltip = formatServiceTooltip({
-        pid: data.tachyonPid,
-        uptimePretty: data.tachyonUptimePretty
-      });
-      const singboxTooltip = formatServiceTooltip({
-        pid: data.singboxPid,
-        uptimePretty: data.singboxUptimePretty
-      });
-      const items = [
-        {
-          key: "Tachyon",
-          value: formatServiceRowValue({
-            running: data.tachyonRunning,
-            memoryMb: data.tachyonMemoryMb,
-            uptimePretty: data.tachyonUptimePretty
-          }),
-          attributes: {
-            class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
-            ...tachyonTooltip ? { title: tachyonTooltip } : {}
-          }
-        },
-        {
-          key: (() => {
-            if (data.engineVariant) {
-              return data.engineVariant;
-            }
-            if (store.get().activeEngine === "steer" || store.get().activeEngine === "steer-extended") {
-              return "Steer";
-            }
-            const systemInfo = store.get().diagnosticsSystemInfo;
-            if (systemInfo.sing_box_tachyon_core) {
-              return "Tachyon Core";
-            }
-            if (systemInfo.sing_box_lx) {
-              return "Sing-box LX";
-            }
-            if (systemInfo.sing_box_extended) {
-              return "Sing-box Ext";
-            }
-            return "Sing-box";
-          })(),
-          value: formatServiceRowValue({
-            running: data.singbox,
-            memoryMb: data.singboxMemoryMb,
-            uptimePretty: data.singboxUptimePretty
-          }),
-          attributes: {
-            class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
-            ...singboxTooltip ? { title: singboxTooltip } : {}
-          }
-        }
-      ];
-      if (data.zapret2Running) {
-        const zapret2Tooltip = formatServiceTooltip({
-          pid: data.zapret2Pid,
-          uptimePretty: data.zapret2UptimePretty
-        });
-        items.push({
-          key: "Zapret2",
-          value: formatServiceRowValue({
-            running: data.zapret2Running,
-            memoryMb: data.zapret2MemoryMb,
-            uptimePretty: data.zapret2UptimePretty
-          }),
-          attributes: {
-            class: "tachyon_dashboard-page__widgets-section__item__row--success",
-            ...zapret2Tooltip ? { title: zapret2Tooltip } : {}
-          }
-        });
-      }
-      if (data.dnsmasqRunning != null) {
-        const dnsmasqTooltip = formatServiceTooltip({
-          pid: data.dnsmasqPid,
-          uptimePretty: data.dnsmasqUptimePretty
-        });
-        items.push({
-          key: "Dnsmasq (DNS)",
-          value: formatServiceRowValue({
-            running: data.dnsmasqRunning,
-            memoryMb: data.dnsmasqMemoryMb,
-            uptimePretty: data.dnsmasqUptimePretty
-          }),
-          attributes: {
-            class: data.dnsmasqRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
-            ...dnsmasqTooltip ? { title: dnsmasqTooltip } : {}
-          }
-        });
-      }
-      return items;
-    },
-    "renderServicesInfoWidget"
-  );
+function renderServiceRowItem(name, options) {
+  const isRunning = Boolean(options.running);
+  const keyEl = E("span", { class: "tachyon-service-key" }, [
+    E("span", {
+      class: `tachyon-service-dot ${isRunning ? "tachyon-service-dot--online" : "tachyon-service-dot--offline"}`
+    }),
+    E("span", { class: "tachyon-service-name" }, name)
+  ]);
+  const valueChildren = [];
+  if (isRunning) {
+    const hasMemory = options.memoryMb != null && options.memoryMb > 0;
+    const hasUptime = Boolean(options.uptimePretty);
+    if (hasMemory) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--ram" },
+          `${options.memoryMb} MB`
+        )
+      );
+    } else if (hasUptime) {
+      valueChildren.push(
+        E(
+          "span",
+          {
+            class: "tachyon-service-pill tachyon-service-pill--ram tachyon-service-pill--empty"
+          },
+          "—"
+        )
+      );
+    }
+    if (hasUptime) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--uptime" },
+          options.uptimePretty
+        )
+      );
+    } else if (hasMemory) {
+      valueChildren.push(
+        E(
+          "span",
+          {
+            class: "tachyon-service-pill tachyon-service-pill--uptime tachyon-service-pill--empty"
+          },
+          "—"
+        )
+      );
+    }
+    if (options.version) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--version" },
+          `v${options.version.replace(/^v/, "")}`
+        )
+      );
+    }
+    if (options.extraSuffix) {
+      valueChildren.push(
+        E(
+          "span",
+          { style: "font-size: 11px; opacity: 0.8;" },
+          options.extraSuffix
+        )
+      );
+    }
+    if (valueChildren.length === 0) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--active" },
+          tr("Работает", "Active")
+        )
+      );
+    }
+  } else {
+    valueChildren.push(
+      E(
+        "span",
+        { class: "tachyon-service-pill tachyon-service-pill--stopped" },
+        tr("Остановлен", "Stopped")
+      )
+    );
+    if (options.version) {
+      valueChildren.push(
+        E(
+          "span",
+          { class: "tachyon-service-pill tachyon-service-pill--version" },
+          `v${options.version.replace(/^v/, "")}`
+        )
+      );
+    }
+  }
+  const valueEl = E("span", { class: "tachyon-service-value" }, valueChildren);
+  return {
+    key: keyEl,
+    value: valueEl,
+    attributes: {
+      class: isRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
+      ...options.tooltip ? { title: options.tooltip } : {}
+    }
+  };
 }
 var latestTailscalePeersRequestId = 0;
 async function fetchTailscalePeers() {
@@ -11994,7 +13469,7 @@ async function fetchTailscalePeers() {
 function peerRow(name, online) {
   return {
     key: name,
-    value: online ? _("✔ Online") : _("✘ Offline"),
+    value: online ? tr("✔ В сети", "✔ Online") : tr("✘ Не в сети", "✘ Offline"),
     attributes: {
       class: online ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
     }
@@ -12013,20 +13488,23 @@ async function renderTailscaleWidget() {
   renderStoreWidget(
     "dashboard-widget-tailscale",
     "tailscaleWidget",
-    _("Tailscale"),
+    "Tailscale",
     (data) => {
       if (!data || !data.configured) return [];
       const items = [
         {
-          key: _("State"),
-          value: data.backend_state || "—",
+          key: tr("Состояние", "State"),
+          value: data.backend_state === "Running" ? tr("Работает", "Running") : data.backend_state || "—",
           attributes: {
             class: data.backend_state === "Running" ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
           }
         }
       ];
       if (data.self && data.self.ips.length) {
-        items.push({ key: _("This router"), value: data.self.ips[0] });
+        items.push({
+          key: tr("Этот роутер", "This router"),
+          value: data.self.ips[0]
+        });
       }
       for (const peer of data.peers.slice(0, 5)) {
         if (!peer.online && !peer.name) continue;
@@ -12036,7 +13514,7 @@ async function renderTailscaleWidget() {
       }
       if (data.peers.length > 5) {
         items.push({
-          key: _("Other peers"),
+          key: tr("Другие пиры", "Other peers"),
           value: `+${data.peers.length - 5}`
         });
       }
@@ -12264,8 +13742,96 @@ var styles = `
 .tachyon_dashboard-page__widgets-section {
     margin-top: 10px;
     display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
-    grid-gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+    grid-gap: 12px;
+}
+
+.tachyon-dual-card {
+    min-height: 140px;
+}
+
+.tachyon-dual-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.tachyon-dual-card__title-text {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color-high, inherit);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tachyon-dual-card__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    flex-shrink: 0;
+}
+
+.tachyon-dual-card__badge--neutral {
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    border: 1px solid rgba(120, 120, 120, 0.25);
+}
+
+.tachyon-dual-card__body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+    min-width: 0;
+}
+
+.tachyon-dual-card__col {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tachyon-dual-card__col:first-child {
+    padding-right: 12px;
+    border-right: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.tachyon-dual-card__column-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-color-medium, #94a3b8);
+    margin-bottom: 5px;
+    padding-bottom: 3px;
+    border-bottom: 1px dashed rgba(128, 128, 128, 0.2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 768px) {
+    .tachyon-dual-card__body {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .tachyon-dual-card__col:first-child {
+        padding-right: 0;
+        border-right: none;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+    }
 }
 
 .tachyon_dashboard-page__widgets-section__item {
@@ -12742,7 +14308,13 @@ var styles = `
 }
 
 .tachyon_dashboard-page__outbound-grid__item--active {
-    border-color: var(--success-color-medium, green);
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 1.5px #10b981, 0 3px 12px rgba(16, 185, 129, 0.25) !important;
+}
+
+.tachyon_dashboard-page__outbound-grid__item--active:hover {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 2px #10b981, 0 4px 14px rgba(16, 185, 129, 0.35) !important;
 }
 
 .tachyon_dashboard-page__outbound-grid__item--disabled {
@@ -12819,6 +14391,22 @@ var styles = `
     max-width: 100%;
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+
+.tachyon_dashboard-page__outbound-grid__item__selected-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #10b981;
+    color: #ffffff;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 4px rgba(16, 185, 129, 0.35);
+    white-space: nowrap;
 }
 
 .tachyon_proto-popover-trigger {
@@ -13133,8 +14721,9 @@ var styles = `
 }
 
 .tachyon_dashboard-page__flag-emoji,
+.tachyon_dashboard-page__country-chip__flag,
 .tachyon_dashboard-page__urltest-details__country-badge {
-    font-family: "Twemoji Country Flags";
+    font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
     font-style: normal;
     font-weight: normal;
 }
@@ -13261,6 +14850,337 @@ var styles = `
         width: 100%;
         justify-content: flex-end;
     }
+}
+
+.tachyon_dashboard-page__country-chips-container {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 0 6px 0;
+}
+
+.tachyon_dashboard-page__region-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.tachyon_dashboard-page__region-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.28));
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.06));
+    color: var(--text-color-medium, inherit);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__region-tab:hover {
+    background: var(--background-color-high, rgba(120, 120, 120, 0.16));
+    border-color: var(--border-color-high, rgba(120, 120, 120, 0.45));
+}
+
+.tachyon_dashboard-page__region-tab--active {
+    background: var(--primary-color-low, rgba(37, 99, 235, 0.16)) !important;
+    border-color: var(--primary-color, #2563eb) !important;
+    color: var(--primary-color, #2563eb) !important;
+    font-weight: 700;
+}
+
+.tachyon_dashboard-page__region-tab__name {
+    font-weight: 600;
+    font-size: 11px;
+}
+
+.tachyon_dashboard-page__country-chip-divider {
+    width: 2px;
+    height: 18px;
+    background: var(--border-color-high, rgba(120, 120, 120, 0.4));
+    margin: 0 3px;
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__country-chips {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    padding: 2px 0 2px 0;
+}
+
+.tachyon_dashboard-page__country-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    border-radius: 16px;
+    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.35));
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.08));
+    color: var(--text-color-high, inherit);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__country-chip:hover {
+    background: var(--background-color-high, rgba(120, 120, 120, 0.22));
+    border-color: var(--border-color-high, rgba(120, 120, 120, 0.6));
+}
+
+.tachyon_dashboard-page__country-chip--active {
+    background: var(--primary-color, #2563eb) !important;
+    color: #ffffff !important;
+    border-color: var(--primary-color, #2563eb) !important;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+}
+
+.tachyon_dashboard-page__country-chip--active:hover {
+    background: var(--primary-color-hover, #1d4ed8) !important;
+    border-color: var(--primary-color-hover, #1d4ed8) !important;
+}
+
+.tachyon_dashboard-page__country-chip__flag {
+    font-size: 16px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__country-chip__name {
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.tachyon_dashboard-page__country-chip__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.22);
+    color: var(--text-color-high, currentColor);
+    min-width: 16px;
+    text-align: center;
+}
+
+.tachyon_dashboard-page__country-chip--active .tachyon_dashboard-page__country-chip__count {
+    background: rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+}
+
+.tachyon_dashboard-page__country-chip__latency {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 10px;
+}
+
+.tachyon_dashboard-page__country-chip__latency--fast {
+    background: rgba(16, 185, 129, 0.18);
+    color: #10b981;
+}
+
+.tachyon_dashboard-page__country-chip__latency--medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.tachyon_dashboard-page__country-chip__latency--slow {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.tachyon_dashboard-page__country-chip--active .tachyon_dashboard-page__country-chip__latency {
+    background: rgba(255, 255, 255, 0.28) !important;
+    color: #ffffff !important;
+}
+
+.tachyon_dashboard-page__country-meta {
+    margin-top: 6px;
+    margin-bottom: 2px;
+}
+
+.tachyon_dashboard-page__auto-groups {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 10px 12px 12px 12px;
+    border-radius: 6px;
+    background: rgba(120, 120, 120, 0.05);
+    border: 1px dashed var(--border-color-medium, rgba(120, 120, 120, 0.25));
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__auto-groups__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-color-medium, rgba(160, 160, 160, 0.9));
+    margin-bottom: 10px;
+    padding-left: 2px;
+}
+
+.tachyon_dashboard-page__auto-groups__icon {
+    display: inline-flex;
+    align-items: center;
+    font-size: 13px;
+    color: #f59e0b;
+}
+
+.tachyon_dashboard-page__auto-groups__count {
+    font-size: 11px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgba(120, 120, 120, 0.18);
+    color: var(--text-color-high, inherit);
+    font-weight: 600;
+}
+
+.tachyon_dashboard-page__auto-groups-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
+    grid-gap: 10px;
+}
+
+.tachyon_dashboard-page__outbound-grid__item--auto-group {
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.08));
+    border-color: var(--border-color-medium, rgba(120, 120, 120, 0.35));
+}
+
+.tachyon_dashboard-page__outbound-grid__item--auto-group.tachyon_dashboard-page__outbound-grid__item--active {
+    border-color: #10b981 !important;
+    background: rgba(16, 185, 129, 0.08) !important;
+    box-shadow: 0 0 0 1.5px #10b981, 0 3px 12px rgba(16, 185, 129, 0.25) !important;
+}
+
+.tachyon-service-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.tachyon-service-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+.tachyon-service-dot--online {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+}
+
+.tachyon-service-dot--offline {
+    background: #ef4444;
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+}
+
+.tachyon-service-name {
+    color: var(--text-color-high, inherit);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tachyon-service-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    justify-content: flex-end;
+}
+
+.tachyon-service-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.tachyon-service-pill--ram {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    width: 58px;
+    min-width: 58px;
+}
+
+.tachyon-service-pill--uptime {
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    font-weight: 500;
+    width: 68px;
+    min-width: 68px;
+}
+
+.tachyon-service-pill--version {
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    font-weight: 500;
+    padding: 1px 7px;
+}
+
+.tachyon-service-pill--active {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    padding: 1px 8px;
+}
+
+.tachyon-service-pill--stopped {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    padding: 1px 9px;
+    width: auto;
+}
+
+.tachyon-service-pill--empty {
+    opacity: 0.35;
+    background: transparent !important;
+    border-color: transparent !important;
 }
 
 `;
@@ -15637,7 +17557,7 @@ function renderServiceCheckModal() {
       targets.forEach((item, index) => {
         const rowClass = index % 2 === 0 ? "cbi-rowstyle-1" : "cbi-rowstyle-2";
         const badge = renderStatusBadge("", false, true);
-        const tr = E("tr", { class: `tr ${rowClass}` }, [
+        const tr2 = E("tr", { class: `tr ${rowClass}` }, [
           E(
             "td",
             { class: "td", style: "word-break: break-all; padding: 8px;" },
@@ -15696,14 +17616,14 @@ function renderServiceCheckModal() {
             badge
           )
         ]);
-        rowMap.push({ target: item, tr });
-        tableBody.appendChild(tr);
+        rowMap.push({ target: item, tr: tr2 });
+        tableBody.appendChild(tr2);
       });
       const applyTableFilter = () => {
-        rowMap.forEach(({ target, tr }) => {
+        rowMap.forEach(({ target, tr: tr2 }) => {
           const matchesSection = activeFilter === "ALL" || target.section === activeFilter;
           const matchesSearch = !searchQuery2 || target.domain.toLowerCase().includes(searchQuery2) || target.section.toLowerCase().includes(searchQuery2) || formatSectionName(target.section).toLowerCase().includes(searchQuery2);
-          tr.style.display = matchesSection && matchesSearch ? "" : "none";
+          tr2.style.display = matchesSection && matchesSearch ? "" : "none";
         });
       };
       const updateSummaryStats = () => {
@@ -15884,9 +17804,9 @@ function renderServiceCheckModal() {
                 break;
               }
               const itemObj = rowMap[i];
-              const { target, tr } = itemObj;
+              const { target, tr: tr2 } = itemObj;
               progressBarInner.style.width = `${Math.round((i + 1) / rowMap.length * 100)}%`;
-              const badgeCell = tr.childNodes[6];
+              const badgeCell = tr2.childNodes[6];
               badgeCell.innerHTML = "";
               badgeCell.appendChild(renderStatusBadge("", true));
               try {
@@ -15900,21 +17820,21 @@ function renderServiceCheckModal() {
                     const cItem = cResults[0];
                     itemObj.result = cItem;
                     const cBadge = renderStatusBadge(cItem.status_class);
-                    tr.childNodes[2].innerHTML = "";
-                    tr.childNodes[2].appendChild(
+                    tr2.childNodes[2].innerHTML = "";
+                    tr2.childNodes[2].appendChild(
                       document.createTextNode(cItem.ip || "?")
                     );
-                    tr.childNodes[2].appendChild(E("br"));
-                    tr.childNodes[2].appendChild(
+                    tr2.childNodes[2].appendChild(E("br"));
+                    tr2.childNodes[2].appendChild(
                       E(
                         "small",
                         { style: "opacity: 0.6;" },
                         `${cItem.dns_ms}ms`
                       )
                     );
-                    tr.childNodes[3].textContent = cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-";
-                    tr.childNodes[4].textContent = cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-";
-                    tr.childNodes[5].textContent = cItem.http_ms > 0 ? `${cItem.http_ms}` : "-";
+                    tr2.childNodes[3].textContent = cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-";
+                    tr2.childNodes[4].textContent = cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-";
+                    tr2.childNodes[5].textContent = cItem.http_ms > 0 ? `${cItem.http_ms}` : "-";
                     badgeCell.innerHTML = "";
                     badgeCell.appendChild(cBadge);
                   }
@@ -17528,7 +19448,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           )
         );
       }
-      const tr = E(
+      const tr2 = E(
         "tr",
         {
           class: `cbi-section-table-row ${isBest ? "cbi-rowstyle-1" : "cbi-rowstyle-2"}`,
@@ -17620,7 +19540,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           )
         ]
       );
-      tbody.appendChild(tr);
+      tbody.appendChild(tr2);
     });
   };
   const updateProgressUI = (state) => {
@@ -30318,7 +32238,10 @@ var TACHYON_LANGUAGES = [
   }
 ];
 function detectActiveLanguageCode(capabilities) {
-  const luciLang = (capabilities?.luciLang || "").trim().toLowerCase();
+  const globalObj = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+  const globalL = globalObj.L;
+  const envLang = typeof globalL?.env?.lang === "string" ? globalL.env.lang.trim().toLowerCase() : "";
+  const luciLang = (capabilities?.luciLang || envLang || "").trim().toLowerCase();
   const ruInstalled = capabilities?.i18nRuInstalled !== false;
   if (luciLang === "en") {
     return "en";
@@ -30430,19 +32353,28 @@ function mountLanguageSelector(capabilities) {
         );
         if (!finished.success || !finished.data.success) {
           const errMsg = !finished.success ? finished.error : finished.data.message;
-          throw new Error(errMsg || _("Failed to change language"));
+          if (!isTransientRpcError(errMsg)) {
+            throw new Error(errMsg || _("Failed to change language"));
+          }
         }
         showToast(_("Language updated. Reloading page..."), "success");
         window.setTimeout(() => {
           window.location.reload();
         }, 400);
       } catch (err) {
+        const msg = err instanceof Error ? err.message : _("Failed to change language");
+        if (isTransientRpcError(msg)) {
+          showToast(_("Language updated. Reloading page..."), "success");
+          window.setTimeout(() => {
+            window.location.reload();
+          }, 600);
+          return;
+        }
         btn.disabled = false;
         btn.classList.remove("is-loading");
         if (codeSpan) {
           codeSpan.textContent = activeOption.shortCode;
         }
-        const msg = err instanceof Error ? err.message : _("Failed to change language");
         showToast(msg, "error");
       }
     });
