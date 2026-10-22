@@ -961,11 +961,6 @@ function start_steer_main(active_engine) {
     if (fs.stat("/etc/init.d/tachyon-core") != null)
         command_status_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
 
-    // Watchdog first, so auto-healing is active through a failed boot.
-    let wd_status = module_status(WATCHDOG_UC, [ "start-runtime" ]);
-    if (wd_status != 0)
-        log_message("Watchdog start-runtime failed (status " + as_string(wd_status) + ")", "warn");
-
     let engine_runtime = require("service.engine_runtime");
 
     // The subscription cache lives in /var/run (tmpfs) and is empty after a
@@ -1035,8 +1030,6 @@ function start_steer_main(active_engine) {
     module_success(OLCRTC_UC, [ "start-runtime" ]);
     module_success(FPTN_UC, [ "start-runtime" ]);
     module_success(TAILSCALE_UC, [ "start-runtime" ]);
-
-    module_background(TELEGRAM_UC, [ "start-runtime" ]);
 
     return 0;
 }
@@ -1234,10 +1227,12 @@ function start_impl() {
     if (status != 0)
         return status;
 
-    status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
-    if (status != 0) {
-        log_message("Failed to start DNS failover runtime", "fatal");
-        return status;
+    if (!active_engine_is_steer()) {
+        status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
+        if (status != 0) {
+            log_message("Failed to start DNS failover runtime", "fatal");
+            return status;
+        }
     }
 
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);

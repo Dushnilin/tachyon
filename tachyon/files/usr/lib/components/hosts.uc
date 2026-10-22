@@ -238,7 +238,17 @@ function hosts_list_update(target_url) {
 
     mkdir_p(HOSTS_TMP_DIR);
 
-    let all_entries = [];
+    let pid = fs.readlink("/proc/self") || "0";
+    let combined_tmp = HOSTS_TMP_DIR + "/combined.tmp." + pid;
+    let out_fh = fs.open(combined_tmp, "w");
+    if (out_fh == null) {
+        log("Failed to open " + combined_tmp + " for writing", "error");
+        print('{"success":false,"error":"write_failed","entries":0}');
+        return false;
+    }
+
+    out_fh.write("# Tachyon hosts lists — combined cache\n");
+    let total_entries = 0;
     let updated_urls = [];
 
     for (let url in urls) {
@@ -250,10 +260,12 @@ function hosts_list_update(target_url) {
         let tmp_file = HOSTS_TMP_DIR + "/list-" + safe_name + ".txt";
 
         if (download_with_retry(url, tmp_file, label) != null) {
-            let entries = parse_hosts_file(tmp_file);
-            log("Parsed " + length(entries) + " entries from " + url);
-            for (let entry in entries)
-                push(all_entries, entry);
+            out_fh.write("# Source: " + url + "\n");
+            let count = parse_hosts_file(tmp_file, function(ip, domain) {
+                out_fh.write(ip + " " + domain + "\n");
+            });
+            log("Parsed " + count + " entries from " + url);
+            total_entries += count;
             push(updated_urls, url);
         } else {
             log("Failed to download hosts list from " + url, "error");
@@ -261,20 +273,23 @@ function hosts_list_update(target_url) {
         remove_file(tmp_file);
     }
 
-    if (length(all_entries) == 0) {
+    out_fh.close();
+
+    if (total_entries == 0) {
+        remove_file(combined_tmp);
         log("No valid hosts entries found in any list", "error");
         print('{"success":false,"error":"empty","entries":0}');
         return false;
     }
 
-    if (!write_hosts_cache(all_entries, updated_urls)) {
+    if (!install_hosts_cache(combined_tmp)) {
         print('{"success":false,"error":"write_failed","entries":0}');
         return false;
     }
 
-    log("Hosts lists updated: " + length(all_entries) + " entries from " + length(updated_urls) + " sources");
+    log("Hosts lists updated: " + total_entries + " entries from " + length(updated_urls) + " sources");
 
-    print('{"success":true,"entries":' + length(all_entries) + ',"sources":' + length(updated_urls) + '}');
+    print('{"success":true,"entries":' + total_entries + ',"sources":' + length(updated_urls) + '}');
     return true;
 }
 

@@ -104,8 +104,12 @@ function ensure_dirs() {
     let state = getenv("TACHYON_RUNTIME_STATE_DIR") || STATE_DIR;
     let jobs_d = state + "/jobs";
     let logs_d = state + "/job-logs";
-    exec.run({ argv: ["mkdir", "-p", jobs_d], capture: false, timeout: 5 });
-    exec.run({ argv: ["mkdir", "-p", logs_d], capture: false, timeout: 5 });
+    let st_jobs = fs.stat(jobs_d);
+    if (st_jobs == null || st_jobs.type != "directory")
+        exec.run({ argv: ["mkdir", "-p", jobs_d], capture: false, timeout: 5 });
+    let st_logs = fs.stat(logs_d);
+    if (st_logs == null || st_logs.type != "directory")
+        exec.run({ argv: ["mkdir", "-p", logs_d], capture: false, timeout: 5 });
 }
 
 function job_state_path(job_id) {

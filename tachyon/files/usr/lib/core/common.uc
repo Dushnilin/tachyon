@@ -620,6 +620,8 @@ function kill_orphaned_logread() {
 function ensure_dir(path) {
     path = as_string(path);
     if (path == "") return false;
+    let st = fs.stat(path);
+    if (st != null && st.type == "directory") return true;
     let result = system("mkdir -p " + shell_quote(path) + " 2>/dev/null");
     return result == 0;
 }

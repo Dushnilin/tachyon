@@ -101,7 +101,7 @@ export async function refreshRuntimeUiState({
     !force &&
     now - lastRuntimeUiStateRefreshAt < RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS
   ) {
-    return undefined;
+    return lastRuntimeUiState;
   }
 
   lastRuntimeUiStateRefreshAt = now;

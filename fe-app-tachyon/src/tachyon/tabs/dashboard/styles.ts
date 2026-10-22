@@ -125,10 +125,12 @@ export const styles = `
 .tachyon_dashboard-page__widgets-section__item__row {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
+    gap: 8px;
     font-size: 13px;
     line-height: 1.5;
     margin-top: 3px;
+    min-width: 0;
 }
 
 .tachyon_dashboard-page__widgets-section__item__row--success .tachyon_dashboard-page__widgets-section__item__row__value {
@@ -139,9 +141,18 @@ export const styles = `
     color: var(--error-color-medium, red);
 }
 
-.tachyon_dashboard-page__widgets-section__item__row__key {}
+.tachyon_dashboard-page__widgets-section__item__row__key {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 
-.tachyon_dashboard-page__widgets-section__item__row__value {}
+.tachyon_dashboard-page__widgets-section__item__row__value {
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+}
 
 .tachyon-stat--down {
     color: #10b981 !important;

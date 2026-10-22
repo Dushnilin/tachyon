@@ -43,6 +43,7 @@ export interface MonitoredConnection extends ClashConnection {
   id: string;
   closedAt?: number;
   lastSeenAt: number;
+  startedAtMs?: number;
 }
 
 export function normalizeConnectionsPayload(

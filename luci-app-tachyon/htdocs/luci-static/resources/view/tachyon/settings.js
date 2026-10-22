@@ -361,7 +361,20 @@ function createWatchdogStatusWidget() {
     }
   }
 
-  function refreshWdStatus() {
+  let wdInFlight = false;
+  let wdHasMounted = false;
+  let wdLoadedOnce = false;
+
+  function refreshWdStatus(force) {
+    if (wdInFlight) return Promise.resolve();
+    if (
+      !force &&
+      (!wrapper.isConnected || wrapper.offsetParent === null || document.hidden)
+    ) {
+      return Promise.resolve();
+    }
+    wdInFlight = true;
+    wdLoadedOnce = true;
     return fs
       .exec("/usr/bin/tachyon", ["watchdog", "status"])
       .then(function (res) {
@@ -376,6 +389,9 @@ function createWatchdogStatusWidget() {
       .catch(function () {
         dot.style.background = "#aaa";
         statusText.textContent = _("Unknown");
+      })
+      .finally(function () {
+        wdInFlight = false;
       });
   }
 
@@ -385,7 +401,7 @@ function createWatchdogStatusWidget() {
     fs.exec("/usr/bin/tachyon", ["watchdog_start"])
       .then(function () {
         msgEl.textContent = "";
-        return refreshWdStatus();
+        return refreshWdStatus(true);
       })
       .catch(function () {
         msgEl.textContent = _("Failed to start watchdog");
@@ -399,7 +415,7 @@ function createWatchdogStatusWidget() {
     fs.exec("/usr/bin/tachyon", ["watchdog_stop"])
       .then(function () {
         msgEl.textContent = "";
-        return refreshWdStatus();
+        return refreshWdStatus(true);
       })
       .catch(function () {
         msgEl.textContent = _("Failed to stop watchdog");
@@ -412,16 +428,28 @@ function createWatchdogStatusWidget() {
   wrapper.appendChild(btnStop);
   wrapper.appendChild(msgEl);
 
-  refreshWdStatus();
+  let wdVisibilityObserver = null;
+  if (typeof IntersectionObserver !== "undefined") {
+    wdVisibilityObserver = new IntersectionObserver(function (entries) {
+      if (entries.some((e) => e.isIntersecting) && !wdLoadedOnce) {
+        refreshWdStatus(true);
+      }
+    });
+    wdVisibilityObserver.observe(wrapper);
+  } else {
+    refreshWdStatus(true);
+  }
 
-  const wdTimer = setInterval(refreshWdStatus, 10000);
-  const wdObserver = new MutationObserver(function () {
-    if (!document.body.contains(wrapper)) {
+  const wdTimer = setInterval(function () {
+    if (wrapper.isConnected) {
+      wdHasMounted = true;
+    } else if (wdHasMounted) {
       clearInterval(wdTimer);
-      wdObserver.disconnect();
+      if (wdVisibilityObserver) wdVisibilityObserver.disconnect();
+      return;
     }
-  });
-  wdObserver.observe(document.body, { childList: true, subtree: true });
+    refreshWdStatus(false);
+  }, 10000);
 
   return wrapper;
 }
@@ -1066,7 +1094,19 @@ function createSnapshotsWidget() {
   );
   wrapper.appendChild(listEl);
 
-  loadSnapshots();
+  if (typeof IntersectionObserver !== "undefined") {
+    let snapshotsLoaded = false;
+    const snapObserver = new IntersectionObserver(function (entries) {
+      if (entries.some((e) => e.isIntersecting) && !snapshotsLoaded) {
+        snapshotsLoaded = true;
+        snapObserver.disconnect();
+        loadSnapshots();
+      }
+    });
+    snapObserver.observe(wrapper);
+  } else {
+    loadSnapshots();
+  }
 
   return wrapper;
 }
@@ -2002,7 +2042,14 @@ function createSettingsContent(section, capabilities) {
 
     const refreshers = settingsDnsDynamicState.refreshers.get(section_id);
     if (refreshers) {
-      refreshers.forEach((fn) => fn());
+      refreshers.forEach((fn) => {
+        if (fn() === false) {
+          refreshers.delete(fn);
+        }
+      });
+      if (refreshers.size === 0) {
+        settingsDnsDynamicState.refreshers.delete(section_id);
+      }
     }
   };
 
@@ -2872,11 +2919,23 @@ function createSettingsContent(section, capabilities) {
       ),
     ]);
 
+    let checkInFlight = false;
+
     function checkStatus() {
+      if (checkInFlight) return;
+      if (!modalBody.isConnected) {
+        stopPolling();
+        return;
+      }
+      checkInFlight = true;
       pollAttempts++;
       return fs
         .exec("/usr/bin/tachyon", ["list_update_status"])
         .then(function (res) {
+          if (!modalBody.isConnected) {
+            stopPolling();
+            return;
+          }
           let data = {};
           try {
             data = JSON.parse((res.stdout || "").trim() || "{}");
@@ -2891,7 +2950,7 @@ function createSettingsContent(section, capabilities) {
             }
             if (pollAttempts >= maxPollAttempts) {
               stopPolling();
-              ui.hideModal();
+              if (modalBody.isConnected) ui.hideModal();
               ui.addNotification(
                 null,
                 E(
@@ -2912,7 +2971,7 @@ function createSettingsContent(section, capabilities) {
               );
               detailText.style.color = "var(--color-green-base, #2ecc71)";
               setTimeout(function () {
-                ui.hideModal();
+                if (modalBody.isConnected) ui.hideModal();
                 ui.addNotification(
                   null,
                   E("p", _("Lists and rule sets successfully updated!")),
@@ -2924,7 +2983,7 @@ function createSettingsContent(section, capabilities) {
               detailText.textContent = data.message || _("Update failed");
               detailText.style.color = "var(--color-red-base, #e74c3c)";
               setTimeout(function () {
-                ui.hideModal();
+                if (modalBody.isConnected) ui.hideModal();
                 ui.addNotification(
                   null,
                   E(
@@ -2942,8 +3001,11 @@ function createSettingsContent(section, capabilities) {
         .catch(function () {
           if (pollAttempts >= maxPollAttempts) {
             stopPolling();
-            ui.hideModal();
+            if (modalBody.isConnected) ui.hideModal();
           }
+        })
+        .finally(function () {
+          checkInFlight = false;
         });
     }
 
@@ -3207,8 +3269,14 @@ function createSettingsContent(section, capabilities) {
       "Select path for tachyon-core config file. Change this ONLY if you know what you are doing",
     ),
   );
-  o.value("/etc/tachyon-core/config.json", "Flash (/etc/tachyon-core/config.json)");
-  o.value("/tmp/tachyon-core/config.json", "RAM (/tmp/tachyon-core/config.json)");
+  o.value(
+    "/etc/tachyon-core/config.json",
+    "Flash (/etc/tachyon-core/config.json)",
+  );
+  o.value(
+    "/tmp/tachyon-core/config.json",
+    "RAM (/tmp/tachyon-core/config.json)",
+  );
   o.default = "/etc/tachyon-core/config.json";
   o.rmempty = false;
 
@@ -4021,7 +4089,20 @@ function createTelegramStatusWidget() {
     }
   }
 
-  function refreshStatus() {
+  let tgInFlight = false;
+  let tgHasMounted = false;
+  let tgLoadedOnce = false;
+
+  function refreshStatus(force) {
+    if (tgInFlight) return Promise.resolve();
+    if (
+      !force &&
+      (!wrapper.isConnected || wrapper.offsetParent === null || document.hidden)
+    ) {
+      return Promise.resolve();
+    }
+    tgInFlight = true;
+    tgLoadedOnce = true;
     return fs
       .exec("/usr/bin/tachyon", ["telegram_status"])
       .then(function (res) {
@@ -4033,6 +4114,9 @@ function createTelegramStatusWidget() {
       .catch(function () {
         dot.style.background = "#aaa";
         statusText.textContent = _("Unknown");
+      })
+      .finally(function () {
+        tgInFlight = false;
       });
   }
 
@@ -4042,7 +4126,7 @@ function createTelegramStatusWidget() {
     fs.exec("/usr/bin/tachyon", ["telegram_start"])
       .then(function () {
         statusMsg.textContent = "";
-        return refreshStatus();
+        return refreshStatus(true);
       })
       .catch(function () {
         statusMsg.textContent = _("Failed to start bot");
@@ -4056,7 +4140,7 @@ function createTelegramStatusWidget() {
     fs.exec("/usr/bin/tachyon", ["telegram_stop"])
       .then(function () {
         statusMsg.textContent = "";
-        return refreshStatus();
+        return refreshStatus(true);
       })
       .catch(function () {
         statusMsg.textContent = _("Failed to stop bot");
@@ -4069,17 +4153,29 @@ function createTelegramStatusWidget() {
   wrapper.appendChild(btnStop);
   wrapper.appendChild(statusMsg);
 
-  // Initial status fetch
-  refreshStatus();
+  let tgVisibilityObserver = null;
+  if (typeof IntersectionObserver !== "undefined") {
+    tgVisibilityObserver = new IntersectionObserver(function (entries) {
+      if (entries.some((e) => e.isIntersecting) && !tgLoadedOnce) {
+        refreshStatus(true);
+      }
+    });
+    tgVisibilityObserver.observe(wrapper);
+  } else {
+    refreshStatus(true);
+  }
+
   // Refresh every 10s while visible
-  const timer = setInterval(refreshStatus, 10000);
-  const observer = new MutationObserver(function () {
-    if (!document.body.contains(wrapper)) {
+  const timer = setInterval(function () {
+    if (wrapper.isConnected) {
+      tgHasMounted = true;
+    } else if (tgHasMounted) {
       clearInterval(timer);
-      observer.disconnect();
+      if (tgVisibilityObserver) tgVisibilityObserver.disconnect();
+      return;
     }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+    refreshStatus(false);
+  }, 10000);
 
   return wrapper;
 }

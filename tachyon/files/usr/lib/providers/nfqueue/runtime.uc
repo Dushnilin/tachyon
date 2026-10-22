@@ -378,33 +378,49 @@ function supervisor_command(cfg, queue, raw_opt, child_pidfile) {
         command_from_args(args) + " & child=$!; echo $child > " + child_pidfile_q + "; wait $child; rc=$?; rm -f " + child_pidfile_q + "; exit $rc";
 }
 
-function supervisor(cfg, section, queue, raw_opt, child_pidfile) {
-    let crash_count = 0;
+function supervisor_loop_script(cfg, section_name_value, queue, raw_opt, child_pidfile) {
     let base_delay = int(cfg.respawn_delay);
     if (base_delay < 1) base_delay = 5;
-
-    while (true) {
-        if (!provider_available(cfg)) {
-            print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " Provider ", cfg.binary, " is not executable; retrying in ", base_delay, " seconds\n");
-            command_success_from_args([ "sleep", as_string(base_delay) ]);
-            continue;
-        }
-
-        let start_time = clock()[0];
-        let rc = command_status("sh -c " + shell_quote(supervisor_command(cfg, queue, raw_opt, child_pidfile)));
-        let elapsed = clock()[0] - start_time;
-
-        if (elapsed < 10) {
-            crash_count++;
-            if (crash_count > 5) crash_count = 5;
-        } else {
-            crash_count = 0;
-        }
-
-        let delay = base_delay * (1 + crash_count);
-        print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " ", cfg.binary_name, " for rule ", as_string(section), " exited with code ", rc, "; respawning in ", delay, " seconds\n");
-        command_success_from_args([ "sleep", as_string(delay) ]);
+    let args = [ cfg.binary, "--qnum=" + as_string(queue) ];
+    for (let arg in base_args(cfg))
+        push(args, arg);
+    if (type(cfg.prepare_strategy_args) == "function") {
+        for (let extra in cfg.prepare_strategy_args(raw_opt))
+            push(args, extra);
     }
+    for (let word in strategy_words(raw_opt))
+        push(args, word);
+
+    let bin_q = shell_quote(cfg.binary);
+    let bin_name_q = shell_quote(cfg.binary_name);
+    let sec_q = shell_quote(as_string(section_name_value));
+    let child_pidfile_q = shell_quote(child_pidfile);
+    let cmd_str = command_from_args(args);
+
+    return "crash_count=0; base_delay=" + as_string(base_delay) + "; child=''; " +
+        "trap '[ -n \"$child\" ] && kill \"$child\" 2>/dev/null; rm -f " + child_pidfile_q + "; exit 0' TERM INT; " +
+        "while true; do " +
+            "if [ ! -x " + bin_q + " ]; then " +
+                "printf '%s Provider %s is not executable; retrying in %s seconds\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" " + bin_q + " \"$base_delay\"; " +
+                "sleep \"$base_delay\"; continue; " +
+            "fi; " +
+            "start_time=$(date +%s 2>/dev/null || echo 0); " +
+            cmd_str + " & child=$!; echo \"$child\" > " + child_pidfile_q + "; wait \"$child\"; rc=$?; child=''; rm -f " + child_pidfile_q + "; " +
+            "end_time=$(date +%s 2>/dev/null || echo 0); " +
+            "elapsed=$((end_time - start_time)); " +
+            "if [ \"$elapsed\" -lt 10 ]; then " +
+                "crash_count=$((crash_count + 1)); [ \"$crash_count\" -gt 5 ] && crash_count=5; " +
+            "else " +
+                "crash_count=0; " +
+            "fi; " +
+            "delay=$((base_delay * (1 + crash_count))); " +
+            "printf '%s %s for rule %s exited with code %s; respawning in %s seconds\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" " + bin_name_q + " " + sec_q + " \"$rc\" \"$delay\"; " +
+            "sleep \"$delay\"; " +
+        "done";
+}
+
+function supervisor(cfg, section, queue, raw_opt, child_pidfile) {
+    exit(command_status(command_from_args([ "sh", "-c", supervisor_loop_script(cfg, section, queue, raw_opt, child_pidfile) ])));
 }
 
 function stop_runtime(cfg) {
@@ -442,16 +458,11 @@ function start_rule(cfg, section, index_value) {
 
     log_message("Starting " + cfg.binary_name + " for rule '" + name + "' on queue " + queue + " with mark " + mark, "info");
     let command = common.background_command_with_pid(command_from_args([
-        "ucode",
-        "-L", LIB_DIR,
-        cfg.runtime_path,
-        "supervisor",
-        name,
-        "" + queue,
-        raw_opt,
-        child_pidfile
+        "sh",
+        "-c",
+        supervisor_loop_script(cfg, name, queue, raw_opt, child_pidfile)
     ]), ">>" + shell_quote(logfile));
-    let pid = trim(command_output("sh -c " + shell_quote(command)));
+    let pid = trim(command_output(command_from_args([ "sh", "-c", command ])));
     if (pid == "" || fs.writefile(pidfile, pid + "\n") == null) {
         log_message(cfg.binary_name + " failed to start for rule '" + name + "'. Check " + logfile + ".", "fatal");
         return false;

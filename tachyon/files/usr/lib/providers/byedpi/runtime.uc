@@ -232,33 +232,43 @@ function supervisor_command(port, raw_opt, child_pidfile) {
         command_from_args(args) + " & child=$!; echo $child > " + child_pidfile_q + "; wait $child; rc=$?; rm -f " + child_pidfile_q + "; exit $rc";
 }
 
-function supervisor(section, port, raw_opt, child_pidfile) {
-    let crash_count = 0;
+function supervisor_loop_script(section_name_value, port, raw_opt, child_pidfile) {
     let base_delay = int(BYEDPI_RESPAWN_DELAY);
     if (base_delay < 1) base_delay = 5;
+    let args = [ BYEDPI_BIN, "--ip", BYEDPI_LISTEN_ADDRESS, "--port", as_string(port) ];
+    for (let word in strategy_words(raw_opt))
+        push(args, word);
 
-    while (true) {
-        if (!provider_available()) {
-            print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " Provider ", BYEDPI_BIN, " is not executable; retrying in ", base_delay, " seconds\n");
-            command_success_from_args([ "sleep", as_string(base_delay) ]);
-            continue;
-        }
+    let bin_q = shell_quote(BYEDPI_BIN);
+    let sec_q = shell_quote(as_string(section_name_value));
+    let child_pidfile_q = shell_quote(child_pidfile);
+    let cmd_str = command_from_args(args);
 
-        let start_time = clock()[0];
-        let rc = command_status("sh -c " + shell_quote(supervisor_command(port, raw_opt, child_pidfile)));
-        let elapsed = clock()[0] - start_time;
+    return "crash_count=0; base_delay=" + as_string(base_delay) + "; child=''; " +
+        "trap '[ -n \"$child\" ] && kill \"$child\" 2>/dev/null; rm -f " + child_pidfile_q + "; exit 0' TERM INT; " +
+        "ulimit -n " + shell_quote(BYEDPI_OPEN_FILES_LIMIT) + " >/dev/null 2>&1 || true; " +
+        "while true; do " +
+            "if [ ! -x " + bin_q + " ]; then " +
+                "printf '%s Provider %s is not executable; retrying in %s seconds\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" " + bin_q + " \"$base_delay\"; " +
+                "sleep \"$base_delay\"; continue; " +
+            "fi; " +
+            "start_time=$(date +%s 2>/dev/null || echo 0); " +
+            cmd_str + " & child=$!; echo \"$child\" > " + child_pidfile_q + "; wait \"$child\"; rc=$?; child=''; rm -f " + child_pidfile_q + "; " +
+            "end_time=$(date +%s 2>/dev/null || echo 0); " +
+            "elapsed=$((end_time - start_time)); " +
+            "if [ \"$elapsed\" -lt 10 ]; then " +
+                "crash_count=$((crash_count + 1)); [ \"$crash_count\" -gt 5 ] && crash_count=5; " +
+            "else " +
+                "crash_count=0; " +
+            "fi; " +
+            "delay=$((base_delay * (1 + crash_count))); " +
+            "printf '%s ciadpi for rule %s exited with code %s; respawning in %s seconds\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" " + sec_q + " \"$rc\" \"$delay\"; " +
+            "sleep \"$delay\"; " +
+        "done";
+}
 
-        if (elapsed < 10) {
-            crash_count++;
-            if (crash_count > 5) crash_count = 5;
-        } else {
-            crash_count = 0;
-        }
-
-        let delay = base_delay * (1 + crash_count);
-        print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " ciadpi for rule ", as_string(section), " exited with code ", rc, "; respawning in ", delay, " seconds\n");
-        command_success_from_args([ "sleep", as_string(delay) ]);
-    }
+function supervisor(section, port, raw_opt, child_pidfile) {
+    exit(command_status(command_from_args([ "sh", "-c", supervisor_loop_script(section, port, raw_opt, child_pidfile) ])));
 }
 
 function start_rule(section, index_value) {
@@ -277,16 +287,11 @@ function start_rule(section, index_value) {
 
     log_message("Starting ciadpi for rule '" + name + "' on " + BYEDPI_LISTEN_ADDRESS + ":" + port, "info");
     let command = common.background_command_with_pid(command_from_args([
-        "ucode",
-        "-L", LIB_DIR,
-        LIB_DIR + "/providers/byedpi/runtime.uc",
-        "supervisor",
-        name,
-        "" + port,
-        raw_opt,
-        child_pidfile
+        "sh",
+        "-c",
+        supervisor_loop_script(name, port, raw_opt, child_pidfile)
     ]), ">>" + shell_quote(logfile));
-    let pid = trim(command_output("sh -c " + shell_quote(command)));
+    let pid = trim(command_output(command_from_args([ "sh", "-c", command ])));
     if (pid == "" || !fs.writefile(pidfile, pid + "\n")) {
         log_message("ciadpi failed to start for rule '" + name + "'. Check " + logfile + ".", "fatal");
         return false;
@@ -360,6 +365,16 @@ function live_pid_count(path) {
     return count;
 }
 
+function read_log_tail(path) {
+    let f = fs.open(path, "r");
+    if (!f)
+        return null;
+    f.seek(-32768, 2);
+    let data = f.read(32768);
+    f.close();
+    return data;
+}
+
 function restart_count() {
     let count = 0;
     if (fs.stat(BYEDPI_LOG_DIR) == null)
@@ -370,7 +385,7 @@ function restart_count() {
         path = trim(as_string(path));
         if (path == "")
             continue;
-        let data = fs.readfile(path);
+        let data = read_log_tail(path);
         if (data == null)
             continue;
         for (let line in split(data, "\n"))

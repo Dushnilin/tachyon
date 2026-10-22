@@ -255,13 +255,24 @@ function applyActionState(actions: UiActionMap = {}) {
     diagnosticsActions[action] = { loading: true };
   }
 
+  const prevSw = current.sectionsWidget;
+  const sectionsWidgetChanged =
+    JSON.stringify(prevSw.subscriptionUpdatingSections) !==
+      JSON.stringify(subscriptionUpdatingSections) ||
+    JSON.stringify(prevSw.latencyFetchingSections) !==
+      JSON.stringify(latencyFetchingSections) ||
+    JSON.stringify(prevSw.latencyProgressSections) !==
+      JSON.stringify(latencyProgressSections);
+
   store.set({
-    sectionsWidget: {
-      ...current.sectionsWidget,
-      subscriptionUpdatingSections,
-      latencyFetchingSections,
-      latencyProgressSections,
-    },
+    sectionsWidget: sectionsWidgetChanged
+      ? {
+          ...prevSw,
+          subscriptionUpdatingSections,
+          latencyFetchingSections,
+          latencyProgressSections,
+        }
+      : prevSw,
     updatesActions,
     diagnosticsActions,
   });

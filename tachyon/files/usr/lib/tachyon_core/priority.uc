@@ -116,23 +116,16 @@ function normalize_group(group, tag_name) {
 
 function section_cache_files() {
     let result = [];
-    for (let path in split(command_output_from_args([
-        "find",
-        SECTION_CACHE_DIR,
-        "-mindepth",
-        "1",
-        "-maxdepth",
-        "1",
-        "-type",
-        "f",
-        "-name",
-        "*.json"
-    ]), "\n")) {
-        path = as_string(path);
-        if (path != "")
-            push(result, path);
+    let dir = fs.opendir(SECTION_CACHE_DIR);
+    if (!dir)
+        return result;
+    let entry;
+    while ((entry = dir.read()) != null) {
+        if (substr(entry, -5) == ".json")
+            push(result, SECTION_CACHE_DIR + "/" + entry);
     }
-    return result;
+    dir.close();
+    return sort(result);
 }
 
 function priority_groups_from_cache() {
@@ -148,19 +141,109 @@ function priority_groups_from_cache() {
     return result;
 }
 
+let cached_clash_cfg_mtime = -1;
+let cached_clash_base_url = "http://127.0.0.1:9090";
+let cached_clash_secret = "";
+
+function priority_clash_info() {
+    let cfg_path = "/etc/tachyon-core/config.json";
+    let st = fs.stat(cfg_path);
+    let mtime = st ? int(st.mtime || 0) : 0;
+    if (mtime != cached_clash_cfg_mtime) {
+        cached_clash_cfg_mtime = mtime;
+        let host = "127.0.0.1:9090";
+        let secret = "";
+        let data = st ? fs.readfile(cfg_path) : null;
+        if (data) {
+            try {
+                let sb_cfg = json(data);
+                let ext = sb_cfg?.experimental?.clash_api?.external_controller;
+                if (ext) {
+                    let parts = split(as_string(ext), ":");
+                    let ip = length(parts) > 1 ? parts[0] : "";
+                    let port = length(parts) > 1 ? parts[length(parts) - 1] : "9090";
+                    host = (ip == "0.0.0.0" || ip == "") ? ("127.0.0.1:" + port) : as_string(ext);
+                }
+                if (sb_cfg?.experimental?.clash_api?.secret)
+                    secret = as_string(sb_cfg.experimental.clash_api.secret);
+            } catch (e) {}
+        }
+        cached_clash_base_url = "http://" + host;
+        cached_clash_secret = secret;
+    }
+    return { base_url: cached_clash_base_url, secret: cached_clash_secret };
+}
+
+function urlencode_segment(value) {
+    value = as_string(value);
+    let out = [];
+    let len = length(value);
+    for (let i = 0; i < len; i++) {
+        let ch = substr(value, i, 1);
+        if (match(ch, /^[A-Za-z0-9_.~-]$/))
+            push(out, ch);
+        else
+            push(out, sprintf("%%%02X", ord(value, i)));
+    }
+    return join("", out);
+}
+
 function module_capture(args) {
-    let output_path = trim(command_output_from_args([ "mktemp" ]));
-    if (output_path == "")
-        return { status: 1, output: "" };
+    if (getenv("TACHYON_DIAGNOSTICS_UC") == null && type(args) == "array" && length(args) > 0) {
+        let action = as_string(args[0] || "");
+        let info = priority_clash_info();
+        if (action == "get_proxy_latency") {
+            let tag_name = as_string(args[1] || "");
+            let timeout_ms = as_string(args[2] || "2000");
+            let health_url = as_string(args[3] || "https://www.gstatic.com/generate_204");
+            let max_time = int((int(timeout_ms, 10) + 1999) / 1000);
+            if (max_time < 2) max_time = 2;
+            let endpoint = index(tag_name, "-urltest-") >= 0
+                ? (info.base_url + "/group/" + urlencode_segment(tag_name) + "/delay")
+                : (info.base_url + "/proxies/" + urlencode_segment(tag_name) + "/delay");
+            let curl_args = [ "curl", "-G", "-s", "-m", as_string(max_time), endpoint ];
+            if (info.secret != "") {
+                push(curl_args, "-H");
+                push(curl_args, "Authorization: Bearer " + info.secret);
+            }
+            push(curl_args, "--data-urlencode");
+            push(curl_args, "url=" + health_url);
+            push(curl_args, "--data-urlencode");
+            push(curl_args, "timeout=" + timeout_ms);
+            return common.command_capture(command_from_args(curl_args));
+        }
+        if (action == "set_group_proxy") {
+            let group_tag = as_string(args[1] || "");
+            let proxy_tag = as_string(args[2] || "");
+            let curl_args = [
+                "curl", "-X", "PUT", "-s", "-m", "5", "-w", "\n%{http_code}",
+                info.base_url + "/proxies/" + urlencode_segment(group_tag),
+                "-H", "Content-Type: application/json"
+            ];
+            if (info.secret != "") {
+                push(curl_args, "-H");
+                push(curl_args, "Authorization: Bearer " + info.secret);
+            }
+            push(curl_args, "--data-raw");
+            push(curl_args, sprintf("%J", { name: proxy_tag }));
+            let res = common.command_capture(command_from_args(curl_args));
+            if (res.status == 0 && match(res.output, /(^|\n)(200|204)\s*$/) != null) {
+                let state_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
+                let sel_state = read_json_file(state_path);
+                if (type(sel_state) != "object") sel_state = {};
+                sel_state[group_tag] = proxy_tag;
+                common.write_json_file(state_path, sel_state, 2);
+                return { status: 0, output: res.output };
+            }
+            return { status: 1, output: res.output };
+        }
+    }
 
     let command = command_from_args([ "ucode", "-L", LIB_DIR, DIAGNOSTICS_UC, "clash-api" ]);
     for (let arg in args)
         command += " " + shell_quote(arg);
 
-    let status = command_status(command + " >" + shell_quote(output_path) + " 2>&1");
-    let output = as_string(fs.readfile(output_path) || "");
-    remove_file(output_path);
-    return { status, output };
+    return common.command_capture(command);
 }
 
 function parse_delay_output(output) {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-22 07:01+0300\n"
-"PO-Revision-Date: 2026-10-22 07:01+0300\n"
+"POT-Creation-Date: 2026-10-22 09:48+0300\n"
+"PO-Revision-Date: 2026-10-22 09:48+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -827,6 +827,12 @@ msgstr "Параметр ByeDPI не принимает значение: %s"
 msgid "ByeDPI option requires a value: %s"
 msgstr "Параметр ByeDPI требует значение: %s"
 
+msgid "ByeDPI outbound is configured"
+msgstr "Outbound ByeDPI настроен"
+
+msgid "ByeDPI outbound is not configured"
+msgstr "Outbound ByeDPI не настроен"
+
 msgid "ByeDPI package is installed"
 msgstr "Пакет ByeDPI установлен"
 
@@ -859,9 +865,6 @@ msgstr "CA-сертификат"
 
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
-
-msgid "Cache"
-msgstr "Кэш"
 
 msgid "Cache File Path"
 msgstr "Путь к файлу кэша"
@@ -2798,8 +2801,8 @@ msgstr "Границы фрагментации IP (--ip-frag)"
 msgid "IP and DNS leak check timed out"
 msgstr "Время ожидания проверки утечек IP и DNS истекло"
 
-msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!"
-msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
+msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!"
+msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN для данного домена!"
 
 msgid "IPs"
 msgstr "IP"
@@ -4202,9 +4205,6 @@ msgstr "Клиентский сертификат в формате PEM"
 msgid "PEM-encoded client private key"
 msgstr "Приватный ключ клиента в формате PEM"
 
-msgid "PID"
-msgstr "PID"
-
 msgid "PROXIED"
 msgstr "ЧЕРЕЗ ПРОКСИ"
 
@@ -5477,6 +5477,9 @@ msgstr "Магазины"
 msgid "Show Tachyon Core config"
 msgstr "Показать Tachyon Core конфигурацию"
 
+msgid "Show Tachyon Core config failed"
+msgstr "Не удалось показать конфигурацию Tachyon Core"
+
 msgid "Show metadata on dashboard"
 msgstr "Показывать метаданные на дашборде"
 
@@ -5903,8 +5906,8 @@ msgstr "Внедрение пакетов TCP Reset (RST)"
 msgid "TCP Window Sizes (wsize)"
 msgstr "Размеры окна TCP (wsize)"
 
-msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
-msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN Sing-box."
+msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via VPN/Proxy outbound instead."
+msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN."
 
 msgid "TLS / HTTPS"
 msgstr "TLS / HTTPS"
@@ -6959,6 +6962,12 @@ msgstr "Zapret"
 msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
 msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
 
+msgid "Zapret outbound is configured"
+msgstr "Outbound Zapret настроен"
+
+msgid "Zapret outbound is not configured"
+msgstr "Outbound Zapret не настроен"
+
 msgid "Zapret package is installed"
 msgstr "Пакет Zapret установлен"
 
@@ -7163,8 +7172,8 @@ msgstr "HTTP-проба через WAN"
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links, fptn://"
 msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2://, fptn://"
 
-msgid "vpn:// is available only with sing-box LX"
-msgstr "vpn:// доступен только с sing-box LX"
+msgid "vpn:// is available only with Tachyon Core or sing-box LX"
+msgstr "vpn:// доступен только с Tachyon Core или sing-box LX"
 
 msgid "working strategies"
 msgstr "рабочих стратегий"
@@ -7297,6 +7306,21 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "PID"
+msgstr "PID"
+
+msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!"
+msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
+
+msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
+msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN Sing-box."
+
+msgid "vpn:// is available only with sing-box LX"
+msgstr "vpn:// доступен только с sing-box LX"
+
+msgid "Cache"
+msgstr "Кэш"
 
 msgid "Memory Usage"
 msgstr "Использование памяти"

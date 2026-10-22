@@ -169,14 +169,17 @@ async function fetchDashboardSectionsOnce(mountId: number) {
 
   const prev = store.get().sectionsWidget;
   const hasRenderedData = prev.data.length > 0;
+  const nextLoading = prev.loading && !hasRenderedData;
 
-  store.set({
-    sectionsWidget: {
-      ...prev,
-      failed: false,
-      loading: prev.loading && !hasRenderedData,
-    },
-  });
+  if (prev.failed !== false || prev.loading !== nextLoading) {
+    store.set({
+      sectionsWidget: {
+        ...prev,
+        failed: false,
+        loading: nextLoading,
+      },
+    });
+  }
 
   try {
     const { data, success } = await CustomTachyonMethods.getDashboardSections();
@@ -627,6 +630,14 @@ async function connectToClashSockets(dataUpdatesId: number) {
       directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
 
+      if (Array.isArray(parsedMsg.connections)) {
+        currentConnections = aggregateClientConnections(
+          parsedMsg.connections,
+          new Map<string, string>(),
+        );
+        currentTopDomains = aggregateTopDomains(parsedMsg.connections);
+      }
+
       store.set({
         trafficTotalWidget: {
           loading: false,
@@ -646,11 +657,11 @@ async function connectToClashSockets(dataUpdatesId: number) {
         },
       });
 
-      if (Array.isArray(parsedMsg.connections)) {
-        currentTopDomains = aggregateTopDomains(parsedMsg.connections);
-        if (expandedSections.has('active_clients')) {
-          renderConnectionsWidget();
-        }
+      if (
+        Array.isArray(parsedMsg.connections) &&
+        expandedSections.has('active_clients')
+      ) {
+        renderConnectionsWidget();
       }
     },
     (_err) => {
@@ -932,6 +943,7 @@ async function handleTestSingleOutbound(
   } finally {
     delete singleTestingOutboundCodes[outboundCode];
     void renderSectionsWidget();
+    void renderTrafficTotalWidget();
   }
 }
 
@@ -2172,6 +2184,14 @@ async function fetchConnections() {
     if (res.success && res.data && typeof res.data === 'object') {
       const payload = res.data as any;
 
+      if (Array.isArray(payload.connections)) {
+        currentConnections = aggregateClientConnections(
+          payload.connections,
+          hostnames,
+        );
+        currentTopDomains = aggregateTopDomains(payload.connections);
+      }
+
       if (needsFallbackPolling) {
         const downloadTotal = Number(payload.downloadTotal) || 0;
         const uploadTotal = Number(payload.uploadTotal) || 0;
@@ -2206,16 +2226,8 @@ async function fetchConnections() {
             data: { connections: connCount, memory },
           },
         });
-      }
-
-      if (Array.isArray(payload.connections)) {
-        if (shouldFetchHostnames) {
-          currentConnections = aggregateClientConnections(
-            payload.connections,
-            hostnames,
-          );
-        }
-        currentTopDomains = aggregateTopDomains(payload.connections);
+      } else if (shouldFetchHostnames) {
+        void renderSystemInfoWidget();
       }
     }
   } catch (_e) {
@@ -2266,8 +2278,41 @@ async function renderBandwidthWidget() {
 }
 
 async function renderTrafficTotalWidget() {
-  const sections = store.get().sectionsWidget.data;
-  const activeRoute = getActiveRoute(sections);
+  const sectionsWidget = store.get().sectionsWidget;
+  const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
+    ...section,
+    outbounds: section.outbounds.map((outbound) => {
+      const customLatency = customProxyLatencies.get(outbound.code);
+      return {
+        ...outbound,
+        latency: customLatency ?? outbound.latency,
+        urlTestInfo: outbound.urlTestInfo
+          ? {
+              ...outbound.urlTestInfo,
+              outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
+                ...member,
+                latency:
+                  customProxyLatencies.get(member.code) ?? member.latency,
+              })),
+            }
+          : undefined,
+        priorityInfo: outbound.priorityInfo
+          ? {
+              ...outbound.priorityInfo,
+              outbounds: outbound.priorityInfo.outbounds.map((member) => ({
+                ...member,
+                latency:
+                  customProxyLatencies.get(member.code) ?? member.latency,
+              })),
+            }
+          : undefined,
+      };
+    }),
+  }));
+  const activeRoute = getActiveRoute(sectionsWithCustomLatencies);
+  const isCheckingLatency =
+    Object.keys(sectionsWidget.latencyFetchingSections || {}).length > 0 ||
+    Object.keys(singleTestingOutboundCodes).length > 0;
 
   renderStoreWidget(
     'dashboard-widget-traffic-total',
@@ -2296,7 +2341,9 @@ async function renderTrafficTotalWidget() {
           value:
             activeRoute.latency > 0
               ? `${activeRoute.latency}ms`
-              : _('Checking...'),
+              : isCheckingLatency
+                ? _('Checking...')
+                : '—',
           attributes: {
             class: activeRoute.latency > 0 ? 'tachyon-stat--down' : '',
           },
@@ -2440,7 +2487,6 @@ async function renderServicesInfoWidget() {
             running: data.singbox,
             memoryMb: data.singboxMemoryMb,
             uptimePretty: data.singboxUptimePretty,
-            version: data.engineVersion,
           }),
           attributes: {
             class: data.singbox
@@ -2473,15 +2519,6 @@ async function renderServicesInfoWidget() {
       }
 
       if (data.dnsmasqRunning != null) {
-        let cacheDetail = '';
-        if (data.dnsmasqLocalCacheEnabled && data.dnsmasqCacheSize) {
-          const approxMb = (
-            (data.dnsmasqCacheSize * 120) /
-            (1024 * 1024)
-          ).toFixed(1);
-          cacheDetail = ` [${_('Cache')}: ${approxMb} MB]`;
-        }
-
         const dnsmasqTooltip = formatServiceTooltip({
           pid: data.dnsmasqPid,
           uptimePretty: data.dnsmasqUptimePretty,
@@ -2493,7 +2530,6 @@ async function renderServicesInfoWidget() {
             running: data.dnsmasqRunning,
             memoryMb: data.dnsmasqMemoryMb,
             uptimePretty: data.dnsmasqUptimePretty,
-            extraSuffix: cacheDetail,
           }),
           attributes: {
             class: data.dnsmasqRunning

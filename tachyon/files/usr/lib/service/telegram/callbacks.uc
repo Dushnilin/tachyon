@@ -363,7 +363,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
         if (command_status(command_from_args([ "cp", "-a", staged_config, "/etc/config/tachyon.restored" ])) != 0 ||
             command_status(command_from_args([ "mv", "/etc/config/tachyon.restored", "/etc/config/tachyon" ])) != 0) {
             restore_config_from_backup(cfg_backup);
-            command_status(command_from_args([ "rm", "-rf", stage ]));
+            command_status(command_from_args([ "rm", "-rf", stage, data_backup, cfg_backup ]));
             send_message(token, chat_id, "❌ <b>" + t("backup_write_config_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
@@ -385,7 +385,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
             if (fs.stat(data_backup))
                 command_status(command_from_args([ "mv", data_backup, "/etc/tachyon" ]));
             restore_config_from_backup(cfg_backup);
-            command_status(command_from_args([ "rm", "-rf", stage ]));
+            command_status(command_from_args([ "rm", "-rf", stage, data_backup, cfg_backup ]));
             send_message(token, chat_id, "❌ <b>" + t("backup_write_data_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }

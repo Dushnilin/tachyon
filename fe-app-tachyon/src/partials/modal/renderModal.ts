@@ -91,6 +91,18 @@ export function renderModal(
   const updateText = (nextText: string) => {
     const normalizedText = nextText ?? '';
 
+    const selection =
+      typeof window !== 'undefined' ? window.getSelection?.() : null;
+    const hasActiveSelection = Boolean(
+      selection &&
+        !selection.isCollapsed &&
+        (contentEl.contains(selection.anchorNode) ||
+          contentEl.contains(selection.focusNode)),
+    );
+    if (hasActiveSelection && currentText !== '') {
+      return;
+    }
+
     const shouldStickToBottom =
       shouldScrollToBottomOnMount ||
       contentEl.scrollTop + contentEl.clientHeight >=

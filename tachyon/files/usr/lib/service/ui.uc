@@ -892,6 +892,12 @@ function dns_configured() {
 }
 
 function tiny_package_installed() {
+    if (fs.stat("/usr/lib/opkg/info/sing-box-tiny.control") != null)
+        return true;
+    let opkg_info = fs.stat("/usr/lib/opkg/info");
+    if (opkg_info != null && opkg_info.type == "directory" && fs.stat("/usr/lib/opkg/status") != null)
+        return false;
+
     if (command_success_from_args([ "sh", "-c", "command -v apk" ]))
         return command_success_from_args([ "apk", "info", "-e", "sing-box-tiny" ]);
 
@@ -1147,21 +1153,32 @@ function ui_capabilities_json() {
     write_json(capability_flags());
 }
 
+let proc_pids_by_comm = null;
+
 function get_process_pids(process_name) {
-    let pids = [];
-    let d = fs.opendir("/proc");
-    if (d) {
-        let entry;
-        while ((entry = d.read()) != null) {
-            if (match(entry, /^[0-9]+$/) != null) {
-                let comm = fs.readfile("/proc/" + entry + "/comm");
-                if (comm && trim(comm) == process_name)
-                    push(pids, entry);
+    if (proc_pids_by_comm == null) {
+        let d = fs.opendir("/proc");
+        if (d) {
+            proc_pids_by_comm = {};
+            let entry;
+            while ((entry = d.read()) != null) {
+                if (match(entry, /^[0-9]+$/) != null) {
+                    let comm = fs.readfile("/proc/" + entry + "/comm");
+                    if (comm) {
+                        let name = trim(comm);
+                        if (!proc_pids_by_comm[name])
+                            proc_pids_by_comm[name] = [];
+                        push(proc_pids_by_comm[name], entry);
+                    }
+                }
             }
+            d.close();
         }
-        d.close();
-        return pids;
     }
+    if (proc_pids_by_comm != null)
+        return proc_pids_by_comm[process_name] || [];
+
+    let pids = [];
     let output = common.command_output_from_args([ "pidof", process_name ]);
     for (let p in split(trim(as_string(output)), /[ \t\r\n]+/)) {
         let pid = trim(as_string(p));
@@ -1191,15 +1208,72 @@ function process_memory_rss_mb(process_name) {
     return total_kb > 0 ? int(total_kb / 1024) : 0;
 }
 
-function pidfile_memory_rss_mb(path) {
-    let pid = trim(fs.readfile(path) || "");
-    if (!pid || match(pid, /^[0-9]+$/) == null)
-        return 0;
-    let status = fs.readfile("/proc/" + pid + "/status");
-    if (!status)
-        return 0;
-    let m = match(status, /VmRSS:[ \t]+([0-9]+)/);
-    return m ? int(int(m[1]) / 1024) : 0;
+function tachyon_helpers_rss_kb(tachyon_pidfiles) {
+    let total_anon_kb = 0;
+    let max_file_kb = 0;
+    let seen = {};
+
+    let add_pid = function(pid) {
+        if (!pid || match(pid, /^[0-9]+$/) == null || seen[pid])
+            return;
+        let status = fs.readfile("/proc/" + pid + "/status");
+        if (!status)
+            return;
+        seen[pid] = true;
+        let m_anon = match(status, /RssAnon:[ \t]+([0-9]+)/);
+        let m_file = match(status, /RssFile:[ \t]+([0-9]+)/);
+        if (m_anon) {
+            total_anon_kb += int(m_anon[1]);
+            let f_kb = m_file ? int(m_file[1]) : 0;
+            if (f_kb > max_file_kb)
+                max_file_kb = f_kb;
+        } else {
+            let m_rss = match(status, /VmRSS:[ \t]+([0-9]+)/);
+            if (m_rss)
+                total_anon_kb += int(m_rss[1]);
+        }
+    };
+
+    for (let pf in tachyon_pidfiles) {
+        if (!pf)
+            continue;
+        add_pid(trim(fs.readfile(pf) || ""));
+    }
+    let self_stat = fs.readfile("/proc/self/stat") || "";
+    let self_pid = split(trim(self_stat), /[ \t]+/)[0] || "";
+    let ucode_pids = get_process_pids("ucode");
+    for (let p in ucode_pids) {
+        let pid = trim(as_string(p));
+        if (!pid || pid == self_pid || seen[pid])
+            continue;
+        let cmd = fs.readfile("/proc/" + pid + "/cmdline") || "";
+        if (index(cmd, "/usr/lib/tachyon/") < 0 || index(cmd, "service/ui.uc") >= 0 || index(cmd, "tachyon_entry.uc") >= 0)
+            continue;
+        add_pid(pid);
+    }
+    return total_anon_kb + max_file_kb;
+}
+
+function first_alive_pid_from_files(paths) {
+    for (let path in paths) {
+        if (!path)
+            continue;
+        let raw = trim(fs.readfile(path) || "");
+        if (raw && match(raw, /^[0-9]+$/) != null && fs.stat("/proc/" + raw) != null)
+            return int(raw);
+    }
+    let self_stat = fs.readfile("/proc/self/stat") || "";
+    let self_pid = split(trim(self_stat), /[ \t]+/)[0] || "";
+    let ucode_pids = get_process_pids("ucode");
+    for (let p in ucode_pids) {
+        let pid = trim(as_string(p));
+        if (!pid || pid == self_pid || match(pid, /^[0-9]+$/) == null)
+            continue;
+        let cmd = fs.readfile("/proc/" + pid + "/cmdline") || "";
+        if (index(cmd, "/usr/lib/tachyon/") >= 0 && index(cmd, "service/ui.uc") < 0 && index(cmd, "tachyon_entry.uc") < 0)
+            return int(pid);
+    }
+    return null;
 }
 
 function truthy(value) {
@@ -1210,6 +1284,20 @@ function get_process_uptime(pid) {
     let spid = as_string(pid || "");
     if (!spid || match(spid, /^[0-9]+$/) == null)
         return null;
+    let stat_raw = as_string(fs.readfile("/proc/" + spid + "/stat") || "");
+    let uptime_raw = as_string(fs.readfile("/proc/uptime") || "");
+    if (stat_raw != "" && uptime_raw != "") {
+        let rpar = rindex(stat_raw, ")");
+        if (rpar > 0) {
+            let tail = split(trim(substr(stat_raw, rpar + 1)), /[ \t]+/);
+            if (length(tail) >= 20) {
+                let start_sec = int(int(tail[19]) / 100);
+                let sys_sec = int(split(trim(uptime_raw), /[ \t]+/)[0]);
+                let sec = sys_sec - start_sec;
+                return sec >= 0 ? sec : 0;
+            }
+        }
+    }
     let st = fs.stat("/proc/" + spid);
     if (!st || !st.mtime)
         return null;
@@ -1302,7 +1390,18 @@ function current_ui_state_json() {
     let dnsmasq_pids = get_process_pids("dnsmasq");
     let dnsmasq_is_running = length(dnsmasq_pids) > 0 ? 1 : 0;
     let dnsmasq_rss = dnsmasq_is_running ? process_memory_rss_mb("dnsmasq") : 0;
-    let tachyon_rss = tachyon_is_running ? (pidfile_memory_rss_mb("/var/run/tachyon_watchdog.pid") + pidfile_memory_rss_mb("/var/run/tachyon-feedback.pid")) : 0;
+    let tachyon_pidfiles = [
+        "/var/run/tachyon_watchdog.pid",
+        "/var/run/tachyon/dns-failover.pid",
+        "/var/run/tachyon/priority.pid",
+        "/var/run/tachyon_telegram.pid",
+        "/var/run/tachyon-feedback.pid",
+        "/var/run/tachyon/fuzzer-worker.pid"
+    ];
+    let tachyon_rss_kb = tachyon_is_running ? tachyon_helpers_rss_kb(tachyon_pidfiles) : 0;
+    let tachyon_rss = tachyon_rss_kb > 0 ? int((tachyon_rss_kb + 512) / 1024) : 0;
+    if (tachyon_rss == 0 && tachyon_rss_kb > 0)
+        tachyon_rss = 1;
     let dns_local_cache = truthy(uci_core.get(CONFIG_NAME + ".settings.dns_local_cache"));
     let dns_cache_size = dns_local_cache ? int(uci_core.get(CONFIG_NAME + ".settings.dns_cache_size") || 10000) : 0;
 
@@ -1332,14 +1431,6 @@ function current_ui_state_json() {
             engine_variant = "Sing-box";
     }
 
-    let tachyon_pid = null;
-    let tachyon_pid_raw = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
-    if (tachyon_is_running && tachyon_pid_raw && match(tachyon_pid_raw, /^[0-9]+$/) != null && fs.stat("/proc/" + tachyon_pid_raw) != null) {
-        tachyon_pid = int(tachyon_pid_raw);
-    }
-    let tachyon_uptime = tachyon_pid ? get_process_uptime(tachyon_pid) : null;
-    let tachyon_uptime_pretty = format_uptime_pretty(tachyon_uptime);
-
     let sing_box_pid = null;
     if (sing_box_is_running) {
         if (is_steer) {
@@ -1352,6 +1443,10 @@ function current_ui_state_json() {
     }
     let sing_box_uptime = sing_box_pid ? get_process_uptime(sing_box_pid) : null;
     let sing_box_uptime_pretty = format_uptime_pretty(sing_box_uptime);
+
+    let tachyon_pid = tachyon_is_running ? (first_alive_pid_from_files(tachyon_pidfiles) || sing_box_pid) : null;
+    let tachyon_uptime = tachyon_pid ? get_process_uptime(tachyon_pid) : null;
+    let tachyon_uptime_pretty = format_uptime_pretty(tachyon_uptime);
 
     let zapret2_pid = null;
     if (zapret2_rss > 0) {

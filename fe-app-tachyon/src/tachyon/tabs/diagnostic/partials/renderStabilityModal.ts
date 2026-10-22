@@ -89,6 +89,43 @@ export async function renderStabilityModal(): Promise<void> {
     return '#f85149';
   };
 
+  const getDaemonDisplayInfo = (
+    name: string,
+  ): { title: string; subtitle: string } => {
+    switch (name) {
+      case 'tachyon-core':
+        return { title: 'Tachyon Core', subtitle: 'tachyon-core' };
+      case 'sing-box':
+        return { title: 'Sing-Box', subtitle: 'sing-box' };
+      case 'steer':
+        return { title: 'Steer', subtitle: 'steer' };
+      case 'tachyon':
+        return { title: 'Tachyon', subtitle: 'ucode helpers' };
+      case 'watchdog':
+        return { title: 'Watchdog', subtitle: 'tachyon_watchdog' };
+      case 'telegram':
+        return { title: 'Telegram Bot', subtitle: 'bot/main.uc' };
+      case 'nfqws2':
+        return { title: 'Zapret v2', subtitle: 'nfqws2' };
+      case 'nfqws':
+        return { title: 'Zapret', subtitle: 'nfqws' };
+      case 'ciadpi':
+        return { title: 'ByeDPI', subtitle: 'ciadpi' };
+      case 'wdtt':
+        return { title: 'WDTT', subtitle: 'wdtt' };
+      case 'olcrtc':
+        return { title: 'OLCRTC', subtitle: 'olcrtc' };
+      case 'fptn':
+        return { title: 'FPTN', subtitle: 'fptn' };
+      case 'tailscale':
+        return { title: 'Tailscale', subtitle: 'tailscaled' };
+      case 'dnsmasq':
+        return { title: 'Dnsmasq', subtitle: 'dnsmasq' };
+      default:
+        return { title: name, subtitle: '' };
+    }
+  };
+
   const updateModalContent = () => {
     modalContainer.innerHTML = '';
 
@@ -116,34 +153,40 @@ export async function renderStabilityModal(): Promise<void> {
       {
         class: 'cbi-section-node',
         style:
-          'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 16px; margin-bottom: 12px; border-radius: 6px; background: var(--background-color-high, rgba(0,0,0,0.03)); border: 1px solid var(--border-color, rgba(0,0,0,0.1));',
+          'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 16px; margin-bottom: 14px; border-radius: 8px; background: var(--background-color-high, rgba(128,128,128,0.05)); border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18));',
       },
       [
-        E('div', { style: 'display: flex; align-items: center; gap: 10px;' }, [
+        E('div', { style: 'display: flex; align-items: center; gap: 12px;' }, [
           E(
             'span',
             {
               class: `label ${badgeClass}`,
               style:
-                'font-size: 15px; font-weight: bold; padding: 6px 12px; border-radius: 4px;',
+                'font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 6px; white-space: nowrap; display: inline-flex; align-items: center; line-height: 1.2; letter-spacing: 0.3px;',
             },
             `${score}% ${grade.toUpperCase()}`,
           ),
-          E('div', {}, [
-            E(
-              'div',
-              { style: 'font-weight: bold; font-size: 14px;' },
-              _('System Stability Index'),
-            ),
-            E(
-              'div',
-              {
-                style:
-                  'font-size: 11px; color: var(--text-color-medium, #777);',
-              },
-              `${_('System uptime')}: ${systemUptime}`,
-            ),
-          ]),
+          E(
+            'div',
+            { style: 'display: flex; flex-direction: column; gap: 2px;' },
+            [
+              E(
+                'div',
+                {
+                  style: 'font-weight: 700; font-size: 14px; line-height: 1.2;',
+                },
+                _('System Stability Index'),
+              ),
+              E(
+                'div',
+                {
+                  style:
+                    'font-size: 12px; color: var(--text-color-medium, #777); line-height: 1.2;',
+                },
+                `${_('System uptime')}: ${systemUptime}`,
+              ),
+            ],
+          ),
         ]),
         E(
           'div',
@@ -152,23 +195,33 @@ export async function renderStabilityModal(): Promise<void> {
               'display: flex; gap: 14px; align-items: center; font-size: 12px;',
           },
           [
-            E('div', { style: 'text-align: right;' }, [
-              E(
-                'div',
-                { style: 'font-weight: bold;' },
-                `${healthyServers} / ${totalServers} ${_('Nodes OK')}`,
-              ),
-              E(
-                'div',
-                {
-                  style:
-                    'font-size: 11px; color: var(--text-color-medium, #777);',
-                },
-                avgLatency > 0
-                  ? `${_('Fleet Latency')}: ~${Math.round(avgLatency)} ms`
-                  : _('Untested fleet'),
-              ),
-            ]),
+            E(
+              'div',
+              {
+                style:
+                  'text-align: right; display: flex; flex-direction: column; gap: 2px;',
+              },
+              [
+                E(
+                  'div',
+                  {
+                    style:
+                      'font-weight: 700; font-size: 13px; line-height: 1.2;',
+                  },
+                  `${healthyServers} / ${totalServers} ${_('Nodes OK')}`,
+                ),
+                E(
+                  'div',
+                  {
+                    style:
+                      'font-size: 11px; color: var(--text-color-medium, #777); line-height: 1.2;',
+                  },
+                  avgLatency > 0
+                    ? `${_('Fleet Latency')}: ~${Math.round(avgLatency)} ms`
+                    : _('Untested fleet'),
+                ),
+              ],
+            ),
           ],
         ),
       ],
@@ -317,75 +370,179 @@ export async function renderStabilityModal(): Promise<void> {
             ],
           );
 
+    const thLeftStyle =
+      'text-align: left !important; padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;';
+    const thRightStyle =
+      'text-align: right !important; padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;';
+    const tdLeftStyle =
+      'text-align: left !important; padding: 9px 12px; vertical-align: middle; border-bottom: 1px solid var(--border-color-low, rgba(128,128,128,0.1));';
+    const tdRightStyle =
+      'text-align: right !important; padding: 9px 12px; vertical-align: middle; border-bottom: 1px solid var(--border-color-low, rgba(128,128,128,0.1)); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap;';
+
     // Daemons Table
     const daemonRows = Object.keys(daemons).map((daemonName) => {
       const info = daemons[daemonName];
       const isRunning = info.running;
-      const pidStr = info.pid ? String(info.pid) : '—';
-      const uptimeStr = info.pretty || (isRunning ? 'running' : 'stopped');
+      const displayInfo = getDaemonDisplayInfo(daemonName);
+
+      let pidStr = '—';
+      if (info.pids && info.pids.length > 0) {
+        pidStr =
+          info.pids.length <= 2
+            ? info.pids.join(', ')
+            : `${info.pids.slice(0, 2).join(', ')} (+${info.pids.length - 2})`;
+      } else if (info.pid) {
+        pidStr = String(info.pid);
+      }
+
+      const uptimeStr = isRunning ? info.pretty || '0s' : '—';
       const rssKb = mem?.daemons_rss_kb?.[daemonName];
       const rssStr = rssKb ? prettyBytes(rssKb * 1024) : '—';
       const daemonFd = fds?.daemons?.[daemonName];
       const fdStr = daemonFd !== undefined ? String(daemonFd) : '—';
 
       return E('tr', { class: 'cbi-section-table-row' }, [
-        E(
-          'td',
-          { class: 'cbi-section-table-cell', style: 'font-weight: 500;' },
-          daemonName,
-        ),
-        E('td', { class: 'cbi-section-table-cell' }, [
+        E('td', { class: 'cbi-section-table-cell', style: tdLeftStyle }, [
+          E(
+            'div',
+            {
+              style:
+                'display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;',
+            },
+            [
+              E(
+                'span',
+                { style: 'font-weight: 600; font-size: 13px;' },
+                displayInfo.title,
+              ),
+              displayInfo.subtitle && displayInfo.subtitle !== displayInfo.title
+                ? E(
+                    'span',
+                    {
+                      style:
+                        'font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-color-medium, #888);',
+                    },
+                    displayInfo.subtitle,
+                  )
+                : '',
+            ],
+          ),
+        ]),
+        E('td', { class: 'cbi-section-table-cell', style: tdLeftStyle }, [
           E(
             'span',
             {
               class: `label ${isRunning ? 'label-success' : 'label-default'}`,
-              style: 'font-size: 11px; padding: 2px 6px;',
+              style:
+                'font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;',
             },
-            isRunning ? _('Running') : _('Stopped'),
+            [
+              E('span', { style: 'font-size: 8px; line-height: 1;' }, '●'),
+              E('span', {}, isRunning ? _('Running') : _('Stopped')),
+            ],
           ),
         ]),
         E(
           'td',
           {
             class: 'cbi-section-table-cell',
-            style: 'font-family: monospace;',
+            style: `${tdLeftStyle} font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; color: var(--text-color-medium, #666); white-space: nowrap;`,
           },
           pidStr,
         ),
-        E('td', { class: 'cbi-section-table-cell' }, uptimeStr),
-        E('td', { class: 'cbi-section-table-cell' }, rssStr),
-        E('td', { class: 'cbi-section-table-cell' }, fdStr),
+        E(
+          'td',
+          {
+            class: 'cbi-section-table-cell',
+            style: `${tdRightStyle} font-weight: 500;`,
+          },
+          uptimeStr,
+        ),
+        E(
+          'td',
+          {
+            class: 'cbi-section-table-cell',
+            style: `${tdRightStyle} font-weight: 600;`,
+          },
+          rssStr,
+        ),
+        E(
+          'td',
+          {
+            class: 'cbi-section-table-cell',
+            style: `${tdRightStyle} color: var(--text-color-medium, #666);`,
+          },
+          fdStr,
+        ),
       ]);
     });
 
-    const daemonsTable = E('div', { class: 'cbi-section' }, [
-      E(
-        'div',
-        {
-          class: 'cbi-section-title',
-          style: 'font-size: 13px; font-weight: bold; margin-bottom: 6px;',
-        },
-        _('Managed Daemons Status'),
-      ),
-      E(
-        'table',
-        {
-          class: 'cbi-section-table',
-          style: 'width: 100%; border-collapse: collapse;',
-        },
-        [
-          E('tr', { class: 'cbi-section-table-titles' }, [
-            E('th', { class: 'cbi-section-table-cell' }, _('Service')),
-            E('th', { class: 'cbi-section-table-cell' }, _('State')),
-            E('th', { class: 'cbi-section-table-cell' }, _('PID')),
-            E('th', { class: 'cbi-section-table-cell' }, _('Uptime')),
-            E('th', { class: 'cbi-section-table-cell' }, _('RAM (RSS)')),
-            E('th', { class: 'cbi-section-table-cell' }, _('FDs')),
-          ]),
-          ...daemonRows,
-        ],
-      ),
-    ]);
+    const daemonsTable = E(
+      'div',
+      { class: 'cbi-section', style: 'margin-bottom: 0;' },
+      [
+        E(
+          'div',
+          {
+            class: 'cbi-section-title',
+            style:
+              'font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;',
+          },
+          [_('Managed Daemons Status')],
+        ),
+        E(
+          'div',
+          {
+            style:
+              'border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18)); border-radius: 8px; overflow-x: auto;',
+          },
+          [
+            E(
+              'table',
+              {
+                class: 'cbi-section-table',
+                style: 'width: 100%; border-collapse: collapse; margin: 0;',
+              },
+              [
+                E('tr', { class: 'cbi-section-table-titles' }, [
+                  E(
+                    'th',
+                    { class: 'cbi-section-table-cell', style: thLeftStyle },
+                    _('Service'),
+                  ),
+                  E(
+                    'th',
+                    { class: 'cbi-section-table-cell', style: thLeftStyle },
+                    _('State'),
+                  ),
+                  E(
+                    'th',
+                    { class: 'cbi-section-table-cell', style: thLeftStyle },
+                    'PID',
+                  ),
+                  E(
+                    'th',
+                    { class: 'cbi-section-table-cell', style: thRightStyle },
+                    _('Uptime'),
+                  ),
+                  E(
+                    'th',
+                    { class: 'cbi-section-table-cell', style: thRightStyle },
+                    _('RAM (RSS)'),
+                  ),
+                  E(
+                    'th',
+                    { class: 'cbi-section-table-cell', style: thRightStyle },
+                    _('FDs'),
+                  ),
+                ]),
+                ...daemonRows,
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
 
     // Flaps & Resources Grid
     const memoryUsedPct = mem?.used_pct ?? 0;
@@ -396,11 +553,14 @@ export async function renderStabilityModal(): Promise<void> {
       ? prettyBytes(mem.available_kb * 1024)
       : '—';
 
+    const metricRowStyle =
+      'display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 3px 0;';
+
     const flapsAndMetrics = E(
       'div',
       {
         style:
-          'display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 14px;',
+          'display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 14px;',
       },
       [
         // Flaps Card
@@ -409,84 +569,49 @@ export async function renderStabilityModal(): Promise<void> {
           {
             class: 'cbi-section-node',
             style:
-              'padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1));',
+              'padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18)); background: var(--background-color-high, rgba(128,128,128,0.02));',
           },
           [
             E(
               'div',
               {
                 style:
-                  'font-weight: bold; margin-bottom: 6px; font-size: 12px;',
+                  'font-weight: 700; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-color-medium, #666);',
               },
               _('Failovers & Restarts'),
             ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;',
-              },
-              [
-                E('span', {}, _('Watchdog recoveries:')),
-                E(
-                  'b',
-                  {
-                    style: flaps.watchdog_restarts > 0 ? 'color: #d29922;' : '',
-                  },
-                  String(flaps.watchdog_restarts),
-                ),
-              ],
-            ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;',
-              },
-              [
-                E('span', {}, _('Engine crashes:')),
-                E(
-                  'b',
-                  {
-                    style: flaps.engine_crashes > 0 ? 'color: #f85149;' : '',
-                  },
-                  String(flaps.engine_crashes),
-                ),
-              ],
-            ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;',
-              },
-              [
-                E('span', {}, _('DNS failovers:')),
-                E('b', {}, String(flaps.dns_failovers)),
-              ],
-            ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;',
-              },
-              [
-                E('span', {}, _('WAN network flaps:')),
-                E('b', {}, String(flaps.wan_flaps)),
-              ],
-            ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; justify-content: space-between; font-size: 12px;',
-              },
-              [
-                E('span', {}, _('Config rollbacks:')),
-                E('b', {}, String(flaps.config_rollbacks)),
-              ],
-            ),
+            E('div', { style: metricRowStyle }, [
+              E('span', {}, _('Watchdog recoveries:')),
+              E(
+                'b',
+                {
+                  style: flaps.watchdog_restarts > 0 ? 'color: #d29922;' : '',
+                },
+                String(flaps.watchdog_restarts),
+              ),
+            ]),
+            E('div', { style: metricRowStyle }, [
+              E('span', {}, _('Engine crashes:')),
+              E(
+                'b',
+                {
+                  style: flaps.engine_crashes > 0 ? 'color: #f85149;' : '',
+                },
+                String(flaps.engine_crashes),
+              ),
+            ]),
+            E('div', { style: metricRowStyle }, [
+              E('span', {}, _('DNS failovers:')),
+              E('b', {}, String(flaps.dns_failovers)),
+            ]),
+            E('div', { style: metricRowStyle }, [
+              E('span', {}, _('WAN network flaps:')),
+              E('b', {}, String(flaps.wan_flaps)),
+            ]),
+            E('div', { style: metricRowStyle }, [
+              E('span', {}, _('Config rollbacks:')),
+              E('b', {}, String(flaps.config_rollbacks)),
+            ]),
           ],
         ),
 
@@ -496,14 +621,14 @@ export async function renderStabilityModal(): Promise<void> {
           {
             class: 'cbi-section-node',
             style:
-              'padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1));',
+              'padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18)); background: var(--background-color-high, rgba(128,128,128,0.02));',
           },
           [
             E(
               'div',
               {
                 style:
-                  'font-weight: bold; margin-bottom: 6px; font-size: 12px;',
+                  'font-weight: 700; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-color-medium, #666);',
               },
               _('RAM & Resource Pressure'),
             ),
@@ -511,7 +636,7 @@ export async function renderStabilityModal(): Promise<void> {
               'div',
               {
                 style:
-                  'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;',
+                  'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;',
               },
               [
                 E('span', {}, _('RAM usage:')),
@@ -522,7 +647,7 @@ export async function renderStabilityModal(): Promise<void> {
               'div',
               {
                 style:
-                  'width: 100%; height: 6px; background: rgba(0,0,0,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 8px;',
+                  'width: 100%; height: 6px; background: rgba(128,128,128,0.15); border-radius: 3px; overflow: hidden; margin-bottom: 10px;',
               },
               [
                 E('div', {
@@ -530,32 +655,21 @@ export async function renderStabilityModal(): Promise<void> {
                 }),
               ],
             ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;',
-              },
-              [
-                E('span', {}, _('Available memory:')),
-                E('span', {}, memoryFreeStr),
-              ],
-            ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; justify-content: space-between; font-size: 12px;',
-              },
-              [
-                E('span', {}, _('System FDs allocated:')),
-                E(
-                  'span',
-                  {},
-                  `${fds?.system_allocated ?? '—'} / ${fds?.system_max ?? '—'}`,
-                ),
-              ],
-            ),
+            E('div', { style: metricRowStyle }, [
+              E('span', {}, _('Available memory:')),
+              E('b', {}, memoryFreeStr),
+            ]),
+            E('div', { style: metricRowStyle }, [
+              E('span', {}, _('System FDs allocated:')),
+              E(
+                'b',
+                {
+                  style:
+                    'font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;',
+                },
+                `${fds?.system_allocated ?? '—'} / ${fds?.system_max ?? '—'}`,
+              ),
+            ]),
           ],
         ),
       ],

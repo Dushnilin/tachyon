@@ -356,6 +356,37 @@ function core_age_seconds() {
 
 const CORE_GRACE_SECONDS = 90;
 
+const TMPFS_LOG_MAX_BYTES = 524288;
+const TMPFS_LOG_KEEP_BYTES = 102400;
+const TMPFS_LOG_PROVIDER_DIRS = [ "zapret", "zapret2", "byedpi", "fptn", "tailscale" ];
+
+function trim_tmpfs_log(path) {
+    let st = fs.stat(path);
+    if (st == null || st.type != "file" || st.size <= TMPFS_LOG_MAX_BYTES)
+        return false;
+    let f = fs.open(path, "r");
+    if (!f)
+        return false;
+    f.seek(-TMPFS_LOG_KEEP_BYTES, 2);
+    let tail = f.read(TMPFS_LOG_KEEP_BYTES);
+    f.close();
+    if (tail == null)
+        return false;
+    let nl = index(tail, "\n");
+    if (nl >= 0 && nl + 1 < length(tail))
+        tail = substr(tail, nl + 1);
+    return fs.writefile(path, tail) != null;
+}
+
+function trim_runtime_logs() {
+    let paths = [ "/tmp/tachyon-core/sing-box.log" ];
+    for (let dir in TMPFS_LOG_PROVIDER_DIRS)
+        for (let path in (fs.glob("/var/run/tachyon/" + dir + "/*.log") || []))
+            push(paths, path);
+    for (let path in paths)
+        trim_tmpfs_log(path);
+}
+
 function worker() {
     let cfg = settings();
     let state = runtime_dns.normalize_state(cfg, common.read_json_file(STATE_FILE));
@@ -378,8 +409,14 @@ function worker() {
     let sleep_interval = active_interval < recovery_interval ? active_interval : recovery_interval;
     if (sleep_interval < 2) sleep_interval = 2;
 
+    let last_log_trim = 0;
+
     while (true) {
         let now = now_seconds();
+        if (now - last_log_trim >= 60) {
+            trim_runtime_logs();
+            last_log_trim = now;
+        }
         let current_cfg = settings();
         if (!runtime_dns.state_matches(runtime_dns.state_template(current_cfg), state))
             return 0;

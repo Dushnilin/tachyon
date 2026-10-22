@@ -111,6 +111,20 @@ function active_engine_is_steer() {
     return name == "steer" || name == "steer-extended";
 }
 
+function is_tachyon_core_active() {
+    if (active_engine_is_steer())
+        return false;
+    let marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
+    if (marker == "tachyon-core")
+        return true;
+    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny")
+        return false;
+    if (sysinfo_mod.sing_box_marker_is("tachyon-core"))
+        return true;
+    let eng = active_engine_name();
+    return eng == "tachyon-core" || fs.stat("/usr/bin/tachyon-core") != null;
+}
+
 function status_capture(args, input) { return status_bridge.status_capture(args, input); }
 function status_output(args, input) { return status_bridge.status_output(args, input); }
 function status_success(args, input) { return status_bridge.status_success(args, input); }
@@ -416,13 +430,15 @@ function global_check(arg1, arg2) {
     else
         print_global("❌ Failed to get DNS info");
 
+    let core_title = is_tachyon_core_active() ? "Tachyon Core" : "Sing-box";
+    let core_lc = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    print_global("═══ Sing-box status");
+    print_global("═══ " + core_title + " status");
     let singbox_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-sing-box" ]))).output;
     if (singbox_check_json != "")
-        render_or_fail([ "global-sing-box-check" ], singbox_check_json, "❌ Failed to parse sing-box info", [ 0 ]);
+        render_or_fail([ "global-sing-box-check" ], singbox_check_json, "❌ Failed to parse " + core_lc + " info", [ 0 ]);
     else
-        print_global("❌ Failed to get sing-box info");
+        print_global("❌ Failed to get " + core_lc + " info");
 
     print_global("---------------------------");
     print_global("Inbounds checks");
@@ -765,10 +781,11 @@ function run_recovery_checks() {
             module_status(DNS_APPLY_UC, [ "failsafe-restore" ]);
         else
             doc_plan("dns/apply.uc failsafe-restore");
+        let rec_core = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
         if (!DOCTOR_REPAIR_MODE || module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) != 0) {
-            mark_fixed("dnsmasq DNS", "redirected to sing-box", "возвращён на прямые upstream");
+            mark_fixed("dnsmasq DNS", "redirected to " + rec_core, "возвращён на прямые upstream");
         } else {
-            doc_check("❌", "dnsmasq DNS", "redirected to sing-box", "→ не удалось восстановить — проверьте /etc/config/dhcp");
+            doc_check("❌", "dnsmasq DNS", "redirected to " + rec_core, "→ не удалось восстановить — проверьте /etc/config/dhcp");
         }
     } else {
         doc_check("✅", "dnsmasq DNS", agh_primary_rec ? "bypassed (AdGuardHome on :53, dnsmasq DHCP-only)" : "direct (stock)", "");
@@ -934,7 +951,7 @@ function run_doctor_checks_impl(repair) {
             wd_running = true;
         }
 
-        let core_disp = cfg.core || "sing-box";
+        let core_disp = cfg.core || (is_tachyon_core_active() ? "tachyon-core" : "sing-box");
         doc_check("⚫", core_disp, "bypassed (stopped)", "");
         doc_check("⚫", "nftables rules", "bypassed (flushed)", "");
         doc_check("⚫", "routing rules (ip rule)", "bypassed (removed)", "");
@@ -964,8 +981,9 @@ function run_doctor_checks_impl(repair) {
         active_engine = require("core.engine").get_active();
     } catch (e) {}
     let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
+    let is_tachyon_core = !is_steer && is_tachyon_core_active();
 
-    let binary_name = is_steer ? "steer" : "sing-box";
+    let binary_name = is_steer ? "steer" : (is_tachyon_core ? "tachyon-core" : "sing-box");
     let init_script = is_steer ? "/etc/init.d/steer" : "/etc/init.d/tachyon-core";
     let config_file_path = is_steer ? "/etc/steer/spec.json" : "/etc/tachyon-core/config.json";
 
@@ -1038,7 +1056,7 @@ function run_doctor_checks_impl(repair) {
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("regenerate sing-box config (configure-service) + restart");
+                doc_plan("regenerate " + binary_name + " config (configure-service) + restart");
                 doc_check("⚠️", binary_name + " config", "invalid", "→ WILL FIX (doctor --fix): пересоздание конфига");
             } else {
                 let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
@@ -1062,12 +1080,12 @@ function run_doctor_checks_impl(repair) {
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("regenerate sing-box config (configure-service)");
-                doc_check("⚠️", "sing-box config", "missing", "→ WILL FIX (doctor --fix): генерация конфига");
+                doc_plan("regenerate " + binary_name + " config (configure-service)");
+                doc_check("⚠️", binary_name + " config", "missing", "→ WILL FIX (doctor --fix): генерация конфига");
             } else {
                 let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
                 if (regen_status == 0 && fs.stat(config_file_path) != null) {
-                    doc_check("❌", "sing-box config", "missing", "→ FIXED: пересоздан");
+                    doc_check("❌", binary_name + " config", "missing", "→ FIXED: пересоздан");
                     fixed++;
                 } else {
                     doc_check("❌", binary_name + " config", "missing", "→ не удалось сгенерировать config");
@@ -1263,12 +1281,12 @@ function run_doctor_checks_impl(repair) {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
                 doc_plan("dns/apply.uc configure force");
-                doc_check("⚠️", "dnsmasq server (Direct)", "incorrect", "→ WILL FIX (doctor --fix): перенаправление на sing-box (" + SB_DNS_INBOUND_ADDRESS + ")");
+                doc_check("⚠️", "dnsmasq server (Direct)", "incorrect", "→ WILL FIX (doctor --fix): перенаправление на " + binary_name + " (" + SB_DNS_INBOUND_ADDRESS + ")");
             } else {
                 module_status(DNS_APPLY_UC, [ "configure", "force" ]);
                 command_status("sleep 1");
                 if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
-                    doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ FIXED: направлен на sing-box (" + SB_DNS_INBOUND_ADDRESS + ")");
+                    doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ FIXED: направлен на " + binary_name + " (" + SB_DNS_INBOUND_ADDRESS + ")");
                     fixed++;
                 } else {
                     doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ не удалось перенаправить");
@@ -1334,7 +1352,7 @@ function run_doctor_checks_impl(repair) {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
                 doc_plan("uci set dhcp.@dnsmasq[0].dns_redirect='0' + dnsmasq restart");
-                doc_check("⚠️", "dnsmasq dns_redirect", "enabled (causes DNAT → port 53 collision with sing-box)",
+                doc_check("⚠️", "dnsmasq dns_redirect", "enabled (causes DNAT → port 53 collision with " + binary_name + ")",
                     "→ WILL FIX (doctor --fix): отключение dns_redirect");
             } else {
                 doc_set("dhcp.@dnsmasq[0].dns_redirect", "0");
@@ -1524,7 +1542,7 @@ function run_doctor_checks_impl(repair) {
                 dns_main_reachable = true;
                 doc_check("✅", "DNS main (" + display_main + ")", "reachable", "");
             } else {
-                doc_check("⚠️", "DNS main (" + display_main + ")", "ISP blocks direct DoH", "→ Норма: провайдер блокирует DoH напрямую, sing-box использует DoH через прокси");
+                doc_check("⚠️", "DNS main (" + display_main + ")", "ISP blocks direct DoH", "→ Норма: провайдер блокирует DoH напрямую, " + binary_name + " использует DoH через прокси");
             }
         }
     } else {
@@ -1553,31 +1571,31 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 5b. DNS Resolution through sing-box
+    // 5b. DNS Resolution through proxy core
     if (has_sections && !is_steer) {
         if (dns_check_through_singbox("google.com")) {
-            doc_check("✅", "sing-box DNS", "resolving via " + SB_DNS_INBOUND_ADDRESS, "");
+            doc_check("✅", binary_name + " DNS", "resolving via " + SB_DNS_INBOUND_ADDRESS, "");
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan(agh_primary ? "sing-box restart" : "dnsmasq -> sing-box DNS reconfigure; if needed service restart");
-                doc_check("⚠️", "sing-box DNS", "not resolving", "→ WILL FIX (doctor --fix): " + (agh_primary ? "перезапуск sing-box" : "перенаправление dnsmasq на sing-box"));
+                doc_plan(agh_primary ? (binary_name + " restart") : ("dnsmasq -> " + binary_name + " DNS reconfigure; if needed service restart"));
+                doc_check("⚠️", binary_name + " DNS", "not resolving", "→ WILL FIX (doctor --fix): " + (agh_primary ? ("перезапуск " + binary_name) : ("перенаправление dnsmasq на " + binary_name)));
             } else {
                 if (!agh_primary) {
                     module_status(DNS_APPLY_UC, [ "configure", "force" ]);
                     command_status("sleep 1");
                 }
                 if (dns_check_through_singbox("google.com")) {
-                    doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: " + (agh_primary ? "sing-box DNS доступен" : "dnsmasq перенаправлен на sing-box"));
+                    doc_check("❌", binary_name + " DNS", "not resolving", "→ FIXED: " + (agh_primary ? (binary_name + " DNS доступен") : ("dnsmasq перенаправлен на " + binary_name)));
                     fixed++;
                 } else {
                     command_status(init_script + " restart >/dev/null 2>&1");
                     command_status("sleep 3");
                     if (dns_check_through_singbox("google.com")) {
-                        doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: sing-box перезапущен");
+                        doc_check("❌", binary_name + " DNS", "not resolving", "→ FIXED: " + binary_name + " перезапущен");
                         fixed++;
                     } else {
-                        doc_check("❌", "sing-box DNS", "not resolving", "→ критическая ошибка DNS");
+                        doc_check("❌", binary_name + " DNS", "not resolving", "→ критическая ошибка DNS");
                     }
                 }
             }
@@ -1614,20 +1632,20 @@ function run_doctor_checks_impl(repair) {
             if (pid != "") {
                 if (!DOCTOR_REPAIR_MODE) {
                     doc_plan(init_script + " restart");
-                    doc_check("⚠️", "Clash API", "unreachable", "→ WILL FIX (doctor --fix): перезапуск sing-box");
+                    doc_check("⚠️", "Clash API", "unreachable", "→ WILL FIX (doctor --fix): перезапуск " + binary_name);
                 } else {
                     command_status(init_script + " restart >/dev/null 2>&1");
                     command_status("sleep 3");
                     let curl_clash2 = command_capture(clash_probe_cmd(clash_addr));
                     if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
-                        doc_check("❌", "Clash API", "unreachable", "→ FIXED: sing-box перезапущен");
+                        doc_check("❌", "Clash API", "unreachable", "→ FIXED: " + binary_name + " перезапущен");
                         fixed++;
                     } else {
-                        doc_check("❌", "Clash API", "unreachable", "→ sing-box не отвечает на Clash API");
+                        doc_check("❌", "Clash API", "unreachable", "→ " + binary_name + " не отвечает на Clash API");
                     }
                 }
             } else {
-                doc_check("⚠️", "Clash API", "unreachable", "→ sing-box не запущен");
+                doc_check("⚠️", "Clash API", "unreachable", "→ " + binary_name + " не запущен");
             }
         }
     }
@@ -1736,11 +1754,11 @@ function run_doctor_checks_impl(repair) {
         issues++;
         doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ Мало памяти!");
         if (!DOCTOR_REPAIR_MODE) {
-            doc_plan("drop OS caches + sing-box restart");
-            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ WILL FIX (doctor --fix): сброс кэшей памяти и перезапуск sing-box");
+            doc_plan("drop OS caches + " + binary_name + " restart");
+            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ WILL FIX (doctor --fix): сброс кэшей памяти и перезапуск " + binary_name);
         } else {
             command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
-            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ FIXED: кэши памяти сброшены, sing-box перезапущен");
+            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ FIXED: кэши памяти сброшены, " + binary_name + " перезапущен");
             fixed++;
         }
     } else {
@@ -1835,17 +1853,17 @@ function run_doctor_checks_impl(repair) {
     let logread_lower = lc(logread_out);
     if (index(logread_lower, "out of memory") >= 0 || index(logread_lower, "oom-killer") >= 0) {
         issues++;
-        let oom_victim_singbox = index(lc(logread_out), "killed process") >= 0 &&
-            match(lc(logread_out), /killed process[^\n]*sing-box/) != null;
+        let oom_victim_core = index(lc(logread_out), "killed process") >= 0 &&
+            match(lc(logread_out), /killed process[^\n]*(sing-box|tachyon-core)/) != null;
         if (!DOCTOR_REPAIR_MODE) {
             doc_plan("clear system log + drop OS caches");
             doc_check("❌", "System OOM checks",
-                oom_victim_singbox ? "OOM detected, sing-box was killed" : "OOM detected in system logs",
+                oom_victim_core ? ("OOM detected, " + binary_name + " was killed") : "OOM detected in system logs",
                 "→ WILL FIX (doctor --fix): очистка логов и сброс кэшей памяти");
         } else {
             command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; logread -c >/dev/null 2>&1; rm -f /etc/tachyon/mem_scale");
             doc_check("❌", "System OOM checks",
-                oom_victim_singbox ? "OOM detected, sing-box was killed" : "OOM detected in system logs",
+                oom_victim_core ? ("OOM detected, " + binary_name + " was killed") : "OOM detected in system logs",
                 "→ FIXED: журналы сброшены, кэши памяти освобождены");
             fixed++;
         }
@@ -1902,7 +1920,7 @@ function run_doctor_checks_impl(repair) {
                     doc_check("❌", "Port conflict :" + port, "port bound by unknown process", "→ завершите процесс вручную");
                 }
             } else {
-                doc_check("✅", "Port check :" + port, "bound by sing-box", "");
+                doc_check("✅", "Port check :" + port, "bound by " + binary_name, "");
             }
         } else {
             doc_check("✅", "Port check :" + port, "free", "");
@@ -2174,9 +2192,9 @@ function run_doctor_checks_impl(repair) {
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("restart sing-box to clear parasitic :53 sockets");
-                doc_check("⚠️", "Port 53 socket collision", as_string(parasitic_count) + " sing-box sockets on :53 (" + collision_detail + ")",
-                    "→ sing-box hijack-dns создаёт прозрачные write-only сокеты, перехватывающие UDP у dnsmasq; WILL FIX: restart sing-box");
+                doc_plan("restart " + binary_name + " to clear parasitic :53 sockets");
+                doc_check("⚠️", "Port 53 socket collision", as_string(parasitic_count) + " " + binary_name + " sockets on :53 (" + collision_detail + ")",
+                    "→ " + binary_name + " hijack-dns создаёт прозрачные write-only сокеты, перехватывающие UDP у dnsmasq; WILL FIX: restart " + binary_name);
             } else {
                 command_status("/etc/init.d/tachyon-core restart >/dev/null 2>&1");
                 command_status("sleep 2");
@@ -2189,8 +2207,8 @@ function run_doctor_checks_impl(repair) {
                     if (length(f2) >= 5 && int(f2[1]) > 0) still_parasitic++;
                 }
                 if (still_parasitic == 0) {
-                    doc_check("❌", "Port 53 socket collision", as_string(parasitic_count) + " sing-box sockets on :53",
-                        "→ FIXED: sing-box перезапущен, паразитные сокеты очищены");
+                    doc_check("❌", "Port 53 socket collision", as_string(parasitic_count) + " " + binary_name + " sockets on :53",
+                        "→ FIXED: " + binary_name + " перезапущен, паразитные сокеты очищены");
                     fixed++;
                 } else {
                     doc_check("❌", "Port 53 socket collision", "persists after restart",
@@ -2227,11 +2245,11 @@ function run_doctor_checks_impl(repair) {
         let sb_ver = sing_box_resolved_version();
         let flags = sing_box_capability_flags(sb_ver.version, sb_ver.output);
         if (flags.cert_pin == 1) {
-            doc_check("✅", "TLS certificate pinning", "supported & active (sing-box >= 1.15)", "");
+            doc_check("✅", "TLS certificate pinning", "supported & active (" + (is_tachyon_core ? "tachyon-core" : "sing-box >= 1.15") + ")", "");
         } else {
             issues++;
-            doc_check("⚠️", "TLS certificate pinning", "ignored (installed sing-box predates 1.15)",
-                "→ обновите sing-box до версии 1.15+ для поддержки pin сертификата (в более старых версиях есть только pin публичного ключа — это другое значение)");
+            doc_check("⚠️", "TLS certificate pinning", "ignored (installed " + binary_name + " predates 1.15)",
+                "→ обновите " + binary_name + " до версии с поддержкой pin сертификата");
             push(DOCTOR_PLANNED_FIXES, "upgrade_to_singbox_extended");
         }
     }
@@ -3001,6 +3019,7 @@ function verify_system() {
 
     // Live checks — what a client on the LAN experiences right now.
     let is_steer_active = active_engine_is_steer();
+    let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
     // Function scope on purpose: the HTTP-via-proxy check further down reads
     // sb_pid from outside this if/else. An out-of-scope read yields null, and
     // null != "" is true, so the probe ran against a dead sing-box, scored a
@@ -3011,7 +3030,7 @@ function verify_system() {
         add("steer process", steer_pid != "" ? "pass" : "fail",
             steer_pid != "" ? "running (pid " + steer_pid + ")" : "not running");
     } else {
-        add("sing-box process", sb_pid != "" ? "pass" : "fail",
+        add(core_name + " process", sb_pid != "" ? "pass" : "fail",
             sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
     }
 
@@ -3034,8 +3053,8 @@ function verify_system() {
     } else {
         let sb_dns = dns_check_through_singbox("google.com");
         if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
-        add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
-            sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
+        add("Proxy DNS via " + core_name, sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
+            sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : core_name + " not running"));
     }
 
     // HTTP through the service mixed proxy — only present when download_via_proxy
@@ -3047,7 +3066,7 @@ function verify_system() {
         let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:" + mixed_port_num + " -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
         let code = trim(res.output);
         add("HTTP via proxy", res.status == 0 && (code == "204" || code == "200") ? "pass" : "fail",
-            code == "204" || code == "200" ? "end-to-end OK through sing-box" : "HTTP " + code);
+            code == "204" || code == "200" ? "end-to-end OK through " + core_name : "HTTP " + code);
     } else {
         add("HTTP via proxy", "skip", "service mixed proxy not in config");
     }
@@ -3351,10 +3370,11 @@ function diagnose_dns_deadlock_and_mtu(cfg, lang, causes, fn_add_fix) {
     if (raw_sb_log != "" && index(raw_sb_log, "lookup") >= 0) {
         let b_dns = cfg.bootstrap_dns_server || "";
         if (b_dns == "127.0.0.1" || b_dns == "127.0.0.42") {
+            let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
             push(causes, {
                 probability: 93,
                 cause: lang == "en" ? "DNS Deadlock: Bootstrap DNS resolver points to local loopback (resolver loop)"
-                                    : "DNS Deadlock: Bootstrap-DNS для sing-box указывает на локальный адрес (зацикливание)",
+                                    : ("DNS Deadlock: Bootstrap-DNS для " + core_name + " указывает на локальный адрес (зацикливание)"),
                 fix: "fix_bootstrap_dns"
             });
             fn_add_fix("fix_bootstrap_dns");
@@ -3385,7 +3405,9 @@ function local_rule_doctor(pre_res, pre_verify) {
 
     // ── 1. End-to-end live verification & root-cause correlation ──
     let is_steer_active = active_engine_is_steer();
-    let engine_proc_name = is_steer_active ? "steer process" : "sing-box process";
+    let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+    let engine_label = is_steer_active ? "steer" : core_name;
+    let engine_proc_name = engine_label + " process";
     let wan_failed = false;
     let engine_failed = false;
     for (let c in verify.checks) {
@@ -3410,7 +3432,6 @@ function local_rule_doctor(pre_res, pre_verify) {
         push(causes, wan_cause);
         add_fix("fix_wan_interface");
     } else if (engine_failed) {
-        let engine_label = is_steer_active ? "steer" : "sing-box";
         let engine_fix = is_steer_active ? "start_steer" : "start_singbox";
         engine_cause = {
             probability: 95,
@@ -3426,7 +3447,6 @@ function local_rule_doctor(pre_res, pre_verify) {
         if (c.status != "fail") continue;
         if (c.name == engine_proc_name) {
             if (!engine_cause && !wan_cause) {
-                let engine_label = is_steer_active ? "steer" : "sing-box";
                 let engine_fix = is_steer_active ? "start_steer" : "start_singbox";
                 push(causes, {
                     probability: 95,
@@ -3442,11 +3462,10 @@ function local_rule_doctor(pre_res, pre_verify) {
                 fix: "fix_dnsmasq"
             });
             add_fix("fix_dnsmasq");
-        } else if (c.name == "Proxy DNS via steer" || c.name == "Proxy DNS via sing-box") {
+        } else if (c.name == "Proxy DNS via steer" || c.name == "Proxy DNS via sing-box" || c.name == "Proxy DNS via tachyon-core") {
             if (wan_cause) {
                 push(wan_cause.symptoms, lang == "en" ? "Proxy DNS unavailable (WAN down)" : "Прокси-DNS недоступен (нет связи с WAN)");
             } else if (engine_cause) {
-                let engine_label = is_steer_active ? "steer" : "sing-box";
                 push(engine_cause.symptoms, lang == "en" ? ("Proxy DNS not answering (" + engine_label + " stopped)") : ("Прокси-DNS не отвечает (" + engine_label + " остановлен)"));
             } else {
                 let fix_action = is_steer_active ? "restart_steer_dns" : "clear_dns_cache";
@@ -3454,7 +3473,7 @@ function local_rule_doctor(pre_res, pre_verify) {
                     probability: 85,
                     cause: is_steer_active ?
                         (lang == "en" ? "Proxy DNS via steer failed to respond" : "Прокси-DNS через steer (:5300) не отвечает") :
-                        (lang == "en" ? "Proxy DNS via sing-box failed to respond" : "Прокси-DNS через sing-box (127.0.0.42) не отвечает"),
+                        (lang == "en" ? ("Proxy DNS via " + core_name + " failed to respond") : ("Прокси-DNS через " + core_name + " (127.0.0.42) не отвечает")),
                     fix: fix_action
                 });
                 add_fix(fix_action);
@@ -3467,8 +3486,8 @@ function local_rule_doctor(pre_res, pre_verify) {
         } else if (c.name == "HTTP via proxy") {
             if (wan_cause) {
                 push(wan_cause.symptoms, lang == "en" ? "HTTP through proxy unreachable (WAN down)" : "HTTP через прокси недоступен (нет связи с WAN)");
-            } else if (singbox_cause) {
-                push(singbox_cause.symptoms, lang == "en" ? "HTTP through proxy fails (sing-box stopped)" : "HTTP через прокси не проходит (sing-box остановлен)");
+            } else if (engine_cause) {
+                push(engine_cause.symptoms, lang == "en" ? ("HTTP through proxy fails (" + engine_label + " stopped)") : ("HTTP через прокси не проходит (" + engine_label + " остановлен)"));
             } else {
                 push(causes, {
                     probability: 88,
@@ -3597,7 +3616,7 @@ function local_rule_doctor(pre_res, pre_verify) {
             push(report_lines, "✓ Verified end-to-end: network stack is fully operational.");
             push(report_lines, "- WAN interface is up and has an active default route.");
             push(report_lines, "- DNS resolution is healthy (LAN dnsmasq, upstream, proxy resolver).");
-            push(report_lines, "- sing-box and nftables firewall redirection rules are active.");
+            push(report_lines, "- " + engine_label + " and nftables firewall redirection rules are active.");
             push(report_lines, "- No active DPI drops or RAM pressure detected.");
             if (verify.stability.wan_flaps > 0 || verify.stability.singbox_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
                 push(report_lines, "\nℹ️ Notice: Recent logs show historical component recovery; current live state is stable.");
@@ -3617,7 +3636,7 @@ function local_rule_doctor(pre_res, pre_verify) {
             push(report_lines, "✓ Проверено вживую: сетевой стек работает штатно.");
             push(report_lines, "- WAN интерфейс активен и имеет рабочий маршрут по умолчанию.");
             push(report_lines, "- DNS-резолверы отвечают корректно (LAN dnsmasq, upstream, прокси-резолвер).");
-            push(report_lines, "- sing-box и правила файрвола nftables функционируют штатно.");
+            push(report_lines, "- " + engine_label + " и правила файрвола nftables функционируют штатно.");
             push(report_lines, "- Блокировок DPI и нехватки оперативной памяти не обнаружено.");
             if (verify.stability.wan_flaps > 0 || verify.stability.singbox_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
                 push(report_lines, "\nℹ️ Справка: В журнале зафиксировано восстановление компонентов после перезапуска, сейчас всё стабильно.");
@@ -3633,7 +3652,7 @@ function local_rule_doctor(pre_res, pre_verify) {
         }
     }
 
-    let engine_name = is_steer_active ? "steer" : "sing-box";
+    let engine_name = engine_label;
     let nodes = [
         { name: "WAN", status: "OK" },
         { name: "DNS", status: "OK" },
@@ -3732,12 +3751,13 @@ function compute_ai_doctor_result(user_query) {
     // Live end-to-end verification — the part that catches "all OK on paper,
     // broken in practice": DNS through each layer, HTTP through the proxy, and
     // the recent flap/restart history a snapshot cannot see.
+    let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
     let verify_lines = [ "Live Verification:" ];
     for (let c in verify.checks) {
         push(verify_lines, sprintf("- %s: %s (%s)", c.name, c.status, c.detail));
     }
-    push(verify_lines, sprintf("Stability (recent log): WAN flaps: %d, sing-box restarts: %d, dnsmasq restarts: %d, tachyon reloads: %d",
-        verify.stability.wan_flaps, verify.stability.singbox_restarts,
+    push(verify_lines, sprintf("Stability (recent log): WAN flaps: %d, %s restarts: %d, dnsmasq restarts: %d, tachyon reloads: %d",
+        verify.stability.wan_flaps, core_name, verify.stability.singbox_restarts,
         verify.stability.dnsmasq_restarts, verify.stability.tachyon_restarts));
     let verify_info = join("\n", verify_lines);
 
@@ -3747,12 +3767,12 @@ function compute_ai_doctor_result(user_query) {
         "System Parameters:\n" +
         "Version: %s\n" +
         "DNS type: %s\n" +
-        "sing-box running: %s\n" +
+        "%s running: %s\n" +
         "Uptime: %d minutes\n\n" +
         "%s\n\n" +
         "%s\n\n" +
         "Recent Critical System Logs:\n%s\n",
-        report, local_res.report, version, dns_type, singbox_running ? "yes" : "no", uptime_min,
+        report, local_res.report, version, dns_type, core_name, singbox_running ? "yes" : "no", uptime_min,
         watchdog_info, verify_info, log_snippet
     );
 

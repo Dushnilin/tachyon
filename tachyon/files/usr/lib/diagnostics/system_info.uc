@@ -189,18 +189,34 @@ function check_logs() {
     return 0;
 }
 
+function is_tachyon_core_selected() {
+    if (active_engine_is_steer())
+        return false;
+    let marker = first_line_value(SB_VARIANT_STATE_FILE);
+    if (marker == "tachyon-core")
+        return true;
+    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny")
+        return false;
+    return active_engine_name() == "tachyon-core";
+}
+
 function check_sing_box_logs() {
     if (!command_exists("logread")) {
         nolog("Error: logread command not found");
         return 1;
     }
+    let is_core = is_tachyon_core_selected();
+    let needle = is_core ? "tachyon-core" : "sing-box";
     // Use bounded_command to prevent logread from hanging and leaking a zombie process.
     let cmd = common.bounded_command("logread -l " + LOGREAD_LINE_LIMIT + " 2>/dev/null", "5");
-    let rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], command_output(cmd));
+    let raw_logs = command_output(cmd);
+    let rendered = status_capture([ "matching-log-tail", needle, "100" ], raw_logs);
+    if (rendered.output == "" && is_core)
+        rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], raw_logs);
     if (rendered.output != "")
         print(rendered.output);
     else
-        print("No matching logs found in system journal (needle: sing-box)\n");
+        print("No matching logs found in system journal (needle: " + needle + ")\n");
     return 0;
 }
 
@@ -214,7 +230,8 @@ function tachyon_logs_fixture() {
 function show_sing_box_config(visibility) {
     visibility = as_string(visibility || "masked");
     let sing_box_config_path = option(settings(), "config_path", "");
-    nolog("Current sing-box configuration:");
+    let core_label = is_tachyon_core_selected() ? "tachyon-core" : "sing-box";
+    nolog("Current " + core_label + " configuration:");
     if (!file_exists(sing_box_config_path)) {
         nolog("Configuration file not found");
         return 1;

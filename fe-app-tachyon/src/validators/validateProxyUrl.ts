@@ -49,7 +49,7 @@ export function validateProxyUrl(url: string): ValidationResult {
     if (!supportsVpnUrl())
       return {
         valid: false,
-        message: _('vpn:// is available only with sing-box LX'),
+        message: _('vpn:// is available only with Tachyon Core or sing-box LX'),
       };
     return validateVpnUrl(trimmedUrl);
   }
@@ -67,6 +67,6 @@ export function validateProxyUrl(url: string): ValidationResult {
     message:
       _(
         'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, tuic://, fptn://, or fptn:',
-      ) + (supportsVpnUrl() ? '; vpn:// (LX)' : ''),
+      ) + (supportsVpnUrl() ? '; vpn:// (Tachyon Core / LX)' : ''),
   };
 }

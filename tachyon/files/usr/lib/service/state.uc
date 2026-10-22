@@ -970,7 +970,7 @@ function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
     if (network_check_cache.key == key && network_check_cache.result && (now - network_check_cache.checked_at) < 5)
         return true;
 
-    let result = command_success_from_args([ "nft", "list", "table", "inet", nft_table ]) &&
+    let result = command_success_from_args([ "nft", "-t", "list", "table", "inet", nft_table ]) &&
         command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ]);
 
     network_check_cache.key = key;

@@ -78,8 +78,6 @@ shell_c|tachyon/files/usr/lib/core/common.uc|2
 shell_c|tachyon/files/usr/lib/core/exec.uc|3
 shell_c|tachyon/files/usr/lib/diagnostics/leak_check.uc|1
 shell_c|tachyon/files/usr/lib/diagnostics/routing.uc|1
-shell_c|tachyon/files/usr/lib/providers/byedpi/runtime.uc|2
-shell_c|tachyon/files/usr/lib/providers/nfqueue/runtime.uc|2
 shell_c|tachyon/files/usr/lib/service/engine_runtime_lib.uc|1
 shell_c|tachyon/files/usr/lib/service/ui.uc|1
 shell_c|tachyon/files/usr/lib/subscription/cache.uc|2

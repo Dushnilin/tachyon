@@ -1695,9 +1695,10 @@ function check_with_field_repairs(temp_config, runtime_log) {
 
 function init_config(populate_nft, caches_prepared, no_refresh) {
     let settings = uci_settings();
+    let core_name = sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
     let config_path = option(settings, "config_path", "");
     if (config_path == "") {
-        log_message("sing-box config path is empty. Aborted.", "fatal");
+        log_message(core_name + " config path is empty. Aborted.", "fatal");
         exit(1);
     }
 
@@ -1715,9 +1716,9 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
     let mwan3_active = module_success([ LIB_DIR + "/config/validator.uc", "mwan3-is-active" ]);
     let output_interface = option(settings, "output_network_interface", "");
     if (mwan3_active && output_interface != "")
-        log_message("mwan3 is active and Output Network Interface is set to '" + output_interface + "'; sing-box egress is pinned to this interface", "warn");
+        log_message("mwan3 is active and Output Network Interface is set to '" + output_interface + "'; " + core_name + " egress is pinned to this interface", "warn");
     else if (mwan3_active)
-        log_message("mwan3 is active; disabling sing-box auto_detect_interface so mwan3 can control egress routing", "warn");
+        log_message("mwan3 is active; disabling " + core_name + " auto_detect_interface so mwan3 can control egress routing", "warn");
 
     let deferred_sections = prepare_subscription_caches(caches_prepared, no_refresh);
     if (deferred_sections == null)
@@ -1758,12 +1759,12 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 quarantined[section] = reason;
                 continue;
             }
-            log_message("Failed to generate sing-box configuration: " + reason, "fatal");
-            log_file_lines(runtime_log, "debug", "sing-box config generator output: ");
+            log_message("Failed to generate " + core_name + " configuration: " + reason, "fatal");
+            log_file_lines(runtime_log, "debug", core_name + " config generator output: ");
             remove_files([ temp_config, runtime_log ]);
             exit(1);
         }
-        log_file_lines(runtime_log, "warn", "sing-box config generator: ");
+        log_file_lines(runtime_log, "warn", core_name + " config generator: ");
 
         check_result = check_with_field_repairs(temp_config, runtime_log);
         if (check_result.status == 0)
@@ -1772,7 +1773,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         // Say which of the two it was before blaming the configuration.
         let bin_problem = sing_box_binary_problem(sing_box_binary_path());
         if (bin_problem == "" && sing_box_check_blamed_the_binary(check_result.reason))
-            bin_problem = "sing-box could not be run: " + check_result.reason;
+            bin_problem = core_name + " could not be run: " + check_result.reason;
         if (bin_problem != "") {
             log_message("Cannot verify the generated configuration: " + bin_problem +
                 ". This is not a configuration problem. The raw output was: " + check_result.reason, "fatal");
@@ -1786,7 +1787,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             remove_files([ temp_config, runtime_log ]);
             exit(1);
         }
-        log_message("sing-box rejected the configuration at section '" + section + "' (" + check_result.reason +
+        log_message(core_name + " rejected the configuration at section '" + section + "' (" + check_result.reason +
             "). Not loading it; the rest of the configuration starts normally", "warn");
         quarantined[section] = check_result.reason;
     }
@@ -1813,7 +1814,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         NFT_IP_PORT6_SET_NAME,
         NFT_LOCALV6_SET_NAME
     ])) {
-        log_message("Failed to update nftables runtime sets from the generated sing-box configuration. Aborted.", "fatal");
+        log_message("Failed to update nftables runtime sets from the generated " + core_name + " configuration. Aborted.", "fatal");
         remove_files([ temp_config, runtime_log ]);
         exit(1);
     }

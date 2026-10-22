@@ -628,7 +628,7 @@ function build_clients_v2(sections) {
 
     return { clients, refs };
 }
-function build_lists_v2(sections, catalog) {
+function build_lists_v2(sections, catalog, match_cache) {
     let lists = {};
     let refs = {};
 
@@ -636,7 +636,10 @@ function build_lists_v2(sections, catalog) {
         if (!is_enabled(section) || !is_rule_section(section) || !section_supported(section))
             continue;
 
-        let match_obj = channel_match(section, catalog);
+        let sec_key = as_string(section[".name"]);
+        let match_obj = (match_cache && match_cache[sec_key] != null)
+            ? match_cache[sec_key]
+            : channel_match(section, catalog);
         let domains = match_obj.domains_files || [];
         let prefixes = match_obj.prefixes_files || [];
         if (length(domains) == 0 && length(prefixes) == 0)
@@ -655,22 +658,24 @@ function build_lists_v2(sections, catalog) {
         if (match_obj.ports != null)
             entry.ports = match_obj.ports;
         lists[list_name] = entry;
-        refs[as_string(section[".name"])] = list_name;
+        refs[sec_key] = list_name;
     }
 
     return { lists, refs };
 }
 
-function build_rules_v2(sections, catalog, outputs, targets, client_refs, list_refs) {
+function build_rules_v2(sections, catalog, outputs, targets, client_refs, list_refs, match_cache) {
     let rules = [];
 
     for (let section in sections) {
         if (!is_enabled(section) || !is_rule_section(section) || !section_supported(section))
             continue;
 
-        let match_obj = channel_match(section, catalog);
-        let clients = channel_clients(section);
         let sec_key = as_string(section[".name"]);
+        let match_obj = (match_cache && match_cache[sec_key] != null)
+            ? match_cache[sec_key]
+            : channel_match(section, catalog);
+        let clients = channel_clients(section);
         let domains = match_obj.domains_files || [];
         let prefixes = match_obj.prefixes_files || [];
         let has_files = length(domains) > 0 || length(prefixes) > 0;
@@ -784,8 +789,17 @@ function build_spec_v2(sections, settings, catalog) {
     if (length(lan_devices) == 0)
         lan_devices = DEFAULT_LAN_DEVICES;
 
+    let match_cache = {};
+    for (let section in sections) {
+        if (!is_enabled(section) || !is_rule_section(section) || !section_supported(section))
+            continue;
+        let sec_key = as_string(section[".name"]);
+        if (sec_key != "")
+            match_cache[sec_key] = channel_match(section, catalog);
+    }
+
     let built_clients = build_clients_v2(sections);
-    let built_lists = build_lists_v2(sections, catalog);
+    let built_lists = build_lists_v2(sections, catalog, match_cache);
 
     return {
         version: SPEC_VERSION_V2,
@@ -794,7 +808,7 @@ function build_spec_v2(sections, settings, catalog) {
         lists: built_lists.lists,
         outputs: built.outputs,
         rules: build_rules_v2(sections, catalog, built.outputs, built.targets,
-            built_clients.refs, built_lists.refs),
+            built_clients.refs, built_lists.refs, match_cache),
         dns: {
             mode: bool_option(settings, "dns_redirect", true) ? "fakeip" : "realip"
         }

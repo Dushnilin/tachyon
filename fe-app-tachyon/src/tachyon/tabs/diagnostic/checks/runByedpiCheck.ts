@@ -1,7 +1,7 @@
 import { DIAGNOSTICS_CHECKS_MAP } from './constants';
 import { TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
-import { IDiagnosticsChecksItem } from '../../../services';
+import { IDiagnosticsChecksItem, store } from '../../../services';
 import { getCheckItemsMeta } from './getCheckItemsMeta';
 
 export async function runByedpiCheck() {
@@ -47,6 +47,9 @@ export async function runByedpiCheck() {
   const unexpectedRuntime =
     !hasByedpiRules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
+  const isTachyonCore = Boolean(
+    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+  );
   const standaloneServiceEnabled = Boolean(data.standalone_service_enabled);
   const standaloneServiceRunning = Boolean(data.standalone_service_running);
   const standaloneConflict = hasByedpiRules && standaloneServiceRunning;
@@ -104,8 +107,12 @@ export async function runByedpiCheck() {
     {
       state: !hasByedpiRules || outboundsConfigured ? 'success' : 'error',
       key: outboundsConfigured
-        ? _('ByeDPI sing-box outbound is configured')
-        : _('ByeDPI sing-box outbound is not configured'),
+        ? isTachyonCore
+          ? _('ByeDPI outbound is configured')
+          : _('ByeDPI sing-box outbound is configured')
+        : isTachyonCore
+          ? _('ByeDPI outbound is not configured')
+          : _('ByeDPI sing-box outbound is not configured'),
       value: `${data.listen_address}:${Number(data.port_base || 0)}`,
     },
     {

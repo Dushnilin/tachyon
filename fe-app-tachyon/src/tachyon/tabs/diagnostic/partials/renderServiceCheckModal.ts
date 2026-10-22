@@ -789,10 +789,14 @@ export function renderServiceCheckModal() {
             [customDomainInput, customBtn],
           );
 
+          let isModalClosed = false;
+          let activeCheckRunId = 0;
+
           const checkAllBtn = renderButton({
             text: _('Check all'),
             classNames: ['cbi-button-action'],
             onClick: async () => {
+              const myRunId = ++activeCheckRunId;
               checkAllBtn.disabled = true;
               checkAllBtn.textContent = _('Testing...');
 
@@ -800,6 +804,13 @@ export function renderServiceCheckModal() {
               progressBarInner.style.width = '0%';
 
               for (let i = 0; i < rowMap.length; i++) {
+                if (
+                  isModalClosed ||
+                  myRunId !== activeCheckRunId ||
+                  !container.isConnected
+                ) {
+                  break;
+                }
                 const itemObj = rowMap[i];
                 const { target, tr } = itemObj;
 
@@ -869,7 +880,11 @@ export function renderServiceCheckModal() {
 
           const closeBtn = renderButton({
             text: _('Close'),
-            onClick: () => ui.hideModal(),
+            onClick: () => {
+              isModalClosed = true;
+              activeCheckRunId++;
+              ui.hideModal();
+            },
           });
 
           const rightWrap = E('div', { style: 'display: flex; gap: 8px;' }, [

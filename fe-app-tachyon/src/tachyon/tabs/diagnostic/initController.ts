@@ -885,7 +885,7 @@ async function handleViewLogs() {
         _('View logs'),
         renderModal(viewLogs.data as string, 'view_logs', {
           getText: getLatestLogs,
-          refreshMs: 250,
+          refreshMs: 2000,
           initialAutoRefresh: true,
           showAutoRefreshToggle: true,
           startAtEnd: true,
@@ -1064,6 +1064,9 @@ function handleRestoreNativeInternet() {
 
 async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading('showSingBoxConfig', true);
+  const isTachyonCore = Boolean(
+    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+  );
 
   try {
     const showSingBoxConfig =
@@ -1077,9 +1080,6 @@ async function handleShowSingBoxConfig() {
         showSingBoxConfig.data,
       );
 
-      const isTachyonCore = Boolean(
-        store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
-      );
       ui.showModal(
         isTachyonCore
           ? _('Show Tachyon Core config')
@@ -1094,14 +1094,18 @@ async function handleShowSingBoxConfig() {
       notifyActionFailure(
         'handleShowSingBoxConfig',
         showSingBoxConfig,
-        _('Show sing-box config failed'),
+        isTachyonCore
+          ? _('Show Tachyon Core config failed')
+          : _('Show sing-box config failed'),
       );
     }
   } catch (e) {
     notifyActionFailure(
       'handleShowSingBoxConfig',
       e,
-      _('Show sing-box config failed'),
+      isTachyonCore
+        ? _('Show Tachyon Core config failed')
+        : _('Show sing-box config failed'),
     );
   } finally {
     setDiagnosticActionLoading('showSingBoxConfig', false);
@@ -1111,6 +1115,9 @@ async function handleShowSingBoxConfig() {
 async function handleGenerateBugReport() {
   setDiagnosticActionLoading('generateBugReport', true);
   try {
+    const isTachyonCore = Boolean(
+      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+    );
     const configResult = await fs.read('/etc/config/tachyon').catch(() => '');
     const logsResult = await executeShellCommand({
       command: '/sbin/logread',
@@ -1118,9 +1125,10 @@ async function handleGenerateBugReport() {
     });
     const singboxLogsResult = await executeShellCommand({
       command: '/sbin/logread',
-      args: ['-e', 'sing-box', '-l', '1000'],
+      args: ['-e', isTachyonCore ? 'tachyon-core' : 'sing-box', '-l', '1000'],
     });
 
+    const coreLabel = isTachyonCore ? 'tachyon-core' : 'sing-box';
     const filterUdpErrors = (text: string) => {
       if (!text || !text.includes('UDP is not supported by outbound:'))
         return text;
@@ -1131,7 +1139,7 @@ async function handleGenerateBugReport() {
         if (line.includes('UDP is not supported by outbound:')) {
           if (!noticeEmitted) {
             filtered.push(
-              'UDP traffic through HTTP outbounds is not supported by sing-box; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.',
+              `UDP traffic through HTTP outbounds is not supported by ${coreLabel}; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.`,
             );
             noticeEmitted = true;
           }
@@ -1142,9 +1150,6 @@ async function handleGenerateBugReport() {
       return filtered.join('\n');
     };
 
-    const isTachyonCore = Boolean(
-      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
-    );
     const rawReport = [
       '--- TACHYON CONFIG ---',
       configResult || 'Failed to fetch config',

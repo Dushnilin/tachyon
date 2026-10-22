@@ -10,6 +10,8 @@ export interface StabilityScore {
 export interface DaemonUptimeInfo {
   running: boolean;
   pid: number | null;
+  pids?: number[];
+  workers?: number;
   uptime_seconds: number;
   pretty: string;
 }

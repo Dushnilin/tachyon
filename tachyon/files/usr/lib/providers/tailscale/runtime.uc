@@ -377,13 +377,20 @@ function neutralize_standalone_service() {
     log_message("standalone tailscale service stopped and disabled", "info");
 }
 
-function log_file_tail(path) {
-    let data = "";
-    try {
-        data = as_string(fs.readfile(path)) || "";
-    } catch (e) {
+function read_log_tail_bytes(path, max_bytes) {
+    let f = fs.open(path, "r");
+    if (!f)
         return "";
-    }
+    f.seek(-max_bytes, 2);
+    let data = as_string(f.read(max_bytes) || "");
+    f.close();
+    return data;
+}
+
+function log_file_tail(path) {
+    let data = read_log_tail_bytes(path, 8192);
+    if (data == "")
+        return "";
     let lines = split(trim(data), "\n");
     let start = length(lines) > 10 ? length(lines) - 10 : 0;
     let tail = [];
@@ -467,8 +474,7 @@ function start_daemon(section) {
     }
 
     let tail = log_file_tail(log_file);
-    let full_log = "";
-    try { full_log = trim(as_string(fs.readfile(log_file)) || ""); } catch (e) {}
+    let full_log = trim(read_log_tail_bytes(log_file, 8192));
     if (!pid_alive(pid)) {
         // Log full stderr for diagnostics — the tail alone often hides the root cause.
         let err_hint = full_log != "" ? ("full log: " + full_log) : "empty log";

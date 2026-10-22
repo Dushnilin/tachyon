@@ -41,7 +41,14 @@ export function formatDuration(ms: number): string {
 export function parseStartedAt(connection: {
   start?: string;
   lastSeenAt: number;
+  startedAtMs?: number;
 }): number {
+  if (
+    typeof connection.startedAtMs === 'number' &&
+    Number.isFinite(connection.startedAtMs)
+  ) {
+    return connection.startedAtMs;
+  }
   const startedAt = Date.parse(connection.start || '');
   return Number.isFinite(startedAt) ? startedAt : connection.lastSeenAt;
 }

@@ -48,6 +48,9 @@ export async function runZapretCheck() {
   const unexpectedRuntime =
     !hasZapretRules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
+  const isTachyonCore = Boolean(
+    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+  );
 
   // Zapret not installed and no rules use it — hide the card entirely
   if (!providerAvailable && !hasZapretRules) {
@@ -102,8 +105,12 @@ export async function runZapretCheck() {
     {
       state: !hasZapretRules || outboundsConfigured ? 'success' : 'error',
       key: outboundsConfigured
-        ? _('Zapret sing-box outbound is configured')
-        : _('Zapret sing-box outbound is not configured'),
+        ? isTachyonCore
+          ? _('Zapret outbound is configured')
+          : _('Zapret sing-box outbound is configured')
+        : isTachyonCore
+          ? _('Zapret outbound is not configured')
+          : _('Zapret sing-box outbound is not configured'),
       value: '',
     },
     {

@@ -1191,7 +1191,10 @@ function sanitizeUciDeletes(targetSectionId) {
     }
   }
 
-  if (targetSectionId && (creates[targetSectionId] || !values[targetSectionId])) {
+  if (
+    targetSectionId &&
+    (creates[targetSectionId] || !values[targetSectionId])
+  ) {
     delete deletes[targetSectionId];
   }
 
@@ -3842,7 +3845,8 @@ function configureServerSection(sectionRef, options = {}) {
             config === UCI_PACKAGE &&
             (/\bubus code 4\b/.test(msg) ||
               (!coded &&
-                (msg.includes("Ресурс не найден") || msg.includes("Not found"))))
+                (msg.includes("Ресурс не найден") ||
+                  msg.includes("Not found"))))
           ) {
             return 0;
           }

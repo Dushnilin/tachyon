@@ -1874,6 +1874,7 @@ export async function getDashboardSections(
   const includeSubscriptionCopyState =
     options.includeSubscriptionCopyState ?? true;
   const configSections = hydrateConfigSections(await getConfigSections());
+  const sectionErrorsPromise = readSectionErrors();
   const clashProxies = await getClashApiProxies(configSections);
 
   if (
@@ -2014,7 +2015,7 @@ export async function getDashboardSections(
     return serviceStatusCache.get(serviceType)!;
   };
 
-  const sectionErrors = await readSectionErrors();
+  const sectionErrors = await sectionErrorsPromise;
   const data = await Promise.all(
     configSections
       .filter(

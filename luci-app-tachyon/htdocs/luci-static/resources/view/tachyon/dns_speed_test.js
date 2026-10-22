@@ -454,7 +454,19 @@ function createController() {
         ),
       ]);
       updateControls();
-      window.setTimeout(poll, 0);
+      if (typeof IntersectionObserver !== "undefined") {
+        let initialPolled = false;
+        const visObserver = new IntersectionObserver((entries) => {
+          if (entries.some((e) => e.isIntersecting) && !initialPolled) {
+            initialPolled = true;
+            visObserver.disconnect();
+            poll();
+          }
+        });
+        visObserver.observe(toolbar);
+      } else {
+        window.setTimeout(poll, 0);
+      }
       return toolbar;
     },
     attachList(node, opts) {

@@ -1398,12 +1398,16 @@ function render_global_system_info() {
     let openwrt_version = object_value(value, "openwrt_version") || "unknown";
     let device_model = object_value(value, "device_model") || "unknown";
 
+    let is_core = flag_is_one(value.sing_box_tachyon_core);
     let sing_box_core = sing_box_core_label(value) || "regular";
-    print_line("Sing-box core: " + sing_box_core);
+    if (is_core)
+        print_line("Proxy core: Tachyon Core");
+    else
+        print_line("Sing-box core: " + sing_box_core);
 
     print_line("\ud83d\udd73\ufe0f Tachyon:   " + tachyon_version);
     print_line("\ud83d\udd73\ufe0f LuCI App:      " + luci_app_version);
-    print_line("\ud83d\udce6 Sing-box:      " + format_sing_box_version(value, sing_box_version));
+    print_line("\ud83d\udce6 " + (is_core ? "Tachyon Core:  " : "Sing-box:      ") + format_sing_box_version(value, sing_box_version));
     if (flag_is_one(value.zapret_installed))
         print_line("\ud83e\uddf5 Zapret:        " + zapret_version);
     if (flag_is_one(value.zapret2_installed))
@@ -1419,9 +1423,9 @@ function render_global_fakeip_check() {
     let fakeip_address = object_value(value, "IP");
 
     if (flag_is_true(value.fakeip))
-        print_line("\u2705 Sing-box FakeIP DNS works: " + fakeip_address);
+        print_line("\u2705 FakeIP DNS works: " + fakeip_address);
     else
-        print_line("\u274c Sing-box FakeIP DNS does NOT work");
+        print_line("\u274c FakeIP DNS does NOT work");
 }
 
 function render_global_dns_check(dont_touch_dhcp) {

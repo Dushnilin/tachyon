@@ -155,16 +155,13 @@ function pid_alive_raw(pid) {
     pid = as_string(pid);
     if (match(pid, /^[0-9]+$/) == null)
         return false;
-    if (int(system("kill -0 " + shell_quote(pid) + " 2>/dev/null")) == 0)
+    // Fast path: /proc needs no permission to stat the directory entry and
+    // avoids forking a shell for `kill -0` on every liveness probe.
+    if (fs.access(sprintf(PROC_DIR_FORMAT, pid), "f") == true)
         return true;
-    // kill -0 fails both when the process is gone (ESRCH) and when it exists but
-    // belongs to another user (EPERM), and both arrive as the same exit code 1,
-    // so the status alone cannot tell them apart. Reading every failure as "gone"
-    // is the exact inverse of the PID-recycling hazard this module exists to
-    // stop: it declares a LIVE worker dead, and the job reaper then rolls back
-    // work that is still running. /proc needs no permission to stat the directory
-    // entry, so it settles the question.
-    return fs.access(sprintf(PROC_DIR_FORMAT, pid), "f") == true;
+    if (fs.access("/proc/self", "f") == true)
+        return false;
+    return int(system("kill -0 " + shell_quote(pid) + " 2>/dev/null")) == 0;
 }
 
 // Check if a PID is alive AND belongs to a Tachyon-managed process.

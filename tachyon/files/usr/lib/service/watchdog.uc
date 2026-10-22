@@ -661,20 +661,12 @@ function run_zero_rtt_prefetching() {
     if (length(domain_list) >= PREFETCH_DOMAIN_LIMIT)
         log_message("Zero-RTT Prefetcher: domain list capped at " + PREFETCH_DOMAIN_LIMIT + " to prevent OOM on low-RAM devices", "warn");
 
-    log_message("Zero-RTT Prefetcher: pre-resolving " + length(domain_list) + " domains in batches...", "info");
-    let batch = [];
-    for (let i, dom in domain_list) {
-        push(batch, shell_quote(dom));
-        if (length(batch) >= 15 || i == length(domain_list) - 1) {
-            // The `&` used to sit inside batch_cmd, which left the redirections
-            // that followed it attached to a null command in this shell instead
-            // of to the backgrounded loop. Backgrounding is now the wrapper's
-            // job, so the loop gets the redirections it was always meant to have.
-            let batch_cmd = "for d in " + join(" ", batch) + "; do dig @127.0.0.1 \"$d\" A >/dev/null 2>&1 || nslookup \"$d\" 127.0.0.1 >/dev/null 2>&1; done";
-            system(common.background_command(batch_cmd));
-            batch = [];
-        }
-    }
+    log_message("Zero-RTT Prefetcher: pre-resolving " + length(domain_list) + " domains sequentially in background...", "info");
+    let quoted_domains = [];
+    for (let dom in domain_list)
+        push(quoted_domains, shell_quote(dom));
+    let prefetch_cmd = "for d in " + join(" ", quoted_domains) + "; do dig @127.0.0.1 \"$d\" A >/dev/null 2>&1 || nslookup \"$d\" 127.0.0.1 >/dev/null 2>&1; done";
+    system(common.background_command(prefetch_cmd));
 }
 
 let uloop = null;
@@ -2460,13 +2452,17 @@ function smart_detect_process_pending() {
     }
 
     let candidate_domains = [];
-    for (let dom in domain_list) {
-        if (!seen[dom]) {
-            push(candidate_domains, dom);
-        }
-    }
     let queued_candidates = pending_smart_domains;
     pending_smart_domains = {};
+    for (let dom in domain_list) {
+        if (seen[dom])
+            continue;
+        if (length(candidate_domains) < 8) {
+            push(candidate_domains, dom);
+        } else {
+            pending_smart_domains[dom] = queued_candidates[dom];
+        }
+    }
 
     if (length(candidate_domains) == 0) return;
 
@@ -2689,8 +2685,10 @@ function setup_honeypot_listener() {
 
     stop_honeypot_listeners();
 
-    let fifo_fd = fs.open("/tmp/tachyon_honeypot.fifo", "r+");
-    if (uloop && fifo_fd) {
+    if (uloop) {
+        let fifo_fd = fs.open("/tmp/tachyon_honeypot.fifo", "r+");
+        if (!fifo_fd)
+            return null;
         try {
             // One line per readiness event. The FIFO is held open read+write by
             // this very process, so it never reaches EOF: the old
@@ -2704,8 +2702,11 @@ function setup_honeypot_listener() {
                 if (line != null)
                     controller.handle_honeypot_line(line);
             }, uloop.ULOOP_READ);
+            return fifo_fd;
         } catch (e) {
             log_message("Failed to bind honeypot fifo to uloop: " + as_string(e), "warn");
+            fifo_fd.close();
+            return null;
         }
     } else {
         let cfg = settings();
@@ -2718,6 +2719,7 @@ function setup_honeypot_listener() {
             "fi; done",
             "> /var/run/tachyon_honeypot_listener.pid");
         system(hp_cmd);
+        return null;
     }
 }
 
@@ -2963,7 +2965,7 @@ function worker() {
     // startup is published into an empty bus and lost.
     register_subscribers();
 
-    setup_honeypot_listener();
+    let honeypot_fd = setup_honeypot_listener();
     // Restore subnet cache from persistent storage at startup (in case /tmp was cleared)
     ai_heal_subnet_cache();
     run_zero_rtt_prefetching();
@@ -3461,6 +3463,7 @@ let last_keepalive_write = 0;
         }
     }
 
+    if (honeypot_fd) honeypot_fd.close();
     if (log_pipe) log_pipe.close();
     // Shutdown path: a connection already torn down by the peer throws here, and
     // there is nothing left to salvage either way.

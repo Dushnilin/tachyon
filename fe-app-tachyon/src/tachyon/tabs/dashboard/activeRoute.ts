@@ -7,11 +7,49 @@ export interface ActiveRouteInfo {
   type: string;
 }
 
+const SERVICE_ACTIONS = new Set([
+  'zapret',
+  'zapret2',
+  'byedpi',
+  'wdtt',
+  'olcrtc',
+]);
+const SERVICE_OUTBOUND_TYPES = new Set([
+  'SING_BOX',
+  'ZAPRET',
+  'ZAPRET2',
+  'BYEDPI',
+]);
+
+function isServiceGroup(group: Tachyon.OutboundGroup): boolean {
+  if (group.serviceStatus) return true;
+  if (group.action && SERVICE_ACTIONS.has(group.action.toLowerCase())) {
+    return true;
+  }
+  if (
+    group.outbounds?.length > 0 &&
+    group.outbounds.every((o) => SERVICE_OUTBOUND_TYPES.has(o.type))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function getActiveRoute(
   groups: Tachyon.OutboundGroup[],
 ): ActiveRouteInfo | null {
   if (!groups || groups.length === 0) return null;
-  const group = groups.find((g) => g.sectionName === 'main') || groups[0];
+
+  const proxyGroups = groups.filter(
+    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0,
+  );
+  const candidateGroups = proxyGroups.length > 0 ? proxyGroups : [];
+  if (candidateGroups.length === 0) return null;
+
+  const group =
+    candidateGroups.find((g) => g.sectionName.toLowerCase() === 'main') ||
+    candidateGroups.find((g) => g.withTagSelect) ||
+    candidateGroups[0];
   if (!group || !group.outbounds || group.outbounds.length === 0) return null;
 
   const selected =

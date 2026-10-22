@@ -7117,15 +7117,25 @@ function attachAnnotatedTextarea(textarea, analyzer) {
   textarea.__tachyonAnnotatedTextareaController = controller;
 
   const updateAnnotatedTextarea = () => controller.update();
+  const syncAnnotatedScroll = () => {
+    overlay.scrollTop = textarea.scrollTop;
+    overlay.scrollLeft = textarea.scrollLeft;
+  };
   textarea.addEventListener("input", updateAnnotatedTextarea);
   textarea.addEventListener("change", updateAnnotatedTextarea);
-  textarea.addEventListener("scroll", updateAnnotatedTextarea, {
+  textarea.addEventListener("scroll", syncAnnotatedScroll, {
     passive: true,
   });
   textarea.addEventListener("keyup", updateAnnotatedTextarea);
 
   if (typeof ResizeObserver === "function") {
-    const resizeObserver = new ResizeObserver(() => controller.update());
+    const resizeObserver = new ResizeObserver(() => {
+      if (!textarea.isConnected) {
+        resizeObserver.disconnect();
+        return;
+      }
+      controller.update();
+    });
     resizeObserver.observe(textarea);
     controller.resizeObserver = resizeObserver;
   }
@@ -7627,6 +7637,11 @@ function cacheNfqwsRemoteValidation(value, result) {
           : [],
   };
 
+  if (nfqwsRemoteValidationCache.size >= 100) {
+    nfqwsRemoteValidationCache.delete(
+      nfqwsRemoteValidationCache.keys().next().value,
+    );
+  }
   nfqwsRemoteValidationCache.set(normalized, cached);
   return cached;
 }
@@ -8072,6 +8087,11 @@ function cacheNfqws2RemoteValidation(value, result) {
           : [],
   };
 
+  if (nfqws2RemoteValidationCache.size >= 100) {
+    nfqws2RemoteValidationCache.delete(
+      nfqws2RemoteValidationCache.keys().next().value,
+    );
+  }
   nfqws2RemoteValidationCache.set(normalized, cached);
   return cached;
 }
@@ -8484,6 +8504,11 @@ function cacheByedpiRemoteValidation(value, result) {
           : [],
   };
 
+  if (byedpiRemoteValidationCache.size >= 100) {
+    byedpiRemoteValidationCache.delete(
+      byedpiRemoteValidationCache.keys().next().value,
+    );
+  }
   byedpiRemoteValidationCache.set(normalized, cached);
   return cached;
 }
@@ -9939,7 +9964,14 @@ function createSectionContent(section) {
 
     const refreshers = dashboardFilterChoiceRefreshers.get(section_id);
     if (refreshers) {
-      refreshers.forEach((fn) => fn());
+      refreshers.forEach((fn) => {
+        if (fn() === false) {
+          refreshers.delete(fn);
+        }
+      });
+      if (refreshers.size === 0) {
+        dashboardFilterChoiceRefreshers.delete(section_id);
+      }
     }
   };
 
@@ -14804,7 +14836,9 @@ async function matchesGeoCountrySet(secName, countries, domain, ips) {
       ) {
         return { matched: true, source: "tld_ru", pattern: domain };
       }
-      if (await matchCommunityList(secName, `geosite_${cc}`, domain, "domain")) {
+      if (
+        await matchCommunityList(secName, `geosite_${cc}`, domain, "domain")
+      ) {
         return { matched: true, source: `geosite_${cc}`, pattern: domain };
       }
       if (
@@ -15953,14 +15987,20 @@ function cascadeDeleteSection(section_id) {
         uci.set(UCI_PACKAGE, sName, "dns_detour_section", "");
         uci.set(UCI_PACKAGE, sName, "dns_detour_enabled", "0");
       }
-      if (Array.isArray(sec.group_members) && sec.group_members.includes(section_id)) {
+      if (
+        Array.isArray(sec.group_members) &&
+        sec.group_members.includes(section_id)
+      ) {
         const nextMembers = sec.group_members.filter((m) => m !== section_id);
         if (nextMembers.length > 0) {
           uci.set(UCI_PACKAGE, sName, "group_members", nextMembers);
         } else {
           uci.unset(UCI_PACKAGE, sName, "group_members");
         }
-      } else if (typeof sec.group_members === "string" && sec.group_members.trim() !== "") {
+      } else if (
+        typeof sec.group_members === "string" &&
+        sec.group_members.trim() !== ""
+      ) {
         const parts = sec.group_members.trim().split(/\s+/);
         if (parts.includes(section_id)) {
           const nextMembers = parts.filter((m) => m !== section_id);

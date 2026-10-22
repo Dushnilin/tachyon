@@ -282,48 +282,79 @@ export function renderDnsBenchmarkModal() {
     onClick: () => applyRecommended(),
   });
 
+  let isPolling = false;
+  let isDisposed = false;
+  let hasMounted = false;
+
   const closeBtn = renderButton({
     text: _('Close'),
     classNames: ['cbi-button-neutral'],
     onClick: () => {
-      if (pollInterval) clearInterval(pollInterval);
+      isDisposed = true;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
       if (isRunning) TachyonShellMethods.stopDnsBenchmark();
       if (ui.hideModal) ui.hideModal();
     },
   });
 
   const pollStatus = async () => {
-    const res = await TachyonShellMethods.getDnsBenchmarkStatus();
-    if (!res.success || !res.data) return;
-
-    const data = res.data;
-    isRunning = data.running;
-
-    if (data.running) {
-      progressContainer.style.display = 'block';
-      progressBar.style.width = `${data.progress}%`;
-      statusLabel.textContent = `⏳ ${data.current_server || _('Testing')} (${data.progress}%)`;
-      if (startBtn) (startBtn as HTMLButtonElement).disabled = true;
-      if (applyBtn) (applyBtn as HTMLButtonElement).disabled = true;
-    } else {
-      progressContainer.style.display = 'none';
-      if (data.finished_at) {
-        statusLabel.textContent = `✓ ${_('Benchmark completed successfully')}`;
-        if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
-        if (applyBtn)
-          (applyBtn as HTMLButtonElement).disabled = !data.recommendation;
-      }
+    if (statusLabel.isConnected) {
+      hasMounted = true;
+    }
+    if (isDisposed || (hasMounted && !statusLabel.isConnected)) {
       if (pollInterval) {
         clearInterval(pollInterval);
         pollInterval = null;
       }
+      return;
     }
+    if (isPolling) return;
+    isPolling = true;
+    try {
+      const res = await TachyonShellMethods.getDnsBenchmarkStatus();
+      if (isDisposed || (hasMounted && !statusLabel.isConnected)) {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+        return;
+      }
+      if (!res.success || !res.data) return;
 
-    if (data.results && data.results.length > 0) {
-      updateTable(data.results);
-    }
-    if (data.recommendation) {
-      updateRecommendation(data.recommendation);
+      const data = res.data;
+      isRunning = data.running;
+
+      if (data.running) {
+        progressContainer.style.display = 'block';
+        progressBar.style.width = `${data.progress}%`;
+        statusLabel.textContent = `⏳ ${data.current_server || _('Testing')} (${data.progress}%)`;
+        if (startBtn) (startBtn as HTMLButtonElement).disabled = true;
+        if (applyBtn) (applyBtn as HTMLButtonElement).disabled = true;
+      } else {
+        progressContainer.style.display = 'none';
+        if (data.finished_at) {
+          statusLabel.textContent = `✓ ${_('Benchmark completed successfully')}`;
+          if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
+          if (applyBtn)
+            (applyBtn as HTMLButtonElement).disabled = !data.recommendation;
+        }
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      }
+
+      if (data.results && data.results.length > 0) {
+        updateTable(data.results);
+      }
+      if (data.recommendation) {
+        updateRecommendation(data.recommendation);
+      }
+    } finally {
+      isPolling = false;
     }
   };
 

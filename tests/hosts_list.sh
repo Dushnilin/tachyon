@@ -80,6 +80,28 @@ echo "=== Test: hosts_list_update with no URLs ==="
 update_output=$(ucode "$HOSTS_UC" list-update 2>/dev/null || true)
 assert_eq "true" "$(echo "$update_output" | grep -o '"success":[a-z]*' | cut -d: -f2)" "list-update should succeed when no URLs configured"
 
+# Run hosts_list_update with a mock curl to verify streaming parse + install_hosts_cache
+echo "=== Test: hosts_list_update with mock HTTP URL ==="
+mkdir -p "$TMP_DIR/bin"
+cat > "$TMP_DIR/bin/curl" <<EOF
+#!/bin/sh
+out=""
+while [ \$# -gt 0 ]; do
+  if [ "\$1" = "-o" ]; then
+    out="\$2"
+    shift 2
+  else
+    shift
+  fi
+done
+cp "$TMP_DIR/test_hosts.txt" "\$out"
+EOF
+chmod +x "$TMP_DIR/bin/curl"
+file_update_output=$(PATH="$TMP_DIR/bin:$PATH" ucode "$HOSTS_UC" list-update "https://example.test/hosts.txt" 2>/dev/null || true)
+assert_eq "true" "$(echo "$file_update_output" | grep -o '"success":[a-z]*' | cut -d: -f2)" "list-update with mock URL should succeed"
+assert_eq "8" "$(echo "$file_update_output" | grep -o '"entries":[0-9]*' | cut -d: -f2)" "list-update should report 8 parsed entries"
+assert_eq "1" "$([ -s "$TMP_DIR/cache/combined.txt" ] && echo 1 || echo 0)" "combined.txt should be written and non-empty"
+
 # --- Test 5: Safe name length for long percent-encoded URLs ---
 echo "=== Test: safe_name length for long URLs ==="
 long_url_safe_len=$(ucode -e '

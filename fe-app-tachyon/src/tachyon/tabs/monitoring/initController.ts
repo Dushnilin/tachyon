@@ -39,7 +39,7 @@ import {
   formatBytes,
 } from './filters';
 import { handleMonitoringValueCopy } from './clipboard';
-import { normalizeString } from './formatters';
+import { normalizeString, parseStartedAt } from './formatters';
 
 interface MonitoringControllerDependencies {
   loadLocalDeviceChoices?: () => Promise<LocalDeviceChoices>;
@@ -196,10 +196,16 @@ function applyConnectionsPayload(payload: ClashConnectionsPayload) {
 
     incomingIds.add(id);
     closedConnections.delete(id);
+    const prev = activeConnections.get(id);
+    const startedAtMs =
+      prev && prev.start === rawConnection.start && prev.startedAtMs != null
+        ? prev.startedAtMs
+        : parseStartedAt({ start: rawConnection.start, lastSeenAt: now });
     activeConnections.set(id, {
       ...rawConnection,
       id,
       lastSeenAt: now,
+      startedAtMs,
     });
   });
 
@@ -247,9 +253,14 @@ function getKnownSourceIps(): string[] {
     }
   });
 
+  const labelsByIp = new Map<string, string>();
+  ips.forEach((ip) => {
+    labelsByIp.set(ip, getLocalDeviceFilterLabel(ip));
+  });
+
   return Array.from(ips).sort((a, b) => {
-    const byLabel = getLocalDeviceFilterLabel(a).localeCompare(
-      getLocalDeviceFilterLabel(b),
+    const byLabel = (labelsByIp.get(a) || a).localeCompare(
+      labelsByIp.get(b) || b,
     );
     return byLabel || a.localeCompare(b);
   });
@@ -720,30 +731,41 @@ function patchConnectionRows(visibleConnections: MonitoredConnection[]) {
     }
   }
 
-  const seenIds = new Set<string>();
-  for (const connection of visibleConnections) {
-    seenIds.add(connection.id);
+  const visibleIds = new Set<string>(visibleConnections.map((c) => c.id));
+  for (const [id, row] of existingRows) {
+    if (!visibleIds.has(id)) {
+      row.remove();
+      existingRows.delete(id);
+    }
+  }
+
+  for (let i = 0; i < visibleConnections.length; i++) {
+    const connection = visibleConnections[i];
     const signature = getConnectionRowSignature(connection);
     const existing = existingRows.get(connection.id);
 
     if (!existing) {
-      tbody.appendChild(renderConnectionRow(connection));
+      const newRow = renderConnectionRow(connection);
+      const refNode = tbody.children[i] || null;
+      tbody.insertBefore(newRow, refNode);
       continue;
     }
 
     if (existing.getAttribute('data-row-signature') !== signature) {
-      tbody.replaceChild(renderConnectionRow(connection), existing);
+      const replacement = renderConnectionRow(connection);
+      tbody.replaceChild(replacement, existing);
+      if (tbody.children[i] !== replacement) {
+        tbody.insertBefore(replacement, tbody.children[i] || null);
+      }
       continue;
     }
 
     // Patch volatile cells in place: Time, Downloaded, Uploaded.
-    patchVolatileCells(existing, connection);
-    tbody.appendChild(existing);
-  }
-
-  for (const [id, row] of existingRows) {
-    if (!seenIds.has(id)) {
-      row.remove();
+    if (activeTab === 'active') {
+      patchVolatileCells(existing, connection);
+    }
+    if (tbody.children[i] !== existing) {
+      tbody.insertBefore(existing, tbody.children[i] || null);
     }
   }
 }
@@ -764,37 +786,26 @@ function patchVolatileCells(
     return;
   }
 
-  const volatileByIndex: Array<[number, () => HTMLElement]> = [
-    [
-      3,
-      () =>
-        renderTableCell(_('Time'), [
-          renderValue(formatConnectionDuration(connection)),
-        ]),
-    ],
-    [
-      4,
-      () =>
-        renderTableCell(_('Downloaded'), [
-          renderValue(formatBytes(connection.download)),
-        ]),
-    ],
-    [
-      5,
-      () =>
-        renderTableCell(_('Uploaded'), [
-          renderValue(formatBytes(connection.upload)),
-        ]),
-    ],
+  const volatileValues: Array<[number, string, string]> = [
+    [3, _('Time'), formatConnectionDuration(connection)],
+    [4, _('Downloaded'), formatBytes(connection.download)],
+    [5, _('Uploaded'), formatBytes(connection.upload)],
   ];
 
-  for (const [index, makeCell] of volatileByIndex) {
+  for (const [index, label, rawValue] of volatileValues) {
     const current = cells[index];
-    const next = makeCell();
-    if (current) {
-      row.replaceChild(next, current);
+    const text = rawValue || '-';
+    const span = current?.firstElementChild as HTMLElement | null;
+    if (span && span.classList.contains('tachyon_monitoring-page__value')) {
+      if (span.textContent !== text) {
+        span.textContent = text;
+        span.title = text;
+        span.setAttribute('data-copy-value', text);
+      }
+    } else if (current) {
+      row.replaceChild(renderTableCell(label, [renderValue(text)]), current);
     } else {
-      row.appendChild(next);
+      row.appendChild(renderTableCell(label, [renderValue(text)]));
     }
   }
 }

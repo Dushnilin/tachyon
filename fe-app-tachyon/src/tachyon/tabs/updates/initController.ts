@@ -1777,6 +1777,9 @@ function formatReleasePublishedDate(published?: string): string {
   return match ? match[1]! : raw;
 }
 
+const customVersionInputValues: Partial<Record<Tachyon.ComponentName, string>> =
+  {};
+
 function renderVersionPickerDropdown(
   component: Tachyon.ComponentName,
 ): HTMLElement {
@@ -1788,7 +1791,12 @@ function renderVersionPickerDropdown(
     class: 'cbi-input-text tachyon-version-picker__custom-input',
     placeholder: _('Custom tag (e.g. v1.2.3)'),
     id: `tachyon-version-picker-custom-${component}`,
+    value: customVersionInputValues[component] || '',
   }) as HTMLInputElement;
+  customInput.value = customVersionInputValues[component] || '';
+  customInput.addEventListener('input', () => {
+    customVersionInputValues[component] = customInput.value;
+  });
 
   const customInstallBtn = renderButton({
     text: _('Install'),
@@ -3308,6 +3316,18 @@ function renderUpdatesComponents() {
   });
 
   return preserveScrollForPage(() => {
+    const activeEl =
+      typeof document !== 'undefined' &&
+      document.activeElement instanceof HTMLElement &&
+      container.contains(document.activeElement)
+        ? document.activeElement
+        : null;
+    const activeId = activeEl?.id || '';
+    const selectionStart =
+      activeEl instanceof HTMLInputElement ? activeEl.selectionStart : null;
+    const selectionEnd =
+      activeEl instanceof HTMLInputElement ? activeEl.selectionEnd : null;
+
     container.replaceChildren(
       ...columns.map((columnNodes) =>
         E(
@@ -3317,6 +3337,24 @@ function renderUpdatesComponents() {
         ),
       ),
     );
+
+    if (activeId) {
+      const nextFocusEl = document.getElementById(activeId);
+      if (nextFocusEl instanceof HTMLElement) {
+        nextFocusEl.focus({ preventScroll: true });
+        if (
+          nextFocusEl instanceof HTMLInputElement &&
+          selectionStart !== null &&
+          selectionEnd !== null
+        ) {
+          try {
+            nextFocusEl.setSelectionRange(selectionStart, selectionEnd);
+          } catch {
+            // ignore unsupported input types
+          }
+        }
+      }
+    }
   });
 }
 
@@ -3453,7 +3491,6 @@ export async function initController(): Promise<void> {
   }
 
   updatesControllerInitialized = true;
-  void loadComponentUpdateCheckCache();
 
   onMount('updates-status').then(() => {
     logger.debug('[UPDATES]', 'initController', 'onMount');

@@ -34,6 +34,8 @@ let write_text_file = helpers.write_text_file;
 let cb_map_cache = null;
 let mixed_port_alive_cached = null;
 let mixed_port_checked_at = 0;
+let last_bot_global_tag = "";
+let last_bot_global_set_at = 0;
 
 function get_t() {
     let cfg = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
@@ -201,7 +203,14 @@ function get_proxy_args() {
         let bot_section = cfg.bot_proxy_section ? trim(cfg.bot_proxy_section) : "";
         if (bot_section != "") {
             let tag = bot_section + "-out";
-            api.clash_request("PUT", "proxies/GLOBAL", { name: tag });
+            let now = time();
+            if (tag != last_bot_global_tag || (now - last_bot_global_set_at) >= 300) {
+                let res = api.clash_request("PUT", "proxies/GLOBAL", { name: tag });
+                if (res && res.ok) {
+                    last_bot_global_tag = tag;
+                    last_bot_global_set_at = now;
+                }
+            }
         }
         return [ "--proxy", "http://" + ep ];
     }

@@ -1566,7 +1566,7 @@ function validateProxyUrl(url) {
     if (!supportsVpnUrl())
       return {
         valid: false,
-        message: _("vpn:// is available only with sing-box LX")
+        message: _("vpn:// is available only with Tachyon Core or sing-box LX")
       };
     return validateVpnUrl(trimmedUrl);
   }
@@ -1581,7 +1581,7 @@ function validateProxyUrl(url) {
     valid: false,
     message: _(
       "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, tuic://, fptn://, or fptn:"
-    ) + (supportsVpnUrl() ? "; vpn:// (LX)" : "")
+    ) + (supportsVpnUrl() ? "; vpn:// (Tachyon Core / LX)" : "")
   };
 }
 
@@ -2325,13 +2325,33 @@ function getTarget(target) {
 async function onMount(target) {
   return new Promise((resolve) => {
     let observer2 = null;
+    let watchingAncestors = false;
+    const observeAncestors = (el) => {
+      if (!observer2 || watchingAncestors) {
+        return;
+      }
+      watchingAncestors = true;
+      observer2.disconnect();
+      let curr = el;
+      while (curr && curr !== document.body) {
+        observer2.observe(curr, {
+          attributes: true,
+          attributeFilter: ["class", "style", "hidden"]
+        });
+        curr = curr.parentElement;
+      }
+    };
     const resolveIfMountedAndVisible = () => {
       const mountedTarget = getTarget(target);
-      if (mountedTarget && mountedTarget.isConnected && mountedTarget.offsetParent !== null) {
+      if (!mountedTarget || !mountedTarget.isConnected) {
+        return false;
+      }
+      if (mountedTarget.offsetParent !== null) {
         observer2?.disconnect();
         resolve(mountedTarget);
         return true;
       }
+      observeAncestors(mountedTarget);
       return false;
     };
     if (resolveIfMountedAndVisible()) {
@@ -2340,12 +2360,17 @@ async function onMount(target) {
     observer2 = new MutationObserver(() => {
       resolveIfMountedAndVisible();
     });
-    observer2.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "hidden"]
-    });
+    const initialTarget = getTarget(target);
+    if (initialTarget && initialTarget.isConnected) {
+      observeAncestors(initialTarget);
+    } else {
+      observer2.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style", "hidden"]
+      });
+    }
   });
 }
 
@@ -7119,6 +7144,7 @@ function getCachedProxyLinks(dashboardCache, includeHidden = false) {
 async function getDashboardSections(options = {}) {
   const includeSubscriptionCopyState = options.includeSubscriptionCopyState ?? true;
   const configSections = hydrateConfigSections(await getConfigSections());
+  const sectionErrorsPromise = readSectionErrors();
   const clashProxies = await getClashApiProxies(configSections);
   if ((!clashProxies.success || !clashProxies.data?.proxies) && configSections.length === 0) {
     return {
@@ -7242,7 +7268,7 @@ async function getDashboardSections(options = {}) {
     }
     return serviceStatusCache.get(serviceType);
   };
-  const sectionErrors = await readSectionErrors();
+  const sectionErrors = await sectionErrorsPromise;
   const data = await Promise.all(
     configSections.filter(
       (section) => section.enabled !== "0" && (isConnectionAction(section.action) || isServiceAction(section.action))
@@ -7521,7 +7547,9 @@ var TabService = class _TabService {
     return _TabService.instance;
   }
   init() {
-    this.observer = new MutationObserver(() => this.handleMutations());
+    this.observer = new MutationObserver(
+      (mutations) => this.handleMutations(mutations)
+    );
     this.observer.observe(document.body, {
       subtree: true,
       childList: true,
@@ -7530,7 +7558,28 @@ var TabService = class _TabService {
     });
     this.notify();
   }
-  handleMutations() {
+  isTabMutation(mutations) {
+    for (const m of mutations) {
+      if (m.type === "attributes") {
+        const el = m.target;
+        if (el.dataset?.tab !== void 0 || el.classList?.contains("cbi-tab") || el.classList?.contains("cbi-tab-disabled")) {
+          return true;
+        }
+        continue;
+      }
+      for (let i = 0; i < m.addedNodes.length; i++) {
+        const node = m.addedNodes[i];
+        if (node instanceof HTMLElement && (node.dataset?.tab !== void 0 || node.classList?.contains("cbi-tab") || node.classList?.contains("cbi-tab-disabled") || node.querySelector?.(".cbi-tab, .cbi-tab-disabled") !== null)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  handleMutations(mutations) {
+    if (!this.isTabMutation(mutations)) {
+      return;
+    }
     this.notify();
   }
   cleanTabId(tab) {
@@ -8229,13 +8278,15 @@ function applyActionState(actions = {}) {
   for (const action of localOverlay.serviceActions) {
     diagnosticsActions[action] = { loading: true };
   }
+  const prevSw = current.sectionsWidget;
+  const sectionsWidgetChanged = JSON.stringify(prevSw.subscriptionUpdatingSections) !== JSON.stringify(subscriptionUpdatingSections) || JSON.stringify(prevSw.latencyFetchingSections) !== JSON.stringify(latencyFetchingSections) || JSON.stringify(prevSw.latencyProgressSections) !== JSON.stringify(latencyProgressSections);
   store.set({
-    sectionsWidget: {
-      ...current.sectionsWidget,
+    sectionsWidget: sectionsWidgetChanged ? {
+      ...prevSw,
       subscriptionUpdatingSections,
       latencyFetchingSections,
       latencyProgressSections
-    },
+    } : prevSw,
     updatesActions,
     diagnosticsActions
   });
@@ -8314,7 +8365,7 @@ async function refreshRuntimeUiState({
   }
   const now = Date.now();
   if (!force && now - lastRuntimeUiStateRefreshAt < RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS) {
-    return void 0;
+    return lastRuntimeUiState;
   }
   lastRuntimeUiStateRefreshAt = now;
   if (force) {
@@ -9741,9 +9792,37 @@ function aggregateTopDomains(rawConnections, limit = 6) {
 }
 
 // src/tachyon/tabs/dashboard/activeRoute.ts
+var SERVICE_ACTIONS = /* @__PURE__ */ new Set([
+  "zapret",
+  "zapret2",
+  "byedpi",
+  "wdtt",
+  "olcrtc"
+]);
+var SERVICE_OUTBOUND_TYPES = /* @__PURE__ */ new Set([
+  "SING_BOX",
+  "ZAPRET",
+  "ZAPRET2",
+  "BYEDPI"
+]);
+function isServiceGroup(group) {
+  if (group.serviceStatus) return true;
+  if (group.action && SERVICE_ACTIONS.has(group.action.toLowerCase())) {
+    return true;
+  }
+  if (group.outbounds?.length > 0 && group.outbounds.every((o) => SERVICE_OUTBOUND_TYPES.has(o.type))) {
+    return true;
+  }
+  return false;
+}
 function getActiveRoute(groups) {
   if (!groups || groups.length === 0) return null;
-  const group = groups.find((g) => g.sectionName === "main") || groups[0];
+  const proxyGroups = groups.filter(
+    (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0
+  );
+  const candidateGroups = proxyGroups.length > 0 ? proxyGroups : [];
+  if (candidateGroups.length === 0) return null;
+  const group = candidateGroups.find((g) => g.sectionName.toLowerCase() === "main") || candidateGroups.find((g) => g.withTagSelect) || candidateGroups[0];
   if (!group || !group.outbounds || group.outbounds.length === 0) return null;
   const selected = group.outbounds.find((o) => o.selected) || group.outbounds[0];
   if (!selected) return null;
@@ -9975,13 +10054,16 @@ async function fetchDashboardSectionsOnce(mountId) {
   }
   const prev = store.get().sectionsWidget;
   const hasRenderedData = prev.data.length > 0;
-  store.set({
-    sectionsWidget: {
-      ...prev,
-      failed: false,
-      loading: prev.loading && !hasRenderedData
-    }
-  });
+  const nextLoading = prev.loading && !hasRenderedData;
+  if (prev.failed !== false || prev.loading !== nextLoading) {
+    store.set({
+      sectionsWidget: {
+        ...prev,
+        failed: false,
+        loading: nextLoading
+      }
+    });
+  }
   try {
     const { data, success } = await CustomTachyonMethods.getDashboardSections();
     if (!dashboardMounted || mountId !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
@@ -10308,6 +10390,13 @@ async function connectToClashSockets(dataUpdatesId) {
       }
       directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
+      if (Array.isArray(parsedMsg.connections)) {
+        currentConnections = aggregateClientConnections(
+          parsedMsg.connections,
+          /* @__PURE__ */ new Map()
+        );
+        currentTopDomains = aggregateTopDomains(parsedMsg.connections);
+      }
       store.set({
         trafficTotalWidget: {
           loading: false,
@@ -10326,11 +10415,8 @@ async function connectToClashSockets(dataUpdatesId) {
           }
         }
       });
-      if (Array.isArray(parsedMsg.connections)) {
-        currentTopDomains = aggregateTopDomains(parsedMsg.connections);
-        if (expandedSections.has("active_clients")) {
-          renderConnectionsWidget();
-        }
+      if (Array.isArray(parsedMsg.connections) && expandedSections.has("active_clients")) {
+        renderConnectionsWidget();
       }
     },
     (_err) => {
@@ -10550,6 +10636,7 @@ async function handleTestSingleOutbound(_sectionName, outboundCode) {
   } finally {
     delete singleTestingOutboundCodes[outboundCode];
     void renderSectionsWidget();
+    void renderTrafficTotalWidget();
   }
 }
 async function handleTestAllSections() {
@@ -11521,6 +11608,13 @@ async function fetchConnections() {
     ]);
     if (res.success && res.data && typeof res.data === "object") {
       const payload = res.data;
+      if (Array.isArray(payload.connections)) {
+        currentConnections = aggregateClientConnections(
+          payload.connections,
+          hostnames
+        );
+        currentTopDomains = aggregateTopDomains(payload.connections);
+      }
       if (needsFallbackPolling) {
         const downloadTotal = Number(payload.downloadTotal) || 0;
         const uploadTotal = Number(payload.uploadTotal) || 0;
@@ -11551,15 +11645,8 @@ async function fetchConnections() {
             data: { connections: connCount, memory }
           }
         });
-      }
-      if (Array.isArray(payload.connections)) {
-        if (shouldFetchHostnames) {
-          currentConnections = aggregateClientConnections(
-            payload.connections,
-            hostnames
-          );
-        }
-        currentTopDomains = aggregateTopDomains(payload.connections);
+      } else if (shouldFetchHostnames) {
+        void renderSystemInfoWidget();
       }
     }
   } catch (_e) {
@@ -11605,8 +11692,33 @@ async function renderBandwidthWidget() {
   );
 }
 async function renderTrafficTotalWidget() {
-  const sections = store.get().sectionsWidget.data;
-  const activeRoute = getActiveRoute(sections);
+  const sectionsWidget = store.get().sectionsWidget;
+  const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
+    ...section,
+    outbounds: section.outbounds.map((outbound) => {
+      const customLatency = customProxyLatencies.get(outbound.code);
+      return {
+        ...outbound,
+        latency: customLatency ?? outbound.latency,
+        urlTestInfo: outbound.urlTestInfo ? {
+          ...outbound.urlTestInfo,
+          outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
+            ...member,
+            latency: customProxyLatencies.get(member.code) ?? member.latency
+          }))
+        } : void 0,
+        priorityInfo: outbound.priorityInfo ? {
+          ...outbound.priorityInfo,
+          outbounds: outbound.priorityInfo.outbounds.map((member) => ({
+            ...member,
+            latency: customProxyLatencies.get(member.code) ?? member.latency
+          }))
+        } : void 0
+      };
+    })
+  }));
+  const activeRoute = getActiveRoute(sectionsWithCustomLatencies);
+  const isCheckingLatency = Object.keys(sectionsWidget.latencyFetchingSections || {}).length > 0 || Object.keys(singleTestingOutboundCodes).length > 0;
   renderStoreWidget(
     "dashboard-widget-traffic-total",
     "trafficTotalWidget",
@@ -11630,7 +11742,7 @@ async function renderTrafficTotalWidget() {
         },
         {
           key: _("Latency"),
-          value: activeRoute.latency > 0 ? `${activeRoute.latency}ms` : _("Checking..."),
+          value: activeRoute.latency > 0 ? `${activeRoute.latency}ms` : isCheckingLatency ? _("Checking...") : "—",
           attributes: {
             class: activeRoute.latency > 0 ? "tachyon-stat--down" : ""
           }
@@ -11748,8 +11860,7 @@ async function renderServicesInfoWidget() {
           value: formatServiceRowValue({
             running: data.singbox,
             memoryMb: data.singboxMemoryMb,
-            uptimePretty: data.singboxUptimePretty,
-            version: data.engineVersion
+            uptimePretty: data.singboxUptimePretty
           }),
           attributes: {
             class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
@@ -11776,11 +11887,6 @@ async function renderServicesInfoWidget() {
         });
       }
       if (data.dnsmasqRunning != null) {
-        let cacheDetail = "";
-        if (data.dnsmasqLocalCacheEnabled && data.dnsmasqCacheSize) {
-          const approxMb = (data.dnsmasqCacheSize * 120 / (1024 * 1024)).toFixed(1);
-          cacheDetail = ` [${_("Cache")}: ${approxMb} MB]`;
-        }
         const dnsmasqTooltip = formatServiceTooltip({
           pid: data.dnsmasqPid,
           uptimePretty: data.dnsmasqUptimePretty
@@ -11790,8 +11896,7 @@ async function renderServicesInfoWidget() {
           value: formatServiceRowValue({
             running: data.dnsmasqRunning,
             memoryMb: data.dnsmasqMemoryMb,
-            uptimePretty: data.dnsmasqUptimePretty,
-            extraSuffix: cacheDetail
+            uptimePretty: data.dnsmasqUptimePretty
           }),
           attributes: {
             class: data.dnsmasqRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error",
@@ -12128,10 +12233,12 @@ var styles = `
 .tachyon_dashboard-page__widgets-section__item__row {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
+    gap: 8px;
     font-size: 13px;
     line-height: 1.5;
     margin-top: 3px;
+    min-width: 0;
 }
 
 .tachyon_dashboard-page__widgets-section__item__row--success .tachyon_dashboard-page__widgets-section__item__row__value {
@@ -12142,9 +12249,18 @@ var styles = `
     color: var(--error-color-medium, red);
 }
 
-.tachyon_dashboard-page__widgets-section__item__row__key {}
+.tachyon_dashboard-page__widgets-section__item__row__key {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 
-.tachyon_dashboard-page__widgets-section__item__row__value {}
+.tachyon_dashboard-page__widgets-section__item__row__value {
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+}
 
 .tachyon-stat--down {
     color: #10b981 !important;
@@ -13863,6 +13979,9 @@ async function runZapretCheck() {
   const tachyonRuntimeReady = !hasZapretRules || runningProcesses === expectedProcesses && supervisorProcesses === expectedProcesses;
   const unexpectedRuntime = !hasZapretRules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
+  const isTachyonCore = Boolean(
+    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+  );
   if (!providerAvailable && !hasZapretRules) {
     store.set({
       diagnosticsChecks: store.get().diagnosticsChecks.filter((c) => c.code !== code)
@@ -13897,7 +14016,7 @@ async function runZapretCheck() {
     },
     {
       state: !hasZapretRules || outboundsConfigured ? "success" : "error",
-      key: outboundsConfigured ? _("Zapret sing-box outbound is configured") : _("Zapret sing-box outbound is not configured"),
+      key: outboundsConfigured ? isTachyonCore ? _("Zapret outbound is configured") : _("Zapret sing-box outbound is configured") : isTachyonCore ? _("Zapret outbound is not configured") : _("Zapret sing-box outbound is not configured"),
       value: ""
     },
     {
@@ -14049,6 +14168,9 @@ async function runByedpiCheck() {
   const tachyonRuntimeReady = !hasByedpiRules || runningProcesses === expectedProcesses && supervisorProcesses === expectedProcesses;
   const unexpectedRuntime = !hasByedpiRules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
+  const isTachyonCore = Boolean(
+    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+  );
   const standaloneServiceEnabled = Boolean(data.standalone_service_enabled);
   const standaloneServiceRunning = Boolean(data.standalone_service_running);
   const standaloneConflict = hasByedpiRules && standaloneServiceRunning;
@@ -14076,7 +14198,7 @@ async function runByedpiCheck() {
     },
     {
       state: !hasByedpiRules || outboundsConfigured ? "success" : "error",
-      key: outboundsConfigured ? _("ByeDPI sing-box outbound is configured") : _("ByeDPI sing-box outbound is not configured"),
+      key: outboundsConfigured ? isTachyonCore ? _("ByeDPI outbound is configured") : _("ByeDPI sing-box outbound is configured") : isTachyonCore ? _("ByeDPI outbound is not configured") : _("ByeDPI sing-box outbound is not configured"),
       value: `${data.listen_address}:${Number(data.port_base || 0)}`
     },
     {
@@ -14439,6 +14561,13 @@ function renderModal(text, name, options) {
   };
   const updateText = (nextText) => {
     const normalizedText = nextText ?? "";
+    const selection = typeof window !== "undefined" ? window.getSelection?.() : null;
+    const hasActiveSelection = Boolean(
+      selection && !selection.isCollapsed && (contentEl.contains(selection.anchorNode) || contentEl.contains(selection.focusNode))
+    );
+    if (hasActiveSelection && currentText !== "") {
+      return;
+    }
     const shouldStickToBottom = shouldScrollToBottomOnMount || contentEl.scrollTop + contentEl.clientHeight >= contentEl.scrollHeight - 16;
     if (normalizedText === currentText) {
       if (shouldStickToBottom) {
@@ -15681,15 +15810,21 @@ function renderServiceCheckModal() {
           },
           [customDomainInput, customBtn]
         );
+        let isModalClosed = false;
+        let activeCheckRunId = 0;
         const checkAllBtn = renderButton({
           text: _("Check all"),
           classNames: ["cbi-button-action"],
           onClick: async () => {
+            const myRunId = ++activeCheckRunId;
             checkAllBtn.disabled = true;
             checkAllBtn.textContent = _("Testing...");
             progressBarContainer.style.display = "block";
             progressBarInner.style.width = "0%";
             for (let i = 0; i < rowMap.length; i++) {
+              if (isModalClosed || myRunId !== activeCheckRunId || !container.isConnected) {
+                break;
+              }
               const itemObj = rowMap[i];
               const { target, tr } = itemObj;
               progressBarInner.style.width = `${Math.round((i + 1) / rowMap.length * 100)}%`;
@@ -15738,7 +15873,11 @@ function renderServiceCheckModal() {
         });
         const closeBtn = renderButton({
           text: _("Close"),
-          onClick: () => ui.hideModal()
+          onClick: () => {
+            isModalClosed = true;
+            activeCheckRunId++;
+            ui.hideModal();
+          }
         });
         const rightWrap = E("div", { style: "display: flex; gap: 8px;" }, [
           checkAllBtn,
@@ -16516,6 +16655,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         text: _("Close"),
         classNames: ["cbi-button-neutral"],
         onClick: () => {
+          isDisposed = true;
           stopPolling();
           ui.hideModal();
         }
@@ -17483,18 +17623,33 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   };
   let lastRenderedCount = 0;
   let lastRenderedFinishedAt = 0;
+  let isDisposed = false;
+  let hasMounted = false;
   const pollStatus = async () => {
+    if (modalContainer.isConnected) {
+      hasMounted = true;
+    }
+    if (isDisposed || hasMounted && !modalContainer.isConnected) {
+      stopPolling();
+      return;
+    }
     if (isPolling) return;
     isPolling = true;
     try {
       const res = await TachyonShellMethods.getFuzzerStatus();
+      if (isDisposed || hasMounted && !modalContainer.isConnected) {
+        stopPolling();
+        return;
+      }
       if (res.success && res.data) {
         currentState = res.data;
         isRunning = res.data.running;
         if (isRunning) {
           startBtn.innerText = _("🛑 Stop Benchmark");
           startBtn.disabled = false;
-          startPolling();
+          if (!pollingInterval) {
+            pollingInterval = setInterval(pollStatus, 1200);
+          }
         } else {
           stopPolling();
           startBtn.innerText = _("🚀 Start Benchmark");
@@ -17580,7 +17735,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       switch (det.type) {
         case "ip_block":
           return _(
-            "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
+            "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via VPN/Proxy outbound instead."
           );
         case "rst":
           return _(
@@ -17603,7 +17758,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     const meta = typeMeta[detection.type] || typeMeta.unknown;
     const label = typeLabels[detection.type] || detection.type;
     const ipBlockNotice = detection.type === "ip_block" ? `<div class="alert-message danger" style="margin-top: 8px;">
-             ⚠️ ${_("IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!")}
+             ⚠️ ${_("IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!")}
            </div>` : "";
     banner.className = `alert-message ${meta.alertClass}`;
     banner.style.display = "block";
@@ -18139,44 +18294,74 @@ function renderDnsBenchmarkModal() {
     disabled: true,
     onClick: () => applyRecommended()
   });
+  let isPolling = false;
+  let isDisposed = false;
+  let hasMounted = false;
   const closeBtn = renderButton({
     text: _("Close"),
     classNames: ["cbi-button-neutral"],
     onClick: () => {
-      if (pollInterval) clearInterval(pollInterval);
+      isDisposed = true;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
       if (isRunning) TachyonShellMethods.stopDnsBenchmark();
       if (ui.hideModal) ui.hideModal();
     }
   });
   const pollStatus = async () => {
-    const res = await TachyonShellMethods.getDnsBenchmarkStatus();
-    if (!res.success || !res.data) return;
-    const data = res.data;
-    isRunning = data.running;
-    if (data.running) {
-      progressContainer.style.display = "block";
-      progressBar.style.width = `${data.progress}%`;
-      statusLabel.textContent = `⏳ ${data.current_server || _("Testing")} (${data.progress}%)`;
-      if (startBtn) startBtn.disabled = true;
-      if (applyBtn) applyBtn.disabled = true;
-    } else {
-      progressContainer.style.display = "none";
-      if (data.finished_at) {
-        statusLabel.textContent = `✓ ${_("Benchmark completed successfully")}`;
-        if (startBtn) startBtn.disabled = false;
-        if (applyBtn)
-          applyBtn.disabled = !data.recommendation;
-      }
+    if (statusLabel.isConnected) {
+      hasMounted = true;
+    }
+    if (isDisposed || hasMounted && !statusLabel.isConnected) {
       if (pollInterval) {
         clearInterval(pollInterval);
         pollInterval = null;
       }
+      return;
     }
-    if (data.results && data.results.length > 0) {
-      updateTable(data.results);
-    }
-    if (data.recommendation) {
-      updateRecommendation(data.recommendation);
+    if (isPolling) return;
+    isPolling = true;
+    try {
+      const res = await TachyonShellMethods.getDnsBenchmarkStatus();
+      if (isDisposed || hasMounted && !statusLabel.isConnected) {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+        return;
+      }
+      if (!res.success || !res.data) return;
+      const data = res.data;
+      isRunning = data.running;
+      if (data.running) {
+        progressContainer.style.display = "block";
+        progressBar.style.width = `${data.progress}%`;
+        statusLabel.textContent = `⏳ ${data.current_server || _("Testing")} (${data.progress}%)`;
+        if (startBtn) startBtn.disabled = true;
+        if (applyBtn) applyBtn.disabled = true;
+      } else {
+        progressContainer.style.display = "none";
+        if (data.finished_at) {
+          statusLabel.textContent = `✓ ${_("Benchmark completed successfully")}`;
+          if (startBtn) startBtn.disabled = false;
+          if (applyBtn)
+            applyBtn.disabled = !data.recommendation;
+        }
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      }
+      if (data.results && data.results.length > 0) {
+        updateTable(data.results);
+      }
+      if (data.recommendation) {
+        updateRecommendation(data.recommendation);
+      }
+    } finally {
+      isPolling = false;
     }
   };
   const startBenchmark = async () => {
@@ -18847,6 +19032,40 @@ async function renderStabilityModal() {
     if (latencyMs < 350) return "#d29922";
     return "#f85149";
   };
+  const getDaemonDisplayInfo = (name) => {
+    switch (name) {
+      case "tachyon-core":
+        return { title: "Tachyon Core", subtitle: "tachyon-core" };
+      case "sing-box":
+        return { title: "Sing-Box", subtitle: "sing-box" };
+      case "steer":
+        return { title: "Steer", subtitle: "steer" };
+      case "tachyon":
+        return { title: "Tachyon", subtitle: "ucode helpers" };
+      case "watchdog":
+        return { title: "Watchdog", subtitle: "tachyon_watchdog" };
+      case "telegram":
+        return { title: "Telegram Bot", subtitle: "bot/main.uc" };
+      case "nfqws2":
+        return { title: "Zapret v2", subtitle: "nfqws2" };
+      case "nfqws":
+        return { title: "Zapret", subtitle: "nfqws" };
+      case "ciadpi":
+        return { title: "ByeDPI", subtitle: "ciadpi" };
+      case "wdtt":
+        return { title: "WDTT", subtitle: "wdtt" };
+      case "olcrtc":
+        return { title: "OLCRTC", subtitle: "olcrtc" };
+      case "fptn":
+        return { title: "FPTN", subtitle: "fptn" };
+      case "tailscale":
+        return { title: "Tailscale", subtitle: "tailscaled" };
+      case "dnsmasq":
+        return { title: "Dnsmasq", subtitle: "dnsmasq" };
+      default:
+        return { title: name, subtitle: "" };
+    }
+  };
   const updateModalContent = () => {
     modalContainer.innerHTML = "";
     if (!reportData) {
@@ -18864,32 +19083,38 @@ async function renderStabilityModal() {
       "div",
       {
         class: "cbi-section-node",
-        style: "display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 16px; margin-bottom: 12px; border-radius: 6px; background: var(--background-color-high, rgba(0,0,0,0.03)); border: 1px solid var(--border-color, rgba(0,0,0,0.1));"
+        style: "display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 16px; margin-bottom: 14px; border-radius: 8px; background: var(--background-color-high, rgba(128,128,128,0.05)); border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18));"
       },
       [
-        E("div", { style: "display: flex; align-items: center; gap: 10px;" }, [
+        E("div", { style: "display: flex; align-items: center; gap: 12px;" }, [
           E(
             "span",
             {
               class: `label ${badgeClass}`,
-              style: "font-size: 15px; font-weight: bold; padding: 6px 12px; border-radius: 4px;"
+              style: "font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 6px; white-space: nowrap; display: inline-flex; align-items: center; line-height: 1.2; letter-spacing: 0.3px;"
             },
             `${score}% ${grade.toUpperCase()}`
           ),
-          E("div", {}, [
-            E(
-              "div",
-              { style: "font-weight: bold; font-size: 14px;" },
-              _("System Stability Index")
-            ),
-            E(
-              "div",
-              {
-                style: "font-size: 11px; color: var(--text-color-medium, #777);"
-              },
-              `${_("System uptime")}: ${systemUptime}`
-            )
-          ])
+          E(
+            "div",
+            { style: "display: flex; flex-direction: column; gap: 2px;" },
+            [
+              E(
+                "div",
+                {
+                  style: "font-weight: 700; font-size: 14px; line-height: 1.2;"
+                },
+                _("System Stability Index")
+              ),
+              E(
+                "div",
+                {
+                  style: "font-size: 12px; color: var(--text-color-medium, #777); line-height: 1.2;"
+                },
+                `${_("System uptime")}: ${systemUptime}`
+              )
+            ]
+          )
         ]),
         E(
           "div",
@@ -18897,20 +19122,28 @@ async function renderStabilityModal() {
             style: "display: flex; gap: 14px; align-items: center; font-size: 12px;"
           },
           [
-            E("div", { style: "text-align: right;" }, [
-              E(
-                "div",
-                { style: "font-weight: bold;" },
-                `${healthyServers} / ${totalServers} ${_("Nodes OK")}`
-              ),
-              E(
-                "div",
-                {
-                  style: "font-size: 11px; color: var(--text-color-medium, #777);"
-                },
-                avgLatency > 0 ? `${_("Fleet Latency")}: ~${Math.round(avgLatency)} ms` : _("Untested fleet")
-              )
-            ])
+            E(
+              "div",
+              {
+                style: "text-align: right; display: flex; flex-direction: column; gap: 2px;"
+              },
+              [
+                E(
+                  "div",
+                  {
+                    style: "font-weight: 700; font-size: 13px; line-height: 1.2;"
+                  },
+                  `${healthyServers} / ${totalServers} ${_("Nodes OK")}`
+                ),
+                E(
+                  "div",
+                  {
+                    style: "font-size: 11px; color: var(--text-color-medium, #777); line-height: 1.2;"
+                  },
+                  avgLatency > 0 ? `${_("Fleet Latency")}: ~${Math.round(avgLatency)} ms` : _("Untested fleet")
+                )
+              ]
+            )
           ]
         )
       ]
@@ -19041,79 +19274,167 @@ async function renderStabilityModal() {
         )
       ]
     );
+    const thLeftStyle = "text-align: left !important; padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;";
+    const thRightStyle = "text-align: right !important; padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;";
+    const tdLeftStyle = "text-align: left !important; padding: 9px 12px; vertical-align: middle; border-bottom: 1px solid var(--border-color-low, rgba(128,128,128,0.1));";
+    const tdRightStyle = "text-align: right !important; padding: 9px 12px; vertical-align: middle; border-bottom: 1px solid var(--border-color-low, rgba(128,128,128,0.1)); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap;";
     const daemonRows = Object.keys(daemons).map((daemonName) => {
       const info = daemons[daemonName];
       const isRunning = info.running;
-      const pidStr = info.pid ? String(info.pid) : "—";
-      const uptimeStr = info.pretty || (isRunning ? "running" : "stopped");
+      const displayInfo = getDaemonDisplayInfo(daemonName);
+      let pidStr = "—";
+      if (info.pids && info.pids.length > 0) {
+        pidStr = info.pids.length <= 2 ? info.pids.join(", ") : `${info.pids.slice(0, 2).join(", ")} (+${info.pids.length - 2})`;
+      } else if (info.pid) {
+        pidStr = String(info.pid);
+      }
+      const uptimeStr = isRunning ? info.pretty || "0s" : "—";
       const rssKb = mem?.daemons_rss_kb?.[daemonName];
       const rssStr = rssKb ? prettyBytes(rssKb * 1024) : "—";
       const daemonFd = fds?.daemons?.[daemonName];
       const fdStr = daemonFd !== void 0 ? String(daemonFd) : "—";
       return E("tr", { class: "cbi-section-table-row" }, [
-        E(
-          "td",
-          { class: "cbi-section-table-cell", style: "font-weight: 500;" },
-          daemonName
-        ),
-        E("td", { class: "cbi-section-table-cell" }, [
+        E("td", { class: "cbi-section-table-cell", style: tdLeftStyle }, [
+          E(
+            "div",
+            {
+              style: "display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;"
+            },
+            [
+              E(
+                "span",
+                { style: "font-weight: 600; font-size: 13px;" },
+                displayInfo.title
+              ),
+              displayInfo.subtitle && displayInfo.subtitle !== displayInfo.title ? E(
+                "span",
+                {
+                  style: "font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-color-medium, #888);"
+                },
+                displayInfo.subtitle
+              ) : ""
+            ]
+          )
+        ]),
+        E("td", { class: "cbi-section-table-cell", style: tdLeftStyle }, [
           E(
             "span",
             {
               class: `label ${isRunning ? "label-success" : "label-default"}`,
-              style: "font-size: 11px; padding: 2px 6px;"
+              style: "font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;"
             },
-            isRunning ? _("Running") : _("Stopped")
+            [
+              E("span", { style: "font-size: 8px; line-height: 1;" }, "●"),
+              E("span", {}, isRunning ? _("Running") : _("Stopped"))
+            ]
           )
         ]),
         E(
           "td",
           {
             class: "cbi-section-table-cell",
-            style: "font-family: monospace;"
+            style: `${tdLeftStyle} font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; color: var(--text-color-medium, #666); white-space: nowrap;`
           },
           pidStr
         ),
-        E("td", { class: "cbi-section-table-cell" }, uptimeStr),
-        E("td", { class: "cbi-section-table-cell" }, rssStr),
-        E("td", { class: "cbi-section-table-cell" }, fdStr)
+        E(
+          "td",
+          {
+            class: "cbi-section-table-cell",
+            style: `${tdRightStyle} font-weight: 500;`
+          },
+          uptimeStr
+        ),
+        E(
+          "td",
+          {
+            class: "cbi-section-table-cell",
+            style: `${tdRightStyle} font-weight: 600;`
+          },
+          rssStr
+        ),
+        E(
+          "td",
+          {
+            class: "cbi-section-table-cell",
+            style: `${tdRightStyle} color: var(--text-color-medium, #666);`
+          },
+          fdStr
+        )
       ]);
     });
-    const daemonsTable = E("div", { class: "cbi-section" }, [
-      E(
-        "div",
-        {
-          class: "cbi-section-title",
-          style: "font-size: 13px; font-weight: bold; margin-bottom: 6px;"
-        },
-        _("Managed Daemons Status")
-      ),
-      E(
-        "table",
-        {
-          class: "cbi-section-table",
-          style: "width: 100%; border-collapse: collapse;"
-        },
-        [
-          E("tr", { class: "cbi-section-table-titles" }, [
-            E("th", { class: "cbi-section-table-cell" }, _("Service")),
-            E("th", { class: "cbi-section-table-cell" }, _("State")),
-            E("th", { class: "cbi-section-table-cell" }, _("PID")),
-            E("th", { class: "cbi-section-table-cell" }, _("Uptime")),
-            E("th", { class: "cbi-section-table-cell" }, _("RAM (RSS)")),
-            E("th", { class: "cbi-section-table-cell" }, _("FDs"))
-          ]),
-          ...daemonRows
-        ]
-      )
-    ]);
+    const daemonsTable = E(
+      "div",
+      { class: "cbi-section", style: "margin-bottom: 0;" },
+      [
+        E(
+          "div",
+          {
+            class: "cbi-section-title",
+            style: "font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;"
+          },
+          [_("Managed Daemons Status")]
+        ),
+        E(
+          "div",
+          {
+            style: "border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18)); border-radius: 8px; overflow-x: auto;"
+          },
+          [
+            E(
+              "table",
+              {
+                class: "cbi-section-table",
+                style: "width: 100%; border-collapse: collapse; margin: 0;"
+              },
+              [
+                E("tr", { class: "cbi-section-table-titles" }, [
+                  E(
+                    "th",
+                    { class: "cbi-section-table-cell", style: thLeftStyle },
+                    _("Service")
+                  ),
+                  E(
+                    "th",
+                    { class: "cbi-section-table-cell", style: thLeftStyle },
+                    _("State")
+                  ),
+                  E(
+                    "th",
+                    { class: "cbi-section-table-cell", style: thLeftStyle },
+                    "PID"
+                  ),
+                  E(
+                    "th",
+                    { class: "cbi-section-table-cell", style: thRightStyle },
+                    _("Uptime")
+                  ),
+                  E(
+                    "th",
+                    { class: "cbi-section-table-cell", style: thRightStyle },
+                    _("RAM (RSS)")
+                  ),
+                  E(
+                    "th",
+                    { class: "cbi-section-table-cell", style: thRightStyle },
+                    _("FDs")
+                  )
+                ]),
+                ...daemonRows
+              ]
+            )
+          ]
+        )
+      ]
+    );
     const memoryUsedPct = mem?.used_pct ?? 0;
     const memoryTotalStr = mem?.total_kb ? prettyBytes(mem.total_kb * 1024) : "—";
     const memoryFreeStr = mem?.available_kb ? prettyBytes(mem.available_kb * 1024) : "—";
+    const metricRowStyle = "display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 3px 0;";
     const flapsAndMetrics = E(
       "div",
       {
-        style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 14px;"
+        style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 14px;"
       },
       [
         // Flaps Card
@@ -19121,78 +19442,48 @@ async function renderStabilityModal() {
           "div",
           {
             class: "cbi-section-node",
-            style: "padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1));"
+            style: "padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18)); background: var(--background-color-high, rgba(128,128,128,0.02));"
           },
           [
             E(
               "div",
               {
-                style: "font-weight: bold; margin-bottom: 6px; font-size: 12px;"
+                style: "font-weight: 700; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-color-medium, #666);"
               },
               _("Failovers & Restarts")
             ),
-            E(
-              "div",
-              {
-                style: "display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;"
-              },
-              [
-                E("span", {}, _("Watchdog recoveries:")),
-                E(
-                  "b",
-                  {
-                    style: flaps.watchdog_restarts > 0 ? "color: #d29922;" : ""
-                  },
-                  String(flaps.watchdog_restarts)
-                )
-              ]
-            ),
-            E(
-              "div",
-              {
-                style: "display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;"
-              },
-              [
-                E("span", {}, _("Engine crashes:")),
-                E(
-                  "b",
-                  {
-                    style: flaps.engine_crashes > 0 ? "color: #f85149;" : ""
-                  },
-                  String(flaps.engine_crashes)
-                )
-              ]
-            ),
-            E(
-              "div",
-              {
-                style: "display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;"
-              },
-              [
-                E("span", {}, _("DNS failovers:")),
-                E("b", {}, String(flaps.dns_failovers))
-              ]
-            ),
-            E(
-              "div",
-              {
-                style: "display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;"
-              },
-              [
-                E("span", {}, _("WAN network flaps:")),
-                E("b", {}, String(flaps.wan_flaps))
-              ]
-            ),
-            E(
-              "div",
-              {
-                style: "display: flex; justify-content: space-between; font-size: 12px;"
-              },
-              [
-                E("span", {}, _("Config rollbacks:")),
-                E("b", {}, String(flaps.config_rollbacks))
-              ]
-            )
+            E("div", { style: metricRowStyle }, [
+              E("span", {}, _("Watchdog recoveries:")),
+              E(
+                "b",
+                {
+                  style: flaps.watchdog_restarts > 0 ? "color: #d29922;" : ""
+                },
+                String(flaps.watchdog_restarts)
+              )
+            ]),
+            E("div", { style: metricRowStyle }, [
+              E("span", {}, _("Engine crashes:")),
+              E(
+                "b",
+                {
+                  style: flaps.engine_crashes > 0 ? "color: #f85149;" : ""
+                },
+                String(flaps.engine_crashes)
+              )
+            ]),
+            E("div", { style: metricRowStyle }, [
+              E("span", {}, _("DNS failovers:")),
+              E("b", {}, String(flaps.dns_failovers))
+            ]),
+            E("div", { style: metricRowStyle }, [
+              E("span", {}, _("WAN network flaps:")),
+              E("b", {}, String(flaps.wan_flaps))
+            ]),
+            E("div", { style: metricRowStyle }, [
+              E("span", {}, _("Config rollbacks:")),
+              E("b", {}, String(flaps.config_rollbacks))
+            ])
           ]
         ),
         // Memory Pressure Card
@@ -19200,20 +19491,20 @@ async function renderStabilityModal() {
           "div",
           {
             class: "cbi-section-node",
-            style: "padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1));"
+            style: "padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color-medium, rgba(128,128,128,0.18)); background: var(--background-color-high, rgba(128,128,128,0.02));"
           },
           [
             E(
               "div",
               {
-                style: "font-weight: bold; margin-bottom: 6px; font-size: 12px;"
+                style: "font-weight: 700; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-color-medium, #666);"
               },
               _("RAM & Resource Pressure")
             ),
             E(
               "div",
               {
-                style: "display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;"
+                style: "display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;"
               },
               [
                 E("span", {}, _("RAM usage:")),
@@ -19223,7 +19514,7 @@ async function renderStabilityModal() {
             E(
               "div",
               {
-                style: "width: 100%; height: 6px; background: rgba(0,0,0,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 8px;"
+                style: "width: 100%; height: 6px; background: rgba(128,128,128,0.15); border-radius: 3px; overflow: hidden; margin-bottom: 10px;"
               },
               [
                 E("div", {
@@ -19231,30 +19522,20 @@ async function renderStabilityModal() {
                 })
               ]
             ),
-            E(
-              "div",
-              {
-                style: "display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;"
-              },
-              [
-                E("span", {}, _("Available memory:")),
-                E("span", {}, memoryFreeStr)
-              ]
-            ),
-            E(
-              "div",
-              {
-                style: "display: flex; justify-content: space-between; font-size: 12px;"
-              },
-              [
-                E("span", {}, _("System FDs allocated:")),
-                E(
-                  "span",
-                  {},
-                  `${fds?.system_allocated ?? "—"} / ${fds?.system_max ?? "—"}`
-                )
-              ]
-            )
+            E("div", { style: metricRowStyle }, [
+              E("span", {}, _("Available memory:")),
+              E("b", {}, memoryFreeStr)
+            ]),
+            E("div", { style: metricRowStyle }, [
+              E("span", {}, _("System FDs allocated:")),
+              E(
+                "b",
+                {
+                  style: "font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;"
+                },
+                `${fds?.system_allocated ?? "—"} / ${fds?.system_max ?? "—"}`
+              )
+            ])
           ]
         )
       ]
@@ -22146,7 +22427,7 @@ async function handleViewLogs() {
         _("View logs"),
         renderModal(viewLogs.data, "view_logs", {
           getText: getLatestLogs,
-          refreshMs: 250,
+          refreshMs: 2e3,
           initialAutoRefresh: true,
           showAutoRefreshToggle: true,
           startAtEnd: true
@@ -22276,6 +22557,9 @@ function handleRestoreNativeInternet() {
 }
 async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading("showSingBoxConfig", true);
+  const isTachyonCore = Boolean(
+    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+  );
   try {
     const showSingBoxConfig = await TachyonShellMethods.showSingBoxConfig(false);
     if (showSingBoxConfig.success) {
@@ -22284,9 +22568,6 @@ async function handleShowSingBoxConfig() {
       );
       const maskedSingBoxConfigText = formatMaskedSingBoxConfig(
         showSingBoxConfig.data
-      );
-      const isTachyonCore = Boolean(
-        store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
       );
       ui.showModal(
         isTachyonCore ? _("Show Tachyon Core config") : _("Show sing-box config"),
@@ -22300,14 +22581,14 @@ async function handleShowSingBoxConfig() {
       notifyActionFailure(
         "handleShowSingBoxConfig",
         showSingBoxConfig,
-        _("Show sing-box config failed")
+        isTachyonCore ? _("Show Tachyon Core config failed") : _("Show sing-box config failed")
       );
     }
   } catch (e) {
     notifyActionFailure(
       "handleShowSingBoxConfig",
       e,
-      _("Show sing-box config failed")
+      isTachyonCore ? _("Show Tachyon Core config failed") : _("Show sing-box config failed")
     );
   } finally {
     setDiagnosticActionLoading("showSingBoxConfig", false);
@@ -22316,6 +22597,9 @@ async function handleShowSingBoxConfig() {
 async function handleGenerateBugReport() {
   setDiagnosticActionLoading("generateBugReport", true);
   try {
+    const isTachyonCore = Boolean(
+      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+    );
     const configResult = await fs.read("/etc/config/tachyon").catch(() => "");
     const logsResult = await executeShellCommand({
       command: "/sbin/logread",
@@ -22323,8 +22607,9 @@ async function handleGenerateBugReport() {
     });
     const singboxLogsResult = await executeShellCommand({
       command: "/sbin/logread",
-      args: ["-e", "sing-box", "-l", "1000"]
+      args: ["-e", isTachyonCore ? "tachyon-core" : "sing-box", "-l", "1000"]
     });
+    const coreLabel = isTachyonCore ? "tachyon-core" : "sing-box";
     const filterUdpErrors = (text) => {
       if (!text || !text.includes("UDP is not supported by outbound:"))
         return text;
@@ -22335,7 +22620,7 @@ async function handleGenerateBugReport() {
         if (line.includes("UDP is not supported by outbound:")) {
           if (!noticeEmitted) {
             filtered.push(
-              "UDP traffic through HTTP outbounds is not supported by sing-box; repeated UDP warnings for HTTP outbounds are hidden by Tachyon."
+              `UDP traffic through HTTP outbounds is not supported by ${coreLabel}; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.`
             );
             noticeEmitted = true;
           }
@@ -22345,9 +22630,6 @@ async function handleGenerateBugReport() {
       }
       return filtered.join("\n");
     };
-    const isTachyonCore = Boolean(
-      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
-    );
     const rawReport = [
       "--- TACHYON CONFIG ---",
       configResult || "Failed to fetch config",
@@ -23230,6 +23512,9 @@ function formatDuration(ms) {
   return `${minutes}:${pad(seconds)}`;
 }
 function parseStartedAt(connection) {
+  if (typeof connection.startedAtMs === "number" && Number.isFinite(connection.startedAtMs)) {
+    return connection.startedAtMs;
+  }
   const startedAt = Date.parse(connection.start || "");
   return Number.isFinite(startedAt) ? startedAt : connection.lastSeenAt;
 }
@@ -23772,10 +24057,13 @@ function applyConnectionsPayload(payload) {
     }
     incomingIds.add(id);
     closedConnections.delete(id);
+    const prev = activeConnections.get(id);
+    const startedAtMs = prev && prev.start === rawConnection.start && prev.startedAtMs != null ? prev.startedAtMs : parseStartedAt({ start: rawConnection.start, lastSeenAt: now });
     activeConnections.set(id, {
       ...rawConnection,
       id,
-      lastSeenAt: now
+      lastSeenAt: now,
+      startedAtMs
     });
   });
   Array.from(activeConnections.entries()).forEach(([id, connection]) => {
@@ -23814,9 +24102,13 @@ function getKnownSourceIps() {
       ips.add(ip);
     }
   });
+  const labelsByIp = /* @__PURE__ */ new Map();
+  ips.forEach((ip) => {
+    labelsByIp.set(ip, getLocalDeviceFilterLabel(ip));
+  });
   return Array.from(ips).sort((a, b) => {
-    const byLabel = getLocalDeviceFilterLabel(a).localeCompare(
-      getLocalDeviceFilterLabel(b)
+    const byLabel = (labelsByIp.get(a) || a).localeCompare(
+      labelsByIp.get(b) || b
     );
     return byLabel || a.localeCompare(b);
   });
@@ -24182,25 +24474,36 @@ function patchConnectionRows(visibleConnections) {
       existingRows.set(id, row);
     }
   }
-  const seenIds = /* @__PURE__ */ new Set();
-  for (const connection of visibleConnections) {
-    seenIds.add(connection.id);
+  const visibleIds = new Set(visibleConnections.map((c) => c.id));
+  for (const [id, row] of existingRows) {
+    if (!visibleIds.has(id)) {
+      row.remove();
+      existingRows.delete(id);
+    }
+  }
+  for (let i = 0; i < visibleConnections.length; i++) {
+    const connection = visibleConnections[i];
     const signature = getConnectionRowSignature(connection);
     const existing = existingRows.get(connection.id);
     if (!existing) {
-      tbody.appendChild(renderConnectionRow(connection));
+      const newRow = renderConnectionRow(connection);
+      const refNode = tbody.children[i] || null;
+      tbody.insertBefore(newRow, refNode);
       continue;
     }
     if (existing.getAttribute("data-row-signature") !== signature) {
-      tbody.replaceChild(renderConnectionRow(connection), existing);
+      const replacement = renderConnectionRow(connection);
+      tbody.replaceChild(replacement, existing);
+      if (tbody.children[i] !== replacement) {
+        tbody.insertBefore(replacement, tbody.children[i] || null);
+      }
       continue;
     }
-    patchVolatileCells(existing, connection);
-    tbody.appendChild(existing);
-  }
-  for (const [id, row] of existingRows) {
-    if (!seenIds.has(id)) {
-      row.remove();
+    if (activeTab === "active") {
+      patchVolatileCells(existing, connection);
+    }
+    if (tbody.children[i] !== existing) {
+      tbody.insertBefore(existing, tbody.children[i] || null);
     }
   }
 }
@@ -24212,33 +24515,25 @@ function patchVolatileCells(row, connection) {
   if (cells.length < 7) {
     return;
   }
-  const volatileByIndex = [
-    [
-      3,
-      () => renderTableCell(_("Time"), [
-        renderValue(formatConnectionDuration(connection))
-      ])
-    ],
-    [
-      4,
-      () => renderTableCell(_("Downloaded"), [
-        renderValue(formatBytes2(connection.download))
-      ])
-    ],
-    [
-      5,
-      () => renderTableCell(_("Uploaded"), [
-        renderValue(formatBytes2(connection.upload))
-      ])
-    ]
+  const volatileValues = [
+    [3, _("Time"), formatConnectionDuration(connection)],
+    [4, _("Downloaded"), formatBytes2(connection.download)],
+    [5, _("Uploaded"), formatBytes2(connection.upload)]
   ];
-  for (const [index, makeCell] of volatileByIndex) {
+  for (const [index, label, rawValue] of volatileValues) {
     const current = cells[index];
-    const next = makeCell();
-    if (current) {
-      row.replaceChild(next, current);
+    const text = rawValue || "-";
+    const span = current?.firstElementChild;
+    if (span && span.classList.contains("tachyon_monitoring-page__value")) {
+      if (span.textContent !== text) {
+        span.textContent = text;
+        span.title = text;
+        span.setAttribute("data-copy-value", text);
+      }
+    } else if (current) {
+      row.replaceChild(renderTableCell(label, [renderValue(text)]), current);
     } else {
-      row.appendChild(next);
+      row.appendChild(renderTableCell(label, [renderValue(text)]));
     }
   }
 }
@@ -27599,13 +27894,19 @@ function formatReleasePublishedDate(published) {
   const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
   return match ? match[1] : raw;
 }
+var customVersionInputValues = {};
 function renderVersionPickerDropdown(component) {
   const container = E("div", { class: "tachyon-version-picker" });
   const customInput = E("input", {
     type: "text",
     class: "cbi-input-text tachyon-version-picker__custom-input",
     placeholder: _("Custom tag (e.g. v1.2.3)"),
-    id: `tachyon-version-picker-custom-${component}`
+    id: `tachyon-version-picker-custom-${component}`,
+    value: customVersionInputValues[component] || ""
+  });
+  customInput.value = customVersionInputValues[component] || "";
+  customInput.addEventListener("input", () => {
+    customVersionInputValues[component] = customInput.value;
   });
   const customInstallBtn = renderButton({
     text: _("Install"),
@@ -28810,6 +29111,10 @@ function renderUpdatesComponents() {
     }
   });
   return preserveScrollForPage(() => {
+    const activeEl = typeof document !== "undefined" && document.activeElement instanceof HTMLElement && container.contains(document.activeElement) ? document.activeElement : null;
+    const activeId = activeEl?.id || "";
+    const selectionStart = activeEl instanceof HTMLInputElement ? activeEl.selectionStart : null;
+    const selectionEnd = activeEl instanceof HTMLInputElement ? activeEl.selectionEnd : null;
     container.replaceChildren(
       ...columns.map(
         (columnNodes) => E(
@@ -28819,6 +29124,18 @@ function renderUpdatesComponents() {
         )
       )
     );
+    if (activeId) {
+      const nextFocusEl = document.getElementById(activeId);
+      if (nextFocusEl instanceof HTMLElement) {
+        nextFocusEl.focus({ preventScroll: true });
+        if (nextFocusEl instanceof HTMLInputElement && selectionStart !== null && selectionEnd !== null) {
+          try {
+            nextFocusEl.setSelectionRange(selectionStart, selectionEnd);
+          } catch {
+          }
+        }
+      }
+    }
   });
 }
 function onStoreUpdate3(_next, _prev, diff) {
@@ -28911,7 +29228,6 @@ async function initController4() {
     return;
   }
   updatesControllerInitialized = true;
-  void loadComponentUpdateCheckCache();
   onMount("updates-status").then(() => {
     logger.debug("[UPDATES]", "initController", "onMount");
     registerLifecycleListeners4();

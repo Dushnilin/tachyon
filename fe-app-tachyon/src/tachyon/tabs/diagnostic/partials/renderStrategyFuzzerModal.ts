@@ -668,6 +668,7 @@ export function renderStrategyFuzzerModal(
         text: _('Close'),
         classNames: ['cbi-button-neutral'],
         onClick: () => {
+          isDisposed = true;
           stopPolling();
           ui.hideModal();
         },
@@ -1778,12 +1779,25 @@ export function renderStrategyFuzzerModal(
   // ── Polling & Execution Logic ─────────────────────────────────────────────
   let lastRenderedCount = 0;
   let lastRenderedFinishedAt = 0;
+  let isDisposed = false;
+  let hasMounted = false;
 
   const pollStatus = async () => {
+    if (modalContainer.isConnected) {
+      hasMounted = true;
+    }
+    if (isDisposed || (hasMounted && !modalContainer.isConnected)) {
+      stopPolling();
+      return;
+    }
     if (isPolling) return;
     isPolling = true;
     try {
       const res = await TachyonShellMethods.getFuzzerStatus();
+      if (isDisposed || (hasMounted && !modalContainer.isConnected)) {
+        stopPolling();
+        return;
+      }
       if (res.success && res.data) {
         currentState = res.data;
         isRunning = res.data.running;
@@ -1791,7 +1805,9 @@ export function renderStrategyFuzzerModal(
         if (isRunning) {
           startBtn.innerText = _('🛑 Stop Benchmark');
           (startBtn as HTMLButtonElement).disabled = false;
-          startPolling();
+          if (!pollingInterval) {
+            pollingInterval = setInterval(pollStatus, 1200);
+          }
         } else {
           stopPolling();
           startBtn.innerText = _('🚀 Start Benchmark');
@@ -1905,7 +1921,7 @@ export function renderStrategyFuzzerModal(
       switch (det.type) {
         case 'ip_block':
           return _(
-            'TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead.',
+            'TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via VPN/Proxy outbound instead.',
           );
         case 'rst':
           return _(
@@ -1932,7 +1948,7 @@ export function renderStrategyFuzzerModal(
     const ipBlockNotice =
       detection.type === 'ip_block'
         ? `<div class="alert-message danger" style="margin-top: 8px;">
-             ⚠️ ${_('IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!')}
+             ⚠️ ${_('IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!')}
            </div>`
         : '';
 
