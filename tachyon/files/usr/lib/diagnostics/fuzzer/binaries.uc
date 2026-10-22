@@ -745,8 +745,14 @@ const TARGET_URLS = {
 };
 
 function resolve_target_url(target_key, custom_url) {
-    if (custom_url && custom_url != "")
-        return custom_url;
+    if (custom_url && custom_url != "") {
+        let urls = split(custom_url, /[,\n]+/);
+        for (let u in urls) {
+            let trimmed = trim(as_string(u));
+            if (trimmed != "")
+                return trimmed;
+        }
+    }
     return TARGET_URLS[target_key] || TARGET_URLS.youtube;
 }
 
