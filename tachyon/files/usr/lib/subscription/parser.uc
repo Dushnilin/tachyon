@@ -25,6 +25,8 @@ function starts_with(value, prefix) {
 
 function is_supported_share_link(line) {
     return starts_with(line, "vpn://") ||
+        starts_with(line, "amneziawg://") ||
+        starts_with(line, "awg://") ||
         starts_with(line, "ss://") ||
         starts_with(line, "vmess://") ||
         starts_with(line, "vless://") ||
@@ -380,7 +382,7 @@ function read_file(path) {
 
 
 function reality_public_key_valid(value) {
-    return match(as_string(value), /^[A-Za-z0-9_-]{43}$/) != null;
+    return match(as_string(value), /^[A-Za-z0-9_-]{42,44}=?$/) != null;
 }
 
 function outbound_is_unsupported_stub(outbound) {
@@ -449,7 +451,7 @@ function validate_subscription(path) {
         let tls = type(outbound) == "object" && type(outbound.tls) == "object" ? outbound.tls : {};
         let reality = tls.reality;
         if (type(reality) == "object" && reality.enabled !== false && !reality_public_key_valid(reality.public_key))
-            return false;
+            continue;
 
         usable_count++;
     }
@@ -1417,9 +1419,46 @@ function process_vmess(raw) {
     return process_vmess_json(raw, trimmed);
 }
 
+function from_amneziawg_share_link(line) {
+    line = trim(line);
+    let hash_pos = index(line, "#");
+    let link_part = hash_pos >= 0 ? substr(line, 0, hash_pos) : line;
+    let name = hash_pos >= 0 ? urldecode_fragment(substr(line, hash_pos + 1)) : "";
+
+    let scheme_marker = index(link_part, "://");
+    if (scheme_marker < 0)
+        return null;
+    let payload = substr(link_part, scheme_marker + 3);
+    if (payload == "")
+        return null;
+
+    let conf_text = base64_decode(payload);
+    if (conf_text == null || conf_text == "") {
+        if (index(payload, "[Interface]") >= 0 || index(payload, "[interface]") >= 0)
+            conf_text = payload;
+        else
+            return null;
+    }
+
+    let endpoint = wireguard.from_conf(conf_text, line, name);
+    if (endpoint)
+        return endpoint;
+
+    try {
+        let amnezia = require("subscription.amnezia");
+        let decoded = amnezia.decode(conf_text);
+        if (decoded && decoded.text)
+            return wireguard.from_conf(decoded.text, line, name || decoded.name);
+    } catch (e) {}
+
+    return null;
+}
+
 function parse_share_link(line) {
     if (starts_with(line, "vpn://"))
         return wireguard.from_vpn(line);
+    if (starts_with(line, "amneziawg://") || starts_with(line, "awg://"))
+        return from_amneziawg_share_link(line);
     if (starts_with(line, "vmess://"))
         return process_vmess(line);
     if (starts_with(line, "ss://"))
@@ -3455,9 +3494,109 @@ function extract_peer_params_from_headers_file(headers_file) {
     return result;
 }
 
+function is_json_candidate_container(item) {
+    if (type(item) != "object")
+        return false;
+    if (type(item.servers) == "array" || type(item.configs) == "array" ||
+        type(item.nodes) == "array" || type(item.items) == "array" ||
+        type(item.endpoints) == "array")
+        return true;
+    if (type(item.outbounds) == "array" && !sing_box_urltest_group(item) && lc(as_string(item.type || "")) != "selector") {
+        for (let ob in item.outbounds) {
+            if (type(ob) == "object")
+                return true;
+        }
+    }
+    return false;
+}
+
+function extract_container_candidates(container, fallback_peer) {
+    let result = [];
+    let item_peer = extract_peer_params_from_object(container);
+    let child_peer = {};
+    if (type(fallback_peer) == "object") {
+        for (let k, v in fallback_peer)
+            child_peer[k] = v;
+    }
+    if (item_peer.public_key != "") child_peer.public_key = item_peer.public_key;
+    if (item_peer.endpoint != "") child_peer.endpoint = item_peer.endpoint;
+    if (item_peer.pre_shared_key != "") child_peer.pre_shared_key = item_peer.pre_shared_key;
+    if (item_peer.allowed_ips != null) child_peer.allowed_ips = item_peer.allowed_ips;
+
+    let container_name = trim(as_string(container.name || container.tag || container.remark || ""));
+
+    let sub_lists = [
+        container.servers,
+        container.configs,
+        container.nodes,
+        container.items,
+        container.endpoints,
+        container.outbounds
+    ];
+
+    for (let list in sub_lists) {
+        if (type(list) != "array")
+            continue;
+        for (let i = 0; i < length(list); i++) {
+            let child = list[i];
+            if (type(child) == "object") {
+                if (child.__fallback_peer == null && length(keys(child_peer)) > 0)
+                    child.__fallback_peer = child_peer;
+                if (container_name != "" && as_string(child.name || child.tag || child.remark || "") == "")
+                    child.name = length(list) == 1 ? container_name : sprintf("%s (%d)", container_name, i + 1);
+                push(result, child);
+            }
+        }
+    }
+    return result;
+}
+
+function flatten_json_candidate_items(candidates, fallback_peer, depth) {
+    depth = int(depth || 0);
+    if (depth > 5)
+        return candidates;
+    let result = [];
+    let has_container = false;
+    for (let item in candidates) {
+        if (type(item) != "object")
+            continue;
+        if (is_json_candidate_container(item)) {
+            has_container = true;
+            let eff_peer = item.__fallback_peer || fallback_peer;
+            let children = extract_container_candidates(item, eff_peer);
+            for (let child in children)
+                push(result, child);
+        } else {
+            push(result, item);
+        }
+    }
+    if (has_container)
+        return flatten_json_candidate_items(result, fallback_peer, depth + 1);
+    return result;
+}
+
 function expand_json_config_outbound_items(item, fallback_peer) {
     if (type(item) != "object")
         return null;
+
+    if (is_json_candidate_container(item)) {
+        let eff_peer = item.__fallback_peer || fallback_peer;
+        delete item.__fallback_peer;
+        let children = extract_container_candidates(item, eff_peer);
+        let result = [];
+        for (let child in children) {
+            let child_peer = child.__fallback_peer || eff_peer;
+            delete child.__fallback_peer;
+            let child_res = expand_json_config_outbound_items(child, child_peer);
+            if (type(child_res) == "array") {
+                for (let ep in child_res)
+                    push(result, ep);
+            }
+        }
+        if (length(result) > 0)
+            return result;
+    }
+
     let raw_cfg = as_string(item.config || item.awg_config || item.wg_config || "");
     if (raw_cfg == "")
         return null;
@@ -3487,9 +3626,7 @@ function expand_json_config_outbound_items(item, fallback_peer) {
                 last_normalize_error_reason = "incomplete_awg_missing_peer";
             }
         }
-        let share = starts_with(trim(raw_cfg), "[")
-            ? ("vpn://" + replace(replace(replace(b64enc(conf_text), /\+/g, "-"), /\//g, "_"), /=+$/, ""))
-            : ("vpn://" + replace(replace(replace(trim(raw_cfg), /\+/g, "-"), /\//g, "_"), /=+$/, ""));
+        let share = "vpn://" + replace(replace(replace(b64enc(conf_text), /\+/g, "-"), /\//g, "_"), /=+$/, "");
         endpoints = wireguard.from_conf_endpoints(conf_text, share, item_name);
     }
 
@@ -3593,6 +3730,7 @@ function normalize_sing_box_wireguard_outbound(outbound) {
 }
 
 function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
+    candidates = flatten_json_candidate_items(candidates, fallback_peer);
     let outbounds = [];
     let urltest_refs = {};
     let detour_refs = {};
@@ -3602,7 +3740,9 @@ function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
         idx++;
         if (type(outbound) != "object" || outbound_is_unsupported_stub(outbound))
             continue;
-        let expanded_cfg = expand_json_config_outbound_items(outbound, fallback_peer);
+        let eff_peer = outbound.__fallback_peer || fallback_peer;
+        delete outbound.__fallback_peer;
+        let expanded_cfg = expand_json_config_outbound_items(outbound, eff_peer);
         if (expanded_cfg != null) {
             for (let ep in expanded_cfg)
                 push(outbounds, ep);
@@ -3714,7 +3854,10 @@ function normalize_sing_box_json_value(value, output_file, headers_file) {
             fallback_peer.allowed_ips = top_peer.allowed_ips;
     }
 
-    if (type(value) == "object" && (type(value.outbounds) == "array" || type(value.endpoints) == "array" || type(value.configs) == "array" || type(value.nodes) == "array" || type(value.items) == "array")) {
+    if (type(value) == "object" && is_json_candidate_container(value)) {
+        candidates = extract_container_candidates(value, fallback_peer);
+    }
+    else if (type(value) == "object" && (type(value.outbounds) == "array" || type(value.endpoints) == "array" || type(value.configs) == "array" || type(value.nodes) == "array" || type(value.items) == "array" || type(value.servers) == "array")) {
         for (let ep in array_or_empty(value.endpoints))
             push(candidates, ep);
         for (let ob in array_or_empty(value.outbounds))
@@ -3725,6 +3868,8 @@ function normalize_sing_box_json_value(value, output_file, headers_file) {
             push(candidates, node_item);
         for (let item in array_or_empty(value.items))
             push(candidates, item);
+        for (let srv in array_or_empty(value.servers))
+            push(candidates, srv);
     }
     else if (type(value) == "array")
         candidates = value;

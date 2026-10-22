@@ -124,6 +124,132 @@ if (!ok_with_hdr)
     die("Expected AWG subscription with X-Peer-Public-Key and X-Endpoint headers to succeed");
 '
 
+# 1c: Issue #203 - Common Network / Happ AmneziaWG format: array of { type: 'amneziawg', servers: [ { name, config } ] }
+#     where config contains both [Interface] and [Peer]
+node - "$WORK_DIR" <<'JS'
+const fs = require('fs');
+const path = require('path');
+const work = process.argv[2];
+const key = Buffer.from(Array.from({length: 32}, (_, i) => i + 1)).toString('base64');
+const awgIniFull = `[Interface]\nPrivateKey = ${key}\nAddress = 10.0.0.0/32\nDNS = 1.1.1.1\nMTU = 1280\nJc = 4\nJmin = 40\nJmax = 70\nS1 = 0\nH1 = 1\nH2 = 2\nH3 = 3\nH4 = 4\nI1 = <b 0x494e5649544520>\n\n[Peer]\nPublicKey = ${key}\nEndpoint = 195.34.67.36:51820\nAllowedIPs = 0.0.0.0/0, ::/0\n`;
+
+fs.writeFileSync(path.join(work, 'awg_common_network.json'), JSON.stringify([
+  {
+    type: 'amneziawg',
+    version: 1,
+    servers: [
+      { name: '🇨🇦 Канада lines', config: Buffer.from(awgIniFull).toString('base64') }
+    ]
+  }
+]));
+
+fs.writeFileSync(path.join(work, 'awg_common_network_object.json'), JSON.stringify({
+  type: 'amneziawg',
+  version: 1,
+  servers: [
+    { name: '🇩🇪 Германия lines', config: Buffer.from(awgIniFull).toString('base64') }
+  ]
+}));
+
+fs.writeFileSync(path.join(work, 'awg_common_network_wrapper_peer.json'), JSON.stringify([
+  {
+    type: 'amneziawg',
+    version: 1,
+    endpoint: '195.34.67.36:51820',
+    public_key: key,
+    servers: [
+      { name: 'Страна с пиром в родителе', config: Buffer.from(`[Interface]\nPrivateKey = ${key}\nAddress = 10.0.0.0/32\nJc = 4\n`).toString('base64') }
+    ]
+  }
+]));
+JS
+
+WORK_DIR="$WORK_DIR" ucode -L "$TACHYON_LIB" -e '
+let parser = require("subscription.parser");
+let work = getenv("WORK_DIR");
+
+let ok_cn = parser.normalize_content_validated(work + "/awg_common_network.json", work + "/awg_cn_out.json");
+if (!ok_cn)
+    die("Expected Common Network AmneziaWG array subscription with servers[] to normalize successfully");
+
+let ok_obj = parser.normalize_content_validated(work + "/awg_common_network_object.json", work + "/awg_obj_out.json");
+if (!ok_obj)
+    die("Expected top-level object with servers[] to normalize successfully");
+
+let ok_wrap = parser.normalize_content_validated(work + "/awg_common_network_wrapper_peer.json", work + "/awg_wrap_out.json");
+if (!ok_wrap)
+    die("Expected subscription with peer in wrapper object to normalize successfully");
+'
+
+node - "$WORK_DIR" <<'JS'
+const fs = require('fs');
+const assert = require('assert').strict;
+const path = require('path');
+const work = process.argv[2];
+
+const cnData = JSON.parse(fs.readFileSync(path.join(work, 'awg_cn_out.json')));
+assert.equal(cnData.outbounds.length, 1);
+assert.equal(cnData.outbounds[0].tag, '🇨🇦 Канада lines');
+assert.equal(cnData.outbounds[0].peers[0].address, '195.34.67.36');
+assert.equal(cnData.outbounds[0].jc, 4);
+
+const objData = JSON.parse(fs.readFileSync(path.join(work, 'awg_obj_out.json')));
+assert.equal(objData.outbounds.length, 1);
+assert.equal(objData.outbounds[0].tag, '🇩🇪 Германия lines');
+
+const wrapData = JSON.parse(fs.readFileSync(path.join(work, 'awg_wrap_out.json')));
+assert.equal(wrapData.outbounds.length, 1);
+assert.equal(wrapData.outbounds[0].peers[0].address, '195.34.67.36');
+JS
+
+# 1f: Issue #203 - Mixed subscription with amneziawg:// and vless:// share links (raw and base64-encoded)
+node - "$WORK_DIR" <<'JS'
+const fs = require('fs');
+const path = require('path');
+const work = process.argv[2];
+const key = Buffer.from(Array.from({length: 32}, (_, i) => i + 1)).toString('base64');
+const awgIni = `[Interface]\nPrivateKey = ${key}\nAddress = 10.100.1.98/32\nDNS = 1.1.1.1\nMTU = 1280\nJc = 4\nJmin = 40\nJmax = 70\nS1 = 0\nH1 = 1\nH2 = 2\nH3 = 3\nH4 = 4\nI1 = <b 0x494e5649544520>\n\n[Peer]\nPublicKey = ${key}\nEndpoint = 195.34.67.36:51820\nAllowedIPs = 0.0.0.0/0\n`;
+const awgLink = 'amneziawg://' + Buffer.from(awgIni).toString('base64') + '#%F0%9F%87%A8%F0%9F%87%A6%20%D0%9A%D0%B0%D0%BD%D0%B0%D0%B4%D0%B0';
+const vlessLink = 'vless://982cb09c-fc2e-4de4-ba50-8db12657653e@de1.commonnet.work:443?encryption=none&security=reality&type=tcp&sni=de1.commonnet.work&fp=firefox&pbk=LrFc82uBX_s2DMT3kIa7WF2EdU6EAxiiyLgkOotfQmk&sid=873b97ff19bb344f&flow=xtls-rprx-vision#%F0%9F%87%A9%F0%9F%87%AA%20%D0%93%D0%B5%D1%80%D0%BC%D0%B0%D0%BD%D0%B8%D1%8F';
+
+const uriList = `${awgLink}\n${vlessLink}\n`;
+fs.writeFileSync(path.join(work, 'mixed_uri_list.txt'), uriList);
+const b64Sub = Buffer.from(uriList).toString('base64');
+fs.writeFileSync(path.join(work, 'mixed_b64_sub.txt'), b64Sub);
+JS
+
+WORK_DIR="$WORK_DIR" ucode -L "$TACHYON_LIB" -e '
+let parser = require("subscription.parser");
+let work = getenv("WORK_DIR");
+
+let ok_uri = parser.normalize_content_validated(work + "/mixed_uri_list.txt", work + "/mixed_uri_out.json");
+if (!ok_uri)
+    die("Expected amneziawg:// and vless:// URI list to normalize successfully");
+
+let ok_b64 = parser.normalize_content_validated(work + "/mixed_b64_sub.txt", work + "/mixed_b64_out.json");
+if (!ok_b64)
+    die("Expected base64-encoded amneziawg:// + vless:// list to normalize successfully");
+'
+
+node - "$WORK_DIR" <<'JS'
+const fs = require('fs');
+const assert = require('assert').strict;
+const path = require('path');
+const work = process.argv[2];
+
+const uriData = JSON.parse(fs.readFileSync(path.join(work, 'mixed_uri_out.json')));
+assert.equal(uriData.outbounds.length, 2);
+assert.equal(uriData.outbounds[0].type, 'wireguard');
+assert.equal(uriData.outbounds[0].tag, '🇨🇦 Канада');
+assert.equal(uriData.outbounds[0].jc, 4);
+assert.equal(uriData.outbounds[1].type, 'vless');
+
+const b64Data = JSON.parse(fs.readFileSync(path.join(work, 'mixed_b64_out.json')));
+assert.equal(b64Data.outbounds.length, 2);
+assert.equal(b64Data.outbounds[0].type, 'wireguard');
+assert.equal(b64Data.outbounds[1].type, 'vless');
+JS
+
 # 3: zapret2 UDP port-only profile automatic --payload=all injection (#177)
 ucode -L "$TACHYON_LIB" -e '
 let z2 = require("providers.zapret2.common");
