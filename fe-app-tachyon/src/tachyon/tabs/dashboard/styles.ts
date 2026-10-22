@@ -1475,7 +1475,7 @@ export const styles = `
 .tachyon-service-value {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     flex-shrink: 0;
     justify-content: flex-end;
 }
@@ -1483,30 +1483,60 @@ export const styles = `
 .tachyon-service-pill {
     display: inline-flex;
     align-items: center;
-    padding: 1px 7px;
+    justify-content: center;
+    padding: 1px 6px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.35;
     font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
+    white-space: nowrap;
+    text-align: center;
 }
 
 .tachyon-service-pill--ram {
     background: rgba(16, 185, 129, 0.12);
     color: #10b981;
     border: 1px solid rgba(16, 185, 129, 0.28);
+    width: 58px;
+    min-width: 58px;
 }
 
 .tachyon-service-pill--uptime {
     background: rgba(120, 120, 120, 0.12);
     color: var(--text-color-medium, #94a3b8);
     font-weight: 500;
+    width: 68px;
+    min-width: 68px;
+}
+
+.tachyon-service-pill--version {
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    font-weight: 500;
+    padding: 1px 7px;
+}
+
+.tachyon-service-pill--active {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    padding: 1px 8px;
 }
 
 .tachyon-service-pill--stopped {
     background: rgba(239, 68, 68, 0.12);
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.28);
+    padding: 1px 9px;
+    width: auto;
+}
+
+.tachyon-service-pill--empty {
+    opacity: 0.35;
+    background: transparent !important;
+    border-color: transparent !important;
 }
 
 `;

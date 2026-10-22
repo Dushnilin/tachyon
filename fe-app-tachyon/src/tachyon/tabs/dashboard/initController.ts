@@ -2756,7 +2756,10 @@ export function renderServiceRowItem(
 
   const valueChildren: HTMLElement[] = [];
   if (isRunning) {
-    if (options.memoryMb != null && options.memoryMb > 0) {
+    const hasMemory = options.memoryMb != null && options.memoryMb > 0;
+    const hasUptime = Boolean(options.uptimePretty);
+
+    if (hasMemory) {
       valueChildren.push(
         E(
           'span',
@@ -2764,8 +2767,20 @@ export function renderServiceRowItem(
           `${options.memoryMb} MB`,
         ),
       );
+    } else if (hasUptime) {
+      valueChildren.push(
+        E(
+          'span',
+          {
+            class:
+              'tachyon-service-pill tachyon-service-pill--ram tachyon-service-pill--empty',
+          },
+          '—',
+        ),
+      );
     }
-    if (options.uptimePretty) {
+
+    if (hasUptime) {
       valueChildren.push(
         E(
           'span',
@@ -2773,12 +2788,24 @@ export function renderServiceRowItem(
           options.uptimePretty,
         ),
       );
+    } else if (hasMemory) {
+      valueChildren.push(
+        E(
+          'span',
+          {
+            class:
+              'tachyon-service-pill tachyon-service-pill--uptime tachyon-service-pill--empty',
+          },
+          '—',
+        ),
+      );
     }
+
     if (options.version) {
       valueChildren.push(
         E(
           'span',
-          { class: 'tachyon-service-pill tachyon-service-pill--uptime' },
+          { class: 'tachyon-service-pill tachyon-service-pill--version' },
           `v${options.version.replace(/^v/, '')}`,
         ),
       );
@@ -2792,7 +2819,7 @@ export function renderServiceRowItem(
       valueChildren.push(
         E(
           'span',
-          { class: 'tachyon-service-pill tachyon-service-pill--ram' },
+          { class: 'tachyon-service-pill tachyon-service-pill--active' },
           tr('Работает', 'Active'),
         ),
       );
@@ -2809,7 +2836,7 @@ export function renderServiceRowItem(
       valueChildren.push(
         E(
           'span',
-          { class: 'tachyon-service-pill tachyon-service-pill--uptime' },
+          { class: 'tachyon-service-pill tachyon-service-pill--version' },
           `v${options.version.replace(/^v/, '')}`,
         ),
       );
