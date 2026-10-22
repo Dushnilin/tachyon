@@ -939,7 +939,10 @@ function sing_box_signature() {
 function sing_box_version_info_from_output(output) {
     let first = split(as_string(output), "\n")[0] || "";
     let fields = split(trim(as_string(first)), /[ \t]+/);
-    let version = length(fields) > 0 ? fields[length(fields) - 1] : "";
+    let banner = length(fields) > 0 ? as_string(fields[0]) : "";
+    let version = common.parse_sing_box_version(output);
+    if (version == "")
+        version = length(fields) > 0 ? fields[length(fields) - 1] : "";
     if (version == "")
         return null;
 
@@ -952,14 +955,14 @@ function sing_box_version_info_from_output(output) {
         }
     }
 
-    return { version, tags };
+    return { version, tags, banner };
 }
 
 function sing_box_cached_version_info(signature) {
     let cache = read_json_file(SING_BOX_VERSION_CACHE_FILE);
     if (type(cache) == "object" && as_string(cache.signature) == signature) {
         if (cache.success === true && as_string(cache.version) != "")
-            return { hit: true, info: { version: as_string(cache.version), tags: as_string(cache.tags) } };
+            return { hit: true, info: { version: as_string(cache.version), tags: as_string(cache.tags), banner: as_string(cache.banner) } };
 
         let checked_at = arg_number(cache.checked_at);
         let failure_ttl = arg_number(SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS);
@@ -973,7 +976,7 @@ function sing_box_cached_version_info(signature) {
     let legacy = split(as_string(fs.readfile(SING_BOX_VERSION_CACHE_FILE)), "\n");
     let legacy_version = as_string(legacy[1] || "");
     if (as_string(legacy[0] || "") == signature && index(legacy_version, "extended") >= 0)
-        return { hit: true, info: { version: legacy_version, tags: "" } };
+        return { hit: true, info: { version: legacy_version, tags: "", banner: "" } };
 
     return null;
 }
@@ -1030,6 +1033,7 @@ function sing_box_version_info() {
         success: info != null,
         version: info != null ? info.version : "",
         tags: info != null ? info.tags : "",
+        banner: info != null ? info.banner : "",
         checked_at: now_seconds()
     });
     release_dir_lock(SING_BOX_VERSION_CACHE_LOCK_DIR);
@@ -1080,10 +1084,11 @@ function capability_flags() {
         // would defeat that cache.
         let info = sing_box_version_info();
         let version = info != null ? as_string(info.version) : "";
+        let banner = info != null ? as_string(info.banner) : "";
         let marker = first_line(SING_BOX_VARIANT_STATE_FILE);
 
         let name;
-        if (marker == "tachyon-core" || index(version, "-tachyon.") >= 0)
+        if (marker == "tachyon-core" || banner == "tachyon-core" || core_profile.profile_by_version(version) == "tachyon-core" || (banner != "sing-box" && match(version, /^[vV]?0\.[0-9]+\.[0-9]+$/) != null))
             name = "tachyon-core";
         else if (marker == "lx" || marker == "extended-compressed" || marker == "extended")
             name = marker;

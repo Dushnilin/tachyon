@@ -284,7 +284,8 @@ function probe_doh(server, domain, resolved_ip) {
     let query_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "dns=" + b64;
 
     let args = [
-        "curl", "-s", "-k", "-m", "2", "--connect-timeout", "2", "-w", "\n%{http_code} %{time_total}",
+        "curl", "-s", "-k", "--noproxy", "*", "-m", "2", "--connect-timeout", "2",
+        "-w", "\n%{http_code} %{time_total} %{content_type}",
         "-H", "accept: application/dns-message, application/dns-json"
     ];
 
@@ -301,8 +302,11 @@ function probe_doh(server, domain, resolved_ip) {
         if (last_line == "" && length(lines) > 1)
             last_line = lines[length(lines) - 2];
 
-        let m = match(last_line, /^([0-9]{3})[ \t]+([0-9.]+)/);
+        let m = match(last_line, /^([0-9]{3})[ \t]+([0-9.]+)(?:[ \t]+(.*))?$/);
         if (m && m[1] == "200" && m[2] != null) {
+            let ctype = lc(trim(as_string(m[3] || "")));
+            if (ctype != "" && index(ctype, "dns-message") < 0 && index(ctype, "dns-json") < 0 && index(ctype, "octet-stream") < 0)
+                return -1;
             let total_sec = double(m[2]);
             let ms = int(total_sec * 1000);
             return ms >= 0 ? ms : 0;
@@ -624,6 +628,9 @@ function apply_recommendation(rec, async_restart) {
 
     if (!cursor.commit(CONFIG_NAME))
         return false;
+
+    try { fs.unlink("/var/run/tachyon/dns-failover.json"); } catch(e) {}
+    try { fs.unlink("/var/run/tachyon/dns-failover.state"); } catch(e) {}
 
     // Restart tachyon service to apply immediately.
     // When invoked via RPC/UI (async_restart), spawn the restart in the background

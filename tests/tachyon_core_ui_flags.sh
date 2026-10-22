@@ -138,4 +138,26 @@ info="$(PATH="$WORK_DIR:$PATH" system_info)"
 [ "$(json_int "$info" sing_box_tiny)" = "0" ] ||
   fail "a stock sing-box with tags must not be flagged as tiny"
 
+# 7. Real tachyon-core 0.1.x banner ("tachyon-core 0.1.4 (pure-Rust routing core)")
+#    without a "-tachyon." suffix or marker file must be recognized by both
+#    system-info and ui capabilities, and report version "0.1.4".
+rm -f "$WORK_DIR/tachyon-core-variant" "$WORK_DIR/tachyon-core-version" "$WORK_DIR/system-info.json" "$WORK_DIR/sb-version-cache"
+cat >"$WORK_DIR/tachyon-core" <<'SH'
+#!/bin/sh
+printf 'tachyon-core 0.1.4 (pure-Rust routing core)\n'
+printf 'Environment: linux/aarch64 (tachyon-core/rust)\n'
+printf 'Tags: with_quic,with_tailscale,with_fptn\n'
+SH
+chmod 0755 "$WORK_DIR/tachyon-core"
+info="$(PATH="$WORK_DIR:$PATH" system_info)"
+[ "$(json_int "$info" sing_box_tachyon_core)" = "1" ] ||
+  fail "system-info must flag tachyon-core 0.1.4 banner as tachyon_core"
+[ "$(json_str "$info" sing_box_version)" = "0.1.4" ] ||
+  fail "system-info must extract 0.1.4 from tachyon-core banner, got '$(json_str "$info" sing_box_version)'"
+caps="$(ui_capabilities)"
+[ "$(json_int "$caps" sing_box_tachyon_core)" = "1" ] ||
+  fail "ui capabilities must flag tachyon-core 0.1.4 banner as tachyon_core"
+[ "$(json_str "$caps" sing_box_profile)" = "tachyon-core" ] ||
+  fail "ui capabilities must set sing_box_profile=tachyon-core for 0.1.4 banner, got '$(json_str "$caps" sing_box_profile)'"
+
 printf 'tachyon-core ui flag checks passed\n'

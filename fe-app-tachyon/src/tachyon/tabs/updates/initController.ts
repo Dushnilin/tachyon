@@ -2758,15 +2758,26 @@ function renderEngineCard(): Node {
             'sing_box',
             getVariantInstallAction(selectedVariant.id),
             'singBoxInstall',
+            selectedVariant.label,
           );
-        } else if (engineId !== active) {
-          void applyEngineSelection(engineId, active, warning as HTMLElement);
+        } else if (!isSingBoxActive) {
+          void applyEngineSelection(
+            'tachyon-core',
+            active,
+            warning as HTMLElement,
+            selectedVariant.label,
+          );
         }
       } else {
         if (!isSelectedInstalled) {
           void runSteerAction(engineId, 'install');
         } else {
-          void applyEngineSelection(engineId, active, warning as HTMLElement);
+          void applyEngineSelection(
+            engineId,
+            active,
+            warning as HTMLElement,
+            selectedVariant.label,
+          );
         }
       }
     },
@@ -3175,33 +3186,55 @@ async function runComponentAction(
   component: Tachyon.ComponentName,
   action: Tachyon.ComponentAction,
   _key: string,
+  targetLabel?: string,
 ): Promise<void> {
-  const engineTarget =
-    action === 'install_tachyon_core' ? 'tachyon-core' : 'sing-box';
+  const activeEngine = engineInfoCache?.active || 'tachyon-core';
+  const isSteerActive =
+    activeEngine === 'steer' || activeEngine === 'steer-extended';
+  const engineTarget = 'tachyon-core';
   const installKey =
     getComponentActionKey(component, action) ??
     getComponentInstallKey(component);
+  const jobs: EngineFlowJob[] = [{ component, action, key: installKey }];
+  if (isSteerActive) {
+    jobs.push({
+      component: 'engine',
+      action: 'switch',
+      key: 'engineSwitch',
+      extra: engineTarget,
+    });
+  }
+  const resolvedLabel =
+    targetLabel ||
+    (action === 'install_tachyon_core'
+      ? 'tachyon-core'
+      : action === 'install_lx'
+        ? 'sing-box (Leadaxe)'
+        : action === 'install_extended'
+          ? 'sing-box (Extended)'
+          : action === 'install_extended_compressed'
+            ? 'sing-box (Extended compressed)'
+            : action === 'install_tiny'
+              ? 'sing-box (Tiny)'
+              : 'sing-box (Stable)');
   await runEngineFlow(
-    [
-      { component, action, key: installKey },
-      {
-        component: 'engine',
-        action: 'switch',
-        key: 'engineSwitch',
-        extra: engineTarget,
-      },
-    ],
+    jobs,
     {
       component,
       action,
-      componentTitle: getComponentCardTitle(
-        component as Tachyon.ComponentName,
-        component === 'sing_box' &&
-          Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core),
-      ),
+      componentTitle:
+        targetLabel ||
+        getComponentCardTitle(
+          component as Tachyon.ComponentName,
+          component === 'sing_box' &&
+            (action === 'install_tachyon_core' ||
+              Boolean(
+                store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+              )),
+        ),
       currentVersion: getComponentCurrentVersion(component),
     },
-    `${_('Active engine')}: ${engineLabel(engineTarget)}`,
+    `${_('Active engine')}: ${resolvedLabel}`,
   );
 }
 
@@ -3247,6 +3280,7 @@ async function applyEngineSelection(
   engine: string,
   current: string,
   warning: HTMLElement,
+  targetLabel?: string,
 ): Promise<void> {
   if (engine === current) {
     return;
@@ -3261,6 +3295,7 @@ async function applyEngineSelection(
     warning.style.display = 'none';
   }
 
+  const resolvedLabel = targetLabel || engineLabel(engine);
   await runEngineFlow(
     [
       {
@@ -3275,9 +3310,9 @@ async function applyEngineSelection(
       action: 'switch',
       componentTitle: _('Routing Engine'),
       currentVersion: engineLabel(current),
-      targetVersion: engineLabel(engine),
+      targetVersion: resolvedLabel,
     },
-    `${_('Active engine')}: ${engineLabel(engine)}`,
+    `${_('Active engine')}: ${resolvedLabel}`,
   );
 }
 

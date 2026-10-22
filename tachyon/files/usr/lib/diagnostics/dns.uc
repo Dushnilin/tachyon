@@ -134,7 +134,7 @@ function dns_check_through_singbox(domain) {
 
 function dns_check_router_resolver_available(domain) {
     for (let address in [ "127.0.0.1", SB_DNS_INBOUND_ADDRESS ]) {
-        if (address != "" && command_success_from_args([ "dig", "@" + address, domain, "+timeout=3", "+tries=2" ]))
+        if (address != "" && command_success_from_args([ "dig", "@" + address, domain, "+timeout=1", "+tries=1" ]))
             return true;
     }
 
@@ -144,13 +144,13 @@ function dns_check_router_resolver_available(domain) {
         listen_address = replace(as_string(pipe.read("all")), /[\r\n]+$/g, "");
         pipe.close();
     }
-    if (listen_address != "" && command_success_from_args([ "dig", "@" + listen_address, domain, "+timeout=3", "+tries=2" ]))
+    if (listen_address != "" && command_success_from_args([ "dig", "@" + listen_address, domain, "+timeout=1", "+tries=1" ]))
         return true;
 
     let source_interfaces = option(settings(), "source_network_interfaces", "br-lan");
     for (let interface in network_mod.words(source_interfaces)) {
         let address = network_mod.device_ipv4_address(interface);
-        if (address != "" && command_success_from_args([ "dig", "@" + address, domain, "+timeout=3", "+tries=2" ]))
+        if (address != "" && command_success_from_args([ "dig", "@" + address, domain, "+timeout=1", "+tries=1" ]))
             return true;
     }
 
@@ -180,13 +180,18 @@ function check_dns_available() {
     let cfg = settings();
     let dns_type = option(cfg, "dns_type", "");
     let active = runtime_dns.active_values(cfg);
+    if (runtime_dns.is_explicit_fallback_index(cfg, active.state.main_index) ||
+        runtime_dns.is_wan_fallback_index(cfg, active.state.main_index))
+        dns_type = "udp";
     let dns_server = active.main;
     let bootstrap_dns_server = active.bootstrap;
     let dont_touch_dhcp = bool_option(cfg, "dont_touch_dhcp", false) ? 1 : 0;
     let domain = "example.com";
     let timeout_seconds = dns_check_timeout_seconds(option(cfg, "dns_check_timeout", "2s"));
-    if (timeout_seconds < 3)
-        timeout_seconds = 3;
+    if (timeout_seconds < 1)
+        timeout_seconds = 1;
+    if (timeout_seconds > 2)
+        timeout_seconds = 2;
     let dns_status = 0;
     let dns_on_router = 0;
     let bootstrap_dns_status = 0;
@@ -207,7 +212,7 @@ function check_dns_available() {
     push(active_dns_args, "A");
     push(active_dns_args, "+short");
     push(active_dns_args, "+timeout=" + as_string(timeout_seconds));
-    push(active_dns_args, "+tries=2");
+    push(active_dns_args, "+tries=1");
     for (let line in split(command_output_from_args(active_dns_args), "\n"))
         if (valid_ipv4(trim(as_string(line)))) {
             dns_status = 1;
@@ -225,7 +230,7 @@ function check_dns_available() {
             for (let line in split(command_output_from_args([
                 "dig", "-p", as_string(runtime_dns.health_port("bootstrap", active.state.bootstrap_index)),
                 "@" + runtime_dns.DNS_HEALTH_ADDRESS, domain, "A", "+short",
-                "+timeout=" + as_string(timeout_seconds), "+tries=2"
+                "+timeout=" + as_string(timeout_seconds), "+tries=1"
             ]), "\n"))
                 if (valid_ipv4(trim(as_string(line)))) {
                     bootstrap_dns_status = 1;

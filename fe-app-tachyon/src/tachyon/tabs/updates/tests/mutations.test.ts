@@ -121,6 +121,29 @@ describe('computeSystemInfoMutation', () => {
     expect(nextSystemInfo.sing_box_tiny).toBe(0);
   });
 
+  it('preserves tachyon-core flags when tachyon-core 0.1.x is updated via install or install_version', () => {
+    const tachyonCoreInstalled = {
+      ...initialSystemInfo,
+      sing_box_tachyon_core: 1,
+      sing_box_fptn: 1,
+      sing_box_version: '0.1.3',
+    };
+
+    const { nextSystemInfo } = computeSystemInfoMutation(tachyonCoreInstalled, {
+      component: 'sing_box',
+      action: 'install',
+      current_version: '0.1.4',
+      latest_version: '0.1.4',
+      release_url:
+        'https://github.com/Dushnilin/tachyon-core/releases/tag/v0.1.4',
+    });
+
+    expect(nextSystemInfo.sing_box_version).toBe('0.1.4');
+    expect(nextSystemInfo.sing_box_tachyon_core).toBe(1);
+    expect(nextSystemInfo.sing_box_fptn).toBe(1);
+    expect(nextSystemInfo.sing_box_extended).toBe(0);
+  });
+
   it('updates provider installation and flags notification', () => {
     const { nextSystemInfo, notifyActionProviders } = computeSystemInfoMutation(
       initialSystemInfo,

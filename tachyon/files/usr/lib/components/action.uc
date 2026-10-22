@@ -480,6 +480,20 @@ function fallback_managed_core_init_script(marker, reset_log) {
         "    done\n" +
         "    _kill_daemon_instances\n" +
         "}\n\n" +
+        "reload_service() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box)\n" +
+        "                if ucode -L /usr/lib/tachyon /usr/lib/tachyon/service/state.uc sighup-core-runtime \"$p\" >/dev/null 2>&1; then\n" +
+        "                    return 0\n" +
+        "                fi\n" +
+        "                break\n" +
+        "                ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    restart\n" +
+        "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"tachyon-core\"\n" +
         "}\n";
@@ -497,6 +511,7 @@ function managed_sing_box_service_installed() {
     return index(s, SB_MANAGED_SERVICE_MARKER) >= 0 &&
         index(s, "GOGC=\"50\"") >= 0 &&
         index(s, "stop_service()") >= 0 &&
+        index(s, "reload_service()") >= 0 &&
         !kills_self;
 }
 
@@ -1513,10 +1528,8 @@ function install_legacy_sing_box_symlink() {
 function sync_package_sing_box_binary_links() {
     if (file_nonempty("/usr/bin/sing-box") && !is_symlink_path("/usr/bin/sing-box")) {
         command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ]);
-        if (!file_nonempty("/usr/bin/tachyon-core") || is_symlink_path("/usr/bin/tachyon-core")) {
-            remove_file("/usr/bin/tachyon-core");
-            command_success_from_args([ "ln", "-sf", "/usr/bin/sing-box", "/usr/bin/tachyon-core" ]);
-        }
+        remove_file("/usr/bin/tachyon-core");
+        command_success_from_args([ "ln", "-sf", "/usr/bin/sing-box", "/usr/bin/tachyon-core" ]);
         return "/usr/bin/sing-box";
     }
     if (file_nonempty("/usr/bin/tachyon-core") && !is_symlink_path("/usr/bin/tachyon-core")) {
@@ -2464,7 +2477,7 @@ function install_tachyon_core(action, target_tag) {
     let latest_version = normalize_sing_box_version(release.tag);
 
     if (action == "check_update") {
-        if (current_version == "" || !sing_box_runtime_success("is-foreign-core", [ current_version ]) || !sing_box_runtime_success("marker-is", [ label ]))
+        if (current_version == "" || current_variant != label || !sing_box_runtime_success("is-foreign-core", [ current_version ]))
             action_success("sing_box", action, label + " is not installed", current_version, latest_version, 0, "", release.release_url);
         else
             check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
@@ -2553,12 +2566,15 @@ function install_tachyon_core(action, target_tag) {
 
     install_legacy_sing_box_symlink();
     write_sing_box_variant_state(label, new_version);
+    if (target_tag != null && target_tag != "")
+        write_file("/etc/tachyon/tachyon-core-version", target_tag + "\n");
     install_managed_sing_box_service_script();
     clear_sing_box_cache_if_needed(current_variant, label);
     restart_tachyon_after_successful_change();
     remove_file(backup_binary);
-
-    action_success("sing_box", action, label, new_version, latest_version, 1, "", release.release_url);
+    clear_version_caches();
+    updates_log("Installed " + label + " " + (new_version != "" ? new_version : "unknown"));
+    action_success("sing_box", action, label + " has been installed", new_version, latest_version, 1, "latest", release.release_url);
 }
 
 function install_sing_box_lx(action, target_tag) {
@@ -3179,6 +3195,9 @@ function normalize_component_name(component) {
 
 function component_backup_dir(component) {
     component = normalize_component_name(component);
+    if (component == "tachyon-core" || component == "sing-box-lx" ||
+        component == "sing-box-extended" || component == "sing-box-extended-compressed")
+        component = "sing_box";
     return COMPONENT_BACKUP_BASE_DIR + "/" + component;
 }
 
@@ -3546,6 +3565,12 @@ function list_component_releases(component, count, page) {
         let parts = split(TACHYON_RELEASE_REPO, "/");
         if (length(parts) != 2) { print("[]\n"); return; }
         owner = parts[0]; repo = parts[1];
+    } else if (component == "tachyon-core") {
+        owner = TACHYON_CORE_OWNER; repo = TACHYON_CORE_REPO;
+    } else if (component == "sing-box-lx") {
+        owner = "Leadaxe"; repo = "sing-box-lx";
+    } else if (component == "sing-box-extended" || component == "sing-box-extended-compressed") {
+        owner = "shtorm-7"; repo = "sing-box-extended";
     } else if (component == "sing_box") {
         let variant = sing_box_runtime_output("variant", []);
         if (variant == "lx") { owner = "Leadaxe"; repo = "sing-box-lx"; }
@@ -3634,6 +3659,12 @@ function install_component_version(component, tag) {
         install_tachyon_version(tag);
     } else if (component == "tachyon-core") {
         install_tachyon_core("install", tag);
+    } else if (component == "sing-box-lx") {
+        install_sing_box_lx("install_lx", tag);
+    } else if (component == "sing-box-extended") {
+        install_sing_box_extended("install_extended", false, tag);
+    } else if (component == "sing-box-extended-compressed") {
+        install_sing_box_extended("install_extended_compressed", true, tag);
     } else if (component == "sing_box") {
         dispatch_sing_box("install", tag);
     } else if (component == "steer" || component == "steer-extended" || component == "steer_extended") {

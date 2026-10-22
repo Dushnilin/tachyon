@@ -117,6 +117,20 @@ function fallback_managed_core_init_script(marker) {
         "    done\n" +
         "    _kill_daemon_instances\n" +
         "}\n\n" +
+        "reload_service() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box)\n" +
+        "                if ucode -L /usr/lib/tachyon /usr/lib/tachyon/service/state.uc sighup-core-runtime \"$p\" >/dev/null 2>&1; then\n" +
+        "                    return 0\n" +
+        "                fi\n" +
+        "                break\n" +
+        "                ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    restart\n" +
+        "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"tachyon-core\"\n" +
         "}\n";
@@ -128,6 +142,7 @@ const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/tachyon-core"
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const RELOAD_PREVIEW_FILE = getenv("TACHYON_RELOAD_PREVIEW_FILE") || RUNTIME_STATE_DIR + "/reload-preview.json";
 const SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || RUNTIME_STATE_DIR + "/subscription-update";
 const SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || RUNTIME_STATE_DIR + "/subscription-links";
 const SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || RUNTIME_STATE_DIR + "/subscription-metadata";
@@ -362,8 +377,11 @@ function sing_box_restore_variant_marker(variant) {
 function sing_box_version() {
     if (find_core_binary() == "")
         return "";
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core"))
-        return sing_box_version_state();
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core")) {
+        let state_v = sing_box_version_state();
+        if (state_v != "")
+            return state_v;
+    }
     let v = parse_sing_box_version(sing_box_version_output());
     return match(v, /^[vV]?[0-9]+/) ? v : "";
 }
@@ -567,7 +585,7 @@ function sing_box_core_flag(version, marker, field, tag, version_output) {
 // leaving the argument off lets this function probe the installed binary itself.
 function sing_box_core_capabilities(version, marker, version_output) {
     let output = version_output == null ? null : as_string(version_output);
-    if (output != null && sing_box_banner_identity_cache == null) {
+    if (output != null && output != "" && sing_box_banner_identity_cache == null) {
         let first = trim(split(output, "\n")[0] || "");
         let parts = split(first, /[ \t\r\n]+/);
         sing_box_banner_identity_cache = length(parts) > 0 ? as_string(parts[0]) : "";
@@ -833,6 +851,7 @@ function managed_service_script_stale() {
         index(data, "GOMEMLIMIT") < 0 ||
         index(data, "PROG=\"/usr/bin/sing-box\"") < 0 ||
         index(data, "stop_service()") < 0 ||
+        index(data, "reload_service()") < 0 ||
         kills_self;
 }
 
@@ -1236,6 +1255,37 @@ function prepare_subscription_caches(prepared, no_refresh) {
     return trim(result.output);
 }
 
+function write_reload_preview(current_path, candidate_path) {
+    if (!file_exists(current_path) || !file_exists(candidate_path))
+        return;
+    if (sing_box_variant() != "tachyon-core") {
+        remove_file(RELOAD_PREVIEW_FILE);
+        return;
+    }
+    let bin = find_core_binary();
+    if (bin == "") {
+        remove_file(RELOAD_PREVIEW_FILE);
+        return;
+    }
+    let out = trim(command_output_from_args([ bin, "reload-preview", "--current", current_path, "-c", candidate_path ]));
+    if (out == "") {
+        remove_file(RELOAD_PREVIEW_FILE);
+        return;
+    }
+    try {
+        let parsed = json(out);
+        if (type(parsed) == "object" && (parsed.in_place === true || parsed.in_place === false)) {
+            ensure_parent_dir(RELOAD_PREVIEW_FILE);
+            write_file(RELOAD_PREVIEW_FILE, sprintf("%J\n", parsed));
+            return;
+        }
+    } catch (e) {
+        remove_file(RELOAD_PREVIEW_FILE);
+        return;
+    }
+    remove_file(RELOAD_PREVIEW_FILE);
+}
+
 function save_config_file(temp_file_path, config_path) {
     let current_hash = md5_file(config_path);
     let temp_hash = md5_file(temp_file_path);
@@ -1244,6 +1294,7 @@ function save_config_file(temp_file_path, config_path) {
         log_message("sing-box configuration changed; updating " + config_path, "info");
         if (!ensure_parent_dir(config_path))
             return false;
+        write_reload_preview(config_path, temp_file_path);
         return command_success_from_args([ "mv", "-f", temp_file_path, config_path ]);
     }
 
@@ -1881,7 +1932,7 @@ else if (mode == "version")
 else if (mode == "version-output")
     print(sing_box_version_output());
 else if (mode == "version-from-output")
-    print(first_line_last_field(fs.readfile("/dev/stdin")), "\n");
+    print(parse_sing_box_version(fs.readfile("/dev/stdin")), "\n");
 else if (mode == "read-version-state")
     print(sing_box_version_state(), "\n");
 else if (mode == "write-version-state")

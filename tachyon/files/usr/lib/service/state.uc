@@ -13,7 +13,10 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const DEFAULT_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/var/run/tachyon/reload.pending";
 const DEFAULT_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
-const CORE_LOG_PATH = "/tmp/tachyon-core/sing-box.log";
+const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const RELOAD_PREVIEW_FILE = getenv("TACHYON_RELOAD_PREVIEW_FILE") || RUNTIME_STATE_DIR + "/reload-preview.json";
+const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+const CORE_LOG_PATH = getenv("TACHYON_CORE_LOG_PATH") || "/tmp/tachyon-core/sing-box.log";
 const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
 const ZAPRET2_DEFAULT_NFQWS2_OPT = getenv("ZAPRET2_DEFAULT_NFQWS2_OPT") || "";
 const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "";
@@ -679,27 +682,141 @@ function core_log_reload_failed(since_offset, logread_before) {
     return false;
 }
 
-// Send SIGHUP to the running sing-box process and wait for it to stay alive
-// AND to still be listening.
-// sing-box 1.10+ reloads its configuration in-place on SIGHUP without tearing
-// down the process, so existing TCP sessions are not disrupted.
-// A live pid is not evidence that the reload worked: on tachyon-core a SIGHUP
-// was observed to leave the process running and answering the clash API while
-// the mixed inbound silently never came back - every LAN client proxy and the
-// Telegram bot then dead-ended, and only the watchdog's two-strike mixed-port
-// watch noticed, ten minutes later. So the inbounds the config declares are
-// checked too; if they do not come back the caller escalates to a full restart
-// instead of logging a success that did not happen.
-// Returns true if the process accepted the reload and is still healthy;
-// returns false if the process died, was unreachable, or came back deaf
-// (caller should restart).
-function try_sighup_reload(pid) {
-    pid = int(pid || 0);
-    if (pid <= 0 || !pid_is_sing_box(pid))
+// In-place hot reload (SIGHUP) is exclusively supported on tachyon-core.
+// When sing-box (stable / tiny / extended / lx) is active, return false so the
+// caller always performs a clean restart instead of relying on sing-box SIGHUP.
+function pid_is_tachyon_core(pid) {
+    if (!pid_is_sing_box(pid))
         return false;
 
-    // Send SIGHUP; ignore the kill exit code — the process may have just
-    // finished a reload and the transient exit-code is unreliable.
+    let marker = trim(as_string(fs.readfile(SB_VARIANT_STATE_FILE) || ""));
+    if (marker == "tachyon-core")
+        return true;
+    if (marker == "lx" || marker == "extended" || marker == "extended-compressed" || marker == "tiny" || marker == "stable")
+        return false;
+
+    let exe = process_identity.exe_basename(pid);
+    if (exe == "sing-box")
+        return false;
+    if (exe == "tachyon-core")
+        return true;
+
+    let comm = trim(as_string(fs.readfile("/proc/" + as_string(pid) + "/comm") || ""));
+    return comm == "tachyon-core";
+}
+
+function consume_reload_preview() {
+    let data = fs.readfile(RELOAD_PREVIEW_FILE);
+    if (data == null)
+        return null;
+    unlink_file(RELOAD_PREVIEW_FILE);
+    try {
+        let parsed = json(as_string(data));
+        return type(parsed) == "object" ? parsed : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function core_clash_api_info() {
+    let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let config_path = trim(as_string(settings.config_path || "")) || "/etc/tachyon-core/config.json";
+    let data = fs.readfile(config_path);
+    if (data == null)
+        return null;
+    let parsed;
+    try {
+        parsed = json(as_string(data));
+    } catch (e) {
+        return null;
+    }
+    let clash_api = parsed?.experimental?.clash_api;
+    if (type(clash_api) != "object")
+        return null;
+    let ext = trim(as_string(clash_api.external_controller || ""));
+    if (ext == "")
+        return null;
+    let parts = split(ext, ":");
+    let ip = length(parts) > 1 ? parts[0] : "";
+    let port = length(parts) > 1 ? parts[length(parts) - 1] : "9090";
+    let host = (ip == "0.0.0.0" || ip == "") ? ("127.0.0.1:" + port) : ext;
+    return {
+        base_url: "http://" + host,
+        secret: trim(as_string(clash_api.secret || ""))
+    };
+}
+
+function fetch_tachyon_config_state(clash_info) {
+    if (type(clash_info) != "object" || clash_info.base_url == null)
+        return null;
+    let args = [ "curl", "-s", "-m", "2", "--connect-timeout", "1" ];
+    if (clash_info.secret != "") {
+        push(args, "-H");
+        push(args, "Authorization: Bearer " + clash_info.secret);
+    }
+    push(args, clash_info.base_url + "/tachyon/config-state");
+    let out = trim(command_output_from_args(args));
+    if (out == "")
+        return null;
+    try {
+        let parsed = json(out);
+        if (type(parsed) == "object" && (parsed.ready === true || parsed.ready === false))
+            return parsed;
+    } catch (e) {}
+    return null;
+}
+
+function trigger_tachyon_route_recheck(clash_info) {
+    if (type(clash_info) != "object" || clash_info.base_url == null)
+        return;
+    let args = [ "curl", "-s", "-m", "3", "--connect-timeout", "1", "-X", "POST" ];
+    if (clash_info.secret != "") {
+        push(args, "-H");
+        push(args, "Authorization: Bearer " + clash_info.secret);
+    }
+    push(args, clash_info.base_url + "/tachyon/route-recheck");
+    command_output_from_args(args);
+}
+
+function config_state_reload_confirmed(clash_info, before_state, preview) {
+    if (before_state == null)
+        return true;
+    let after_state = fetch_tachyon_config_state(clash_info);
+    if (after_state == null)
+        return false;
+    if (after_state.ready !== true)
+        return false;
+    let candidate_digest = type(preview) == "object" ? as_string(preview.candidate_digest || "") : "";
+    if (candidate_digest != "" && as_string(after_state.digest || "") != "")
+        return as_string(after_state.digest) == candidate_digest;
+    if (before_state.revision != null && after_state.revision != null)
+        return int(after_state.revision) > int(before_state.revision);
+    return true;
+}
+
+function finalize_sighup_success(clash_info, has_state_probe) {
+    common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
+    if (has_state_probe)
+        trigger_tachyon_route_recheck(clash_info);
+    return true;
+}
+
+// Send SIGHUP to the running tachyon-core process and wait for it to stay alive
+// AND to still be listening.
+// In-place hot reload is only enabled for tachyon-core: reload-preview checks
+// structural compatibility before SIGHUP, /tachyon/config-state confirms the new
+// config revision/digest is ready, and /tachyon/route-recheck re-evaluates live
+// TCP/UDP sessions against the updated routing table.
+function try_sighup_reload(pid) {
+    pid = int(pid || 0);
+    let preview = consume_reload_preview();
+    if (pid <= 0 || !pid_is_tachyon_core(pid))
+        return false;
+    if (type(preview) == "object" && preview.in_place === false)
+        return false;
+
+    let clash_info = core_clash_api_info();
+    let before_state = fetch_tachyon_config_state(clash_info);
     let log_offset = 0;
     let log_stat = fs.stat(CORE_LOG_PATH);
     if (log_stat != null)
@@ -707,9 +824,6 @@ function try_sighup_reload(pid) {
     let logread_before = core_logread_tail();
     command_success_from_args([ "kill", "-HUP", as_string(pid) ]);
 
-    // Give sing-box up to 15 s to ingest the new config and bring its inbounds
-    // back. We poll every 500 ms and only call it a success when the process
-    // is alive AND every inbound/endpoint port the config declares is listening.
     let ports = sing_box_expected_ports();
     let deadline = 30;
     while (deadline > 0) {
@@ -718,31 +832,25 @@ function try_sighup_reload(pid) {
         let current_pid = sing_box_service_pid_runtime();
         if (current_pid <= 0)
             return false;   // process died — caller must restart
-        // PID unchanged, or procd replaced it (e.g. MTProxy restart path): both
-        // mean "something is running". That alone is not enough - the inbounds
-        // have to be back before this counts as a working reload.
-        let process_ok = current_pid == pid || pid_is_sing_box(current_pid);
+        let process_ok = current_pid == pid || pid_is_tachyon_core(current_pid);
         if (process_ok && sing_box_mixed_ports_listening(ports)) {
-            // The old config also has these ports up, so a still-listening
-            // probe is not proof the new config loaded. The core's own log is.
             if (core_log_reload_failed(log_offset, logread_before))
                 return false;
-            common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
-            return true;
+            if (!config_state_reload_confirmed(clash_info, before_state, preview))
+                continue;
+            return finalize_sighup_success(clash_info, before_state != null);
         }
     }
 
-    // Timed out: verify at least that a sing-box is still up, and that it is
+    // Timed out: verify at least that tachyon-core is still up, and that it is
     // not running deaf.
     let final_pid = sing_box_service_pid_runtime();
-    if (final_pid <= 0 || !pid_is_sing_box(final_pid))
+    if (final_pid <= 0 || !pid_is_tachyon_core(final_pid))
         return false;
     if (core_log_reload_failed(log_offset, logread_before))
         return false;
-    if (sing_box_mixed_ports_listening(ports)) {
-        common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
-        return true;
-    }
+    if (sing_box_mixed_ports_listening(ports) && config_state_reload_confirmed(clash_info, before_state, preview))
+        return finalize_sighup_success(clash_info, before_state != null);
     return false;
 }
 
@@ -923,10 +1031,10 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
         return;
     }
 
-    // Try graceful SIGHUP reload first: sing-box 1.10+ reloads config in-place
-    // without terminating the process, so active TCP sessions are preserved.
+    // Try graceful SIGHUP reload first when tachyon-core is running: it reloads
+    // config in-place without terminating the process, preserving active sessions.
     let active_pid = sing_box_service_pid_runtime();
-    if (active_pid > 0 && as_string(force) != "restart") {
+    if (active_pid > 0 && as_string(force) != "restart" && pid_is_tachyon_core(active_pid)) {
         command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading sing-box runtime via SIGHUP (graceful)" ]);
         if (try_sighup_reload(active_pid)) {
             command_success_from_args([ "logger", "-t", "tachyon", "[info] sing-box graceful reload succeeded" ]);
@@ -935,6 +1043,7 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
         command_success_from_args([ "logger", "-t", "tachyon", "[warn] sing-box SIGHUP reload failed; falling back to full restart" ]);
     }
 
+    unlink_file(RELOAD_PREVIEW_FILE);
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Restarting sing-box runtime" ]);
     if (!command_success_from_args([ "/etc/init.d/tachyon-core", "restart" ])) {
         command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart sing-box. Aborted." ]);

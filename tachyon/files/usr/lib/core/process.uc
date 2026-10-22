@@ -381,6 +381,20 @@ function managed_core_init_script(marker, reset_log) {
         "    done\n" +
         "    _kill_daemon_instances\n" +
         "}\n\n" +
+        "reload_service() {\n" +
+        "    for p in $(pidof " + comms + " 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            " + exe_case + ")\n" +
+        "                if ucode -L /usr/lib/tachyon /usr/lib/tachyon/service/state.uc sighup-core-runtime \"$p\" >/dev/null 2>&1; then\n" +
+        "                    return 0\n" +
+        "                fi\n" +
+        "                break\n" +
+        "                ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    restart\n" +
+        "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"" + contract.procd_name + "\"\n" +
         "}\n";

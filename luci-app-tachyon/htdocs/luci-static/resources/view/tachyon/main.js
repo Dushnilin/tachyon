@@ -7917,7 +7917,7 @@ function getComponentActionKey(component, action) {
 // src/tachyon/helpers/singBoxVariant.ts
 function isTachyonCoreVersion(version) {
   const v = String(version || "").trim();
-  return v.includes("-tachyon.") || v.includes("tachyon-core") || /^v?0\.0\.\d+/.test(v);
+  return v.includes("-tachyon.") || v.includes("tachyon-core") || /^v?0\.\d+\.\d+/i.test(v);
 }
 function isExtendedSingBoxVersion(version) {
   return String(version || "").includes("extended") || String(version || "").includes("-lx");
@@ -26247,9 +26247,13 @@ function computeSystemInfoMutation(currentSystemInfo, result) {
   }
   if (result.component === "sing_box") {
     nextSystemInfo.sing_box_version = version;
-    if (result.action === "install" || result.action === "install_version" || result.action === "reinstall" || result.action === "install_stable" || result.action === "install_tiny" || result.action === "install_extended" || result.action === "install_extended_compressed" || result.action === "install_lx") {
+    if (result.action === "install_stable" || result.action === "install_tiny" || result.action === "install_extended" || result.action === "install_extended_compressed" || result.action === "install_lx") {
       nextSystemInfo.sing_box_tachyon_core = 0;
       nextSystemInfo.sing_box_fptn = 0;
+    } else if (result.action === "install" || result.action === "install_version" || result.action === "reinstall") {
+      const isCore = isTachyonCoreVersion(version) || Boolean(result.release_url?.includes("tachyon-core")) || Boolean(result.message?.includes("tachyon-core")) || Boolean(currentSystemInfo.sing_box_tachyon_core) && !version.includes("-lx") && !version.includes("extended");
+      nextSystemInfo.sing_box_tachyon_core = isCore ? 1 : 0;
+      nextSystemInfo.sing_box_fptn = isCore ? 1 : 0;
     }
     if (result.action === "install_tachyon_core") {
       nextSystemInfo.sing_box_tachyon_core = 1;
@@ -28681,16 +28685,27 @@ function renderEngineCard() {
           void runComponentAction(
             "sing_box",
             getVariantInstallAction(selectedVariant.id),
-            "singBoxInstall"
+            "singBoxInstall",
+            selectedVariant.label
           );
-        } else if (engineId !== active) {
-          void applyEngineSelection(engineId, active, warning);
+        } else if (!isSingBoxActive) {
+          void applyEngineSelection(
+            "tachyon-core",
+            active,
+            warning,
+            selectedVariant.label
+          );
         }
       } else {
         if (!isSelectedInstalled) {
           void runSteerAction(engineId, "install");
         } else {
-          void applyEngineSelection(engineId, active, warning);
+          void applyEngineSelection(
+            engineId,
+            active,
+            warning,
+            selectedVariant.label
+          );
         }
       }
     }
@@ -29003,29 +29018,35 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
     renderUpdatesComponents();
   }
 }
-async function runComponentAction(component, action, _key) {
-  const engineTarget = action === "install_tachyon_core" ? "tachyon-core" : "sing-box";
+async function runComponentAction(component, action, _key, targetLabel) {
+  const activeEngine = engineInfoCache?.active || "tachyon-core";
+  const isSteerActive = activeEngine === "steer" || activeEngine === "steer-extended";
+  const engineTarget = "tachyon-core";
   const installKey = getComponentActionKey(component, action) ?? getComponentInstallKey(component);
+  const jobs = [{ component, action, key: installKey }];
+  if (isSteerActive) {
+    jobs.push({
+      component: "engine",
+      action: "switch",
+      key: "engineSwitch",
+      extra: engineTarget
+    });
+  }
+  const resolvedLabel = targetLabel || (action === "install_tachyon_core" ? "tachyon-core" : action === "install_lx" ? "sing-box (Leadaxe)" : action === "install_extended" ? "sing-box (Extended)" : action === "install_extended_compressed" ? "sing-box (Extended compressed)" : action === "install_tiny" ? "sing-box (Tiny)" : "sing-box (Stable)");
   await runEngineFlow(
-    [
-      { component, action, key: installKey },
-      {
-        component: "engine",
-        action: "switch",
-        key: "engineSwitch",
-        extra: engineTarget
-      }
-    ],
+    jobs,
     {
       component,
       action,
-      componentTitle: getComponentCardTitle(
+      componentTitle: targetLabel || getComponentCardTitle(
         component,
-        component === "sing_box" && Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core)
+        component === "sing_box" && (action === "install_tachyon_core" || Boolean(
+          store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+        ))
       ),
       currentVersion: getComponentCurrentVersion2(component)
     },
-    `${_("Active engine")}: ${engineLabel(engineTarget)}`
+    `${_("Active engine")}: ${resolvedLabel}`
   );
 }
 async function runSteerAction(component, action) {
@@ -29057,7 +29078,7 @@ async function runSteerAction(component, action) {
     action === "install" ? `${_("Active engine")}: ${engineLabel(component)}` : `${_("Steer")}: ${action}`
   );
 }
-async function applyEngineSelection(engine, current, warning) {
+async function applyEngineSelection(engine, current, warning, targetLabel) {
   if (engine === current) {
     return;
   }
@@ -29069,6 +29090,7 @@ async function applyEngineSelection(engine, current, warning) {
   } else {
     warning.style.display = "none";
   }
+  const resolvedLabel = targetLabel || engineLabel(engine);
   await runEngineFlow(
     [
       {
@@ -29083,9 +29105,9 @@ async function applyEngineSelection(engine, current, warning) {
       action: "switch",
       componentTitle: _("Routing Engine"),
       currentVersion: engineLabel(current),
-      targetVersion: engineLabel(engine)
+      targetVersion: resolvedLabel
     },
-    `${_("Active engine")}: ${engineLabel(engine)}`
+    `${_("Active engine")}: ${resolvedLabel}`
   );
 }
 function renderUpdatesComponents() {
