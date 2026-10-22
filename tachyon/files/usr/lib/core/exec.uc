@@ -164,16 +164,17 @@ function run(opts) {
             let signal = raw_status & 127;
             status = signal != 0 ? 128 + signal : (raw_status >> 8) & 255;
         }
-        return { status: status, output: trim(output) };
+        let timed_out = timeout_s > 0 && (raw_status == 124 || raw_status == 137 || raw_status == 143 || status == 124 || status == 252);
+        return { status: status, output: trim(output), timed_out: timed_out };
     }
 
-    let status = int(system(cmd));
-    if (status == -1)
-        return { status: 255, output: "" };
-    let signal = status & 127;
-    if (signal != 0)
-        return { status: 128 + signal, output: "" };
-    return { status: (status >> 8) & 255, output: "" };
+    let raw_status = int(system(cmd));
+    if (raw_status == -1)
+        return { status: 255, output: "", timed_out: false };
+    let signal = raw_status & 127;
+    let status = signal != 0 ? 128 + signal : (raw_status >> 8) & 255;
+    let timed_out = timeout_s > 0 && (raw_status == 124 || raw_status == 137 || raw_status == 143 || status == 124 || status == 252);
+    return { status: status, output: "", timed_out: timed_out };
 }
 
 // Convenience: run and return only the exit status (0 = success).

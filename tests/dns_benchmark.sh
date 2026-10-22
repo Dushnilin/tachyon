@@ -149,6 +149,46 @@ UCODE
 ucode -L "$TACHYON_LIB" "$WORK_DIR/test_recommendation.uc" | grep -q "OK" ||
   fail "compute_recommendation logic tests failed"
 
+# ─── 3b. Test probe_doh + resolve_host_via_bootstrap runtime regex/parsing ──
+mkdir -p "$WORK_DIR/fakebin"
+cat >"$WORK_DIR/fakebin/curl" <<'SH'
+#!/bin/sh
+printf '\n200 0.045 application/dns-message'
+exit 0
+SH
+cat >"$WORK_DIR/fakebin/nslookup" <<'SH'
+#!/bin/sh
+cat <<'EOF'
+Server:		77.88.8.8
+Address:	77.88.8.8:53
+
+Non-authoritative answer:
+Name:	dns.alidns.com
+Address: 223.5.5.5
+EOF
+exit 0
+SH
+chmod +x "$WORK_DIR/fakebin/curl" "$WORK_DIR/fakebin/nslookup"
+
+PATH="$WORK_DIR/fakebin:$PATH" ucode -L "$TACHYON_LIB" -e '
+let b = require("dns.benchmark");
+let ms = b.probe_doh({ address: "https://cloudflare-dns.com/dns-query" }, "google.com", "1.1.1.1");
+if (ms != 45) {
+    printf("ERR: expected probe_doh=45, got %J\n", ms);
+    exit(1);
+}
+let cand = b.test_candidate(
+    { id: "alidns_doh", provider: "AliDNS", type: "doh", address: "https://dns.alidns.com/dns-query", ip: "", tag: "DoH" },
+    [ "google.com" ],
+    [ "77.88.8.8" ]
+);
+if (cand.latency != 45 || cand.status == "failed") {
+    printf("ERR: expected test_candidate to resolve via bootstrap and probe DoH, got %J\n", cand);
+    exit(2);
+}
+print("OK\n");
+' | grep -q "OK" || fail "probe_doh / test_candidate runtime check failed"
+
 # ─── 4. Test CLI help & command registration in /usr/bin/tachyon ─────────────
 grep -Fq "dns_benchmark" "$BIN" || fail "/usr/bin/tachyon must register dns_benchmark"
 grep -Fq "dns_autotune" "$BIN" || fail "/usr/bin/tachyon must register dns_autotune"

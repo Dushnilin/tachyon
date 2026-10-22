@@ -228,7 +228,7 @@ function resolve_host_via_bootstrap(host, bootstrap_ip, fallback_ip) {
                     seen_name = true;
                     continue;
                 }
-                let m = match(line, /Address[^:]*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)(?:[#:]53)?/);
+                let m = match(line, /Address[^:]*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)([#:]53)?/);
                 if (m && is_valid_public_ipv4(m[1])) {
                     if (seen_name || (m[1] != bootstrap_ip && index(line, "53") < 0)) {
                         resolved_hosts_cache[cache_key] = m[1];
@@ -349,9 +349,9 @@ function probe_doh(server, domain, resolved_ip) {
         if (last_line == "" && length(lines) > 1)
             last_line = lines[length(lines) - 2];
 
-        let m = match(last_line, /^([0-9]{3})[ \t]+([0-9.,]+)(?:[ \t]+(.*))?$/);
+        let m = match(last_line, /^([0-9]{3})[ \t]+([0-9.,]+)([ \t]+(.*))?$/);
         if (m && m[1] == "200" && m[2] != null) {
-            let ctype = lc(trim(as_string(m[3] || "")));
+            let ctype = lc(trim(as_string(m[4] || m[3] || "")));
             if (ctype != "" && index(ctype, "dns-message") < 0 && index(ctype, "dns-json") < 0 && index(ctype, "octet-stream") < 0)
                 return -1;
             let total_sec = replace(as_string(m[2]), ",", ".") * 1.0;
@@ -828,11 +828,10 @@ function run_worker() {
     catch (e) {
         state.running = false;
         state.finished_at = now_seconds();
+        state.error = as_string(e);
         if (length(array_or_empty(state.results)) > 0) {
             state.results = sort(state.results, function(a, b) { return a.score - b.score; });
             state.recommendation = compute_recommendation(state.results);
-        } else {
-            state.error = as_string(e);
         }
         write_state(state);
     }
