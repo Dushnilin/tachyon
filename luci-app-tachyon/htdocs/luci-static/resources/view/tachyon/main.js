@@ -3616,67 +3616,13 @@ function renderCountryChips(countryGroups, totalCount, activeFilter, onFilter, s
   const isRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") || false;
   const mode = options?.chipsGrouping || "regions";
   const activeRegion = options?.activeRegion || "all";
-  const searchQuery2 = options?.searchQuery || "";
   const organized = organizeCountryGroups(countryGroups, mode, {
     activeCountryCode: options?.activeCountryCode,
-    selectedRegion: activeRegion,
-    searchQuery: searchQuery2
+    selectedRegion: activeRegion
   });
   const container = E("div", {
     class: "tachyon_dashboard-page__country-chips-container"
   });
-  if (options?.chipsSearch) {
-    const clearBtn = E(
-      "button",
-      {
-        type: "button",
-        class: "tachyon_dashboard-page__country-search-clear",
-        title: isRu ? "Очистить" : "Clear",
-        style: searchQuery2 ? "display: flex;" : "display: none;",
-        click: (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (options.onSearch && sectionName) {
-            options.onSearch(sectionName, "");
-          }
-        }
-      },
-      "✕"
-    );
-    const searchInput = E("input", {
-      type: "text",
-      class: "tachyon_dashboard-page__country-search-input",
-      placeholder: isRu ? "Поиск страны или сервера..." : "Search country or server...",
-      value: searchQuery2,
-      oninput: (e) => {
-        const val = e.target.value;
-        clearBtn.style.display = val ? "flex" : "none";
-        if (options.onSearch && sectionName) {
-          options.onSearch(sectionName, val);
-        }
-      },
-      click: (e) => e.stopPropagation()
-    });
-    const searchBox = E(
-      "div",
-      { class: "tachyon_dashboard-page__country-search-box" },
-      [
-        E(
-          "span",
-          { class: "tachyon_dashboard-page__country-search-icon" },
-          "🔍"
-        ),
-        searchInput,
-        clearBtn
-      ]
-    );
-    const searchBar = E(
-      "div",
-      { class: "tachyon_dashboard-page__country-search-bar" },
-      [searchBox]
-    );
-    container.appendChild(searchBar);
-  }
   if (mode === "regions" && organized.availableRegions.length > 2) {
     const regionTabs = organized.availableRegions.map((reg) => {
       const isRegActive = activeRegion === reg.id;
@@ -3959,9 +3905,7 @@ function renderDefaultState({
   activeCountryFilter,
   onFilterCountry,
   activeRegionFilter,
-  onFilterRegion,
-  countrySearchQuery,
-  onSearchCountry
+  onFilterRegion
 }) {
   const isConnectionNode = !section.withTagSelect && [
     "vpn",
@@ -4392,7 +4336,6 @@ function renderDefaultState({
     const subSourceCount = section.subscriptionSourceCount || 0;
     const countryGrouping = section.dashboardSettings?.countryGrouping || "chips";
     const chipsGrouping = section.dashboardSettings?.chipsGrouping || "regions";
-    const chipsSearch = section.dashboardSettings?.chipsSearch !== false;
     const topGroups = [];
     const serverOutbounds = [];
     for (const ob of outbounds) {
@@ -4412,15 +4355,6 @@ function renderDefaultState({
         const c = detectOutboundCountry(ob);
         if (getCountryRegion(c.code) !== activeRegionFilter) {
           return false;
-        }
-      }
-      if (countrySearchQuery) {
-        const q = countrySearchQuery.trim().toLowerCase();
-        if (q) {
-          const c = detectOutboundCountry(ob);
-          const matchesCountry = c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
-          const matchesServer = ob.displayName && ob.displayName.toLowerCase().includes(q) || ob.prefix && ob.prefix.toLowerCase().includes(q);
-          if (!matchesCountry && !matchesServer) return false;
         }
       }
       return true;
@@ -4453,11 +4387,8 @@ function renderDefaultState({
           section.sectionName,
           {
             chipsGrouping,
-            chipsSearch,
             activeRegion: activeRegionFilter,
             onFilterRegion,
-            searchQuery: countrySearchQuery,
-            onSearch: onSearchCountry,
             activeCountryCode
           }
         );
@@ -4519,11 +4450,8 @@ function renderDefaultState({
           section.sectionName,
           {
             chipsGrouping,
-            chipsSearch,
             activeRegion: activeRegionFilter,
             onFilterRegion,
-            searchQuery: countrySearchQuery,
-            onSearch: onSearchCountry,
             activeCountryCode
           }
         )
@@ -8363,7 +8291,6 @@ async function getDashboardSections(options = {}) {
   const settingsSection = getSettingsSection(configSections);
   const globalCountryGrouping = settingsSection?.dashboard_country_grouping || "chips";
   const globalChipsGrouping = settingsSection?.dashboard_chips_grouping || "regions";
-  const globalChipsSearch = settingsSection?.dashboard_chips_search !== "0";
   const globalSortMode = settingsSection?.dashboard_sort_mode || "latency";
   const globalHoverFreeze = settingsSection?.dashboard_hover_freeze !== "0";
   const data = await Promise.all(
@@ -8378,7 +8305,6 @@ async function getDashboardSections(options = {}) {
       const effectiveSortMode = !sectionSortByLatency && !section.dashboard_sort_mode ? "default" : section.dashboard_sort_mode || globalSortMode || "latency";
       const effectiveCountryGrouping = section.dashboard_country_grouping || globalCountryGrouping;
       const effectiveChipsGrouping = section.dashboard_chips_grouping || globalChipsGrouping;
-      const effectiveChipsSearch = section.dashboard_chips_search !== void 0 ? section.dashboard_chips_search !== "0" : globalChipsSearch;
       if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
         const subscriptionEnabled = subscriptionSourceCount > 0;
@@ -8473,7 +8399,6 @@ async function getDashboardSections(options = {}) {
           dashboardSettings: {
             countryGrouping: effectiveCountryGrouping,
             chipsGrouping: effectiveChipsGrouping,
-            chipsSearch: effectiveChipsSearch,
             sortMode: effectiveSortMode,
             hoverFreeze: globalHoverFreeze
           },
@@ -11134,7 +11059,6 @@ function unsubscribeClashSockets() {
 var customProxyLatencies = /* @__PURE__ */ new Map();
 var activeCountryFilters = /* @__PURE__ */ new Map();
 var activeRegionFilters = /* @__PURE__ */ new Map();
-var activeCountrySearchQueries = /* @__PURE__ */ new Map();
 var singleTestingOutboundCodes = {};
 var isTestingAllSections = false;
 var dashboardVisibilityPaused = false;
@@ -12643,15 +12567,6 @@ async function renderSectionsWidget() {
       onFilterRegion: (sectionName, region) => {
         activeRegionFilters.set(sectionName, region);
         activeCountryFilters.delete(sectionName);
-        void renderSectionsWidget();
-      },
-      countrySearchQuery: activeCountrySearchQueries.get(section.sectionName) || "",
-      onSearchCountry: (sectionName, query) => {
-        if (query) {
-          activeCountrySearchQueries.set(sectionName, query);
-        } else {
-          activeCountrySearchQueries.delete(sectionName);
-        }
         void renderSectionsWidget();
       },
       latencyFetching: Boolean(
@@ -14413,72 +14328,6 @@ var styles = `
 .tachyon_dashboard-page__region-tab__name {
     font-weight: 600;
     font-size: 11px;
-}
-
-.tachyon_dashboard-page__country-search-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-}
-
-.tachyon_dashboard-page__country-search-box {
-    position: relative;
-    display: flex;
-    align-items: center;
-    width: 100%;
-    max-width: 280px;
-}
-
-.tachyon_dashboard-page__country-search-icon {
-    position: absolute;
-    left: 8px;
-    font-size: 11px;
-    opacity: 0.65;
-    pointer-events: none;
-}
-
-.tachyon_dashboard-page__country-search-input {
-    width: 100%;
-    padding: 4px 26px 4px 26px;
-    font-size: 11px;
-    line-height: 1.3;
-    border-radius: 14px;
-    border: 1px solid var(--border-color-medium, rgba(120, 120, 120, 0.32));
-    background: var(--background-color-medium, rgba(120, 120, 120, 0.08));
-    color: var(--text-color-high, inherit);
-    outline: none;
-    transition: all 0.15s ease;
-    box-sizing: border-box;
-}
-
-.tachyon_dashboard-page__country-search-input:focus {
-    border-color: var(--primary-color, #2563eb);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-    background: var(--background-color-high, rgba(120, 120, 120, 0.14));
-}
-
-.tachyon_dashboard-page__country-search-clear {
-    position: absolute;
-    right: 6px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(120, 120, 120, 0.28);
-    color: inherit;
-    font-size: 9px;
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-    transition: background 0.15s;
-}
-
-.tachyon_dashboard-page__country-search-clear:hover {
-    background: rgba(120, 120, 120, 0.5);
 }
 
 .tachyon_dashboard-page__country-chip-divider {

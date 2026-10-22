@@ -432,7 +432,6 @@ export namespace Tachyon {
     dashboardSettings?: {
       countryGrouping?: 'chips' | 'accordion' | 'none';
       chipsGrouping?: 'regions' | 'smart_top' | 'latency' | 'alphabetical';
-      chipsSearch?: boolean;
       sortMode?: 'latency' | 'country_latency' | 'country_alpha' | 'default';
       hoverFreeze?: boolean;
     };
@@ -616,7 +615,6 @@ export namespace Tachyon {
       | 'smart_top'
       | 'latency'
       | 'alphabetical';
-    dashboard_chips_search?: '0' | '1';
     dashboard_sort_mode?:
       | 'latency'
       | 'country_latency'

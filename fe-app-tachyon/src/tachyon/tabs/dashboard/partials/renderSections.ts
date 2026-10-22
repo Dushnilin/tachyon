@@ -39,8 +39,6 @@ interface IRenderSectionsProps {
   onFilterCountry?: (sectionName: string, countryCode?: string) => void;
   activeRegionFilter?: string;
   onFilterRegion?: (sectionName: string, region: string) => void;
-  countrySearchQuery?: string;
-  onSearchCountry?: (sectionName: string, query: string) => void;
   onTestLatency: (tag: string | string[]) => void;
   onChooseOutbound: (
     sectionName: string,
@@ -383,11 +381,8 @@ function renderCountryChips(
   sectionName?: string,
   options?: {
     chipsGrouping?: 'regions' | 'smart_top' | 'latency' | 'alphabetical';
-    chipsSearch?: boolean;
     activeRegion?: string;
     onFilterRegion?: (sectionName: string, region: string) => void;
-    searchQuery?: string;
-    onSearch?: (sectionName: string, query: string) => void;
     activeCountryCode?: string;
   },
 ): HTMLElement {
@@ -398,78 +393,17 @@ function renderCountryChips(
 
   const mode = options?.chipsGrouping || 'regions';
   const activeRegion = (options?.activeRegion as WorldRegion) || 'all';
-  const searchQuery = options?.searchQuery || '';
 
   const organized = organizeCountryGroups(countryGroups, mode, {
     activeCountryCode: options?.activeCountryCode,
     selectedRegion: activeRegion,
-    searchQuery,
   });
 
   const container = E('div', {
     class: 'tachyon_dashboard-page__country-chips-container',
   });
 
-  // 1. Search Box (if chipsSearch is enabled)
-  if (options?.chipsSearch) {
-    const clearBtn = E(
-      'button',
-      {
-        type: 'button',
-        class: 'tachyon_dashboard-page__country-search-clear',
-        title: isRu ? 'Очистить' : 'Clear',
-        style: searchQuery ? 'display: flex;' : 'display: none;',
-        click: (e: MouseEvent) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (options.onSearch && sectionName) {
-            options.onSearch(sectionName, '');
-          }
-        },
-      },
-      '✕',
-    );
-
-    const searchInput = E('input', {
-      type: 'text',
-      class: 'tachyon_dashboard-page__country-search-input',
-      placeholder: isRu
-        ? 'Поиск страны или сервера...'
-        : 'Search country or server...',
-      value: searchQuery,
-      oninput: (e: Event) => {
-        const val = (e.target as HTMLInputElement).value;
-        clearBtn.style.display = val ? 'flex' : 'none';
-        if (options.onSearch && sectionName) {
-          options.onSearch(sectionName, val);
-        }
-      },
-      click: (e: MouseEvent) => e.stopPropagation(),
-    }) as HTMLInputElement;
-
-    const searchBox = E(
-      'div',
-      { class: 'tachyon_dashboard-page__country-search-box' },
-      [
-        E(
-          'span',
-          { class: 'tachyon_dashboard-page__country-search-icon' },
-          '🔍',
-        ),
-        searchInput,
-        clearBtn,
-      ],
-    );
-
-    const searchBar = E(
-      'div',
-      { class: 'tachyon_dashboard-page__country-search-bar' },
-      [searchBox],
-    );
-    container.appendChild(searchBar);
-  }
-
-  // 2. Region Tabs Bar (if mode === 'regions' and there are multiple regions)
+  // 1. Region Tabs Bar (if mode === 'regions' and there are multiple regions)
   if (mode === 'regions' && organized.availableRegions.length > 2) {
     const regionTabs = organized.availableRegions.map((reg) => {
       const isRegActive = activeRegion === reg.id;
@@ -819,8 +753,6 @@ function renderDefaultState({
   onFilterCountry,
   activeRegionFilter,
   onFilterRegion,
-  countrySearchQuery,
-  onSearchCountry,
 }: IRenderSectionsProps) {
   const isConnectionNode =
     !section.withTagSelect &&
@@ -1441,7 +1373,6 @@ function renderDefaultState({
       section.dashboardSettings?.countryGrouping || 'chips';
     const chipsGrouping =
       section.dashboardSettings?.chipsGrouping || 'regions';
-    const chipsSearch = section.dashboardSettings?.chipsSearch !== false;
 
     const topGroups: Tachyon.Outbound[] = [];
     const serverOutbounds: Tachyon.Outbound[] = [];
@@ -1475,19 +1406,6 @@ function renderDefaultState({
         const c = detectOutboundCountry(ob);
         if (getCountryRegion(c.code) !== activeRegionFilter) {
           return false;
-        }
-      }
-      if (countrySearchQuery) {
-        const q = countrySearchQuery.trim().toLowerCase();
-        if (q) {
-          const c = detectOutboundCountry(ob);
-          const matchesCountry =
-            c.name.toLowerCase().includes(q) ||
-            c.code.toLowerCase().includes(q);
-          const matchesServer =
-            (ob.displayName && ob.displayName.toLowerCase().includes(q)) ||
-            (ob.prefix && ob.prefix.toLowerCase().includes(q));
-          if (!matchesCountry && !matchesServer) return false;
         }
       }
       return true;
@@ -1535,11 +1453,8 @@ function renderDefaultState({
           section.sectionName,
           {
             chipsGrouping,
-            chipsSearch,
             activeRegion: activeRegionFilter,
             onFilterRegion,
-            searchQuery: countrySearchQuery,
-            onSearch: onSearchCountry,
             activeCountryCode,
           },
         );
@@ -1614,11 +1529,8 @@ function renderDefaultState({
           section.sectionName,
           {
             chipsGrouping,
-            chipsSearch,
             activeRegion: activeRegionFilter,
             onFilterRegion,
-            searchQuery: countrySearchQuery,
-            onSearch: onSearchCountry,
             activeCountryCode,
           },
         ),

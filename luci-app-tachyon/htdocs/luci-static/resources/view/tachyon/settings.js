@@ -1933,19 +1933,6 @@ function createSettingsContent(section, capabilities) {
   o.depends("dashboard_country_grouping", "chips");
   o.rmempty = false;
 
-  o = section.taboption(
-    "navigation",
-    form.Flag,
-    "dashboard_chips_search",
-    _tr("Быстрый поиск по странам", "Quick Country Search"),
-    _tr(
-      "Отображать строку поиска для мгновенной фильтрации списка стран и серверов на лету.",
-      "Show a search box to instantly filter the country and server list on the fly.",
-    ),
-  );
-  o.default = "1";
-  o.depends("dashboard_country_grouping", "chips");
-  o.rmempty = false;
 
   o = section.taboption(
     "navigation",

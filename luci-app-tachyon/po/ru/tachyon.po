@@ -8494,9 +8494,3 @@ msgstr "По качеству связи (Пинг ⚡ первыми)"
 
 msgid "Alphabetical (A–Z)"
 msgstr "По алфавиту (А–Я)"
-
-msgid "Quick Country Search"
-msgstr "Быстрый поиск по странам"
-
-msgid "Show a search box to instantly filter the country and server list on the fly."
-msgstr "Отображать строку поиска для мгновенной фильтрации списка стран и серверов на лету."

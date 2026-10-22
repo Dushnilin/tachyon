@@ -977,7 +977,7 @@ describe('renderSections', () => {
     expect(selectedBadge?.textContent).toMatch(/✓\s*(Активен|Active)/);
   });
 
-  it('renders region tabs and quick country search input when configured', () => {
+  it('renders region tabs bar when configured with regions mode', () => {
     const section: any = {
       code: 'proxy-multi-reg',
       sectionName: 'proxy',
@@ -986,7 +986,6 @@ describe('renderSections', () => {
       dashboardSettings: {
         countryGrouping: 'chips',
         chipsGrouping: 'regions',
-        chipsSearch: true,
       },
       outbounds: [
         { code: 'de-1', displayName: '🇩🇪 Germany', latency: 40, country: 'DE' },
@@ -1009,12 +1008,6 @@ describe('renderSections', () => {
       subscriptionUpdating: false,
     });
 
-    // Check search input
-    const searchBar = el.querySelector('.tachyon_dashboard-page__country-search-bar');
-    expect(searchBar).toBeTruthy();
-    const searchInput = el.querySelector('.tachyon_dashboard-page__country-search-input');
-    expect(searchInput).toBeTruthy();
-
     // Check region tabs bar
     const regionBar = el.querySelector('.tachyon_dashboard-page__region-bar');
     expect(regionBar).toBeTruthy();
@@ -1032,7 +1025,6 @@ describe('renderSections', () => {
       dashboardSettings: {
         countryGrouping: 'chips',
         chipsGrouping: 'smart_top',
-        chipsSearch: false,
       },
       outbounds: [
         { code: 'de-1', displayName: '🇩🇪 Germany 1', latency: 40, country: 'DE' },
@@ -1063,9 +1055,5 @@ describe('renderSections', () => {
 
     const divider = el.querySelector('.tachyon_dashboard-page__country-chip-divider');
     expect(divider).toBeTruthy();
-
-    // Search bar should NOT be rendered when chipsSearch is false
-    const searchBar = el.querySelector('.tachyon_dashboard-page__country-search-bar');
-    expect(searchBar).toBeFalsy();
   });
 });
