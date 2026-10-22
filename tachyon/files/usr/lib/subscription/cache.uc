@@ -1864,9 +1864,14 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
         parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
         copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
 
-        if (!parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile)) {
+        if (!parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile)) {
             if (metadata_output_path != "")
                 unlink_path(metadata_output_path);
+            let norm_err = type(parser.get_last_normalize_error) == "function" ? parser.get_last_normalize_error() : "";
+            if (norm_err == "incomplete_awg_missing_peer") {
+                log_message("AmneziaWG subscription for rule '" + section_name_value + "' contains [Interface] without [Peer] server parameters (Endpoint/PublicKey); provider returned an incomplete/proprietary client profile — skipping User-Agent retries", "error");
+                break;
+            }
             if (subscription_user_agent != "")
                 log_message("Downloaded subscription for rule '" + section_name_value + "' is invalid with the configured request profile", "error");
             else

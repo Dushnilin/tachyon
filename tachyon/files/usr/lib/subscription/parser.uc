@@ -3380,7 +3380,82 @@ function decode_base64_or_raw_conf_text(raw_config) {
     return text;
 }
 
-function expand_json_config_outbound_items(item) {
+let last_normalize_error_reason = "";
+
+function get_last_normalize_error() {
+    return last_normalize_error_reason;
+}
+
+function extract_peer_params_from_object(obj) {
+    if (type(obj) != "object")
+        return { public_key: "", endpoint: "", pre_shared_key: "", allowed_ips: null };
+
+    let sub = type(obj.peer) == "object" ? obj.peer :
+        (type(obj.server) == "object" ? obj.server :
+        (type(obj.wireguard) == "object" ? obj.wireguard :
+        (type(obj.amnezia) == "object" ? obj.amnezia :
+        (type(obj.awg) == "object" ? obj.awg : {}))));
+    if (type(obj.peers) == "array" && length(obj.peers) > 0 && type(obj.peers[0]) == "object")
+        sub = obj.peers[0];
+
+    let peer_pub = trim(as_string(
+        obj.public_key || obj.publicKey || obj.peer_public_key || obj.peerPublicKey || obj.server_public_key || obj.serverPublicKey ||
+        sub.public_key || sub.publicKey || sub.peer_public_key || sub.peerPublicKey || sub.server_public_key || sub.serverPublicKey || ""
+    ));
+    let peer_ep = trim(as_string(obj.endpoint || obj.server_endpoint || sub.endpoint || sub.server_endpoint || ""));
+    if (peer_ep == "") {
+        let srv = trim(as_string(obj.server || obj.host || obj.hostname || sub.server || sub.host || sub.address || ""));
+        let prt = trim(as_string(obj.server_port || obj.port || sub.server_port || sub.port || ""));
+        if (srv != "" && prt != "")
+            peer_ep = (index(srv, ":") >= 0 && substr(srv, 0, 1) != "[") ? ("[" + srv + "]:" + prt) : (srv + ":" + prt);
+    }
+    let psk = trim(as_string(
+        obj.pre_shared_key || obj.preshared_key || obj.presharedKey || obj.psk ||
+        sub.pre_shared_key || sub.preshared_key || sub.presharedKey || sub.psk || ""
+    ));
+    let allowed = obj.allowed_ips != null ? obj.allowed_ips : (obj.allowedIps != null ? obj.allowedIps : (sub.allowed_ips != null ? sub.allowed_ips : sub.allowedIps));
+    return {
+        public_key: peer_pub,
+        endpoint: peer_ep,
+        pre_shared_key: psk,
+        allowed_ips: allowed
+    };
+}
+
+function extract_peer_params_from_headers_file(headers_file) {
+    let result = { public_key: "", endpoint: "", pre_shared_key: "", allowed_ips: null };
+    if (as_string(headers_file) == "")
+        return result;
+    let data = read_file(headers_file);
+    if (data == null || data == "")
+        return result;
+    let host = "", port = "";
+    for (let line in split(as_string(data), "\n")) {
+        line = trim(replace(line, /\r$/g, ""));
+        let colon = index(line, ":");
+        if (colon <= 0)
+            continue;
+        let k = lc(trim(substr(line, 0, colon)));
+        let v = trim(substr(line, colon + 1));
+        if (v == "")
+            continue;
+        if (k == "x-peer-public-key" || k == "x-wg-public-key" || k == "x-awg-public-key" || k == "x-server-public-key" || k == "peer-public-key")
+            result.public_key = v;
+        else if (k == "x-peer-endpoint" || k == "x-wg-endpoint" || k == "x-awg-endpoint" || k == "x-endpoint" || k == "peer-endpoint")
+            result.endpoint = v;
+        else if (k == "x-peer-host" || k == "x-server-host")
+            host = v;
+        else if (k == "x-peer-port" || k == "x-server-port")
+            port = v;
+        else if (k == "x-preshared-key" || k == "x-pre-shared-key")
+            result.pre_shared_key = v;
+    }
+    if (result.endpoint == "" && host != "" && port != "")
+        result.endpoint = (index(host, ":") >= 0 && substr(host, 0, 1) != "[") ? ("[" + host + "]:" + port) : (host + ":" + port);
+    return result;
+}
+
+function expand_json_config_outbound_items(item, fallback_peer) {
     if (type(item) != "object")
         return null;
     let raw_cfg = as_string(item.config || item.awg_config || item.wg_config || "");
@@ -3394,24 +3469,22 @@ function expand_json_config_outbound_items(item) {
     } else {
         let conf_text = decode_base64_or_raw_conf_text(raw_cfg);
         if (conf_text != "" && index(lc(conf_text), "[peer]") < 0) {
-            let peer_pub = trim(as_string(item.public_key || item.publicKey || item.peer_public_key || item.server_public_key || ""));
-            let peer_ep = trim(as_string(item.endpoint || ""));
-            if (peer_ep == "") {
-                let srv = trim(as_string(item.server || item.host || item.address || ""));
-                let prt = as_string(item.server_port || item.port || "");
-                if (srv != "" && prt != "")
-                    peer_ep = (index(srv, ":") >= 0 && substr(srv, 0, 1) != "[") ? ("[" + srv + "]:" + prt) : (srv + ":" + prt);
-            }
+            let item_peer = extract_peer_params_from_object(item);
+            let fb = type(fallback_peer) == "object" ? fallback_peer : {};
+            let peer_pub = item_peer.public_key != "" ? item_peer.public_key : as_string(fb.public_key || "");
+            let peer_ep = item_peer.endpoint != "" ? item_peer.endpoint : as_string(fb.endpoint || "");
+            let psk = item_peer.pre_shared_key != "" ? item_peer.pre_shared_key : as_string(fb.pre_shared_key || "");
+            let allowed = item_peer.allowed_ips != null ? item_peer.allowed_ips : fb.allowed_ips;
             if (peer_pub != "" && peer_ep != "") {
                 conf_text += "\n[Peer]\nPublicKey = " + peer_pub + "\nEndpoint = " + peer_ep + "\n";
-                let psk = trim(as_string(item.pre_shared_key || item.preshared_key || item.presharedKey || ""));
                 if (psk != "")
                     conf_text += "PresharedKey = " + psk + "\n";
-                let allowed = item.allowed_ips || item.allowedIps;
                 if (type(allowed) == "array" && length(allowed) > 0)
                     conf_text += "AllowedIPs = " + join(", ", allowed) + "\n";
                 else if (type(allowed) == "string" && trim(allowed) != "")
                     conf_text += "AllowedIPs = " + trim(allowed) + "\n";
+            } else if (index(lc(conf_text), "[interface]") >= 0) {
+                last_normalize_error_reason = "incomplete_awg_missing_peer";
             }
         }
         let share = starts_with(trim(raw_cfg), "[")
@@ -3519,7 +3592,7 @@ function normalize_sing_box_wireguard_outbound(outbound) {
     return outbound;
 }
 
-function normalize_sing_box_json_outbounds(candidates) {
+function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
     let outbounds = [];
     let urltest_refs = {};
     let detour_refs = {};
@@ -3529,7 +3602,7 @@ function normalize_sing_box_json_outbounds(candidates) {
         idx++;
         if (type(outbound) != "object" || outbound_is_unsupported_stub(outbound))
             continue;
-        let expanded_cfg = expand_json_config_outbound_items(outbound);
+        let expanded_cfg = expand_json_config_outbound_items(outbound, fallback_peer);
         if (expanded_cfg != null) {
             for (let ep in expanded_cfg)
                 push(outbounds, ep);
@@ -3611,7 +3684,7 @@ function normalize_sing_box_json_outbounds(candidates) {
     return outbounds;
 }
 
-function normalize_sing_box_json_value(value, output_file) {
+function normalize_sing_box_json_value(value, output_file, headers_file) {
     let candidates = [];
     let outbounds = [];
 
@@ -3628,18 +3701,37 @@ function normalize_sing_box_json_value(value, output_file) {
         });
     }
 
-    if (type(value) == "object" && (type(value.outbounds) == "array" || type(value.endpoints) == "array")) {
+    let fallback_peer = extract_peer_params_from_headers_file(headers_file);
+    if (type(value) == "object") {
+        let top_peer = extract_peer_params_from_object(value);
+        if (top_peer.public_key != "")
+            fallback_peer.public_key = top_peer.public_key;
+        if (top_peer.endpoint != "")
+            fallback_peer.endpoint = top_peer.endpoint;
+        if (top_peer.pre_shared_key != "")
+            fallback_peer.pre_shared_key = top_peer.pre_shared_key;
+        if (top_peer.allowed_ips != null)
+            fallback_peer.allowed_ips = top_peer.allowed_ips;
+    }
+
+    if (type(value) == "object" && (type(value.outbounds) == "array" || type(value.endpoints) == "array" || type(value.configs) == "array" || type(value.nodes) == "array" || type(value.items) == "array")) {
         for (let ep in array_or_empty(value.endpoints))
             push(candidates, ep);
         for (let ob in array_or_empty(value.outbounds))
             push(candidates, ob);
+        for (let cfg_item in array_or_empty(value.configs))
+            push(candidates, cfg_item);
+        for (let node_item in array_or_empty(value.nodes))
+            push(candidates, node_item);
+        for (let item in array_or_empty(value.items))
+            push(candidates, item);
     }
     else if (type(value) == "array")
         candidates = value;
     else if (type(value) == "object" && (type(value.type) == "string" || type(value.protocol) == "string" || value.config != null || value.awg_config != null || value.wg_config != null))
         candidates = [value];
 
-    outbounds = normalize_sing_box_json_outbounds(candidates);
+    outbounds = normalize_sing_box_json_outbounds(candidates, fallback_peer);
 
     if (length(outbounds) == 0) {
         fs.unlink(output_file);
@@ -3731,7 +3823,7 @@ function extract_ui_metadata_file(headers_file, body_file, output_file) {
     return true;
 }
 
-function normalize_content_data(data, output_file, depth) {
+function normalize_content_data(data, output_file, depth, headers_file) {
     data = as_string(data);
     if (index(data, "\r") >= 0)
         data = replace(data, /\r/g, "");
@@ -3740,14 +3832,14 @@ function normalize_content_data(data, output_file, depth) {
     if (depth < 2 && crypt4.is_crypt4(data)) {
         let decrypted = crypt4.decrypt(data);
         if (decrypted != null && decrypted != "")
-            return normalize_content_data(decrypted, output_file, depth + 1);
+            return normalize_content_data(decrypted, output_file, depth + 1, headers_file);
     }
 
     let first = first_non_ws_char(data);
     if (first == "{" || first == "[") {
         let decoded_json = json_decode_text(data);
         if (decoded_json != null)
-            return normalize_sing_box_json_value(decoded_json, output_file);
+            return normalize_sing_box_json_value(decoded_json, output_file, headers_file);
     }
 
     if (index(data, "proxies:") >= 0 && content_is_clash_yaml(data)) {
@@ -3768,21 +3860,23 @@ function normalize_content_data(data, output_file, depth) {
         let compact = replace(data, /[\r\n\t ]/g, "");
         let decoded = base64_decode(compact);
         if (decoded != null && decoded != "")
-            return normalize_content_data(decoded, output_file, depth + 1);
+            return normalize_content_data(decoded, output_file, depth + 1, headers_file);
     }
 
     return false;
 }
 
-function normalize_content_file(input_file, output_file) {
+function normalize_content_file(input_file, output_file, headers_file) {
+    last_normalize_error_reason = "";
     if (file_looks_like_uri_list(input_file))
         return normalize_uri_list_file(input_file, output_file, true);
 
     let data = read_file(input_file);
-    return data == null ? false : normalize_content_data(data, output_file, 0);
+    return data == null ? false : normalize_content_data(data, output_file, 0, headers_file);
 }
 
-function normalize_content_validated(input_file, output_file) {
+function normalize_content_validated(input_file, output_file, headers_file) {
+    last_normalize_error_reason = "";
     let normalize_input = input_file;
     let decoded_tmp = temp_path("tachyon-subscription-gzip");
     let decoded = gzip_decode_file(input_file, decoded_tmp);
@@ -3791,7 +3885,7 @@ function normalize_content_validated(input_file, output_file) {
     else
         fs.unlink(decoded_tmp);
 
-    let ok = normalize_content_file(normalize_input, output_file);
+    let ok = normalize_content_file(normalize_input, output_file, headers_file);
     if (decoded)
         fs.unlink(decoded_tmp);
     if (!ok)
@@ -3855,6 +3949,7 @@ function module_exports() {
         parse_subscription_source_entry,
         validate_subscription,
         normalize_content_validated,
+        get_last_normalize_error,
         normalized_skipped_message,
         try_decode_gzip_content_file,
         extract_ui_metadata_file,
@@ -3880,9 +3975,9 @@ else if (mode == "normalize-uri-list")
 else if (mode == "normalize-clash-yaml")
     ok = normalize_clash_yaml(ARGV[1], ARGV[2]);
 else if (mode == "normalize-content")
-    ok = normalize_content_file(ARGV[1], ARGV[2]);
+    ok = normalize_content_file(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "normalize-content-validated")
-    ok = normalize_content_validated(ARGV[1], ARGV[2]);
+    ok = normalize_content_validated(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "try-decode-gzip-content")
     ok = try_decode_gzip_content_file(ARGV[1]);
 else if (mode == "runtime-outbounds-equal")

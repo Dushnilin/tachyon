@@ -92,6 +92,38 @@ assert(!allTags.some(t => t.includes('LTE')), 'LTE urltest group must be exclude
 assert(!allTags.some(t => t.includes('lte-node-1')), 'Orphaned hidden child of excluded LTE group must also be excluded');
 JS
 
+# 1b: Issue #203 - AmneziaWG JSON array subscription with hidden [Peer]:
+#     - Recovers [Peer] from HTTP headers (X-Peer-Public-Key / X-Endpoint) or nested peer object
+#     - Sets get_last_normalize_error() = "incomplete_awg_missing_peer" when [Peer] is completely absent
+node - "$WORK_DIR" <<'JS'
+const fs = require('fs');
+const path = require('path');
+const work = process.argv[2];
+const key = Buffer.from(Array.from({length: 32}, (_, i) => i + 1)).toString('base64');
+const awgIniNoPeer = `[Interface]\nPrivateKey = ${key}\nAddress = 10.66.0.174/32\nDNS = 1.1.1.1\nMTU = 1280\nS1 = 0\nJc = 4\nJmin = 40\nJmax = 70\nH1 = 1\nH2 = 2\nH3 = 3\nH4 = 4\nI1 = <b 0x494e5649544520>\nI2 = <b 0x5349502f322e30>\n`;
+
+fs.writeFileSync(path.join(work, 'awg_missing_peer.json'), JSON.stringify([
+  { name: 'Страна 1', config: Buffer.from(awgIniNoPeer).toString('base64') }
+]));
+fs.writeFileSync(path.join(work, 'awg_headers.txt'),
+  `HTTP/2 200\r\nX-Peer-Public-Key: ${key}\r\nX-Endpoint: 198.51.100.99:51820\r\n`
+);
+JS
+
+WORK_DIR="$WORK_DIR" ucode -L "$TACHYON_LIB" -e '
+let parser = require("subscription.parser");
+let work = getenv("WORK_DIR");
+let ok_no_hdr = parser.normalize_content_validated(work + "/awg_missing_peer.json", work + "/awg_out_fail.json");
+if (ok_no_hdr)
+    die("Expected incomplete AWG subscription without [Peer] or headers to fail validation");
+if (parser.get_last_normalize_error() != "incomplete_awg_missing_peer")
+    die("Expected incomplete_awg_missing_peer error reason, got: " + parser.get_last_normalize_error());
+
+let ok_with_hdr = parser.normalize_content_validated(work + "/awg_missing_peer.json", work + "/awg_out_ok.json", work + "/awg_headers.txt");
+if (!ok_with_hdr)
+    die("Expected AWG subscription with X-Peer-Public-Key and X-Endpoint headers to succeed");
+'
+
 # 3: zapret2 UDP port-only profile automatic --payload=all injection (#177)
 ucode -L "$TACHYON_LIB" -e '
 let z2 = require("providers.zapret2.common");
