@@ -1,4 +1,7 @@
-import { normalizeSingBoxVariantFields } from '../../helpers/singBoxVariant';
+import {
+  isTachyonCoreVersion,
+  normalizeSingBoxVariantFields,
+} from '../../helpers/singBoxVariant';
 import type { StoreType } from '../../services/store.service';
 import { Tachyon } from '../../types';
 
@@ -31,12 +34,9 @@ export function computeSystemInfoMutation(
   if (result.component === 'sing_box') {
     nextSystemInfo.sing_box_version = version;
 
-    // Any non-tachyon-core install replaces the binary, so a tachyon-core
-    // flag left from the previous state would mislabel the new one.
+    // Explicit non-tachyon-core variant installs replace the binary, so a
+    // tachyon-core flag left from the previous state must be cleared.
     if (
-      result.action === 'install' ||
-      result.action === 'install_version' ||
-      result.action === 'reinstall' ||
       result.action === 'install_stable' ||
       result.action === 'install_tiny' ||
       result.action === 'install_extended' ||
@@ -45,6 +45,20 @@ export function computeSystemInfoMutation(
     ) {
       nextSystemInfo.sing_box_tachyon_core = 0;
       nextSystemInfo.sing_box_fptn = 0;
+    } else if (
+      result.action === 'install' ||
+      result.action === 'install_version' ||
+      result.action === 'reinstall'
+    ) {
+      const isCore =
+        isTachyonCoreVersion(version) ||
+        Boolean(result.release_url?.includes('tachyon-core')) ||
+        Boolean(result.message?.includes('tachyon-core')) ||
+        (Boolean(currentSystemInfo.sing_box_tachyon_core) &&
+          !version.includes('-lx') &&
+          !version.includes('extended'));
+      nextSystemInfo.sing_box_tachyon_core = isCore ? 1 : 0;
+      nextSystemInfo.sing_box_fptn = isCore ? 1 : 0;
     }
 
     if (result.action === 'install_tachyon_core') {

@@ -179,7 +179,7 @@ function check_notified_updates(token, admin_ids) {
                 let identity = build_identity_key(comp);
                 let key = as_string(latest) + (identity != "" ? ":" + identity : "");
                 if (notified[name] != key) {
-                    let title = (name == "sing_box") ? "sing-box" : name;
+                    let title = (name == "sing_box") ? "sing-box" : (name == "tachyon_core" ? "tachyon-core" : name);
                     let cur = comp.current_version || "?";
                     let msg;
                     if (comp.status == "outdated_same_release") {

@@ -94,8 +94,9 @@ let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
 let connectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let currentConnections: IConnection[] = [];
-let rawConnectionsList: Array<any> = [];
 let currentTopDomains: ITopDomain[] = [];
+let lastRawConnections: any[] = [];
+let cachedHostnames = new Map<string, string>();
 let directSocketsFailed = false;
 let trafficRatesState: TrafficRatesState = createInitialTrafficRatesState();
 let pageUnloading = false;
@@ -640,10 +641,10 @@ async function connectToClashSockets(dataUpdatesId: number) {
       const parsedMsg = JSON.parse(msg);
 
       if (Array.isArray(parsedMsg.connections)) {
-        rawConnectionsList = parsedMsg.connections;
+        lastRawConnections = parsedMsg.connections;
         currentConnections = aggregateClientConnections(
           parsedMsg.connections,
-          new Map<string, string>(),
+          cachedHostnames,
         );
         currentTopDomains = aggregateTopDomains(parsedMsg.connections);
       }
@@ -2204,19 +2205,37 @@ async function fetchConnections() {
     return;
   }
   try {
+    if (!needsFallbackPolling && lastRawConnections.length > 0) {
+      const hostnames = await fetchHostnames();
+      if (hostnames.size > 0) {
+        cachedHostnames = hostnames;
+      }
+      currentConnections = aggregateClientConnections(
+        lastRawConnections,
+        cachedHostnames,
+      );
+      void renderSystemInfoWidget();
+      renderConnectionsWidget();
+      return;
+    }
+
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
       shouldFetchHostnames
         ? fetchHostnames()
-        : Promise.resolve(new Map<string, string>()),
+        : Promise.resolve(cachedHostnames),
     ]);
+    if (shouldFetchHostnames && hostnames.size > 0) {
+      cachedHostnames = hostnames;
+    }
     if (res.success && res.data && typeof res.data === 'object') {
       const payload = res.data as any;
 
       if (Array.isArray(payload.connections)) {
+        lastRawConnections = payload.connections;
         currentConnections = aggregateClientConnections(
           payload.connections,
-          hostnames,
+          cachedHostnames,
         );
         currentTopDomains = aggregateTopDomains(payload.connections);
       }
@@ -2397,7 +2416,7 @@ export async function renderSectionDashboardWidgets() {
     const stats = getSectionConnectionStats(
       sectionName,
       totalProxySections,
-      rawConnectionsList,
+      lastRawConnections,
       {
         downloadTotal: total.downloadTotal,
         uploadTotal: total.uploadTotal,

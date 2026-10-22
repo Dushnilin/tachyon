@@ -138,4 +138,55 @@ info="$(PATH="$WORK_DIR:$PATH" system_info)"
 [ "$(json_int "$info" sing_box_tiny)" = "0" ] ||
   fail "a stock sing-box with tags must not be flagged as tiny"
 
+# 7. Real tachyon-core 0.1.x banner ("tachyon-core 0.1.4 (pure-Rust routing core)")
+#    without a "-tachyon." suffix or marker file must be recognized by both
+#    system-info and ui capabilities, and report version "0.1.4".
+rm -f "$WORK_DIR/tachyon-core-variant" "$WORK_DIR/tachyon-core-version" "$WORK_DIR/system-info.json" "$WORK_DIR/sb-version-cache"
+cat >"$WORK_DIR/tachyon-core" <<'SH'
+#!/bin/sh
+printf 'tachyon-core 0.1.4 (pure-Rust routing core)\n'
+printf 'Environment: linux/aarch64 (tachyon-core/rust)\n'
+printf 'Tags: with_quic,with_tailscale,with_fptn\n'
+SH
+chmod 0755 "$WORK_DIR/tachyon-core"
+info="$(PATH="$WORK_DIR:$PATH" system_info)"
+[ "$(json_int "$info" sing_box_tachyon_core)" = "1" ] ||
+  fail "system-info must flag tachyon-core 0.1.4 banner as tachyon_core"
+[ "$(json_str "$info" sing_box_version)" = "0.1.4" ] ||
+  fail "system-info must extract 0.1.4 from tachyon-core banner, got '$(json_str "$info" sing_box_version)'"
+caps="$(ui_capabilities)"
+[ "$(json_int "$caps" sing_box_tachyon_core)" = "1" ] ||
+  fail "ui capabilities must flag tachyon-core 0.1.4 banner as tachyon_core"
+[ "$(json_str "$caps" sing_box_profile)" = "tachyon-core" ] ||
+  fail "ui capabilities must set sing_box_profile=tachyon-core for 0.1.4 banner, got '$(json_str "$caps" sing_box_profile)'"
+
+# 8. Upgrade from 1.5.14 with sing-box 1.14.3-extended-2.7.3 installed (no tachyon-core):
+#    must report sing_box_extended=1, sing_box_tachyon_core=0, profile=extended,
+#    and frontend Routing Engine card must label it "sing-box" (not "tachyon-core")
+#    and bind Check/Update to the selected engine family (never updating steer when
+#    a sing-box variant is selected).
+rm -f "$WORK_DIR/tachyon-core-variant" "$WORK_DIR/tachyon-core-version" "$WORK_DIR/system-info.json" "$WORK_DIR/sb-version-cache"
+printf 'extended\n' >"$WORK_DIR/tachyon-core-variant"
+make_binary '1.14.3-extended-2.7.3'
+info="$(PATH="$WORK_DIR:$PATH" system_info)"
+[ "$(json_int "$info" sing_box_extended)" = "1" ] ||
+  fail "system-info must flag sing-box 1.14.3-extended-2.7.3 as sing_box_extended=1"
+[ "$(json_int "$info" sing_box_tachyon_core)" = "0" ] ||
+  fail "system-info must NOT flag sing-box 1.14.3-extended-2.7.3 as tachyon_core"
+[ "$(json_str "$info" sing_box_version)" = "1.14.3-extended-2.7.3" ] ||
+  fail "system-info must report 1.14.3-extended-2.7.3, got '$(json_str "$info" sing_box_version)'"
+caps="$(ui_capabilities)"
+[ "$(json_int "$caps" sing_box_extended)" = "1" ] ||
+  fail "ui capabilities must flag sing-box 1.14.3-extended-2.7.3 as sing_box_extended=1"
+[ "$(json_int "$caps" sing_box_tachyon_core)" = "0" ] ||
+  fail "ui capabilities must NOT flag sing-box 1.14.3-extended-2.7.3 as tachyon_core"
+[ "$(json_str "$caps" sing_box_profile)" = "extended" ] ||
+  fail "ui capabilities must set sing_box_profile=extended, got '$(json_str "$caps" sing_box_profile)'"
+
+FE_CARD="$ROOT_DIR/fe-app-tachyon/src/tachyon/tabs/updates/initController.ts"
+grep -qF "if (!isSelectedInstalled || isSingBoxActive)" "$FE_CARD" ||
+  fail "renderEngineCard must run runComponentAction when switching between sing-box variants"
+grep -qF "const selectedCheckComponent: Tachyon.ComponentName = isSelectedSingBox" "$FE_CARD" ||
+  fail "renderEngineCard must bind Check update / Update to the selected engine family, not steer"
+
 printf 'tachyon-core ui flag checks passed\n'

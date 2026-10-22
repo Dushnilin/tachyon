@@ -146,6 +146,10 @@ function assert(v, m) { if (!v) { warn("FAIL: ", m, "\n"); exit(1); } }
 assert(dns.health_port("bootstrap", 0) == 10054, "bootstrap port 0 must be 10054");
 assert(dns.health_port("main", 0) == 10053, "main port 0 must be 10053");
 assert(dns.health_port("active", 0) == 12053, "active port must sit above the candidate range");
+let plain_boot = dns.bootstrap_server("dns-bootstrap-1", "77.88.8.8");
+assert(plain_boot.type == "udp" && plain_boot.server_port == 53, "plain IPv4 bootstrap must use udp:53, not DoT:853");
+let dot_boot = dns.bootstrap_server("dns-bootstrap-2", "tls://1.1.1.1");
+assert(dot_boot.type == "tls" && dot_boot.server_port == 853, "explicit tls:// bootstrap must use tls:853");
 '
 ok
 

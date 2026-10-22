@@ -1492,15 +1492,32 @@ function global_nft_other_mark_exists() {
 // carrying a mark Tachyon does not own belong in this list.
 const TACHYON_OWN_MARKS = [
     getenv("NFT_FAKEIP_MARK") || "0x04000000",
-    getenv("NFT_OUTBOUND_MARK") || "0x08000000"
+    getenv("NFT_OUTBOUND_MARK") || "0x08000000",
+    getenv("ZAPRET_DESYNC_MARK") || "0x40000000",
+    getenv("ZAPRET_DESYNC_MARK_POSTNAT") || "0x20000000",
+    getenv("ZAPRET2_DESYNC_MARK") || "0x40000000",
+    getenv("ZAPRET2_DESYNC_MARK_POSTNAT") || "0x20000000",
+    getenv("ZAPRET_ROUTE_MARK_BASE") || "0x01000000",
+    getenv("ZAPRET2_ROUTE_MARK_BASE") || "0x02000000"
 ];
 
 function mark_line_is_ours(line) {
     let seen = false;
+    line = replace(line, /comment "[^"]*"/g, "");
+    line = replace(line, /@[a-z0-9]+,[0-9]+,[0-9]+(\s*&\s*0x[0-9a-fA-F]+)?(\s*(==|!=))?\s*0x[0-9a-fA-F]+/g, "");
+    let mark_idx = index(line, "mark set");
+    if (mark_idx < 0)
+        mark_idx = index(line, "meta mark");
+    if (mark_idx < 0)
+        mark_idx = index(line, "ct mark");
+    if (mark_idx >= 0)
+        line = substr(line, mark_idx);
     for (let token in match(line, /0x[0-9a-fA-F]+/g) || []) {
-        seen = true;
         // A capture-less /g match yields [whole-match] per element.
         let value = lc(as_string(token[0]));
+        if (int(value, 0) == 0)
+            continue;
+        seen = true;
         let ours = false;
         for (let mark in TACHYON_OWN_MARKS) {
             if (lc(as_string(mark)) == value) {
@@ -1520,7 +1537,8 @@ function nft_ruleset_other_mark_lines(table_name) {
 
     for (let line in split(read_stdin(), "\n")) {
         line = as_string(line);
-        if (index(line, "table inet " + table_name) >= 0) {
+        if (index(line, "table inet " + table_name) >= 0 ||
+            match(line, /^table (inet|ip|ip6) (zapret|zapret2|tachyon_tailscale)\b/) != null) {
             in_tachyon_table = true;
             continue;
         }

@@ -16,7 +16,7 @@ export function isTachyonCoreVersion(version?: string) {
   return (
     v.includes('-tachyon.') ||
     v.includes('tachyon-core') ||
-    /^v?0\.0\.\d+/.test(v)
+    /^v?0\.\d+\.\d+/i.test(v)
   );
 }
 

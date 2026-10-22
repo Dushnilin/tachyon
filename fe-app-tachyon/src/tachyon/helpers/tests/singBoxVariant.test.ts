@@ -26,6 +26,16 @@ describe('normalizeSingBoxVariantFields', () => {
     expect(semverNormalized.sing_box_tachyon_core).toBe(1);
     expect(semverNormalized.sing_box_fptn).toBe(1);
     expect(semverNormalized.sing_box_extended).toBe(0);
+
+    const v01Normalized = normalizeSingBoxVariantFields<SingBoxVariantFields>({
+      sing_box_version: '0.1.4',
+    });
+    expect(v01Normalized.sing_box_tachyon_core).toBe(1);
+    expect(v01Normalized.sing_box_fptn).toBe(1);
+    expect(v01Normalized.sing_box_extended).toBe(0);
+    expect(v01Normalized.sing_box_tiny).toBe(0);
+    expect(v01Normalized.sing_box_cert_pin).toBe(1);
+    expect(v01Normalized.sing_box_tailscale).toBe(1);
   });
 
   it('lets the tachyon_core flag win over stale fork flags', () => {

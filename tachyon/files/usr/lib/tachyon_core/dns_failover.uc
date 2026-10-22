@@ -258,6 +258,10 @@ function apply_selections(state, selections) {
 
     let status = command_status(command_from_args([ "timeout", "90", SERVICE_BIN, "dns_failover_apply", candidate_path ]) + " >/dev/null 2>&1");
     remove_file(candidate_path);
+    if (status == 2) {
+        log_message("dns_failover_apply deferred: reload lock is busy", "info");
+        return false;
+    }
     if (status != 0) {
         log_message("dns_failover_apply failed with status " + as_string(status), "warn");
         return false;

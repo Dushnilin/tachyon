@@ -96,7 +96,7 @@ function binary_installed(package_name) {
     if (package_name == "fptn" || package_name == "fptn-client")
         return fs.stat("/usr/bin/fptn-client-cli") != null || fs.stat("/usr/bin/fptn-client") != null;
     if (package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx")
-        return fs.stat("/usr/bin/tachyon-core") != null;
+        return fs.stat("/usr/bin/tachyon-core") != null || fs.stat("/usr/bin/sing-box") != null;
     return false;
 }
 
@@ -217,10 +217,14 @@ function binary_version(package_name) {
             }
         }
     }
-    if ((package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx") && fs.stat("/usr/bin/tachyon-core") != null) {
-        let out = command_output_args([ "/usr/bin/tachyon-core", "version" ]);
-        let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
-        if (m) return m[1];
+    if (package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx") {
+        for (let p in [ "/usr/bin/tachyon-core", "/usr/bin/sing-box" ]) {
+            if (fs.stat(p) != null) {
+                let out = command_output_args([ p, "version" ]);
+                let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
+                if (m) return m[1];
+            }
+        }
     }
     return "";
 }

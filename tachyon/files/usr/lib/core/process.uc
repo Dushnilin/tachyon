@@ -357,9 +357,8 @@ function managed_core_init_script(marker, reset_log) {
         "    fi\n\n" +
         log_prep +
         "    _kill_daemon_instances\n\n" +
-        "    procd_open_instance\n" +
+    "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"0\"\n" +
         "    procd_set_param limits nofile=\"65535 65535\"\n" +
@@ -380,6 +379,20 @@ function managed_core_init_script(marker, reset_log) {
         "        i=$(( i + 1 ))\n" +
         "    done\n" +
         "    _kill_daemon_instances\n" +
+        "}\n\n" +
+        "reload_service() {\n" +
+        "    for p in $(pidof " + comms + " 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            " + exe_case + ")\n" +
+        "                if ucode -L /usr/lib/tachyon /usr/lib/tachyon/service/state.uc sighup-core-runtime \"$p\" >/dev/null 2>&1; then\n" +
+        "                    return 0\n" +
+        "                fi\n" +
+        "                break\n" +
+        "                ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    restart\n" +
         "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"" + contract.procd_name + "\"\n" +

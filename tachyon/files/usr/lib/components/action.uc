@@ -458,7 +458,6 @@ function fallback_managed_core_init_script(marker, reset_log) {
         "    _kill_daemon_instances\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"0\"\n" +
         "    procd_set_param limits nofile=\"65535 65535\"\n" +
@@ -480,6 +479,20 @@ function fallback_managed_core_init_script(marker, reset_log) {
         "    done\n" +
         "    _kill_daemon_instances\n" +
         "}\n\n" +
+        "reload_service() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box)\n" +
+        "                if ucode -L /usr/lib/tachyon /usr/lib/tachyon/service/state.uc sighup-core-runtime \"$p\" >/dev/null 2>&1; then\n" +
+        "                    return 0\n" +
+        "                fi\n" +
+        "                break\n" +
+        "                ;;\n" +
+        "        esac\n" +
+        "    done\n" +
+        "    restart\n" +
+        "}\n\n" +
         "service_triggers() {\n" +
         "    procd_add_reload_trigger \"tachyon-core\"\n" +
         "}\n";
@@ -497,6 +510,7 @@ function managed_sing_box_service_installed() {
     return index(s, SB_MANAGED_SERVICE_MARKER) >= 0 &&
         index(s, "GOGC=\"50\"") >= 0 &&
         index(s, "stop_service()") >= 0 &&
+        index(s, "reload_service()") >= 0 &&
         !kills_self;
 }
 
@@ -1005,14 +1019,44 @@ function install_zapret2(action, target_tag) {
     // config.default via uci-def-cfg.sh, which does carry run_on_boot; the only
     // thing we want to change is the standalone autostart, and that is applied
     // after the install, once the genuine config exists.
+    //
+    // On an UPGRADE (/etc/config/zapret2 already exists), upstream postinst
+    // merges /etc/config/zapret2 with default values (keeping existing options)
+    // and starts the standalone zapret2 service, whose create_ipset.sh feeds
+    // /opt/zapret2/ipset/zapret-ip-exclude.txt (containing IPv6 "::1") into an
+    // IPv4 nftables set (`type ipv4_addr`), failing with:
+    //   /dev/stdin:8:1-3: Error: Could not resolve hostname: Name has no usable address (::1)
+    //   sh: write error: Broken pipe
+    // Setting INIT_APPLY_FW='0' and NFQWS2_ENABLE='0' on an existing config
+    // before the upgrade keeps run_on_boot intact while preventing upstream
+    // postinst from running create_ipset.sh or spawning standalone nfqws2.
     if (uci_core.available()) {
         let cfg = read_file("/etc/config/zapret2") || "";
-        if (cfg != "" && index(cfg, "run_on_boot") < 0) {
-            // A stub written by an older Tachyon: repair it in place rather
-            // than let preinst wipe /opt/zapret2 over it.
-            cfg += "\n\toption run_on_boot '0'\n";
-            write_file("/etc/config/zapret2", cfg);
-            log_message("Repaired /etc/config/zapret2: added run_on_boot so upstream preinst stops wiping the install", "warn");
+        if (cfg != "") {
+            if (index(cfg, "run_on_boot") < 0) {
+                // A stub written by an older Tachyon: repair it in place rather
+                // than let preinst wipe /opt/zapret2 over it.
+                cfg += "\n\toption run_on_boot '0'\n";
+                write_file("/etc/config/zapret2", cfg);
+                log_message("Repaired /etc/config/zapret2: added run_on_boot so upstream preinst stops wiping the install", "warn");
+            }
+            if (uci_core.exists("zapret2.config")) {
+                uci_core.set("zapret2.config.run_on_boot", "0");
+                uci_core.set("zapret2.config.INIT_APPLY_FW", "0");
+                uci_core.set("zapret2.config.NFQWS2_ENABLE", "0");
+                uci_core.commit("zapret2");
+            }
+        }
+    }
+    if (file_exists("/opt/zapret2/ipset/zapret-ip-exclude.txt")) {
+        let excl = read_file("/opt/zapret2/ipset/zapret-ip-exclude.txt") || "";
+        if (index(excl, ":") >= 0) {
+            let v4_lines = [];
+            for (let line in split(excl, "\n")) {
+                if (index(line, ":") < 0)
+                    push(v4_lines, line);
+            }
+            write_file("/opt/zapret2/ipset/zapret-ip-exclude.txt", join("\n", v4_lines));
         }
     }
 
@@ -1023,8 +1067,25 @@ function install_zapret2(action, target_tag) {
 
     // Now that upstream postinst has produced the real config, keep the
     // standalone service off: Tachyon owns the engine, so /etc/init.d/zapret2
-    // must not also run it.
+    // must not also run it. Also scrub IPv6 entries from zapret-ip-exclude.txt
+    // so future upgrades never trip over "::1" in ipv4_addr sets (#205).
+    if (file_exists("/opt/zapret2/ipset/zapret-ip-exclude.txt")) {
+        let excl = read_file("/opt/zapret2/ipset/zapret-ip-exclude.txt") || "";
+        if (index(excl, ":") >= 0) {
+            let v4_lines = [];
+            for (let line in split(excl, "\n")) {
+                if (index(line, ":") < 0)
+                    push(v4_lines, line);
+            }
+            write_file("/opt/zapret2/ipset/zapret-ip-exclude.txt", join("\n", v4_lines));
+        }
+    }
     if (uci_core.available()) {
+        if (uci_core.exists("zapret2.config")) {
+            uci_core.set("zapret2.config.run_on_boot", "0");
+            uci_core.set("zapret2.config.INIT_APPLY_FW", "0");
+            uci_core.set("zapret2.config.NFQWS2_ENABLE", "0");
+        }
         if (!uci_core.exists("zapret2.main"))
             uci_core.set_section("zapret2.main", "zapret2");
         uci_core.set("zapret2.main.enabled", "0");
@@ -1513,10 +1574,8 @@ function install_legacy_sing_box_symlink() {
 function sync_package_sing_box_binary_links() {
     if (file_nonempty("/usr/bin/sing-box") && !is_symlink_path("/usr/bin/sing-box")) {
         command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ]);
-        if (!file_nonempty("/usr/bin/tachyon-core") || is_symlink_path("/usr/bin/tachyon-core")) {
-            remove_file("/usr/bin/tachyon-core");
-            command_success_from_args([ "ln", "-sf", "/usr/bin/sing-box", "/usr/bin/tachyon-core" ]);
-        }
+        remove_file("/usr/bin/tachyon-core");
+        command_success_from_args([ "ln", "-sf", "/usr/bin/sing-box", "/usr/bin/tachyon-core" ]);
         return "/usr/bin/sing-box";
     }
     if (file_nonempty("/usr/bin/tachyon-core") && !is_symlink_path("/usr/bin/tachyon-core")) {
@@ -2464,7 +2523,7 @@ function install_tachyon_core(action, target_tag) {
     let latest_version = normalize_sing_box_version(release.tag);
 
     if (action == "check_update") {
-        if (current_version == "" || !sing_box_runtime_success("is-foreign-core", [ current_version ]) || !sing_box_runtime_success("marker-is", [ label ]))
+        if (current_version == "" || current_variant != label || !sing_box_runtime_success("is-foreign-core", [ current_version ]))
             action_success("sing_box", action, label + " is not installed", current_version, latest_version, 0, "", release.release_url);
         else
             check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
@@ -2553,12 +2612,15 @@ function install_tachyon_core(action, target_tag) {
 
     install_legacy_sing_box_symlink();
     write_sing_box_variant_state(label, new_version);
+    if (target_tag != null && target_tag != "")
+        write_file("/etc/tachyon/tachyon-core-version", target_tag + "\n");
     install_managed_sing_box_service_script();
     clear_sing_box_cache_if_needed(current_variant, label);
     restart_tachyon_after_successful_change();
     remove_file(backup_binary);
-
-    action_success("sing_box", action, label, new_version, latest_version, 1, "", release.release_url);
+    clear_version_caches();
+    updates_log("Installed " + label + " " + (new_version != "" ? new_version : "unknown"));
+    action_success("sing_box", action, label + " has been installed", new_version, latest_version, 1, "latest", release.release_url);
 }
 
 function install_sing_box_lx(action, target_tag) {
@@ -3002,6 +3064,7 @@ function reinstall_tachyon() {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -3052,6 +3115,7 @@ function install_tachyon() {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -3098,6 +3162,7 @@ function install_tachyon_version(target_tag) {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -3134,10 +3199,6 @@ function dispatch_sing_box(action, target_tag) {
     }
     if (action == "install_stable") {
         install_package_sing_box(action, false);
-        return;
-    }
-    if (action == "install_tachyon_core") {
-        install_tachyon_core(action, target_tag);
         return;
     }
 
@@ -3179,6 +3240,9 @@ function normalize_component_name(component) {
 
 function component_backup_dir(component) {
     component = normalize_component_name(component);
+    if (component == "tachyon-core" || component == "sing-box-lx" ||
+        component == "sing-box-extended" || component == "sing-box-extended-compressed")
+        component = "sing_box";
     return COMPONENT_BACKUP_BASE_DIR + "/" + component;
 }
 
@@ -3546,6 +3610,12 @@ function list_component_releases(component, count, page) {
         let parts = split(TACHYON_RELEASE_REPO, "/");
         if (length(parts) != 2) { print("[]\n"); return; }
         owner = parts[0]; repo = parts[1];
+    } else if (component == "tachyon-core") {
+        owner = TACHYON_CORE_OWNER; repo = TACHYON_CORE_REPO;
+    } else if (component == "sing-box-lx") {
+        owner = "Leadaxe"; repo = "sing-box-lx";
+    } else if (component == "sing-box-extended" || component == "sing-box-extended-compressed") {
+        owner = "shtorm-7"; repo = "sing-box-extended";
     } else if (component == "sing_box") {
         let variant = sing_box_runtime_output("variant", []);
         if (variant == "lx") { owner = "Leadaxe"; repo = "sing-box-lx"; }
@@ -3634,6 +3704,12 @@ function install_component_version(component, tag) {
         install_tachyon_version(tag);
     } else if (component == "tachyon-core") {
         install_tachyon_core("install", tag);
+    } else if (component == "sing-box-lx") {
+        install_sing_box_lx("install_lx", tag);
+    } else if (component == "sing-box-extended") {
+        install_sing_box_extended("install_extended", false, tag);
+    } else if (component == "sing-box-extended-compressed") {
+        install_sing_box_extended("install_extended_compressed", true, tag);
     } else if (component == "sing_box") {
         dispatch_sing_box("install", tag);
     } else if (component == "steer" || component == "steer-extended" || component == "steer_extended") {
@@ -3756,15 +3832,27 @@ function set_torrserver_direct(action) {
 
 function switch_engine_component(target) {
     target = engine.normalize_engine(target);
-    updates_log("Switching routing engine to " + target);
+    let display_target = target;
+    if (target == "tachyon-core") {
+        let cur_variant = sing_box_variant();
+        if (cur_variant != "" && cur_variant != "not-installed" && cur_variant != "tachyon-core")
+            display_target = "sing-box (" + cur_variant + ")";
+    }
+    updates_log("Switching routing engine to " + display_target);
     // The library, not the CLI shim: requiring service/engine_runtime.uc would run
     // its main() with this process's arguments and then exit the interpreter.
     let engine_rt = require("service.engine_runtime_lib");
     let result = engine_rt.switch_engine(target, { allow_install: true });
     if (!result.ok)
         action_fail("engine", "switch", "Engine switch failed: " + as_string(result.reason || "unknown"), "", "", as_string(result.reason || ""));
-    updates_log("Routing engine is now " + as_string(result.to_engine));
-    action_success("engine", "switch", "Switched to " + result.to_engine, result.from_engine, result.to_engine, 1, "latest", "");
+    let final_display = as_string(result.to_engine);
+    if (final_display == "tachyon-core") {
+        let cur_variant = sing_box_variant();
+        if (cur_variant != "" && cur_variant != "not-installed" && cur_variant != "tachyon-core")
+            final_display = "sing-box (" + cur_variant + ")";
+    }
+    updates_log("Routing engine is now " + final_display);
+    action_success("engine", "switch", "Switched to " + final_display, result.from_engine, result.to_engine, 1, "latest", "");
 }
 
 function set_tachyon_language(lang_code) {
@@ -3819,6 +3907,7 @@ function set_tachyon_language(lang_code) {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 

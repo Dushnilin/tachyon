@@ -306,7 +306,11 @@ function engine_config_path(engine) {
 
 function binary_present(engine) {
     let bin = engine_binary(engine);
-    return bin != "" && file_exists(bin);
+    if (bin != "" && file_exists(bin))
+        return true;
+    if (as_string(engine) == ENGINE_TACHYON_CORE && file_exists("/usr/bin/sing-box"))
+        return true;
+    return false;
 }
 
 function init_script_present(engine) {

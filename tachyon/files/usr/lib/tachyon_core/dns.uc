@@ -268,23 +268,22 @@ function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settin
 }
 
 function bootstrap_server(tag_name, value) {
-    let server = runtime_url.host(value);
-    let port = runtime_url.port(value);
-    let host = server != "" ? server : value;
-    // The bootstrap server is addressed by IP (it is what resolves the DoH/DoT
-    // hostnames, so it cannot itself depend on a name). Plain UDP/53 still sent
-    // the bootstrap query in the clear on the WAN. When the IP is one we know
-    // the DoT name for, upgrade it to DoT on 853 so the query is encrypted; an
-    // unknown ISP resolver keeps plain UDP because we have no SNI to present.
-    let dot_name = core_ip.valid_ip(host) ? KNOWN_DNS_SERVER_NAMES[host] : null;
-    if (dot_name != null) {
+    let raw = as_string(value);
+    let url_scheme = runtime_url.scheme(raw);
+    let server = runtime_url.host(raw);
+    let port = runtime_url.port(raw);
+    let host = server != "" ? server : raw;
+    if (url_scheme == "tls" || url_scheme == "dot") {
+        let dot_name = core_ip.valid_ip(host) ? KNOWN_DNS_SERVER_NAMES[host] : host;
         let result = {
             type: "tls",
             tag: tag_name,
             server: host,
             server_port: port != "" ? int(port) : 853,
-            tls: { enabled: true, server_name: dot_name }
+            tls: { enabled: true }
         };
+        if (dot_name != null && dot_name != "")
+            result.tls.server_name = dot_name;
         return result;
     }
     return {
@@ -456,6 +455,7 @@ return {
     active_values,
     arrays_equal,
     bootstrap_config,
+    bootstrap_server,
     config,
     configured_server_count,
     default_domain_resolver,

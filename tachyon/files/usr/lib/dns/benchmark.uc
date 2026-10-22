@@ -156,28 +156,40 @@ function domain_to_doh_b64(domain) {
 
 let resolved_hosts_cache = {};
 
+function is_valid_public_ipv4(ip) {
+    ip = trim(as_string(ip));
+    if (!match(ip, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/))
+        return false;
+    if (index(ip, "198.18.") == 0 || index(ip, "198.19.") == 0 ||
+        index(ip, "127.") == 0 || ip == "0.0.0.0")
+        return false;
+    return true;
+}
+
 // Resolves a hostname via a specific bootstrap UDP server with cache and fast fallback.
 function resolve_host_via_bootstrap(host, bootstrap_ip, fallback_ip) {
     host = as_string(host);
     bootstrap_ip = as_string(bootstrap_ip);
     fallback_ip = as_string(fallback_ip);
 
-    if (match(host, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/))
+    if (is_valid_public_ipv4(host))
         return host;
 
     let cache_key = host + "@" + bootstrap_ip;
-    if (resolved_hosts_cache[cache_key])
-        return resolved_hosts_cache[cache_key];
+    if (resolved_hosts_cache[cache_key] != null)
+        return resolved_hosts_cache[cache_key] != "" ? resolved_hosts_cache[cache_key] : null;
 
     if (has_tool("dig")) {
-        let output = command_output_from_args([
-            "dig", "@" + bootstrap_ip, host, "A", "+short", "+time=1", "+tries=1"
-        ]);
+        let res = exec.run({
+            argv: [ "dig", "@" + bootstrap_ip, host, "A", "+short", "+time=1", "+tries=1" ],
+            timeout: 2
+        });
+        let output = as_string(res.output);
         if (length(output) > 0) {
             let lines = split(output, "\n");
             for (let line in lines) {
                 line = trim(line);
-                if (match(line, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+                if (is_valid_public_ipv4(line)) {
                     resolved_hosts_cache[cache_key] = line;
                     return line;
                 }
@@ -186,31 +198,53 @@ function resolve_host_via_bootstrap(host, bootstrap_ip, fallback_ip) {
     }
 
     if (has_tool("nslookup")) {
-        let output = command_output_from_args([ "nslookup", "-timeout=2", "-type=a", host, bootstrap_ip ]);
-        if (length(output) == 0 || index(output, "timed out") >= 0)
-            output = command_output_from_args([ "nslookup", host, bootstrap_ip ]);
+        let t0 = clock();
+        let res = exec.run({
+            argv: [ "nslookup", "-timeout=1", "-type=a", host, bootstrap_ip ],
+            timeout: 2
+        });
+        let t1 = clock();
+        let output = as_string(res.output);
+        // Only fall back to bare nslookup if BusyBox rejected -timeout=1 immediately (<1s and empty stdout)
+        if (length(output) == 0 && !res.timed_out && t0 && t1 && (t1[0] - t0[0]) < 1) {
+            res = exec.run({
+                argv: [ "nslookup", "-type=a", host, bootstrap_ip ],
+                timeout: 2
+            });
+            output = as_string(res.output);
+            if (length(output) == 0 && !res.timed_out) {
+                res = exec.run({
+                    argv: [ "nslookup", host, bootstrap_ip ],
+                    timeout: 2
+                });
+                output = as_string(res.output);
+            }
+        }
         if (length(output) > 0) {
             let lines = split(output, "\n");
+            let seen_name = false;
             for (let line in lines) {
-                let m = match(line, /Address.*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-                if (m && m[1] != null && m[1] != bootstrap_ip) {
-                    resolved_hosts_cache[cache_key] = m[1];
-                    return m[1];
+                if (match(line, /^Name:[ \t]*/)) {
+                    seen_name = true;
+                    continue;
                 }
-            }
-            let m2 = match(output, /Name:[ \t]+[^\n]+\nAddress.*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-            if (m2 && m2[1] != null && m2[1] != bootstrap_ip) {
-                resolved_hosts_cache[cache_key] = m2[1];
-                return m2[1];
+                let m = match(line, /Address[^:]*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)(?:[#:]53)?/);
+                if (m && is_valid_public_ipv4(m[1])) {
+                    if (seen_name || (m[1] != bootstrap_ip && index(line, "53") < 0)) {
+                        resolved_hosts_cache[cache_key] = m[1];
+                        return m[1];
+                    }
+                }
             }
         }
     }
 
-    if (fallback_ip != "") {
+    if (is_valid_public_ipv4(fallback_ip)) {
         resolved_hosts_cache[cache_key] = fallback_ip;
         return fallback_ip;
     }
 
+    resolved_hosts_cache[cache_key] = "";
     return null;
 }
 
@@ -221,9 +255,11 @@ function probe_udp(server_ip, domain) {
     domain = as_string(domain);
 
     if (has_tool("dig")) {
-        let output = command_output_from_args([
-            "dig", "@" + server_ip, domain, "A", "+time=1", "+tries=1", "+stats"
-        ]);
+        let res = exec.run({
+            argv: [ "dig", "@" + server_ip, domain, "A", "+time=1", "+tries=1", "+stats" ],
+            timeout: 2
+        });
+        let output = as_string(res.output);
         if (length(output) > 0) {
             if (index(output, "status: NOERROR") >= 0 || index(output, "status: NXDOMAIN") >= 0) {
                 let m = match(output, /;; Query time:[ \t]+([0-9]+)[ \t]+msec/);
@@ -236,14 +272,15 @@ function probe_udp(server_ip, domain) {
     }
 
     if (has_tool("nslookup")) {
-        // Fast path: BusyBox / BIND nslookup with -timeout=2 -type=a to query ONLY IPv4 A record
-        // and avoid the 2.5s AAAA retransmit timeout bug on dual-stack/IPv4 networks.
         let t0 = clock();
-        let output = command_output_from_args([ "nslookup", "-timeout=2", "-type=a", domain, server_ip ]);
+        let res = exec.run({
+            argv: [ "nslookup", "-timeout=2", "-type=a", domain, server_ip ],
+            timeout: 3
+        });
         let t1 = clock();
+        let output = as_string(res.output);
 
-        // If the query explicitly timed out or failed to reach the server, do not re-run
-        if (index(output, "timed out") >= 0 || index(output, "no servers could be reached") >= 0 || index(output, "can't find") >= 0)
+        if (res.timed_out || index(output, "timed out") >= 0 || index(output, "no servers could be reached") >= 0 || index(output, "can't find") >= 0)
             return -1;
 
         if (length(output) > 0) {
@@ -259,13 +296,18 @@ function probe_udp(server_ip, domain) {
             }
         }
 
-        // Fallback for minimal legacy BusyBox without -timeout or -type options (if output was empty)
-        t0 = clock();
-        let status = command_status_from_args([ "nslookup", domain, server_ip ]);
-        t1 = clock();
-        if (status == 0 && t0 && t1) {
-            let elapsed_ms = (t1[0] - t0[0]) * 1000 + int((t1[1] - t0[1]) / 1000000);
-            return elapsed_ms >= 0 ? elapsed_ms : 0;
+        // Fallback for minimal BusyBox without -timeout option (only if command exited fast without timing out)
+        if (length(output) == 0 && t0 && t1 && (t1[0] - t0[0]) < 1) {
+            t0 = clock();
+            let res2 = exec.run({
+                argv: [ "nslookup", domain, server_ip ],
+                timeout: 2
+            });
+            t1 = clock();
+            if (!res2.timed_out && res2.status == 0 && t0 && t1) {
+                let elapsed_ms = (t1[0] - t0[0]) * 1000 + int((t1[1] - t0[1]) / 1000000);
+                return elapsed_ms >= 0 ? elapsed_ms : 0;
+            }
         }
     }
 
@@ -280,11 +322,16 @@ function probe_doh(server, domain, resolved_ip) {
     let host = url_host(doh_url);
     resolved_ip = as_string(resolved_ip);
 
+    // If the DoH hostname has no resolved IPv4 address, do not let curl block in system getaddrinfo()
+    if (host != "" && !is_valid_public_ipv4(host) && !is_valid_public_ipv4(resolved_ip))
+        return -1;
+
     let b64 = domain_to_doh_b64(domain);
     let query_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "dns=" + b64;
 
     let args = [
-        "curl", "-s", "-k", "-m", "2", "--connect-timeout", "2", "-w", "\n%{http_code} %{time_total}",
+        "curl", "-s", "-k", "-o", "/dev/null", "--noproxy", "*", "-m", "2", "--connect-timeout", "2",
+        "-w", "\n%{http_code} %{time_total} %{content_type}",
         "-H", "accept: application/dns-message, application/dns-json"
     ];
 
@@ -294,16 +341,20 @@ function probe_doh(server, domain, resolved_ip) {
     }
     push(args, query_url);
 
-    let output = command_output_from_args(args);
-    if (length(output) > 0) {
+    let res = exec.run({ argv: args, timeout: 3 });
+    let output = as_string(res.output);
+    if (!res.timed_out && length(output) > 0) {
         let lines = split(output, "\n");
         let last_line = length(lines) > 0 ? lines[length(lines) - 1] : "";
         if (last_line == "" && length(lines) > 1)
             last_line = lines[length(lines) - 2];
 
-        let m = match(last_line, /^([0-9]{3})[ \t]+([0-9.]+)/);
+        let m = match(last_line, /^([0-9]{3})[ \t]+([0-9.,]+)(?:[ \t]+(.*))?$/);
         if (m && m[1] == "200" && m[2] != null) {
-            let total_sec = double(m[2]);
+            let ctype = lc(trim(as_string(m[3] || "")));
+            if (ctype != "" && index(ctype, "dns-message") < 0 && index(ctype, "dns-json") < 0 && index(ctype, "octet-stream") < 0)
+                return -1;
+            let total_sec = replace(as_string(m[2]), ",", ".") * 1.0;
             let ms = int(total_sec * 1000);
             return ms >= 0 ? ms : 0;
         }
@@ -320,18 +371,22 @@ function test_candidate(server, domains, bootstrap_ips) {
 
     let resolved_ip = "";
     if (server.type == "doh") {
-        let host = url_host(server.address);
-        bootstrap_ips = array_or_empty(bootstrap_ips);
-        for (let b_ip in bootstrap_ips) {
-            b_ip = as_string(b_ip);
-            if (b_ip != "") {
-                resolved_ip = resolve_host_via_bootstrap(host, b_ip, server.ip || "");
-                if (resolved_ip != null && resolved_ip != "")
-                    break;
+        if (is_valid_public_ipv4(server.ip)) {
+            resolved_ip = as_string(server.ip);
+        } else {
+            let host = url_host(server.address);
+            bootstrap_ips = array_or_empty(bootstrap_ips);
+            for (let b_ip in bootstrap_ips) {
+                b_ip = as_string(b_ip);
+                if (b_ip != "") {
+                    resolved_ip = resolve_host_via_bootstrap(host, b_ip, server.ip || "");
+                    if (resolved_ip != null && resolved_ip != "")
+                        break;
+                }
             }
+            if (resolved_ip == "" || resolved_ip == null)
+                resolved_ip = as_string(server.ip || "");
         }
-        if (resolved_ip == "" || resolved_ip == null)
-            resolved_ip = as_string(server.ip || "");
     }
 
     for (let domain in domains) {
@@ -625,6 +680,9 @@ function apply_recommendation(rec, async_restart) {
     if (!cursor.commit(CONFIG_NAME))
         return false;
 
+    try { fs.unlink("/var/run/tachyon/dns-failover.json"); } catch(e) {}
+    try { fs.unlink("/var/run/tachyon/dns-failover.state"); } catch(e) {}
+
     // Restart tachyon service to apply immediately.
     // When invoked via RPC/UI (async_restart), spawn the restart in the background
     // with inherited file descriptors closed so rpcd does not hang waiting for
@@ -690,16 +748,23 @@ function read_state() {
     return type(data) == "object" ? data : null;
 }
 
+function worker_is_running() {
+    let pid = int(trim(as_string(fs.readfile(BENCHMARK_PID_FILE))));
+    if (pid <= 0)
+        return false;
+    let cmdline = as_string(fs.readfile("/proc/" + pid + "/cmdline"));
+    return index(cmdline, LIB_DIR + "/dns/benchmark.uc") >= 0 &&
+        index(split(cmdline, sprintf("%c", 0)), "worker") >= 0;
+}
+
 function start_async() {
     let existing = read_state();
     if (existing && existing.running === true) {
         let age = now_seconds() - (existing.started_at || 0);
         // Расширенный список может тестироваться дольше 90 секунд.
-        let pid = int(trim(as_string(fs.readfile(BENCHMARK_PID_FILE))));
-        let cmdline = pid > 0 ? as_string(fs.readfile('/proc/' + pid + '/cmdline')) : '';
-        let worker_running = index(cmdline, LIB_DIR + '/dns/benchmark.uc') >= 0 &&
-            index(split(cmdline, sprintf('%c', 0)), 'worker') >= 0;
-        if (worker_running || age < 90) {
+        let pid_raw = trim(as_string(fs.readfile(BENCHMARK_PID_FILE)));
+        let worker_running = worker_is_running();
+        if (worker_running || (pid_raw == "" && age < 90)) {
             print(sprintf("%J\n", { success: true, message: "DNS benchmark is already running", state: existing }));
             return 0;
         }
@@ -717,17 +782,14 @@ function start_async() {
     };
     write_state(initial_state);
 
-    // Fork async background worker
-    let worker_cmd = sprintf("TACHYON_LIB=%s ucode -L %s %s/dns/benchmark.uc worker >/dev/null 2>&1 & echo $!",
-        shell_quote(LIB_DIR), shell_quote(LIB_DIR), LIB_DIR);
-
-    let pipe = fs.popen(worker_cmd, "r");
-    if (pipe) {
-        let pid = trim(as_string(pipe.read("all")));
-        pipe.close();
-        if (pid != "")
-            fs.writefile(BENCHMARK_PID_FILE, pid);
-    }
+    // Fork async background worker with inherited FDs closed so rpcd does not
+    // hold the ubus exec pipe open and kill the worker after the 10s RPC timeout.
+    let inner_cmd = "TACHYON_LIB=" + shell_quote(LIB_DIR) + " " +
+        command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/benchmark.uc", "worker" ]);
+    let worker_cmd = common.background_command_with_pid(inner_cmd, ">/dev/null", "");
+    let pid = trim(common.command_output(worker_cmd));
+    if (pid != "")
+        fs.writefile(BENCHMARK_PID_FILE, pid);
 
     print(sprintf("%J\n", { success: true, message: "DNS benchmark started", running: true }));
     return 0;
@@ -746,21 +808,34 @@ function run_worker() {
     };
     write_state(state);
 
-    let benchmark_data = run_benchmark(function(completed, total, current_name, latest_result) {
-        state.progress = int((completed * 100) / total);
-        state.current_server = current_name;
-        if (latest_result)
-            push(state.results, latest_result);
-        write_state(state);
-    });
+    try {
+        let benchmark_data = run_benchmark(function(completed, total, current_name, latest_result) {
+            state.progress = int((completed * 100) / total);
+            state.current_server = current_name;
+            if (latest_result)
+                push(state.results, latest_result);
+            write_state(state);
+        });
 
-    state.running = false;
-    state.progress = 100;
-    state.current_server = "Completed";
-    state.results = benchmark_data.results;
-    state.recommendation = benchmark_data.recommendation;
-    state.finished_at = now_seconds();
-    write_state(state);
+        state.running = false;
+        state.progress = 100;
+        state.current_server = "Completed";
+        state.results = benchmark_data.results;
+        state.recommendation = benchmark_data.recommendation;
+        state.finished_at = now_seconds();
+        write_state(state);
+    }
+    catch (e) {
+        state.running = false;
+        state.finished_at = now_seconds();
+        if (length(array_or_empty(state.results)) > 0) {
+            state.results = sort(state.results, function(a, b) { return a.score - b.score; });
+            state.recommendation = compute_recommendation(state.results);
+        } else {
+            state.error = as_string(e);
+        }
+        write_state(state);
+    }
 
     try { fs.unlink(BENCHMARK_PID_FILE); } catch(e) {}
     return 0;
@@ -798,6 +873,21 @@ function get_status() {
             started_at: 0,
             finished_at: null
         };
+    } else if (state.running === true) {
+        let pid_raw = trim(as_string(fs.readfile(BENCHMARK_PID_FILE)));
+        let age = now_seconds() - (state.started_at || 0);
+        if ((pid_raw != "" && !worker_is_running() && age >= 2) || (pid_raw == "" && age >= 15)) {
+            state.running = false;
+            state.finished_at = now_seconds();
+            if (length(array_or_empty(state.results)) > 0 && !state.recommendation) {
+                state.results = sort(state.results, function(a, b) { return a.score - b.score; });
+                state.recommendation = compute_recommendation(state.results);
+            } else if (!state.error) {
+                state.error = "Benchmark worker terminated unexpectedly";
+            }
+            write_state(state);
+            try { fs.unlink(BENCHMARK_PID_FILE); } catch(e) {}
+        }
     }
     print(sprintf("%J\n", state));
     return 0;

@@ -630,15 +630,28 @@ function nft_chain_counter_status(chain) {
 // router reports a false positive against its own firewall.
 const TACHYON_OWN_MARKS = [
     constants.NFT_FAKEIP_MARK || "0x04000000",
-    constants.NFT_OUTBOUND_MARK || "0x08000000"
+    constants.NFT_OUTBOUND_MARK || "0x08000000",
+    constants.ZAPRET_DESYNC_MARK || "0x40000000",
+    constants.ZAPRET_DESYNC_MARK_POSTNAT || "0x20000000",
+    constants.ZAPRET2_DESYNC_MARK || "0x40000000",
+    constants.ZAPRET2_DESYNC_MARK_POSTNAT || "0x20000000",
+    constants.ZAPRET_ROUTE_MARK_BASE || "0x01000000",
+    constants.ZAPRET2_ROUTE_MARK_BASE || "0x02000000"
 ];
 
 function line_marks_are_all_ours(line) {
     let seen = false;
+    line = replace(line, /comment "[^"]*"/g, "");
+    line = replace(line, /@[a-z0-9]+,[0-9]+,[0-9]+(\s*&\s*0x[0-9a-fA-F]+)?(\s*(==|!=))?\s*0x[0-9a-fA-F]+/g, "");
+    let mark_idx = index(line, "meta mark set");
+    if (mark_idx >= 0)
+        line = substr(line, mark_idx);
     for (let token in match(line, /0x[0-9a-fA-F]+/g) || []) {
-        seen = true;
         // A capture-less /g match yields [whole-match] per element.
         let value = lc(as_string(token[0]));
+        if (int(value, 0) == 0)
+            continue;
+        seen = true;
         let ours = false;
         for (let mark in TACHYON_OWN_MARKS) {
             if (lc(as_string(mark)) == value) {
@@ -764,6 +777,9 @@ function check_nft_rules() {
         // Native Tailscale: tailscaled (and Tachyon's own exit-node/firewall
         // rules) live in their own table — their marking rules are expected.
         if (table_name == "tachyon_tailscale" && native_tailscale_enabled())
+            continue;
+        // Zapret / Zapret2 companion tables managed alongside Tachyon
+        if (table_name == "zapret" || table_name == "zapret2")
             continue;
         if (nft_table_has_other_mark_rules(family, table_name)) {
             rules_other_mark_exist = 1;

@@ -124,5 +124,18 @@ printf '%s' "$mixed" | grep -q '0x04000000' &&
   fail "the Tachyon mark must not survive into the printed list, got: $mixed"
 ok
 
+printf 'table inet zapret\n\toifname @wanif udp length >= 28 @ih,32,32 0x2112a442 @ih,0,8 & 0xc0 == 0x0 @ih,30,2 0x0 ip daddr != @nozapret meta mark set meta mark | 0x20000000 ct mark set ct mark | 0x40000000 queue flags bypass to 65400\n\tmeta mark & 0x40000000 == 0x00000000 jump postnat\ntable inet fw4\n\toifname @wanif udp length >= 28 @ih,32,32 0x2112a442 @ih,0,8 & 0xc0 == 0x0 @ih,30,2 0x0 ip daddr != @nozapret meta mark set meta mark | 0x20000000 ct mark set ct mark | 0x40000000 queue flags bypass to 65400\n\tmeta mark & 0x40000000 == 0x00000000 @ih,32,32 0x2112a442 jump postnat\n' >"$WORK_DIR/zapret.txt"
+
+zapret_printed="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$STATUS_DIAG" nft-ruleset-other-mark-lines TachyonTable <"$WORK_DIR/zapret.txt" 2>/dev/null || true)"
+[ -z "$zapret_printed" ] ||
+  fail "Zapret postnat and desync rules with payload hex matches must not be reported as foreign marking rules, got: $zapret_printed"
+ok
+
+printf 'table inet fw4\n\tmeta mark == 0x00000000 meta mark set 100\n' >"$WORK_DIR/zero_only.txt"
+zero_printed="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$STATUS_DIAG" nft-ruleset-other-mark-lines TachyonTable <"$WORK_DIR/zero_only.txt" 2>/dev/null || true)"
+printf '%s' "$zero_printed" | grep -q 'meta mark set 100' ||
+  fail "a foreign rule whose only hex token is 0x00000000 must still be reported as foreign, got: $zero_printed"
+ok
+
 printf 'ticket batch 94/95/97/98: %d checks passed\n' "$pass_count"
 printf 'PASS: ticket_batch_providers_and_dns\n'

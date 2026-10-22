@@ -9166,7 +9166,7 @@ function getComponentActionKey(component, action) {
 // src/tachyon/helpers/singBoxVariant.ts
 function isTachyonCoreVersion(version) {
   const v = String(version || "").trim();
-  return v.includes("-tachyon.") || v.includes("tachyon-core") || /^v?0\.0\.\d+/.test(v);
+  return v.includes("-tachyon.") || v.includes("tachyon-core") || /^v?0\.\d+\.\d+/i.test(v);
 }
 function isExtendedSingBoxVersion(version) {
   return String(version || "").includes("extended") || String(version || "").includes("-lx");
@@ -11259,8 +11259,9 @@ var dashboardDataUpdatesStarted = false;
 var dashboardDataUpdatesId = 0;
 var connectionsRefreshTimer = null;
 var currentConnections = [];
-var rawConnectionsList = [];
 var currentTopDomains = [];
+var lastRawConnections = [];
+var cachedHostnames = /* @__PURE__ */ new Map();
 var directSocketsFailed = false;
 var trafficRatesState = createInitialTrafficRatesState();
 var pageUnloading = false;
@@ -11651,10 +11652,10 @@ async function connectToClashSockets(dataUpdatesId) {
       directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
       if (Array.isArray(parsedMsg.connections)) {
-        rawConnectionsList = parsedMsg.connections;
+        lastRawConnections = parsedMsg.connections;
         currentConnections = aggregateClientConnections(
           parsedMsg.connections,
-          /* @__PURE__ */ new Map()
+          cachedHostnames
         );
         currentTopDomains = aggregateTopDomains(parsedMsg.connections);
       }
@@ -12878,16 +12879,33 @@ async function fetchConnections() {
     return;
   }
   try {
+    if (!needsFallbackPolling && lastRawConnections.length > 0) {
+      const hostnames2 = await fetchHostnames();
+      if (hostnames2.size > 0) {
+        cachedHostnames = hostnames2;
+      }
+      currentConnections = aggregateClientConnections(
+        lastRawConnections,
+        cachedHostnames
+      );
+      void renderSystemInfoWidget();
+      renderConnectionsWidget();
+      return;
+    }
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
-      shouldFetchHostnames ? fetchHostnames() : Promise.resolve(/* @__PURE__ */ new Map())
+      shouldFetchHostnames ? fetchHostnames() : Promise.resolve(cachedHostnames)
     ]);
+    if (shouldFetchHostnames && hostnames.size > 0) {
+      cachedHostnames = hostnames;
+    }
     if (res.success && res.data && typeof res.data === "object") {
       const payload = res.data;
       if (Array.isArray(payload.connections)) {
+        lastRawConnections = payload.connections;
         currentConnections = aggregateClientConnections(
           payload.connections,
-          hostnames
+          cachedHostnames
         );
         currentTopDomains = aggregateTopDomains(payload.connections);
       }
@@ -13022,7 +13040,7 @@ async function renderSectionDashboardWidgets() {
     const stats = getSectionConnectionStats(
       sectionName,
       totalProxySections,
-      rawConnectionsList,
+      lastRawConnections,
       {
         downloadTotal: total.downloadTotal,
         uploadTotal: total.uploadTotal,
@@ -20265,7 +20283,12 @@ function renderDnsBenchmarkModal() {
         if (applyBtn) applyBtn.disabled = true;
       } else {
         progressContainer.style.display = "none";
-        if (data.finished_at) {
+        if (data.error) {
+          statusLabel.textContent = `❌ ${data.error}`;
+          if (startBtn) startBtn.disabled = false;
+          if (applyBtn)
+            applyBtn.disabled = !data.recommendation;
+        } else if (data.finished_at) {
           statusLabel.textContent = `✓ ${_("Benchmark completed successfully")}`;
           if (startBtn) startBtn.disabled = false;
           if (applyBtn)
@@ -28169,9 +28192,13 @@ function computeSystemInfoMutation(currentSystemInfo, result) {
   }
   if (result.component === "sing_box") {
     nextSystemInfo.sing_box_version = version;
-    if (result.action === "install" || result.action === "install_version" || result.action === "reinstall" || result.action === "install_stable" || result.action === "install_tiny" || result.action === "install_extended" || result.action === "install_extended_compressed" || result.action === "install_lx") {
+    if (result.action === "install_stable" || result.action === "install_tiny" || result.action === "install_extended" || result.action === "install_extended_compressed" || result.action === "install_lx") {
       nextSystemInfo.sing_box_tachyon_core = 0;
       nextSystemInfo.sing_box_fptn = 0;
+    } else if (result.action === "install" || result.action === "install_version" || result.action === "reinstall") {
+      const isCore = isTachyonCoreVersion(version) || Boolean(result.release_url?.includes("tachyon-core")) || Boolean(result.message?.includes("tachyon-core")) || Boolean(currentSystemInfo.sing_box_tachyon_core) && !version.includes("-lx") && !version.includes("extended");
+      nextSystemInfo.sing_box_tachyon_core = isCore ? 1 : 0;
+      nextSystemInfo.sing_box_fptn = isCore ? 1 : 0;
     }
     if (result.action === "install_tachyon_core") {
       nextSystemInfo.sing_box_tachyon_core = 1;
@@ -28696,12 +28723,32 @@ async function refreshSystemInfoAfterMutation() {
 }
 var RELOAD_POLL_INTERVAL_MS = 1e3;
 var RELOAD_POLL_MAX_WAIT_MS = 3e4;
+async function bustCachedLuciViewAssets() {
+  if (typeof performance === "undefined" || typeof performance.getEntriesByType !== "function" || typeof fetch !== "function") {
+    return;
+  }
+  try {
+    const urls = /* @__PURE__ */ new Set();
+    for (const entry of performance.getEntriesByType("resource")) {
+      if (entry?.name && entry.name.includes("/luci-static/resources/view/tachyon/")) {
+        urls.add(entry.name);
+      }
+    }
+    if (urls.size > 0) {
+      await Promise.allSettled(
+        Array.from(urls).map((url) => fetch(url, { cache: "reload" }))
+      );
+    }
+  } catch {
+  }
+}
 async function waitForTachyonResponsive() {
   const deadline = Date.now() + RELOAD_POLL_MAX_WAIT_MS;
   while (Date.now() < deadline) {
     try {
       const response = await TachyonShellMethods.getUiState();
       if (response.success) {
+        await bustCachedLuciViewAssets();
         return true;
       }
     } catch {
@@ -28710,6 +28757,7 @@ async function waitForTachyonResponsive() {
       (resolve) => setTimeout(resolve, RELOAD_POLL_INTERVAL_MS)
     );
   }
+  await bustCachedLuciViewAssets();
   return false;
 }
 function reloadPageAfterTachyonUpdate(jobId) {
@@ -30326,7 +30374,7 @@ function renderEngineCard() {
     )
   ];
   if (engineBadgeNode) headerChildren.push(engineBadgeNode);
-  const engineTitleLabel = isSingBoxActive && tachyonCore || active === "tachyon-core" ? "tachyon-core" : engineLabel(active);
+  const engineTitleLabel = isSingBoxActive ? tachyonCore ? "tachyon-core" : "sing-box" : engineLabel(active);
   headerChildren.push(
     E(
       "span",
@@ -30599,29 +30647,41 @@ function renderEngineCard() {
       if (isSelectedActive) return;
       const engineId = getVariantEngine(selectedVariant.id);
       if (isSelectedSingBox) {
-        if (!isSelectedInstalled) {
+        if (!isSelectedInstalled || isSingBoxActive) {
           void runComponentAction(
             "sing_box",
             getVariantInstallAction(selectedVariant.id),
-            "singBoxInstall"
+            "singBoxInstall",
+            selectedVariant.label
           );
-        } else if (engineId !== active) {
-          void applyEngineSelection(engineId, active, warning);
+        } else {
+          void applyEngineSelection(
+            "tachyon-core",
+            active,
+            warning,
+            selectedVariant.label
+          );
         }
       } else {
         if (!isSelectedInstalled) {
           void runSteerAction(engineId, "install");
         } else {
-          void applyEngineSelection(engineId, active, warning);
+          void applyEngineSelection(
+            engineId,
+            active,
+            warning,
+            selectedVariant.label
+          );
         }
       }
     }
   });
+  const selectedCheckComponent = isSelectedSingBox ? "sing_box" : selectedVariant.id === "steer-extended" ? "steer-extended" : "steer";
   const checkUpdateAction = {
-    key: isSingBoxActive ? "singBoxCheck" : "steerCheck",
+    key: isSelectedSingBox ? "singBoxCheck" : "steerCheck",
     text: _("Check update"),
     icon: renderSearchIcon24,
-    component: checkComponent,
+    component: selectedCheckComponent,
     action: "check_update"
   };
   const checkUpdateLoading = Boolean(
@@ -30631,16 +30691,16 @@ function renderEngineCard() {
     text: checkUpdateAction.text,
     icon: checkUpdateAction.icon,
     loading: checkUpdateLoading,
-    disabled: singBoxLoading || installing || anyActionLoading && !checkUpdateLoading,
+    disabled: !isSelectedInstalled || singBoxLoading || installing || anyActionLoading && !checkUpdateLoading,
     onClick: () => void handleComponentAction(checkUpdateAction)
   });
-  const showUpdateBtn = shouldShowInstallAfterCheck(checkComponent);
+  const showUpdateBtn = isSelectedInstalled && shouldShowInstallAfterCheck(selectedCheckComponent);
   const updateButton = showUpdateBtn ? (() => {
     const ua = {
-      key: isSingBoxActive ? "singBoxInstall" : "steerInstall",
+      key: isSelectedSingBox ? "singBoxInstall" : "steerInstall",
       text: _("Update"),
       icon: renderRotateCcwIcon24,
-      component: checkComponent,
+      component: selectedCheckComponent,
       action: "install"
     };
     const loading2 = Boolean(updatesActions[ua.key]?.loading);
@@ -30900,6 +30960,7 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
         }
       }
     }
+    selectedEngineOverride = null;
     await refreshEngineInfo();
     await refreshSystemInfoAfterMutation();
     showToast(successMessage, "success");
@@ -30925,29 +30986,35 @@ async function runEngineFlow(jobs, modalOptions, successMessage) {
     renderUpdatesComponents();
   }
 }
-async function runComponentAction(component, action, _key) {
-  const engineTarget = action === "install_tachyon_core" ? "tachyon-core" : "sing-box";
+async function runComponentAction(component, action, _key, targetLabel) {
+  const activeEngine = engineInfoCache?.active || "tachyon-core";
+  const isSteerActive = activeEngine === "steer" || activeEngine === "steer-extended";
+  const engineTarget = "tachyon-core";
   const installKey = getComponentActionKey(component, action) ?? getComponentInstallKey(component);
+  const jobs = [{ component, action, key: installKey }];
+  if (isSteerActive) {
+    jobs.push({
+      component: "engine",
+      action: "switch",
+      key: "engineSwitch",
+      extra: engineTarget
+    });
+  }
+  const resolvedLabel = targetLabel || (action === "install_tachyon_core" ? "tachyon-core" : action === "install_lx" ? "sing-box (Leadaxe)" : action === "install_extended" ? "sing-box (Extended)" : action === "install_extended_compressed" ? "sing-box (Extended compressed)" : action === "install_tiny" ? "sing-box (Tiny)" : "sing-box (Stable)");
   await runEngineFlow(
-    [
-      { component, action, key: installKey },
-      {
-        component: "engine",
-        action: "switch",
-        key: "engineSwitch",
-        extra: engineTarget
-      }
-    ],
+    jobs,
     {
       component,
       action,
-      componentTitle: getComponentCardTitle(
+      componentTitle: targetLabel || getComponentCardTitle(
         component,
-        component === "sing_box" && Boolean(store.get().diagnosticsSystemInfo?.sing_box_tachyon_core)
+        component === "sing_box" && (action === "install_tachyon_core" || Boolean(
+          store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
+        ))
       ),
       currentVersion: getComponentCurrentVersion2(component)
     },
-    `${_("Active engine")}: ${engineLabel(engineTarget)}`
+    `${_("Active engine")}: ${resolvedLabel}`
   );
 }
 async function runSteerAction(component, action) {
@@ -30979,7 +31046,7 @@ async function runSteerAction(component, action) {
     action === "install" ? `${_("Active engine")}: ${engineLabel(component)}` : `${_("Steer")}: ${action}`
   );
 }
-async function applyEngineSelection(engine, current, warning) {
+async function applyEngineSelection(engine, current, warning, targetLabel) {
   if (engine === current) {
     return;
   }
@@ -30991,6 +31058,11 @@ async function applyEngineSelection(engine, current, warning) {
   } else {
     warning.style.display = "none";
   }
+  const currentSys = normalizeSingBoxVariantFields(
+    store.get().diagnosticsSystemInfo
+  );
+  const currentLabel = current === "tachyon-core" || current === "sing-box" ? currentSys.sing_box_tachyon_core ? "tachyon-core" : "sing-box" : engineLabel(current);
+  const resolvedLabel = targetLabel || engineLabel(engine);
   await runEngineFlow(
     [
       {
@@ -31004,10 +31076,10 @@ async function applyEngineSelection(engine, current, warning) {
       component: "engine",
       action: "switch",
       componentTitle: _("Routing Engine"),
-      currentVersion: engineLabel(current),
-      targetVersion: engineLabel(engine)
+      currentVersion: currentLabel,
+      targetVersion: resolvedLabel
     },
-    `${_("Active engine")}: ${engineLabel(engine)}`
+    `${_("Active engine")}: ${resolvedLabel}`
   );
 }
 function renderUpdatesComponents() {
