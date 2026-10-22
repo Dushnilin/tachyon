@@ -44,7 +44,6 @@ import {
   ITopDomain,
 } from './connections';
 import {
-  getActiveRoute,
   getAllActiveRoutes,
   isServiceGroup,
   ActiveRouteInfo,
@@ -2084,8 +2083,7 @@ async function renderSectionsWidget() {
         }
         void renderSectionsWidget();
       },
-      activeRegionFilter:
-        activeRegionFilters.get(section.sectionName) || 'all',
+      activeRegionFilter: activeRegionFilters.get(section.sectionName) || 'all',
       onFilterRegion: (sectionName: string, region: string) => {
         activeRegionFilters.set(sectionName, region);
         activeCountryFilters.delete(sectionName);
@@ -2284,8 +2282,17 @@ function renderConnectionsWidget() {
 export function getSectionConnectionStats(
   sectionName: string,
   totalProxySections: number,
-  rawConns: Array<{ chains?: string[]; upload?: number | string; download?: number | string }>,
-  totals: { downloadTotal?: number; uploadTotal?: number; downSpeed?: number; upSpeed?: number },
+  rawConns: Array<{
+    chains?: string[];
+    upload?: number | string;
+    download?: number | string;
+  }>,
+  totals: {
+    downloadTotal?: number;
+    uploadTotal?: number;
+    downSpeed?: number;
+    upSpeed?: number;
+  },
 ) {
   if (totalProxySections <= 1) {
     return {
@@ -2812,7 +2819,11 @@ export function renderServiceRowItem(
     }
     if (options.extraSuffix) {
       valueChildren.push(
-        E('span', { style: 'font-size: 11px; opacity: 0.8;' }, options.extraSuffix),
+        E(
+          'span',
+          { style: 'font-size: 11px; opacity: 0.8;' },
+          options.extraSuffix,
+        ),
       );
     }
     if (valueChildren.length === 0) {
@@ -2857,7 +2868,6 @@ export function renderServiceRowItem(
   };
 }
 
-
 let latestTailscalePeersRequestId = 0;
 
 async function fetchTailscalePeers() {
@@ -2887,7 +2897,9 @@ async function fetchTailscalePeers() {
 function peerRow(name: string, online: boolean) {
   return {
     key: name,
-    value: online ? tr('✔ В сети', '✔ Online') : tr('✘ Не в сети', '✘ Offline'),
+    value: online
+      ? tr('✔ В сети', '✔ Online')
+      : tr('✘ Не в сети', '✘ Offline'),
     attributes: {
       class: online
         ? 'tachyon_dashboard-page__widgets-section__item__row--success'
@@ -2929,7 +2941,7 @@ async function renderTailscaleWidget() {
           value:
             data.backend_state === 'Running'
               ? tr('Работает', 'Running')
-              : (data.backend_state || '—'),
+              : data.backend_state || '—',
           attributes: {
             class:
               data.backend_state === 'Running'

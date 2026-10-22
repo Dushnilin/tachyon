@@ -2941,9 +2941,17 @@ function getRegionMetadata(region, locale) {
     case "europe":
       return { id: "europe", label: isRu ? "Европа" : "Europe", flag: "🇪🇺" };
     case "asia":
-      return { id: "asia", label: isRu ? "Азия и Восток" : "Asia & Mideast", flag: "🌏" };
+      return {
+        id: "asia",
+        label: isRu ? "Азия и Восток" : "Asia & Mideast",
+        flag: "🌏"
+      };
     case "americas":
-      return { id: "americas", label: isRu ? "Америка" : "Americas", flag: "🌎" };
+      return {
+        id: "americas",
+        label: isRu ? "Америка" : "Americas",
+        flag: "🌎"
+      };
     case "other":
       return { id: "other", label: isRu ? "Другие" : "Other", flag: "🌍" };
     case "all":
@@ -3058,64 +3066,168 @@ var COMMON_ISO_CODES = /* @__PURE__ */ new Set([
   "DK"
 ]);
 function buildCountryRegex(pattern) {
-  return new RegExp(`(?:^|[^\\p{L}\\p{N}])(?:${pattern})(?:[^\\p{L}\\p{N}]|$)`, "iu");
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])(?:${pattern})(?:[^\\p{L}\\p{N}]|$)`,
+    "iu"
+  );
 }
 var COUNTRY_KEYWORD_PATTERNS = [
-  { code: "RU", regex: buildCountryRegex("russia|russian|россия|рф|москва|moscow|питер|spb") },
-  { code: "DE", regex: buildCountryRegex("germany|german|германия|frankfurt|франкфурт|berlin|берлин") },
-  { code: "NL", regex: buildCountryRegex("netherlands|holland|нидерланды|голландия|amsterdam|амстердам") },
-  { code: "US", regex: buildCountryRegex("usa|united\\s*states|сша|america|америка|new\\s*york|los\\s*angeles|miami") },
-  { code: "GB", regex: buildCountryRegex("uk|united\\s*kingdom|great\\s*britain|великобритания|англия|london|лондон") },
-  { code: "TR", regex: buildCountryRegex("turkey|turkish|турция|istanbul|стамбул") },
-  { code: "FI", regex: buildCountryRegex("finland|финляндия|helsinki|хельсинки") },
+  {
+    code: "RU",
+    regex: buildCountryRegex(
+      "russia|russian|россия|рф|москва|moscow|питер|spb"
+    )
+  },
+  {
+    code: "DE",
+    regex: buildCountryRegex(
+      "germany|german|германия|frankfurt|франкфурт|berlin|берлин"
+    )
+  },
+  {
+    code: "NL",
+    regex: buildCountryRegex(
+      "netherlands|holland|нидерланды|голландия|amsterdam|амстердам"
+    )
+  },
+  {
+    code: "US",
+    regex: buildCountryRegex(
+      "usa|united\\s*states|сша|america|америка|new\\s*york|los\\s*angeles|miami"
+    )
+  },
+  {
+    code: "GB",
+    regex: buildCountryRegex(
+      "uk|united\\s*kingdom|great\\s*britain|великобритания|англия|london|лондон"
+    )
+  },
+  {
+    code: "TR",
+    regex: buildCountryRegex("turkey|turkish|турция|istanbul|стамбул")
+  },
+  {
+    code: "FI",
+    regex: buildCountryRegex("finland|финляндия|helsinki|хельсинки")
+  },
   { code: "SE", regex: buildCountryRegex("sweden|швеция|stockholm|стокгольм") },
   { code: "PL", regex: buildCountryRegex("poland|польша|warsaw|варшава") },
-  { code: "KZ", regex: buildCountryRegex("kazakhstan|казахстан|almaty|алматы|astana|астана") },
+  {
+    code: "KZ",
+    regex: buildCountryRegex(
+      "kazakhstan|казахстан|almaty|алматы|astana|астана"
+    )
+  },
   { code: "FR", regex: buildCountryRegex("france|франция|paris|париж") },
   { code: "SG", regex: buildCountryRegex("singapore|сингапур") },
   { code: "JP", regex: buildCountryRegex("japan|япония|tokyo|токио") },
   { code: "HK", regex: buildCountryRegex("hong\\s*kong|гонконг") },
-  { code: "CH", regex: buildCountryRegex("switzerland|швейцария|zurich|цюрих|geneva|женева") },
+  {
+    code: "CH",
+    regex: buildCountryRegex(
+      "switzerland|швейцария|zurich|цюрих|geneva|женева"
+    )
+  },
   { code: "AT", regex: buildCountryRegex("austria|австрия|vienna|вена") },
-  { code: "ES", regex: buildCountryRegex("spain|испания|madrid|мадрид|barcelona|барселона") },
+  {
+    code: "ES",
+    regex: buildCountryRegex("spain|испания|madrid|мадрид|barcelona|барселона")
+  },
   { code: "IT", regex: buildCountryRegex("italy|италия|rome|рим|milan|милан") },
-  { code: "CA", regex: buildCountryRegex("canada|канада|toronto|торонто|vancouver|ванкувер") },
+  {
+    code: "CA",
+    regex: buildCountryRegex(
+      "canada|канада|toronto|торонто|vancouver|ванкувер"
+    )
+  },
   { code: "UA", regex: buildCountryRegex("ukraine|украина|kyiv|kiev|киев") },
-  { code: "AE", regex: buildCountryRegex("uae|emirates|оаэ|эмираты|dubai|дубай") },
+  {
+    code: "AE",
+    regex: buildCountryRegex("uae|emirates|оаэ|эмираты|dubai|дубай")
+  },
   { code: "GE", regex: buildCountryRegex("georgia|грузия|tbilisi|тбилиси") },
   { code: "AM", regex: buildCountryRegex("armenia|армения|yerevan|ереван") },
   { code: "MD", regex: buildCountryRegex("moldova|молдова|chisinau|кишинев") },
-  { code: "BY", regex: buildCountryRegex("belarus|беларусь|белоруссия|minsk|минск") },
+  {
+    code: "BY",
+    regex: buildCountryRegex("belarus|беларусь|белоруссия|minsk|минск")
+  },
   { code: "RS", regex: buildCountryRegex("serbia|сербия|belgrade|белград") },
-  { code: "IL", regex: buildCountryRegex("israel|израиль|tel\\s*aviv|тель-авив") },
-  { code: "IN", regex: buildCountryRegex("india|индия|mumbai|мумбаи|delhi|дели") },
-  { code: "CY", regex: buildCountryRegex("cyprus|кипр|limassol|лимасол|nicosia|никосия") },
+  {
+    code: "IL",
+    regex: buildCountryRegex("israel|израиль|tel\\s*aviv|тель-авив")
+  },
+  {
+    code: "IN",
+    regex: buildCountryRegex("india|индия|mumbai|мумбаи|delhi|дели")
+  },
+  {
+    code: "CY",
+    regex: buildCountryRegex("cyprus|кипр|limassol|лимасол|nicosia|никосия")
+  },
   { code: "TW", regex: buildCountryRegex("taiwan|тайвань|taipei|тайбэй") },
   { code: "CZ", regex: buildCountryRegex("czech|чехия|prague|прага") },
-  { code: "SK", regex: buildCountryRegex("slovakia|словакия|bratislava|братислава") },
-  { code: "RO", regex: buildCountryRegex("romania|румыния|bucharest|бухарест") },
+  {
+    code: "SK",
+    regex: buildCountryRegex("slovakia|словакия|bratislava|братислава")
+  },
+  {
+    code: "RO",
+    regex: buildCountryRegex("romania|румыния|bucharest|бухарест")
+  },
   { code: "BG", regex: buildCountryRegex("bulgaria|болгария|sofia|софия") },
   { code: "HU", regex: buildCountryRegex("hungary|венгрия|budapest|будапешт") },
   { code: "LT", regex: buildCountryRegex("lithuania|литва|vilnius|вильнюс") },
   { code: "LV", regex: buildCountryRegex("latvia|латвия|riga|рига") },
   { code: "EE", regex: buildCountryRegex("estonia|эстония|tallinn|таллин") },
-  { code: "UZ", regex: buildCountryRegex("uzbekistan|узбекистан|tashkent|ташкент") },
-  { code: "KG", regex: buildCountryRegex("kyrgyzstan|кыргызстан|киргизия|bishkek|бишкек") },
-  { code: "TH", regex: buildCountryRegex("thailand|таиланд|тайланд|bangkok|бангкок") },
+  {
+    code: "UZ",
+    regex: buildCountryRegex("uzbekistan|узбекистан|tashkent|ташкент")
+  },
+  {
+    code: "KG",
+    regex: buildCountryRegex("kyrgyzstan|кыргызстан|киргизия|bishkek|бишкек")
+  },
+  {
+    code: "TH",
+    regex: buildCountryRegex("thailand|таиланд|тайланд|bangkok|бангкок")
+  },
   { code: "VN", regex: buildCountryRegex("vietnam|вьетнам|hanoi|ханой") },
   { code: "KR", regex: buildCountryRegex("korea|корея|seoul|сеул") },
-  { code: "AU", regex: buildCountryRegex("australia|австралия|sydney|сидней|melbourne|мельбурн") },
-  { code: "BR", regex: buildCountryRegex("brazil|бразилия|sao\\s*paulo|сан-паулу") },
-  { code: "AR", regex: buildCountryRegex("argentina|аргентина|buenos\\s*aires|буэнос-айрес") },
+  {
+    code: "AU",
+    regex: buildCountryRegex(
+      "australia|австралия|sydney|сидней|melbourne|мельбурн"
+    )
+  },
+  {
+    code: "BR",
+    regex: buildCountryRegex("brazil|бразилия|sao\\s*paulo|сан-паулу")
+  },
+  {
+    code: "AR",
+    regex: buildCountryRegex(
+      "argentina|аргентина|buenos\\s*aires|буэнос-айрес"
+    )
+  },
   { code: "CL", regex: buildCountryRegex("chile|чили|santiago|сантьяго") },
   { code: "CO", regex: buildCountryRegex("colombia|колумбия|bogota|богота") },
   { code: "MX", regex: buildCountryRegex("mexico|мексика") },
   { code: "EG", regex: buildCountryRegex("egypt|египет|cairo|каир") },
-  { code: "IS", regex: buildCountryRegex("iceland|исландия|reykjavik|рейкьявик") },
+  {
+    code: "IS",
+    regex: buildCountryRegex("iceland|исландия|reykjavik|рейкьявик")
+  },
   { code: "NO", regex: buildCountryRegex("norway|норвегия|oslo|осло") },
-  { code: "DK", regex: buildCountryRegex("denmark|дания|copenhagen|копенгаген") },
+  {
+    code: "DK",
+    regex: buildCountryRegex("denmark|дания|copenhagen|копенгаген")
+  },
   { code: "IE", regex: buildCountryRegex("ireland|ирландия|dublin|дублин") },
-  { code: "PT", regex: buildCountryRegex("portugal|португалия|lisbon|лиссабон") },
+  {
+    code: "PT",
+    regex: buildCountryRegex("portugal|португалия|lisbon|лиссабон")
+  },
   { code: "BE", regex: buildCountryRegex("belgium|бельгия|brussels|брюссель") },
   { code: "LU", regex: buildCountryRegex("luxembourg|люксембург") },
   { code: "GR", regex: buildCountryRegex("greece|греция|athens|афины") },
@@ -3124,17 +3236,35 @@ var COUNTRY_KEYWORD_PATTERNS = [
   { code: "AL", regex: buildCountryRegex("albania|албания|tirana|тирана") },
   { code: "MK", regex: buildCountryRegex("macedonia|македония|skopje|скопье") },
   { code: "AZ", regex: buildCountryRegex("azerbaijan|азербайджан|baku|баку") },
-  { code: "ID", regex: buildCountryRegex("indonesia|индонезия|jakarta|джакарта") },
-  { code: "MY", regex: buildCountryRegex("malaysia|малайзия|kuala\\s*lumpur|куала-лумпур") },
-  { code: "PH", regex: buildCountryRegex("philippines|филиппины|manila|манила") },
+  {
+    code: "ID",
+    regex: buildCountryRegex("indonesia|индонезия|jakarta|джакарта")
+  },
+  {
+    code: "MY",
+    regex: buildCountryRegex("malaysia|малайзия|kuala\\s*lumpur|куала-лумпур")
+  },
+  {
+    code: "PH",
+    regex: buildCountryRegex("philippines|филиппины|manila|манила")
+  },
   { code: "PK", regex: buildCountryRegex("pakistan|пакистан") },
   { code: "BD", regex: buildCountryRegex("bangladesh|бангладеш|dhaka|дакка") },
   { code: "QA", regex: buildCountryRegex("qatar|катар|doha|доха") },
   { code: "BH", regex: buildCountryRegex("bahrain|бахрейн|manama|манама") },
   { code: "IQ", regex: buildCountryRegex("iraq|ирак|baghdad|багдад") },
-  { code: "MN", regex: buildCountryRegex("mongolia|монголия|ulaanbaatar|улан-батор") },
-  { code: "KH", regex: buildCountryRegex("cambodia|камбоджа|phnom\\s*penh|пномпень") },
-  { code: "LK", regex: buildCountryRegex("sri\\s*lanka|шри-ланка|colombo|коломбо") },
+  {
+    code: "MN",
+    regex: buildCountryRegex("mongolia|монголия|ulaanbaatar|улан-батор")
+  },
+  {
+    code: "KH",
+    regex: buildCountryRegex("cambodia|камбоджа|phnom\\s*penh|пномпень")
+  },
+  {
+    code: "LK",
+    regex: buildCountryRegex("sri\\s*lanka|шри-ланка|colombo|коломбо")
+  },
   { code: "BN", regex: buildCountryRegex("brunei|бруней") },
   { code: "LI", regex: buildCountryRegex("liechtenstein|лихтенштейн") },
   { code: "SS", regex: buildCountryRegex("south\\s*sudan|южный\\s*судан") },
@@ -3184,7 +3314,6 @@ function getCountryName(countryCode, locale) {
   if (code === "OTHER") {
     return translate("Other");
   }
-  const isDocRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru");
   const isDocEn = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("en");
   const effectiveLocale = locale || (isDocEn ? "en" : "ru");
   const isRu = effectiveLocale.startsWith("ru");
@@ -3193,7 +3322,9 @@ function getCountryName(countryCode, locale) {
   }
   try {
     if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
-      const displayNames = new Intl.DisplayNames([effectiveLocale, "en"], { type: "region" });
+      const displayNames = new Intl.DisplayNames([effectiveLocale, "en"], {
+        type: "region"
+      });
       const name = displayNames.of(code === "UK" ? "GB" : code);
       if (name && name !== code) {
         return name;
@@ -3293,7 +3424,13 @@ function organizeCountryGroups(countryGroups, mode = "regions", options) {
     regionCounts.all += serverCount;
     regionCounts[reg] += serverCount;
   }
-  const regionOrder = ["all", "europe", "asia", "americas", "other"];
+  const regionOrder = [
+    "all",
+    "europe",
+    "asia",
+    "americas",
+    "other"
+  ];
   const availableRegions = regionOrder.filter((r) => r === "all" || regionCounts[r] > 0).map((r) => {
     const meta = getRegionMetadata(r, sortLocale);
     return {
@@ -3332,9 +3469,11 @@ function organizeCountryGroups(countryGroups, mode = "regions", options) {
   if (mode === "smart_top") {
     const topGroups = [];
     const activeCode = options?.activeCountryCode;
-    let remaining = [...workingGroups];
+    const remaining = [...workingGroups];
     if (activeCode) {
-      const activeIdx = remaining.findIndex((g) => g.countryCode === activeCode);
+      const activeIdx = remaining.findIndex(
+        (g) => g.countryCode === activeCode
+      );
       if (activeIdx !== -1) {
         topGroups.push(remaining[activeIdx]);
         remaining.splice(activeIdx, 1);
@@ -3859,29 +3998,21 @@ function renderAutoGroupsBlock(topGroups, renderOutbound) {
   if (topGroups.length === 0) return null;
   const isRu = typeof document !== "undefined" && (document.documentElement?.lang || "").toLowerCase().startsWith("ru") || false;
   const title = isRu ? "Режимы автовыбора" : typeof _ === "function" ? _("Auto selection modes") : "Auto selection modes";
-  return E(
-    "div",
-    { class: "tachyon_dashboard-page__auto-groups" },
-    [
+  return E("div", { class: "tachyon_dashboard-page__auto-groups" }, [
+    E("div", { class: "tachyon_dashboard-page__auto-groups__header" }, [
+      E("span", {}, title),
       E(
-        "div",
-        { class: "tachyon_dashboard-page__auto-groups__header" },
-        [
-          E("span", {}, title),
-          E(
-            "span",
-            { class: "tachyon_dashboard-page__auto-groups__count" },
-            `${topGroups.length}`
-          )
-        ]
-      ),
-      E(
-        "div",
-        { class: "tachyon_dashboard-page__auto-groups-grid" },
-        topGroups.map((ob) => renderOutbound(ob))
+        "span",
+        { class: "tachyon_dashboard-page__auto-groups__count" },
+        `${topGroups.length}`
       )
-    ]
-  );
+    ]),
+    E(
+      "div",
+      { class: "tachyon_dashboard-page__auto-groups-grid" },
+      topGroups.map((ob) => renderOutbound(ob))
+    )
+  ]);
 }
 function renderDefaultState({
   section,
@@ -4897,7 +5028,11 @@ function renderDualWidget(props) {
         { class: "tachyon-dual-card__body" },
         props.columns.map(
           (col) => E("div", { class: "tachyon-dual-card__col" }, [
-            col.title ? E("div", { class: "tachyon-dual-card__column-title" }, col.title) : "",
+            col.title ? E(
+              "div",
+              { class: "tachyon-dual-card__column-title" },
+              col.title
+            ) : "",
             ...col.items.map((item) => {
               const rowAttrs = {
                 class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
@@ -4937,7 +5072,8 @@ function isRussianLanguage() {
     if (docLang.startsWith("ru")) return true;
     if (docLang.startsWith("en")) return false;
   }
-  const globalL = typeof globalThis !== "undefined" ? globalThis.L : typeof window !== "undefined" ? window.L : void 0;
+  const globalObj = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+  const globalL = globalObj.L;
   if (typeof globalL?.env?.lang === "string") {
     const envLang = globalL.env.lang.trim().toLowerCase();
     if (envLang.startsWith("ru")) return true;
@@ -7382,9 +7518,14 @@ function sortOutboundsForDashboard(outbounds, options = {}) {
     if (sortMode === "country_latency") {
       const leftCountry = countryInfoMap.get(left.outbound.code);
       const rightCountry = countryInfoMap.get(right.outbound.code);
-      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER") return 1;
-      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER") return -1;
-      const countryDiff = leftCountry.name.localeCompare(rightCountry.name, "ru");
+      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER")
+        return 1;
+      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER")
+        return -1;
+      const countryDiff = leftCountry.name.localeCompare(
+        rightCountry.name,
+        "ru"
+      );
       if (countryDiff !== 0) {
         return countryDiff;
       }
@@ -7395,9 +7536,14 @@ function sortOutboundsForDashboard(outbounds, options = {}) {
     } else if (sortMode === "country_alpha") {
       const leftCountry = countryInfoMap.get(left.outbound.code);
       const rightCountry = countryInfoMap.get(right.outbound.code);
-      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER") return 1;
-      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER") return -1;
-      const countryDiff = leftCountry.name.localeCompare(rightCountry.name, "ru");
+      if (leftCountry.code === "OTHER" && rightCountry.code !== "OTHER")
+        return 1;
+      if (leftCountry.code !== "OTHER" && rightCountry.code === "OTHER")
+        return -1;
+      const countryDiff = leftCountry.name.localeCompare(
+        rightCountry.name,
+        "ru"
+      );
       if (countryDiff !== 0) {
         return countryDiff;
       }
@@ -13196,7 +13342,11 @@ function renderServiceRowItem(name, options) {
     }
     if (options.extraSuffix) {
       valueChildren.push(
-        E("span", { style: "font-size: 11px; opacity: 0.8;" }, options.extraSuffix)
+        E(
+          "span",
+          { style: "font-size: 11px; opacity: 0.8;" },
+          options.extraSuffix
+        )
       );
     }
     if (valueChildren.length === 0) {
@@ -31953,7 +32103,8 @@ var TACHYON_LANGUAGES = [
   }
 ];
 function detectActiveLanguageCode(capabilities) {
-  const globalL = typeof globalThis !== "undefined" ? globalThis.L : typeof window !== "undefined" ? window.L : void 0;
+  const globalObj = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+  const globalL = globalObj.L;
   const envLang = typeof globalL?.env?.lang === "string" ? globalL.env.lang.trim().toLowerCase() : "";
   const luciLang = (capabilities?.luciLang || envLang || "").trim().toLowerCase();
   const ruInstalled = capabilities?.i18nRuInstalled !== false;

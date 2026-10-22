@@ -38,17 +38,21 @@ export interface UiLanguageCapabilities {
 export function detectActiveLanguageCode(
   capabilities?: UiLanguageCapabilities,
 ): string {
-  const globalL =
+  const globalObj = (
     typeof globalThis !== 'undefined'
-      ? (globalThis as any).L
+      ? globalThis
       : typeof window !== 'undefined'
-        ? (window as any).L
-        : undefined;
+        ? window
+        : {}
+  ) as { L?: { env?: { lang?: string } } };
+  const globalL = globalObj.L;
   const envLang =
     typeof globalL?.env?.lang === 'string'
-      ? (globalL.env.lang as string).trim().toLowerCase()
+      ? globalL.env.lang.trim().toLowerCase()
       : '';
-  const luciLang = (capabilities?.luciLang || envLang || '').trim().toLowerCase();
+  const luciLang = (capabilities?.luciLang || envLang || '')
+    .trim()
+    .toLowerCase();
   const ruInstalled = capabilities?.i18nRuInstalled !== false;
 
   if (luciLang === 'en') {

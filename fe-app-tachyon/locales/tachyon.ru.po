@@ -8437,3 +8437,60 @@ msgstr "Plus отдельно проверяет DNS роутера и пока�
 
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration; encryption on the wire is not verified."
 msgstr "Маршрут HTTP-пробы не доказывает маршрут DNS-пакетов. Ниже показан протокол из сгенерированного конфига; фактическое шифрование трафика этой проверкой не подтверждается."
+
+msgid "Server Grouping by Country"
+msgstr "Группировка серверов по странам"
+
+msgid "Choose how servers are grouped and navigated on the Dashboard."
+msgstr "Выберите способ группировки и навигации по серверам на дашборде."
+
+msgid "Country filter buttons (Chips)"
+msgstr "Кнопки фильтра по странам (Чипсы)"
+
+msgid "Country groups (Accordions)"
+msgstr "Группы по странам (Аккордеоны)"
+
+msgid "Disabled (Flat list)"
+msgstr "Отключено (Общий список)"
+
+msgid "Dashboard Server Sorting"
+msgstr "Сортировка серверов на дашборде"
+
+msgid "Select the server sorting order on the Dashboard."
+msgstr "Выберите порядок сортировки серверов на дашборде."
+
+msgid "By latency (Ping - Default)"
+msgstr "По задержке (Пинг - По умолчанию)"
+
+msgid "By country, then by latency"
+msgstr "По странам, затем по задержке"
+
+msgid "Alphabetical (Country and name)"
+msgstr "По алфавиту (Страна и имя)"
+
+msgid "Original subscription order"
+msgstr "Исходный порядок из подписки"
+
+msgid "Prevent Misclicks (Hover Freeze)"
+msgstr "Защита от случайных кликов (Hover Freeze)"
+
+msgid "Temporarily lock server card positions while the mouse cursor is over the server grid to prevent misclicks when latencies update."
+msgstr "Временно фиксирует позиции карточек серверов, пока курсор мыши находится над списком, предотвращая случайные клики при обновлении пинга."
+
+msgid "Country Chips Grouping"
+msgstr "Организация чипсов стран"
+
+msgid "Select how country chips are organized and displayed on the Dashboard."
+msgstr "Выберите порядок и способ отображения чипсов стран на дашборде."
+
+msgid "By world regions (Europe, Asia, Americas...)"
+msgstr "По частям света (Регионы: Европа, Азия, Америка...)"
+
+msgid "Smart top (Active and popular countries first)"
+msgstr "Умный топ (Активная и популярные страны впереди)"
+
+msgid "By latency (Best ping first)"
+msgstr "По качеству связи (Пинг первыми)"
+
+msgid "Alphabetical (A–Z)"
+msgstr "По алфавиту (А–Я)"

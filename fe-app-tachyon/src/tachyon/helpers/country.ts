@@ -20,20 +20,113 @@ export interface OutboundCountryGroup {
 }
 
 export const EUROPE_CODES = new Set([
-  'RU', 'DE', 'NL', 'GB', 'UK', 'FR', 'FI', 'SE', 'PL', 'CH', 'AT', 'ES', 'IT',
-  'UA', 'NO', 'CZ', 'EE', 'LV', 'LT', 'MD', 'BY', 'RS', 'BG', 'RO', 'HU', 'GR',
-  'CY', 'IS', 'IE', 'PT', 'BE', 'DK', 'SK', 'HR', 'BA', 'AL', 'MK', 'LI', 'LU',
-  'MC', 'SM', 'VA', 'AD', 'MT', 'ME', 'SI',
+  'RU',
+  'DE',
+  'NL',
+  'GB',
+  'UK',
+  'FR',
+  'FI',
+  'SE',
+  'PL',
+  'CH',
+  'AT',
+  'ES',
+  'IT',
+  'UA',
+  'NO',
+  'CZ',
+  'EE',
+  'LV',
+  'LT',
+  'MD',
+  'BY',
+  'RS',
+  'BG',
+  'RO',
+  'HU',
+  'GR',
+  'CY',
+  'IS',
+  'IE',
+  'PT',
+  'BE',
+  'DK',
+  'SK',
+  'HR',
+  'BA',
+  'AL',
+  'MK',
+  'LI',
+  'LU',
+  'MC',
+  'SM',
+  'VA',
+  'AD',
+  'MT',
+  'ME',
+  'SI',
 ]);
 
 export const ASIA_MIDEAST_CODES = new Set([
-  'TR', 'KZ', 'SG', 'JP', 'HK', 'AE', 'GE', 'AM', 'UZ', 'KG', 'IL', 'IN', 'KR',
-  'TW', 'TH', 'VN', 'AZ', 'ID', 'MY', 'PH', 'PK', 'BD', 'QA', 'BH', 'IQ', 'MN',
-  'KH', 'LK', 'BN', 'CN', 'SA', 'OM', 'KW', 'JO', 'LB', 'TJ', 'TM', 'NP', 'MM', 'LA',
+  'TR',
+  'KZ',
+  'SG',
+  'JP',
+  'HK',
+  'AE',
+  'GE',
+  'AM',
+  'UZ',
+  'KG',
+  'IL',
+  'IN',
+  'KR',
+  'TW',
+  'TH',
+  'VN',
+  'AZ',
+  'ID',
+  'MY',
+  'PH',
+  'PK',
+  'BD',
+  'QA',
+  'BH',
+  'IQ',
+  'MN',
+  'KH',
+  'LK',
+  'BN',
+  'CN',
+  'SA',
+  'OM',
+  'KW',
+  'JO',
+  'LB',
+  'TJ',
+  'TM',
+  'NP',
+  'MM',
+  'LA',
 ]);
 
 export const AMERICAS_CODES = new Set([
-  'US', 'CA', 'BR', 'AR', 'MX', 'CL', 'CO', 'PE', 'VE', 'EC', 'UY', 'PY', 'BO', 'CR', 'PA',
+  'US',
+  'CA',
+  'BR',
+  'AR',
+  'MX',
+  'CL',
+  'CO',
+  'PE',
+  'VE',
+  'EC',
+  'UY',
+  'PY',
+  'BO',
+  'CR',
+  'PA',
 ]);
 
 export function getCountryRegion(countryCode?: string): WorldRegion {
@@ -50,7 +143,10 @@ export interface RegionMetadata {
   flag: string;
 }
 
-export function getRegionMetadata(region: WorldRegion, locale?: string): RegionMetadata {
+export function getRegionMetadata(
+  region: WorldRegion,
+  locale?: string,
+): RegionMetadata {
   const isDocRu =
     typeof document !== 'undefined' &&
     (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
@@ -63,9 +159,17 @@ export function getRegionMetadata(region: WorldRegion, locale?: string): RegionM
     case 'europe':
       return { id: 'europe', label: isRu ? 'Европа' : 'Europe', flag: '🇪🇺' };
     case 'asia':
-      return { id: 'asia', label: isRu ? 'Азия и Восток' : 'Asia & Mideast', flag: '🌏' };
+      return {
+        id: 'asia',
+        label: isRu ? 'Азия и Восток' : 'Asia & Mideast',
+        flag: '🌏',
+      };
     case 'americas':
-      return { id: 'americas', label: isRu ? 'Америка' : 'Americas', flag: '🌎' };
+      return {
+        id: 'americas',
+        label: isRu ? 'Америка' : 'Americas',
+        flag: '🌎',
+      };
     case 'other':
       return { id: 'other', label: isRu ? 'Другие' : 'Other', flag: '🌍' };
     case 'all':
@@ -129,73 +233,223 @@ const FALLBACK_NAMES_RU: Record<string, string> = {
 };
 
 const COMMON_ISO_CODES = new Set([
-  'RU', 'DE', 'NL', 'US', 'GB', 'UK', 'FR', 'FI', 'SE', 'PL', 'TR', 'KZ',
-  'SG', 'JP', 'HK', 'CA', 'CH', 'AT', 'ES', 'IT', 'UA', 'AE', 'NO', 'CZ',
-  'EE', 'LV', 'LT', 'MD', 'BY', 'GE', 'AM', 'UZ', 'KG', 'RS', 'BG', 'RO',
-  'HU', 'GR', 'CY', 'IL', 'IN', 'KR', 'AU', 'BR', 'AR', 'MX', 'IS', 'IE',
-  'PT', 'BE', 'DK',
+  'RU',
+  'DE',
+  'NL',
+  'US',
+  'GB',
+  'UK',
+  'FR',
+  'FI',
+  'SE',
+  'PL',
+  'TR',
+  'KZ',
+  'SG',
+  'JP',
+  'HK',
+  'CA',
+  'CH',
+  'AT',
+  'ES',
+  'IT',
+  'UA',
+  'AE',
+  'NO',
+  'CZ',
+  'EE',
+  'LV',
+  'LT',
+  'MD',
+  'BY',
+  'GE',
+  'AM',
+  'UZ',
+  'KG',
+  'RS',
+  'BG',
+  'RO',
+  'HU',
+  'GR',
+  'CY',
+  'IL',
+  'IN',
+  'KR',
+  'AU',
+  'BR',
+  'AR',
+  'MX',
+  'IS',
+  'IE',
+  'PT',
+  'BE',
+  'DK',
 ]);
 
 function buildCountryRegex(pattern: string): RegExp {
-  return new RegExp(`(?:^|[^\\p{L}\\p{N}])(?:${pattern})(?:[^\\p{L}\\p{N}]|$)`, 'iu');
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])(?:${pattern})(?:[^\\p{L}\\p{N}]|$)`,
+    'iu',
+  );
 }
 
 const COUNTRY_KEYWORD_PATTERNS: Array<{ code: string; regex: RegExp }> = [
-  { code: 'RU', regex: buildCountryRegex('russia|russian|россия|рф|москва|moscow|питер|spb') },
-  { code: 'DE', regex: buildCountryRegex('germany|german|германия|frankfurt|франкфурт|berlin|берлин') },
-  { code: 'NL', regex: buildCountryRegex('netherlands|holland|нидерланды|голландия|amsterdam|амстердам') },
-  { code: 'US', regex: buildCountryRegex('usa|united\\s*states|сша|america|америка|new\\s*york|los\\s*angeles|miami') },
-  { code: 'GB', regex: buildCountryRegex('uk|united\\s*kingdom|great\\s*britain|великобритания|англия|london|лондон') },
-  { code: 'TR', regex: buildCountryRegex('turkey|turkish|турция|istanbul|стамбул') },
-  { code: 'FI', regex: buildCountryRegex('finland|финляндия|helsinki|хельсинки') },
+  {
+    code: 'RU',
+    regex: buildCountryRegex(
+      'russia|russian|россия|рф|москва|moscow|питер|spb',
+    ),
+  },
+  {
+    code: 'DE',
+    regex: buildCountryRegex(
+      'germany|german|германия|frankfurt|франкфурт|berlin|берлин',
+    ),
+  },
+  {
+    code: 'NL',
+    regex: buildCountryRegex(
+      'netherlands|holland|нидерланды|голландия|amsterdam|амстердам',
+    ),
+  },
+  {
+    code: 'US',
+    regex: buildCountryRegex(
+      'usa|united\\s*states|сша|america|америка|new\\s*york|los\\s*angeles|miami',
+    ),
+  },
+  {
+    code: 'GB',
+    regex: buildCountryRegex(
+      'uk|united\\s*kingdom|great\\s*britain|великобритания|англия|london|лондон',
+    ),
+  },
+  {
+    code: 'TR',
+    regex: buildCountryRegex('turkey|turkish|турция|istanbul|стамбул'),
+  },
+  {
+    code: 'FI',
+    regex: buildCountryRegex('finland|финляндия|helsinki|хельсинки'),
+  },
   { code: 'SE', regex: buildCountryRegex('sweden|швеция|stockholm|стокгольм') },
   { code: 'PL', regex: buildCountryRegex('poland|польша|warsaw|варшава') },
-  { code: 'KZ', regex: buildCountryRegex('kazakhstan|казахстан|almaty|алматы|astana|астана') },
+  {
+    code: 'KZ',
+    regex: buildCountryRegex(
+      'kazakhstan|казахстан|almaty|алматы|astana|астана',
+    ),
+  },
   { code: 'FR', regex: buildCountryRegex('france|франция|paris|париж') },
   { code: 'SG', regex: buildCountryRegex('singapore|сингапур') },
   { code: 'JP', regex: buildCountryRegex('japan|япония|tokyo|токио') },
   { code: 'HK', regex: buildCountryRegex('hong\\s*kong|гонконг') },
-  { code: 'CH', regex: buildCountryRegex('switzerland|швейцария|zurich|цюрих|geneva|женева') },
+  {
+    code: 'CH',
+    regex: buildCountryRegex(
+      'switzerland|швейцария|zurich|цюрих|geneva|женева',
+    ),
+  },
   { code: 'AT', regex: buildCountryRegex('austria|австрия|vienna|вена') },
-  { code: 'ES', regex: buildCountryRegex('spain|испания|madrid|мадрид|barcelona|барселона') },
+  {
+    code: 'ES',
+    regex: buildCountryRegex('spain|испания|madrid|мадрид|barcelona|барселона'),
+  },
   { code: 'IT', regex: buildCountryRegex('italy|италия|rome|рим|milan|милан') },
-  { code: 'CA', regex: buildCountryRegex('canada|канада|toronto|торонто|vancouver|ванкувер') },
+  {
+    code: 'CA',
+    regex: buildCountryRegex(
+      'canada|канада|toronto|торонто|vancouver|ванкувер',
+    ),
+  },
   { code: 'UA', regex: buildCountryRegex('ukraine|украина|kyiv|kiev|киев') },
-  { code: 'AE', regex: buildCountryRegex('uae|emirates|оаэ|эмираты|dubai|дубай') },
+  {
+    code: 'AE',
+    regex: buildCountryRegex('uae|emirates|оаэ|эмираты|dubai|дубай'),
+  },
   { code: 'GE', regex: buildCountryRegex('georgia|грузия|tbilisi|тбилиси') },
   { code: 'AM', regex: buildCountryRegex('armenia|армения|yerevan|ереван') },
   { code: 'MD', regex: buildCountryRegex('moldova|молдова|chisinau|кишинев') },
-  { code: 'BY', regex: buildCountryRegex('belarus|беларусь|белоруссия|minsk|минск') },
+  {
+    code: 'BY',
+    regex: buildCountryRegex('belarus|беларусь|белоруссия|minsk|минск'),
+  },
   { code: 'RS', regex: buildCountryRegex('serbia|сербия|belgrade|белград') },
-  { code: 'IL', regex: buildCountryRegex('israel|израиль|tel\\s*aviv|тель-авив') },
-  { code: 'IN', regex: buildCountryRegex('india|индия|mumbai|мумбаи|delhi|дели') },
-  { code: 'CY', regex: buildCountryRegex('cyprus|кипр|limassol|лимасол|nicosia|никосия') },
+  {
+    code: 'IL',
+    regex: buildCountryRegex('israel|израиль|tel\\s*aviv|тель-авив'),
+  },
+  {
+    code: 'IN',
+    regex: buildCountryRegex('india|индия|mumbai|мумбаи|delhi|дели'),
+  },
+  {
+    code: 'CY',
+    regex: buildCountryRegex('cyprus|кипр|limassol|лимасол|nicosia|никосия'),
+  },
   { code: 'TW', regex: buildCountryRegex('taiwan|тайвань|taipei|тайбэй') },
   { code: 'CZ', regex: buildCountryRegex('czech|чехия|prague|прага') },
-  { code: 'SK', regex: buildCountryRegex('slovakia|словакия|bratislava|братислава') },
-  { code: 'RO', regex: buildCountryRegex('romania|румыния|bucharest|бухарест') },
+  {
+    code: 'SK',
+    regex: buildCountryRegex('slovakia|словакия|bratislava|братислава'),
+  },
+  {
+    code: 'RO',
+    regex: buildCountryRegex('romania|румыния|bucharest|бухарест'),
+  },
   { code: 'BG', regex: buildCountryRegex('bulgaria|болгария|sofia|софия') },
   { code: 'HU', regex: buildCountryRegex('hungary|венгрия|budapest|будапешт') },
   { code: 'LT', regex: buildCountryRegex('lithuania|литва|vilnius|вильнюс') },
   { code: 'LV', regex: buildCountryRegex('latvia|латвия|riga|рига') },
   { code: 'EE', regex: buildCountryRegex('estonia|эстония|tallinn|таллин') },
-  { code: 'UZ', regex: buildCountryRegex('uzbekistan|узбекистан|tashkent|ташкент') },
-  { code: 'KG', regex: buildCountryRegex('kyrgyzstan|кыргызстан|киргизия|bishkek|бишкек') },
-  { code: 'TH', regex: buildCountryRegex('thailand|таиланд|тайланд|bangkok|бангкок') },
+  {
+    code: 'UZ',
+    regex: buildCountryRegex('uzbekistan|узбекистан|tashkent|ташкент'),
+  },
+  {
+    code: 'KG',
+    regex: buildCountryRegex('kyrgyzstan|кыргызстан|киргизия|bishkek|бишкек'),
+  },
+  {
+    code: 'TH',
+    regex: buildCountryRegex('thailand|таиланд|тайланд|bangkok|бангкок'),
+  },
   { code: 'VN', regex: buildCountryRegex('vietnam|вьетнам|hanoi|ханой') },
   { code: 'KR', regex: buildCountryRegex('korea|корея|seoul|сеул') },
-  { code: 'AU', regex: buildCountryRegex('australia|австралия|sydney|сидней|melbourne|мельбурн') },
-  { code: 'BR', regex: buildCountryRegex('brazil|бразилия|sao\\s*paulo|сан-паулу') },
-  { code: 'AR', regex: buildCountryRegex('argentina|аргентина|buenos\\s*aires|буэнос-айрес') },
+  {
+    code: 'AU',
+    regex: buildCountryRegex(
+      'australia|австралия|sydney|сидней|melbourne|мельбурн',
+    ),
+  },
+  {
+    code: 'BR',
+    regex: buildCountryRegex('brazil|бразилия|sao\\s*paulo|сан-паулу'),
+  },
+  {
+    code: 'AR',
+    regex: buildCountryRegex(
+      'argentina|аргентина|buenos\\s*aires|буэнос-айрес',
+    ),
+  },
   { code: 'CL', regex: buildCountryRegex('chile|чили|santiago|сантьяго') },
   { code: 'CO', regex: buildCountryRegex('colombia|колумбия|bogota|богота') },
   { code: 'MX', regex: buildCountryRegex('mexico|мексика') },
   { code: 'EG', regex: buildCountryRegex('egypt|египет|cairo|каир') },
-  { code: 'IS', regex: buildCountryRegex('iceland|исландия|reykjavik|рейкьявик') },
+  {
+    code: 'IS',
+    regex: buildCountryRegex('iceland|исландия|reykjavik|рейкьявик'),
+  },
   { code: 'NO', regex: buildCountryRegex('norway|норвегия|oslo|осло') },
-  { code: 'DK', regex: buildCountryRegex('denmark|дания|copenhagen|копенгаген') },
+  {
+    code: 'DK',
+    regex: buildCountryRegex('denmark|дания|copenhagen|копенгаген'),
+  },
   { code: 'IE', regex: buildCountryRegex('ireland|ирландия|dublin|дублин') },
-  { code: 'PT', regex: buildCountryRegex('portugal|португалия|lisbon|лиссабон') },
+  {
+    code: 'PT',
+    regex: buildCountryRegex('portugal|португалия|lisbon|лиссабон'),
+  },
   { code: 'BE', regex: buildCountryRegex('belgium|бельгия|brussels|брюссель') },
   { code: 'LU', regex: buildCountryRegex('luxembourg|люксембург') },
   { code: 'GR', regex: buildCountryRegex('greece|греция|athens|афины') },
@@ -204,17 +458,35 @@ const COUNTRY_KEYWORD_PATTERNS: Array<{ code: string; regex: RegExp }> = [
   { code: 'AL', regex: buildCountryRegex('albania|албания|tirana|тирана') },
   { code: 'MK', regex: buildCountryRegex('macedonia|македония|skopje|скопье') },
   { code: 'AZ', regex: buildCountryRegex('azerbaijan|азербайджан|baku|баку') },
-  { code: 'ID', regex: buildCountryRegex('indonesia|индонезия|jakarta|джакарта') },
-  { code: 'MY', regex: buildCountryRegex('malaysia|малайзия|kuala\\s*lumpur|куала-лумпур') },
-  { code: 'PH', regex: buildCountryRegex('philippines|филиппины|manila|манила') },
+  {
+    code: 'ID',
+    regex: buildCountryRegex('indonesia|индонезия|jakarta|джакарта'),
+  },
+  {
+    code: 'MY',
+    regex: buildCountryRegex('malaysia|малайзия|kuala\\s*lumpur|куала-лумпур'),
+  },
+  {
+    code: 'PH',
+    regex: buildCountryRegex('philippines|филиппины|manila|манила'),
+  },
   { code: 'PK', regex: buildCountryRegex('pakistan|пакистан') },
   { code: 'BD', regex: buildCountryRegex('bangladesh|бангладеш|dhaka|дакка') },
   { code: 'QA', regex: buildCountryRegex('qatar|катар|doha|доха') },
   { code: 'BH', regex: buildCountryRegex('bahrain|бахрейн|manama|манама') },
   { code: 'IQ', regex: buildCountryRegex('iraq|ирак|baghdad|багдад') },
-  { code: 'MN', regex: buildCountryRegex('mongolia|монголия|ulaanbaatar|улан-батор') },
-  { code: 'KH', regex: buildCountryRegex('cambodia|камбоджа|phnom\\s*penh|пномпень') },
-  { code: 'LK', regex: buildCountryRegex('sri\\s*lanka|шри-ланка|colombo|коломбо') },
+  {
+    code: 'MN',
+    regex: buildCountryRegex('mongolia|монголия|ulaanbaatar|улан-батор'),
+  },
+  {
+    code: 'KH',
+    regex: buildCountryRegex('cambodia|камбоджа|phnom\\s*penh|пномпень'),
+  },
+  {
+    code: 'LK',
+    regex: buildCountryRegex('sri\\s*lanka|шри-ланка|colombo|коломбо'),
+  },
   { code: 'BN', regex: buildCountryRegex('brunei|бруней') },
   { code: 'LI', regex: buildCountryRegex('liechtenstein|лихтенштейн') },
   { code: 'SS', regex: buildCountryRegex('south\\s*sudan|южный\\s*судан') },
@@ -289,9 +561,6 @@ export function getCountryName(countryCode: string, locale?: string): string {
     return translate('Other');
   }
 
-  const isDocRu =
-    typeof document !== 'undefined' &&
-    (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
   const isDocEn =
     typeof document !== 'undefined' &&
     (document.documentElement?.lang || '').toLowerCase().startsWith('en');
@@ -304,8 +573,13 @@ export function getCountryName(countryCode: string, locale?: string): string {
   }
 
   try {
-    if (typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function') {
-      const displayNames = new Intl.DisplayNames([effectiveLocale, 'en'], { type: 'region' });
+    if (
+      typeof Intl !== 'undefined' &&
+      typeof Intl.DisplayNames === 'function'
+    ) {
+      const displayNames = new Intl.DisplayNames([effectiveLocale, 'en'], {
+        type: 'region',
+      });
       const name = displayNames.of(code === 'UK' ? 'GB' : code);
       if (name && name !== code) {
         return name;
@@ -441,7 +715,12 @@ export function groupOutboundsByCountry(
 export interface OrganizedCountryGroups {
   groups: OutboundCountryGroup[];
   topCount?: number;
-  availableRegions: Array<{ id: WorldRegion; label: string; flag: string; count: number }>;
+  availableRegions: Array<{
+    id: WorldRegion;
+    label: string;
+    flag: string;
+    count: number;
+  }>;
 }
 
 export function organizeCountryGroups(
@@ -475,7 +754,13 @@ export function organizeCountryGroups(
     regionCounts[reg] += serverCount;
   }
 
-  const regionOrder: WorldRegion[] = ['all', 'europe', 'asia', 'americas', 'other'];
+  const regionOrder: WorldRegion[] = [
+    'all',
+    'europe',
+    'asia',
+    'americas',
+    'other',
+  ];
   const availableRegions = regionOrder
     .filter((r) => r === 'all' || regionCounts[r] > 0)
     .map((r) => {
@@ -525,10 +810,12 @@ export function organizeCountryGroups(
   if (mode === 'smart_top') {
     const topGroups: OutboundCountryGroup[] = [];
     const activeCode = options?.activeCountryCode;
-    let remaining = [...workingGroups];
+    const remaining = [...workingGroups];
 
     if (activeCode) {
-      const activeIdx = remaining.findIndex((g) => g.countryCode === activeCode);
+      const activeIdx = remaining.findIndex(
+        (g) => g.countryCode === activeCode,
+      );
       if (activeIdx !== -1) {
         topGroups.push(remaining[activeIdx]);
         remaining.splice(activeIdx, 1);
@@ -557,9 +844,13 @@ export function organizeCountryGroups(
   if (mode === 'latency') {
     workingGroups.sort((a, b) => {
       const aLat =
-        a.bestLatency > 0 && Number.isFinite(a.bestLatency) ? a.bestLatency : 999999;
+        a.bestLatency > 0 && Number.isFinite(a.bestLatency)
+          ? a.bestLatency
+          : 999999;
       const bLat =
-        b.bestLatency > 0 && Number.isFinite(b.bestLatency) ? b.bestLatency : 999999;
+        b.bestLatency > 0 && Number.isFinite(b.bestLatency)
+          ? b.bestLatency
+          : 999999;
       if (aLat !== bLat) return aLat - bLat;
       if (a.countryCode === 'OTHER') return 1;
       if (b.countryCode === 'OTHER') return -1;

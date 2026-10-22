@@ -386,10 +386,10 @@ function renderCountryChips(
     activeCountryCode?: string;
   },
 ): HTMLElement {
-  const isRu = (
-    typeof document !== 'undefined' &&
-    (document.documentElement?.lang || '').toLowerCase().startsWith('ru')
-  ) || false;
+  const isRu =
+    (typeof document !== 'undefined' &&
+      (document.documentElement?.lang || '').toLowerCase().startsWith('ru')) ||
+    false;
 
   const mode = options?.chipsGrouping || 'regions';
   const activeRegion = (options?.activeRegion as WorldRegion) || 'all';
@@ -447,7 +447,7 @@ function renderCountryChips(
 
   // 3. Country Chips Row
   const isAllActive = !activeFilter || activeFilter === 'ALL';
-  const allLabel = isRu ? 'Все' : (typeof _ === 'function' ? _('All') : 'All');
+  const allLabel = isRu ? 'Все' : typeof _ === 'function' ? _('All') : 'All';
 
   const currentRegionMeta = organized.availableRegions.find(
     (r) => r.id === activeRegion,
@@ -674,10 +674,10 @@ function renderCountryAccordionHeader(
             'div',
             { style: 'font-size: 12px; opacity: 0.7;' },
             `${
-              (typeof document !== 'undefined' &&
-                (document.documentElement?.lang || '')
-                  .toLowerCase()
-                  .startsWith('ru'))
+              typeof document !== 'undefined' &&
+              (document.documentElement?.lang || '')
+                .toLowerCase()
+                .startsWith('ru')
                 ? 'Мин. задержка'
                 : typeof _ === 'function'
                   ? _('Min latency')
@@ -695,39 +695,31 @@ function renderAutoGroupsBlock(
 ): HTMLElement | null {
   if (topGroups.length === 0) return null;
 
-  const isRu = (
-    typeof document !== 'undefined' &&
-    (document.documentElement?.lang || '').toLowerCase().startsWith('ru')
-  ) || false;
+  const isRu =
+    (typeof document !== 'undefined' &&
+      (document.documentElement?.lang || '').toLowerCase().startsWith('ru')) ||
+    false;
   const title = isRu
     ? 'Режимы автовыбора'
     : typeof _ === 'function'
       ? _('Auto selection modes')
       : 'Auto selection modes';
 
-  return E(
-    'div',
-    { class: 'tachyon_dashboard-page__auto-groups' },
-    [
+  return E('div', { class: 'tachyon_dashboard-page__auto-groups' }, [
+    E('div', { class: 'tachyon_dashboard-page__auto-groups__header' }, [
+      E('span', {}, title),
       E(
-        'div',
-        { class: 'tachyon_dashboard-page__auto-groups__header' },
-        [
-          E('span', {}, title),
-          E(
-            'span',
-            { class: 'tachyon_dashboard-page__auto-groups__count' },
-            `${topGroups.length}`,
-          ),
-        ],
+        'span',
+        { class: 'tachyon_dashboard-page__auto-groups__count' },
+        `${topGroups.length}`,
       ),
-      E(
-        'div',
-        { class: 'tachyon_dashboard-page__auto-groups-grid' },
-        topGroups.map((ob) => renderOutbound(ob)),
-      ),
-    ],
-  );
+    ]),
+    E(
+      'div',
+      { class: 'tachyon_dashboard-page__auto-groups-grid' },
+      topGroups.map((ob) => renderOutbound(ob)),
+    ),
+  ]);
 }
 
 function renderDefaultState({
@@ -1197,10 +1189,10 @@ function renderDefaultState({
                           class:
                             'tachyon_dashboard-page__outbound-grid__item__selected-badge',
                         },
-                        (typeof document !== 'undefined' &&
-                        (document.documentElement?.lang || '')
-                          .toLowerCase()
-                          .startsWith('ru'))
+                        typeof document !== 'undefined' &&
+                          (document.documentElement?.lang || '')
+                            .toLowerCase()
+                            .startsWith('ru')
                           ? '✓ Активен'
                           : typeof _ === 'function'
                             ? _('✓ Active')
@@ -1370,8 +1362,7 @@ function renderDefaultState({
     const subSourceCount = section.subscriptionSourceCount || 0;
     const countryGrouping =
       section.dashboardSettings?.countryGrouping || 'chips';
-    const chipsGrouping =
-      section.dashboardSettings?.chipsGrouping || 'regions';
+    const chipsGrouping = section.dashboardSettings?.chipsGrouping || 'regions';
 
     const topGroups: Tachyon.Outbound[] = [];
     const serverOutbounds: Tachyon.Outbound[] = [];
@@ -1484,10 +1475,8 @@ function renderDefaultState({
           );
 
           nodes.push(
-            renderCountryAccordionHeader(
-              group,
-              isCountryCollapsed,
-              () => onToggleSourceGroupCollapse?.(collapseKey),
+            renderCountryAccordionHeader(group, isCountryCollapsed, () =>
+              onToggleSourceGroupCollapse?.(collapseKey),
             ),
           );
 

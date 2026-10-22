@@ -57,8 +57,10 @@ function renderDefaultState({ title, items }: IRenderWidgetProps) {
             class: 'tachyon_dashboard-page__widgets-section__item__row__key',
           },
           typeof item.key === 'string'
-            ? (item.key ? `${item.key}: ` : '')
-            : (item.key || ''),
+            ? item.key
+              ? `${item.key}: `
+              : ''
+            : item.key || '',
         ),
         E(
           'span',
@@ -145,7 +147,11 @@ export function renderDualWidget(props: IRenderDualWidgetProps) {
         props.columns.map((col) =>
           E('div', { class: 'tachyon-dual-card__col' }, [
             col.title
-              ? E('div', { class: 'tachyon-dual-card__column-title' }, col.title)
+              ? E(
+                  'div',
+                  { class: 'tachyon-dual-card__column-title' },
+                  col.title,
+                )
               : '',
             ...col.items.map((item) => {
               const rowAttrs: Record<string, string> = {

@@ -621,7 +621,8 @@ function sortOutboundsForDashboard(
     pinnedCodes.map((code, index) => [code, index] as const),
   );
   const sortMode =
-    options.sortMode || (options.sortByLatency === true ? 'latency' : 'default');
+    options.sortMode ||
+    (options.sortByLatency === true ? 'latency' : 'default');
 
   const countryInfoMap = new Map<string, { code: string; name: string }>();
   if (sortMode === 'country_latency' || sortMode === 'country_alpha') {
@@ -655,10 +656,15 @@ function sortOutboundsForDashboard(
         const leftCountry = countryInfoMap.get(left.outbound.code)!;
         const rightCountry = countryInfoMap.get(right.outbound.code)!;
 
-        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER') return 1;
-        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER') return -1;
+        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER')
+          return 1;
+        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER')
+          return -1;
 
-        const countryDiff = leftCountry.name.localeCompare(rightCountry.name, 'ru');
+        const countryDiff = leftCountry.name.localeCompare(
+          rightCountry.name,
+          'ru',
+        );
         if (countryDiff !== 0) {
           return countryDiff;
         }
@@ -674,15 +680,22 @@ function sortOutboundsForDashboard(
         const leftCountry = countryInfoMap.get(left.outbound.code)!;
         const rightCountry = countryInfoMap.get(right.outbound.code)!;
 
-        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER') return 1;
-        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER') return -1;
+        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER')
+          return 1;
+        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER')
+          return -1;
 
-        const countryDiff = leftCountry.name.localeCompare(rightCountry.name, 'ru');
+        const countryDiff = leftCountry.name.localeCompare(
+          rightCountry.name,
+          'ru',
+        );
         if (countryDiff !== 0) {
           return countryDiff;
         }
 
-        const nameDiff = (left.outbound.displayName || left.outbound.code).localeCompare(
+        const nameDiff = (
+          left.outbound.displayName || left.outbound.code
+        ).localeCompare(
           right.outbound.displayName || right.outbound.code,
           'ru',
         );
@@ -2107,13 +2120,15 @@ export async function getDashboardSections(
         const effectiveSortMode =
           !sectionSortByLatency && !section.dashboard_sort_mode
             ? 'default'
-            : (section.dashboard_sort_mode as any) ||
+            : (section.dashboard_sort_mode as typeof globalSortMode) ||
               globalSortMode ||
               'latency';
         const effectiveCountryGrouping =
-          (section.dashboard_country_grouping as any) || globalCountryGrouping;
+          (section.dashboard_country_grouping as typeof globalCountryGrouping) ||
+          globalCountryGrouping;
         const effectiveChipsGrouping =
-          (section.dashboard_chips_grouping as any) || globalChipsGrouping;
+          (section.dashboard_chips_grouping as typeof globalChipsGrouping) ||
+          globalChipsGrouping;
 
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);

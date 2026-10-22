@@ -14,15 +14,17 @@ export function isRussianLanguage(): boolean {
     if (docLang.startsWith('en')) return false;
   }
 
-  const globalL =
+  const globalObj = (
     typeof globalThis !== 'undefined'
-      ? (globalThis as any).L
+      ? globalThis
       : typeof window !== 'undefined'
-        ? (window as any).L
-        : undefined;
+        ? window
+        : {}
+  ) as { L?: { env?: { lang?: string } } };
+  const globalL = globalObj.L;
 
   if (typeof globalL?.env?.lang === 'string') {
-    const envLang = (globalL.env.lang as string).trim().toLowerCase();
+    const envLang = globalL.env.lang.trim().toLowerCase();
     if (envLang.startsWith('ru')) return true;
     if (envLang.startsWith('en')) return false;
   }
@@ -38,7 +40,9 @@ export function isRussianLanguage(): boolean {
         return true;
       }
     }
-  } catch {}
+  } catch {
+    // Ignore translation resolution errors
+  }
 
   return false;
 }
