@@ -3868,8 +3868,34 @@ function renderWidget(props) {
 }
 
 // src/tachyon/tabs/dashboard/partials/renderConnections.ts
-function renderConnections(connections, isCollapsed, onToggleCollapse) {
-  if (connections.length === 0) {
+function renderConnections(connections, isCollapsed, onToggleCollapse, topDomains) {
+  const topDomainsSection = topDomains && topDomains.length > 0 ? E("div", { class: "tachyon_dashboard-page__top-domains-container" }, [
+    E(
+      "div",
+      { class: "tachyon_dashboard-page__top-domains-header" },
+      _("Top active domains in bypass:")
+    ),
+    E(
+      "div",
+      { class: "tachyon_dashboard-page__top-domains-list" },
+      topDomains.map(
+        (item) => E("span", { class: "tachyon_dashboard-page__top-domain-chip" }, [
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__top-domain-chip__icon" },
+            "🌐"
+          ),
+          E("b", {}, item.domain),
+          E(
+            "span",
+            { class: "tachyon_dashboard-page__top-domain-chip__badge" },
+            `${item.count} ${_("conns")}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ""}`
+          )
+        ])
+      )
+    )
+  ]) : "";
+  if (connections.length === 0 && (!topDomains || topDomains.length === 0)) {
     return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
       E(
         "div",
@@ -3982,7 +4008,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse) {
         class: "tachyon_dashboard-page__outbound-grid",
         style: "padding: 12px; display: block;"
       },
-      rows
+      [...rows, topDomainsSection]
     )
   ]);
 }
@@ -9690,6 +9716,68 @@ function aggregateClientConnections(rawConnections, hostnames) {
     (a, b) => b.download + b.upload - (a.download + a.upload)
   );
 }
+function aggregateTopDomains(rawConnections, limit = 6) {
+  const map = /* @__PURE__ */ new Map();
+  for (const conn of rawConnections) {
+    const rawHost = conn.metadata?.host?.trim();
+    if (!rawHost) continue;
+    if (/^[0-9.]+$/.test(rawHost) || /^[0-9a-fA-F:]+$/.test(rawHost)) continue;
+    const up = Number(conn.upload) || 0;
+    const down = Number(conn.download) || 0;
+    const traffic = up + down;
+    if (map.has(rawHost)) {
+      const existing = map.get(rawHost);
+      existing.count++;
+      existing.traffic += traffic;
+    } else {
+      map.set(rawHost, { count: 1, traffic });
+    }
+  }
+  return Array.from(map.entries()).map(([domain, data]) => ({
+    domain,
+    count: data.count,
+    traffic: data.traffic
+  })).sort((a, b) => b.count - a.count || b.traffic - a.traffic).slice(0, limit);
+}
+
+// src/tachyon/tabs/dashboard/activeRoute.ts
+function getActiveRoute(groups) {
+  if (!groups || groups.length === 0) return null;
+  const group = groups.find((g) => g.sectionName === "main") || groups[0];
+  if (!group || !group.outbounds || group.outbounds.length === 0) return null;
+  const selected = group.outbounds.find((o) => o.selected) || group.outbounds[0];
+  if (!selected) return null;
+  if (selected.priorityInfo) {
+    const selName = selected.priorityInfo.selectedName;
+    const member = selected.priorityInfo.outbounds?.find(
+      (m) => m.selected || m.displayName === selName || m.code === selected.priorityInfo?.selectedCode
+    ) || group.outbounds.find((o) => o.displayName === selName);
+    return {
+      name: selName || member?.displayName || selected.displayName,
+      selector: `${selected.displayName} (Priority)`,
+      latency: member?.latency ?? -1,
+      type: member?.type || "Priority"
+    };
+  }
+  if (selected.urlTestInfo) {
+    const selName = selected.urlTestInfo.selectedName;
+    const member = selected.urlTestInfo.outbounds?.find(
+      (m) => m.selected || m.displayName === selName || m.code === selected.urlTestInfo?.selectedCode
+    ) || group.outbounds.find((o) => o.displayName === selName);
+    return {
+      name: selName || member?.displayName || selected.displayName,
+      selector: `${selected.displayName} (URLTest)`,
+      latency: member?.latency ?? -1,
+      type: member?.type || "URLTest"
+    };
+  }
+  return {
+    name: selected.displayName,
+    selector: _("Manual selection"),
+    latency: selected.latency ?? -1,
+    type: selected.type || "Proxy"
+  };
+}
 
 // src/tachyon/tabs/dashboard/metrics.ts
 function createInitialTrafficRatesState() {
@@ -9835,6 +9923,7 @@ var dashboardDataUpdatesStarted = false;
 var dashboardDataUpdatesId = 0;
 var connectionsRefreshTimer = null;
 var currentConnections = [];
+var currentTopDomains = [];
 var directSocketsFailed = false;
 var trafficRatesState = createInitialTrafficRatesState();
 var pageUnloading = false;
@@ -10237,6 +10326,12 @@ async function connectToClashSockets(dataUpdatesId) {
           }
         }
       });
+      if (Array.isArray(parsedMsg.connections)) {
+        currentTopDomains = aggregateTopDomains(parsedMsg.connections);
+        if (expandedSections.has("active_clients")) {
+          renderConnectionsWidget();
+        }
+      }
     },
     (_err) => {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
@@ -11457,11 +11552,14 @@ async function fetchConnections() {
           }
         });
       }
-      if (shouldFetchHostnames && Array.isArray(payload.connections)) {
-        currentConnections = aggregateClientConnections(
-          payload.connections,
-          hostnames
-        );
+      if (Array.isArray(payload.connections)) {
+        if (shouldFetchHostnames) {
+          currentConnections = aggregateClientConnections(
+            payload.connections,
+            hostnames
+          );
+        }
+        currentTopDomains = aggregateTopDomains(payload.connections);
       }
     }
   } catch (_e) {
@@ -11475,31 +11573,77 @@ function renderConnectionsWidget() {
     renderConnections(
       currentConnections,
       !expandedSections.has("active_clients"),
-      () => toggleSectionExpanded("active_clients")
+      () => toggleSectionExpanded("active_clients"),
+      currentTopDomains
     )
   );
 }
 async function renderBandwidthWidget() {
+  const total = store.get().trafficTotalWidget.data;
   renderStoreWidget(
     "dashboard-widget-traffic",
     "bandwidthWidget",
-    _("Traffic"),
+    _("Traffic & Speed"),
     (data) => [
-      { key: _("Uplink"), value: `${prettyBytes(data.up)}/s` },
-      { key: _("Downlink"), value: `${prettyBytes(data.down)}/s` }
+      {
+        key: _("Downlink"),
+        value: `↓ ${prettyBytes(data.down)}/s`,
+        attributes: { class: "tachyon-stat--down" }
+      },
+      {
+        key: _("Uplink"),
+        value: `↑ ${prettyBytes(data.up)}/s`,
+        attributes: { class: "tachyon-stat--up" }
+      },
+      {
+        key: _("Session total"),
+        value: `▼ ${prettyBytes(total.downloadTotal || 0)} • ▲ ${prettyBytes(total.uploadTotal || 0)}`,
+        attributes: { class: "tachyon-stat--session" }
+      }
     ],
     "renderBandwidthWidget"
   );
 }
 async function renderTrafficTotalWidget() {
+  const sections = store.get().sectionsWidget.data;
+  const activeRoute = getActiveRoute(sections);
   renderStoreWidget(
     "dashboard-widget-traffic-total",
     "trafficTotalWidget",
-    _("Traffic Total"),
-    (data) => [
-      { key: _("Uplink"), value: String(prettyBytes(data.uploadTotal)) },
-      { key: _("Downlink"), value: String(prettyBytes(data.downloadTotal)) }
-    ],
+    _("Active Route"),
+    () => {
+      if (!activeRoute) {
+        return [
+          { key: _("Server"), value: _("Standby / Direct") },
+          { key: _("Selector"), value: "—" }
+        ];
+      }
+      const items = [
+        {
+          key: _("Server"),
+          value: activeRoute.name,
+          attributes: { class: "tachyon-stat--bold" }
+        },
+        {
+          key: _("Selector"),
+          value: activeRoute.selector
+        },
+        {
+          key: _("Latency"),
+          value: activeRoute.latency > 0 ? `${activeRoute.latency}ms` : _("Checking..."),
+          attributes: {
+            class: activeRoute.latency > 0 ? "tachyon-stat--down" : ""
+          }
+        }
+      ];
+      if (activeRoute.type) {
+        items.push({
+          key: _("Protocol"),
+          value: activeRoute.type
+        });
+      }
+      return items;
+    },
     "renderTrafficTotalWidget"
   );
 }
@@ -11507,10 +11651,18 @@ async function renderSystemInfoWidget() {
   renderStoreWidget(
     "dashboard-widget-system-info",
     "systemInfoWidget",
-    _("System info"),
+    _("Routing & Rules"),
     (data) => [
-      { key: _("Active Connections"), value: String(data.connections) },
-      { key: _("Memory Usage"), value: String(prettyBytes(data.memory)) }
+      { key: _("Mode"), value: "TProxy + Fake-IP" },
+      {
+        key: _("Active Connections"),
+        value: `${data.connections || 0} ${_("conns")}`
+      },
+      { key: _("Core Memory"), value: String(prettyBytes(data.memory || 0)) },
+      {
+        key: _("Active Clients"),
+        value: `${currentConnections.length} ${_("devices")}`
+      }
     ],
     "renderSystemInfoWidget"
   );
@@ -11738,6 +11890,7 @@ async function onStoreUpdate(next, prev, diff) {
     ) && updateLatencyProgressInline(next.sectionsWidget);
     if (!inlineUpdated) {
       renderSectionsWidget();
+      renderTrafficTotalWidget();
     }
   }
   if (diff.bandwidthWidget) {
@@ -11745,6 +11898,7 @@ async function onStoreUpdate(next, prev, diff) {
   }
   if (diff.trafficTotalWidget) {
     renderTrafficTotalWidget();
+    renderBandwidthWidget();
   }
   if (diff.systemInfoWidget) {
     renderSystemInfoWidget();
@@ -11953,14 +12107,32 @@ var styles = `
 
 .tachyon_dashboard-page__widgets-section__item {
     border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-    padding: 10px;
+    border-radius: 6px;
+    padding: 12px;
     min-width: 0;
+    background: rgba(128, 128, 128, 0.03);
+    display: flex;
+    flex-direction: column;
 }
 
-.tachyon_dashboard-page__widgets-section__item__title {}
+.tachyon_dashboard-page__widgets-section__item__title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color-high, inherit);
+    margin-bottom: 6px;
+    display: block;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+    padding-bottom: 4px;
+}
 
-.tachyon_dashboard-page__widgets-section__item__row {}
+.tachyon_dashboard-page__widgets-section__item__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 3px;
+}
 
 .tachyon_dashboard-page__widgets-section__item__row--success .tachyon_dashboard-page__widgets-section__item__row__value {
     color: var(--success-color-medium, green);
@@ -11973,6 +12145,69 @@ var styles = `
 .tachyon_dashboard-page__widgets-section__item__row__key {}
 
 .tachyon_dashboard-page__widgets-section__item__row__value {}
+
+.tachyon-stat--down {
+    color: #10b981 !important;
+    font-weight: 600;
+}
+
+.tachyon-stat--up {
+    color: #3b82f6 !important;
+    font-weight: 600;
+}
+
+.tachyon-stat--session {
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+.tachyon-stat--bold {
+    font-weight: 700;
+    color: var(--text-color-high, inherit);
+}
+
+.tachyon_dashboard-page__top-domains-container {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.tachyon_dashboard-page__top-domains-header {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.75;
+    margin-bottom: 6px;
+}
+
+.tachyon_dashboard-page__top-domains-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tachyon_dashboard-page__top-domain-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(128, 128, 128, 0.12);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    color: var(--text-color-high);
+}
+
+.tachyon_dashboard-page__top-domain-chip__icon {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.tachyon_dashboard-page__top-domain-chip__badge {
+    font-size: 11px;
+    opacity: 0.7;
+    background: rgba(0, 0, 0, 0.15);
+    padding: 1px 4px;
+    border-radius: 4px;
+}
 
 .tachyon_dashboard-page__outbound-section {
     margin-top: 10px;

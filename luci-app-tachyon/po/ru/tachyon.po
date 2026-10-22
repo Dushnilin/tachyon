@@ -1,15 +1,15 @@
 # RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
-# lQwestl, 2026.
+# Dushnilin, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 18:30+0300\n"
-"PO-Revision-Date: 2026-10-21 18:30+0300\n"
-"Last-Translator: lQwestl\n"
+"POT-Creation-Date: 2026-10-22 06:48+0300\n"
+"PO-Revision-Date: 2026-10-22 06:48+0300\n"
+"Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -202,6 +202,9 @@ msgstr "Режим часов активности"
 
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
+
+msgid "Active Route"
+msgstr "Активный выход"
 
 msgid "Active engine"
 msgstr "Активный движок"
@@ -1237,6 +1240,9 @@ msgstr "Копировать лог"
 
 msgid "Copy proxy link"
 msgstr "Скопировать ссылку прокси"
+
+msgid "Core Memory"
+msgstr "Память ядра"
 
 msgid "Core configuration and preferences"
 msgstr "Основные настройки и параметры"
@@ -3575,6 +3581,9 @@ msgstr "Вручную"
 msgid "Manual list update"
 msgstr "Ручное обновление списков"
 
+msgid "Manual selection"
+msgstr "Ручной выбор"
+
 msgid "Manual setup"
 msgstr "Ручная настройка"
 
@@ -3637,9 +3646,6 @@ msgstr "Медиана; успешные запросы: %s / %s. Нажмите
 
 msgid "Memory Limit (MB)"
 msgstr ""
-
-msgid "Memory Usage"
-msgstr "Использование памяти"
 
 msgid "Menu & Navigation"
 msgstr "Меню и навигация"
@@ -4964,6 +4970,9 @@ msgstr "Имя роутера"
 msgid "Router Traffic Target Section"
 msgstr "Секция для трафика роутера"
 
+msgid "Routing & Rules"
+msgstr "Правила и маршрутизация"
+
 msgid "Routing Engine"
 msgstr "Маршрутизирующий движок"
 
@@ -5303,6 +5312,9 @@ msgstr "Выбранная секция"
 msgid "Selected: specified devices become guests. Inverted: all devices on the network become guests EXCEPT the trusted ones (Zero-Trust)."
 msgstr "Выборочный: указанные устройства становятся гостевыми. Инвертированный: все устройства в сети считаются гостевыми, КРОМЕ доверенных (Zero-Trust)."
 
+msgid "Selector"
+msgstr "Селектор"
+
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr "Selector и URLTest outbound должны содержать непустой массив outbounds"
 
@@ -5440,6 +5452,9 @@ msgstr "Информация о сервисах"
 
 msgid "Services restarted. Click to reload page."
 msgstr "Службы перезапущены. Нажмите для перезагрузки страницы."
+
+msgid "Session total"
+msgstr "Всего за сессию"
 
 msgid "Settings"
 msgstr "Настройки"
@@ -5650,6 +5665,9 @@ msgstr "Сторонний сервис активен параллельно с
 
 msgid "Standard"
 msgstr "Стандартный"
+
+msgid "Standby / Direct"
+msgstr "Прямой / Ожидание"
 
 msgid "Start"
 msgstr "Старт"
@@ -5869,9 +5887,6 @@ msgstr "Индекс стабильности системы"
 
 msgid "System diagnostics, AI Doctor and logs"
 msgstr "Системная диагностика, ИИ-Доктор и логи"
-
-msgid "System info"
-msgstr "Системная информация"
 
 msgid "System information"
 msgstr "Системная информация"
@@ -6308,6 +6323,9 @@ msgstr "Токен обязателен, когда бот включён"
 msgid "Tolerance"
 msgstr "Допуск"
 
+msgid "Top active domains in bypass:"
+msgstr "Популярные ресурсы в обходе:"
+
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
 
@@ -6347,8 +6365,8 @@ msgstr "Трассировка правил маршрутизации..."
 msgid "Traffic"
 msgstr "Трафик"
 
-msgid "Traffic Total"
-msgstr "Всего трафика"
+msgid "Traffic & Speed"
+msgstr "Трафик и скорость"
 
 msgid "Traffic for this level goes directly."
 msgstr "Трафик этого уровня идёт напрямую."
@@ -7022,11 +7040,17 @@ msgstr "compressed"
 msgid "confidence"
 msgstr "уверенность"
 
+msgid "conns"
+msgstr "соед."
+
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
 msgid "dev."
 msgstr "устр."
+
+msgid "devices"
+msgstr "устройств"
 
 msgid "e.g. AES-256-GCM — leave empty for default"
 msgstr "напр. AES-256-GCM — оставьте пустым для значения по умолчанию"
@@ -7273,6 +7297,15 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Memory Usage"
+msgstr "Использование памяти"
+
+msgid "System info"
+msgstr "Системная информация"
+
+msgid "Traffic Total"
+msgstr "Всего трафика"
 
 msgid "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions or https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)"
 msgstr ""

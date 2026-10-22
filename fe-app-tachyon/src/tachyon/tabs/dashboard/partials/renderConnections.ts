@@ -1,5 +1,6 @@
 import { svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
+import { ITopDomain } from '../connections';
 
 export interface IConnection {
   ip: string;
@@ -13,8 +14,39 @@ export function renderConnections(
   connections: IConnection[],
   isCollapsed: boolean,
   onToggleCollapse: () => void,
+  topDomains?: ITopDomain[],
 ) {
-  if (connections.length === 0) {
+  const topDomainsSection =
+    topDomains && topDomains.length > 0
+      ? E('div', { class: 'tachyon_dashboard-page__top-domains-container' }, [
+          E(
+            'div',
+            { class: 'tachyon_dashboard-page__top-domains-header' },
+            _('Top active domains in bypass:'),
+          ),
+          E(
+            'div',
+            { class: 'tachyon_dashboard-page__top-domains-list' },
+            topDomains.map((item) =>
+              E('span', { class: 'tachyon_dashboard-page__top-domain-chip' }, [
+                E(
+                  'span',
+                  { class: 'tachyon_dashboard-page__top-domain-chip__icon' },
+                  '🌐',
+                ),
+                E('b', {}, item.domain),
+                E(
+                  'span',
+                  { class: 'tachyon_dashboard-page__top-domain-chip__badge' },
+                  `${item.count} ${_('conns')}${item.traffic > 0 ? ` • ${prettyBytes(item.traffic)}` : ''}`,
+                ),
+              ]),
+            ),
+          ),
+        ])
+      : '';
+
+  if (connections.length === 0 && (!topDomains || topDomains.length === 0)) {
     return E('div', { class: 'tachyon_dashboard-page__outbound-section' }, [
       E(
         'div',
@@ -136,7 +168,7 @@ export function renderConnections(
             class: 'tachyon_dashboard-page__outbound-grid',
             style: 'padding: 12px; display: block;',
           },
-          rows,
+          [...rows, topDomainsSection],
         ),
   ]);
 }
