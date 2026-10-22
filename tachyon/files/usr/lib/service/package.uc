@@ -341,6 +341,8 @@ function ensure_ucitrack_entry() {
 function luci_postinst() {
     remove_luci_index_cache();
     remove_component_update_cache();
+    for (let js_file in (fs.glob("/www/luci-static/resources/view/tachyon/*.js") || []))
+        command_success_from_args([ "touch", js_file ]);
     if (!PACKAGE_TEST_MODE) {
         ensure_guest_mode_section();
         ensure_ucitrack_entry();

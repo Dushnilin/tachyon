@@ -3052,7 +3052,35 @@ function enabled_servers() {
     return result;
 }
 
+function has_outbound_tag(config, tag_name) {
+    if (type(config) != "object" || type(config.outbounds) != "array")
+        return false;
+    for (let item in config.outbounds) {
+        if (type(item) == "object" && as_string(item.tag) == as_string(tag_name))
+            return true;
+    }
+    return false;
+}
+
+function ensure_dnsmasq_dns_server(config) {
+    if (type(config) != "object" || type(config.dns) != "object")
+        return;
+    if (type(config.dns.servers) != "array")
+        config.dns.servers = [];
+    for (let s in config.dns.servers) {
+        if (type(s) == "object" && as_string(s.tag) == runtime_constants.DNSMASQ_DNS_SERVER_TAG)
+            return;
+    }
+    push(config.dns.servers, {
+        type: "udp",
+        tag: runtime_constants.DNSMASQ_DNS_SERVER_TAG,
+        server: "127.0.0.1",
+        server_port: 53
+    });
+}
+
 function add_server_routes(config, servers, sections) {
+    let has_lan_direct = has_outbound_tag(config, runtime_constants.LAN_DIRECT_OUTBOUND_TAG);
     for (let server in servers) {
         // Native-mode Tailscale runs outside sing-box: no inbound, no rules.
         if (runtime_servers.is_native_tailscale(server))
@@ -3092,6 +3120,23 @@ function add_server_routes(config, servers, sections) {
         });
 
         if (!isolate_lan) {
+            ensure_dnsmasq_dns_server(config);
+            if (type(config.dns) == "object" && type(config.dns.rules) == "array") {
+                unshift(config.dns.rules, {
+                    action: "route",
+                    inbound: inbound,
+                    domain_suffix: [ "lan", "local", "internal", "home.arpa", "localdomain" ],
+                    server: runtime_constants.DNSMASQ_DNS_SERVER_TAG
+                });
+            }
+            if (has_lan_direct) {
+                push(config.route.rules, {
+                    action: "route",
+                    inbound: inbound,
+                    ip_is_private: true,
+                    outbound: runtime_constants.LAN_DIRECT_OUTBOUND_TAG
+                });
+            }
             push(config.route.rules, {
                 action: "route",
                 inbound: inbound,

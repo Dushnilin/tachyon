@@ -335,7 +335,12 @@ export function renderDnsBenchmarkModal() {
         if (applyBtn) (applyBtn as HTMLButtonElement).disabled = true;
       } else {
         progressContainer.style.display = 'none';
-        if (data.finished_at) {
+        if (data.error) {
+          statusLabel.textContent = `❌ ${data.error}`;
+          if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
+          if (applyBtn)
+            (applyBtn as HTMLButtonElement).disabled = !data.recommendation;
+        } else if (data.finished_at) {
           statusLabel.textContent = `✓ ${_('Benchmark completed successfully')}`;
           if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
           if (applyBtn)

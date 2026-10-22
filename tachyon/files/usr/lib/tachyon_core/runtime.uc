@@ -95,7 +95,6 @@ function fallback_managed_core_init_script(marker) {
         "    _kill_daemon_instances\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"0\"\n" +
         "    procd_set_param limits nofile=\"65535 65535\"\n" +
@@ -742,6 +741,8 @@ function sing_box_variant() {
 
     if (sing_box_marker_is("tachyon-core"))
         return "tachyon-core";
+    if (getenv("SB_VARIANT_STATE_FILE") == null && find_core_binary() != "" && sing_box_core_profile("", "") == "tachyon-core")
+        return "tachyon-core";
     if (sing_box_marker_is("lx"))
         return "lx";
     if (sing_box_marker_is("extended-compressed"))
@@ -856,6 +857,7 @@ function managed_service_script_stale() {
         : fallback_init_script_kills_itself(data);
     return index(data, "config_load \"tachyon-core\"") < 0 ||
         index(data, "core=\"unlimited\"") >= 0 ||
+        index(data, "procd_set_param file ") >= 0 ||
         index(data, "GOMEMLIMIT") < 0 ||
         index(data, "PROG=\"/usr/bin/sing-box\"") < 0 ||
         index(data, "stop_service()") < 0 ||
@@ -1261,8 +1263,45 @@ function prepare_subscription_caches(prepared, no_refresh) {
     return trim(result.output);
 }
 
+function has_listening_endpoint(cfg) {
+    if (type(cfg) != "object" || type(cfg.endpoints) != "array")
+        return false;
+    for (let ep in cfg.endpoints) {
+        if (type(ep) == "object" && (int(ep.listen_port || 0) > 0 || ep.system === true))
+            return true;
+    }
+    return false;
+}
+
+function enrich_reload_preview(parsed, current_path, candidate_path, old_exists) {
+    let old_cfg = old_exists ? common.read_json_file(current_path) : null;
+    let new_cfg = common.read_json_file(candidate_path);
+    let keys_to_check = [ "inbounds", "outbounds", "endpoints", "route", "dns", "experimental" ];
+    let subsystems = {};
+    let changed_subsystems = [];
+    for (let k in keys_to_check) {
+        let old_val = type(old_cfg) == "object" ? sprintf("%J", old_cfg[k]) : "null";
+        let new_val = type(new_cfg) == "object" ? sprintf("%J", new_cfg[k]) : "null";
+        let diff = !old_exists || old_val != new_val;
+        subsystems[k] = diff;
+        if (diff)
+            push(changed_subsystems, k);
+    }
+    parsed.subsystems = subsystems;
+    parsed.changed_subsystems = changed_subsystems;
+    if (!old_exists) {
+        parsed.in_place = false;
+        parsed.current_digest = "";
+    } else if (has_listening_endpoint(old_cfg) || has_listening_endpoint(new_cfg)) {
+        // Endpoints with a bound UDP listen_port or kernel interface cannot bind
+        // a second time while the old instance still holds the socket/interface.
+        parsed.in_place = false;
+    }
+    return parsed;
+}
+
 function write_reload_preview(current_path, candidate_path) {
-    if (!file_exists(current_path) || !file_exists(candidate_path))
+    if (!file_exists(candidate_path))
         return;
     if (sing_box_variant() != "tachyon-core") {
         remove_file(RELOAD_PREVIEW_FILE);
@@ -1273,7 +1312,9 @@ function write_reload_preview(current_path, candidate_path) {
         remove_file(RELOAD_PREVIEW_FILE);
         return;
     }
-    let out = trim(command_output_from_args([ bin, "reload-preview", "--current", current_path, "-c", candidate_path ]));
+    let old_exists = file_exists(current_path);
+    let base_path = old_exists ? current_path : candidate_path;
+    let out = trim(command_output_from_args([ bin, "reload-preview", "--current", base_path, "-c", candidate_path ]));
     if (out == "") {
         remove_file(RELOAD_PREVIEW_FILE);
         return;
@@ -1281,6 +1322,7 @@ function write_reload_preview(current_path, candidate_path) {
     try {
         let parsed = json(out);
         if (type(parsed) == "object" && (parsed.in_place === true || parsed.in_place === false)) {
+            enrich_reload_preview(parsed, current_path, candidate_path, old_exists);
             ensure_parent_dir(RELOAD_PREVIEW_FILE);
             write_file(RELOAD_PREVIEW_FILE, sprintf("%J\n", parsed));
             return;
@@ -1304,6 +1346,8 @@ function save_config_file(temp_file_path, config_path) {
         return command_success_from_args([ "mv", "-f", temp_file_path, config_path ]);
     }
 
+    if (!file_exists(RELOAD_PREVIEW_FILE))
+        write_reload_preview(config_path, temp_file_path);
     log_message("sing-box configuration is unchanged", "info");
     remove_file(temp_file_path);
     return true;

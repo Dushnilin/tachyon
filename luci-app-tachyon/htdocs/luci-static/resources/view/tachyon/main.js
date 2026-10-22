@@ -10003,6 +10003,8 @@ var dashboardDataUpdatesId = 0;
 var connectionsRefreshTimer = null;
 var currentConnections = [];
 var currentTopDomains = [];
+var lastRawConnections = [];
+var cachedHostnames = /* @__PURE__ */ new Map();
 var directSocketsFailed = false;
 var trafficRatesState = createInitialTrafficRatesState();
 var pageUnloading = false;
@@ -10391,9 +10393,10 @@ async function connectToClashSockets(dataUpdatesId) {
       directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
       if (Array.isArray(parsedMsg.connections)) {
+        lastRawConnections = parsedMsg.connections;
         currentConnections = aggregateClientConnections(
           parsedMsg.connections,
-          /* @__PURE__ */ new Map()
+          cachedHostnames
         );
         currentTopDomains = aggregateTopDomains(parsedMsg.connections);
       }
@@ -11602,16 +11605,33 @@ async function fetchConnections() {
     return;
   }
   try {
+    if (!needsFallbackPolling && lastRawConnections.length > 0) {
+      const hostnames2 = await fetchHostnames();
+      if (hostnames2.size > 0) {
+        cachedHostnames = hostnames2;
+      }
+      currentConnections = aggregateClientConnections(
+        lastRawConnections,
+        cachedHostnames
+      );
+      void renderSystemInfoWidget();
+      renderConnectionsWidget();
+      return;
+    }
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
-      shouldFetchHostnames ? fetchHostnames() : Promise.resolve(/* @__PURE__ */ new Map())
+      shouldFetchHostnames ? fetchHostnames() : Promise.resolve(cachedHostnames)
     ]);
+    if (shouldFetchHostnames && hostnames.size > 0) {
+      cachedHostnames = hostnames;
+    }
     if (res.success && res.data && typeof res.data === "object") {
       const payload = res.data;
       if (Array.isArray(payload.connections)) {
+        lastRawConnections = payload.connections;
         currentConnections = aggregateClientConnections(
           payload.connections,
-          hostnames
+          cachedHostnames
         );
         currentTopDomains = aggregateTopDomains(payload.connections);
       }
@@ -18343,7 +18363,12 @@ function renderDnsBenchmarkModal() {
         if (applyBtn) applyBtn.disabled = true;
       } else {
         progressContainer.style.display = "none";
-        if (data.finished_at) {
+        if (data.error) {
+          statusLabel.textContent = `❌ ${data.error}`;
+          if (startBtn) startBtn.disabled = false;
+          if (applyBtn)
+            applyBtn.disabled = !data.recommendation;
+        } else if (data.finished_at) {
           statusLabel.textContent = `✓ ${_("Benchmark completed successfully")}`;
           if (startBtn) startBtn.disabled = false;
           if (applyBtn)

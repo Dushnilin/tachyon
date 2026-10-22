@@ -411,10 +411,11 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             public_key: peer_public_key,
             allowed_ips: core_ip.normalize_to_cidrs(allowed_ips)
         };
-        if (server_address != "")
+        if (server_address != "") {
             peer.address = server_address;
-        if (server_port > 0)
-            peer.port = server_port;
+            if (server_port > 0)
+                peer.port = server_port;
+        }
 
         let preshared_key = option(section, "awg_preshared_key", "");
         if (preshared_key != "")
@@ -589,9 +590,11 @@ function add_standard_inbound(config, section, protocol, tag_name) {
 
     apply_tls(inbound, section, protocol);
     apply_transport(inbound, section, protocol);
-    if (protocol == "awg" && endpoint_schema) {
+    if (protocol == "awg") {
         let server_port = int_option(section, "awg_server_port", int_option(section, "listen_port", 51820));
         inbound.listen_port = server_port;
+    }
+    if (protocol == "awg" && endpoint_schema) {
         delete inbound.listen;
         if (!config.endpoints)
             config.endpoints = [];

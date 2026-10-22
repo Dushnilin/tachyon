@@ -69,6 +69,10 @@ PATH="$WORK_DIR/bin:$PATH" \
 [ -f "$PREVIEW_FILE" ] || fail "save_config_file must write reload-preview.json when tachyon-core is active"
 grep -Fq '"candidate_digest": "bbb222"' "$PREVIEW_FILE" ||
   fail "reload-preview.json must record candidate_digest"
+grep -Fq '"subsystems":' "$PREVIEW_FILE" ||
+  fail "reload-preview.json must record subsystems summary"
+grep -Fq '"changed_subsystems":' "$PREVIEW_FILE" ||
+  fail "reload-preview.json must record changed_subsystems list"
 
 # When sing-box (e.g. lx) is active, save_config_file must NOT leave a reload-preview.json
 printf 'lx\n' >"$VARIANT_FILE"
@@ -135,7 +139,7 @@ if TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
   "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$FAKE_PID" >/dev/null 2>&1; then
   fail "try_sighup_reload must return false when reload-preview reports in_place: false"
 fi
-[ ! -f "$PREVIEW_FILE" ] || fail "try_sighup_reload must consume reload-preview.json"
+[ -f "$PREVIEW_FILE" ] || fail "try_sighup_reload must preserve reload-preview.json on disk for inspection"
 
 # --- 5. /tachyon/config-state verification & /tachyon/route-recheck ----------
 API_PORT=45991

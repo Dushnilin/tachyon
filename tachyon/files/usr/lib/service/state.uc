@@ -637,6 +637,8 @@ function core_logread_tail() {
         return "";
     let lines = [];
     for (let line in split(out, "\n")) {
+        if (index(line, "tachyon: [") >= 0)
+            continue;
         if (index(line, "tachyon-core") >= 0 || index(line, "sing-box") >= 0)
             push(lines, line);
     }
@@ -650,8 +652,9 @@ function text_has_reload_failure(text) {
         index(text, "failed to start box after SIGHUP reload") >= 0 ||
         index(text, "reload rejected by check") >= 0 ||
         index(text, "in-place hot reload failed") >= 0 ||
-        index(text, "start error") >= 0 ||
-        index(text, "reload failed") >= 0;
+        index(text, "failed to load configuration on SIGHUP") >= 0 ||
+        index(text, "failed to parse configuration after SIGHUP") >= 0 ||
+        index(text, "start error") >= 0;
 }
 
 function core_log_reload_failed(since_offset, logread_before) {
@@ -694,6 +697,11 @@ function pid_is_tachyon_core(pid) {
         marker = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
     if (marker == "tachyon-core")
         return true;
+    if (getenv("SB_VARIANT_STATE_FILE") == null) {
+        let rt_prof = trim(command_output_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/tachyon_core/runtime.uc", "core-profile" ]));
+        if (rt_prof == "tachyon-core")
+            return true;
+    }
     if (marker == "lx" || marker == "extended" || marker == "extended-compressed" || marker == "tiny" || marker == "stable")
         return false;
 
@@ -711,7 +719,6 @@ function consume_reload_preview() {
     let data = fs.readfile(RELOAD_PREVIEW_FILE);
     if (data == null)
         return null;
-    unlink_file(RELOAD_PREVIEW_FILE);
     try {
         let parsed = json(as_string(data));
         return type(parsed) == "object" ? parsed : null;
@@ -1045,7 +1052,6 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
         command_success_from_args([ "logger", "-t", "tachyon", "[warn] sing-box SIGHUP reload failed; falling back to full restart" ]);
     }
 
-    unlink_file(RELOAD_PREVIEW_FILE);
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Restarting sing-box runtime" ]);
     if (!command_success_from_args([ "/etc/init.d/tachyon-core", "restart" ])) {
         command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart sing-box. Aborted." ]);

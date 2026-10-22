@@ -1787,6 +1787,19 @@ function source_aware_dns_sources(sections, settings) {
     return sources;
 }
 
+function primary_lan_interface(settings) {
+    let raw = trim(option(settings, "source_network_interfaces", ""));
+    if (raw != "") {
+        for (let p in split(raw, /[\s,]+/)) {
+            if (p != "" && fs.stat("/sys/class/net/" + p) != null)
+                return p;
+        }
+    }
+    if (fs.stat("/sys/class/net/br-lan") != null)
+        return "br-lan";
+    return "";
+}
+
 function add_source_aware_dns_support(config, source_aware_dns) {
     if (length(source_aware_dns) == 0)
         return;
@@ -1951,6 +1964,16 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
         source_aware_dns: length(source_aware_dns) > 0
     });
     add_source_aware_dns_support(config, source_aware_dns);
+    if (length(servers) > 0) {
+        let lan_iface = primary_lan_interface(settings);
+        if (lan_iface != "") {
+            push(config.outbounds, {
+                type: "direct",
+                tag: runtime_constants.LAN_DIRECT_OUTBOUND_TAG,
+                bind_interface: lan_iface
+            });
+        }
+    }
     let taken = reserved_runtime_tag_set(config.outbounds);
     reserve_section_outbound_tags(sections, taken);
     for (let server in servers)

@@ -458,7 +458,6 @@ function fallback_managed_core_init_script(marker, reset_log) {
         "    _kill_daemon_instances\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"0\"\n" +
         "    procd_set_param limits nofile=\"65535 65535\"\n" +
@@ -3202,10 +3201,6 @@ function dispatch_sing_box(action, target_tag) {
         install_package_sing_box(action, false);
         return;
     }
-    if (action == "install_tachyon_core") {
-        install_tachyon_core(action, target_tag);
-        return;
-    }
 
     let variant = sing_box_runtime_output("variant", []);
     if (variant == "tachyon-core")
@@ -3837,15 +3832,27 @@ function set_torrserver_direct(action) {
 
 function switch_engine_component(target) {
     target = engine.normalize_engine(target);
-    updates_log("Switching routing engine to " + target);
+    let display_target = target;
+    if (target == "tachyon-core") {
+        let cur_variant = sing_box_variant();
+        if (cur_variant != "" && cur_variant != "not-installed" && cur_variant != "tachyon-core")
+            display_target = "sing-box (" + cur_variant + ")";
+    }
+    updates_log("Switching routing engine to " + display_target);
     // The library, not the CLI shim: requiring service/engine_runtime.uc would run
     // its main() with this process's arguments and then exit the interpreter.
     let engine_rt = require("service.engine_runtime_lib");
     let result = engine_rt.switch_engine(target, { allow_install: true });
     if (!result.ok)
         action_fail("engine", "switch", "Engine switch failed: " + as_string(result.reason || "unknown"), "", "", as_string(result.reason || ""));
-    updates_log("Routing engine is now " + as_string(result.to_engine));
-    action_success("engine", "switch", "Switched to " + result.to_engine, result.from_engine, result.to_engine, 1, "latest", "");
+    let final_display = as_string(result.to_engine);
+    if (final_display == "tachyon-core") {
+        let cur_variant = sing_box_variant();
+        if (cur_variant != "" && cur_variant != "not-installed" && cur_variant != "tachyon-core")
+            final_display = "sing-box (" + cur_variant + ")";
+    }
+    updates_log("Routing engine is now " + final_display);
+    action_success("engine", "switch", "Switched to " + final_display, result.from_engine, result.to_engine, 1, "latest", "");
 }
 
 function set_tachyon_language(lang_code) {
