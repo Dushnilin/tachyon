@@ -1461,17 +1461,21 @@ function buildProxyGroupOutbounds(
     urlTestConfigs.some((config) => config.showDetectedCountries) ||
     priorityConfigs.some((config) => config.showDetectedCountries);
   const builtInUrltestCode = urlTestCodes[0] || '';
+  const groupUrlTestMemberCodes = urlTestEntries.flatMap(
+    ({ config, entry }) =>
+      urltestGroups[config.code]?.outbounds || entry?.value.all || [],
+  );
   const fallbackCodes =
     section.action === 'group'
       ? uniqueCodes([
           ...urlTestCodes,
           ...priorityCodes,
-          ...urlTestEntries.flatMap(
-            ({ config, entry }) =>
-              urltestGroups[config.code]?.outbounds || entry?.value.all || [],
-          ),
-          ...Array.from(cachedProxyLinks.keys()),
-          ...Array.from(manualLinkByCode.keys()),
+          ...(groupUrlTestMemberCodes.length > 0
+            ? groupUrlTestMemberCodes
+            : [
+                ...Array.from(cachedProxyLinks.keys()),
+                ...Array.from(manualLinkByCode.keys()),
+              ]),
         ]).filter((code) => !hiddenOutboundTags[code])
       : uniqueCodes([
           ...urlTestCodes,

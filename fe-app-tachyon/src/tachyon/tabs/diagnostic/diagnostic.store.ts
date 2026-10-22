@@ -252,6 +252,14 @@ export const initialDiagnosticStore: Pick<
   updatesChecks: {
     tachyon: { status: null, latest_version: '', release_url: '' },
     sing_box: { status: null, latest_version: '', release_url: '' },
+    'tachyon-core': { status: null, latest_version: '', release_url: '' },
+    'sing-box-lx': { status: null, latest_version: '', release_url: '' },
+    'sing-box-extended': { status: null, latest_version: '', release_url: '' },
+    'sing-box-extended-compressed': {
+      status: null,
+      latest_version: '',
+      release_url: '',
+    },
     zapret: { status: null, latest_version: '', release_url: '' },
     zapret2: { status: null, latest_version: '', release_url: '' },
     byedpi: { status: null, latest_version: '', release_url: '' },

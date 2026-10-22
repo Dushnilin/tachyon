@@ -823,9 +823,9 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     let uci_cfg = load_uci_tachyon_config();
     let settings = uci_cfg.settings || {};
     let active_engine = settings.engine || "tachyon-core";
-    if (active_engine == "sing-box" && fs.stat("/usr/bin/tachyon-core") != null)
-        active_engine = "tachyon-core";
     let is_steer = active_engine == "steer" || active_engine == "steer-extended";
+    let core_marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
+    let is_tachyon_core_bin = !is_steer && core_marker == "tachyon-core";
     let fakeip_enabled = settings.fakeip == "1";
 
     let client_info = classify_client(client_in, uci_cfg);
@@ -1066,12 +1066,12 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
             dns_resolver = "dnsmasq dns_hosts";
             dns_details = "Domain matches a static hosts override rule.";
         } else if (fakeip_enabled) {
-            let core_dns_label = is_steer ? active_engine : (active_engine == "tachyon-core" ? "tachyon-core" : "sing-box");
+            let core_dns_label = is_steer ? active_engine : (is_tachyon_core_bin ? "tachyon-core" : "sing-box");
             dns_mode = "fakeip";
             dns_resolver = core_dns_label + " FakeIP (127.0.0.1:5353)";
             dns_details = "Domain resolved by " + core_dns_label + " FakeIP resolver. Synthetic IPv4 allocated in pool 198.18.0.0/15.";
         } else {
-            let core_dns_label = is_steer ? active_engine : (active_engine == "tachyon-core" ? "tachyon-core" : "sing-box");
+            let core_dns_label = is_steer ? active_engine : (is_tachyon_core_bin ? "tachyon-core" : "sing-box");
             dns_mode = "tachyon_dns";
             dns_resolver = "dnsmasq -> " + core_dns_label + " (127.0.0.1:5353)";
             dns_details = "Domain resolved via secure proxy DNS. dnsmasq automatically populates nftables set 'tachyon_target_v4' with resolved IP.";

@@ -1080,6 +1080,10 @@ export namespace Tachyon {
   export type ComponentName =
     | 'tachyon'
     | 'sing_box'
+    | 'tachyon-core'
+    | 'sing-box-lx'
+    | 'sing-box-extended'
+    | 'sing-box-extended-compressed'
     | 'steer'
     | 'steer-extended'
     | 'zapret'

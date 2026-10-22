@@ -762,7 +762,7 @@ function controller(bus, opts) {
         let started = time();
         let ok = command_success_from_args([
             "curl", "-s", "-o", "/dev/null",
-            "--connect-timeout", "3", "--max-time", "5",
+            "--connect-timeout", "5", "--max-time", "8",
             "--proxy", "http://" + host + ":" + port,
             check_url
         ]);
@@ -776,7 +776,7 @@ function controller(bus, opts) {
                 : "https://connectivitycheck.gstatic.com/generate_204";
             ok = command_success_from_args([
                 "curl", "-s", "-o", "/dev/null",
-                "--connect-timeout", "3", "--max-time", "5",
+                "--connect-timeout", "5", "--max-time", "8",
                 "--proxy", "http://" + host + ":" + port,
                 fallback_url
             ]);

@@ -58,11 +58,7 @@ function is_tachyon_core_active() {
     if (active_engine_is_steer())
         return false;
     let marker = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || ""));
-    if (marker == "tachyon-core")
-        return true;
-    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny")
-        return false;
-    return active_engine_name() == "tachyon-core" || fs.stat("/usr/bin/tachyon-core") != null;
+    return marker == "tachyon-core";
 }
 
 function uci_backup_save() {

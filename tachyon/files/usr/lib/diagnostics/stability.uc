@@ -303,6 +303,25 @@ function get_daemon_pids(name) {
         return pmap["tailscaled"] || [];
     }
 
+    if (name == "sing-box") {
+        let pids = [];
+        let seen = {};
+        for (let p in (pmap["sing-box"] || [])) {
+            push(pids, p);
+            seen[p] = true;
+        }
+        let marker = safe_read_file(constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant");
+        if (marker != "tachyon-core") {
+            for (let p in (pmap["tachyon-core"] || [])) {
+                if (!seen[p]) {
+                    push(pids, p);
+                    seen[p] = true;
+                }
+            }
+        }
+        return pids;
+    }
+
     return pmap[name] || [];
 }
 
@@ -329,13 +348,8 @@ function get_relevant_daemons() {
         push(list, "steer");
     } else {
         let marker = safe_read_file(constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant");
-        let is_core = (marker == "tachyon-core" || (marker == "" && fs.stat("/usr/bin/tachyon-core") != null && length(get_daemon_pids("sing-box")) == 0));
-        if (length(get_daemon_pids("tachyon-core")) > 0)
-            push(list, "tachyon-core");
-        else if (length(get_daemon_pids("sing-box")) > 0)
-            push(list, "sing-box");
-        else
-            push(list, is_core ? "tachyon-core" : "sing-box");
+        let is_core = (marker == "tachyon-core");
+        push(list, is_core ? "tachyon-core" : "sing-box");
     }
 
     if (length(get_daemon_pids("tachyon")) > 0)

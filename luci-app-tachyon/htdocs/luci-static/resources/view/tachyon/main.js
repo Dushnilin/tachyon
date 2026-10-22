@@ -607,6 +607,14 @@ var initialDiagnosticStore = {
   updatesChecks: {
     tachyon: { status: null, latest_version: "", release_url: "" },
     sing_box: { status: null, latest_version: "", release_url: "" },
+    "tachyon-core": { status: null, latest_version: "", release_url: "" },
+    "sing-box-lx": { status: null, latest_version: "", release_url: "" },
+    "sing-box-extended": { status: null, latest_version: "", release_url: "" },
+    "sing-box-extended-compressed": {
+      status: null,
+      latest_version: "",
+      release_url: ""
+    },
     zapret: { status: null, latest_version: "", release_url: "" },
     zapret2: { status: null, latest_version: "", release_url: "" },
     byedpi: { status: null, latest_version: "", release_url: "" },
@@ -766,7 +774,7 @@ function supportsVpnUrl() {
   const state = store.get();
   const info = state.diagnosticsSystemInfo || {};
   const engine = state.activeEngine || info.active_engine || "tachyon-core";
-  return (engine === "tachyon-core" || engine === "sing-box") && (engine === "tachyon-core" || Number(info.sing_box_lx) === 1 || Number(info.sing_box_tachyon_core) === 1 || /-lx(?:[.-]|$)/.test(String(info.sing_box_version || "")) || /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || "")));
+  return (engine === "tachyon-core" || engine === "sing-box") && (Number(info.sing_box_lx) === 1 || Number(info.sing_box_tachyon_core) === 1 || /-lx(?:[.-]|$)/.test(String(info.sing_box_version || "")) || /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || "")));
 }
 function validateVpnUrl(url) {
   const invalid2 = () => ({
@@ -6879,14 +6887,16 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
   const priorityCodes = priorityConfigs.map((config) => config.code);
   const showDetectedCountries = urlTestConfigs.some((config) => config.showDetectedCountries) || priorityConfigs.some((config) => config.showDetectedCountries);
   const builtInUrltestCode = urlTestCodes[0] || "";
+  const groupUrlTestMemberCodes = urlTestEntries.flatMap(
+    ({ config, entry }) => urltestGroups[config.code]?.outbounds || entry?.value.all || []
+  );
   const fallbackCodes = section.action === "group" ? uniqueCodes([
     ...urlTestCodes,
     ...priorityCodes,
-    ...urlTestEntries.flatMap(
-      ({ config, entry }) => urltestGroups[config.code]?.outbounds || entry?.value.all || []
-    ),
-    ...Array.from(cachedProxyLinks.keys()),
-    ...Array.from(manualLinkByCode.keys())
+    ...groupUrlTestMemberCodes.length > 0 ? groupUrlTestMemberCodes : [
+      ...Array.from(cachedProxyLinks.keys()),
+      ...Array.from(manualLinkByCode.keys())
+    ]
   ]).filter((code) => !hiddenOutboundTags[code]) : uniqueCodes([
     ...urlTestCodes,
     ...priorityCodes,
@@ -7857,6 +7867,18 @@ var componentActionKeyMap = {
   "sing_box:install_tachyon_core": "singBoxInstallTachyonCore",
   "sing_box:install_tiny": "singBoxInstallTiny",
   "sing_box:install_stable": "singBoxInstallStable",
+  "tachyon-core:check_update": "singBoxCheck",
+  "tachyon-core:install": "singBoxInstall",
+  "tachyon-core:install_version": "singBoxInstall",
+  "sing-box-lx:check_update": "singBoxCheck",
+  "sing-box-lx:install": "singBoxInstall",
+  "sing-box-lx:install_version": "singBoxInstall",
+  "sing-box-extended:check_update": "singBoxCheck",
+  "sing-box-extended:install": "singBoxInstall",
+  "sing-box-extended:install_version": "singBoxInstall",
+  "sing-box-extended-compressed:check_update": "singBoxCheck",
+  "sing-box-extended-compressed:install": "singBoxInstall",
+  "sing-box-extended-compressed:install_version": "singBoxInstall",
   "zapret:check_update": "zapretCheck",
   "zapret:install": "zapretInstall",
   "zapret:install_version": "zapretInstall",
@@ -11152,12 +11174,11 @@ function renderPrioritySelectedValue(info) {
         selectedMember ? renderPriorityMemberName(selectedMember) : name
       ),
       ...selectedMember?.type ? [
-        E(
-          "span",
-          {
-            class: "tachyon_dashboard-page__urltest-details__selected-type"
-          },
-          selectedMember.type
+        renderOutboundTypeWithPopover(
+          selectedMember.type,
+          selectedMember.transport,
+          selectedMember.details,
+          "tachyon_dashboard-page__urltest-details__selected-type"
         )
       ] : [],
       ...selectedMember ? [
@@ -11180,7 +11201,7 @@ function renderPriorityMemberName(member) {
       countryFlag
     )
   ] : [];
-  return [
+  const elements = [
     ...flagElements,
     E(
       "span",
@@ -11189,6 +11210,23 @@ function renderPriorityMemberName(member) {
     ),
     ...renderFlagEmojis(member.displayName)
   ];
+  if (member.prefix) {
+    const pStyle = resolvePrefixBadgeStyle(member.prefix);
+    return [
+      ...elements,
+      E(
+        "span",
+        {
+          class: "tachyon_dashboard-page__outbound-grid__item__prefix-badge",
+          style: `margin-left: 6px; background: ${pStyle.bg}; color: ${pStyle.color}; border: 1px solid ${pStyle.border}; font-weight: 600; cursor: pointer;`,
+          title: _("Click to customize prefix colors"),
+          click: (event) => openPrefixColorPickerModal(member.prefix, event)
+        },
+        renderFlagEmojis(member.prefix)
+      )
+    ];
+  }
+  return elements;
 }
 function renderPriorityInfoModal(outbound, section) {
   const info = outbound.priorityInfo;
@@ -26485,6 +26523,14 @@ function getComponentCardTitle(component, isTachyonCore) {
       return "Tachyon";
     case "sing_box":
       return isTachyonCore ? "Tachyon Core" : "Sing-box";
+    case "tachyon-core":
+      return "Tachyon Core";
+    case "sing-box-lx":
+      return "Sing-box (Leadaxe)";
+    case "sing-box-extended":
+      return "Sing-box (Extended)";
+    case "sing-box-extended-compressed":
+      return "Sing-box (Extended compressed)";
     case "zapret":
       return "Zapret";
     case "zapret2":
@@ -26514,6 +26560,10 @@ function getComponentCurrentVersion(component, sys) {
     case "tachyon":
       return sys.tachyon_version;
     case "sing_box":
+    case "tachyon-core":
+    case "sing-box-lx":
+    case "sing-box-extended":
+    case "sing-box-extended-compressed":
       return sys.sing_box_version;
     case "zapret":
       return sys.zapret_version;
@@ -26566,6 +26616,10 @@ function getComponentInstallKey(component) {
     case "tachyon":
       return "tachyonInstall";
     case "sing_box":
+    case "tachyon-core":
+    case "sing-box-lx":
+    case "sing-box-extended":
+    case "sing-box-extended-compressed":
       return "singBoxInstall";
     case "zapret":
       return "zapretInstall";
@@ -26618,6 +26672,10 @@ function getRollbackAction(component, key, backupVersion) {
 var COMPONENT_REPO_URLS = {
   tachyon: "https://github.com/Dushnilin/tachyon",
   sing_box: "https://github.com/SagerNet/sing-box",
+  "tachyon-core": "https://github.com/Dushnilin/tachyon-core",
+  "sing-box-lx": "https://github.com/Leadaxe/sing-box-lx",
+  "sing-box-extended": "https://github.com/shtorm-7/sing-box-extended",
+  "sing-box-extended-compressed": "https://github.com/shtorm-7/sing-box-extended",
   zapret: "https://github.com/remittor/zapret-openwrt",
   zapret2: "https://github.com/Dushnilin/zapret2-openwrt",
   byedpi: "https://github.com/DPITrickster/ByeDPI-OpenWrt",
@@ -28697,6 +28755,11 @@ function renderEngineCard() {
   function getVariantComponent(id) {
     if (id === "steer") return "steer";
     if (id === "steer-extended") return "steer-extended";
+    if (id === "tachyon-core") return "tachyon-core";
+    if (id === "sing-box-lx") return "sing-box-lx";
+    if (id === "sing-box-extended") return "sing-box-extended";
+    if (id === "sing-box-extended-compressed")
+      return "sing-box-extended-compressed";
     return "sing_box";
   }
   function getVariantInstallAction(id) {

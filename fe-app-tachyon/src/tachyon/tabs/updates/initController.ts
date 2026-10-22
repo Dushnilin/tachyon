@@ -2745,6 +2745,11 @@ function renderEngineCard(): Node {
   function getVariantComponent(id: string): Tachyon.ComponentName {
     if (id === 'steer') return 'steer';
     if (id === 'steer-extended') return 'steer-extended';
+    if (id === 'tachyon-core') return 'tachyon-core';
+    if (id === 'sing-box-lx') return 'sing-box-lx';
+    if (id === 'sing-box-extended') return 'sing-box-extended';
+    if (id === 'sing-box-extended-compressed')
+      return 'sing-box-extended-compressed';
     return 'sing_box';
   }
   function getVariantInstallAction(id: string): Tachyon.ComponentAction {

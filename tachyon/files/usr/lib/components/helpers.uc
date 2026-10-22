@@ -210,7 +210,8 @@ function sanitize_package_log_line(message) {
         match(str, /^\*?[ \t]*sh:[ \t]+write error:[ \t]+Broken pipe/i) ||
         match(str, /^\*?[ \t]*\/dev\/stdin:[0-9]+:[0-9-]+:[ \t]+Error:[ \t]+Could not resolve hostname:[ \t]+Name has no usable address/i) ||
         match(str, /^\*?[ \t]*(::1|fc00::\/7|fe80::\/10),?[ \t]*$/i) ||
-        match(str, /^\*?[ \t]*\^+[ \t]*$/))
+        match(str, /^\*?[ \t]*\^+[ \t]*$/) ||
+        match(str, /^\*?[ \t]*Notice:[ \t]+Service[ \t]+\/etc\/init\.d\/zapret2\b.*option[ \t]+run_on_boot[ \t]+is[ \t]+not[ \t]+set/i))
         return null;
 
     // Format apk/opkg repository index warnings into calm, informative notices

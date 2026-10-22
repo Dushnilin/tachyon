@@ -892,9 +892,10 @@ function set_ladder_level(reason, level) {
 // watch left open past its deadline into a `failed` one.
 let recovery_watches = {};
 
-// Two fast ticks plus margin: long enough for a restarted sing-box to answer,
-// short enough that a failure is reported while it is still actionable.
-const RECOVERY_DEADLINE = 45;
+// Two probe intervals plus restart margin: long enough for a restarted proxy to
+// complete startup and answer at least one regular 30s health probe, short
+// enough that a failure is reported while it is still actionable.
+const RECOVERY_DEADLINE = 90;
 
 // `reason` ties the watch back to the escalation ladder: settling decides
 // whether that reason's next attempt stays light or goes heavy.
@@ -1191,6 +1192,7 @@ function safe_proxy_restart(reason, force_level) {
     }
     write_state_file(PROXY_RESTART_LOCK, as_string(now), "proxy restart lock");
     proxy_restart_count++;
+    singbox_repair_until = now + SUPPRESSION_DEADLINE;
     // The proxy port can change across a restart, so the controller's cached
     // lookup is invalidated here rather than after the fact.
     controller.forget_proxy_port();
@@ -1458,7 +1460,7 @@ function heal_proxy_connectivity(ev) {
 
     // Reporting used to happen here, before the restart, so a rate-limited
     // attempt still announced a repair that never ran.
-    if (!safe_proxy_restart("proxy_connectivity")) {
+    if (!safe_proxy_restart("proxy_connectivity", ESCALATION_LIGHT)) {
         ai_heal_report(incident.type, incident.description,
             "Очищена база cache.db; перезапуск пропущен по лимиту частоты", "skipped");
         return;
@@ -1705,7 +1707,7 @@ function heal_proxy_health(ev) {
             sprintf("Перезапуск отменён: конфигурация %s не проходит валидацию", eng), "skipped");
         return;
     }
-    if (!safe_proxy_restart("proxy_health")) {
+    if (!safe_proxy_restart("proxy_health", ESCALATION_LIGHT)) {
         ai_heal_report(incident.type, incident.description,
             "Перезапуск пропущен по лимиту частоты", "skipped");
         return;

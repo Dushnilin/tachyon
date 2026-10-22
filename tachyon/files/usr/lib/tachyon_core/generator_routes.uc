@@ -758,7 +758,7 @@ function group_member_leaf_tags(members, config) {
         if (ctx.deferred_sections && ctx.deferred_sections[name])
             continue;
         let recorded = section_leaf_tags[name];
-        if (type(recorded) == "array" && length(recorded) > 0) {
+        if (type(recorded) == "array") {
             for (let candidate in recorded)
                 push(tags, candidate);
             continue;
@@ -861,18 +861,26 @@ function merge_member_state_into_group(group_state, member, config) {
     let name = member[".name"];
     let member_state = section_state_map[name];
     if (type(member_state) == "object") {
-        for (let k, v in object_or_empty(member_state.links))
-            group_state.links[k] = v;
-        for (let k, v in object_or_empty(member_state.servers))
-            group_state.servers[k] = v;
+        let recorded = section_leaf_tags[name];
+        let allowed = (type(recorded) == "array") ? object_keys_set(recorded) : null;
+        for (let k, v in object_or_empty(member_state.links)) {
+            if (!allowed || allowed[k])
+                group_state.links[k] = v;
+        }
+        for (let k, v in object_or_empty(member_state.servers)) {
+            if (!allowed || allowed[k])
+                group_state.servers[k] = v;
+        }
         for (let item in array_or_empty(member_state.subscriptionMetadata))
             push(group_state.subscriptionMetadata, item);
         let member_meta = object_or_empty(member_state.outboundMetadata);
         for (let field in [ "names", "countries", "protocols", "transports", "securities", "prefixes", "ports", "details", "sources" ]) {
             if (!group_state.outboundMetadata[field])
                 group_state.outboundMetadata[field] = {};
-            for (let k, v in object_or_empty(member_meta[field]))
-                group_state.outboundMetadata[field][k] = v;
+            for (let k, v in object_or_empty(member_meta[field])) {
+                if (!allowed || allowed[k])
+                    group_state.outboundMetadata[field][k] = v;
+            }
         }
         return;
     }
@@ -1084,6 +1092,7 @@ function section_excluded_candidate_tags(section, candidate_tags, state) {
     let exclude_protocols = connections.dashboard_exclude_protocols(section);
     let exclude_transports = connections.dashboard_exclude_transports(section);
     let exclude_securities = connections.dashboard_exclude_securities(section);
+    let exclude_ports = connections.dashboard_exclude_ports(section);
 
     let has_exclude_criteria = length(exclude_names) > 0 ||
         length(exclude_regex) > 0 ||
@@ -1091,7 +1100,8 @@ function section_excluded_candidate_tags(section, candidate_tags, state) {
         (exclude_proxy_parameters && (
             length(exclude_protocols) > 0 ||
             length(exclude_transports) > 0 ||
-            length(exclude_securities) > 0
+            length(exclude_securities) > 0 ||
+            length(exclude_ports) > 0
         ));
 
     if (!has_exclude_criteria)
@@ -1110,7 +1120,7 @@ function section_excluded_candidate_tags(section, candidate_tags, state) {
         exclude_protocols,
         exclude_transports,
         exclude_securities,
-        []
+        exclude_ports
     );
 }
 
@@ -1181,14 +1191,14 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     }
 
     let effective_leaf_tags = group_candidate_tags;
-    if ((mode == "include" || mode == "mixed") && length(filtered_outbounds) > 0) {
+    if ((mode == "include" || mode == "exclude" || mode == "mixed") && length(filtered_outbounds) > 0) {
         let allowed_set = object_keys_set(filtered_outbounds);
         let narrowed = [];
         for (let t in group_candidate_tags) {
             if (allowed_set[t])
                 push(narrowed, t);
         }
-        if (length(narrowed) > 0)
+        if (length(narrowed) > 0 || mode == "exclude")
             effective_leaf_tags = narrowed;
     }
     remember_section_leaf_tags(section_name, effective_leaf_tags);

@@ -1591,12 +1591,11 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
       ),
       ...(selectedMember?.type
         ? [
-            E(
-              'span',
-              {
-                class: 'tachyon_dashboard-page__urltest-details__selected-type',
-              },
+            renderOutboundTypeWithPopover(
               selectedMember.type,
+              selectedMember.transport,
+              selectedMember.details,
+              'tachyon_dashboard-page__urltest-details__selected-type',
             ),
           ]
         : []),
@@ -1626,7 +1625,7 @@ function renderPriorityMemberName(member: Tachyon.PriorityMember) {
       ]
     : [];
 
-  return [
+  const elements = [
     ...flagElements,
     E(
       'span',
@@ -1635,6 +1634,26 @@ function renderPriorityMemberName(member: Tachyon.PriorityMember) {
     ),
     ...renderFlagEmojis(member.displayName),
   ];
+
+  if (member.prefix) {
+    const pStyle = resolvePrefixBadgeStyle(member.prefix);
+    return [
+      ...elements,
+      E(
+        'span',
+        {
+          class: 'tachyon_dashboard-page__outbound-grid__item__prefix-badge',
+          style: `margin-left: 6px; background: ${pStyle.bg}; color: ${pStyle.color}; border: 1px solid ${pStyle.border}; font-weight: 600; cursor: pointer;`,
+          title: _('Click to customize prefix colors'),
+          click: (event: MouseEvent) =>
+            openPrefixColorPickerModal(member.prefix!, event),
+        },
+        renderFlagEmojis(member.prefix),
+      ),
+    ];
+  }
+
+  return elements;
 }
 
 function renderPriorityInfoModal(

@@ -294,6 +294,15 @@ if (!direct_rule || direct_rule.outbound != "grp-urltest-out")
     die("routing conditions on the group section itself must route to grp-urltest-out\n");
 if (!mixed_rule || mixed_rule.outbound != "grp-urltest-out")
     die("mixed proxy on the group section must route to grp-urltest-out\n");
+
+let grp_direct_cache = json(fs.readfile(ARGV[0] + ".section-cache/grp.json"));
+if (!grp_direct_cache || type(grp_direct_cache.links) != "object")
+    die("grp.json must exist for group-direct-config\n");
+if (grp_direct_cache.links["alpha-2-out"] || (grp_direct_cache.servers && grp_direct_cache.servers["alpha-2-out"]) ||
+    (grp_direct_cache.outboundMetadata && grp_direct_cache.outboundMetadata.names && grp_direct_cache.outboundMetadata.names["alpha-2-out"]))
+    die("excluded member leaf alpha-2-out must not leak into grp.json links/servers/outboundMetadata\n");
+if (!grp_direct_cache.links["alpha-1-out"] || !grp_direct_cache.links["beta-1-out"])
+    die("included member leaves alpha-1-out and beta-1-out must be present in grp.json links\n");
 ' "$group_direct_config" || fail "generated section group direct rules, filter, and mixed proxy"
 
 # ─── generator: manual action=awg endpoint included in group urltest ──────────

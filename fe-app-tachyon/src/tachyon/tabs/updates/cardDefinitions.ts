@@ -41,6 +41,14 @@ export function getComponentCardTitle(
       return 'Tachyon';
     case 'sing_box':
       return isTachyonCore ? 'Tachyon Core' : 'Sing-box';
+    case 'tachyon-core':
+      return 'Tachyon Core';
+    case 'sing-box-lx':
+      return 'Sing-box (Leadaxe)';
+    case 'sing-box-extended':
+      return 'Sing-box (Extended)';
+    case 'sing-box-extended-compressed':
+      return 'Sing-box (Extended compressed)';
     case 'zapret':
       return 'Zapret';
     case 'zapret2':
@@ -74,6 +82,10 @@ export function getComponentCurrentVersion(
     case 'tachyon':
       return sys.tachyon_version;
     case 'sing_box':
+    case 'tachyon-core':
+    case 'sing-box-lx':
+    case 'sing-box-extended':
+    case 'sing-box-extended-compressed':
       return sys.sing_box_version;
     case 'zapret':
       return sys.zapret_version;
@@ -133,6 +145,10 @@ export function getComponentInstallKey(
     case 'tachyon':
       return 'tachyonInstall';
     case 'sing_box':
+    case 'tachyon-core':
+    case 'sing-box-lx':
+    case 'sing-box-extended':
+    case 'sing-box-extended-compressed':
       return 'singBoxInstall';
     case 'zapret':
       return 'zapretInstall';
@@ -277,6 +293,11 @@ export function getOptionalComponentActions({
 export const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   tachyon: 'https://github.com/Dushnilin/tachyon',
   sing_box: 'https://github.com/SagerNet/sing-box',
+  'tachyon-core': 'https://github.com/Dushnilin/tachyon-core',
+  'sing-box-lx': 'https://github.com/Leadaxe/sing-box-lx',
+  'sing-box-extended': 'https://github.com/shtorm-7/sing-box-extended',
+  'sing-box-extended-compressed':
+    'https://github.com/shtorm-7/sing-box-extended',
   zapret: 'https://github.com/remittor/zapret-openwrt',
   zapret2: 'https://github.com/Dushnilin/zapret2-openwrt',
   byedpi: 'https://github.com/DPITrickster/ByeDPI-OpenWrt',

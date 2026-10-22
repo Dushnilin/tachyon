@@ -117,12 +117,9 @@ function is_tachyon_core_active() {
     let marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
     if (marker == "tachyon-core")
         return true;
-    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny")
+    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable")
         return false;
-    if (sysinfo_mod.sing_box_marker_is("tachyon-core"))
-        return true;
-    let eng = active_engine_name();
-    return eng == "tachyon-core" || fs.stat("/usr/bin/tachyon-core") != null;
+    return sysinfo_mod.sing_box_marker_is("tachyon-core");
 }
 
 function status_capture(args, input) { return status_bridge.status_capture(args, input); }

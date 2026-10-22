@@ -7,8 +7,7 @@ export function supportsVpnUrl() {
   const engine = state.activeEngine || info.active_engine || 'tachyon-core';
   return (
     (engine === 'tachyon-core' || engine === 'sing-box') &&
-    (engine === 'tachyon-core' ||
-      Number(info.sing_box_lx) === 1 ||
+    (Number(info.sing_box_lx) === 1 ||
       Number(info.sing_box_tachyon_core) === 1 ||
       /-lx(?:[.-]|$)/.test(String(info.sing_box_version || '')) ||
       /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || '')))
