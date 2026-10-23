@@ -2484,7 +2484,6 @@ export async function renderSectionDashboardWidgets() {
         value: renderFlagEmojis(
           ensureOutboundDisplayFlag({ displayName: route.name }),
         ),
-        attributes: { class: 'tachyon-stat--bold' },
       },
       {
         key: tr('Селектор', 'Selector'),
@@ -2527,8 +2526,19 @@ export async function renderSectionDashboardWidgets() {
           totalProxySections <= 1
             ? tr('За сессию', 'Session total')
             : tr('Трафик секции', 'Section traffic'),
-        value: `▼ ${prettyBytes(stats.download || 0)} • ▲ ${prettyBytes(stats.upload || 0)}`,
-        attributes: { class: 'tachyon-stat--session' },
+        value: E('span', { class: 'tachyon-stat--session' }, [
+          E(
+            'span',
+            { class: 'tachyon-stat--down' },
+            `↓ ${prettyBytes(stats.download || 0)}`,
+          ),
+          E('span', { class: 'tachyon-stat--separator' }, '•'),
+          E(
+            'span',
+            { class: 'tachyon-stat--up' },
+            `↑ ${prettyBytes(stats.upload || 0)}`,
+          ),
+        ]),
       },
       {
         key: tr('Соединения', 'Connections'),
@@ -2573,7 +2583,10 @@ export async function renderSystemServicesWidget() {
   const failed = sysState.failed && srvState.failed;
 
   const routingItems = [
-    { key: tr('Режим работы', 'Mode'), value: 'TProxy + Fake-IP' },
+    {
+      key: tr('Режим работы', 'Mode'),
+      value: E('span', { class: 'tachyon-mode-pill' }, 'TProxy + Fake-IP'),
+    },
     {
       key: tr('Всего соединений', 'Active Connections'),
       value: `${sysState.data?.connections || 0} ${tr('соед.', 'conns')}`,
@@ -2581,7 +2594,6 @@ export async function renderSystemServicesWidget() {
     {
       key: tr('Секции правил', 'Routing Sections'),
       value: `${activeSectionsCount} ${tr('активных', 'active')}`,
-      attributes: { class: 'tachyon-stat--bold' },
     },
     {
       key: tr('Активные клиенты', 'Active Clients'),

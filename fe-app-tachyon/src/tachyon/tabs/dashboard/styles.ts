@@ -238,6 +238,8 @@ export const styles = `
 .tachyon_dashboard-page__widgets-section__item__row__key {
     white-space: nowrap;
     flex-shrink: 0;
+    font-weight: 500;
+    opacity: 0.85;
 }
 
 .tachyon_dashboard-page__widgets-section__item__row__value {
@@ -246,6 +248,7 @@ export const styles = `
     overflow: hidden;
     text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
+    font-weight: 600;
 }
 
 .tachyon-stat--down {
@@ -259,8 +262,16 @@ export const styles = `
 }
 
 .tachyon-stat--session {
-    font-size: 12px;
-    opacity: 0.85;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+}
+
+.tachyon-stat--separator {
+    opacity: 0.45;
+    font-size: 10px;
+    padding: 0 1px;
 }
 
 .tachyon-stat--bold {
@@ -1604,6 +1615,23 @@ export const styles = `
     text-align: center;
 }
 
+.tachyon-mode-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    border: 1px solid rgba(120, 120, 120, 0.25);
+    box-sizing: border-box;
+    white-space: nowrap;
+    text-align: center;
+}
+
 .tachyon-service-pill--version {
     background: rgba(120, 120, 120, 0.12);
     color: var(--text-color-medium, #94a3b8);
@@ -1630,6 +1658,131 @@ export const styles = `
     opacity: 0.35;
     background: transparent !important;
     border-color: transparent !important;
+}
+
+.tachyon-collapsible-title {
+    cursor: pointer;
+    user-select: none;
+}
+
+.tachyon-clients-container {
+    padding: 8px 4px 4px;
+    display: block !important;
+}
+
+.tachyon-clients-empty {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: var(--text-color-medium, #94a3b8);
+}
+
+.tachyon-client-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+    transition: background-color 0.15s ease;
+    gap: 12px;
+}
+
+.tachyon-client-row:last-child {
+    border-bottom: none;
+}
+
+.tachyon-client-row:hover {
+    background: rgba(128, 128, 128, 0.05);
+}
+
+.tachyon-client-row__info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.tachyon-client-row__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color-high, inherit);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tachyon-client-row__name--mono {
+    font-family: monospace;
+    font-size: 12.5px;
+}
+
+.tachyon-client-row__ip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-family: monospace;
+    color: var(--text-color-medium, #94a3b8);
+    background: rgba(128, 128, 128, 0.1);
+}
+
+.tachyon-client-row__conns {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-color-medium, #94a3b8);
+    background: rgba(128, 128, 128, 0.12);
+    border: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.tachyon-client-row__traffic {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.tachyon-traffic-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon-traffic-pill--down {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.tachyon-traffic-pill--up {
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.28);
+}
+
+@media (max-width: 600px) {
+    .tachyon-client-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+    .tachyon-client-row__traffic {
+        align-self: flex-end;
+    }
 }
 
 `;

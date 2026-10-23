@@ -52,8 +52,8 @@ export function renderConnections(
       E(
         'div',
         {
-          class: 'tachyon_dashboard-page__outbound-section__title-section',
-          style: 'cursor: pointer; user-select: none;',
+          class:
+            'tachyon_dashboard-page__outbound-section__title-section tachyon-collapsible-title',
           click: onToggleCollapse,
         },
         [
@@ -90,8 +90,7 @@ export function renderConnections(
         : E(
             'div',
             {
-              class: 'tachyon_dashboard-page__outbound-section centered',
-              style: 'height: 60px;',
+              class: 'tachyon-clients-empty',
             },
             tr('Нет активных клиентов', 'No active clients'),
           ),
@@ -99,37 +98,54 @@ export function renderConnections(
   }
 
   const rows = connections.map((c) => {
-    return E(
-      'div',
-      {
-        class: 'tachyon_dashboard-page__widgets-section__item__row',
-        style:
-          'padding: 8px 0; border-bottom: 1px solid rgba(128, 128, 128, 0.1); display: flex; justify-content: space-between;',
-      },
-      [
-        E('div', {}, [
-          E('b', {}, c.name ? `${c.name} (${c.ip})` : c.ip),
-          E(
-            'span',
-            { style: 'opacity: 0.7; font-size: 13px; margin-left: 8px;' },
-            `(${c.count} ${tr('соед.', 'conns')})`,
-          ),
-        ]),
+    const infoChildren: HTMLElement[] = [];
+
+    if (c.name) {
+      infoChildren.push(
+        E('span', { class: 'tachyon-client-row__name' }, c.name),
+        E('span', { class: 'tachyon-client-row__ip' }, c.ip),
+      );
+    } else {
+      infoChildren.push(
         E(
-          'div',
-          { style: 'font-size: 13px;' },
-          `▲ ${prettyBytes(c.upload)} | ▼ ${prettyBytes(c.download)}`,
+          'span',
+          { class: 'tachyon-client-row__name tachyon-client-row__name--mono' },
+          c.ip,
         ),
-      ],
+      );
+    }
+
+    infoChildren.push(
+      E(
+        'span',
+        { class: 'tachyon-client-row__conns' },
+        `${c.count} ${tr('соед.', 'conns')}`,
+      ),
     );
+
+    return E('div', { class: 'tachyon-client-row' }, [
+      E('div', { class: 'tachyon-client-row__info' }, infoChildren),
+      E('div', { class: 'tachyon-client-row__traffic' }, [
+        E(
+          'span',
+          { class: 'tachyon-traffic-pill tachyon-traffic-pill--down' },
+          `↓ ${prettyBytes(c.download)}`,
+        ),
+        E(
+          'span',
+          { class: 'tachyon-traffic-pill tachyon-traffic-pill--up' },
+          `↑ ${prettyBytes(c.upload)}`,
+        ),
+      ]),
+    ]);
   });
 
   return E('div', { class: 'tachyon_dashboard-page__outbound-section' }, [
     E(
       'div',
       {
-        class: 'tachyon_dashboard-page__outbound-section__title-section',
-        style: 'cursor: pointer; user-select: none;',
+        class:
+          'tachyon_dashboard-page__outbound-section__title-section tachyon-collapsible-title',
         click: onToggleCollapse,
       },
       [
@@ -166,8 +182,8 @@ export function renderConnections(
       : E(
           'div',
           {
-            class: 'tachyon_dashboard-page__outbound-grid',
-            style: 'padding: 12px; display: block;',
+            class:
+              'tachyon_dashboard-page__outbound-grid tachyon-clients-container',
           },
           [...rows, topDomainsSection],
         ),
