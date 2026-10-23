@@ -14,7 +14,10 @@ describe('formatOutboundType', () => {
     (globalThis as any).E = (tag: string, attrs?: any, children?: any) => {
       const classList = new Set<string>();
       if (attrs?.class) {
-        attrs.class.split(' ').filter(Boolean).forEach((c: string) => classList.add(c));
+        attrs.class
+          .split(' ')
+          .filter(Boolean)
+          .forEach((c: string) => classList.add(c));
       }
       return {
         tag,
