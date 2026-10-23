@@ -18,6 +18,7 @@ import { formatServiceStatusMessage } from '../../../helpers/formatServiceStatus
 import {
   groupOutboundsByCountry,
   detectOutboundCountry,
+  ensureOutboundDisplayFlag,
   getCountryRegion,
   organizeCountryGroups,
   OutboundCountryGroup,
@@ -384,6 +385,8 @@ function renderCountryChips(
     activeRegion?: string;
     onFilterRegion?: (sectionName: string, region: string) => void;
     activeCountryCode?: string;
+    isExpanded?: boolean;
+    onToggleExpand?: () => void;
   },
 ): HTMLElement {
   const isRu =
@@ -393,14 +396,93 @@ function renderCountryChips(
 
   const mode = options?.chipsGrouping || 'regions';
   const activeRegion = (options?.activeRegion as WorldRegion) || 'all';
+  const isExpanded = Boolean(options?.isExpanded);
 
   const organized = organizeCountryGroups(countryGroups, mode, {
     activeCountryCode: options?.activeCountryCode,
     selectedRegion: activeRegion,
   });
 
+  const filterTitle = isRu
+    ? 'Фильтр по странам'
+    : typeof _ === 'function'
+      ? _('Country filter')
+      : 'Country filter';
+
+  const activeCountryGroup =
+    activeFilter && activeFilter !== 'ALL'
+      ? countryGroups.find((g) => g.countryCode === activeFilter)
+      : undefined;
+  const activeRegionMeta =
+    mode === 'regions' && activeRegion !== 'all'
+      ? organized.availableRegions.find((r) => r.id === activeRegion)
+      : undefined;
+
+  const activeFilterSummary = activeCountryGroup
+    ? `${activeCountryGroup.countryFlag || '🌐'} ${activeCountryGroup.countryName || activeCountryGroup.countryCode}`
+    : activeRegionMeta
+      ? `${activeRegionMeta.flag} ${activeRegionMeta.label}`
+      : '';
+
   const container = E('div', {
-    class: 'tachyon_dashboard-page__country-chips-container',
+    class: [
+      'tachyon_dashboard-page__country-chips-container',
+      !isExpanded
+        ? 'tachyon_dashboard-page__country-chips-container--collapsed'
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  });
+
+  const headerBar = E(
+    'div',
+    {
+      class: 'tachyon_dashboard-page__country-chips__header',
+      click: (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        options?.onToggleExpand?.();
+      },
+    },
+    [
+      svgEl(
+        'svg',
+        {
+          width: '14',
+          height: '14',
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': '2',
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isExpanded ? '0deg' : '-90deg'})`,
+        },
+        [svgEl('polyline', { points: '6 9 12 15 18 9' })],
+      ),
+      E('span', {}, filterTitle),
+      E(
+        'span',
+        { class: 'tachyon_dashboard-page__auto-groups__count' },
+        `${countryGroups.length}`,
+      ),
+      activeFilterSummary
+        ? E(
+            'span',
+            {
+              class: 'tachyon_dashboard-page__source-group__active-badge',
+              style: 'text-transform: none; letter-spacing: normal;',
+            },
+            renderFlagEmojis(activeFilterSummary),
+          )
+        : '',
+    ],
+  );
+  container.appendChild(headerBar);
+
+  const bodyContainer = E('div', {
+    class: 'tachyon_dashboard-page__country-chips-body',
   });
 
   // 1. Region Tabs Bar (if mode === 'regions' and there are multiple regions)
@@ -442,7 +524,7 @@ function renderCountryChips(
       { class: 'tachyon_dashboard-page__region-bar' },
       regionTabs,
     );
-    container.appendChild(regionBar);
+    bodyContainer.appendChild(regionBar);
   }
 
   // 3. Country Chips Row
@@ -593,7 +675,8 @@ function renderCountryChips(
     chipElements,
   );
 
-  container.appendChild(chipsBar);
+  bodyContainer.appendChild(chipsBar);
+  container.appendChild(bodyContainer);
   return container;
 }
 
@@ -692,9 +775,14 @@ function renderCountryAccordionHeader(
 function renderAutoGroupsBlock(
   topGroups: Tachyon.Outbound[],
   renderOutbound: (ob: Tachyon.Outbound) => HTMLElement,
+  options?: {
+    isCollapsed?: boolean;
+    onToggleCollapse?: () => void;
+  },
 ): HTMLElement | null {
   if (topGroups.length === 0) return null;
 
+  const isCollapsed = Boolean(options?.isCollapsed);
   const isRu =
     (typeof document !== 'undefined' &&
       (document.documentElement?.lang || '').toLowerCase().startsWith('ru')) ||
@@ -705,21 +793,80 @@ function renderAutoGroupsBlock(
       ? _('Auto selection modes')
       : 'Auto selection modes';
 
-  return E('div', { class: 'tachyon_dashboard-page__auto-groups' }, [
-    E('div', { class: 'tachyon_dashboard-page__auto-groups__header' }, [
-      E('span', {}, title),
+  const selectedGroup = topGroups.find((g) => g.selected);
+  const rawSubName =
+    selectedGroup?.urlTestInfo?.selectedName ||
+    selectedGroup?.priorityInfo?.selectedName ||
+    '';
+  const activeSubName = rawSubName
+    ? ensureOutboundDisplayFlag({ displayName: rawSubName })
+    : '';
+  const collapsedBadgeText = selectedGroup
+    ? `● ${selectedGroup.displayName}${activeSubName ? ` → ${activeSubName}` : ''}`
+    : '';
+
+  return E(
+    'div',
+    {
+      class: [
+        'tachyon_dashboard-page__auto-groups',
+        isCollapsed ? 'tachyon_dashboard-page__auto-groups--collapsed' : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    },
+    [
       E(
-        'span',
-        { class: 'tachyon_dashboard-page__auto-groups__count' },
-        `${topGroups.length}`,
+        'div',
+        {
+          class: 'tachyon_dashboard-page__auto-groups__header',
+          click: (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            options?.onToggleCollapse?.();
+          },
+        },
+        [
+          svgEl(
+            'svg',
+            {
+              width: '14',
+              height: '14',
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              'stroke-width': '2',
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round',
+              style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isCollapsed ? '-90deg' : '0deg'})`,
+            },
+            [svgEl('polyline', { points: '6 9 12 15 18 9' })],
+          ),
+          E('span', {}, title),
+          E(
+            'span',
+            { class: 'tachyon_dashboard-page__auto-groups__count' },
+            `${topGroups.length}`,
+          ),
+          isCollapsed && collapsedBadgeText
+            ? E(
+                'span',
+                {
+                  class: 'tachyon_dashboard-page__source-group__active-badge',
+                  style: 'text-transform: none; letter-spacing: normal;',
+                },
+                renderFlagEmojis(collapsedBadgeText),
+              )
+            : '',
+        ],
       ),
-    ]),
-    E(
-      'div',
-      { class: 'tachyon_dashboard-page__auto-groups-grid' },
-      topGroups.map((ob) => renderOutbound(ob)),
-    ),
-  ]);
+      E(
+        'div',
+        { class: 'tachyon_dashboard-page__auto-groups-grid' },
+        topGroups.map((ob) => renderOutbound(ob)),
+      ),
+    ],
+  );
 }
 
 function renderDefaultState({
@@ -1110,10 +1257,13 @@ function renderDefaultState({
 
     const isManualUrlTest = Boolean(outbound.urlTestInfo?.isManualSelection);
     const isManualPriority = Boolean(outbound.priorityInfo?.isManualSelection);
-    const activeServerName =
+    const rawActiveServerName =
       outbound.urlTestInfo?.selectedName ||
       outbound.priorityInfo?.selectedName ||
       '';
+    const activeServerName = rawActiveServerName
+      ? ensureOutboundDisplayFlag({ displayName: rawActiveServerName })
+      : '';
 
     const modeSuffix =
       isManualUrlTest || isManualPriority
@@ -1124,6 +1274,9 @@ function renderDefaultState({
     const prefixStyle = outbound.prefix
       ? resolvePrefixBadgeStyle(outbound.prefix)
       : null;
+    const outboundDisplayTitle = isAutoGroup
+      ? outbound.displayName
+      : ensureOutboundDisplayFlag(outbound);
 
     return E(
       'div',
@@ -1166,7 +1319,7 @@ function renderDefaultState({
                   'tachyon_dashboard-page__outbound-grid__item__title-wrapper',
               },
               [
-                E('b', {}, renderFlagEmojis(outbound.displayName)),
+                E('b', {}, renderFlagEmojis(outboundDisplayTitle)),
                 outbound.prefix && prefixStyle
                   ? E(
                       'span',
@@ -1429,7 +1582,19 @@ function renderDefaultState({
       subMap.size > 1 ||
       (hasSubTaggedOutbounds && manualOutbounds.length > 0);
 
-    const autoBlock = renderAutoGroupsBlock(topGroups, renderOutbound);
+    const autoCollapseKey = `autogrp:${section.code}`;
+    const isAutoCollapsed = Boolean(
+      collapsedSourceGroups?.has(autoCollapseKey),
+    );
+    const autoBlock = renderAutoGroupsBlock(topGroups, renderOutbound, {
+      isCollapsed: isAutoCollapsed,
+      onToggleCollapse: () => onToggleSourceGroupCollapse?.(autoCollapseKey),
+    });
+
+    const chipsCollapseKey = `countrychips:${section.code}`;
+    const isChipsExpanded = Boolean(
+      collapsedSourceGroups?.has(chipsCollapseKey),
+    );
 
     // Single source sections (or sections without distinct subscription sources)
     if (!hasMultipleSources) {
@@ -1446,6 +1611,9 @@ function renderDefaultState({
             activeRegion: activeRegionFilter,
             onFilterRegion,
             activeCountryCode,
+            isExpanded: isChipsExpanded,
+            onToggleExpand: () =>
+              onToggleSourceGroupCollapse?.(chipsCollapseKey),
           },
         );
 
@@ -1520,6 +1688,9 @@ function renderDefaultState({
             activeRegion: activeRegionFilter,
             onFilterRegion,
             activeCountryCode,
+            isExpanded: isChipsExpanded,
+            onToggleExpand: () =>
+              onToggleSourceGroupCollapse?.(chipsCollapseKey),
           },
         ),
       );

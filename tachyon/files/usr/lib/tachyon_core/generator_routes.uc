@@ -6,6 +6,7 @@ let helpers = require("core.helpers");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
 let runtime_constants = require("tachyon_core.constants");
+let runtime_country = require("tachyon_core.country");
 let runtime_dns = require("tachyon_core.dns");
 let runtime_route = require("tachyon_core.route");
 let runtime_rulesets = require("tachyon_core.rulesets");
@@ -895,79 +896,6 @@ function merge_member_state_into_group(group_state, member, config) {
     }
 }
 
-// Post-pass: after every section has generated its outbounds, build one flat
-// urltest per group section over the union of member leaves and record the
-// member -> group mapping used to repoint route rules. Deferred (quarantined)
-// members contribute no leaves; a group with no live members is not emitted.
-function add_group_urltest_outbounds(config, sections) {
-    for (let section in sections) {
-        if (option(section, "action", "") != "group")
-            continue;
-        let group_name = section[".name"];
-        if (ctx.deferred_sections && ctx.deferred_sections[group_name])
-            continue;
-
-        let wanted = {};
-        for (let member_name in list_option(section, "group_members"))
-            wanted[trim(as_string(member_name))] = true;
-
-        let members = [];
-        for (let candidate in sections)
-            if (wanted[candidate[".name"]])
-                push(members, candidate);
-
-        let tags = group_member_leaf_tags(members, config);
-        if (length(tags) == 0) {
-            warn("Section group " + group_name + " has no member servers available, the group is not generated\n");
-            continue;
-        }
-
-        let state = runtime_subscription.new_section_state(group_name);
-        for (let member in members)
-            merge_member_state_into_group(state, member, config);
-
-        let result = add_urltest_outbound(config, section, "urltest", tags, state);
-        if (result.tag == "")
-            continue;
-
-        let selector_tag = outbound_tag(group_name);
-        let selector_outbounds = [];
-        for (let t in result.outbounds)
-            push(selector_outbounds, t);
-        push(selector_outbounds, result.tag);
-        let selector_default = result.tag;
-        let persistent_selector_file = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
-        let saved_selector_state = read_json_file(persistent_selector_file);
-        if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
-            let saved_target = as_string(saved_selector_state[selector_tag]);
-            if (index(selector_outbounds, saved_target) >= 0)
-                selector_default = saved_target;
-        }
-        push(config.outbounds, {
-            type: "selector",
-            tag: selector_tag,
-            outbounds: selector_outbounds,
-            default: selector_default,
-            interrupt_exist_connections: true
-        });
-
-        state.urltestCandidateTags = unique_string_array(result.outbounds);
-        if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(group_name), state))
-            ctx.runtime_generate_unsupported("failed to write section cache for " + group_name);
-
-        active_group_tags[group_name] = selector_tag;
-        for (let member in members) {
-            let name = member[".name"];
-            if (section_group_map[name] != null)
-                warn("Rule " + name + " belongs to several section groups; " +
-                    as_string(section_group_map[name]) + " wins, " + group_name + " is ignored\n");
-            else
-                section_group_map[name] = group_name;
-        }
-        add_routed_dns_server_for_section(config, section);
-    }
-}
-
 function add_priority_group_outbound(config, section, group_id, urltest_candidate_tags, state) {
     let section_name = section[".name"];
     let levels = priority_levels_with_outbounds(group_id, urltest_candidate_tags, state);
@@ -1012,6 +940,117 @@ function add_priority_group_outbound(config, section, group_id, urltest_candidat
         tag: priority_tag,
         outbounds
     };
+}
+
+// Post-pass: after every section has generated its outbounds, build one flat
+// urltest per group section over the union of member leaves and record the
+// member -> group mapping used to repoint route rules. Deferred (quarantined)
+// members contribute no leaves; a group with no live members is not emitted.
+function add_group_urltest_outbounds(config, sections) {
+    for (let section in sections) {
+        if (option(section, "action", "") != "group")
+            continue;
+        let group_name = section[".name"];
+        if (ctx.deferred_sections && ctx.deferred_sections[group_name])
+            continue;
+
+        let wanted = {};
+        for (let member_name in list_option(section, "group_members"))
+            wanted[trim(as_string(member_name))] = true;
+
+        let members = [];
+        for (let candidate in sections)
+            if (wanted[candidate[".name"]])
+                push(members, candidate);
+
+        let tags = group_member_leaf_tags(members, config);
+        if (length(tags) == 0) {
+            warn("Section group " + group_name + " has no member servers available, the group is not generated\n");
+            continue;
+        }
+
+        let state = runtime_subscription.new_section_state(group_name);
+        for (let member in members)
+            merge_member_state_into_group(state, member, config);
+
+        if (section_needs_country_is(section)) {
+            let previous_state = read_json_file(runtime_subscription.section_cache_path(group_name));
+            state.outboundMetadata.countries = runtime_country.detect(
+                state.servers,
+                previous_state,
+                option(ctx.runtime_settings(), "bootstrap_dns_server", "77.88.8.8")
+            );
+        }
+        if (section_has_direct_priority_level(section))
+            state.outboundMetadata.names[runtime_constants.DIRECT_OUTBOUND_TAG] = "Direct";
+
+        let configured_urltests = connections.urltests(section);
+        let urltest_ids = length(configured_urltests) > 0 ? configured_urltests : [ "urltest" ];
+        let urltest_tags = [];
+        let priority_tags = [];
+        let leaf_outbounds = [];
+
+        for (let urltest_id in urltest_ids) {
+            let result = add_urltest_outbound(config, section, urltest_id, tags, state);
+            if (result.tag == "")
+                continue;
+            push(urltest_tags, result.tag);
+            for (let t in result.outbounds)
+                push(leaf_outbounds, t);
+        }
+
+        for (let group_id in connections.priority_groups(section)) {
+            let priority = add_priority_group_outbound(config, section, group_id, tags, state);
+            if (priority.tag == "")
+                continue;
+            push(priority_tags, priority.tag);
+            for (let t in priority.outbounds)
+                push(leaf_outbounds, t);
+        }
+
+        if (length(urltest_tags) == 0 && length(priority_tags) == 0)
+            continue;
+
+        let selector_tag = outbound_tag(group_name);
+        let merged_leaves = unique_string_array(length(leaf_outbounds) > 0 ? leaf_outbounds : tags);
+        let selector_outbounds = [];
+        for (let t in merged_leaves)
+            push(selector_outbounds, t);
+        for (let t in urltest_tags)
+            push(selector_outbounds, t);
+        for (let t in priority_tags)
+            push(selector_outbounds, t);
+        let selector_default = length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0];
+        let persistent_selector_file = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
+        let saved_selector_state = read_json_file(persistent_selector_file);
+        if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
+            let saved_target = as_string(saved_selector_state[selector_tag]);
+            if (index(selector_outbounds, saved_target) >= 0)
+                selector_default = saved_target;
+        }
+        push(config.outbounds, {
+            type: "selector",
+            tag: selector_tag,
+            outbounds: selector_outbounds,
+            default: selector_default,
+            interrupt_exist_connections: true
+        });
+
+        state.urltestCandidateTags = unique_string_array(tags);
+        if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(group_name), state))
+            ctx.runtime_generate_unsupported("failed to write section cache for " + group_name);
+
+        active_group_tags[group_name] = selector_tag;
+        for (let member in members) {
+            let name = member[".name"];
+            if (section_group_map[name] != null)
+                warn("Rule " + name + " belongs to several section groups; " +
+                    as_string(section_group_map[name]) + " wins, " + group_name + " is ignored\n");
+            else
+                section_group_map[name] = group_name;
+        }
+        add_routed_dns_server_for_section(config, section);
+    }
 }
 
 function is_mieru_detour(config, tag, depth) {
@@ -2876,6 +2915,10 @@ function reserve_section_outbound_tags(sections, taken) {
 
         if (action == "group") {
             taken[urltest_outbound_tag(section[".name"], "urltest")] = true;
+            for (let urltest_id in connections.urltests(section))
+                taken[urltest_outbound_tag(section[".name"], urltest_id)] = true;
+            for (let group_id in connections.priority_groups(section))
+                taken[priority_outbound_tag(section[".name"], group_id)] = true;
             continue;
         }
 

@@ -1060,8 +1060,6 @@ function install_zapret2(action, target_tag) {
         }
     }
 
-    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
-
     if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
@@ -1138,8 +1136,6 @@ function install_byedpi(action, target_tag) {
     if (pkg == null)
         action_fail("byedpi", action, "Failed to download ByeDPI package");
 
-    run_logged("Updating package lists before ByeDPI package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
-
     if (!run_logged_pkg_install_files("Installing ByeDPI package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
 
@@ -1177,8 +1173,6 @@ function install_wdtt(action, target_tag) {
     let pkg = download_direct_package(release);
     if (pkg == null)
         action_fail("wdtt", action, "Failed to download WDTT package");
-
-    run_logged("Updating package lists before WDTT package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
     if (!run_logged_pkg_install_files("Installing WDTT package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("wdtt", action, "Failed to install WDTT package", current_version, pkg.version);
@@ -1218,8 +1212,6 @@ function install_olcrtc(action, target_tag) {
     if (pkg == null)
         action_fail("olcrtc", action, "Failed to download OlcRTC package");
 
-    run_logged("Updating package lists before OlcRTC package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
-
     if (!run_logged_pkg_install_files("Installing OlcRTC package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("olcrtc", action, "Failed to install OlcRTC package", current_version, pkg.version);
 
@@ -1257,8 +1249,6 @@ function install_fptn(action, target_tag) {
     let pkg = download_direct_package(release);
     if (pkg == null)
         action_fail("fptn", action, "Failed to download FPTN package");
-
-    run_logged("Updating package lists before FPTN package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
     if (!run_logged_pkg_install_files("Installing FPTN package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail("fptn", action, "Failed to install FPTN package", current_version, pkg.version);
@@ -1383,8 +1373,6 @@ function install_steer(action, target_tag, extended) {
                 run_logged_pkg_remove_sing_box_conflict(stale_pkg, "Removing " + stale_pkg + " (not in the selected steer modules)");
         }
     }
-
-    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
     if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, files, PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package");
@@ -2171,8 +2159,6 @@ function install_sing_box_extended_package(action, target_tag) {
     let package_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download sing-box-extended package", current_version, latest_version);
-
-    run_logged("Updating package lists before sing-box-extended package installation", pkg_list_update_command(), PKG_LIST_UPDATE_TIMEOUT);
 
     stop_tachyon_before_sing_box_change();
     prepare_sing_box_package_service_install();

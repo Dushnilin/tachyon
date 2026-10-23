@@ -20,6 +20,14 @@ export function render() {
       ),
       E('div', { class: 'tachyon_dashboard-page__content' }, [
         E('div', { class: 'tachyon_dashboard-page__widgets-section' }, [
+          E('div', { id: 'dashboard-widget-system-services' }, [
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: '',
+              items: [],
+            }),
+          ]),
           E(
             'div',
             {
@@ -35,14 +43,6 @@ export function render() {
               }),
             ],
           ),
-          E('div', { id: 'dashboard-widget-system-services' }, [
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ]),
           E(
             'div',
             { id: 'dashboard-widget-tailscale', style: 'display:none' },

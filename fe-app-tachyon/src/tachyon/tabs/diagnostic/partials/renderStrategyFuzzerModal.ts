@@ -40,7 +40,13 @@ export function renderStrategyFuzzerModal(
   let patternsConfig: Tachyon.FuzzerPatternsConfig = {
     zapret2: {
       splits: ['1', '2', '3', 'midsld', 'sniext+4', '1,midsld', '1,sniext+2'],
-      foolings: ['badseq', 'md5sig', 'badack', 'datanoack', 'fakeddrop'],
+      foolings: [
+        'tcp_seq=1000000',
+        'tcp_md5',
+        'tcp_ack=-66000',
+        'tcp_flags_unset=ack',
+        'badsum',
+      ],
       ttls: [2, 3, 4, 5, 6, 8],
       seqovls: ['1', '2'],
       wsizes: ['1'],
@@ -470,6 +476,7 @@ export function renderStrategyFuzzerModal(
     disabled: true,
     onClick: () => handleApplyBest(),
   });
+  applyBestBtn.id = 'tachyon-fuzzer-apply-best-btn';
 
   // Results Filter Toolbar
   const filterToolbar = E(
@@ -1717,9 +1724,8 @@ export function renderStrategyFuzzerModal(
     const currentStratEl = document.getElementById(
       'tachyon-fuzzer-current-strategy',
     );
-    const applyBestBtn = document.getElementById(
-      'tachyon-fuzzer-apply-best-btn',
-    );
+    const applyBestBtnEl =
+      document.getElementById('tachyon-fuzzer-apply-best-btn') || applyBestBtn;
 
     if (progressContainer) {
       progressContainer.style.display =
@@ -1771,8 +1777,12 @@ export function renderStrategyFuzzerModal(
       }
     }
 
-    if (applyBestBtn) {
-      (applyBestBtn as HTMLButtonElement).disabled = !bestStrategy;
+    if (applyBestBtnEl) {
+      (applyBestBtnEl as HTMLButtonElement).disabled = !bestStrategy;
+      applyBestBtnEl.classList.toggle(
+        'tachyon-partial-button--disabled',
+        !bestStrategy,
+      );
     }
   };
 

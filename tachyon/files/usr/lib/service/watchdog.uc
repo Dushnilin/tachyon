@@ -3183,6 +3183,12 @@ function on_disk_tachyon_version() {
     if (env_ver != null && env_ver != "")
         return env_ver;
 
+    let const_src = fs.readfile(LIB_DIR + "/core/constants.uc");
+    if (const_src != null) {
+        let cm = match(as_string(const_src), /env\("TACHYON_VERSION",\s*"([0-9]+\.[0-9]+\.[0-9]+[^"]*)"\)/);
+        if (cm && cm[1]) return cm[1];
+    }
+
     for (let path in [
         "/usr/lib/opkg/info/tachyon.control",
         "/usr/lib/opkg/info/luci-app-tachyon.control"
@@ -3198,15 +3204,23 @@ function on_disk_tachyon_version() {
     if (apk_db != null) {
         let lines = split(as_string(apk_db), "\n");
         let current_pkg = "";
+        let fallback_ver = "";
         for (let line in lines) {
             let pm = match(line, /^P:(.+)$/);
             if (pm && pm[1]) {
                 current_pkg = trim(pm[1]);
             } else if ((current_pkg == "tachyon" || current_pkg == "luci-app-tachyon") && match(line, /^V:/)) {
                 let vm = match(line, /^V:([0-9]+\.[0-9]+\.[0-9]+)/);
-                if (vm && vm[1]) return vm[1];
+                if (vm && vm[1]) {
+                    if (current_pkg == "tachyon")
+                        return vm[1];
+                    if (fallback_ver == "")
+                        fallback_ver = vm[1];
+                }
             }
         }
+        if (fallback_ver != "")
+            return fallback_ver;
     }
 
     return as_string(require("core.constants").TACHYON_VERSION || "");

@@ -106,6 +106,12 @@ export const styles = `
     min-height: 140px;
 }
 
+.tachyon-dual-card--system-pinned {
+    border: 1.5px solid rgba(59, 130, 246, 0.35) !important;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12), 0 4px 12px rgba(59, 130, 246, 0.08);
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.04) 0%, rgba(128, 128, 128, 0.03) 100%);
+}
+
 .tachyon-dual-card__header {
     display: flex;
     justify-content: space-between;
@@ -312,6 +318,19 @@ export const styles = `
     padding: 10px;
     width: 100%;
     box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__service-sections-row {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tachyon_dashboard-page__service-sections-row > .tachyon_dashboard-page__outbound-section {
+    margin-top: 0;
 }
 
 /* The runtime quarantined this section: sing-box refused the config it
@@ -1210,10 +1229,48 @@ export const styles = `
 
 .tachyon_dashboard-page__country-chips-container {
     grid-column: 1 / -1;
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 8px 12px 10px 12px;
+    border-radius: 6px;
+    background: rgba(120, 120, 120, 0.05);
+    border: 1px dashed var(--border-color-medium, rgba(120, 120, 120, 0.25));
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 2px 0 6px 0;
+}
+
+.tachyon_dashboard-page__country-chips-container--collapsed {
+    padding: 8px 12px;
+}
+
+.tachyon_dashboard-page__country-chips-container--collapsed .tachyon_dashboard-page__country-chips-body {
+    display: none;
+}
+
+.tachyon_dashboard-page__country-chips__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-color-medium, rgba(160, 160, 160, 0.9));
+    padding-left: 2px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tachyon_dashboard-page__country-chips__header:hover {
+    color: var(--text-color-high, inherit);
+}
+
+.tachyon_dashboard-page__country-chips-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .tachyon_dashboard-page__region-bar {
@@ -1392,6 +1449,18 @@ export const styles = `
     box-sizing: border-box;
 }
 
+.tachyon_dashboard-page__auto-groups--collapsed {
+    padding: 8px 12px;
+}
+
+.tachyon_dashboard-page__auto-groups--collapsed .tachyon_dashboard-page__auto-groups__header {
+    margin-bottom: 0;
+}
+
+.tachyon_dashboard-page__auto-groups--collapsed .tachyon_dashboard-page__auto-groups-grid {
+    display: none;
+}
+
 .tachyon_dashboard-page__auto-groups__header {
     display: flex;
     align-items: center;
@@ -1403,6 +1472,12 @@ export const styles = `
     color: var(--text-color-medium, rgba(160, 160, 160, 0.9));
     margin-bottom: 10px;
     padding-left: 2px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tachyon_dashboard-page__auto-groups__header:hover {
+    color: var(--text-color-high, inherit);
 }
 
 .tachyon_dashboard-page__auto-groups__icon {

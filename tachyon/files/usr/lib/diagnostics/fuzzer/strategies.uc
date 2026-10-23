@@ -37,7 +37,7 @@ const USER_PRESETS_FILE = "/etc/tachyon/dpi-presets-user.json";
 const DEFAULT_PATTERNS = {
     zapret2: {
         splits: [ "1", "2", "3", "midsld", "sniext+2", "sniext+4", "1,midsld", "1,sniext+2" ],
-        foolings: [ "badseq", "md5sig", "badack", "datanoack", "fakeddrop" ],
+        foolings: [ "tcp_seq=1000000", "tcp_md5", "tcp_ack=-66000", "tcp_flags_unset=ack", "badsum" ],
         ttls: [ 2, 3, 4, 5, 6, 8 ],
         seqovls: [ "1", "2" ],
         wsizes: [ "1" ],
@@ -267,42 +267,42 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_fake_ttl3_md5sig",
         name: "Fake (TTL=3, MD5Sig) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=3:fooling=tcp_md5 --lua-desync=multisplit:pos=1,midsld",
+        args: "--lua-desync=fake:blob=tls_max:ip_ttl=3:fooling=tcp_md5 --lua-desync=multisplit:pos=1,midsld",
         description: "Aggressive low-TTL MD5Sig injection for close TSPU hops."
     },
     {
         id: "z2_fake_ttl4_badseq",
         name: "Fake (TTL=4, BadSeq) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=4:fooling=tcp_seq=1000000 --lua-desync=multisplit:pos=1,midsld",
+        args: "--lua-desync=fake:blob=tls_max:ip_ttl=4:fooling=tcp_seq=1000000 --lua-desync=multisplit:pos=1,midsld",
         description: "Low-TTL fake ClientHello with badseq fooling and multisplit segmentation."
     },
     {
         id: "z2_fake_ttl5_md5sig",
         name: "Fake (TTL=5, MD5Sig) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=5:fooling=tcp_md5 --lua-desync=multisplit:pos=1,midsld",
+        args: "--lua-desync=fake:blob=tls_max:ip_ttl=5:fooling=tcp_md5 --lua-desync=multisplit:pos=1,midsld",
         description: "MD5Sig TCP option drops packet at DPI while reaching end server."
     },
     {
         id: "z2_fake_ttl6_badack",
         name: "Fake (TTL=6, BadACK) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=6:fooling=tcp_ack=1000000 --lua-desync=multisplit:pos=1,sniext+2",
+        args: "--lua-desync=fake:blob=tls_max:ip_ttl=6:fooling=tcp_ack=1000000 --lua-desync=multisplit:pos=1,sniext+2",
         description: "BadACK fooling invalidates packet in DPI state tracking."
     },
     {
         id: "z2_fake_badseq_mid",
         name: "Fake Packet (TTL=8) + MidSLD Split",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=8:fooling=tcp_seq=1000000 --lua-desync=multisplit:pos=midsld",
+        args: "--lua-desync=fake:blob=tls_max:ip_ttl=8:fooling=tcp_seq=1000000 --lua-desync=multisplit:pos=midsld",
         description: "Injects fake ClientHello before segmented payload."
     },
     {
         id: "z2_fake_datanoack",
         name: "Fake (TTL=8, DataNoAck) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=8:fooling=tcp_flags_unset=ack --lua-desync=multisplit:pos=1",
+        args: "--lua-desync=fake:blob=tls_max:ip_ttl=8:fooling=tcp_flags_unset=ack --lua-desync=multisplit:pos=1",
         description: "DataNoAck fooling confuses stateful DPI without triggering ACK RST."
     },
     {
@@ -1137,6 +1137,17 @@ function reset_patterns_config() {
     print(sprintf("%J\n", { success: true, message: "Patterns configuration reset to factory defaults", patterns: DEFAULT_PATTERNS }));
 }
 
+function normalize_z2_fooling(f) {
+    f = trim(as_string(f || ""));
+    if (f == "badseq") return "tcp_seq=1000000";
+    if (f == "md5sig") return "tcp_md5";
+    if (f == "badack") return "tcp_ack=-66000";
+    if (f == "datanoack") return "tcp_flags_unset=ack";
+    if (f == "fakeddrop" || f == "fakedrop") return "badsum";
+    if (f == "ts") return "tcp_ts=-600000";
+    return f;
+}
+
 function generate_combinatorial_zapret2() {
     let cfg = get_patterns_config();
     let p = cfg.zapret2 || DEFAULT_PATTERNS.zapret2;
@@ -1168,7 +1179,12 @@ function generate_combinatorial_zapret2() {
     }
     
     let splits = p.splits || [ "1", "2", "3", "midsld", "sniext+2", "sniext+4", "1,midsld", "1,sniext+2" ];
-    let foolings = p.foolings || [ "badseq", "md5sig", "badack", "datanoack", "fakeddrop" ];
+    let raw_foolings = p.foolings || [ "tcp_seq=1000000", "tcp_md5", "tcp_ack=-66000", "tcp_flags_unset=ack", "badsum" ];
+    let foolings = [];
+    for (let rf in raw_foolings) {
+        let nf = normalize_z2_fooling(rf);
+        if (nf != "" && index(foolings, nf) < 0) push(foolings, nf);
+    }
     let ttls = p.ttls || [ 2, 3, 4, 5, 6, 8 ];
     let seqovls = p.seqovls || [ "1", "2" ];
     let wsizes = p.wsizes || [ "1" ];
@@ -1183,12 +1199,12 @@ function generate_combinatorial_zapret2() {
                 "Multisplit position and fooling method");
         }
         for (let sq in seqovls) {
-            add(sprintf("Multisplit + SeqOvl %s (pos=%s, badseq)", sq, pos),
+            add(sprintf("Multisplit + SeqOvl %s (pos=%s, tcp_seq)", sq, pos),
                 sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=tcp_seq=1000000", pos, sq),
                 "Multisplit with sequence overlap");
         }
         for (let w in wsizes) {
-            add(sprintf("Multisplit + Window %s (pos=%s, badseq)", w, pos),
+            add(sprintf("Multisplit + Window %s (pos=%s, tcp_seq)", w, pos),
                 sprintf("--lua-desync=multisplit:pos=%s:wsize=%s:fooling=tcp_seq=1000000", pos, w),
                 "Multisplit with TCP window size clamping");
         }
@@ -1196,7 +1212,7 @@ function generate_combinatorial_zapret2() {
     
     // 2. Multidisorder combinations
     for (let pos in [ "2", "midsld", "1,midsld" ]) {
-        for (let fooling in [ "badseq", "md5sig", "badack" ]) {
+        for (let fooling in [ "tcp_seq=1000000", "tcp_md5", "tcp_ack=-66000" ]) {
             add(sprintf("Multidisorder (pos=%s, %s)", pos, fooling),
                 sprintf("--lua-desync=multidisorder:pos=%s:fooling=%s", pos, fooling),
                 "Out-of-order segment delivery with fooling");
@@ -1250,14 +1266,14 @@ function generate_combinatorial_zapret2() {
     
     // 6. Low-TTL Fake combinations
     for (let ttl in ttls) {
-        for (let fooling in [ "badseq", "md5sig", "badack" ]) {
+        for (let fooling in [ "tcp_seq=1000000", "tcp_md5", "tcp_ack=-66000" ]) {
             for (let pos in [ "1", "1,midsld", "midsld" ]) {
                 add(sprintf("Fake (TTL=%d, %s) + Multisplit (pos=%s)", ttl, fooling, pos),
-                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
+                    sprintf("--lua-desync=fake:blob=tls_max:ip_ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
                     "Low-TTL fake injection followed by multisplit payload");
                 let dis_pos = (pos == "1") ? "2" : pos;
                 add(sprintf("Fake (TTL=%d, %s) + Multidisorder (pos=%s)", ttl, fooling, dis_pos),
-                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multidisorder:pos=%s", ttl, fooling, dis_pos),
+                    sprintf("--lua-desync=fake:blob=tls_max:ip_ttl=%d:fooling=%s --lua-desync=multidisorder:pos=%s", ttl, fooling, dis_pos),
                     "Low-TTL fake injection followed by multidisorder payload");
             }
         }
@@ -1640,11 +1656,11 @@ function generate_adaptive_strategies(engine, target) {
         add("SYN Data + Window Clamp wsize=1",
             "--lua-desync=syndata --lua-desync=multisplit:pos=1,midsld:wsize=1",
             "SYN data injection with 1-byte TCP window clamping");
-        for (let fooling in [ "badseq", "fakeddrop", "badack" ]) {
+        for (let fooling in [ "tcp_seq=1000000", "badsum", "tcp_ack=-66000" ]) {
             for (let ttl in [ 3, 4, 6 ]) {
                 for (let pos in [ "1", "1,midsld", "sniext+4" ]) {
                     add(sprintf("Fake (%s, ttl=%d) + Multisplit %s", fooling, ttl, pos),
-                        sprintf("--lua-desync=fake:blob=tls_max:repeats=6:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
+                        sprintf("--lua-desync=fake:blob=tls_max:repeats=6:ip_ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
                         "Evolved fake desync parameter combination");
                 }
             }

@@ -960,8 +960,7 @@ function filteredOutboundMetadataFromCache(cache) {
   return result;
 }
 
-function readOutboundMetadataFromSectionCache(section_id) {
-  const targetId = section_id || "Main";
+function readSingleSectionCacheMetadata(targetId) {
   if (!safeCacheSectionName(targetId)) {
     return Promise.resolve({
       names: {},
@@ -994,6 +993,42 @@ function readOutboundMetadataFromSectionCache(section_id) {
       securities: {},
       ports: {},
     }));
+}
+
+function readOutboundMetadataFromSectionCache(section_id) {
+  const targetId = section_id || "Main";
+  const memberIds =
+    getRuleResolvedAction(targetId) === "group"
+      ? currentSourceOptionValues(targetId, "group_members")
+      : [];
+
+  if (memberIds.length === 0) {
+    return readSingleSectionCacheMetadata(targetId);
+  }
+
+  return Promise.all([
+    readSingleSectionCacheMetadata(targetId),
+    ...memberIds.map((memberId) => readSingleSectionCacheMetadata(memberId)),
+  ]).then((metaList) => {
+    const merged = {
+      names: {},
+      countries: {},
+      protocols: {},
+      transports: {},
+      securities: {},
+      ports: {},
+    };
+    metaList.forEach((meta) => {
+      if (!meta) return;
+      Object.assign(merged.names, meta.names);
+      Object.assign(merged.countries, meta.countries);
+      Object.assign(merged.protocols, meta.protocols);
+      Object.assign(merged.transports, meta.transports);
+      Object.assign(merged.securities, meta.securities);
+      Object.assign(merged.ports, meta.ports);
+    });
+    return merged;
+  });
 }
 
 function extractCountryFromFlagEmojiName(name) {
@@ -1248,8 +1283,10 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
 
 function loadOutboundNameChoices(section_id) {
   const targetId = section_id || "Main";
+  const isGroup = getRuleResolvedAction(targetId) === "group";
   const fetchedAt = outboundNameChoicesFetchedAt.get(targetId) || 0;
   if (
+    !isGroup &&
     outboundNameChoicesCache.has(targetId) &&
     Date.now() - fetchedAt < OUTBOUND_NAME_CHOICES_TTL_MS
   ) {
@@ -9908,6 +9945,7 @@ function createSectionContent(section) {
     }
     return true;
   };
+  outboundNameSourceOptions.set("group_members", o);
 
   o = section.taboption(
     "settings",
@@ -13277,6 +13315,7 @@ function createSectionContent(section) {
   o.depends("action", "connection");
   o.depends("action", "fptn");
   o.depends("action", "awg");
+  o.depends("action", "group");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add URLTest");
@@ -13338,6 +13377,7 @@ function createSectionContent(section) {
   o.depends("action", "connection");
   o.depends("action", "fptn");
   o.depends("action", "awg");
+  o.depends("action", "group");
   o.rmempty = true;
   o.modalonly = true;
   o.addButtonLabel = _("+ Add priority");

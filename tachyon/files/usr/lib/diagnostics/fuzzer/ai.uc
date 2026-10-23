@@ -503,10 +503,14 @@ function sanitize_strategy_args(engine, raw_args) {
         let ttl_m = match(cleaned, /--dpi-desync-ttl=([0-9]+)/);
         let ttl = (ttl_m && ttl_m[1]) ? ttl_m[1] : "4";
         let fool_m = match(cleaned, /--dpi-desync-fooling=([^ \t]+)/);
-        let fool = (fool_m && fool_m[1]) ? replace(fool_m[1], /,/g, ":") : "badseq";
+        let fool = (fool_m && fool_m[1]) ? replace(fool_m[1], /,/g, ":") : "tcp_seq=1000000";
+        fool = replace(fool, /\bbadseq\b/g, "tcp_seq=1000000");
+        fool = replace(fool, /\bmd5sig\b/g, "tcp_md5");
+        fool = replace(fool, /\bbadack\b/g, "tcp_ack=-66000");
+        fool = replace(fool, /\bdatanoack\b/g, "tcp_flags_unset=ack");
         let z2_parts = [];
         if (has_fake)
-            push(z2_parts, sprintf("--lua-desync=fake:blob=tls_max:ttl=%s:fooling=%s", ttl, fool));
+            push(z2_parts, sprintf("--lua-desync=fake:blob=tls_max:ip_ttl=%s:fooling=%s", ttl, fool));
         push(z2_parts, sprintf("--lua-desync=%s:pos=%s", has_disorder ? "multidisorder" : "multisplit", pos));
         cleaned = join(" ", z2_parts);
     }
@@ -565,7 +569,7 @@ function compute_ai_strategies_result(engine, target, custom_url, user_prompt) {
         '  ]\n' +
         "}\n\n" +
         "RULES FOR STRATEGY ARGS:\n" +
-        "- For zapret2 (nfqws2): ONLY use '--lua-desync=...' syntax (NEVER use zapret1 '--dpi-desync' flags!). Examples: '--lua-desync=multisplit:pos=1,midsld:seqovl=1' or '--lua-desync=fake:blob=tls_max:ttl=4:fooling=badseq --lua-desync=multidisorder:pos=1,midsld'. DO NOT include binary name, --qnum, --fwmark, or --hostlist.\n" +
+        "- For zapret2 (nfqws2): ONLY use '--lua-desync=...' syntax (NEVER use zapret1 '--dpi-desync' flags!). Examples: '--lua-desync=multisplit:pos=1,midsld:seqovl=1' or '--lua-desync=fake:blob=tls_max:ip_ttl=4:fooling=tcp_seq=1000000 --lua-desync=multidisorder:pos=1,midsld'. DO NOT include binary name, --qnum, --fwmark, or --hostlist.\n" +
         "- For zapret (nfqws v1): ONLY use '--dpi-desync=...' syntax like '--dpi-desync=fake,split2 --dpi-desync-split-pos=1,midsld --dpi-desync-fooling=badseq --dpi-desync-ttl=4'. DO NOT include binary name, --qnum, or --hostlist.\n" +
         "- For byedpi (ciadpi): ONLY use valid ciadpi flags like '-s 1 -d 1 --auto=t,r,s -o 1' or '--split 1 --disorder 3+s --tlsrec 1+s'. DO NOT include binary name, -i, or -p.\n\n" +
         "JSON OUTPUT:",

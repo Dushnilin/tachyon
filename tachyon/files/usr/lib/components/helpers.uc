@@ -33,6 +33,7 @@ let bounded_command = common.bounded_command;
 let tmp_dir = "";
 let current_job_phase = "";
 let job_phase_started_at = 0;
+let _seen_unreachable_hosts = {};
 
 // ============================================================================
 // Generic command and filesystem utilities
@@ -226,6 +227,9 @@ function sanitize_package_log_line(message) {
     }
 
     if (host) {
+        if (_seen_unreachable_hosts[host] === true)
+            return null;
+        _seen_unreachable_hosts[host] = true;
         let lang = get_ui_language();
         if (lang == "ru") {
             return sprintf("Пропуск недоступного репозитория: %s (не критично при обновлении)", host);
@@ -686,10 +690,7 @@ function service_proxy_address() {
     if (file_exists(LIB_DIR + "/service/state.uc") &&
         !module_success([ LIB_DIR + "/service/state.uc", "sing-box-service-running" ]))
         return "";
-    let addr = trim(module_output([ LIB_DIR + "/tachyon_core/runtime.uc", "service-proxy-address", "components" ]));
-    if (addr == "")
-        addr = trim(module_output([ LIB_DIR + "/tachyon_core/runtime.uc", "service-proxy-address", "lists" ]));
-    return addr;
+    return trim(module_output([ LIB_DIR + "/tachyon_core/runtime.uc", "service-proxy-address", "components" ]));
 }
 
 // Forward-referenced helpers

@@ -388,7 +388,7 @@ const COUNTRY_KEYWORD_PATTERNS: Array<{ code: string; regex: RegExp }> = [
     regex: buildCountryRegex('cyprus|кипр|limassol|лимасол|nicosia|никосия'),
   },
   { code: 'TW', regex: buildCountryRegex('taiwan|тайвань|taipei|тайбэй') },
-  { code: 'CZ', regex: buildCountryRegex('czech|чехия|prague|прага') },
+  { code: 'CZ', regex: buildCountryRegex('czechia|czech|чехия|prague|прага') },
   {
     code: 'SK',
     regex: buildCountryRegex('slovakia|словакия|bratislava|братислава'),
@@ -664,6 +664,31 @@ export function detectOutboundCountry(
     flag: '🌐',
     name: translate('Other'),
   };
+}
+
+/**
+ * Prepends a detected country flag emoji to an outbound's display name
+ * if the name does not already contain a flag emoji and a known country
+ * can be identified from the name/prefix/country metadata.
+ */
+export function ensureOutboundDisplayFlag(outbound: {
+  displayName?: string;
+  prefix?: string;
+  country?: string;
+}): string {
+  const displayName = `${outbound.displayName || ''}`;
+  if (!displayName) return '';
+  if (
+    flagEmojiToCountryCode(displayName) ||
+    flagEmojiToCountryCode(outbound.prefix)
+  ) {
+    return displayName;
+  }
+  const info = detectOutboundCountry(outbound);
+  if (info.code !== 'OTHER' && info.flag) {
+    return `${info.flag} ${displayName}`;
+  }
+  return displayName;
 }
 
 /**

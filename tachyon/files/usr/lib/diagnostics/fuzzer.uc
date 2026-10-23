@@ -355,15 +355,31 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
                 };
             }
             
+            let compact_sub_probes = [];
+            for (let sp in array_or_empty(probe.sub_probes)) {
+                push(compact_sub_probes, {
+                    target_name: sp.target_name || "",
+                    url: sp.url || "",
+                    required: sp.required ? true : false,
+                    http_code: sp.http_code || 0,
+                    handshake_ms: sp.handshake_ms || 0,
+                    ttfb_ms: sp.ttfb_ms || 0,
+                    speed_kbps: sp.speed_kbps || 0,
+                    data_bytes: sp.data_bytes || 0,
+                    data_verified: sp.data_verified ? true : false,
+                    dpi_verdict: sp.dpi_verdict || "unknown",
+                    score: sp.score || 0,
+                    success: sp.success ? true : false,
+                    error: sp.error || ""
+                });
+            }
+
             let item_result = {
                 id: strat.id || sprintf("strat_%d", i + 1),
                 name: strat.name || sprintf("Strategy %d", i + 1),
                 engine: strat.engine || engine,
                 args: strat.args,
-                description: strat.description || "",
-                rationale: strat.rationale || "",
                 source: strat.source || "",
-                tags: type(strat.tags) == "array" ? strat.tags : [],
                 success: probe.success,
                 http_code: probe.http_code,
                 handshake_ms: probe.handshake_ms,
@@ -374,7 +390,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
                 dpi_verdict: probe.dpi_verdict || "unknown",
                 score: probe.score,
                 error: probe.error,
-                sub_probes: probe.sub_probes || [],
+                sub_probes: compact_sub_probes,
                 stability_pct: probe.success ? 100 : 0,
                 reps: 1,
                 jitter_ms: 0,
@@ -840,7 +856,32 @@ if (op == "start") {
 } else if (op == "worker") {
     run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 } else if (op == "status") {
-    print(sprintf("%J\n", get_fuzzer_state()));
+    let st = get_fuzzer_state();
+    // OpenWrt rpcd caps luci.rpc / fs.exec stdout at ~64 KB. In combinatorial
+    // mode (320 strategies), serializing every sub_probe for all failed items
+    // pushes stdout past 64 KB around strategy 156 (~33%), causing rpcd to
+    // truncate the JSON and the UI progress bar to freeze at 33%.
+    // Keep full sub_probes on working strategies and strip verbose sub_probes
+    // from failed strategies when the result set is large.
+    if (st && type(st.results) == "array" && length(st.results) > 60) {
+        let slim = [];
+        for (let r in st.results) {
+            if (!r || type(r) != "object") continue;
+            if (r.success) {
+                push(slim, r);
+            } else {
+                let copy = {};
+                for (let k, v in r) {
+                    if (k == "sub_probes" || k == "description" || k == "rationale" || k == "tags")
+                        continue;
+                    copy[k] = v;
+                }
+                push(slim, copy);
+            }
+        }
+        st.results = slim;
+    }
+    print(sprintf("%J\n", st));
 } else if (op == "stop") {
     stop_fuzzer();
 } else if (op == "apply") {

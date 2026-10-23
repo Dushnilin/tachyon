@@ -48,6 +48,7 @@ import {
   isServiceGroup,
   ActiveRouteInfo,
 } from './activeRoute';
+import { ensureOutboundDisplayFlag } from '../../helpers/country';
 import {
   computeTrafficRates,
   createInitialTrafficRatesState,
@@ -1090,6 +1091,9 @@ function getDetectedCountryFlag(country?: string) {
 
 function renderDetailsMemberName(member: Tachyon.UrlTestMember) {
   const countryFlag = getDetectedCountryFlag(member.country);
+  const displayTitle = countryFlag
+    ? member.displayName
+    : ensureOutboundDisplayFlag(member);
   const elements = countryFlag
     ? [
         E(
@@ -1097,9 +1101,9 @@ function renderDetailsMemberName(member: Tachyon.UrlTestMember) {
           { class: 'tachyon_dashboard-page__urltest-details__country-badge' },
           countryFlag,
         ),
-        ...renderFlagEmojis(member.displayName),
+        ...renderFlagEmojis(displayTitle),
       ]
-    : renderFlagEmojis(member.displayName);
+    : renderFlagEmojis(displayTitle);
 
   if (member.prefix) {
     const pStyle = resolvePrefixBadgeStyle(member.prefix);
@@ -1623,6 +1627,9 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
 
 function renderPriorityMemberName(member: Tachyon.PriorityMember) {
   const countryFlag = getDetectedCountryFlag(member.country);
+  const displayTitle = countryFlag
+    ? member.displayName
+    : ensureOutboundDisplayFlag(member);
   const flagElements = countryFlag
     ? [
         E(
@@ -1640,7 +1647,7 @@ function renderPriorityMemberName(member: Tachyon.PriorityMember) {
       { class: 'tachyon_dashboard-page__urltest-details__priority-level' },
       `[${member.levelName}]`,
     ),
-    ...renderFlagEmojis(member.displayName),
+    ...renderFlagEmojis(displayTitle),
   ];
 
   if (member.prefix) {
@@ -2084,8 +2091,27 @@ async function renderSectionsWidget() {
       )
     : null;
 
-  const renderedWidgets = sectionsWithCustomLatencies.map((section) =>
-    renderSections({
+  const renderedWidgets: HTMLElement[] = [];
+  let pendingServiceCards: HTMLElement[] = [];
+
+  const flushServiceCards = () => {
+    if (pendingServiceCards.length === 0) return;
+    if (pendingServiceCards.length === 1) {
+      renderedWidgets.push(pendingServiceCards[0]);
+    } else {
+      renderedWidgets.push(
+        E(
+          'div',
+          { class: 'tachyon_dashboard-page__service-sections-row' },
+          pendingServiceCards,
+        ),
+      );
+    }
+    pendingServiceCards = [];
+  };
+
+  for (const section of sectionsWithCustomLatencies) {
+    const widget = renderSections({
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
       section,
@@ -2158,8 +2184,16 @@ async function renderSectionsWidget() {
       onUpdateSubscription: (section) => {
         void handleUpdateSubscription(section);
       },
-    }),
-  );
+    });
+
+    if (isServiceGroup(section)) {
+      pendingServiceCards.push(widget);
+    } else {
+      flushServiceCards();
+      renderedWidgets.push(widget);
+    }
+  }
+  flushServiceCards();
 
   return preserveScrollForPage(() => {
     container.replaceChildren(
@@ -2447,7 +2481,9 @@ export async function renderSectionDashboardWidgets() {
     const routeItems = [
       {
         key: tr('Сервер', 'Server'),
-        value: route.name,
+        value: renderFlagEmojis(
+          ensureOutboundDisplayFlag({ displayName: route.name }),
+        ),
         attributes: { class: 'tachyon-stat--bold' },
       },
       {
@@ -2661,6 +2697,9 @@ export async function renderSystemServicesWidget() {
     failed,
     title: tr('Система и сервисы', 'System & Services'),
     badge: 'TProxy + Fake-IP',
+    attributes: {
+      class: 'tachyon-dual-card--system-pinned',
+    },
     columns: [
       {
         title: tr('Маршрутизация и правила', 'Routing & Rules'),

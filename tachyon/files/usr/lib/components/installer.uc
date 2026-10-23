@@ -51,12 +51,13 @@ const JOB_HEARTBEAT_INTERVAL = int(getenv("TACHYON_JOB_HEARTBEAT_INTERVAL") || "
 function pkg_list_update_command(proxy_address) {
     if (proxy_address == null)
         proxy_address = service_proxy_address();
-    let cmd = is_apk() ? "apk update </dev/null" : "opkg update </dev/null";
+    let direct_cmd = is_apk() ? "apk update </dev/null" : "opkg update </dev/null";
     if (as_string(proxy_address) != "") {
         let p = "http://" + proxy_address;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
+        let proxied_cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + direct_cmd;
+        return "(" + proxied_cmd + " || " + direct_cmd + ")";
     }
-    return cmd;
+    return direct_cmd;
 }
 
 function pkg_install_name_command(package_name, proxy_address) {

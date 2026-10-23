@@ -1785,10 +1785,10 @@ function validate_rule(section, sections, context) {
         validate_outbound_json_values(section);
     }
 
-    // AmneziaWG sections emit the same URLTest/Priority groups a connection
-    // section does, so the groups need the same validation. Their other
-    // connection-only options (subscriptions, JSON outbounds) stay out of it.
-    if (action == "awg")
+    // AmneziaWG and Group sections emit the same URLTest/Priority groups a
+    // connection section does, so the groups need the same validation. Their
+    // other connection-only options (subscriptions, JSON outbounds) stay out of it.
+    if (action == "awg" || action == "group")
         validate_section_route_groups(section);
 
     if (action == "outbound")

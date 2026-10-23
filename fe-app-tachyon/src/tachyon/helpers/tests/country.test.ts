@@ -3,6 +3,7 @@ import type { Tachyon } from '../../types';
 import {
   countryCodeToFlagEmoji,
   detectOutboundCountry,
+  ensureOutboundDisplayFlag,
   flagEmojiToCountryCode,
   getCountryName,
   getCountryRegion,
@@ -408,5 +409,28 @@ describe('country helper', () => {
     });
     expect(resRu.groups.length).toBe(1);
     expect(resRu.groups[0].countryCode).toBe('NL');
+  });
+
+  it('recognizes Czechia and prepends flag emojis via ensureOutboundDisplayFlag', () => {
+    expect(
+      detectOutboundCountry({ displayName: 'Czechia-Premium' }),
+    ).toMatchObject({
+      code: 'CZ',
+      flag: '🇨🇿',
+    });
+    expect(ensureOutboundDisplayFlag({ displayName: 'Czechia-Premium' })).toBe(
+      '🇨🇿 Czechia-Premium',
+    );
+    expect(ensureOutboundDisplayFlag({ displayName: 'Austria-Premium' })).toBe(
+      '🇦🇹 Austria-Premium',
+    );
+    expect(
+      ensureOutboundDisplayFlag({
+        displayName: 'Russia-Premium-26(Netherlands)',
+      }),
+    ).toBe('🇷🇺 Russia-Premium-26(Netherlands)');
+    expect(
+      ensureOutboundDisplayFlag({ displayName: '🇩🇪 Germany-Premium' }),
+    ).toBe('🇩🇪 Germany-Premium');
   });
 });

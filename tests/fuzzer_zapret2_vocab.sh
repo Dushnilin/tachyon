@@ -107,13 +107,15 @@ let check = function(id, args) {
 };
 
 for (let engine in [ "zapret2" ]) {
-    let list = s.get_strategies_for_engine(engine, "presets", "discord_suite");
-    if (length(list) == 0) {
-        note("no zapret2 strategies returned");
-        continue;
+    for (let mode in [ "presets", "combinatorial", "adaptive" ]) {
+        let list = s.get_strategies_for_engine(engine, mode, "discord_suite");
+        if (length(list) == 0) {
+            note("no zapret2 strategies returned for mode " + mode);
+            continue;
+        }
+        for (let st in list)
+            check(engine + "/" + mode + "/" + (st.id || st.name || "?"), st.args || "");
     }
-    for (let st in list)
-        check(engine + "/" + (st.id || st.name || "?"), st.args || "");
 }
 
 // Builtin presets ship as JSON and bypass get_strategies_for_engine filtering

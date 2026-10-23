@@ -12,17 +12,17 @@ function env(name, fallback) {
 let fs = require("fs");
 
 function detect_installed_version() {
-    let env_ver = getenv("TACHYON_VERSION");
-    if (env_ver != null && env_ver != "")
-        return env_ver;
+    let ver = env("TACHYON_VERSION", "__COMPILED_VERSION_VARIABLE__");
+    if (ver != "" && !match(ver, /COMPILED/) && ver != "unknown")
+        return ver;
 
     try {
         let pkgs = require("core.packages");
         if (pkgs && pkgs.version) {
-            let ver = pkgs.version("tachyon");
-            if (ver != null && ver != "") return ver;
-            ver = pkgs.version("luci-app-tachyon");
-            if (ver != null && ver != "") return ver;
+            let pkg_ver = pkgs.version("tachyon");
+            if (pkg_ver != null && pkg_ver != "") return pkg_ver;
+            pkg_ver = pkgs.version("luci-app-tachyon");
+            if (pkg_ver != null && pkg_ver != "") return pkg_ver;
         }
     }
     catch (e) {
@@ -45,14 +45,22 @@ function detect_installed_version() {
     if (apk_db != null) {
         let lines = split(as_string(apk_db), "\n");
         let current_pkg = "";
+        let fallback_ver = "";
         for (let line in lines) {
             if (substr(line, 0, 2) == "P:")
                 current_pkg = trim(substr(line, 2));
             else if ((current_pkg == "tachyon" || current_pkg == "luci-app-tachyon") && substr(line, 0, 2) == "V:") {
                 let v = match(trim(substr(line, 2)), /^([0-9]+\.[0-9]+\.[0-9]+)/);
-                if (v && v[1]) return v[1];
+                if (v && v[1]) {
+                    if (current_pkg == "tachyon")
+                        return v[1];
+                    if (fallback_ver == "")
+                        fallback_ver = v[1];
+                }
             }
         }
+        if (fallback_ver != "")
+            return fallback_ver;
     }
 
     return "";

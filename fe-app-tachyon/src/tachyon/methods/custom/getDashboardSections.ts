@@ -1528,13 +1528,18 @@ function buildProxyGroupOutbounds(
     ({ config, entry }) =>
       urltestGroups[config.code]?.outbounds || entry?.value.all || [],
   );
+  const groupPriorityMemberCodes = priorityEntries.flatMap(
+    ({ config, entry }) =>
+      priorityGroups[config.code]?.outbounds || entry?.value.all || [],
+  );
   const fallbackCodes =
     section.action === 'group'
       ? uniqueCodes([
           ...urlTestCodes,
           ...priorityCodes,
-          ...(groupUrlTestMemberCodes.length > 0
-            ? groupUrlTestMemberCodes
+          ...(groupUrlTestMemberCodes.length > 0 ||
+          groupPriorityMemberCodes.length > 0
+            ? [...groupUrlTestMemberCodes, ...groupPriorityMemberCodes]
             : [
                 ...Array.from(cachedProxyLinks.keys()),
                 ...Array.from(manualLinkByCode.keys()),
