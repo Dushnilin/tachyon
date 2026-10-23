@@ -49,8 +49,8 @@ export const styles = `
 .tachyon_dashboard-page__service-stopped {
     display: none;
     width: 100%;
-    min-height: 180px;
-    margin-top: 10px;
+    min-height: 140px;
+    margin-top: 12px;
     align-items: center;
     justify-content: center;
     padding: 20px;
@@ -67,19 +67,14 @@ export const styles = `
     text-align: center;
 }
 
-.tachyon_dashboard-page--service-stopped {
-    display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
-    gap: 10px;
-}
-
 .tachyon_dashboard-page--service-stopped .tachyon_dashboard-page__service-stopped {
     display: flex;
-    grid-column: 1 / -1;
 }
 
-.tachyon_dashboard-page--service-stopped .tachyon_dashboard-page__content {
-    display: none;
+.tachyon_dashboard-page--service-stopped #dashboard-widgets-sections-list,
+.tachyon_dashboard-page--service-stopped #dashboard-connections-grid,
+.tachyon_dashboard-page--service-stopped #dashboard-sections-grid {
+    display: none !important;
 }
 
 @media (max-width: 900px) {

@@ -159,4 +159,32 @@ describe('dashboard initController', () => {
     expect(formatLocalizedUptime(undefined, 3720)).toBe('1h 2m');
     expect(formatLocalizedUptime(undefined, 45)).toBe('45s');
   });
+
+  it('renders system widget when service is stopped', async () => {
+    const { renderSystemServicesWidget } = await import('../initController');
+    const { store } = await import('../../../services/store.service');
+
+    const container = {
+      replaceChildren: vi.fn(),
+    };
+    (globalThis.document as any).getElementById = vi.fn((id: string) => {
+      if (id === 'dashboard-widget-system-services') return container;
+      return null;
+    });
+
+    store.set({
+      servicesInfoWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          tachyonRunning: 0,
+          singbox: 0,
+          dnsmasqRunning: 1,
+        } as any,
+      },
+    });
+
+    await renderSystemServicesWidget();
+    expect(container.replaceChildren).toHaveBeenCalled();
+  });
 });
