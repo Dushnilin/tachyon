@@ -770,7 +770,7 @@ function maybe_refresh_action_dirs(force) {
             return;
     }
     refresh_action_dirs();
-    write_state_file(ACTION_DIRS_REFRESH_STAMP_FILE, as_string(now) + "\n", "action dirs refresh stamp");
+    write_state_file(ACTION_DIRS_REFRESH_STAMP_FILE, as_string(now) + "\n");
 }
 
 function active_service_action_default() {
@@ -1939,6 +1939,20 @@ function get_clash_url(endpoint) {
 
 function latency_boot_sweep() {
     let guard_file = "/var/run/tachyon/boot-sweep-done";
+    if (fs.stat(guard_file) != null)
+        return;
+
+    // Wait for start_impl() and post-install cache warmup / initial LuCI load
+    // to settle before probing all groups via Clash API.
+    let wait_ticks = 0;
+    while (fs.stat("/var/run/tachyon/starting") != null && wait_ticks < 15) {
+        command_success_from_args([ "sleep", "1" ]);
+        wait_ticks++;
+    }
+    let boot_delay = int(getenv("TACHYON_BOOT_SWEEP_DELAY_SECONDS") || "5");
+    if (boot_delay > 0)
+        command_success_from_args([ "sleep", as_string(boot_delay) ]);
+
     if (fs.stat(guard_file) != null)
         return;
 

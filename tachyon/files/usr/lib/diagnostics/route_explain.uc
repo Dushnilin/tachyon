@@ -681,8 +681,8 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
     let group_type = "selector";
 
     if (matched_action == "group") {
-        group_tag = sec_name + "-urltest-out";
-        group_type = "urltest";
+        group_tag = sec_name + "-out";
+        group_type = "selector";
     } else if (uci_cfg && type(uci_cfg.sections) == "array") {
         for (let gsec in uci_cfg.sections) {
             if (gsec.enabled == "0" || gsec.action != "group")
@@ -698,8 +698,8 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
                 }
             }
             if (in_group) {
-                group_tag = gsec[".name"] + "-urltest-out";
-                group_type = "urltest";
+                group_tag = gsec[".name"] + "-out";
+                group_type = "selector";
                 break;
             }
         }

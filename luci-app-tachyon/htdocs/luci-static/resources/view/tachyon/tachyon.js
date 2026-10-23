@@ -2,9 +2,16 @@
 "require view";
 "require form";
 "require baseclass";
+"require dom";
+"require fs";
+"require network";
+"require rpc";
 "require uci";
 "require ui";
+"require tools.widgets as widgets";
 "require view.tachyon.main as main";
+"require view.tachyon.local_devices as localDevices";
+"require view.tachyon.dns_speed_test as dnsSpeedTest";
 
 // Global settings
 "require view.tachyon.settings as settings";
@@ -248,10 +255,27 @@ function configureGridSection(sectionRef, type, title, addTitle) {
   };
 }
 
+let preloadedUiCapabilitiesResponsePromise = null;
+
 const EntryPoint = {
   load() {
-    // Pre-load UCI so that tab_order and show_tab_* are available
-    // synchronously in render() before section factories are registered.
+    // Pre-load UCI, UI capabilities, and LuCI network device cache in parallel
+    // so render() does not stall on a sequential 3-step RPC waterfall.
+    if (
+      main.TachyonShellMethods &&
+      typeof main.TachyonShellMethods.getUiCapabilities === "function"
+    ) {
+      preloadedUiCapabilitiesResponsePromise =
+        main.TachyonShellMethods.getUiCapabilities();
+    }
+    if (typeof network !== "undefined") {
+      if (typeof network.getDevices === "function") {
+        network.getDevices().catch(() => null);
+      }
+      if (typeof network.getNetworks === "function") {
+        network.getNetworks().catch(() => null);
+      }
+    }
     return uci.load([UCI_PACKAGE]);
   },
   async render() {
@@ -490,7 +514,12 @@ const EntryPoint = {
         return uiCapabilitiesPromise;
       }
 
-      uiCapabilitiesPromise = main.TachyonShellMethods.getUiCapabilities()
+      const initialRequest = preloadedUiCapabilitiesResponsePromise
+        ? preloadedUiCapabilitiesResponsePromise
+        : main.TachyonShellMethods.getUiCapabilities();
+      preloadedUiCapabilitiesResponsePromise = null;
+
+      uiCapabilitiesPromise = initialRequest
         .then((response) => {
           if (!response?.success) {
             throw new Error("UI capabilities request failed");
@@ -788,7 +817,11 @@ const EntryPoint = {
       }
     }
 
-    await loadUiCapabilities().catch(() => null);
+    const capabilitiesTask = loadUiCapabilities().catch(() => null);
+    await Promise.race([
+      capabilitiesTask,
+      new Promise((resolve) => window.setTimeout(resolve, 250)),
+    ]);
 
     const rendered = await tachyonMap.render();
     if (typeof main.mountLanguageSelector === "function") {

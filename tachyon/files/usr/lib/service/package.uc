@@ -81,7 +81,9 @@ function timeout_prefix() {
 // here already treats as "could not do it, carry on" — the alternative is an
 // upgrade the package manager rolls back.
 function bounded_command_success_from_args(args, seconds) {
-    seconds = as_string(seconds) != "" ? as_string(seconds) : HOOK_COMMAND_TIMEOUT;
+    seconds = as_string(seconds || "");
+    if (seconds == "")
+        seconds = HOOK_COMMAND_TIMEOUT;
 
     let prefix = timeout_prefix();
     if (length(prefix) == 0)
@@ -348,6 +350,11 @@ function luci_postinst() {
         ensure_ucitrack_entry();
         if (path_exists("/etc/init.d/rpcd"))
             command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
+        if (path_exists(BIN_PATH)) {
+            let warm_cmd = command_from_args([ BIN_PATH, "get_ui_capabilities" ]) + " >/dev/null 2>&1; " +
+                command_from_args([ BIN_PATH, "get_system_info" ]) + " >/dev/null 2>&1";
+            common.command_status(common.background_command(warm_cmd));
+        }
         command_success_from_args([ "logger", "-t", "tachyon", "[info] Package defaults applied" ]);
     }
     return true;

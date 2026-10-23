@@ -201,6 +201,13 @@ if (length(group.outbounds || []) != 3)
     die("flat group urltest must be exactly the union of member leaves, got " +
         length(group.outbounds || []) + "\n");
 
+let group_sel = outbound_by_tag(config, "grp-out");
+if (!group_sel || group_sel.type != "selector" || group_sel.default != "grp-urltest-out")
+    die("the group section must produce a grp-out selector defaulting to grp-urltest-out\n");
+for (let want in [ "alpha-1-out", "alpha-2-out", "beta-1-out", "grp-urltest-out" ])
+    if (!contains(group_sel.outbounds || [], want))
+        die("grp-out selector is missing " + want + "\n");
+
 // merge semantics keep member selectors — they stay usable as detour targets
 if (!outbound_by_tag(config, "alpha-out") || !outbound_by_tag(config, "beta-out"))
     die("member section selectors must survive the merge\n");
@@ -209,7 +216,7 @@ let alpha_rule = null;
 let beta_rule = null;
 let group_rule_count = 0;
 for (let rule in config.route.rules || []) {
-    if (rule.outbound == "grp-urltest-out")
+    if (rule.outbound == "grp-out")
         group_rule_count++;
     if (contains(rule.domain_suffix || [], "alpha.example"))
         alpha_rule = rule;
@@ -218,8 +225,8 @@ for (let rule in config.route.rules || []) {
 }
 if (!alpha_rule || !beta_rule)
     die("member routing rules were not generated\n");
-if (alpha_rule.outbound != "grp-urltest-out" || beta_rule.outbound != "grp-urltest-out")
-    die("member rules must route through the group urltest, got alpha=" +
+if (alpha_rule.outbound != "grp-out" || beta_rule.outbound != "grp-out")
+    die("member rules must route through the group selector grp-out, got alpha=" +
         (alpha_rule.outbound || "null") + " beta=" + (beta_rule.outbound || "null") + "\n");
 if (group_rule_count != 2)
     die("the group itself must not add route rules when it has no conditions; expected 2, got " + group_rule_count + "\n");
@@ -290,10 +297,10 @@ for (let rule in config.route.rules || []) {
     if ((rule.inbound == "grp-mixed-in" || contains(rule.inbound || [], "grp-mixed-in")) && !rule.ip_is_private)
         mixed_rule = rule;
 }
-if (!direct_rule || direct_rule.outbound != "grp-urltest-out")
-    die("routing conditions on the group section itself must route to grp-urltest-out\n");
-if (!mixed_rule || mixed_rule.outbound != "grp-urltest-out")
-    die("mixed proxy on the group section must route to grp-urltest-out\n");
+if (!direct_rule || direct_rule.outbound != "grp-out")
+    die("routing conditions on the group section itself must route to grp-out\n");
+if (!mixed_rule || mixed_rule.outbound != "grp-out")
+    die("mixed proxy on the group section must route to grp-out\n");
 
 let grp_direct_cache = json(fs.readfile(ARGV[0] + ".section-cache/grp.json"));
 if (!grp_direct_cache || type(grp_direct_cache.links) != "object")
@@ -366,8 +373,8 @@ let awg_rule = null;
 for (let rule in config.route.rules || [])
     if (contains(rule.domain_suffix || [], "awg.example"))
         awg_rule = rule;
-if (!awg_rule || awg_rule.outbound != "grp-urltest-out")
-    die("manual awg member route rule must be repointed to grp-urltest-out, got " +
+if (!awg_rule || awg_rule.outbound != "grp-out")
+    die("manual awg member route rule must be repointed to grp-out, got " +
         (awg_rule ? awg_rule.outbound : "null") + "\n");
 ' "$group_awg_config" || fail "generated section group with manual awg member"
 

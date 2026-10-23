@@ -735,7 +735,7 @@ function group_outbound_tag_for_section(section) {
     let group_name = as_string(section_group_map[section[".name"]]);
     if (group_name == "")
         return "";
-    return urltest_outbound_tag(group_name, "urltest");
+    return as_string(active_group_tags[group_name] || urltest_outbound_tag(group_name, "urltest"));
 }
 
 function group_member_action_supported(action) {
@@ -930,11 +930,32 @@ function add_group_urltest_outbounds(config, sections) {
         if (result.tag == "")
             continue;
 
+        let selector_tag = outbound_tag(group_name);
+        let selector_outbounds = [];
+        for (let t in result.outbounds)
+            push(selector_outbounds, t);
+        push(selector_outbounds, result.tag);
+        let selector_default = result.tag;
+        let persistent_selector_file = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
+        let saved_selector_state = read_json_file(persistent_selector_file);
+        if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
+            let saved_target = as_string(saved_selector_state[selector_tag]);
+            if (index(selector_outbounds, saved_target) >= 0)
+                selector_default = saved_target;
+        }
+        push(config.outbounds, {
+            type: "selector",
+            tag: selector_tag,
+            outbounds: selector_outbounds,
+            default: selector_default,
+            interrupt_exist_connections: true
+        });
+
         state.urltestCandidateTags = unique_string_array(result.outbounds);
         if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(group_name), state))
             ctx.runtime_generate_unsupported("failed to write section cache for " + group_name);
 
-        active_group_tags[group_name] = result.tag;
+        active_group_tags[group_name] = selector_tag;
         for (let member in members) {
             let name = member[".name"];
             if (section_group_map[name] != null)
@@ -1868,7 +1889,7 @@ function dns_action_detour_tag(section) {
         return as_string(active_group_tags[target_section]);
     let group_name = as_string(section_group_map[target_section] || "");
     if (group_name != "")
-        return urltest_outbound_tag(group_name, "urltest");
+        return as_string(active_group_tags[group_name] || urltest_outbound_tag(group_name, "urltest"));
     return outbound_tag(target_section);
 }
 

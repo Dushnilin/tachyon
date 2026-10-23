@@ -3505,32 +3505,39 @@ function createSettingsContent(section, capabilities) {
       }
     }
 
+    const currentVal = this.cfgvalue(section_id);
+    if (currentVal && !this.keylist.includes(currentVal)) {
+      this.value(currentVal, `${_("Interface")}: ${currentVal}`);
+    }
+
     if (
       typeof network !== "undefined" &&
       typeof network.getDevices === "function"
     ) {
-      return network.getDevices().then(
-        L.bind(function (devices) {
-          (devices || []).forEach((dev) => {
-            const name =
-              typeof dev.getName === "function" ? dev.getName() : dev.name;
-            if (name && name !== "lo" && !this.keylist.includes(name)) {
-              const type =
-                typeof dev.getTypeI18n === "function"
-                  ? dev.getTypeI18n()
-                  : typeof dev.getType === "function"
-                    ? dev.getType()
-                    : "";
-              const desc = type ? ` (${type})` : "";
-              this.value(name, `${_("Interface")}: ${name}${desc}`);
-            }
-          });
-          return this.cfgvalue(section_id);
-        }, this),
-      );
+      network
+        .getDevices()
+        .then(
+          L.bind(function (devices) {
+            (devices || []).forEach((dev) => {
+              const name =
+                typeof dev.getName === "function" ? dev.getName() : dev.name;
+              if (name && name !== "lo" && !this.keylist.includes(name)) {
+                const type =
+                  typeof dev.getTypeI18n === "function"
+                    ? dev.getTypeI18n()
+                    : typeof dev.getType === "function"
+                      ? dev.getType()
+                      : "";
+                const desc = type ? ` (${type})` : "";
+                this.value(name, `${_("Interface")}: ${name}${desc}`);
+              }
+            });
+          }, this),
+        )
+        .catch(() => null);
     }
 
-    return this.cfgvalue(section_id);
+    return currentVal;
   };
   o.write = function (section_id, value) {
     const normalized = value ? `${value}`.trim() : "";

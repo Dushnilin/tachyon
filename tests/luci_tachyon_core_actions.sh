@@ -234,6 +234,15 @@ if (!serverSource.includes("populateTransportValues(o, singBoxXhttp);")) {
 if (serverSource.includes("populateTransportValues(o, singBoxExtended);")) {
   fail("stale transport gate on singBoxExtended found");
 }
+if (!tachyonSource.includes('"require view.tachyon.local_devices as localDevices";')) {
+  fail("tachyon.js must pre-declare view.tachyon.local_devices to avoid a 3rd L.require HTTP wave");
+}
+if (!tachyonSource.includes('"require view.tachyon.dns_speed_test as dnsSpeedTest";')) {
+  fail("tachyon.js must pre-declare view.tachyon.dns_speed_test to avoid a 3rd L.require HTTP wave");
+}
+if (!tachyonSource.includes("preloadedUiCapabilitiesResponsePromise =")) {
+  fail("tachyon.js EntryPoint.load() must preload UI capabilities in parallel with uci.load");
+}
 NODE
 
 printf 'tachyon-core action UI checks passed\n'

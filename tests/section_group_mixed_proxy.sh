@@ -50,8 +50,8 @@ for (let r in config.route.rules || [])
         rule = r;
 if (!rule)
     die("no mixed inbound route rule for the group member section\n");
-if (rule.outbound != "grp-urltest-out")
-    die("mixed proxy of a group member must route into the group urltest, got " +
+if (rule.outbound != "grp-out")
+    die("mixed proxy of a group member must route into the group selector grp-out, got " +
         rule.outbound + "\n");
 if (!outbound_exists(rule.outbound))
     die("mixed route rule points at a missing outbound " + rule.outbound + "\n");

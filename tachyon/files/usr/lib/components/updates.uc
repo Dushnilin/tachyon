@@ -3455,6 +3455,19 @@ function list_update_steer_catalog(settings) {
 }
 
 function list_update() {
+    // When spawned by start_main() while start_impl() is still finalizing DNS,
+    // reload-state, and system-info warmup, wait for startup to finish and
+    // settle so list downloads and nft compilation do not contend with postinst
+    // or the first LuCI load.
+    if (fs.stat("/var/run/tachyon/starting") != null) {
+        let wait_ticks = 0;
+        while (fs.stat("/var/run/tachyon/starting") != null && wait_ticks < 20) {
+            command_success_from_args([ "sleep", "1" ]);
+            wait_ticks++;
+        }
+        command_success_from_args([ "sleep", "5" ]);
+    }
+
     log_message("Starting lists update", "info");
     if (!list_update_pid_begin())
         exit(0);

@@ -329,4 +329,25 @@ if grep -E 'rpcd restart|uhttpd restart' "$ROOT_DIR/luci-app-tachyon/Makefile" "
   fail "package postrm scripts must not restart rpcd or uhttpd"
 fi
 
+# luci-postinst wipes system-info.json after tachyon postinst already warmed it,
+# so it must kick off a background warmup of get_ui_capabilities and get_system_info
+# to keep the first LuCI visit after install/upgrade from hitting cold caches.
+: >"$WORK_DIR/warm.log"
+TACHYON_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
+TACHYON_UCITRACK_FILE="$WORK_DIR/missing-ucitrack" \
+TACHYON_LUCI_CACHE_GLOBS="$WORK_DIR/luci-indexcache*" \
+TACHYON_RESTORE_LOG="$WORK_DIR/warm.log" \
+TACHYON_BIN="$WORK_DIR/tachyon-bin" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" luci-postinst
+for _ in 1 2 3 4 5; do
+  if grep -Fxq 'get_ui_capabilities' "$WORK_DIR/warm.log" && grep -Fxq 'get_system_info' "$WORK_DIR/warm.log"; then
+    break
+  fi
+  sleep 0.2
+done
+grep -Fxq 'get_ui_capabilities' "$WORK_DIR/warm.log" ||
+  fail "luci-postinst must warm get_ui_capabilities in the background"
+grep -Fxq 'get_system_info' "$WORK_DIR/warm.log" ||
+  fail "luci-postinst must re-warm get_system_info in the background after clearing cache"
+
 printf 'package lifecycle checks passed\n'

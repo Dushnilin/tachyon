@@ -1235,6 +1235,7 @@ function start_impl() {
         }
     }
 
+    module_background(UI_UC, [ "get-ui-capabilities" ]);
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
     module_background(TELEGRAM_UC, [ "start-runtime" ]);
     fs.unlink("/var/run/tachyon/starting");

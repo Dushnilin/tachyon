@@ -16,6 +16,8 @@ export default defineConfig({
     esbuildOptions(options) {
         options.legalComments = 'none';
         options.charset = 'utf8';
+        options.minifyWhitespace = true;
+        options.minifyIdentifiers = true;
     },
     onSuccess: () => {
         const outDir =
@@ -25,9 +27,22 @@ export default defineConfig({
 
         const originalCode = code;
         code = code.replace(
-            /export\s*{([\s\S]*?)}/,
+            /("require [^"]+";)/g,
+            '$1\n'
+        );
+        code = code.replace(
+            /export\s*\{([\s\S]*?)\}\s*;?\s*$/,
             (match, group) => {
-                return `return baseclass.extend({${group}})`;
+                const mapped = group
+                    .split(',')
+                    .map((part: string) => part.trim())
+                    .filter(Boolean)
+                    .map((part: string) => {
+                        const m = part.match(/^([\w$]+)\s+as\s+([\w$]+)$/);
+                        return m ? `${m[2]}:${m[1]}` : part;
+                    })
+                    .join(',');
+                return `return baseclass.extend({${mapped}});`;
             }
         );
 

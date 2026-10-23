@@ -1,4 +1,5 @@
 import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
+import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { showToast } from '../../../helpers/showToast';
 import {
   renderPauseIcon24,
@@ -1381,7 +1382,10 @@ export async function initController(
   onMount('monitoring-status').then(() => {
     registerLifecycleListeners();
 
-    if (store.get().tabService.current === 'monitoring') {
+    if (
+      store.get().tabService.current === 'monitoring' ||
+      isActiveLuciTab('monitoring')
+    ) {
       onPageMount();
     }
   });

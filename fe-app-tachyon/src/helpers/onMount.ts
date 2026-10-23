@@ -13,6 +13,8 @@ export async function onMount(
     let observer: MutationObserver | null = null;
     let watchingAncestors = false;
 
+    const ATTR_FILTER = ['class', 'style', 'hidden', 'data-tab-active'];
+
     const observeAncestors = (el: HTMLElement) => {
       if (!observer || watchingAncestors) {
         return;
@@ -23,10 +25,19 @@ export async function onMount(
       while (curr && curr !== document.body) {
         observer.observe(curr, {
           attributes: true,
-          attributeFilter: ['class', 'style', 'hidden'],
+          attributeFilter: ATTR_FILTER,
         });
         curr = curr.parentElement;
       }
+      const tabMenus = document.querySelectorAll('.cbi-tabmenu');
+      tabMenus.forEach((menu) => {
+        observer?.observe(menu, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ATTR_FILTER,
+        });
+      });
     };
 
     const resolveIfMountedAndVisible = () => {
@@ -50,7 +61,14 @@ export async function onMount(
     }
 
     observer = new MutationObserver(() => {
-      resolveIfMountedAndVisible();
+      if (
+        !resolveIfMountedAndVisible() &&
+        typeof requestAnimationFrame === 'function'
+      ) {
+        requestAnimationFrame(() => {
+          resolveIfMountedAndVisible();
+        });
+      }
     });
 
     const initialTarget = getTarget(target);
@@ -61,7 +79,7 @@ export async function onMount(
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['class', 'style', 'hidden'],
+        attributeFilter: ATTR_FILTER,
       });
     }
   });

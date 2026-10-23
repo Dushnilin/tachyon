@@ -2050,14 +2050,17 @@ function clash_api(action, arg1, arg2, arg3) {
     if (action == "set_group_proxy") {
         if (as_string(arg1) == "" || as_string(arg2) == "")
             return clash_json_error("group_tag and proxy_tag required");
+        let target_group_tag = as_string(arg1);
+        if (match(target_group_tag, /-urltest-out$/))
+            target_group_tag = replace(target_group_tag, /-urltest-out$/, "-out");
         let payload = status_output([ "clash-set-group-proxy-payload", arg2 ], null);
-        let args = [ "curl", "-X", "PUT", "-s", "-w", "\n%{http_code}", base_url + "/proxies/" + clash_urlencode(arg1) ];
+        let args = [ "curl", "-X", "PUT", "-s", "-w", "\n%{http_code}", base_url + "/proxies/" + clash_urlencode(target_group_tag) ];
         for (let item in auth) push(args, item);
         push(args, "--data-raw");
         push(args, payload);
-        let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], command_output(command_from_args(args)));
+        let result = status_capture([ "clash-set-group-proxy-result", target_group_tag, arg2 ], command_output(command_from_args(args)));
         if (result.status == 0) {
-            save_persistent_selector_choice(arg1, arg2);
+            save_persistent_selector_choice(target_group_tag, arg2);
         }
         if (result.output != "")
             print(result.output);

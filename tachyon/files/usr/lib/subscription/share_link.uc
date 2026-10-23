@@ -424,7 +424,7 @@ function is_copyable_link(value) {
         "vless://", "vmess://", "trojan://", "ss://", "ssr://",
         "hysteria2://", "hy2://", "tuic://",
         "socks4://", "socks4a://", "socks5://",
-        "http://", "https://", "vpn://",
+        "http://", "https://", "vpn://", "amneziawg://", "awg://",
         "fptn://", "fptnb://", "fptn:", "fptnb:"
     ];
     for (let prefix in prefixes) {
