@@ -799,10 +799,10 @@ export const styles = `
     max-width: 310px;
     padding: 8px 10px;
     border-radius: 6px;
-    background: rgba(20, 24, 33, 0.97);
-    color: #f1f5f9;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    background: var(--background-color-high, #ffffff);
+    color: var(--text-color-high, #1e293b);
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.25));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
     font-size: 11.5px;
     line-height: 1.4;
     text-align: left;
@@ -817,8 +817,8 @@ export const styles = `
 .tachyon_proto-popover__header {
     font-weight: 700;
     font-size: 12px;
-    color: #60a5fa;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--primary-color, #2563eb);
+    border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.18));
     padding-bottom: 4px;
     margin-bottom: 5px;
     word-break: break-word;
@@ -833,17 +833,68 @@ export const styles = `
 }
 
 .tachyon_proto-popover__label {
-    color: #94a3b8;
+    color: var(--text-color-medium, #64748b);
     font-weight: 500;
     flex: 0 0 auto;
 }
 
 .tachyon_proto-popover__val {
-    color: #f8fafc;
+    color: var(--text-color-high, #0f172a);
     font-family: monospace;
     font-weight: 600;
     text-align: right;
     word-break: break-all;
+}
+
+[data-darkmode="true"] .tachyon_proto-popover,
+[data-theme="dark"] .tachyon_proto-popover,
+.dark .tachyon_proto-popover,
+body.dark-theme .tachyon_proto-popover {
+    background: var(--background-color-high, rgba(20, 24, 33, 0.97));
+    color: var(--text-color-high, #f1f5f9);
+    border-color: var(--border-color-medium, rgba(255, 255, 255, 0.16));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+[data-darkmode="true"] .tachyon_proto-popover__header,
+[data-theme="dark"] .tachyon_proto-popover__header,
+.dark .tachyon_proto-popover__header,
+body.dark-theme .tachyon_proto-popover__header {
+    color: var(--primary-color-high, #60a5fa);
+    border-bottom-color: var(--border-color-low, rgba(255, 255, 255, 0.12));
+}
+
+[data-darkmode="true"] .tachyon_proto-popover__label,
+[data-theme="dark"] .tachyon_proto-popover__label,
+.dark .tachyon_proto-popover__label,
+body.dark-theme .tachyon_proto-popover__label {
+    color: var(--text-color-medium, #94a3b8);
+}
+
+[data-darkmode="true"] .tachyon_proto-popover__val,
+[data-theme="dark"] .tachyon_proto-popover__val,
+.dark .tachyon_proto-popover__val,
+body.dark-theme .tachyon_proto-popover__val {
+    color: var(--text-color-high, #f8fafc);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-darkmode="false"]):not([data-theme="light"]) .tachyon_proto-popover {
+        background: var(--background-color-high, rgba(20, 24, 33, 0.97));
+        color: var(--text-color-high, #f1f5f9);
+        border-color: var(--border-color-medium, rgba(255, 255, 255, 0.16));
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    :root:not([data-darkmode="false"]):not([data-theme="light"]) .tachyon_proto-popover__header {
+        color: var(--primary-color-high, #60a5fa);
+        border-bottom-color: var(--border-color-low, rgba(255, 255, 255, 0.12));
+    }
+    :root:not([data-darkmode="false"]):not([data-theme="light"]) .tachyon_proto-popover__label {
+        color: var(--text-color-medium, #94a3b8);
+    }
+    :root:not([data-darkmode="false"]):not([data-theme="light"]) .tachyon_proto-popover__val {
+        color: var(--text-color-high, #f8fafc);
+    }
 }
 
 .tachyon_dashboard-page .btn.tachyon_dashboard-page__outbound-grid__item__copy-button {
@@ -1304,10 +1355,25 @@ export const styles = `
 }
 
 .tachyon_dashboard-page__region-tab--active {
-    background: var(--primary-color-low, rgba(37, 99, 235, 0.16)) !important;
+    background: var(--primary-color, #2563eb) !important;
     border-color: var(--primary-color, #2563eb) !important;
-    color: var(--primary-color, #2563eb) !important;
+    color: #ffffff !important;
     font-weight: 700;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+}
+
+.tachyon_dashboard-page__region-tab--active:hover {
+    background: var(--primary-color-hover, #1d4ed8) !important;
+    border-color: var(--primary-color-hover, #1d4ed8) !important;
+}
+
+.tachyon_dashboard-page__region-tab--active .tachyon_dashboard-page__region-tab__name {
+    color: #ffffff !important;
+}
+
+.tachyon_dashboard-page__region-tab--active .tachyon_dashboard-page__country-chip__count {
+    background: rgba(255, 255, 255, 0.28) !important;
+    color: #ffffff !important;
 }
 
 .tachyon_dashboard-page__region-tab__name {
