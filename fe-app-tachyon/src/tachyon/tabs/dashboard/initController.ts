@@ -3,6 +3,7 @@ import {
   canUseDirectClashApi,
   getClashWsUrl,
   isCopyableProxyLink,
+  isUserActivelyScrolling,
   onMount,
   openPrefixColorPickerModal,
   preserveScrollForPage,
@@ -1935,12 +1936,30 @@ function updateLatencyProgressInline(
 
 // Renderer
 
+let sectionsRenderFrame: number | null = null;
+function scheduleSectionsWidgetRender() {
+  if (sectionsRenderFrame !== null) return;
+  const schedule =
+    typeof requestAnimationFrame !== 'undefined'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 16);
+  sectionsRenderFrame = schedule(() => {
+    sectionsRenderFrame = null;
+    void renderSectionsWidget();
+  }) as unknown as number;
+}
+
 async function renderSectionsWidget() {
   logger.debug('[DASHBOARD]', 'renderSectionsWidget');
   const sectionsWidget = store.get().sectionsWidget;
   const container = document.getElementById('dashboard-sections-grid');
 
   if (!container) {
+    return;
+  }
+
+  if (isUserActivelyScrolling()) {
+    scheduleSectionsWidgetRender();
     return;
   }
 
@@ -2015,7 +2034,7 @@ async function renderSectionsWidget() {
 
     return preserveScrollForPage(() => {
       container.replaceChildren(renderedWidget);
-    });
+    }, container);
   }
 
   const hasTestableSections = sectionsWithCustomLatencies.some(
@@ -2200,7 +2219,7 @@ async function renderSectionsWidget() {
       ...(testAllHeader ? [testAllHeader] : []),
       ...renderedWidgets,
     );
-  });
+  }, container);
 }
 
 function renderStoreWidget(
@@ -2334,21 +2353,41 @@ async function fetchConnections() {
   } catch (_e) {
     // Ignore connections fetch errors
   }
-  renderConnectionsWidget();
+  scheduleConnectionsWidgetRender();
+}
+
+let connectionsRenderFrame: number | null = null;
+function scheduleConnectionsWidgetRender() {
+  if (connectionsRenderFrame !== null) return;
+  const schedule =
+    typeof requestAnimationFrame !== 'undefined'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 16);
+  connectionsRenderFrame = schedule(() => {
+    connectionsRenderFrame = null;
+    renderConnectionsWidget();
+  }) as unknown as number;
 }
 
 function renderConnectionsWidget() {
   const container = document.getElementById('dashboard-connections-grid');
   if (!container) return;
 
-  container.replaceChildren(
-    renderConnections(
-      currentConnections,
-      !expandedSections.has('active_clients'),
-      () => toggleSectionExpanded('active_clients'),
-      currentTopDomains,
-    ),
-  );
+  if (isUserActivelyScrolling()) {
+    scheduleConnectionsWidgetRender();
+    return;
+  }
+
+  preserveScrollForPage(() => {
+    container.replaceChildren(
+      renderConnections(
+        currentConnections,
+        !expandedSections.has('active_clients'),
+        () => toggleSectionExpanded('active_clients'),
+        currentTopDomains,
+      ),
+    );
+  }, container);
 }
 
 export function getSectionConnectionStats(
@@ -2463,6 +2502,158 @@ export async function renderSectionDashboardWidgets() {
 
   const totalProxySections = routesToRender.length;
 
+  // Check if we can update existing cards in-place without touching DOM tree
+  const existingCards = Array.from(
+    container.querySelectorAll<HTMLElement>('[data-section-card]'),
+  );
+  const existingNames = existingCards.map((c) =>
+    c.getAttribute('data-section-card'),
+  );
+  const newNames = routesToRender.map((r) => r.sectionName || 'main');
+
+  const canUpdateInPlace =
+    existingCards.length > 0 &&
+    existingCards.length === routesToRender.length &&
+    existingNames.every((name, i) => name === newNames[i]) &&
+    !loading &&
+    !failed;
+
+  if (canUpdateInPlace) {
+    routesToRender.forEach((route, idx) => {
+      const card = existingCards[idx];
+      const sectionName = route.sectionName || 'main';
+      const stats = getSectionConnectionStats(
+        sectionName,
+        totalProxySections,
+        lastRawConnections,
+        {
+          downloadTotal: total.downloadTotal,
+          uploadTotal: total.uploadTotal,
+          downSpeed: bandwidth.down,
+          upSpeed: bandwidth.up,
+        },
+      );
+
+      const downPill = card.querySelector<HTMLElement>(
+        '[data-metric="down-speed"]',
+      );
+      if (downPill) {
+        const nextText = `↓ ${prettyBytes(stats.downSpeed)}/s`;
+        if (downPill.textContent !== nextText) downPill.textContent = nextText;
+      }
+
+      const upPill = card.querySelector<HTMLElement>(
+        '[data-metric="up-speed"]',
+      );
+      if (upPill) {
+        const nextText = `↑ ${prettyBytes(stats.upSpeed)}/s`;
+        if (upPill.textContent !== nextText) upPill.textContent = nextText;
+      }
+
+      const sDownPill = card.querySelector<HTMLElement>(
+        '[data-metric="session-down"]',
+      );
+      const sUpPill = card.querySelector<HTMLElement>(
+        '[data-metric="session-up"]',
+      );
+      if (sDownPill && sUpPill) {
+        const nextDown = `↓ ${prettyBytes(stats.download || 0)}`;
+        const nextUp = `↑ ${prettyBytes(stats.upload || 0)}`;
+        if (sDownPill.textContent !== nextDown)
+          sDownPill.textContent = nextDown;
+        if (sUpPill.textContent !== nextUp) sUpPill.textContent = nextUp;
+      } else {
+        const sTraffic = card.querySelector<HTMLElement>(
+          '[data-metric="session-traffic"]',
+        );
+        if (sTraffic) {
+          const nextText = `▼ ${prettyBytes(stats.download || 0)} • ▲ ${prettyBytes(stats.upload || 0)}`;
+          if (sTraffic.textContent !== nextText)
+            sTraffic.textContent = nextText;
+        }
+      }
+
+      const connsPill = card.querySelector<HTMLElement>(
+        '[data-metric="conns"]',
+      );
+      if (connsPill) {
+        const nextText = `${stats.conns} ${tr('соед.', 'conns')}`;
+        if (connsPill.textContent !== nextText)
+          connsPill.textContent = nextText;
+      }
+
+      const latencyPill = card.querySelector<HTMLElement>(
+        '[data-metric="latency"]',
+      );
+      if (latencyPill) {
+        const hasPillClass = latencyPill.className.includes(
+          'tachyon-latency-pill',
+        );
+        if (hasPillClass) {
+          const latencyClass =
+            route.latency > 0
+              ? route.latency <= 150
+                ? 'tachyon-latency-pill tachyon-latency-pill--fast'
+                : route.latency <= 300
+                  ? 'tachyon-latency-pill tachyon-latency-pill--medium'
+                  : 'tachyon-latency-pill tachyon-latency-pill--slow'
+              : 'tachyon-latency-pill tachyon-latency-pill--neutral';
+          if (latencyPill.className !== latencyClass)
+            latencyPill.className = latencyClass;
+        } else {
+          const latencyClass = route.latency > 0 ? 'tachyon-stat--down' : '';
+          if (latencyPill.className !== latencyClass)
+            latencyPill.className = latencyClass;
+        }
+        const latencyText =
+          route.latency > 0
+            ? `${route.latency}ms`
+            : isCheckingLatency
+              ? tr('Проверка...', 'Checking...')
+              : '—';
+        if (latencyPill.textContent !== latencyText)
+          latencyPill.textContent = latencyText;
+      }
+
+      const serverEl = card.querySelector<HTMLElement>(
+        '[data-metric="server"]',
+      );
+      if (serverEl) {
+        if (serverEl.getAttribute('data-server-name') !== route.name) {
+          serverEl.setAttribute('data-server-name', route.name);
+          const flagNodes = renderFlagEmojis(
+            ensureOutboundDisplayFlag({ displayName: route.name }),
+          );
+          serverEl.replaceChildren(
+            ...(Array.isArray(flagNodes) ? flagNodes : [flagNodes]),
+          );
+        }
+      }
+
+      const selectorEl = card.querySelector<HTMLElement>(
+        '[data-metric="selector"]',
+      );
+      if (selectorEl && selectorEl.textContent !== route.selector) {
+        selectorEl.textContent = route.selector;
+      }
+
+      const protoEl = card.querySelector<HTMLElement>(
+        '[data-metric="protocol"]',
+      );
+      if (protoEl) {
+        const protoText = route.type || '—';
+        if (protoEl.textContent !== protoText) protoEl.textContent = protoText;
+      }
+    });
+    return;
+  }
+
+  // If full DOM re-creation is required, defer while user is actively scrolling
+  if (isUserActivelyScrolling()) {
+    scheduleSectionDashboardWidgetsRender();
+    return;
+  }
+
   const widgets = routesToRender.map((route) => {
     const sectionName = route.sectionName || 'main';
     const sectionDisplayName = route.sectionDisplayName || sectionName;
@@ -2481,55 +2672,89 @@ export async function renderSectionDashboardWidgets() {
     const routeItems = [
       {
         key: tr('Сервер', 'Server'),
-        value: renderFlagEmojis(
-          ensureOutboundDisplayFlag({ displayName: route.name }),
+        value: E(
+          'span',
+          {
+            'data-metric': 'server',
+            'data-server-name': route.name,
+          } as any,
+          renderFlagEmojis(
+            ensureOutboundDisplayFlag({ displayName: route.name }),
+          ),
         ),
         attributes: { class: 'tachyon-stat--bold' },
       },
       {
         key: tr('Селектор', 'Selector'),
-        value: route.selector,
+        value: E('span', { 'data-metric': 'selector' } as any, route.selector),
       },
       {
         key: tr('Задержка', 'Latency'),
-        value:
+        value: E(
+          'span',
+          {
+            'data-metric': 'latency',
+            class: route.latency > 0 ? 'tachyon-stat--down' : '',
+          } as any,
           route.latency > 0
             ? `${route.latency}ms`
             : isCheckingLatency
               ? tr('Проверка...', 'Checking...')
               : '—',
-        attributes: {
-          class: route.latency > 0 ? 'tachyon-stat--down' : '',
-        },
+        ),
       },
       {
         key: tr('Протокол', 'Protocol'),
-        value: route.type,
+        value: E('span', { 'data-metric': 'protocol' } as any, route.type),
       },
     ];
 
     const trafficItems = [
       {
         key: tr('Входящий', 'Downlink'),
-        value: `↓ ${prettyBytes(stats.downSpeed)}/s`,
-        attributes: { class: 'tachyon-stat--down' },
+        value: E(
+          'span',
+          {
+            class: 'tachyon-stat--down',
+            'data-metric': 'down-speed',
+          } as any,
+          `↓ ${prettyBytes(stats.downSpeed)}/s`,
+        ),
       },
       {
         key: tr('Исходящий', 'Uplink'),
-        value: `↑ ${prettyBytes(stats.upSpeed)}/s`,
-        attributes: { class: 'tachyon-stat--up' },
+        value: E(
+          'span',
+          {
+            class: 'tachyon-stat--up',
+            'data-metric': 'up-speed',
+          } as any,
+          `↑ ${prettyBytes(stats.upSpeed)}/s`,
+        ),
       },
       {
         key:
           totalProxySections <= 1
             ? tr('За сессию', 'Session total')
             : tr('Трафик секции', 'Section traffic'),
-        value: `▼ ${prettyBytes(stats.download || 0)} • ▲ ${prettyBytes(stats.upload || 0)}`,
-        attributes: { class: 'tachyon-stat--session' },
+        value: E(
+          'span',
+          {
+            class: 'tachyon-stat--session',
+            'data-metric': 'session-traffic',
+          } as any,
+          `▼ ${prettyBytes(stats.download || 0)} • ▲ ${prettyBytes(stats.upload || 0)}`,
+        ),
       },
       {
         key: tr('Соединения', 'Connections'),
-        value: `${stats.conns} ${tr('соед.', 'conns')}`,
+        value: E(
+          'span',
+          {
+            'data-metric': 'conns',
+          } as any,
+          `${stats.conns} ${tr('соед.', 'conns')}`,
+        ),
       },
     ];
 
@@ -2538,6 +2763,9 @@ export async function renderSectionDashboardWidgets() {
       failed,
       title: `${tr('Секция', 'Section')}: ${sectionDisplayName}`,
       badge: tr('Активна', 'Active'),
+      attributes: {
+        'data-section-card': sectionName,
+      },
       columns: [
         {
           title: tr('Активный маршрут', 'Active Route'),
@@ -2551,12 +2779,19 @@ export async function renderSectionDashboardWidgets() {
     });
   });
 
-  container.replaceChildren(...widgets);
+  preserveScrollForPage(() => {
+    container.replaceChildren(...widgets);
+  }, container);
 }
 
 export async function renderSystemServicesWidget() {
   const container = document.getElementById('dashboard-widget-system-services');
   if (!container) return;
+
+  if (isUserActivelyScrolling()) {
+    scheduleSystemServicesWidgetRender();
+    return;
+  }
 
   const sysState = store.get().systemInfoWidget;
   const srvState = store.get().servicesInfoWidget;
@@ -2712,23 +2947,51 @@ export async function renderSystemServicesWidget() {
     ],
   });
 
-  container.replaceChildren(widget);
+  preserveScrollForPage(() => {
+    container.replaceChildren(widget);
+  }, container);
+}
+
+let sectionWidgetsRenderFrame: number | null = null;
+function scheduleSectionDashboardWidgetsRender() {
+  if (sectionWidgetsRenderFrame !== null) return;
+  const schedule =
+    typeof requestAnimationFrame !== 'undefined'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 16);
+  sectionWidgetsRenderFrame = schedule(() => {
+    sectionWidgetsRenderFrame = null;
+    void renderSectionDashboardWidgets();
+  }) as unknown as number;
+}
+
+let systemServicesRenderFrame: number | null = null;
+function scheduleSystemServicesWidgetRender() {
+  if (systemServicesRenderFrame !== null) return;
+  const schedule =
+    typeof requestAnimationFrame !== 'undefined'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 16);
+  systemServicesRenderFrame = schedule(() => {
+    systemServicesRenderFrame = null;
+    void renderSystemServicesWidget();
+  }) as unknown as number;
 }
 
 async function renderBandwidthWidget() {
-  void renderSectionDashboardWidgets();
+  scheduleSectionDashboardWidgetsRender();
 }
 
 async function renderTrafficTotalWidget() {
-  void renderSectionDashboardWidgets();
+  scheduleSectionDashboardWidgetsRender();
 }
 
 async function renderSystemInfoWidget() {
-  void renderSystemServicesWidget();
+  scheduleSystemServicesWidgetRender();
 }
 
 async function renderServicesInfoWidget() {
-  void renderSystemServicesWidget();
+  scheduleSystemServicesWidgetRender();
 }
 
 export function formatServiceRowValue(options: {
@@ -3064,27 +3327,28 @@ async function onStoreUpdate(
       ) && updateLatencyProgressInline(next.sectionsWidget);
 
     if (!inlineUpdated) {
-      renderSectionsWidget();
-      renderTrafficTotalWidget();
+      const dataChanged =
+        prev.sectionsWidget.loading !== next.sectionsWidget.loading ||
+        prev.sectionsWidget.failed !== next.sectionsWidget.failed ||
+        JSON.stringify(prev.sectionsWidget.data) !==
+          JSON.stringify(next.sectionsWidget.data);
+
+      if (dataChanged) {
+        scheduleSectionsWidgetRender();
+        renderTrafficTotalWidget();
+      }
     }
   }
 
-  if (diff.bandwidthWidget) {
-    renderBandwidthWidget();
+  if (diff.bandwidthWidget || diff.trafficTotalWidget) {
+    scheduleSectionDashboardWidgetsRender();
   }
 
-  if (diff.trafficTotalWidget) {
-    renderTrafficTotalWidget();
-    renderBandwidthWidget();
-  }
-
-  if (diff.systemInfoWidget) {
-    renderSystemInfoWidget();
-  }
-
-  if (diff.servicesInfoWidget) {
-    syncDashboardServiceAvailability();
-    renderServicesInfoWidget();
+  if (diff.systemInfoWidget || diff.servicesInfoWidget) {
+    if (diff.servicesInfoWidget) {
+      syncDashboardServiceAvailability();
+    }
+    scheduleSystemServicesWidgetRender();
   }
 
   if (diff.tailscaleWidget) {
@@ -3137,6 +3401,39 @@ function onPageUnmount() {
 
   directSocketsFailed = false;
   trafficRatesState = createInitialTrafficRatesState();
+
+  if (sectionWidgetsRenderFrame !== null) {
+    if (typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(sectionWidgetsRenderFrame);
+    } else {
+      clearTimeout(sectionWidgetsRenderFrame);
+    }
+    sectionWidgetsRenderFrame = null;
+  }
+  if (systemServicesRenderFrame !== null) {
+    if (typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(systemServicesRenderFrame);
+    } else {
+      clearTimeout(systemServicesRenderFrame);
+    }
+    systemServicesRenderFrame = null;
+  }
+  if (connectionsRenderFrame !== null) {
+    if (typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(connectionsRenderFrame);
+    } else {
+      clearTimeout(connectionsRenderFrame);
+    }
+    connectionsRenderFrame = null;
+  }
+  if (sectionsRenderFrame !== null) {
+    if (typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(sectionsRenderFrame);
+    } else {
+      clearTimeout(sectionsRenderFrame);
+    }
+    sectionsRenderFrame = null;
+  }
 
   stopDashboardDataUpdates();
   stopActionStateWatcher();
