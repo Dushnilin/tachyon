@@ -2478,6 +2478,22 @@ export async function renderSectionDashboardWidgets() {
       },
     );
 
+    const latencyClass =
+      route.latency > 0
+        ? route.latency <= 150
+          ? 'tachyon-latency-pill tachyon-latency-pill--fast'
+          : route.latency <= 300
+            ? 'tachyon-latency-pill tachyon-latency-pill--medium'
+            : 'tachyon-latency-pill tachyon-latency-pill--slow'
+        : 'tachyon-latency-pill tachyon-latency-pill--neutral';
+
+    const latencyValue =
+      route.latency > 0
+        ? E('span', { class: latencyClass }, `${route.latency}ms`)
+        : isCheckingLatency
+          ? E('span', { class: latencyClass }, tr('Проверка...', 'Checking...'))
+          : E('span', { class: latencyClass }, '—');
+
     const routeItems = [
       {
         key: tr('Сервер', 'Server'),
@@ -2491,15 +2507,7 @@ export async function renderSectionDashboardWidgets() {
       },
       {
         key: tr('Задержка', 'Latency'),
-        value:
-          route.latency > 0
-            ? `${route.latency}ms`
-            : isCheckingLatency
-              ? tr('Проверка...', 'Checking...')
-              : '—',
-        attributes: {
-          class: route.latency > 0 ? 'tachyon-stat--down' : '',
-        },
+        value: latencyValue,
       },
       {
         key: tr('Протокол', 'Protocol'),
@@ -2513,13 +2521,19 @@ export async function renderSectionDashboardWidgets() {
     const trafficItems = [
       {
         key: tr('Входящий', 'Downlink'),
-        value: `↓ ${prettyBytes(stats.downSpeed)}/s`,
-        attributes: { class: 'tachyon-stat--down' },
+        value: E(
+          'span',
+          { class: 'tachyon-stat-pill tachyon-stat-pill--down' },
+          `↓ ${prettyBytes(stats.downSpeed)}/s`,
+        ),
       },
       {
         key: tr('Исходящий', 'Uplink'),
-        value: `↑ ${prettyBytes(stats.upSpeed)}/s`,
-        attributes: { class: 'tachyon-stat--up' },
+        value: E(
+          'span',
+          { class: 'tachyon-stat-pill tachyon-stat-pill--up' },
+          `↑ ${prettyBytes(stats.upSpeed)}/s`,
+        ),
       },
       {
         key:
@@ -2529,20 +2543,23 @@ export async function renderSectionDashboardWidgets() {
         value: E('span', { class: 'tachyon-stat--session' }, [
           E(
             'span',
-            { class: 'tachyon-stat--down' },
+            { class: 'tachyon-traffic-pill tachyon-traffic-pill--down' },
             `↓ ${prettyBytes(stats.download || 0)}`,
           ),
-          E('span', { class: 'tachyon-stat--separator' }, '•'),
           E(
             'span',
-            { class: 'tachyon-stat--up' },
+            { class: 'tachyon-traffic-pill tachyon-traffic-pill--up' },
             `↑ ${prettyBytes(stats.upload || 0)}`,
           ),
         ]),
       },
       {
         key: tr('Соединения', 'Connections'),
-        value: `${stats.conns} ${tr('соед.', 'conns')}`,
+        value: E(
+          'span',
+          { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
+          `${stats.conns} ${tr('соед.', 'conns')}`,
+        ),
       },
     ];
 
@@ -2585,11 +2602,19 @@ export async function renderSystemServicesWidget() {
   const routingItems = [
     {
       key: tr('Режим работы', 'Mode'),
-      value: E('span', { class: 'tachyon-mode-pill' }, 'TProxy + Fake-IP'),
+      value: E(
+        'span',
+        { class: 'tachyon-mode-pill tachyon-mode-pill--active' },
+        'TProxy + Fake-IP',
+      ),
     },
     {
       key: tr('Всего соединений', 'Active Connections'),
-      value: `${sysState.data?.connections || 0} ${tr('соед.', 'conns')}`,
+      value: E(
+        'span',
+        { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
+        `${sysState.data?.connections || 0} ${tr('соед.', 'conns')}`,
+      ),
     },
     {
       key: tr('Секции правил', 'Routing Sections'),
@@ -2711,7 +2736,7 @@ export async function renderSystemServicesWidget() {
     loading,
     failed,
     title: tr('Система и сервисы', 'System & Services'),
-    badge: 'TProxy + Fake-IP',
+    badge: tr('Активна', 'Active'),
     attributes: {
       class: 'tachyon-dual-card--system-pinned',
     },

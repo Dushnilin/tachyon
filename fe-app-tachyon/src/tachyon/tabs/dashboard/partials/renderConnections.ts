@@ -109,7 +109,9 @@ export function renderConnections(
       infoChildren.push(
         E(
           'span',
-          { class: 'tachyon-client-row__name tachyon-client-row__name--mono' },
+          {
+            class: 'tachyon-client-row__ip tachyon-client-row__ip--standalone',
+          },
           c.ip,
         ),
       );

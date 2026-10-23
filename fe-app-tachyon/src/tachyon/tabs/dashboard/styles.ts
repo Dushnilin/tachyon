@@ -302,7 +302,8 @@ export const styles = `
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    background: rgba(128, 128, 128, 0.12);
+    background: rgba(6, 182, 212, 0.08);
+    border: 1px solid rgba(6, 182, 212, 0.2);
     border-radius: 6px;
     padding: 3px 8px;
     font-size: 12px;
@@ -311,14 +312,15 @@ export const styles = `
 
 .tachyon_dashboard-page__top-domain-chip__icon {
     font-size: 11px;
-    opacity: 0.8;
+    opacity: 0.85;
 }
 
 .tachyon_dashboard-page__top-domain-chip__badge {
     font-size: 11px;
-    opacity: 0.7;
-    background: rgba(0, 0, 0, 0.15);
-    padding: 1px 4px;
+    font-weight: 600;
+    color: #818cf8;
+    background: rgba(99, 102, 241, 0.15);
+    padding: 1px 5px;
     border-radius: 4px;
 }
 
@@ -1632,6 +1634,82 @@ export const styles = `
     text-align: center;
 }
 
+.tachyon-mode-pill--active {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.tachyon-stat-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    box-sizing: border-box;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon-stat-pill--down {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.tachyon-stat-pill--up {
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.28);
+}
+
+.tachyon-stat-pill--conns {
+    background: rgba(99, 102, 241, 0.12);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.28);
+}
+
+.tachyon-latency-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    box-sizing: border-box;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon-latency-pill--fast {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.tachyon-latency-pill--medium {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.tachyon-latency-pill--slow {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.tachyon-latency-pill--neutral {
+    background: rgba(120, 120, 120, 0.12);
+    color: var(--text-color-medium, #94a3b8);
+    border: 1px solid rgba(120, 120, 120, 0.25);
+}
+
 .tachyon-service-pill--version {
     background: rgba(120, 120, 120, 0.12);
     color: var(--text-color-medium, #94a3b8);
@@ -1723,24 +1801,34 @@ export const styles = `
 .tachyon-client-row__ip {
     display: inline-flex;
     align-items: center;
-    padding: 1px 6px;
-    border-radius: 4px;
+    padding: 1px 7px;
+    border-radius: 6px;
     font-size: 11.5px;
     font-family: monospace;
-    color: var(--text-color-medium, #94a3b8);
-    background: rgba(128, 128, 128, 0.1);
+    font-weight: 500;
+    color: #06b6d4;
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.28);
+}
+
+.tachyon-client-row__ip--standalone {
+    font-size: 12.5px;
+    font-weight: 600;
 }
 
 .tachyon-client-row__conns {
     display: inline-flex;
     align-items: center;
-    padding: 1px 6px;
+    padding: 1px 7px;
     border-radius: 10px;
     font-size: 11px;
-    font-weight: 500;
-    color: var(--text-color-medium, #94a3b8);
-    background: rgba(128, 128, 128, 0.12);
-    border: 1px solid rgba(128, 128, 128, 0.2);
+    font-weight: 600;
+    line-height: 1.35;
+    color: #818cf8;
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .tachyon-client-row__traffic {
