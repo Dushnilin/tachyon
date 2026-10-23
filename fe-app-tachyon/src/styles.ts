@@ -230,13 +230,19 @@ ${PartialStyles}
 .modal.fkp-server-info-dialog,
 .cbi-modal.fkp-server-info-dialog,
 .modal:has(.fkp-server-info-modal),
-.cbi-modal:has(.fkp-server-info-modal),
-.modal .fkp-server-info-modal,
-.cbi-modal .fkp-server-info-modal {
-    width: min(94vw, 840px) !important;
-    max-width: min(94vw, 840px) !important;
+.cbi-modal:has(.fkp-server-info-modal) {
+    width: min(94vw, 880px) !important;
+    max-width: min(94vw, 880px) !important;
     box-sizing: border-box;
     margin: 10px auto;
+}
+
+.modal .fkp-server-info-modal,
+.cbi-modal .fkp-server-info-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    margin: 0 !important;
 }
 
 /* Wide modals: Strategy Fuzzer, Leak detection */
@@ -264,9 +270,7 @@ ${PartialStyles}
     .modal:has([class*="tachyon"]),
     .cbi-modal:has([class*="tachyon"]),
     .modal:has(.fkp-server-info-modal),
-    .cbi-modal:has(.fkp-server-info-modal),
-    .modal .fkp-server-info-modal,
-    .cbi-modal .fkp-server-info-modal {
+    .cbi-modal:has(.fkp-server-info-modal) {
         width: 96vw !important;
         max-width: 96vw !important;
     }
@@ -277,9 +281,7 @@ ${PartialStyles}
     .modal:has([class*="tachyon"]),
     .cbi-modal:has([class*="tachyon"]),
     .modal:has(.fkp-server-info-modal),
-    .cbi-modal:has(.fkp-server-info-modal),
-    .modal .fkp-server-info-modal,
-    .cbi-modal .fkp-server-info-modal {
+    .cbi-modal:has(.fkp-server-info-modal) {
         width: calc(100vw - 16px) !important;
         max-width: calc(100vw - 16px) !important;
         margin: 8px auto;
