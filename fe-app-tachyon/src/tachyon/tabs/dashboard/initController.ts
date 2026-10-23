@@ -2504,7 +2504,10 @@ export async function renderSectionDashboardWidgets() {
       },
       {
         key: tr('Протокол', 'Protocol'),
-        value: route.type,
+        value:
+          route.type && route.type !== '—'
+            ? E('span', { class: 'tachyon-protocol-pill' }, route.type)
+            : '—',
       },
     ];
 
