@@ -31,6 +31,10 @@ export default defineConfig({
             '$1\n'
         );
         code = code.replace(
+            /("require rpc";\n)/,
+            '$1var TACHYON_LUCI_APP_VERSION = "__COMPILED_VERSION_VARIABLE__";\n'
+        );
+        code = code.replace(
             /export\s*\{([\s\S]*?)\}\s*;?\s*$/,
             (match, group) => {
                 const mapped = group
