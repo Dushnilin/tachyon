@@ -1640,11 +1640,29 @@ body.dark-theme .tachyon_proto-popover__val {
 }
 
 .tachyon-service-pill--uptime {
-    background: rgba(120, 120, 120, 0.12);
-    color: var(--text-color-medium, #94a3b8);
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.28);
     font-weight: 500;
     width: 68px;
     min-width: 68px;
+}
+
+.tachyon-protocol-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    box-sizing: border-box;
+    white-space: nowrap;
+    text-align: center;
 }
 
 .tachyon-service-pill--version {

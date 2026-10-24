@@ -2707,7 +2707,10 @@ export async function renderSectionDashboardWidgets() {
       },
       {
         key: tr('Протокол', 'Protocol'),
-        value: E('span', { 'data-metric': 'protocol' } as any, route.type),
+        value:
+          route.type && route.type !== '-'
+            ? E('span', { 'data-metric': 'protocol', class: 'tachyon-protocol-pill' } as any, route.type)
+            : '-',
       },
     ];
 
