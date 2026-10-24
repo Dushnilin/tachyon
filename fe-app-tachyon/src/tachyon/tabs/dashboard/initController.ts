@@ -2707,18 +2707,7 @@ export async function renderSectionDashboardWidgets() {
       },
       {
         key: tr('Задержка', 'Latency'),
-        value: E(
-          'span',
-          {
-            'data-metric': 'latency',
-            class: route.latency > 0 ? 'tachyon-stat--down' : '',
-          } as any,
-          route.latency > 0
-            ? `${route.latency}ms`
-            : isCheckingLatency
-              ? tr('Проверка...', 'Checking...')
-              : '—',
-        ),
+        value: latencyValue,
       },
       {
         key: tr('Протокол', 'Protocol'),
@@ -2973,14 +2962,6 @@ export async function renderSystemServicesWidget() {
       );
     }
   }
-
-  const badgeElement = isTachyonRunning
-    ? 'TProxy + Fake-IP'
-    : E(
-        'span',
-        { class: 'tachyon-dual-card__badge tachyon-dual-card__badge--neutral' },
-        tr('Остановлен', 'Stopped'),
-      );
 
   const widget = renderDualWidget({
     loading,
