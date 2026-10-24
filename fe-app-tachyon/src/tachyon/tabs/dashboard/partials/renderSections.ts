@@ -797,10 +797,57 @@ function renderAutoGroupsBlock(
   const rawSubName =
     selectedGroup?.urlTestInfo?.selectedName ||
     selectedGroup?.priorityInfo?.selectedName ||
+    selectedGroup?.urlTestInfo?.outbounds?.find(
+      (m) =>
+        m.selected ||
+        (selectedGroup.urlTestInfo?.selectedCode &&
+          m.code === selectedGroup.urlTestInfo.selectedCode),
+    )?.displayName ||
+    selectedGroup?.priorityInfo?.outbounds?.find(
+      (m) =>
+        m.selected ||
+        (selectedGroup.priorityInfo?.selectedCode &&
+          m.code === selectedGroup.priorityInfo.selectedCode),
+    )?.displayName ||
     '';
   const activeSubName = rawSubName
     ? ensureOutboundDisplayFlag({ displayName: rawSubName })
     : '';
+
+  let latencyValue = selectedGroup?.latency;
+  if (!latencyValue || latencyValue <= 0) {
+    const info = selectedGroup?.urlTestInfo || selectedGroup?.priorityInfo;
+    const member = info?.outbounds?.find(
+      (m) =>
+        m.selected ||
+        (info.selectedCode && m.code === info.selectedCode) ||
+        (rawSubName && m.displayName === rawSubName),
+    );
+    if (member && member.latency) {
+      latencyValue = member.latency;
+    }
+  }
+
+  function getAutoGroupLatencyColor() {
+    if (!latencyValue) return 'inherit';
+    if (latencyValue === -1 || latencyValue < 0)
+      return 'var(--error-color-medium, red)';
+    if (latencyValue < 800) return 'var(--success-color-medium, green)';
+    if (latencyValue < 1500) return 'var(--warn-color-medium, orange)';
+    return 'var(--error-color-medium, red)';
+  }
+
+  let autoGroupLatencyText = '';
+  if (latencyValue !== undefined && latencyValue > 0) {
+    autoGroupLatencyText = `${latencyValue}ms`;
+  } else if (
+    latencyValue !== undefined &&
+    (latencyValue === -1 || latencyValue < 0)
+  ) {
+    autoGroupLatencyText =
+      typeof _ === 'function' ? _('Not responding') : 'Not responding';
+  }
+
   const collapsedBadgeText = selectedGroup
     ? `● ${selectedGroup.displayName}${activeSubName ? ` → ${activeSubName}` : ''}`
     : '';
@@ -853,9 +900,22 @@ function renderAutoGroupsBlock(
                 'span',
                 {
                   class: 'tachyon_dashboard-page__source-group__active-badge',
-                  style: 'text-transform: none; letter-spacing: normal;',
+                  style:
+                    'text-transform: none; letter-spacing: normal; max-width: min(380px, 50vw);',
+                  title: `${collapsedBadgeText.replace(/^●\s*/, '')}${autoGroupLatencyText ? ` • ${autoGroupLatencyText}` : ''}`,
                 },
-                renderFlagEmojis(collapsedBadgeText),
+                [
+                  ...renderFlagEmojis(collapsedBadgeText),
+                  autoGroupLatencyText
+                    ? E(
+                        'span',
+                        {
+                          style: `color: ${getAutoGroupLatencyColor()}; margin-left: 4px; font-weight: 600;`,
+                        },
+                        `• ${autoGroupLatencyText}`,
+                      )
+                    : '',
+                ],
               )
             : '',
         ],
@@ -1943,19 +2003,38 @@ function renderDefaultState({
                         CONNECTION_ACTION_LABELS[section.action]) ||
                       selectedOutbound.displayName;
 
+                    const isAutoGroup = Boolean(
+                      selectedOutbound.urlTestInfo ||
+                        selectedOutbound.priorityInfo,
+                    );
+
+                    let latencyValue = selectedOutbound.latency;
+                    if ((!latencyValue || latencyValue <= 0) && isAutoGroup) {
+                      const info =
+                        selectedOutbound.urlTestInfo ||
+                        selectedOutbound.priorityInfo;
+                      const member = info?.outbounds?.find(
+                        (m) =>
+                          m.selected ||
+                          (info.selectedCode && m.code === info.selectedCode) ||
+                          (info.selectedName &&
+                            m.displayName === info.selectedName),
+                      );
+                      if (member && member.latency) {
+                        latencyValue = member.latency;
+                      }
+                    }
+
                     function getLatencyColor() {
                       if (isConnectionNode) {
                         if (latencyFetching)
                           return 'var(--warn-color-medium, orange)';
-                        if (selectedOutbound!.latency === -1)
+                        if (latencyValue === -1)
                           return 'var(--error-color-medium, red)';
-                        if (
-                          selectedOutbound!.latency &&
-                          selectedOutbound!.latency > 0
-                        ) {
-                          if (selectedOutbound!.latency < 800)
+                        if (latencyValue && latencyValue > 0) {
+                          if (latencyValue < 800)
                             return 'var(--success-color-medium, green)';
-                          if (selectedOutbound!.latency < 1500)
+                          if (latencyValue < 1500)
                             return 'var(--warn-color-medium, orange)';
                           return 'var(--error-color-medium, red)';
                         }
@@ -1964,16 +2043,13 @@ function renderDefaultState({
                           : 'var(--error-color-medium, red)';
                       }
 
-                      if (!selectedOutbound!.latency)
+                      if (!latencyValue)
                         return 'var(--primary-color-low, lightgray)';
-                      if (
-                        selectedOutbound!.latency === -1 ||
-                        selectedOutbound!.latency < 0
-                      )
+                      if (latencyValue === -1 || latencyValue < 0)
                         return 'var(--error-color-medium, red)';
-                      if (selectedOutbound!.latency < 800)
+                      if (latencyValue < 800)
                         return 'var(--success-color-medium, green)';
-                      if (selectedOutbound!.latency < 1500)
+                      if (latencyValue < 1500)
                         return 'var(--warn-color-medium, orange)';
                       return 'var(--error-color-medium, red)';
                     }
@@ -1982,45 +2058,77 @@ function renderDefaultState({
                     if (isConnectionNode) {
                       latencyText = latencyFetching
                         ? _('Checking...')
-                        : selectedOutbound.latency &&
-                            selectedOutbound.latency > 0
-                          ? `${selectedOutbound.latency}ms`
-                          : selectedOutbound.latency === -1 ||
-                              selectedOutbound.latency < 0
+                        : latencyValue && latencyValue > 0
+                          ? `${latencyValue}ms`
+                          : latencyValue === -1 || latencyValue < 0
                             ? _('Not responding')
                             : selectedOutbound.runtimeAvailable
                               ? _('Connected')
                               : _('Not connected');
                     } else {
                       latencyText =
-                        selectedOutbound.latency && selectedOutbound.latency > 0
-                          ? `${selectedOutbound.latency}ms`
-                          : selectedOutbound.latency === -1 ||
-                              selectedOutbound.latency < 0
+                        latencyValue && latencyValue > 0
+                          ? `${latencyValue}ms`
+                          : latencyValue === -1 || latencyValue < 0
                             ? _('Not responding')
                             : '';
+                    }
+
+                    let badgeText = '';
+                    if (isAutoGroup) {
+                      const rawSubName =
+                        selectedOutbound.urlTestInfo?.selectedName ||
+                        selectedOutbound.priorityInfo?.selectedName ||
+                        selectedOutbound.urlTestInfo?.outbounds?.find(
+                          (m) =>
+                            m.selected ||
+                            (selectedOutbound.urlTestInfo?.selectedCode &&
+                              m.code ===
+                                selectedOutbound.urlTestInfo.selectedCode),
+                        )?.displayName ||
+                        selectedOutbound.priorityInfo?.outbounds?.find(
+                          (m) =>
+                            m.selected ||
+                            (selectedOutbound.priorityInfo?.selectedCode &&
+                              m.code ===
+                                selectedOutbound.priorityInfo.selectedCode),
+                        )?.displayName ||
+                        '';
+                      const activeSubName = rawSubName
+                        ? ensureOutboundDisplayFlag({ displayName: rawSubName })
+                        : '';
+                      badgeText = `● ${selectedOutbound.displayName}${activeSubName ? ` → ${activeSubName}` : ''}`;
+                    } else if (isConnectionNode) {
+                      badgeText = `● ${connectionTitle}`;
+                    } else {
+                      const rawName =
+                        selectedOutbound.prefix ||
+                        selectedOutbound.displayName ||
+                        '';
+                      const activeName = ensureOutboundDisplayFlag({
+                        displayName: rawName,
+                      });
+                      badgeText = `● ${activeName}`;
                     }
 
                     return E(
                       'span',
                       {
+                        class:
+                          'tachyon_dashboard-page__source-group__active-badge',
                         style:
-                          'font-size: 13px; font-weight: normal; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px;',
+                          'text-transform: none; letter-spacing: normal; max-width: min(380px, 50vw); margin-left: 8px;',
+                        title: `${badgeText.replace(/^●\s*/, '')}${latencyText ? ` • ${latencyText}` : ''}`,
                       },
                       [
-                        E(
-                          'span',
-                          { style: 'opacity: 0.7;' },
-                          isConnectionNode
-                            ? connectionTitle
-                            : selectedOutbound.prefix ||
-                                selectedOutbound.displayName,
-                        ),
+                        ...renderFlagEmojis(badgeText),
                         latencyText
                           ? E(
                               'span',
-                              { style: `color: ${getLatencyColor()};` },
-                              latencyText,
+                              {
+                                style: `color: ${getLatencyColor()}; margin-left: 4px; font-weight: 600;`,
+                              },
+                              `• ${latencyText}`,
                             )
                           : '',
                       ],

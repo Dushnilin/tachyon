@@ -552,7 +552,7 @@ export const styles = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 240px;
+    max-width: min(380px, 50vw);
 }
 
 .tachyon_dashboard-page__subscription-meta__main {
