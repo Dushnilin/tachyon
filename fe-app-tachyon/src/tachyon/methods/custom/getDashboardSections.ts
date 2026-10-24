@@ -2157,6 +2157,11 @@ export async function getDashboardSections(
       | 'latency'
       | 'alphabetical'
       | undefined) || 'regions';
+  const globalChipsLatencyMode =
+    (settingsSection?.dashboard_country_chips_latency_mode as
+      | 'min'
+      | 'max'
+      | undefined) || 'min';
   const globalSortMode =
     (settingsSection?.dashboard_sort_mode as
       | 'latency'
@@ -2194,6 +2199,9 @@ export async function getDashboardSections(
         const effectiveChipsGrouping =
           (section.dashboard_chips_grouping as typeof globalChipsGrouping) ||
           globalChipsGrouping;
+        const effectiveChipsLatencyMode =
+          (section.dashboard_country_chips_latency_mode as typeof globalChipsLatencyMode) ||
+          globalChipsLatencyMode;
 
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
@@ -2308,6 +2316,7 @@ export async function getDashboardSections(
             dashboardSettings: {
               countryGrouping: effectiveCountryGrouping,
               chipsGrouping: effectiveChipsGrouping,
+              countryChipsLatencyMode: effectiveChipsLatencyMode,
               sortMode: effectiveSortMode,
               hoverFreeze: globalHoverFreeze,
             },

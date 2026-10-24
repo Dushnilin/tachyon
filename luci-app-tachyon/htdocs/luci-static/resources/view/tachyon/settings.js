@@ -2017,6 +2017,25 @@ function createSettingsContent(section, capabilities) {
   o = section.taboption(
     "navigation",
     form.ListValue,
+    "dashboard_country_chips_latency_mode",
+    _tr("Отображение пинга на чипсах стран", "Country Chips Ping Display"),
+    _tr(
+      "Выберите, какой пинг отображать на кнопках-чипсах стран при наличии нескольких серверов.",
+      "Choose which ping to display on country chip buttons when multiple servers exist in a country.",
+    ),
+  );
+  o.value(
+    "min",
+    _tr("Минимальный пинг (По умолчанию)", "Minimum ping (Default)"),
+  );
+  o.value("max", _tr("Максимальный пинг", "Maximum ping"));
+  o.default = "min";
+  o.depends("dashboard_country_grouping", "chips");
+  o.rmempty = false;
+
+  o = section.taboption(
+    "navigation",
+    form.ListValue,
     "dashboard_sort_mode",
     _tr("Сортировка серверов на дашборде", "Dashboard Server Sorting"),
     _tr(

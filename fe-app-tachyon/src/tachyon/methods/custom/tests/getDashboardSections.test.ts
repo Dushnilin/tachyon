@@ -1680,6 +1680,7 @@ describe('getDashboardSections', () => {
     expect(section.dashboardSettings).toEqual({
       countryGrouping: 'chips',
       chipsGrouping: 'regions',
+      countryChipsLatencyMode: 'min',
       sortMode: 'country_latency',
       hoverFreeze: true,
     });
@@ -1695,5 +1696,24 @@ describe('getDashboardSections', () => {
       '🇩🇪 Germany 02',
       '🇳🇱 Netherlands 01',
     ]);
+  });
+
+  it('respects dashboard_country_chips_latency_mode setting', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'settings',
+        '.type': 'settings',
+        dashboard_country_chips_latency_mode: 'max',
+      },
+      proxySection({
+        dashboard_country_grouping: 'chips',
+      }),
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data[0].dashboardSettings?.countryChipsLatencyMode).toBe(
+      'max',
+    );
   });
 });

@@ -173,6 +173,64 @@ describe('country helper', () => {
     expect(groups[groups.length - 1].countryCode).toBe('OTHER');
   });
 
+  it('computes min and max latencies according to latencyMode', () => {
+    const outbounds: Tachyon.Outbound[] = [
+      {
+        code: 'us-1',
+        displayName: '🇺🇸 US Atlanta',
+        latency: 147,
+        type: 'VLESS',
+        selected: false,
+      },
+      {
+        code: 'us-2',
+        displayName: '🇺🇸 US Miami',
+        latency: 175,
+        type: 'VLESS',
+        selected: false,
+      },
+      {
+        code: 'us-3',
+        displayName: '🇺🇸 US Seattle',
+        latency: 199,
+        type: 'VLESS',
+        selected: false,
+      },
+      {
+        code: 'us-4',
+        displayName: '🇺🇸 US Phoenix',
+        latency: 471,
+        type: 'VLESS',
+        selected: false,
+      },
+      {
+        code: 'us-5',
+        displayName: '🇺🇸 US Washington',
+        latency: -1,
+        type: 'VLESS',
+        selected: false,
+      },
+    ];
+
+    const minGroups = groupOutboundsByCountry(outbounds, undefined, {
+      latencyMode: 'min',
+    });
+    const usMin = minGroups.find((g) => g.countryCode === 'US');
+    expect(usMin).toBeDefined();
+    expect(usMin?.bestLatency).toBe(147);
+    expect(usMin?.minLatency).toBe(147);
+    expect(usMin?.maxLatency).toBe(471);
+
+    const maxGroups = groupOutboundsByCountry(outbounds, undefined, {
+      latencyMode: 'max',
+    });
+    const usMax = maxGroups.find((g) => g.countryCode === 'US');
+    expect(usMax).toBeDefined();
+    expect(usMax?.bestLatency).toBe(471);
+    expect(usMax?.minLatency).toBe(147);
+    expect(usMax?.maxLatency).toBe(471);
+  });
+
   it('classifies country codes into world regions correctly', () => {
     expect(getCountryRegion('DE')).toBe('europe');
     expect(getCountryRegion('RU')).toBe('europe');

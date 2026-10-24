@@ -1599,6 +1599,8 @@ function renderDefaultState({
     const countryGrouping =
       section.dashboardSettings?.countryGrouping || 'chips';
     const chipsGrouping = section.dashboardSettings?.chipsGrouping || 'regions';
+    const countryChipsLatencyMode =
+      section.dashboardSettings?.countryChipsLatencyMode || 'min';
 
     const topGroups: Tachyon.Outbound[] = [];
     const serverOutbounds: Tachyon.Outbound[] = [];
@@ -1637,7 +1639,9 @@ function renderDefaultState({
       return true;
     };
 
-    const countryGroups = groupOutboundsByCountry(serverOutbounds);
+    const countryGroups = groupOutboundsByCountry(serverOutbounds, undefined, {
+      latencyMode: countryChipsLatencyMode,
+    });
     const hasMultipleCountries =
       countryGroups.length >= 2 ||
       (countryGroups.length === 1 && countryGroups[0].countryCode !== 'OTHER');

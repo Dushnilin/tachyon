@@ -17,6 +17,8 @@ export interface OutboundCountryGroup {
   region: WorldRegion;
   outbounds: Tachyon.Outbound[];
   bestLatency: number;
+  minLatency?: number;
+  maxLatency?: number;
 }
 
 export const EUROPE_CODES = new Set([
@@ -691,14 +693,23 @@ export function ensureOutboundDisplayFlag(outbound: {
   return displayName;
 }
 
+export interface GroupOutboundsByCountryOptions {
+  latencyMode?: 'min' | 'max';
+}
+
 /**
  * Groups an array of outbounds by country.
  */
 export function groupOutboundsByCountry(
   outbounds: Tachyon.Outbound[],
   locale?: string,
+  options?: GroupOutboundsByCountryOptions,
 ): OutboundCountryGroup[] {
-  const groupsMap = new Map<string, OutboundCountryGroup>();
+  const latencyMode = options?.latencyMode || 'min';
+  const groupsMap = new Map<
+    string,
+    OutboundCountryGroup & { _minLatency: number; _maxLatency: number }
+  >();
 
   for (const outbound of outbounds) {
     const info = detectOutboundCountry(outbound, locale);
@@ -711,17 +722,34 @@ export function groupOutboundsByCountry(
         region: getCountryRegion(info.code),
         outbounds: [],
         bestLatency: Number.POSITIVE_INFINITY,
+        _minLatency: Number.POSITIVE_INFINITY,
+        _maxLatency: Number.NEGATIVE_INFINITY,
       };
       groupsMap.set(info.code, group);
     }
     group.outbounds.push(outbound);
 
-    if (
-      Number.isFinite(outbound.latency) &&
-      outbound.latency > 0 &&
-      outbound.latency < group.bestLatency
-    ) {
-      group.bestLatency = outbound.latency;
+    if (Number.isFinite(outbound.latency) && outbound.latency > 0) {
+      if (outbound.latency < group._minLatency) {
+        group._minLatency = outbound.latency;
+      }
+      if (outbound.latency > group._maxLatency) {
+        group._maxLatency = outbound.latency;
+      }
+    }
+  }
+
+  for (const group of groupsMap.values()) {
+    if (Number.isFinite(group._minLatency)) {
+      group.minLatency = group._minLatency;
+    }
+    if (Number.isFinite(group._maxLatency) && group._maxLatency > 0) {
+      group.maxLatency = group._maxLatency;
+    }
+    if (latencyMode === 'max') {
+      group.bestLatency = group.maxLatency ?? Number.POSITIVE_INFINITY;
+    } else {
+      group.bestLatency = group.minLatency ?? Number.POSITIVE_INFINITY;
     }
   }
 
