@@ -1,3 +1,4 @@
+import { tr } from '../../helpers/i18n';
 import { IConnection } from './partials';
 
 export interface ITopDomain {
@@ -29,7 +30,14 @@ export function aggregateClientConnections(
       existing.upload += up;
       existing.download += down;
     } else {
-      const name = hostnames.get(ip);
+      let name = hostnames.get(ip);
+      if (!name) {
+        if (ip === '127.0.0.1') {
+          name = 'Flint-2';
+        } else if (ip === '95.165.105.233') {
+          name = tr('Роутер (WAN)', 'Router (WAN)');
+        }
+      }
       map.set(ip, { ip, count: 1, upload: up, download: down, name });
     }
   }

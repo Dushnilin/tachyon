@@ -34,6 +34,8 @@ import {
   renderWidget,
   renderDualWidget,
   renderConnections,
+  patchConnections,
+  patchExistingClientRowsByIp,
   IConnection,
 } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
@@ -2359,6 +2361,48 @@ async function fetchConnections() {
 }
 
 let connectionsRenderFrame: number | null = null;
+let connectionsWidgetHovered = false;
+let connectionsHoverDeferredTimer: ReturnType<typeof setTimeout> | null = null;
+let connectionsWidgetListenersAttached = false;
+
+function isConnectionsHoverActive(container: HTMLElement): boolean {
+  if (connectionsWidgetHovered) {
+    try {
+      const el = container.querySelector(
+        '.tachyon-client-row:hover, .tachyon_proto-popover-trigger:hover, .tachyon_proto-popover:hover, .tachyon-clients-container:hover',
+      );
+      if (el) return true;
+    } catch {
+      return true;
+    }
+  }
+  try {
+    return Boolean(
+      container.querySelector(
+        '.tachyon-client-row:hover, .tachyon_proto-popover-trigger:hover, .tachyon_proto-popover:hover, .tachyon-clients-container:hover',
+      ),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function attachConnectionsWidgetHoverListeners(container: HTMLElement) {
+  if (connectionsWidgetListenersAttached) return;
+  container.addEventListener('mouseenter', () => {
+    connectionsWidgetHovered = true;
+  });
+  container.addEventListener('mouseleave', () => {
+    connectionsWidgetHovered = false;
+    if (connectionsHoverDeferredTimer !== null) {
+      clearTimeout(connectionsHoverDeferredTimer);
+      connectionsHoverDeferredTimer = null;
+    }
+    scheduleConnectionsWidgetRender();
+  });
+  connectionsWidgetListenersAttached = true;
+}
+
 function scheduleConnectionsWidgetRender() {
   if (connectionsRenderFrame !== null) return;
   const schedule =
@@ -2375,16 +2419,58 @@ function renderConnectionsWidget() {
   const container = document.getElementById('dashboard-connections-grid');
   if (!container) return;
 
+  attachConnectionsWidgetHoverListeners(container);
+
   if (isUserActivelyScrolling()) {
     scheduleConnectionsWidgetRender();
     return;
+  }
+
+  const isCollapsed = !expandedSections.has('active_clients');
+
+  // Fast-path in-place DOM update without replacing children
+  if (
+    patchConnections(
+      container,
+      currentConnections,
+      isCollapsed,
+      currentTopDomains,
+    )
+  ) {
+    return;
+  }
+
+  const clientsContainer = container.querySelector(
+    '.tachyon-clients-container',
+  );
+  const wasCollapsed = !clientsContainer;
+  const isCollapseToggled = isCollapsed !== wasCollapsed;
+
+  // If order changed or clients connected/disconnected while user is hovering over
+  // rows or popovers, do not recreate DOM underneath their cursor.
+  // Patch existing row values in-place and defer full re-render until hover ends.
+  if (!isCollapseToggled && isConnectionsHoverActive(container)) {
+    patchExistingClientRowsByIp(container, currentConnections);
+
+    if (connectionsHoverDeferredTimer === null) {
+      connectionsHoverDeferredTimer = setTimeout(() => {
+        connectionsHoverDeferredTimer = null;
+        scheduleConnectionsWidgetRender();
+      }, 1000);
+    }
+    return;
+  }
+
+  if (connectionsHoverDeferredTimer !== null) {
+    clearTimeout(connectionsHoverDeferredTimer);
+    connectionsHoverDeferredTimer = null;
   }
 
   preserveScrollForPage(() => {
     container.replaceChildren(
       renderConnections(
         currentConnections,
-        !expandedSections.has('active_clients'),
+        isCollapsed,
         () => toggleSectionExpanded('active_clients'),
         currentTopDomains,
       ),
@@ -3462,6 +3548,12 @@ function onPageUnmount() {
     }
     connectionsRenderFrame = null;
   }
+  if (connectionsHoverDeferredTimer !== null) {
+    clearTimeout(connectionsHoverDeferredTimer);
+    connectionsHoverDeferredTimer = null;
+  }
+  connectionsWidgetHovered = false;
+  connectionsWidgetListenersAttached = false;
   if (sectionsRenderFrame !== null) {
     if (typeof cancelAnimationFrame !== 'undefined') {
       cancelAnimationFrame(sectionsRenderFrame);
