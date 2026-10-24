@@ -137,6 +137,7 @@ export function renderDualWidget(props: IRenderDualWidgetProps) {
   return E(
     'div',
     {
+      ...props.attributes,
       class: `tachyon_dashboard-page__widgets-section__item tachyon-dual-card ${props.attributes?.class || ''}`,
     },
     [
