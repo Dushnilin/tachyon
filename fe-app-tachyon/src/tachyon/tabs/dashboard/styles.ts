@@ -288,26 +288,38 @@ export const styles = `
 }
 
 .tachyon_dashboard-page__top-domains-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 8px;
 }
 
 .tachyon_dashboard-page__top-domain-chip {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 5px;
+    justify-content: space-between;
+    gap: 8px;
     background: rgba(6, 182, 212, 0.08);
     border: 1px solid rgba(6, 182, 212, 0.2);
     border-radius: 6px;
-    padding: 3px 8px;
+    padding: 4px 10px;
     font-size: 12px;
     color: var(--text-color-high);
+    box-sizing: border-box;
+    min-width: 0;
 }
 
 .tachyon_dashboard-page__top-domain-chip__icon {
     font-size: 11px;
     opacity: 0.85;
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__top-domain-chip b {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tachyon_dashboard-page__top-domain-chip__badge {
@@ -315,8 +327,11 @@ export const styles = `
     font-weight: 600;
     color: #818cf8;
     background: rgba(99, 102, 241, 0.15);
-    padding: 1px 5px;
+    padding: 1px 6px;
     border-radius: 4px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .tachyon_dashboard-page__outbound-section {
@@ -822,6 +837,25 @@ export const styles = `
     display: block;
 }
 
+.tachyon_proto-popover--mac {
+    min-width: 340px;
+    max-width: min(440px, 90vw);
+    width: max-content;
+}
+
+.tachyon_proto-popover--mac .tachyon_proto-popover__header {
+    font-family: monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.3px;
+}
+
+.tachyon_proto-popover--mac .tachyon_proto-popover__val {
+    word-break: normal;
+    white-space: nowrap;
+    font-family: inherit;
+    font-size: 11.5px;
+}
+
 .tachyon_proto-popover__header {
     font-weight: 700;
     font-size: 12px;
@@ -852,6 +886,15 @@ export const styles = `
     font-weight: 600;
     text-align: right;
     word-break: break-all;
+}
+
+.tachyon_proto-popover__desc {
+    margin-top: 6px;
+    padding-top: 5px;
+    border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.18));
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--text-color-medium, #64748b);
 }
 
 [data-darkmode="true"] .tachyon_proto-popover,
@@ -886,6 +929,14 @@ body.dark-theme .tachyon_proto-popover__val {
     color: var(--text-color-high, #f8fafc);
 }
 
+[data-darkmode="true"] .tachyon_proto-popover__desc,
+[data-theme="dark"] .tachyon_proto-popover__desc,
+.dark .tachyon_proto-popover__desc,
+body.dark-theme .tachyon_proto-popover__desc {
+    color: var(--text-color-medium, #94a3b8);
+    border-top-color: var(--border-color-low, rgba(255, 255, 255, 0.12));
+}
+
 @media (prefers-color-scheme: dark) {
     :root:not([data-darkmode="false"]):not([data-theme="light"]) .tachyon_proto-popover {
         background: var(--background-color-high, rgba(20, 24, 33, 0.97));
@@ -902,6 +953,10 @@ body.dark-theme .tachyon_proto-popover__val {
     }
     :root:not([data-darkmode="false"]):not([data-theme="light"]) .tachyon_proto-popover__val {
         color: var(--text-color-high, #f8fafc);
+    }
+    :root:not([data-darkmode="false"]):not([data-theme="light"]) .tachyon_proto-popover__desc {
+        color: var(--text-color-medium, #94a3b8);
+        border-top-color: var(--border-color-low, rgba(255, 255, 255, 0.12));
     }
 }
 
@@ -1841,8 +1896,9 @@ body.dark-theme .tachyon_proto-popover__val {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     min-width: 0;
+    flex: 1 1 auto;
 }
 
 .tachyon-client-row__name {
@@ -1854,6 +1910,51 @@ body.dark-theme .tachyon_proto-popover__val {
     text-overflow: ellipsis;
 }
 
+.tachyon-client-row__name-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 1px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    width: 175px;
+    min-width: 175px;
+    max-width: 175px;
+    flex: 0 0 175px;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-client-row__name-badge--host {
+    color: #c084fc;
+    background: rgba(192, 132, 252, 0.12);
+    border: 1px solid rgba(192, 132, 252, 0.28);
+}
+
+.tachyon-client-row__name-badge--mac {
+    font-family: monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #cbd5e1;
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    letter-spacing: 0.2px;
+    position: relative;
+    cursor: help;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.tachyon-client-row__name-badge--router {
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.28);
+}
+
 .tachyon-client-row__name--mono {
     font-family: monospace;
     font-size: 12.5px;
@@ -1862,6 +1963,8 @@ body.dark-theme .tachyon_proto-popover__val {
 .tachyon-client-row__ip {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    text-align: center;
     padding: 1px 7px;
     border-radius: 6px;
     font-size: 11.5px;
@@ -1870,16 +1973,26 @@ body.dark-theme .tachyon_proto-popover__val {
     color: #06b6d4;
     background: rgba(6, 182, 212, 0.12);
     border: 1px solid rgba(6, 182, 212, 0.28);
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+    flex: 0 0 120px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .tachyon-client-row__ip--standalone {
     font-size: 12.5px;
     font-weight: 600;
+    margin-left: 183px;
 }
 
 .tachyon-client-row__conns {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    text-align: center;
     padding: 1px 7px;
     border-radius: 10px;
     font-size: 11px;
@@ -1888,6 +2001,11 @@ body.dark-theme .tachyon_proto-popover__val {
     color: #818cf8;
     background: rgba(99, 102, 241, 0.12);
     border: 1px solid rgba(99, 102, 241, 0.28);
+    width: 68px;
+    min-width: 68px;
+    max-width: 68px;
+    flex: 0 0 68px;
+    box-sizing: border-box;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
@@ -1897,16 +2015,25 @@ body.dark-theme .tachyon_proto-popover__val {
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
+    flex: 0 0 170px;
+    justify-content: flex-end;
 }
 
 .tachyon-traffic-pill {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    text-align: center;
     padding: 2px 7px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.35;
+    width: 82px;
+    min-width: 82px;
+    max-width: 82px;
+    flex: 0 0 82px;
+    box-sizing: border-box;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
@@ -1923,14 +2050,47 @@ body.dark-theme .tachyon_proto-popover__val {
     border: 1px solid rgba(59, 130, 246, 0.28);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 680px) {
     .tachyon-client-row {
         flex-direction: column;
         align-items: flex-start;
         gap: 6px;
     }
+    .tachyon-client-row__info {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+    .tachyon-client-row__name-badge {
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        flex: 0 1 auto;
+    }
+    .tachyon-client-row__ip {
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        flex: 0 1 auto;
+    }
+    .tachyon-client-row__ip--standalone {
+        margin-left: 0;
+    }
+    .tachyon-client-row__conns {
+        width: auto;
+        min-width: 0;
+        flex: 0 1 auto;
+    }
     .tachyon-client-row__traffic {
         align-self: flex-end;
+        flex: 0 0 auto;
+    }
+    .tachyon-traffic-pill {
+        width: auto;
+        min-width: 65px;
+        flex: 0 0 auto;
+    }
+    .tachyon_dashboard-page__top-domains-list {
+        grid-template-columns: 1fr;
     }
 }
 

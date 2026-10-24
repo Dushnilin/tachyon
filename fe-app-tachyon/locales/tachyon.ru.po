@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-24 23:29+0300\n"
-"PO-Revision-Date: 2026-10-24 23:29+0300\n"
+"POT-Creation-Date: 2026-10-24 23:40+0300\n"
+"PO-Revision-Date: 2026-10-24 23:40+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -689,6 +689,9 @@ msgstr "Base (только ядро)"
 msgid "Basic connectivity"
 msgstr "Базовая связность"
 
+msgid "Before switching to Direct, verify that the probe URLs are reachable via Direct so a general internet outage does not trigger a pointless switch."
+msgstr ""
+
 msgid "Beginning of the schedule interval (e.g. 22:00)"
 msgstr "Начало интервала расписания (например, 22:00)"
 
@@ -1213,6 +1216,12 @@ msgstr "Подключения недоступны"
 
 msgid "Connectivity probe failed"
 msgstr "Проверка соединения не прошла"
+
+msgid "Consecutive failed probes required before activating Fail-Closed or Fail-Open."
+msgstr ""
+
+msgid "Consecutive successful probes through the original outbound/strategy required before restoring normal routing."
+msgstr ""
 
 msgid "Consulting DPI Knowledge Base & AI..."
 msgstr "Консультируюсь с базой знаний DPI и ИИ..."
@@ -2194,6 +2203,21 @@ msgstr "SNI для FPTN"
 
 msgid "FPTN section accepts only fptn:// or fptnb:// links"
 msgstr "Секция FPTN принимает только ссылки fptn:// или fptnb://"
+
+msgid "Fail Policy Cooldown (s)"
+msgstr ""
+
+msgid "Fail Policy Failure Threshold"
+msgstr ""
+
+msgid "Fail Policy Probe Timeout (ms)"
+msgstr ""
+
+msgid "Fail Policy Probe URLs"
+msgstr ""
+
+msgid "Fail Policy Recovery Threshold"
+msgstr ""
 
 msgid "Fail-Closed (Block / Kill-switch)"
 msgstr "Fail-Closed (Блокировка / Kill-switch)"
@@ -3770,6 +3794,9 @@ msgstr ""
 msgid "Minimum"
 msgstr "Минимум"
 
+msgid "Minimum delay in seconds between route transitions to prevent flapping."
+msgstr ""
+
 msgid "Minimum latency difference in milliseconds that triggers switching to a faster server."
 msgstr "Минимальная разница задержки в миллисекундах, при которой происходит переключение на более быстрый сервер."
 
@@ -4261,6 +4288,9 @@ msgstr "Оптимизировать память (RAM)"
 
 msgid "Option \"%s\" contains an invalid input value."
 msgstr "Опция \"%s\" содержит недопустимое значение."
+
+msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
+msgstr ""
 
 msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
 msgstr "Дополнительный контекст (напр. \"Ростелеком, долго грузится YouTube 4K\")..."
@@ -6470,6 +6500,9 @@ msgstr "Допуск отклонения времени"
 msgid "Timeout"
 msgstr "Таймаут"
 
+msgid "Timeout in milliseconds for each probe request through this section."
+msgstr ""
+
 msgid "Toddler (👶)"
 msgstr "Малыш (👶)"
 
@@ -6949,6 +6982,9 @@ msgstr "Перечисленные здесь значения принадле�
 
 msgid "Verdict"
 msgstr "Статус"
+
+msgid "Verify Direct Reachability Before Fail-Open"
+msgstr ""
 
 msgid "Verifying installation"
 msgstr "Проверка установки"

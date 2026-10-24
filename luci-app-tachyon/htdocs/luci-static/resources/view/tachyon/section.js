@@ -14184,6 +14184,93 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
+    form.DynamicList,
+    "fail_policy_urls",
+    _("Fail Policy Probe URLs"),
+    _(
+      "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice.",
+    ),
+  );
+  o.placeholder = "https://www.gstatic.com/generate_204";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "fail_policy_timeout",
+    _("Fail Policy Probe Timeout (ms)"),
+    _("Timeout in milliseconds for each probe request through this section."),
+  );
+  o.datatype = "range(500,30000)";
+  o.placeholder = "3000";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "fail_policy_threshold",
+    _("Fail Policy Failure Threshold"),
+    _("Consecutive failed probes required before activating Fail-Closed or Fail-Open."),
+  );
+  o.datatype = "range(1,20)";
+  o.placeholder = "3";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "fail_policy_recover_threshold",
+    _("Fail Policy Recovery Threshold"),
+    _(
+      "Consecutive successful probes through the original outbound/strategy required before restoring normal routing.",
+    ),
+  );
+  o.datatype = "range(1,20)";
+  o.placeholder = "2";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "fail_policy_cooldown",
+    _("Fail Policy Cooldown (s)"),
+    _("Minimum delay in seconds between route transitions to prevent flapping."),
+  );
+  o.datatype = "range(0,86400)";
+  o.placeholder = "60";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "fail_policy_check_direct",
+    _("Verify Direct Reachability Before Fail-Open"),
+    _(
+      "Before switching to Direct, verify that the probe URLs are reachable via Direct so a general internet outage does not trigger a pointless switch.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = true;
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
     form.Flag,
     "mixed_proxy_enabled",
     _("Enable Mixed Proxy"),

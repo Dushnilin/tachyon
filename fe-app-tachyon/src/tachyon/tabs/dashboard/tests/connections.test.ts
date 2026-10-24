@@ -54,6 +54,42 @@ describe('dashboard connections', () => {
     });
   });
 
+  it('assigns router hostname to 127.0.0.1 and router WAN label to 95.165.105.233 when missing in hostnames', () => {
+    const rawConns = [
+      {
+        metadata: { sourceIP: '127.0.0.1' },
+        upload: 10,
+        download: 20,
+      },
+      {
+        metadata: { sourceIP: '95.165.105.233' },
+        upload: 100,
+        download: 200,
+      },
+      {
+        metadata: { sourceIP: '10.100.100.153' },
+        upload: 5,
+        download: 5,
+      },
+    ];
+
+    const hostnames = new Map<string, string>([
+      ['10.100.100.153', '26:70:52:CD:8E:F9'],
+    ]);
+
+    const result = aggregateClientConnections(rawConns, hostnames);
+    expect(result).toHaveLength(3);
+
+    const localhostConn = result.find((c) => c.ip === '127.0.0.1');
+    expect(localhostConn?.name).toBe('Flint-2');
+
+    const wanConn = result.find((c) => c.ip === '95.165.105.233');
+    expect(wanConn?.name).toMatch(/Роутер \(WAN\)|Router \(WAN\)/);
+
+    const macConn = result.find((c) => c.ip === '10.100.100.153');
+    expect(macConn?.name).toBe('26:70:52:CD:8E:F9');
+  });
+
   it('aggregates top domains and filters out IP addresses', () => {
     const rawConns = [
       {

@@ -132,5 +132,69 @@ grep -Fq 'fail_policy' "$SECTION_JS" ||
 # 4. Check service/failover.uc state machine for section fail_policy
 grep -Fq 'check_section_fail_policies' "$FAILOVER_UC" ||
   fail "service/failover.uc must define check_section_fail_policies"
+grep -Fq 'fail_policy_urls' "$SECTION_JS" ||
+  fail "section.js must expose fail_policy_urls option"
+
+STUB_BIN="$WORK_DIR/bin"
+mkdir -p "$STUB_BIN"
+PROBE_LOG="$WORK_DIR/probe.log"
+cat >"$STUB_BIN/tachyon" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '$PROBE_LOG'
+case "\$*" in
+  *"get_proxy_latency zap_sec-out"*)
+    if [ "\${ZAP_DEAD:-0}" = "1" ]; then echo '{"error":"timeout"}'; else echo '{"delay":45}'; fi ;;
+  *"get_proxy_latency direct-out"*)
+    if [ "\${DIRECT_DEAD:-0}" = "1" ]; then echo '{"error":"timeout"}'; else echo '{"delay":20}'; fi ;;
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "$STUB_BIN/tachyon"
+
+cat >"$WORK_DIR/uci.state" <<'EOF'
+tachyon.settings=settings
+tachyon.settings.section_failover_enabled=0
+tachyon.settings.section_failover_threshold=3
+tachyon.zap_sec=section
+tachyon.zap_sec.enabled=1
+tachyon.zap_sec.action=zapret2
+tachyon.zap_sec.fail_policy=direct
+tachyon.zap_sec.fail_policy_urls=https://i.ytimg.com/generate_204
+tachyon.zap_sec.fail_policy_timeout=2500
+tachyon.zap_sec.fail_policy_threshold=2
+tachyon.zap_sec.fail_policy_recover_threshold=2
+tachyon.zap_sec.fail_policy_check_direct=1
+EOF
+
+rm -f "$TACHYON_SECTION_FAIL_STATE_FILE" "$PROBE_LOG"
+export TACHYON_BIN="$STUB_BIN/tachyon"
+export TACHYON_FAILOVER_SKIP_RELOAD=1
+
+run_fp_check() {
+  UCI_STATE="$WORK_DIR/uci.state" ucode -L "$TACHYON_LIB" "$FAILOVER_UC" check
+}
+
+# When both zap_sec-out and direct-out fail (WAN outage), do NOT switch to direct
+ZAP_DEAD=1 DIRECT_DEAD=1 run_fp_check
+ZAP_DEAD=1 DIRECT_DEAD=1 run_fp_check
+grep -Fq '"failed": false' "$TACHYON_SECTION_FAIL_STATE_FILE" ||
+  fail "must not switch to direct when direct-out is also unreachable"
+grep -Fq 'direct_unreachable' "$TACHYON_SECTION_FAIL_STATE_FILE" ||
+  fail "must record direct_unreachable reason"
+
+# When direct-out is alive and zap_sec-out fails, switch to direct
+ZAP_DEAD=1 DIRECT_DEAD=0 run_fp_check
+grep -Fq '"failed": true' "$TACHYON_SECTION_FAIL_STATE_FILE" ||
+  fail "must enter fail_policy=direct when strategy fails and direct is reachable"
+grep -Fq 'get_proxy_latency zap_sec-out 2500 https://i.ytimg.com/generate_204' "$PROBE_LOG" ||
+  fail "must probe custom fail_policy_urls with custom timeout"
+
+# Recovery requires 2 consecutive successes on zap_sec-out
+ZAP_DEAD=0 DIRECT_DEAD=0 run_fp_check
+grep -Fq '"failed": true' "$TACHYON_SECTION_FAIL_STATE_FILE" ||
+  fail "must stay in fail_policy after 1st recovery probe when recover_threshold=2"
+ZAP_DEAD=0 DIRECT_DEAD=0 run_fp_check
+grep -Fq '"failed": false' "$TACHYON_SECTION_FAIL_STATE_FILE" ||
+  fail "must recover from fail_policy after 2nd consecutive successful probe"
 
 printf 'section_fail_policy: OK\n'
