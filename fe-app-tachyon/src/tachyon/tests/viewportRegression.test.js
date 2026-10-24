@@ -57,13 +57,13 @@ describe('Viewport and Mobile Responsiveness Regressions', async () => {
     const serverJsContent = fs.readFileSync(serverJsPath, 'utf8');
 
     expect(serverJsContent).toMatch(
-      /\.fkp-server-info-modal\{[^}]*width:\s*min\(560px,\s*calc\(100vw\s*-\s*32px\)\)/,
+      /\.fkp-server-info-modal\{[^}]*width:\s*100%\s*!important/,
     );
     expect(serverJsContent).toMatch(
       /\.fkp-server-info-modal__qr-image\{[^}]*max-width:\s*min\(180px,\s*60vw\)/,
     );
     expect(serverJsContent).toMatch(
-      /@media\s*\(max-width:\s*640px\)\{\s*\.fkp-server-info-modal\{width:100%\}/,
+      /@media\s*\(max-width:\s*640px\)\{\s*\.fkp-server-info-modal\{width:100%\s*!important\}/,
     );
   });
 
