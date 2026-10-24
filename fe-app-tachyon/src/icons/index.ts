@@ -22,6 +22,14 @@ function createIcon(
   );
 }
 
+export function renderActivityIcon14() {
+  return createIcon(
+    'lucide lucide-activity-icon lucide-activity',
+    [svgEl('path', { d: 'M22 12h-4l-3 9L9 3l-3 9H2' })],
+    { width: '13', height: '13' },
+  );
+}
+
 export function renderBookOpenTextIcon24() {
   return createIcon('lucide lucide-book-open-text-icon lucide-book-open-text', [
     svgEl('path', { d: 'M12 7v14' }),

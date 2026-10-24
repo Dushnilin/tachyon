@@ -3,6 +3,7 @@ import {
   renderCopyIcon24,
   renderLinkIcon24,
   renderInfoIcon24,
+  renderActivityIcon14,
 } from '../../../../icons';
 import {
   isCopyableProxyLink,
@@ -24,6 +25,7 @@ import {
   OutboundCountryGroup,
   WorldRegion,
 } from '../../../helpers/country';
+import { isRussianLanguage } from '../../../helpers/i18n';
 
 const gridHoveredSections = new Set<string>();
 const gridFrozenOutboundOrders = new Map<string, string[]>();
@@ -374,6 +376,33 @@ export function getLatencyTestLabel(
   )}/${total}`;
 }
 
+export function getRegionPingTestLabel(
+  latencyProgress?: Tachyon.LatencyActionProgress,
+  isRu = isRussianLanguage(),
+) {
+  const total = Math.trunc(Number(latencyProgress?.total ?? 0));
+  if (!Number.isFinite(total) || total <= 0) {
+    return isRu
+      ? 'Проверка...'
+      : typeof _ === 'function'
+        ? _('Checking...')
+        : 'Checking...';
+  }
+
+  const completedValue = Number(latencyProgress?.completed ?? 0);
+  const completed = Number.isFinite(completedValue)
+    ? Math.trunc(completedValue)
+    : 0;
+
+  const prefix = isRu
+    ? 'Проверка'
+    : typeof _ === 'function'
+      ? _('Checking')
+      : 'Checking';
+
+  return `${prefix}: ${Math.min(Math.max(0, completed), total)}/${total}`;
+}
+
 function renderCountryChips(
   countryGroups: OutboundCountryGroup[],
   totalCount: number,
@@ -387,12 +416,13 @@ function renderCountryChips(
     activeCountryCode?: string;
     isExpanded?: boolean;
     onToggleExpand?: () => void;
+    onTestLatency?: (tags: string[]) => void;
+    latencyFetching?: boolean;
+    latencyProgress?: Tachyon.LatencyActionProgress;
+    visibleOutboundCodes?: string[];
   },
 ): HTMLElement {
-  const isRu =
-    (typeof document !== 'undefined' &&
-      (document.documentElement?.lang || '').toLowerCase().startsWith('ru')) ||
-    false;
+  const isRu = isRussianLanguage();
 
   const mode = options?.chipsGrouping || 'regions';
   const activeRegion = (options?.activeRegion as WorldRegion) || 'all';
@@ -423,6 +453,84 @@ function renderCountryChips(
     : activeRegionMeta
       ? `${activeRegionMeta.flag} ${activeRegionMeta.label}`
       : '';
+
+  const visibleCodes = options?.visibleOutboundCodes || [];
+  const canPingFiltered = Boolean(
+    options?.onTestLatency && visibleCodes.length > 0,
+  );
+  const latencyFetching = Boolean(options?.latencyFetching);
+
+  let pingLabel = '';
+  let pingTitle = '';
+
+  if (activeCountryGroup) {
+    const countryName =
+      activeCountryGroup.countryName || activeCountryGroup.countryCode;
+    pingLabel = isRu
+      ? `Проверить пинг (${visibleCodes.length})`
+      : typeof _ === 'function'
+        ? `${_('Test latency')} (${visibleCodes.length})`
+        : `Test latency (${visibleCodes.length})`;
+    pingTitle = isRu
+      ? `Проверить задержку серверов: ${countryName} (${visibleCodes.length})`
+      : typeof _ === 'function'
+        ? `${_('Test latency')}: ${countryName} (${visibleCodes.length})`
+        : `Test latency: ${countryName} (${visibleCodes.length})`;
+  } else if (activeRegionMeta) {
+    pingLabel = isRu
+      ? `Проверить пинг (${visibleCodes.length})`
+      : typeof _ === 'function'
+        ? `${_('Test latency')} (${visibleCodes.length})`
+        : `Test latency (${visibleCodes.length})`;
+    pingTitle = isRu
+      ? `Проверить задержку серверов: ${activeRegionMeta.label} (${visibleCodes.length})`
+      : typeof _ === 'function'
+        ? `${_('Test latency')}: ${activeRegionMeta.label} (${visibleCodes.length})`
+        : `Test latency: ${activeRegionMeta.label} (${visibleCodes.length})`;
+  } else {
+    pingLabel = isRu
+      ? `Проверить пинг (${visibleCodes.length})`
+      : typeof _ === 'function'
+        ? `${_('Test latency')} (${visibleCodes.length})`
+        : `Test latency (${visibleCodes.length})`;
+    pingTitle = isRu
+      ? `Проверить задержку серверов (${visibleCodes.length})`
+      : typeof _ === 'function'
+        ? `${_('Test latency')} (${visibleCodes.length})`
+        : `Test latency (${visibleCodes.length})`;
+  }
+
+  const pingBtn = canPingFiltered
+    ? E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn tachyon_dashboard-page__country-chips__ping-btn',
+          'data-latency-section': sectionName,
+          disabled: latencyFetching ? true : undefined,
+          title: pingTitle,
+          'aria-label': pingTitle,
+          click: (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (latencyFetching) {
+              return;
+            }
+            options?.onTestLatency?.(visibleCodes);
+          },
+        },
+        [
+          latencyFetching ? renderLoaderCircleIcon24() : renderActivityIcon14(),
+          E(
+            'span',
+            { class: 'tachyon_dashboard-page__country-chips__ping-label' },
+            latencyFetching
+              ? getRegionPingTestLabel(options?.latencyProgress, isRu)
+              : pingLabel,
+          ),
+        ],
+      )
+    : null;
 
   const container = E('div', {
     class: [
@@ -477,6 +585,7 @@ function renderCountryChips(
             renderFlagEmojis(activeFilterSummary),
           )
         : '',
+      ...(pingBtn ? [pingBtn] : []),
     ],
   );
   container.appendChild(headerBar);
@@ -1071,6 +1180,11 @@ function renderDefaultState({
     );
   }
 
+  const canTestLatency =
+    !isServiceNode &&
+    (section.withTagSelect ||
+      (section.outbounds && section.outbounds.length > 0));
+
   function testLatency() {
     if (section.withTagSelect) {
       return onTestLatency(
@@ -1600,6 +1714,10 @@ function renderDefaultState({
     if (!hasMultipleSources) {
       // Variant A: Country Filter Chips
       if (countryGrouping === 'chips' && hasMultipleCountries) {
+        const visibleServers = serverOutbounds.filter(
+          isOutboundMatchingFilters,
+        );
+
         const chipsBar = renderCountryChips(
           countryGroups,
           serverOutbounds.length,
@@ -1614,11 +1732,13 @@ function renderDefaultState({
             isExpanded: isChipsExpanded,
             onToggleExpand: () =>
               onToggleSourceGroupCollapse?.(chipsCollapseKey),
+            onTestLatency: canTestLatency
+              ? (tags: string[]) => onTestLatency(tags)
+              : undefined,
+            latencyFetching,
+            latencyProgress,
+            visibleOutboundCodes: visibleServers.map((ob) => ob.code),
           },
-        );
-
-        const visibleServers = serverOutbounds.filter(
-          isOutboundMatchingFilters,
         );
 
         return [
@@ -1676,6 +1796,8 @@ function renderDefaultState({
     ];
 
     if (countryGrouping === 'chips' && hasMultipleCountries) {
+      const visibleServers = serverOutbounds.filter(isOutboundMatchingFilters);
+
       nodes.push(
         renderCountryChips(
           countryGroups,
@@ -1691,6 +1813,12 @@ function renderDefaultState({
             isExpanded: isChipsExpanded,
             onToggleExpand: () =>
               onToggleSourceGroupCollapse?.(chipsCollapseKey),
+            onTestLatency: canTestLatency
+              ? (tags: string[]) => onTestLatency(tags)
+              : undefined,
+            latencyFetching,
+            latencyProgress,
+            visibleOutboundCodes: visibleServers.map((ob) => ob.code),
           },
         ),
       );
@@ -1860,11 +1988,6 @@ function renderDefaultState({
 
     return nodes;
   }
-
-  const canTestLatency =
-    !isServiceNode &&
-    (section.withTagSelect ||
-      (section.outbounds && section.outbounds.length > 0));
 
   return E(
     'div',

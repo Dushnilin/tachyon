@@ -1326,6 +1326,43 @@ body.dark-theme .tachyon_proto-popover__val {
     color: var(--text-color-high, inherit);
 }
 
+.tachyon_dashboard-page .btn.tachyon_dashboard-page__country-chips__ping-btn {
+    margin-left: auto;
+    height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: 4px;
+    background: var(--background-color-medium, rgba(120, 120, 120, 0.12));
+    border: 1px solid var(--border-color-low, rgba(120, 120, 120, 0.25));
+    color: var(--text-color-high, inherit);
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.tachyon_dashboard-page .btn.tachyon_dashboard-page__country-chips__ping-btn:hover:not(:disabled) {
+    background: var(--primary-color-low, rgba(0, 110, 255, 0.15));
+    border-color: var(--primary-color-medium, rgba(0, 110, 255, 0.4));
+    color: var(--primary-color-high, var(--text-color-high, inherit));
+}
+
+.tachyon_dashboard-page .btn.tachyon_dashboard-page__country-chips__ping-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.tachyon_dashboard-page .btn.tachyon_dashboard-page__country-chips__ping-btn svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+}
+
 .tachyon_dashboard-page__country-chips-body {
     display: flex;
     flex-direction: column;

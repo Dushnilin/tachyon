@@ -113,11 +113,13 @@ globalThis.document = {
 };
 
 let renderSections: any;
+let getRegionPingTestLabel: any;
 
 describe('renderSections', () => {
   beforeAll(async () => {
     const mod = await import('../renderSections');
     renderSections = mod.renderSections;
+    getRegionPingTestLabel = mod.getRegionPingTestLabel;
   });
 
   beforeEach(() => {
@@ -1114,5 +1116,134 @@ describe('renderSections', () => {
       '.tachyon_dashboard-page__country-chip-divider',
     );
     expect(divider).toBeTruthy();
+  });
+
+  it('getRegionPingTestLabel formats progress correctly', () => {
+    expect(getRegionPingTestLabel(undefined, true)).toBe('Проверка...');
+    expect(getRegionPingTestLabel(undefined, false)).toBe('Checking...');
+    expect(
+      getRegionPingTestLabel({ completed: 0, total: 0, failed: 0 }, true),
+    ).toBe('Проверка...');
+    expect(
+      getRegionPingTestLabel({ completed: 3, total: 10, failed: 0 }, true),
+    ).toBe('Проверка: 3/10');
+    expect(
+      getRegionPingTestLabel({ completed: 15, total: 10, failed: 0 }, false),
+    ).toBe('Checking: 10/10');
+  });
+
+  it('renders region/country ping button in country chips header bar without emojis', () => {
+    const section: any = {
+      sectionName: 'test-section',
+      code: 'test_sec',
+      withTagSelect: true,
+      dashboardSettings: {
+        countryGrouping: 'chips',
+        chipsGrouping: 'regions',
+      },
+      outbounds: [
+        {
+          code: 'us-1',
+          displayName: 'US Server 1',
+          latency: 80,
+          country: 'US',
+          selected: true,
+        },
+        {
+          code: 'us-2',
+          displayName: 'US Server 2',
+          latency: 90,
+          country: 'US',
+        },
+        {
+          code: 'de-1',
+          displayName: 'DE Server 1',
+          latency: 40,
+          country: 'DE',
+        },
+      ],
+    };
+
+    const onTestLatency = vi.fn();
+
+    // 1. With region filter 'americas'
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      activeRegionFilter: 'americas',
+      onTestLatency,
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const pingBtn = el.querySelector(
+      '.tachyon_dashboard-page__country-chips__ping-btn',
+    );
+    expect(pingBtn).toBeTruthy();
+    expect(pingBtn.textContent).toContain('(2)');
+    // Crucial requirement: No emojis in button
+    expect(pingBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    // Simulate click
+    const stopPropagation = vi.fn();
+    const preventDefault = vi.fn();
+    pingBtn.click({ stopPropagation, preventDefault });
+    expect(stopPropagation).toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalled();
+    expect(onTestLatency).toHaveBeenCalledWith(['us-1', 'us-2']);
+  });
+
+  it('renders region ping button in loading state with progress during test', () => {
+    const section: any = {
+      sectionName: 'test-section',
+      code: 'test_sec',
+      withTagSelect: true,
+      dashboardSettings: {
+        countryGrouping: 'chips',
+        chipsGrouping: 'regions',
+      },
+      outbounds: [
+        {
+          code: 'us-1',
+          displayName: 'US Server 1',
+          country: 'US',
+          selected: true,
+        },
+        {
+          code: 'de-1',
+          displayName: 'DE Server 1',
+          country: 'DE',
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      activeCountryFilter: 'DE',
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: true,
+      latencyProgress: { completed: 1, total: 1, failed: 0 },
+      subscriptionUpdating: false,
+    });
+
+    const pingBtn = el.querySelector(
+      '.tachyon_dashboard-page__country-chips__ping-btn',
+    );
+    expect(pingBtn).toBeTruthy();
+    expect(pingBtn.disabled).toBe(true);
+    expect(pingBtn.textContent).toContain('1/1');
   });
 });

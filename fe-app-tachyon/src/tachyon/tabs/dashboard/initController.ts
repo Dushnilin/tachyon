@@ -29,6 +29,7 @@ import {
 } from '../../services';
 import {
   getLatencyTestLabel,
+  getRegionPingTestLabel,
   renderFlagEmojis,
   renderSections,
   renderWidget,
@@ -1903,33 +1904,50 @@ function updateLatencyProgressInline(
       `.${LATENCY_TEST_BUTTON_LABEL_CLASS}`,
     );
 
-    if (!label) {
-      return false;
+    if (label) {
+      const isConnectionNode =
+        !section.withTagSelect &&
+        [
+          'vpn',
+          'awg',
+          'warp',
+          'anytls',
+          'snell',
+          'mieru',
+          'naive',
+          'sudoku',
+          'masque',
+          'openvpn',
+        ].includes(section.action || '');
+
+      const text = isConnectionNode
+        ? _('Checking Connection...')
+        : getLatencyTestLabel(
+            sectionsWidget.latencyProgressSections[section.sectionName],
+          );
+
+      if (label.textContent !== text) {
+        label.textContent = text;
+      }
     }
 
-    const isConnectionNode =
-      !section.withTagSelect &&
-      [
-        'vpn',
-        'awg',
-        'warp',
-        'anytls',
-        'snell',
-        'mieru',
-        'naive',
-        'sudoku',
-        'masque',
-        'openvpn',
-      ].includes(section.action || '');
+    const regionBtn = container.querySelector<HTMLElement>(
+      `.tachyon_dashboard-page__country-chips__ping-btn[data-latency-section="${section.sectionName}"]`,
+    );
+    const regionLabel = regionBtn?.querySelector<HTMLElement>(
+      '.tachyon_dashboard-page__country-chips__ping-label',
+    );
+    if (regionLabel) {
+      const regionText = getRegionPingTestLabel(
+        sectionsWidget.latencyProgressSections[section.sectionName],
+      );
+      if (regionLabel.textContent !== regionText) {
+        regionLabel.textContent = regionText;
+      }
+    }
 
-    const text = isConnectionNode
-      ? _('Checking Connection...')
-      : getLatencyTestLabel(
-          sectionsWidget.latencyProgressSections[section.sectionName],
-        );
-
-    if (label.textContent !== text) {
-      label.textContent = text;
+    if (!label && !regionLabel) {
+      return false;
     }
   }
 
@@ -2171,22 +2189,23 @@ async function renderSectionsWidget() {
       },
       testingOutboundCodes: singleTestingOutboundCodes,
       onTestLatency: (tag) => {
-        if (section.withTagSelect) {
-          if (Array.isArray(tag)) {
-            return handleTestLatency(
-              'proxy_list',
-              section.sectionName,
-              JSON.stringify(tag),
-            );
-          }
+        if (Array.isArray(tag)) {
+          return handleTestLatency(
+            'proxy_list',
+            section.sectionName,
+            JSON.stringify(tag),
+            section.latencyTestTimeout,
+          );
+        }
 
+        if (section.withTagSelect) {
           return handleTestLatency('group', section.sectionName, tag);
         }
 
         return handleTestLatency(
           'proxy',
           section.sectionName,
-          Array.isArray(tag) ? JSON.stringify(tag) : tag,
+          tag,
           section.latencyTestTimeout,
         );
       },
@@ -3366,6 +3385,18 @@ async function onStoreUpdate(
       const dataChanged =
         prev.sectionsWidget.loading !== next.sectionsWidget.loading ||
         prev.sectionsWidget.failed !== next.sectionsWidget.failed ||
+        !shallowRecordEqual(
+          prev.sectionsWidget.latencyFetchingSections,
+          next.sectionsWidget.latencyFetchingSections,
+        ) ||
+        !shallowRecordEqual(
+          prev.sectionsWidget.subscriptionUpdatingSections,
+          next.sectionsWidget.subscriptionUpdatingSections,
+        ) ||
+        !shallowRecordEqual(
+          prev.sectionsWidget.selectorSwitchingSections,
+          next.sectionsWidget.selectorSwitchingSections,
+        ) ||
         JSON.stringify(prev.sectionsWidget.data) !==
           JSON.stringify(next.sectionsWidget.data);
 
