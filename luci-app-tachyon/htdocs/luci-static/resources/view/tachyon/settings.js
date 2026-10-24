@@ -53,6 +53,37 @@ function validateLatencyTestUrl(value) {
   return validation.valid ? true : validation.message;
 }
 
+function disablePasswordAutofill(option) {
+  if (!option || typeof option.renderWidget !== "function") return;
+  const origRenderWidget = option.renderWidget;
+  option.renderWidget = function (section_id, option_index, cfgvalue) {
+    const node = origRenderWidget.call(
+      this,
+      section_id,
+      option_index,
+      cfgvalue,
+    );
+    const applyAttrs = function (el) {
+      if (!el) return;
+      const input = el.querySelector ? el.querySelector("input") || el : el;
+      if (input && input.setAttribute) {
+        input.setAttribute("autocomplete", "new-password");
+        input.setAttribute("data-lpignore", "true");
+        input.setAttribute("data-1p-ignore", "true");
+        input.setAttribute("data-bwignore", "true");
+      }
+    };
+    if (node instanceof Promise) {
+      return node.then(function (res) {
+        applyAttrs(res);
+        return res;
+      });
+    }
+    applyAttrs(node);
+    return node;
+  };
+}
+
 function isDownloadSectionAction(action, capabilities) {
   switch (action) {
     case "connection":
@@ -2955,13 +2986,16 @@ function createSettingsContent(section, capabilities) {
     const v = (value || "").trim();
     if (
       v !== "" &&
-      !/^gh[pousr]_[A-Za-z0-9]{36,255}$|^[A-Fa-f0-9]{40}$/.test(v)
+      !/^(?:gh[pousr]_[A-Za-z0-9_]{36,255}|github_pat_[A-Za-z0-9_]{22,255}|[A-Fa-f0-9]{40})$/.test(
+        v,
+      )
     )
       return _(
         "Does not look like a GitHub token (expected ghp_… / github_pat_… or a 40-hex classic token)",
       );
     return true;
   };
+  disablePasswordAutofill(o);
 
   o = section.taboption(
     "updates",
@@ -3769,6 +3803,7 @@ function createSettingsContent(section, capabilities) {
   );
   o.password = true;
   o.rmempty = true;
+  disablePasswordAutofill(o);
 
   // AI Doctor (ChatGPT / LLM Integration)
   o = section.taboption(
@@ -3838,6 +3873,7 @@ function createSettingsContent(section, capabilities) {
   o.depends("enable_ai_doctor", "1");
   o.password = true;
   o.rmempty = true;
+  disablePasswordAutofill(o);
 
   o = section.taboption(
     "ai",
@@ -4479,6 +4515,7 @@ function createTelegramContent(section) {
     }
     return true;
   };
+  disablePasswordAutofill(o);
   o.write = function (section_id, value) {
     const val = value ? `${value}`.trim() : "";
     if (val) {
