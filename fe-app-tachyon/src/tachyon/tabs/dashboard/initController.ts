@@ -2665,9 +2665,12 @@ export function getSectionConnectionStats(
   let download = 0;
 
   for (const c of rawConns) {
-    const chains = Array.isArray(c.chains)
-      ? c.chains.map((ch: any) => String(ch).toLowerCase())
-      : [];
+    const rawChains = Array.isArray(c.chains)
+      ? c.chains
+      : Array.isArray((c as any).metadata?.chains)
+        ? (c as any).metadata.chains
+        : [];
+    const chains = rawChains.map((ch: any) => String(ch).toLowerCase());
     if (chains.some((ch: string) => ch === target || ch.includes(target))) {
       conns++;
       upload += Number(c.upload) || 0;
@@ -2821,7 +2824,7 @@ export async function renderSectionDashboardWidgets() {
         '[data-metric="conns"]',
       );
       if (connsPill) {
-        const nextText = `${stats.conns} ${tr('соед.', 'conns')}`;
+        const nextText = String(stats.conns);
         if (connsPill.textContent !== nextText)
           connsPill.textContent = nextText;
       }
@@ -2935,6 +2938,7 @@ export async function renderSectionDashboardWidgets() {
         value: E(
           'span',
           {
+            class: 'tachyon-route-pill tachyon-route-pill--server',
             'data-metric': 'server',
             'data-server-name': route.name,
           } as any,
@@ -2945,7 +2949,14 @@ export async function renderSectionDashboardWidgets() {
       },
       {
         key: tr('Селектор', 'Selector'),
-        value: E('span', { 'data-metric': 'selector' } as any, route.selector),
+        value: E(
+          'span',
+          {
+            class: 'tachyon-route-pill tachyon-route-pill--selector',
+            'data-metric': 'selector',
+          } as any,
+          route.selector,
+        ),
       },
       {
         key: tr('Задержка', 'Latency'),
@@ -2998,12 +3009,18 @@ export async function renderSectionDashboardWidgets() {
         value: E('span', { class: 'tachyon-stat--session' } as any, [
           E(
             'span',
-            { class: 'tachyon-traffic-pill tachyon-traffic-pill--down' },
+            {
+              class: 'tachyon-traffic-pill tachyon-traffic-pill--down',
+              'data-metric': 'session-down',
+            } as any,
             `↓ ${prettyBytes(stats.download || 0)}`,
           ),
           E(
             'span',
-            { class: 'tachyon-traffic-pill tachyon-traffic-pill--up' },
+            {
+              class: 'tachyon-traffic-pill tachyon-traffic-pill--up',
+              'data-metric': 'session-up',
+            } as any,
             `↑ ${prettyBytes(stats.upload || 0)}`,
           ),
         ]),
@@ -3016,7 +3033,7 @@ export async function renderSectionDashboardWidgets() {
             class: 'tachyon-stat-pill tachyon-stat-pill--conns',
             'data-metric': 'conns',
           } as any,
-          `${stats.conns} ${tr('соед.', 'conns')}`,
+          String(stats.conns),
         ),
       },
     ];
@@ -3095,16 +3112,24 @@ export async function renderSystemServicesWidget() {
       value: E(
         'span',
         { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
-        `${connectionsCount} ${tr('соед.', 'conns')}`,
+        String(connectionsCount),
       ),
     },
     {
       key: tr('Секции правил', 'Routing Sections'),
-      value: `${activeSectionsCount} ${tr('активных', 'active')}`,
+      value: E(
+        'span',
+        { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
+        String(activeSectionsCount),
+      ),
     },
     {
       key: tr('Активные клиенты', 'Active Clients'),
-      value: `${activeClientsCount} ${tr('устройств', 'devices')}`,
+      value: E(
+        'span',
+        { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
+        String(activeClientsCount),
+      ),
     },
   ];
 

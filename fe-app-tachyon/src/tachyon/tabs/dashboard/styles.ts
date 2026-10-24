@@ -97,8 +97,16 @@ export const styles = `
     grid-gap: 12px;
 }
 
+#dashboard-widget-system-services {
+    display: contents;
+}
+
 .tachyon-dual-card {
     min-height: 140px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
 }
 
 .tachyon-dual-card--system-pinned {
@@ -149,7 +157,8 @@ export const styles = `
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
-    align-items: start;
+    align-items: stretch;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
@@ -157,6 +166,7 @@ export const styles = `
     min-width: 0;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
 }
 
 .tachyon-dual-card__col:first-child {
@@ -218,6 +228,7 @@ export const styles = `
     gap: 8px;
     font-size: 13px;
     line-height: 1.5;
+    min-height: 24px;
     margin-top: 3px;
     min-width: 0;
 }
@@ -1689,10 +1700,11 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     justify-content: center;
     padding: 1px 6px;
+    height: 20px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     font-variant-numeric: tabular-nums;
     box-sizing: border-box;
     white-space: nowrap;
@@ -1716,15 +1728,46 @@ body.dark-theme .tachyon_proto-popover__desc {
     min-width: 68px;
 }
 
+.tachyon-route-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 1px 7px;
+    height: 20px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.2;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 175px;
+}
+
+.tachyon-route-pill--server {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.tachyon-route-pill--selector {
+    color: #06b6d4;
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.28);
+}
+
 .tachyon-protocol-pill {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 1px 7px;
+    height: 20px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     background: rgba(59, 130, 246, 0.12);
     color: #3b82f6;
     border: 1px solid rgba(59, 130, 246, 0.28);
@@ -1738,10 +1781,11 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     justify-content: center;
     padding: 1px 7px;
+    height: 20px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     background: rgba(120, 120, 120, 0.12);
     color: var(--text-color-medium, #94a3b8);
     border: 1px solid rgba(120, 120, 120, 0.25);
@@ -1761,10 +1805,11 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     justify-content: center;
     padding: 1px 7px;
+    height: 20px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     box-sizing: border-box;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
@@ -1793,10 +1838,11 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     justify-content: center;
     padding: 1px 7px;
+    height: 20px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     box-sizing: border-box;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
@@ -1915,10 +1961,11 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     justify-content: flex-start;
     padding: 1px 8px;
+    height: 20px;
     border-radius: 6px;
     font-size: 12px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     width: 175px;
     min-width: 175px;
     max-width: 175px;
@@ -1966,10 +2013,12 @@ body.dark-theme .tachyon_proto-popover__desc {
     justify-content: center;
     text-align: center;
     padding: 1px 7px;
+    height: 20px;
     border-radius: 6px;
     font-size: 11.5px;
     font-family: monospace;
     font-weight: 500;
+    line-height: 1.2;
     color: #06b6d4;
     background: rgba(6, 182, 212, 0.12);
     border: 1px solid rgba(6, 182, 212, 0.28);
@@ -1994,10 +2043,11 @@ body.dark-theme .tachyon_proto-popover__desc {
     justify-content: center;
     text-align: center;
     padding: 1px 7px;
+    height: 20px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     color: #818cf8;
     background: rgba(99, 102, 241, 0.12);
     border: 1px solid rgba(99, 102, 241, 0.28);
@@ -2024,11 +2074,12 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 2px 7px;
+    padding: 1px 7px;
+    height: 20px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.2;
     width: 82px;
     min-width: 82px;
     max-width: 82px;

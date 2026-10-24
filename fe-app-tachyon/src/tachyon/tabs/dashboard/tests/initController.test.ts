@@ -243,4 +243,61 @@ describe('dashboard initController', () => {
     expect(customProxyLatencies.get('server-timeout')).toBe(-1);
     expect(customProxyLatencies.get('server-old')).toBe(-1);
   });
+
+  describe('getSectionConnectionStats', () => {
+    it('returns totals directly when totalProxySections <= 1', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+
+      const rawConns = [{ chains: ['main'], upload: 100, download: 200 }];
+      const totals = {
+        downloadTotal: 5000,
+        uploadTotal: 1000,
+        downSpeed: 250,
+        upSpeed: 50,
+      };
+
+      const result = getSectionConnectionStats('main', 1, rawConns, totals);
+      expect(result).toEqual({
+        conns: 1,
+        upload: 1000,
+        download: 5000,
+        downSpeed: 250,
+        upSpeed: 50,
+      });
+    });
+
+    it('aggregates connections, upload and download per section matching chains and metadata.chains', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+
+      const rawConns = [
+        { chains: ['main', 'proxy-out'], upload: 500, download: 1500 },
+        { metadata: { chains: ['MAIN'] }, upload: 200, download: 400 },
+        { chains: ['other-section'], upload: 1000, download: 2000 },
+      ] as any;
+
+      const totals = {
+        downloadTotal: 10000,
+        uploadTotal: 5000,
+        downSpeed: 1000,
+        upSpeed: 500,
+      };
+
+      const resultMain = getSectionConnectionStats('main', 2, rawConns, totals);
+      expect(resultMain.conns).toBe(2);
+      expect(resultMain.upload).toBe(700);
+      expect(resultMain.download).toBe(1900);
+      expect(resultMain.downSpeed).toBe(1000);
+      expect(resultMain.upSpeed).toBe(500);
+
+      const resultOther = getSectionConnectionStats(
+        'other-section',
+        2,
+        rawConns,
+        totals,
+      );
+      expect(resultOther.conns).toBe(1);
+      expect(resultOther.upload).toBe(1000);
+      expect(resultOther.download).toBe(2000);
+    });
+  });
 });
