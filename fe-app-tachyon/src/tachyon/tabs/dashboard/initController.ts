@@ -2671,6 +2671,22 @@ export async function renderSectionDashboardWidgets() {
       },
     );
 
+    const latencyClass =
+      route.latency > 0
+        ? route.latency <= 150
+          ? 'tachyon-latency-pill tachyon-latency-pill--fast'
+          : route.latency <= 300
+            ? 'tachyon-latency-pill tachyon-latency-pill--medium'
+            : 'tachyon-latency-pill tachyon-latency-pill--slow'
+        : 'tachyon-latency-pill tachyon-latency-pill--neutral';
+
+    const latencyValue =
+      route.latency > 0
+        ? E('span', { class: latencyClass }, `${route.latency}ms`)
+        : isCheckingLatency
+          ? E('span', { class: latencyClass }, tr('Проверка...', 'Checking...'))
+          : E('span', { class: latencyClass }, '—');
+
     const routeItems = [
       {
         key: tr('Сервер', 'Server'),
@@ -2684,7 +2700,6 @@ export async function renderSectionDashboardWidgets() {
             ensureOutboundDisplayFlag({ displayName: route.name }),
           ),
         ),
-        attributes: { class: 'tachyon-stat--bold' },
       },
       {
         key: tr('Селектор', 'Selector'),
@@ -2708,17 +2723,9 @@ export async function renderSectionDashboardWidgets() {
       {
         key: tr('Протокол', 'Protocol'),
         value:
-          route.type && route.type !== '-'
-            ? E(
-                'span',
-                {
-                  'data-metric': 'protocol',
-                  class: 'tachyon-protocol-pill',
-                } as any,
-                route.type,
-              )
-            : '-',
-      },
+route.type && route.type !== '-'
+            ? E('span', { 'data-metric': 'protocol', class: 'tachyon-protocol-pill' } as any, route.type)
+            : '-',      },
     ];
 
     const trafficItems = [
@@ -2726,22 +2733,14 @@ export async function renderSectionDashboardWidgets() {
         key: tr('Входящий', 'Downlink'),
         value: E(
           'span',
-          {
-            class: 'tachyon-stat--down',
-            'data-metric': 'down-speed',
-          } as any,
-          `↓ ${prettyBytes(stats.downSpeed)}/s`,
+{ class: 'tachyon-stat-pill tachyon-stat-pill--down', 'data-metric': 'down-speed' } as any,          `↓ ${prettyBytes(stats.downSpeed)}/s`,
         ),
       },
       {
         key: tr('Исходящий', 'Uplink'),
         value: E(
           'span',
-          {
-            class: 'tachyon-stat--up',
-            'data-metric': 'up-speed',
-          } as any,
-          `↑ ${prettyBytes(stats.upSpeed)}/s`,
+{ class: 'tachyon-stat-pill tachyon-stat-pill--up', 'data-metric': 'up-speed' } as any,          `↑ ${prettyBytes(stats.upSpeed)}/s`,
         ),
       },
       {
@@ -2749,23 +2748,24 @@ export async function renderSectionDashboardWidgets() {
           totalProxySections <= 1
             ? tr('За сессию', 'Session total')
             : tr('Трафик секции', 'Section traffic'),
-        value: E(
-          'span',
-          {
-            class: 'tachyon-stat--session',
-            'data-metric': 'session-traffic',
-          } as any,
-          `▼ ${prettyBytes(stats.download || 0)} • ▲ ${prettyBytes(stats.upload || 0)}`,
-        ),
+        value: E('span', { class: 'tachyon-stat--session' } as any, [
+          E(
+            'span',
+            { class: 'tachyon-traffic-pill tachyon-traffic-pill--down' },
+            `↓ ${prettyBytes(stats.download || 0)}`,
+          ),
+          E(
+            'span',
+            { class: 'tachyon-traffic-pill tachyon-traffic-pill--up' },
+            `↑ ${prettyBytes(stats.upload || 0)}`,
+          ),
+        ]),
       },
       {
         key: tr('Соединения', 'Connections'),
         value: E(
           'span',
-          {
-            'data-metric': 'conns',
-          } as any,
-          `${stats.conns} ${tr('соед.', 'conns')}`,
+{ class: 'tachyon-stat-pill tachyon-stat-pill--conns', 'data-metric': 'conns' } as any,          `${stats.conns} ${tr('соед.', 'conns')}`,
         ),
       },
     ];
@@ -2823,15 +2823,25 @@ export async function renderSystemServicesWidget() {
   const activeClientsCount = isTachyonRunning ? currentConnections.length : 0;
 
   const routingItems = [
-    { key: tr('Режим работы', 'Mode'), value: 'TProxy + Fake-IP' },
+    {
+      key: tr('Режим работы', 'Mode'),
+      value: E(
+        'span',
+        { class: 'tachyon-mode-pill tachyon-mode-pill--active' },
+        'TProxy + Fake-IP',
+      ),
+    },
     {
       key: tr('Всего соединений', 'Active Connections'),
-      value: `${connectionsCount} ${tr('соед.', 'conns')}`,
+      value: E(
+        'span',
+        { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
+        `${connectionsCount} ${tr('соед.', 'conns')}`,
+      ),
     },
     {
       key: tr('Секции правил', 'Routing Sections'),
       value: `${activeSectionsCount} ${tr('активных', 'active')}`,
-      attributes: { class: 'tachyon-stat--bold' },
     },
     {
       key: tr('Активные клиенты', 'Active Clients'),
@@ -2956,7 +2966,7 @@ export async function renderSystemServicesWidget() {
     loading,
     failed,
     title: tr('Система и сервисы', 'System & Services'),
-    badge: badgeElement,
+    badge: tr('Активна', 'Active'),
     attributes: {
       class: 'tachyon-dual-card--system-pinned',
     },
