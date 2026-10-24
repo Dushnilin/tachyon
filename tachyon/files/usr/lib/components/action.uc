@@ -1430,6 +1430,7 @@ function install_tailscale(action) {
         action_fail(component, "install", "Failed to install " + label + " package from the feed");
     }
     disable_standalone_service("tailscale");
+    command_status(command_from_args([ "ucode", "-L", LIB_DIR, runtime_module, "sync-firewall" ]));
     restart_tachyon_after_successful_change();
     clear_version_caches();
     let current_version = provider_package_version(runtime_module);
@@ -3960,8 +3961,12 @@ function component_action(component, action, extra) {
         action == "install_tiny" || action == "install_stable"))
         dispatch_sing_box(action);
     else if (component == "tachyon-core" && (action == "check_update" || action == "install" ||
-        action == "install_version"))
-        dispatch_sing_box(action == "check_update" ? "check_update" : "install_tachyon_core");
+        action == "install_version")) {
+        if (action == "check_update")
+            install_tachyon_core("check_update", extra);
+        else
+            dispatch_sing_box("install_tachyon_core");
+    }
     else if (component == "zapret" && (action == "check_update" || action == "install"))
         install_zapret(action);
     else if (component == "zapret" && action == "remove")

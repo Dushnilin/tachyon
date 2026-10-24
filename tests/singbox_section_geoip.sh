@@ -85,6 +85,13 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "outbound_jsons": [ "{\"type\":\"direct\",\"tag\":\"sec_incall-out\"}" ],
       "geoip_country": [ "ru" ],
       "geoip_mode": "include_all"
+    },
+    {
+      ".name": "sec_bypass_ua",
+      ".type": "section",
+      "enabled": "1",
+      "action": "bypass",
+      "geoip_country": [ "ua" ]
     }
   ]
 }
@@ -114,6 +121,8 @@ let sec_exdir_inverted = false;
 let sec_exdir_direct = false;
 let sec_incall_geo = false;
 let sec_incall_catchall = false;
+let sec_bypass_ua_geo = false;
+let sec_bypass_ua_cctld = false;
 
 function is_geo_rule(rule, tag_prefix) {
     let rs = rule.rule_set;
@@ -233,7 +242,24 @@ for (let r in rules) {
         else if (!r.domain && !r.domain_suffix && !r.rule_set && !r.ip_cidr && !r.source_ip_cidr)
             sec_incall_catchall = true;
     }
+
+    // 8. Check sec_bypass_ua: defaults to include mode, emits geoip_ua ruleset AND .ua ccTLD route
+    if (r.outbound == "bypass-out") {
+        if (r.type == "logical" && r.mode == "and") {
+            for (let sub in r.rules) {
+                if (!sub.invert && sub.rule_set && index("" + sub.rule_set, "sec_bypass_ua-geoip_ua") >= 0)
+                    sec_bypass_ua_geo = true;
+            }
+        } else if (!r.invert && r.rule_set && index("" + r.rule_set, "sec_bypass_ua-geoip_ua") >= 0) {
+            sec_bypass_ua_geo = true;
+        }
+        if (type(r.domain_suffix) == "array" && index(r.domain_suffix, "ua") >= 0)
+            sec_bypass_ua_cctld = true;
+    }
 }
+
+if (!sec_bypass_ua_geo || !sec_bypass_ua_cctld)
+    die("Expected sec_bypass_ua to emit non-inverted geoip_ua ruleset and .ua ccTLD route to bypass-out!\n");
 
 if (!sec_yt_logical_found)
     die("Expected scoped logical rule for sec_yt-out (youtube.com AND NOT ru) not found!\n");

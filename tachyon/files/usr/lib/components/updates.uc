@@ -1537,7 +1537,9 @@ function cache_component_update_check_result(value, notify_update) {
         let notify_component = component;
         if (component == "sing_box") {
             let marker = trim(read_file(SB_VARIANT_STATE_FILE));
-            if (marker == "tachyon-core" || (marker == "" && fs.stat("/usr/bin/tachyon-core") != null))
+            if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+                marker = trim(read_file("/etc/tachyon/sing-box-variant"));
+            if (marker == "tachyon-core")
                 notify_component = "tachyon-core";
         }
         log_message("[component-update] " + notify_component + " " + cached.latest_version +

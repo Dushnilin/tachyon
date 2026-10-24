@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let runtime_constants = require("tachyon_core.constants");
+let variant_state = require("tachyon_core.variant_state");
 let runtime_subscription = require("tachyon_core.subscription");
 let runtime_country = require("tachyon_core.country");
 let runtime_dns = require("tachyon_core.dns");
@@ -519,8 +520,8 @@ function certificate_pin_field() {
     let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
     let version = override != ""
         ? override
-        : trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || ""));
-    let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || ""));
+        : variant_state.read_version_state();
+    let variant = variant_state.read_variant_marker();
 
     // With no state file to go on, let the model look at the installed binary
     // rather than guessing from an empty version.
@@ -545,7 +546,7 @@ function apply_link_tls(outbound, scheme, query) {
         tls.server_name = as_string(query.sni);
     if (bool_query(query.allowInsecure || query.insecure || ""))
         tls.insecure = true;
-    let certificate_pin = common.certificate_pin_base64(as_string(query.pcs || ""));
+    let certificate_pin = common.certificate_pin_base64(as_string(query.pcs || query.pinSHA256 || ""));
     if (certificate_pin != "") {
         let pin_field = certificate_pin_field();
         if (pin_field != "")
@@ -846,6 +847,14 @@ function manual_vmess_outbound(link, tag_name) {
     if (vmess.tls === true || vmess.tls == "tls" || vmess.tls == "true") {
         let tls = { enabled: true };
         optional_query_string(tls, "server_name", vmess_json_value(vmess.sni));
+        if (bool_query(vmess_json_value(vmess.allowInsecure || vmess.insecure)))
+            tls.insecure = true;
+        let certificate_pin = common.certificate_pin_base64(vmess_json_value(vmess.pcs));
+        if (certificate_pin != "") {
+            let pin_field = certificate_pin_field();
+            if (pin_field != "")
+                tls[pin_field] = [ certificate_pin ];
+        }
         let alpn = tls_alpn_array(vmess_json_value(vmess.alpn), network);
         if (length(alpn) > 0)
             tls.alpn = alpn;
@@ -980,8 +989,8 @@ function manual_tuic_outbound(link, tag_name) {
 }
 
 function ensure_imported_vpn_lx() {
-    let variant = trim(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || "");
-    let version = trim(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || "");
+    let variant = variant_state.read_variant_marker();
+    let version = variant_state.read_version_state();
     if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0 && match(version, /^v?0\.[0-9]+\./) == null)
         ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
 }
@@ -1160,7 +1169,7 @@ function manual_link_outbound(link, tag_name, display_info) {
         return {
             type: "fptn",
             tag: tag_name,
-            token: link
+            token: url_strip_fragment_value(link)
         };
     }
     if (scheme == "vmess")
@@ -1170,6 +1179,7 @@ function manual_link_outbound(link, tag_name, display_info) {
         scheme == "snell" || scheme == "mieru" || scheme == "mierus" ||
         scheme == "tg" || scheme == "mtproto" || scheme == "shadowtls" ||
         scheme == "tewfai" || scheme == "trusttunnel" || scheme == "masque" ||
+        scheme == "openconnect" || scheme == "anyconnect" ||
         ((scheme == "http" || scheme == "https") && (index(link, "://t.me/proxy?") >= 0 || index(link, "://telegram.me/proxy?") >= 0))) {
         let parsed = subscription_parser.parse_share_link(link);
         if (parsed == null)
@@ -1269,7 +1279,25 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     ensure_explicit_outbound_supported(outbound, "manual outbound", display_name);
     if (outbound.type == "wireguard")
         add_imported_wireguard_endpoint(config, outbound);
-    else
+    else if (outbound.type == "shadowtls") {
+        let stls_tag = unique_tag(tag_name + "-stls", taken);
+        taken[stls_tag] = true;
+        let stls_outbound = {};
+        for (let k, v in outbound)
+            stls_outbound[k] = v;
+        stls_outbound.tag = stls_tag;
+        push(config.outbounds, stls_outbound);
+        outbound = {
+            type: "shadowsocks",
+            tag: tag_name,
+            server: stls_outbound.server,
+            server_port: stls_outbound.server_port,
+            method: "aes-128-gcm",
+            password: as_string(stls_outbound.password || ""),
+            detour: stls_tag
+        };
+        push(config.outbounds, outbound);
+    } else
         push(config.outbounds, outbound);
     push(selector_tags, tag_name);
     push(urltest_candidate_tags, tag_name);
@@ -1303,12 +1331,10 @@ function add_connection_manual_links(config, state, section, taken, selector_tag
 }
 
 function is_extended_variant_detected() {
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
+    let sb_variant_val = variant_state.read_variant_marker();
     if (sb_variant_val == "extended" || sb_variant_val == "extended-compressed")
         return true;
-    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
-    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
+    let sb_version_val = variant_state.read_version_state();
     return index(sb_version_val, "extended") >= 0;
 }
 
@@ -1341,6 +1367,7 @@ function add_connection_text_urltest(config, state, section, taken, selector_tag
     let url = connections.urltest_testing_url(section, "urltest");
     let interval = connections.urltest_check_interval(section, "urltest");
     let tolerance = int(connections.urltest_tolerance(section, "urltest"), 10);
+    let idle_timeout = ctx.routes.urltest_idle_timeout(section, "urltest");
     let interrupt = connections.urltest_interrupt_exist_connections(section, "urltest");
     let outbound = {
         type: "urltest",
@@ -1351,6 +1378,8 @@ function add_connection_text_urltest(config, state, section, taken, selector_tag
         tolerance,
         interrupt_exist_connections: interrupt
     };
+    if (idle_timeout != "")
+        outbound.idle_timeout = idle_timeout;
     runtime_subscription.remember_outbound_metadata(state, urltest_tag, "Fastest", outbound);
     runtime_subscription.remember_urltest_group_config(state, urltest_tag, {
         displayName: "Fastest",
@@ -1358,7 +1387,7 @@ function add_connection_text_urltest(config, state, section, taken, selector_tag
         url,
         interval,
         tolerance,
-        idle_timeout: "",
+        idle_timeout: outbound.idle_timeout || "",
         interrupt_exist_connections: interrupt
     });
     push(config.outbounds, outbound);
@@ -1568,8 +1597,36 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (hidden_flags[i] === true && !(as_string(outbound.tag || "") in active_hidden_refs))
             continue;
 
+        if (outbound.type == "urltest") {
+            let sub_idle_timeout = connections.subscription_urltest_idle_timeout(section, source_entry);
+            if (sub_idle_timeout != "")
+                outbound.idle_timeout = sub_idle_timeout;
+            else if (as_string(outbound.idle_timeout || "") == "") {
+                let sec_idle = ctx.routes.urltest_idle_timeout(section, "urltest");
+                if (sec_idle != "")
+                    outbound.idle_timeout = sec_idle;
+            }
+        }
         if (outbound.type == "wireguard") {
             add_imported_wireguard_endpoint(config, outbound);
+        } else if (outbound.type == "shadowtls" && !(as_string(outbound.tag || "") in active_hidden_refs)) {
+            let stls_tag = unique_tag(outbound.tag + "-stls", taken);
+            taken[stls_tag] = true;
+            let stls_outbound = {};
+            for (let k, v in outbound)
+                stls_outbound[k] = v;
+            stls_outbound.tag = stls_tag;
+            push(config.outbounds, stls_outbound);
+            outbound = {
+                type: "shadowsocks",
+                tag: outbound.tag,
+                server: stls_outbound.server,
+                server_port: stls_outbound.server_port,
+                method: "aes-128-gcm",
+                password: as_string(stls_outbound.password || ""),
+                detour: stls_tag
+            };
+            push(config.outbounds, outbound);
         } else {
             push(config.outbounds, outbound);
         }
@@ -2075,10 +2132,8 @@ function add_awg_endpoint(config, section) {
     let mtu = int_option(section, "awg_mtu", "1280");
     endpoint.mtu = mtu > 0 ? mtu : 1280;
 
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
-    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
-    let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
+    let sb_version_val = variant_state.read_version_state();
+    let sb_variant_val = variant_state.read_variant_marker();
     let is_lx = sb_variant_val == "lx" || index(sb_version_val, "-lx") >= 0;
     // tachyon-core reads the AmneziaWG params flat off the wireguard endpoint -
     // the same layout sing-box-lx uses. Its KNOWN_ENDPOINT_FIELDS has no
@@ -2160,8 +2215,7 @@ function add_awg_endpoint(config, section) {
         // j1-j3/itime were removed from the extended schema in 2.6.1 and
         // sing-box fatals on unknown fields, so emit them only for builds
         // whose schema still accepts them.
-        let sb_version_state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
-        let sb_version = trim(fs.readfile(sb_version_state_file) || "");
+        let sb_version = variant_state.read_version_state();
         if (common.extended_awg_schema_has_junk_signatures(sb_version)) {
             if (j1 != "") amnezia.j1 = j1;
             if (j2 != "") amnezia.j2 = j2;
@@ -2640,45 +2694,44 @@ function add_tewfai_outbound(config, section) {
     };
     let password = option(section, "tewfai_password", "");
     if (password != "") outbound.password = password;
-    let tr_list = list_option(section, "tewfai_transport");
-    if (length(tr_list) > 0) {
-        outbound.transport = tr_list;
-    } else {
+    let raw_tr = list_option(section, "tewfai_transport");
+    if (length(raw_tr) == 0) {
         let tr_str = option(section, "tewfai_transport", "");
         if (tr_str != "")
-            outbound.transport = split(tr_str, ",");
+            raw_tr = split(tr_str, ",");
     }
+    let tr_list = [];
+    for (let item in raw_tr) {
+        item = lc(trim(as_string(item)));
+        if (item == "raw_tls" || item == "h2" || item == "ws") item = "tcp";
+        else if (item == "h3_stream" || item == "h3_datagram") item = "quic";
+        if (item == "tcp" || item == "quic") {
+            if (index(tr_list, item) < 0)
+                push(tr_list, item);
+        }
+    }
+    if (length(tr_list) > 0)
+        outbound.transport = tr_list;
     let cipher = option(section, "tewfai_inner_cipher", "");
-    if (cipher != "") outbound.inner_cipher = cipher;
+    if (cipher == "aes-256-gcm" || cipher == "none")
+        outbound.inner_cipher = cipher;
     let morph = option(section, "tewfai_morph_profile", "");
-    if (morph != "") outbound.morph_profile = morph;
+    if (morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
+        outbound.morph_profile = morph;
     let max_streams = int_option(section, "tewfai_max_streams", "0");
     if (max_streams > 0) outbound.max_streams = max_streams;
     let mtu = int_option(section, "tewfai_mtu", "0");
     if (mtu > 0) outbound.mtu = mtu;
     if (bool_option(section, "tewfai_pqc_enabled", false))
-        outbound.pqc = { enabled: true };
+        outbound.pqc = true;
     if (bool_option(section, "tewfai_handover_enabled", false))
         outbound.handover = { enabled: true };
-    if (bool_option(section, "tewfai_fec_enabled", false)) {
-        let fec = { enabled: true };
-        let ds = int_option(section, "tewfai_fec_data_shards", "0");
-        let ps = int_option(section, "tewfai_fec_parity_shards", "0");
-        if (ds > 0) fec.data_shards = ds;
-        if (ps > 0) fec.parity_shards = ps;
-        outbound.fec = fec;
-    }
+    if (bool_option(section, "tewfai_fec_enabled", false))
+        outbound.fec = true;
     if (bool_option(section, "tewfai_shaper_enabled", false)) {
-        let shaper = { enabled: true };
-        let sp = option(section, "tewfai_shaper_profile", "");
-        if (sp != "") shaper.profile = sp;
-        let min_pad = int_option(section, "tewfai_shaper_min_padding", "0");
-        let max_pad = int_option(section, "tewfai_shaper_max_padding", "0");
-        let chaff = int_option(section, "tewfai_shaper_chaff_interval_ms", "0");
-        if (min_pad > 0) shaper.min_padding = min_pad;
-        if (max_pad > 0) shaper.max_padding = max_pad;
-        if (chaff > 0) shaper.chaff_interval_ms = chaff;
-        outbound.shaper = shaper;
+        let sp = option(section, "tewfai_shaper_profile", "adaptive");
+        let mode = (sp == "fixed" || sp == "off") ? sp : "adaptive";
+        outbound.shaper = { mode };
     }
     let sni = option(section, "tewfai_sni", "");
     let tls = {
@@ -2722,7 +2775,7 @@ function add_trusttunnel_outbound(config, section) {
     let password = option(section, "trusttunnel_password", "");
     if (password != "") outbound.password = password;
     if (bool_option(section, "trusttunnel_quic", false))
-        outbound.quic = true;
+        outbound.quic = "true";
     let cc = option(section, "trusttunnel_congestion_control", "");
     if (cc != "") outbound.quic_congestion_control = cc;
     let sni = option(section, "trusttunnel_sni", "");
@@ -2779,11 +2832,11 @@ function add_openconnect_outbound(config, section) {
     let pin = option(section, "openconnect_server_cert_pin", "");
     if (pin != "") outbound.server_cert_pin = pin;
     let addr = option(section, "openconnect_address", "");
-    if (addr != "") outbound.address = addr;
+    if (addr != "") outbound.address = split(addr, "/")[0];
     let addrv6 = option(section, "openconnect_address_v6", "");
-    if (addrv6 != "") outbound.address_v6 = addrv6;
+    if (addrv6 != "") outbound.address_v6 = split(addrv6, "/")[0];
     let mtu = int_option(section, "openconnect_mtu", "0");
-    if (mtu > 0) outbound.mtu = mtu;
+    if (mtu > 0) outbound.mtu = as_string(mtu);
     let sni = option(section, "openconnect_sni", "");
     let tls = {
         enabled: true,
@@ -2802,15 +2855,25 @@ function add_mtproto_outbound(config, section) {
     let server = option(section, "mtproto_server", "");
     if (server == "")
         ctx.runtime_generate_unsupported("MTProto section '" + section[".name"] + "' missing mtproto_server");
+    let raw_secret = option(section, "mtproto_secret", "");
+    let norm_secret = lc(trim(as_string(raw_secret)));
+    let padded_prefix = false;
+    if (length(norm_secret) >= 34 && match(norm_secret, /^(ee|dd)[0-9a-f]{32}/)) {
+        padded_prefix = substr(norm_secret, 0, 2) == "dd";
+        raw_secret = substr(norm_secret, 2, 32);
+    } else if (length(norm_secret) == 32 && match(norm_secret, /^[0-9a-f]{32}$/)) {
+        raw_secret = norm_secret;
+    }
     let outbound = {
         type: "mtproto",
         tag,
         server,
         server_port: int_option(section, "mtproto_server_port", "443"),
-        secret: option(section, "mtproto_secret", "")
+        secret: raw_secret
     };
     let transport = option(section, "mtproto_transport", "");
     if (transport != "") outbound.transport = transport;
+    else if (padded_prefix) outbound.transport = "padded_intermediate";
     let mode = option(section, "mtproto_mode", "");
     if (mode != "") outbound.mode = mode;
     let sni = option(section, "mtproto_sni", "");
@@ -3182,7 +3245,7 @@ function add_fptn_outbound(config, section, sections) {
         let fptn_out = {
             type: "fptn",
             tag,
-            token
+            token: url_strip_fragment_value(token)
         };
         let detour = outbound_detour_tag_for_section(section);
         if (detour != "")

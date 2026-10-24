@@ -35,6 +35,14 @@ export function render() {
           ),
           E(
             'div',
+            {
+              id: 'dashboard-widget-inbounds',
+              class: 'tachyon-inbounds-fullwidth-slot',
+            },
+            [],
+          ),
+          E(
+            'div',
             { id: 'dashboard-widget-tailscale', style: 'display:none' },
             renderWidget({
               loading: true,

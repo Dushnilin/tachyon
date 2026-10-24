@@ -552,7 +552,7 @@ export const styles = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 240px;
+    max-width: min(380px, 50vw);
 }
 
 .tachyon_dashboard-page__subscription-meta__main {
@@ -1932,6 +1932,280 @@ body.dark-theme .tachyon_proto-popover__val {
     .tachyon-client-row__traffic {
         align-self: flex-end;
     }
+}
+
+/* ── Inbound Servers Widget (Dashboard) & Servers Tab Overview ─────────── */
+
+.tachyon-inbounds-fullwidth-slot {
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+.tachyon-inbounds-fullwidth-slot:empty {
+    display: none;
+}
+
+.tachyon-inbounds-collapsible-card {
+    min-height: 0 !important;
+    padding: 9px 12px;
+}
+
+.tachyon-inbounds-collapsible-card--collapsed {
+    padding: 7px 12px;
+}
+
+.tachyon-inbounds-collapsible__header {
+    cursor: pointer;
+    user-select: none;
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+
+.tachyon-inbounds-collapsible__header--collapsed {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.tachyon-inbounds-collapsible__title-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.tachyon-inbounds-chevron {
+    color: var(--text-color-medium, #94a3b8);
+    flex-shrink: 0;
+}
+
+.tachyon-dual-card__badge--clickable {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    line-height: 1.35;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.tachyon-dual-card__badge--clickable:hover {
+    background: rgba(16, 185, 129, 0.22);
+    border-color: rgba(16, 185, 129, 0.45);
+}
+
+.tachyon-inbound-collapse-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text-color-medium, #94a3b8);
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tachyon-inbound-collapse-btn:hover {
+    color: var(--text-color-high, #f8fafc);
+    background: rgba(59, 130, 246, 0.16);
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+.tachyon-inbounds-active-clients-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    padding-bottom: 7px;
+    border-bottom: 1px dashed rgba(128, 128, 128, 0.16);
+}
+
+.tachyon-inbounds-client-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 7px;
+    font-size: 11.5px;
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.22);
+}
+
+.tachyon-inbounds-client-chip__name {
+    font-weight: 600;
+    color: var(--text-color-high, inherit);
+}
+
+.tachyon-inbounds-chip-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 6px;
+    min-width: 0;
+}
+
+.tachyon-inbound-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    background: rgba(128, 128, 128, 0.045);
+    border: 1px solid rgba(128, 128, 128, 0.14);
+    cursor: pointer;
+    min-width: 0;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.tachyon-inbound-chip:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: rgba(99, 102, 241, 0.35);
+}
+
+.tachyon-inbound-chip--selected {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.45);
+}
+
+.tachyon-inbound-chip__left {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.tachyon-inbound-chip__name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color-high, inherit);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tachyon-inbound-chip__right {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.tachyon-dual-card__items--scrollable,
+.tachyon-inbounds-scroll-list {
+    max-height: 108px;
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+}
+
+.tachyon-dual-card__row--clickable,
+.tachyon-inbound-row {
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 2px 6px;
+    margin: 0 -6px;
+    transition: background-color 0.15s ease;
+}
+
+.tachyon-dual-card__row--clickable:hover,
+.tachyon-inbound-row:hover {
+    background: var(--primary-color-low, rgba(99, 102, 241, 0.1));
+}
+
+.tachyon-inbound-row--selected {
+    background: rgba(59, 130, 246, 0.14);
+}
+
+.tachyon-inbound-row__key {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.tachyon-inbound-row__gear {
+    opacity: 0.55;
+    flex-shrink: 0;
+    transition: opacity 0.15s ease;
+}
+
+.tachyon-inbound-row:hover .tachyon-inbound-row__gear {
+    opacity: 0.95;
+}
+
+.tachyon-inbound-mini-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 19px;
+    height: 18px;
+    padding: 0;
+    margin: 0;
+    border-radius: 5px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text-color-medium, #94a3b8);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tachyon-inbound-mini-btn:hover {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: var(--text-color-high, #f8fafc);
+}
+
+.tachyon-inbound-card__header-actions {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tachyon-inbound-filter-pill {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    height: 20px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #60a5fa;
+    background: rgba(59, 130, 246, 0.14);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    cursor: pointer;
+}
+
+.tachyon-inbound-filter-pill:hover {
+    background: rgba(59, 130, 246, 0.24);
+}
+
+.tachyon-servers-overview-card {
+    margin: 6px 0 12px;
+}
+
+.tachyon-inbound-card--disabled {
+    opacity: 0.6;
+}
+
+.tachyon-inbound-card--highlight {
+    outline: 2px solid #6366f1;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.22);
+    transition: outline 0.25s ease, box-shadow 0.25s ease;
 }
 
 `;

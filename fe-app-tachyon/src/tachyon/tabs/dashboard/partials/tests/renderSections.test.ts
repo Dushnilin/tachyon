@@ -757,6 +757,12 @@ describe('renderSections', () => {
     expect(headers[1].textContent).toContain('Provider Beta');
     expect(headers[2].textContent).toContain('Standalone servers');
 
+    // Must not duplicate subscription metadata headers at the top of the section
+    const allMetaBanners = expanded.querySelectorAll(
+      '.tachyon_dashboard-page__subscription-meta',
+    );
+    expect(allMetaBanners).toHaveLength(3);
+
     const items = expanded.querySelectorAll(
       '.tachyon_dashboard-page__outbound-grid__item',
     );
@@ -1114,5 +1120,188 @@ describe('renderSections', () => {
       '.tachyon_dashboard-page__country-chip-divider',
     );
     expect(divider).toBeTruthy();
+  });
+
+  it('renders active badge in section header when collapsed with auto selection mode', () => {
+    const section = {
+      code: 'main',
+      sectionName: 'main',
+      displayName: 'main',
+      withTagSelect: true,
+      outbounds: [
+        {
+          code: 'priority-tag',
+          displayName: 'priority',
+          selected: true,
+          latency: 27,
+          priorityInfo: {
+            code: 'priority-tag',
+            displayName: 'priority',
+            selectedName: '🇩🇪 ⚡ Германия',
+            outbounds: [
+              {
+                code: 'de-1',
+                displayName: '🇩🇪 ⚡ Германия',
+                selected: true,
+                latency: 27,
+              },
+            ],
+          },
+        },
+        {
+          code: 'de-1',
+          displayName: '🇩🇪 ⚡ Германия',
+          selected: false,
+          latency: 27,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      isCollapsed: true,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const titleSec = el.querySelector(
+      '.tachyon_dashboard-page__outbound-section__title-section',
+    );
+    expect(titleSec).not.toBeNull();
+
+    const activeBadge = titleSec?.querySelector(
+      '.tachyon_dashboard-page__source-group__active-badge',
+    );
+    expect(activeBadge).not.toBeNull();
+    expect(activeBadge?.textContent).toContain('priority');
+    expect(activeBadge?.textContent).toContain('Германия');
+    expect(activeBadge?.textContent).toContain('27ms');
+  });
+
+  it('renders active badge with fallback to member displayName when selectedName is not set', () => {
+    const section = {
+      code: 'main',
+      sectionName: 'main',
+      displayName: 'main',
+      withTagSelect: true,
+      outbounds: [
+        {
+          code: 'urltest-tag',
+          displayName: 'urltest',
+          selected: true,
+          latency: 0,
+          urlTestInfo: {
+            code: 'urltest-tag',
+            displayName: 'urltest',
+            selectedCode: 'us-1',
+            outbounds: [
+              {
+                code: 'us-1',
+                displayName: '🇺🇸 US East',
+                selected: true,
+                latency: 142,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      isCollapsed: true,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const activeBadge = el.querySelector(
+      '.tachyon_dashboard-page__source-group__active-badge',
+    );
+    expect(activeBadge).not.toBeNull();
+    expect(activeBadge?.textContent).toContain('urltest');
+    expect(activeBadge?.textContent).toContain('US East');
+    expect(activeBadge?.textContent).toContain('142ms');
+  });
+
+  it('renders active badge with latency in auto-groups block when collapsed', () => {
+    const section: any = {
+      code: 'main',
+      sectionName: 'main',
+      displayName: 'main',
+      withTagSelect: true,
+      dashboardSettings: {
+        countryGrouping: 'chips',
+      },
+      outbounds: [
+        {
+          code: 'priority-tag',
+          displayName: 'priority',
+          selected: true,
+          latency: 51,
+          priorityInfo: {
+            code: 'priority-tag',
+            displayName: 'priority',
+            selectedName: '🇳🇱 Hysteria 2 | Нидерланды',
+            outbounds: [
+              {
+                code: 'nl-1',
+                displayName: '🇳🇱 Hysteria 2 | Нидерланды',
+                selected: true,
+                latency: 51,
+              },
+            ],
+          },
+        },
+        {
+          code: 'nl-1',
+          displayName: '🇳🇱 Hysteria 2 | Нидерланды',
+          country: 'NL',
+          selected: false,
+          latency: 51,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      isCollapsed: false,
+      collapsedSourceGroups: new Set(['autogrp:main']),
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const autoGroups = el.querySelector('.tachyon_dashboard-page__auto-groups');
+    expect(autoGroups).not.toBeNull();
+    const autoBadge = autoGroups?.querySelector(
+      '.tachyon_dashboard-page__source-group__active-badge',
+    );
+    expect(autoBadge).not.toBeNull();
+    expect(autoBadge?.textContent).toContain('priority');
+    expect(autoBadge?.textContent).toContain('Нидерланды');
+    expect(autoBadge?.textContent).toContain('51ms');
   });
 });

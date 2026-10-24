@@ -249,8 +249,8 @@ function resolve_rule_for_section(section, route_rule) {
             resolve_rule[key] = route_rule[key];
     }
     resolve_rule.action = "resolve";
-    resolve_rule.server = (action == "zapret" || action == "zapret2")
-        ? runtime_constants.BOOTSTRAP_DNS_SERVER_TAG
+    resolve_rule.server = connections.routed_dns_enabled(section)
+        ? runtime_constants.tag(section[".name"], "routed-dns-server")
         : runtime_constants.DNS_SERVER_TAG;
     if (action == "zapret" || action == "zapret2") {
         let opt_key = action == "zapret2" ? "nfqws2_opt" : "nfqws_opt";

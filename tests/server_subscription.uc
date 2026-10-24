@@ -64,12 +64,16 @@ check(index(b64dec(trim(subscription.response(settings, servers, request).body))
 check(links.build({protocol:"json_inbound",inbound_json:"broken"}, "vpn.example.com", "") == "", "malformed JSON inbound ignored");
 check(links.build({protocol:"vless",server_uuid:"x",security:"none",public_host:"bad.example/@evil"}, "vpn.example.com", "") == "", "invalid host rejected");
 check(links.build({protocol:"vless",server_uuid:"x",security:"reality"}, "vpn.example.com", "") == "", "incomplete Reality not exported");
-check(index(links.build({protocol:"mtproto",mtproto_secret:substr(token,0,32),mtproto_padding:"0"}, "vpn.example.com", ""), "secret=" + substr(token,0,32)) >= 0, "MTProto non-padding mode");
+check(index(links.build({protocol:"mtproto",label:"MTProto 205",mtproto_secret:substr(token,0,32),mtproto_padding:"0"}, "vpn.example.com", ""), "secret=" + substr(token,0,32)) >= 0, "MTProto non-padding mode");
+check(index(links.build({protocol:"mtproto",label:"MTProto 205",mtproto_secret:substr(token,0,32),mtproto_padding:"0"}, "vpn.example.com", ""), "#MTProto%20205") >= 0, "MTProto label fragment");
+let wg_priv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+let wg_pub = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+check(index(links.build({protocol:"awg",label:"AWG 205",awg_client_private_key:wg_priv,awg_server_public_key:wg_pub}, "vpn.example.com", ""), "amneziawg://") == 0, "AWG amneziawg:// URI");
 check(index(links.build({protocol:"socks",socks_auth_enabled:"false",server_password:"hidden"}, "vpn.example.com", ""), "hidden") < 0, "SOCKS no-auth does not export stale credentials");
 settings.server_subscription_mode = "invalid";
 check(subscription.response(settings, servers, request).code == 422, "unknown selection mode fails closed");
-for (let protocol in ["vmess", "trojan", "shadowsocks", "socks", "mixed", "http", "naive", "hysteria2", "tuic", "anytls", "shadowtls", "fptn", "mtproto"]) {
-    let server = { protocol, label:"Server", security:"tls", server_uuid:"uuid", server_password:"password", mtproto_secret:"0123456789abcdef0123456789abcdef" };
+for (let protocol in ["vmess", "trojan", "shadowsocks", "socks", "mixed", "http", "naive", "hysteria2", "tuic", "anytls", "shadowtls", "fptn", "mtproto", "awg"]) {
+    let server = { protocol, label:"Server", security:"tls", server_uuid:"uuid", server_password:"password", mtproto_secret:"0123456789abcdef0123456789abcdef", awg_client_private_key:wg_priv, awg_server_public_key:wg_pub };
     check(links.build(server, "vpn.example.com", "") != "", "supported URI: " + protocol);
 }
 printf("PASS: server subscription (%d checks)\n", checks);

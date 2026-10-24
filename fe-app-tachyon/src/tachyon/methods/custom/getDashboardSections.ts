@@ -296,6 +296,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           node_prefix_color: item.node_prefix_color,
           include_urltest_groups: item.include_urltest_groups,
           hide_urltest_group_outbounds: item.hide_urltest_group_outbounds,
+          urltest_idle_timeout: item.urltest_idle_timeout,
           hide_detour_outbounds: item.hide_detour_outbounds,
         };
       });
@@ -407,6 +408,11 @@ const SINGLE_ENDPOINT_ACTIONS = new Set([
   'sudoku',
   'masque',
   'openvpn',
+  'openconnect',
+  'tewfai',
+  'trusttunnel',
+  'shadowtls',
+  'desync',
 ]);
 
 const ACTION_DISPLAY_NAMES: Record<string, string> = {
@@ -419,6 +425,11 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
   sudoku: 'Sudoku',
   masque: 'MASQUE',
   openvpn: 'OpenVPN',
+  openconnect: 'OpenConnect',
+  tewfai: 'TewFai',
+  trusttunnel: 'TrustTunnel',
+  shadowtls: 'ShadowTLS',
+  desync: 'Native Desync',
   fptn: 'FPTN',
 };
 
@@ -1197,6 +1208,7 @@ function resolveOutboundNameAndPrefix({
 function buildUrlTestInfo({
   code,
   displayName,
+  config,
   entry,
   groupCache,
   proxyByCode,
@@ -1210,6 +1222,7 @@ function buildUrlTestInfo({
 }: {
   code: string;
   displayName: string;
+  config?: UrlTestConfig;
   entry?: ClashProxyEntry;
   groupCache?: UrlTestCacheGroup;
   proxyByCode: Map<string, ClashProxyEntry>;
@@ -1282,6 +1295,7 @@ function buildUrlTestInfo({
   const selectedName =
     outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
     selectedCode;
+  const cfgSettings = config?.settings;
 
   return {
     code,
@@ -1289,11 +1303,26 @@ function buildUrlTestInfo({
     selectedCode: selectedCode || undefined,
     selectedName: selectedName || undefined,
     isManualSelection,
-    url: groupCache?.url,
-    interval: groupCache?.interval,
-    tolerance: groupCache?.tolerance,
-    idleTimeout: groupCache?.idle_timeout || '30m',
-    interruptExistConnections: groupCache?.interrupt_exist_connections,
+    url:
+      groupCache?.url ||
+      itemSettingString(cfgSettings, 'urltest_testing_url', '') ||
+      undefined,
+    interval:
+      groupCache?.interval ||
+      itemSettingString(cfgSettings, 'urltest_check_interval', '') ||
+      undefined,
+    tolerance:
+      groupCache?.tolerance ??
+      (itemSettingString(cfgSettings, 'urltest_tolerance', '') || undefined),
+    idleTimeout:
+      groupCache?.idle_timeout ||
+      itemSettingString(cfgSettings, 'idle_timeout', '') ||
+      '30m',
+    interruptExistConnections:
+      groupCache?.interrupt_exist_connections ??
+      (cfgSettings?.interrupt_exist_connections !== undefined
+        ? itemSettingBoolean(cfgSettings, 'interrupt_exist_connections', true)
+        : undefined),
     outbounds,
   };
 }
@@ -1619,6 +1648,7 @@ function buildProxyGroupOutbounds(
         ? buildUrlTestInfo({
             code,
             displayName,
+            config: urlTestConfig,
             entry: item,
             groupCache: urltestGroups[code],
             proxyByCode,
@@ -1885,8 +1915,9 @@ function getSubscriptionMetadata(
   section: Tachyon.ConfigSection,
   sourceCount: number,
   dashboardCache?: DashboardSectionCache,
+  globalShowMetadata = true,
 ) {
-  if (!dashboardCache?.subscriptionMetadata) {
+  if (!globalShowMetadata || !dashboardCache?.subscriptionMetadata) {
     return undefined;
   }
 
@@ -2111,6 +2142,8 @@ export async function getDashboardSections(
       | 'default'
       | undefined) || 'latency';
   const globalHoverFreeze = settingsSection?.dashboard_hover_freeze !== '0';
+  const globalShowSubscriptionMetadata =
+    settingsSection?.dashboard_show_subscription_metadata !== '0';
 
   const data = await Promise.all(
     configSections
@@ -2149,6 +2182,7 @@ export async function getDashboardSections(
                 section,
                 subscriptionSourceCount,
                 dashboardCache,
+                globalShowSubscriptionMetadata,
               )
             : undefined;
           const cachedProxyLinks = includeSubscriptionCopyState

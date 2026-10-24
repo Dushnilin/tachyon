@@ -9,6 +9,16 @@ const SERVER_OUTBOUND_TYPES = new Set([
   'http',
   'hysteria2',
   'hysteria',
+  'tuic',
+  'anytls',
+  'shadowtls',
+  'snell',
+  'mieru',
+  'naive',
+  'tewfai',
+  'trusttunnel',
+  'masque',
+  'openconnect',
 ]);
 
 function invalid(message: string): ValidationResult {

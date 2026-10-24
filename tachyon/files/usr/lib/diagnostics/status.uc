@@ -1039,7 +1039,7 @@ function inbound_runtime_ok(protocol, runtime_exists, runtime_type, runtime_list
     if (protocol == "json_inbound")
         return 1;
 
-    if (runtime_type != expected_type)
+    if (runtime_type != expected_type && !(protocol == "mtproto" && (runtime_type == "mtproto" || runtime_type == "mtproxy")))
         return 0;
 
     // An endpoint-schema AWG (lx / tachyon-core) carries no listen field -

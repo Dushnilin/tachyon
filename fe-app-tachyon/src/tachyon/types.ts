@@ -502,6 +502,7 @@ export namespace Tachyon {
     | 'trusttunnel'
     | 'openconnect'
     | 'tewfai'
+    | 'desync'
     | 'openvpn'
     | 'dns'
     | 'hosts'
@@ -626,6 +627,7 @@ export namespace Tachyon {
       | 'country_alpha'
       | 'default';
     dashboard_hover_freeze?: '0' | '1';
+    dashboard_show_subscription_metadata?: '0' | '1';
     urltest_proxy_links?: string[];
     subscription_url?: string;
     subscription_user_agent?: string;
@@ -700,6 +702,7 @@ export namespace Tachyon {
     node_prefix_color?: string;
     include_urltest_groups?: '0' | '1';
     hide_urltest_group_outbounds?: '0' | '1';
+    urltest_idle_timeout?: string;
     hide_detour_outbounds?: '0' | '1';
     yacd_secret_key?: string;
     fully_routed_ips?: string | string[];

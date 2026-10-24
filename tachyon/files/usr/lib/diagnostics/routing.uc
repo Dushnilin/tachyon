@@ -295,8 +295,9 @@ function server_required_inbound_proto(protocol) {
     protocol = as_string(protocol);
     if (protocol == "json_inbound")
         return "";
-    // AWG is WireGuard underneath, whichever schema the core puts it in.
-    return protocol == "hysteria2" || protocol == "tuic" || protocol == "awg" ? "udp" : "tcp";
+    // AWG is WireGuard underneath, whichever schema the core puts it in;
+    // MASQUE is HTTP/3 over QUIC (UDP).
+    return protocol == "hysteria2" || protocol == "tuic" || protocol == "awg" || protocol == "masque" ? "udp" : "tcp";
 }
 
 function server_runtime_type_for_protocol(protocol) {

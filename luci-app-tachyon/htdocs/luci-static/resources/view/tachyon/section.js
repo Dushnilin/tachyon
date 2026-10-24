@@ -35,6 +35,7 @@ const ROUTING_ACTIONS = [
   "sudoku",
   "masque",
   "openvpn",
+  "openconnect",
   "desync",
   "shadowtls",
   "trusttunnel",
@@ -117,6 +118,7 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
       "sudoku",
       "masque",
       "openvpn",
+      "openconnect",
       "fptn",
       "desync",
       "shadowtls",
@@ -178,6 +180,7 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       "sudoku",
       "masque",
       "openvpn",
+      "openconnect",
       "fptn",
       "desync",
       "shadowtls",
@@ -2662,6 +2665,7 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       "sudoku",
       "masque",
       "openvpn",
+      "openconnect",
       "fptn",
       "desync",
       "shadowtls",
@@ -3492,6 +3496,7 @@ function subscriptionUrlSettingsKeys() {
     "node_prefix_color",
     "include_urltest_groups",
     "hide_urltest_group_outbounds",
+    "urltest_idle_timeout",
     "hide_detour_outbounds",
     "subscription_insecure",
   ];
@@ -3522,6 +3527,7 @@ function defaultSubscriptionUrlSettings() {
     node_prefix_color: "",
     include_urltest_groups: "1",
     hide_urltest_group_outbounds: "1",
+    urltest_idle_timeout: "",
     hide_detour_outbounds: "1",
     subscription_insecure: "0",
   };
@@ -4146,6 +4152,22 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.depends("include_urltest_groups", "1");
   o.default = "1";
   o.rmempty = false;
+
+  o = itemSection.option(
+    form.Value,
+    "urltest_idle_timeout",
+    _("URLTest idle timeout"),
+    _(
+      "Stop checking imported URLTest groups when not used (e.g. 30m, 12h, 1d). Leave empty to use provider or default value.",
+    ),
+  );
+  o.depends("include_urltest_groups", "1");
+  o.placeholder = "30m";
+  o.rmempty = true;
+  o.validate = function (_itemId, value) {
+    if (value == null || `${value}`.trim() === "") return true;
+    return validateRequiredSingBoxDuration(value);
+  };
 
   o = itemSection.option(
     form.Flag,
@@ -6313,6 +6335,8 @@ function getActionOptionLabel(action) {
       return "MASQUE";
     case "openvpn":
       return "OpenVPN";
+    case "openconnect":
+      return "OpenConnect";
     case "desync":
       return "Native Desync";
     case "shadowtls":
@@ -6419,6 +6443,7 @@ function populateActionOptionValues(option) {
     option.value("sudoku", getActionOptionLabel("sudoku"));
   }
   if (isTachyonCoreForUi()) {
+    option.value("openconnect", getActionOptionLabel("openconnect"));
     option.value("desync", getActionOptionLabel("desync"));
     option.value("shadowtls", getActionOptionLabel("shadowtls"));
     option.value("trusttunnel", getActionOptionLabel("trusttunnel"));
@@ -12884,12 +12909,261 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "tewfai");
 
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "tewfai_insecure",
+    _("Allow Insecure TLS"),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "tewfai_transport",
+    _("Transport Race List"),
+    _("Transports to race (e.g. tcp, quic)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("tcp", "TCP");
+  o.value("quic", "QUIC");
+  o.value("h3_datagram", "H3 Datagram");
+  o.value("h3_stream", "H3 Stream");
+  o.value("h2", "HTTP/2");
+  o.value("ws", "WebSocket");
+  o.value("raw_tls", "Raw TLS");
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "tewfai_inner_cipher",
+    _("Inner Cipher"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("", _("Auto (Default)"));
+  o.value("aes-256-gcm", "AES-256-GCM");
+  o.value("none", _("None"));
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "tewfai_morph_profile",
+    _("Morph Profile"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("", _("None (Default)"));
+  o.value("browsing", "Browsing");
+  o.value("video", "Video");
+  o.value("webrtc", "WebRTC");
+  o.value("bulk", "Bulk");
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "tewfai_max_streams",
+    _("Max Streams"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "64";
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "tewfai_pqc_enabled",
+    _("Post-Quantum Key Exchange (PQC)"),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "tewfai_handover_enabled",
+    _("Roaming / Handover"),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "tewfai_fec_enabled",
+    _("Forward Error Correction (FEC)"),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("action", "tewfai");
+
   o = section.taboption("settings", form.Value, "tewfai_mtu", _("MTU"));
   o.modalonly = true;
   o.rmempty = true;
   o.datatype = "uinteger";
   o.placeholder = "1400";
   o.depends("action", "tewfai");
+
+  // ── OpenConnect / AnyConnect (tachyon-core) ───────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_server",
+    _("Server Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "openconnect");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_server_port",
+    _("Server Port"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.placeholder = "443";
+  o.default = "443";
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "openconnect_flavor",
+    _("VPN Flavor"),
+  );
+  o.modalonly = true;
+  o.default = "anyconnect";
+  o.value("anyconnect", "Cisco AnyConnect / ocserv");
+  o.value("gp", "Palo Alto GlobalProtect");
+  o.value("pulse", "Ivanti Pulse Connect Secure");
+  o.value("fortinet", "Fortinet FortiGate SSL VPN");
+  o.value("array", "Array Networks SSL VPN");
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_username",
+    _("Username"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_password",
+    _("Password"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_cookie",
+    _("Session Cookie / Pre-Auth Token"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_urlpath",
+    _("Group / URL Path"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "/vpn";
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_realm",
+    _("Auth Realm"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_sni",
+    _("TLS SNI"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "openconnect_insecure",
+    _("Allow Insecure TLS"),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openconnect_server_cert_pin",
+    _("Server Certificate Pin (SHA-256)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "openconnect_dtls",
+    _("Enable DTLS"),
+  );
+  o.modalonly = true;
+  o.default = "1";
+  o.depends("action", "openconnect");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "openconnect_esp",
+    _("Enable ESP UDP Tunnel"),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("action", "openconnect");
+
+  o = section.taboption("settings", form.Value, "openconnect_mtu", _("MTU"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "1400";
+  o.depends("action", "openconnect");
 
   // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
 
@@ -14136,6 +14410,8 @@ function createSectionContent(section) {
       mode === "include_all"
     )
       return mode;
+    let act = uci.get(UCI_PACKAGE, section_id, "action");
+    if (act === "bypass" || act === "block") return "include";
     return "exclude";
   };
   [
@@ -15233,6 +15509,8 @@ function getSectionGeoMode(secName) {
   ) {
     return mode;
   }
+  const act = uci.get(UCI_PACKAGE, secName, "action");
+  if (act === "bypass" || act === "block") return "include";
   return "exclude";
 }
 
@@ -16212,7 +16490,7 @@ function showSectionRulesModal(section_id) {
   if (geoipCountry.length === 1 && geoipCountry[0] === "non-ru") {
     geoipCountry = ["ru"];
   }
-  const geoipMode = uci.get(UCI_PACKAGE, section_id, "geoip_mode") || "exclude";
+  const geoipMode = getSectionGeoMode(section_id);
   const geoipInverted =
     geoipMode === "exclude" || geoipMode === "exclude_direct";
   const geoip = geoipCountry.map(

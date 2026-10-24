@@ -452,6 +452,7 @@ const PASSWORD_PROTOCOLS = [
   "mixed",
   "mieru",
   "trusttunnel",
+  "masque",
 ];
 
 const BASE_PROTOCOL_LABELS = {
@@ -1092,11 +1093,76 @@ function base64UrlEncode(value) {
 }
 
 function generatePassword() {
-  return base64UrlEncode(
-    Array.from(randomBytes(18))
-      .map((byte) => String.fromCharCode(byte))
-      .join(""),
-  );
+  const binary = Array.from(randomBytes(18))
+    .map((byte) => String.fromCharCode(byte))
+    .join("");
+  const b64 = typeof btoa === "function" ? btoa(binary) : window.btoa(binary);
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function generateBase64Key(byteLength) {
+  const binary = Array.from(randomBytes(byteLength))
+    .map((byte) => String.fromCharCode(byte))
+    .join("");
+  return typeof btoa === "function" ? btoa(binary) : window.btoa(binary);
+}
+
+function generateShadowsocksPassword(method) {
+  const m = `${method || "aes-128-gcm"}`.toLowerCase();
+  const keyBytes = m.includes("128") ? 16 : 32;
+  return generateBase64Key(keyBytes);
+}
+
+function randomIntInRange(min, max) {
+  const bytes = randomBytes(4);
+  const val =
+    ((bytes[0] << 24) >>> 0) +
+    ((bytes[1] << 16) >>> 0) +
+    ((bytes[2] << 8) >>> 0) +
+    (bytes[3] >>> 0);
+  return min + (val % (max - min + 1));
+}
+
+function getOpenconnectFlavorDefaults(flavor) {
+  switch (flavor) {
+    case "gp":
+      return {
+        userAgent: "PanGP/6.2.0-142 (Linux)",
+        hostname: "gp-gateway",
+        urlpath: "/ssl-vpn/login.esp",
+      };
+    case "nc":
+      return {
+        userAgent: " JunosPulse/9.1R11 (Linux)",
+        hostname: "juniper-gw",
+        urlpath: "/dana-na/auth/url_default/welcome.cgi",
+      };
+    case "f5":
+      return {
+        userAgent: "BIG-IP Edge Client/7240.2024",
+        hostname: "f5-edge-gw",
+        urlpath: "/my.policy",
+      };
+    case "fortinet":
+      return {
+        userAgent: "FortiSSLVPN (Linux)",
+        hostname: "forti-gw",
+        urlpath: "/remote/login",
+      };
+    case "pulse":
+      return {
+        userAgent: "Pulse-Secure/22.6R1 (Linux)",
+        hostname: "pulse-gw",
+        urlpath: "/dana-na/auth/url_default/welcome.cgi",
+      };
+    case "anyconnect":
+    default:
+      return {
+        userAgent: "Open AnyConnect VPN Agent v9.12",
+        hostname: "anyconnect-gw",
+        urlpath: "/vpn",
+      };
+  }
 }
 
 function generateMtprotoSecret() {
@@ -1256,7 +1322,7 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     defaultPort = "51820";
   } else if (protocol === "hysteria2") {
     defaultPort = "443";
-  } else if (protocol === "tuic") {
+  } else if (protocol === "tuic" || protocol === "mieru") {
     defaultPort = "8443";
   } else if (protocol === "shadowsocks") {
     defaultPort = "8388";
@@ -1303,12 +1369,24 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     protocol === "naive" ||
     protocol === "fptn" ||
     protocol === "http" ||
-    protocol === "mixed"
+    protocol === "mixed" ||
+    protocol === "mieru" ||
+    protocol === "trusttunnel" ||
+    protocol === "masque"
   ) {
     setDefault(sectionId, "server_username", getServerName(sectionId));
     if (protocol === "socks") {
       setDefault(sectionId, "socks_auth_enabled", "1");
     }
+  }
+
+  if (protocol === "mieru") {
+    setDefault(sectionId, "mieru_transport", "TCP");
+  }
+
+  if (protocol === "trusttunnel") {
+    setDefault(sectionId, "trusttunnel_quic", "0");
+    setDefault(sectionId, "tls_server_name", terminatingSni);
   }
 
   if (protocol === "tuic") {
@@ -1346,7 +1424,16 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   }
 
   if (protocol === "shadowsocks") {
-    setDefault(sectionId, "shadowsocks_method", "aes-128-gcm");
+    const ssMethod =
+      uci.get(UCI_PACKAGE, sectionId, "shadowsocks_method") || "aes-128-gcm";
+    setDefault(sectionId, "shadowsocks_method", ssMethod);
+    if (!uci.get(UCI_PACKAGE, sectionId, "server_password")) {
+      setValue(
+        sectionId,
+        "server_password",
+        generateShadowsocksPassword(ssMethod),
+      );
+    }
   }
 
   if (protocol === "tailscale") {
@@ -1414,24 +1501,38 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   }
 
   if (protocol === "tewfai") {
-    if (isEmptyValue(uci.get(UCI_PACKAGE, sectionId, "tewfai_uuid")))
-      setDefault(sectionId, "tewfai_uuid", generateUuid());
-    setDefault(sectionId, "tewfai_inbound_transport", "auto");
+    setDefault(sectionId, "tewfai_uuid", generateUuid());
+    setDefault(sectionId, "tewfai_password", generatePassword());
+    setDefault(sectionId, "tewfai_inbound_transport", "tcp");
+    setDefault(sectionId, "tewfai_inner_cipher", "aes-256-gcm");
+    setDefault(sectionId, "tewfai_pqc_enabled", "1");
+    setDefault(sectionId, "tewfai_handover_enabled", "1");
+    setDefault(sectionId, "tewfai_fec_enabled", "0");
+    setDefault(sectionId, "tewfai_shaper_enabled", "1");
+    setDefault(sectionId, "tewfai_shaper_profile", "adaptive");
+    setDefault(sectionId, "tewfai_mtu", "1400");
     setDefault(sectionId, "tls_server_name", terminatingSni);
   }
 
   if (protocol === "masque") {
     setDefault(sectionId, "masque_ipv4_pool", "172.16.0.0/24");
+    setDefault(sectionId, "masque_ipv6_pool", "fd00:172:16::/64");
     setDefault(sectionId, "masque_mtu", "1400");
     setDefault(sectionId, "tls_server_name", terminatingSni);
   }
 
   if (protocol === "openconnect") {
+    const ocFlavor =
+      uci.get(UCI_PACKAGE, sectionId, "openconnect_flavor") || "anyconnect";
+    const ocDefaults = getOpenconnectFlavorDefaults(ocFlavor);
     setDefault(sectionId, "openconnect_cookie", generatePassword());
-    setDefault(sectionId, "openconnect_flavor", "anyconnect");
-    setDefault(sectionId, "openconnect_local_hostname", "openconnect");
+    setDefault(sectionId, "openconnect_flavor", ocFlavor);
+    setDefault(sectionId, "openconnect_user_agent", ocDefaults.userAgent);
+    setDefault(sectionId, "openconnect_local_hostname", ocDefaults.hostname);
+    setDefault(sectionId, "openconnect_urlpath", ocDefaults.urlpath);
+    setDefault(sectionId, "openconnect_address", "172.16.1.2/24");
     setDefault(sectionId, "openconnect_mtu", "1400");
-    setDefault(sectionId, "openconnect_ip", "1");
+    setDefault(sectionId, "openconnect_ip", "0");
     setDefault(sectionId, "tls_server_name", terminatingSni);
   }
 }
@@ -1496,10 +1597,26 @@ function buildMtprotoFullSecret(baseSecret, faketls, padding) {
   return `ee${baseSecret}${stringToHex(faketls || "google.com")}`;
 }
 
+function countryCodeToFlagEmoji(code) {
+  const clean = `${code || ""}`.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(clean)) return "";
+  return String.fromCodePoint(
+    0x1f1e6 + clean.charCodeAt(0) - 65,
+    0x1f1e6 + clean.charCodeAt(1) - 65,
+  );
+}
+
 function getServerIdentity(sectionId) {
   const protocol = getProtocol(sectionId);
   const legacy = parseLegacyServerUser(sectionId, protocol);
-  const name = getServerName(sectionId);
+  const rawName = getServerName(sectionId);
+  const countryCode =
+    uci.get(UCI_PACKAGE, sectionId, "server_country") ||
+    (routerNetworkEnvCache && routerNetworkEnvCache.country_code) ||
+    "RU";
+  const flag = countryCodeToFlagEmoji(countryCode);
+  const hasFlag = /[\u{1F1E6}-\u{1F1FF}]{2}/u.test(rawName);
+  const name = flag && !hasFlag ? `${flag} ${rawName}` : rawName;
   const uuid =
     uci.get(UCI_PACKAGE, sectionId, "server_uuid") || legacy?.credential || "";
   const password =
@@ -1541,7 +1658,10 @@ function encodeQuery(params) {
     .join("&");
 }
 
-function getPublicHost(sectionId) {
+function getPublicHost(sectionId, options = {}) {
+  if (options && options.hostOverride) {
+    return options.hostOverride;
+  }
   return (
     uci.get(UCI_PACKAGE, sectionId, "public_host") ||
     defaultPublicHostCache ||
@@ -1564,7 +1684,7 @@ function getServerPort(sectionId) {
     return `${routerNetworkEnvCache.recommended_ports[protocol]}`;
   }
   if (protocol === "awg") return "51820";
-  if (protocol === "tuic") return "8443";
+  if (protocol === "tuic" || protocol === "mieru") return "8443";
   if (protocol === "shadowsocks") return "8388";
   if (protocol === "socks") return "1080";
   if (protocol === "http" || protocol === "mixed") return "8080";
@@ -1598,7 +1718,7 @@ function getTransportParams(sectionId, params) {
 
 function buildVlessTrojanLink(sectionId, identity, options = {}) {
   const protocol = getProtocol(sectionId);
-  const host = getPublicHost(sectionId);
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1622,8 +1742,17 @@ function buildVlessTrojanLink(sectionId, identity, options = {}) {
     params.alpn = asList(uci.get(UCI_PACKAGE, sectionId, "tls_alpn")).join(",");
   }
 
-  if (security === "tls" && options && options.tlsCertificateSha256) {
-    params.pcs = normalizeSha256(options.tlsCertificateSha256);
+  if (security === "tls") {
+    if (
+      shouldUseGeneratedTlsCertificatePin(sectionId) ||
+      (options && options.tlsCertificateSha256)
+    ) {
+      params.insecure = "1";
+      params.allowInsecure = "1";
+    }
+    if (options && options.tlsCertificateSha256) {
+      params.pcs = normalizeSha256(options.tlsCertificateSha256);
+    }
   }
 
   if (security === "reality") {
@@ -1641,8 +1770,8 @@ function buildVlessTrojanLink(sectionId, identity, options = {}) {
   return `${protocol}://${encodeURIComponent(credential)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildVmessLink(sectionId, identity) {
-  const host = getPublicHost(sectionId);
+function buildVmessLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
     (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
@@ -1674,13 +1803,23 @@ function buildVmessLink(sectionId, identity) {
     alpn: asList(uci.get(UCI_PACKAGE, sectionId, "tls_alpn")).join(","),
   };
 
+  if (security === "tls") {
+    const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+    if (shouldUseGeneratedTlsCertificatePin(sectionId) || certificatePin) {
+      payload.allowInsecure = 1;
+    }
+    if (certificatePin) {
+      payload.pcs = certificatePin;
+    }
+  }
+
   return `vmess://${base64Encode(JSON.stringify(payload))}`;
 }
 
-function buildShadowsocksLink(sectionId, identity) {
+function buildShadowsocksLink(sectionId, identity, options = {}) {
   const method =
     uci.get(UCI_PACKAGE, sectionId, "shadowsocks_method") || "aes-128-gcm";
-  const host = getPublicHost(sectionId);
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1690,8 +1829,8 @@ function buildShadowsocksLink(sectionId, identity) {
   return `ss://${userInfo}@${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildSocksLink(sectionId, identity) {
-  const host = getPublicHost(sectionId);
+function buildSocksLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1747,7 +1886,7 @@ function loadGeneratedTlsCertificatePin(sectionId) {
 }
 
 function buildHysteria2Link(sectionId, identity, options = {}) {
-  const host = getPublicHost(sectionId);
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1776,8 +1915,8 @@ function buildHysteria2Link(sectionId, identity, options = {}) {
   return `hysteria2://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildMtprotoLink(sectionId, identity) {
-  const host = getPublicHost(sectionId);
+function buildMtprotoLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
     (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
@@ -1796,7 +1935,7 @@ function buildMtprotoLink(sectionId, identity) {
 }
 
 function buildTuicLink(sectionId, identity, options = {}) {
-  const host = getPublicHost(sectionId);
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1820,7 +1959,7 @@ function buildTuicLink(sectionId, identity, options = {}) {
 }
 
 function buildAnytlsLink(sectionId, identity, options = {}) {
-  const host = getPublicHost(sectionId);
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1839,18 +1978,26 @@ function buildAnytlsLink(sectionId, identity, options = {}) {
   return `anytls://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildNaiveLink(sectionId, identity) {
-  const host = getPublicHost(sectionId);
+function buildNaiveLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
     (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const username = identity.username || identity.name || sectionId;
-  return `naive+https://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
+  const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+  const params = {
+    sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+  };
+  if (certificatePin) {
+    params.pcs = certificatePin;
+  }
+  const query = encodeQuery(params);
+  return `naive+https://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildShadowtlsLink(sectionId, identity) {
-  const host = getPublicHost(sectionId);
+function buildShadowtlsLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1866,8 +2013,8 @@ function buildShadowtlsLink(sectionId, identity) {
   return `shadowtls://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildFptnPayload(sectionId, identity) {
-  const host = getPublicHost(sectionId);
+function buildFptnPayload(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const port = parseInt(
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
       (typeof getServerPort === "function" ? getServerPort(sectionId) : "443"),
@@ -1892,21 +2039,21 @@ function buildFptnPayload(sectionId, identity) {
   };
 }
 
-function buildFptnToken(sectionId, identity) {
-  const payload = buildFptnPayload(sectionId, identity);
+function buildFptnToken(sectionId, identity, options = {}) {
+  const payload = buildFptnPayload(sectionId, identity, options);
   const b64 = base64Encode(JSON.stringify(payload)).replace(/=+$/, "");
   return `fptn:${b64}`;
 }
 
-function buildFptnLink(sectionId, identity) {
-  const payload = buildFptnPayload(sectionId, identity);
+function buildFptnLink(sectionId, identity, options = {}) {
+  const payload = buildFptnPayload(sectionId, identity, options);
   const b64 = base64Encode(JSON.stringify(payload)).replace(/=+$/, "");
   const serverName = identity.name || getServerName(sectionId) || sectionId;
   return `fptn://${b64}#${encodeURIComponent(serverName)}`;
 }
 
-function buildHttpLink(sectionId, identity) {
-  const host = getPublicHost(sectionId);
+function buildHttpLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
@@ -1918,12 +2065,196 @@ function buildHttpLink(sectionId, identity) {
   return `http://${userInfo}${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
-function buildMixedLink(sectionId, identity) {
-  return buildSocksLink(sectionId, identity);
+function buildMixedLink(sectionId, identity, options = {}) {
+  return buildSocksLink(sectionId, identity, options);
 }
 
-function buildAwgClientConfig(sectionId, targetVersion) {
-  const host = getPublicHost(sectionId);
+function buildMieruLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
+  const uriHost = formatHostForUri(host);
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "8443");
+  const username = identity.username || identity.name || sectionId;
+  const transport = uci.get(UCI_PACKAGE, sectionId, "mieru_transport") || "TCP";
+  const query = encodeQuery({
+    port,
+    protocol: transport,
+    profile: identity.name || sectionId,
+  });
+  return `mierus://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${uriHost}${query ? `?${query}` : ""}`;
+}
+
+function buildTrusttunnelLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
+  const uriHost = formatHostForUri(host);
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
+  const username = identity.username || identity.name || sectionId;
+  const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+  const params = {
+    sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+    alpn: asList(uci.get(UCI_PACKAGE, sectionId, "tls_alpn")).join(","),
+  };
+  if (certificatePin) {
+    params.insecure = "1";
+    params.pcs = certificatePin;
+  } else if (shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    params.insecure = "1";
+  }
+  if (uci.get(UCI_PACKAGE, sectionId, "trusttunnel_quic") === "1") {
+    params.quic = "1";
+  }
+  const query = encodeQuery(params);
+  return `trusttunnel://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildTewfaiLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
+  const uriHost = formatHostForUri(host);
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
+  const uuid =
+    uci.get(UCI_PACKAGE, sectionId, "tewfai_uuid") || identity.uuid || "";
+  if (!uuid) return "";
+  const pwd = uci.get(UCI_PACKAGE, sectionId, "tewfai_password") || "";
+  const cred = pwd
+    ? `${encodeURIComponent(uuid)}:${encodeURIComponent(pwd)}`
+    : encodeURIComponent(uuid);
+  const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+  const params = {
+    sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+    alpn: asList(uci.get(UCI_PACKAGE, sectionId, "tls_alpn")).join(","),
+  };
+  if (certificatePin) {
+    params.insecure = "1";
+    params.pcs = certificatePin;
+  } else if (shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    params.insecure = "1";
+  }
+  const transports = asList(
+    uci.get(UCI_PACKAGE, sectionId, "tewfai_inbound_transport"),
+  )
+    .map((tr) => {
+      if (tr === "quic" || tr === "h3_stream" || tr === "h3_datagram")
+        return "quic";
+      if (tr === "tcp" || tr === "raw_tls" || tr === "h2" || tr === "ws")
+        return "tcp";
+      return "";
+    })
+    .filter((v, idx, arr) => v && arr.indexOf(v) === idx);
+  if (transports.includes("quic") && !transports.includes("tcp")) {
+    transports.push("tcp");
+  }
+  if (transports.length > 0) {
+    params.transport = transports.join(",");
+  }
+  const innerCipher =
+    uci.get(UCI_PACKAGE, sectionId, "tewfai_inner_cipher") || "";
+  if (innerCipher) {
+    params.inner_cipher = innerCipher;
+  }
+  if (uci.get(UCI_PACKAGE, sectionId, "tewfai_pqc_enabled") === "1") {
+    params.pqc = "1";
+  }
+  if (uci.get(UCI_PACKAGE, sectionId, "tewfai_handover_enabled") === "1") {
+    params.handover = "1";
+  }
+  if (uci.get(UCI_PACKAGE, sectionId, "tewfai_fec_enabled") === "1") {
+    params.fec = "1";
+  }
+  if (uci.get(UCI_PACKAGE, sectionId, "tewfai_shaper_enabled") === "1") {
+    params.shaper = "1";
+    const shaperProfile =
+      uci.get(UCI_PACKAGE, sectionId, "tewfai_shaper_profile") || "";
+    if (shaperProfile) {
+      params.shaper_profile = shaperProfile;
+    }
+  }
+  const query = encodeQuery(params);
+  return `tewfai://${cred}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildMasqueLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
+  const uriHost = formatHostForUri(host);
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
+  const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+  const params = {
+    sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+    alpn: asList(uci.get(UCI_PACKAGE, sectionId, "tls_alpn")).join(","),
+    profile: "standard",
+    uri: `https://${uriHost}:${port}/.well-known/masque/ip/*/*/`,
+  };
+  if (certificatePin) {
+    params.insecure = "1";
+    params.pcs = certificatePin;
+  } else if (shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    params.insecure = "1";
+  }
+  const pool4 = getFirstListValue(sectionId, "masque_ipv4_pool");
+  if (pool4) params.ip = pool4;
+  const pool6 = getFirstListValue(sectionId, "masque_ipv6_pool");
+  if (pool6) params.ipv6 = pool6;
+  const mtu = uci.get(UCI_PACKAGE, sectionId, "masque_mtu") || "";
+  if (mtu) params.mtu = mtu;
+  const query = encodeQuery(params);
+  return `masque://${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildOpenconnectLink(sectionId, identity, options = {}) {
+  const host = getPublicHost(sectionId, options);
+  const uriHost = formatHostForUri(host);
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
+  const cookie = uci.get(UCI_PACKAGE, sectionId, "openconnect_cookie") || "";
+  const username = identity.username || identity.name || sectionId;
+  const auth = identity.password
+    ? `${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@`
+    : cookie
+      ? `${encodeURIComponent(cookie)}@`
+      : "";
+  if (!auth) return "";
+  const certificatePin = normalizeSha256(options.tlsCertificateSha256);
+  const params = {
+    sni: uci.get(UCI_PACKAGE, sectionId, "tls_server_name") || host,
+    alpn: asList(uci.get(UCI_PACKAGE, sectionId, "tls_alpn")).join(","),
+  };
+  if (certificatePin) {
+    params.insecure = "1";
+    params.pcs = certificatePin;
+  } else if (shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    params.insecure = "1";
+  }
+  const flavor = uci.get(UCI_PACKAGE, sectionId, "openconnect_flavor") || "";
+  if (flavor) params.flavor = flavor;
+  if (cookie) params.cookie = cookie;
+  const urlpath = uci.get(UCI_PACKAGE, sectionId, "openconnect_urlpath") || "";
+  if (urlpath) params.urlpath = urlpath;
+  const address = uci.get(UCI_PACKAGE, sectionId, "openconnect_address") || "";
+  if (address) params.address = address;
+  const mtu = uci.get(UCI_PACKAGE, sectionId, "openconnect_mtu") || "";
+  if (mtu) params.mtu = mtu;
+  if (uci.get(UCI_PACKAGE, sectionId, "openconnect_ip") === "1") {
+    params.ip = "1";
+  }
+  if (uci.get(UCI_PACKAGE, sectionId, "openconnect_esp") === "1") {
+    params.esp = "1";
+  }
+  if (uci.get(UCI_PACKAGE, sectionId, "openconnect_dtls") === "1") {
+    params.dtls = "1";
+  }
+  const query = encodeQuery(params);
+  return `openconnect://${auth}${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+}
+
+function buildAwgClientConfig(sectionId, targetVersion, options = {}) {
+  const host = getPublicHost(sectionId, options);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
     (typeof getServerPort === "function" ? getServerPort(sectionId) : "51820");
@@ -2034,14 +2365,23 @@ function buildClientLink(sectionId, options = {}) {
   }
 
   if (protocol === "awg") {
-    return buildAwgClientConfig(sectionId, options.awgVersion);
+    return buildAwgClientConfig(sectionId, options.awgVersion, options);
   }
 
   if (
     ((protocol === "vless" || protocol === "vmess" || protocol === "tuic") &&
       !identity.uuid) ||
-    (PASSWORD_PROTOCOLS.includes(protocol) && !identity.password) ||
-    (protocol === "mtproto" && !identity.mtprotoSecret)
+    (PASSWORD_PROTOCOLS.includes(protocol) &&
+      protocol !== "masque" &&
+      !identity.password) ||
+    (protocol === "mtproto" && !identity.mtprotoSecret) ||
+    (protocol === "tewfai" &&
+      !(uci.get(UCI_PACKAGE, sectionId, "tewfai_uuid") || identity.uuid)) ||
+    (protocol === "openconnect" &&
+      !(
+        uci.get(UCI_PACKAGE, sectionId, "openconnect_cookie") ||
+        identity.password
+      ))
   ) {
     return "";
   }
@@ -2057,11 +2397,11 @@ function buildClientLink(sectionId, options = {}) {
 
   switch (protocol) {
     case "shadowsocks":
-      return buildShadowsocksLink(sectionId, identity);
+      return buildShadowsocksLink(sectionId, identity, options);
     case "socks":
-      return buildSocksLink(sectionId, identity);
+      return buildSocksLink(sectionId, identity, options);
     case "vmess":
-      return buildVmessLink(sectionId, identity);
+      return buildVmessLink(sectionId, identity, options);
     case "trojan":
       return buildVlessTrojanLink(sectionId, identity, options);
     case "hysteria2":
@@ -2071,19 +2411,29 @@ function buildClientLink(sectionId, options = {}) {
     case "anytls":
       return buildAnytlsLink(sectionId, identity, options);
     case "naive":
-      return buildNaiveLink(sectionId, identity);
+      return buildNaiveLink(sectionId, identity, options);
     case "shadowtls":
-      return buildShadowtlsLink(sectionId, identity);
+      return buildShadowtlsLink(sectionId, identity, options);
     case "fptn":
-      return buildFptnLink(sectionId, identity);
+      return buildFptnLink(sectionId, identity, options);
     case "http":
-      return buildHttpLink(sectionId, identity);
+      return buildHttpLink(sectionId, identity, options);
     case "mixed":
-      return buildMixedLink(sectionId, identity);
+      return buildMixedLink(sectionId, identity, options);
     case "mtproto":
-      return buildMtprotoLink(sectionId, identity);
+      return buildMtprotoLink(sectionId, identity, options);
+    case "mieru":
+      return buildMieruLink(sectionId, identity, options);
+    case "trusttunnel":
+      return buildTrusttunnelLink(sectionId, identity, options);
+    case "tewfai":
+      return buildTewfaiLink(sectionId, identity, options);
+    case "masque":
+      return buildMasqueLink(sectionId, identity, options);
+    case "openconnect":
+      return buildOpenconnectLink(sectionId, identity, options);
     case "awg":
-      return buildAwgClientConfig(sectionId, options.awgVersion);
+      return buildAwgClientConfig(sectionId, options.awgVersion, options);
     case "vless":
     default:
       return buildVlessTrojanLink(sectionId, identity, options);
@@ -2094,9 +2444,20 @@ function buildClientLinkContext(sectionId) {
   const protocol = getProtocol(sectionId);
   const security = getEffectiveSecurity(sectionId);
   const certificatePinExpected =
-    ["hysteria2", "tuic", "anytls", "trojan", "fptn", "vless"].includes(
-      protocol,
-    ) &&
+    [
+      "hysteria2",
+      "tuic",
+      "anytls",
+      "naive",
+      "trojan",
+      "fptn",
+      "vless",
+      "vmess",
+      "trusttunnel",
+      "tewfai",
+      "masque",
+      "openconnect",
+    ].includes(protocol) &&
     security === "tls" &&
     shouldUseGeneratedTlsCertificatePin(sectionId);
 
@@ -2205,23 +2566,84 @@ function copyText(text) {
   document.body.removeChild(textarea);
 }
 
+function getServerHostChoices(sectionId) {
+  const configured = normalizeHost(
+    uci.get(UCI_PACKAGE, sectionId, "public_host"),
+  );
+  const env = routerNetworkEnvCache || {};
+  const choices = [];
+  const seen = new Set();
+  const add = (host, label) => {
+    const h = normalizeHost(host);
+    if (!h || seen.has(h)) return;
+    seen.add(h);
+    choices.push({ host: h, label });
+  };
+
+  if (env.has_ddns && env.ddns_domain) {
+    add(env.ddns_domain, `${_("External (DDNS)")}: ${env.ddns_domain}`);
+  }
+  if (env.cached_external_ip) {
+    add(
+      env.cached_external_ip,
+      `${_("External (WAN)")}: ${env.cached_external_ip}`,
+    );
+  }
+  if (Array.isArray(env.wan_ips)) {
+    env.wan_ips.forEach((ip) => {
+      add(ip, `${_("External (WAN)")}: ${ip}`);
+    });
+  }
+  if (env.lan_ip) {
+    add(env.lan_ip, `${_("Local (LAN)")}: ${env.lan_ip}`);
+  }
+  if (configured) {
+    add(
+      configured,
+      isPrivateOrReservedIp(configured) && isIpv4(configured)
+        ? `${_("Local (LAN)")}: ${configured}`
+        : `${_("External")}: ${configured}`,
+    );
+  }
+  const browserHost = getBrowserHost();
+  if (
+    browserHost &&
+    browserHost !== "localhost" &&
+    browserHost !== "127.0.0.1"
+  ) {
+    add(
+      browserHost,
+      isPrivateOrReservedIp(browserHost) && isIpv4(browserHost)
+        ? `${_("Local (LAN)")}: ${browserHost}`
+        : `${_("Address")}: ${browserHost}`,
+    );
+  }
+  return choices;
+}
+
 function renderInfoClientLink(sectionId, linkContext = {}) {
   const protocol = getProtocol(sectionId);
   const security = getEffectiveSecurity(sectionId);
-  const host = getPublicHost(sectionId);
+  let activeHost = getPublicHost(sectionId);
   const port =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
     (typeof getServerPort === "function" ? getServerPort(sectionId) : "443");
   const name = getServerName(sectionId);
   const identity = getServerIdentity(sectionId);
+  const hostChoices = getServerHostChoices(sectionId);
 
   let activeAwgVersion =
     uci.get(UCI_PACKAGE, sectionId, "awg_version") || "2.0";
 
-  let currentLink =
+  const computeLink = (hostOverride) =>
     protocol === "awg"
-      ? buildAwgClientConfig(sectionId, activeAwgVersion)
-      : linkContext.link || buildClientLink(sectionId);
+      ? buildAwgClientConfig(sectionId, activeAwgVersion, { hostOverride })
+      : buildClientLink(sectionId, {
+          tlsCertificateSha256: linkContext.tlsCertificateSha256 || "",
+          hostOverride,
+        });
+
+  let currentLink = computeLink(activeHost);
 
   if (!currentLink && protocol !== "fptn") {
     return E(
@@ -2243,9 +2665,12 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     );
   }
 
+  let fptnQrMode = "link";
   const qrUri =
     protocol === "fptn"
-      ? qrSvgDataUri(buildFptnLink(sectionId, identity))
+      ? qrSvgDataUri(
+          buildFptnLink(sectionId, identity, { hostOverride: activeHost }),
+        )
       : qrSvgDataUri(currentLink || "");
 
   const securitySuffix =
@@ -2284,9 +2709,6 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
   ];
 
   if (protocol === "fptn") {
-    const fptnToken = buildFptnToken(sectionId, identity);
-    const fptnLink = buildFptnLink(sectionId, identity);
-
     const btnLink = E(
       "button",
       {
@@ -2295,9 +2717,12 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
         style: "padding:2px 8px;font-size:11px;",
         click: (ev) => {
           ev.preventDefault();
+          fptnQrMode = "link";
           btnLink.className = "btn cbi-button cbi-button-action";
           btnToken.className = "btn cbi-button cbi-button-neutral";
-          qrImg.src = qrSvgDataUri(fptnLink);
+          qrImg.src = qrSvgDataUri(
+            buildFptnLink(sectionId, identity, { hostOverride: activeHost }),
+          );
         },
       },
       _("QR: Link"),
@@ -2311,9 +2736,12 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
         style: "padding:2px 8px;font-size:11px;",
         click: (ev) => {
           ev.preventDefault();
+          fptnQrMode = "token";
           btnToken.className = "btn cbi-button cbi-button-action";
           btnLink.className = "btn cbi-button cbi-button-neutral";
-          qrImg.src = qrSvgDataUri(fptnToken);
+          qrImg.src = qrSvgDataUri(
+            buildFptnToken(sectionId, identity, { hostOverride: activeHost }),
+          );
         },
       },
       _("QR: Token"),
@@ -2334,6 +2762,15 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     "div",
     { class: "fkp-server-info-modal__qr-col" },
     qrColChildren,
+  );
+
+  const addressValueNode = E(
+    "span",
+    {
+      class:
+        "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--mono",
+    },
+    `${activeHost}:${port}`,
   );
 
   const detailsGrid = E(
@@ -2372,14 +2809,7 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
           { class: "fkp-server-info-modal__detail-label" },
           _("Address"),
         ),
-        E(
-          "span",
-          {
-            class:
-              "fkp-server-info-modal__detail-value fkp-server-info-modal__detail-value--mono",
-          },
-          `${host}:${port}`,
-        ),
+        addressValueNode,
       ]),
     ],
   );
@@ -2388,9 +2818,53 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     class: "fkp-server-info-modal__link-section",
   });
 
+  let onHostChange = null;
+  if (hostChoices.length > 1) {
+    const hostBar = E("div", {
+      style: "display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;",
+    });
+    const hostBtns = {};
+    hostChoices.forEach((choice) => {
+      const btn = E(
+        "button",
+        {
+          class: `btn cbi-button ${choice.host === activeHost ? "cbi-button-action" : "cbi-button-neutral"}`,
+          type: "button",
+          style: "padding:3px 10px;font-size:12px;",
+          click: (ev) => {
+            ev.preventDefault();
+            activeHost = choice.host;
+            Object.entries(hostBtns).forEach(([h, b]) => {
+              b.className = `btn cbi-button ${h === activeHost ? "cbi-button-action" : "cbi-button-neutral"}`;
+            });
+            addressValueNode.textContent = `${activeHost}:${port}`;
+            if (typeof onHostChange === "function") {
+              onHostChange(activeHost);
+            }
+          },
+        },
+        choice.label,
+      );
+      hostBtns[choice.host] = btn;
+      hostBar.appendChild(btn);
+    });
+    linkSection.appendChild(
+      E(
+        "span",
+        { class: "fkp-server-info-modal__detail-label" },
+        _("Router address"),
+      ),
+    );
+    linkSection.appendChild(hostBar);
+  }
+
   if (protocol === "fptn") {
-    const fptnToken = buildFptnToken(sectionId, identity);
-    const fptnLink = buildFptnLink(sectionId, identity);
+    let fptnToken = buildFptnToken(sectionId, identity, {
+      hostOverride: activeHost,
+    });
+    let fptnLink = buildFptnLink(sectionId, identity, {
+      hostOverride: activeHost,
+    });
 
     linkSection.appendChild(
       E(
@@ -2471,6 +2945,16 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       ],
     );
     linkSection.appendChild(linkBtnRow);
+    onHostChange = (nextHost) => {
+      fptnToken = buildFptnToken(sectionId, identity, {
+        hostOverride: nextHost,
+      });
+      fptnLink = buildFptnLink(sectionId, identity, { hostOverride: nextHost });
+      tokenTextarea.value = fptnToken;
+      linkTextarea.value = fptnLink;
+      const newQr = qrSvgDataUri(fptnQrMode === "token" ? fptnToken : fptnLink);
+      if (newQr) qrImg.src = newQr;
+    };
   } else if (protocol === "awg") {
     const awgVersions = [
       { id: "2.0", label: "AmneziaWG 2.0" },
@@ -2506,7 +2990,18 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
           b.className = "btn cbi-button cbi-button-neutral";
         }
       });
-      currentLink = buildAwgClientConfig(sectionId, activeAwgVersion);
+      currentLink = buildAwgClientConfig(sectionId, activeAwgVersion, {
+        hostOverride: activeHost,
+      });
+      confTextarea.value = currentLink;
+      const newQr = qrSvgDataUri(currentLink);
+      if (newQr) qrImg.src = newQr;
+    };
+
+    onHostChange = (nextHost) => {
+      currentLink = buildAwgClientConfig(sectionId, activeAwgVersion, {
+        hostOverride: nextHost,
+      });
       confTextarea.value = currentLink;
       const newQr = qrSvgDataUri(currentLink);
       if (newQr) qrImg.src = newQr;
@@ -2609,6 +3104,13 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       currentLink,
     );
     linkSection.appendChild(linkTextarea);
+
+    onHostChange = (nextHost) => {
+      currentLink = computeLink(nextHost);
+      linkTextarea.value = currentLink;
+      const newQr = qrSvgDataUri(currentLink);
+      if (newQr) qrImg.src = newQr;
+    };
 
     const btnRow = E("div", { style: "display:flex;gap:6px;margin-top:6px;" }, [
       E(
@@ -3106,10 +3608,24 @@ function getSelectWidget(sectionId, option) {
 }
 
 function setWidgetValue(sectionId, option, value) {
+  const container = getWidget(sectionId, option);
   const widget = getControlWidget(sectionId, option);
 
+  uci.set(UCI_PACKAGE, sectionId, option, value);
+
+  if (container && typeof dom.findClassInstance === "function") {
+    const instance = dom.findClassInstance(container);
+    if (instance && typeof instance.setValue === "function") {
+      instance.setValue(value);
+      container.classList.remove("cbi-input-invalid");
+      if (widget) {
+        widget.classList.remove("cbi-input-invalid");
+      }
+      return;
+    }
+  }
+
   if (!widget) {
-    uci.set(UCI_PACKAGE, sectionId, option, value);
     return;
   }
 
@@ -3118,9 +3634,84 @@ function setWidgetValue(sectionId, option, value) {
   } else {
     widget.value = value;
   }
-  uci.set(UCI_PACKAGE, sectionId, option, value);
+  widget.classList.remove("cbi-input-invalid");
   widget.dispatchEvent(new Event("input", { bubbles: true }));
   widget.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function populateListenAddressChoices(option, env) {
+  resetOptionValues(option);
+  addOptionValue(option, "0.0.0.0", `${_("All IPv4 interfaces")} (0.0.0.0)`);
+  addOptionValue(option, "::", `${_("All IPv4/IPv6 interfaces")} (::)`);
+
+  const lanIp = normalizeHost(env?.lan_ip);
+  if (lanIp) {
+    addOptionValue(option, lanIp, `${_("Local (LAN)")} — ${lanIp}`);
+  }
+
+  if (Array.isArray(env?.wan_ips)) {
+    for (const rawIp of env.wan_ips) {
+      const wanIp = normalizeHost(rawIp);
+      if (wanIp) {
+        addOptionValue(
+          option,
+          wanIp,
+          `${_("External (WAN interface)")} — ${wanIp}`,
+        );
+      }
+    }
+  }
+
+  addOptionValue(option, "127.0.0.1", `${_("Localhost")} (127.0.0.1)`);
+}
+
+function populatePublicHostChoices(option, env) {
+  resetOptionValues(option);
+
+  const ddnsDomain = normalizeHost(env?.ddns_domain);
+  if (ddnsDomain) {
+    addOptionValue(
+      option,
+      ddnsDomain,
+      `${_("External (DDNS)")} — ${ddnsDomain}`,
+    );
+  }
+
+  const cachedExternalIp = normalizeHost(env?.cached_external_ip);
+  if (cachedExternalIp) {
+    addOptionValue(
+      option,
+      cachedExternalIp,
+      `${_("External (WAN IP)")} — ${cachedExternalIp}`,
+    );
+  }
+
+  if (Array.isArray(env?.wan_ips)) {
+    for (const rawIp of env.wan_ips) {
+      const wanIp = normalizeHost(rawIp);
+      if (wanIp) {
+        addOptionValue(
+          option,
+          wanIp,
+          `${_("External (WAN interface)")} — ${wanIp}`,
+        );
+      }
+    }
+  }
+
+  const lanIp = normalizeHost(env?.lan_ip);
+  if (lanIp) {
+    addOptionValue(option, lanIp, `${_("Local (LAN)")} — ${lanIp}`);
+  }
+
+  const browserHost = getBrowserHost();
+  if (browserHost) {
+    addOptionValue(
+      option,
+      browserHost,
+      `${_("Current router address")} — ${browserHost}`,
+    );
+  }
 }
 
 function renderSecurityChoices(select, protocol, selectedSecurity) {
@@ -3169,6 +3760,7 @@ function syncSecurityChoices(sectionId) {
 
 function syncProtocolWidgetValues(sectionId, _protocol) {
   const optionsToSync = [
+    "listen",
     "listen_port",
     "security",
     "server_username",
@@ -3191,6 +3783,24 @@ function syncProtocolWidgetValues(sectionId, _protocol) {
     "shadowtls_handshake_server_port",
     "shadowtls_version",
     "shadowsocks_method",
+    "mieru_transport",
+    "trusttunnel_quic",
+    "tewfai_uuid",
+    "tewfai_password",
+    "tewfai_inbound_transport",
+    "masque_ipv4_pool",
+    "masque_ipv6_pool",
+    "masque_mtu",
+    "openconnect_cookie",
+    "openconnect_flavor",
+    "openconnect_user_agent",
+    "openconnect_local_hostname",
+    "openconnect_urlpath",
+    "openconnect_address",
+    "openconnect_mtu",
+    "openconnect_ip",
+    "openconnect_esp",
+    "openconnect_dtls",
     "awg_local_address",
     "awg_client_address",
     "awg_dns",
@@ -3391,8 +4001,122 @@ function generateTlsCertificateIfMissing(sectionId) {
     .catch(() => null);
 }
 
+function getCurrentOptionValue(sectionId, option, fallback = "") {
+  const container = getWidget(sectionId, option);
+  if (
+    container &&
+    typeof dom !== "undefined" &&
+    typeof dom.findClassInstance === "function"
+  ) {
+    const instance = dom.findClassInstance(container);
+    if (instance && typeof instance.getValue === "function") {
+      const val = instance.getValue();
+      if (val != null && val !== "") {
+        return Array.isArray(val) ? val[0] : `${val}`;
+      }
+    }
+  }
+  const widget = getControlWidget(sectionId, option);
+  if (widget) {
+    if (widget.type === "checkbox") {
+      return widget.checked ? "1" : "0";
+    }
+    if (widget.value != null && widget.value !== "") {
+      return `${widget.value}`;
+    }
+  }
+  const uciVal = uci.get(UCI_PACKAGE, sectionId, option);
+  if (uciVal != null && uciVal !== "") {
+    return Array.isArray(uciVal) ? uciVal[0] : `${uciVal}`;
+  }
+  return fallback;
+}
+
+function autoConfigureStreamTransport(
+  sectionId,
+  protocol,
+  security,
+  transport,
+  hostSni,
+  forceOverwrite = true,
+) {
+  const tr = `${transport || "tcp"}`.toLowerCase();
+  const sni = hostSni || "www.microsoft.com";
+  const applyVal = (opt, val) => {
+    if (forceOverwrite || !uci.get(UCI_PACKAGE, sectionId, opt)) {
+      setWidgetValue(sectionId, opt, val);
+    }
+  };
+
+  setWidgetValue(sectionId, "transport", tr);
+
+  if (tr === "tcp") {
+    if (protocol === "vless") {
+      setWidgetValue(
+        sectionId,
+        "vless_flow",
+        security === "reality" || security === "tls"
+          ? "xtls-rprx-vision"
+          : "none",
+      );
+    }
+    if (security === "tls") {
+      applyVal("tls_alpn", ["h2", "http/1.1"]);
+    }
+    return;
+  }
+
+  // Non-TCP stream transports do not support xtls-rprx-vision
+  if (protocol === "vless") {
+    setWidgetValue(sectionId, "vless_flow", "none");
+  }
+
+  if (tr === "ws") {
+    applyVal("transport_path", `/${protocol}-ws-${randomHex(3)}`);
+    applyVal("transport_host", sni);
+    if (security === "tls") {
+      applyVal("tls_alpn", ["http/1.1"]);
+    }
+  } else if (tr === "http") {
+    applyVal("transport_path", `/${protocol}-h2-${randomHex(3)}`);
+    applyVal("transport_hosts", [sni]);
+    if (security === "tls") {
+      applyVal("tls_alpn", ["h2", "http/1.1"]);
+    }
+  } else if (tr === "httpupgrade") {
+    applyVal("transport_path", `/${protocol}-up-${randomHex(3)}`);
+    applyVal("transport_host", sni);
+    if (security === "tls") {
+      applyVal("tls_alpn", ["http/1.1"]);
+    }
+  } else if (tr === "grpc") {
+    applyVal("transport_service_name", `${protocol}_grpc_${randomHex(3)}`);
+    if (security === "tls") {
+      applyVal("tls_alpn", ["h2"]);
+    }
+  } else if (tr === "xhttp") {
+    applyVal("transport_path", `/${protocol}-xhttp-${randomHex(3)}`);
+    applyVal("transport_host", sni);
+    const xhttpMode = getCurrentOptionValue(
+      sectionId,
+      "transport_xhttp_mode",
+      "auto",
+    );
+    setWidgetValue(sectionId, "transport_xhttp_mode", xhttpMode || "auto");
+    if (security === "tls") {
+      applyVal("tls_alpn", ["h2", "http/1.1"]);
+    }
+  }
+}
+
 function autoConfigureServer(sectionId) {
-  const protocol = getProtocol(sectionId);
+  const protocol = getCurrentOptionValue(
+    sectionId,
+    "protocol",
+    getProtocol(sectionId),
+  );
+  uci.set(UCI_PACKAGE, sectionId, "protocol", protocol);
+  clearServerValidationMessage();
 
   setWidgetValue(sectionId, "enabled", "1");
   setWidgetValue(sectionId, "routing_mode", "rules");
@@ -3405,8 +4129,23 @@ function autoConfigureServer(sectionId) {
     const recSni = env.recommended_sni || {};
     const awgEnv = env.awg || {};
 
-    const publicHost = env.public_host || getBrowserHost();
+    const publicHost =
+      env.public_host ||
+      env.ddns_domain ||
+      env.cached_external_ip ||
+      (Array.isArray(env.wan_ips) && env.wan_ips[0]) ||
+      env.lan_ip ||
+      getBrowserHost();
     setWidgetValue(sectionId, "public_host", publicHost);
+    setWidgetValue(
+      sectionId,
+      "server_country",
+      getCurrentOptionValue(
+        sectionId,
+        "server_country",
+        env.country_code || "RU",
+      ),
+    );
 
     let chosenPort = recPorts[protocol] ? `${recPorts[protocol]}` : "443";
     if (protocol === "awg") {
@@ -3421,22 +4160,32 @@ function autoConfigureServer(sectionId) {
       chosenPort = "1080";
     } else if (protocol === "http" || protocol === "mixed") {
       chosenPort = "8080";
+    } else if (protocol === "mieru") {
+      chosenPort = recPorts.mieru ? `${recPorts.mieru}` : "2012";
+    } else if (protocol === "trusttunnel") {
+      chosenPort = recPorts.trusttunnel ? `${recPorts.trusttunnel}` : "9443";
+    } else if (protocol === "tewfai") {
+      chosenPort = recPorts.tewfai ? `${recPorts.tewfai}` : "10443";
+    } else if (protocol === "masque") {
+      chosenPort = recPorts.masque ? `${recPorts.masque}` : "11443";
+    } else if (protocol === "openconnect") {
+      chosenPort = recPorts.openconnect ? `${recPorts.openconnect}` : "12443";
     }
 
     const serverSections = uci.sections(UCI_PACKAGE, "server") || [];
+    const usedPorts = new Set([1602, 1053, 5354]);
+    for (const s of serverSections) {
+      if (s[".name"] === sectionId) continue;
+      const p = uci.get(UCI_PACKAGE, s[".name"], "listen_port");
+      if (p) usedPorts.add(parseInt(p, 10));
+    }
+    let pNum = parseInt(chosenPort, 10) || 443;
+    while (usedPorts.has(pNum) && pNum < 65535) {
+      pNum = pNum === 443 ? 8443 : pNum + 1;
+    }
+    chosenPort = `${pNum}`;
 
     if (protocol !== "tailscale" && protocol !== "json_inbound") {
-      const usedPorts = new Set();
-      for (const s of serverSections) {
-        if (s[".name"] === sectionId) continue;
-        const p = uci.get(UCI_PACKAGE, s[".name"], "listen_port");
-        if (p) usedPorts.add(parseInt(p, 10));
-      }
-      let pNum = parseInt(chosenPort, 10);
-      while (usedPorts.has(pNum) && pNum < 65535) {
-        pNum++;
-      }
-      chosenPort = `${pNum}`;
       setWidgetValue(sectionId, "listen_port", chosenPort);
     }
 
@@ -3446,27 +4195,101 @@ function autoConfigureServer(sectionId) {
       recSni.terminating_tls ||
       (env.has_ddns && env.ddns_domain ? env.ddns_domain : "tachyon.lan");
     const decoySni = "www.microsoft.com";
+    let needsTlsCert = false;
 
     if (protocol === "vless") {
-      setWidgetValue(sectionId, "security", "reality");
+      let security = getCurrentOptionValue(sectionId, "security", "reality");
+      if (!["reality", "tls", "none"].includes(security)) {
+        security = "reality";
+      }
+      const transport = getCurrentOptionValue(sectionId, "transport", "tcp");
+      setWidgetValue(sectionId, "security", security);
       syncSecurityChoices(sectionId);
       setWidgetValue(sectionId, "server_uuid", generateUuid());
-      setWidgetValue(sectionId, "vless_flow", "xtls-rprx-vision");
-      setWidgetValue(sectionId, "tls_server_name", decoySni);
-      setWidgetValue(sectionId, "client_fingerprint", "chrome");
-      setWidgetValue(sectionId, "reality_handshake_server", decoySni);
-      setWidgetValue(sectionId, "reality_handshake_server_port", "443");
-      setWidgetValue(sectionId, "reality_short_id", randomHex(4));
-      setWidgetValue(sectionId, "reality_max_time_difference", "1m");
-      generateRealityKeypair(sectionId);
+
+      if (security === "reality") {
+        setWidgetValue(sectionId, "tls_server_name", decoySni);
+        setWidgetValue(sectionId, "client_fingerprint", "chrome");
+        setWidgetValue(sectionId, "reality_handshake_server", decoySni);
+        setWidgetValue(sectionId, "reality_handshake_server_port", "443");
+        setWidgetValue(sectionId, "reality_short_id", randomHex(4));
+        setWidgetValue(sectionId, "reality_max_time_difference", "1m");
+        generateRealityKeypair(sectionId);
+      } else if (security === "tls") {
+        setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+        setWidgetValue(sectionId, "tls_certificate_path", certPath);
+        setWidgetValue(sectionId, "tls_key_path", keyPath);
+        needsTlsCert = true;
+      }
+
+      autoConfigureStreamTransport(
+        sectionId,
+        "vless",
+        security,
+        transport,
+        security === "reality" ? decoySni : terminatingSni,
+        true,
+      );
+    } else if (protocol === "vmess") {
+      let security = getCurrentOptionValue(sectionId, "security", "none");
+      if (!["tls", "none"].includes(security)) {
+        security = "none";
+      }
+      const transport = getCurrentOptionValue(sectionId, "transport", "tcp");
+      setWidgetValue(sectionId, "security", security);
+      syncSecurityChoices(sectionId);
+      setWidgetValue(sectionId, "server_uuid", generateUuid());
+      setWidgetValue(sectionId, "vmess_alter_id", "0");
+
+      if (security === "tls") {
+        setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+        setWidgetValue(sectionId, "tls_certificate_path", certPath);
+        setWidgetValue(sectionId, "tls_key_path", keyPath);
+        needsTlsCert = true;
+      }
+
+      autoConfigureStreamTransport(
+        sectionId,
+        "vmess",
+        security,
+        transport,
+        terminatingSni,
+        true,
+      );
+    } else if (protocol === "trojan") {
+      let security = getCurrentOptionValue(sectionId, "security", "tls");
+      if (!["tls", "none"].includes(security)) {
+        security = "tls";
+      }
+      const transport = getCurrentOptionValue(sectionId, "transport", "tcp");
+      setWidgetValue(sectionId, "security", security);
+      syncSecurityChoices(sectionId);
+      setWidgetValue(sectionId, "server_password", generatePassword());
+
+      if (security === "tls") {
+        setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+        setWidgetValue(sectionId, "tls_certificate_path", certPath);
+        setWidgetValue(sectionId, "tls_key_path", keyPath);
+        needsTlsCert = true;
+      }
+
+      autoConfigureStreamTransport(
+        sectionId,
+        "trojan",
+        security,
+        transport,
+        terminatingSni,
+        true,
+      );
     } else if (protocol === "awg") {
       let localAddr = awgEnv.local_address || "10.8.0.1/24";
       let cliAddr = awgEnv.client_address || "10.8.0.2/32";
       const dnsAddr = awgEnv.dns || env.lan_ip || "10.8.0.1";
-      const h1 = awgEnv.h1 ? `${awgEnv.h1}` : "184920412";
-      const h2 = awgEnv.h2 ? `${awgEnv.h2}` : "492019482";
-      const h3 = awgEnv.h3 ? `${awgEnv.h3}` : "829401928";
-      const h4 = awgEnv.h4 ? `${awgEnv.h4}` : "392019481";
+      const awgVer = getCurrentOptionValue(sectionId, "awg_version", "2.0");
+      const h1 = `${randomIntInRange(100000000, 500000000)}`;
+      const h2 = `${randomIntInRange(500000001, 900000000)}`;
+      const h3 = `${randomIntInRange(900000001, 1400000000)}`;
+      const h4 = `${randomIntInRange(1400000001, 2000000000)}`;
 
       const usedSubnets = new Set();
       for (const s of serverSections) {
@@ -3494,18 +4317,35 @@ function autoConfigureServer(sectionId) {
       setWidgetValue(sectionId, "awg_dns", dnsAddr);
       setWidgetValue(sectionId, "awg_mtu", "1280");
       setWidgetValue(sectionId, "awg_keepalive", "25");
-      setWidgetValue(sectionId, "awg_version", "2.0");
-      setWidgetValue(sectionId, "awg_jc", "4");
+      setWidgetValue(sectionId, "awg_version", awgVer);
+      setWidgetValue(sectionId, "awg_preshared_key", generateBase64Key(32));
+      setWidgetValue(sectionId, "awg_jc", `${randomIntInRange(4, 7)}`);
       setWidgetValue(sectionId, "awg_jmin", "40");
       setWidgetValue(sectionId, "awg_jmax", "70");
-      setWidgetValue(sectionId, "awg_s1", "0");
-      setWidgetValue(sectionId, "awg_s2", "0");
+      setWidgetValue(sectionId, "awg_s1", `${randomIntInRange(15, 45)}`);
+      setWidgetValue(sectionId, "awg_s2", `${randomIntInRange(15, 45)}`);
       setWidgetValue(sectionId, "awg_s3", "0");
       setWidgetValue(sectionId, "awg_s4", "0");
       setWidgetValue(sectionId, "awg_h1", h1);
       setWidgetValue(sectionId, "awg_h2", h2);
       setWidgetValue(sectionId, "awg_h3", h3);
       setWidgetValue(sectionId, "awg_h4", h4);
+
+      if (awgVer === "3.0" || awgVer === "3.1") {
+        setWidgetValue(
+          sectionId,
+          "awg_header_protection_key",
+          generateBase64Key(32),
+        );
+        setWidgetValue(sectionId, "awg_content_padding_addition", "38-104");
+      }
+      if (awgVer === "3.1") {
+        setWidgetValue(sectionId, "awg_rekey_after_time", "120");
+        setWidgetValue(sectionId, "awg_rekey_timeout", "5");
+        setWidgetValue(sectionId, "awg_reject_after_time", "180");
+        setWidgetValue(sectionId, "awg_keepalive_timeout", "10");
+        setWidgetValue(sectionId, "awg_max_handshake_attempts", "10");
+      }
 
       Promise.all([
         generateAwgKeypair(sectionId),
@@ -3557,27 +4397,30 @@ function autoConfigureServer(sectionId) {
       setWidgetValue(sectionId, "hysteria2_obfs_type", "salamander");
       setWidgetValue(sectionId, "hysteria2_obfs_password", generatePassword());
       setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_alpn", ["h3"]);
       setWidgetValue(sectionId, "tls_certificate_path", certPath);
       setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
     } else if (protocol === "tuic") {
+      const cc = getCurrentOptionValue(
+        sectionId,
+        "tuic_congestion_control",
+        "bbr",
+      );
       setWidgetValue(sectionId, "server_uuid", generateUuid());
       setWidgetValue(sectionId, "server_password", generatePassword());
-      setWidgetValue(sectionId, "tuic_congestion_control", "bbr");
+      setWidgetValue(sectionId, "tuic_congestion_control", cc || "bbr");
       setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_alpn", ["h3"]);
       setWidgetValue(sectionId, "tls_certificate_path", certPath);
       setWidgetValue(sectionId, "tls_key_path", keyPath);
-    } else if (protocol === "trojan") {
-      setWidgetValue(sectionId, "security", "tls");
-      syncSecurityChoices(sectionId);
-      setWidgetValue(sectionId, "server_password", generatePassword());
-      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
-      setWidgetValue(sectionId, "tls_certificate_path", certPath);
-      setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
     } else if (protocol === "anytls") {
       setWidgetValue(sectionId, "server_password", generatePassword());
       setWidgetValue(sectionId, "tls_server_name", terminatingSni);
       setWidgetValue(sectionId, "tls_certificate_path", certPath);
       setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
     } else if (protocol === "naive") {
       setWidgetValue(
         sectionId,
@@ -3586,13 +4429,20 @@ function autoConfigureServer(sectionId) {
       );
       setWidgetValue(sectionId, "server_password", generatePassword());
       setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_alpn", ["h2", "http/1.1"]);
       setWidgetValue(sectionId, "tls_certificate_path", certPath);
       setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
     } else if (protocol === "shadowtls") {
+      const stlsVer = getCurrentOptionValue(
+        sectionId,
+        "shadowtls_version",
+        "3",
+      );
       setWidgetValue(sectionId, "server_password", generatePassword());
       setWidgetValue(sectionId, "shadowtls_handshake_server", decoySni);
       setWidgetValue(sectionId, "shadowtls_handshake_server_port", "443");
-      setWidgetValue(sectionId, "shadowtls_version", "3");
+      setWidgetValue(sectionId, "shadowtls_version", stlsVer || "3");
     } else if (protocol === "fptn") {
       setWidgetValue(
         sectionId,
@@ -3603,14 +4453,181 @@ function autoConfigureServer(sectionId) {
       setWidgetValue(sectionId, "tls_server_name", terminatingSni);
       setWidgetValue(sectionId, "tls_certificate_path", certPath);
       setWidgetValue(sectionId, "tls_key_path", keyPath);
-    } else if (protocol === "vmess") {
+      needsTlsCert = true;
+    } else if (protocol === "mieru") {
+      const mieruTr = getCurrentOptionValue(
+        sectionId,
+        "mieru_transport",
+        "TCP",
+      );
       setWidgetValue(sectionId, "security", "none");
       syncSecurityChoices(sectionId);
-      setWidgetValue(sectionId, "server_uuid", generateUuid());
-      setWidgetValue(sectionId, "vmess_alter_id", "0");
-    } else if (protocol === "shadowsocks") {
-      setWidgetValue(sectionId, "shadowsocks_method", "aes-128-gcm");
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "tachyon",
+      );
       setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(
+        sectionId,
+        "mieru_transport",
+        mieruTr === "UDP" ? "UDP" : "TCP",
+      );
+    } else if (protocol === "trusttunnel") {
+      const useQuic = getCurrentOptionValue(sectionId, "trusttunnel_quic", "0");
+      setWidgetValue(sectionId, "security", "tls");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "tachyon",
+      );
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(
+        sectionId,
+        "trusttunnel_quic",
+        useQuic === "1" ? "1" : "0",
+      );
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(
+        sectionId,
+        "tls_alpn",
+        useQuic === "1" ? ["h3"] : ["h2", "http/1.1"],
+      );
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
+    } else if (protocol === "tewfai") {
+      const tewfaiTr = getCurrentOptionValue(
+        sectionId,
+        "tewfai_inbound_transport",
+        "tcp",
+      );
+      const innerCipher = getCurrentOptionValue(
+        sectionId,
+        "tewfai_inner_cipher",
+        "aes-256-gcm",
+      );
+      setWidgetValue(sectionId, "security", "tls");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(sectionId, "tewfai_uuid", generateUuid());
+      setWidgetValue(sectionId, "tewfai_password", generatePassword());
+      setWidgetValue(
+        sectionId,
+        "tewfai_inbound_transport",
+        tewfaiTr === "quic" ? "quic" : "tcp",
+      );
+      setWidgetValue(sectionId, "tewfai_inner_cipher", innerCipher);
+      setWidgetValue(sectionId, "tewfai_pqc_enabled", "1");
+      setWidgetValue(sectionId, "tewfai_handover_enabled", "1");
+      setWidgetValue(sectionId, "tewfai_fec_enabled", "0");
+      setWidgetValue(sectionId, "tewfai_shaper_enabled", "1");
+      setWidgetValue(sectionId, "tewfai_shaper_profile", "adaptive");
+      setWidgetValue(sectionId, "tewfai_mtu", "1400");
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(
+        sectionId,
+        "tls_alpn",
+        tewfaiTr === "quic" ? ["h3"] : ["h2", "http/1.1"],
+      );
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
+    } else if (protocol === "masque") {
+      const usedPools = new Set();
+      for (const s of serverSections) {
+        if (s[".name"] === sectionId) continue;
+        const p4 = getFirstListValue(s[".name"], "masque_ipv4_pool");
+        if (p4) usedPools.add(p4);
+      }
+      let poolIdx = 0;
+      let pool4 = "172.16.0.0/24";
+      while (usedPools.has(pool4) && poolIdx < 200) {
+        poolIdx++;
+        pool4 = `172.16.${poolIdx}.0/24`;
+      }
+      const pool6 = `fd00:172:16:${poolIdx}::/64`;
+
+      setWidgetValue(sectionId, "security", "tls");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "tachyon",
+      );
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "masque_ipv4_pool", pool4);
+      setWidgetValue(sectionId, "masque_ipv6_pool", pool6);
+      setWidgetValue(sectionId, "masque_mtu", "1400");
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_alpn", ["h3"]);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
+    } else if (protocol === "openconnect") {
+      const ocFlavor = getCurrentOptionValue(
+        sectionId,
+        "openconnect_flavor",
+        "anyconnect",
+      );
+      const ocDefaults = getOpenconnectFlavorDefaults(ocFlavor);
+      const usedOcAddrs = new Set();
+      for (const s of serverSections) {
+        if (s[".name"] === sectionId) continue;
+        const oa = uci.get(UCI_PACKAGE, s[".name"], "openconnect_address");
+        if (oa) usedOcAddrs.add(oa);
+      }
+      let ocIdx = 0;
+      let ocAddr = "10.9.0.2/24";
+      while (usedOcAddrs.has(ocAddr) && ocIdx < 200) {
+        ocIdx++;
+        ocAddr = `10.9.${ocIdx}.2/24`;
+      }
+
+      setWidgetValue(sectionId, "security", "tls");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(sectionId, "openconnect_cookie", generatePassword());
+      setWidgetValue(sectionId, "openconnect_flavor", ocFlavor);
+      setWidgetValue(sectionId, "openconnect_user_agent", ocDefaults.userAgent);
+      setWidgetValue(
+        sectionId,
+        "openconnect_local_hostname",
+        ocDefaults.hostname,
+      );
+      setWidgetValue(sectionId, "openconnect_urlpath", ocDefaults.urlpath);
+      setWidgetValue(sectionId, "openconnect_address", ocAddr);
+      setWidgetValue(sectionId, "openconnect_mtu", "1400");
+      setWidgetValue(
+        sectionId,
+        "openconnect_ip",
+        getCurrentOptionValue(sectionId, "openconnect_ip", "0"),
+      );
+      setWidgetValue(
+        sectionId,
+        "openconnect_esp",
+        getCurrentOptionValue(sectionId, "openconnect_esp", "0"),
+      );
+      setWidgetValue(
+        sectionId,
+        "openconnect_dtls",
+        getCurrentOptionValue(sectionId, "openconnect_dtls", "0"),
+      );
+      setWidgetValue(sectionId, "tls_server_name", terminatingSni);
+      setWidgetValue(sectionId, "tls_certificate_path", certPath);
+      setWidgetValue(sectionId, "tls_key_path", keyPath);
+      needsTlsCert = true;
+    } else if (protocol === "shadowsocks") {
+      const ssMethod = getCurrentOptionValue(
+        sectionId,
+        "shadowsocks_method",
+        "aes-128-gcm",
+      );
+      setWidgetValue(sectionId, "shadowsocks_method", ssMethod);
+      setWidgetValue(
+        sectionId,
+        "server_password",
+        generateShadowsocksPassword(ssMethod),
+      );
     } else if (protocol === "socks") {
       setWidgetValue(sectionId, "socks_auth_enabled", "1");
       setWidgetValue(
@@ -3647,21 +4664,40 @@ function autoConfigureServer(sectionId) {
         defaultTailscaleHostname(sectionId),
       );
       setWidgetValue(sectionId, "tailscale_advertise_exit_node", "1");
+      setWidgetValue(sectionId, "tailscale_auto_firewall", "1");
       setWidgetValue(sectionId, "tailscale_mode", "singbox");
+    } else if (protocol === "json_inbound") {
+      const sampleInbound = {
+        type: "vless",
+        tag: `server-${sectionId}-in`,
+        listen: "0.0.0.0",
+        listen_port: parseInt(chosenPort, 10) || 14443,
+        users: [
+          {
+            name: getServerName(sectionId) || sectionId,
+            uuid: generateUuid(),
+          },
+        ],
+      };
+      setWidgetValue(
+        sectionId,
+        "inbound_json",
+        JSON.stringify(sampleInbound, null, 2),
+      );
     }
 
-    const isTls =
-      protocol === "hysteria2" ||
-      protocol === "tuic" ||
-      protocol === "trojan" ||
-      protocol === "anytls" ||
-      protocol === "naive" ||
-      protocol === "fptn";
-    if (isTls) {
+    if (needsTlsCert) {
       generateTlsCertificateIfMissing(sectionId);
     }
 
-    if (typeof main.showToast === "function") {
+    const modal = getModalNode();
+    if (modal) {
+      modal
+        .querySelectorAll(".cbi-input-invalid")
+        .forEach((node) => node.classList.remove("cbi-input-invalid"));
+    }
+
+    if (typeof main !== "undefined" && typeof main.showToast === "function") {
       main.showToast(_("Server configuration generated"), "success");
     }
   });
@@ -3685,6 +4721,20 @@ function prepareServerModal(sectionId) {
   }
 
   if (
+    protocol === "tewfai" &&
+    !uci.get(UCI_PACKAGE, sectionId, "tewfai_uuid")
+  ) {
+    setDefault(sectionId, "tewfai_uuid", generateUuid());
+  }
+
+  if (
+    protocol === "openconnect" &&
+    !uci.get(UCI_PACKAGE, sectionId, "openconnect_cookie")
+  ) {
+    setDefault(sectionId, "openconnect_cookie", generatePassword());
+  }
+
+  if (
     protocol === "vless" &&
     getEffectiveSecurity(sectionId) === "reality" &&
     !getFirstListValue(sectionId, "reality_short_id")
@@ -3696,7 +4746,7 @@ function prepareServerModal(sectionId) {
     setDefault(sectionId, "listen_port", getServerPort(sectionId));
   }
 
-  const tasks = [];
+  const tasks = [fetchRouterNetworkEnv()];
 
   if (shouldGenerateRealityKeypair(sectionId)) {
     tasks.push(generateRealityKeypairIfMissing(sectionId));
@@ -3740,6 +4790,10 @@ function addTlsDepends(option) {
   option.depends("protocol", "anytls");
   option.depends("protocol", "naive");
   option.depends("protocol", "fptn");
+  option.depends("protocol", "trusttunnel");
+  option.depends("protocol", "tewfai");
+  option.depends("protocol", "masque");
+  option.depends("protocol", "openconnect");
 }
 
 function addRealityDepends(option) {
@@ -3862,12 +4916,14 @@ function configureServerSection(sectionRef, options = {}) {
 
     sanitizeUciDeletes(sectionId);
 
-    return form.GridSection.prototype.handleModalCancel.call(
-      this,
-      modalMap,
-      ev,
-      isSaving,
-    );
+    return form.GridSection.prototype.handleModalCancel
+      .call(this, modalMap, ev, isSaving)
+      .then((res) => {
+        if (typeof main.renderServerTabInboundsOverview === "function") {
+          main.renderServerTabInboundsOverview();
+        }
+        return res;
+      });
   };
 
   sectionRef.handleModalSave = function (modalMap, ev) {
@@ -3955,6 +5011,13 @@ function configureServerSection(sectionRef, options = {}) {
   sectionRef.renderRowActions = function (sectionId) {
     return renderServerRowActions(this, sectionId);
   };
+
+  if (typeof main.registerServerSectionController === "function") {
+    main.registerServerSectionController(sectionRef, {
+      showServerInfoModal: (sectionId) => showServerInfoModal(sectionId),
+      showSubscriptionModal: () => showSubscriptionModal(sectionRef),
+    });
+  }
 }
 
 function createServerContent(section, options = {}) {
@@ -4004,6 +5067,43 @@ function createServerContent(section, options = {}) {
       setWidgetValue(sectionId, "server_username", nextUsername);
     }
   };
+
+  o = section.option(
+    form.Value,
+    "server_country",
+    _("Server country"),
+    _(
+      "Two-letter ISO country code (e.g. RU, NL, DE) advertised as a flag emoji in client links and subscriptions.",
+    ),
+  );
+  o.default = "RU";
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "RU";
+  [
+    ["RU", "🇷🇺 Россия (RU)"],
+    ["NL", "🇳🇱 Нидерланды (NL)"],
+    ["DE", "🇩🇪 Германия (DE)"],
+    ["FI", "🇫🇮 Финляндия (FI)"],
+    ["US", "🇺🇸 США (US)"],
+    ["GB", "🇬🇧 Великобритания (GB)"],
+    ["FR", "🇫🇷 Франция (FR)"],
+    ["SE", "🇸🇪 Швеция (SE)"],
+    ["PL", "🇵🇱 Польша (PL)"],
+    ["TR", "🇹🇷 Турция (TR)"],
+    ["KZ", "🇰🇿 Казахстан (KZ)"],
+    ["BY", "🇧🇾 Беларусь (BY)"],
+    ["UA", "🇺🇦 Украина (UA)"],
+    ["AE", "🇦🇪 ОАЭ (AE)"],
+    ["SG", "🇸🇬 Сингапур (SG)"],
+    ["JP", "🇯🇵 Япония (JP)"],
+    ["HK", "🇭🇰 Гонконг (HK)"],
+    ["AT", "🇦🇹 Австрия (AT)"],
+    ["CH", "🇨🇭 Швейцария (CH)"],
+    ["LT", "🇱🇹 Литва (LT)"],
+    ["LV", "🇱🇻 Латвия (LV)"],
+    ["EE", "🇪🇪 Эстония (EE)"],
+  ].forEach(([code, label]) => o.value(code, label));
 
   o = section.option(form.ListValue, "protocol", _("Protocol"));
   section.serverCapabilityOptions.protocol = o;
@@ -4079,12 +5179,26 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   addPortProtocolDepends(o, true);
 
-  o = section.option(form.Value, "listen", _("Listen address"));
+  o = section.option(
+    form.Value,
+    "listen",
+    _("Listen address"),
+    _(
+      "Choose whether this server listens on all interfaces, only Local (LAN), or a specific External (WAN) interface IP.",
+    ),
+  );
   o.default = "0.0.0.0";
   o.rmempty = false;
   o.modalonly = true;
   o.validate = validateListenAddress;
   addPortProtocolDepends(o, true);
+  populateListenAddressChoices(o, routerNetworkEnvCache);
+  o.load = function (sectionId) {
+    return fetchRouterNetworkEnv().then((env) => {
+      populateListenAddressChoices(this, env);
+      return uci.get(UCI_PACKAGE, sectionId, "listen") || "0.0.0.0";
+    });
+  };
 
   o = section.option(form.Value, "listen_port", _("Listen port"));
   o.default = "443";
@@ -4093,16 +5207,27 @@ function createServerContent(section, options = {}) {
   o.validate = validatePort;
   addPortProtocolDepends(o, true);
 
-  o = section.option(form.Value, "public_host", _("Public host"));
+  o = section.option(
+    form.Value,
+    "public_host",
+    _("Public host"),
+    _(
+      "Select the Local (LAN) or External (WAN / DDNS) router address advertised in client connection links and QR codes.",
+    ),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateHost;
   addPortProtocolDepends(o, true);
+  populatePublicHostChoices(o, routerNetworkEnvCache);
   o.load = function (sectionId) {
-    return loadDefaultPublicHost().then((host) => {
-      applyDefaultPublicHost(sectionId, host);
-      return uci.get(UCI_PACKAGE, sectionId, "public_host") || host || "";
-    });
+    return Promise.all([loadDefaultPublicHost(), fetchRouterNetworkEnv()]).then(
+      ([host, env]) => {
+        populatePublicHostChoices(this, env);
+        applyDefaultPublicHost(sectionId, host);
+        return uci.get(UCI_PACKAGE, sectionId, "public_host") || host || "";
+      },
+    );
   };
 
   o = section.option(form.ListValue, "routing_mode", _("Routing mode"));
@@ -4177,6 +5302,18 @@ function createServerContent(section, options = {}) {
   o.onchange = function (_ev, sectionId, value) {
     if (value === "reality") {
       generateRealityKeypairIfMissing(sectionId);
+    } else if (value === "tls") {
+      if (!uci.get(UCI_PACKAGE, sectionId, "tls_certificate_path")) {
+        setWidgetValue(
+          sectionId,
+          "tls_certificate_path",
+          defaultTlsCertificatePath(sectionId),
+        );
+      }
+      if (!uci.get(UCI_PACKAGE, sectionId, "tls_key_path")) {
+        setWidgetValue(sectionId, "tls_key_path", defaultTlsKeyPath(sectionId));
+      }
+      generateTlsCertificateIfMissing(sectionId);
     }
   };
   {
@@ -4338,6 +5475,29 @@ function createServerContent(section, options = {}) {
   o.rmempty = false;
   o.modalonly = true;
   addStreamDepends(o);
+  o.onchange = function (_ev, sectionId, value) {
+    const protocol = getCurrentOptionValue(
+      sectionId,
+      "protocol",
+      getProtocol(sectionId),
+    );
+    const security = getCurrentOptionValue(
+      sectionId,
+      "security",
+      getEffectiveSecurity(sectionId),
+    );
+    const sni =
+      getCurrentOptionValue(sectionId, "tls_server_name", "") ||
+      (security === "reality" ? "www.microsoft.com" : "tachyon.lan");
+    autoConfigureStreamTransport(
+      sectionId,
+      protocol,
+      security,
+      value,
+      sni,
+      false,
+    );
+  };
 
   o = section.option(form.Value, "transport_path", _("Transport path"));
   o.modalonly = true;
@@ -4398,11 +5558,22 @@ function createServerContent(section, options = {}) {
   o.value("aes-128-gcm", "aes-128-gcm");
   o.value("aes-256-gcm", "aes-256-gcm");
   o.value("chacha20-ietf-poly1305", "chacha20-ietf-poly1305");
+  o.value("xchacha20-ietf-poly1305", "xchacha20-ietf-poly1305");
+  o.value("2022-blake3-aes-128-gcm", "2022-blake3-aes-128-gcm");
+  o.value("2022-blake3-aes-256-gcm", "2022-blake3-aes-256-gcm");
+  o.value("2022-blake3-chacha20-poly1305", "2022-blake3-chacha20-poly1305");
   o.default = "aes-128-gcm";
   o.rmempty = false;
   o.modalonly = true;
   o.validate = validateRequired;
   o.depends("protocol", "shadowsocks");
+  o.onchange = function (_ev, sectionId, value) {
+    setWidgetValue(
+      sectionId,
+      "server_password",
+      generateShadowsocksPassword(value),
+    );
+  };
 
   o = section.option(
     form.Flag,
@@ -4450,6 +5621,7 @@ function createServerContent(section, options = {}) {
   o.depends("protocol", "mixed");
   o.depends("protocol", "mieru");
   o.depends("protocol", "trusttunnel");
+  o.depends("protocol", "masque");
 
   o = section.option(form.Value, "server_password", _("Password"));
   o.modalonly = true;
@@ -4478,6 +5650,7 @@ function createServerContent(section, options = {}) {
   o.depends("protocol", "mixed");
   o.depends("protocol", "mieru");
   o.depends("protocol", "trusttunnel");
+  o.depends("protocol", "masque");
 
   o = section.option(form.ListValue, "mieru_transport", _("Mieru Transport"));
   o.value("TCP", "TCP");
@@ -4495,20 +5668,100 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateRequiredText;
+  o.load = function (sectionId) {
+    const current = uci.get(UCI_PACKAGE, sectionId, "tewfai_uuid");
+    if (current) return current;
+    const value = generateUuid();
+    uci.set(UCI_PACKAGE, sectionId, "tewfai_uuid", value);
+    return value;
+  };
   o.depends("protocol", "tewfai");
 
-  o = section.option(form.Value, "tewfai_password", _("Password (optional second PSK)"));
+  o = section.option(
+    form.Value,
+    "tewfai_password",
+    _("Password (optional second PSK)"),
+  );
   o.modalonly = true;
   o.rmempty = true;
   o.depends("protocol", "tewfai");
 
-  o = section.option(form.ListValue, "tewfai_inbound_transport", _("Transport"));
+  o = section.option(
+    form.ListValue,
+    "tewfai_inbound_transport",
+    _("Transport"),
+  );
   o.value("tcp", "TCP");
   o.value("quic", "QUIC");
-  o.value("auto", _("Auto"));
-  o.default = "auto";
+  o.default = "tcp";
   o.rmempty = true;
   o.modalonly = true;
+  o.depends("protocol", "tewfai");
+  o.onchange = function (_ev, sectionId, value) {
+    setWidgetValue(
+      sectionId,
+      "tls_alpn",
+      value === "quic" ? ["h3"] : ["h2", "http/1.1"],
+    );
+  };
+
+  o = section.option(form.ListValue, "tewfai_inner_cipher", _("Inner cipher"));
+  o.value("aes-256-gcm", "AES-256-GCM");
+  o.value("none", _("None (TLS/QUIC only)"));
+  o.default = "aes-256-gcm";
+  o.rmempty = true;
+  o.modalonly = true;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(
+    form.Flag,
+    "tewfai_pqc_enabled",
+    _("Post-Quantum (PQC ML-KEM)"),
+  );
+  o.default = "1";
+  o.modalonly = true;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(
+    form.Flag,
+    "tewfai_handover_enabled",
+    _("Seamless Handover"),
+  );
+  o.default = "1";
+  o.modalonly = true;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(
+    form.Flag,
+    "tewfai_fec_enabled",
+    _("Forward Error Correction (FEC)"),
+  );
+  o.default = "0";
+  o.modalonly = true;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(form.Flag, "tewfai_shaper_enabled", _("Traffic Shaper"));
+  o.default = "1";
+  o.modalonly = true;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(
+    form.ListValue,
+    "tewfai_shaper_profile",
+    _("Shaper Profile"),
+  );
+  o.value("adaptive", _("Adaptive"));
+  o.value("fixed", _("Fixed"));
+  o.value("off", _("Off"));
+  o.default = "adaptive";
+  o.modalonly = true;
+  o.depends({ protocol: "tewfai", tewfai_shaper_enabled: "1" });
+
+  o = section.option(form.Value, "tewfai_mtu", _("MTU"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "1400";
+  o.validate = validateOptionalPort;
   o.depends("protocol", "tewfai");
 
   o = section.option(form.Value, "masque_ipv4_pool", _("IPv4 pool (CIDR)"));
@@ -4534,6 +5787,13 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateRequiredText;
+  o.load = function (sectionId) {
+    const current = uci.get(UCI_PACKAGE, sectionId, "openconnect_cookie");
+    if (current) return current;
+    const value = generatePassword();
+    uci.set(UCI_PACKAGE, sectionId, "openconnect_cookie", value);
+    return value;
+  };
   o.depends("protocol", "openconnect");
 
   o = section.option(
@@ -4551,13 +5811,23 @@ function createServerContent(section, options = {}) {
   o.default = "anyconnect";
   o.modalonly = true;
   o.depends("protocol", "openconnect");
+  o.onchange = function (_ev, sectionId, value) {
+    const defaults = getOpenconnectFlavorDefaults(value);
+    setWidgetValue(sectionId, "openconnect_user_agent", defaults.userAgent);
+    setWidgetValue(sectionId, "openconnect_local_hostname", defaults.hostname);
+    setWidgetValue(sectionId, "openconnect_urlpath", defaults.urlpath);
+  };
 
   o = section.option(form.Value, "openconnect_user_agent", _("User-Agent"));
   o.modalonly = true;
   o.rmempty = true;
   o.depends("protocol", "openconnect");
 
-  o = section.option(form.Value, "openconnect_local_hostname", _("Local hostname"));
+  o = section.option(
+    form.Value,
+    "openconnect_local_hostname",
+    _("Local hostname"),
+  );
   o.modalonly = true;
   o.rmempty = true;
   o.depends("protocol", "openconnect");
@@ -4584,17 +5854,24 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.depends("protocol", "openconnect");
 
-  o = section.option(form.Flag, "openconnect_esp", _("Use ESP (needs IP mode)"));
+  o = section.option(
+    form.Flag,
+    "openconnect_esp",
+    _("Use ESP (needs IP mode)"),
+  );
   o.default = "0";
   o.modalonly = true;
   o.depends("protocol", "openconnect");
 
-  o = section.option(form.Flag, "openconnect_dtls", _("Use DTLS (anyconnect only)"));
+  o = section.option(
+    form.Flag,
+    "openconnect_dtls",
+    _("Use DTLS (anyconnect only)"),
+  );
   o.default = "0";
   o.modalonly = true;
   o.depends("protocol", "openconnect");
 
-  
   o = section.option(
     form.ListValue,
     "tuic_congestion_control",
@@ -4920,6 +6197,19 @@ function createServerContent(section, options = {}) {
 
   o = section.option(
     form.Flag,
+    "tailscale_auto_firewall",
+    _("Auto-configure Tailscale firewall zone"),
+    _(
+      "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings).",
+    ),
+  );
+  o.default = "1";
+  o.modalonly = true;
+  o.rmempty = false;
+  addTailscaleDepends(o);
+
+  o = section.option(
+    form.Flag,
     "tailscale_masquerade",
     _("Masquerade LAN traffic into tailnet"),
     _(
@@ -5049,6 +6339,39 @@ function createServerContent(section, options = {}) {
   o.value("3.0", "AmneziaWG 3.0");
   o.value("3.1", "AmneziaWG 3.1");
   o.depends("protocol", "awg");
+  o.onchange = function (_ev, sectionId, value) {
+    if (value === "3.0" || value === "3.1") {
+      if (!getCurrentOptionValue(sectionId, "awg_header_protection_key", "")) {
+        setWidgetValue(
+          sectionId,
+          "awg_header_protection_key",
+          generateBase64Key(32),
+        );
+      }
+      if (
+        !getCurrentOptionValue(sectionId, "awg_content_padding_addition", "")
+      ) {
+        setWidgetValue(sectionId, "awg_content_padding_addition", "38-104");
+      }
+    }
+    if (value === "3.1") {
+      if (!getCurrentOptionValue(sectionId, "awg_rekey_after_time", "")) {
+        setWidgetValue(sectionId, "awg_rekey_after_time", "120");
+      }
+      if (!getCurrentOptionValue(sectionId, "awg_rekey_timeout", "")) {
+        setWidgetValue(sectionId, "awg_rekey_timeout", "5");
+      }
+      if (!getCurrentOptionValue(sectionId, "awg_reject_after_time", "")) {
+        setWidgetValue(sectionId, "awg_reject_after_time", "180");
+      }
+      if (!getCurrentOptionValue(sectionId, "awg_keepalive_timeout", "")) {
+        setWidgetValue(sectionId, "awg_keepalive_timeout", "10");
+      }
+      if (!getCurrentOptionValue(sectionId, "awg_max_handshake_attempts", "")) {
+        setWidgetValue(sectionId, "awg_max_handshake_attempts", "10");
+      }
+    }
+  };
   o.write = function (section_id, formvalue) {
     if (formvalue === "2.0") {
       uci.unset(UCI_PACKAGE, section_id, "awg_header_protection_key");
@@ -5637,7 +6960,14 @@ function configureServerSubscription(section) {
       ),
     ]),
     E("div", {}, description),
+    E("div", { id: "tachyon-server-inbounds-overview" }),
   ]);
+  if (
+    typeof main !== "undefined" &&
+    typeof main.renderServerTabInboundsOverview === "function"
+  ) {
+    setTimeout(() => main.renderServerTabInboundsOverview(), 0);
+  }
 }
 
 return baseclass.extend({

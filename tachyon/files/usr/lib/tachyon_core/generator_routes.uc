@@ -6,6 +6,7 @@ let helpers = require("core.helpers");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
 let runtime_constants = require("tachyon_core.constants");
+let variant_state = require("tachyon_core.variant_state");
 let runtime_country = require("tachyon_core.country");
 let runtime_dns = require("tachyon_core.dns");
 let runtime_route = require("tachyon_core.route");
@@ -790,12 +791,10 @@ function group_member_leaf_tags(members, config) {
 }
 
 function is_extended_variant_detected() {
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
+    let sb_variant_val = variant_state.read_variant_marker();
     if (sb_variant_val == "extended" || sb_variant_val == "extended-compressed")
         return true;
-    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
-    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
+    let sb_version_val = variant_state.read_version_state();
     return index(sb_version_val, "extended") >= 0;
 }
 
@@ -2605,27 +2604,46 @@ function add_combined_route_for_section(config, section) {
     if (target.unsupported)
         ctx.runtime_generate_unsupported(target.unsupported);
 
-    let country_list = connections.geoip_country_list(section);
-    let country_mode = connections.geoip_country_mode(section);
-    let geo_tags = [];
-    if ((target.outbound || target.action) && length(country_list) > 0) {
-        for (let cc in country_list) {
-            let ip_ruleset = ensure_community_ruleset(config, section_name, "geoip_" + cc);
-            if (ip_ruleset && ip_ruleset.tag)
-                push(geo_tags, ip_ruleset.tag);
-
-            if (cc == "ru") {
-                let site_ruleset = ensure_community_ruleset(config, section_name, "geosite_ru");
-                if (site_ruleset && site_ruleset.tag)
-                    push(geo_tags, site_ruleset.tag);
-            }
-        }
-    }
-
     let has_domain = length(domain) > 0 || length(domain_suffix) > 0 ||
         length(domain_keyword) > 0 || length(domain_regex) > 0;
     let has_ruleset = length(rule_set_tags) > 0;
     let has_ip_cidr = length(ip_cidr) > 0;
+
+    let country_list = connections.geoip_country_list(section);
+    let country_mode = connections.geoip_country_mode(section);
+    if (option(section, "action", "") == "bypass" &&
+        country_mode == "exclude" &&
+        !has_domain && !has_ruleset && !has_ip_cidr &&
+        length(discord_cf_subnets) == 0 &&
+        length(source_ip_cidr) == 0 &&
+        !bool_option(section, "match_all", false)) {
+        country_mode = "include";
+    }
+    let bypass_geo_only = option(section, "action", "") == "bypass" &&
+        !has_domain && !has_ruleset && !has_ip_cidr &&
+        length(discord_cf_subnets) == 0 &&
+        !geoip_mode_inverts(country_mode) &&
+        length(country_list) > 0;
+    let geo_tags = [];
+    if ((target.outbound || target.action) && length(country_list) > 0) {
+        for (let cc in country_list) {
+            let ip_ruleset = ensure_community_ruleset(config, section_name, "geoip_" + cc);
+            if (ip_ruleset && ip_ruleset.tag) {
+                push(geo_tags, ip_ruleset.tag);
+                if (bypass_geo_only && index(dns_response_rule_set_tags, ip_ruleset.tag) < 0)
+                    push(dns_response_rule_set_tags, ip_ruleset.tag);
+            }
+
+            if (cc == "ru") {
+                let site_ruleset = ensure_community_ruleset(config, section_name, "geosite_ru");
+                if (site_ruleset && site_ruleset.tag) {
+                    push(geo_tags, site_ruleset.tag);
+                    if (bypass_geo_only && index(dns_query_rule_set_tags, site_ruleset.tag) < 0)
+                        push(dns_query_rule_set_tags, site_ruleset.tag);
+                }
+            }
+        }
+    }
 
     let create_section_route_rule = function() {
         let r = {
@@ -2726,6 +2744,32 @@ function add_combined_route_for_section(config, section) {
 
     if (closed_geo && length(geo_tags) > 0)
         push_section_geoip_remainder(config, create_section_route_rule(), target, excluded_cidrs, geo_tags, country_mode);
+
+    if (bypass_geo_only) {
+        let cctld_map = {
+            ru: [ "ru", "su", "xn--p1ai" ],
+            ua: [ "ua", "xn--j1amh" ],
+            by: [ "by", "xn--90ais" ],
+            kz: [ "kz", "xn--80ao21a" ]
+        };
+        let cctlds = [];
+        for (let cc in country_list) {
+            cc = lc(trim(as_string(cc)));
+            if (match(cc, /^[a-z]{2}$/) == null)
+                continue;
+            for (let tld in (cctld_map[cc] || [ cc ])) {
+                if (index(cctlds, tld) < 0)
+                    push(cctlds, tld);
+                if (index(domain_suffix, tld) < 0)
+                    push(domain_suffix, tld);
+            }
+        }
+        if (length(cctlds) > 0) {
+            let cctld_rule = create_section_route_rule();
+            add_domain_array(cctld_rule, "domain_suffix", cctlds);
+            push_section_route_rule(config, cctld_rule, target.outbound, excluded_cidrs, null, country_mode);
+        }
+    }
 
     let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
     let dns_server_tag = section_dns_server(section);
@@ -3191,14 +3235,29 @@ function ensure_dnsmasq_dns_server(config) {
 }
 
 function add_server_routes(config, servers, sections) {
+    let has_lo_direct = has_outbound_tag(config, runtime_constants.LO_DIRECT_OUTBOUND_TAG);
     let has_lan_direct = has_outbound_tag(config, runtime_constants.LAN_DIRECT_OUTBOUND_TAG);
+    let lan_cidrs = type(config.__lan_interface_cidrs) == "array" ? config.__lan_interface_cidrs : [];
     for (let server in servers) {
         // Native-mode Tailscale runs outside sing-box: no inbound, no rules.
         if (runtime_servers.is_native_tailscale(server))
             continue;
         runtime_servers.add_sniff_rule(config, server);
 
-        let inbound = runtime_constants.server_inbound_tag(server[".name"]);
+        let base_inbound = runtime_constants.server_inbound_tag(server[".name"]);
+        let inbound = base_inbound;
+        if (option(server, "protocol", "vless") == "shadowtls" &&
+            variant_state.is_tachyon_core() &&
+            trim(as_string(option(server, "shadowtls_detour", ""))) == "") {
+            push(config.route.rules, {
+                action: "route",
+                inbound: base_inbound,
+                outbound: has_lo_direct ? runtime_constants.LO_DIRECT_OUTBOUND_TAG : runtime_constants.DIRECT_OUTBOUND_TAG,
+                override_address: "127.0.0.1",
+                override_port: runtime_servers.shadowtls_inner_port(server)
+            });
+            inbound = base_inbound + "-inner";
+        }
 
         let isolate_lan = bool_option(server, "isolate_lan_for_users", false) || bool_option(server, "block_private_for_users", false);
         let isolated_users = list_option(server, "isolated_users");
@@ -3240,11 +3299,19 @@ function add_server_routes(config, servers, sections) {
                     server: runtime_constants.DNSMASQ_DNS_SERVER_TAG
                 });
             }
-            if (has_lan_direct) {
+            if (has_lo_direct) {
                 push(config.route.rules, {
                     action: "route",
                     inbound: inbound,
-                    ip_is_private: true,
+                    ip_cidr: core_ip.ipv6_supported() ? [ "127.0.0.0/8", "::1/128" ] : [ "127.0.0.0/8" ],
+                    outbound: runtime_constants.LO_DIRECT_OUTBOUND_TAG
+                });
+            }
+            if (has_lan_direct && length(lan_cidrs) > 0) {
+                push(config.route.rules, {
+                    action: "route",
+                    inbound: inbound,
+                    ip_cidr: lan_cidrs,
                     outbound: runtime_constants.LAN_DIRECT_OUTBOUND_TAG
                 });
             }
@@ -3365,5 +3432,6 @@ return {
     load_community_subnet_cidrs,
     section_excluded_candidate_tags,
     urltest_exclude_outbounds,
-    urltest_filtered_outbounds
+    urltest_filtered_outbounds,
+    urltest_idle_timeout
 };

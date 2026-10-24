@@ -37,6 +37,16 @@ const names = [
   'subscriptionUrl',
   'subscriptionToken',
   'configureServerSubscription',
+  'randomBytes',
+  'randomHex',
+  'base64Encode',
+  'generateBase64Key',
+  'generateShadowsocksPassword',
+  'getWidget',
+  'getControlWidget',
+  'setWidgetValue',
+  'getCurrentOptionValue',
+  'autoConfigureStreamTransport',
 ];
 
 function load(window = { crypto: webcrypto }) {
@@ -46,7 +56,7 @@ function load(window = { crypto: webcrypto }) {
     'E',
     '_',
     'showSubscriptionModal',
-    `${names.map((name) => functions.get(name)).join('\n')};return {subscriptionUrl,subscriptionToken,subscriptionServerSupported,configureServerSubscription};`,
+    `const UCI_PACKAGE='tachyon';${names.map((name) => functions.get(name)).join('\n')};return {subscriptionUrl,subscriptionToken,subscriptionServerSupported,configureServerSubscription,generateShadowsocksPassword,autoConfigureStreamTransport};`,
   )(
     window,
     E,
@@ -206,6 +216,73 @@ describe('server subscription configuration', () => {
     expect(writes).toHaveLength(8);
     expect(writes.every((key) => key.startsWith('server_subscription_'))).toBe(
       true,
+    );
+  });
+
+  it('generates valid-length Shadowsocks 2022 base64 keys and AEAD secrets', () => {
+    const { generateShadowsocksPassword } = load({
+      crypto: webcrypto,
+      btoa: (str) => Buffer.from(str, 'binary').toString('base64'),
+    });
+    const key128 = generateShadowsocksPassword('2022-blake3-aes-128-gcm');
+    expect(Buffer.from(key128, 'base64')).toHaveLength(16);
+
+    const key256 = generateShadowsocksPassword('2022-blake3-aes-256-gcm');
+    expect(Buffer.from(key256, 'base64')).toHaveLength(32);
+
+    const keyChacha = generateShadowsocksPassword(
+      '2022-blake3-chacha20-poly1305',
+    );
+    expect(Buffer.from(keyChacha, 'base64')).toHaveLength(32);
+
+    const aead = generateShadowsocksPassword('2022-blake3-chacha8-poly1305');
+    expect(Buffer.from(aead, 'base64')).toHaveLength(32);
+  });
+
+  it('auto-configures stream transport parameters for ws, httpupgrade, http, grpc and xhttp', () => {
+    const store = new Map();
+    globalThis.document = { getElementById: () => null };
+    globalThis.uci = {
+      get: (_pkg, sec, opt) => store.get(`${sec}.${opt}`),
+      set: (_pkg, sec, opt, val) => store.set(`${sec}.${opt}`, val),
+      unset: (_pkg, sec, opt) => store.delete(`${sec}.${opt}`),
+      sections: () => [],
+    };
+    const { autoConfigureStreamTransport } = load();
+
+    autoConfigureStreamTransport(
+      's1',
+      'vless',
+      'reality',
+      'ws',
+      'www.microsoft.com',
+    );
+    expect(store.get('s1.transport_path')).toMatch(/^\/vless-ws-[0-9a-f]{6}$/);
+    expect(store.get('s1.transport_host')).toBe('www.microsoft.com');
+    expect(store.get('s1.vless_flow')).toBe('none');
+
+    autoConfigureStreamTransport(
+      's1',
+      'vmess',
+      'tls',
+      'grpc',
+      'vpn.example.com',
+    );
+    expect(store.get('s1.transport_service_name')).toMatch(
+      /^vmess_grpc_[0-9a-f]{6}$/,
+    );
+    expect(store.get('s1.tls_alpn')).toEqual(['h2']);
+
+    autoConfigureStreamTransport(
+      's1',
+      'vless',
+      'reality',
+      'xhttp',
+      'www.microsoft.com',
+    );
+    expect(store.get('s1.transport_xhttp_mode')).toBe('auto');
+    expect(store.get('s1.transport_path')).toMatch(
+      /^\/vless-xhttp-[0-9a-f]{6}$/,
     );
   });
 });

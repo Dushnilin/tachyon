@@ -55,6 +55,11 @@ import {
   createInitialTrafficRatesState,
   TrafficRatesState,
 } from './metrics';
+import {
+  getConfiguredServerInbounds,
+  renderInboundServersDashboardWidget,
+  switchToServersTab,
+} from './inboundServers';
 
 let expandedSections = getExpandedSections();
 
@@ -136,7 +141,7 @@ function unsubscribeClashSockets() {
   clashSocketSubscriptions = [];
 }
 
-const customProxyLatencies = new Map<string, number>();
+export const customProxyLatencies = new Map<string, number>();
 const activeCountryFilters = new Map<string, string>();
 const activeRegionFilters = new Map<string, string>();
 const singleTestingOutboundCodes: Record<string, boolean> = {};
@@ -512,6 +517,21 @@ async function followLatencyTestState(state: Tachyon.LatencyActionState) {
       await TachyonShellMethods.waitLatencyTestJob(jobId);
     }
 
+    const testedTags = extractTestedTags(
+      state.latency_type,
+      sectionName,
+      state.tag,
+    );
+    if (testedTags.length > 0) {
+      const startedAtMs =
+        typeof state.started_at === 'number'
+          ? state.started_at > 1e11
+            ? state.started_at
+            : state.started_at * 1000
+          : 0;
+      await applyTestedLatenciesResults(testedTags, startedAtMs);
+    }
+
     await completeLatencyTestJob(jobId, sectionName);
   } catch (error) {
     logger.error('[DASHBOARD]', 'followLatencyTestState failed', error);
@@ -676,6 +696,10 @@ async function connectToClashSockets(dataUpdatesId: number) {
       ) {
         renderConnectionsWidget();
       }
+      renderInboundServersDashboardWidget({
+        rawConnections: lastRawConnections,
+        hostnames: cachedHostnames,
+      });
     },
     (_err) => {
       if (
@@ -835,6 +859,100 @@ function getInitialLatencyProgress(
   }
 }
 
+export function extractTestedTags(
+  latencyType: Tachyon.LatencyActionState['latency_type'],
+  sectionName: string,
+  tag: string,
+): string[] {
+  if (latencyType === 'proxy_list') {
+    try {
+      const parsed = JSON.parse(tag);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item): item is string => typeof item === 'string' && item.length > 0,
+        );
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  if (latencyType === 'group') {
+    const section = store
+      .get()
+      .sectionsWidget.data.find((s) => s.sectionName === sectionName);
+    if (section?.outbounds) {
+      return section.outbounds
+        .filter(
+          (o) => !['SING_BOX', 'ZAPRET', 'ZAPRET2', 'BYEDPI'].includes(o.type),
+        )
+        .map((o) => o.code);
+    }
+    return [];
+  }
+
+  if (latencyType === 'proxy') {
+    const parsedTag = tag.startsWith('[')
+      ? (JSON.parse(tag)[0] as string)
+      : tag;
+    return parsedTag ? [parsedTag] : [];
+  }
+
+  return [];
+}
+
+export async function applyTestedLatenciesResults(
+  testedTags: string[],
+  testStartedAt: number,
+  beforeTimes?: Map<string, string>,
+) {
+  if (!testedTags || testedTags.length === 0) {
+    return;
+  }
+
+  try {
+    const proxiesRes = await TachyonShellMethods.getClashApiProxies();
+    if (!proxiesRes.success || !proxiesRes.data) {
+      return;
+    }
+
+    const proxies = (proxiesRes.data as any)?.proxies || {};
+    for (const tag of testedTags) {
+      const proxy = proxies[tag] || proxies[tag.trim()];
+      const latest = proxy?.history?.[0];
+      const delay = typeof latest?.delay === 'number' ? latest.delay : 0;
+      const currentTime = typeof latest?.time === 'string' ? latest.time : '';
+      const prevTime = beforeTimes?.get(tag);
+
+      const historyTimestamp = currentTime ? Date.parse(currentTime) : 0;
+      const isFreshTimestamp =
+        testStartedAt > 0 &&
+        Number.isFinite(historyTimestamp) &&
+        historyTimestamp >= testStartedAt - 15000;
+
+      const isNewMeasurement =
+        Boolean(currentTime) &&
+        (prevTime != null ? currentTime !== prevTime : isFreshTimestamp);
+
+      if (isNewMeasurement && delay > 0) {
+        customProxyLatencies.set(tag, delay);
+      } else {
+        // Tag was tested, but either timed out (no history / old history) or errored
+        customProxyLatencies.set(tag, -1);
+      }
+    }
+
+    capMapSize(customProxyLatencies);
+    void renderSectionsWidget();
+  } catch (error) {
+    logger.warn(
+      '[DASHBOARD]',
+      'Failed to apply tested latencies results',
+      error,
+    );
+  }
+}
+
 async function handleTestLatency(
   latencyType: Tachyon.LatencyActionState['latency_type'],
   sectionName: string,
@@ -854,6 +972,26 @@ async function handleTestLatency(
   let jobId = '';
   let ownsJobFollow = false;
   let completed = false;
+  const testedTags = extractTestedTags(latencyType, sectionName, tag);
+  const testStartedAt = Date.now();
+  const beforeTimes = new Map<string, string>();
+
+  if (testedTags.length > 0 && latencyType !== 'proxy') {
+    try {
+      const beforeProxiesRes = await TachyonShellMethods.getClashApiProxies();
+      if (beforeProxiesRes.success && beforeProxiesRes.data) {
+        const proxies = (beforeProxiesRes.data as any)?.proxies || {};
+        for (const t of testedTags) {
+          const time = (proxies[t] || proxies[t.trim()])?.history?.[0]?.time;
+          if (typeof time === 'string') {
+            beforeTimes.set(t, time);
+          }
+        }
+      }
+    } catch (e) {
+      logger.debug('[DASHBOARD]', 'snapshot proxies before test failed', e);
+    }
+  }
 
   try {
     if (latencyType === 'proxy') {
@@ -904,6 +1042,7 @@ async function handleTestLatency(
       followedLatencyJobs.add(jobId);
       ownsJobFollow = true;
       await TachyonShellMethods.waitLatencyTestJob(jobId);
+      await applyTestedLatenciesResults(testedTags, testStartedAt, beforeTimes);
       await completeLatencyTestJob(jobId, sectionName);
       completed = true;
     }
@@ -1920,6 +2059,11 @@ function updateLatencyProgressInline(
         'sudoku',
         'masque',
         'openvpn',
+        'openconnect',
+        'tewfai',
+        'trusttunnel',
+        'shadowtls',
+        'desync',
       ].includes(section.action || '');
 
     const text = isConnectionNode
@@ -2272,7 +2416,11 @@ async function fetchConnections() {
   const activeEngine = store.get().activeEngine;
   const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
 
-  const shouldFetchHostnames = expandedSections.has('active_clients');
+  const hasEnabledInbounds = getConfiguredServerInbounds().some(
+    (s) => s.enabled,
+  );
+  const shouldFetchHostnames =
+    expandedSections.has('active_clients') || hasEnabledInbounds;
   const needsFallbackPolling =
     directSocketsFailed || !canUseDirectClashApi() || isSteer;
   if (!needsFallbackPolling && !shouldFetchHostnames) {
@@ -2290,6 +2438,10 @@ async function fetchConnections() {
       );
       void renderSystemInfoWidget();
       renderConnectionsWidget();
+      renderInboundServersDashboardWidget({
+        rawConnections: lastRawConnections,
+        hostnames: cachedHostnames,
+      });
       return;
     }
 
@@ -2313,6 +2465,10 @@ async function fetchConnections() {
         );
         currentTopDomains = aggregateTopDomains(payload.connections);
       }
+      renderInboundServersDashboardWidget({
+        rawConnections: lastRawConnections,
+        hostnames: cachedHostnames,
+      });
 
       if (needsFallbackPolling) {
         const downloadTotal = Number(payload.downloadTotal) || 0;
@@ -2830,8 +2986,16 @@ export async function renderSystemServicesWidget() {
     : 0;
   const activeSectionsCount = isTachyonRunning ? proxySections.length : 0;
   const activeClientsCount = isTachyonRunning ? currentConnections.length : 0;
+  const enabledInboundsCount = isTachyonRunning
+    ? getConfiguredServerInbounds().filter((s) => s.enabled).length
+    : 0;
 
-  const routingItems = [
+  const routingItems: Array<{
+    key?: string | HTMLElement;
+    value: string | HTMLElement | (string | HTMLElement)[];
+    attributes?: Record<string, string>;
+    onClick?: (e: MouseEvent) => void;
+  }> = [
     {
       key: tr('Режим работы', 'Mode'),
       value: E(
@@ -2857,6 +3021,21 @@ export async function renderSystemServicesWidget() {
       value: `${activeClientsCount} ${tr('устройств', 'devices')}`,
     },
   ];
+
+  if (enabledInboundsCount > 0) {
+    routingItems.push({
+      key: tr('Входящие серверы', 'Inbound Servers'),
+      value: E(
+        'span',
+        {
+          class: 'tachyon-stat-pill tachyon-stat-pill--conns',
+          style: 'cursor: pointer;',
+        },
+        `${enabledInboundsCount} ${tr('активных', 'active')}`,
+      ),
+      onClick: () => switchToServersTab(),
+    });
+  }
 
   const srvItems: Array<{
     key?: string | HTMLElement;
@@ -2998,6 +3177,10 @@ function scheduleSectionDashboardWidgetsRender() {
   sectionWidgetsRenderFrame = schedule(() => {
     sectionWidgetsRenderFrame = null;
     void renderSectionDashboardWidgets();
+    renderInboundServersDashboardWidget({
+      rawConnections: lastRawConnections,
+      hostnames: cachedHostnames,
+    });
   }) as unknown as number;
 }
 
@@ -3422,6 +3605,10 @@ async function onPageMount() {
   void renderSystemInfoWidget();
   void renderServicesInfoWidget();
   void renderTailscaleWidget();
+  renderInboundServersDashboardWidget({
+    rawConnections: lastRawConnections,
+    hostnames: cachedHostnames,
+  });
   syncDashboardServiceAvailability();
   void fetchTailscalePeers();
 

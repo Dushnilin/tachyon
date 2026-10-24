@@ -76,7 +76,7 @@ function users(section, protocol) {
             user.name = name;
         return [ user ];
     }
-    if (protocol == "trojan" || protocol == "hysteria2") {
+    if (protocol == "trojan" || protocol == "hysteria2" || protocol == "shadowtls") {
         let user = { password: option(section, "server_password", "") };
         if (name != "")
             user.name = name;
@@ -91,7 +91,7 @@ function users(section, protocol) {
             user.name = name;
         return [ user ];
     }
-    if (protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel") {
+    if (protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel" || protocol == "masque") {
         let u = option(section, "server_username", "");
         let p = option(section, "server_password", "");
         return [{
@@ -147,7 +147,8 @@ function effective_security(section, protocol) {
             security = "reality";
         else if (protocol == "trojan" || protocol == "hysteria2" || protocol == "tuic" ||
                  protocol == "anytls" || protocol == "naive" || protocol == "fptn" ||
-                 protocol == "trusttunnel" || protocol == "tewfai" || protocol == "masque")
+                 protocol == "trusttunnel" || protocol == "tewfai" || protocol == "masque" ||
+                 protocol == "openconnect")
             security = "tls";
         else
             security = "none";
@@ -160,7 +161,7 @@ function effective_security(section, protocol) {
         return "none";
     if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" ||
         protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel" ||
-        protocol == "tewfai" || protocol == "masque")
+        protocol == "tewfai" || protocol == "masque" || protocol == "openconnect")
         return "tls";
     if ((protocol == "vmess" || protocol == "trojan") && security == "reality")
         return protocol == "trojan" ? "tls" : "none";
@@ -175,22 +176,24 @@ function maybe_string(object, key, value) {
 
 const REALITY_FALLBACK_CERTIFICATE = [
     "-----BEGIN CERTIFICATE-----",
-    "MIIBTzCB9aADAgECAhAdIIOcW0lViVbVrptPiDKtMAoGCCqGSM49BAMCMBQxEjAQ",
-    "BgNVBAMMCWxvY2FsaG9zdDAeFw0yNjEwMTkwMDI4MzNaFw0yNzEwMTQwMTI4MzNa",
-    "MBQxEjAQBgNVBAMMCWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA",
-    "BLFw0A61eMnSgStndfixJXTzu5nRLXIJVJnPgUPzKvUbs6JE0y7Fmx6U/URMf4yn",
-    "rxuuLQS7iKRDXGf3lVba1gOjKTAnMBQGA1UdEQQNMAuCCWxvY2FsaG9zdDAPBgNV",
-    "HRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQDUBUZKKNCiB2hQlSLSO5bz",
-    "h5xULIK0AoFWZ4P7Y/05CwIhAJOgTTkDN8bornbn/AcbabFQjRwhWJNH8Yz3wY0o",
-    "LPFY",
+    "MIIByjCCAXCgAwIBAgIUXsedWUHpVtD+CaoKftWzUvl05J8wCgYIKoZIzj0EAwIw",
+    "FDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MTAyNDEyNTIzOFoXDTM2MTAyMTEy",
+    "NTIzOFowFDESMBAGA1UEAwwJbG9jYWxob3N0MFkwEwYHKoZIzj0CAQYIKoZIzj0D",
+    "AQcDQgAEHpJxSUaUEowpx/MZhZBN76eJ6Ry0coRWmwWvrcFo9DtbrWxmmbStxzma",
+    "2CBQ1YEsqOQbYaIKgH9l3lMCsQXYmaOBnzCBnDAdBgNVHQ4EFgQUzA0aO6Q/F4U7",
+    "tSWnNYwHcX8YOhgwHwYDVR0jBBgwFoAUzA0aO6Q/F4U7tSWnNYwHcX8YOhgwDAYD",
+    "VR0TAQH/BAIwADAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUHAwEw",
+    "JwYDVR0RBCAwHoIJbG9jYWxob3N0ggt0YWNoeW9uLmxhbocEfwAAATAKBggqhkjO",
+    "PQQDAgNIADBFAiAB3OyJ4WQpHKdaRXL+mRw6q0RdfQIECPUhRSS5ic5CsQIhAPRl",
+    "MnphyNY/ks4SAP0OuR0XunD9Pb6rhaUFWlPXUxx9",
     "-----END CERTIFICATE-----"
 ];
 
 const REALITY_FALLBACK_KEY = [
     "-----BEGIN PRIVATE KEY-----",
-    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgyxay+uvi+neaI1aC",
-    "l0d/KM8aquKceX5dKMXeNo0k25ShRANCAASxcNAOtXjJ0oErZ3X4sSV087uZ0S1y",
-    "CVSZz4FD8yr1G7OiRNMuxZselP1ETH+Mp68bri0Eu4ikQ1xn95VW2tYD",
+    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgACLCJadHqKZOnD2z",
+    "Ii/HFARv7+hhmyHJWogmXMt+IfyhRANCAAQeknFJRpQSjCnH8xmFkE3vp4npHLRy",
+    "hFabBa+twWj0O1utbGaZtK3HOZrYIFDVgSyo5BthogqAf2XeUwKxBdiZ",
     "-----END PRIVATE KEY-----"
 ];
 
@@ -204,14 +207,29 @@ function apply_tls(inbound, section, protocol) {
     let alpn = list_option(section, "tls_alpn");
     if (length(alpn) > 0)
         tls.alpn = alpn;
+    else if (protocol == "tuic")
+        tls.alpn = [ "h3" ];
 
     if (security == "tls") {
         let cert_path = trim(as_string(option(section, "tls_certificate_path", "")));
         let k_path = trim(as_string(option(section, "tls_key_path", "")));
-        if (cert_path != "" && fs.stat(cert_path) == null && index(cert_path, "/etc/tachyon/certs/") == 0)
+        if (cert_path == "" && k_path == "") {
+            let safe_name = safe_filename(section[".name"] || "server");
+            let def_cert = "/etc/tachyon/server-certs/" + safe_name + ".crt";
+            let def_key = "/etc/tachyon/server-certs/" + safe_name + ".key";
+            if (fs.stat(def_cert) != null && fs.stat(def_key) != null) {
+                cert_path = def_cert;
+                k_path = def_key;
+            }
+        }
+        if (cert_path != "" && fs.stat(cert_path) == null && (index(cert_path, "/etc/tachyon/certs/") == 0 || index(cert_path, "/etc/tachyon/server-certs/") == 0)) {
+            common.ensure_dir(common.parent_dir(cert_path));
             common.write_file(cert_path, join("\n", REALITY_FALLBACK_CERTIFICATE) + "\n");
-        if (k_path != "" && fs.stat(k_path) == null && index(k_path, "/etc/tachyon/certs/") == 0)
+        }
+        if (k_path != "" && fs.stat(k_path) == null && (index(k_path, "/etc/tachyon/certs/") == 0 || index(k_path, "/etc/tachyon/server-certs/") == 0)) {
+            common.ensure_dir(common.parent_dir(k_path));
             common.write_file(k_path, join("\n", REALITY_FALLBACK_KEY) + "\n");
+        }
         if (cert_path != "" && fs.stat(cert_path) != null)
             maybe_string(tls, "certificate_path", cert_path);
         else
@@ -306,6 +324,11 @@ function apply_transport(inbound, section, protocol) {
     inbound.transport = transport;
 }
 
+function shadowtls_inner_port(section) {
+    let base_port = int_option(section, "listen_port", "8443");
+    return (base_port >= 1 && base_port < 50000) ? (base_port + 15000) : 38388;
+}
+
 function add_standard_inbound(config, section, protocol, tag_name) {
     // Function scope, deliberately: the AWG block below is nested, and a let
     // declared there would not be visible where the endpoint/inbound split
@@ -356,6 +379,13 @@ function add_standard_inbound(config, section, protocol, tag_name) {
     }
     else if (protocol == "shadowtls") {
         inbound.password = option(section, "server_password", "");
+        let stls_ver = int_option(section, "shadowtls_version", "3");
+        inbound.version = stls_ver;
+        if (stls_ver >= 3) {
+            let stls_users = users(section, protocol);
+            if (length(stls_users) > 0)
+                inbound.users = stls_users;
+        }
         let h_server = option(section, "shadowtls_handshake_server", "");
         if (h_server != "") {
             inbound.handshake = {
@@ -363,7 +393,20 @@ function add_standard_inbound(config, section, protocol, tag_name) {
                 server_port: int_option(section, "shadowtls_handshake_server_port", "443")
             };
         }
-        inbound.version = int_option(section, "shadowtls_version", "3");
+        let detour_tag = trim(as_string(option(section, "shadowtls_detour", "")));
+        if (detour_tag == "" && variant_state.is_tachyon_core()) {
+            detour_tag = tag_name + "-inner";
+            push(config.inbounds, {
+                type: "shadowsocks",
+                tag: detour_tag,
+                listen: "127.0.0.1",
+                listen_port: shadowtls_inner_port(section),
+                method: option(section, "shadowsocks_method", "aes-128-gcm"),
+                password: option(section, "server_password", "")
+            });
+        }
+        if (detour_tag != "")
+            inbound.detour = detour_tag;
     }
     else if (protocol == "fptn") {
         inbound.users = users(section, protocol);
@@ -379,17 +422,35 @@ function add_standard_inbound(config, section, protocol, tag_name) {
     }
     else if (protocol == "tewfai") {
         // tachyon-core's TewfaiInboundOptions: users (uuid|password), uuid,
-        // password, transport, quic, tls, reality, inner_cipher, max_streams,
-        // sessions, handover, alt_endpoints, shaper, fec, pqc, mtu. The old
-        // wireguard-style private_key/peers shape is a hard rejection
-        // ("unknown field") that kills the whole config.
+        // password, quic, tls, reality, inner_cipher ("aes-256-gcm"|"none"),
+        // max_streams, sessions, handover, alt_endpoints, shaper, fec, pqc, mtu.
+        // Note: inbound.transport is rejected by tachyon-core ("server-side
+        // transport is not implemented yet"); QUIC is enabled via inbound.quic.
         inbound.uuid = option(section, "tewfai_uuid", "");
         let pw = option(section, "tewfai_password", "");
         if (pw != "")
             inbound.password = pw;
-        let tr = option(section, "tewfai_inbound_transport", "");
-        if (tr != "")
-            inbound.transport = tr;
+        let tr = lc(trim(as_string(option(section, "tewfai_inbound_transport", ""))));
+        if (tr == "quic")
+            inbound.quic = { enabled: true };
+        let cipher = lc(trim(as_string(option(section, "tewfai_inner_cipher", ""))));
+        if (cipher == "aes-256-gcm" || cipher == "none")
+            inbound.inner_cipher = cipher;
+        let max_streams = int_option(section, "tewfai_max_streams", "0");
+        if (max_streams > 0)
+            inbound.max_streams = max_streams;
+        if (bool_option(section, "tewfai_pqc_enabled", false))
+            inbound.pqc = true;
+        if (bool_option(section, "tewfai_handover_enabled", false))
+            inbound.handover = { enabled: true };
+        if (bool_option(section, "tewfai_fec_enabled", false))
+            inbound.fec = true;
+        if (bool_option(section, "tewfai_shaper_enabled", false)) {
+            let sp = lc(trim(as_string(option(section, "tewfai_shaper_profile", ""))));
+            inbound.shaper = {
+                mode: (sp == "fixed" || sp == "off") ? sp : "adaptive"
+            };
+        }
         let mtu = int_option(section, "tewfai_mtu", "0");
         if (mtu > 0)
             inbound.mtu = mtu;
@@ -415,7 +476,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
     else if (protocol == "openconnect") {
         // tachyon-core's OpenConnectInboundOptions: cookie, user_agent,
         // local_hostname, urlpath, flavor, tunnel, mtu, ip, esp, esp_gateway,
-        // esp_client, address, dns, route, tls.
+        // esp_client, address (CIDR required), dns, route, tls.
         let flavor = option(section, "openconnect_flavor", "anyconnect");
         if (flavor != "")
             inbound.flavor = flavor;
@@ -431,9 +492,12 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let urlpath = option(section, "openconnect_urlpath", "");
         if (urlpath != "")
             inbound.urlpath = urlpath;
-        let addr = option(section, "openconnect_address", "");
-        if (addr != "")
-            inbound.address = addr;
+        let addr = trim(as_string(option(section, "openconnect_address", "172.16.1.2/24")));
+        if (addr == "")
+            addr = "172.16.1.2/24";
+        if (index(addr, "/") < 0)
+            addr += index(addr, ":") >= 0 ? "/64" : "/24";
+        inbound.address = addr;
         let mtu = int_option(section, "openconnect_mtu", "0");
         if (mtu > 0)
             inbound.mtu = mtu;
@@ -441,8 +505,6 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             inbound.ip = true;
         if (bool_option(section, "openconnect_esp", false))
             inbound.esp = true;
-        if (bool_option(section, "openconnect_dtls", false))
-            inbound.dtls = true;
     }
     else if (protocol == "http" || protocol == "mixed") {
         let u = users(section, protocol);
@@ -450,23 +512,35 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             inbound.users = u;
     }
     else if (protocol == "mtproto") {
-        // sing-box-extended registers this inbound as "mtproxy" and expects
-        // MTProxyUser { name, secret }. It must never fall back to a
-        // shadowsocks-2022 shape: SS2022 parses passwords as base64 PSKs and
-        // aborts with "decode psk" on hex secrets (#23).
-        inbound.type = "mtproxy";
-        inbound.users = users(section, protocol);
-        let concurrency = option(section, "mtproto_concurrency", "");
-        if (concurrency != "")
-            inbound.concurrency = int(concurrency, 10);
-        maybe_string(inbound, "prefer_ip", option(section, "mtproto_prefer_ip", "prefer-ipv4"));
-        if (bool_option(section, "mtproto_auto_update", false))
-            inbound.auto_update = true;
-        if (bool_option(section, "mtproto_allow_fallback_on_unknown_dc", false))
-            inbound.allow_fallback_on_unknown_dc = true;
-        maybe_string(inbound, "tolerate_time_skewness", option(section, "mtproto_tolerate_time_skewness", "3s"));
-        maybe_string(inbound, "idle_timeout", option(section, "mtproto_idle_timeout", "5m"));
-        maybe_string(inbound, "handshake_timeout", option(section, "mtproto_handshake_timeout", "10s"));
+        if (variant_state.is_tachyon_core()) {
+            // tachyon-core registers this inbound as "mtproto" with 32-hex secret.
+            inbound.type = "mtproto";
+            let srv_users = users(section, protocol);
+            for (let u in srv_users) {
+                let s = lc(trim(as_string(u.secret || "")));
+                if (length(s) >= 34 && (substr(s, 0, 2) == "ee" || substr(s, 0, 2) == "dd"))
+                    u.secret = substr(s, 2, 32);
+            }
+            inbound.users = srv_users;
+        } else {
+            // sing-box-extended registers this inbound as "mtproxy" and expects
+            // MTProxyUser { name, secret }. It must never fall back to a
+            // shadowsocks-2022 shape: SS2022 parses passwords as base64 PSKs and
+            // aborts with "decode psk" on hex secrets (#23).
+            inbound.type = "mtproxy";
+            inbound.users = users(section, protocol);
+            let concurrency = option(section, "mtproto_concurrency", "");
+            if (concurrency != "")
+                inbound.concurrency = int(concurrency, 10);
+            maybe_string(inbound, "prefer_ip", option(section, "mtproto_prefer_ip", "prefer-ipv4"));
+            if (bool_option(section, "mtproto_auto_update", false))
+                inbound.auto_update = true;
+            if (bool_option(section, "mtproto_allow_fallback_on_unknown_dc", false))
+                inbound.allow_fallback_on_unknown_dc = true;
+            maybe_string(inbound, "tolerate_time_skewness", option(section, "mtproto_tolerate_time_skewness", "3s"));
+            maybe_string(inbound, "idle_timeout", option(section, "mtproto_idle_timeout", "5m"));
+            maybe_string(inbound, "handshake_timeout", option(section, "mtproto_handshake_timeout", "10s"));
+        }
     }
     else if (protocol == "awg") {
         inbound.type = "wireguard";
@@ -627,8 +701,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             // j1-j3/itime were removed from the extended schema in 2.6.1 and
             // sing-box fatals on unknown fields, so emit them only for builds
             // whose schema still accepts them.
-            let sb_version_state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
-            let sb_version = trim(fs.readfile(sb_version_state_file) || "");
+            let sb_version = variant_state.read_version_state();
             if (common.extended_awg_schema_has_junk_signatures(sb_version)) {
                 if (j1 != "") amnezia.j1 = j1;
                 if (j2 != "") amnezia.j2 = j2;
@@ -799,7 +872,12 @@ function value_contains(value, item) {
 }
 
 function add_sniff_rule(config, section) {
-    let tag = runtime_constants.server_inbound_tag(section[".name"]);
+    let base_tag = runtime_constants.server_inbound_tag(section[".name"]);
+    let tag = (option(section, "protocol", "vless") == "shadowtls" &&
+        variant_state.is_tachyon_core() &&
+        trim(as_string(option(section, "shadowtls_detour", ""))) == "")
+        ? (base_tag + "-inner")
+        : base_tag;
     if (type(config.route) == "object" && type(config.route.rules) == "array" &&
         length(config.route.rules) > 0 && config.route.rules[0].action == "sniff" &&
         type(config.route.rules[0].inbound) == "array") {
@@ -890,5 +968,6 @@ return {
     add_server,
     add_sniff_rule,
     clone_rules_for_inbound,
-    is_native_tailscale
+    is_native_tailscale,
+    shadowtls_inner_port
 };

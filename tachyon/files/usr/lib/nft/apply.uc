@@ -2586,7 +2586,7 @@ function collect_server_firewall_ports() {
         let port = proto == "awg" ? int(s["awg_server_port"] || s["listen_port"] || 51820) : int(s["listen_port"] || 0);
         if (port <= 0 || port > 65535)
             continue;
-        if (proto == "awg" || proto == "hysteria2" || proto == "tuic") {
+        if (proto == "awg" || proto == "hysteria2" || proto == "tuic" || proto == "masque") {
             push(udp_ports, port);
         } else {
             push(tcp_ports, port);
@@ -2627,7 +2627,7 @@ function sync_server_firewall_uci_rules() {
             let rule_name = "tachyon_srv_" + safe_name;
             active_rule_names[rule_name] = true;
 
-            let rule_proto = (proto == "awg" || proto == "hysteria2" || proto == "tuic") ? "udp" : "tcp";
+            let rule_proto = (proto == "awg" || proto == "hysteria2" || proto == "tuic" || proto == "masque") ? "udp" : "tcp";
             let port_str = as_string(port);
 
             let current_target = uci_core.get("firewall." + rule_name + ".target");

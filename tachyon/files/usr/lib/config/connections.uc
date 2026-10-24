@@ -430,7 +430,11 @@ function fptn_sections() {
 // are possible.
 function fptn_transport_mode() {
     let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || ""));
+    if (variant == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
     let version = trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || ""));
+    if (version == "" && getenv("SB_VERSION_STATE_FILE") == null)
+        version = trim(as_string(fs.readfile("/etc/tachyon/sing-box-version") || ""));
     if (variant != "tachyon-core" && match(version, /-tachyon\./) == null)
         return "component";
 
@@ -946,6 +950,10 @@ function geoip_country_mode(section) {
     if (contains(GEOIP_COUNTRY_MODES, mode))
         return mode;
 
+    let act = action(section);
+    if (act == "bypass" || act == "block")
+        return "include";
+
     return "exclude";
 }
 
@@ -1185,6 +1193,13 @@ function subscription_hide_urltest_group_outbounds(section, value) {
     if (child != null)
         return child_bool(child, "hide_urltest_group_outbounds", true);
     return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", true);
+}
+
+function subscription_urltest_idle_timeout(section, value) {
+    let child = child_item_by_value(section, "subscription_url", "url", value);
+    if (child != null)
+        return child_option(child, "urltest_idle_timeout", "");
+    return item_option(section, "subscription_url_settings", value, "urltest_idle_timeout", "");
 }
 
 function subscription_hide_detour_outbounds(section, value) {
@@ -1921,6 +1936,7 @@ return {
     subscription_auto_hwid,
     subscription_include_urltest_groups,
     subscription_hide_urltest_group_outbounds,
+    subscription_urltest_idle_timeout,
     subscription_hide_detour_outbounds,
     subscription_prefix_nodes,
     subscription_node_prefix,

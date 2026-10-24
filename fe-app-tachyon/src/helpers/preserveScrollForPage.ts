@@ -109,7 +109,7 @@ export function preserveScrollForPage(
   const root =
     typeof document !== 'undefined' ? document.documentElement : null;
   const prevDocHeight = root ? root.scrollHeight : 0;
-  if (root && prevDocHeight > 0) {
+  if (root && prevDocHeight > 0 && root.style) {
     activeDocLocks += 1;
     root.style.minHeight = `${prevDocHeight}px`;
   }
@@ -118,7 +118,7 @@ export function preserveScrollForPage(
     const currentCount = containerLockCounts.get(targetContainer) || 0;
     containerLockCounts.set(targetContainer, currentCount + 1);
     const containerHeight = targetContainer.offsetHeight || 0;
-    if (containerHeight > 0) {
+    if (containerHeight > 0 && targetContainer.style) {
       targetContainer.style.minHeight = `${containerHeight}px`;
     }
   }
@@ -131,7 +131,9 @@ export function preserveScrollForPage(
         (containerLockCounts.get(targetContainer) || 1) - 1;
       if (remainingCount <= 0) {
         containerLockCounts.delete(targetContainer);
-        targetContainer.style.minHeight = '';
+        if (targetContainer.style) {
+          targetContainer.style.minHeight = '';
+        }
       } else {
         containerLockCounts.set(targetContainer, remainingCount);
       }
@@ -139,7 +141,7 @@ export function preserveScrollForPage(
 
     if (root) {
       activeDocLocks = Math.max(0, activeDocLocks - 1);
-      if (activeDocLocks === 0) {
+      if (activeDocLocks === 0 && root.style) {
         root.style.minHeight = '';
       }
     }

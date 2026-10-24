@@ -515,6 +515,8 @@ let cached_sb_version_banner = null;
 function sing_box_live_version_probe_disabled() {
     let marker_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let marker = trim(fs.readfile(marker_file) || "");
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "");
     return marker == "extended-compressed" || marker == "lx";
 }
 
@@ -532,6 +534,8 @@ function detect_sing_box_version() {
 
     if (sing_box_live_version_probe_disabled()) {
         let recorded = trim(fs.readfile(state_file) || "");
+        if (recorded == "" && getenv("SB_VERSION_STATE_FILE") == null)
+            recorded = trim(fs.readfile("/etc/tachyon/sing-box-version") || "");
         if (recorded != "") {
             cached_sb_version = recorded;
             return recorded;
@@ -578,6 +582,8 @@ try {
     } catch (e) {}
 
     let sb_version_val = trim(fs.readfile(state_file) || "");
+    if (sb_version_val == "" && getenv("SB_VERSION_STATE_FILE") == null)
+        sb_version_val = trim(fs.readfile("/etc/tachyon/sing-box-version") || "");
     if (sb_version_val == "") {
         let sb_ui_cache = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || "/var/run/tachyon/ui-state/sing-box-version";
         sb_version_val = trim(fs.readfile(sb_ui_cache) || "");
@@ -731,6 +737,8 @@ function is_tachyon_core_version(sb_version_val) {
     // this is not tachyon-core.
     let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let recorded_variant = trim(as_string(fs.readfile(sb_variant_file) || ""));
+    if (recorded_variant == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        recorded_variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
     if (recorded_variant != "")
         return recorded_variant == "tachyon-core";
 
@@ -801,6 +809,8 @@ function is_sing_box_lx_detected(sb_version_val) {
         return true;
     let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
     let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
+    if (sb_variant_val == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        sb_variant_val = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "");
     return sb_variant_val == "lx" || sb_variant_val == "sing-box-lx";
 }
 
@@ -1791,13 +1801,49 @@ function primary_lan_interface(settings) {
     let raw = trim(option(settings, "source_network_interfaces", ""));
     if (raw != "") {
         for (let p in split(raw, /[\s,]+/)) {
-            if (p != "" && fs.stat("/sys/class/net/" + p) != null)
+            if (p != "" && (fixture_uci_data != null || fs.stat("/sys/class/net/" + p) != null))
                 return p;
         }
     }
     if (fs.stat("/sys/class/net/br-lan") != null)
         return "br-lan";
     return "";
+}
+
+function lan_interface_cidrs(lan_iface, service_address) {
+    let cidrs = [];
+    let seen = {};
+    let add_cidr = function(c) {
+        c = trim(as_string(c));
+        if (c != "" && !seen[c]) {
+            seen[c] = true;
+            push(cidrs, c);
+        }
+    };
+    if (lan_iface != "" && fixture_uci_data == null) {
+        let out = common.command_output_from_args([ "ip", "-o", "addr", "show", "dev", lan_iface ]);
+        for (let line in split(as_string(out), "\n")) {
+            let m = match(line, /inet6?\s+([0-9a-fA-F:.]+\/[0-9]+)/);
+            if (m && m[1]) {
+                let addr_cidr = m[1];
+                if (index(lc(addr_cidr), "fe80:") == 0)
+                    continue;
+                let m24 = match(addr_cidr, /^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+\/24$/);
+                if (m24 && m24[1])
+                    addr_cidr = m24[1] + ".0/24";
+                add_cidr(addr_cidr);
+            }
+        }
+    }
+    if (length(cidrs) == 0) {
+        let sa = trim(as_string(service_address || ""));
+        let m4 = match(sa, /^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$/);
+        if (m4 && m4[1] && index(m4[1], "127.") != 0)
+            add_cidr(m4[1] + ".0/24");
+        else
+            add_cidr("192.168.1.0/24");
+    }
+    return cidrs;
 }
 
 function add_source_aware_dns_support(config, source_aware_dns) {
@@ -1851,6 +1897,7 @@ function add_excluded_clients_route_rule(config, settings) {
 
     splice(config.route.rules, 1, 0, {
         action: "route",
+        inbound: tproxy_inbound_matcher(),
         outbound: runtime_constants.BYPASS_OUTBOUND_TAG,
         source_ip_cidr: single_or_array(excluded_cidrs)
     });
@@ -1965,6 +2012,13 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     });
     add_source_aware_dns_support(config, source_aware_dns);
     if (length(servers) > 0) {
+        if (fs.stat("/sys/class/net/lo") != null || fixture_uci_data != null) {
+            push(config.outbounds, {
+                type: "direct",
+                tag: runtime_constants.LO_DIRECT_OUTBOUND_TAG,
+                bind_interface: "lo"
+            });
+        }
         let lan_iface = primary_lan_interface(settings);
         if (lan_iface != "") {
             push(config.outbounds, {
@@ -1972,6 +2026,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
                 tag: runtime_constants.LAN_DIRECT_OUTBOUND_TAG,
                 bind_interface: lan_iface
             });
+            config.__lan_interface_cidrs = lan_interface_cidrs(lan_iface, service_address);
         }
     }
     let taken = reserved_runtime_tag_set(config.outbounds);
@@ -2004,6 +2059,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     ctx.current_section = null;
 
     add_server_routes(config, servers, sections);
+    delete config.__lan_interface_cidrs;
     add_proxy_endpoint_dns_rule(config);
     add_source_aware_dns_fallback(config, source_aware_dns);
     add_excluded_clients_dns_rule(config, settings);

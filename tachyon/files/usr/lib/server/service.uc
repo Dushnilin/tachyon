@@ -330,7 +330,10 @@ function default_security_for_protocol(protocol) {
     protocol = as_string(protocol);
     if (protocol == "vless")
         print("reality\n");
-    else if (protocol == "trojan" || protocol == "hysteria2")
+    else if (protocol == "trojan" || protocol == "hysteria2" || protocol == "tuic" ||
+             protocol == "anytls" || protocol == "naive" || protocol == "fptn" ||
+             protocol == "trusttunnel" || protocol == "tewfai" || protocol == "masque" ||
+             protocol == "openconnect")
         print("tls\n");
     else
         print("none\n");
@@ -604,7 +607,9 @@ function default_security_value(protocol) {
     if (protocol == "vless")
         return "reality";
     if (protocol == "trojan" || protocol == "hysteria2" || protocol == "tuic" ||
-        protocol == "anytls" || protocol == "naive" || protocol == "fptn")
+        protocol == "anytls" || protocol == "naive" || protocol == "fptn" ||
+        protocol == "trusttunnel" || protocol == "tewfai" || protocol == "masque" ||
+        protocol == "openconnect")
         return "tls";
     return "none";
 }
@@ -615,9 +620,9 @@ function server_effective_security_value(section, protocol) {
     if (security == "")
         security = default_security_value(protocol);
 
-    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" || protocol == "shadowtls" || protocol == "http" || protocol == "mixed")
+    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" || protocol == "shadowtls" || protocol == "http" || protocol == "mixed" || protocol == "mieru")
         security = "none";
-    else if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" || protocol == "naive" || protocol == "fptn")
+    else if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" || protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel" || protocol == "tewfai" || protocol == "masque" || protocol == "openconnect")
         security = "tls";
     else if ((protocol == "vmess" || protocol == "trojan") && security == "reality")
         security = default_security_value(protocol);
@@ -688,13 +693,39 @@ function write_tls_keypair_data(data, key_path, certificate_path) {
 }
 
 function server_generate_tls_keypair_files(server_name, certificate_path, key_path) {
-    let data = output("tachyon-core generate tls-keypair " + shell_quote(server_name) + " 2>/dev/null || sing-box generate tls-keypair " + shell_quote(server_name) + " 2>/dev/null");
-    if (data == "")
-        return false;
-
     let key_dir = replace(as_string(key_path), /\/[^\/]*$/, "");
     let cert_dir = replace(as_string(certificate_path), /\/[^\/]*$/, "");
     if (!run("mkdir -p " + shell_quote(key_dir) + " " + shell_quote(cert_dir)))
+        return false;
+
+    let clean_name = normalize_host(server_name);
+    if (clean_name == "" || !valid_host(clean_name))
+        clean_name = "localhost";
+    let san = "DNS:localhost,DNS:tachyon.lan,IP:127.0.0.1";
+    if (valid_ipv4(clean_name) || valid_ipv6_literal(clean_name)) {
+        if (clean_name != "127.0.0.1")
+            san = "IP:" + clean_name + "," + san;
+    } else if (valid_domain(clean_name) && clean_name != "localhost" && clean_name != "tachyon.lan") {
+        san = "DNS:" + clean_name + "," + san;
+    }
+
+    if (run("openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes" +
+            " -keyout " + shell_quote(key_path) +
+            " -out " + shell_quote(certificate_path) +
+            " -days 3650" +
+            " -subj " + shell_quote("/CN=" + clean_name) +
+            " -addext 'basicConstraints=critical,CA:FALSE'" +
+            " -addext 'keyUsage=critical,digitalSignature,keyEncipherment'" +
+            " -addext 'extendedKeyUsage=serverAuth'" +
+            " -addext " + shell_quote("subjectAltName=" + san) +
+            " >/dev/null 2>&1") &&
+        run("[ -s " + shell_quote(certificate_path) + " ] && [ -s " + shell_quote(key_path) + " ]")) {
+        run("chmod 600 " + shell_quote(key_path) + " >/dev/null 2>&1");
+        return true;
+    }
+
+    let data = output("tachyon-core generate tls-keypair " + shell_quote(clean_name) + " 2>/dev/null || sing-box generate tls-keypair " + shell_quote(clean_name) + " 2>/dev/null");
+    if (data == "")
         return false;
 
     if (!write_tls_keypair_data(data, key_path, certificate_path))
@@ -944,12 +975,30 @@ function get_cached_external_wan_ip() {
     return "";
 }
 
+function detect_router_country() {
+    let explicit = uc(trim(as_string(uci.get(CONFIG_NAME, "settings", "server_default_country") || uci.get(CONFIG_NAME, "settings", "server_country") || "")));
+    if (match(explicit, /^[A-Z]{2}$/)) return explicit;
+    let zonename = trim(as_string(uci.get("system", "@system[0]", "zonename") || ""));
+    let tz = trim(as_string(uci.get("system", "@system[0]", "timezone") || ""));
+    if (match(zonename, /^(Europe\/(Moscow|Kaliningrad|Samara|Volgograd|Saratov|Ulyanovsk|Kirov|Astrakhan)|Asia\/(Yekaterinburg|Omsk|Novosibirsk|Barnaul|Tomsk|Novokuznetsk|Krasnoyarsk|Irkutsk|Chita|Yakutsk|Khandyga|Vladivostok|Ust-Nera|Magadan|Sakhalin|Srednekolymsk|Kamchatka|Anadyr))$/) || match(tz, /^(MSK|RTZ|<[+-]0[2-9]>|[+-]03)/))
+        return "RU";
+    if (zonename == "Europe/Minsk") return "BY";
+    if (match(zonename, /^Asia\/(Almaty|Qyzylorda|Qostanay|Aqtobe|Aqtau|Atyrau|Oral)$/)) return "KZ";
+    if (zonename == "Europe/Kyiv" || zonename == "Europe/Kiev") return "UA";
+    if (zonename == "Europe/Berlin") return "DE";
+    if (zonename == "Europe/Amsterdam") return "NL";
+    if (zonename == "Europe/Helsinki") return "FI";
+    if (zonename == "Europe/Istanbul") return "TR";
+    return "RU";
+}
+
 function get_router_network_env() {
     let ddns_domain = get_router_ddns_domain();
     let has_ddns = ddns_domain != "";
     let wan_ips = get_router_wan_ips();
     let cached_external_ip = get_cached_external_wan_ip();
     let lan_ip = as_string(uci.get("network.lan.ipaddr") || "192.168.1.1");
+    let country_code = detect_router_country();
 
     let public_host = "";
     let is_public_ip = false;
@@ -988,6 +1037,7 @@ function get_router_network_env() {
 
     return {
         public_host: public_host,
+        country_code: country_code,
         is_public_ip: is_public_ip,
         has_ddns: has_ddns,
         ddns_domain: ddns_domain,
@@ -999,6 +1049,7 @@ function get_router_network_env() {
         udp_443_busy: udp_443_busy,
         recommended_ports: {
             vless: standard_tls_port,
+            vmess: standard_tls_port,
             trojan: standard_tls_port,
             anytls: standard_tls_port,
             naive: standard_tls_port,
@@ -1011,7 +1062,12 @@ function get_router_network_env() {
             socks: 1080,
             http: 8080,
             mixed: 8080,
-            mtproto: standard_tls_port
+            mtproto: standard_tls_port,
+            mieru: 8443,
+            trusttunnel: standard_tls_port,
+            tewfai: standard_tls_port,
+            masque: standard_quic_port,
+            openconnect: standard_tls_port
         },
         recommended_sni: {
             reality: "www.microsoft.com",
@@ -1051,13 +1107,6 @@ function get_tls_certificate_sha256_cli(section) {
         exit(1);
     }
 
-    let protocol = config_get(section, "protocol", "vless");
-    let security = server_effective_security_value(section, protocol);
-    if (security != "tls") {
-        error_response("Server does not use TLS");
-        exit(1);
-    }
-
     let certificate_path = config_get(section, "tls_certificate_path", "");
     let key_path = config_get(section, "tls_key_path", "");
     let tls_server_name = config_get(section, "tls_server_name", "");
@@ -1075,6 +1124,8 @@ function get_tls_certificate_sha256_cli(section) {
             key_path = default_dir + "/" + safe_name + ".key";
         server_set_option(section, "tls_certificate_path", certificate_path);
         server_set_option(section, "tls_key_path", key_path);
+        if (SERVER_DEFAULTS_CHANGED)
+            uci_commit(CONFIG_NAME);
     }
 
     if (!run("[ -s " + shell_quote(certificate_path) + " ] && [ -s " + shell_quote(key_path) + " ]")) {
@@ -1203,7 +1254,8 @@ function prepare_server_defaults(section) {
         protocol == "trojan" || protocol == "hysteria2" || protocol == "mtproto" || protocol == "tailscale" ||
         protocol == "json_inbound" || protocol == "awg" || protocol == "tuic" || protocol == "anytls" ||
         protocol == "naive" || protocol == "shadowtls" || protocol == "fptn" || protocol == "http" ||
-        protocol == "mixed"))
+        protocol == "mixed" || protocol == "mieru" || protocol == "trusttunnel" || protocol == "tewfai" ||
+        protocol == "masque" || protocol == "openconnect"))
         fatal("Server '" + section + "' has unsupported protocol '" + protocol + "'. Aborted.");
 
     server_default_set_option(section, "protocol", protocol);
@@ -1220,9 +1272,23 @@ function prepare_server_defaults(section) {
     let env = get_router_network_env();
 
     server_default_set_option(section, "listen", "0.0.0.0");
-    let rec_port = env.recommended_ports[protocol] ?? 443;
+    let rec_port = int(env.recommended_ports[protocol] ?? 443);
+    if (uci_get(config_path(section, "listen_port")) == "") {
+        let used_ports = {};
+        for (let other in uci_sections("server")) {
+            if (other == section)
+                continue;
+            let op = uci_get(config_path(other, "listen_port"));
+            if (op != "")
+                used_ports[as_string(op)] = true;
+        }
+        while (used_ports[as_string(rec_port)] || rec_port == 1602 || rec_port == 1053 || rec_port == 5354) {
+            rec_port = (rec_port == 443) ? 8443 : (rec_port + 1);
+        }
+    }
     server_default_set_option(section, "listen_port", as_string(rec_port));
     server_default_set_option(section, "public_host", env.public_host);
+    server_default_set_option(section, "server_country", env.country_code || "RU");
 
     let security = server_effective_security_value(section, protocol);
     server_set_option(section, "security", security);
@@ -1236,15 +1302,44 @@ function prepare_server_defaults(section) {
     }
     if (protocol == "shadowsocks" || protocol == "socks" || protocol == "trojan" || protocol == "hysteria2" ||
         protocol == "tuic" || protocol == "anytls" || protocol == "naive" || protocol == "shadowtls" ||
-        protocol == "fptn" || protocol == "http" || protocol == "mixed") {
+        protocol == "fptn" || protocol == "http" || protocol == "mixed" || protocol == "mieru" ||
+        protocol == "trusttunnel" || protocol == "masque") {
         if (uci_get(config_path(section, "server_password")) == "") {
             let password = server_generate_password();
             server_default_set_option(section, "server_password", password);
         }
     }
-    if (protocol == "socks" || protocol == "naive" || protocol == "fptn" || protocol == "http" || protocol == "mixed") {
+    if (protocol == "socks" || protocol == "naive" || protocol == "fptn" || protocol == "http" ||
+        protocol == "mixed" || protocol == "mieru" || protocol == "trusttunnel" || protocol == "masque") {
         if (uci_get(config_path(section, "server_username")) == "")
             server_default_set_option(section, "server_username", config_get(section, "label", section));
+    }
+    if (protocol == "mieru") {
+        server_default_set_option(section, "mieru_transport", "TCP");
+    }
+    if (protocol == "trusttunnel") {
+        server_default_set_option(section, "trusttunnel_quic", "0");
+    }
+    if (protocol == "tewfai") {
+        if (uci_get(config_path(section, "tewfai_uuid")) == "")
+            server_default_set_option(section, "tewfai_uuid", server_generate_uuid());
+        let cur_tr = uci_get(config_path(section, "tewfai_inbound_transport"));
+        if (cur_tr == "" || cur_tr == "auto")
+            server_set_option(section, "tewfai_inbound_transport", "tcp");
+        let cur_cipher = uci_get(config_path(section, "tewfai_inner_cipher"));
+        if (cur_cipher != "" && cur_cipher != "aes-256-gcm" && cur_cipher != "none")
+            server_set_option(section, "tewfai_inner_cipher", "aes-256-gcm");
+    }
+    if (protocol == "masque") {
+        server_default_set_option(section, "masque_ipv4_pool", "172.16.0.0/24");
+        server_default_set_option(section, "masque_mtu", "1400");
+    }
+    if (protocol == "openconnect") {
+        if (uci_get(config_path(section, "openconnect_cookie")) == "")
+            server_default_set_option(section, "openconnect_cookie", server_generate_password());
+        server_default_set_option(section, "openconnect_flavor", "anyconnect");
+        server_default_set_option(section, "openconnect_address", "172.16.1.2/24");
+        server_default_set_option(section, "openconnect_mtu", "1400");
     }
     if (protocol == "tuic") {
         server_default_set_option(section, "tuic_congestion_control", "bbr");
@@ -1326,6 +1421,7 @@ function prepare_server_defaults(section) {
         server_default_set_option(section, "tailscale_control_url", "https://controlplane.tailscale.com");
         server_default_set_option(section, "tailscale_hostname", "tachyon-" + safe_name);
         server_default_set_option(section, "tailscale_advertise_exit_node", "1");
+        server_default_set_option(section, "tailscale_auto_firewall", "1");
     }
 
     if (security == "reality") {

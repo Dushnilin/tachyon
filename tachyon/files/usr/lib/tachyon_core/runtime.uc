@@ -353,11 +353,16 @@ function sing_box_version_state() {
 
 function sing_box_write_version_state(version) {
     version = as_string(version);
-    return version != "" && ensure_parent_dir(SB_VERSION_STATE_FILE) && write_file(SB_VERSION_STATE_FILE, version + "\n");
+    let ok = version != "" && ensure_parent_dir(SB_VERSION_STATE_FILE) && write_file(SB_VERSION_STATE_FILE, version + "\n");
+    if (ok && getenv("SB_VERSION_STATE_FILE") == null)
+        remove_file(SB_LEGACY_VERSION_STATE_FILE);
+    return ok;
 }
 
 function sing_box_clear_version_state() {
     remove_file(SB_VERSION_STATE_FILE);
+    if (getenv("SB_VERSION_STATE_FILE") == null)
+        remove_file(SB_LEGACY_VERSION_STATE_FILE);
     return true;
 }
 
@@ -368,11 +373,16 @@ function sing_box_restore_version_state(version) {
 
 function sing_box_write_variant_marker(variant) {
     variant = as_string(variant);
-    return variant != "" && ensure_parent_dir(SB_VARIANT_STATE_FILE) && write_file(SB_VARIANT_STATE_FILE, variant + "\n");
+    let ok = variant != "" && ensure_parent_dir(SB_VARIANT_STATE_FILE) && write_file(SB_VARIANT_STATE_FILE, variant + "\n");
+    if (ok && getenv("SB_VARIANT_STATE_FILE") == null)
+        remove_file(SB_LEGACY_VARIANT_STATE_FILE);
+    return ok;
 }
 
 function sing_box_clear_variant_marker() {
     remove_file(SB_VARIANT_STATE_FILE);
+    if (getenv("SB_VARIANT_STATE_FILE") == null)
+        remove_file(SB_LEGACY_VARIANT_STATE_FILE);
     return true;
 }
 
@@ -417,15 +427,38 @@ function sing_box_version_is_lx(value) {
 //     and used to fail the minimum-version gate outright.
 //   - The suffix carries no schema level. Nothing in it says which sing-box
 //     release it tracks, so no field may be enabled on the strength of it.
+function module_command(args) {
+    let command_args = [ "ucode", "-L", LIB_DIR ];
+    for (let arg in args)
+        push(command_args, arg);
+    return command_from_args(command_args);
+}
+
+function module_success(args) {
+    return command_status(module_command(args)) == 0;
+}
+
+function sing_box_package_installed(name) {
+    return module_success([ LIB_DIR + "/core/packages.uc", "installed", as_string(name) ]);
+}
+
 function sing_box_version_is_tachyon_core(value) {
     let s = as_string(value);
     if (index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0 || match(s, /^v?0\.[0-9]+\./) != null)
         return true;
-    // The marker is what the installer wrote when it put this binary in place,
-    // so it outranks any version string passed in. The banner is the ground
-    // truth about what is installed, and catches a binary that arrived without
-    // a marker - a manual copy, or a fresh install before the state is written.
-    return sing_box_marker_is_tachyon_core() || sing_box_banner_is_tachyon_core();
+    if (s != "" && (sing_box_version_is_extended(s) || sing_box_version_is_lx(s)))
+        return false;
+    let marker = sing_box_variant_marker();
+    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable")
+        return false;
+    if (marker == "tachyon-core")
+        return true;
+    let identity = sing_box_banner_identity();
+    if (identity == "tachyon-core")
+        return true;
+    if (identity == "sing-box")
+        return false;
+    return false;
 }
 
 
@@ -454,6 +487,8 @@ function sing_box_version_looks_extended(value) {
 function sing_box_is_extended(value) {
     value = as_string(value);
     if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core"))
+        return true;
+    if (!sing_box_marker_is("tiny") && !sing_box_marker_is("stable") && sing_box_package_installed("sing-box-extended"))
         return true;
 
     value = value != "" ? value : sing_box_version();
@@ -495,7 +530,15 @@ function sing_box_core_identity_marker(build, given) {
         return "tachyon-core";
 
     let marker = as_string(given);
-    return marker != "" ? marker : sing_box_variant_marker();
+    marker = marker != "" ? marker : sing_box_variant_marker();
+    if (marker != "")
+        return marker;
+
+    if (sing_box_package_installed("sing-box-extended"))
+        return "extended";
+    if (sing_box_package_installed("sing-box-tiny"))
+        return "tiny";
+    return "";
 }
 
 // The version of the installed binary, asked of the binary itself whenever it
@@ -703,21 +746,6 @@ function sing_box_supports_cert_pin(version) {
         return major > 1 || (major == 1 && minor >= 15);
     }
     return false;
-}
-
-function module_command(args) {
-    let command_args = [ "ucode", "-L", LIB_DIR ];
-    for (let arg in args)
-        push(command_args, arg);
-    return command_from_args(command_args);
-}
-
-function module_success(args) {
-    return command_status(module_command(args)) == 0;
-}
-
-function sing_box_package_installed(name) {
-    return module_success([ LIB_DIR + "/core/packages.uc", "installed", as_string(name) ]);
 }
 
 function sing_box_is_tiny(version, version_output) {

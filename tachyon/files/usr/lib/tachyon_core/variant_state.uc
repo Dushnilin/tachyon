@@ -10,10 +10,26 @@ let core_profile = require("tachyon_core.core_profile");
 
 const VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
 const VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
+const LEGACY_VARIANT_STATE_FILE = "/etc/tachyon/sing-box-variant";
+const LEGACY_VERSION_STATE_FILE = "/etc/tachyon/sing-box-version";
+
+function read_variant_marker() {
+    let marker = trim(fs.readfile(VARIANT_STATE_FILE) || "");
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = trim(fs.readfile(LEGACY_VARIANT_STATE_FILE) || "");
+    return marker;
+}
+
+function read_version_state() {
+    let version = trim(fs.readfile(VERSION_STATE_FILE) || "");
+    if (version == "" && getenv("SB_VERSION_STATE_FILE") == null)
+        version = trim(fs.readfile(LEGACY_VERSION_STATE_FILE) || "");
+    return version;
+}
 
 function current_profile() {
-    let version = trim(fs.readfile(VERSION_STATE_FILE) || "");
-    let marker = trim(fs.readfile(VARIANT_STATE_FILE) || "");
+    let version = read_version_state();
+    let marker = read_variant_marker();
     // A build that names itself in its version outranks the marker: the marker
     // describes what was installed previously and can lag behind a swapped
     // binary. Same order as sing_box_core_identity_marker() in
@@ -30,7 +46,17 @@ function awg_endpoint_schema() {
     return profile == "lx" || profile == "tachyon-core";
 }
 
+function is_tachyon_core() {
+    if (current_profile() == "tachyon-core")
+        return true;
+    let version = read_version_state();
+    return match(version, /^v?0\.[0-9]+\.[0-9]+/) != null;
+}
+
 return {
+    read_variant_marker,
+    read_version_state,
     current_profile,
-    awg_endpoint_schema
+    awg_endpoint_schema,
+    is_tachyon_core
 };

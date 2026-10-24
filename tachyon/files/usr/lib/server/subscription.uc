@@ -39,7 +39,7 @@ function collect(settings, servers, certificate_pin) {
 }
 
 function certificate_pin(server) {
-    if (index([ "vless", "trojan", "hysteria2", "tuic", "anytls" ], server.protocol) < 0)
+    if (index([ "vless", "trojan", "hysteria2", "tuic", "anytls", "naive", "trusttunnel", "tewfai", "masque", "openconnect", "vmess" ], server.protocol) < 0)
         return "";
     let output = common.command_output_from_args([
         getenv("TACHYON_BIN") || "/usr/bin/tachyon", "get_tls_certificate_sha256", server[".name"]
@@ -70,12 +70,34 @@ function response(settings, servers, request, pin_reader) {
     return { code: 200, status: "OK", body: request.method == "HEAD" ? "" : (format == "base64" ? b64enc(plain) + "\n" : plain) };
 }
 
+function detect_default_country(uci, settings) {
+    let explicit = uc(trim(str(settings.server_default_country || settings.server_country || "")));
+    if (match(explicit, /^[A-Z]{2}$/)) return explicit;
+    let zonename = trim(str(uci.get("system", "@system[0]", "zonename") || ""));
+    let tz = trim(str(uci.get("system", "@system[0]", "timezone") || ""));
+    if (match(zonename, /^(Europe\/(Moscow|Kaliningrad|Samara|Volgograd|Saratov|Ulyanovsk|Kirov|Astrakhan)|Asia\/(Yekaterinburg|Omsk|Novosibirsk|Barnaul|Tomsk|Novokuznetsk|Krasnoyarsk|Irkutsk|Chita|Yakutsk|Khandyga|Vladivostok|Ust-Nera|Magadan|Sakhalin|Srednekolymsk|Kamchatka|Anadyr))$/) || match(tz, /^(MSK|RTZ|<[+-]0[2-9]>|[+-]03)/))
+        return "RU";
+    if (zonename == "Europe/Minsk") return "BY";
+    if (match(zonename, /^Asia\/(Almaty|Qyzylorda|Qostanay|Aqtobe|Aqtau|Atyrau|Oral)$/)) return "KZ";
+    if (zonename == "Europe/Kyiv" || zonename == "Europe/Kiev") return "UA";
+    if (zonename == "Europe/Berlin") return "DE";
+    if (zonename == "Europe/Amsterdam") return "NL";
+    if (zonename == "Europe/Helsinki") return "FI";
+    if (zonename == "Europe/Istanbul") return "TR";
+    return "RU";
+}
+
 function serve() {
     let uci = require("core.uci");
     let name = getenv("TACHYON_CONFIG_NAME") || "tachyon";
     let settings = uci.get_all(name, "settings") || {};
+    let servers = uci.section_objects(name, "server");
+    let fallback_country = detect_default_country(uci, settings);
+    for (let s in servers) {
+        if (!s.server_country) s.server_country = fallback_country;
+    }
     // Authentication precedes certificate reads and URI generation.
-    let result = response(settings, uci.section_objects(name, "server"), {
+    let result = response(settings, servers, {
         method: getenv("REQUEST_METHOD") || "GET", path: getenv("PATH_INFO") || "",
         query: getenv("QUERY_STRING") || ""
     }, certificate_pin);

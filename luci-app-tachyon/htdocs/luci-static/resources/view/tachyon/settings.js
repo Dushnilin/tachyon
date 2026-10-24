@@ -2059,6 +2059,22 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
 
+  o = section.taboption(
+    "navigation",
+    form.Flag,
+    "dashboard_show_subscription_metadata",
+    _tr(
+      "Показывать информацию о подписках на дашборде",
+      "Show Subscription Info on Dashboard",
+    ),
+    _tr(
+      "Отображать шапки с информацией о трафике, сроке действия и объявлениями подписок над списками серверов на дашборде.",
+      "Display subscription info headers (traffic usage, expiration date, announcements) above server lists on the Dashboard.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
+
   // ── DNS Settings ────────────────────────────────────────────────────────
 
   const dnsBenchmarkBtn = section.taboption(
@@ -2918,8 +2934,13 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = true;
   o.validate = function (section_id, value) {
     const v = (value || "").trim();
-    if (v !== "" && !/^gh[pousr]_[A-Za-z0-9]{36,255}$|^[A-Fa-f0-9]{40}$/.test(v))
-      return _("Does not look like a GitHub token (expected ghp_… / github_pat_… or a 40-hex classic token)");
+    if (
+      v !== "" &&
+      !/^gh[pousr]_[A-Za-z0-9]{36,255}$|^[A-Fa-f0-9]{40}$/.test(v)
+    )
+      return _(
+        "Does not look like a GitHub token (expected ghp_… / github_pat_… or a 40-hex classic token)",
+      );
     return true;
   };
 

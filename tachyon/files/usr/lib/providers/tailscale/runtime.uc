@@ -298,7 +298,80 @@ function install_exit_node_routing() {
     return ok;
 }
 
+function ensure_firewall_forwarding(src, dest) {
+    for (let name in uci_core.sections("firewall", "forwarding")) {
+        if (as_string(uci_core.get("firewall", name, "src")) == src &&
+            as_string(uci_core.get("firewall", name, "dest")) == dest)
+            return false;
+    }
+    let forward = uci_core.add("firewall", "forwarding");
+    if (as_string(forward) == "")
+        return false;
+    uci_core.set("firewall." + forward + ".src", src);
+    uci_core.set("firewall." + forward + ".dest", dest);
+    return true;
+}
+
+function sync_tailscale_firewall_zone(section) {
+    if (section != null && !bool_option(section, "tailscale_auto_firewall", true))
+        return true;
+
+    let zone = "tailscale";
+    let interface_name = "tailscale0";
+    let index = "";
+    for (let name in uci_core.sections("firewall", "zone")) {
+        if (as_string(uci_core.get("firewall", name, "name")) == zone) {
+            index = name;
+            break;
+        }
+    }
+
+    let changed = false;
+    if (index == "") {
+        index = uci_core.add("firewall", "zone");
+        if (as_string(index) == "")
+            return false;
+        uci_core.set("firewall." + index + ".name", zone);
+        uci_core.set("firewall." + index + ".input", "ACCEPT");
+        uci_core.set("firewall." + index + ".output", "ACCEPT");
+        uci_core.set("firewall." + index + ".forward", "ACCEPT");
+        uci_core.set("firewall." + index + ".masq", "1");
+        uci_core.set("firewall." + index + ".mtu_fix", "1");
+        changed = true;
+    }
+
+    let cur_devs = list_option(uci_core.get_all("firewall", index), "device");
+    if (length(cur_devs) != 1 || cur_devs[0] != interface_name) {
+        uci_core.set("firewall." + index + ".device", [ interface_name ]);
+        changed = true;
+    }
+
+    let masquerade = section != null ? (bool_option(section, "tailscale_masquerade", true) ? "1" : "0") : "1";
+    if (as_string(uci_core.get("firewall", index, "masq")) != masquerade) {
+        uci_core.set("firewall." + index + ".masq", masquerade);
+        changed = true;
+    }
+
+    if (ensure_firewall_forwarding("lan", zone))
+        changed = true;
+    if (ensure_firewall_forwarding(zone, "lan"))
+        changed = true;
+    if (ensure_firewall_forwarding(zone, "wan"))
+        changed = true;
+    if (ensure_firewall_forwarding("wan", zone))
+        changed = true;
+
+    if (changed) {
+        if (!uci_core.commit("firewall"))
+            return false;
+        if (fs.stat("/etc/init.d/firewall") != null)
+            command_status(command_from_args([ "/etc/init.d/firewall", "reload" ]) + " >/dev/null 2>&1");
+    }
+    return true;
+}
+
 function configure_firewall(section) {
+    sync_tailscale_firewall_zone(section);
     // Masquerade LAN sources leaving through the tunnel unless the user opted
     // out; without SNAT peers cannot answer addresses they don't know.
     let masquerade = bool_option(section, "tailscale_masquerade", true);
@@ -712,7 +785,9 @@ else if (mode == "package-version")
     print(daemon_version(), "\n");
 else if (mode == "native-section-count")
     print(length(native_tailscale_sections()), "\n");
+else if (mode == "sync-firewall")
+    exit(sync_tailscale_firewall_zone(null) ? 0 : 1);
 else {
-    warn("Usage: providers/tailscale/runtime.uc <start-runtime|stop-runtime|status|check|installed|package-installed|package-version|native-section-count>\n");
+    warn("Usage: providers/tailscale/runtime.uc <start-runtime|stop-runtime|status|check|installed|package-installed|package-version|native-section-count|sync-firewall>\n");
     exit(1);
 }

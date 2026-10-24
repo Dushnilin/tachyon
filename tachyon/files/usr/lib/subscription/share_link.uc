@@ -497,15 +497,15 @@ function serialize_tewfai(outbound) {
         add_query(params, "transport", outbound.transport);
     add_query(params, "inner_cipher", outbound.inner_cipher);
     add_query(params, "morph_profile", outbound.morph_profile);
-    if (type(outbound.pqc) == "object" && outbound.pqc.enabled === true)
+    if (outbound.pqc === true || (type(outbound.pqc) == "object" && outbound.pqc.enabled === true))
         add_query(params, "pqc", "1");
-    if (type(outbound.handover) == "object" && outbound.handover.enabled === true)
+    if (outbound.handover === true || (type(outbound.handover) == "object" && outbound.handover.enabled === true))
         add_query(params, "handover", "1");
-    if (type(outbound.fec) == "object" && outbound.fec.enabled === true)
+    if (outbound.fec === true || (type(outbound.fec) == "object" && outbound.fec.enabled === true))
         add_query(params, "fec", "1");
-    if (type(outbound.shaper) == "object" && outbound.shaper.enabled === true) {
+    if (type(outbound.shaper) == "object" && (outbound.shaper.enabled === true || outbound.shaper.mode != null)) {
         add_query(params, "shaper", "1");
-        add_query(params, "shaper_profile", outbound.shaper.profile);
+        add_query(params, "shaper_profile", outbound.shaper.mode || outbound.shaper.profile);
     }
     return "tewfai://" + userinfo + "@" +
         host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
@@ -525,7 +525,7 @@ function serialize_trusttunnel(outbound) {
     }
     let params = [];
     add_tls_query(params, outbound, true);
-    if (outbound.quic === true)
+    if (outbound.quic === true || outbound.quic == "true")
         add_query(params, "quic", "1");
     add_query(params, "quic_congestion_control", outbound.quic_congestion_control);
     return "trusttunnel://" + auth + host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
@@ -534,7 +534,15 @@ function serialize_trusttunnel(outbound) {
 function serialize_masque(outbound) {
     if (as_string(outbound.server) == "" || outbound.server_port == null)
         return "";
-    let auth = as_string(outbound.private_key || "") != "" ? (uri_encode(outbound.private_key) + "@") : "";
+    let auth = "";
+    if (as_string(outbound.username || "") != "") {
+        auth = uri_encode(outbound.username);
+        if (as_string(outbound.password || "") != "")
+            auth += ":" + uri_encode(outbound.password);
+        auth += "@";
+    } else if (as_string(outbound.private_key || "") != "") {
+        auth = uri_encode(outbound.private_key) + "@";
+    }
     let params = [];
     add_tls_query(params, outbound, true);
     add_query(params, "profile", outbound.profile);
@@ -546,6 +554,45 @@ function serialize_masque(outbound) {
     if (outbound.mtu != null)
         add_query(params, "mtu", outbound.mtu);
     return "masque://" + auth + host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
+}
+
+function serialize_openconnect(outbound) {
+    if (as_string(outbound.server) == "" || outbound.server_port == null)
+        return "";
+    let auth = "";
+    if (as_string(outbound.username || "") != "") {
+        auth = uri_encode(outbound.username);
+        if (as_string(outbound.password || "") != "")
+            auth += ":" + uri_encode(outbound.password);
+        auth += "@";
+    } else if (as_string(outbound.password || "") != "") {
+        auth = uri_encode(outbound.password) + "@";
+    } else if (as_string(outbound.cookie || "") != "") {
+        auth = uri_encode(outbound.cookie) + "@";
+    }
+    let params = [];
+    add_tls_query(params, outbound, true);
+    add_query(params, "flavor", outbound.flavor);
+    add_query(params, "cookie", outbound.cookie);
+    add_query(params, "urlpath", outbound.urlpath);
+    add_query(params, "realm", outbound.realm);
+    add_query(params, "region", outbound.region);
+    add_query(params, "user_agent", outbound.user_agent);
+    add_query(params, "local_hostname", outbound.local_hostname);
+    add_query(params, "server_cert_pin", outbound.server_cert_pin);
+    add_query(params, "address", outbound.address);
+    add_query(params, "address_v6", outbound.address_v6);
+    if (outbound.ip === true)
+        add_query(params, "ip", "1");
+    if (outbound.esp === true)
+        add_query(params, "esp", "1");
+    if (outbound.dtls === true)
+        add_query(params, "dtls", "1");
+    if (outbound.hip_report === true)
+        add_query(params, "hip_report", "1");
+    if (outbound.mtu != null)
+        add_query(params, "mtu", outbound.mtu);
+    return "openconnect://" + auth + host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
 }
 
 function serialize_outbound_link(outbound) {
@@ -587,6 +634,8 @@ function serialize_outbound_link(outbound) {
         return serialize_trusttunnel(outbound);
     if (outbound_type == "masque")
         return serialize_masque(outbound);
+    if (outbound_type == "openconnect")
+        return serialize_openconnect(outbound);
     return "";
 }
 
@@ -601,7 +650,8 @@ function is_copyable_link(value) {
         "anytls://", "naive+https://", "naive+quic://",
         "snell://", "mieru://", "mierus://",
         "tg://", "mtproto://", "shadowtls://",
-        "tewfai://", "trusttunnel://", "masque://"
+        "tewfai://", "trusttunnel://", "masque://",
+        "openconnect://", "anyconnect://"
     ];
     for (let prefix in prefixes) {
         if (starts_with(value, prefix))

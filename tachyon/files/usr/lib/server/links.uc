@@ -1,6 +1,7 @@
 // Client URI generation for server subscriptions. No engine configuration is changed.
 let common = require("core.common");
 let ip = require("core.ip");
+let variant_state = require("tachyon_core.variant_state");
 let str = common.as_string;
 
 function encode(value) {
@@ -43,18 +44,27 @@ function query(params) {
 }
 
 function security(s, protocol) {
-    if (index([ "shadowsocks", "socks", "http", "mixed", "shadowtls", "mtproto", "mieru", "sudoku" ], protocol) >= 0)
+    if (index([ "shadowsocks", "socks", "http", "mixed", "shadowtls", "mtproto", "mieru" ], protocol) >= 0)
         return "none";
     return s.security || (protocol == "vless" ? "reality" :
-        (index([ "trojan", "hysteria2", "tuic", "anytls", "naive", "fptn", "trusttunnel", "tewfai", "masque", "sudoku" ], protocol) >= 0 ? "tls" : "none"));
+        (index([ "trojan", "hysteria2", "tuic", "anytls", "naive", "fptn", "trusttunnel", "tewfai", "masque", "openconnect" ], protocol) >= 0 ? "tls" : "none"));
+}
+
+function country_flag(code) {
+    code = uc(trim(str(code)));
+    if (!match(code, /^[A-Z]{2}$/)) return "";
+    return chr(0xF0, 0x9F, 0x87, 0xA6 + ord(code, 0) - 65, 0xF0, 0x9F, 0x87, 0xA6 + ord(code, 1) - 65);
 }
 
 function identity(s) {
     let entry = str(list(s.server_users)[0]);
     let parts = split(entry, "|");
     let credential = trim(str(length(parts) > 1 ? parts[1] : parts[0]));
+    let raw_name = s.label || s[".name"] || "Tachyon";
+    let flag = country_flag(s.server_country);
+    let name = (flag != "" && index(raw_name, "\xF0\x9F\x87") < 0) ? (flag + " " + raw_name) : raw_name;
     return {
-        name: s.label || s[".name"] || "Tachyon",
+        name,
         username: s.server_username || s.label || s[".name"] || "user",
         uuid: s.server_uuid || credential,
         password: s.server_password || credential,
@@ -92,7 +102,14 @@ function vless_trojan(s, user, address, port, pin) {
         params.sni = s.tls_server_name || s.reality_handshake_server || "";
         params.alpn = join(",", list(s.tls_alpn));
     }
-    if (sec == "tls" && pin != "") params.pcs = pin;
+    if (sec == "tls") {
+        let generated = !match(s.tls_certificate_path || "/etc/tachyon/servers/generated", /^\/etc\/(acme|letsencrypt|ssl\/certs)\//);
+        if (generated || pin != "") {
+            params.insecure = "1";
+            params.allowInsecure = "1";
+        }
+        if (pin != "") params.pcs = pin;
+    }
     if (sec == "reality") {
         params.pbk = s.reality_public_key;
         params.sid = list(s.reality_short_id)[0];
@@ -104,16 +121,22 @@ function vless_trojan(s, user, address, port, pin) {
     return credential ? protocol + "://" + encode(credential) + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name) : "";
 }
 
-function vmess(s, user, address, port) {
+function vmess(s, user, address, port, pin) {
     if (!user.uuid) return "";
     let t = transport(s);
+    let is_tls = security(s, "vmess") == "tls";
     let payload = {
         v: "2", ps: user.name, add: address, port: str(port), id: user.uuid,
         aid: s.vmess_alter_id || "0", scy: "auto", net: t.type, type: "none",
         host: t.host || "", path: t.path || t.serviceName || "",
-        tls: security(s, "vmess") == "tls" ? "tls" : "",
+        tls: is_tls ? "tls" : "",
         sni: s.tls_server_name || "", alpn: join(",", list(s.tls_alpn))
     };
+    if (is_tls) {
+        let generated = !match(s.tls_certificate_path || "/etc/tachyon/servers/generated", /^\/etc\/(acme|letsencrypt|ssl\/certs)\//);
+        if (generated || pin != "") payload.allowInsecure = 1;
+        if (pin != "") payload.pcs = pin;
+    }
     return "vmess://" + b64enc(sprintf("%J", payload));
 }
 
@@ -143,8 +166,11 @@ function mieru(s, inbound, address) {
     let network = inbound.transport || "TCP";
     if (!user?.name || !user.password || port < 1 || port > 65535 || index([ "TCP", "UDP" ], network) < 0)
         return "";
+    let raw_profile = s.label || s[".name"] || "Mieru";
+    let flag = country_flag(s.server_country);
+    let profile = (flag != "" && index(raw_profile, "\xF0\x9F\x87") < 0) ? (flag + " " + raw_profile) : raw_profile;
     return "mierus://" + encode(user.name) + ":" + encode(user.password) + "@" + uri_host(address) +
-        query({ port, protocol: network, profile: s.label || s[".name"] || "Mieru" });
+        query({ port, protocol: network, profile });
 }
 
 function supported(s) {
@@ -154,7 +180,7 @@ function supported(s) {
     }
     return index([ "vless", "vmess", "trojan", "shadowsocks", "socks", "mixed", "http", "naive",
         "hysteria2", "tuic", "anytls", "shadowtls", "fptn", "mtproto", "mieru",
-        "trusttunnel", "tewfai", "masque", "sudoku" ], protocol) >= 0;
+        "trusttunnel", "tewfai", "masque", "openconnect", "awg" ], protocol) >= 0;
 }
 
 function build(s, fallback_host, pin) {
@@ -162,13 +188,13 @@ function build(s, fallback_host, pin) {
     if (!address || !supported(s)) return "";
     let protocol = s.protocol || "vless";
     if (protocol == "json_inbound") return mieru(s, json(s.inbound_json), address);
-    let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443 };
+    let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443, awg: 51820 };
     let port = int(s.listen_port || defaults[protocol] || 443);
     if (port < 1 || port > 65535) return "";
     let user = identity(s);
     pin = match(pin || "", /^[0-9a-f]{64}$/) ? pin : "";
     if (protocol == "vless" || protocol == "trojan") return vless_trojan(s, user, address, port, pin);
-    if (protocol == "vmess") return vmess(s, user, address, port);
+    if (protocol == "vmess") return vmess(s, user, address, port, pin);
     if (index([ "hysteria2", "tuic", "anytls", "shadowtls" ], protocol) >= 0)
         return password_link(s, user, address, port, pin);
     if (protocol == "mieru") {
@@ -182,21 +208,58 @@ function build(s, fallback_host, pin) {
         if (common.bool_value(s.trusttunnel_quic)) params.quic = "1";
         return "trusttunnel://" + encode(user.username) + ":" + encode(user.password) + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
     }
-    if (protocol == "sudoku") {
-        if (!user.password) return "";
-        let params = {};
-        if (s.sudoku_aead_method) params.aead = s.sudoku_aead_method;
-        return "sudoku://" + encode(user.password) + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
-    }
     if (protocol == "tewfai") {
+        let uuid = str(s.tewfai_uuid || user.uuid);
+        if (!uuid) return "";
+        let pwd = str(s.tewfai_password != null && s.tewfai_password != "" ? s.tewfai_password : user.password);
+        let cred = encode(uuid) + (pwd != "" ? ":" + encode(pwd) : "");
         let params = tls_params(s, protocol, address, pin);
-        params.pbk = s.tewfai_server_public_key || "";
-        return "tewfai://" + encode(s.tewfai_client_private_key || "") + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
+        let transports = [];
+        for (let tr in list(s.tewfai_inbound_transport)) {
+            if (tr == "quic" || tr == "h3_stream" || tr == "h3_datagram") {
+                if (index(transports, "quic") < 0) push(transports, "quic");
+            }
+            else if (tr == "tcp" || tr == "raw_tls" || tr == "h2" || tr == "ws") {
+                if (index(transports, "tcp") < 0) push(transports, "tcp");
+            }
+        }
+        if (index(transports, "quic") >= 0 && index(transports, "tcp") < 0)
+            push(transports, "tcp");
+        if (length(transports) > 0) params.transport = join(",", transports);
+        if (s.tewfai_inner_cipher) params.inner_cipher = s.tewfai_inner_cipher;
+        if (common.bool_value(s.tewfai_pqc_enabled)) params.pqc = "1";
+        if (common.bool_value(s.tewfai_handover_enabled)) params.handover = "1";
+        if (common.bool_value(s.tewfai_fec_enabled)) params.fec = "1";
+        if (common.bool_value(s.tewfai_shaper_enabled)) {
+            params.shaper = "1";
+            if (s.tewfai_shaper_profile) params.shaper_profile = s.tewfai_shaper_profile;
+        }
+        return "tewfai://" + cred + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
     }
     if (protocol == "masque") {
         let params = tls_params(s, protocol, address, pin);
-        params.pbk = s.masque_server_public_key || "";
-        return "masque://" + encode(s.masque_client_private_key || "") + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
+        params.profile = "standard";
+        params.uri = "https://" + uri_host(address) + ":" + port + "/.well-known/masque/ip/*/*/";
+        let pool4 = list(s.masque_ipv4_pool);
+        if (length(pool4) > 0) params.ip = pool4[0];
+        let pool6 = list(s.masque_ipv6_pool);
+        if (length(pool6) > 0) params.ipv6 = pool6[0];
+        if (s.masque_mtu) params.mtu = s.masque_mtu;
+        return "masque://" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
+    }
+    if (protocol == "openconnect") {
+        let params = tls_params(s, protocol, address, pin);
+        if (s.openconnect_flavor) params.flavor = s.openconnect_flavor;
+        if (s.openconnect_cookie) params.cookie = s.openconnect_cookie;
+        if (s.openconnect_urlpath) params.urlpath = s.openconnect_urlpath;
+        if (s.openconnect_address) params.address = s.openconnect_address;
+        if (s.openconnect_mtu) params.mtu = s.openconnect_mtu;
+        if (common.bool_value(s.openconnect_ip)) params.ip = "1";
+        if (common.bool_value(s.openconnect_esp)) params.esp = "1";
+        if (common.bool_value(s.openconnect_dtls)) params.dtls = "1";
+        let auth = user.password ? encode(user.username) + ":" + encode(user.password) + "@" : (s.openconnect_cookie ? encode(s.openconnect_cookie) + "@" : "");
+        if (!auth) return "";
+        return "openconnect://" + auth + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
     }
     if (protocol == "shadowsocks") {
         if (!user.password) return "";
@@ -205,8 +268,39 @@ function build(s, fallback_host, pin) {
     }
     if (protocol == "mtproto") {
         let secret = common.mtproto_secret_canonical(s.mtproto_secret || user.password, s.mtproto_faketls || "google.com");
-        if (secret && s.mtproto_padding == "0") secret = substr(secret, 2, 32);
-        return secret ? "https://t.me/proxy" + query({ server: address, port, secret }) : "";
+        if (secret && (s.mtproto_padding == "0" || variant_state.is_tachyon_core()))
+            secret = substr(secret, 2, 32);
+        return secret ? "https://t.me/proxy" + query({ server: address, port, secret }) + "#" + encode(user.name) : "";
+    }
+    if (protocol == "awg") {
+        if (!s.awg_client_private_key || !s.awg_server_public_key) return "";
+        let conf = "[Interface]\nPrivateKey = " + s.awg_client_private_key +
+            "\nAddress = " + (s.awg_client_address || "10.8.0.2/32") +
+            (s.awg_dns ? "\nDNS = " + s.awg_dns : "") +
+            (s.awg_mtu ? "\nMTU = " + s.awg_mtu : "") +
+            "\nJc = " + (s.awg_jc || "4") +
+            "\nJmin = " + (s.awg_jmin || "40") +
+            "\nJmax = " + (s.awg_jmax || "70") +
+            "\nS1 = " + (s.awg_s1 || "0") +
+            "\nS2 = " + (s.awg_s2 || "0") +
+            (s.awg_s3 ? "\nS3 = " + s.awg_s3 : "") +
+            (s.awg_s4 ? "\nS4 = " + s.awg_s4 : "") +
+            "\nH1 = " + (s.awg_h1 || "1") +
+            "\nH2 = " + (s.awg_h2 || "2") +
+            "\nH3 = " + (s.awg_h3 || "3") +
+            "\nH4 = " + (s.awg_h4 || "4") +
+            (s.awg_header_protection_key ? "\nHeaderProtectionKey = " + s.awg_header_protection_key : "") +
+            (s.awg_content_padding_addition ? "\nContentPaddingAddition = " + s.awg_content_padding_addition : "") +
+            (s.awg_rekey_after_time ? "\nRekeyAfterTime = " + s.awg_rekey_after_time : "") +
+            (s.awg_rekey_timeout ? "\nRekeyTimeout = " + s.awg_rekey_timeout : "") +
+            (s.awg_reject_after_time ? "\nRejectAfterTime = " + s.awg_reject_after_time : "") +
+            (s.awg_keepalive_timeout ? "\nKeepaliveTimeout = " + s.awg_keepalive_timeout : "") +
+            (s.awg_max_handshake_attempts ? "\nMaxHandshakeAttempts = " + s.awg_max_handshake_attempts : "") +
+            "\n\n[Peer]\nPublicKey = " + s.awg_server_public_key +
+            (s.awg_preshared_key ? "\nPresharedKey = " + s.awg_preshared_key : "") +
+            "\nEndpoint = " + uri_host(address) + ":" + port +
+            "\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = " + (s.awg_keepalive || "25") + "\n";
+        return "amneziawg://" + replace(b64enc(conf), /=+$/, "") + "#" + encode(user.name);
     }
     if (protocol == "fptn") {
         if (!user.password) return "";
@@ -218,7 +312,8 @@ function build(s, fallback_host, pin) {
     let auth = scheme == "socks5" ? common.bool_value(s.socks_auth_enabled ?? "1") : user.password != "";
     if (protocol == "naive" && !user.password) return "";
     let credential = auth ? encode(user.username) + ":" + encode(user.password) + "@" : "";
-    return scheme + "://" + credential + uri_host(address) + ":" + port + "#" + encode(user.name);
+    let naive_query = protocol == "naive" ? query({ sni: s.tls_server_name || address, pcs: pin }) : "";
+    return scheme + "://" + credential + uri_host(address) + ":" + port + naive_query + "#" + encode(user.name);
 }
 
 return { build, encode, host, supported };

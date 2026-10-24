@@ -31,6 +31,12 @@ export { coreService } from './tachyon/services/core.service';
 export { store } from './tachyon/services/store.service';
 export { applyUiStateToStore } from './tachyon/services/uiState.service';
 export { DashboardTab } from './tachyon/tabs/dashboard';
+export {
+  navigateToServerInbound,
+  registerServerSectionController,
+  renderInboundServersDashboardWidget,
+  renderServerTabInboundsOverview,
+} from './tachyon/tabs/dashboard/inboundServers';
 export { DiagnosticTab } from './tachyon/tabs/diagnostic';
 export { MonitoringTab } from './tachyon/tabs/monitoring';
 export { UpdatesTab } from './tachyon/tabs/updates';

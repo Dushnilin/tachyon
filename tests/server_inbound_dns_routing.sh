@@ -13,7 +13,9 @@ fixture() {
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "enabled": "1"
+    "enabled": "1",
+    "source_network_interfaces": "br-lan",
+    "excluded_ips": [ "192.168.1.50" ]
   },
   "server": [
     {
@@ -75,9 +77,11 @@ if (!hijackDnsProto) {
   process.exit(1);
 }
 
-const privateLan = rules.find(r => r.action === "route" && r.inbound === "server-home_node-in" && r.ip_is_private === true && r.outbound === "direct-out");
-if (!privateLan) {
-  console.error("Missing private LAN direct-out route rule for server-home_node-in");
+const loRuleIdx = rules.findIndex(r => r.action === "route" && r.inbound === "server-home_node-in" && Array.isArray(r.ip_cidr) && r.ip_cidr.includes("127.0.0.0/8") && r.outbound === "lo-direct-out");
+const lanRuleIdx = rules.findIndex(r => r.action === "route" && r.inbound === "server-home_node-in" && Array.isArray(r.ip_cidr) && r.ip_cidr.includes("192.168.1.0/24") && r.outbound === "lan-direct-out");
+const privRuleIdx = rules.findIndex(r => r.action === "route" && r.inbound === "server-home_node-in" && r.ip_is_private === true && r.outbound === "direct-out");
+if (loRuleIdx < 0 || lanRuleIdx < 0 || privRuleIdx < 0 || !(loRuleIdx < lanRuleIdx && lanRuleIdx < privRuleIdx)) {
+  console.error("Expected lo-direct-out -> lan-direct-out -> direct-out (ip_is_private) route order for server-home_node-in");
   process.exit(1);
 }
 
@@ -106,6 +110,13 @@ if (!youtubeRoute) {
 const instaRoute = rules.find(r => r.action === "route" && r.inbound === "server-home_node-in" && r.ip_cidr && r.ip_cidr.includes("157.240.0.0/16"));
 if (!instaRoute) {
   console.error("Missing IP CIDR rule cloned for server-home_node-in and Instagram subnet");
+  process.exit(1);
+}
+
+// Check that excluded_ips bypass rule is scoped to tproxy-in/tproxy6-in and never hijacks server inbounds
+const excludedRule = rules.find(r => r.action === "route" && r.outbound === "bypass-out" && (r.source_ip_cidr === "192.168.1.50/32" || (Array.isArray(r.source_ip_cidr) && r.source_ip_cidr.includes("192.168.1.50/32"))));
+if (!excludedRule || !Array.isArray(excludedRule.inbound) || !excludedRule.inbound.includes("tproxy-in") || excludedRule.inbound.includes("server-home_node-in")) {
+  console.error("excluded_ips rule must be scoped to tproxy-in/tproxy6-in:", JSON.stringify(excludedRule));
   process.exit(1);
 }
 

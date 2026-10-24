@@ -90,10 +90,14 @@ export function renderWidget(props: IRenderWidgetProps) {
 }
 
 export interface IRenderDualWidgetColumn {
-  title?: string;
+  title?: string | HTMLElement;
+  scrollable?: boolean;
+  itemsClass?: string;
+  content?: HTMLElement | HTMLElement[];
   items: Array<{
     key?: string | HTMLElement;
     value: string | HTMLElement | (string | HTMLElement)[];
+    onClick?: (event: MouseEvent) => void;
     attributes?: {
       class?: string;
       title?: string;
@@ -145,8 +149,68 @@ export function renderDualWidget(props: IRenderDualWidgetProps) {
       E(
         'div',
         { class: 'tachyon-dual-card__body' },
-        props.columns.map((col) =>
-          E('div', { class: 'tachyon-dual-card__col' }, [
+        props.columns.map((col) => {
+          const renderedRows = (col.items || []).map((item) => {
+            const rowAttrs: Record<string, unknown> = {
+              class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ''}`,
+            };
+            if (item?.attributes) {
+              for (const [k, v] of Object.entries(item.attributes)) {
+                if (k !== 'class' && typeof v === 'string') {
+                  rowAttrs[k] = v;
+                }
+              }
+            }
+            if (typeof item.onClick === 'function') {
+              rowAttrs.click = item.onClick;
+            }
+            return E('div', rowAttrs, [
+              E(
+                'span',
+                {
+                  class:
+                    'tachyon_dashboard-page__widgets-section__item__row__key',
+                },
+                typeof item.key === 'string'
+                  ? item.key
+                    ? `${item.key}: `
+                    : ''
+                  : item.key || '',
+              ),
+              E(
+                'span',
+                {
+                  class:
+                    'tachyon_dashboard-page__widgets-section__item__row__value',
+                  ...(item?.attributes?.title
+                    ? { title: item.attributes.title }
+                    : {}),
+                },
+                item.value,
+              ),
+            ]);
+          });
+
+          const extraContent = col.content
+            ? Array.isArray(col.content)
+              ? col.content
+              : [col.content]
+            : [];
+
+          const bodyNodes =
+            col.scrollable || col.itemsClass
+              ? [
+                  E(
+                    'div',
+                    {
+                      class: col.itemsClass || 'tachyon-inbounds-scroll-list',
+                    },
+                    [...renderedRows, ...extraContent],
+                  ),
+                ]
+              : [...renderedRows, ...extraContent];
+
+          return E('div', { class: 'tachyon-dual-card__col' }, [
             col.title
               ? E(
                   'div',
@@ -154,41 +218,9 @@ export function renderDualWidget(props: IRenderDualWidgetProps) {
                   col.title,
                 )
               : '',
-            ...col.items.map((item) => {
-              const rowAttrs: Record<string, string> = {
-                class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ''}`,
-              };
-              if (item?.attributes?.title) {
-                rowAttrs.title = item.attributes.title;
-              }
-              return E('div', rowAttrs, [
-                E(
-                  'span',
-                  {
-                    class:
-                      'tachyon_dashboard-page__widgets-section__item__row__key',
-                  },
-                  typeof item.key === 'string'
-                    ? item.key
-                      ? `${item.key}: `
-                      : ''
-                    : item.key || '',
-                ),
-                E(
-                  'span',
-                  {
-                    class:
-                      'tachyon_dashboard-page__widgets-section__item__row__value',
-                    ...(item?.attributes?.title
-                      ? { title: item.attributes.title }
-                      : {}),
-                  },
-                  item.value,
-                ),
-              ]);
-            }),
-          ]),
-        ),
+            ...bodyNodes,
+          ]);
+        }),
       ),
     ],
   );

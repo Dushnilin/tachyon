@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-24 13:15+0300\n"
-"PO-Revision-Date: 2026-10-24 13:15+0300\n"
+"POT-Creation-Date: 2026-10-24 23:29+0300\n"
+"PO-Revision-Date: 2026-10-24 23:29+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -200,6 +200,9 @@ msgstr "Активный движок"
 msgid "Active routes"
 msgstr "Активные маршруты"
 
+msgid "Adaptive"
+msgstr ""
+
 msgid "Add Custom DPI Strategy"
 msgstr "Добавить стратегию DPI"
 
@@ -292,6 +295,12 @@ msgstr "Все устройства — гости, кроме доверенн�
 
 msgid "All Engines (Full Matrix)"
 msgstr "Все движки (Полная матрица)"
+
+msgid "All IPv4 interfaces"
+msgstr ""
+
+msgid "All IPv4/IPv6 interfaces"
+msgstr ""
 
 msgid "All Internet"
 msgstr "Весь интернет"
@@ -533,8 +542,14 @@ msgstr "Должен быть указан как минимум один дей
 msgid "Auth Digest"
 msgstr "Auth Digest"
 
+msgid "Auth Realm"
+msgstr ""
+
 msgid "Auto"
 msgstr "Авто"
+
+msgid "Auto (Default)"
+msgstr ""
 
 msgid "Auto (cooperative with SQM/CAKE)"
 msgstr "Авто (кооперация с SQM/CAKE)"
@@ -571,6 +586,9 @@ msgstr "Автоматическая настройка"
 
 msgid "Auto-configure (Generate all in 1 click)"
 msgstr "Автонастройка (Сгенерировать всё в 1 клик)"
+
+msgid "Auto-configure Tailscale firewall zone"
+msgstr ""
 
 msgid "Auto-detected Domains"
 msgstr "Автоопределённые домены"
@@ -613,6 +631,9 @@ msgstr "Автоматически замерить задержку, потер
 
 msgid "Automatically check installed components for new versions"
 msgstr "Автоматически проверять установленные компоненты на наличие новых версий"
+
+msgid "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings)."
+msgstr ""
 
 msgid "Automatically download and install new versions of components"
 msgstr "Автоматически загружать и устанавливать новые версии компонентов"
@@ -989,6 +1010,9 @@ msgstr "Укажите от 1 до 32 доменов для проверки."
 msgid "Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours."
 msgstr "Выберите, действует ли расписание круглосуточно (24/7) или только в заданные часы."
 
+msgid "Choose whether this server listens on all interfaces, only Local (LAN), or a specific External (WAN) interface IP."
+msgstr ""
+
 msgid "Choose whether to install updates immediately when detected or at a scheduled time (e.g. maintenance window)"
 msgstr "Выберите, устанавливать ли обновления сразу при обнаружении или по расписанию (например, в ночное окно обслуживания)"
 
@@ -1267,6 +1291,9 @@ msgstr "Криптовалюта"
 
 msgid "Current Diagnosis"
 msgstr "Текущий диагноз"
+
+msgid "Current router address"
+msgstr ""
 
 msgid "Current section cannot be used as its own transit section"
 msgstr "Текущая секция не может использоваться как собственная транзитная секция"
@@ -1856,8 +1883,14 @@ msgstr "Включить проверку конфигурации"
 msgid "Enable DNS Continuous Check"
 msgstr "Непрерывная проверка DNS"
 
+msgid "Enable DTLS"
+msgstr ""
+
 msgid "Enable Direct WAN Bypass"
 msgstr "Включить прямой обход WAN"
+
+msgid "Enable ESP UDP Tunnel"
+msgstr ""
 
 msgid "Enable Firewall Reload Dedup"
 msgstr "Включить дедупликацию перезагрузки файрвола"
@@ -2110,6 +2143,21 @@ msgstr "Предоставить эту секцию как локальный H
 
 msgid "Extended preset"
 msgstr "Пресет Extended"
+
+msgid "External"
+msgstr ""
+
+msgid "External (DDNS)"
+msgstr ""
+
+msgid "External (WAN IP)"
+msgstr ""
+
+msgid "External (WAN interface)"
+msgstr ""
+
+msgid "External (WAN)"
+msgstr ""
 
 msgid "External NFQUEUE rules overlap with Tachyon"
 msgstr "Внешние правила NFQUEUE перекрываются с Tachyon"
@@ -2498,6 +2546,9 @@ msgstr "Принудительно направлять DNS-запросы че�
 msgid "Format"
 msgstr "Формат"
 
+msgid "Forward Error Correction (FEC)"
+msgstr ""
+
 msgid "Found"
 msgstr "Найдено"
 
@@ -2623,6 +2674,9 @@ msgstr "Зелёный"
 
 msgid "Group"
 msgstr "Группа"
+
+msgid "Group / URL Path"
+msgstr ""
 
 msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
 msgstr "Группируйте устройства в семейные профили для централизованного управления фильтрацией сайтов, безопасным поиском и лимитами экранного времени."
@@ -2975,6 +3029,12 @@ msgstr "Инициализация проверки утечек IP и DNS с р
 msgid "Inline tls-crypt key (mutually exclusive with tls-auth)"
 msgstr "Встроенный ключ tls-crypt (взаимоисключающий с tls-auth)"
 
+msgid "Inner Cipher"
+msgstr ""
+
+msgid "Inner cipher"
+msgstr ""
+
 msgid "Install"
 msgstr "Установить"
 
@@ -3134,6 +3194,9 @@ msgstr "Неверный IP или MAC-адрес. Ожидается, напр�
 msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
 
+msgid "Invalid Mieru URL: invalid host or port"
+msgstr ""
+
 msgid "Invalid SOCKS URL: invalid host and port"
 msgstr "Некорректный SOCKS URL: некорректные хост и порт"
 
@@ -3227,6 +3290,9 @@ msgstr "Неверный TUIC URL: udp_relay_mode должен быть native, 
 msgid "Invalid TUIC URL: zero_rtt_handshake must be 0, 1, true, or false"
 msgstr "Неверный TUIC URL: zero_rtt_handshake должен быть 0, 1, true или false"
 
+msgid "Invalid Telegram proxy URL: missing server, port, or secret"
+msgstr ""
+
 msgid "Invalid Trojan URL: must not contain spaces"
 msgstr "Неверный URL Trojan: не должен содержать пробелов"
 
@@ -3274,6 +3340,18 @@ msgstr "Неверный номер порта. Допустимо от 1 до 6
 
 msgid "Invalid port or range. Use 80 or 1000-2000"
 msgstr "Неверный порт или диапазон. Используйте 80 или 1000-2000"
+
+msgid "Invalid proxy URL"
+msgstr ""
+
+msgid "Invalid proxy URL: invalid host or port"
+msgstr ""
+
+msgid "Invalid proxy URL: missing credentials"
+msgstr ""
+
+msgid "Invalid proxy URL: must not contain spaces"
+msgstr ""
 
 msgid "Invalid regular expression"
 msgstr "Неверное регулярное выражение"
@@ -3542,6 +3620,9 @@ msgstr "Загрузка версий..."
 msgid "Loading..."
 msgstr "Загрузка..."
 
+msgid "Local (LAN)"
+msgstr ""
+
 msgid "Local Address"
 msgstr "Локальный адрес"
 
@@ -3552,6 +3633,9 @@ msgid "Local DNS caching disabled (0 entries)"
 msgstr "Локальное DNS-кэширование отключено (0 записей)"
 
 msgid "Local hostname"
+msgstr ""
+
+msgid "Localhost"
 msgstr ""
 
 msgid "Location"
@@ -3631,6 +3715,9 @@ msgstr "Подходящие серверы"
 
 msgid "Max Handshake Attempts"
 msgstr "Максимум попыток рукопожатия"
+
+msgid "Max Streams"
+msgstr ""
 
 msgid "Max reconnects per hour before alert (default 10)."
 msgstr "Макс. переподключений в час до оповещения (по умолчанию 10)."
@@ -3721,6 +3808,9 @@ msgstr "Мониторинг"
 
 msgid "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."
 msgstr "Отслеживает частоту переподключений sing-box. Оповещает при слишком частых переподключениях."
+
+msgid "Morph Profile"
+msgstr ""
 
 msgid "Move Down"
 msgstr "Переместить ниже"
@@ -3958,6 +4048,12 @@ msgstr "Узлы в норме"
 
 msgid "None"
 msgstr "Нет"
+
+msgid "None (Default)"
+msgstr ""
+
+msgid "None (TLS/QUIC only)"
+msgstr ""
 
 msgid "Not applicable for current engine"
 msgstr "Неприменимо для текущего движка"
@@ -4435,6 +4531,12 @@ msgstr "Порты"
 
 msgid "Ports must be between 1 and 65535"
 msgstr "Порты должны быть от 1 до 65535"
+
+msgid "Post-Quantum (PQC ML-KEM)"
+msgstr ""
+
+msgid "Post-Quantum Key Exchange (PQC)"
+msgstr ""
 
 msgid "Pre-built index of Tachyon documentation chunks. When enabled, AI Doctor searches relevant docs before generating a diagnosis."
 msgstr "Предварительно собранный индекс фрагментов документации Tachyon. При включении AI Doctor ищет релевантные документы перед постановкой диагноза."
@@ -4928,6 +5030,9 @@ msgstr "Возвращать NXDOMAIN для заблокированных до
 msgid "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...)."
 msgstr "Многоразовый или эфемерный pre-auth ключ для подключения к вашему Tailnet (например, tskey-auth-...)."
 
+msgid "Roaming / Handover"
+msgstr ""
+
 msgid "Rollback"
 msgstr "Откатить"
 
@@ -4999,6 +5104,9 @@ msgstr "Имя роутера"
 
 msgid "Router Traffic Target Section"
 msgstr "Секция для трафика роутера"
+
+msgid "Router address"
+msgstr ""
 
 msgid "Routing Engine"
 msgstr "Маршрутизирующий движок"
@@ -5150,6 +5258,9 @@ msgstr "Время обновления по расписанию"
 msgid "Score"
 msgstr "Баллы"
 
+msgid "Seamless Handover"
+msgstr ""
+
 msgid "Search"
 msgstr "Поиск"
 
@@ -5294,6 +5405,9 @@ msgstr ""
 msgid "Select sections to merge"
 msgstr "Выберите секции для объединения"
 
+msgid "Select the Local (LAN) or External (WAN / DDNS) router address advertised in client connection links and QR codes."
+msgstr ""
+
 msgid "Select the WAN interfaces to be monitored"
 msgstr "Выберите WAN-интерфейсы для отслеживания"
 
@@ -5384,6 +5498,9 @@ msgstr "Сервер"
 msgid "Server Address"
 msgstr "Адрес сервера"
 
+msgid "Server Certificate Pin (SHA-256)"
+msgstr ""
+
 msgid "Server Name"
 msgstr "Имя сервера"
 
@@ -5407,6 +5524,9 @@ msgstr "Конфигурация сервера сгенерирована"
 
 msgid "Server configuration is incomplete. Please edit the server settings and apply changes."
 msgstr "Конфигурация сервера не завершена. Пожалуйста, проверьте настройки сервера и примените изменения."
+
+msgid "Server country"
+msgstr ""
 
 msgid "Server filtering"
 msgstr "Фильтрация серверов"
@@ -5471,6 +5591,9 @@ msgstr "Службы запущены и готовы к работе! Пере�
 msgid "Services restarted. Click to reload page."
 msgstr "Службы перезапущены. Нажмите для перезагрузки страницы."
 
+msgid "Session Cookie / Pre-Auth Token"
+msgstr ""
+
 msgid "Settings"
 msgstr "Настройки"
 
@@ -5485,6 +5608,9 @@ msgstr ""
 
 msgid "ShadowTLS version"
 msgstr "Версия ShadowTLS"
+
+msgid "Shaper Profile"
+msgstr ""
 
 msgid "Shared CDN / Anycast Warning"
 msgstr "Предупреждение: общий диапазон CDN / Anycast"
@@ -5767,6 +5893,9 @@ msgstr "Остановить Tachyon"
 
 msgid "Stop bot"
 msgstr "Остановить бота"
+
+msgid "Stop checking imported URLTest groups when not used (e.g. 30m, 12h, 1d). Leave empty to use provider or default value."
+msgstr ""
 
 msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
 msgstr "Остановить проверку, когда группа URLTest не используется. Используйте формат длительности sing-box, например 1d, 12h или 30m."
@@ -6389,6 +6518,9 @@ msgstr "Трассировка правил маршрутизации..."
 msgid "Traffic"
 msgstr "Трафик"
 
+msgid "Traffic Shaper"
+msgstr ""
+
 msgid "Traffic for this level goes directly."
 msgstr "Трафик этого уровня идёт напрямую."
 
@@ -6413,6 +6545,9 @@ msgstr "Режим прозрачного прокси несовместим с
 msgid "Transport"
 msgstr "Транспорт"
 
+msgid "Transport Race List"
+msgstr ""
+
 msgid "Transport host"
 msgstr "Хост транспорта"
 
@@ -6427,6 +6562,9 @@ msgstr "Путь транспорта"
 
 msgid "Transport path must start with /"
 msgstr "Путь транспорта должен начинаться с /"
+
+msgid "Transports to race (e.g. tcp, quic)"
+msgstr ""
 
 msgid "Troubleshooting"
 msgstr "Устранение неполадок"
@@ -6451,6 +6589,9 @@ msgstr "Через туннель"
 
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
+
+msgid "Two-letter ISO country code (e.g. RU, NL, DE) advertised as a flag emoji in client links and subscriptions."
+msgstr ""
 
 msgid "Type"
 msgstr "Тип"
@@ -6502,6 +6643,9 @@ msgstr "Детали URLTest"
 
 msgid "URLTest details are unavailable"
 msgstr "Детали URLTest недоступны"
+
+msgid "URLTest idle timeout"
+msgstr ""
 
 msgid "URLTest links (text)"
 msgstr "Ссылки URLTest (текст)"
@@ -6775,6 +6919,9 @@ msgstr "Имя пользователя для авторизации auth-user-
 
 msgid "VLESS flow"
 msgstr "VLESS flow"
+
+msgid "VPN Flavor"
+msgstr ""
 
 msgid "VPN client flavor the inbound emulates"
 msgstr ""
@@ -7327,6 +7474,9 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Transports to race (e.g. h3_datagram, h3_stream, h2, ws, raw_tls)"
+msgstr ""
 
 msgid "MTProto (не реализован)"
 msgstr "MTProto (не реализован)"

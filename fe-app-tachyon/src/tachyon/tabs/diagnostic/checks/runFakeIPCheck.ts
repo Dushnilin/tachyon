@@ -20,6 +20,10 @@ const PROXY_ACTIONS = new Set([
   'sudoku',
   'masque',
   'openvpn',
+  'openconnect',
+  'tewfai',
+  'trusttunnel',
+  'shadowtls',
 ]);
 
 export async function runFakeIPCheck() {

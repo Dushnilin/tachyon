@@ -147,6 +147,16 @@ cat >"$WORK_DIR/fixture_zapret_resolve.json" <<'JSON'
       "enabled": "1",
       "action": "zapret",
       "community_lists": [ "youtube" ]
+    },
+    {
+      ".name": "zapret2_routed",
+      ".type": "section",
+      "enabled": "1",
+      "action": "zapret2",
+      "domain_suffix": [ "ytimg.com" ],
+      "routed_dns_enabled": "1",
+      "routed_dns_type": "udp",
+      "routed_dns_server": "1.1.1.1"
     }
   ]
 }
@@ -163,16 +173,33 @@ let raw = fs.readfile("'"$output_zapret_resolve"'");
 let cfg = json(raw);
 let rules = cfg.route.rules || [];
 let found_resolve = false;
+let found_routed_resolve = false;
 let found_route = false;
 for (let r in rules) {
-    if (r.action == "resolve" && r.rule_set)
+    if (r.action == "resolve" && r.rule_set) {
+        if (r.server != "dns-server") {
+            print("ERROR: zapret resolve rule expected server=dns-server, got " + r.server + "\n");
+            exit(3);
+        }
         found_resolve = true;
+    }
+    if (r.action == "resolve" && r.domain_suffix) {
+        if (r.server != "zapret2_routed-routed-dns-server") {
+            print("ERROR: zapret2 routed resolve rule expected server=zapret2_routed-routed-dns-server, got " + r.server + "\n");
+            exit(4);
+        }
+        found_routed_resolve = true;
+    }
     if (r.action == "route" && r.outbound == "zapret-out")
         found_route = true;
 }
 if (!found_resolve) {
     print("ERROR: zapret section did not generate action: resolve rule!\n");
     exit(1);
+}
+if (!found_routed_resolve) {
+    print("ERROR: zapret2_routed section did not generate routed DNS resolve rule!\n");
+    exit(5);
 }
 if (!found_route) {
     print("ERROR: zapret section did not generate action: route rule to zapret-out!\n");
