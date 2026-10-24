@@ -617,11 +617,11 @@ function normalizeServerCapabilities(capabilities) {
     singBoxExtended,
     singBoxTachyonCore,
     singBoxTailscale: capabilities?.singBoxTailscale !== false,
-    // XHTTP ships in sing-box-lx and in tachyon-core (the validator's
-    // sing_box_supports_xhttp covers both). MTProto is deliberately not part
-    // of this: it stays on the real sing-box-extended fork, because the
-    // tachyon-core inbound stack has no MTProto and would fail `sing-box check`.
-    singBoxXhttp: singBoxExtended || singBoxTachyonCore,
+    // Server-side (inbound) XHTTP is only implemented in tachyon-core;
+    // sing-box-lx and sing-box-extended only include v2rayxhttp.Client
+    // (outbound) and fail `sing-box check` with
+    // `create server transport: xhttp: unknown transport type: xhttp`.
+    singBoxXhttp: singBoxTachyonCore,
   };
 }
 

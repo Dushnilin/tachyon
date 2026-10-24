@@ -3201,7 +3201,7 @@ function enabled_sections() {
 function enabled_servers() {
     let result = [];
     ctx.uci_cursor().foreach(CONFIG_NAME, "server", function(section) {
-        if (section_enabled(section))
+        if (section_enabled(section) && !(ctx.deferred_sections && ctx.deferred_sections[section[".name"]]))
             push(result, section);
     });
     return result;

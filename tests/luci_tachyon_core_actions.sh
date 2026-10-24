@@ -189,8 +189,8 @@ const normalize = functionBody(
 if (!normalize.includes("singBoxTachyonCore,")) {
   fail("normalizeServerCapabilities must expose singBoxTachyonCore");
 }
-if (!normalize.includes("singBoxXhttp: singBoxExtended || singBoxTachyonCore,")) {
-  fail("XHTTP must be offered to tachyon-core as well as to the extended fork");
+if (!normalize.includes("singBoxXhttp: singBoxTachyonCore,")) {
+  fail("server-side XHTTP must only be offered on tachyon-core (sing-box-lx/extended only have client-side xhttp)");
 }
 if (!normalize.includes("singBoxExtended,")) {
   fail("normalizeServerCapabilities must keep singBoxExtended as its own flag");

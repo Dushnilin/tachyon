@@ -1530,7 +1530,11 @@ function section_exists(name) {
 }
 
 function section_from_tag(tag) {
-    let m = match(as_string(tag || ""), /^([A-Za-z0-9_]+)[-\/]/);
+    let s = as_string(tag || "");
+    let srv = match(s, /^server-([A-Za-z0-9_]+)-in(-inner)?$/);
+    if (srv)
+        return srv[1];
+    let m = match(s, /^([A-Za-z0-9_]+)[-\/]/);
     return m ? m[1] : "";
 }
 
@@ -1574,9 +1578,23 @@ function section_from_check_reason(reason, config_path) {
     reason = as_string(reason || "");
     let tag = null;
 
-    let m = match(reason, /(outbounds|endpoints|inbounds)\[(\d+)\]/);
-    if (m)
-        tag = config_item_tag(common.read_json_file(config_path), m[1], m[2]);
+    let m = match(reason, /(outbounds?|endpoints?|inbounds?)\[(\d+)\]/);
+    if (m) {
+        let kind = m[1];
+        if (kind == "inbound")
+            kind = "inbounds";
+        else if (kind == "outbound")
+            kind = "outbounds";
+        else if (kind == "endpoint")
+            kind = "endpoints";
+        tag = config_item_tag(common.read_json_file(config_path), kind, m[2]);
+    }
+
+    if (tag == null) {
+        let srv_m = match(reason, /\[(server-[A-Za-z0-9_]+-in(-inner)?)\]/);
+        if (srv_m)
+            tag = srv_m[1];
+    }
 
     if (tag == null) {
         let rs = match(reason, /rule_set\[(\d+)\]/);
@@ -1805,6 +1823,29 @@ function check_with_field_repairs(temp_config, runtime_log) {
                             outb.outbounds = filtered;
                         }
                     }
+                    write_file(temp_config, sprintf("%J", cfg));
+                    stripped = true;
+                }
+            }
+            else if (match(check_result.reason, /certificate is unavailable in reality/)) {
+                log_message("Installed sing-box rejected certificate on reality inbound; stripping certificate/key from reality inbounds and retrying", "warn");
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                let found = false;
+                if (type(cfg) == "object" && type(cfg.inbounds) == "array") {
+                    for (let inb in cfg.inbounds) {
+                        if (type(inb) == "object" && type(inb.tls) == "object" &&
+                            type(inb.tls.reality) == "object" && inb.tls.reality.enabled == true) {
+                            for (let k in [ "certificate", "certificate_path", "key", "key_path" ]) {
+                                if (inb.tls[k] != null) {
+                                    delete inb.tls[k];
+                                    found = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (found) {
                     write_file(temp_config, sprintf("%J", cfg));
                     stripped = true;
                 }

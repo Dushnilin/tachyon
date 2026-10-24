@@ -2031,8 +2031,11 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     }
     let taken = reserved_runtime_tag_set(config.outbounds);
     reserve_section_outbound_tags(sections, taken);
-    for (let server in servers)
+    for (let server in servers) {
+        ctx.current_section = server[".name"];
         runtime_servers.add_server(config, server);
+    }
+    ctx.current_section = null;
     for (let section in sections) {
         ctx.current_section = section[".name"];
         add_outbound_for_section(config, section, taken, sections);

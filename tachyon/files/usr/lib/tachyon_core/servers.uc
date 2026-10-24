@@ -197,6 +197,21 @@ const REALITY_FALLBACK_KEY = [
     "-----END PRIVATE KEY-----"
 ];
 
+// True when an explicit sing-box 1.x version/marker is recorded on disk (e.g.
+// sing-box-lx 1.14.3-lx.23, sing-box-extended, stock sing-box). Those builds
+// reject tls.certificate / tls.key on a Reality inbound with
+// `certificate is unavailable in reality`, whereas tachyon-core <= 0.1.3
+// requires certificate and key in validate_server_tls even when reality is enabled.
+function is_sing_box_1x() {
+    if (variant_state.is_tachyon_core())
+        return false;
+    let version = variant_state.read_version_state();
+    let marker = variant_state.read_variant_marker();
+    if (version == "" && marker == "")
+        return false;
+    return true;
+}
+
 function apply_tls(inbound, section, protocol) {
     let security = effective_security(section, protocol);
     if (security == "" || security == "none")
@@ -257,20 +272,20 @@ function apply_tls(inbound, section, protocol) {
         // tachyon-core's validate_server_tls (still current at 0.1.3) rejects a server
         // TLS block with a missing certificate or a missing key, and it never looks at
         // tls.reality: both sides are checked independently, with no key-vs-cert match.
-        // core-runtime is the opposite — on a reality inbound it reads only the reality
-        // block and never touches certificate or key. So fill in whatever the validator
-        // needs for the sides the operator did not configure, while keeping a
-        // configured side instead of discarding half of it.
-        let cert_path = option(section, "tls_certificate_path", "");
-        let k_path = option(section, "tls_key_path", "");
-        if (cert_path != "")
-            maybe_string(tls, "certificate_path", cert_path);
-        else
-            tls.certificate = REALITY_FALLBACK_CERTIFICATE;
-        if (k_path != "")
-            maybe_string(tls, "key_path", k_path);
-        else
-            tls.key = REALITY_FALLBACK_KEY;
+        // Go sing-box 1.x (upstream, lx, extended) is the opposite and rejects a
+        // reality inbound carrying certificate/key with `certificate is unavailable in reality`.
+        if (!is_sing_box_1x()) {
+            let cert_path = option(section, "tls_certificate_path", "");
+            let k_path = option(section, "tls_key_path", "");
+            if (cert_path != "")
+                maybe_string(tls, "certificate_path", cert_path);
+            else
+                tls.certificate = REALITY_FALLBACK_CERTIFICATE;
+            if (k_path != "")
+                maybe_string(tls, "key_path", k_path);
+            else
+                tls.key = REALITY_FALLBACK_KEY;
+        }
     }
 
     inbound.tls = tls;

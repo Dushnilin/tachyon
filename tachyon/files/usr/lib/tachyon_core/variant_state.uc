@@ -35,7 +35,12 @@ function current_profile() {
     // binary. Same order as sing_box_core_identity_marker() in
     // tachyon_core/runtime.uc, minus the banner probe - the generator never spawns.
     let from_version = core_profile.profile_by_version(version);
-    return from_version != "" ? from_version : core_profile.profile(version, marker);
+    if (from_version != "")
+        return from_version;
+    let by_ver_only = core_profile.profile(version, "");
+    if (by_ver_only != "upstream")
+        return by_ver_only;
+    return core_profile.profile(version, marker);
 }
 
 // AWG is an endpoint with its fields at the root on sing-box-lx and on our own
@@ -47,9 +52,11 @@ function awg_endpoint_schema() {
 }
 
 function is_tachyon_core() {
+    let version = read_version_state();
+    if (match(version, /^[vV]?[1-9]\.[0-9]+/) != null && index(version, "-tachyon.") < 0)
+        return false;
     if (current_profile() == "tachyon-core")
         return true;
-    let version = read_version_state();
     return match(version, /^v?0\.[0-9]+\.[0-9]+/) != null;
 }
 
