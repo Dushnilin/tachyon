@@ -722,6 +722,7 @@ function stopDashboardDataUpdates() {
   // Only this tab's listeners, not socket.resetAll(): the monitoring tab holds
   // its own subscription to the same /connections URL and would go silent.
   unsubscribeClashSockets();
+  currentConnections = [];
 }
 
 function startDashboardDataUpdates() {
@@ -764,6 +765,7 @@ function syncDashboardServiceAvailability() {
 
   if (stopped || availability === 'loading') {
     stopDashboardDataUpdates();
+    void renderSystemServicesWidget();
     return;
   }
 
@@ -2799,16 +2801,22 @@ export async function renderSystemServicesWidget() {
   const proxySections = sections.filter(
     (g) => !isServiceGroup(g) && g.outbounds && g.outbounds.length > 0,
   );
-  const activeSectionsCount = proxySections.length;
 
   const loading = sysState.loading && srvState.loading;
   const failed = sysState.failed && srvState.failed;
+  const srvData = srvState.data;
+  const isTachyonRunning = Boolean(srvData?.tachyonRunning);
+  const connectionsCount = isTachyonRunning
+    ? sysState.data?.connections || 0
+    : 0;
+  const activeSectionsCount = isTachyonRunning ? proxySections.length : 0;
+  const activeClientsCount = isTachyonRunning ? currentConnections.length : 0;
 
   const routingItems = [
     { key: tr('Режим работы', 'Mode'), value: 'TProxy + Fake-IP' },
     {
       key: tr('Всего соединений', 'Active Connections'),
-      value: `${sysState.data?.connections || 0} ${tr('соед.', 'conns')}`,
+      value: `${connectionsCount} ${tr('соед.', 'conns')}`,
     },
     {
       key: tr('Секции правил', 'Routing Sections'),
@@ -2817,11 +2825,10 @@ export async function renderSystemServicesWidget() {
     },
     {
       key: tr('Активные клиенты', 'Active Clients'),
-      value: `${currentConnections.length} ${tr('устройств', 'devices')}`,
+      value: `${activeClientsCount} ${tr('устройств', 'devices')}`,
     },
   ];
 
-  const srvData = srvState.data;
   const srvItems: Array<{
     key?: string | HTMLElement;
     value: string | HTMLElement | (string | HTMLElement)[];
@@ -2927,11 +2934,19 @@ export async function renderSystemServicesWidget() {
     }
   }
 
+  const badgeElement = isTachyonRunning
+    ? 'TProxy + Fake-IP'
+    : E(
+        'span',
+        { class: 'tachyon-dual-card__badge tachyon-dual-card__badge--neutral' },
+        tr('Остановлен', 'Stopped'),
+      );
+
   const widget = renderDualWidget({
     loading,
     failed,
     title: tr('Система и сервисы', 'System & Services'),
-    badge: 'TProxy + Fake-IP',
+    badge: badgeElement,
     attributes: {
       class: 'tachyon-dual-card--system-pinned',
     },

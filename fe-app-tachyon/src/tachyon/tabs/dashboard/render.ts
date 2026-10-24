@@ -8,16 +8,6 @@ export function render() {
       class: 'tachyon_dashboard-page',
     },
     [
-      E(
-        'div',
-        {
-          class: 'tachyon_dashboard-page__service-stopped',
-          role: 'status',
-        },
-        _(
-          'Tachyon service is stopped. Start the service to display the dashboard.',
-        ),
-      ),
       E('div', { class: 'tachyon_dashboard-page__content' }, [
         E('div', { class: 'tachyon_dashboard-page__widgets-section' }, [
           E('div', { id: 'dashboard-widget-system-services' }, [
@@ -54,6 +44,16 @@ export function render() {
             }),
           ),
         ]),
+        E(
+          'div',
+          {
+            class: 'tachyon_dashboard-page__service-stopped',
+            role: 'status',
+          },
+          _(
+            'Tachyon service is stopped. Start the service to display the dashboard.',
+          ),
+        ),
         E('div', { id: 'dashboard-connections-grid' }, []),
         E(
           'div',
