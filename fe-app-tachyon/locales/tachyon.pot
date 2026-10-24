@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-24 20:40+0300\n"
-"PO-Revision-Date: 2026-10-24 20:40+0300\n"
+"POT-Creation-Date: 2026-10-24 21:11+0300\n"
+"PO-Revision-Date: 2026-10-24 21:11+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -1458,7 +1458,7 @@ msgid "Change subscription URL"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2275
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2256
 msgid "Check Connection"
 msgstr ""
 
@@ -1552,9 +1552,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1197
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1242
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1577
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2106
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2264
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1558
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2087
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2245
 msgid "Checking..."
 msgstr ""
 
@@ -1650,7 +1650,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/initController.ts:1261
 #: src/tachyon/tabs/dashboard/initController.ts:1806
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1420
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1413
 msgid "Click to customize prefix colors"
 msgstr ""
 
@@ -1888,7 +1888,7 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2493
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/methods/custom/getDashboardSections.ts:2373
+#: src/tachyon/methods/custom/getDashboardSections.ts:2396
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1018
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:172
 msgid "Conflict"
@@ -1905,7 +1905,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1203
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1246
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2112
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2093
 msgid "Connected"
 msgstr ""
 
@@ -2031,8 +2031,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/initController.ts:1564
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1468
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1469
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1449
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1450
 msgid "Copy proxy link"
 msgstr ""
 
@@ -4310,7 +4310,7 @@ msgid "Handshake timeout"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2330
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2311
 msgid "Has errors"
 msgstr ""
 
@@ -4708,7 +4708,7 @@ msgid "Indigo"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/helpers/formatOutboundType.ts:430
+#: src/helpers/formatOutboundType.ts:435
 msgid "Info"
 msgstr ""
 
@@ -6038,7 +6038,7 @@ msgid "Move Up"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/helpers/formatOutboundType.ts:426
+#: src/helpers/formatOutboundType.ts:431
 msgid "Multiplex"
 msgstr ""
 
@@ -6438,7 +6438,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2376
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2493
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/methods/custom/getDashboardSections.ts:2376
+#: src/tachyon/methods/custom/getDashboardSections.ts:2399
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1021
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:183
@@ -6448,7 +6448,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1204
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1247
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2113
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2094
 msgid "Not connected"
 msgstr ""
 
@@ -6499,9 +6499,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1201
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1244
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1583
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2110
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2119
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1564
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2091
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2100
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:853
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:117
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:144
@@ -7086,6 +7086,7 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/helpers/formatOutboundType.ts:424
+#: src/helpers/formatOutboundType.ts:428
 msgid "Pinning"
 msgstr ""
 
@@ -7153,7 +7154,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3006
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:6900
-#: src/helpers/formatOutboundType.ts:428
+#: src/helpers/formatOutboundType.ts:433
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:563
 msgid "Port"
 msgstr ""
@@ -7297,8 +7298,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/initController.ts:1891
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1506
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1507
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1487
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1488
 msgid "Priority details"
 msgstr ""
 
@@ -8211,8 +8212,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:377
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:4323
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:4324
-#: src/tachyon/methods/custom/getDashboardSections.ts:2108
-#: src/tachyon/methods/custom/getDashboardSections.ts:2371
+#: src/tachyon/methods/custom/getDashboardSections.ts:2131
+#: src/tachyon/methods/custom/getDashboardSections.ts:2394
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1016
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:166
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:441
@@ -9196,7 +9197,7 @@ msgid "Standalone Zapret2 service is inactive"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1919
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1900
 msgid "Standalone servers"
 msgstr ""
 
@@ -9341,8 +9342,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:383
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:4329
-#: src/tachyon/methods/custom/getDashboardSections.ts:2108
-#: src/tachyon/methods/custom/getDashboardSections.ts:2375
+#: src/tachyon/methods/custom/getDashboardSections.ts:2131
+#: src/tachyon/methods/custom/getDashboardSections.ts:2398
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1020
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:178
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:441
@@ -9413,8 +9414,8 @@ msgid "Subnets from the list will be extracted and added to nftables"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1833
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1834
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1814
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1815
 msgid "Subscription"
 msgstr ""
 
@@ -9988,15 +9989,15 @@ msgid "Test domains"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2276
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:2257
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:368
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:376
 msgid "Test latency"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1560
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1563
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1541
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1544
 msgid "Test node latency"
 msgstr ""
 
@@ -10366,9 +10367,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:5471
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:5692
 #: src/helpers/formatOutboundType.ts:411
-#: src/helpers/formatOutboundType.ts:438
 #: src/helpers/formatOutboundType.ts:443
-#: src/helpers/formatOutboundType.ts:445
+#: src/helpers/formatOutboundType.ts:448
+#: src/helpers/formatOutboundType.ts:450
 msgid "Transport"
 msgstr ""
 
@@ -10508,8 +10509,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/initController.ts:1693
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1487
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1488
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1468
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1469
 msgid "URLTest details"
 msgstr ""
 
@@ -10651,7 +10652,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:417
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:4359
-#: src/tachyon/methods/custom/getDashboardSections.ts:2377
+#: src/tachyon/methods/custom/getDashboardSections.ts:2400
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1022
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:188
 msgid "Unknown"
@@ -11779,7 +11780,7 @@ msgid "✓ 32KB Streamed"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1453
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:1434
 msgid "✓ Active"
 msgstr ""
 

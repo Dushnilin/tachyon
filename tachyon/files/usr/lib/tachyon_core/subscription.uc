@@ -252,6 +252,8 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     let badges = [];
     if (protocol == "urltest")
         push(badges, "авто-группы");
+    if (security == "reality" || security == "tls")
+        push(badges, security);
     let flow = as_string(outbound.flow || "");
     if (flow != "")
         push(badges, flow);
@@ -262,6 +264,16 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
             push(badges, "xmux");
     }
     if (tls != null && tls.enabled !== false) {
+        let sni = as_string(tls.server_name || "");
+        if (sni != "")
+            push(badges, "sni:" + sni);
+        let utls_obj = type(tls.utls) == "object" ? tls.utls : null;
+        if (utls_obj != null && utls_obj.enabled !== false && as_string(utls_obj.fingerprint || "") != "")
+            push(badges, "utls:" + as_string(utls_obj.fingerprint));
+        if (type(tls.alpn) == "array" && length(tls.alpn) > 0)
+            push(badges, "alpn:" + join(",", tls.alpn));
+        else if (type(tls.alpn) == "string" && tls.alpn != "")
+            push(badges, "alpn:" + tls.alpn);
         let csha = tls.certificate_sha256;
         if ((type(csha) == "array" && length(csha) > 0) || (type(csha) == "string" && csha != ""))
             push(badges, "cert_sha256");
@@ -284,6 +296,8 @@ function remember_source_outbound(state, tag_name, display_name, outbound, sourc
     if (is_cand)
         return;
     remember_outbound_metadata(state, tag_name, display_name, outbound, prefix);
+    if (index(lc(as_string(source_link || "")), "shadowtls://") == 0)
+        state.outboundMetadata.protocols[tag_name] = "shadowtls";
     if (source_key != null && as_string(source_key) != "") {
         if (!state.outboundMetadata.sources)
             state.outboundMetadata.sources = {};

@@ -1114,9 +1114,30 @@ function dashboardOutboundType(
   runtimeType: string | undefined,
   outboundMetadata?: Tachyon.GetOutboundMetadata,
 ) {
-  return outboundMetadata?.protocols?.[code] === 'amneziawg'
-    ? 'AmneziaWG'
-    : runtimeType || '';
+  const proto = outboundMetadata?.protocols?.[code];
+  if (proto === 'amneziawg') return 'AmneziaWG';
+  if (proto === 'fptn') return 'FPTN';
+  if (proto === 'shadowtls') return 'ShadowTLS';
+  return runtimeType || '';
+}
+
+function buildOutboundDetails(
+  code: string,
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
+): string | undefined {
+  const rawDetails = outboundMetadata?.details?.[code];
+  const sec = outboundMetadata?.securities?.[code];
+  const hasSec =
+    sec &&
+    sec !== 'none' &&
+    (!rawDetails || !rawDetails.toLowerCase().includes(sec.toLowerCase()));
+  if (hasSec && rawDetails) {
+    return `${sec}+${rawDetails}`;
+  }
+  if (hasSec) {
+    return sec;
+  }
+  return rawDetails;
 }
 
 function resolveOutboundNameAndPrefix({
@@ -1281,7 +1302,7 @@ function buildUrlTestInfo({
           transport:
             outboundMetadata?.transports?.[childCode] ||
             getProxyUrlTransport(link),
-          details: outboundMetadata?.details?.[childCode],
+          details: buildOutboundDetails(childCode, outboundMetadata),
           selected: selectedCode === childCode,
           link,
           canCopyLink,
@@ -1439,7 +1460,7 @@ function buildPriorityInfo({
         transport:
           outboundMetadata?.transports?.[childCode] ||
           getProxyUrlTransport(link),
-        details: outboundMetadata?.details?.[childCode],
+        details: buildOutboundDetails(childCode, outboundMetadata),
         selected: selectedCode === childCode,
         link,
         canCopyLink,
@@ -1762,7 +1783,9 @@ function buildProxyGroupOutbounds(
         transport: isGroupType
           ? undefined
           : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),
-        details: isGroupType ? undefined : outboundMetadata?.details?.[code],
+        details: isGroupType
+          ? undefined
+          : buildOutboundDetails(code, outboundMetadata),
         selected: isSelected,
         link,
         canCopyLink,

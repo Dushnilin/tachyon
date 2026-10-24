@@ -1697,7 +1697,10 @@ function reload(reason) {
     // Skip all work when config fingerprint is unchanged since the last reload.
     // Applies to user-triggered reloads as well as on_config_change; saves ~4
     // ucode forks (3 validate + 1 plan) when nothing actually changed.
-    if (reason != "force" && current_config_hash() == last_completed_reload_hash()) {
+    if (reason != "force" &&
+        as_string(getenv("TACHYON_RUNTIME_CACHE_INVALIDATED") || "0") != "1" &&
+        current_config_hash() == last_completed_reload_hash() &&
+        !module_success(SUBSCRIPTION_CACHE_UC, [ "runtime-cache-needs-rebuild", SECTION_CACHE_DIR ])) {
         log_message("Reload skipped: configuration is unchanged", "info");
         return 0;
     }

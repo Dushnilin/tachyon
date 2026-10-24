@@ -1360,13 +1360,6 @@ function renderDefaultState({
     const outboundDisplayTitle = isAutoGroup
       ? outbound.displayName
       : ensureOutboundDisplayFlag(outbound);
-    const countryInfo = isAutoGroup ? null : detectOutboundCountry(outbound);
-    const showCountryBadge =
-      Boolean(countryInfo) &&
-      countryInfo!.code !== 'OTHER' &&
-      !outbound.displayName
-        .toLowerCase()
-        .includes(countryInfo!.name.toLowerCase());
 
     return E(
       'div',
@@ -1422,18 +1415,6 @@ function renderDefaultState({
                           openPrefixColorPickerModal(outbound.prefix!, event),
                       },
                       renderFlagEmojis(outbound.prefix),
-                    )
-                  : '',
-                showCountryBadge
-                  ? E(
-                      'span',
-                      {
-                        class:
-                          'tachyon_dashboard-page__outbound-grid__item__country-badge',
-                        style:
-                          'font-size: 10.5px; font-weight: 500; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--fkp-text, currentColor) 8%, transparent); color: var(--fkp-text-secondary, inherit); opacity: 0.85; white-space: nowrap;',
-                      },
-                      countryInfo!.name,
                     )
                   : '',
                 ...(outbound.selected

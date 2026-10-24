@@ -520,6 +520,7 @@ EOF
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
 [ "$1" = "upgrade" ] && exit 0
+[ -x /usr/bin/tachyon ] && exit 0
 if [ "$1" != "remove" ] && [ "$1" != "purge" ]; then
     exit 0
 fi
@@ -584,6 +585,7 @@ EOF
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
 [ "$1" = "upgrade" ] && exit 0
+[ -x /usr/bin/tachyon ] && exit 0
 if [ "$1" != "remove" ] && [ "$1" != "purge" ]; then
     exit 0
 fi
@@ -894,7 +896,7 @@ EOF
   cat > "$scripts_dir/backend-post-deinstall.sh" <<'EOF'
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
-[ -f /usr/bin/tachyon ] && exit 0
+[ -x /usr/bin/tachyon ] && exit 0
 if [ -e /var/run/tachyon/component-action.lock ] || [ -e /tmp/run/tachyon/component-action.lock ] || [ -e /var/run/tachyon/component-actions/action.lock ] || [ -e /tmp/run/tachyon/component-actions/action.lock ]; then
     exit 0
 fi

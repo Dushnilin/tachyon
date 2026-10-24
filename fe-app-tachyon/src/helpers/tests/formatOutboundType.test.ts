@@ -81,4 +81,21 @@ describe('formatOutboundType', () => {
     const empty = renderProtocolPopoverNodes(undefined, undefined, undefined);
     expect(empty).toBeNull();
   });
+
+  it('parses plus-separated details including security, sni, utls, and cert_sha256 pinning', () => {
+    const { rows } = parseNodeProtocolBreakdown(
+      'VLESS',
+      'tcp',
+      'reality+xtls-rprx-vision+sni:www.microsoft.com+utls:chrome+cert_sha256',
+    );
+    expect(rows).toEqual([
+      { label: 'Protocol', value: 'VLESS' },
+      { label: 'Security', value: 'REALITY' },
+      { label: 'Flow', value: 'xtls-rprx-vision' },
+      { label: 'SNI / Host', value: 'www.microsoft.com' },
+      { label: 'uTLS Fingerprint', value: 'chrome' },
+      { label: 'Pinning', value: 'SHA-256' },
+      { label: 'Transport', value: 'TCP' },
+    ]);
+  });
 });

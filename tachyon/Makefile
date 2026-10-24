@@ -190,6 +190,7 @@ define Package/tachyon/postrm
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 [ "$$1" = "upgrade" ] && exit 0
+[ -x /usr/bin/tachyon ] && exit 0
 if [ "$$1" != "remove" ] && [ "$$1" != "purge" ]; then
 	exit 0
 fi

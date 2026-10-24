@@ -374,7 +374,7 @@ export function parseNodeProtocolBreakdown(
 ) {
   const base = formatOutboundType(type, transport);
   const rawParts = (details || '')
-    .split('·')
+    .split(/[·+]/)
     .map((s) => s.trim())
     .filter(Boolean);
   const rows: Array<{ label: string; value: string }> = [];
@@ -422,6 +422,11 @@ export function parseNodeProtocolBreakdown(
       rows.push({ label: _('SNI / Host'), value: part.slice(4).trim() });
     } else if (low.startsWith('pin:')) {
       rows.push({ label: _('Pinning'), value: part.slice(4).trim() });
+    } else if (low === 'cert_sha256' || low === 'pubkey_sha256') {
+      if (!seen.has('pin:sha-256')) {
+        seen.add('pin:sha-256');
+        rows.push({ label: _('Pinning'), value: 'SHA-256' });
+      }
     } else if (low.startsWith('mux:')) {
       rows.push({ label: _('Multiplex'), value: part.slice(4).trim() });
     } else if (low.startsWith(':')) {

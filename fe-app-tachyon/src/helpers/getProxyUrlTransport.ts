@@ -21,9 +21,10 @@ export function getProxyUrlTransport(url?: string): string | undefined {
     if (queryIdx !== -1) {
       const query = base.slice(queryIdx + 1);
       const params = new URLSearchParams(query);
-      const transport = params.get('type');
+      const transport =
+        params.get('type') || params.get('transport') || params.get('protocol');
       if (transport && transport.trim()) {
-        return transport.trim().toLowerCase();
+        return transport.split(',')[0].trim().toLowerCase();
       }
     }
   } catch {

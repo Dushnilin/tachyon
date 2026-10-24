@@ -61,4 +61,12 @@ describe('getProxyUrlTransport', () => {
     expect(getProxyUrlTransport(undefined)).toBeUndefined();
     expect(getProxyUrlTransport('invalid-link')).toBeUndefined();
   });
+
+  it('extracts first transport from tewfai transport query parameter', () => {
+    expect(
+      getProxyUrlTransport(
+        'tewfai://uuid:pass@example.com:8443?transport=quic%2Ctcp#TewFai',
+      ),
+    ).toBe('quic');
+  });
 });
