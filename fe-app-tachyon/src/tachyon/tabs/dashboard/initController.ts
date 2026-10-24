@@ -2723,9 +2723,17 @@ export async function renderSectionDashboardWidgets() {
       {
         key: tr('Протокол', 'Protocol'),
         value:
-route.type && route.type !== '-'
-            ? E('span', { 'data-metric': 'protocol', class: 'tachyon-protocol-pill' } as any, route.type)
-            : '-',      },
+          route.type && route.type !== '-'
+            ? E(
+                'span',
+                {
+                  'data-metric': 'protocol',
+                  class: 'tachyon-protocol-pill',
+                } as any,
+                route.type,
+              )
+            : '-',
+      },
     ];
 
     const trafficItems = [
@@ -2733,14 +2741,22 @@ route.type && route.type !== '-'
         key: tr('Входящий', 'Downlink'),
         value: E(
           'span',
-{ class: 'tachyon-stat-pill tachyon-stat-pill--down', 'data-metric': 'down-speed' } as any,          `↓ ${prettyBytes(stats.downSpeed)}/s`,
+          {
+            class: 'tachyon-stat-pill tachyon-stat-pill--down',
+            'data-metric': 'down-speed',
+          } as any,
+          `↓ ${prettyBytes(stats.downSpeed)}/s`,
         ),
       },
       {
         key: tr('Исходящий', 'Uplink'),
         value: E(
           'span',
-{ class: 'tachyon-stat-pill tachyon-stat-pill--up', 'data-metric': 'up-speed' } as any,          `↑ ${prettyBytes(stats.upSpeed)}/s`,
+          {
+            class: 'tachyon-stat-pill tachyon-stat-pill--up',
+            'data-metric': 'up-speed',
+          } as any,
+          `↑ ${prettyBytes(stats.upSpeed)}/s`,
         ),
       },
       {
@@ -2765,7 +2781,11 @@ route.type && route.type !== '-'
         key: tr('Соединения', 'Connections'),
         value: E(
           'span',
-{ class: 'tachyon-stat-pill tachyon-stat-pill--conns', 'data-metric': 'conns' } as any,          `${stats.conns} ${tr('соед.', 'conns')}`,
+          {
+            class: 'tachyon-stat-pill tachyon-stat-pill--conns',
+            'data-metric': 'conns',
+          } as any,
+          `${stats.conns} ${tr('соед.', 'conns')}`,
         ),
       },
     ];
