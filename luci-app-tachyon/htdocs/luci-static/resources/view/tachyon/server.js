@@ -431,6 +431,11 @@ const PORT_PROTOCOLS = [
   "fptn",
   "http",
   "mixed",
+  "mieru",
+  "trusttunnel",
+  "tewfai",
+  "masque",
+  "openconnect",
 ];
 const EXTENDED_PORT_PROTOCOLS = ["mtproto"];
 const PASSWORD_PROTOCOLS = [
@@ -445,6 +450,8 @@ const PASSWORD_PROTOCOLS = [
   "fptn",
   "http",
   "mixed",
+  "mieru",
+  "trusttunnel",
 ];
 
 const BASE_PROTOCOL_LABELS = {
@@ -464,6 +471,11 @@ const CORE_SERVER_PROTOCOL_LABELS = {
   fptn: "FPTN",
   http: "HTTP",
   mixed: "Mixed (SOCKS/HTTP)",
+  mieru: "Mieru",
+  trusttunnel: "TrustTunnel",
+  tewfai: "TewFai",
+  masque: "MASQUE",
+  openconnect: "OpenConnect",
 };
 const EXTENDED_PROTOCOL_LABELS = {
   mtproto: "MTProto",
@@ -500,6 +512,11 @@ const SECURITY_BY_PROTOCOL = {
   fptn: ["tls"],
   http: ["none"],
   mixed: ["none"],
+  mieru: ["none"],
+  trusttunnel: ["tls"],
+  tewfai: ["tls"],
+  masque: ["tls"],
+  openconnect: ["tls"],
 };
 
 function getSecurityLabel(security) {
@@ -634,9 +651,7 @@ function populateProtocolValues(option, capabilities) {
     addOptionValue(option, "mixed", "Mixed (SOCKS/HTTP)");
   }
 
-  if (normalized.singBoxTachyonCore) {
-    addOptionValue(option, "mtproto", _("MTProto (не реализован)"));
-  } else if (normalized.singBoxExtended) {
+  if (normalized.singBoxExtended) {
     Object.entries(EXTENDED_PROTOCOL_LABELS).forEach(([value, label]) => {
       addOptionValue(option, value, label);
     });
@@ -715,7 +730,11 @@ function getDefaultSecurity(protocol) {
     protocol === "tuic" ||
     protocol === "anytls" ||
     protocol === "naive" ||
-    protocol === "fptn"
+    protocol === "fptn" ||
+    protocol === "trusttunnel" ||
+    protocol === "tewfai" ||
+    protocol === "masque" ||
+    protocol === "openconnect"
   ) {
     return "tls";
   }
@@ -739,7 +758,8 @@ function getEffectiveSecurity(sectionId) {
     protocol === "awg" ||
     protocol === "shadowtls" ||
     protocol === "http" ||
-    protocol === "mixed"
+    protocol === "mixed" ||
+    protocol === "mieru"
   ) {
     return "none";
   }
@@ -748,7 +768,11 @@ function getEffectiveSecurity(sectionId) {
     protocol === "tuic" ||
     protocol === "anytls" ||
     protocol === "naive" ||
-    protocol === "fptn"
+    protocol === "fptn" ||
+    protocol === "trusttunnel" ||
+    protocol === "tewfai" ||
+    protocol === "masque" ||
+    protocol === "openconnect"
   ) {
     return "tls";
   }
@@ -1382,6 +1406,28 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     setDefault(sectionId, "mtproto_tolerate_time_skewness", "3s");
     setDefault(sectionId, "mtproto_idle_timeout", "5m");
     setDefault(sectionId, "mtproto_handshake_timeout", "10s");
+  }
+
+  if (protocol === "tewfai") {
+    if (isEmptyValue(uci.get(UCI_PACKAGE, sectionId, "tewfai_uuid")))
+      setDefault(sectionId, "tewfai_uuid", generateUuid());
+    setDefault(sectionId, "tewfai_inbound_transport", "auto");
+    setDefault(sectionId, "tls_server_name", terminatingSni);
+  }
+
+  if (protocol === "masque") {
+    setDefault(sectionId, "masque_ipv4_pool", "172.16.0.0/24");
+    setDefault(sectionId, "masque_mtu", "1400");
+    setDefault(sectionId, "tls_server_name", terminatingSni);
+  }
+
+  if (protocol === "openconnect") {
+    setDefault(sectionId, "openconnect_cookie", generatePassword());
+    setDefault(sectionId, "openconnect_flavor", "anyconnect");
+    setDefault(sectionId, "openconnect_local_hostname", "openconnect");
+    setDefault(sectionId, "openconnect_mtu", "1400");
+    setDefault(sectionId, "openconnect_ip", "1");
+    setDefault(sectionId, "tls_server_name", terminatingSni);
   }
 }
 
@@ -2695,6 +2741,11 @@ function validatePort(_sectionId, value) {
     return _("Port must be between 1 and 65535");
   }
   return true;
+}
+
+function validateOptionalPort(_sectionId, value) {
+  if (isEmptyValue(value)) return true;
+  return validatePort(_sectionId, value);
 }
 
 function validatePositiveInteger(_sectionId, value) {
@@ -4383,6 +4434,8 @@ function createServerContent(section, options = {}) {
   o.depends("protocol", "fptn");
   o.depends("protocol", "http");
   o.depends("protocol", "mixed");
+  o.depends("protocol", "mieru");
+  o.depends("protocol", "trusttunnel");
 
   o = section.option(form.Value, "server_password", _("Password"));
   o.modalonly = true;
@@ -4409,7 +4462,125 @@ function createServerContent(section, options = {}) {
   o.depends("protocol", "fptn");
   o.depends("protocol", "http");
   o.depends("protocol", "mixed");
+  o.depends("protocol", "mieru");
+  o.depends("protocol", "trusttunnel");
 
+  o = section.option(form.ListValue, "mieru_transport", _("Mieru Transport"));
+  o.value("TCP", "TCP");
+  o.value("UDP", "UDP");
+  o.default = "TCP";
+  o.modalonly = true;
+  o.depends("protocol", "mieru");
+
+  o = section.option(form.Flag, "trusttunnel_quic", _("Use QUIC (HTTP/3)"));
+  o.default = "0";
+  o.modalonly = true;
+  o.depends("protocol", "trusttunnel");
+
+  o = section.option(form.Value, "tewfai_uuid", _("UUID / Password"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequiredText;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(form.Value, "tewfai_password", _("Password (optional second PSK)"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(form.ListValue, "tewfai_inbound_transport", _("Transport"));
+  o.value("tcp", "TCP");
+  o.value("quic", "QUIC");
+  o.value("auto", _("Auto"));
+  o.default = "auto";
+  o.rmempty = true;
+  o.modalonly = true;
+  o.depends("protocol", "tewfai");
+
+  o = section.option(form.Value, "masque_ipv4_pool", _("IPv4 pool (CIDR)"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "172.16.0.0/24";
+  o.depends("protocol", "masque");
+
+  o = section.option(form.Value, "masque_ipv6_pool", _("IPv6 pool (CIDR)"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "masque");
+
+  o = section.option(form.Value, "masque_mtu", _("MTU"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "1400";
+  o.validate = validateOptionalPort;
+  o.depends("protocol", "masque");
+
+  // ── OpenConnect server (tachyon-core inbound) ─────────────────────────────
+  o = section.option(form.Value, "openconnect_cookie", _("Cookie"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequiredText;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(
+    form.ListValue,
+    "openconnect_flavor",
+    _("Flavor"),
+    _("VPN client flavor the inbound emulates"),
+  );
+  o.value("anyconnect", "Cisco AnyConnect");
+  o.value("gp", "GlobalProtect");
+  o.value("nc", "Juniper NC");
+  o.value("f5", "F5");
+  o.value("fortinet", "Fortinet");
+  o.value("pulse", "Pulse");
+  o.default = "anyconnect";
+  o.modalonly = true;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Value, "openconnect_user_agent", _("User-Agent"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Value, "openconnect_local_hostname", _("Local hostname"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Value, "openconnect_urlpath", _("URL path"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Value, "openconnect_address", _("Client address"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Value, "openconnect_mtu", _("MTU"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "1400";
+  o.validate = validateOptionalPort;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Flag, "openconnect_ip", _("IP tunnel mode"));
+  o.default = "0";
+  o.modalonly = true;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Flag, "openconnect_esp", _("Use ESP (needs IP mode)"));
+  o.default = "0";
+  o.modalonly = true;
+  o.depends("protocol", "openconnect");
+
+  o = section.option(form.Flag, "openconnect_dtls", _("Use DTLS (anyconnect only)"));
+  o.default = "0";
+  o.modalonly = true;
+  o.depends("protocol", "openconnect");
+
+  
   o = section.option(
     form.ListValue,
     "tuic_congestion_control",
@@ -5107,6 +5278,10 @@ function subscriptionServerSupported(server) {
     "fptn",
     "mtproto",
     "mieru",
+    "trusttunnel",
+    "tewfai",
+    "masque",
+    "openconnect",
   ].includes(subscriptionServerProtocol(server));
 }
 

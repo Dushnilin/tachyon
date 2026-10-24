@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let exec = require("core.exec");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
@@ -64,14 +65,128 @@ function tokenize_strategy_args(raw_args) {
     return { valid: true, tokens: tokens };
 }
 
+const DESYNC_PRESETS = [
+    "general", "general_alt", "general_alt2", "general_alt3", "general_alt4",
+    "general_alt5", "general_alt6", "general_alt7", "general_alt8", "general_alt9",
+    "general_alt10", "general_alt11", "general_fake_tls", "general_fake_tls_alt",
+    "general_fake_tls_alt2", "general_fake_tls_alt3", "general_simple_fake",
+    "general_simple_fake_alt", "general_simple_fake_alt2",
+    "youtube", "discord", "cloudflare"
+];
+
+const DESYNC_MODES = [
+    "split", "multisplit", "disorder", "multidisorder",
+    "fake", "fake_split", "fake_disorder",
+    "tlsrec", "tlsrec_split", "oob",
+    "fakedsplit", "fakeddisorder", "syndata"
+];
+
+function parse_desync_outbound(args_val, tag_name) {
+    let tok_res = tokenize_strategy_args(args_val);
+    if (!tok_res.valid)
+        return null;
+
+    let outbound = {
+        type: "desync",
+        tag: as_string(tag_name || "desync-out")
+    };
+    let recognized = 0;
+
+    for (let tok in tok_res.tokens) {
+        let eq = index(tok, "=");
+        if (eq <= 0)
+            return null;
+        let k = lc(trim(substr(tok, 0, eq)));
+        let v = trim(substr(tok, eq + 1));
+        if (v == "")
+            return null;
+
+        if (k == "preset") {
+            let lv = lc(v);
+            if (index(DESYNC_PRESETS, lv) < 0)
+                return null;
+            outbound.preset = lv;
+            recognized++;
+        } else if (k == "mode") {
+            let lv = lc(v);
+            if (index(DESYNC_MODES, lv) < 0)
+                return null;
+            outbound.mode = lv;
+            recognized++;
+        } else if (k == "split_pos") {
+            let lv = lc(v);
+            if (lv == "midsld" || lv == "sni") {
+                outbound.split_pos = lv;
+            } else if (match(v, /^[0-9]+$/)) {
+                let n = int(v);
+                if (n < 1 || n > 1400) return null;
+                outbound.split_pos = n;
+            } else {
+                return null;
+            }
+            recognized++;
+        } else if (k == "fake_ttl" || k == "ttl") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 1 || n > 64) return null;
+            outbound.fake_ttl = n;
+            recognized++;
+        } else if (k == "fake_sni") {
+            if (!is_valid_hostname(v)) return null;
+            outbound.fake_sni = v;
+            recognized++;
+        } else if (k == "repeats") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 1 || n > 32) return null;
+            outbound.repeats = n;
+            recognized++;
+        } else if (k == "split_delay_ms") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 0 || n > 500) return null;
+            outbound.split_delay_ms = n;
+            recognized++;
+        } else if (k == "udp_fake") {
+            let lv = lc(v);
+            if (lv == "true" || lv == "1") outbound.udp_fake = true;
+            else if (lv == "false" || lv == "0") outbound.udp_fake = false;
+            else return null;
+            recognized++;
+        } else if (k == "udp_repeats") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 1 || n > 32) return null;
+            outbound.udp_repeats = n;
+            recognized++;
+        } else if (k == "udp_fake_ttl") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 1 || n > 64) return null;
+            outbound.udp_fake_ttl = n;
+            recognized++;
+        } else {
+            return null;
+        }
+    }
+
+    if (recognized <= 0 || (outbound.preset == null && outbound.mode == null))
+        return null;
+
+    return outbound;
+}
+
 function validate_strategy_args(engine, args_val) {
     engine = lc(as_string(engine));
-    if (engine != "zapret" && engine != "zapret2" && engine != "byedpi")
+    if (engine != "zapret" && engine != "zapret2" && engine != "byedpi" && engine != "desync")
         return false;
 
     let tok_res = tokenize_strategy_args(args_val);
     if (!tok_res.valid)
         return false;
+
+    if (engine == "desync")
+        return parse_desync_outbound(args_val, "desync-out") != null;
 
     try {
         if (engine == "zapret2") {
@@ -145,15 +260,46 @@ function build_zapret_argv(bin, qnum, fwmark_flag, lua_init_flags, blob_flags, f
     return argv;
 }
 
+function find_child_pids(parent_pid) {
+    let children = [];
+    let p_int = int(parent_pid);
+    if (p_int <= 1) return children;
+    let procs = fs.glob("/proc/[0-9]*/stat");
+    if (!procs) return children;
+    for (let st_path in procs) {
+        let data = fs.readfile(st_path);
+        if (!data) continue;
+        let rparen = rindex(data, ")");
+        if (rparen < 0) continue;
+        let m_pid = match(substr(data, 0, rparen), /^([0-9]+)[ \t]+\(/);
+        let rest = trim(substr(data, rparen + 1));
+        let fields = split(rest, /[ \t]+/);
+        if (m_pid && m_pid[1] && length(fields) >= 2 && int(fields[1]) == p_int) {
+            push(children, m_pid[1]);
+        }
+    }
+    return children;
+}
+
 function kill_pid_file(path) {
     let pid_str = fs.readfile(path);
     if (pid_str) {
         let pid = trim(as_string(pid_str));
         if (pid != "" && match(pid, /^[0-9]+$/) != null) {
-            system(sprintf("kill %s >/dev/null 2>&1 || kill -9 %s >/dev/null 2>&1", pid, pid));
+            let children = find_child_pids(pid);
+            for (let c in children) {
+                for (let gc in find_child_pids(c))
+                    exec.command_status_from_args([ "kill", "-9", "" + gc ]);
+                exec.command_status_from_args([ "kill", "-9", "" + c ]);
+            }
+            exec.command_status_from_args([ "kill", "" + pid ]);
             for (let k = 0; k < 3; k++) {
                 if (system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) != 0) break;
-                system("sleep 0.1");
+                exec.command_status_from_args([ "sleep", "0.1" ]);
+            }
+            if (exec.command_status_from_args([ "kill", "-0", "" + pid ]) == 0) {
+                exec.command_status_from_args([ "kill", "-9", "" + pid ]);
+                exec.command_status_from_args([ "sleep", "0.1" ]);
             }
         }
         try { fs.unlink(path); } catch (e) {}
@@ -221,9 +367,12 @@ function calculate_jitter(values, median_val) {
 }
 
 return {
+    DESYNC_PRESETS,
+    DESYNC_MODES,
     is_valid_hostname,
     is_valid_url,
     tokenize_strategy_args,
+    parse_desync_outbound,
     validate_strategy_args,
     build_byedpi_argv,
     build_zapret_argv,

@@ -261,9 +261,26 @@ function format_outbound_type_label(protocol, transport) {
     else if (p == "shadowsocks" || p == "ss") norm_proto = "Shadowsocks";
     else if (p == "trojan") norm_proto = "Trojan";
     else if (p == "wireguard" || p == "wg") norm_proto = "WireGuard";
+    else if (p == "amneziawg" || p == "awg") norm_proto = "AmneziaWG";
     else if (p == "hysteria2" || p == "hy2") norm_proto = "Hysteria2";
     else if (p == "hysteria") norm_proto = "Hysteria";
     else if (p == "tuic") norm_proto = "TUIC";
+    else if (p == "anytls") norm_proto = "AnyTLS";
+    else if (p == "naive") norm_proto = "NaiveProxy";
+    else if (p == "mieru") norm_proto = "Mieru";
+    else if (p == "snell") norm_proto = "Snell";
+    else if (p == "sudoku") norm_proto = "Sudoku";
+    else if (p == "masque") norm_proto = "MASQUE";
+    else if (p == "openvpn") norm_proto = "OpenVPN";
+    else if (p == "openconnect") norm_proto = "OpenConnect";
+    else if (p == "tewfai") norm_proto = "Tewfai";
+    else if (p == "trusttunnel") norm_proto = "TrustTunnel";
+    else if (p == "mtproto" || p == "mtproxy") norm_proto = "MTProto";
+    else if (p == "shadowtls") norm_proto = "ShadowTLS";
+    else if (p == "fptn") norm_proto = "FPTN";
+    else if (p == "desync") norm_proto = "Desync";
+    else if (p == "chain") norm_proto = "Chain";
+    else if (p == "tailscale") norm_proto = "Tailscale";
     else if (p == "socks" || p == "socks5") norm_proto = "SOCKS5";
     else if (p == "http") norm_proto = "HTTP";
     else if (p == "direct") norm_proto = "Direct";
@@ -745,8 +762,8 @@ function group_member_action_supported(action) {
         return false;
     return connections.is_connections_action(action) ||
         action == "awg" || action == "warp" ||
-        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
-        action == "sudoku" || action == "masque" || action == "openvpn" || action == "fptn";
+        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
+        action == "masque" || action == "openvpn" || action == "fptn";
 }
 
 // Union of the member sections' leaf outbound tags. Sections that went through
@@ -2867,6 +2884,22 @@ function add_outbound_for_section(config, section, taken, sections) {
         ctx.outbounds.add_masque_outbound(config, section);
     else if (action == "openvpn")
         ctx.outbounds.add_openvpn_endpoint(config, section);
+    else if (action == "openconnect")
+        ctx.outbounds.add_openconnect_outbound(config, section);
+    else if (action == "tewfai")
+        ctx.outbounds.add_tewfai_outbound(config, section);
+    else if (action == "trusttunnel")
+        ctx.outbounds.add_trusttunnel_outbound(config, section);
+    else if (action == "mtproto")
+        ctx.outbounds.add_mtproto_outbound(config, section);
+    else if (action == "shadowtls")
+        ctx.outbounds.add_shadowtls_outbound(config, section);
+    else if (action == "desync")
+        ctx.outbounds.add_desync_outbound(config, section);
+    else if (action == "chain")
+        ctx.outbounds.add_chain_outbound(config, section);
+    else if (action == "tailscale")
+        ctx.outbounds.add_tailscale_client_endpoint(config, section);
     else if (action == "zapret")
         ctx.outbounds.add_zapret_outbound(config, section, sections);
     else if (action == "zapret2")
@@ -2910,7 +2943,9 @@ function reserve_section_outbound_tags(sections, taken) {
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "wdtt" || action == "olcrtc" || action == "fptn" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
-            action == "masque" || action == "openvpn")
+            action == "masque" || action == "openvpn" || action == "openconnect" ||
+            action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
+            action == "desync" || action == "chain" || action == "tailscale")
             taken[outbound_tag(section[".name"])] = true;
 
         if (action == "group") {
@@ -2963,7 +2998,9 @@ function failover_candidate(sections) {
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "wdtt" || action == "olcrtc" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
-            action == "masque" || action == "openvpn") {
+            action == "masque" || action == "openvpn" || action == "openconnect" ||
+            action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
+            action == "desync" || action == "chain" || action == "tailscale") {
             push(result, section);
         }
     }

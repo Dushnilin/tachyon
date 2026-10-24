@@ -9,6 +9,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let exec = require("core.exec");
 let fuzzer_runner = require("diagnostics.fuzzer_runner");
 let binaries = require("diagnostics.fuzzer.binaries");
 let history = require("diagnostics.fuzzer.history");
@@ -19,6 +20,7 @@ let command_from_args = common.command_from_args;
 
 const STATE_DIR = history.STATE_DIR;
 const BYEDPI_PORT = 11089;
+const DESYNC_PORT = 11090;
 const JOB_HARD_DEADLINE_SECONDS = int(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS") || "2700");
 
 function kill_pid_file(path) {
@@ -39,6 +41,7 @@ function cleanup_temp_daemons(job_id) {
         }
     }
     kill_pid_file(STATE_DIR + "/fuzzer_byedpi.pid");
+    kill_pid_file(STATE_DIR + "/fuzzer_desync.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_zapret.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_zapret2.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_probe.pid");
@@ -65,7 +68,7 @@ function cleanup_temp_daemons(job_id) {
         system("sleep 0.1");
     }
 
-    // Terminate any stray nfqws / nfqws2 / ciadpi fuzzer daemons
+    // Terminate any stray nfqws / nfqws2 / ciadpi / fuzzer_desync daemons
     let self_pid = fs.readlink("/proc/self");
     let procs = fs.glob("/proc/[0-9]*");
     if (procs) {
@@ -73,8 +76,8 @@ function cleanup_temp_daemons(job_id) {
             let p_id = replace(p_dir, "/proc/", "");
             if (p_id != self_pid) {
                 let cmdline = fs.readfile(p_dir + "/cmdline");
-                if (cmdline && (index(cmdline, "nfqws") >= 0 || index(cmdline, "ciadpi") >= 0)) {
-                    if (index(cmdline, "qnum=298") >= 0 || index(cmdline, "qnum=299") >= 0 || index(cmdline, "11089") >= 0) {
+                if (cmdline && (index(cmdline, "nfqws") >= 0 || index(cmdline, "ciadpi") >= 0 || index(cmdline, "fuzzer_desync_config.json") >= 0)) {
+                    if (index(cmdline, "qnum=298") >= 0 || index(cmdline, "qnum=299") >= 0 || index(cmdline, "11089") >= 0 || index(cmdline, "fuzzer_desync_config.json") >= 0) {
                         system(sprintf("kill -9 %s >/dev/null 2>&1", p_id));
                     }
                 }
@@ -82,8 +85,9 @@ function cleanup_temp_daemons(job_id) {
         }
     }
 
-    // Ensure ByeDPI port is released (hard-bounded to avoid hangs)
+    // Ensure ByeDPI and Desync ports are released (hard-bounded to avoid hangs)
     binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", BYEDPI_PORT), 3);
+    binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", DESYNC_PORT), 3);
 
     // Notice: global kill of curl processes removed to avoid killing external curl operations
 
@@ -92,6 +96,7 @@ function cleanup_temp_daemons(job_id) {
     // 10s is generous enough for slow ARM routers to flush orphaned queue bindings.
     binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
     try { fs.unlink(STATE_DIR + "/fuzzer_daemon_err.log"); } catch (e) {}
+    try { fs.unlink(STATE_DIR + "/fuzzer_desync_config.json"); } catch (e) {}
 }
 
 function parse_curl_output(output, result) {
@@ -228,8 +233,8 @@ function parse_curl_output(output, result) {
         return result;
     }
     
-    // Any valid HTTP response from origin (including 401/403/404/405 when hitting endpoints without auth headers / session tokens)
-    if ((http_code >= 200 && http_code < 400) || http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405) {
+    // Any valid HTTP response from origin (including 401/403/404/405/421 when hitting endpoints without auth headers / session tokens)
+    if ((http_code >= 200 && http_code < 400) || http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421) {
         result.success = true;
         let base_score = (http_code >= 200 && http_code < 400) ? 100 : 85;
         let latency_score = max(0, 1000 - result.ttfb_ms);
@@ -313,20 +318,55 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         return result;
     }
 
-    if (engine == "byedpi") {
-        let bin = binaries.get_byedpi_bin();
+    if (engine == "byedpi" || engine == "desync") {
+        let is_desync = (engine == "desync");
+        let bin = is_desync ? binaries.get_desync_bin() : binaries.get_byedpi_bin();
         if (!bin) {
-            result.error = "ByeDPI binary not found";
+            result.error = (is_desync ? "tachyon-core" : "ByeDPI") + " binary not found";
             return result;
         }
         
-        let pid_path = job_dir ? (job_dir + "/engine.pid") : (STATE_DIR + "/fuzzer_byedpi.pid");
+        let listen_port = is_desync ? DESYNC_PORT : BYEDPI_PORT;
+        let pid_path = job_dir ? (job_dir + "/engine.pid") : (STATE_DIR + (is_desync ? "/fuzzer_desync.pid" : "/fuzzer_byedpi.pid"));
         let stderr_log = job_dir ? (job_dir + "/daemon_err.log") : (STATE_DIR + "/fuzzer_daemon_err.log");
+        let cfg_path = job_dir ? (job_dir + "/fuzzer_desync_config.json") : (STATE_DIR + "/fuzzer_desync_config.json");
         try { fs.unlink(pid_path); } catch (e) {}
         try { fs.unlink(stderr_log); } catch (e) {}
         
-        let argv = fuzzer_runner.build_byedpi_argv(bin, BYEDPI_PORT, tok_res.tokens);
-        let spawn_cmd = common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
+        let spawn_cmd = "";
+        if (is_desync) {
+            let desync_out = fuzzer_runner.parse_desync_outbound(args_str, "desync-out");
+            if (!desync_out) {
+                result.error = "Invalid desync strategy arguments";
+                return result;
+            }
+            let desync_cfg = {
+                log: { level: "error" },
+                dns: {
+                    servers: [
+                        { type: "udp", tag: "dns-direct", server: "77.88.8.8" }
+                    ],
+                    final: "dns-direct"
+                },
+                inbounds: [
+                    {
+                        type: "mixed",
+                        tag: "fuzzer-in",
+                        listen: "127.0.0.1",
+                        listen_port: listen_port
+                    }
+                ],
+                outbounds: [ desync_out ],
+                route: {
+                    final: "desync-out"
+                }
+            };
+            common.write_json_file(cfg_path, desync_cfg);
+            spawn_cmd = "GOMEMLIMIT=24MiB " + common.command_from_args([ bin, "run", "-c", cfg_path ]) + " 2>" + shell_quote(stderr_log);
+        } else {
+            let argv = fuzzer_runner.build_byedpi_argv(bin, listen_port, tok_res.tokens);
+            spawn_cmd = common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
+        }
         system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
         
         let pid_running = false;
@@ -351,16 +391,17 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 let first_line = split(err_msg, "\n")[0];
                 result.error = sprintf("Daemon failed to start: %s", first_line);
             } else {
-                result.error = "ByeDPI daemon failed to start (invalid arguments)";
+                result.error = (is_desync ? "tachyon-core desync" : "ByeDPI") + " daemon failed to start (invalid arguments)";
             }
             cleanup_temp_daemons(job_id);
             return result;
         }
         
-        // Ensure ciadpi direct outbound connections bypass Sing-Box TProxy
+        // Ensure direct outbound connections bypass Sing-Box TProxy
         system("nft add table inet tachyon_fuzzer 2>/dev/null");
         system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto tcp tcp dport { 80, 443 } meta mark set %s counter' 2>/dev/null", binaries.FUZZER_OUTBOUND_MARK));
+        exec.command_status_from_args([ "nft", "add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set " + binaries.FUZZER_OUTBOUND_MARK + " counter" ]);
+        exec.command_status_from_args([ "nft", "add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set " + binaries.FUZZER_OUTBOUND_MARK + " counter" ]);
         
         let passed_count = 0;
         let max_speed = 0;
@@ -371,7 +412,8 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         let required_failed = false;
         
         for (let target_item in urls_list) {
-            let is_req = (target_item.required !== false);
+            let baseline_unreachable = l4_unreachable[target_item.url] ? true : false;
+            let is_req = (target_item.required !== false) && !baseline_unreachable;
             let p_kind = target_item.probe_kind || "tls_http";
             let extra_flags = "";
 
@@ -402,11 +444,16 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 extra_flags = "-r 0-65535 ";
             }
 
+            let target_flags = binaries.get_resolved_host_flags(target_item.url);
+            let proxy_scheme = target_flags != "" ? "socks5" : "socks5h";
+
             let curl_cmd = binaries.wrap_probe_cmd(
                 sprintf(
-                    "curl %s-x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                    "curl %s%s-x %s://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
                     extra_flags,
-                    BYEDPI_PORT,
+                    target_flags,
+                    proxy_scheme,
+                    listen_port,
                     shell_quote(target_item.url)
                 ),
                 8,
@@ -421,6 +468,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             single_res.target_name = target_item.name;
             single_res.url = target_item.url;
             single_res.required = is_req;
+            single_res.baseline_unreachable = baseline_unreachable;
             single_res.weight = target_item.weight || 100;
             push(result.sub_probes, single_res);
             
@@ -433,12 +481,14 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 last_dpi_verdict = single_res.dpi_verdict || "available";
             } else {
                 if (last_http == 0) last_http = single_res.http_code;
-                if (single_res.error && result.error == "") result.error = single_res.error;
-                last_dpi_verdict = single_res.dpi_verdict || "failed";
+                let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
                 if (is_req) {
+                    if (labeled_error != "") result.error = labeled_error;
+                    last_dpi_verdict = single_res.dpi_verdict || "failed";
                     required_failed = true;
                     break;
                 }
+                if (labeled_error != "" && result.error == "") result.error = labeled_error;
             }
         }
         
@@ -450,7 +500,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             result.score = 0;
             result.data_verified = false;
             result.dpi_verdict = "daemon_crashed";
-            result.error = "Fuzzer test daemon ciadpi crashed or exited prematurely";
+            result.error = sprintf("Fuzzer test daemon %s crashed or exited prematurely", is_desync ? "tachyon-core" : "ciadpi");
             return result;
         }
         

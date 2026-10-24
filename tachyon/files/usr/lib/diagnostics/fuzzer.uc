@@ -63,6 +63,8 @@ function get_zapret_bin() { return binaries.get_zapret_bin(); }
 
 function get_byedpi_bin() { return binaries.get_byedpi_bin(); }
 
+function get_desync_bin() { return binaries.get_desync_bin(); }
+
 function get_zapret2_lua_flags(args_str) { return binaries.get_zapret2_lua_flags(args_str); }
 
 let _has_timeout = null;
@@ -151,6 +153,8 @@ function generate_combinatorial_zapret2() { return strategies.generate_combinato
 function generate_combinatorial_zapret() { return strategies.generate_combinatorial_zapret(); }
 
 function generate_combinatorial_byedpi() { return strategies.generate_combinatorial_byedpi(); }
+
+function generate_combinatorial_desync() { return strategies.generate_combinatorial_desync(); }
 
 function generate_adaptive_strategies(engine, target) { return strategies.generate_adaptive_strategies(engine, target); }
 
@@ -252,6 +256,10 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
 
     // ── Pre-fuzz DPI detection ────────────────────────────────────────────
     let dpi_detection = detect_dpi_type(target, custom_url);
+    if (history.is_job_aborted(state.job_id)) {
+        cleanup_temp_daemons(state.job_id);
+        return;
+    }
     state.dpi_detection = dpi_detection;
     state.phase = "exploration";
     state.stage = 1;
@@ -319,6 +327,10 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
         
         // ── Stage 1: Exploration (Single-probe scan) ──────────────────────
         for (let i = 0; i < total; i++) {
+            if (history.is_job_aborted(state.job_id)) {
+                cleanup_temp_daemons(state.job_id);
+                return;
+            }
             let strat = strategies[i];
             state.current_index = i + 1;
             state.current_strategy = strat;
@@ -438,6 +450,10 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
             save_fuzzer_state(state);
 
             for (let v_idx = 0; v_idx < num_verify; v_idx++) {
+                if (history.is_job_aborted(state.job_id)) {
+                    cleanup_temp_daemons(state.job_id);
+                    return;
+                }
                 let cand = working_candidates[v_idx];
                 state.current_strategy = {
                     name: sprintf("[Stage 2: verifying %d/%d] %s", v_idx + 1, num_verify, cand.name),
@@ -616,13 +632,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
 function stop_fuzzer(quiet) {
     let state = get_fuzzer_state();
     let job_id = state ? state.job_id : null;
-    let job_dir = get_job_dir(job_id);
-    if (job_dir) {
-        kill_pid_file(job_dir + "/worker.pid");
-    }
-    kill_pid_file(PID_FILE);
-    cleanup_temp_daemons(job_id);
-    
+
     state.running = false;
     state.aborted = true;
     state.phase = "finished";
@@ -643,7 +653,15 @@ function stop_fuzzer(quiet) {
             state.best_strategy = best_item;
         }
     }
+    state._force = true;
     save_fuzzer_state(state);
+
+    let job_dir = get_job_dir(job_id);
+    if (job_dir) {
+        kill_pid_file(job_dir + "/worker.pid");
+    }
+    kill_pid_file(PID_FILE);
+    cleanup_temp_daemons(job_id);
     
     if (!quiet)
         print(sprintf("%J\n", { success: true, message: "Fuzzer stopped" }));
@@ -669,7 +687,11 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
         print(sprintf("%J\n", { success: false, error: "ByeDPI binary is not installed on the router" }));
         return;
     }
-    if (engine == "all" && !get_zapret2_bin() && !get_zapret_bin() && !get_byedpi_bin()) {
+    if (engine == "desync" && !get_desync_bin()) {
+        print(sprintf("%J\n", { success: false, error: "tachyon-core binary is not installed on the router" }));
+        return;
+    }
+    if (engine == "all" && !get_zapret2_bin() && !get_zapret_bin() && !get_byedpi_bin() && !get_desync_bin()) {
         print(sprintf("%J\n", { success: false, error: "No DPI bypass engines are installed on the router" }));
         return;
     }
@@ -692,6 +714,7 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
 
     // Immediately write starting state to prevent race conditions during frontend polling
     let state = {
+        _force: true,
         running: true,
         job_id: job_id,
         engine: engine || "zapret2",
@@ -745,7 +768,8 @@ function get_available_engines() {
     return {
         zapret2: get_zapret2_bin() != null,
         zapret: get_zapret_bin() != null,
-        byedpi: get_byedpi_bin() != null
+        byedpi: get_byedpi_bin() != null,
+        desync: get_desync_bin() != null
     };
 }
 
@@ -794,11 +818,15 @@ function apply_strategy(engine, args_val, target_rule) {
 
     let sec_action = as_string(sec_obj.action || "");
     if (sec_action != "" && sec_action != engine) {
-        print(sprintf("%J\n", {
-            success: false,
-            error: sprintf("Cannot apply %s strategy to section '%s' configured for %s", engine, target_rule, sec_action)
-        }));
-        return;
+        if (sec_action == "zapret2" || sec_action == "zapret" || sec_action == "byedpi" || sec_action == "desync") {
+            uci.set(CONFIG_NAME, target_rule, "action", engine);
+        } else {
+            print(sprintf("%J\n", {
+                success: false,
+                error: sprintf("Cannot apply %s strategy to section '%s' configured for %s", engine, target_rule, sec_action)
+            }));
+            return;
+        }
     }
 
     if (engine == "zapret2")
@@ -807,7 +835,22 @@ function apply_strategy(engine, args_val, target_rule) {
         uci.set(CONFIG_NAME, target_rule, "nfqws_opt", args_val);
     else if (engine == "byedpi")
         uci.set(CONFIG_NAME, target_rule, "byedpi_cmd_opts", args_val);
-    else {
+    else if (engine == "desync") {
+        let parsed_ds = fuzzer_runner.parse_desync_outbound(args_val, "desync-out");
+        uci.set(CONFIG_NAME, target_rule, "desync_opts", args_val);
+        if (parsed_ds) {
+            if (parsed_ds.preset) uci.set(CONFIG_NAME, target_rule, "desync_preset", as_string(parsed_ds.preset));
+            if (parsed_ds.mode) uci.set(CONFIG_NAME, target_rule, "desync_mode", as_string(parsed_ds.mode));
+            if (parsed_ds.split_pos != null) uci.set(CONFIG_NAME, target_rule, "desync_split_pos", as_string(parsed_ds.split_pos));
+            if (parsed_ds.fake_ttl != null) uci.set(CONFIG_NAME, target_rule, "desync_fake_ttl", as_string(parsed_ds.fake_ttl));
+            if (parsed_ds.fake_sni) uci.set(CONFIG_NAME, target_rule, "desync_fake_sni", as_string(parsed_ds.fake_sni));
+            if (parsed_ds.repeats != null) uci.set(CONFIG_NAME, target_rule, "desync_repeats", as_string(parsed_ds.repeats));
+            if (parsed_ds.split_delay_ms != null) uci.set(CONFIG_NAME, target_rule, "desync_split_delay_ms", as_string(parsed_ds.split_delay_ms));
+            if (parsed_ds.udp_fake != null) uci.set(CONFIG_NAME, target_rule, "desync_udp_fake", parsed_ds.udp_fake ? "1" : "0");
+            if (parsed_ds.udp_repeats != null) uci.set(CONFIG_NAME, target_rule, "desync_udp_repeats", as_string(parsed_ds.udp_repeats));
+            if (parsed_ds.udp_fake_ttl != null) uci.set(CONFIG_NAME, target_rule, "desync_udp_fake_ttl", as_string(parsed_ds.udp_fake_ttl));
+        }
+    } else {
         print(sprintf("%J\n", { success: false, error: "Unsupported engine: " + engine }));
         return;
     }
@@ -857,29 +900,54 @@ if (op == "start") {
     run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 } else if (op == "status") {
     let st = get_fuzzer_state();
-    // OpenWrt rpcd caps luci.rpc / fs.exec stdout at ~64 KB. In combinatorial
-    // mode (320 strategies), serializing every sub_probe for all failed items
-    // pushes stdout past 64 KB around strategy 156 (~33%), causing rpcd to
-    // truncate the JSON and the UI progress bar to freeze at 33%.
-    // Keep full sub_probes on working strategies and strip verbose sub_probes
-    // from failed strategies when the result set is large.
-    if (st && type(st.results) == "array" && length(st.results) > 60) {
-        let slim = [];
-        for (let r in st.results) {
-            if (!r || type(r) != "object") continue;
-            if (r.success) {
-                push(slim, r);
-            } else {
-                let copy = {};
-                for (let k, v in r) {
-                    if (k == "sub_probes" || k == "description" || k == "rationale" || k == "tags")
-                        continue;
-                    copy[k] = v;
-                }
-                push(slim, copy);
+    // OpenWrt rpcd aborts file.exec ("Operation not supported") whenever stdout
+    // exceeds 65536 bytes (64 KB). Slim every item's sub_probes to {success:bool}
+    // and cap total serialized results to keep stdout well below 35 KB.
+    if (st && type(st.results) == "array") {
+        let slim_item = function(r) {
+            if (!r || type(r) != "object") return null;
+            let copy = {};
+            for (let k, v in r) {
+                if (k == "sub_probes" || k == "description" || k == "rationale" || k == "tags")
+                    continue;
+                copy[k] = v;
             }
+            if (type(r.sub_probes) == "array" && length(r.sub_probes) > 1) {
+                let sp_slim = [];
+                for (let sp in r.sub_probes)
+                    push(sp_slim, { success: (sp && sp.success) ? true : false });
+                copy.sub_probes = sp_slim;
+            }
+            return copy;
+        };
+        let all_slim = [];
+        for (let r in st.results) {
+            let s = slim_item(r);
+            if (s != null) push(all_slim, s);
         }
-        st.results = slim;
+        if (length(all_slim) > 100) {
+            let working = [];
+            let failed = [];
+            for (let s in all_slim) {
+                if (s.success) push(working, s);
+                else push(failed, s);
+            }
+            sort(working, function(a, b) { return (b.score || 0) - (a.score || 0); });
+            if (length(working) > 65)
+                working = slice(working, 0, 65);
+            let max_failed = 100 - length(working);
+            if (max_failed > 0 && length(failed) > max_failed)
+                failed = slice(failed, length(failed) - max_failed);
+            else if (max_failed <= 0)
+                failed = [];
+            let capped = [];
+            for (let w in working) push(capped, w);
+            for (let f in failed) push(capped, f);
+            all_slim = capped;
+        }
+        st.results = all_slim;
+        if (st.best_strategy && type(st.best_strategy) == "object")
+            st.best_strategy = slim_item(st.best_strategy);
     }
     print(sprintf("%J\n", st));
 } else if (op == "stop") {
@@ -917,7 +985,8 @@ if (op == "start") {
         patterns: get_patterns_config(),
         zapret2: get_strategies_for_engine("zapret2", strat_mode),
         zapret: get_strategies_for_engine("zapret", strat_mode),
-        byedpi: get_strategies_for_engine("byedpi", strat_mode)
+        byedpi: get_strategies_for_engine("byedpi", strat_mode),
+        desync: get_strategies_for_engine("desync", strat_mode)
     }));
 } else if (op == "presets_info") {
     print(sprintf("%J\n", get_presets_info()));

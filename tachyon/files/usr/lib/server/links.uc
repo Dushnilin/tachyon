@@ -43,10 +43,10 @@ function query(params) {
 }
 
 function security(s, protocol) {
-    if (index([ "shadowsocks", "socks", "http", "mixed", "shadowtls", "mtproto" ], protocol) >= 0)
+    if (index([ "shadowsocks", "socks", "http", "mixed", "shadowtls", "mtproto", "mieru", "sudoku" ], protocol) >= 0)
         return "none";
     return s.security || (protocol == "vless" ? "reality" :
-        (index([ "trojan", "hysteria2", "tuic", "anytls", "naive", "fptn" ], protocol) >= 0 ? "tls" : "none"));
+        (index([ "trojan", "hysteria2", "tuic", "anytls", "naive", "fptn", "trusttunnel", "tewfai", "masque", "sudoku" ], protocol) >= 0 ? "tls" : "none"));
 }
 
 function identity(s) {
@@ -153,7 +153,8 @@ function supported(s) {
         try { return json(s.inbound_json || "{}").type == "mieru"; } catch (e) { return false; }
     }
     return index([ "vless", "vmess", "trojan", "shadowsocks", "socks", "mixed", "http", "naive",
-        "hysteria2", "tuic", "anytls", "shadowtls", "fptn", "mtproto" ], protocol) >= 0;
+        "hysteria2", "tuic", "anytls", "shadowtls", "fptn", "mtproto", "mieru",
+        "trusttunnel", "tewfai", "masque", "sudoku" ], protocol) >= 0;
 }
 
 function build(s, fallback_host, pin) {
@@ -170,6 +171,33 @@ function build(s, fallback_host, pin) {
     if (protocol == "vmess") return vmess(s, user, address, port);
     if (index([ "hysteria2", "tuic", "anytls", "shadowtls" ], protocol) >= 0)
         return password_link(s, user, address, port, pin);
+    if (protocol == "mieru") {
+        if (!user.password) return "";
+        return "mierus://" + encode(user.username) + ":" + encode(user.password) + "@" + uri_host(address) +
+            query({ port, protocol: s.mieru_transport || "TCP", profile: user.name });
+    }
+    if (protocol == "trusttunnel") {
+        if (!user.password) return "";
+        let params = tls_params(s, protocol, address, pin);
+        if (common.bool_value(s.trusttunnel_quic)) params.quic = "1";
+        return "trusttunnel://" + encode(user.username) + ":" + encode(user.password) + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
+    }
+    if (protocol == "sudoku") {
+        if (!user.password) return "";
+        let params = {};
+        if (s.sudoku_aead_method) params.aead = s.sudoku_aead_method;
+        return "sudoku://" + encode(user.password) + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
+    }
+    if (protocol == "tewfai") {
+        let params = tls_params(s, protocol, address, pin);
+        params.pbk = s.tewfai_server_public_key || "";
+        return "tewfai://" + encode(s.tewfai_client_private_key || "") + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
+    }
+    if (protocol == "masque") {
+        let params = tls_params(s, protocol, address, pin);
+        params.pbk = s.masque_server_public_key || "";
+        return "masque://" + encode(s.masque_client_private_key || "") + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
+    }
     if (protocol == "shadowsocks") {
         if (!user.password) return "";
         let credential = replace(replace(replace(b64enc((s.shadowsocks_method || "aes-128-gcm") + ":" + user.password), /\+/g, "-"), /\//g, "_"), /=+$/, "");

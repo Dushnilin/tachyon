@@ -405,12 +405,21 @@ function valid_inbound() {
 
 function outbound_detour_source_action(action) {
     action = as_string(action);
-    return connections.is_connections_action(action) || action == "awg" || action == "fptn";
+    return connections.is_connections_action(action) || action == "awg" || action == "fptn" ||
+        action == "warp" || action == "anytls" || action == "snell" || action == "mieru" ||
+        action == "naive" || action == "sudoku" || action == "masque" || action == "openvpn" ||
+        action == "openconnect" || action == "tewfai" || action == "trusttunnel" ||
+        action == "mtproto" || action == "shadowtls" || action == "desync" || action == "tailscale";
 }
 
 function outbound_detour_target_action(action) {
     action = as_string(action);
-    return connections.is_connections_action(action) || action == "awg" || action == "fptn";
+    return connections.is_connections_action(action) || action == "awg" || action == "fptn" ||
+        action == "warp" || action == "anytls" || action == "snell" || action == "mieru" ||
+        action == "naive" || action == "sudoku" || action == "masque" || action == "openvpn" ||
+        action == "openconnect" || action == "tewfai" || action == "trusttunnel" ||
+        action == "mtproto" || action == "shadowtls" || action == "desync" ||
+        action == "chain" || action == "tailscale";
 }
 
 function outbound_detour_rows() {
@@ -555,8 +564,10 @@ function download_section_action_available(action, byedpi_installed, zapret_inst
     if (connections.is_connections_action(action))
         return true;
     if (action == "fptn" || action == "awg" || action == "warp" ||
-        action == "anytls" || action == "snell" || action == "mieru" ||
-        action == "sudoku" || action == "masque" || action == "openvpn" || action == "group")
+        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
+        action == "sudoku" || action == "masque" || action == "openvpn" || action == "openconnect" ||
+        action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
+        action == "desync" || action == "chain" || action == "tailscale" || action == "group")
         return true;
     if (action == "byedpi")
         return bool_flag(byedpi_installed);
@@ -819,6 +830,8 @@ function rule_action(section) {
 function rule_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
+        "openconnect", "tewfai", "trusttunnel", "mtproto", "shadowtls",
+        "desync", "chain", "tailscale",
         "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "hosts",
         "wdtt", "olcrtc", "fptn", "group" ], as_string(action));
 }
@@ -826,6 +839,8 @@ function rule_action_supported(action) {
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
+        "openconnect", "tewfai", "trusttunnel", "mtproto", "shadowtls",
+        "desync", "chain", "tailscale",
         "zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn", "group" ], as_string(action));
 }
 
@@ -838,7 +853,9 @@ function group_member_action_supported(action) {
     return connections.is_connections_action(action) ||
         action == "awg" || action == "warp" ||
         action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
-        action == "sudoku" || action == "masque" || action == "openvpn" || action == "fptn";
+        action == "sudoku" || action == "masque" || action == "openvpn" || action == "openconnect" ||
+        action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
+        action == "chain" || action == "tailscale" || action == "fptn";
 }
 
 function validate_group_members(section, sections) {
@@ -1155,11 +1172,12 @@ function validate_proxy_parameter_value(value, allowed, parameter, section) {
 function validate_proxy_parameter_filters(protocols, transports, securities, ports, section) {
     for (let value in protocols)
         validate_proxy_parameter_value(value,
-            [ "awg", "direct", "http", "hysteria2", "shadowsocks", "socks", "trojan", "tuic", "vless", "vmess" ],
+            [ "awg", "amneziawg", "direct", "http", "hysteria2", "shadowsocks", "socks", "trojan", "tuic", "vless", "vmess",
+              "anytls", "naive", "mieru", "snell", "masque", "sudoku", "openvpn", "openconnect", "tewfai", "trusttunnel", "mtproto", "shadowtls", "fptn" ],
             "protocol", section);
     for (let value in transports)
         validate_proxy_parameter_value(value,
-            [ "tcp", "ws", "grpc", "http", "httpupgrade", "xhttp" ],
+            [ "tcp", "udp", "quic", "ws", "grpc", "http", "httpupgrade", "xhttp" ],
             "transport", section);
     for (let value in securities)
         validate_proxy_parameter_value(value, [ "none", "tls", "reality" ], "security", section);
@@ -2708,7 +2726,8 @@ function has_outbound_section(ctx) {
         // without this check a lone AWG/WARP/VPN section triggered the
         // misleading "No proxy outbound sections found" warning.
         if (contains([ "awg", "warp", "vpn", "openvpn", "masque",
-            "anytls", "snell", "mieru", "naive", "sudoku", "fptn" ], as_string(action)))
+            "anytls", "snell", "mieru", "naive", "sudoku", "openconnect", "tewfai", "trusttunnel",
+            "mtproto", "shadowtls", "desync", "chain", "tailscale", "fptn" ], as_string(action)))
             return true;
 
         if (length(connections.connection_urls(section)) > 0 ||

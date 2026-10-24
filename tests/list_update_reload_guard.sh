@@ -131,4 +131,25 @@ grep -Fq 'singbox/dns_failover:stop-runtime' "$CHANGED_LOG" ||
 grep -Fq 'service/state:write-current-reload-state-clean' "$CHANGED_LOG" ||
   fail "reload_singbox_after_list_update must write clean reload state"
 
+# Test 3: Unchanged config WITH local rule_set MUST trigger reload so core re-reads updated rulesets
+LOCAL_RS_LOG="$WORK_DIR/local_rs.log"
+cat > "$CONFIG_PATH" <<'EOF'
+{
+  "route": {
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "hysteria-lists",
+        "format": "source",
+        "path": "/tmp/tachyon-core/rulesets/hysteria-lists-ruleset.json"
+      }
+    ]
+  }
+}
+EOF
+run_reload "0" "$LOCAL_RS_LOG"
+
+grep -Fq 'service/state:reload-core-runtime' "$LOCAL_RS_LOG" ||
+  fail "reload_singbox_after_list_update must reload core when local rule_set is present even if config.json hash is unchanged"
+
 printf 'list_update_reload_guard tests passed\n'

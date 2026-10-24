@@ -1346,8 +1346,7 @@ function save_config_file(temp_file_path, config_path) {
         return command_success_from_args([ "mv", "-f", temp_file_path, config_path ]);
     }
 
-    if (!file_exists(RELOAD_PREVIEW_FILE))
-        write_reload_preview(config_path, temp_file_path);
+    write_reload_preview(config_path, temp_file_path);
     log_message("sing-box configuration is unchanged", "info");
     remove_file(temp_file_path);
     return true;

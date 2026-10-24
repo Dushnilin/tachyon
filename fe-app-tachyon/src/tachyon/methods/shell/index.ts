@@ -1346,10 +1346,12 @@ export const TachyonShellMethods = {
         zapret2: boolean;
         zapret: boolean;
         byedpi: boolean;
+        desync?: boolean;
       };
       zapret2: Tachyon.FuzzerStrategyDefinition[];
       zapret: Tachyon.FuzzerStrategyDefinition[];
       byedpi: Tachyon.FuzzerStrategyDefinition[];
+      desync?: Tachyon.FuzzerStrategyDefinition[];
     }>
   > => {
     type FuzzerStrategiesData = {
@@ -1357,10 +1359,12 @@ export const TachyonShellMethods = {
         zapret2: boolean;
         zapret: boolean;
         byedpi: boolean;
+        desync?: boolean;
       };
       zapret2: Tachyon.FuzzerStrategyDefinition[];
       zapret: Tachyon.FuzzerStrategyDefinition[];
       byedpi: Tachyon.FuzzerStrategyDefinition[];
+      desync?: Tachyon.FuzzerStrategyDefinition[];
     };
     const args: string[] = [Tachyon.AvailableMethods.FUZZER_STRATEGIES];
     if (mode) args.push(mode);

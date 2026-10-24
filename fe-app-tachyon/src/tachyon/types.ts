@@ -486,6 +486,7 @@ export namespace Tachyon {
     | 'zapret'
     | 'zapret2'
     | 'byedpi'
+    | 'desync'
     | 'wdtt'
     | 'olcrtc'
     | 'fptn'
@@ -495,8 +496,12 @@ export namespace Tachyon {
     | 'snell'
     | 'mieru'
     | 'naive'
-    | 'sudoku'
     | 'masque'
+    | 'sudoku'
+    | 'shadowtls'
+    | 'trusttunnel'
+    | 'openconnect'
+    | 'tewfai'
     | 'openvpn'
     | 'dns'
     | 'hosts'
@@ -1393,7 +1398,7 @@ export namespace Tachyon {
 
   export type GetClashApiGroupLatency = Record<string, number>;
 
-  export type FuzzerEngine = 'zapret2' | 'zapret' | 'byedpi' | 'all';
+  export type FuzzerEngine = 'zapret2' | 'zapret' | 'byedpi' | 'desync' | 'all';
   export type FuzzerTarget =
     | 'youtube_suite'
     | 'youtube'
@@ -1417,7 +1422,7 @@ export namespace Tachyon {
   export interface FuzzerStrategyItem {
     id: string;
     name: string;
-    engine: 'zapret2' | 'zapret' | 'byedpi';
+    engine: 'zapret2' | 'zapret' | 'byedpi' | 'desync';
     args: string;
     description: string;
     rationale?: string;
@@ -1445,7 +1450,7 @@ export namespace Tachyon {
   export interface FuzzerStrategyResult {
     id: string;
     name: string;
-    engine: 'zapret2' | 'zapret' | 'byedpi';
+    engine: 'zapret2' | 'zapret' | 'byedpi' | 'desync';
     args: string;
     description: string;
     rationale?: string;
@@ -1546,7 +1551,7 @@ export namespace Tachyon {
   export interface FuzzerCustomStrategy {
     id?: string;
     name: string;
-    engine: 'zapret2' | 'zapret' | 'byedpi';
+    engine: 'zapret2' | 'zapret' | 'byedpi' | 'desync';
     args: string;
     description?: string;
   }
@@ -1577,6 +1582,15 @@ export namespace Tachyon {
       autos: string[];
       tlsrecs: string[];
       ipfrags: string[];
+    };
+    desync?: {
+      modes: string[];
+      split_poses: number[];
+      fake_ttls: number[];
+      fake_snis: string[];
+      repeats: number[];
+      split_delays: number[];
+      udp_fakes?: boolean[];
     };
     custom_strategies: FuzzerCustomStrategy[];
   }

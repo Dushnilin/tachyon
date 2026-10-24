@@ -91,11 +91,19 @@ function users(section, protocol) {
             user.name = name;
         return [ user ];
     }
-    if (protocol == "naive" || protocol == "fptn") {
+    if (protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel") {
         let u = option(section, "server_username", "");
         let p = option(section, "server_password", "");
         return [{
             username: u != "" ? u : (name != "" ? name : "user"),
+            password: p
+        }];
+    }
+    if (protocol == "mieru") {
+        let u = option(section, "server_username", "");
+        let p = option(section, "server_password", "");
+        return [{
+            name: u != "" ? u : (name != "" ? name : "user"),
             password: p
         }];
     }
@@ -138,7 +146,8 @@ function effective_security(section, protocol) {
         if (protocol == "vless")
             security = "reality";
         else if (protocol == "trojan" || protocol == "hysteria2" || protocol == "tuic" ||
-                 protocol == "anytls" || protocol == "naive" || protocol == "fptn")
+                 protocol == "anytls" || protocol == "naive" || protocol == "fptn" ||
+                 protocol == "trusttunnel" || protocol == "tewfai" || protocol == "masque")
             security = "tls";
         else
             security = "none";
@@ -146,10 +155,12 @@ function effective_security(section, protocol) {
 
     if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" ||
         protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" ||
-        protocol == "shadowtls" || protocol == "http" || protocol == "mixed")
+        protocol == "shadowtls" || protocol == "http" || protocol == "mixed" ||
+        protocol == "mieru")
         return "none";
     if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" ||
-        protocol == "naive" || protocol == "fptn")
+        protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel" ||
+        protocol == "tewfai" || protocol == "masque")
         return "tls";
     if ((protocol == "vmess" || protocol == "trojan") && security == "reality")
         return protocol == "trojan" ? "tls" : "none";
@@ -356,6 +367,82 @@ function add_standard_inbound(config, section, protocol, tag_name) {
     }
     else if (protocol == "fptn") {
         inbound.users = users(section, protocol);
+    }
+    else if (protocol == "mieru") {
+        inbound.users = users(section, protocol);
+        inbound.transport = option(section, "mieru_transport", "TCP");
+    }
+    else if (protocol == "trusttunnel") {
+        inbound.users = users(section, protocol);
+        if (bool_option(section, "trusttunnel_quic", false))
+            inbound.quic = true;
+    }
+    else if (protocol == "tewfai") {
+        // tachyon-core's TewfaiInboundOptions: users (uuid|password), uuid,
+        // password, transport, quic, tls, reality, inner_cipher, max_streams,
+        // sessions, handover, alt_endpoints, shaper, fec, pqc, mtu. The old
+        // wireguard-style private_key/peers shape is a hard rejection
+        // ("unknown field") that kills the whole config.
+        inbound.uuid = option(section, "tewfai_uuid", "");
+        let pw = option(section, "tewfai_password", "");
+        if (pw != "")
+            inbound.password = pw;
+        let tr = option(section, "tewfai_inbound_transport", "");
+        if (tr != "")
+            inbound.transport = tr;
+        let mtu = int_option(section, "tewfai_mtu", "0");
+        if (mtu > 0)
+            inbound.mtu = mtu;
+    }
+    else if (protocol == "masque") {
+        // tachyon-core's MASQUEInboundOptions: tls, users, ipv4_pool,
+        // ipv6_pool, mtu — no private_key/peers/local_address (that was the
+        // wireguard-flavoured masque of sing-box forks and is rejected by
+        // tachyon-core's strict decoder).
+        let u = users(section, protocol);
+        if (length(u) > 0)
+            inbound.users = u;
+        let pool4 = list_option(section, "masque_ipv4_pool");
+        if (length(pool4) > 0)
+            inbound.ipv4_pool = pool4;
+        let pool6 = list_option(section, "masque_ipv6_pool");
+        if (length(pool6) > 0)
+            inbound.ipv6_pool = pool6;
+        let mtu = int_option(section, "masque_mtu", "0");
+        if (mtu > 0)
+            inbound.mtu = mtu;
+    }
+    else if (protocol == "openconnect") {
+        // tachyon-core's OpenConnectInboundOptions: cookie, user_agent,
+        // local_hostname, urlpath, flavor, tunnel, mtu, ip, esp, esp_gateway,
+        // esp_client, address, dns, route, tls.
+        let flavor = option(section, "openconnect_flavor", "anyconnect");
+        if (flavor != "")
+            inbound.flavor = flavor;
+        let cookie = option(section, "openconnect_cookie", "");
+        if (cookie != "")
+            inbound.cookie = cookie;
+        let ua = option(section, "openconnect_user_agent", "");
+        if (ua != "")
+            inbound.user_agent = ua;
+        let lhost = option(section, "openconnect_local_hostname", "");
+        if (lhost != "")
+            inbound.local_hostname = lhost;
+        let urlpath = option(section, "openconnect_urlpath", "");
+        if (urlpath != "")
+            inbound.urlpath = urlpath;
+        let addr = option(section, "openconnect_address", "");
+        if (addr != "")
+            inbound.address = addr;
+        let mtu = int_option(section, "openconnect_mtu", "0");
+        if (mtu > 0)
+            inbound.mtu = mtu;
+        if (bool_option(section, "openconnect_ip", false))
+            inbound.ip = true;
+        if (bool_option(section, "openconnect_esp", false))
+            inbound.esp = true;
+        if (bool_option(section, "openconnect_dtls", false))
+            inbound.dtls = true;
     }
     else if (protocol == "http" || protocol == "mixed") {
         let u = users(section, protocol);

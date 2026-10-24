@@ -370,7 +370,9 @@ function is_remote_proxy_action(action) {
     return is_connections_action(action) ||
         action == "awg" || action == "warp" ||
         action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
-        action == "masque" || action == "openvpn" ||
+        action == "masque" || action == "openvpn" || action == "openconnect" ||
+        action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
+        action == "chain" || action == "tailscale" ||
         action == "wdtt" || action == "olcrtc" || action == "fptn";
 }
 

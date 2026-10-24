@@ -112,7 +112,31 @@ function ensure_state_dir() {
 
 function save_fuzzer_state(state) {
     ensure_state_dir();
+    if (state && type(state) == "object") {
+        let force = state._force === true;
+        delete state._force;
+        if (!force) {
+            let cur = read_json_file(STATE_FILE);
+            if (cur && type(cur) == "object") {
+                if (cur.job_id && state.job_id && cur.job_id != state.job_id)
+                    return false;
+                if (cur.aborted === true && state.aborted !== true)
+                    return false;
+            }
+        }
+    }
     return write_json_file(STATE_FILE, state) != null;
+}
+
+function is_job_aborted(job_id) {
+    let cur = read_json_file(STATE_FILE);
+    if (!cur || type(cur) != "object")
+        return false;
+    if (cur.aborted === true)
+        return true;
+    if (job_id && cur.job_id && cur.job_id != job_id)
+        return true;
+    return false;
 }
 
 function get_fuzzer_state() {
@@ -193,6 +217,7 @@ function module_exports() {
         clear_history,
         ensure_state_dir,
         save_fuzzer_state,
+        is_job_aborted,
         get_fuzzer_state,
         safe_json_parse
     };

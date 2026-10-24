@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-23 08:58+0300\n"
-"PO-Revision-Date: 2026-10-23 08:58+0300\n"
+"POT-Creation-Date: 2026-10-24 12:39+0300\n"
+"PO-Revision-Date: 2026-10-24 12:39+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -280,6 +280,9 @@ msgstr "Объявлять как выходной узел (Exit Node)"
 
 msgid "Advertise routes"
 msgstr "Объявлять маршруты"
+
+msgid "Aggressive (Repeat Fake + Disorder)"
+msgstr ""
 
 msgid "All"
 msgstr "Все"
@@ -848,6 +851,9 @@ msgstr "Стратегия ByeDPI не может быть пустой"
 msgid "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."
 msgstr "Обходит UDP-трафик для выбранных игровых консолей (PS5/Xbox) для достижения NAT Type 1 / 2 (Full Cone NAT) для P2P-матчмейкинга, сохраняя TCP (PSN/Auth) через прокси."
 
+msgid "Byte offset in ClientHello to split at (default: 2)"
+msgstr ""
+
 msgid "CA Certificate"
 msgstr "CA-сертификат"
 
@@ -1049,6 +1055,9 @@ msgstr "Публичный ключ клиента"
 msgid "Client VPN IP address (e.g. 10.0.0.2/32)"
 msgstr "VPN IP-адрес клиента (например, 10.0.0.2/32)"
 
+msgid "Client address"
+msgstr ""
+
 msgid "Client fingerprint"
 msgstr "Fingerprint клиента"
 
@@ -1193,6 +1202,9 @@ msgstr "Дополнительный паддинг контента"
 msgid "Control how BitTorrent and P2P traffic is handled: allow normal routing, force direct via WAN to prevent VPN bans, or block completely."
 msgstr "Управление обработкой трафика BitTorrent и P2P: разрешить обычную маршрутизацию, принудительно направлять напрямую через WAN для предотвращения блокировок VPN или полностью заблокировать."
 
+msgid "Cookie"
+msgstr ""
+
 msgid "Cookie packet junk size (S3)"
 msgstr "Размер мусора в пакете cookie (S3)"
 
@@ -1278,6 +1290,9 @@ msgid "Custom OpenAI-Compatible API"
 msgstr "Пользовательский OpenAI-совместимый API"
 
 msgid "Custom OpenAI-compatible API endpoint or base URL (e.g. http://192.168.1.100:1234 or http://192.168.1.100:11434/v1/chat/completions). Leave empty to use official provider URL."
+msgstr ""
+
+msgid "Custom Parameters"
 msgstr ""
 
 msgid "Custom device headers"
@@ -1517,6 +1532,9 @@ msgstr "Дни недели"
 msgid "Decision & Details"
 msgstr "Решение и подробности"
 
+msgid "Decoy hostname injected into fake ClientHello (e.g. www.google.com)"
+msgstr ""
+
 msgid "Dedicated cgroup unavailable"
 msgstr "Выделенная cgroup недоступна"
 
@@ -1544,6 +1562,9 @@ msgstr "Default: использует ошибки из журнала sing-box 
 msgid "Degraded"
 msgstr "Деградировано"
 
+msgid "Delay between split TCP segments in milliseconds"
+msgstr ""
+
 msgid "Delay in milliseconds before reloading Tachyon after interface UP"
 msgstr "Задержка в миллисекундах перед перезагрузкой Tachyon после поднятия интерфейса"
 
@@ -1558,6 +1579,18 @@ msgstr "Удалить снапшот"
 
 msgid "Delete the snapshot"
 msgstr "Удалить снапшот"
+
+msgid "Desync Mode"
+msgstr ""
+
+msgid "Desync Modes (--mode)"
+msgstr ""
+
+msgid "Desync Preset"
+msgstr ""
+
+msgid "Desync Strategy String (Fuzzer / CLI)"
+msgstr ""
 
 msgid "Detect server country"
 msgstr "Определять страну сервера"
@@ -1643,6 +1676,9 @@ msgstr "Отключено (обычный сырой UDP)"
 msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
 
+msgid "Discord (TCP + UDP Voice)"
+msgstr ""
+
 msgid "Disorder Values (-d)"
 msgstr "Значения Disorder (-d)"
 
@@ -1684,6 +1720,9 @@ msgstr "Исправление доктором"
 
 msgid "Doctor repair completed"
 msgstr "Исправление доктором завершено"
+
+msgid "Does not look like a GitHub token (expected ghp_… / github_pat_… or a 40-hex classic token)"
+msgstr "Не похоже на токен GitHub (ожидается ghp_… / github_pat_… или классический 40-символьный hex-токен)"
 
 msgid "Does not resolve"
 msgstr "Не резолвится"
@@ -2312,6 +2351,24 @@ msgstr "Порог срабатывания failover"
 msgid "Failovers & Restarts"
 msgstr "Переключения и перезапуски"
 
+msgid "Fake Packet TTL"
+msgstr ""
+
+msgid "Fake Repeats"
+msgstr ""
+
+msgid "Fake Repeats (--repeats)"
+msgstr ""
+
+msgid "Fake SNI"
+msgstr ""
+
+msgid "Fake SNI Hosts (--fake-sni)"
+msgstr ""
+
+msgid "Fake TTLs (--fake-ttl)"
+msgstr ""
+
 msgid "Fake packets reached remote server (HTTP 400 Bad Request)"
 msgstr "Фейковые пакеты дошли до удалённого сервера (HTTP 400 Bad Request)"
 
@@ -2401,6 +2458,9 @@ msgstr "Исправьте выделенные поля и сохраните �
 
 msgid "Fixed"
 msgstr "Исправлено"
+
+msgid "Flavor"
+msgstr ""
 
 msgid "Fleet Latency"
 msgstr "Средняя задержка серверов"
@@ -2531,6 +2591,9 @@ msgstr "Германия (de)"
 msgid "Get global check"
 msgstr "Получить глобальную проверку"
 
+msgid "GitHub API Token (optional)"
+msgstr "Токен GitHub API (необязательно)"
+
 msgid "Give the snapshot a name. It is saved with the current date and can be restored from this list later."
 msgstr "Дайте снапшоту имя. Он сохраняется с текущей датой, и его можно будет восстановить из этого списка позже."
 
@@ -2548,6 +2611,9 @@ msgstr "Включено глобальное правило"
 
 msgid "Global rules"
 msgstr "Глобальные правила"
+
+msgid "Google / YouTube"
+msgstr ""
 
 msgid "Google Gemini API (gemini-2.5-flash / pro)"
 msgstr ""
@@ -2744,6 +2810,9 @@ msgstr "Границы фрагментации IP (--ip-frag)"
 msgid "IP and DNS leak check timed out"
 msgstr "Время ожидания проверки утечек IP и DNS истекло"
 
+msgid "IP tunnel mode"
+msgstr ""
+
 msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!"
 msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN для данного домена!"
 
@@ -2753,8 +2822,14 @@ msgstr "IP"
 msgid "IPv4 only"
 msgstr "Только IPv4"
 
+msgid "IPv4 pool (CIDR)"
+msgstr ""
+
 msgid "IPv6 only"
 msgstr "Только IPv6"
+
+msgid "IPv6 pool (CIDR)"
+msgstr ""
 
 msgid "ISP / Organization"
 msgstr "Провайдер / Организация"
@@ -3371,6 +3446,9 @@ msgstr "Обнаружены устаревшие пути zapret, требуе�
 msgid "Level name"
 msgstr "Имя уровня"
 
+msgid "Light (Simple Split)"
+msgstr ""
+
 msgid "Light Blue"
 msgstr "Светло-синий"
 
@@ -3473,6 +3551,9 @@ msgstr "Локальный кэш DNS"
 msgid "Local DNS caching disabled (0 entries)"
 msgstr "Локальное DNS-кэширование отключено (0 записей)"
 
+msgid "Local hostname"
+msgstr ""
+
 msgid "Location"
 msgstr "Местоположение"
 
@@ -3496,9 +3577,6 @@ msgstr "ID аккаунта MASQUE"
 
 msgid "MASQUE Private Key"
 msgstr "Приватный ключ MASQUE"
-
-msgid "MTProto (не реализован)"
-msgstr "MTProto (не реализован)"
 
 msgid "MTProto is not implemented in tachyon-core yet"
 msgstr "MTProto еще не реализован в tachyon-core"
@@ -3595,6 +3673,9 @@ msgstr "Метод"
 
 msgid "Metrics Retention (hours)"
 msgstr "Хранение метрик (часы)"
+
+msgid "Mieru Transport"
+msgstr ""
 
 msgid "Min latency"
 msgstr ""
@@ -3694,6 +3775,12 @@ msgstr "Имя в списке уровней приоритета"
 
 msgid "Native (core)"
 msgstr "Встроенный (core)"
+
+msgid "Native Desync"
+msgstr ""
+
+msgid "Native Desync (tachyon-core)"
+msgstr ""
 
 msgid "Native Tailscale is configured, but tailscale package is missing"
 msgstr "Нативный Tailscale настроен, но пакет tailscale отсутствует"
@@ -3941,6 +4028,9 @@ msgstr "Количество последовательных ошибок до 
 msgid "Number of consecutive successful checks required before returning to a higher-priority DNS server."
 msgstr "Количество последовательных успешных проверок до возврата на DNS-сервер с более высоким приоритетом."
 
+msgid "Number of fake TCP packets to send"
+msgstr ""
+
 msgid "Number of junk packets before handshake (1-10)"
 msgstr "Количество мусорных пакетов перед рукопожатием (1-10)"
 
@@ -4079,6 +4169,9 @@ msgstr "Опция \"%s\" содержит недопустимое значен
 msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
 msgstr "Дополнительный контекст (напр. \"Ростелеком, долго грузится YouTube 4K\")..."
 
+msgid "Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)"
+msgstr ""
+
 msgid "Optional name displayed at the top of all Telegram bot messages to identify this router when multiple routers share the same bot token."
 msgstr "Необязательное имя, отображаемое в верхней части всех сообщений Telegram-бота для идентификации этого роутера, когда один токен бота используется на нескольких роутерах."
 
@@ -4175,6 +4268,9 @@ msgstr "Обработанные записи:"
 msgid "Password"
 msgstr "Пароль"
 
+msgid "Password (optional second PSK)"
+msgstr ""
+
 msgid "Password cannot be empty"
 msgstr "Пароль не может быть пустым"
 
@@ -4252,6 +4348,9 @@ msgstr "Постоянный Keepalive"
 
 msgid "Persistent Smart Detect"
 msgstr "Постоянное умное определение"
+
+msgid "Personal access token to avoid the 60 req/hour per-IP GitHub API limit during update checks. Leave empty if update checks work fine."
+msgstr "Персональный токен, чтобы обойти лимит GitHub API 60 запросов/час на IP при проверке обновлений. Оставьте пустым, если проверка обновлений работает нормально."
 
 msgid "Pets / IoT (🐾)"
 msgstr "Питомцы / IoT (🐾)"
@@ -4339,6 +4438,9 @@ msgstr "Порты должны быть от 1 до 65535"
 
 msgid "Pre-built index of Tachyon documentation chunks. When enabled, AI Doctor searches relevant docs before generating a diagnosis."
 msgstr "Предварительно собранный индекс фрагментов документации Tachyon. При включении AI Doctor ищет релевантные документы перед постановкой диагноза."
+
+msgid "Pre-configured DPI bypass profile for tachyon-core native desync"
+msgstr ""
 
 msgid "Pre-download all preset lists"
 msgstr "Предзагрузить все предустановленные списки"
@@ -5264,6 +5366,9 @@ msgstr "Отправлять уведомление в Telegram при пере�
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
 
+msgid "Send fake low-TTL UDP packets before real UDP/QUIC payload"
+msgstr ""
+
 msgid "Sequence Overlaps (seqovl)"
 msgstr "Перекрытия последовательностей (seqovl)"
 
@@ -5374,6 +5479,9 @@ msgstr "Настройки сброшены к значениям по умол�
 
 msgid "Severity"
 msgstr "Важность"
+
+msgid "ShadowTLS Version"
+msgstr ""
 
 msgid "ShadowTLS version"
 msgstr "Версия ShadowTLS"
@@ -5513,8 +5621,20 @@ msgstr "Укажите разные файлы"
 msgid "Speed"
 msgstr "Скорость"
 
+msgid "Split Delay (ms)"
+msgstr ""
+
+msgid "Split Delays ms (--split-delay)"
+msgstr ""
+
 msgid "Split Modes (dpi-desync)"
 msgstr "Режимы разделения (dpi-desync)"
+
+msgid "Split Position"
+msgstr ""
+
+msgid "Split Positions (--split-pos)"
+msgstr ""
 
 msgid "Split Positions (dpi-desync-split-pos)"
 msgstr "Позиции разделения (dpi-desync-split-pos)"
@@ -5825,6 +5945,9 @@ msgstr "Ключ TLS Auth/Crypt"
 msgid "TLS Crypt Key"
 msgstr "Ключ TLS Crypt"
 
+msgid "TLS Handshake SNI"
+msgstr ""
+
 msgid "TLS SNI"
 msgstr "TLS SNI"
 
@@ -5854,6 +5977,9 @@ msgstr "Значения TTL (dpi-desync-ttl)"
 
 msgid "TTL Values (ttl)"
 msgstr "Значения TTL (ttl)"
+
+msgid "TTL for fake TLS packets so they expire before the destination server"
+msgstr ""
 
 msgid "TTL must be a positive number"
 msgstr "TTL должен быть положительным числом"
@@ -6335,6 +6461,15 @@ msgstr "UDP (незащищённый DNS)"
 msgid "UDP / QUIC protocols"
 msgstr "UDP / QUIC протоколы"
 
+msgid "UDP Fake (QUIC / Voice)"
+msgstr ""
+
+msgid "UDP Fake Repeats"
+msgstr ""
+
+msgid "UDP Fake TTL"
+msgstr ""
+
 msgid "UDP over TCP (Packet Encoding)"
 msgstr "UDP over TCP (инкапсуляция UDP)"
 
@@ -6346,6 +6481,9 @@ msgstr "URL должен начинаться с vless://, vmess://, ss://, troj
 
 msgid "URL must use one of the following protocols:"
 msgstr "URL должен использовать один из следующих протоколов:"
+
+msgid "URL path"
+msgstr ""
 
 msgid "URL to test through the proxy (default: Cloudflare 204)."
 msgstr "URL для теста через прокси (по умолчанию: Cloudflare 204)."
@@ -6376,6 +6514,9 @@ msgstr "URL удалённых файлов hosts для загрузки и п�
 
 msgid "UUID"
 msgstr "UUID"
+
+msgid "UUID / Password"
+msgstr ""
 
 msgid "Ukraine (ua)"
 msgstr "Украина (ua)"
@@ -6557,6 +6698,15 @@ msgstr "Используйте CIDR-префиксы, например 192.168.1
 msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1"
 msgstr "Используйте префиксы CIDR или IP-адреса, например 192.168.1.0/24, 192.168.1.10 или 2001:db8::1"
 
+msgid "Use DTLS (anyconnect only)"
+msgstr ""
+
+msgid "Use ESP (needs IP mode)"
+msgstr ""
+
+msgid "Use QUIC (HTTP/3)"
+msgstr ""
+
 msgid "Use Save & Apply on the main page to activate these settings."
 msgstr "Чтобы включить эти настройки, нажмите «Сохранить и применить» на основной странице."
 
@@ -6625,6 +6775,9 @@ msgstr "Имя пользователя для авторизации auth-user-
 
 msgid "VLESS flow"
 msgstr "VLESS flow"
+
+msgid "VPN client flavor the inbound emulates"
+msgstr ""
 
 msgid "Valid"
 msgstr "Валидно"
@@ -7174,6 +7327,9 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "MTProto (не реализован)"
+msgstr "MTProto (не реализован)"
 
 msgid "Access schedule and screen time limits"
 msgstr "Расписание доступа и лимиты времени"

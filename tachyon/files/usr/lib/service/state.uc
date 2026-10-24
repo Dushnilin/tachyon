@@ -793,13 +793,14 @@ function config_state_reload_confirmed(clash_info, before_state, preview) {
     let after_state = fetch_tachyon_config_state(clash_info);
     if (after_state == null)
         return false;
-    if (after_state.ready !== true)
+    if (after_state.ready != true)
+        return false;
+    if (before_state.revision != null && after_state.revision != null &&
+        int(after_state.revision) <= int(before_state.revision))
         return false;
     let candidate_digest = type(preview) == "object" ? as_string(preview.candidate_digest || "") : "";
     if (candidate_digest != "" && as_string(after_state.digest || "") != "")
         return as_string(after_state.digest) == candidate_digest;
-    if (before_state.revision != null && after_state.revision != null)
-        return int(after_state.revision) > int(before_state.revision);
     return true;
 }
 

@@ -1296,77 +1296,110 @@ function createMenuTabsOrderWidget(option, section_id) {
     {
       id: "dashboard",
       label: _tr("Дашборд", "Dashboard"),
-      desc: _tr("Главный экран и виджеты статуса", "Main overview and status widgets"),
+      desc: _tr(
+        "Главный экран и виджеты статуса",
+        "Main overview and status widgets",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "section",
       label: _tr("Секции", "Sections"),
-      desc: _tr("Секции маршрутизации, правила и стратегии", "Routing sections, rules and strategies"),
+      desc: _tr(
+        "Секции маршрутизации, правила и стратегии",
+        "Routing sections, rules and strategies",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "server",
       label: _tr("Серверы", "Servers"),
-      desc: _tr("Внешние серверы и входящие подключения", "External inbound proxy servers"),
+      desc: _tr(
+        "Внешние серверы и входящие подключения",
+        "External inbound proxy servers",
+      ),
       defaultVisible: false,
       fixed: false,
     },
     {
       id: "profile",
       label: _tr("Семейные профили", "Family Profiles"),
-      desc: _tr("Семейные профили и группы устройств", "Family profiles and device grouping"),
+      desc: _tr(
+        "Семейные профили и группы устройств",
+        "Family profiles and device grouping",
+      ),
       defaultVisible: false,
       fixed: false,
     },
     {
       id: "schedule",
       label: _tr("Родительский контроль", "Parental Control"),
-      desc: _tr("Расписание доступа и лимиты экранного времени", "Access schedule and screen time limits"),
+      desc: _tr(
+        "Расписание доступа и лимиты экранного времени",
+        "Access schedule and screen time limits",
+      ),
       defaultVisible: false,
       fixed: false,
     },
     {
       id: "guest_mode",
       label: _tr("Гостевой режим", "Guest Mode"),
-      desc: _tr("Изоляция гостевой сети и квоты устройств", "Guest network isolation and device quotas"),
+      desc: _tr(
+        "Изоляция гостевой сети и квоты устройств",
+        "Guest network isolation and device quotas",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "monitoring",
       label: _tr("Мониторинг", "Monitoring"),
-      desc: _tr("Статистика трафика и активные соединения", "Traffic statistics and active connections"),
+      desc: _tr(
+        "Статистика трафика и активные соединения",
+        "Traffic statistics and active connections",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "diagnostic",
       label: _tr("Диагностика", "Diagnostics"),
-      desc: _tr("Системная диагностика, AI Доктор и журналы", "System diagnostics, AI Doctor and logs"),
+      desc: _tr(
+        "Системная диагностика, AI Доктор и журналы",
+        "System diagnostics, AI Doctor and logs",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "updates",
       label: _tr("Компоненты", "Components"),
-      desc: _tr("Версии компонентов и менеджер обновлений", "Component versions and update manager"),
+      desc: _tr(
+        "Версии компонентов и менеджер обновлений",
+        "Component versions and update manager",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "settings",
       label: _tr("Настройки", "Settings"),
-      desc: _tr("Основные настройки системы", "Core configuration and preferences"),
+      desc: _tr(
+        "Основные настройки системы",
+        "Core configuration and preferences",
+      ),
       defaultVisible: true,
       fixed: true,
     },
     {
       id: "telegram",
       label: _tr("Телеграм-бот", "Telegram Bot"),
-      desc: _tr("Удаленное управление через Telegram", "Remote management Telegram daemon"),
+      desc: _tr(
+        "Удаленное управление через Telegram",
+        "Remote management Telegram daemon",
+      ),
       defaultVisible: true,
       fixed: false,
     },
@@ -1614,14 +1647,20 @@ function createComponentsVisibilityWidget(option, section_id) {
     {
       id: "tachyon",
       label: "Tachyon",
-      desc: _tr("Основной сервис оркестрации и веб-интерфейс LuCI", "Core orchestration service and LuCI application"),
+      desc: _tr(
+        "Основной сервис оркестрации и веб-интерфейс LuCI",
+        "Core orchestration service and LuCI application",
+      ),
       defaultVisible: true,
       fixed: true,
     },
     {
       id: "sing_box",
       label: "Sing-box",
-      desc: _tr("Универсальная платформа и движок маршрутизации", "Universal proxy platform routing engine"),
+      desc: _tr(
+        "Универсальная платформа и движок маршрутизации",
+        "Universal proxy platform routing engine",
+      ),
       defaultVisible: true,
       fixed: true,
     },
@@ -1635,14 +1674,20 @@ function createComponentsVisibilityWidget(option, section_id) {
     {
       id: "zapret2",
       label: "Zapret2",
-      desc: _tr("Продвинутый движок обхода DPI со скриптами Lua (nfqws2)", "Advanced DPI bypass engine with Lua scripts (nfqws2)"),
+      desc: _tr(
+        "Продвинутый движок обхода DPI со скриптами Lua (nfqws2)",
+        "Advanced DPI bypass engine with Lua scripts (nfqws2)",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "byedpi",
       label: "ByeDPI",
-      desc: _tr("Локальный десинхронизатор SOCKS (ciadpi)", "Local SOCKS proxy desynchronizer (ciadpi)"),
+      desc: _tr(
+        "Локальный десинхронизатор SOCKS (ciadpi)",
+        "Local SOCKS proxy desynchronizer (ciadpi)",
+      ),
       defaultVisible: true,
       fixed: false,
     },
@@ -1656,35 +1701,50 @@ function createComponentsVisibilityWidget(option, section_id) {
     {
       id: "olcrtc",
       label: "OlcRTC",
-      desc: _tr("Антицензурный WebRTC-туннель реального времени", "Real-time WebRTC anti-censorship tunnel"),
+      desc: _tr(
+        "Антицензурный WebRTC-туннель реального времени",
+        "Real-time WebRTC anti-censorship tunnel",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "fptn",
       label: "FPTN",
-      desc: _tr("Клиент быстрого протокола FPTN", "Fast packet transport network client"),
+      desc: _tr(
+        "Клиент быстрого протокола FPTN",
+        "Fast packet transport network client",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "tailscale",
       label: "Tailscale",
-      desc: _tr("Mesh VPN демон с автоматической настройкой", "Zero config mesh VPN daemon"),
+      desc: _tr(
+        "Mesh VPN демон с автоматической настройкой",
+        "Zero config mesh VPN daemon",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "direct_bypass",
       label: _tr("Direct Proxy", "Direct Proxy"),
-      desc: _tr("Выделенный прямой прокси HTTP/SOCKS5", "Dedicated direct HTTP/SOCKS5 outbound proxy"),
+      desc: _tr(
+        "Выделенный прямой прокси HTTP/SOCKS5",
+        "Dedicated direct HTTP/SOCKS5 outbound proxy",
+      ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "torrserver_direct",
       label: _tr("TorrServer Direct", "TorrServer Direct"),
-      desc: _tr("Прямой обход cgroup для TorrServer", "Direct cgroup bypass for TorrServer"),
+      desc: _tr(
+        "Прямой обход cgroup для TorrServer",
+        "Direct cgroup bypass for TorrServer",
+      ),
       defaultVisible: true,
       fixed: false,
     },
@@ -1909,8 +1969,14 @@ function createSettingsContent(section, capabilities) {
       "Choose how servers are grouped and navigated on the Dashboard.",
     ),
   );
-  o.value("chips", _tr("Кнопки фильтра по странам (Чипсы)", "Country filter buttons (Chips)"));
-  o.value("accordion", _tr("Группы по странам (Аккордеоны)", "Country groups (Accordions)"));
+  o.value(
+    "chips",
+    _tr("Кнопки фильтра по странам (Чипсы)", "Country filter buttons (Chips)"),
+  );
+  o.value(
+    "accordion",
+    _tr("Группы по странам (Аккордеоны)", "Country groups (Accordions)"),
+  );
   o.value("none", _tr("Отключено (Общий список)", "Disabled (Flat list)"));
   o.default = "chips";
   o.rmempty = false;
@@ -1925,14 +1991,28 @@ function createSettingsContent(section, capabilities) {
       "Select how country chips are organized and displayed on the Dashboard.",
     ),
   );
-  o.value("regions", _tr("По частям света (Регионы: Европа, Азия, Америка...)", "By world regions (Europe, Asia, Americas...)"));
-  o.value("smart_top", _tr("Умный топ (Активная и популярные страны впереди)", "Smart top (Active and popular countries first)"));
-  o.value("latency", _tr("По качеству связи (Пинг первыми)", "By latency (Best ping first)"));
+  o.value(
+    "regions",
+    _tr(
+      "По частям света (Регионы: Европа, Азия, Америка...)",
+      "By world regions (Europe, Asia, Americas...)",
+    ),
+  );
+  o.value(
+    "smart_top",
+    _tr(
+      "Умный топ (Активная и популярные страны впереди)",
+      "Smart top (Active and popular countries first)",
+    ),
+  );
+  o.value(
+    "latency",
+    _tr("По качеству связи (Пинг первыми)", "By latency (Best ping first)"),
+  );
   o.value("alphabetical", _tr("По алфавиту (А–Я)", "Alphabetical (A–Z)"));
   o.default = "regions";
   o.depends("dashboard_country_grouping", "chips");
   o.rmempty = false;
-
 
   o = section.taboption(
     "navigation",
@@ -1944,10 +2024,22 @@ function createSettingsContent(section, capabilities) {
       "Select the server sorting order on the Dashboard.",
     ),
   );
-  o.value("latency", _tr("По задержке (Пинг - По умолчанию)", "By latency (Ping - Default)"));
-  o.value("country_latency", _tr("По странам, затем по задержке", "By country, then by latency"));
-  o.value("country_alpha", _tr("По алфавиту (Страна и имя)", "Alphabetical (Country and name)"));
-  o.value("default", _tr("Исходный порядок из подписки", "Original subscription order"));
+  o.value(
+    "latency",
+    _tr("По задержке (Пинг - По умолчанию)", "By latency (Ping - Default)"),
+  );
+  o.value(
+    "country_latency",
+    _tr("По странам, затем по задержке", "By country, then by latency"),
+  );
+  o.value(
+    "country_alpha",
+    _tr("По алфавиту (Страна и имя)", "Alphabetical (Country and name)"),
+  );
+  o.value(
+    "default",
+    _tr("Исходный порядок из подписки", "Original subscription order"),
+  );
   o.default = "latency";
   o.rmempty = false;
 
@@ -1955,7 +2047,10 @@ function createSettingsContent(section, capabilities) {
     "navigation",
     form.Flag,
     "dashboard_hover_freeze",
-    _tr("Защита от случайных кликов (Hover Freeze)", "Prevent Misclicks (Hover Freeze)"),
+    _tr(
+      "Защита от случайных кликов (Hover Freeze)",
+      "Prevent Misclicks (Hover Freeze)",
+    ),
     _tr(
       "Временно фиксирует позиции карточек серверов, пока курсор мыши находится над списком, предотвращая случайные клики при обновлении пинга.",
       "Temporarily lock server card positions while the mouse cursor is over the server grid to prevent misclicks when latencies update.",
@@ -2805,6 +2900,28 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "1";
   o.rmempty = false;
+
+  // ── GitHub API token (issue #226) ─────────────────────────────────────────
+  // GitHub counts the unauthenticated API budget per IP. Everyone behind the
+  // same exit node (WARP, CGNAT) shares 60 requests/hour; a personal access
+  // token lifts that to 5000 per account without any other change.
+  o = section.taboption(
+    "updates",
+    form.Value,
+    "github_token",
+    _("GitHub API Token (optional)"),
+    _(
+      "Personal access token to avoid the 60 req/hour per-IP GitHub API limit during update checks. Leave empty if update checks work fine.",
+    ),
+  );
+  o.password = true;
+  o.rmempty = true;
+  o.validate = function (section_id, value) {
+    const v = (value || "").trim();
+    if (v !== "" && !/^gh[pousr]_[A-Za-z0-9]{36,255}$|^[A-Fa-f0-9]{40}$/.test(v))
+      return _("Does not look like a GitHub token (expected ghp_… / github_pat_… or a 40-hex classic token)");
+    return true;
+  };
 
   o = section.taboption(
     "updates",

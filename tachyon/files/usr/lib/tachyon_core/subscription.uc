@@ -202,9 +202,17 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     if (protocol != "")
         state.outboundMetadata.protocols[tag_name] = protocol;
 
-    let transport = lc(as_string(object_or_empty(outbound.transport).type || ""));
+    let transport = "";
+    if (type(outbound.transport) == "object")
+        transport = lc(as_string(outbound.transport.type || ""));
+    else if (type(outbound.transport) == "array" && length(outbound.transport) > 0)
+        transport = lc(as_string(outbound.transport[0] || ""));
+    else if (type(outbound.transport) == "string")
+        transport = lc(as_string(outbound.transport));
     if (transport == "" && protocol == "shadowsocks" && index(lc(as_string(outbound.plugin_opts || "")), "websocket") >= 0)
         transport = "ws";
+    if (transport == "" && (protocol == "naive" || protocol == "trusttunnel") && outbound.quic === true)
+        transport = "quic";
     if (transport == "h2")
         transport = "http";
     else if (transport == "raw")
@@ -212,6 +220,7 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     else if (transport == "" && protocol != "" &&
              protocol != "direct" && protocol != "wireguard" && protocol != "amneziawg" &&
              protocol != "hysteria" && protocol != "hysteria2" && protocol != "tuic" &&
+             protocol != "masque" && protocol != "desync" && protocol != "chain" &&
              protocol != "dns" && protocol != "block" &&
              protocol != "selector" && protocol != "urltest")
         transport = "tcp";

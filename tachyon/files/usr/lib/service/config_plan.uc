@@ -443,7 +443,8 @@ function validate_uci_semantics(candidate_uci) {
             outbound: true, proxy: true, bypass: true, block: true,
             zapret: true, zapret2: true, byedpi: true, hosts: true, dns: true,
             awg: true, warp: true, anytls: true, snell: true, mieru: true, naive: true,
-            sudoku: true, masque: true, openvpn: true, wdtt: true, olcrtc: true, fptn: true
+            sudoku: true,
+            masque: true, openvpn: true, wdtt: true, olcrtc: true, fptn: true
         };
 
         if (!valid_actions[action]) {

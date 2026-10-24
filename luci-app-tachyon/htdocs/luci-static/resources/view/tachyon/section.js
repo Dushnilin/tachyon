@@ -35,6 +35,10 @@ const ROUTING_ACTIONS = [
   "sudoku",
   "masque",
   "openvpn",
+  "desync",
+  "shadowtls",
+  "trusttunnel",
+  "tewfai",
   "hosts",
   "group",
 ];
@@ -114,6 +118,10 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
       "masque",
       "openvpn",
       "fptn",
+      "desync",
+      "shadowtls",
+      "trusttunnel",
+      "tewfai",
       "group",
     ].includes(action)
   );
@@ -171,6 +179,10 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       "masque",
       "openvpn",
       "fptn",
+      "desync",
+      "shadowtls",
+      "trusttunnel",
+      "tewfai",
       "group",
     ].includes(action)
   ) {
@@ -2651,6 +2663,10 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       "masque",
       "openvpn",
       "fptn",
+      "desync",
+      "shadowtls",
+      "trusttunnel",
+      "tewfai",
       "group",
     ].includes(action)
   ) {
@@ -6297,6 +6313,14 @@ function getActionOptionLabel(action) {
       return "MASQUE";
     case "openvpn":
       return "OpenVPN";
+    case "desync":
+      return "Native Desync";
+    case "shadowtls":
+      return "ShadowTLS";
+    case "trusttunnel":
+      return "TrustTunnel";
+    case "tewfai":
+      return "TewFai";
     case "hosts":
       return _("Hosts");
     case "outbound":
@@ -6393,6 +6417,12 @@ function populateActionOptionValues(option) {
     option.value("snell", getActionOptionLabel("snell"));
     option.value("mieru", getActionOptionLabel("mieru"));
     option.value("sudoku", getActionOptionLabel("sudoku"));
+  }
+  if (isTachyonCoreForUi()) {
+    option.value("desync", getActionOptionLabel("desync"));
+    option.value("shadowtls", getActionOptionLabel("shadowtls"));
+    option.value("trusttunnel", getActionOptionLabel("trusttunnel"));
+    option.value("tewfai", getActionOptionLabel("tewfai"));
   }
   option.value("bypass", "Bypass");
   option.value("block", "Block");
@@ -12517,6 +12547,349 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.depends("action", "masque");
   o.validate = validateRequiredText;
+
+  // ── Native Desync (tachyon-core) ──────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "desync_preset",
+    _("Desync Preset"),
+    _("Pre-configured DPI bypass profile for tachyon-core native desync"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.value("google_youtube", _("Google / YouTube"));
+  o.value("discord", _("Discord (TCP + UDP Voice)"));
+  o.value("aggressive", _("Aggressive (Repeat Fake + Disorder)"));
+  o.value("light", _("Light (Simple Split)"));
+  o.value("custom", _("Custom Parameters"));
+  o.default = "google_youtube";
+  o.depends("action", "desync");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "desync_mode",
+    _("Desync Mode"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("fake+split", "fake+split");
+  o.value("fake+disorder", "fake+disorder");
+  o.value("split", "split");
+  o.value("disorder", "disorder");
+  o.value("fake", "fake");
+  o.default = "fake+split";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_split_pos",
+    _("Split Position"),
+    _("Byte offset in ClientHello to split at (default: 2)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "2";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_fake_ttl",
+    _("Fake Packet TTL"),
+    _("TTL for fake TLS packets so they expire before the destination server"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "range(1,64)";
+  o.placeholder = "4";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_fake_sni",
+    _("Fake SNI"),
+    _("Decoy hostname injected into fake ClientHello (e.g. www.google.com)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "www.google.com";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_repeats",
+    _("Fake Repeats"),
+    _("Number of fake TCP packets to send"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "range(1,20)";
+  o.placeholder = "2";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_split_delay_ms",
+    _("Split Delay (ms)"),
+    _("Delay between split TCP segments in milliseconds"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "2";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "desync_udp_fake",
+    _("UDP Fake (QUIC / Voice)"),
+    _("Send fake low-TTL UDP packets before real UDP/QUIC payload"),
+  );
+  o.modalonly = true;
+  o.default = "1";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_udp_repeats",
+    _("UDP Fake Repeats"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "range(1,20)";
+  o.placeholder = "4";
+  o.depends({
+    action: "desync",
+    desync_preset: "custom",
+    desync_udp_fake: "1",
+  });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_udp_fake_ttl",
+    _("UDP Fake TTL"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "range(1,64)";
+  o.placeholder = "3";
+  o.depends({
+    action: "desync",
+    desync_preset: "custom",
+    desync_udp_fake: "1",
+  });
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "desync_opts",
+    _("Desync Strategy String (Fuzzer / CLI)"),
+    _(
+      "Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "desync");
+
+  // ── ShadowTLS (tachyon-core) ──────────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "shadowtls_server",
+    _("Server Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "shadowtls");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "shadowtls_server_port",
+    _("Server Port"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.placeholder = "443";
+  o.depends("action", "shadowtls");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "shadowtls_password",
+    _("Password"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends("action", "shadowtls");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "shadowtls_version",
+    _("ShadowTLS Version"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("3", "v3");
+  o.value("2", "v2");
+  o.value("1", "v1");
+  o.default = "3";
+  o.depends("action", "shadowtls");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "shadowtls_sni",
+    _("TLS Handshake SNI"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "www.microsoft.com";
+  o.depends("action", "shadowtls");
+
+  // ── TrustTunnel (tachyon-core) ────────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "trusttunnel_server",
+    _("Server Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "trusttunnel");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "trusttunnel_server_port",
+    _("Server Port"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.placeholder = "443";
+  o.depends("action", "trusttunnel");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "trusttunnel_username",
+    _("Username"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "trusttunnel");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "trusttunnel_password",
+    _("Password"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends("action", "trusttunnel");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "trusttunnel_sni",
+    _("TLS SNI"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "trusttunnel");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "trusttunnel_quic",
+    _("Use QUIC (HTTP/3)"),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("action", "trusttunnel");
+
+  // ── TewFai (tachyon-core) ─────────────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "tewfai_server",
+    _("Server Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "tewfai");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "tewfai_server_port",
+    _("Server Port"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.placeholder = "443";
+  o.depends("action", "tewfai");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "tewfai_uuid",
+    _("UUID / Password"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends("action", "tewfai");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "tewfai_password",
+    _("Password (optional second PSK)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends("action", "tewfai");
+
+  o = section.taboption("settings", form.Value, "tewfai_sni", _("TLS SNI"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "tewfai");
+
+  o = section.taboption("settings", form.Value, "tewfai_mtu", _("MTU"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "1400";
+  o.depends("action", "tewfai");
 
   // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
 

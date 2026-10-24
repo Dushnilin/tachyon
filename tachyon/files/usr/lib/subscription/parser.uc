@@ -44,6 +44,18 @@ function is_supported_share_link(line) {
         starts_with(line, "fptnb:") ||
         starts_with(line, "fptn://") ||
         starts_with(line, "fptnb://") ||
+        starts_with(line, "anytls://") ||
+        starts_with(line, "naive+https://") ||
+        starts_with(line, "naive+quic://") ||
+        starts_with(line, "snell://") ||
+        starts_with(line, "mieru://") ||
+        starts_with(line, "mierus://") ||
+        starts_with(line, "tg://proxy?") ||
+        starts_with(line, "mtproto://") ||
+        starts_with(line, "tewfai://") ||
+        starts_with(line, "trusttunnel://") ||
+        starts_with(line, "masque://") ||
+        starts_with(line, "shadowtls://") ||
         crypt4.is_crypt4(line);
 }
 
@@ -1469,6 +1481,339 @@ function from_amneziawg_share_link(line) {
     return null;
 }
 
+function process_anytls(raw, url) {
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
+        return null;
+
+    let outbound = {
+        type: "anytls",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: url.port,
+        password: url.userinfo
+    };
+
+    if (is_integer_string(url.query.min_idle_session || ""))
+        outbound.min_idle_session = int(url.query.min_idle_session, 10);
+    if ((url.query.idle_session_check_interval || "") != "")
+        outbound.idle_session_check_interval = url.query.idle_session_check_interval;
+    if ((url.query.idle_session_timeout || "") != "")
+        outbound.idle_session_timeout = url.query.idle_session_timeout;
+
+    let tls_result = add_tls(url, url.query.security || "", true);
+    if (!tls_result[1])
+        return null;
+    if (tls_result[0])
+        outbound.tls = tls_result[0];
+    return outbound;
+}
+
+function process_naive(raw, url) {
+    let port = url.port;
+    if (port == null || port == "")
+        port = 443;
+    if (url.host == "" || is_dummy_server(url.host, port) || !valid_port(port))
+        return null;
+
+    let username = "", password = "";
+    if (url.userinfo != "") {
+        let colon = index(url.userinfo, ":");
+        if (colon >= 0) {
+            username = substr(url.userinfo, 0, colon);
+            password = substr(url.userinfo, colon + 1);
+        } else {
+            username = url.userinfo;
+        }
+    }
+
+    let outbound = {
+        type: "naive",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(port)
+    };
+    if (username != "")
+        outbound.username = username;
+    if (password != "")
+        outbound.password = password;
+    if (url.scheme == "naive+quic" || is_true(url.query.quic))
+        outbound.quic = true;
+    if ((url.query.quic_congestion_control || "") != "")
+        outbound.quic_congestion_control = url.query.quic_congestion_control;
+    if (is_integer_string(url.query.insecure_concurrency || ""))
+        outbound.insecure_concurrency = int(url.query.insecure_concurrency, 10);
+    if (is_true(url.query.uot || url.query.udp_over_tcp))
+        outbound.udp_over_tcp = true;
+
+    let tls = { enabled: true };
+    if ((url.query.sni || "") != "")
+        tls.server_name = url.query.sni;
+    if (is_true(url.query.allowInsecure || url.query.insecure))
+        tls.insecure = true;
+    let certificate_pin = common.certificate_pin_base64(url.query.pcs || "");
+    if (certificate_pin != "")
+        tls.certificate_sha256 = [ certificate_pin ];
+    outbound.tls = tls;
+    return outbound;
+}
+
+function process_snell(raw, url) {
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
+        return null;
+
+    let version = int(url.query.version || 5);
+    if (version < 1 || version > 5)
+        version = 5;
+
+    let outbound = {
+        type: "snell",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: url.port,
+        psk: url.userinfo,
+        version: version
+    };
+    let obfs = lc(trim(as_string(url.query.obfs || "")));
+    if (obfs == "http" || obfs == "tls") {
+        outbound.obfs = { mode: obfs };
+        if ((url.query["obfs-host"] || url.query.obfs_host || url.query.host || "") != "")
+            outbound.obfs.host = url.query["obfs-host"] || url.query.obfs_host || url.query.host;
+    }
+    if (is_true(url.query.uot || url.query.udp_over_tcp))
+        outbound.udp_over_tcp = true;
+    if (is_true(url.query.reuse))
+        outbound.reuse = true;
+    return outbound;
+}
+
+function process_mieru(raw, url) {
+    let port_val = url.port;
+    if ((port_val == null || port_val == "") && (url.query.port || "") != "")
+        port_val = parse_port_value(url.query.port);
+    if (url.host == "" || is_dummy_server(url.host, port_val) || !valid_port(port_val) || url.userinfo == "")
+        return null;
+
+    let username = "", password = "";
+    let colon = index(url.userinfo, ":");
+    if (colon >= 0) {
+        username = substr(url.userinfo, 0, colon);
+        password = substr(url.userinfo, colon + 1);
+    } else {
+        username = url.userinfo;
+    }
+    if (username == "" || password == "")
+        return null;
+
+    let transport = uc(trim(as_string(url.query.protocol || url.query.transport || "TCP")));
+    if (transport != "UDP")
+        transport = "TCP";
+
+    let tag_val = url.fragment != "" ? url.fragment : (url.query.profile || (url.host + ":" + port_val));
+    let outbound = {
+        type: "mieru",
+        tag: tag_val,
+        share_link: raw,
+        server: url.host,
+        server_port: int(port_val),
+        username: username,
+        password: password,
+        transport: transport
+    };
+    if ((url.query.multiplexing || "") != "")
+        outbound.multiplexing = url.query.multiplexing;
+    return outbound;
+}
+
+function process_mtproto(raw, url) {
+    let server = url.host;
+    let port = url.port;
+    let secret = url.userinfo;
+    if (url.scheme == "tg" || url.scheme == "http" || url.scheme == "https") {
+        server = as_string(url.query.server || "");
+        port = parse_port_value(url.query.port || "");
+        secret = as_string(url.query.secret || "");
+    } else {
+        if (secret == "")
+            secret = as_string(url.query.secret || "");
+    }
+    if (server == "" || is_dummy_server(server, port) || !valid_port(port) || secret == "")
+        return null;
+
+    let outbound = {
+        type: "mtproto",
+        tag: url.fragment != "" ? url.fragment : (server + ":" + port),
+        share_link: raw,
+        server: server,
+        server_port: int(port),
+        secret: secret
+    };
+    let transport = lc(trim(as_string(url.query.transport || "")));
+    if (transport == "abridged" || transport == "intermediate" || transport == "padded_intermediate" || transport == "full")
+        outbound.transport = transport;
+    let mode = lc(trim(as_string(url.query.mode || "")));
+    if (mode == "mtproto" || mode == "mtproxy")
+        outbound.mode = mode;
+    if ((url.query.sni || url.query.faketls || "") != "")
+        outbound.tls = { enabled: true, server_name: url.query.sni || url.query.faketls };
+    return outbound;
+}
+
+function process_shadowtls(raw, url) {
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
+        return null;
+
+    let version = int(url.query.version || 3);
+    if (version < 1 || version > 3)
+        version = 3;
+
+    let outbound = {
+        type: "shadowtls",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(url.port),
+        version: version,
+        password: url.userinfo
+    };
+    let tls_result = add_tls(url, url.query.security || "", true);
+    if (tls_result[0])
+        outbound.tls = tls_result[0];
+    else
+        outbound.tls = { enabled: true, server_name: url.query.sni || url.host };
+    return outbound;
+}
+
+function process_tewfai(raw, url) {
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
+        return null;
+
+    let uuid = "";
+    let password = "";
+    let colon = index(url.userinfo, ":");
+    if (colon >= 0) {
+        uuid = substr(url.userinfo, 0, colon);
+        password = substr(url.userinfo, colon + 1);
+    } else {
+        uuid = url.userinfo;
+    }
+    if (uuid == "")
+        return null;
+
+    let outbound = {
+        type: "tewfai",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(url.port),
+        uuid: uuid
+    };
+    if (password != "")
+        outbound.password = password;
+    if ((url.query.transport || "") != "")
+        outbound.transport = split_csv(url.query.transport);
+    if ((url.query.inner_cipher || "") != "")
+        outbound.inner_cipher = url.query.inner_cipher;
+    if ((url.query.morph_profile || "") != "")
+        outbound.morph_profile = url.query.morph_profile;
+    if (is_true(url.query.pqc))
+        outbound.pqc = { enabled: true };
+    if (is_true(url.query.handover))
+        outbound.handover = { enabled: true };
+    if (is_true(url.query.fec))
+        outbound.fec = { enabled: true };
+    if (is_true(url.query.shaper)) {
+        outbound.shaper = { enabled: true };
+        if ((url.query.shaper_profile || "") != "")
+            outbound.shaper.profile = url.query.shaper_profile;
+    }
+
+    let tls_result = add_tls(url, url.query.security || "", true);
+    if (!tls_result[1])
+        return null;
+    if (tls_result[0])
+        outbound.tls = tls_result[0];
+    return outbound;
+}
+
+function process_trusttunnel(raw, url) {
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port))
+        return null;
+
+    let username = "", password = "";
+    if (url.userinfo != "") {
+        let colon = index(url.userinfo, ":");
+        if (colon >= 0) {
+            username = substr(url.userinfo, 0, colon);
+            password = substr(url.userinfo, colon + 1);
+        } else {
+            password = url.userinfo;
+        }
+    }
+
+    let outbound = {
+        type: "trusttunnel",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(url.port)
+    };
+    if (username != "")
+        outbound.username = username;
+    if (password != "")
+        outbound.password = password;
+    if (is_true(url.query.quic))
+        outbound.quic = true;
+    if ((url.query.quic_congestion_control || url.query.cc || "") != "")
+        outbound.quic_congestion_control = url.query.quic_congestion_control || url.query.cc;
+
+    let tls_result = add_tls(url, url.query.security || "", true);
+    if (!tls_result[1])
+        return null;
+    if (tls_result[0])
+        outbound.tls = tls_result[0];
+    return outbound;
+}
+
+function process_masque(raw, url) {
+    let port = url.port;
+    if (port == null || port == "")
+        port = 443;
+    if (url.host == "" || is_dummy_server(url.host, port) || !valid_port(port))
+        return null;
+
+    let outbound = {
+        type: "masque",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(port)
+    };
+    if ((url.query.profile || "") != "")
+        outbound.profile = url.query.profile;
+    if ((url.query.vhttp || "") != "")
+        outbound.vhttp = url.query.vhttp;
+    if ((url.query.private_key || url.userinfo || "") != "")
+        outbound.private_key = url.query.private_key || url.userinfo;
+    if ((url.query.public_key || "") != "")
+        outbound.public_key = url.query.public_key;
+    if ((url.query.ip || "") != "")
+        outbound.ip = url.query.ip;
+    if ((url.query.ipv6 || "") != "")
+        outbound.ipv6 = url.query.ipv6;
+    if ((url.query.uri || "") != "")
+        outbound.uri = url.query.uri;
+    if (is_integer_string(url.query.mtu || ""))
+        outbound.mtu = int(url.query.mtu, 10);
+
+    let tls_result = add_tls(url, url.query.security || "", true);
+    if (tls_result[0])
+        outbound.tls = tls_result[0];
+    return outbound;
+}
+
 function parse_share_link(line) {
     if (starts_with(line, "vpn://"))
         return wireguard.from_vpn(line);
@@ -1493,10 +1838,31 @@ function parse_share_link(line) {
         return process_hysteria2(line, url);
     if (url.scheme == "tuic")
         return process_tuic(line, url);
+    if (url.scheme == "anytls")
+        return process_anytls(line, url);
+    if (url.scheme == "naive+https" || url.scheme == "naive+quic")
+        return process_naive(line, url);
+    if (url.scheme == "snell")
+        return process_snell(line, url);
+    if (url.scheme == "mieru" || url.scheme == "mierus")
+        return process_mieru(line, url);
+    if (url.scheme == "tg" || url.scheme == "mtproto")
+        return process_mtproto(line, url);
+    if (url.scheme == "shadowtls")
+        return process_shadowtls(line, url);
+    if (url.scheme == "tewfai")
+        return process_tewfai(line, url);
+    if (url.scheme == "trusttunnel")
+        return process_trusttunnel(line, url);
+    if (url.scheme == "masque")
+        return process_masque(line, url);
     if (match(url.scheme, /^socks/))
         return process_socks(line, url);
-    if (url.scheme == "http" || url.scheme == "https")
+    if (url.scheme == "http" || url.scheme == "https") {
+        if ((url.host == "t.me" || url.host == "telegram.me") && (url.query.secret || "") != "" && (url.query.server || "") != "")
+            return process_mtproto(line, url);
         return process_http(line, url);
+    }
     return null;
 }
 
@@ -1933,6 +2299,166 @@ function parse_clash_record(record) {
             outbound.password = as_string(record.password);
         if (proxy_type == "https" || is_true(record.tls))
             outbound.tls = { enabled: true };
+        return outbound;
+    }
+    if (proxy_type == "anytls") {
+        let password = as_string(record.password);
+        if (password == "")
+            return null;
+        let outbound = { type: "anytls", tag: name, server: server, server_port: port, password: password };
+        if (is_integer_string(as_string(record["min-idle-session"] || record.min_idle_session || "")))
+            outbound.min_idle_session = int(record["min-idle-session"] || record.min_idle_session, 10);
+        if (as_string(record["idle-session-check-interval"] || record.idle_session_check_interval || "") != "")
+            outbound.idle_session_check_interval = as_string(record["idle-session-check-interval"] || record.idle_session_check_interval);
+        if (as_string(record["idle-session-timeout"] || record.idle_session_timeout || "") != "")
+            outbound.idle_session_timeout = as_string(record["idle-session-timeout"] || record.idle_session_timeout);
+        options.always = true;
+        add_clash_tls(outbound, options);
+        return outbound;
+    }
+    if (proxy_type == "snell") {
+        let psk = as_string(record.psk || record.password || "");
+        if (psk == "")
+            return null;
+        let version = int(record.version || 5);
+        if (version < 1 || version > 5)
+            version = 5;
+        let outbound = { type: "snell", tag: name, server: server, server_port: port, psk: psk, version: version };
+        let obfs_mode = lc(as_string(record["obfs-opts.mode"] || record.obfs || ""));
+        if (obfs_mode == "http" || obfs_mode == "tls") {
+            outbound.obfs = { mode: obfs_mode };
+            let obfs_host = as_string(record["obfs-opts.host"] || record["obfs-host"] || "");
+            if (obfs_host != "")
+                outbound.obfs.host = obfs_host;
+        }
+        if (is_true(record.uot) || is_true(record.udp_over_tcp) || is_true(record["udp-over-tcp"]))
+            outbound.udp_over_tcp = true;
+        if (is_true(record.reuse))
+            outbound.reuse = true;
+        return outbound;
+    }
+    if (proxy_type == "mieru") {
+        let username = as_string(record.username || "");
+        let password = as_string(record.password || "");
+        if (username == "" || password == "")
+            return null;
+        let transport = uc(as_string(record.transport || "TCP"));
+        if (transport != "UDP")
+            transport = "TCP";
+        let outbound = {
+            type: "mieru",
+            tag: name,
+            server: server,
+            server_port: port,
+            username: username,
+            password: password,
+            transport: transport
+        };
+        if (as_string(record.multiplexing || "") != "")
+            outbound.multiplexing = as_string(record.multiplexing);
+        return outbound;
+    }
+    if (proxy_type == "shadow-tls" || proxy_type == "shadowtls") {
+        let password = as_string(record.password || "");
+        if (password == "")
+            return null;
+        let version = int(record.version || 3);
+        if (version < 1 || version > 3)
+            version = 3;
+        let outbound = {
+            type: "shadowtls",
+            tag: name,
+            server: server,
+            server_port: port,
+            version: version,
+            password: password
+        };
+        options.always = true;
+        if (options.sni == "" && as_string(record.host || "") != "")
+            options.sni = as_string(record.host);
+        add_clash_tls(outbound, options);
+        return outbound;
+    }
+    if (proxy_type == "mtproto" || proxy_type == "tg") {
+        let secret = as_string(record.secret || record.password || "");
+        if (secret == "")
+            return null;
+        let outbound = {
+            type: "mtproto",
+            tag: name,
+            server: server,
+            server_port: port,
+            secret: secret
+        };
+        if (as_string(record.transport || "") != "")
+            outbound.transport = lc(as_string(record.transport));
+        if (options.sni != "")
+            outbound.tls = { enabled: true, server_name: options.sni };
+        return outbound;
+    }
+    if (proxy_type == "tewfai") {
+        let uuid = as_string(record.uuid || "");
+        if (uuid == "")
+            return null;
+        let outbound = {
+            type: "tewfai",
+            tag: name,
+            server: server,
+            server_port: port,
+            uuid: uuid
+        };
+        if (as_string(record.password || "") != "")
+            outbound.password = as_string(record.password);
+        if (as_string(record.transport || "") != "")
+            outbound.transport = split_csv(as_string(record.transport));
+        if (as_string(record["inner-cipher"] || record.inner_cipher || "") != "")
+            outbound.inner_cipher = as_string(record["inner-cipher"] || record.inner_cipher);
+        if (as_string(record["morph-profile"] || record.morph_profile || "") != "")
+            outbound.morph_profile = as_string(record["morph-profile"] || record.morph_profile);
+        options.always = true;
+        add_clash_tls(outbound, options);
+        return outbound;
+    }
+    if (proxy_type == "trusttunnel") {
+        let outbound = {
+            type: "trusttunnel",
+            tag: name,
+            server: server,
+            server_port: port
+        };
+        if (as_string(record.username || "") != "")
+            outbound.username = as_string(record.username);
+        if (as_string(record.password || "") != "")
+            outbound.password = as_string(record.password);
+        if (is_true(record.quic))
+            outbound.quic = true;
+        if (as_string(record["congestion-control"] || record.quic_congestion_control || "") != "")
+            outbound.quic_congestion_control = as_string(record["congestion-control"] || record.quic_congestion_control);
+        options.always = true;
+        add_clash_tls(outbound, options);
+        return outbound;
+    }
+    if (proxy_type == "masque") {
+        let outbound = {
+            type: "masque",
+            tag: name,
+            server: server,
+            server_port: port
+        };
+        if (as_string(record.profile || "") != "")
+            outbound.profile = as_string(record.profile);
+        if (as_string(record.vhttp || "") != "")
+            outbound.vhttp = as_string(record.vhttp);
+        if (as_string(record["private-key"] || record.private_key || "") != "")
+            outbound.private_key = as_string(record["private-key"] || record.private_key);
+        if (as_string(record["public-key"] || record.public_key || "") != "")
+            outbound.public_key = as_string(record["public-key"] || record.public_key);
+        if (as_string(record.ip || "") != "")
+            outbound.ip = as_string(record.ip);
+        if (as_string(record.ipv6 || "") != "")
+            outbound.ipv6 = as_string(record.ipv6);
+        options.always = true;
+        add_clash_tls(outbound, options);
         return outbound;
     }
     return null;

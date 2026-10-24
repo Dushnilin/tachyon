@@ -88,7 +88,7 @@ export function getTachyonLogNotification(
   }
 
   const update = line.match(
-    /\[component-update\]\s+(tachyon|sing_box|zapret|zapret2|byedpi|wdtt|olcrtc)\s+(\S+)/i,
+    /\[component-update\]\s+(tachyon|tachyon-core|sing_box|zapret|zapret2|byedpi|wdtt|olcrtc|fptn)\s+(\S+)/i,
   );
 
   if (!update) {

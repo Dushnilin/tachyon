@@ -323,8 +323,8 @@ function ensure_sing_box_dependencies() {
     }
 
     if (length(missing) > 0) {
-        updates_log("Installing missing dependencies for sing-box: " + join(", ", missing));
-        run_logged("Updating package lists for sing-box dependencies", pkg_list_update_command(), 30);
+        updates_log("Installing missing dependencies for tachyon-core: " + join(", ", missing));
+        run_logged("Updating package lists for tachyon-core dependencies", pkg_list_update_command(), 30);
 
         for (let kmod in missing) {
             if (!run_logged("Installing dependency " + kmod, pkg_install_name_command(kmod), 60)) {

@@ -69,6 +69,14 @@ function get_byedpi_bin() {
     ]);
 }
 
+function get_desync_bin() {
+    return resolve_binary([
+        getenv("TACHYON_CORE_BIN"),
+        "/usr/bin/tachyon-core",
+        "/usr/bin/sing-box"
+    ]);
+}
+
 function get_zapret2_lua_flags(args_str) {
     if (index(args_str, "--lua-init") >= 0)
         return "";
@@ -135,7 +143,7 @@ function get_timeout_prefix(sec) {
 // forever on system()/pipe.read() wedges the whole fuzzer worker (deadline
 // checks in ucode never get to run), so every blocking call must carry a hard
 // wall-clock bound around the entire subshell.
-const _WATCHDOG_SUBSHELL = "( ( %s ) & _bp=$!; ( sleep %d; kill -9 $_bp 2>/dev/null ) >/dev/null & _bw=$!; wait $_bp 2>/dev/null; _rc=$?; kill -9 $_bw 2>/dev/null; wait $_bw 2>/dev/null; exit $_rc )";
+const _WATCHDOG_SUBSHELL = "( ( %s ) & _bp=$!; ( trap 'kill -9 $_bs 2>/dev/null; exit 0' TERM INT; sleep %d & _bs=$!; wait $_bs 2>/dev/null; kill -9 $_bp 2>/dev/null ) >/dev/null & _bw=$!; wait $_bp 2>/dev/null; _rc=$?; kill -9 $_bw 2>/dev/null; wait $_bw 2>/dev/null; exit $_rc )";
 
 function run_bounded(cmd, sec) {
     sec = sec || 8;
@@ -653,7 +661,7 @@ const TARGET_SUITES = {
     youtube_suite: {
         name: "YouTube Full Suite (Stream + CDN + Web)",
         urls: [
-            { name: "GoogleVideo Stream CDN", url: "https://redirector.googlevideo.com/videoplayback", weight: 60, required: true, probe_kind: "streaming" },
+            { name: "GoogleVideo Stream CDN", url: "https://rr1.googlevideo.com/videoplayback", weight: 60, required: true, probe_kind: "streaming" },
             { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 15, required: false, probe_kind: "tls_http" },
             { name: "Web Interface", url: "https://www.youtube.com/", weight: 25, required: true, probe_kind: "tls_http" }
         ]
@@ -789,6 +797,7 @@ function module_exports() {
         get_zapret2_bin,
         get_zapret_bin,
         get_byedpi_bin,
+        get_desync_bin,
         get_zapret2_lua_flags,
         has_timeout,
         get_timeout_prefix,

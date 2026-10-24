@@ -29,6 +29,20 @@ function core_url_module_or_null() {
     }
 }
 
+// Optional personal access token from UCI (tachyon.settings.github_token).
+// GitHub counts API budget per IP, so everyone behind the same exit (WARP,
+// CGNAT) shares 60 requests/hour; a token lifts that to 5000 per account and
+// is the only thing that helps when the shared IP is exhausted (issue #226).
+function github_api_token() {
+    try {
+        let uci_core = require("core.uci");
+        let settings = (uci_core && uci_core.get_all) ? (uci_core.get_all("tachyon", "settings") || {}) : {};
+        return trim(as_string(settings.github_token || ""));
+    } catch (e) {
+        return "";
+    }
+}
+
 // ============================================================================
 // Plain HTTP
 // ============================================================================
@@ -173,6 +187,9 @@ function http_get_with_body(url, timeout, proxy_address) {
         "-y", "6", "-Y", "32768",
         "-H", "User-Agent: Tachyon-OpenWrt"
     ];
+    let token = github_api_token();
+    if (token != "")
+        push(args, "-H", "Authorization: Bearer " + token);
     if (as_string(proxy_address) != "") {
         push(args, "-x", "http://" + as_string(proxy_address));
     }

@@ -61,6 +61,14 @@ const DEFAULT_PATTERNS = {
         tlsrecs: [ "1+sniext" ],
         ipfrags: [ "24" ]
     },
+    desync: {
+        presets: [ "general", "general_alt", "general_alt2", "general_alt3", "general_fake_tls", "youtube", "discord", "cloudflare" ],
+        modes: [ "fake_split", "fake_disorder", "multisplit", "multidisorder", "tlsrec_split", "fakedsplit", "fakeddisorder", "oob", "syndata" ],
+        splits: [ "1", "2", "midsld", "sni" ],
+        ttls: [ 3, 4, 5, 6, 8 ],
+        fake_snis: [ "www.google.com", "max.ru", "gosuslugi.ru", "sberbank.ru" ],
+        repeats: [ 4, 6, 8 ]
+    },
     custom_strategies: []
 };
 
@@ -990,6 +998,138 @@ const STRATEGIES_BYEDPI = [
     }
 ];
 
+const STRATEGIES_DESYNC = [
+    // ── 1. BUILT-IN CORE PRESETS ───────────────────────────────────────────────
+    {
+        id: "ds_preset_youtube",
+        name: "Native Desync Preset: YouTube",
+        engine: "desync",
+        args: "preset=youtube",
+        description: "Built-in tachyon-core YouTube / GoogleVideo DPI desync profile."
+    },
+    {
+        id: "ds_preset_general",
+        name: "Native Desync Preset: General",
+        engine: "desync",
+        args: "preset=general",
+        description: "Built-in tachyon-core general multi-service DPI desync profile."
+    },
+    {
+        id: "ds_preset_general_fake_tls",
+        name: "Native Desync Preset: General Fake TLS",
+        engine: "desync",
+        args: "preset=general_fake_tls",
+        description: "Fake TLS ClientHello injection with split fragmentation."
+    },
+    {
+        id: "ds_preset_general_alt",
+        name: "Native Desync Preset: General ALT",
+        engine: "desync",
+        args: "preset=general_alt",
+        description: "Alternative general desync profile for stateful TSPU."
+    },
+    {
+        id: "ds_preset_general_alt2",
+        name: "Native Desync Preset: General ALT2",
+        engine: "desync",
+        args: "preset=general_alt2",
+        description: "Alternative profile #2 with low-TTL fake and split."
+    },
+    {
+        id: "ds_preset_general_alt3",
+        name: "Native Desync Preset: General ALT3",
+        engine: "desync",
+        args: "preset=general_alt3",
+        description: "Alternative profile #3 with sequence overlap."
+    },
+    {
+        id: "ds_preset_discord",
+        name: "Native Desync Preset: Discord (TCP + UDP Fake)",
+        engine: "desync",
+        args: "preset=discord udp_fake=true udp_repeats=6",
+        description: "Discord Web/Gateway TLS desync plus UDP voice fake burst."
+    },
+    {
+        id: "ds_preset_cloudflare",
+        name: "Native Desync Preset: Cloudflare Edge",
+        engine: "desync",
+        args: "preset=cloudflare",
+        description: "Optimized for Cloudflare CDN / ECH / SNI inspection."
+    },
+
+    // ── 2. EXPLICIT MODE & PARAMETER STRATEGIES ────────────────────────────────
+    {
+        id: "ds_fake_split_midsld_ttl4",
+        name: "Fake + Split (midsld, TTL=4, max.ru)",
+        engine: "desync",
+        args: "mode=fake_split split_pos=midsld fake_ttl=4 fake_sni=max.ru repeats=6",
+        description: "Low-TTL max.ru fake ClientHello followed by mid-SLD split."
+    },
+    {
+        id: "ds_fake_split_midsld_ttl6",
+        name: "Fake + Split (midsld, TTL=6, www.google.com)",
+        engine: "desync",
+        args: "mode=fake_split split_pos=midsld fake_ttl=6 fake_sni=www.google.com repeats=6",
+        description: "TTL=6 Google fake ClientHello followed by mid-SLD split."
+    },
+    {
+        id: "ds_fake_disorder_midsld_ttl5",
+        name: "Fake + Disorder (midsld, TTL=5, gosuslugi.ru)",
+        engine: "desync",
+        args: "mode=fake_disorder split_pos=midsld fake_ttl=5 fake_sni=gosuslugi.ru repeats=6",
+        description: "Gosuslugi fake ClientHello with out-of-order mid-SLD delivery."
+    },
+    {
+        id: "ds_multisplit_sni",
+        name: "MultiSplit (pos=sni, delay=2ms)",
+        engine: "desync",
+        args: "mode=multisplit split_pos=sni split_delay_ms=2",
+        description: "Multi-segment TLS ClientHello split at SNI extension."
+    },
+    {
+        id: "ds_multidisorder_midsld",
+        name: "MultiDisorder (pos=midsld, delay=2ms)",
+        engine: "desync",
+        args: "mode=multidisorder split_pos=midsld split_delay_ms=2",
+        description: "Out-of-order multi-segment TLS ClientHello at mid-SLD."
+    },
+    {
+        id: "ds_tlsrec_split_sni",
+        name: "TLS Record Split + TCP Split (pos=sni)",
+        engine: "desync",
+        args: "mode=tlsrec_split split_pos=sni",
+        description: "Splits both outer TLS record layer and inner TCP segments at SNI."
+    },
+    {
+        id: "ds_fakedsplit_pos1_ttl4",
+        name: "FakedSplit (pos=1, TTL=4, sberbank.ru)",
+        engine: "desync",
+        args: "mode=fakedsplit split_pos=1 fake_ttl=4 fake_sni=sberbank.ru repeats=6",
+        description: "Interleaves fake segments between real split chunks."
+    },
+    {
+        id: "ds_fakeddisorder_midsld_ttl6",
+        name: "FakedDisorder (pos=midsld, TTL=6, max.ru)",
+        engine: "desync",
+        args: "mode=fakeddisorder split_pos=midsld fake_ttl=6 fake_sni=max.ru repeats=6",
+        description: "Out-of-order real segments interleaved with fake max.ru segments."
+    },
+    {
+        id: "ds_oob_pos1",
+        name: "TCP Out-Of-Band URG Desync (pos=1)",
+        engine: "desync",
+        args: "mode=oob split_pos=1",
+        description: "Injects TCP URG out-of-band byte to confuse stateful DPI reassembly."
+    },
+    {
+        id: "ds_syndata_midsld",
+        name: "TCP SYN Data + Split (pos=midsld)",
+        engine: "desync",
+        args: "mode=syndata split_pos=midsld",
+        description: "Carries initial payload in TCP SYN and splits at mid-SLD."
+    }
+];
+
 const PRESETS_MIRRORS = [
     "https://raw.githubusercontent.com/Dushnilin/tachyon/main/tachyon/files/usr/share/tachyon/dpi-presets.json",
     "https://gh-proxy.com/https://raw.githubusercontent.com/Dushnilin/tachyon/main/tachyon/files/usr/share/tachyon/dpi-presets.json",
@@ -1116,6 +1256,7 @@ function get_patterns_config() {
             zapret2: custom.zapret2 || DEFAULT_PATTERNS.zapret2,
             zapret: custom.zapret || DEFAULT_PATTERNS.zapret,
             byedpi: custom.byedpi || DEFAULT_PATTERNS.byedpi,
+            desync: custom.desync || DEFAULT_PATTERNS.desync,
             custom_strategies: custom.custom_strategies || []
         };
     }
@@ -1501,6 +1642,70 @@ function generate_combinatorial_byedpi() {
     return list;
 }
 
+function generate_combinatorial_desync() {
+    let cfg = get_patterns_config();
+    let p = cfg.desync || DEFAULT_PATTERNS.desync;
+    let list = [];
+    let seen = {};
+
+    let add = function(name, args, desc) {
+        args = trim(as_string(args));
+        if (args == "" || seen[args]) return;
+        if (!fuzzer_runner.validate_strategy_args("desync", args)) return;
+        seen[args] = true;
+        push(list, {
+            id: sprintf("ds_gen_%d", length(list) + 1),
+            name: name,
+            engine: "desync",
+            args: args,
+            description: desc
+        });
+    };
+
+    for (let s in STRATEGIES_DESYNC) add(s.name, s.args, s.description);
+
+    if (cfg.custom_strategies && length(cfg.custom_strategies) > 0) {
+        for (let cs in cfg.custom_strategies) {
+            if (cs && cs.engine == "desync" && cs.args) {
+                add(cs.name || "Custom Desync", cs.args, cs.description || "User custom strategy");
+            }
+        }
+    }
+
+    let presets = p.presets || DEFAULT_PATTERNS.desync.presets;
+    for (let pr in presets) {
+        add(sprintf("Preset: %s", pr), sprintf("preset=%s", pr), "Built-in tachyon-core desync preset");
+    }
+
+    let modes = p.modes || DEFAULT_PATTERNS.desync.modes;
+    let splits = p.splits || [ "1", "2", "midsld", "sni" ];
+    let ttls = p.ttls || [ 3, 4, 5, 6, 8 ];
+    let fake_snis = p.fake_snis || [ "www.google.com", "max.ru", "gosuslugi.ru" ];
+
+    for (let mode in modes) {
+        for (let pos in splits) {
+            if (index(mode, "fake") >= 0) {
+                for (let ttl in ttls) {
+                    for (let fsni in fake_snis) {
+                        add(sprintf("%s (pos=%s, TTL=%d, sni=%s)", mode, pos, ttl, fsni),
+                            sprintf("mode=%s split_pos=%s fake_ttl=%d fake_sni=%s repeats=6", mode, pos, ttl, fsni),
+                            "Combinatorial native desync fake + split/disorder");
+                    }
+                }
+            } else {
+                add(sprintf("%s (pos=%s)", mode, pos),
+                    sprintf("mode=%s split_pos=%s", mode, pos),
+                    "Combinatorial native desync segmentation");
+                add(sprintf("%s (pos=%s, delay=2ms)", mode, pos),
+                    sprintf("mode=%s split_pos=%s split_delay_ms=2", mode, pos),
+                    "Combinatorial native desync segmentation with 2ms delay");
+            }
+        }
+    }
+
+    return list;
+}
+
 // ── Target port profiles ─────────────────────────────────────────────────────
 // The generic lists are all TCP/443 TLS desync, so a Discord run over them cannot
 // find a fix for voice: the traffic the DPI actually touches is UDP STUN/RTP on
@@ -1704,6 +1909,26 @@ function generate_adaptive_strategies(engine, target) {
         }
     }
 
+    if (engine == "desync" || engine == "all") {
+        let add_ds = function(name, args, desc) {
+            args = trim(as_string(args));
+            if (args == "" || seen[args]) return;
+            if (!fuzzer_runner.validate_strategy_args("desync", args)) return;
+            seen[args] = true;
+            push(list, {
+                id: sprintf("adapt_desync_%d", length(list) + 1),
+                name: name,
+                engine: "desync",
+                args: args,
+                description: desc || "Adaptive native desync strategy",
+                rationale: "Synthesized from target profile for tachyon-core desync"
+            });
+        };
+        for (let s in STRATEGIES_DESYNC) {
+            add_ds(s.name, s.args, s.description);
+        }
+    }
+
     // 3. Port-scoped strategies for this target, in the engine's own syntax.
     for (let ps in target_port_strategies(engine, target))
         push(list, ps);
@@ -1749,10 +1974,12 @@ function get_strategies_for_engine(engine, mode, target) {
         if (engine == "zapret2") combo = generate_combinatorial_zapret2();
         else if (engine == "zapret") combo = generate_combinatorial_zapret();
         else if (engine == "byedpi") combo = generate_combinatorial_byedpi();
+        else if (engine == "desync") combo = generate_combinatorial_desync();
         else if (engine == "all") {
             for (let s in generate_combinatorial_zapret2()) push(combo, s);
             for (let s in generate_combinatorial_zapret()) push(combo, s);
             for (let s in generate_combinatorial_byedpi()) push(combo, s);
+            for (let s in generate_combinatorial_desync()) push(combo, s);
         }
 
         let avail_kb = fuzzer_runner.get_system_memory_kb();
@@ -1767,15 +1994,18 @@ function get_strategies_for_engine(engine, mode, target) {
     let has_z2 = binaries.get_zapret2_bin() != null;
     let has_z1 = binaries.get_zapret_bin() != null;
     let has_bd = binaries.get_byedpi_bin() != null;
+    let has_ds = binaries.get_desync_bin() != null;
 
     let base = [];
     if (engine == "zapret2") base = STRATEGIES_ZAPRET2;
     else if (engine == "zapret") { base = []; for (let s in STRATEGIES_ZAPRET) push(base, s); for (let s in STRATEGIES_FLOWSEAL) push(base, s); }
     else if (engine == "byedpi") base = STRATEGIES_BYEDPI;
+    else if (engine == "desync") base = STRATEGIES_DESYNC;
     else if (engine == "all") {
         if (has_z2) for (let s in STRATEGIES_ZAPRET2) push(base, s);
         if (has_z1) { for (let s in STRATEGIES_ZAPRET) push(base, s); for (let s in STRATEGIES_FLOWSEAL) push(base, s); }
         if (has_bd) for (let s in STRATEGIES_BYEDPI) push(base, s);
+        if (has_ds) for (let s in STRATEGIES_DESYNC) push(base, s);
     }
     
     let result = [];
@@ -1938,6 +2168,7 @@ function module_exports() {
         STRATEGIES_ZAPRET,
         STRATEGIES_FLOWSEAL,
         STRATEGIES_BYEDPI,
+        STRATEGIES_DESYNC,
         PATTERNS_FILE,
         BUILTIN_PRESETS_FILE,
         USER_PRESETS_FILE,
@@ -1958,6 +2189,7 @@ function module_exports() {
         generate_combinatorial_zapret2,
         generate_combinatorial_zapret,
         generate_combinatorial_byedpi,
+        generate_combinatorial_desync,
         generate_adaptive_strategies,
         get_strategies_for_engine,
         get_presets_info,
