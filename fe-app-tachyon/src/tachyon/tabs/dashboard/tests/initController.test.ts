@@ -187,4 +187,60 @@ describe('dashboard initController', () => {
     await renderSystemServicesWidget();
     expect(container.replaceChildren).toHaveBeenCalled();
   });
+
+  it('extractTestedTags extracts codes from proxy_list, group, and proxy', async () => {
+    const { extractTestedTags } = await import('../initController');
+
+    // proxy_list
+    expect(
+      extractTestedTags('proxy_list', 'sec', JSON.stringify(['us-1', 'us-2'])),
+    ).toEqual(['us-1', 'us-2']);
+
+    // proxy
+    expect(extractTestedTags('proxy', 'sec', 'de-1')).toEqual(['de-1']);
+    expect(extractTestedTags('proxy', 'sec', '["de-2"]')).toEqual(['de-2']);
+
+    // invalid json in proxy_list
+    expect(extractTestedTags('proxy_list', 'sec', 'invalid')).toEqual([]);
+  });
+
+  it('applyTestedLatenciesResults sets positive delay for responding nodes and -1 for unresponsive nodes', async () => {
+    const { applyTestedLatenciesResults, customProxyLatencies } = await import(
+      '../initController'
+    );
+    const { TachyonShellMethods } = await import('../../../methods');
+
+    const now = Date.now();
+    vi.spyOn(TachyonShellMethods, 'getClashApiProxies').mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'server-ok': {
+            history: [{ time: new Date(now).toISOString(), delay: 145 }],
+          },
+          'server-timeout': {
+            history: [],
+          },
+          'server-old': {
+            history: [
+              { time: new Date(now - 60000).toISOString(), delay: 200 },
+            ],
+          },
+        },
+      } as any,
+    });
+
+    const beforeTimes = new Map<string, string>();
+    beforeTimes.set('server-old', new Date(now - 60000).toISOString());
+
+    await applyTestedLatenciesResults(
+      ['server-ok', 'server-timeout', 'server-old'],
+      now,
+      beforeTimes,
+    );
+
+    expect(customProxyLatencies.get('server-ok')).toBe(145);
+    expect(customProxyLatencies.get('server-timeout')).toBe(-1);
+    expect(customProxyLatencies.get('server-old')).toBe(-1);
+  });
 });
