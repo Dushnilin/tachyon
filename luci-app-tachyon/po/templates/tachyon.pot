@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-24 10:02+0300\n"
-"PO-Revision-Date: 2026-10-24 10:02+0300\n"
+"POT-Creation-Date: 2026-10-24 10:03+0300\n"
+"PO-Revision-Date: 2026-10-24 10:03+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -10121,6 +10121,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:4505
 #: src/helpers/formatOutboundType.ts:411
 #: src/helpers/formatOutboundType.ts:438
+#: src/helpers/formatOutboundType.ts:443
+#: src/helpers/formatOutboundType.ts:445
 msgid "Transport"
 msgstr ""
 

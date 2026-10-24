@@ -436,6 +436,13 @@ export function parseNodeProtocolBreakdown(
     transport.toLowerCase() !== proto.toLowerCase()
   ) {
     rows.push({ label: _('Transport'), value: transport.toUpperCase() });
+  } else if (
+    !hasTransportRow &&
+    (proto === 'HYSTERIA2' || proto === 'HYSTERIA' || proto === 'TUIC')
+  ) {
+    rows.push({ label: _('Transport'), value: 'UDP / QUIC' });
+  } else if (!hasTransportRow && (proto === 'WIREGUARD' || proto === 'AWG')) {
+    rows.push({ label: _('Transport'), value: 'UDP' });
   }
   return { base, rows };
 }
@@ -456,7 +463,7 @@ export function renderProtocolPopoverNodes(
   details?: string,
 ): HTMLElement | null {
   const { base, rows } = parseNodeProtocolBreakdown(type, transport, details);
-  if (rows.length <= 1 && !details) {
+  if (!rows.length) {
     return null;
   }
   return E('div', { class: 'tachyon_proto-popover' }, [

@@ -1,7 +1,38 @@
-import { describe, expect, it } from 'vitest';
-import { formatOutboundType } from '../formatOutboundType';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import {
+  formatOutboundType,
+  parseNodeProtocolBreakdown,
+  renderProtocolPopoverNodes,
+} from '../formatOutboundType';
 
 describe('formatOutboundType', () => {
+  let originalE: any;
+
+  beforeEach(() => {
+    originalE = (globalThis as any).E;
+    (globalThis as any).E = (tag: string, attrs?: any, children?: any) => {
+      const classList = new Set<string>();
+      if (attrs?.class) {
+        attrs.class
+          .split(' ')
+          .filter(Boolean)
+          .forEach((c: string) => classList.add(c));
+      }
+      return {
+        tag,
+        attrs,
+        children,
+        classList: {
+          contains: (cls: string) => classList.has(cls),
+        },
+      };
+    };
+  });
+
+  afterEach(() => {
+    (globalThis as any).E = originalE;
+  });
   it('formats protocol with transport in uppercase parentheses', () => {
     expect(formatOutboundType('VLESS', 'xhttp')).toBe('VLESS (XHTTP)');
     expect(formatOutboundType('vless', 'tcp')).toBe('vless (TCP)');
@@ -20,5 +51,34 @@ describe('formatOutboundType', () => {
       'Priority (Авто) (TCP)',
     );
     expect(formatOutboundType('URLTest (Авто)')).toBe('URLTest (Авто)');
+  });
+
+  it('infers implicit UDP/QUIC transport for Hysteria2 and Tuic in parseNodeProtocolBreakdown', () => {
+    const { rows: h2Rows } = parseNodeProtocolBreakdown('hysteria2');
+    expect(h2Rows).toEqual([
+      { label: 'Protocol', value: 'HYSTERIA2' },
+      { label: 'Transport', value: 'UDP / QUIC' },
+    ]);
+
+    const { rows: tuicRows } = parseNodeProtocolBreakdown('tuic');
+    expect(tuicRows).toEqual([
+      { label: 'Protocol', value: 'TUIC' },
+      { label: 'Transport', value: 'UDP / QUIC' },
+    ]);
+
+    const { rows: awgRows } = parseNodeProtocolBreakdown('awg');
+    expect(awgRows).toEqual([
+      { label: 'Protocol', value: 'AWG' },
+      { label: 'Transport', value: 'UDP' },
+    ]);
+  });
+
+  it('renders popover element for Hysteria2 instead of returning null', () => {
+    const popover = renderProtocolPopoverNodes('hysteria2');
+    expect(popover).not.toBeNull();
+    expect(popover?.classList.contains('tachyon_proto-popover')).toBe(true);
+
+    const empty = renderProtocolPopoverNodes(undefined, undefined, undefined);
+    expect(empty).toBeNull();
   });
 });
