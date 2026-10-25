@@ -68,15 +68,15 @@ function service_enabled() {
 }
 
 function package_version() {
-    let ver = trim(fs.readfile("/etc/olcrtc/.version") || "");
-    if (ver != "")
-        return ver;
     let pkgs = require("core.packages");
     if (pkgs && pkgs.version) {
         let v = pkgs.version("olcrtc");
         if (v != "")
             return v;
     }
+    let ver = trim(fs.readfile("/etc/olcrtc/.version") || "");
+    if (ver != "")
+        return ver;
     return "";
 }
 

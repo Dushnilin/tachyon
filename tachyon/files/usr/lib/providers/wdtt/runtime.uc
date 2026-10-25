@@ -80,16 +80,16 @@ function service_enabled() {
 }
 
 function package_version() {
-    if (qwdtt_installed()) {
-        let ver = trim(fs.readfile("/etc/qwdtt/.version") || "");
-        if (ver != "")
-            return ver;
-    }
     let pkgs = require("core.packages");
     if (pkgs && pkgs.version) {
         let v = pkgs.version("wdtt") || pkgs.version("qwdtt");
         if (v != "")
             return v;
+    }
+    if (qwdtt_installed()) {
+        let ver = trim(fs.readfile("/etc/qwdtt/.version") || "");
+        if (ver != "")
+            return ver;
     }
     return "";
 }
