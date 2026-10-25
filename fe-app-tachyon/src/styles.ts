@@ -13,6 +13,15 @@ ${MonitoringTab.styles}
 ${UpdatesTab.styles}
 ${PartialStyles}
 
+/* Scroll stability & theme anchoring isolation */
+[id^="cbi-${TACHYON_CBI_PREFIX}"],
+.tachyon-view {
+    overflow-anchor: none !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] [data-fs-floor] {
+    min-height: auto !important;
+}
 
 /* Hide extra H3 for settings tab */
 #cbi-${TACHYON_CBI_PREFIX}-settings > h3 {
