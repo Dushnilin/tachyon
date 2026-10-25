@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-25 19:54+0300\n"
-"PO-Revision-Date: 2026-10-25 19:54+0300\n"
+"POT-Creation-Date: 2026-10-25 20:38+0300\n"
+"PO-Revision-Date: 2026-10-25 20:38+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1700,8 +1700,8 @@ msgstr "Отключить QUIC"
 msgid "Disable autostart"
 msgstr "Отключить автостарт"
 
-msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled also rejects QUIC handed to the proxy; All rejects every UDP/443 outright."
-msgstr "Отключает протокол QUIC для улучшения совместимости или решения проблем с воспроизведением видео. «Через туннель» также отклоняет QUIC, переданный прокси; «Все» отклоняет весь UDP/443 напрямую."
+msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled rejects QUIC for proxied traffic; All rejects every UDP/443 outright."
+msgstr "Отключает протокол QUIC (HTTP/3) для улучшения совместимости или решения проблем с видео. «Только для прокси»: блокировать QUIC для проксируемого трафика; «Да»: блокировать весь UDP/443."
 
 msgid "Disabled"
 msgstr "Отключено"
@@ -4214,6 +4214,9 @@ msgstr "По одному домену на строку. Список сохр�
 msgid "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."
 msgstr "Одна запись на строку: <code>example.com 192.168.1.100</code> или <code>192.168.1.100 example.com</code>. Строки, начинающиеся с <code>#</code>, игнорируются."
 
+msgid "Only for proxy"
+msgstr "Только для прокси"
+
 msgid "Only from the specified countries."
 msgstr "Только из указанных стран."
 
@@ -6617,9 +6620,6 @@ msgstr "Вторник"
 msgid "Tunnel MTU"
 msgstr "MTU туннеля"
 
-msgid "Tunneled"
-msgstr "Через туннель"
-
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
 
@@ -7169,6 +7169,9 @@ msgstr "Секретный ключ YACD"
 msgid "Yes"
 msgstr "Да"
 
+msgid "Yes (all traffic)"
+msgstr "Да (для всего трафика)"
+
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
 
@@ -7510,6 +7513,12 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled also rejects QUIC handed to the proxy; All rejects every UDP/443 outright."
+msgstr "Отключает протокол QUIC для улучшения совместимости или решения проблем с воспроизведением видео. «Через туннель» также отклоняет QUIC, переданный прокси; «Все» отклоняет весь UDP/443 напрямую."
+
+msgid "Tunneled"
+msgstr "Через туннель"
 
 msgid "Transports to race (e.g. h3_datagram, h3_stream, h2, ws, raw_tls)"
 msgstr ""

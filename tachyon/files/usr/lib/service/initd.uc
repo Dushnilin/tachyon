@@ -24,6 +24,7 @@ const PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || RUNTIME_STA
 const START_RETRY_FILE = getenv("TACHYON_START_RETRY_FILE") || RUNTIME_STATE_DIR + "/start.retry";
 const START_RETRY_PID_FILE = getenv("TACHYON_START_RETRY_PID_FILE") || RUNTIME_STATE_DIR + "/start-retry.pid";
 const START_RETRY_DELAY_SECONDS = getenv("TACHYON_START_RETRY_DELAY_SECONDS") || "30";
+const BOOT_COMPLETED_FILE = getenv("TACHYON_BOOT_COMPLETED_FILE") || RUNTIME_STATE_DIR + "/boot_completed";
 const SERVICE_TRIGGER_SYNC_FILE = getenv("TACHYON_SERVICE_TRIGGER_SYNC_FILE") || RUNTIME_STATE_DIR + "/service-triggers.sync";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/tachyon.internal-config-change";
 const CONFIG_CHANGE_REASON = getenv("TACHYON_CONFIG_CHANGE_REASON") || "on_config_change";
@@ -494,23 +495,29 @@ function service_is_enabled() {
     return file_exists("/etc/rc.d/S99" + SERVICE_NAME);
 }
 
-function retry_start_on_wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value) {
+function retry_start_on_wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value, shutdown_correctly_value) {
     if (bool_text(runtime_running_value))
         return "skip_running";
     if (!bool_text(service_enabled_value))
         return "skip_disabled";
-    if (!bool_text(retry_pending_value))
-        return "skip_no_retry";
-    return "restart";
+    if (bool_text(retry_pending_value))
+        return "restart";
+    if (shutdown_correctly_value != null && as_string(shutdown_correctly_value) == "0")
+        return "restart";
+    return "skip_no_retry";
 }
 
 function retry_start_on_wan_up(owner_pid) {
     let running = runtime_is_running();
     let enabled = service_is_enabled();
+    let retry_pending = start_retry_pending(START_RETRY_FILE);
+    let boot_completed = file_exists(BOOT_COMPLETED_FILE) || file_exists(RELOAD_STATE_FILE);
+    let shutdown_correctly = option(uci_settings(), "shutdown_correctly", "1");
     let action = retry_start_on_wan_up_action(
         running ? "1" : "0",
         enabled ? "1" : "0",
-        start_retry_pending(START_RETRY_FILE) ? "1" : "0"
+        retry_pending ? "1" : "0",
+        (boot_completed && shutdown_correctly == "0") ? "0" : "1"
     );
 
     if (action == "skip_running" || action == "skip_disabled") {
@@ -523,7 +530,10 @@ function retry_start_on_wan_up(owner_pid) {
     if (action != "restart")
         return 0;
 
-    command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Retrying failed Tachyon start after WAN came up" ]);
+    let log_msg = retry_pending ?
+        "[info] Retrying failed Tachyon start after network came up" :
+        "[info] Restoring Tachyon service and routing after network restart";
+    command_success_from_args([ "logger", "-t", SERVICE_NAME, log_msg ]);
     // Do NOT call SERVICE_INIT here: rc.common holds flock 1000 for the whole
     // duration of the init.d script, so a nested /etc/init.d/tachyon call would
     // block forever waiting for that same lock (recursive flock self-deadlock).
@@ -625,6 +635,8 @@ function sync_agent_gateway_symlink() {
 }
 
 function boot_service(owner_pid) {
+    ensure_parent_dir(BOOT_COMPLETED_FILE);
+    write_text_file(BOOT_COMPLETED_FILE, "1\n");
     let settings = uci_settings();
     if (option(settings, "shutdown_correctly", "1") == "0") {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Unclean reboot detected; restoring dnsmasq to failsafe" ]);
@@ -648,6 +660,8 @@ function start_service(reason, owner_pid) {
 
     let status = command_status(start_command);
     if (status == 0) {
+        ensure_parent_dir(BOOT_COMPLETED_FILE);
+        write_text_file(BOOT_COMPLETED_FILE, "1\n");
         clear_start_retry(START_RETRY_FILE);
         cancel_scheduled_start_retry(START_RETRY_PID_FILE);
     }
@@ -710,7 +724,11 @@ function restart_service(owner_pid) {
     }
 
     let status = command_status_from_args([ BIN_PATH, "restart" ]);
-    if (status != 0) {
+    if (status == 0) {
+        ensure_parent_dir(BOOT_COMPLETED_FILE);
+        write_text_file(BOOT_COMPLETED_FILE, "1\n");
+    }
+    else {
         mark_start_retry(START_RETRY_FILE, "restart_failed");
         schedule_start_retry(START_RETRY_PID_FILE, START_RETRY_DELAY_SECONDS);
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Tachyon restart failed; scheduled an automatic retry" ]);
@@ -823,7 +841,7 @@ function trigger_plan(settings) {
 
     print("delay\t", delay, "\n");
     print("config\tconfig.change\t", CONFIG_NAME, "\t", SERVICE_INIT, "\treload\t", CONFIG_CHANGE_REASON, "\n");
-    let retry_ifaces = [ "wan", "wwan", "lte", "modem" ];
+    let retry_ifaces = [ "wan", "wwan", "lte", "modem", "lan" ];
     for (let iface in retry_ifaces)
         print("interface\tinterface.*.up\t", iface, "\t", SERVICE_INIT, "\tretry_start_on_wan_up\t\n");
 
@@ -848,7 +866,7 @@ else if (mode == "status-service")
 else if (mode == "retry-start-on-wan-up")
     exit(retry_start_on_wan_up(ARGV[1]));
 else if (mode == "retry-start-on-wan-up-action")
-    print(retry_start_on_wan_up_action(ARGV[1], ARGV[2], ARGV[3]), "\n");
+    print(retry_start_on_wan_up_action(ARGV[1], ARGV[2], ARGV[3], ARGV[4]), "\n");
 else if (mode == "service-enabled")
     exit(service_is_enabled() ? 0 : 1);
 else if (mode == "mark-start-retry")

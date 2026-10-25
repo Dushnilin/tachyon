@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-25 16:54+0300\n"
-"PO-Revision-Date: 2026-10-25 16:54+0300\n"
+"POT-Creation-Date: 2026-10-25 17:38+0300\n"
+"PO-Revision-Date: 2026-10-25 17:38+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -448,7 +448,6 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2532
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2743
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2808
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:537
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:525
 #: src/tachyon/tabs/monitoring/initController.ts:337
@@ -2696,7 +2695,7 @@ msgid "Disable autostart"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2802
-msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled also rejects QUIC handed to the proxy; All rejects every UDP/443 outright."
+msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled rejects QUIC for proxied traffic; All rejects every UDP/443 outright."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3377
@@ -6177,6 +6176,7 @@ msgid "Next"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2806
 #: src/tachyon/tabs/dashboard/initController.ts:1176
 #: src/tachyon/tabs/dashboard/initController.ts:1180
 #: src/tachyon/tabs/dashboard/initController.ts:1279
@@ -6604,7 +6604,6 @@ msgid "Observed test queries"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:5755
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2806
 msgid "Off"
 msgstr ""
 
@@ -6658,6 +6657,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10907
 msgid "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2807
+msgid "Only for proxy"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:4626
@@ -10427,10 +10430,6 @@ msgstr ""
 msgid "Tunnel MTU"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2807
-msgid "Tunneled"
-msgstr ""
-
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:14542
 msgid "Turkey (tr)"
 msgstr ""
@@ -11321,6 +11320,10 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/tabs/dashboard/initController.ts:1176
 msgid "Yes"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2808
+msgid "Yes (all traffic)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2618

@@ -2800,12 +2800,12 @@ function createSettingsContent(section, capabilities) {
     "disable_quic",
     _("Disable QUIC"),
     _(
-      "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled also rejects QUIC handed to the proxy; All rejects every UDP/443 outright.",
+      "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled rejects QUIC for proxied traffic; All rejects every UDP/443 outright.",
     ),
   );
-  o.value("off", _("Off"));
-  o.value("tunneled", _("Tunneled"));
-  o.value("all", _("All"));
+  o.value("off", _("No"));
+  o.value("tunneled", _("Only for proxy"));
+  o.value("all", _("Yes (all traffic)"));
   o.default = "off";
   o.rmempty = false;
   o.cfgvalue = function (section_id) {

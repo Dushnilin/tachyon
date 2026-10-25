@@ -1602,25 +1602,18 @@ function sqm_service_enabled() {
 }
 
 function nft_add_quic_block_rule(table, interface_set, fakeip_mark, mode) {
-    // disable_quic also has to cover traffic that never reaches sing-box.
-    // The route rules in singbox/route.uc can only reject a connection they are
-    // handed, so a client whose destination is never marked for tproxy keeps
-    // using HTTP/3 straight to the internet, where the local DPI mangles it.
-    // Rejecting UDP/443 covers exactly that gap. "tunneled" leaves marked
-    // traffic alone so sing-box still decides; "all" has no mark condition and
-    // rejects every UDP/443 at the door.
+    // disable_quic forces clients to fall back from HTTP/3 (QUIC) to TCP.
+    // "tunneled" rejects QUIC packets marked for proxy/tproxy, allowing direct
+    // traffic to keep using QUIC. "all" rejects every incoming UDP/443 at the door.
     //
     // reject, not drop: a client whose QUIC is dropped waits for its own
     // timeout before falling back to TCP, while an ICMP port-unreachable makes
     // the fallback immediate.
     //
-    // UDP only. "meta l4proto udp tcp" is one nft expression naming two
-    // protocols, which the kernel rejects with "conflicting transport layer
-    // protocols" - and the rule this replaced dropped TCP/443 too, taking the
-    // whole HTTPS path down with it.
+    // UDP only: avoid conflicting L4 protocol expressions in nftables.
     let rule = [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "udp", "th", "dport", "443" ];
-    if (mode != "all")
-        append_array(rule, [ "meta", "mark", "&", as_string(fakeip_mark), "!=", as_string(fakeip_mark) ]);
+    if (mode == "tunneled")
+        append_array(rule, [ "meta", "mark", "&", as_string(fakeip_mark), "==", as_string(fakeip_mark) ]);
     append_array(rule, [ "counter", "reject", "with", "icmpx", "type", "port-unreachable" ]);
     return nft_add_rule(table, "mangle", rule);
 }

@@ -145,6 +145,10 @@ grep -Fxq 'retry_start_on_wan_up' "$retry_call_file" ||
   fail "WAN retry should skip when autostart is disabled"
 [ "$(initd_ucode retry-start-on-wan-up-action 0 1 0)" = "skip_no_retry" ] ||
   fail "WAN retry should skip stopped service without failed-start marker"
+[ "$(initd_ucode retry-start-on-wan-up-action 0 1 0 0)" = "restart" ] ||
+  fail "WAN retry should restart stopped service when unclean shutdown or network restart occurred"
+[ "$(initd_ucode retry-start-on-wan-up-action 0 1 0 1)" = "skip_no_retry" ] ||
+  fail "WAN retry should skip stopped service when shutdown was clean"
 [ "$(initd_ucode retry-start-on-wan-up-action 0 1 1)" = "restart" ] ||
   fail "WAN retry should restart only after a recorded failed start"
 

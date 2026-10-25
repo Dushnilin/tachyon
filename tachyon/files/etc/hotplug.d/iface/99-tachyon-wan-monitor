@@ -2,7 +2,7 @@
 # Hotplug handler for WAN retry on boot and interface state monitoring
 
 case "$INTERFACE" in
-    wan*|wwan*|lte*|modem*)
+    wan*|wwan*|lte*|modem*|pppoe*|lan*)
         case "$ACTION" in
             ifup)
                 /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &

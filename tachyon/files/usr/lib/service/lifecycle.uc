@@ -1704,8 +1704,10 @@ function reload(reason) {
         as_string(getenv("TACHYON_RUNTIME_CACHE_INVALIDATED") || "0") != "1" &&
         current_config_hash() == last_completed_reload_hash() &&
         !module_success(SUBSCRIPTION_CACHE_UC, [ "runtime-cache-needs-rebuild", SECTION_CACHE_DIR ])) {
-        log_message("Reload skipped: configuration is unchanged", "info");
-        return 0;
+        if (module_success(STATE_UC, [ "tachyon-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
+            log_message("Reload skipped: configuration is unchanged", "info");
+            return 0;
+        }
     }
 
     status = validate_start_config();
