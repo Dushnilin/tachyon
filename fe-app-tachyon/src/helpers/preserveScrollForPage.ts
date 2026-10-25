@@ -61,7 +61,7 @@ export function _resetUserScrollTrackingForTest() {
   activeDocLocks = 0;
 }
 
-export function isUserActivelyScrolling(thresholdMs = 800): boolean {
+export function isUserActivelyScrolling(thresholdMs = 1000): boolean {
   return Date.now() - lastUserScrollTime < thresholdMs;
 }
 
@@ -106,8 +106,15 @@ export function preserveScrollForPage(
 
   const pos = getScrollPosition();
 
+  // Only lock documentElement height when window itself is the scrolling element.
+  // In container-scrolling themes (e.g. Footstrap's #maincontent), documentElement has a fixed
+  // 100svh height, and setting minHeight on <html> causes layout distortion and reflow loops.
+  const isWindowScroll =
+    pos.target === (typeof window !== 'undefined' ? window : null);
   const root =
-    typeof document !== 'undefined' ? document.documentElement : null;
+    isWindowScroll && typeof document !== 'undefined'
+      ? document.documentElement
+      : null;
   const prevDocHeight = root ? root.scrollHeight : 0;
   if (root && prevDocHeight > 0 && root.style) {
     activeDocLocks += 1;
@@ -151,14 +158,19 @@ export function preserveScrollForPage(
     }
 
     // If the user has scrolled or interacted recently, do not fight the user's scroll gesture.
-    if (isUserActivelyScrolling()) {
+    if (isUserActivelyScrolling(1000)) {
       return;
     }
 
     const currentPos = getScrollPosition();
 
-    // Only restore if layout shift caused the scroll position to jump
-    if (Math.abs(currentPos.top - pos.top) > 2) {
+    // Only restore if layout shift caused the scroll position to jump downward (clamped).
+    // Do NOT pull the user back if they scrolled further down (currentPos.top >= pos.top).
+    // Layout shift typically collapses scroll downward (currentPos.top < pos.top).
+    const hasClampedShift =
+      pos.top > 0 && currentPos.top < pos.top && pos.top - currentPos.top > 2;
+
+    if (hasClampedShift) {
       isProgrammaticScroll = true;
       if (pos.target === window) {
         window.scrollTo({ top: pos.top });

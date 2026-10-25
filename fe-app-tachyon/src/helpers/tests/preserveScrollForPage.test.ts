@@ -127,8 +127,47 @@ describe('preserveScrollForPage', () => {
     });
 
     // Advance past user scroll threshold and animation frame
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1100);
 
     expect(scrollToMock).toHaveBeenCalledWith({ top: 400 });
+  });
+
+  it('does NOT pull user back if user scrolled further down during render', () => {
+    const scrollToMock = (globalThis as any).window.scrollTo;
+    (globalThis as any).window.scrollY = 300;
+
+    preserveScrollForPage(() => {
+      // User scrolled further down to 500
+      (globalThis as any).window.scrollY = 500;
+    });
+
+    vi.advanceTimersByTime(1100);
+
+    expect(scrollToMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT set documentElement minHeight when scrolling container is #maincontent', () => {
+    const mainContentEl = {
+      scrollTop: 350,
+      scrollHeight: 1500,
+      style: {},
+    };
+    (globalThis as any).document.getElementById = (id: string) =>
+      id === 'maincontent' ? mainContentEl : null;
+
+    preserveScrollForPage(() => {
+      // Main content was clamped down due to container collapse
+      mainContentEl.scrollTop = 50;
+    });
+
+    // documentElement minHeight should NOT have been locked
+    expect(
+      (globalThis as any).document.documentElement.style.minHeight,
+    ).toBeUndefined();
+
+    vi.advanceTimersByTime(1100);
+
+    // maincontent scrollTop should be restored
+    expect(mainContentEl.scrollTop).toBe(350);
   });
 });

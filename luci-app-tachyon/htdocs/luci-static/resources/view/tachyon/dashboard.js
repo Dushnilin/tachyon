@@ -13,6 +13,26 @@ function createDashboardContent(section) {
     main.DashboardTab.initController();
     return main.DashboardTab.render();
   };
+
+  const originalRender = section.render;
+  section.render = function () {
+    return originalRender.apply(this, arguments).then((node) => {
+      if (node) {
+        node.style.overflowAnchor = "none";
+        const directDiv = node.querySelector(":scope > .cbi-section-node");
+        if (directDiv && directDiv.tagName === "DIV") {
+          const semanticSection = document.createElement("section");
+          semanticSection.className = directDiv.className;
+          if (directDiv.id) semanticSection.id = directDiv.id;
+          while (directDiv.firstChild) {
+            semanticSection.appendChild(directDiv.firstChild);
+          }
+          directDiv.replaceWith(semanticSection);
+        }
+      }
+      return node;
+    });
+  };
 }
 
 const EntryPoint = {
