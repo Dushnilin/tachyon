@@ -11763,7 +11763,12 @@ function createSectionContent(section) {
           ? el
           : el.querySelector("input:not([type='hidden']),select,textarea"));
       if (w) {
-        w.value = str;
+        if (w.type === "checkbox") {
+          w.checked =
+            str === "1" || str === "true" || str === "on" || str === "yes";
+        } else {
+          w.value = str;
+        }
         w.dispatchEvent(new Event("input", { bubbles: true }));
         w.dispatchEvent(new Event("change", { bubbles: true }));
       }
@@ -11956,28 +11961,22 @@ function createSectionContent(section) {
           setVal("awg_reject_after_time", rja);
           setVal("awg_keepalive_timeout", kpt);
           setVal("awg_max_handshake_attempts", mha);
-          uci.set(
-            UCI_PACKAGE,
-            section_id,
-            "awg_random_trailers",
-            /^(1|true|yes|on)$/i.test(String(randomTrailers).trim())
-              ? "1"
-              : "0",
-          );
-          uci.set(
-            UCI_PACKAGE,
-            section_id,
-            "awg_disable_cookies",
-            /^(1|true|yes|on)$/i.test(String(disableCookies).trim())
-              ? "1"
-              : "0",
-          );
+          const rtVal = /^(1|true|yes|on)$/i.test(String(randomTrailers).trim())
+            ? "1"
+            : "0";
+          setVal("awg_random_trailers", rtVal);
+          const dcVal = /^(1|true|yes|on)$/i.test(String(disableCookies).trim())
+            ? "1"
+            : "0";
+          setVal("awg_disable_cookies", dcVal);
         } else {
           setVal("awg_rekey_after_time", "");
           setVal("awg_rekey_timeout", "");
           setVal("awg_reject_after_time", "");
           setVal("awg_keepalive_timeout", "");
           setVal("awg_max_handshake_attempts", "");
+          setVal("awg_random_trailers", "0");
+          setVal("awg_disable_cookies", "0");
           uci.unset(UCI_PACKAGE, section_id, "awg_rekey_after_time");
           uci.unset(UCI_PACKAGE, section_id, "awg_rekey_timeout");
           uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
@@ -13392,7 +13391,12 @@ function createSectionContent(section) {
           ? el
           : el.querySelector("input:not([type='hidden']),select,textarea"));
       if (w) {
-        w.value = str;
+        if (w.type === "checkbox") {
+          w.checked =
+            str === "1" || str === "true" || str === "on" || str === "yes";
+        } else {
+          w.value = str;
+        }
         w.dispatchEvent(new Event("input", { bubbles: true }));
         w.dispatchEvent(new Event("change", { bubbles: true }));
       }
@@ -14342,6 +14346,47 @@ function createSectionContent(section) {
   );
   o.default = "1";
   o.rmempty = true;
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "fail_policy_check_interval",
+    _("Fail Policy Check Interval (s)"),
+    _("Interval in seconds between failure check probes when the section is healthy (e.g. 15)."),
+  );
+  o.datatype = "range(1,3600)";
+  o.placeholder = "15";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "fail_policy_recover_interval",
+    _("Fail Policy Recovery Interval (s)"),
+    _("Interval in seconds between recovery probes when the section is in failed state (e.g. 60)."),
+  );
+  o.datatype = "range(1,3600)";
+  o.placeholder = "60";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
+  o.depends("fail_policy", "direct");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "fail_policy_expected_status",
+    _("Fail Policy Expected HTTP Status"),
+    _("Expected HTTP status code(s) for probe success (e.g. 200, 204). Leave empty for any completed request."),
+  );
+  o.placeholder = "204";
+  o.rmempty = true;
+  o.depends("fail_policy", "block");
   o.depends("fail_policy", "direct");
   o.modalonly = true;
 

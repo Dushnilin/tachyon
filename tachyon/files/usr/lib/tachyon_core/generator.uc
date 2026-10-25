@@ -120,6 +120,7 @@ let reserve_section_outbound_tags = null;
 let add_outbound_for_section = null;
 let add_group_urltest_outbounds = null;
 let add_service_route_rules = null;
+let add_full_tunnel_route_rule = null;
 let add_route_for_section = null;
 let add_server_routes = null;
 let ensure_custom_ruleset = null;
@@ -2067,6 +2068,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     add_source_aware_dns_fallback(config, source_aware_dns);
     add_excluded_clients_dns_rule(config, settings);
     add_excluded_clients_route_rule(config, settings);
+    add_full_tunnel_route_rule(config, sections);
 
     // Append dns_hosts predefined rules AFTER section DNS rules so that
     // FakeIP/section-level DNS routing takes precedence over hardcoded IPs
@@ -2252,6 +2254,7 @@ reserve_section_outbound_tags = generator_routes.reserve_section_outbound_tags;
 add_outbound_for_section = generator_routes.add_outbound_for_section;
 add_group_urltest_outbounds = generator_routes.add_group_urltest_outbounds;
 add_service_route_rules = generator_routes.add_service_route_rules;
+add_full_tunnel_route_rule = generator_routes.add_full_tunnel_route_rule;
 add_route_for_section = generator_routes.add_route_for_section;
 add_server_routes = generator_routes.add_server_routes;
 ensure_custom_ruleset = generator_routes.ensure_custom_ruleset;

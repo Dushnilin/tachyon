@@ -1037,7 +1037,9 @@ function section_is_active_provider(section, action) {
     if (action != null && action != "" && option(section, "action", "") != action)
         return false;
 
-    return section_has_routing_matchers(section) || bool_option(section, "match_all", false);
+    return section_has_routing_matchers(section) ||
+        bool_option(section, "match_all", false) ||
+        bool_option(section, "mixed_proxy_enabled", false);
 }
 
 function active_provider_sections(action, sections) {

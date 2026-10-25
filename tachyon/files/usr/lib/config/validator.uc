@@ -1783,8 +1783,10 @@ function validate_rule(section, sections, context) {
         fptn: "FPTN"
     };
     if (provider_labels[action] != null) {
-        if (!connections.section_has_routing_matchers(section) && !bool_option(section, "match_all", false))
-            fail_validation(provider_labels[action] + " rule '" + name + "' has no routing conditions. Add domains, community lists, IP/subnet/port/protocol matchers or enable Match All explicitly. Aborted.");
+        if (!connections.section_has_routing_matchers(section) &&
+            !bool_option(section, "match_all", false) &&
+            !bool_option(section, "mixed_proxy_enabled", false))
+            fail_validation(provider_labels[action] + " rule '" + name + "' has no routing conditions. Add domains, community lists, IP/subnet/port/protocol matchers, enable Mixed Proxy, or enable Match All explicitly. Aborted.");
     }
 
     if (connections.is_connections_action(action) || action == "fptn") {
@@ -2373,6 +2375,31 @@ function sing_box_is_tachyon_core(ctx, version) {
     return sing_box_version_is_foreign_core(version != null ? version : get_sing_box_version(ctx)) || sing_box_tachyon_core_marker_set(ctx);
 }
 
+function validate_routing_strategy(settings, sections) {
+    let mode = lc(trim(option(settings, "routing_strategy", option(settings, "global_routing_mode", "split"))));
+    if (mode != "" && mode != "split" && mode != "full_tunnel")
+        fail_validation("Unsupported routing strategy '" + mode + "'. Expected split or full_tunnel. Aborted.");
+    if (mode == "full_tunnel") {
+        let def_tunnel = trim(option(settings, "default_tunnel_section", ""));
+        let has_tunnel_candidate = false;
+        let found_def = false;
+        for (let s in sections) {
+            if (!bool_option(s, "enabled", true))
+                continue;
+            let action = option(s, "action", "");
+            if (connections.is_connections_action(action) || action == "awg" || action == "fptn" || action == "group") {
+                has_tunnel_candidate = true;
+                if (s[".name"] == def_tunnel)
+                    found_def = true;
+            }
+        }
+        if (!has_tunnel_candidate)
+            fail_validation("Full tunnel strategy requires at least one enabled proxy/VPN/group section. Aborted.");
+        if (def_tunnel != "" && !found_def)
+            fail_validation("Full tunnel default section '" + def_tunnel + "' was not found or is not an active proxy/VPN/group section. Aborted.");
+    }
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
@@ -2416,6 +2443,7 @@ function validate_runtime_config(context) {
     let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
     if (bt_policy != "" && !contains([ "off", "direct", "block" ], bt_policy))
         fail_validation("Unsupported BitTorrent policy '" + bt_policy + "'. Use off, direct, or block. Aborted.");
+    validate_routing_strategy(settings, sections);
 
     if (download_via_proxy_enabled(settings, "lists")) {
         validate_download_section_rows(

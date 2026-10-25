@@ -3182,11 +3182,45 @@ function add_service_route_rules(config, sections) {
             domain: runtime_constants.CHECK_PROXY_IP_DOMAIN
         }, catchall_target);
     }
+
     push(config.route.rules, {
         action: "route-options",
         domain: runtime_constants.FAKEIP_TEST_DOMAIN,
         override_port: 8443
     });
+}
+
+function add_full_tunnel_route_rule(config, sections) {
+    let settings = object_or_empty(ctx.uci_cursor().get_all(CONFIG_NAME, "settings"));
+    let is_full_tunnel = option(settings, "routing_strategy", option(settings, "global_routing_mode", "split")) == "full_tunnel";
+    if (!is_full_tunnel)
+        return;
+
+    let def_tunnel_name = trim(option(settings, "default_tunnel_section", ""));
+    let full_tunnel_target = "";
+    if (def_tunnel_name != "") {
+        let def_sec = section_by_name(sections, def_tunnel_name);
+        if (def_sec != null && section_enabled(def_sec))
+            full_tunnel_target = group_outbound_tag_for_section(def_sec) || outbound_tag(def_tunnel_name);
+    }
+    if (full_tunnel_target == "") {
+        for (let section in sections) {
+            if (!section_enabled(section))
+                continue;
+            let action = option(section, "action", "");
+            if (connections.is_connections_action(action) || action == "awg" || action == "fptn" || action == "group") {
+                full_tunnel_target = group_outbound_tag_for_section(section) || outbound_tag(section[".name"]);
+                break;
+            }
+        }
+    }
+    if (full_tunnel_target != "") {
+        push_section_route_rule(config, {
+            action: "route",
+            inbound: tproxy_inbound_matcher(),
+            outbound: full_tunnel_target
+        }, full_tunnel_target);
+    }
 }
 
 function enabled_sections() {
@@ -3420,6 +3454,7 @@ return {
     reserve_section_outbound_tags,
     add_route_for_section,
     add_service_route_rules,
+    add_full_tunnel_route_rule,
     enabled_sections,
     enabled_servers,
     section_by_name,

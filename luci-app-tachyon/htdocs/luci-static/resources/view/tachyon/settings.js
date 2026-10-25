@@ -90,6 +90,7 @@ function isDownloadSectionAction(action, capabilities) {
     case "proxy":
     case "outbound":
     case "vpn":
+    case "group":
     case "fptn":
     case "awg":
     case "warp":
@@ -154,6 +155,43 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
   };
   option.validate = function (_section_id, value) {
     return value ? true : _("Select a section");
+  };
+}
+
+function configureDefaultTunnelSectionOption(option, sectionOption, capabilities) {
+  option.default = "";
+  option.rmempty = true;
+  option.cfgvalue = function (section_id) {
+    return uci.get(UCI_PACKAGE, section_id, sectionOption) || "";
+  };
+  option.load = function (section_id) {
+    const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+    this.keylist = [""];
+    this.vallist = [
+      _tr("Автоматически (первая активная секция)", "Auto (First available active section)"),
+    ];
+    for (const secName in sections) {
+      const sec = sections[secName];
+      if (
+        sec[".type"] === "section" &&
+        sec.enabled !== "0" &&
+        isDownloadSectionAction(sec.action, capabilities)
+      ) {
+        this.value(secName, sec.label || secName);
+      }
+    }
+    return this.cfgvalue(section_id);
+  };
+  option.write = function (section_id, value) {
+    const normalized = value ? `${value}`.trim() : "";
+    if (normalized) {
+      uci.set(UCI_PACKAGE, section_id, sectionOption, normalized);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, sectionOption);
+    }
+  };
+  option.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, sectionOption);
   };
 }
 
@@ -2571,6 +2609,34 @@ function createSettingsContent(section, capabilities) {
   );
   o.depends("dns_detour_enabled", "1");
   configureDownloadSectionOption(o, "dns_detour_section", capabilities);
+
+  o = section.taboption(
+    "network",
+    form.ListValue,
+    "routing_strategy",
+    _tr("Глобальная стратегия маршрутизации", "Global Routing Strategy"),
+    _tr(
+      "Выберите общую модель маршрутизации: выборочный обход (по спискам секций) или «Всё в туннель» (весь трафик через прокси, кроме исключений).",
+      "Choose overall routing model: Selective split routing (only domains/subnets from sections go to proxy) or Full tunnel (all traffic routes through proxy, sections define exceptions and bypasses).",
+    ),
+  );
+  o.value("split", _tr("Выборочная маршрутизация (по умолчанию)", "Selective Split Routing (Default)"));
+  o.value("full_tunnel", _tr("Всё в туннель, кроме исключений", "Full Tunnel (All traffic via proxy, exceptions direct)"));
+  o.default = "split";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "network",
+    form.ListValue,
+    "default_tunnel_section",
+    _tr("Основная секция для туннеля", "Default Tunnel Section"),
+    _tr(
+      "Секция (прокси, VPN или группа), через которую будет направляться весь остальной трафик в режиме «Всё в туннель».",
+      "Section (proxy, VPN, or group) through which all remaining traffic will be routed in Full Tunnel mode.",
+    ),
+  );
+  o.depends("routing_strategy", "full_tunnel");
+  configureDefaultTunnelSectionOption(o, "default_tunnel_section", capabilities);
 
   o = section.taboption(
     "network",
