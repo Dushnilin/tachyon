@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-25 21:53+0300\n"
-"PO-Revision-Date: 2026-10-25 21:53+0300\n"
+"POT-Creation-Date: 2026-10-25 22:46+0300\n"
+"PO-Revision-Date: 2026-10-25 22:46+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2138,6 +2138,9 @@ msgstr "Исключённые серверы"
 msgid "Expand detected subdomains to root domain"
 msgstr "Расширять обнаруженные поддомены до корневого домена"
 
+msgid "Expected HTTP status code(s) for probe success (e.g. 200, 204). Leave empty for any completed request."
+msgstr ""
+
 msgid "Expecting: %s"
 msgstr "Ожидалось: %s"
 
@@ -2204,7 +2207,13 @@ msgstr "SNI для FPTN"
 msgid "FPTN section accepts only fptn:// or fptnb:// links"
 msgstr "Секция FPTN принимает только ссылки fptn:// или fptnb://"
 
+msgid "Fail Policy Check Interval (s)"
+msgstr ""
+
 msgid "Fail Policy Cooldown (s)"
+msgstr ""
+
+msgid "Fail Policy Expected HTTP Status"
 msgstr ""
 
 msgid "Fail Policy Failure Threshold"
@@ -2214,6 +2223,9 @@ msgid "Fail Policy Probe Timeout (ms)"
 msgstr ""
 
 msgid "Fail Policy Probe URLs"
+msgstr ""
+
+msgid "Fail Policy Recovery Interval (s)"
 msgstr ""
 
 msgid "Fail Policy Recovery Threshold"
@@ -3114,6 +3126,12 @@ msgid "Interval"
 msgstr "Интервал"
 
 msgid "Interval between URLTest latency checks (e.g. 3m, 30s)"
+msgstr ""
+
+msgid "Interval in seconds between failure check probes when the section is healthy (e.g. 15)."
+msgstr ""
+
+msgid "Interval in seconds between recovery probes when the section is in failed state (e.g. 60)."
 msgstr ""
 
 msgid "Invalid Amnezia .conf file"

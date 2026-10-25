@@ -134,6 +134,12 @@ grep -Fq 'check_section_fail_policies' "$FAILOVER_UC" ||
   fail "service/failover.uc must define check_section_fail_policies"
 grep -Fq 'fail_policy_urls' "$SECTION_JS" ||
   fail "section.js must expose fail_policy_urls option"
+grep -Fq 'fail_policy_check_interval' "$SECTION_JS" ||
+  fail "section.js must expose fail_policy_check_interval option"
+grep -Fq 'fail_policy_recover_interval' "$SECTION_JS" ||
+  fail "section.js must expose fail_policy_recover_interval option"
+grep -Fq 'fail_policy_expected_status' "$SECTION_JS" ||
+  fail "section.js must expose fail_policy_expected_status option"
 
 STUB_BIN="$WORK_DIR/bin"
 mkdir -p "$STUB_BIN"
