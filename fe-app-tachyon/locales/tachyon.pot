@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-25 11:43+0300\n"
-"PO-Revision-Date: 2026-10-25 11:43+0300\n"
+"POT-Creation-Date: 2026-10-25 16:54+0300\n"
+"PO-Revision-Date: 2026-10-25 16:54+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -187,7 +187,7 @@ msgid "AI Provider"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2257
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2274
 msgid "AI Synthesis Error"
 msgstr ""
 
@@ -197,12 +197,12 @@ msgid "AI service error"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2218
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2235
 msgid "AI successfully synthesized custom strategies!"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2256
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2273
 msgid "AI synthesis failed"
 msgstr ""
 
@@ -753,7 +753,7 @@ msgid "Anti-Bypass: Block Private DNS / DoH / DoT"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2311
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2328
 msgid "Applied"
 msgstr ""
 
@@ -1273,8 +1273,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2532
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2366
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2367
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2383
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2384
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:254
 msgid "ByeDPI (ciadpi)"
 msgstr ""
@@ -1400,7 +1400,7 @@ msgid "Cancel"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2286
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2303
 msgid "Cannot apply"
 msgstr ""
 
@@ -1448,7 +1448,7 @@ msgstr ""
 msgid "Certificate pin is unavailable. Apply or restart the server to generate the default certificate, then open this dialog again."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4251
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4260
 #: src/tachyon/languageSelector.ts:105
 msgid "Change interface language"
 msgstr ""
@@ -1954,7 +1954,7 @@ msgid "Consecutive successful probes through the original outbound/strategy requ
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2208
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2225
 msgid "Consulting DPI Knowledge Base & AI..."
 msgstr ""
 
@@ -3513,7 +3513,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/methods/shell/index.ts:1337
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2324
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2341
 msgid "Failed to apply strategy"
 msgstr ""
 
@@ -3522,7 +3522,7 @@ msgstr ""
 msgid "Failed to auto-apply strategy"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4269
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4278
 #: src/tachyon/languageSelector.ts:196
 #: src/tachyon/languageSelector.ts:209
 #: src/tachyon/languageSelector.ts:219
@@ -3547,7 +3547,7 @@ msgid "Failed to close connections"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2260
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2277
 msgid "Failed to communicate with AI provider"
 msgstr ""
 
@@ -3749,7 +3749,7 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:375
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2189
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2206
 msgid "Failed to start benchmark"
 msgstr ""
 
@@ -4782,7 +4782,7 @@ msgid "Inner cipher"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3377
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4258
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4267
 #: src/tachyon/languageSelector.ts:116
 #: src/tachyon/tabs/updates/cardDefinitions.ts:195
 #: src/tachyon/tabs/updates/initController.ts:1468
@@ -4804,10 +4804,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3377
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2356
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2361
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2366
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2371
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2373
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2378
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2383
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2388
 #: src/tachyon/tabs/updates/initController.ts:2393
 msgid "Installed"
 msgstr ""
@@ -4825,7 +4825,7 @@ msgstr ""
 msgid "Installed version is newer than release"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4269
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4278
 #: src/tachyon/languageSelector.ts:184
 msgid "Installing language pack and switching language..."
 msgstr ""
@@ -4850,7 +4850,7 @@ msgstr ""
 msgid "Interface Monitoring Delay"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4257
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4266
 #: src/tachyon/languageSelector.ts:111
 msgid "Interface language"
 msgstr ""
@@ -5532,7 +5532,7 @@ msgstr ""
 msgid "Language for AI Doctor diagnosis responses"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4269
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4278
 #: src/tachyon/languageSelector.ts:213
 #: src/tachyon/languageSelector.ts:221
 msgid "Language updated. Reloading page..."
@@ -6119,8 +6119,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2532
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2371
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2372
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2388
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2389
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:255
 msgid "Native Desync (tachyon-core)"
 msgstr ""
@@ -6388,7 +6388,7 @@ msgid "No versions found"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2340
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2357
 msgid "No working strategy to apply"
 msgstr ""
 
@@ -6470,10 +6470,10 @@ msgstr ""
 #: src/tachyon/helpers/singBoxVariant.ts:57
 #: src/tachyon/helpers/singBoxVariant.ts:71
 #: src/tachyon/helpers/singBoxVariant.ts:86
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2357
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2362
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2367
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2372
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2374
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2379
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2384
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2389
 #: src/tachyon/tabs/updates/initController.ts:1275
 #: src/tachyon/tabs/updates/initController.ts:1290
 #: src/tachyon/tabs/updates/initController.ts:1305
@@ -7100,8 +7100,8 @@ msgid "Please enter a target domain, URL, or IP address."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2270
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2331
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2287
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2348
 msgid "Please select an applicable rule section to apply this strategy"
 msgstr ""
 
@@ -8847,7 +8847,7 @@ msgstr ""
 msgid "Session Cookie / Pre-Auth Token"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4250
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4259
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:1811
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:9835
@@ -9370,12 +9370,13 @@ msgid "Strategy Name"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2305
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2322
 msgid "Strategy applied successfully and service reloaded!"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2177
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2193
 msgid "Strategy benchmark started"
 msgstr ""
 
@@ -9539,7 +9540,7 @@ msgstr ""
 msgid "Switch to auto-selection"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4269
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4278
 #: src/tachyon/languageSelector.ts:185
 msgid "Switching interface language..."
 msgstr ""
@@ -9697,7 +9698,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:396
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:410
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:421
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2301
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2318
 msgid "Tachyon"
 msgstr ""
 
@@ -10690,7 +10691,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/initController.ts:909
 #: src/tachyon/tabs/diagnostic/initController.ts:961
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1990
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2188
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2205
 msgid "Unknown error"
 msgstr ""
 
@@ -11381,8 +11382,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2532
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2361
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2362
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2378
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2379
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:253
 msgid "Zapret v1 (nfqws)"
 msgstr ""
@@ -11394,8 +11395,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2532
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2356
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2357
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2373
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2374
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:252
 msgid "Zapret v2 (nfqws2)"
 msgstr ""
@@ -11637,7 +11638,7 @@ msgid "standard"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2286
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2303
 msgid "strategy to section configured for"
 msgstr ""
 
@@ -11750,7 +11751,7 @@ msgid "⚡ Quick Benchmark (Presets ~30+)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2401
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2418
 msgid "⚡ Strategy Fuzzer & Auto-Tuner"
 msgstr ""
 
@@ -11857,7 +11858,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2532
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1939
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2191
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2208
 msgid "🚀 Start Benchmark"
 msgstr ""
 
@@ -11870,7 +11871,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1932
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2122
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2233
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2250
 msgid "🛑 Stop Benchmark"
 msgstr ""
 
@@ -11900,12 +11901,12 @@ msgid "🤖 ChatGPT / OpenAI Suite"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2263
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2280
 msgid "🧠 Synthesize with AI"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2544
-#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2199
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2216
 msgid "🧠 Synthesizing..."
 msgstr ""
 

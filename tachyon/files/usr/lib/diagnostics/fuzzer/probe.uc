@@ -17,6 +17,7 @@ let history = require("diagnostics.fuzzer.history");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let command_from_args = common.command_from_args;
+let command_success = common.command_success;
 
 const STATE_DIR = history.STATE_DIR;
 const BYEDPI_PORT = 11089;
@@ -86,15 +87,19 @@ function cleanup_temp_daemons(job_id) {
     }
 
     // Ensure ByeDPI and Desync ports are released (hard-bounded to avoid hangs)
-    binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", BYEDPI_PORT), 3);
-    binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", DESYNC_PORT), 3);
+    if (command_success("command -v fuser >/dev/null 2>&1")) {
+        binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", BYEDPI_PORT), 3);
+        binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", DESYNC_PORT), 3);
+    }
 
     // Notice: global kill of curl processes removed to avoid killing external curl operations
 
     // nft delete can block in-kernel on an orphaned nfqueue binding left by a killed
     // daemon; without the bound it wedges the ucode interpreter permanently.
     // 10s is generous enough for slow ARM routers to flush orphaned queue bindings.
-    binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
+    if (command_success("nft list table inet tachyon_fuzzer >/dev/null 2>&1")) {
+        binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
+    }
     try { fs.unlink(STATE_DIR + "/fuzzer_daemon_err.log"); } catch (e) {}
     try { fs.unlink(STATE_DIR + "/fuzzer_desync_config.json"); } catch (e) {}
 }

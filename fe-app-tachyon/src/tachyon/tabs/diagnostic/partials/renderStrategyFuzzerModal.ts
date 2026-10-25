@@ -2185,6 +2185,23 @@ export function renderStrategyFuzzerModal(
       isPolling = false;
       startPolling();
     } else {
+      // If the RPC/XHR call timed out, check if the benchmark actually started in the background
+      const statusRes = await TachyonShellMethods.getFuzzerStatus().catch(
+        () => null,
+      );
+      if (statusRes?.success && statusRes.data?.running) {
+        showToast(_('Strategy benchmark started'), 'success');
+        (startBtn as HTMLButtonElement).disabled = false;
+        isRunning = true;
+        activeJobId = statusRes.data.job_id || null;
+        lastRenderedCount = -1;
+        lastRenderedFinishedAt = -1;
+        lastRenderedError = '';
+        pollEpoch++;
+        isPolling = false;
+        startPolling();
+        return;
+      }
       const errMsg = !res.success ? res.error : _('Unknown error');
       showToast(`${_('Failed to start benchmark')}: ${errMsg}`, 'error');
       (startBtn as HTMLButtonElement).disabled = false;

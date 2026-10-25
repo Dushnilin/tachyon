@@ -710,7 +710,6 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
     ensure_state_dir();
     let job_id = sprintf("fuzz_%d", clock()[0]);
     ensure_job_dir(job_id);
-    cleanup_temp_daemons(job_id);
 
     // Immediately write starting state to prevent race conditions during frontend polling
     let state = {
