@@ -283,6 +283,17 @@ function dnsmasq_cleanup_legacy_instance() {
     uci_delete("dhcp.@dnsmasq[0].tachyon_notinterface");
 }
 
+function sing_box_dns_listening() {
+    let udp = fs.readfile("/proc/net/udp");
+    // 127.0.0.42:53 in hex is 2A00007F:0035
+    if (udp && index(udp, "2A00007F:0035") >= 0)
+        return true;
+    let udp6 = fs.readfile("/proc/net/udp6");
+    if (udp6 && index(udp6, "0035") >= 0)
+        return true;
+    return false;
+}
+
 function dnsmasq_configure_default_instance() {
     let default_has_tachyon_dns = dnsmasq_default_has_tachyon_dns();
 
@@ -293,11 +304,13 @@ function dnsmasq_configure_default_instance() {
     }
 
     backup_dnsmasq_config_option("addn_hosts", "tachyon_addn_hosts");
+    backup_dnsmasq_config_option("rebind_protection", "tachyon_rebind_protection");
     uci_delete("dhcp.@dnsmasq[0].addn_hosts");
 
     uci_delete("dhcp.@dnsmasq[0].server");
     uci_add_list("dhcp.@dnsmasq[0].server", SB_DNS_INBOUND_ADDRESS);
     uci_set("dhcp.@dnsmasq[0].noresolv", "1");
+    uci_set("dhcp.@dnsmasq[0].rebind_protection", "0");
     uci_set("dhcp.@dnsmasq[0].cachesize", dnsmasq_target_cachesize());
 }
 
@@ -331,6 +344,12 @@ function dnsmasq_restore_default_instance() {
         restore_dnsmasq_config_option("cachesize", "tachyon_cachesize", "");
     else if (managed_global_dns)
         uci_set("dhcp.@dnsmasq[0].cachesize", "150");
+
+    let rebind_protection = uci_get("dhcp.@dnsmasq[0].tachyon_rebind_protection");
+    if (rebind_protection != "")
+        restore_dnsmasq_config_option("rebind_protection", "tachyon_rebind_protection", "");
+    else if (managed_global_dns)
+        uci_set("dhcp.@dnsmasq[0].rebind_protection", "1");
 
     restore_dnsmasq_config_option("addn_hosts", "tachyon_addn_hosts", "");
 }
@@ -418,6 +437,11 @@ function dnsmasq_configure(force) {
         let sb_pid = sing_box_running_pid();
         if (sb_pid == "") {
             log("sing-box is not running; dnsmasq will forward to system DNS until sing-box starts", "warn");
+            return true;
+        }
+
+        if (!sing_box_dns_listening()) {
+            log("sing-box DNS inbound (127.0.0.42:53) is not listening yet; dnsmasq will forward to system DNS", "warn");
             return true;
         }
     }

@@ -396,51 +396,51 @@ detect_fetcher() {
 }
 
 http_get() {
-    _url="$1"
+    _hg_url="$1"
     case "$FETCHER" in
         wget)
-            _res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_url" 2>/dev/null)" || true
-            if [ -z "$_res" ]; then
-                _res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_url" 2>/dev/null)" || true
+            _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
+            if [ -z "$_hg_res" ]; then
+                _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
             fi
-            [ -n "$_res" ] || return 1
-            printf '%s' "$_res"
+            [ -n "$_hg_res" ] || return 1
+            printf '%s' "$_hg_res"
             ;;
-        curl) curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_url" ;;
+        curl) curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" ;;
         *) return 1 ;;
     esac
 }
 
 download_file_once() {
-    _url="$1"; _dst="$2"
+    _dfo_url="$1"; _dfo_dst="$2"
     case "$FETCHER" in
         wget)
-            if run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dst" "$_url" && [ -s "$_dst" ]; then
+            if run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url" && [ -s "$_dfo_dst" ]; then
                 return 0
             fi
-            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dst" "$_url"
+            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url"
             ;;
-        curl) run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_url" -o "$_dst" ;;
+        curl) run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" ;;
         *) return 1 ;;
     esac
 }
 
 download_with_retry() {
-    _url="$1"; _dst="$2"; _label="$3"
-    _attempt=1
-    while [ "$_attempt" -le 5 ]; do
-        _try_url="$_url"
-        case "$_attempt" in
-            1) _try_url="$_url" ;;
-            2) _try_url="https://ghfast.top/$_url" ;;
-            3) _try_url="https://gh-proxy.com/$_url" ;;
-            4) _try_url="https://gh.llkk.cc/$_url" ;;
-            5) _try_url="$_url" ;;
+    _dwr_url="$1"; _dwr_dst="$2"; _dwr_label="$3"
+    _dwr_attempt=1
+    while [ "$_dwr_attempt" -le 5 ]; do
+        _dwr_try_url="$_dwr_url"
+        case "$_dwr_attempt" in
+            1) _dwr_try_url="$_dwr_url" ;;
+            2) _dwr_try_url="https://ghfast.top/$_dwr_url" ;;
+            3) _dwr_try_url="https://gh-proxy.com/$_dwr_url" ;;
+            4) _dwr_try_url="https://gh.llkk.cc/$_dwr_url" ;;
+            5) _dwr_try_url="$_dwr_url" ;;
         esac
-        msg "Downloading $_label (attempt $_attempt/5)"
-        if download_file_once "$_try_url" "$_dst" && [ -s "$_dst" ]; then return 0; fi
-        rm -f "$_dst"
-        _attempt=$((_attempt + 1))
+        msg "Downloading $_dwr_label (attempt $_dwr_attempt/5)"
+        if download_file_once "$_dwr_try_url" "$_dwr_dst" && [ -s "$_dwr_dst" ]; then return 0; fi
+        rm -f "$_dwr_dst"
+        _dwr_attempt=$((_dwr_attempt + 1))
         sleep 2
     done
     return 1
@@ -654,36 +654,37 @@ release_helper() {
 }
 
 fetch_release_json() {
+    _fr_url=""
     if [ -n "$RELEASE_TAG_REQUESTED" ]; then
-        _url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${RELEASE_TAG_REQUESTED}"
+        _fr_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${RELEASE_TAG_REQUESTED}"
     elif [ "$RELEASE_CHANNEL" = "beta" ]; then
-        _url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=20"
+        _fr_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=20"
     else
-        _url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
+        _fr_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
     fi
-    _json="$(http_get "$_url" 2>/dev/null || true)"
-    if [ -z "$_json" ]; then
+    _fr_json="$(http_get "$_fr_url" 2>/dev/null || true)"
+    if [ -z "$_fr_json" ]; then
         warn "GitHub release API failed; trying mirror"
-        for _m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
-            _json="$(http_get "${_m}${_url}" 2>/dev/null || true)"
-            [ -n "$_json" ] && break
+        for _fr_m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
+            _fr_json="$(http_get "${_fr_m}${_fr_url}" 2>/dev/null || true)"
+            [ -n "$_fr_json" ] && break
         done
     fi
-    [ -n "$_json" ] || return 1
-    printf '%s' "$_json"
+    [ -n "$_fr_json" ] || return 1
+    printf '%s' "$_fr_json"
 }
 
 fetch_release_tag_list() {
-    _url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=15"
-    _json="$(http_get "$_url" 2>/dev/null || true)"
-    if [ -z "$_json" ]; then
-        for _m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
-            _json="$(http_get "${_m}${_url}" 2>/dev/null || true)"
-            [ -n "$_json" ] && break
+    _fr_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=15"
+    _fr_json="$(http_get "$_fr_url" 2>/dev/null || true)"
+    if [ -z "$_fr_json" ]; then
+        for _fr_m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
+            _fr_json="$(http_get "${_fr_m}${_fr_url}" 2>/dev/null || true)"
+            [ -n "$_fr_json" ] && break
         done
     fi
-    [ -n "$_json" ] || return 1
-    printf '%s' "$_json" | release_helper tags "$RELEASE_CHANNEL" 2>/dev/null
+    [ -n "$_fr_json" ] || return 1
+    printf '%s' "$_fr_json" | release_helper tags "$RELEASE_CHANNEL" 2>/dev/null
 }
 
 installer_is_interactive() {
@@ -804,8 +805,16 @@ detect_language_and_i18n() {
     if [ -r /etc/config/luci ]; then
         _lang="$(sed -n "s/.*option lang ['\"]\?\([a-zA-Z_-]*\)['\"]\?.*/\1/p" /etc/config/luci 2>/dev/null | head -n1)"
     fi
-    if pkg_is_installed luci-i18n-tachyon-ru; then TACHYON_I18N_REQUESTED=1; INSTALLER_LANG="ru"; return 0; fi
+    if pkg_is_installed luci-i18n-tachyon-ru || pkg_is_installed luci-i18n-base-ru; then
+        TACHYON_I18N_REQUESTED=1; INSTALLER_LANG="ru"; return 0
+    fi
     case "$_lang" in ru|ru-*|ru_*) TACHYON_I18N_REQUESTED=1; INSTALLER_LANG="ru"; return 0 ;; esac
+    if [ "$_lang" = "auto" ] || [ -z "$_lang" ]; then
+        _tz="$(sed -n "s/.*option \(zonename\|timezone\) ['\"]\?\([^'\"]*\)['\"]\?.*/\2/p" /etc/config/system 2>/dev/null | head -n1)"
+        case "$_tz" in *Moscow*|*Europe/Moscow*|*Russia*|*MSK*) TACHYON_I18N_REQUESTED=1; INSTALLER_LANG="ru"; return 0 ;; esac
+        case "${LANG:-}" in *[rR][uU]*) TACHYON_I18N_REQUESTED=1; INSTALLER_LANG="ru"; return 0 ;; esac
+        case "${LC_ALL:-}" in *[rR][uU]*) TACHYON_I18N_REQUESTED=1; INSTALLER_LANG="ru"; return 0 ;; esac
+    fi
     INSTALLER_LANG="en"
     if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then return 0; fi
     printf 'Install Russian LuCI translation? [y/N]: '

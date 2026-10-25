@@ -187,6 +187,24 @@ if [ -f "/etc/init.d/tachyon" ]; then
     tui_ok "Служба /etc/init.d/tachyon остановлена и отключена"
 fi
 
+# Stop and remove tachyon-core service if present
+if [ -f "/etc/init.d/tachyon-core" ]; then
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 8 /etc/init.d/tachyon-core stop >/dev/null 2>&1 || true
+    else
+        /etc/init.d/tachyon-core stop >/dev/null 2>&1 || true
+    fi
+    /etc/init.d/tachyon-core disable >/dev/null 2>&1 || true
+    rm -f /etc/init.d/tachyon-core /etc/rc.d/*tachyon-core* 2>/dev/null || true
+    tui_ok "Сервис tachyon-core остановлен и удален"
+fi
+
+if [ -f "/etc/init.d/tachyon-steer-zapret" ]; then
+    /etc/init.d/tachyon-steer-zapret stop >/dev/null 2>&1 || true
+    /etc/init.d/tachyon-steer-zapret disable >/dev/null 2>&1 || true
+    rm -f /etc/init.d/tachyon-steer-zapret /etc/rc.d/*tachyon-steer-zapret* 2>/dev/null || true
+fi
+
 # Stop and remove managed sing-box service if created by Tachyon
 if [ -f "/etc/init.d/sing-box" ]; then
     if grep -q "Tachyon managed sing-box" "/etc/init.d/sing-box" 2>/dev/null; then
@@ -202,6 +220,7 @@ if [ -f "/etc/init.d/sing-box" ]; then
 fi
 
 # Terminate running DPI and proxy processes if any
+killall -9 tachyon-core >/dev/null 2>&1 || true
 killall -9 sing-box >/dev/null 2>&1 || true
 killall -9 nfqws >/dev/null 2>&1 || true
 killall -9 nfqws2 >/dev/null 2>&1 || true
@@ -347,7 +366,7 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
                 apk del "$_pkg" >/dev/null 2>&1 || true
             fi
         done
-        if [ ! -f /etc/init.d/sing-box ] || grep -q "Tachyon managed sing-box" /etc/init.d/sing-box 2>/dev/null; then
+        if [ "$OPT_PURGE" -eq 1 ] || [ ! -f /etc/init.d/sing-box ] || grep -q "Tachyon managed sing-box" /etc/init.d/sing-box 2>/dev/null; then
             if [ -f /etc/apk/world ]; then
                 sed -i -E '/^sing-box([><= ].*)?$/d' /etc/apk/world 2>/dev/null || true
             fi
@@ -376,7 +395,7 @@ elif command -v opkg >/dev/null 2>&1; then
                 opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
             fi
         done
-        if [ ! -f /etc/init.d/sing-box ] || grep -q "Tachyon managed sing-box" /etc/init.d/sing-box 2>/dev/null; then
+        if [ "$OPT_PURGE" -eq 1 ] || [ ! -f /etc/init.d/sing-box ] || grep -q "Tachyon managed sing-box" /etc/init.d/sing-box 2>/dev/null; then
             if opkg list-installed "sing-box" 2>/dev/null | grep -q "^sing-box "; then
                 opkg remove --force-depends --force-remove "sing-box" >/dev/null 2>&1 || true
             fi
@@ -399,7 +418,10 @@ rm -f /usr/share/rpcd/acl.d/luci-app-tachyon.json 2>/dev/null || true
 rm -f /etc/uci-defaults/50_luci-tachyon 2>/dev/null || true
 rm -f /etc/tachyon_commit 2>/dev/null || true
 rm -f /usr/bin/tachyon 2>/dev/null || true
+rm -f /usr/bin/tachyon-core 2>/dev/null || true
 rm -f /etc/init.d/tachyon 2>/dev/null || true
+rm -f /etc/init.d/tachyon-core 2>/dev/null || true
+rm -f /etc/init.d/tachyon-steer-zapret 2>/dev/null || true
 rm -f /etc/hotplug.d/iface/99-tachyon-wan-monitor 2>/dev/null || true
 rm -f /www/cgi-bin/tachyon-agent 2>/dev/null || true
 rm -f /www/cgi-bin/tachyon-sub 2>/dev/null || true
@@ -421,7 +443,7 @@ rm -f /usr/lib/lua/luci/i18n/tachyon.* 2>/dev/null || true
 find /usr/lib/lua/luci/i18n/ -name "tachyon.*" -delete 2>/dev/null || true
 
 # Clear runtime and temporary state
-rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/sing-box /tmp/tachyon* /tmp/ai_doctor* /tmp/tg_* /tmp/warp_* 2>/dev/null || true
+rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/sing-box /tmp/tachyon* /tmp/tachyon-core /tmp/ai_doctor* /tmp/tg_* /tmp/warp_* 2>/dev/null || true
 
 # Clear LuCI index and module caches
 rm -f /var/luci-indexcache* /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null || true
@@ -435,7 +457,7 @@ fi
 # Purge configs and persistent state if requested
 if [ "$OPT_PURGE" -eq 1 ]; then
     rm -f /etc/config/tachyon* 2>/dev/null || true
-    rm -rf /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/sing-box 2>/dev/null || true
+    rm -rf /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/sing-box /etc/tachyon-core 2>/dev/null || true
     tui_ok "Все конфигурации и скрытые состояния Tachyon удалены (--purge)"
 fi
 

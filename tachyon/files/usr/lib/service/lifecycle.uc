@@ -959,7 +959,7 @@ function start_steer_main(active_engine) {
     // Make sure the sing-box service is not left running: two engines must not
     // fight over nftables and policy routing.
     if (fs.stat("/etc/init.d/tachyon-core") != null)
-        command_status_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
+        command_success_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
 
     let engine_runtime = require("service.engine_runtime");
 
@@ -1253,9 +1253,9 @@ function stop_main() {
     // takes over the dataplane. The zapret handler service must go first: its
     // processes hold the engine's nfqueue sockets.
     if (fs.stat("/etc/init.d/tachyon-steer-zapret") != null)
-        command_status_from_args([ "/etc/init.d/tachyon-steer-zapret", "stop" ]);
+        command_success_from_args([ "/etc/init.d/tachyon-steer-zapret", "stop" ]);
     if (fs.stat("/etc/init.d/steer") != null) {
-        command_status_from_args([ "/etc/init.d/steer", "stop" ]);
+        command_success_from_args([ "/etc/init.d/steer", "stop" ]);
     }
 
     // Stop the steer DNS upstream (smartdns). Must happen after steer dnsd is
@@ -1314,10 +1314,8 @@ function stop_main() {
     let core_proc = require("core.process");
     let core_init = core_proc.core_contract().init_script;
     if (fs.stat(core_init) != null) {
-        let sing_box_status = command_status_from_args([ core_init, "stop" ]);
+        command_success_from_args([ core_init, "stop" ]);
         core_proc.kill_core_daemons();
-        if (!active_engine_is_steer() && sing_box_status != 0)
-            status = sing_box_status;
     }
 
     module_success(STATE_UC, [ "cleanup-provenance" ]);

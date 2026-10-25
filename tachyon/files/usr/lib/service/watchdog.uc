@@ -1417,6 +1417,13 @@ function heal_dns_stall(ev) {
     let detour_healed = heal_uncached_rulesets_detour();
     log_message("Watchdog: DNS stalled after 3 attempts, soft-reloading proxy runtime", "warn");
 
+    let udp = fs.readfile("/proc/net/udp") || "";
+    let core_dns_listening = index(udp, "2A00007F:0035") >= 0;
+    if (!core_dns_listening) {
+        log_message("Watchdog: DNS stalled and sing-box is not listening on port 53; restoring failsafe DNS in dnsmasq", "warn");
+        command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "failsafe-restore" ]);
+    }
+
     let incident = {
         type: "dns",
         description: detour_healed ? "Зависание DNS из-за блокировки прямой загрузки списков правил" : sprintf("DNS resolution stalled on %s (port 53)", active_engine),
