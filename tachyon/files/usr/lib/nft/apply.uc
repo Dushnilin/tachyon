@@ -3531,9 +3531,11 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
     // Outside the priority branch on purpose: community subnets must not
     // depend on whether the section happens to have priority matchers.
     nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set);
-    for (let source_ip in list_option(section, "fully_routed_ips"))
-        if (!nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface_set, localv4_set, localv6_set, mark, nft_mangle_chain_text(mangle_chain_context, table), inserted_fully_routed_ips))
-            return false;
+    if (section_action(section) != "dns") {
+        for (let source_ip in list_option(section, "fully_routed_ips"))
+            if (!nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface_set, localv4_set, localv6_set, mark, nft_mangle_chain_text(mangle_chain_context, table), inserted_fully_routed_ips))
+                return false;
+    }
 
     return true;
 }
@@ -3713,6 +3715,9 @@ function source_aware_dns_values(sections, deferred_sections) {
                     push(values, value);
                 }
             }
+        }
+
+        if (action == "bypass" || action == "dns") {
             for (let value in nft_csv_values(section_source_ip_values(section))) {
                 if (!seen[value]) {
                     seen[value] = true;

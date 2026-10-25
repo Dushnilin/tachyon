@@ -2388,7 +2388,12 @@ function push_section_route_rule(config, rule, target_outbound, excluded_cidrs, 
         for (let k, v in rule)
             udp_rule[k] = v;
         delete udp_rule.outbound;
-        udp_rule.action = "reject";
+        if (rule.source_ip_cidr && !rule.domain && !rule.ip_cidr && !rule.rule_set) {
+            udp_rule.action = "route";
+            udp_rule.outbound = runtime_constants.DIRECT_OUTBOUND_TAG;
+        } else {
+            udp_rule.action = "reject";
+        }
         udp_rule.network = "udp";
         push_route_matcher_rule(config, apply_filters(udp_rule));
 
@@ -2435,6 +2440,19 @@ function add_fully_routed_ips_rule(config, section) {
         route_rule.outbound = target.outbound;
     route_rule.source_ip_cidr = single_or_array(source_ip_cidr);
     push_section_route_rule(config, route_rule, target.outbound);
+
+    let routed_dns = connections.routed_dns_enabled(section);
+    if (routed_dns) {
+        let server_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
+        let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
+        let dns_rule = {
+            action: "route",
+            server: server_tag,
+            rewrite_ttl
+        };
+        add_source_dns_matchers(dns_rule, source_ip_cidr);
+        push_dns_matcher_rule(config, dns_rule);
+    }
 }
 
 function add_excluded_ips_rule(config, section) {
