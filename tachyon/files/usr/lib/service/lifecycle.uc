@@ -1176,6 +1176,11 @@ function start_impl() {
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
 
+    if (config_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
+        log_message("Previous shutdown was unclean; restoring dnsmasq to failsafe before start", "warn");
+        dnsmasq_restore_fail_safe();
+    }
+
     // Watchdog must start early so auto-healing is active even through a failed boot.
     // Telegram (119 KB) is heavy but non-critical: move to background after the proxy
     // stack is verified and running, saving one serial ucode fork from the start path.

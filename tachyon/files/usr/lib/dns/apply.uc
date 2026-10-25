@@ -425,14 +425,6 @@ function dnsmasq_configure(force) {
         return true;
     }
 
-    if (as_string(force) != "force" && uci_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
-        if (dnsmasq_default_config_is_complete()) {
-            log("Previous Tachyon shutdown was unclean; dnsmasq already points to sing-box", "info");
-            return true;
-        }
-        log("Previous Tachyon shutdown was unclean and dnsmasq is not ready; applying Tachyon DNS settings", "info");
-    }
-
     if (as_string(force) != "force") {
         let sb_pid = sing_box_running_pid();
         if (sb_pid == "") {

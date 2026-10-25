@@ -624,6 +624,15 @@ function sync_agent_gateway_symlink() {
     return fs.unlink(AGENT_GATEWAY_LINK) ? 0 : 1;
 }
 
+function boot_service(owner_pid) {
+    let settings = uci_settings();
+    if (option(settings, "shutdown_correctly", "1") == "0") {
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Unclean reboot detected; restoring dnsmasq to failsafe" ]);
+        restore_dnsmasq_failsafe();
+    }
+    return 0;
+}
+
 function start_service(reason, owner_pid) {
     print("Start Tachyon\n");
     sync_agent_gateway_symlink();
@@ -879,6 +888,8 @@ else if (mode == "stop-plan-fixture")
     stop_plan(ARGV[1] || "0", ARGV[2] == null ? "1" : ARGV[2]);
 else if (mode == "stop-finish")
     exit(stop_finish(ARGV[1], ARGV[2]));
+else if (mode == "boot-service")
+    exit(boot_service(ARGV[1]));
 else if (mode == "stop-service")
     exit(stop_service(ARGV[1]));
 else if (mode == "restart-service")
