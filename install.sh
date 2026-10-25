@@ -398,7 +398,14 @@ detect_fetcher() {
 http_get() {
     _url="$1"
     case "$FETCHER" in
-        wget) run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_url" ;;
+        wget)
+            _res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_url" 2>/dev/null)" || true
+            if [ -z "$_res" ]; then
+                _res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_url" 2>/dev/null)" || true
+            fi
+            [ -n "$_res" ] || return 1
+            printf '%s' "$_res"
+            ;;
         curl) curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_url" ;;
         *) return 1 ;;
     esac
@@ -407,7 +414,12 @@ http_get() {
 download_file_once() {
     _url="$1"; _dst="$2"
     case "$FETCHER" in
-        wget) run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dst" "$_url" ;;
+        wget)
+            if run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dst" "$_url" && [ -s "$_dst" ]; then
+                return 0
+            fi
+            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dst" "$_url"
+            ;;
         curl) run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_url" -o "$_dst" ;;
         *) return 1 ;;
     esac
@@ -416,14 +428,16 @@ download_file_once() {
 download_with_retry() {
     _url="$1"; _dst="$2"; _label="$3"
     _attempt=1
-    while [ "$_attempt" -le 4 ]; do
+    while [ "$_attempt" -le 5 ]; do
         _try_url="$_url"
         case "$_attempt" in
-            2) _try_url="https://gh-proxy.com/$_url" ;;
-            3) _try_url="https://ghproxy.net/$_url" ;;
-            4) _try_url="$_url" ;;
+            1) _try_url="$_url" ;;
+            2) _try_url="https://ghfast.top/$_url" ;;
+            3) _try_url="https://gh-proxy.com/$_url" ;;
+            4) _try_url="https://gh.llkk.cc/$_url" ;;
+            5) _try_url="$_url" ;;
         esac
-        msg "Downloading $_label (attempt $_attempt/4)"
+        msg "Downloading $_label (attempt $_attempt/5)"
         if download_file_once "$_try_url" "$_dst" && [ -s "$_dst" ]; then return 0; fi
         rm -f "$_dst"
         _attempt=$((_attempt + 1))
@@ -650,7 +664,10 @@ fetch_release_json() {
     _json="$(http_get "$_url" 2>/dev/null || true)"
     if [ -z "$_json" ]; then
         warn "GitHub release API failed; trying mirror"
-        _json="$(http_get "https://gh-proxy.com/$_url" 2>/dev/null || true)"
+        for _m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
+            _json="$(http_get "${_m}${_url}" 2>/dev/null || true)"
+            [ -n "$_json" ] && break
+        done
     fi
     [ -n "$_json" ] || return 1
     printf '%s' "$_json"
@@ -660,7 +677,10 @@ fetch_release_tag_list() {
     _url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=15"
     _json="$(http_get "$_url" 2>/dev/null || true)"
     if [ -z "$_json" ]; then
-        _json="$(http_get "https://gh-proxy.com/$_url" 2>/dev/null || true)"
+        for _m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
+            _json="$(http_get "${_m}${_url}" 2>/dev/null || true)"
+            [ -n "$_json" ] && break
+        done
     fi
     [ -n "$_json" ] || return 1
     printf '%s' "$_json" | release_helper tags "$RELEASE_CHANNEL" 2>/dev/null

@@ -306,10 +306,11 @@ function download_candidates(value) {
         // For release downloads all of these work; for raw content only the
         // gh-proxy family does (jsDelivr already handled above).
         let mirrors = [
+            "https://ghfast.top/",
             "https://gh-proxy.com/",
+            "https://gh.llkk.cc/",
             "https://ghproxy.net/",
             "https://mirror.ghproxy.com/",
-            "https://ghfast.top/",
             "https://github.moeyy.xyz/",
         ];
         for (let prefix in mirrors) {
