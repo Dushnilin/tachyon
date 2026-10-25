@@ -170,7 +170,7 @@ let safe_exec_patterns = {
         bin: "/usr/bin/tachyon",
         min_args: 0,
         max_args: 1,
-        usage: "tachyon [get_status|doctor|show_sing_box_version|show_version]"
+        usage: "tachyon [get_status|doctor|show_sing_box_version|show_version|restore_native_internet|failsafe_restore|stop|restart|reload]"
     },
     logread: {
         bin: "/sbin/logread",
@@ -270,7 +270,19 @@ function safe_execute(exec_text, custom_t) {
                 if (!match(arg, policy.extra_pattern)) return { status: 1, output: t("err_arg_not_allowed", arg) };
         }
         if (base == "tachyon" && length(rest) == 1) {
-            let allowed_sub = { get_status: 1, doctor: 1, show_version: 1, show_sing_box_version: 1, show_config: 1, get_system_info: 1 };
+            let allowed_sub = {
+                get_status: 1,
+                doctor: 1,
+                show_version: 1,
+                show_sing_box_version: 1,
+                show_config: 1,
+                get_system_info: 1,
+                restore_native_internet: 1,
+                failsafe_restore: 1,
+                stop: 1,
+                restart: 1,
+                reload: 1
+            };
             if (!allowed_sub[rest[0]]) return { status: 1, output: t("err_subcmd_not_allowed", rest[0]) };
         }
     }

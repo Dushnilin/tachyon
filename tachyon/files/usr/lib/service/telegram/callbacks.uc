@@ -127,7 +127,20 @@ function handle_set_tog(token, chat_id, msg_id, stype, sname, key, page) {
     let b = (s[key] == "1" || s[key] == "true");
     c.set(CONFIG_NAME, sname, key, b ? "0" : "1");
     c.commit(CONFIG_NAME);
+    if (key == "enabled") {
+        command_status(command_from_args(["/usr/bin/tachyon", "reload", "force"]));
+    }
     return view_set_cat(token, chat_id, msg_id, stype, sname, page);
+}
+
+function handle_set_del(token, chat_id, msg_id, stype, sname) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    c.delete(CONFIG_NAME, sname);
+    c.commit(CONFIG_NAME);
+    command_status(command_from_args(["/usr/bin/tachyon", "reload", "force"]));
+    send_message(token, chat_id, "🗑️ <b>Deleted:</b> <code>" + escape_html(sname) + "</code>", "HTML");
+    return view_set_list(token, chat_id, null, stype);
 }
 
 function handle_fptn_token_update(token, chat_id, raw_input, target_sec) {
@@ -598,6 +611,20 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/status") return view_status(token, chat_id, msg_id);
     if (cmd == "/runtime") return view_runtime(token, chat_id, msg_id);
     if (cmd == "/heal" || cmd == "/ai_heal" || cmd == "/ai_doctor") return exec_ai_heal(token, chat_id, msg_id);
+    if (cmd == "/reload_tachyon" || cmd == "/restart_tachyon") {
+        send_message(token, chat_id, "🔄 <b>" + t("menu_restart") + "...</b>", "HTML");
+        command_status(command_from_args(["/usr/bin/tachyon", "reload", "force"]));
+        return send_message(token, chat_id, "✅ <b>Tachyon reloaded</b>", "HTML", [
+            [{ text: "🏠 " + t("nav_menu"), callback_data: "/menu" }]
+        ]);
+    }
+    if (cmd == "/restore_internet" || cmd == "/restore_native_internet") {
+        send_message(token, chat_id, "🚑 <b>" + t("menu_restore_internet") + "...</b>", "HTML");
+        command_status(command_from_args(["/usr/bin/tachyon", "restore_native_internet"]));
+        return send_message(token, chat_id, "✅ <b>" + t("internet_restored") + "</b>", "HTML", [
+            [{ text: "🏠 " + t("nav_menu"), callback_data: "/menu" }]
+        ]);
+    }
     if (cmd == "/qos") return view_qos(token, chat_id, msg_id);
     if (cmd == "/qos_toggle") return handle_qos_toggle(token, chat_id, msg_id);
 
@@ -858,6 +885,10 @@ function dispatch_command(token, chat_id, text, msg_id) {
         let parts = split(trim(substr(cmd, 9)), " ");
         if (length(parts) >= 2) return view_set_cat(token, chat_id, msg_id, parts[0], parts[1], parts[2]);
     }
+    if (match(cmd, /^\/set_del /)) {
+        let parts = split(trim(substr(cmd, 9)), " ");
+        if (length(parts) >= 2) return handle_set_del(token, chat_id, msg_id, parts[0], parts[1]);
+    }
     if (match(cmd, /^\/set_tog /)) {
         let parts = split(trim(substr(cmd, 9)), " ");
         if (length(parts) >= 4) return handle_set_tog(token, chat_id, msg_id, parts[0], parts[1], parts[2], parts[3]);
@@ -993,6 +1024,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
 
 return {
     handle_set_tog,
+    handle_set_del,
     handle_fptn_token_update,
     handle_switch,
     handle_sec_toggle,

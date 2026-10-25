@@ -74,6 +74,7 @@ function view_settings_menu(token, chat_id, msg_id) {
         [{ text: t("menu_telegram"), callback_data: "/set_cat telegram telegram" }],
         [{ text: t("menu_router_name"), callback_data: "/name" }],
         [{ text: t("menu_subscriptions"), callback_data: "/set_list subscription_url" }],
+        [{ text: t("menu_sections"), callback_data: "/set_list section" }],
         [{ text: t("menu_servers_short"), callback_data: "/set_list server" }],
         [{ text: t("menu_dns_presets"), callback_data: "/dns_presets" }],
         [{ text: t("menu_quiet_hours"), callback_data: "/qh" }],
@@ -81,6 +82,8 @@ function view_settings_menu(token, chat_id, msg_id) {
         [{ text: t("menu_language"), callback_data: "/lang" }],
         [{ text: t("menu_test_rule"), callback_data: "/test_rule" }],
         [{ text: t("menu_export_config"), callback_data: "/export_config" }],
+        [{ text: t("menu_restart"), callback_data: "/reload_tachyon" }],
+        [{ text: t("menu_restore_internet"), callback_data: "/restore_internet" }],
         [{ text: t("nav_back"), callback_data: "/menu" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
@@ -158,6 +161,10 @@ function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
     if (start > 0) push(nav, { text: t("nav_prev"), callback_data: "/set_cat " + stype + " " + sname + " " + (page - 1) });
     if (end < total) push(nav, { text: t("nav_next"), callback_data: "/set_cat " + stype + " " + sname + " " + (page + 1) });
     if (length(nav) > 0) push(keyboard, nav);
+    
+    if (stype == "server" || stype == "section" || stype == "subscription_url") {
+        push(keyboard, [{ text: t("btn_delete") + " " + sname, callback_data: "/set_del " + stype + " " + sname }]);
+    }
     
     if (stype == "settings" || stype == "telegram") {
         push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/settings" }]);
