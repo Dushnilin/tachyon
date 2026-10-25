@@ -567,6 +567,9 @@ function urltests(section) {
     if (length(result) > 0)
         return result;
 
+    if (option(section, "action", "") == "group")
+        return [ "urltest" ];
+
     return bool_option(section, "urltest_enabled", false) ? [ "urltest" ] : [];
 }
 
@@ -1347,24 +1350,24 @@ function urltest_check_interval(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
         return child_option_alias(child, [ "check_interval", "urltest_check_interval" ], "3m");
-    return item_option(section, "urltest_settings", value, "urltest_check_interval",
-        option(section, "urltest_check_interval", "3m") || "3m");
+    let fallback = option(section, "check_interval", option(section, "urltest_check_interval", "3m") || "3m") || "3m";
+    return item_option(section, "urltest_settings", value, "urltest_check_interval", fallback);
 }
 
 function urltest_tolerance(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
         return child_option_alias(child, [ "tolerance", "urltest_tolerance" ], "50");
-    return item_option(section, "urltest_settings", value, "urltest_tolerance",
-        option(section, "urltest_tolerance", "50") || "50");
+    let fallback = option(section, "tolerance", option(section, "urltest_tolerance", "50") || "50") || "50";
+    return item_option(section, "urltest_settings", value, "urltest_tolerance", fallback);
 }
 
 function urltest_testing_url(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
         return child_option_alias(child, [ "testing_url", "urltest_testing_url" ], "https://www.gstatic.com/generate_204");
-    return item_option(section, "urltest_settings", value, "urltest_testing_url",
-        option(section, "urltest_testing_url", "https://www.gstatic.com/generate_204") || "https://www.gstatic.com/generate_204");
+    let fallback = option(section, "testing_url", option(section, "urltest_testing_url", "https://www.gstatic.com/generate_204") || "https://www.gstatic.com/generate_204") || "https://www.gstatic.com/generate_204";
+    return item_option(section, "urltest_settings", value, "urltest_testing_url", fallback);
 }
 
 function urltest_display_name(section, value) {
@@ -1381,14 +1384,16 @@ function urltest_idle_timeout(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
         return child_option(child, "idle_timeout", "");
-    return item_option(section, "urltest_settings", value, "idle_timeout", "");
+    let fallback = option(section, "idle_timeout", option(section, "urltest_idle_timeout", "") || "");
+    return item_option(section, "urltest_settings", value, "idle_timeout", fallback);
 }
 
 function urltest_interrupt_exist_connections(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
         return child_bool(child, "interrupt_exist_connections", true);
-    return item_bool(section, "urltest_settings", value, "interrupt_exist_connections", true);
+    let fallback = bool_option(section, "interrupt_exist_connections", bool_option(section, "urltest_interrupt_exist_connections", true));
+    return item_bool(section, "urltest_settings", value, "interrupt_exist_connections", fallback);
 }
 
 function urltest_filter_mode(section, value) {

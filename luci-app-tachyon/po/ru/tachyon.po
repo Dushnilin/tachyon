@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-25 21:42+0300\n"
-"PO-Revision-Date: 2026-10-25 21:42+0300\n"
+"POT-Creation-Date: 2026-10-25 21:53+0300\n"
+"PO-Revision-Date: 2026-10-25 21:53+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3107,8 +3107,14 @@ msgstr "Разрывать соединения при переключении 
 msgid "Interrupt connections when priority failover switches server"
 msgstr "Разрывать соединения при переключении приоритетного failover"
 
+msgid "Interrupt existing connections when group URLTest switches the active server"
+msgstr ""
+
 msgid "Interval"
 msgstr "Интервал"
+
+msgid "Interval between URLTest latency checks (e.g. 3m, 30s)"
+msgstr ""
 
 msgid "Invalid Amnezia .conf file"
 msgstr "Некорректный файл Amnezia .conf"
@@ -3523,6 +3529,9 @@ msgstr "Ноутбук / ПК (💻)"
 
 msgid "Latency"
 msgstr "Задержка"
+
+msgid "Latency difference threshold in milliseconds to switch server"
+msgstr ""
 
 msgid "Latency test URL"
 msgstr "URL для теста задержки"
@@ -6515,6 +6524,9 @@ msgstr "Токен обязателен, когда бот включён"
 msgid "Tolerance"
 msgstr "Допуск"
 
+msgid "Tolerance (ms)"
+msgstr ""
+
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
 
@@ -6668,6 +6680,9 @@ msgstr "URL для проверки доступности сервера"
 msgid "URL used to test server latency"
 msgstr "URL для теста задержки сервера"
 
+msgid "URL used to test server latency and availability"
+msgstr ""
+
 msgid "URLTest"
 msgstr "URLTest"
 
@@ -6678,6 +6693,9 @@ msgid "URLTest details are unavailable"
 msgstr "Детали URLTest недоступны"
 
 msgid "URLTest idle timeout"
+msgstr ""
+
+msgid "URLTest idle timeout (e.g. 30m)"
 msgstr ""
 
 msgid "URLTest links (text)"

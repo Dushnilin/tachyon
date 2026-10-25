@@ -10004,6 +10004,82 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
+    form.Flag,
+    "interrupt_exist_connections",
+    _("Interrupt connections"),
+    _("Interrupt existing connections when group URLTest switches the active server"),
+  );
+  o.depends("action", "group");
+  o.default = "1";
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "check_interval",
+    _("Check interval"),
+    _("Interval between URLTest latency checks (e.g. 3m, 30s)"),
+  );
+  o.depends("action", "group");
+  o.placeholder = "3m";
+  o.default = "3m";
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "tolerance",
+    _("Tolerance (ms)"),
+    _("Latency difference threshold in milliseconds to switch server"),
+  );
+  o.depends("action", "group");
+  o.placeholder = "50";
+  o.default = "50";
+  o.datatype = "uinteger";
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateUrlTestTolerance(value);
+  };
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "testing_url",
+    _("Testing URL"),
+    _("URL used to test server latency and availability"),
+  );
+  o.depends("action", "group");
+  o.placeholder = "https://www.gstatic.com/generate_204";
+  o.default = "https://www.gstatic.com/generate_204";
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateUrlTestUrl(value);
+  };
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "idle_timeout",
+    _("Idle timeout"),
+    _("URLTest idle timeout (e.g. 30m)"),
+  );
+  o.depends("action", "group");
+  o.placeholder = "30m";
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateOptionalSingBoxDuration(value);
+  };
+
+  o = section.taboption(
+    "settings",
     form.ListValue,
     "dns_type",
     _("DNS protocol"),

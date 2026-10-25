@@ -1049,7 +1049,7 @@ function add_group_urltest_outbounds(config, sections) {
             tag: selector_tag,
             outbounds: selector_outbounds,
             default: selector_default,
-            interrupt_exist_connections: true
+            interrupt_exist_connections: connections.urltest_interrupt_exist_connections(section, "urltest")
         });
 
         state.urltestCandidateTags = unique_string_array(tags);
