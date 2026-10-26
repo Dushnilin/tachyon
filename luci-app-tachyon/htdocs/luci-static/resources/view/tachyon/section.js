@@ -15580,7 +15580,9 @@ async function matchCommunityList(secName, community, query, type) {
       "rule-set",
       "match",
       srsPath,
-      ...(type === "ip" ? ["--ip", query] : ["--domain", query]),
+      ...(type === "ip"
+        ? ["--ip", query]
+        : ["--domain", (query || "").toLowerCase()]),
     ];
 
     for (const bin of [
@@ -15803,6 +15805,8 @@ async function performTrace(query) {
   let queryForMatching = query;
   if (type === "ip" && query.indexOf("/") !== -1) {
     queryForMatching = query.split("/")[0];
+  } else if (type === "domain") {
+    queryForMatching = queryForMatching.toLowerCase();
   }
 
   // Check DNS Detour from settings if enabled

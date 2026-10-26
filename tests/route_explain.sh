@@ -125,6 +125,9 @@ if command -v ucode >/dev/null 2>&1; then
   tachyon_out=$(TACHYON_LIB="$TACHYON_LIB" ucode "$BIN_TACHYON" route_explain 192.168.1.50 github.com 443)
   assert_contains "$tachyon_out" "TACHYON ROUTE DECISION EXPLAINER" "tachyon binary route_explain execution"
 
+  tachyon_case_out=$(TACHYON_LIB="$TACHYON_LIB" ucode "$BIN_TACHYON" route_explain 192.168.1.50 Github.COM 443)
+  assert_contains "$tachyon_case_out" "TACHYON ROUTE DECISION EXPLAINER" "tachyon binary route_explain case insensitive execution"
+
   # 4.6 Execution via diagnostics/runtime.uc facade
   runtime_out=$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$RUNTIME_UC" route-explain 192.168.1.50 github.com 443)
   assert_contains "$runtime_out" "TACHYON ROUTE DECISION EXPLAINER" "runtime.uc route-explain facade execution"
