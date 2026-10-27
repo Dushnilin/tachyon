@@ -1383,8 +1383,21 @@ function settings_component_update_check_interval(settings) {
     return value != "" ? value : "1d";
 }
 
-function section_rule_ports_csv(section) {
+function single_rule_ports_csv(section) {
     return rule_config.rule_ports_csv_value(option(section, "ports", ""), option(section, "ports_text", ""));
+}
+
+function section_rule_ports_csv(section) {
+    let parts = [];
+    let base_ports = single_rule_ports_csv(section);
+    if (base_ports != "")
+        push(parts, base_ports);
+    for (let cond in connections.section_leaf_conditions(section)) {
+        let cond_ports = single_rule_ports_csv(cond);
+        if (cond_ports != "")
+            push(parts, cond_ports);
+    }
+    return join(",", parts);
 }
 
 function combined_domain_condition_text(section) {
@@ -1397,7 +1410,7 @@ function combined_domain_condition_text(section) {
     return option(section, "domain_suffix_text", "");
 }
 
-function section_rule_condition_csv(section, key, kind) {
+function single_rule_condition_csv(section, key, kind) {
     return rule_config.rule_condition_csv_value(
         key,
         kind,
@@ -1408,6 +1421,35 @@ function section_rule_condition_csv(section, key, kind) {
         combined_domain_condition_text(section),
         option(section, "domain_suffix", "")
     );
+}
+
+function section_rule_condition_csv(section, key, kind) {
+    let parts = [];
+    let base_csv = single_rule_condition_csv(section, key, kind);
+    if (base_csv != "")
+        push(parts, base_csv);
+    for (let cond in connections.section_leaf_conditions(section)) {
+        let cond_csv = single_rule_condition_csv(cond, key, kind);
+        if (cond_csv != "")
+            push(parts, cond_csv);
+    }
+    return join(",", parts);
+}
+
+function section_leaf_option_text(section, key) {
+    let conds = connections.section_leaf_conditions(section);
+    if (length(conds) == 0)
+        return option(section, key, "");
+    let parts = [];
+    let base = option(section, key, "");
+    if (base != "")
+        push(parts, base);
+    for (let cond in conds) {
+        let val = option(cond, key, "");
+        if (val != "")
+            push(parts, val);
+    }
+    return join(" ", parts);
 }
 
 function nft_schedule_signature_body(body, schedule) {
@@ -1518,14 +1560,14 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         if (action == "dns") {
             body = signature_add_value(body, "rule." + name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
             body = signature_add_value(body, "rule." + name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
-            body = signature_add_value(body, "rule." + name + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+            body = signature_add_value(body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
             continue;
         }
         body = signature_add_value(body, "rule." + name + ".ip_cidr", section_rule_condition_csv(section, "ip_cidr", "subnets"));
         body = signature_add_value(body, "rule." + name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
         body = signature_add_value(body, "rule." + name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
         body = signature_add_value(body, "rule." + name + ".ports", section_rule_ports_csv(section));
-        body = signature_add_value(body, "rule." + name + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+        body = signature_add_value(body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
         body = signature_add_value(body, "rule." + name + ".excluded_ips", option(section, "excluded_ips", ""));
         body = signature_add_value(body, "rule." + name + ".excluded_protocol", option(section, "excluded_protocol", ""));
         body = signature_add_value(body, "rule." + name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
@@ -1537,7 +1579,7 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
 
         body = signature_add_value(body, "rule." + name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
         body = signature_add_value(body, "rule." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
-        body = signature_add_value(body, "rule." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+        body = signature_add_value(body, "rule." + name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
         body = signature_add_value(body, "rule." + name + ".dscp", connections.dscp_value(section));
         let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
         if (fail_policy == "block" || fail_policy == "direct") {
@@ -1981,6 +2023,16 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".hosts_list_disabled", option(section, "hosts_list_disabled", ""));
         body = signature_add_value(body, prefix + ".dns_hosts", option(section, "dns_hosts", ""));
     }
+    else if (action == "group") {
+        body = signature_add_value(body, prefix + ".group_members", join(" ", list_option(section, "group_members")));
+        body = signature_add_value(body, prefix + ".urltests", urltests_signature(section));
+        body = signature_add_value(body, prefix + ".priority_groups", priority_groups_signature(section));
+        body = signature_add_value(body, prefix + ".urltest_check_interval", section_urltest_check_interval(section));
+        body = signature_add_value(body, prefix + ".urltest_tolerance", option(section, "urltest_tolerance", "50"));
+        body = signature_add_value(body, prefix + ".urltest_testing_url", option(section, "urltest_testing_url", "https://www.gstatic.com/generate_204"));
+        body = signature_add_outbound_detour_body(body, section, prefix);
+        body = signature_add_mixed_proxy_body(body, section, prefix);
+    }
 
     if (connections.routed_dns_enabled(section)) {
         body = signature_add_value(body, prefix + ".routed_dns_enabled", "1");
@@ -1997,7 +2049,7 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     body = signature_add_value(body, prefix + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
     if (action != "dns")
         body = signature_add_value(body, prefix + ".ports", section_rule_ports_csv(section));
-    body = signature_add_value(body, prefix + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+    body = signature_add_value(body, prefix + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
     if (action != "dns") {
         body = signature_add_value(body, prefix + ".excluded_ips", option(section, "excluded_ips", ""));
         body = signature_add_value(body, prefix + ".excluded_protocol", option(section, "excluded_protocol", ""));
@@ -2008,7 +2060,22 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     body = signature_add_value(body, prefix + ".rule_set", connections.rule_sets_value(section));
     if (action != "dns")
         body = signature_add_value(body, prefix + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
-    body = signature_add_value(body, prefix + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+    body = signature_add_value(body, prefix + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
+    let user_doms = section_leaf_option_text(section, "user_domains");
+    let user_doms_txt = section_leaf_option_text(section, "user_domains_text");
+    if (user_doms != "" || user_doms_txt != "")
+        body = signature_add_value(body, prefix + ".user_domains", user_doms + "|" + user_doms_txt);
+    if (length(list_option(section, "condition_refs")) > 0 || option(section, "condition_expression", "") != "")
+        body = signature_add_value(body, prefix + ".condition_clauses", sprintf("%J", connections.section_effective_clauses(section)));
+    if (length(list_option(section, "outbound_source_refs")) > 0 ||
+        length(list_option(section, "outbound_group_refs")) > 0 ||
+        length(list_option(section, "balancer_refs")) > 0) {
+        body = signature_add_value(body, prefix + ".modular_outbounds", sprintf("%J", {
+            sources: connections.section_effective_outbound_sources(section),
+            groups: list_option(section, "outbound_group_refs"),
+            balancers: list_option(section, "balancer_refs")
+        }));
+    }
     let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
     if (fail_policy == "block" || fail_policy == "direct") {
         body = signature_add_value(body, prefix + ".fail_policy", fail_policy);
@@ -2269,10 +2336,34 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     return body;
 }
 
+function section_provider_for_action(section, action) {
+    if (section_name(section) == "" || !bool_option(section, "enabled", true))
+        return null;
+    action = as_string(action);
+    if (option(section, "action", "") == action)
+        return section;
+    if (connections.is_connections_action(option(section, "action", ""))) {
+        let target_type = lc(trim(action));
+        for (let src in connections.section_effective_outbound_sources(section)) {
+            if (lc(trim(option(src, "source_type", ""))) == target_type) {
+                let merged = {};
+                for (let k, v in object_or_empty(section))
+                    merged[k] = v;
+                for (let k, v in object_or_empty(src)) {
+                    if (substr(k, 0, 1) == "." || k == "name" || k == "enabled" || k == "source_type")
+                        continue;
+                    if (merged[k] == null || merged[k] == "")
+                        merged[k] = v;
+                }
+                return merged;
+            }
+        }
+    }
+    return null;
+}
+
 function section_action_is_enabled(section, action) {
-    return section_name(section) != "" &&
-        bool_option(section, "enabled", true) &&
-        option(section, "action", "") == as_string(action);
+    return section_provider_for_action(section, action) != null;
 }
 
 function action_queue_signature_body(sections, action, signature_key) {
@@ -2291,9 +2382,9 @@ function section_user_domains_for_list_type(section) {
     let list_type = option(section, "user_domain_list_type", "disabled");
 
     if (list_type == "dynamic")
-        return option(section, "user_domains", "");
+        return section_leaf_option_text(section, "user_domains");
     if (list_type == "text")
-        return option(section, "user_domains_text", "");
+        return section_leaf_option_text(section, "user_domains_text");
     return "";
 }
 
@@ -2307,10 +2398,10 @@ function append_zapret_runtime_signature_body(body, section, signature_prefix, o
     body = signature_add_value(body, signature_prefix + "." + name + ".community_lists", connections.community_lists_value(section));
     body = signature_add_value(body, signature_prefix + "." + name + ".rule_set", connections.rule_sets_value(section));
     body = signature_add_value(body, signature_prefix + "." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
-    body = signature_add_value(body, signature_prefix + "." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+    body = signature_add_value(body, signature_prefix + "." + name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
     body = signature_add_value(body, signature_prefix + "." + name + ".user_domain_list_type", user_domain_list_type);
-    body = signature_add_value(body, signature_prefix + "." + name + ".local_domain_lists", option(section, "local_domain_lists", ""));
-    body = signature_add_value(body, signature_prefix + "." + name + ".remote_domain_lists", option(section, "remote_domain_lists", ""));
+    body = signature_add_value(body, signature_prefix + "." + name + ".local_domain_lists", section_leaf_option_text(section, "local_domain_lists"));
+    body = signature_add_value(body, signature_prefix + "." + name + ".remote_domain_lists", section_leaf_option_text(section, "remote_domain_lists"));
     body = signature_add_value(body, signature_prefix + "." + name + ".user_domains", section_user_domains_for_list_type(section));
 
     return body;
@@ -2319,9 +2410,9 @@ function append_zapret_runtime_signature_body(body, section, signature_prefix, o
 function zapret_runtime_signature_body(sections) {
     let body = "";
 
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (!section_action_is_enabled(section, "zapret"))
+    for (let raw_section in sections) {
+        let section = section_provider_for_action(object_or_empty(raw_section), "zapret");
+        if (section == null)
             continue;
 
         body = append_zapret_runtime_signature_body(
@@ -2380,9 +2471,9 @@ function enabled_action_index(sections, target_section, action) {
 function byedpi_runtime_signature_body(sections) {
     let body = "";
 
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (!section_action_is_enabled(section, "byedpi"))
+    for (let raw_section in sections) {
+        let section = section_provider_for_action(object_or_empty(raw_section), "byedpi");
+        if (section == null)
             continue;
 
         let name = section_name(section);
@@ -2396,9 +2487,9 @@ function byedpi_runtime_signature_body(sections) {
 function wdtt_runtime_signature_body(sections) {
     let body = "";
 
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (!section_action_is_enabled(section, "wdtt"))
+    for (let raw_section in sections) {
+        let section = section_provider_for_action(object_or_empty(raw_section), "wdtt");
+        if (section == null)
             continue;
 
         let name = section_name(section);
@@ -2414,7 +2505,7 @@ function wdtt_runtime_signature_body(sections) {
         body = signature_add_value(body, "wdtt." + name + ".block_doh", bool_option(section, "block_doh", false) ? "1" : "0");
         body = signature_add_value(body, "wdtt." + name + ".block_ipv6", bool_option(section, "block_ipv6", false) ? "1" : "0");
         body = signature_add_value(body, "wdtt." + name + ".subscription_links", join(" ", list_option(section, "subscription_links")));
-        body = signature_add_value(body, "wdtt." + name + ".community_lists", join(" ", list_option(section, "community_lists")));
+        body = signature_add_value(body, "wdtt." + name + ".community_lists", connections.community_lists_value(section));
         body = signature_add_value(body, "wdtt." + name + ".remote_domain_list", join(" ", list_option(section, "remote_domain_list")));
         body = signature_add_value(body, "wdtt." + name + ".qwdtt_mode", option(section, "qwdtt_mode", ""));
     }
@@ -2425,9 +2516,9 @@ function wdtt_runtime_signature_body(sections) {
 function olcrtc_runtime_signature_body(sections) {
     let body = "";
 
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (!section_action_is_enabled(section, "olcrtc"))
+    for (let raw_section in sections) {
+        let section = section_provider_for_action(object_or_empty(raw_section), "olcrtc");
+        if (section == null)
             continue;
 
         let name = section_name(section);
@@ -2447,9 +2538,9 @@ function olcrtc_runtime_signature_body(sections) {
 function fptn_runtime_signature_body(sections) {
     let body = "";
 
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (!section_action_is_enabled(section, "fptn"))
+    for (let raw_section in sections) {
+        let section = section_provider_for_action(object_or_empty(raw_section), "fptn");
+        if (section == null)
             continue;
 
         let name = section_name(section);

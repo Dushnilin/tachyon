@@ -44,6 +44,7 @@ let settings = transport.settings;
 
 let format_bytes = rendering.format_bytes;
 let escape_html = rendering.escape_html;
+let setting_schema = rendering.setting_schema;
 let get_schema_label = rendering.get_schema_label;
 let is_boolean_key = rendering.is_boolean_key;
 let is_list_key = rendering.is_list_key;
@@ -54,8 +55,13 @@ let build_identity_key = rendering.build_identity_key;
 let extract_clean_fptn_token = rendering.extract_clean_fptn_token;
 let mask_fptn_token = rendering.mask_fptn_token;
 let section_condition_sections = rendering.section_condition_sections;
+let section_own_and_conditions = rendering.section_own_and_conditions;
+let section_primary_atomic_condition = rendering.section_primary_atomic_condition;
+let section_match_all_enabled = rendering.section_match_all_enabled;
 let section_condition_values = rendering.section_condition_values;
 let section_outbound_sources = rendering.section_outbound_sources;
+let section_has_fptn = rendering.section_has_fptn;
+let section_fptn_token = rendering.section_fptn_token;
 let section_balancers = rendering.section_balancers;
 let normalize_mac = rendering.normalize_mac;
 let find_mac_block_rules = rendering.find_mac_block_rules;
@@ -77,9 +83,19 @@ function view_settings_menu(token, chat_id, msg_id) {
         [{ text: t("menu_global"), callback_data: "/set_cat settings settings" }],
         [{ text: t("menu_telegram"), callback_data: "/set_cat telegram telegram" }],
         [{ text: t("menu_router_name"), callback_data: "/name" }],
+        [
+            { text: t("menu_sections"), callback_data: "/set_list section" },
+            { text: t("cat_conditions"), callback_data: "/set_list condition" }
+        ],
+        [
+            { text: t("cat_outbound_sources"), callback_data: "/set_list outbound_source" },
+            { text: t("cat_balancers"), callback_data: "/set_list balancer" }
+        ],
+        [
+            { text: t("cat_outbound_groups"), callback_data: "/set_list outbound_group" },
+            { text: t("menu_servers_short"), callback_data: "/set_list server" }
+        ],
         [{ text: t("menu_subscriptions"), callback_data: "/set_list subscription_url" }],
-        [{ text: t("menu_sections"), callback_data: "/set_list section" }],
-        [{ text: t("menu_servers_short"), callback_data: "/set_list server" }],
         [{ text: t("menu_dns_presets"), callback_data: "/dns_presets" }],
         [{ text: t("menu_quiet_hours"), callback_data: "/qh" }],
         [{ text: t("menu_guest"), callback_data: "/guest" }],
@@ -102,13 +118,23 @@ function view_set_list(token, chat_id, msg_id, stype) {
     for (let sname in all) {
         let s = all[sname];
         if (s[".type"] == stype) {
-            let label = s.label || s.url || sname;
-            if (length(label) > 30) label = substr(label, 0, 30) + "...";
-            push(keyboard, [{ text: (s.enabled == "0" ? "❌ " : "✅ ") + label, callback_data: "/set_cat " + stype + " " + sname }]);
+            let label = s.label || s.name || s.url || sname;
+            let suffix = "";
+            if (stype == "outbound_source" && s.source_type)
+                suffix = " [" + s.source_type + "]";
+            else if (stype == "balancer" && s.mode)
+                suffix = " [" + s.mode + "]";
+            else if (stype == "section" && s.action)
+                suffix = " [" + s.action + "]";
+            else if (stype == "condition")
+                suffix = s.condition_expression ? " [formula]" : "";
+            if (length(label) > 26) label = substr(label, 0, 26) + "...";
+            let status_prefix = (stype == "condition") ? "🧩 " : (s.enabled == "0" ? "❌ " : "✅ ");
+            push(keyboard, [{ text: status_prefix + label + suffix, callback_data: "/set_cat " + stype + " " + sname }]);
         }
     }
     push(keyboard, [{ text: t("menu_categories"), callback_data: "/settings" }]);
-    let text = "⚙️ <b>" + stype + "</b>\n" + t("choose_section");
+    let text = "⚙️ <b>" + escape_html(stype) + "</b>\n" + t("choose_section");
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -166,7 +192,7 @@ function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
     if (end < total) push(nav, { text: t("nav_next"), callback_data: "/set_cat " + stype + " " + sname + " " + (page + 1) });
     if (length(nav) > 0) push(keyboard, nav);
     
-    if (stype == "server" || stype == "section" || stype == "subscription_url") {
+    if (stype == "server" || stype == "section" || stype == "subscription_url" || stype == "condition" || stype == "outbound_source" || stype == "outbound_group" || stype == "balancer") {
         push(keyboard, [{ text: t("btn_delete") + " " + sname, callback_data: "/set_del " + stype + " " + sname }]);
     }
     
@@ -266,7 +292,7 @@ function view_menu(token, chat_id, msg_id) {
     let has_fptn = false;
     let sections = api.get_sections();
     for (let i = 0; i < length(sections); i++) {
-        if (sections[i].action == "fptn") {
+        if (section_has_fptn(sections[i])) {
             has_fptn = true;
             break;
         }
@@ -290,7 +316,7 @@ function view_status(token, chat_id, msg_id) {
                t("status_uptime") + ": <code>" + sys.uptime + "</code>\n" +
                t("status_cpu") + ": <code>" + sys.cpu + "</code>\n" +
                "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n\n" +
-               escape_html(engine_label) + ": <code>" + sys.singbox + (sys.singbox_variant ? " [" + sys.singbox_variant + "]" : "") + "</code>\n" +
+               escape_html(engine_label) + ": <code>" + sys.singbox + (sys.singbox_variant && sys.singbox_variant != engine_label ? " [" + sys.singbox_variant + "]" : "") + "</code>\n" +
                (sys.zapret2_installed ? "zapret2: <code>" + sys.zapret2 + "</code>\n" : "") +
                "Watchdog: <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>\n\n" +
                "WAN: <code>" + (sys.wan_ip || "?") + "</code> " +
@@ -479,10 +505,40 @@ function view_sections(token, chat_id, msg_id) {
     for (let s in sections) {
         let label = s.label || s.name || s[".name"];
         let status = (s.enabled == "1") ? "✅" : "❌";
-        push(keyboard, [{ text: status + " " + label, callback_data: "/sec_view " + s[".name"] }]);
+        let act = s.action || "connection";
+        let sources = section_outbound_sources(s);
+        let conds = section_condition_sections(s);
+        let badge = act;
+        if (act == "connection" && length(sources) > 0) {
+            let stypes = [];
+            for (let src in sources) {
+                let st = src.source_type || "subscription";
+                let found = false;
+                for (let x in stypes) if (x == st) { found = true; break; }
+                if (!found) push(stypes, st);
+            }
+            badge = join("+", stypes);
+        } else if (act == "dns" && s.dns_server) {
+            badge = "dns:" + (s.dns_type || "doh");
+        } else if (act == "group") {
+            badge = "group:" + length(common.list_option(s, "group_members"));
+        }
+        text += status + " <b>" + escape_html(label) + "</b> <code>[" + escape_html(badge) + "]</code>";
+        if (length(conds) > 0)
+            text += " • 🧩" + length(conds);
+        text += "\n";
+        push(keyboard, [{ text: status + " " + label + " [" + badge + "]", callback_data: "/sec_view " + s[".name"] }]);
     }
     
     push(keyboard, [{ text: t("section_create"), callback_data: "/sec_create" }]);
+    push(keyboard, [
+        { text: t("cat_conditions"), callback_data: "/set_list condition" },
+        { text: t("cat_outbound_sources"), callback_data: "/set_list outbound_source" }
+    ]);
+    push(keyboard, [
+        { text: t("cat_balancers"), callback_data: "/set_list balancer" },
+        { text: t("menu_test_rule"), callback_data: "/test_rule" }
+    ]);
     push(keyboard, [{ text: t("nav_back"), callback_data: "/menu" }]);
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -495,15 +551,26 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
     if (!s) return view_sections(token, chat_id, msg_id);
     
     let status = (s.enabled == "1") ? t("status_enabled") : t("status_disabled");
-    let text = "⚙️ <b>" + t("section_section") + ":</b> " + escape_html(s.label || s.name || sec_name) + "\n" +
-               t("section_type") + ": <code>" + escape_html(s.action || "none") + "</code>\n" +
+    let act = s.action || "connection";
+    let text = "⚙️ <b>" + t("section_section") + ":</b> " + escape_html(s.label || s.name || sec_name) + " (<code>" + escape_html(sec_name) + "</code>)\n" +
+               t("section_type") + ": <code>" + escape_html(act) + "</code>\n" +
                t("section_status") + ": <b>" + status + "</b>\n\n";
                
-    if (s.action == "proxy" || s.action == "route") {
+    if (act == "proxy" || act == "route" || (act == "connection" && s.target)) {
         text += t("status_target") + ": <code>" + escape_html(s.target || "main-out") + "</code>\n";
     }
-    if (s.action == "fptn") {
-        let tok = s.access_token || "";
+    if (act == "dns") {
+        let dtype = s.dns_type || "doh";
+        let dsrv = s.dns_server || "(не задан)";
+        text += "🌐 <b>" + t("section_dns_target") + ":</b> <code>" + escape_html(dtype + "://" + dsrv) + "</code>\n";
+    }
+    let grp_members = common.list_option(s, "group_members");
+    if (act == "group") {
+        text += "🗂 <b>" + t("section_group_members") + ":</b> " + (length(grp_members) > 0 ? "<code>" + escape_html(join(" → ", grp_members)) + "</code>" : "<i>(пусто)</i>") + "\n";
+    }
+    let has_fptn = section_has_fptn(s);
+    if (has_fptn) {
+        let tok = section_fptn_token(s);
         text += "🔑 Token: <code>" + escape_html(mask_fptn_token(tok)) + "</code>\n";
     }
     
@@ -512,10 +579,18 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
                   length(section_condition_values(s, "domain_keyword")) +
                   length(section_condition_values(s, "domain_regex"));
     let ip_count = length(section_condition_values(s, "ip_cidr")) +
-                   length(section_condition_values(s, "ip"));
+                   length(section_condition_values(s, "ip")) +
+                   length(section_condition_values(s, "subnets"));
     let src_count = length(section_condition_values(s, "source_ip_cidr")) +
-                    length(section_condition_values(s, "source_macs"));
-    let rs_count = length(section_condition_values(s, "community_lists"));
+                    length(section_condition_values(s, "source_macs")) +
+                    length(section_condition_values(s, "devices"));
+    let rs_count = length(section_condition_values(s, "community_lists")) +
+                   length(section_condition_values(s, "rule_set")) +
+                   length(section_condition_values(s, "rule_set_with_subnets")) +
+                   length(section_condition_values(s, "domain_ip_lists"));
+    let port_vals = section_condition_values(s, "ports");
+    let geoip_vals = section_condition_values(s, "geoip_country");
+    let is_match_all = section_match_all_enabled(s);
 
     // The conditions a section is built from are reusable entities now, so
     // the section has to name them - otherwise the user has no idea which
@@ -523,19 +598,56 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
     let cond_list = section_condition_sections(s);
     let cond_names = [];
     for (let cond in cond_list) {
-        let cname = cond.name || cond[".name"];
-        let ctype = cond.condition_type || "atomic";
+        let cname = cond.label || cond.name || cond[".name"];
+        let ctype = cond.condition_expression ? "formula" : (cond.condition_type || "atomic");
         push(cond_names, escape_html(cname) + " <i>(" + escape_html(ctype) + ")</i>");
     }
 
     let sources = section_outbound_sources(s);
+    let src_names = [];
+    for (let src in sources) {
+        let sname = src.label || src.name || src[".name"];
+        let stype = src.source_type || "subscription";
+        let detail = stype;
+        if (stype == "zapret2" && src.zapret2_strategy)
+            detail = stype + ":" + src.zapret2_strategy;
+        else if (stype == "desync" && src.desync_mode)
+            detail = stype + ":" + src.desync_mode;
+        else if (stype == "interface" && src.interface)
+            detail = stype + ":" + src.interface;
+        push(src_names, escape_html(sname) + " <i>(" + escape_html(detail) + ")</i>");
+    }
+
     let balancers = section_balancers(s);
     let bal_names = [];
     for (let bal in balancers) {
-        let bname = bal.name || bal[".name"];
-        let btype = bal.balancer_type || bal[".type"] || "urltest";
+        let bname = bal.label || bal.name || bal[".name"];
+        let btype = bal.mode || bal.balancer_type || bal[".type"] || "urltest";
         push(bal_names, escape_html(bname) + " <i>(" + escape_html(btype) + ")</i>");
     }
+
+    if (length(cond_names) > 0) {
+        text += "🧩 <b>" + t("section_conditions") + ":</b> " + join(", ", cond_names) + "\n";
+    }
+    if (s.condition_expression) {
+        text += "📐 <b>" + t("condition_expression") + ":</b> <code>" + escape_html(s.condition_expression) + "</code>\n";
+    }
+    if (is_match_all) {
+        text += "🌍 <b>" + t("section_match_all_on") + "</b>\n";
+    }
+    if (length(geoip_vals) > 0) {
+        text += "🗺 <b>" + t("section_geoip") + ":</b> <code>" + escape_html(join(", ", geoip_vals)) + "</code>\n";
+    }
+    if (length(port_vals) > 0) {
+        text += "🔌 <b>" + t("section_ports") + ":</b> <code>" + escape_html(join(", ", port_vals)) + "</code>\n";
+    }
+    if (length(src_names) > 0) {
+        text += "📡 <b>" + t("cat_outbound_sources") + ":</b> " + join(", ", src_names) + "\n";
+    }
+    if (length(bal_names) > 0) {
+        text += "⚡ <b>" + t("section_balancers") + ":</b> " + join(", ", bal_names) + "\n";
+    }
+    text += "\n";
 
     let keyboard = [];
     push(keyboard, [
@@ -543,21 +655,19 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
         { text: t("btn_rename"), callback_data: "/sec_rename " + sec_name }
     ]);
 
-    push(keyboard, [{ text: t("section_action") + ": " + (s.action || "none"), callback_data: "/sec_action " + sec_name }]);
-    if (s.action == "proxy" || s.action == "route") {
+    push(keyboard, [{ text: t("section_action") + ": " + act, callback_data: "/sec_action " + sec_name }]);
+    if (act == "proxy" || act == "route") {
         push(keyboard, [{ text: t("status_target") + ": " + (s.target || "main-out"), callback_data: "/sec_target " + sec_name }]);
     }
-    if (s.action == "fptn") {
+    if (act == "dns") {
+        push(keyboard, [{ text: t("btn_sec_dns_edit"), callback_data: "/sec_dns_edit " + sec_name }]);
+    }
+    if (act == "group") {
+        push(keyboard, [{ text: t("btn_sec_group_members", length(grp_members)), callback_data: "/sec_grp " + sec_name }]);
+    }
+    if (has_fptn) {
         push(keyboard, [{ text: "🔑 " + t("fptn_token_change_btn"), callback_data: "/fptn_token " + sec_name }]);
     }
-
-    if (length(cond_names) > 0) {
-        text += "🧩 <b>" + t("section_conditions") + ":</b> " + join(", ", cond_names) + "\n";
-    }
-    if (length(bal_names) > 0) {
-        text += "⚡ <b>" + t("section_balancers") + ":</b> " + join(", ", bal_names) + "\n";
-    }
-    text += "\n";
 
     push(keyboard, [
         { text: t("section_domains") + " (" + d_count + ")", callback_data: "/sec_list " + sec_name + " domain" },
@@ -567,12 +677,177 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
         { text: t("section_sources") + " (" + src_count + ")", callback_data: "/sec_list " + sec_name + " src" },
         { text: "📝 Rulesets (" + rs_count + ")", callback_data: "/sec_list " + sec_name + " ruleset" }
     ]);
+    push(keyboard, [
+        { text: t("btn_sec_ports", length(port_vals)), callback_data: "/sec_list " + sec_name + " ports" },
+        { text: t("btn_sec_geoip", length(geoip_vals)), callback_data: "/sec_list " + sec_name + " geoip" }
+    ]);
+
+    push(keyboard, [
+        { text: t("btn_sec_conditions", length(cond_list)), callback_data: "/sec_conds " + sec_name },
+        { text: t("btn_sec_balancers", length(balancers)), callback_data: "/sec_bals " + sec_name }
+    ]);
 
     push(keyboard, [{ text: t("menu_subscriptions") + " (" + length(sources) + ")", callback_data: "/sec_subs " + sec_name }]);
     
     push(keyboard, [{ text: t("btn_delete_section"), callback_data: "/sec_delete " + sec_name }]);
     push(keyboard, [{ text: t("btn_back_to_sections"), callback_data: "/sections" }]);
     
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_sec_conds(token, chat_id, msg_id, sec_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return view_sections(token, chat_id, msg_id);
+
+    let all = c.get_all(CONFIG_NAME);
+    let linked_refs = common.list_option(s, "condition_refs");
+    let linked_map = {};
+    for (let r in linked_refs) linked_map[r] = true;
+
+    let eff_conds = section_condition_sections(s);
+    let eff_map = {};
+    for (let ec in eff_conds) eff_map[ec[".name"]] = true;
+
+    let text = t("sec_conds_header") + " <code>" + escape_html(s.label || sec_name) + "</code>\n\n";
+    if (s.condition_expression) {
+        text += "📐 <b>" + t("condition_expression") + ":</b> <code>" + escape_html(s.condition_expression) + "</code>\n\n";
+    }
+
+    let keyboard = [];
+    let has_linked = false;
+    text += "<b>" + t("sec_conds_linked") + "</b>\n";
+    for (let ec in eff_conds) {
+        has_linked = true;
+        let cname = ec[".name"];
+        let clabel = ec.label || ec.name || cname;
+        let cdesc = ec.condition_expression ? ("formula: " + ec.condition_expression) : "atomic";
+        text += "• <b>" + escape_html(clabel) + "</b> (<code>" + escape_html(cname) + "</code> — " + escape_html(cdesc) + ")\n";
+        let row = [{ text: "✏️ " + clabel, callback_data: "/set_cat condition " + cname }];
+        if (linked_map[cname])
+            push(row, { text: t("btn_unlink"), callback_data: "/sec_cond_tog " + sec_name + " " + cname });
+        push(keyboard, row);
+    }
+    if (!has_linked) {
+        text += "<i>(нет привязанных условий)</i>\n";
+    }
+
+    let avail_rows = [];
+    for (let sname in all) {
+        let item = all[sname];
+        if (item[".type"] != "condition" || linked_map[sname])
+            continue;
+        let clabel = item.label || item.name || sname;
+        if (length(clabel) > 22) clabel = substr(clabel, 0, 22) + "...";
+        push(avail_rows, [
+            { text: t("btn_link") + ": " + clabel, callback_data: "/sec_cond_tog " + sec_name + " " + sname },
+            { text: "✏️", callback_data: "/set_cat condition " + sname }
+        ]);
+    }
+    if (length(avail_rows) > 0) {
+        text += "\n<b>" + t("sec_conds_available") + "</b> " + length(avail_rows) + "\n";
+        for (let i = 0; i < length(avail_rows) && i < 12; i++)
+            push(keyboard, avail_rows[i]);
+    }
+
+    let is_match_all = section_match_all_enabled(s);
+    push(keyboard, [
+        { text: (is_match_all ? t("btn_sec_match_all_on") : t("btn_sec_match_all_off")), callback_data: "/sec_match_all " + sec_name },
+        { text: t("btn_create_condition"), callback_data: "/sec_cond_new " + sec_name }
+    ]);
+    push(keyboard, [{ text: "🔙 " + t("btn_back_to_section"), callback_data: "/sec_view " + sec_name }]);
+
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_sec_bals(token, chat_id, msg_id, sec_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return view_sections(token, chat_id, msg_id);
+
+    let all = c.get_all(CONFIG_NAME);
+    let linked_refs = common.list_option(s, "balancer_refs");
+    let linked_map = {};
+    for (let r in linked_refs) linked_map[r] = true;
+
+    let text = t("sec_bals_header") + " <code>" + escape_html(s.label || sec_name) + "</code>\n\n";
+    let keyboard = [];
+    let bals = section_balancers(s);
+    if (length(bals) == 0) {
+        text += "<i>(нет привязанных балансировщиков)</i>\n";
+    } else {
+        text += "<b>" + t("sec_bals_linked") + "</b>\n";
+        for (let b in bals) {
+            let bname = b[".name"];
+            let blabel = b.label || b.name || bname;
+            let bmode = b.mode || b.balancer_type || b[".type"] || "urltest";
+            text += "• <b>" + escape_html(blabel) + "</b> (<code>" + escape_html(bmode) + "</code>)\n";
+            let row = [{ text: "✏️ " + blabel + " [" + bmode + "]", callback_data: "/set_cat balancer " + bname }];
+            if (linked_map[bname])
+                push(row, { text: t("btn_unlink"), callback_data: "/sec_bal_tog " + sec_name + " " + bname });
+            push(keyboard, row);
+        }
+    }
+
+    for (let sname in all) {
+        let item = all[sname];
+        if (item[".type"] != "balancer" || linked_map[sname])
+            continue;
+        let blabel = item.label || item.name || sname;
+        let bmode = item.mode || "urltest";
+        push(keyboard, [
+            { text: t("btn_link") + ": " + blabel + " [" + bmode + "]", callback_data: "/sec_bal_tog " + sec_name + " " + sname },
+            { text: "✏️", callback_data: "/set_cat balancer " + sname }
+        ]);
+    }
+
+    push(keyboard, [{ text: "🔙 " + t("btn_back_to_section"), callback_data: "/sec_view " + sec_name }]);
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_sec_grp(token, chat_id, msg_id, sec_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return view_sections(token, chat_id, msg_id);
+
+    let all = c.get_all(CONFIG_NAME);
+    let members = common.list_option(s, "group_members");
+    let mem_map = {};
+    for (let m in members) mem_map[m] = true;
+
+    let text = t("sec_grp_header") + " <code>" + escape_html(s.label || sec_name) + "</code>\n\n";
+    let keyboard = [];
+    if (length(members) == 0) {
+        text += "<i>(нет участников в группе)</i>\n";
+    } else {
+        text += "<b>" + t("sec_grp_linked") + "</b>\n";
+        for (let i = 0; i < length(members); i++) {
+            let mname = members[i];
+            let ms = all[mname] || {};
+            let mlabel = ms.label || ms.name || mname;
+            text += as_string(i + 1) + ". <b>" + escape_html(mlabel) + "</b> (<code>" + escape_html(mname) + "</code>)\n";
+            push(keyboard, [
+                { text: "⬆️ #" + as_string(i + 1) + " " + mlabel, callback_data: "/sec_view " + mname },
+                { text: t("btn_unlink"), callback_data: "/sec_grp_tog " + sec_name + " " + mname }
+            ]);
+        }
+    }
+
+    for (let sname in all) {
+        let item = all[sname];
+        if (item[".type"] != "section" || sname == sec_name || mem_map[sname])
+            continue;
+        let mlabel = item.label || item.name || sname;
+        push(keyboard, [{ text: t("btn_link") + ": " + mlabel + " [" + (item.action || "connection") + "]", callback_data: "/sec_grp_tog " + sec_name + " " + sname }]);
+    }
+
+    push(keyboard, [{ text: "🔙 " + t("btn_back_to_section"), callback_data: "/sec_view " + sec_name }]);
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -597,13 +872,24 @@ function view_sec_list(token, chat_id, msg_id, sec_name, list_type) {
         title = t("section_ips");
         for (let x in section_condition_values(s, "ip_cidr")) push(items, {type: "ip_cidr", val: x});
         for (let x in section_condition_values(s, "ip")) push(items, {type: "ip", val: x});
+        for (let x in section_condition_values(s, "subnets")) push(items, {type: "subnets", val: x});
     } else if (list_type == "src") {
         title = t("section_sources");
         for (let x in section_condition_values(s, "source_ip_cidr")) push(items, {type: "source_ip_cidr", val: x});
         for (let x in section_condition_values(s, "source_macs")) push(items, {type: "source_macs", val: x});
+        for (let x in section_condition_values(s, "devices")) push(items, {type: "devices", val: x});
     } else if (list_type == "ruleset") {
-        title = "Rulesets";
+        title = "Rulesets / Community";
         for (let x in section_condition_values(s, "community_lists")) push(items, {type: "community_lists", val: x});
+        for (let x in section_condition_values(s, "rule_set")) push(items, {type: "rule_set", val: x});
+        for (let x in section_condition_values(s, "rule_set_with_subnets")) push(items, {type: "rule_set_with_subnets", val: x});
+        for (let x in section_condition_values(s, "domain_ip_lists")) push(items, {type: "domain_ip_lists", val: x});
+    } else if (list_type == "ports") {
+        title = t("section_ports");
+        for (let x in section_condition_values(s, "ports")) push(items, {type: "ports", val: x});
+    } else if (list_type == "geoip") {
+        title = t("section_geoip");
+        for (let x in section_condition_values(s, "geoip_country")) push(items, {type: "geoip_country", val: x});
     }
     
     let text = t("section_list_header") + " " + escape_html(s.label || s.name || sec_name) + "\n" +
@@ -739,7 +1025,7 @@ function exec_check_updates(token, chat_id, msg_id) {
             } else {
                 for (let comp in results) {
                     let name = comp.component || "";
-                    let title = (name == "sing_box") ? "sing-box" : (name == "tachyon_core" ? "tachyon-core" : name);
+                    let title = rendering.component_display_title(comp);
                     let cur = comp.current_version || "?";
                     let lat = comp.latest_version || "?";
                     if (!comp.success) {
@@ -748,7 +1034,7 @@ function exec_check_updates(token, chat_id, msg_id) {
                         let transition = build_transition(comp);
                         text += "• <b>" + title + "</b>: <code>" + cur + "</code> — " + t("update_new_release_build") +
                             (transition != "" ? " " + transition : "") + " ⚠️\n";
-                        let notes = trim(replace(as_string(comp.release_notes || ""), /\r/g, ""));
+                        let notes = rendering.clean_release_notes(comp.release_notes);
                         if (notes != "") {
                             if (length(notes) > 400)
                                 notes = substr(notes, 0, 400) + "...";
@@ -758,7 +1044,7 @@ function exec_check_updates(token, chat_id, msg_id) {
                         has_updates = true;
                     } else if (comp.status == "outdated") {
                         text += "• <b>" + title + "</b>: <code>" + cur + "</code> ➡️ <code>" + lat + "</code> ⚠️\n";
-                        let notes = trim(replace(as_string(comp.release_notes || ""), /\r/g, ""));
+                        let notes = rendering.clean_release_notes(comp.release_notes);
                         if (notes != "") {
                             if (length(notes) > 400)
                                 notes = substr(notes, 0, 400) + "...";
@@ -1088,28 +1374,67 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
     c.load(CONFIG_NAME);
     let s = c.get_all(CONFIG_NAME, sec_name);
     if (!s) return;
+    let all = c.get_all(CONFIG_NAME);
+    let direct_refs = common.list_option(s, "outbound_source_refs");
+    let direct_map = {};
+    for (let r in direct_refs) direct_map[r] = true;
+
+    let eff_sources = section_outbound_sources(s);
+    let eff_map = {};
     let keyboard = [];
     let count = 0;
-    let idx = 0;
+    let text = "🔗 <b>" + t("sub_section_subs") + " " + escape_html(s.label || sec_name) + "</b>\n\n";
+
     // The sources are reusable entities now, so a section points at them
     // instead of carrying its own subscription children.
-    for (let src in section_outbound_sources(s)) {
-        let url = src.url || src.name || src[".name"];
-        if (length(url) > 35) url = substr(url, 0, 35) + "...";
+    for (let src in eff_sources) {
+        let sname = src[".name"];
+        eff_map[sname] = true;
+        let label = src.label || src.name || src.url || sname;
+        if (length(label) > 26) label = substr(label, 0, 26) + "...";
         let icon = src.enabled == "0" ? "❌" : "✅";
-        let stype = src.source_type || "subscription";
-        push(keyboard, [{ text: icon + " [" + stype + "] " + url, callback_data: "/sec_subs " + sec_name }]);
+        let stype = src.source_type || (src[".type"] == "subscription_url" ? "subscription" : "subscription");
+        let cat_type = src[".type"] || "outbound_source";
+        text += icon + " <b>" + escape_html(src.label || src.name || sname) + "</b> <code>[" + escape_html(stype) + "]</code>";
+        if (src.url) text += "\n   └ <code>" + escape_html(length(src.url) > 45 ? substr(src.url, 0, 45) + "..." : src.url) + "</code>";
+        else if (src.zapret2_strategy) text += " (<code>" + escape_html(src.zapret2_strategy) + "</code>)";
+        else if (src.desync_mode) text += " (<code>" + escape_html(src.desync_mode) + "</code>)";
+        text += "\n";
+
+        push(keyboard, [
+            { text: icon + " [" + stype + "] " + label, callback_data: "/set_cat " + cat_type + " " + sname },
+            { text: t("btn_sub_delete"), callback_data: "/sec_sub_del " + sec_name + " " + sname }
+        ]);
         count++;
-        idx++;
     }
-    push(keyboard, [{ text: "➕ Добавить подписку", callback_data: "/sec_sub_add " + sec_name }]);
-    push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/sec_view " + sec_name }]);
-    let text = "🔗 <b>" + t("sub_section_subs") + " " + escape_html(sec_name) + "</b>\n\n";
+
     if (count == 0) {
-        text += t("sub_none");
+        text += t("sub_none") + "\n";
     } else {
-        text += t("sub_found_count") + " " + count;
+        text += "\n" + t("sub_found_count") + " " + count + "\n";
     }
+
+    // Offer existing outbound_source sections that are not yet linked
+    let avail = [];
+    for (let sname in all) {
+        let item = all[sname];
+        if (item[".type"] != "outbound_source" || eff_map[sname])
+            continue;
+        let slabel = item.label || item.name || sname;
+        if (length(slabel) > 22) slabel = substr(slabel, 0, 22) + "...";
+        let stype = item.source_type || "subscription";
+        push(avail, [
+            { text: t("btn_link") + ": " + slabel + " [" + stype + "]", callback_data: "/sec_src_tog " + sec_name + " " + sname },
+            { text: "✏️", callback_data: "/set_cat outbound_source " + sname }
+        ]);
+    }
+    if (length(avail) > 0) {
+        for (let i = 0; i < length(avail) && i < 10; i++)
+            push(keyboard, avail[i]);
+    }
+
+    push(keyboard, [{ text: "➕ " + t("btn_add_subscription"), callback_data: "/sec_sub_add " + sec_name }]);
+    push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/sec_view " + sec_name }]);
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -1283,39 +1608,89 @@ function view_test_rule(token, chat_id, msg_id, target) {
         return send_message(token, chat_id, "🔍 Введите домен или IP для проверки:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
     }
 
+    target = trim(as_string(target));
+    target = replace(target, /^https?:\/\//i, "");
+    target = split(target, "/")[0];
+
     let text = "🔍 <b>" + t("test_rule_header") + "</b> <code>" + escape_html(target) + "</code>\n\n";
     let sections = api.get_sections();
     let matched = false;
 
-    // api.get_sections() returns an ARRAY of section objects. In ucode, iterating
-    // an array with for..in yields the elements themselves, not indices.
+    // 1. Run full 7-stage route_explain pipeline when available
+    try {
+        let re_mod = require("diagnostics.route_explain");
+        if (re_mod && type(re_mod.explain_route) == "function") {
+            let exp = re_mod.explain_route("192.168.1.100", target, 443, "tcp");
+            if (type(exp) == "object" && exp.success) {
+                let v = exp.verdict || "direct";
+                let v_icon = "🟢";
+                if (v == "proxied") v_icon = "🚀";
+                else if (v == "dns") v_icon = "🌐";
+                else if (v == "blocked") v_icon = "🛑";
+                else if (v == "hosts") v_icon = "📝";
+                else if (v == "zapret" || v == "byedpi") v_icon = "🛡";
+
+                if (exp.matched_section && exp.matched_section != "default") {
+                    matched = true;
+                    let mrule = exp.matched_rule || {};
+                    let st4 = (exp.stages && exp.stages["4_dns_decision"]) || {};
+                    let st7 = (exp.stages && exp.stages["7_engine_outbound"]) || {};
+                    text += v_icon + " <b>Вердикт:</b> <code>" + escape_html(v) + "</code>\n";
+                    text += "✅ " + t("test_match") + " <code>" + escape_html(exp.matched_section) + "</code>";
+                    if (mrule.type)
+                        text += " (" + escape_html(mrule.type + (mrule.value ? ": " + mrule.value : "")) + ")";
+                    text += "\n";
+                    text += "   " + t("test_action") + " <code>" + escape_html(mrule.action || v) + "</code>\n";
+                    if (st7.selected_node)
+                        text += "   📤 Выход: <code>" + escape_html(st7.group_tag + " → " + st7.selected_node) + "</code>\n";
+                    if (st4.strategy)
+                        text += "   🌐 DNS: <code>" + escape_html(st4.strategy + (st4.server ? " (" + st4.server + ")" : "")) + "</code>\n";
+                    if (exp.explanation && exp.explanation.ru)
+                        text += "   💬 <i>" + escape_html(exp.explanation.ru) + "</i>\n";
+                    text += "\n";
+                }
+            }
+        }
+    } catch (e) {}
+
+    // 2. Also inspect section_condition_values across all enabled sections
+    // (covers both inline fields and linked condition entities).
     for (let sec in sections) {
         if (!sec) continue;
         if (sec[".type"] == "settings" || sec[".type"] == "telegram") continue;
         if (sec.enabled == "0") continue;
 
-        let domain_suffix = common.list_option(sec, "domain_suffix");
-        let domain = common.list_option(sec, "domain");
-        let ip_cidr = common.list_option(sec, "ip_cidr");
+        let domain_suffix = section_condition_values(sec, "domain_suffix");
+        let domain = section_condition_values(sec, "domain");
+        let domain_keyword = section_condition_values(sec, "domain_keyword");
+        let ip_cidr = section_condition_values(sec, "ip_cidr");
 
         for (let d in domain_suffix) {
             if (target == d || (length(target) > length(d) + 1 && substr(target, length(target) - length(d) - 1) == "." + d)) {
-                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (domain_suffix)\n";
-                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
+                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (domain_suffix: <code>" + escape_html(d) + "</code>)\n";
+                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "connection") + "</code>\n\n";
                 matched = true;
             }
         }
         for (let d in domain) {
             if (target == d || target == "full:" + d) {
-                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (domain)\n";
-                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
+                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (domain: <code>" + escape_html(d) + "</code>)\n";
+                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "connection") + "</code>\n\n";
+                matched = true;
+            }
+        }
+        for (let kw in domain_keyword) {
+            if (kw != "" && index(lc(target), lc(kw)) >= 0) {
+                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (domain_keyword: <code>" + escape_html(kw) + "</code>)\n";
+                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "connection") + "</code>\n\n";
                 matched = true;
             }
         }
         for (let ip in ip_cidr) {
-            if (match(target, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) && cidr_match_v4(target, ip)) {
-                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (ip_cidr)\n";
-                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
+            let norm_ip = (index(ip, "/") < 0 && match(ip, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) ? (ip + "/32") : ip;
+            if (match(target, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) && cidr_match_v4(target, norm_ip)) {
+                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (ip_cidr: <code>" + escape_html(ip) + "</code>)\n";
+                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "connection") + "</code>\n\n";
                 matched = true;
             }
         }
@@ -1486,6 +1861,9 @@ return {
     save_persistent_selector_choice,
     view_sections,
     view_section_editor,
+    view_sec_conds,
+    view_sec_bals,
+    view_sec_grp,
     view_sec_list,
     exec_doctor,
     exec_restart,

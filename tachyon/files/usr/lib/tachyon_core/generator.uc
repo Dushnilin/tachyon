@@ -1299,6 +1299,7 @@ function add_subscription_download_service_mixed_proxies(config, sections) {
 function add_service_mixed_proxy(config, settings, sections) {
     let has_any_proxy = false;
     let default_proxy_tag = "";
+    let fallback_dpi_tag = "";
     for (let s in sections) {
         // A deferred or quarantined section contributes no outbound; picking it
         // as the default target would leave the service-mixed route rule
@@ -1307,15 +1308,25 @@ function add_service_mixed_proxy(config, settings, sections) {
             continue;
         let action = s.action || "";
         if (s.enabled != "0" && (action == "connection" || action == "subscription" || action == "provider" || action == "fptn" || action == "awg")) {
-            has_any_proxy = true;
-            if (default_proxy_tag == "")
-                default_proxy_tag = s[".name"] + "-out";
+            let tag = s[".name"] + "-out";
+            if (connections.is_dpi_or_desync_only_section && connections.is_dpi_or_desync_only_section(s)) {
+                if (fallback_dpi_tag == "")
+                    fallback_dpi_tag = tag;
+            } else {
+                has_any_proxy = true;
+                if (default_proxy_tag == "")
+                    default_proxy_tag = tag;
+            }
         }
         else if (s.enabled != "0" && action == "group" && generator_routes.group_outbound_tag_for_section(s) != "") {
             has_any_proxy = true;
             if (default_proxy_tag == "")
                 default_proxy_tag = generator_routes.group_outbound_tag_for_section(s);
         }
+    }
+    if (default_proxy_tag == "" && fallback_dpi_tag != "") {
+        has_any_proxy = true;
+        default_proxy_tag = fallback_dpi_tag;
     }
 
     if (download_via_proxy_any_enabled(settings, sections)) {

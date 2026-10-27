@@ -3690,8 +3690,7 @@ function add_service_route_rules(config, sections) {
     let candidates = failover_candidate(sections);
     let proxy_candidates = [];
     for (let section in candidates) {
-        let act = option(section, "action", "");
-        if (connections.is_remote_proxy_action(act))
+        if (connections.is_remote_proxy_section ? connections.is_remote_proxy_section(section) : connections.is_remote_proxy_action(option(section, "action", "")))
             push(proxy_candidates, section);
     }
     let target_candidates = length(proxy_candidates) > 0 ? proxy_candidates : candidates;
@@ -3750,6 +3749,7 @@ function add_full_tunnel_route_rule(config, sections) {
     }
     if (full_tunnel_target == "" || !is_valid_detour(config, full_tunnel_target)) {
         full_tunnel_target = "";
+        let fallback_dpi_target = "";
         for (let section in sections) {
             if (!section_enabled(section))
                 continue;
@@ -3759,11 +3759,18 @@ function add_full_tunnel_route_rule(config, sections) {
             if (connections.is_connections_action(action) || action == "awg" || action == "fptn" || action == "group") {
                 let cand_tag = group_outbound_tag_for_section(section) || outbound_tag(section[".name"]);
                 if (is_valid_detour(config, cand_tag)) {
-                    full_tunnel_target = cand_tag;
-                    break;
+                    if (connections.is_dpi_or_desync_only_section && connections.is_dpi_or_desync_only_section(section)) {
+                        if (fallback_dpi_target == "")
+                            fallback_dpi_target = cand_tag;
+                    } else {
+                        full_tunnel_target = cand_tag;
+                        break;
+                    }
                 }
             }
         }
+        if (full_tunnel_target == "" && fallback_dpi_target != "")
+            full_tunnel_target = fallback_dpi_target;
     }
     if (full_tunnel_target != "" && is_valid_detour(config, full_tunnel_target)) {
         push_section_route_rule(config, {

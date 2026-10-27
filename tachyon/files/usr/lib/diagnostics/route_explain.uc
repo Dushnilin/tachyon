@@ -20,6 +20,7 @@ let common = require("core.common");
 let constants = require("core.constants");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
+let connections = require("config.connections");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -218,12 +219,33 @@ const KNOWN_COMMUNITY_DOMAINS = {
     youtube: [ "youtube.com", "googlevideo.com", "ytimg.com", "youtu.be", "ggpht.com" ],
     roblox: [ "roblox.com", "rbxcdn.com", "robloxlabs.com" ],
     cloudflare: [ "cloudflare.com", "cloudflare-dns.com", "workers.dev" ],
+    google_ai: [
+        "gemini.google.com", "aistudio.google.com", "makersuite.google.com", "notebooklm.google.com",
+        "bard.google.com", "deepmind.google", "generativelanguage.googleapis.com", "alkalimakersuite-pa.clients6.google.com"
+    ],
+    openai: [ "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com" ],
+    anthropic: [ "anthropic.com", "claude.ai", "claudeusercontent.com" ],
+    xai: [ "x.ai", "grok.com" ],
+    xbox: [ "xbox.com", "xboxlive.com", "xboxservices.com", "gamepass.com", "sfx.ms", "xboxab.com" ],
+    playstation: [ "playstation.com", "playstation.net", "sonyentertainmentnetwork.com" ],
+    ads_hagezi_pro: [ "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com", "an.yandex.ru", "mc.yandex.ru" ],
+    meta_ads: [ "an.facebook.com", "pixel.facebook.com", "graph.instagram.com" ],
+    netflix: [ "netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com" ],
+    spotify: [ "spotify.com", "scdn.co", "spotifycdn.com" ],
+    tiktok: [ "tiktok.com", "tiktokv.com", "tiktokcdn.com", "musical.ly" ],
+    twitch: [ "twitch.tv", "ttvnw.net", "jtvnw.net" ],
+    steam: [ "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com" ],
     geosite_ru: [
         "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
         "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
         "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru", "2ch.hk", "pikabu.ru"
     ],
     russia_inside: [
+        "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
+        "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
+        "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru"
+    ],
+    russia_outside: [
         "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
         "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
         "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru"
@@ -394,6 +416,7 @@ function load_uci_tachyon_config() {
         sections: [],
         conditions: {},
         outbound_sources: {},
+        outbound_groups: {},
         balancers: {},
         nodes: [],
         dns_hosts: []
@@ -402,6 +425,7 @@ function load_uci_tachyon_config() {
     if (!c) return result;
     try {
         c.load(CONFIG_NAME);
+        connections.set_item_sections_from_cursor(c, CONFIG_NAME);
     } catch (e) {
         return result;
     }
@@ -425,12 +449,20 @@ function load_uci_tachyon_config() {
             result.outbound_sources[s[".name"]] = s;
     });
 
+    c.foreach(CONFIG_NAME, "outbound_group", function(s) {
+        if (s[".name"])
+            result.outbound_groups[s[".name"]] = s;
+    });
+
     c.foreach(CONFIG_NAME, "balancer", function(s) {
         if (s[".name"])
             result.balancers[s[".name"]] = s;
     });
 
     c.foreach(CONFIG_NAME, "node", function(s) {
+        push(result.nodes, s);
+    });
+    c.foreach(CONFIG_NAME, "outbound_server", function(s) {
         push(result.nodes, s);
     });
 
@@ -505,6 +537,17 @@ function effective_section_for_match(section) {
     return merged;
 }
 
+function parse_combined_items(section, keys) {
+    let out = [];
+    for (let k in keys) {
+        for (let it in parse_items_list(section[k])) {
+            if (index(out, it) < 0)
+                push(out, it);
+        }
+    }
+    return out;
+}
+
 function resolve_effective_section_action(section, uci_cfg) {
     if (type(section) != "object")
         return "direct";
@@ -522,7 +565,7 @@ function resolve_effective_section_action(section, uci_cfg) {
             if (type(src) != "object" || src.enabled == "0")
                 continue;
             let st = lc(trim(as_string(src.source_type || "subscription")));
-            if (st == "zapret2" || st == "zapret" || st == "byedpi") {
+            if (st == "zapret2" || st == "zapret" || st == "byedpi" || st == "desync") {
                 if (first_dpi == "")
                     first_dpi = st;
             } else {
@@ -535,12 +578,12 @@ function resolve_effective_section_action(section, uci_cfg) {
     return act;
 }
 
-function evaluate_section_match(raw_section, client_info, target_info, port, proto) {
-    if (raw_section.enabled == "0") return null;
-    let section = effective_section_for_match(raw_section);
+function evaluate_atomic_clause_match(section, client_info, target_info, port, proto) {
+    if (type(section) != "object" || section.enabled == "0")
+        return null;
 
     // Check excluded client IPs on section if specified
-    let exc_ips = parse_items_list(section.excluded_ips);
+    let exc_ips = parse_combined_items(section, [ "excluded_ips" ]);
     if (length(exc_ips) > 0 && client_info.ip != null) {
         for (let exc in exc_ips) {
             exc = lc(trim(exc));
@@ -550,7 +593,10 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
     }
 
     // Check device restrictions on section if specified
-    let dev_ips = parse_items_list(section.device_ip || section.devices || section.device_mac || section.source_ip_cidr || section.fully_routed_ips);
+    let dev_ips = parse_combined_items(section, [
+        "device_ip", "devices", "device_mac", "source_macs",
+        "source_ip_cidr", "source_ip_cidr_text", "fully_routed_ips"
+    ]);
     if (length(dev_ips) > 0) {
         let dev_matched = false;
         for (let dev in dev_ips) {
@@ -568,7 +614,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
     }
 
     // Check port restrictions on section if specified
-    let ports = parse_items_list(section.ports || section.port);
+    let ports = parse_combined_items(section, [ "ports", "ports_text", "port" ]);
     if (length(ports) > 0 && port > 0) {
         let port_matched = false;
         for (let p_spec in ports) {
@@ -594,7 +640,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
     let is_ip = target_info.type == "ipv4" || target_info.type == "ipv6" || target_info.type == "cidr";
 
     // GeoIP filter on section if configured
-    let raw_geo = parse_items_list(section.geoip_country);
+    let raw_geo = parse_combined_items(section, [ "geoip_country" ]);
     let geo_countries = [];
     for (let item in raw_geo) {
         item = lc(trim(item));
@@ -624,11 +670,11 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
         return true;
     };
 
-    let domains = parse_items_list(section.domain);
-    let suffixes = parse_items_list(section.domain_suffix);
-    let keywords = parse_items_list(section.domain_keyword);
-    let regexes = parse_items_list(section.domain_regex);
-    for (let ud in parse_items_list(section.user_domains)) {
+    let domains = parse_combined_items(section, [ "domain", "domain_text" ]);
+    let suffixes = parse_combined_items(section, [ "domain_suffix", "domain_suffix_text" ]);
+    let keywords = parse_combined_items(section, [ "domain_keyword", "domain_keyword_text" ]);
+    let regexes = parse_combined_items(section, [ "domain_regex", "domain_regex_text" ]);
+    for (let ud in parse_combined_items(section, [ "user_domains", "user_domains_text" ])) {
         if (substr(ud, 0, 5) == "full:")
             push(domains, substr(ud, 5));
         else if (substr(ud, 0, 7) == "domain:")
@@ -676,7 +722,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
         }
 
         // Community lists
-        let comm_lists = parse_items_list(section.community_lists || section.community);
+        let comm_lists = parse_combined_items(section, [ "community_lists", "community" ]);
         for (let comm in comm_lists) {
             if (check_community_domain_match(target_info.host, comm)) {
                 if (check_geo_filter_pass())
@@ -685,7 +731,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
         }
 
         // Rule set references
-        let rule_sets = parse_items_list(section.rule_set);
+        let rule_sets = parse_combined_items(section, [ "rule_set", "rule_set_with_subnets", "domain_ip_lists" ]);
         for (let rs in rule_sets) {
             if (check_community_domain_match(target_info.host, rs)) {
                 if (check_geo_filter_pass())
@@ -696,7 +742,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
 
     // 2. IP matching
     if (is_ip) {
-        let ip_cidrs = parse_items_list(section.ip_cidr || section.ip || section.subnets);
+        let ip_cidrs = parse_combined_items(section, [ "ip_cidr", "ip_cidr_text", "ip", "subnets" ]);
         for (let cidr in ip_cidrs) {
             if (ipv4_in_cidr(target_info.host, cidr)) {
                 if (check_geo_filter_pass())
@@ -705,7 +751,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
         }
 
         // Community subnets
-        let comm_subnets = parse_items_list(section.community_subnets || section.community_lists || section.community);
+        let comm_subnets = parse_combined_items(section, [ "community_subnets", "community_lists", "community", "rule_set_with_subnets", "domain_ip_lists" ]);
         for (let comm in comm_subnets) {
             if (check_community_ip_match(target_info.host, comm)) {
                 if (check_geo_filter_pass())
@@ -726,8 +772,8 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
             length(suffixes) > 0 ||
             length(keywords) > 0 ||
             length(regexes) > 0;
-        let has_ip_matchers = length(parse_items_list(section.ip_cidr || section.ip || section.subnets)) > 0;
-        let has_comm_matchers = length(parse_items_list(section.community_lists || section.community || section.rule_set)) > 0;
+        let has_ip_matchers = length(parse_combined_items(section, [ "ip_cidr", "ip_cidr_text", "ip", "subnets" ])) > 0;
+        let has_comm_matchers = length(parse_combined_items(section, [ "community_lists", "community", "rule_set", "rule_set_with_subnets", "domain_ip_lists" ])) > 0;
         let is_geo_catch_all = !has_domain_matchers && !has_ip_matchers && !has_comm_matchers;
         let is_closed_geo = geo_mode == "include_all" || geo_mode == "exclude_direct";
 
@@ -742,6 +788,32 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
         }
     }
 
+    return null;
+}
+
+function evaluate_section_match(raw_section, client_info, target_info, port, proto) {
+    if (type(raw_section) != "object" || raw_section.enabled == "0")
+        return null;
+    let clauses = connections.section_effective_clauses(raw_section);
+    if (length(clauses) == 0)
+        clauses = [ effective_section_for_match(raw_section) ];
+
+    for (let clause in clauses) {
+        if (type(clause.__inverted_conditions) == "array" && length(clause.__inverted_conditions) > 0) {
+            let neg_hit = false;
+            for (let neg_cond in clause.__inverted_conditions) {
+                if (evaluate_atomic_clause_match(neg_cond, client_info, target_info, port, proto) != null) {
+                    neg_hit = true;
+                    break;
+                }
+            }
+            if (neg_hit)
+                continue;
+        }
+        let m = evaluate_atomic_clause_match(clause, client_info, target_info, port, proto);
+        if (m != null)
+            return m;
+    }
     return null;
 }
 
@@ -806,6 +878,48 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
             server_address: "127.0.0.1",
             server_port: 1080,
             transport: "split"
+        };
+    }
+
+    if (matched_action == "desync") {
+        let d_mode = matched_section ? lc(trim(as_string(matched_section.desync_mode || "split"))) : "split";
+        return {
+            group_tag: matched_section ? (matched_section[".name"] + "-out") : "desync-out",
+            group_type: "desync",
+            selected_node: matched_section ? (matched_section[".name"] + "-desync") : "desync-out",
+            node_type: "desync",
+            server_address: "WAN",
+            server_port: 443,
+            transport: d_mode
+        };
+    }
+
+    if (matched_action == "dns") {
+        let sec_n = matched_section ? matched_section[".name"] : "custom";
+        let d_type = matched_section ? lc(trim(as_string(matched_section.dns_type || "udp"))) : "udp";
+        let d_srvs = matched_section ? parse_items_list(matched_section.dns_server || matched_section.routed_dns_servers) : [];
+        let d_srv_str = length(d_srvs) > 0 ? join(", ", d_srvs) : "Custom DNS";
+        return {
+            group_tag: sec_n + "-dns-server",
+            group_type: "dns",
+            selected_node: d_srv_str + " -> direct-out",
+            node_type: "dns (" + d_type + ")",
+            server_address: d_srv_str,
+            server_port: 53,
+            transport: d_type
+        };
+    }
+
+    if (matched_action == "hosts") {
+        let sec_n = matched_section ? matched_section[".name"] : "hosts";
+        return {
+            group_tag: sec_n + " (hosts)",
+            group_type: "hosts",
+            selected_node: "Static Hosts -> direct-out",
+            node_type: "hosts",
+            server_address: "dnsmasq / hosts",
+            server_port: 53,
+            transport: "local"
         };
     }
 
@@ -925,7 +1039,48 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
         } catch (e) {}
     }
 
-    // Fallback to UCI outbound nodes (config node) if runtime config is not generated yet
+    // Fallback to UCI modular outbound_sources / balancers / outbound nodes if runtime config is not generated yet
+    let sources_map = (uci_cfg && type(uci_cfg.outbound_sources) == "object") ? uci_cfg.outbound_sources : {};
+    let balancers_map = (uci_cfg && type(uci_cfg.balancers) == "object") ? uci_cfg.balancers : {};
+    if (matched_section) {
+        let bal_refs = parse_items_list(matched_section.balancer_refs);
+        if (length(bal_refs) > 0) {
+            let first_bal = balancers_map[bal_refs[0]];
+            if (type(first_bal) == "object")
+                group_type = lc(trim(as_string(first_bal.balancer_type || "urltest")));
+        }
+        let src_refs = parse_items_list(matched_section.outbound_source_refs);
+        if (matched_action == "group" && length(src_refs) == 0 && uci_cfg && type(uci_cfg.sections) == "array") {
+            let g_members = parse_items_list(matched_section.group_members);
+            for (let gm in g_members) {
+                for (let s_obj in uci_cfg.sections) {
+                    if (s_obj[".name"] == gm) {
+                        for (let sref in parse_items_list(s_obj.outbound_source_refs))
+                            if (index(src_refs, sref) < 0)
+                                push(src_refs, sref);
+                    }
+                }
+            }
+        }
+        for (let sref in src_refs) {
+            let src = sources_map[sref];
+            if (type(src) != "object" || src.enabled == "0")
+                continue;
+            let st = lc(trim(as_string(src.source_type || "subscription")));
+            let s_label = src.name || src.label || sref;
+            let s_addr = src.interface || src.url || "subscription";
+            return {
+                group_tag: group_tag,
+                group_type: group_type,
+                selected_node: s_label,
+                node_type: st,
+                server_address: s_addr,
+                server_port: 443,
+                transport: st == "interface" ? "interface" : "tls"
+            };
+        }
+    }
+
     let nodes = (uci_cfg && type(uci_cfg.nodes) == "array") ? uci_cfg.nodes : [];
     let selected_tag = selector_state[group_tag] || selector_state[sec_name] || null;
     let found_node = null;
@@ -1239,6 +1394,17 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
             dns_mode = "hosts";
             dns_resolver = "dnsmasq dns_hosts";
             dns_details = "Domain matches a static hosts override rule.";
+        } else if (action == "dns") {
+            let dns_type_str = uc(trim(as_string(matched_section ? (matched_section.dns_type || "udp") : "udp")));
+            let dns_srvs = matched_section ? parse_items_list(matched_section.dns_server || matched_section.routed_dns_servers) : [];
+            let dns_srvs_str = length(dns_srvs) > 0 ? join(", ", dns_srvs) : "custom DNS";
+            let dns_tag = (section_name || "custom") + "-dns-server";
+            let dns_detour_str = (matched_section && matched_section.dns_detour_enabled == "1" && matched_section.dns_detour_section)
+                ? (" via " + matched_section.dns_detour_section + "-out")
+                : "";
+            dns_mode = "custom_dns";
+            dns_resolver = dns_tag + " (" + dns_type_str + ": " + dns_srvs_str + dns_detour_str + ")";
+            dns_details = "Domain matches DNS section '" + section_name + "'. Resolved via custom DNS server " + dns_srvs_str + " (" + dns_type_str + ")" + dns_detour_str + " without FakeIP allocation.";
         } else if (fakeip_enabled) {
             let core_dns_label = is_steer ? active_engine : (is_tachyon_core_bin ? "tachyon-core" : "sing-box");
             dns_mode = "fakeip";
@@ -1261,7 +1427,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         name: "dns_decision",
         mode: dns_mode,
         resolver: dns_resolver,
-        fakeip_active: fakeip_enabled,
+        fakeip_active: (action == "dns" || action == "hosts" || action == "bypass" || action == "direct") ? false : fakeip_enabled,
         details: dns_details
     };
 
@@ -1276,6 +1442,13 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         nft_mark = "0x80000000";
         nft_action = "meta mark set 0x80000000 accept";
         nft_details = "Marked with bypass flag 0x80000000 and forwarded to WAN without proxy interception.";
+    } else if (action == "dns" || action == "hosts") {
+        nft_intercepted = false;
+        nft_mark = "none";
+        nft_action = "accept (DNS-only section)";
+        nft_details = action == "dns"
+            ? "DNS section only routes DNS queries (port 53 -> " + (section_name || "custom") + "-dns-server). Data traffic to the resolved IP is not added to TProxy sets and goes directly to WAN."
+            : "Static hosts section only overrides DNS resolution. Data traffic to the mapped IP goes directly to WAN.";
     } else if (action == "block") {
         nft_intercepted = true;
         nft_mark = "none";
@@ -1345,7 +1518,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         stage: 7,
         name: "engine_outbound",
         engine: active_engine,
-        inbound_tag: "tproxy-in",
+        engaged: !(action == "bypass" || action == "direct" || action == "dns" || action == "hosts"),
+        inbound_tag: (action == "dns" || action == "hosts") ? "dns-in" : "tproxy-in",
         group_tag: outbound_res.group_tag,
         group_type: outbound_res.group_type,
         selected_node: outbound_res.selected_node,
@@ -1357,7 +1531,11 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
             ? "Engine forwards traffic directly to WAN via bypass-out."
             : (action == "block"
                 ? "Engine drops traffic via reject action."
-                : "Engine routes packet to outbound group '" + outbound_res.group_tag + "', selecting node '" + outbound_res.selected_node + "' (" + outbound_res.node_type + " / " + outbound_res.transport + ").")
+                : (action == "dns"
+                    ? "DNS queries are handled by '" + outbound_res.group_tag + "' (" + outbound_res.server_address + "); subsequent data connections go directly to the resolved IP via direct-out."
+                    : (action == "hosts"
+                        ? "DNS queries are answered from static hosts override; subsequent data connections go directly to the mapped IP via direct-out."
+                        : "Engine routes packet to outbound group '" + outbound_res.group_tag + "', selecting node '" + outbound_res.selected_node + "' (" + outbound_res.node_type + " / " + outbound_res.transport + ").")))
     };
 
     // ─── Final Verdict & Explanations ─────────────────────────────────────────
@@ -1366,6 +1544,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     else if (action == "block") verdict = "blocked";
     else if (action == "zapret" || action == "zapret2") verdict = "zapret";
     else if (action == "byedpi") verdict = "byedpi";
+    else if (action == "dns") verdict = "dns";
+    else if (action == "hosts") verdict = "hosts";
 
     let rule_desc = matched_rule ? (matched_rule.rule_type + " '" + matched_rule.rule_value + "'") : "default rule";
     let client_str = client_info.raw || client_info.ip;
@@ -1379,6 +1559,12 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     } else if (verdict == "direct") {
         en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " is routed DIRECTLY to WAN (matched: " + (section_name ? ("section '" + section_name + "'") : "default direct") + ").";
         ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " направляется НАПРЯМУЮ в WAN (правило: " + (section_name ? ("секция «" + (section_label || section_name) + "»") : "прямой маршрут по умолчанию") + ").";
+    } else if (verdict == "dns") {
+        en_msg = "Domain " + target_info.host + " matches DNS section '" + section_name + "' (" + rule_desc + "). DNS queries are routed to custom server '" + outbound_res.group_tag + "' (" + outbound_res.server_address + "), while subsequent data traffic to the resolved IP goes DIRECTLY to WAN (direct-out).";
+        ru_msg = "Домен " + target_info.host + " совпадает с DNS-секцией «" + (section_label || section_name) + "» (" + rule_desc + "). DNS-запросы направляются на кастомный сервер «" + outbound_res.group_tag + "» (" + outbound_res.server_address + "), а последующий трафик к полученному IP-адресу идёт НАПРЯМУЮ в WAN (direct-out).";
+    } else if (verdict == "hosts") {
+        en_msg = "Domain " + target_info.host + " matches static hosts section '" + section_name + "' (" + rule_desc + "). DNS resolves to the configured static IP, and traffic to that IP goes DIRECTLY to WAN (direct-out).";
+        ru_msg = "Домен " + target_info.host + " совпадает с секцией статических хостов «" + (section_label || section_name) + "» (" + rule_desc + "). DNS возвращает заданный статический IP, а трафик к нему идёт НАПРЯМУЮ в WAN (direct-out).";
     } else if (verdict == "blocked") {
         en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " is BLOCKED by section '" + section_name + "' (" + rule_desc + ").";
         ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " ЗАБЛОКИРОВАН секцией «" + (section_label || section_name) + "» (" + rule_desc + ").";
@@ -1520,6 +1706,9 @@ function selftest() {
     assert(check_community_domain_match("t.me", "telegram") == true, "community telegram t.me");
     assert(check_community_domain_match("discord.gg", "discord") == true, "community discord discord.gg");
     assert(check_community_domain_match("instagram.com", "meta") == true, "community meta instagram.com");
+    assert(check_community_domain_match("gemini.google.com", "google_ai") == true, "community google_ai gemini.google.com");
+    assert(check_community_domain_match("doubleclick.net", "ads_hagezi_pro") == true, "community ads_hagezi_pro doubleclick.net");
+    assert(check_community_domain_match("ya.ru", "russia_outside") == true, "community russia_outside ya.ru");
 
     // Test 5: Target normalization
     let norm1 = normalize_target_input("https://instagram.com:8443/feed");

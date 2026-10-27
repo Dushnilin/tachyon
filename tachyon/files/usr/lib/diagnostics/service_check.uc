@@ -11,6 +11,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
+let connections = require("config.connections");
 
 const LIB_DIR = getenv("TACHYON_SC_LIB") || "/usr/lib/tachyon-servicecheck";
 const ENGINE = LIB_DIR + "/probe.uc";
@@ -399,24 +400,17 @@ function fakeip_ranges() {
 
 function forkop_running() {
     let backend = backend_id();
-    let result;
-
-    if (backend == "forkop")
-        result = capture_args([ FORKOP_BIN, "get_status" ], false);
-    else if (backend == "podkop")
-        result = capture_args([ PODKOP_BIN, "get_sing_box_status" ], false);
-    else
+    if (backend != "tachyon")
         return false;
 
-    if (result.status != 0) {
-        if (backend == "podkop")
-            return run_quiet([ "pgrep", "-f", "tachyon-core|sing-box" ]);
-        return false;
-    }
+    let result = capture_args([ TACHYON_BIN, "get_status" ], false);
+    if (result.status != 0)
+        return run_quiet([ "pgrep", "-f", "tachyon-core|sing-box" ]);
+
     let status = object_or_empty(parse_json(result.output));
     if (status.running === true || int(status.running) == 1)
         return true;
-    if (backend == "podkop" && status.running == null)
+    if (status.running == null)
         return run_quiet([ "pgrep", "-f", "tachyon-core|sing-box" ]);
     return false;
 }
@@ -1086,31 +1080,31 @@ function clash_connections() {
     let backend = backend_id();
     let result;
 
-    if (backend == "forkop") {
-        result = capture_args([ FORKOP_BIN, "clash_api", "get_connections" ], false);
-    }
-    else if (backend == "podkop") {
-        let config = object_or_empty(read_json_file(sing_box_config_path()));
-        let clash = object_or_empty(object_or_empty(config.experimental).clash_api);
-        let controller = trim(as_string(clash.external_controller));
-        let secret = as_string(clash.secret);
+    if (backend == "tachyon") {
+        result = capture_args([ TACHYON_BIN, "clash_api", "get_connections" ], false);
+        if (result.status != 0) {
+            let config = object_or_empty(read_json_file(sing_box_config_path()));
+            let clash = object_or_empty(object_or_empty(config.experimental).clash_api);
+            let controller = trim(as_string(clash.external_controller));
+            let secret = as_string(clash.secret);
 
-        if (controller == "")
-            controller = "127.0.0.1:9090";
-        if (match(controller, /^0\.0\.0\.0:/) != null)
-            controller = replace(controller, /^0\.0\.0\.0:/, "127.0.0.1:");
-        if (index(controller, "http://") != 0 && index(controller, "https://") != 0)
-            controller = "http://" + controller;
+            if (controller == "")
+                controller = "127.0.0.1:9090";
+            if (match(controller, /^0\.0\.0\.0:/) != null)
+                controller = replace(controller, /^0\.0\.0\.0:/, "127.0.0.1:");
+            if (index(controller, "http://") != 0 && index(controller, "https://") != 0)
+                controller = "http://" + controller;
 
-        let args = [ "curl", "-sS", "--connect-timeout", "2", "--max-time", "4" ];
-        if (secret == "")
-            secret = uci_get("podkop.settings.yacd_secret_key");
-        if (secret != "") {
-            push(args, "-H");
-            push(args, "Authorization: Bearer " + secret);
+            let args = [ "curl", "-sS", "--connect-timeout", "2", "--max-time", "4" ];
+            if (secret == "")
+                secret = uci_get("tachyon.settings.yacd_secret_key");
+            if (secret != "") {
+                push(args, "-H");
+                push(args, "Authorization: Bearer " + secret);
+            }
+            push(args, controller + "/connections");
+            result = capture_args(args, false);
         }
-        push(args, controller + "/connections");
-        result = capture_args(args, false);
     }
     else {
         return [];
@@ -1848,6 +1842,61 @@ function gemini_key_status() {
 
 // ---------------------------------------------------------------------------
 
+function collect_section_custom_domains(s) {
+    let custom_domains = [];
+    let sources = [ s, ...(connections.section_leaf_conditions(s) || []) ];
+    let keys = [ "user_domains", "user_domains_text", "domain", "domain_text", "domain_suffix", "domain_suffix_text" ];
+    for (let src in sources) {
+        if (type(src) != "object")
+            continue;
+        for (let k in keys) {
+            let val = src[k];
+            if (!val)
+                continue;
+            let items = type(val) == "array" ? val : [ val ];
+            for (let d in items) {
+                if (!d)
+                    continue;
+                for (let line in split(as_string(d), /[\n\r, \t]+/)) {
+                    let domain_str = trim(replace(line, /^(full:|domain:|keyword:|regex:)/, ""));
+                    domain_str = trim(replace(domain_str, /^\*?\./, ""));
+                    if (domain_str != "" && substr(domain_str, 0, 1) != "#" && substr(domain_str, 0, 2) != "//" && valid_domain(domain_str)) {
+                        if (index(custom_domains, domain_str) < 0)
+                            push(custom_domains, domain_str);
+                    }
+                }
+            }
+        }
+    }
+    return custom_domains;
+}
+
+function resolve_section_route_type(s) {
+    let route_type = s.action || "direct";
+    if (s.action == "zapret" && s.zapret_strategy)
+        return "zapret (" + s.zapret_strategy + ")";
+    if (s.action == "zapret2" && s.zapret2_strategy)
+        return "zapret2 (" + s.zapret2_strategy + ")";
+    if (s.action == "byedpi" && s.byedpi_strategy)
+        return "byedpi (" + s.byedpi_strategy + ")";
+    if (s.action == "desync" && s.desync_mode)
+        return "desync (" + s.desync_mode + ")";
+    if (s.action == "connection") {
+        for (let src in (connections.section_effective_outbound_sources(s) || [])) {
+            let st = lc(trim(as_string(src.source_type || "")));
+            if (st == "zapret2")
+                return src.zapret2_strategy ? ("zapret2 (" + src.zapret2_strategy + ")") : "zapret2";
+            if (st == "zapret")
+                return src.zapret_strategy ? ("zapret (" + src.zapret_strategy + ")") : "zapret";
+            if (st == "byedpi")
+                return src.byedpi_args ? ("byedpi (" + src.byedpi_args + ")") : "byedpi";
+            if (st == "desync")
+                return src.desync_mode ? ("desync (" + src.desync_mode + ")") : "desync";
+        }
+    }
+    return route_type;
+}
+
 function tachyon_get_targets(all_mode) {
     let all_profiles_json = load_profiles_data();
     let all_profiles = object_or_empty(parse_json(all_profiles_json));
@@ -1887,35 +1936,14 @@ function tachyon_get_targets(all_mode) {
             }
         }
 
-        // 2. Include custom user domains from all UCI sections
+        // 2. Include custom user domains from all UCI sections (and linked conditions)
         for (let s in sections) {
             let raw_name = as_string(s['.name']);
             let custom_label = as_string(s.label);
             let has_custom_label = custom_label != "" && custom_label != raw_name && match(custom_label, /^section_\d+$/) == null && match(custom_label, /^cfg[0-9a-fA-F]+$/) == null;
             let label = has_custom_label ? custom_label : "Свои домены";
-            let route_type = s.action || "direct";
-            if (s.action == "zapret" && s.zapret_strategy) route_type = "zapret (" + s.zapret_strategy + ")";
-            else if (s.action == "zapret2" && s.zapret2_strategy) route_type = "zapret2 (" + s.zapret2_strategy + ")";
-            else if (s.action == "byedpi" && s.byedpi_strategy) route_type = "byedpi (" + s.byedpi_strategy + ")";
-
-            let custom_domains = [];
-            let lists = type(s.user_domains) == "array" ? s.user_domains : [ s.user_domains ];
-            for (let d in lists) {
-                if (!d) continue;
-                for (let line in split(as_string(d), /[\n\r,]+/)) {
-                    let domain_str = trim(replace(line, /^\*?\./, ""));
-                    if (domain_str != "" && substr(domain_str, 0, 1) != "#")
-                        push(custom_domains, domain_str);
-                }
-            }
-
-            if (s.user_domains_text) {
-                for (let line in split(as_string(s.user_domains_text), /[\n\r,]+/)) {
-                    let domain_str = trim(replace(line, /^\*?\./, ""));
-                    if (domain_str != "" && substr(domain_str, 0, 1) != "#")
-                        push(custom_domains, domain_str);
-                }
-            }
+            let route_type = resolve_section_route_type(s);
+            let custom_domains = collect_section_custom_domains(s);
 
             for (let cd in custom_domains) {
                 if (seen_domains[cd]) continue;
@@ -1954,7 +1982,7 @@ function tachyon_get_targets(all_mode) {
         if (s.enabled == "0" || s.enabled == "false") continue;
         
         let profiles_to_check = [];
-        let raw_community = s.community_lists;
+        let comm_items = connections.community_lists(s);
         
         const resolve_profile = function(id) {
             let real_id = profile_aliases[id] || id;
@@ -1962,17 +1990,9 @@ function tachyon_get_targets(all_mode) {
             return null;
         };
 
-        if (type(raw_community) == "array") {
-            for (let item in raw_community) {
-                if (!item) continue;
-                for (let part in split(as_string(item), /[\s,]+/)) {
-                    let id = trim(part);
-                    let p = resolve_profile(id);
-                    if (p) push(profiles_to_check, p);
-                }
-            }
-        } else if (type(raw_community) == "string") {
-            for (let part in split(as_string(raw_community), /[\s,]+/)) {
+        for (let item in comm_items) {
+            if (!item) continue;
+            for (let part in split(as_string(item), /[\s,]+/)) {
                 let id = trim(part);
                 let p = resolve_profile(id);
                 if (p) push(profiles_to_check, p);
@@ -1982,11 +2002,7 @@ function tachyon_get_targets(all_mode) {
         let raw_name = as_string(s['.name']);
         let custom_label = as_string(s.label);
         let has_custom_label = custom_label != "" && custom_label != raw_name && match(custom_label, /^section_\d+$/) == null && match(custom_label, /^cfg[0-9a-fA-F]+$/) == null;
-        let route_type = s.action || "direct";
-        
-        if (s.action == "zapret" && s.zapret_strategy) route_type = "zapret (" + s.zapret_strategy + ")";
-        else if (s.action == "zapret2" && s.zapret2_strategy) route_type = "zapret2 (" + s.zapret2_strategy + ")";
-        else if (s.action == "byedpi" && s.byedpi_strategy) route_type = "byedpi (" + s.byedpi_strategy + ")";
+        let route_type = resolve_section_route_type(s);
 
         for (let i = 0; i < length(profiles_to_check); i++) {
             let profile = profiles_to_check[i];
@@ -2012,25 +2028,7 @@ function tachyon_get_targets(all_mode) {
             }
         }
 
-        let custom_domains = [];
-        let lists = type(s.user_domains) == "array" ? s.user_domains : [ s.user_domains ];
-        for (let d in lists) {
-            if (!d) continue;
-            for (let line in split(as_string(d), /[\n\r,]+/)) {
-                let domain_str = trim(replace(line, /^\*?\./, ""));
-                if (domain_str != "" && substr(domain_str, 0, 1) != "#" && substr(domain_str, 0, 2) != "//")
-                    push(custom_domains, domain_str);
-            }
-        }
-
-        if (s.user_domains_text) {
-            for (let line in split(as_string(s.user_domains_text), /[\n\r,]+/)) {
-                let domain_str = trim(replace(line, /^\*?\./, ""));
-                if (domain_str != "" && substr(domain_str, 0, 1) != "#" && substr(domain_str, 0, 2) != "//")
-                    push(custom_domains, domain_str);
-            }
-        }
-
+        let custom_domains = collect_section_custom_domains(s);
         let custom_section = has_custom_label ? custom_label : "Свои домены";
         for (let cd in custom_domains) {
             if (!cd || seen_domains[cd]) continue;

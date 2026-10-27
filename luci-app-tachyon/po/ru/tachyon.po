@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-27 21:07+0300\n"
-"PO-Revision-Date: 2026-10-27 21:07+0300\n"
+"POT-Creation-Date: 2026-10-27 22:57+0300\n"
+"PO-Revision-Date: 2026-10-27 22:57+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1057,6 +1057,9 @@ msgstr "Сертификат CA (<ca>)"
 
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
+
+msgid "CUSTOM DNS → DIRECT"
+msgstr ""
 
 msgid "Cache File Path"
 msgstr "Путь к файлу кэша"
@@ -6259,6 +6262,9 @@ msgstr "SNI / Хост"
 
 msgid "SSH"
 msgstr "SSH"
+
+msgid "STATIC HOSTS → DIRECT"
+msgstr ""
 
 msgid "STUN (P2P Calls)"
 msgstr "STUN (P2P-звонки)"

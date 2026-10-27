@@ -13,6 +13,7 @@ let routing_mod = require("diagnostics.routing");
 let sysinfo_mod = require("diagnostics.system_info");
 let status_bridge = require("diagnostics.status_bridge");
 let repairs_mod = require("diagnostics.repairs");
+let connections = require("config.connections");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -877,6 +878,19 @@ function has_certificate_pins_configured() {
         }
         if (index(as_string(sec.proxy_custom_json || ""), "certificate_sha256") >= 0 ||
             index(as_string(sec.proxy_custom_json || ""), "pcs=") >= 0)
+            return true;
+    }
+    let sources = uci_core.section_objects(CONFIG_NAME, "outbound_source");
+    for (let src in sources) {
+        if (src.enabled == "0" || src.enabled == "false")
+            continue;
+        let links = type(src.proxy_links) == "array" ? src.proxy_links : (src.proxy_links ? [ src.proxy_links ] : []);
+        for (let l in links) {
+            if (index(as_string(l), "pcs=") >= 0)
+                return true;
+        }
+        if (index(as_string(src.custom_json || ""), "certificate_sha256") >= 0 ||
+            index(as_string(src.custom_json || ""), "pcs=") >= 0)
             return true;
     }
     let sub_files = fs.glob(constants.TMP_SUBSCRIPTION_FOLDER + "/*.json") || [];
@@ -1977,13 +1991,11 @@ function run_doctor_checks_impl(repair) {
         let missing_lists = [];
         let all_required = [];
 
-        // Collect all unique community list names across enabled sections
+        // Collect all unique community list names across enabled sections (and linked conditions)
         let all_sections = uci_core.section_objects(CONFIG_NAME, "section");
         for (let sec in all_sections) {
             if (sec.enabled == "0") continue;
-            let cl = sec.community_lists;
-            if (!cl) continue;
-            let list_arr = type(cl) == "array" ? cl : split(trim("" + cl), /\s+/);
+            let list_arr = connections.community_lists(sec);
             for (let entry in list_arr) {
                 let name = trim("" + entry);
                 if (name == "") continue;
@@ -2030,7 +2042,7 @@ function run_doctor_checks_impl(repair) {
                     if (length(still_missing) > 0) {
                         let first_proxy = "";
                         for (let s in all_sections) {
-                            if (s.enabled != "0" && s.action != "bypass" && s.action != "block" && s.action != "dns" && s.action != "") {
+                            if (s.enabled != "0" && connections.is_remote_proxy_section(s)) {
                                 first_proxy = s[".name"];
                                 break;
                             }
@@ -2065,8 +2077,32 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 16. Subscription Health Check
-    if (has_sections && cfg.subscription_url) {
-        let sub_url = trim(as_string(cfg.subscription_url));
+    let active_sub_urls = [];
+    if (cfg.subscription_url) {
+        let g_sub = trim(as_string(cfg.subscription_url));
+        if (g_sub != "")
+            push(active_sub_urls, g_sub);
+    }
+    for (let sec in uci_core.section_objects(CONFIG_NAME, "section")) {
+        if (sec.enabled == "0")
+            continue;
+        for (let su in connections.subscription_urls(sec)) {
+            let clean_su = trim(as_string(su));
+            if (clean_su != "" && index(active_sub_urls, clean_su) < 0)
+                push(active_sub_urls, clean_su);
+        }
+    }
+    for (let src in uci_core.section_objects(CONFIG_NAME, "outbound_source")) {
+        if (src.enabled == "0")
+            continue;
+        if (lc(trim(as_string(src.source_type || "subscription"))) == "subscription") {
+            let src_u = trim(as_string(src.url || ""));
+            if (src_u != "" && index(active_sub_urls, src_u) < 0)
+                push(active_sub_urls, src_u);
+        }
+    }
+    if (has_sections && length(active_sub_urls) > 0) {
+        let sub_url = active_sub_urls[0];
         if (sub_url != "") {
             let sub_check = command_capture("curl -s -m 15 -o /dev/null -w %{http_code} --connect-timeout 5 " + shell_quote(sub_url) + " 2>&1");
             let sub_code = int(sub_check.output);
@@ -2217,7 +2253,7 @@ function run_doctor_checks_impl(repair) {
 
     // 21. Subscription Cache Age — sing-box can route through days-old node
     // lists while the subscription URL itself is reachable.
-    if (has_sections && cfg.subscription_url) {
+    if (has_sections && length(active_sub_urls) > 0) {
         let newest_mtime = 0;
         let cache_files = fs.glob(constants.TMP_SUBSCRIPTION_FOLDER + "/*.json") || [];
         for (let cf in cache_files) {

@@ -98,7 +98,9 @@ let cachedPoolChoices = null;
 let cachedPoolFetchedAt = 0;
 
 function isoToFlagEmoji(iso) {
-  const code = String(iso || "").trim().toUpperCase();
+  const code = String(iso || "")
+    .trim()
+    .toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return "";
   return String.fromCodePoint(
     0x1f1e6 + (code.charCodeAt(0) - 65),
@@ -187,7 +189,9 @@ function loadGlobalPoolChoices() {
       });
 
       Object.values(countries).forEach((cc) => {
-        const code = String(cc || "").trim().toUpperCase();
+        const code = String(cc || "")
+          .trim()
+          .toUpperCase();
         if (code.length === 2) countrySet.add(code);
       });
 
@@ -627,7 +631,9 @@ function createBalancersContent(section) {
     (uci.sections(UCI_PACKAGE, "outbound_source") || []).forEach((src) => {
       const sid = src[".name"];
       if (!sid) return;
-      const stypeLower = String(src.source_type || "subscription").toLowerCase();
+      const stypeLower = String(
+        src.source_type || "subscription",
+      ).toLowerCase();
       if (DPI_SOURCE_TYPES.has(stypeLower)) return;
       const stype = stypeLower.toUpperCase();
       const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
@@ -732,7 +738,9 @@ function createBalancersContent(section) {
     form.DynamicList,
     "include_countries",
     _("Include Country Flags (ISO)"),
-    _("Select countries from the dropdown or enter 2-letter ISO codes (NL, DE, FI, RU)."),
+    _(
+      "Select countries from the dropdown or enter 2-letter ISO codes (NL, DE, FI, RU).",
+    ),
   );
   o.modalonly = true;
   o.placeholder = _("-- Select country --");
@@ -772,7 +780,9 @@ function createBalancersContent(section) {
     form.DynamicList,
     "include_outbounds",
     _("Include Servers"),
-    _("Select specific servers from the pool to include in this auto-selection."),
+    _(
+      "Select specific servers from the pool to include in this auto-selection.",
+    ),
   );
   o.modalonly = true;
   o.placeholder = _("-- Select server --");
@@ -792,7 +802,9 @@ function createBalancersContent(section) {
     form.DynamicList,
     "exclude_outbounds",
     _("Exclude Servers"),
-    _("Select specific servers from the pool to exclude from this auto-selection."),
+    _(
+      "Select specific servers from the pool to exclude from this auto-selection.",
+    ),
   );
   o.modalonly = true;
   o.placeholder = _("-- Select server --");

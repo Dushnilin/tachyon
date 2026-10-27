@@ -68,10 +68,11 @@ function candidates() {
         if (!bool_option(section, "enabled", true))
             continue;
         let action = option(section, "action", "");
-        if (connections.is_remote_proxy_action(action)) {
+        if (connections.is_remote_proxy_section ? connections.is_remote_proxy_section(section) : connections.is_remote_proxy_action(action)) {
             push(proxies, as_string(section[".name"]));
             push(all, as_string(section[".name"]));
-        } else if (action == "byedpi" || action == "zapret" || action == "zapret2" ||
+        } else if (connections.is_remote_proxy_action(action) ||
+            action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "wdtt" || action == "olcrtc") {
             push(all, as_string(section[".name"]));
         }

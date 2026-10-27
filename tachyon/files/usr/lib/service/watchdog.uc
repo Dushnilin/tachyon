@@ -354,14 +354,17 @@ function smart_detect_get_proxy_sections() {
     if (!sections || length(sections) == 0) return [];
     let connections = require("config.connections");
     let secs = [];
+    let dpi_secs = [];
     for (let s in sections) {
         if (s.enabled != "1") continue;
         let act = as_string(s.action || "");
-        if (connections.is_remote_proxy_action(act) || act == "group") {
+        if ((connections.is_remote_proxy_section ? connections.is_remote_proxy_section(s) : connections.is_remote_proxy_action(act)) || act == "group") {
             push(secs, s[".name"]);
+        } else if (connections.is_remote_proxy_action(act)) {
+            push(dpi_secs, s[".name"]);
         }
     }
-    return secs;
+    return length(secs) > 0 ? secs : dpi_secs;
 }
 
 // Extract a candidate domain from a sing-box log line. Returns null when the
@@ -376,6 +379,30 @@ function smart_detect_extract_domain(line) {
 // looks like. The direct probe reports that as a "dns" failure and the verdict
 // decides against the proxy leg instead.
 
+function section_linked_condition_domains(c, sec) {
+    let out = [];
+    if (type(sec) != "object") return out;
+    let conns = get_connections();
+    if (conns && type(conns.set_item_sections_from_cursor) == "function") {
+        try { conns.set_item_sections_from_cursor(c, CONFIG_NAME); } catch (e) {}
+    }
+    let conds = (conns && type(conns.section_leaf_conditions) == "function")
+        ? conns.section_leaf_conditions(sec) : [];
+    for (let cond in conds) {
+        for (let k in [ "user_domains", "user_domains_text", "domain", "domain_text", "domain_suffix", "domain_suffix_text" ]) {
+            let v = cond[k];
+            if (!v) continue;
+            let arr = type(v) == "array" ? v : split(as_string(v), /[\r\n, \t]+/);
+            for (let item in arr) {
+                let d = trim(replace(as_string(item), /^(full:|domain:|\*?\.)/, ""));
+                if (d != "" && substr(d, 0, 1) != "#" && substr(d, 0, 2) != "//")
+                    push(out, d);
+            }
+        }
+    }
+    return out;
+}
+
 function smart_detect_add_domain(sec_name, domain) {
     let c = uci_core.cursor();
     if (!c) return false;
@@ -388,6 +415,9 @@ function smart_detect_add_domain(sec_name, domain) {
     }
     for (let d in existing) {
         if (trim(as_string(d)) == domain) return true;
+    }
+    for (let cd in section_linked_condition_domains(c, sec)) {
+        if (cd == domain) return true;
     }
     c.list_add(CONFIG_NAME, sec_name, "user_domains", domain);
     c.commit(CONFIG_NAME);
@@ -430,6 +460,10 @@ function smart_detect_apply_plus_domains(entries) {
         let already = false;
         for (let d in values)
             if (smart_plus.normalize_domain(d) == entry.domain) already = true;
+        if (!already) {
+            for (let cd in section_linked_condition_domains(c, sec))
+                if (smart_plus.normalize_domain(cd) == entry.domain) already = true;
+        }
         if (!already) {
             push(values, entry.domain);
             push(added, entry);
@@ -500,6 +534,11 @@ function smart_detect_apply_domains(entries) {
         let already = false;
         for (let d in existing) {
             if (trim(as_string(d)) == domain) already = true;
+        }
+        if (!already) {
+            for (let cd in section_linked_condition_domains(c, sec)) {
+                if (cd == domain) already = true;
+            }
         }
         if (already) continue;
         // Group per section so list_add never runs twice on the same section

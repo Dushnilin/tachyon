@@ -365,10 +365,24 @@ function manage_domain_list_by_section(sec_name, domain, do_delete) {
         return { success: false, error: "Секция '" + sec_name + "' не найдена." };
     }
 
-    let option_path = CONFIG_NAME + "." + sec_name + ".domain";
+    let rendering = null;
+    try { rendering = require("service.telegram.rendering"); } catch (e) {}
+    let holders = rendering ? rendering.section_own_and_conditions(s) : [ s ];
 
     if (do_delete) {
-        if (uci_core.del_list(option_path, domain)) {
+        let deleted = false;
+        for (let h in holders) {
+            let hname = h[".name"];
+            if (!hname) continue;
+            for (let k in [ "domain", "domain_suffix", "user_domains" ]) {
+                let opt_path = CONFIG_NAME + "." + hname + "." + k;
+                for (let variant in [ domain, "domain:" + domain, "full:" + domain, "." + domain ]) {
+                    if (uci_core.del_list(opt_path, variant))
+                        deleted = true;
+                }
+            }
+        }
+        if (deleted) {
             uci_core.commit(CONFIG_NAME);
             common.command_status("/usr/bin/tachyon reload");
             return { success: true, message: "Запись <code>" + domain + "</code> удалена." };
@@ -376,18 +390,27 @@ function manage_domain_list_by_section(sec_name, domain, do_delete) {
             return { success: false, error: "Запись <code>" + domain + "</code> не найдена." };
         }
     } else {
-        let current_val = uci_core.get(option_path);
-        let exists = false;
-        if (current_val != "") {
-            for (let item in split(current_val, " ")) {
-                if (item == domain) {
-                    exists = true;
-                    break;
-                }
+        if (rendering) {
+            let existing = rendering.section_condition_values(s, "domain_suffix");
+            let existing_exact = rendering.section_condition_values(s, "domain");
+            for (let d in existing) {
+                if (d == domain) return { success: false, error: "Запись <code>" + domain + "</code> уже есть в секции." };
+            }
+            for (let d in existing_exact) {
+                if (d == domain) return { success: false, error: "Запись <code>" + domain + "</code> уже есть в секции." };
             }
         }
-        if (exists) {
-            return { success: false, error: "Запись <code>" + domain + "</code> уже есть в секции." };
+        let cond = rendering ? rendering.section_primary_atomic_condition(s) : null;
+        let target_holder = (cond && cond[".name"]) ? cond[".name"] : sec_name;
+        let target_key = cond ? "domain_suffix" : "domain";
+        let option_path = CONFIG_NAME + "." + target_holder + "." + target_key;
+
+        let current_val = uci_core.get(option_path);
+        if (current_val != "") {
+            for (let item in split(current_val, " ")) {
+                if (item == domain)
+                    return { success: false, error: "Запись <code>" + domain + "</code> уже есть в секции." };
+            }
         }
 
         if (uci_core.add_list(option_path, domain)) {
@@ -404,11 +427,18 @@ function manage_domain_list(action_type, domain, do_delete) {
     if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
     c.load(CONFIG_NAME);
 
+    let connections = null;
+    try { connections = require("config.connections"); } catch (e) {}
+
     let target_section = null;
     c.foreach(CONFIG_NAME, "section", function(s) {
-        if (s.enabled == "1" && s.action == action_type) {
-            target_section = s[".name"];
-            return false;
+        if (s.enabled == "1") {
+            if (s.action == action_type || (action_type == "proxy" && s.action == "connection")) {
+                if (action_type == "proxy" && connections && !connections.is_remote_proxy_section(s))
+                    return;
+                target_section = s[".name"];
+                return false;
+            }
         }
     });
 

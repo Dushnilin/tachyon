@@ -52,6 +52,21 @@ function getVerdictMeta(verdict: string): {
           'background: #17a2b8; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;',
         alertClass: 'alert-message info',
       };
+    case 'dns':
+    case 'custom_dns':
+      return {
+        label: _('CUSTOM DNS → DIRECT'),
+        badgeStyle:
+          'background: #17a2b8; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;',
+        alertClass: 'alert-message info',
+      };
+    case 'hosts':
+      return {
+        label: _('STATIC HOSTS → DIRECT'),
+        badgeStyle:
+          'background: #17a2b8; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;',
+        alertClass: 'alert-message info',
+      };
     case 'blocked':
     case 'block':
     case 'drop':
@@ -323,7 +338,11 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
             `${secTitle} — ${s3.rule_type}: ${s3.rule_value}`,
             s3.details,
             String(s3.action || 'direct').toUpperCase(),
-            s3.matched_section ? '#28a745' : '#6c757d',
+            s3.matched_section
+              ? s3.action === 'dns' || s3.action === 'hosts'
+                ? '#17a2b8'
+                : '#28a745'
+              : '#6c757d',
           ),
         );
       }
@@ -338,7 +357,11 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
             String(s4.mode || 'direct').toUpperCase(),
             s4.mode === 'fakeip' || s4.mode === 'tachyon_dns'
               ? '#28a745'
-              : '#6c757d',
+              : s4.mode === 'custom_dns' ||
+                  s4.mode === 'dns' ||
+                  s4.mode === 'hosts'
+                ? '#17a2b8'
+                : '#6c757d',
           ),
         );
       }

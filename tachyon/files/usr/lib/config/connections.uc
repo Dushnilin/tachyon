@@ -392,36 +392,6 @@ function is_fptn_action(action) {
     return as_string(action) == "fptn";
 }
 
-function wdtt_sections() {
-    let result = [];
-    let sections = uci_core.section_objects(CONFIG_NAME, "section");
-    for (let section in sections) {
-        if (bool_option(section, "enabled", true) && option(section, "action", "") == "wdtt")
-            push(result, section);
-    }
-    return result;
-}
-
-function olcrtc_sections() {
-    let result = [];
-    let sections = uci_core.section_objects(CONFIG_NAME, "section");
-    for (let section in sections) {
-        if (bool_option(section, "enabled", true) && option(section, "action", "") == "olcrtc")
-            push(result, section);
-    }
-    return result;
-}
-
-function fptn_sections() {
-    let result = [];
-    let sections = uci_core.section_objects(CONFIG_NAME, "section");
-    for (let section in sections) {
-        if (bool_option(section, "enabled", true) && option(section, "action", "") == "fptn")
-            push(result, section);
-    }
-    return result;
-}
-
 // How FPTN traffic leaves the box.
 //
 //   component - the external fptn-client owns tun-fptn and the fwmark route.
@@ -907,6 +877,42 @@ function interfaces(section) {
         }
     }
     return result;
+}
+
+function is_dpi_or_desync_only_section(section) {
+    if (type(section) != "object")
+        return false;
+    let act = lc(trim(option(section, "action", "")));
+    if (act == "zapret" || act == "zapret2" || act == "byedpi" || act == "desync")
+        return true;
+    if (!is_connections_action(act))
+        return false;
+    if (length(connection_urls(section)) > 0 ||
+        length(subscription_urls(section)) > 0 ||
+        length(interfaces(section)) > 0 ||
+        length(list_value(section, "outbound_jsons")) > 0 ||
+        trim(option(section, "outbound_json", "")) != "")
+        return false;
+    let eff_sources = section_effective_outbound_sources(section);
+    if (length(eff_sources) == 0)
+        return false;
+    for (let src in eff_sources) {
+        let stype = option(src, "source_type", "subscription");
+        if (!is_dpi_or_desync_source_type(stype))
+            return false;
+    }
+    return true;
+}
+
+function is_remote_proxy_section(section) {
+    if (type(section) != "object")
+        return false;
+    let act = option(section, "action", "");
+    if (!is_remote_proxy_action(act))
+        return false;
+    if (is_dpi_or_desync_only_section(section))
+        return false;
+    return true;
 }
 
 function synthesize_protocol_outbound_json_from_source(src, stype) {
@@ -2219,6 +2225,7 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
 
     let list_keys = [
         "community_lists",
+        "community",
         "rule_set",
         "rule_set_with_subnets",
         "domain_ip_lists",
@@ -2227,11 +2234,17 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         "domain_regex",
         "user_domains",
         "ip_cidr",
+        "ip",
+        "subnets",
         "source_ip_cidr",
         "source_macs",
+        "device_ip",
+        "devices",
+        "device_mac",
         "fully_routed_ips",
         "excluded_ips",
         "ports",
+        "port",
         "protocol",
         "excluded_protocol",
         "dscp",
@@ -2285,6 +2298,8 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
             merged.geoip_mode = option(cond, "geoip_mode", "");
         if (option(merged, "community_subnets", "") == "" && option(cond, "community_subnets", "") != "")
             merged.community_subnets = option(cond, "community_subnets", "");
+        if (option(merged, "match_all", "") == "" && bool_option(cond, "match_all", false))
+            merged.match_all = "1";
     }
 
     if (negative_conds != null && length(negative_conds) > 0)
@@ -2797,6 +2812,45 @@ function active_provider_section_index(action, sections, target_section) {
             return i + 1;
     }
     return 0;
+}
+
+function component_provider_sections(action) {
+    let result = [];
+    let sections = uci_core.section_objects(CONFIG_NAME, "section");
+    for (let section in sections) {
+        if (!bool_option(section, "enabled", true))
+            continue;
+        if (option(section, "action", "") == action) {
+            push(result, section);
+            continue;
+        }
+        let src = section_matching_provider_source(section, action);
+        if (src != null) {
+            let merged = {};
+            for (let k, v in object_or_empty(section))
+                merged[k] = v;
+            for (let k, v in object_or_empty(src)) {
+                if (substr(k, 0, 1) == "." || k == "name" || k == "enabled" || k == "source_type")
+                    continue;
+                if (merged[k] == null || merged[k] == "")
+                    merged[k] = v;
+            }
+            push(result, merged);
+        }
+    }
+    return result;
+}
+
+function wdtt_sections() {
+    return component_provider_sections("wdtt");
+}
+
+function olcrtc_sections() {
+    return component_provider_sections("olcrtc");
+}
+
+function fptn_sections() {
+    return component_provider_sections("fptn");
 }
 
 function has_connection_sources(section) {
@@ -4913,6 +4967,8 @@ return {
     item_bool,
     is_connections_action,
     is_remote_proxy_action,
+    is_dpi_or_desync_only_section,
+    is_remote_proxy_section,
     normalize_action,
     action,
     connection_urls,

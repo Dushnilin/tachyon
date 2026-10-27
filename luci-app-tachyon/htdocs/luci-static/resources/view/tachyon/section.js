@@ -6355,34 +6355,59 @@ function getRuleResolvedAction(section_id) {
 // Returns a human-readable label for a given outbound_source source_type.
 function getSourceTypeLabel(stype) {
   switch (`${stype}`.toLowerCase()) {
-    case "zapret":       return "Zapret";
-    case "zapret2":      return "Zapret2";
-    case "byedpi":       return "ByeDPI";
-    case "desync":       return "Desync";
-    case "wdtt":         return "WDTT";
-    case "olcrtc":       return "OlcRTC";
-    case "fptn":         return "FPTN";
+    case "zapret":
+      return "Zapret";
+    case "zapret2":
+      return "Zapret2";
+    case "byedpi":
+      return "ByeDPI";
+    case "desync":
+      return "Desync";
+    case "wdtt":
+      return "WDTT";
+    case "olcrtc":
+      return "OlcRTC";
+    case "fptn":
+      return "FPTN";
     case "awg":
-    case "amnezia_config": return "AmneziaWG";
-    case "warp":         return "WARP";
-    case "anytls":       return "AnyTLS";
-    case "naive":        return "NaiveProxy";
-    case "mieru":        return "Mieru";
-    case "snell":        return "Snell";
-    case "masque":       return "MASQUE";
-    case "openconnect":  return "OpenConnect";
-    case "openvpn":      return "OpenVPN";
-    case "shadowtls":    return "ShadowTLS";
-    case "trusttunnel":  return "TrustTunnel";
-    case "tor":          return "Tor";
-    case "tailscale":    return "Tailscale";
-    case "interface":    return _("Interface");
+    case "amnezia_config":
+      return "AmneziaWG";
+    case "warp":
+      return "WARP";
+    case "anytls":
+      return "AnyTLS";
+    case "naive":
+      return "NaiveProxy";
+    case "mieru":
+      return "Mieru";
+    case "snell":
+      return "Snell";
+    case "masque":
+      return "MASQUE";
+    case "openconnect":
+      return "OpenConnect";
+    case "openvpn":
+      return "OpenVPN";
+    case "shadowtls":
+      return "ShadowTLS";
+    case "trusttunnel":
+      return "TrustTunnel";
+    case "tor":
+      return "Tor";
+    case "tailscale":
+      return "Tailscale";
+    case "interface":
+      return _("Interface");
     case "outbound_json":
-    case "json":         return _("JSON outbound");
+    case "json":
+      return _("JSON outbound");
     case "proxy_links":
-    case "links":        return _("Links");
-    case "subscription": return _("Subscription");
-    default:             return `${stype}`;
+    case "links":
+      return _("Links");
+    case "subscription":
+      return _("Subscription");
+    default:
+      return `${stype}`;
   }
 }
 
@@ -6392,7 +6417,15 @@ function getSourceTypeLabel(stype) {
 function getSectionConnectionTypeBadges(section_id) {
   const action = getRuleResolvedAction(section_id);
   // Only "connection"-family actions use outbound_source_refs.
-  const connectionActions = ["connection", "proxy", "outbound", "vpn", "awg", "fptn", "group"];
+  const connectionActions = [
+    "connection",
+    "proxy",
+    "outbound",
+    "vpn",
+    "awg",
+    "fptn",
+    "group",
+  ];
   if (!connectionActions.includes(action)) return null;
 
   const srcRefRaw = uci.get(UCI_PACKAGE, section_id, "outbound_source_refs");
@@ -6402,7 +6435,7 @@ function getSectionConnectionTypeBadges(section_id) {
   // Collect unique source types (preserve insertion order).
   const seen = {};
   const types = [];
-  srcRefs.forEach(function(id) {
+  srcRefs.forEach(function (id) {
     const src = uci.get(UCI_PACKAGE, id);
     if (!src) return;
     const stype = (src.source_type || "subscription").toLowerCase();
@@ -6412,14 +6445,16 @@ function getSectionConnectionTypeBadges(section_id) {
     }
   });
   if (!types.length) return null;
-  return types.map(function(stype) {
-    return (
-      '<span style="display:inline-block;background:rgba(49,130,206,0.12);color:var(--blue-color,#3182ce);' +
-      'padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid rgba(49,130,206,0.3);margin:1px 2px 1px 0;">' +
-      getSourceTypeLabel(stype) +
-      '</span>'
-    );
-  }).join("");
+  return types
+    .map(function (stype) {
+      return (
+        '<span style="display:inline-block;background:rgba(49,130,206,0.12);color:var(--blue-color,#3182ce);' +
+        'padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid rgba(49,130,206,0.3);margin:1px 2px 1px 0;">' +
+        getSourceTypeLabel(stype) +
+        "</span>"
+      );
+    })
+    .join("");
 }
 
 function getActionOptionLabel(action) {
@@ -10189,18 +10224,29 @@ function createSectionContent(section) {
   };
   o.textvalue = function (section_id) {
     const action = getRuleResolvedAction(section_id);
-    const connectionActions = ["connection", "proxy", "outbound", "vpn", "awg", "fptn", "group"];
+    const connectionActions = [
+      "connection",
+      "proxy",
+      "outbound",
+      "vpn",
+      "awg",
+      "fptn",
+      "group",
+    ];
     if (!connectionActions.includes(action)) return "";
     const srcRefs = normalizeOptionValues(
-      uci.get(UCI_PACKAGE, section_id, "outbound_source_refs")
+      uci.get(UCI_PACKAGE, section_id, "outbound_source_refs"),
     );
     const seen = {};
     const types = [];
-    srcRefs.forEach(function(id) {
+    srcRefs.forEach(function (id) {
       const src = uci.get(UCI_PACKAGE, id);
       if (!src) return;
       const stype = (src.source_type || "subscription").toLowerCase();
-      if (!seen[stype]) { seen[stype] = true; types.push(stype); }
+      if (!seen[stype]) {
+        seen[stype] = true;
+        types.push(stype);
+      }
     });
     return types.map(getSourceTypeLabel).join(", ");
   };
@@ -16306,10 +16352,112 @@ async function resolveDomainToIps(domain) {
   return [];
 }
 
-function getSectionGeoCountries(secName) {
-  const raw = normalizeOptionValues(
-    uci.get(UCI_PACKAGE, secName, "geoip_country"),
+function getSectionLeafConditionIds(secName) {
+  const result = [];
+  const visited = new Set();
+  const visitCond = (condId) => {
+    if (!condId || visited.has(condId)) return;
+    visited.add(condId);
+    if (uci.get(UCI_PACKAGE, condId, "enabled") === "0") return;
+    const expr = (uci.get(UCI_PACKAGE, condId, "expression") || "").trim();
+    const members = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, condId, "members"),
+    );
+    if (expr) {
+      const tokens = expr
+        .replace(/[()&|!~]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+      for (const tok of tokens) {
+        const up = tok.toUpperCase();
+        if (
+          up === "AND" ||
+          up === "OR" ||
+          up === "NOT" ||
+          up === "И" ||
+          up === "ИЛИ" ||
+          up === "НЕ"
+        ) {
+          continue;
+        }
+        visitCond(tok);
+      }
+    } else if (members.length > 0) {
+      for (const m of members) visitCond(m);
+    } else {
+      result.push(condId);
+    }
+  };
+
+  const secExpr = (
+    uci.get(UCI_PACKAGE, secName, "condition_expression") || ""
+  ).trim();
+  const secRefs = normalizeOptionValues(
+    uci.get(UCI_PACKAGE, secName, "condition_refs"),
   );
+  if (secExpr) {
+    const tokens = secExpr
+      .replace(/[()&|!~]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    for (const tok of tokens) {
+      const up = tok.toUpperCase();
+      if (
+        up === "AND" ||
+        up === "OR" ||
+        up === "NOT" ||
+        up === "И" ||
+        up === "ИЛИ" ||
+        up === "НЕ"
+      ) {
+        continue;
+      }
+      visitCond(tok);
+    }
+  } else {
+    for (const cid of secRefs) visitCond(cid);
+  }
+  return result;
+}
+
+function getSectionEffectiveOptionValues(secName, key) {
+  const out = [];
+  const seen = new Set();
+  const addItems = (items) => {
+    for (const it of items) {
+      if (it && !seen.has(it)) {
+        seen.add(it);
+        out.push(it);
+      }
+    }
+  };
+  const targets = [secName, ...getSectionLeafConditionIds(secName)];
+  for (const tid of targets) {
+    addItems(normalizeOptionValues(uci.get(UCI_PACKAGE, tid, key)));
+    const textVal = uci.get(UCI_PACKAGE, tid, `${key}_text`);
+    if (textVal) {
+      addItems(normalizeOptionValues(textVal));
+    }
+  }
+  return out;
+}
+
+function getSectionEffectiveScalar(secName, key) {
+  const direct = uci.get(UCI_PACKAGE, secName, key);
+  if (direct != null && `${direct}`.trim() !== "") {
+    return `${direct}`.trim();
+  }
+  for (const cid of getSectionLeafConditionIds(secName)) {
+    const val = uci.get(UCI_PACKAGE, cid, key);
+    if (val != null && `${val}`.trim() !== "") {
+      return `${val}`.trim();
+    }
+  }
+  return "";
+}
+
+function getSectionGeoCountries(secName) {
+  const raw = getSectionEffectiveOptionValues(secName, "geoip_country");
   const countries = [];
   for (let item of raw) {
     item = (item || "").trim().toLowerCase();
@@ -16326,9 +16474,7 @@ function getSectionGeoCountries(secName) {
 }
 
 function getSectionGeoMode(secName) {
-  const mode = (uci.get(UCI_PACKAGE, secName, "geoip_mode") || "")
-    .trim()
-    .toLowerCase();
+  const mode = getSectionEffectiveScalar(secName, "geoip_mode").toLowerCase();
   if (
     mode === "include" ||
     mode === "exclude" ||
@@ -16497,9 +16643,7 @@ async function performTrace(query) {
     const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
 
     if (type === "port") {
-      const ports = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "ports"),
-      );
+      const ports = getSectionEffectiveOptionValues(secName, "ports");
       const matchedPort = matchPort(queryForMatching, ports);
       if (matchedPort) {
         return {
@@ -16516,9 +16660,7 @@ async function performTrace(query) {
     }
 
     if (type === "ip") {
-      const ipCidr = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "ip_cidr"),
-      );
+      const ipCidr = getSectionEffectiveOptionValues(secName, "ip_cidr");
       const matchedCidr = matchIpInCidrs(queryForMatching, ipCidr);
       if (matchedCidr) {
         return {
@@ -16533,13 +16675,18 @@ async function performTrace(query) {
         };
       }
 
-      const listsRuleset = await readRulesetFile(
-        `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
-      );
+      const listsRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+        ));
       const matchedListIp = matchIpInRuleset(queryForMatching, listsRuleset);
       if (matchedListIp) {
-        const domainIpLists = normalizeOptionValues(
-          uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+        const domainIpLists = getSectionEffectiveOptionValues(
+          secName,
+          "domain_ip_lists",
         );
         return {
           matched: true,
@@ -16554,16 +16701,21 @@ async function performTrace(query) {
         };
       }
 
-      const remoteSubnetRuleset = await readRulesetFile(
-        `/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`,
-      );
+      const remoteSubnetRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`,
+        ));
       const matchedRemoteIp = matchIpInRuleset(
         queryForMatching,
         remoteSubnetRuleset,
       );
       if (matchedRemoteIp) {
-        const domainIpLists = normalizeOptionValues(
-          uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+        const domainIpLists = getSectionEffectiveOptionValues(
+          secName,
+          "domain_ip_lists",
         );
         return {
           matched: true,
@@ -16580,10 +16732,11 @@ async function performTrace(query) {
 
       // Check community list rulesets for matching IPs
       const communitySubnetsEnabled =
-        uci.get(UCI_PACKAGE, secName, "community_subnets") !== "0";
+        getSectionEffectiveScalar(secName, "community_subnets") !== "0";
       if (communitySubnetsEnabled) {
-        const communityLists = normalizeOptionValues(
-          uci.get(UCI_PACKAGE, secName, "community_lists"),
+        const communityLists = getSectionEffectiveOptionValues(
+          secName,
+          "community_lists",
         );
         for (const community of communityLists) {
           const subnets = await readSubnetListFile(community);
@@ -16678,7 +16831,7 @@ async function performTrace(query) {
         }
       }
 
-      if (uci.get(UCI_PACKAGE, secName, "match_all") === "1") {
+      if (getSectionEffectiveScalar(secName, "match_all") === "1") {
         return {
           matched: true,
           sectionName: secName,
@@ -16694,20 +16847,22 @@ async function performTrace(query) {
     }
 
     if (type === "domain") {
-      const domainSuffixes = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "domain_suffix"),
+      const domainSuffixes = getSectionEffectiveOptionValues(
+        secName,
+        "domain_suffix",
       );
-      const rawDomains = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "domain"),
-      );
-      const domainKeywords = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "domain_keyword"),
+      const rawDomains = getSectionEffectiveOptionValues(secName, "domain");
+      const domainKeywords = getSectionEffectiveOptionValues(
+        secName,
+        "domain_keyword",
       ).map((k) => `keyword:${k}`);
-      const domainRegexes = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "domain_regex"),
+      const domainRegexes = getSectionEffectiveOptionValues(
+        secName,
+        "domain_regex",
       ).map((r) => `regex:${r}`);
-      const userDomains = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "user_domains"),
+      const userDomains = getSectionEffectiveOptionValues(
+        secName,
+        "user_domains",
       );
       const allUciDomains = [
         ...domainSuffixes,
@@ -16734,17 +16889,22 @@ async function performTrace(query) {
         };
       }
 
-      const listsRuleset = await readRulesetFile(
-        `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
-      );
+      const listsRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+        ));
       if (listsRuleset) {
         const matchedListDomain = matchDomainInRuleset(
           queryForMatching,
           listsRuleset,
         );
         if (matchedListDomain) {
-          const domainIpLists = normalizeOptionValues(
-            uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+          const domainIpLists = getSectionEffectiveOptionValues(
+            secName,
+            "domain_ip_lists",
           );
           return {
             matched: true,
@@ -16760,17 +16920,22 @@ async function performTrace(query) {
         }
       }
 
-      const remoteDomainRuleset = await readRulesetFile(
-        `/tmp/sing-box/rulesets/${secName}-remote-domain-ruleset.json`,
-      );
+      const remoteDomainRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-remote-domain-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-remote-domain-ruleset.json`,
+        ));
       if (remoteDomainRuleset) {
         const matchedRemoteDomain = matchDomainInRuleset(
           queryForMatching,
           remoteDomainRuleset,
         );
         if (matchedRemoteDomain) {
-          const domainIpLists = normalizeOptionValues(
-            uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+          const domainIpLists = getSectionEffectiveOptionValues(
+            secName,
+            "domain_ip_lists",
           );
           return {
             matched: true,
@@ -16787,8 +16952,9 @@ async function performTrace(query) {
       }
 
       // Check community list rulesets for matching domains
-      const communityLists = normalizeOptionValues(
-        uci.get(UCI_PACKAGE, secName, "community_lists"),
+      const communityLists = getSectionEffectiveOptionValues(
+        secName,
+        "community_lists",
       );
       for (const community of communityLists) {
         if (
@@ -16824,9 +16990,7 @@ async function performTrace(query) {
       const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
 
       if (resolvedIps && resolvedIps.length > 0) {
-        const ipCidr = normalizeOptionValues(
-          uci.get(UCI_PACKAGE, secName, "ip_cidr"),
-        );
+        const ipCidr = getSectionEffectiveOptionValues(secName, "ip_cidr");
         const listsRuleset = await readRulesetFile(
           `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
         );
@@ -16834,11 +16998,9 @@ async function performTrace(query) {
           `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
         );
         const communitySubnetsEnabled =
-          uci.get(UCI_PACKAGE, secName, "community_subnets") !== "0";
+          getSectionEffectiveScalar(secName, "community_subnets") !== "0";
         const communityLists = communitySubnetsEnabled
-          ? normalizeOptionValues(
-              uci.get(UCI_PACKAGE, secName, "community_lists"),
-            )
+          ? getSectionEffectiveOptionValues(secName, "community_lists")
           : [];
 
         for (const ip of resolvedIps) {
@@ -17008,7 +17170,7 @@ async function performTrace(query) {
         }
       }
 
-      if (uci.get(UCI_PACKAGE, secName, "match_all") === "1") {
+      if (getSectionEffectiveScalar(secName, "match_all") === "1") {
         return {
           matched: true,
           sectionName: secName,
@@ -17304,16 +17466,38 @@ function showSectionRulesModal(section_id) {
     section_id;
 
   const getCleanList = (key) => {
-    let val = uci.get(UCI_PACKAGE, section_id, key);
-    if (!val) return [];
-    if (Array.isArray(val)) val = val.join("\n");
-    return parseCommentAwareListTokens(val).map((t) => t.value);
+    const out = [];
+    const seen = new Set();
+    const targets = [section_id, ...getSectionLeafConditionIds(section_id)];
+    for (const tid of targets) {
+      for (const k of [key, `${key}_text`]) {
+        let val = uci.get(UCI_PACKAGE, tid, k);
+        if (!val) continue;
+        if (Array.isArray(val)) val = val.join("\n");
+        for (const t of parseCommentAwareListTokens(val)) {
+          if (t.value && !seen.has(t.value)) {
+            seen.add(t.value);
+            out.push(t.value);
+          }
+        }
+      }
+    }
+    return out;
   };
 
-  const domains = getCleanList("domain");
+  const domains = [
+    ...getCleanList("domain"),
+    ...getCleanList("user_domains"),
+    ...getCleanList("domain_suffix"),
+    ...getCleanList("domain_keyword").map((k) => `keyword:${k}`),
+    ...getCleanList("domain_regex").map((r) => `regex:${r}`),
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
   const ips = getCleanList("ip_cidr");
   const community = getCleanList("community_lists");
-  const ruleSets = getCleanList("rule_set");
+  const ruleSets = [
+    ...getCleanList("rule_set"),
+    ...getCleanList("rule_set_with_subnets"),
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
   const domainIpLists = getCleanList("domain_ip_lists");
   const geosite = getCleanList("geosite");
   let geoipCountry = getCleanList("geoip_country");
@@ -17326,7 +17510,11 @@ function showSectionRulesModal(section_id) {
   const geoip = geoipCountry.map(
     (c) => (geoipInverted ? "NOT " : "") + c.toUpperCase(),
   );
-  const sourceIp = getCleanList("source_ip_cidr");
+  const sourceIp = [
+    ...getCleanList("source_ip_cidr"),
+    ...getCleanList("source_macs"),
+    ...getCleanList("fully_routed_ips"),
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
   const ports = getCleanList("ports");
   const dscp = getCleanList("dscp");
 

@@ -190,10 +190,40 @@ function handle_snapshot() {
     let section_objs = uci.section_objects(CONFIG_NAME, "section");
     for (let s in section_objs) {
         push(sections, {
-            name:    s[".name"],
-            label:   s.label || s[".name"],
-            enabled: s.enabled == "1",
-            action:  s.action || "unknown"
+            name:                 s[".name"],
+            label:                s.label || s[".name"],
+            enabled:              s.enabled != "0",
+            action:               s.action || "unknown",
+            condition_refs:       s.condition_refs || [],
+            outbound_source_refs: s.outbound_source_refs || [],
+            balancer_refs:        s.balancer_refs || [],
+            group_members:        s.group_members || []
+        });
+    }
+    let conditions = [];
+    for (let c_obj in uci.section_objects(CONFIG_NAME, "condition")) {
+        push(conditions, {
+            name:    c_obj[".name"],
+            label:   c_obj.name || c_obj.label || c_obj[".name"],
+            enabled: c_obj.enabled != "0"
+        });
+    }
+    let outbound_sources = [];
+    for (let src_obj in uci.section_objects(CONFIG_NAME, "outbound_source")) {
+        push(outbound_sources, {
+            name:        src_obj[".name"],
+            label:       src_obj.name || src_obj.label || src_obj[".name"],
+            enabled:     src_obj.enabled != "0",
+            source_type: src_obj.source_type || "subscription"
+        });
+    }
+    let balancers = [];
+    for (let bal_obj in uci.section_objects(CONFIG_NAME, "balancer")) {
+        push(balancers, {
+            name:          bal_obj[".name"],
+            label:         bal_obj.name || bal_obj.label || bal_obj[".name"],
+            enabled:       bal_obj.enabled != "0",
+            balancer_type: bal_obj.balancer_type || "urltest"
         });
     }
 
@@ -217,8 +247,11 @@ function handle_snapshot() {
             total: ai_status.incidents_resolved_total || 0,
             last:  ai_status.last_incident || null
         },
-        sections:  sections,
-        logs_tail: logs,
+        sections:         sections,
+        conditions:       conditions,
+        outbound_sources: outbound_sources,
+        balancers:        balancers,
+        logs_tail:        logs,
         agent_api: {
             version:              API_VERSION,
             tools_url:            "/tachyon/agent/v1/tools",
@@ -593,7 +626,20 @@ function handle_domain_add(body) {
         return;
     }
 
-    let path = CONFIG_NAME + "." + section + ".domain";
+    let target_sec = section;
+    let sec_obj = uci.get_all(CONFIG_NAME, section);
+    if (type(sec_obj) == "object" && sec_obj[".type"] == "section") {
+        let crefs = type(sec_obj.condition_refs) == "array" ? sec_obj.condition_refs : (sec_obj.condition_refs ? split(trim(as_string(sec_obj.condition_refs)), /[ \t,]+/) : []);
+        for (let cid in crefs) {
+            let cond_obj = uci.get_all(CONFIG_NAME, cid);
+            if (type(cond_obj) == "object" && cond_obj.enabled != "0" && lc(as_string(cond_obj.condition_type || "atomic")) != "composite") {
+                target_sec = cid;
+                break;
+            }
+        }
+    }
+
+    let path = CONFIG_NAME + "." + target_sec + ".user_domains";
     if (!uci.add_list(path, domain)) {
         err("Failed to add domain (section may not exist or domain already present)");
         return;
@@ -601,7 +647,7 @@ function handle_domain_add(body) {
     uci.commit(CONFIG_NAME);
     system(common.background_command("/usr/bin/tachyon reload"));
 
-    ok({ message: "Domain '" + domain + "' added to section '" + section + "'" });
+    ok({ message: "Domain '" + domain + "' added to '" + target_sec + "'" });
 }
 
 function handle_openapi() {

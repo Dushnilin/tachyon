@@ -88,7 +88,11 @@ function values_equal(a, b) {
 // ─── UCI Loading: Active vs Candidate ─────────────────────────────────────────
 
 function load_active_uci() {
-    let result = { settings: {}, sections: {}, servers: {}, all_by_name: {} };
+    let result = {
+        settings: {}, sections: {}, servers: {},
+        conditions: {}, outbound_sources: {}, outbound_groups: {}, balancers: {},
+        all_by_name: {}
+    };
     let c = uci_core.cursor();
     if (!c) return result;
 
@@ -112,6 +116,14 @@ function load_active_uci() {
             result.sections[name] = s;
         } else if (stype == "server") {
             result.servers[name] = s;
+        } else if (stype == "condition") {
+            result.conditions[name] = s;
+        } else if (stype == "outbound_source") {
+            result.outbound_sources[name] = s;
+        } else if (stype == "outbound_group") {
+            result.outbound_groups[name] = s;
+        } else if (stype == "balancer") {
+            result.balancers[name] = s;
         }
     });
 
@@ -119,7 +131,11 @@ function load_active_uci() {
 }
 
 function parse_uci_text_to_dict(text) {
-    let result = { settings: {}, sections: {}, servers: {}, all_by_name: {} };
+    let result = {
+        settings: {}, sections: {}, servers: {},
+        conditions: {}, outbound_sources: {}, outbound_groups: {}, balancers: {},
+        all_by_name: {}
+    };
     let current_section = null;
     let current_type = null;
 
@@ -150,6 +166,14 @@ function parse_uci_text_to_dict(text) {
                 result.sections[current_section] = sec_obj;
             } else if (current_type == "server") {
                 result.servers[current_section] = sec_obj;
+            } else if (current_type == "condition") {
+                result.conditions[current_section] = sec_obj;
+            } else if (current_type == "outbound_source") {
+                result.outbound_sources[current_section] = sec_obj;
+            } else if (current_type == "outbound_group") {
+                result.outbound_groups[current_section] = sec_obj;
+            } else if (current_type == "balancer") {
+                result.balancers[current_section] = sec_obj;
             }
             continue;
         }
@@ -207,7 +231,11 @@ function load_candidate_uci(candidate_source) {
             return candidate_source;
         }
         // Direct dictionary of sections: { "settings": {...}, "my_section": {...} }
-        let result = { settings: {}, sections: {}, servers: {}, all_by_name: {} };
+        let result = {
+            settings: {}, sections: {}, servers: {},
+            conditions: {}, outbound_sources: {}, outbound_groups: {}, balancers: {},
+            all_by_name: {}
+        };
         for (let k, v in candidate_source) {
             if (type(v) != "object") continue;
             let stype = v[".type"] || (k == "settings" ? "settings" : "section");
@@ -218,6 +246,10 @@ function load_candidate_uci(candidate_source) {
             if (stype == "settings" || sname == "settings") result.settings = v;
             else if (stype == "section") result.sections[sname] = v;
             else if (stype == "server") result.servers[sname] = v;
+            else if (stype == "condition") result.conditions[sname] = v;
+            else if (stype == "outbound_source") result.outbound_sources[sname] = v;
+            else if (stype == "outbound_group") result.outbound_groups[sname] = v;
+            else if (stype == "balancer") result.balancers[sname] = v;
         }
         return result;
     }
@@ -372,7 +404,7 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
         affected["nftables"] = true;
     }
 
-    // Check section / server changes
+    // Check section / server / modular entity changes
     for (let sec in diff_result.added_sections) {
         if (sec.type == "section") {
             affected["engine"] = true;
@@ -380,7 +412,10 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
                 affected["daemons"] = true;
             }
             affected["nftables"] = true;
-        } else if (sec.type == "server") {
+        } else if (sec.type == "condition") {
+            affected["engine"] = true;
+            affected["nftables"] = true;
+        } else if (sec.type == "outbound_source" || sec.type == "outbound_group" || sec.type == "balancer" || sec.type == "server") {
             affected["engine"] = true;
         }
     }
@@ -401,7 +436,7 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
                     affected["engine"] = true;
                 }
             }
-        } else if (mod.type == "section") {
+        } else if (mod.type == "section" || mod.type == "condition") {
             affected["engine"] = true;
             affected["nftables"] = true;
             for (let d in mod.diffs) {
@@ -409,7 +444,7 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
                     affected["daemons"] = true;
                 }
             }
-        } else if (mod.type == "server") {
+        } else if (mod.type == "outbound_source" || mod.type == "outbound_group" || mod.type == "balancer" || mod.type == "server") {
             affected["engine"] = true;
         }
     }
@@ -440,11 +475,13 @@ function validate_uci_semantics(candidate_uci) {
 
         let action = sec.action || "outbound";
         let valid_actions = {
+            connection: true, group: true, desync: true, direct: true,
             outbound: true, proxy: true, bypass: true, block: true,
             zapret: true, zapret2: true, byedpi: true, hosts: true, dns: true,
             awg: true, warp: true, anytls: true, snell: true, mieru: true, naive: true,
             sudoku: true,
-            masque: true, openvpn: true, wdtt: true, olcrtc: true, fptn: true
+            masque: true, openvpn: true, openconnect: true, shadowtls: true,
+            trusttunnel: true, tewfai: true, wdtt: true, olcrtc: true, fptn: true
         };
 
         if (!valid_actions[action]) {

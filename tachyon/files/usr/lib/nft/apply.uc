@@ -660,6 +660,44 @@ function section_option_nonempty(section, key) {
     return option(section, key, "") != "";
 }
 
+function section_leaf_list_option(section, key) {
+    let items = [];
+    let seen = {};
+    for (let v in list_option(section, key)) {
+        v = as_string(v);
+        if (v != "" && !seen[v]) {
+            seen[v] = true;
+            push(items, v);
+        }
+    }
+    for (let cond in connections.section_leaf_conditions(section)) {
+        for (let v in list_option(cond, key)) {
+            v = as_string(v);
+            if (v != "" && !seen[v]) {
+                seen[v] = true;
+                push(items, v);
+            }
+        }
+    }
+    return items;
+}
+
+function section_leaf_option_text(section, key) {
+    let conds = connections.section_leaf_conditions(section);
+    if (length(conds) == 0)
+        return option(section, key, "");
+    let parts = [];
+    let base = option(section, key, "");
+    if (base != "")
+        push(parts, base);
+    for (let cond in conds) {
+        let val = option(cond, key, "");
+        if (val != "")
+            push(parts, val);
+    }
+    return join(" ", parts);
+}
+
 function section_has_destination_matchers(section) {
     return section_rule_condition_csv(section, "domain", "domains") != "" ||
         section_rule_condition_csv(section, "domain_suffix", "domains") != "" ||
@@ -669,7 +707,7 @@ function section_has_destination_matchers(section) {
         length(connections.community_lists(section)) > 0 ||
         length(connections.rule_sets(section)) > 0 ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
-        section_option_nonempty(section, "domain_ip_lists");
+        length(section_leaf_list_option(section, "domain_ip_lists")) > 0;
 }
 
 function section_action(section) {
@@ -678,8 +716,12 @@ function section_action(section) {
 
 function action_captures_traffic(action) {
     return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
+        action == "group" || action == "desync" ||
         action == "awg" || action == "warp" || action == "block" || action == "zapret" || action == "zapret2" ||
-        action == "byedpi" || action == "wdtt" || action == "olcrtc";
+        action == "byedpi" || action == "wdtt" || action == "olcrtc" || action == "fptn" ||
+        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
+        action == "masque" || action == "openvpn" || action == "openconnect" ||
+        action == "shadowtls" || action == "trusttunnel" || action == "tewfai";
 }
 
 function section_is_failed_in_runtime(section_name) {
@@ -765,7 +807,7 @@ function section_has_subnet_update_sources(section) {
     let sec_name = as_string(section[".name"]);
     return has_community ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
-        length(list_option(section, "domain_ip_lists")) > 0 ||
+        length(section_leaf_list_option(section, "domain_ip_lists")) > 0 ||
         helpers.file_is_usable("/tmp/tachyon-core/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
         helpers.file_is_usable("/etc/tachyon/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
         helpers.file_is_usable("/tmp/tachyon-core/rulesets/" + sec_name + "-remote-subnets-ruleset.json", 10) ||
@@ -3015,14 +3057,14 @@ function nft_rule_signature_body(body, section) {
     if (action == "dns") {
         body = signature_add_value(body, "rule." + section_name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
         body = signature_add_value(body, "rule." + section_name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
-        body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+        body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
         return body;
     }
     body = signature_add_value(body, "rule." + section_name + ".ip_cidr", section_rule_condition_csv(section, "ip_cidr", "subnets"));
     body = signature_add_value(body, "rule." + section_name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
     body = signature_add_value(body, "rule." + section_name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
     body = signature_add_value(body, "rule." + section_name + ".ports", section_rule_ports_csv(section));
-    body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+    body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
     body = signature_add_value(body, "rule." + section_name + ".excluded_ips", option(section, "excluded_ips", ""));
     body = signature_add_value(body, "rule." + section_name + ".excluded_protocol", option(section, "excluded_protocol", ""));
     body = signature_add_value(body, "rule." + section_name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
@@ -3033,7 +3075,7 @@ function nft_rule_signature_body(body, section) {
     body = signature_add_value(body, "rule." + section_name + ".community_subnet_lists", comm_subnets);
     body = signature_add_value(body, "rule." + section_name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
     body = signature_add_value(body, "rule." + section_name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
-    body = signature_add_value(body, "rule." + section_name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+    body = signature_add_value(body, "rule." + section_name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
     body = signature_add_value(body, "rule." + section_name + ".dscp", connections.dscp_value(section));
     let fail_policy = lc(trim(option(section, "fail_policy", "")));
     if (fail_policy == "block" || fail_policy == "direct") {
@@ -3454,7 +3496,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
 
         // Load subnets from domain_ip_lists into nftables (local files and compiled rulesets)
         let sec_name = as_string(section[".name"]);
-        for (let ref in list_option(section, "domain_ip_lists")) {
+        for (let ref in section_leaf_list_option(section, "domain_ip_lists")) {
             ref = as_string(ref);
             if (ref == "" || substr(ref, 0, 1) != "/") continue;
             if (!helpers.file_is_usable(ref, 0)) continue;
@@ -3571,7 +3613,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
     // depend on whether the section happens to have priority matchers.
     nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set);
     if (section_action(section) != "dns") {
-        for (let source_ip in list_option(section, "fully_routed_ips"))
+        for (let source_ip in section_leaf_list_option(section, "fully_routed_ips"))
             if (!nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface_set, localv4_set, localv6_set, mark, nft_mangle_chain_text(mangle_chain_context, table), inserted_fully_routed_ips))
                 return false;
     }
@@ -3739,7 +3781,7 @@ function source_aware_dns_values(sections, deferred_sections) {
         }
 
         if (action == "bypass" || action == "dns") {
-            for (let value in list_option(section, "fully_routed_ips")) {
+            for (let value in section_leaf_list_option(section, "fully_routed_ips")) {
                 value = trim(as_string(value));
                 if (value == "") continue;
                 if (core_ip.valid_mac(value)) {

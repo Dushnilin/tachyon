@@ -28,7 +28,8 @@ let commands = {
     view_test_rule: function(...args) { return get_commands().view_test_rule(...args); },
     view_quiet_hours: function(...args) { return get_commands().view_quiet_hours(...args); },
     view_set_arr: function(...args) { return get_commands().view_set_arr(...args); },
-    view_section_editor: function(...args) { return get_commands().view_section_editor(...args); }
+    view_section_editor: function(...args) { return get_commands().view_section_editor(...args); },
+    view_sec_conds: function(...args) { return get_commands().view_sec_conds(...args); }
 };
 let callbacks = {
     handle_fptn_token_update: function(...args) { return get_callbacks().handle_fptn_token_update(...args); },
@@ -67,11 +68,15 @@ let shell_quote = common.shell_quote;
 // again - the bot answered in stutters instead of immediately.
 let build_identity_key = rendering.build_identity_key;
 let build_transition = rendering.build_transition;
+let component_display_title = rendering.component_display_title;
+let clean_release_notes = rendering.clean_release_notes;
 let safe_execute = rendering.safe_execute;
+let section_primary_atomic_condition = rendering.section_primary_atomic_condition;
 let view_set_cat = commands.view_set_cat;
 let view_sec_list = commands.view_sec_list;
 let view_test_rule = commands.view_test_rule;
 let view_quiet_hours = commands.view_quiet_hours;
+let view_sec_conds = commands.view_sec_conds;
 let handle_fptn_token_update = callbacks.handle_fptn_token_update;
 let handle_sec_sub_add = callbacks.handle_sec_sub_add;
 let handle_router_name_set = callbacks.handle_router_name_set;
@@ -202,7 +207,7 @@ function check_notified_updates(token, admin_ids) {
                 let identity = build_identity_key(comp);
                 let key = as_string(latest) + (identity != "" ? ":" + identity : "");
                 if (notified[name] != key) {
-                    let title = (name == "sing_box") ? "sing-box" : (name == "tachyon_core" ? "tachyon-core" : name);
+                    let title = component_display_title(comp);
                     let cur = comp.current_version || "?";
                     let msg;
                     if (comp.status == "outdated_same_release") {
@@ -212,7 +217,7 @@ function check_notified_updates(token, admin_ids) {
                     } else {
                         msg = "📦 <b>" + t("update_available") + "</b>\n" + title + ": <code>" + escape_html(cur) + "</code> ➡️ <code>" + escape_html(as_string(latest)) + "</code>";
                     }
-                    let notes = trim(replace(as_string(comp.release_notes || ""), /\r/g, ""));
+                    let notes = clean_release_notes(comp.release_notes);
                     if (notes != "") {
                         if (length(notes) > 1200)
                             notes = substr(notes, 0, 1200) + "\n...";
@@ -523,9 +528,15 @@ function process_updates(token, admin_ids) {
                     let new_sec = trim(msg.text);
                     if (match(new_sec, /^[a-zA-Z0-9_]+$/)) {
                         c.set(CONFIG_NAME, new_sec, "section");
-                        c.set(CONFIG_NAME, new_sec, "action", "proxy");
+                        c.set(CONFIG_NAME, new_sec, "action", "connection");
                         c.set(CONFIG_NAME, new_sec, "enabled", "1");
                         c.set(CONFIG_NAME, new_sec, "label", new_sec);
+                        let cond_name = new_sec + "_cond";
+                        if (!c.get_all(CONFIG_NAME, cond_name)) {
+                            c.set(CONFIG_NAME, cond_name, "condition");
+                            c.set(CONFIG_NAME, cond_name, "label", new_sec);
+                            c.set(CONFIG_NAME, new_sec, "condition_refs", [ cond_name ]);
+                        }
                         c.commit(CONFIG_NAME);
                         set_tg_state(chat_id, null);
                         send_message(token, chat_id, "✅ Секция создана!");
@@ -534,6 +545,49 @@ function process_updates(token, admin_ids) {
                         set_tg_state(chat_id, state);
                         send_message(token, chat_id, "❌ Неверное имя. Разрешены только буквы, цифры и подчеркивания.");
                     }
+                }
+                else if (state.action == "sec_cond_new") {
+                    let new_cond = trim(msg.text);
+                    if (match(new_cond, /^[a-zA-Z0-9_]+$/)) {
+                        c.set(CONFIG_NAME, new_cond, "condition");
+                        c.set(CONFIG_NAME, new_cond, "label", new_cond);
+                        if (state.sec && c.get_all(CONFIG_NAME, state.sec)) {
+                            c.add_list(CONFIG_NAME, state.sec, "condition_refs", new_cond);
+                        }
+                        c.commit(CONFIG_NAME);
+                        set_tg_state(chat_id, null);
+                        send_message(token, chat_id, "✅ Условие <code>" + escape_html(new_cond) + "</code> создано!", "HTML");
+                        if (state.sec)
+                            view_sec_conds(token, chat_id, null, state.sec);
+                        else
+                            view_set_cat(token, chat_id, null, "condition", new_cond, 0);
+                    } else {
+                        set_tg_state(chat_id, state);
+                        send_message(token, chat_id, "❌ Неверное имя. Разрешены только буквы, цифры и подчеркивания.");
+                    }
+                }
+                else if (state.action == "sec_dns_edit") {
+                    let raw = trim(msg.text);
+                    let parts = split(raw, /[ \t]+/);
+                    let dtype = "doh";
+                    let dsrv = raw;
+                    if (length(parts) >= 2 && (parts[0] == "doh" || parts[0] == "dot" || parts[0] == "udp" || parts[0] == "tcp")) {
+                        dtype = parts[0];
+                        dsrv = join(" ", slice(parts, 1));
+                    } else if (match(raw, /^https?:\/\//i)) {
+                        dtype = "doh";
+                    } else if (match(raw, /^tls:\/\//i)) {
+                        dtype = "dot";
+                        dsrv = replace(raw, /^tls:\/\//i, "");
+                    } else {
+                        dtype = "udp";
+                    }
+                    c.set(CONFIG_NAME, state.sec, "dns_type", dtype);
+                    c.set(CONFIG_NAME, state.sec, "dns_server", dsrv);
+                    c.commit(CONFIG_NAME);
+                    set_tg_state(chat_id, null);
+                    send_message(token, chat_id, "✅ DNS сервер установлен: <code>" + escape_html(dtype + "://" + dsrv) + "</code>", "HTML");
+                    view_section_editor(token, chat_id, null, state.sec);
                 }
                 else if (state.action == "sec_rename") {
                     let new_label = trim(msg.text);
@@ -557,14 +611,53 @@ function process_updates(token, admin_ids) {
                     for (let x in items) if (trim(x) != "") push(valid_items, trim(x));
 
                     if (length(valid_items) > 0) {
-                        let field = "domain_suffix";
-                        if (state.list == "ip") field = "ip_cidr";
-                        else if (state.list == "src") field = "src_ip";
-                        else if (state.list == "ruleset") field = "community_lists";
+                        let sec_obj = c.get_all(CONFIG_NAME, state.sec);
+                        let cond_obj = section_primary_atomic_condition(sec_obj);
+                        let holder = (cond_obj && cond_obj[".name"]) ? cond_obj[".name"] : state.sec;
+                        let holder_obj = c.get_all(CONFIG_NAME, holder) || {};
 
-                        let current = common.list_option(c.get_all(CONFIG_NAME, state.sec), field);
-                        for (let x in valid_items) push(current, x);
-                        c.set(CONFIG_NAME, state.sec, field, current);
+                        let append_to_field = function(fname, val) {
+                            let cur = common.list_option(c.get_all(CONFIG_NAME, holder), fname);
+                            let exists = false;
+                            for (let e in cur) if (e == val) { exists = true; break; }
+                            if (!exists) {
+                                push(cur, val);
+                                c.set(CONFIG_NAME, holder, fname, cur);
+                            }
+                        };
+
+                        for (let x in valid_items) {
+                            if (state.list == "domain") {
+                                if (substr(x, 0, 5) == "full:")
+                                    append_to_field("domain", substr(x, 5));
+                                else if (substr(x, 0, 7) == "domain:")
+                                    append_to_field("domain_suffix", substr(x, 7));
+                                else if (substr(x, 0, 8) == "keyword:")
+                                    append_to_field("domain_keyword", substr(x, 8));
+                                else if (substr(x, 0, 6) == "regex:" || substr(x, 0, 7) == "regexp:")
+                                    append_to_field("domain_regex", substr(x, index(x, ":") + 1));
+                                else if (length(common.list_option(holder_obj, "user_domains")) > 0 && length(common.list_option(holder_obj, "domain_suffix")) == 0)
+                                    append_to_field("user_domains", x);
+                                else
+                                    append_to_field("domain_suffix", x);
+                            } else if (state.list == "ip") {
+                                append_to_field("ip_cidr", x);
+                            } else if (state.list == "src") {
+                                if (match(x, /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/))
+                                    append_to_field("source_macs", lc(replace(x, "-", ":")));
+                                else if (match(x, /^[0-9.]+\/?[0-9]*$/) || index(x, ":") >= 0)
+                                    append_to_field("source_ip_cidr", x);
+                                else
+                                    append_to_field("devices", x);
+                            } else if (state.list == "ruleset") {
+                                append_to_field("community_lists", x);
+                            } else if (state.list == "ports") {
+                                append_to_field("ports", x);
+                            } else if (state.list == "geoip") {
+                                append_to_field("geoip_country", uc(x));
+                            }
+                        }
+
                         c.commit(CONFIG_NAME);
                         set_tg_state(chat_id, null);
                         send_message(token, chat_id, "✅ Добавлено " + length(valid_items) + " элементов.");
@@ -587,6 +680,8 @@ function process_updates(token, admin_ids) {
                         let sec = parts[0];
                         let url = join(" ", slice(parts, 1));
                         handle_sec_sub_add(token, chat_id, msg_id, sec, url);
+                    } else if (state.sec && length(parts) == 1 && parts[0] != "") {
+                        handle_sec_sub_add(token, chat_id, msg_id, state.sec, parts[0]);
                     } else {
                         set_tg_state(chat_id, state);
                         send_message(token, chat_id, "❌ Формат: <code>секция URL</code>\nНапример: <code>Main https://...</code>", "HTML");

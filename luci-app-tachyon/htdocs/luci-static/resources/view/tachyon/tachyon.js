@@ -583,9 +583,14 @@ const EntryPoint = {
                     .filter(Boolean)
                 : [];
           const ensureSourceRef = (secName, srcId) => {
-            const cur = toArr(uci.get(self.config, secName, "outbound_source_refs"));
+            const cur = toArr(
+              uci.get(self.config, secName, "outbound_source_refs"),
+            );
             if (!cur.includes(srcId)) {
-              uci.set(self.config, secName, "outbound_source_refs", [...cur, srcId]);
+              uci.set(self.config, secName, "outbound_source_refs", [
+                ...cur,
+                srcId,
+              ]);
             }
           };
           const singleProtoActions = [
@@ -632,15 +637,23 @@ const EntryPoint = {
                 uci.set(self.config, lid, "enabled", "1");
                 uci.set(self.config, lid, "name", `${dispName} (Links)`);
                 uci.set(self.config, lid, "source_type", "proxy_links");
-                if (links.length) uci.set(self.config, lid, "proxy_links", links);
+                if (links.length)
+                  uci.set(self.config, lid, "proxy_links", links);
                 if (sec.selector_proxy_links_text) {
-                  uci.set(self.config, lid, "proxy_links_text", sec.selector_proxy_links_text);
+                  uci.set(
+                    self.config,
+                    lid,
+                    "proxy_links_text",
+                    sec.selector_proxy_links_text,
+                  );
                 }
               }
               ensureSourceRef(sname, lid);
             }
 
-            const amn = toArr(sec.selector_amnezia_configs || sec.amnezia_configs);
+            const amn = toArr(
+              sec.selector_amnezia_configs || sec.amnezia_configs,
+            );
             if (amn.length || sec.amnezia_conf_text) {
               const aid = `src_amnezia_${safeSname}`;
               if (!uci.get(self.config, aid)) {
@@ -648,15 +661,24 @@ const EntryPoint = {
                 uci.set(self.config, aid, "enabled", "1");
                 uci.set(self.config, aid, "name", `${dispName} (Amnezia)`);
                 uci.set(self.config, aid, "source_type", "amnezia_config");
-                if (amn.length) uci.set(self.config, aid, "amnezia_configs", amn);
+                if (amn.length)
+                  uci.set(self.config, aid, "amnezia_configs", amn);
                 if (sec.amnezia_conf_text) {
-                  uci.set(self.config, aid, "amnezia_conf_text", sec.amnezia_conf_text);
+                  uci.set(
+                    self.config,
+                    aid,
+                    "amnezia_conf_text",
+                    sec.amnezia_conf_text,
+                  );
                 }
               }
               ensureSourceRef(sname, aid);
             }
 
-            if (sAct === "awg" || (sec.awg_private_key && sec.awg_server_address)) {
+            if (
+              sAct === "awg" ||
+              (sec.awg_private_key && sec.awg_server_address)
+            ) {
               const wid = `src_awg_${safeSname}`;
               if (!uci.get(self.config, wid)) {
                 uci.add(self.config, "outbound_source", wid);
@@ -700,9 +722,9 @@ const EntryPoint = {
               (b) =>
                 b[".name"] === balId ||
                 (b.name === utName &&
-                  toArr(uci.get(self.config, parentSec, "balancer_refs")).includes(
-                    b[".name"],
-                  )),
+                  toArr(
+                    uci.get(self.config, parentSec, "balancer_refs"),
+                  ).includes(b[".name"])),
             );
             if (!found && !uci.get(self.config, balId)) {
               uci.add(self.config, "balancer", balId);
@@ -728,7 +750,9 @@ const EntryPoint = {
                   uci.set(self.config, balId, k, ut[k]);
                 }
               });
-              const arr = toArr(uci.get(self.config, parentSec, "balancer_refs"));
+              const arr = toArr(
+                uci.get(self.config, parentSec, "balancer_refs"),
+              );
               if (!arr.includes(balId)) {
                 uci.set(self.config, parentSec, "balancer_refs", [
                   ...arr,
@@ -742,14 +766,20 @@ const EntryPoint = {
           (uci.sections(self.config, "section") || []).forEach((sec) => {
             const sname = sec[".name"];
             if (!sname) return;
-            const secSrcRefs = toArr(uci.get(self.config, sname, "outbound_source_refs"));
+            const secSrcRefs = toArr(
+              uci.get(self.config, sname, "outbound_source_refs"),
+            );
             if (!secSrcRefs.length) return;
-            toArr(uci.get(self.config, sname, "balancer_refs")).forEach((bRef) => {
-              const curBRefs = toArr(uci.get(self.config, bRef, "source_refs"));
-              if (curBRefs.length === 0 && uci.get(self.config, bRef)) {
-                uci.set(self.config, bRef, "source_refs", secSrcRefs);
-              }
-            });
+            toArr(uci.get(self.config, sname, "balancer_refs")).forEach(
+              (bRef) => {
+                const curBRefs = toArr(
+                  uci.get(self.config, bRef, "source_refs"),
+                );
+                if (curBRefs.length === 0 && uci.get(self.config, bRef)) {
+                  uci.set(self.config, bRef, "source_refs", secSrcRefs);
+                }
+              },
+            );
           });
         } catch (_e) {}
         return form.Map.prototype.load.call(self);

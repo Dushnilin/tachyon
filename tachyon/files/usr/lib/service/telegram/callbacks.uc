@@ -68,6 +68,15 @@ let build_transition = rendering.build_transition;
 let build_identity_key = rendering.build_identity_key;
 let extract_clean_fptn_token = rendering.extract_clean_fptn_token;
 let mask_fptn_token = rendering.mask_fptn_token;
+let section_condition_sections = rendering.section_condition_sections;
+let section_own_and_conditions = rendering.section_own_and_conditions;
+let section_primary_atomic_condition = rendering.section_primary_atomic_condition;
+let section_match_all_enabled = rendering.section_match_all_enabled;
+let section_condition_values = rendering.section_condition_values;
+let section_outbound_sources = rendering.section_outbound_sources;
+let section_has_fptn = rendering.section_has_fptn;
+let section_fptn_token = rendering.section_fptn_token;
+let section_balancers = rendering.section_balancers;
 let normalize_mac = rendering.normalize_mac;
 let find_mac_block_rules = rendering.find_mac_block_rules;
 let valid_updatable_component = rendering.valid_updatable_component;
@@ -88,6 +97,9 @@ let view_runtime = commands.view_runtime;
 let view_outbounds = commands.view_outbounds;
 let view_sections = commands.view_sections;
 let view_section_editor = commands.view_section_editor;
+let view_sec_conds = commands.view_sec_conds;
+let view_sec_bals = commands.view_sec_bals;
+let view_sec_grp = commands.view_sec_grp;
 let view_sec_list = commands.view_sec_list;
 let exec_doctor = commands.exec_doctor;
 let exec_restart = commands.exec_restart;
@@ -159,11 +171,15 @@ function handle_fptn_token_update(token, chat_id, raw_input, target_sec) {
 
     if (target_sec && all[target_sec]) {
         c.set(CONFIG_NAME, target_sec, "access_token", clean_tok);
+        for (let src in section_outbound_sources(all[target_sec])) {
+            if (src.source_type == "fptn" && src[".name"])
+                c.set(CONFIG_NAME, src[".name"], "access_token", clean_tok);
+        }
         fptn_count++;
     } else {
         for (let sname in keys(all)) {
             let s = all[sname];
-            if (type(s) == "object" && s.action == "fptn") {
+            if (type(s) == "object" && (s.action == "fptn" || (s[".type"] == "outbound_source" && s.source_type == "fptn"))) {
                 c.set(CONFIG_NAME, sname, "access_token", clean_tok);
                 fptn_count++;
             }
@@ -253,40 +269,103 @@ function handle_sec_toggle(token, chat_id, msg_id, sec_name) {
     return view_section_editor(token, chat_id, msg_id, sec_name);
 }
 
-function handle_sec_action(token, chat_id, msg_id, sec_name) {
+function handle_sec_action(token, chat_id, msg_id, sec_name, explicit_act) {
     let c = uci_core.cursor();
     c.load(CONFIG_NAME);
     let s = c.get_all(CONFIG_NAME, sec_name);
     if (!s) return;
-    let acts = ["proxy", "bypass", "block", "connection"];
-    let idx = -1;
-    for (let i = 0; i < length(acts); i++) { if (acts[i] == s.action) idx = i; }
-    if (idx == -1) push(acts, s.action);
-    let next_act = acts[(idx + 1) % length(acts)];
+    let next_act = explicit_act;
+    if (!next_act || next_act == "") {
+        let acts = ["connection", "group", "dns", "bypass", "block", "hosts", "fptn", "awg"];
+        let cur = (s.action == "proxy") ? "connection" : (s.action || "connection");
+        let idx = -1;
+        for (let i = 0; i < length(acts); i++) { if (acts[i] == cur) idx = i; }
+        if (idx == -1) push(acts, cur);
+        next_act = acts[(idx + 1) % length(acts)];
+    }
     c.set(CONFIG_NAME, sec_name, "action", next_act);
     c.commit(CONFIG_NAME);
     return view_section_editor(token, chat_id, msg_id, sec_name);
 }
 
-function handle_sec_del_it(token, chat_id, msg_id, sec_name, type, val) {
+function remove_item_from_holders(c, holders, keys_to_clean, val) {
+    let match_variants = {};
+    match_variants[val] = true;
+    match_variants["." + val] = true;
+    match_variants["domain:" + val] = true;
+    match_variants["full:" + val] = true;
+    match_variants["keyword:" + val] = true;
+    match_variants["regex:" + val] = true;
+    match_variants["regexp:" + val] = true;
+
+    for (let h in holders) {
+        if (type(h) != "object") continue;
+        let hname = h[".name"];
+        if (!hname || hname == "") continue;
+        for (let k in keys_to_clean) {
+            let current = common.list_option(h, k);
+            if (length(current) > 0) {
+                let new_list = [];
+                let changed = false;
+                for (let x in current) {
+                    if (match_variants[trim(as_string(x))]) {
+                        changed = true;
+                    } else {
+                        push(new_list, x);
+                    }
+                }
+                if (changed) {
+                    if (length(new_list) > 0) c.set(CONFIG_NAME, hname, k, new_list);
+                    else c.delete(CONFIG_NAME, hname, k);
+                }
+            }
+            let tval = trim(as_string(common.option(h, k + "_text", "")));
+            if (tval != "") {
+                let kept = [];
+                let tchanged = false;
+                for (let tok in split(tval, /[\r\n,;\t ]+/)) {
+                    if (tok == "") continue;
+                    if (match_variants[tok]) tchanged = true;
+                    else push(kept, tok);
+                }
+                if (tchanged) {
+                    if (length(kept) > 0) c.set(CONFIG_NAME, hname, k + "_text", join("\n", kept));
+                    else c.delete(CONFIG_NAME, hname, k + "_text");
+                }
+            }
+        }
+    }
+}
+
+function handle_sec_del_it(token, chat_id, msg_id, sec_name, item_type, val) {
     let c = uci_core.cursor();
     c.load(CONFIG_NAME);
     let s = c.get_all(CONFIG_NAME, sec_name);
     if (!s) return;
-    
-    let current = common.list_option(s, type);
-    let new_list = [];
-    for (let x in current) if (x != val) push(new_list, x);
-    
-    c.set(CONFIG_NAME, sec_name, type, new_list);
+
+    let keys_to_clean = [ item_type ];
+    if (item_type == "domain_suffix" || item_type == "domain" || item_type == "domain_keyword" || item_type == "domain_regex" || item_type == "user_domains")
+        keys_to_clean = [ item_type, "user_domains", "domain", "domain_suffix" ];
+    else if (item_type == "source_ip_cidr" || item_type == "src_ip")
+        keys_to_clean = [ "source_ip_cidr", "fully_routed_ips", "device_ip", "src_ip" ];
+    else if (item_type == "source_macs" || item_type == "src_mac")
+        keys_to_clean = [ "source_macs", "device_mac", "src_mac" ];
+    else if (item_type == "devices" || item_type == "src_device")
+        keys_to_clean = [ "devices", "src_device" ];
+    else if (item_type == "ports" || item_type == "port")
+        keys_to_clean = [ "ports", "port" ];
+
+    remove_item_from_holders(c, section_own_and_conditions(s), keys_to_clean, val);
     c.commit(CONFIG_NAME);
-    
+
     // figure out parent list_type
     let list_type = "domain";
-    if (match(type, /^ip/)) list_type = "ip";
-    else if (match(type, /^src/)) list_type = "src";
-    else if (type == "community_lists") list_type = "ruleset";
-    
+    if (match(item_type, /^ip/) || item_type == "subnets") list_type = "ip";
+    else if (match(item_type, /^src/) || item_type == "source_ip_cidr" || item_type == "source_macs" || item_type == "devices" || item_type == "fully_routed_ips" || item_type == "device_ip" || item_type == "device_mac") list_type = "src";
+    else if (item_type == "community_lists" || item_type == "rule_set" || item_type == "rule_set_with_subnets" || item_type == "domain_ip_lists") list_type = "ruleset";
+    else if (item_type == "ports" || item_type == "port") list_type = "ports";
+    else if (item_type == "geoip_country") list_type = "geoip";
+
     return view_sec_list(token, chat_id, msg_id, sec_name, list_type);
 }
 
@@ -295,15 +374,26 @@ function handle_sec_clear(token, chat_id, msg_id, sec_name, list_type) {
     c.load(CONFIG_NAME);
     let s = c.get_all(CONFIG_NAME, sec_name);
     if (!s) return;
-    
+
     let keys = [];
-    if (list_type == "domain") keys = ["domain", "domain_suffix", "domain_keyword", "domain_regex"];
-    else if (list_type == "ip") keys = ["ip", "ip_cidr"];
-    else if (list_type == "src") keys = ["src_ip", "src_mac", "src_device"];
-    else if (list_type == "ruleset") keys = ["community_lists"];
-    
-    for (let k in keys) {
-        c.delete(CONFIG_NAME, sec_name, k);
+    if (list_type == "domain")
+        keys = ["user_domains", "user_domains_text", "domain", "domain_text", "domain_suffix", "domain_suffix_text", "domain_keyword", "domain_keyword_text", "domain_regex", "domain_regex_text"];
+    else if (list_type == "ip")
+        keys = ["ip", "ip_cidr", "ip_cidr_text", "subnets"];
+    else if (list_type == "src")
+        keys = ["src_ip", "source_ip_cidr", "source_ip_cidr_text", "fully_routed_ips", "device_ip", "src_mac", "source_macs", "device_mac", "src_device", "devices"];
+    else if (list_type == "ruleset")
+        keys = ["community_lists", "rule_set", "rule_set_with_subnets", "domain_ip_lists"];
+    else if (list_type == "ports")
+        keys = ["ports", "ports_text", "port"];
+    else if (list_type == "geoip")
+        keys = ["geoip_country"];
+
+    for (let h in section_own_and_conditions(s)) {
+        let hname = h[".name"];
+        if (!hname) continue;
+        for (let k in keys)
+            c.delete(CONFIG_NAME, hname, k);
     }
     c.commit(CONFIG_NAME);
     return view_sec_list(token, chat_id, msg_id, sec_name, list_type);
@@ -421,9 +511,76 @@ function apply_backup_restore(token, chat_id, dl_path) {
     send_message(token, chat_id, "✅ <b>" + t("backup_done") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
 }
 
+function toggle_ref_in_list(c, sec_name, list_key, item_name) {
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return false;
+    let current = common.list_option(s, list_key);
+    let next = [];
+    let found = false;
+    for (let x in current) {
+        if (x == item_name) found = true;
+        else push(next, x);
+    }
+    if (!found) push(next, item_name);
+    if (length(next) > 0) c.set(CONFIG_NAME, sec_name, list_key, next);
+    else c.delete(CONFIG_NAME, sec_name, list_key);
+    return !found;
+}
+
+function handle_sec_cond_tog(token, chat_id, msg_id, sec_name, cond_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    toggle_ref_in_list(c, sec_name, "condition_refs", cond_name);
+    c.commit(CONFIG_NAME);
+    return view_sec_conds(token, chat_id, msg_id, sec_name);
+}
+
+function handle_sec_match_all(token, chat_id, msg_id, sec_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return;
+    let cur = section_match_all_enabled(s);
+    let target_holder = section_primary_atomic_condition(s) || s;
+    let hname = target_holder[".name"] || sec_name;
+    if (cur) {
+        for (let h in section_own_and_conditions(s)) {
+            if (h[".name"]) c.delete(CONFIG_NAME, h[".name"], "match_all");
+        }
+    } else {
+        c.set(CONFIG_NAME, hname, "match_all", "1");
+    }
+    c.commit(CONFIG_NAME);
+    return view_sec_conds(token, chat_id, msg_id, sec_name);
+}
+
+function handle_sec_src_tog(token, chat_id, msg_id, sec_name, src_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    toggle_ref_in_list(c, sec_name, "outbound_source_refs", src_name);
+    c.commit(CONFIG_NAME);
+    return view_sec_subs(token, chat_id, msg_id, sec_name);
+}
+
+function handle_sec_bal_tog(token, chat_id, msg_id, sec_name, bal_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    toggle_ref_in_list(c, sec_name, "balancer_refs", bal_name);
+    c.commit(CONFIG_NAME);
+    return view_sec_bals(token, chat_id, msg_id, sec_name);
+}
+
+function handle_sec_grp_tog(token, chat_id, msg_id, sec_name, member_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    toggle_ref_in_list(c, sec_name, "group_members", member_name);
+    c.commit(CONFIG_NAME);
+    return view_sec_grp(token, chat_id, msg_id, sec_name);
+}
+
 function handle_sec_sub_add(token, chat_id, msg_id, sec_name, url) {
     if (!sec_name || !url) {
-        set_tg_state(chat_id, { action: "sec_sub_add" });
+        set_tg_state(chat_id, { action: "sec_sub_add", sec: sec_name || null });
         return send_message(token, chat_id, "📝 " + t("sub_enter_url"), "HTML");
     }
     url = trim(url);
@@ -436,7 +593,7 @@ function handle_sec_sub_add(token, chat_id, msg_id, sec_name, url) {
     let max_idx = 0;
     let all = c.get_all(CONFIG_NAME);
     for (let sname in all) {
-        if (all[sname][".type"] == "subscription_url") {
+        if (all[sname][".type"] == "subscription_url" || all[sname][".type"] == "outbound_source") {
             let m = match(sname, /^sub_(\d+)$/);
             if (m) {
                 let i = int(m[1]);
@@ -445,32 +602,66 @@ function handle_sec_sub_add(token, chat_id, msg_id, sec_name, url) {
         }
     }
     let new_sec = "sub_" + (max_idx + 1);
+    c.set(CONFIG_NAME, new_sec, "outbound_source");
+    c.set(CONFIG_NAME, new_sec, "source_type", "subscription");
     c.set(CONFIG_NAME, new_sec, "enabled", "1");
     c.set(CONFIG_NAME, new_sec, "section", sec_name);
     c.set(CONFIG_NAME, new_sec, "url", url);
     c.set(CONFIG_NAME, new_sec, "label", url);
+    if (all[sec_name]) {
+        c.add_list(CONFIG_NAME, sec_name, "outbound_source_refs", new_sec);
+        let brefs = common.list_option(all[sec_name], "balancer_refs");
+        if (length(brefs) > 0 && all[brefs[0]])
+            c.add_list(CONFIG_NAME, brefs[0], "source_refs", new_sec);
+    }
     c.commit(CONFIG_NAME);
     set_tg_state(chat_id, null);
     send_message(token, chat_id, "✅ " + t("sub_added") + " <code>" + sec_name + "</code>!", "HTML");
     view_sec_subs(token, chat_id, null, sec_name);
 }
 
-function handle_sec_sub_del(token, chat_id, msg_id, sec_name, idx) {
+function handle_sec_sub_del(token, chat_id, msg_id, sec_name, target_or_idx) {
     let c = uci_core.cursor();
     c.load(CONFIG_NAME);
     let all = c.get_all(CONFIG_NAME);
-    let sub_names = [];
-    for (let sname in all) {
-        if (all[sname][".type"] == "subscription_url" && all[sname].section == sec_name) {
-            push(sub_names, sname);
-        }
+    let s = all[sec_name];
+    let target = null;
+
+    if (type(target_or_idx) == "string" && all[target_or_idx]) {
+        target = target_or_idx;
+    } else {
+        let idx = int(target_or_idx);
+        let eff = s ? section_outbound_sources(s) : [];
+        if (idx >= 0 && idx < length(eff))
+            target = eff[idx][".name"];
     }
-    if (idx < 0 || idx >= length(sub_names)) {
+
+    if (!target || !all[target]) {
         send_message(token, chat_id, "❌ " + t("sub_not_found"));
         return view_sec_subs(token, chat_id, null, sec_name);
     }
-    let target = sub_names[idx];
-    c.delete(CONFIG_NAME, target);
+
+    if (s) {
+        let orefs = common.list_option(s, "outbound_source_refs");
+        let next_orefs = [];
+        for (let r in orefs) if (r != target) push(next_orefs, r);
+        if (length(next_orefs) > 0) c.set(CONFIG_NAME, sec_name, "outbound_source_refs", next_orefs);
+        else c.delete(CONFIG_NAME, sec_name, "outbound_source_refs");
+
+        for (let bref in common.list_option(s, "balancer_refs")) {
+            let bal = all[bref];
+            if (!bal) continue;
+            let srefs = common.list_option(bal, "source_refs");
+            let next_srefs = [];
+            for (let r in srefs) if (r != target) push(next_srefs, r);
+            if (length(next_srefs) > 0) c.set(CONFIG_NAME, bref, "source_refs", next_srefs);
+            else c.delete(CONFIG_NAME, bref, "source_refs");
+        }
+    }
+
+    if (all[target][".type"] == "subscription_url" || all[target].section == sec_name) {
+        c.delete(CONFIG_NAME, target);
+    }
     c.commit(CONFIG_NAME);
     set_tg_state(chat_id, null);
     send_message(token, chat_id, "✅ " + t("sub_removed") + " <code>" + sec_name + "</code>.", "HTML");
@@ -745,8 +936,9 @@ function dispatch_command(token, chat_id, text, msg_id) {
             send_message(token, chat_id, "❌ <b>" + t("err_unknown_component") + "</b> <code>" + escape_html(comp) + "</code>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
-        if (msg_id) edit_message(token, chat_id, msg_id, t("update_component_title") + " " + escape_html(comp) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
-        else send_message(token, chat_id, t("update_component_title") + " " + escape_html(comp) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
+        let comp_title = rendering.component_display_title(comp);
+        if (msg_id) edit_message(token, chat_id, msg_id, "⏳ <b>" + t("update_component_title") + " " + escape_html(comp_title) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
+        else send_message(token, chat_id, "⏳ <b>" + t("update_component_title") + " " + escape_html(comp_title) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         command_status(command_from_args(["/usr/bin/tachyon", "component_action_async", comp, "install"]));
         return;
     }
@@ -802,8 +994,50 @@ function dispatch_command(token, chat_id, text, msg_id) {
         return send_message(token, chat_id, t("sec_enter_target") + " <code>" + sec + "</code> (например, <code>main-out</code> или <code>direct-out</code>):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
     }
     if (match(cmd, /^\/sec_action /)) {
-        let sec = trim(substr(cmd, 12));
-        return handle_sec_action(token, chat_id, msg_id, sec);
+        let parts = split(trim(substr(cmd, 12)), " ");
+        return handle_sec_action(token, chat_id, msg_id, parts[0], parts[1] || "");
+    }
+    if (match(cmd, /^\/sec_dns_edit /)) {
+        let sec = trim(substr(cmd, 14));
+        set_tg_state(chat_id, { action: "sec_dns_edit", sec: sec });
+        return send_message(token, chat_id, t("sec_dns_prompt"), "HTML");
+    }
+    if (match(cmd, /^\/sec_conds /)) {
+        let sec = trim(substr(cmd, 11));
+        return view_sec_conds(token, chat_id, msg_id, sec);
+    }
+    if (match(cmd, /^\/sec_cond_tog /)) {
+        let parts = split(trim(substr(cmd, 14)), " ");
+        if (length(parts) >= 2) return handle_sec_cond_tog(token, chat_id, msg_id, parts[0], parts[1]);
+    }
+    if (match(cmd, /^\/sec_cond_new /)) {
+        let sec = trim(substr(cmd, 14));
+        set_tg_state(chat_id, { action: "sec_cond_new", sec: sec });
+        return send_message(token, chat_id, t("sec_cond_enter_name"), "HTML");
+    }
+    if (match(cmd, /^\/sec_match_all /)) {
+        let sec = trim(substr(cmd, 15));
+        return handle_sec_match_all(token, chat_id, msg_id, sec);
+    }
+    if (match(cmd, /^\/sec_bals /)) {
+        let sec = trim(substr(cmd, 10));
+        return view_sec_bals(token, chat_id, msg_id, sec);
+    }
+    if (match(cmd, /^\/sec_bal_tog /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) >= 2) return handle_sec_bal_tog(token, chat_id, msg_id, parts[0], parts[1]);
+    }
+    if (match(cmd, /^\/sec_grp /)) {
+        let sec = trim(substr(cmd, 9));
+        return view_sec_grp(token, chat_id, msg_id, sec);
+    }
+    if (match(cmd, /^\/sec_grp_tog /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) >= 2) return handle_sec_grp_tog(token, chat_id, msg_id, parts[0], parts[1]);
+    }
+    if (match(cmd, /^\/sec_src_tog /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) >= 2) return handle_sec_src_tog(token, chat_id, msg_id, parts[0], parts[1]);
     }
     if (match(cmd, /^\/sec_delete /)) {
         let sec = trim(substr(cmd, 12));
@@ -864,6 +1098,8 @@ function dispatch_command(token, chat_id, text, msg_id) {
             let sec = parts[0];
             let url = join(" ", slice(parts, 1));
             return handle_sec_sub_add(token, chat_id, msg_id, sec, url);
+        } else if (length(parts) == 1 && parts[0] != "") {
+            return handle_sec_sub_add(token, chat_id, msg_id, parts[0], null);
         }
     }
     if (cmd == "/sec_sub_add") {
@@ -872,7 +1108,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
     }
     if (match(cmd, /^\/sec_sub_del /)) {
         let parts = split(trim(substr(cmd, 13)), " ");
-        if (length(parts) == 2) return handle_sec_sub_del(token, chat_id, msg_id, parts[0], int(parts[1]));
+        if (length(parts) == 2) return handle_sec_sub_del(token, chat_id, msg_id, parts[0], parts[1]);
     }
 
     
@@ -1029,6 +1265,11 @@ return {
     handle_switch,
     handle_sec_toggle,
     handle_sec_action,
+    handle_sec_cond_tog,
+    handle_sec_match_all,
+    handle_sec_src_tog,
+    handle_sec_bal_tog,
+    handle_sec_grp_tog,
     handle_sec_del_it,
     handle_sec_clear,
     apply_confirmed_restart,

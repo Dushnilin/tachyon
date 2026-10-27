@@ -92,7 +92,9 @@ const ZAPRET2_DEFAULT_NFQWS2_OPT =
 const BYEDPI_DEFAULT_CMD_OPTS = "-o 2 --auto=t,r,a,s -d 2";
 
 function isoToFlagEmoji(iso) {
-  const code = String(iso || "").trim().toUpperCase();
+  const code = String(iso || "")
+    .trim()
+    .toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return "";
   return String.fromCodePoint(
     0x1f1e6 + (code.charCodeAt(0) - 65),
@@ -178,7 +180,9 @@ function loadGlobalPoolChoices() {
       });
 
       Object.values(countries).forEach((cc) => {
-        const code = String(cc || "").trim().toUpperCase();
+        const code = String(cc || "")
+          .trim()
+          .toUpperCase();
         if (code.length === 2) countrySet.add(code);
       });
 
@@ -274,7 +278,9 @@ function createServerChecklistPicker(inputEl) {
         E(
           "span",
           { style: "font-size: 11px; opacity: 0.65;" },
-          _("No cached servers found yet — enter server names above or update subscriptions."),
+          _(
+            "No cached servers found yet — enter server names above or update subscriptions.",
+          ),
         ),
       );
       return;
@@ -588,7 +594,9 @@ function showOutboundGroupModal(existingId, onSaved) {
     type: "text",
     class: "cbi-input-text",
     value: asArray(grp.include_outbounds).join(", "),
-    placeholder: _("Select servers below or enter comma-separated server names"),
+    placeholder: _(
+      "Select servers below or enter comma-separated server names",
+    ),
     style: "width: 100%;",
   });
 
@@ -596,7 +604,9 @@ function showOutboundGroupModal(existingId, onSaved) {
     type: "text",
     class: "cbi-input-text",
     value: asArray(grp.exclude_outbounds).join(", "),
-    placeholder: _("Select servers below or enter comma-separated server names"),
+    placeholder: _(
+      "Select servers below or enter comma-separated server names",
+    ),
     style: "width: 100%;",
   });
 
@@ -832,17 +842,14 @@ function showOutboundGroupModal(existingId, onSaved) {
         fieldRow(
           _("Exclude Servers"),
           excOutboundsInput,
-          _("Click servers from the pool below to exclude them from this group."),
+          _(
+            "Click servers from the pool below to exclude them from this group.",
+          ),
           excServerPicker.node,
         ),
         fieldRow(_("Include Name Regex"), incRegexInput),
         fieldRow(_("Exclude Name Regex"), excRegexInput),
-        fieldRow(
-          _("Include Protocols"),
-          incProtoInput,
-          null,
-          protoChips.bar,
-        ),
+        fieldRow(_("Include Protocols"), incProtoInput, null, protoChips.bar),
         fieldRow(
           _("Exclude Protocols"),
           excProtoInput,
@@ -873,18 +880,8 @@ function showOutboundGroupModal(existingId, onSaved) {
           null,
           excSecChips.bar,
         ),
-        fieldRow(
-          _("Include Ports"),
-          incPortsInput,
-          null,
-          incPortsChips.bar,
-        ),
-        fieldRow(
-          _("Exclude Ports"),
-          excPortsInput,
-          null,
-          excPortsChips.bar,
-        ),
+        fieldRow(_("Include Ports"), incPortsInput, null, incPortsChips.bar),
+        fieldRow(_("Exclude Ports"), excPortsInput, null, excPortsChips.bar),
       ]),
       E(
         "div",
@@ -1303,8 +1300,9 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
 
           const rows = data.results.map((r) => {
             const cc = String(r.country || "").trim();
-            const countryText =
-              /^[A-Z]{2}$/.test(cc) ? `${isoToFlagEmoji(cc)} ${cc}` : cc || "—";
+            const countryText = /^[A-Z]{2}$/.test(cc)
+              ? `${isoToFlagEmoji(cc)} ${cc}`
+              : cc || "—";
             return E("tr", { class: "tr" }, [
               E("td", { class: "td" }, r.name || r.tag),
               E("td", { class: "td" }, countryText),
@@ -1452,7 +1450,8 @@ function parseOpenvpnConfig(text) {
     if (directive === "remote" && parts.length >= 2) {
       result.server = parts[1];
       if (parts[2] && /^\d+$/.test(parts[2])) result.port = parts[2];
-      if (parts[3]) result.proto = parts[3].toLowerCase().startsWith("tcp") ? "tcp" : "udp";
+      if (parts[3])
+        result.proto = parts[3].toLowerCase().startsWith("tcp") ? "tcp" : "udp";
     } else if (directive === "proto" && parts[1]) {
       result.proto = parts[1].toLowerCase().startsWith("tcp") ? "tcp" : "udp";
     } else if (directive === "port" && parts[1]) {
@@ -1507,13 +1506,14 @@ const OLCRTC_DEFAULT_NFQWS2_OPT =
 function setModalFieldValue(sectionRef, sectionId, optName, value) {
   uci.set(UCI_PACKAGE, sectionId, optName, value);
   try {
-    const mapNode =
-      document.querySelector(".cbi-modal") || document.body;
+    const mapNode = document.querySelector(".cbi-modal") || document.body;
     const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.${optName}`;
     const el =
       mapNode.querySelector(`[id="${fieldId}"]`) ||
       mapNode.querySelector(`[name="${fieldId}"]`) ||
-      mapNode.querySelector(`[data-field="${fieldId}"] input, [data-field="${fieldId}"] textarea, [data-field="${fieldId}"] select`);
+      mapNode.querySelector(
+        `[data-field="${fieldId}"] input, [data-field="${fieldId}"] textarea, [data-field="${fieldId}"] select`,
+      );
     if (el) {
       el.value = Array.isArray(value) ? value.join(", ") : String(value ?? "");
       el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1685,9 +1685,7 @@ function createOutboundsContent(section) {
     form.Value,
     "url",
     _("Subscription URL"),
-    _(
-      "HTTP/HTTPS subscription link imported into the global connection pool.",
-    ),
+    _("HTTP/HTTPS subscription link imported into the global connection pool."),
   );
   o.modalonly = true;
   o.placeholder = "https://example.com/sub";
@@ -1698,7 +1696,9 @@ function createOutboundsContent(section) {
     form.Flag,
     "prefix_nodes",
     _("Add Prefix to Server Names"),
-    _("Prepend a custom badge/prefix to every server imported from this subscription."),
+    _(
+      "Prepend a custom badge/prefix to every server imported from this subscription.",
+    ),
   );
   o.modalonly = true;
   o.default = "0";
@@ -1885,10 +1885,7 @@ function createOutboundsContent(section) {
           }
           ui.addNotification(
             null,
-            E(
-              "p",
-              _("Loaded %d configuration file(s).").format(valid.length),
-            ),
+            E("p", _("Loaded %d configuration file(s).").format(valid.length)),
             "info",
           );
         }
@@ -1938,7 +1935,9 @@ function createOutboundsContent(section) {
     form.Button,
     "_generate_warp",
     _("Cloudflare WARP Generator"),
-    _("Automatically register a free Cloudflare WARP account and fill AmneziaWG parameters."),
+    _(
+      "Automatically register a free Cloudflare WARP account and fill AmneziaWG parameters.",
+    ),
   );
   o.modalonly = true;
   o.inputtitle = _("Generate WARP Config");
@@ -1989,15 +1988,24 @@ function createOutboundsContent(section) {
         if (data.mtu) {
           setModalFieldValue(section, sectionId, "awg_mtu", String(data.mtu));
         }
-        if (data.jc) setModalFieldValue(section, sectionId, "awg_jc", String(data.jc));
-        if (data.jmin) setModalFieldValue(section, sectionId, "awg_jmin", String(data.jmin));
-        if (data.jmax) setModalFieldValue(section, sectionId, "awg_jmax", String(data.jmax));
-        if (data.s1) setModalFieldValue(section, sectionId, "awg_s1", String(data.s1));
-        if (data.s2) setModalFieldValue(section, sectionId, "awg_s2", String(data.s2));
-        if (data.h1) setModalFieldValue(section, sectionId, "awg_h1", String(data.h1));
-        if (data.h2) setModalFieldValue(section, sectionId, "awg_h2", String(data.h2));
-        if (data.h3) setModalFieldValue(section, sectionId, "awg_h3", String(data.h3));
-        if (data.h4) setModalFieldValue(section, sectionId, "awg_h4", String(data.h4));
+        if (data.jc)
+          setModalFieldValue(section, sectionId, "awg_jc", String(data.jc));
+        if (data.jmin)
+          setModalFieldValue(section, sectionId, "awg_jmin", String(data.jmin));
+        if (data.jmax)
+          setModalFieldValue(section, sectionId, "awg_jmax", String(data.jmax));
+        if (data.s1)
+          setModalFieldValue(section, sectionId, "awg_s1", String(data.s1));
+        if (data.s2)
+          setModalFieldValue(section, sectionId, "awg_s2", String(data.s2));
+        if (data.h1)
+          setModalFieldValue(section, sectionId, "awg_h1", String(data.h1));
+        if (data.h2)
+          setModalFieldValue(section, sectionId, "awg_h2", String(data.h2));
+        if (data.h3)
+          setModalFieldValue(section, sectionId, "awg_h3", String(data.h3));
+        if (data.h4)
+          setModalFieldValue(section, sectionId, "awg_h4", String(data.h4));
         ui.addNotification(
           null,
           E("p", _("WARP configuration generated and filled.")),
@@ -2021,7 +2029,9 @@ function createOutboundsContent(section) {
     form.Button,
     "_load_awg_conf",
     _("Import .conf File"),
-    _("Load an AmneziaWG or WireGuard .conf file to auto-fill all tunnel and obfuscation parameters."),
+    _(
+      "Load an AmneziaWG or WireGuard .conf file to auto-fill all tunnel and obfuscation parameters.",
+    ),
   );
   o.modalonly = true;
   o.inputtitle = _("Load .conf");
@@ -2051,23 +2061,50 @@ function createOutboundsContent(section) {
           setModalFieldValue(section, sectionId, "awg_local_address", addrs);
         }
         if (kv.privatekey)
-          setModalFieldValue(section, sectionId, "awg_private_key", kv.privatekey);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "awg_private_key",
+            kv.privatekey,
+          );
         if (kv.publickey)
-          setModalFieldValue(section, sectionId, "awg_peer_public_key", kv.publickey);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "awg_peer_public_key",
+            kv.publickey,
+          );
         if (kv.presharedkey)
-          setModalFieldValue(section, sectionId, "awg_preshared_key", kv.presharedkey);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "awg_preshared_key",
+            kv.presharedkey,
+          );
         if (kv.mtu) setModalFieldValue(section, sectionId, "awg_mtu", kv.mtu);
         if (kv.persistentkeepalive)
-          setModalFieldValue(section, sectionId, "awg_keepalive", kv.persistentkeepalive);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "awg_keepalive",
+            kv.persistentkeepalive,
+          );
         if (kv.endpoint) {
           const lastColon = kv.endpoint.lastIndexOf(":");
           if (lastColon > 0) {
-            const host = kv.endpoint.slice(0, lastColon).replace(/^\[|\]$/g, "");
+            const host = kv.endpoint
+              .slice(0, lastColon)
+              .replace(/^\[|\]$/g, "");
             const port = kv.endpoint.slice(lastColon + 1);
             setModalFieldValue(section, sectionId, "awg_server_address", host);
             setModalFieldValue(section, sectionId, "awg_server_port", port);
           } else {
-            setModalFieldValue(section, sectionId, "awg_server_address", kv.endpoint);
+            setModalFieldValue(
+              section,
+              sectionId,
+              "awg_server_address",
+              kv.endpoint,
+            );
           }
         }
         [
@@ -2112,11 +2149,26 @@ function createOutboundsContent(section) {
             kv.contentpaddingaddition,
           );
         if (kv.rekeyaftertime)
-          setModalFieldValue(section, sectionId, "awg_rekey_after_time", kv.rekeyaftertime);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "awg_rekey_after_time",
+            kv.rekeyaftertime,
+          );
         if (kv.rekeytimeout)
-          setModalFieldValue(section, sectionId, "awg_rekey_timeout", kv.rekeytimeout);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "awg_rekey_timeout",
+            kv.rekeytimeout,
+          );
         if (kv.rejectaftertime)
-          setModalFieldValue(section, sectionId, "awg_reject_after_time", kv.rejectaftertime);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "awg_reject_after_time",
+            kv.rejectaftertime,
+          );
         if (kv.keepalivetimeout)
           setModalFieldValue(
             section,
@@ -2151,7 +2203,10 @@ function createOutboundsContent(section) {
         }
         ui.addNotification(
           null,
-          E("p", _("AmneziaWG configuration loaded from %s.").format(file.name)),
+          E(
+            "p",
+            _("AmneziaWG configuration loaded from %s.").format(file.name),
+          ),
           "info",
         );
         document.body.removeChild(fileInput);
@@ -2320,7 +2375,9 @@ function createOutboundsContent(section) {
     form.Button,
     "_generate_warp_proto",
     _("Cloudflare WARP Generator"),
-    _("Automatically register a free Cloudflare WARP account and fill all fields below."),
+    _(
+      "Automatically register a free Cloudflare WARP account and fill all fields below.",
+    ),
   );
   o.modalonly = true;
   o.inputtitle = _("Generate WARP Config");
@@ -2547,7 +2604,9 @@ function createOutboundsContent(section) {
     form.Button,
     "_load_openvpn_conf",
     _("Import .ovpn File"),
-    _("Upload an OpenVPN .ovpn file from your computer to populate all settings and certificates."),
+    _(
+      "Upload an OpenVPN .ovpn file from your computer to populate all settings and certificates.",
+    ),
   );
   o.modalonly = true;
   o.inputtitle = _("Load .ovpn");
@@ -2571,13 +2630,28 @@ function createOutboundsContent(section) {
         setModalFieldValue(section, sectionId, "openvpn_config", content);
         const parsed = parseOpenvpnConfig(content);
         if (parsed.server)
-          setModalFieldValue(section, sectionId, "openvpn_server", parsed.server);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "openvpn_server",
+            parsed.server,
+          );
         if (parsed.port)
-          setModalFieldValue(section, sectionId, "openvpn_server_port", parsed.port);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "openvpn_server_port",
+            parsed.port,
+          );
         if (parsed.proto)
           setModalFieldValue(section, sectionId, "openvpn_proto", parsed.proto);
         if (parsed.cipher)
-          setModalFieldValue(section, sectionId, "openvpn_cipher", parsed.cipher);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "openvpn_cipher",
+            parsed.cipher,
+          );
         if (parsed.auth)
           setModalFieldValue(section, sectionId, "openvpn_auth", parsed.auth);
         if (parsed.mtu)
@@ -2589,9 +2663,19 @@ function createOutboundsContent(section) {
         if (parsed.key)
           setModalFieldValue(section, sectionId, "openvpn_key", parsed.key);
         if (parsed.tls_auth)
-          setModalFieldValue(section, sectionId, "openvpn_tls_auth", parsed.tls_auth);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "openvpn_tls_auth",
+            parsed.tls_auth,
+          );
         if (parsed.tls_crypt)
-          setModalFieldValue(section, sectionId, "openvpn_tls_crypt", parsed.tls_crypt);
+          setModalFieldValue(
+            section,
+            sectionId,
+            "openvpn_tls_crypt",
+            parsed.tls_crypt,
+          );
         if (parsed.key_direction !== undefined)
           setModalFieldValue(
             section,
@@ -2672,7 +2756,12 @@ function createOutboundsContent(section) {
   o.placeholder = "AES-256-GCM";
   o.depends("source_type", "openvpn");
 
-  o = section.taboption("general", form.Value, "openvpn_auth", _("Auth Digest"));
+  o = section.taboption(
+    "general",
+    form.Value,
+    "openvpn_auth",
+    _("Auth Digest"),
+  );
   o.modalonly = true;
   o.placeholder = "SHA256";
   o.depends("source_type", "openvpn");
@@ -2767,12 +2856,7 @@ function createOutboundsContent(section) {
     "snell",
     "sudoku",
   ];
-  o = section.taboption(
-    "general",
-    form.Value,
-    "server",
-    _("Server Host / IP"),
-  );
+  o = section.taboption("general", form.Value, "server", _("Server Host / IP"));
   o.modalonly = true;
   o.placeholder = "example.com";
   directProtoTypes.forEach((t) => o.depends("source_type", t));
@@ -2804,7 +2888,12 @@ function createOutboundsContent(section) {
   o.password = true;
   directProtoTypes.forEach((t) => o.depends("source_type", t));
 
-  o = section.taboption("general", form.Value, "sni", _("TLS SNI (Server Name)"));
+  o = section.taboption(
+    "general",
+    form.Value,
+    "sni",
+    _("TLS SNI (Server Name)"),
+  );
   o.modalonly = true;
   [
     "fptn",
@@ -2824,14 +2913,9 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = "0";
-  [
-    "anytls",
-    "naive",
-    "trusttunnel",
-    "tewfai",
-    "masque",
-    "openconnect",
-  ].forEach((t) => o.depends("source_type", t));
+  ["anytls", "naive", "trusttunnel", "tewfai", "masque", "openconnect"].forEach(
+    (t) => o.depends("source_type", t),
+  );
 
   // AnyTLS extras
   o = section.taboption(
@@ -3016,7 +3100,12 @@ function createOutboundsContent(section) {
   o.depends("source_type", "naive");
 
   // Sudoku extras
-  o = section.taboption("general", form.ListValue, "sudoku_aead", _("AEAD Cipher"));
+  o = section.taboption(
+    "general",
+    form.ListValue,
+    "sudoku_aead",
+    _("AEAD Cipher"),
+  );
   o.modalonly = true;
   o.default = "chacha20-poly1305";
   o.value("chacha20-poly1305", "ChaCha20-Poly1305");
@@ -3049,12 +3138,7 @@ function createOutboundsContent(section) {
   o.depends({ source_type: "sudoku", sudoku_http_mask: "1" });
 
   // MASQUE extras
-  o = section.taboption(
-    "general",
-    form.Flag,
-    "masque_vhttp",
-    _("vHTTP Mode"),
-  );
+  o = section.taboption("general", form.Flag, "masque_vhttp", _("vHTTP Mode"));
   o.modalonly = true;
   o.default = "0";
   o.depends("source_type", "masque");
@@ -3089,7 +3173,8 @@ function createOutboundsContent(section) {
 
   o = section.taboption("general", form.Value, "masque_uri", _("MASQUE URI"));
   o.modalonly = true;
-  o.placeholder = "https://example.com/.well-known/masque/udp/{target_host}/{target_port}/";
+  o.placeholder =
+    "https://example.com/.well-known/masque/udp/{target_host}/{target_port}/";
   o.depends("source_type", "masque");
 
   o = section.taboption("general", form.Value, "masque_mtu", _("MASQUE MTU"));
@@ -3636,7 +3721,9 @@ function createOutboundsContent(section) {
     form.Flag,
     "custom_device_headers",
     _("Custom Device Metadata Headers"),
-    _("Send custom x-device-os, x-ver-os, x-device-model, and x-device-locale headers."),
+    _(
+      "Send custom x-device-os, x-ver-os, x-device-model, and x-device-locale headers.",
+    ),
   );
   o.modalonly = true;
   o.default = "0";
@@ -3727,7 +3814,9 @@ function createOutboundsContent(section) {
     form.DynamicList,
     "subscription_filter_include_keywords",
     _("Include Server Keywords"),
-    _("Only import subscription servers whose name matches at least one keyword."),
+    _(
+      "Only import subscription servers whose name matches at least one keyword.",
+    ),
   );
   o.modalonly = true;
   o.depends("source_type", "subscription");
@@ -3748,7 +3837,9 @@ function createOutboundsContent(section) {
     form.Flag,
     "outbound_detour_enabled",
     _("Chain via Another Section (Detour)"),
-    _("Route this connection's upstream traffic through another routing Section."),
+    _(
+      "Route this connection's upstream traffic through another routing Section.",
+    ),
   );
   o.modalonly = true;
   o.default = "0";
