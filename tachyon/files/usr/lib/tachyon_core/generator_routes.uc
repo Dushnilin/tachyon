@@ -2367,6 +2367,25 @@ function apply_excluded_source_ips(rule, excluded_cidrs) {
     return logical_rule;
 }
 
+function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs) {
+    let action = option(section, "action", "");
+    let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
+    if ((action == "zapret" || action == "zapret2" || action == "byedpi") &&
+        connections.routed_dns_enabled(section) && rule.server == routed_tag) {
+        // Domain-only traffic enters TPROXY through FakeIP. Returning the
+        // routed resolver's real address here lets it bypass the DPI output.
+        // The route's resolve action still uses this resolver and its detour.
+        let fakeip_rule = {};
+        for (let key, value in rule)
+            fakeip_rule[key] = value;
+        fakeip_rule.server = runtime_constants.FAKEIP_DNS_SERVER_TAG;
+        add_fakeip_query_type(fakeip_rule, fakeip_rule.server, section_is_ipv4_only_dpi(section));
+        push_dns_matcher_rule(config, apply_excluded_source_ips(fakeip_rule, excluded_cidrs));
+    }
+    // Retain routed DNS for non-address queries, e.g. MX, SRV and TXT.
+    push_dns_matcher_rule(config, apply_excluded_source_ips(rule, excluded_cidrs));
+}
+
 function push_section_route_rule(config, rule, target_outbound, excluded_cidrs, geo_tags, country_mode) {
     let apply_filters = function(r) {
         let filtered = apply_section_geoip_filter(r, geo_tags, country_mode);
@@ -2795,7 +2814,7 @@ function add_combined_route_for_section(config, section) {
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_domain_array(dns_rule, key, values);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
             if (ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
@@ -2820,7 +2839,7 @@ function add_combined_route_for_section(config, section) {
             };
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
             if (ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
@@ -2849,7 +2868,7 @@ function add_combined_route_for_section(config, section) {
                 match_response: true
             };
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
         }
     }
     else {
@@ -2868,7 +2887,7 @@ function add_combined_route_for_section(config, section) {
             };
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
+            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
             if (ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
