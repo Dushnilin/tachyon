@@ -1903,6 +1903,12 @@ function handleShowPriorityInfo(
     existing: customProxyLatencies,
     probe: (tag, timeout) =>
       TachyonShellMethods.getClashApiProxyLatency(tag, timeout),
+    // The core says what failed: the dial, the tls handshake, the status the
+    // server answered with. "An error occurred in the delay test" on its own
+    // leaves the user with nothing to act on.
+    onFailure: (tag, reason) => {
+      showToast(`${tag}: ${reason}`, 'error');
+    },
   }).then((measured) => {
     if (measured.size === 0 || !body.isConnected) {
       return;

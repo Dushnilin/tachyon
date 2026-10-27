@@ -1418,6 +1418,8 @@ export namespace Tachyon {
   export interface GetClashApiProxyLatency {
     delay: number;
     message?: string;
+    /** what actually failed, next to the message */
+    reason?: string;
   }
 
   export interface GetClashApiProxyLatencies {

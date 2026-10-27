@@ -4,6 +4,7 @@ import {
   collectUnmeasuredTags,
   measurePriorityLatencies,
   parseDelay,
+  parseFailureReason,
   PRIORITY_PROBE_CONCURRENCY,
 } from '../priorityLatency';
 
@@ -168,5 +169,70 @@ describe('priority modal latency', () => {
       expect(measured.get('a')).toBe(10);
       expect(measured.get('bb')).toBe(20);
     });
+  });
+
+  // The reason a node did not answer is the difference between "the server is
+  // down" and "the tls handshake was cut". Our own core names the cause; a core
+  // that does not - sing-box answers with the message alone - has no reason to
+  // show, and its generic message is not one: it names no cause.
+  describe('parseFailureReason', () => {
+    it('takes the reason the core named', () => {
+      expect(
+        parseFailureReason({
+          message: 'An error occurred in the delay test',
+          reason: 'tls handshake with example.com failed',
+        }),
+      ).toBe('tls handshake with example.com failed');
+    });
+
+    it('does not pass the generic message off as a reason', () => {
+      expect(
+        parseFailureReason({
+          message: 'An error occurred in the delay test',
+        }),
+      ).toBe('');
+    });
+
+    it('keeps a message that names something', () => {
+      expect(parseFailureReason({ message: 'Unauthorized' })).toBe('Unauthorized');
+    });
+
+    it('has nothing to say about a missing answer', () => {
+      expect(parseFailureReason(undefined)).toBe('');
+      expect(parseFailureReason(null)).toBe('');
+    });
+  });
+
+  it('reports why a node did not answer', async () => {
+    const failures: Array<[string, string]> = [];
+    const probe = vi.fn(async (tag: string) => ({
+      success: false,
+      data: {
+        message: 'An error occurred in the delay test',
+        reason: `${tag} is not reachable`,
+      },
+    }));
+
+    await measurePriorityLatencies([member('a')], {
+      probe,
+      onFailure: (tag, reason) => failures.push([tag, reason]),
+    });
+
+    expect(failures).toEqual([['a', 'a is not reachable']]);
+  });
+
+  it('says nothing about a core that names no cause', async () => {
+    const failures: Array<[string, string]> = [];
+    const probe = vi.fn(async () => ({
+      success: false,
+      data: { message: 'An error occurred in the delay test' },
+    }));
+
+    await measurePriorityLatencies([member('a')], {
+      probe,
+      onFailure: (tag, reason) => failures.push([tag, reason]),
+    });
+
+    expect(failures).toEqual([]);
   });
 });

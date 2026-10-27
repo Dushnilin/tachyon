@@ -24,6 +24,22 @@ function getSubscriptionLatencyState(
   return 'success';
 }
 
+/**
+ * The reason a latency test failed, when the answer carries one.
+ *
+ * Our own core answers with the reason beside the message. A core that does
+ * not - sing-box answers with the message alone - has no reason to show,
+ * and its generic message is not one: it names no cause.
+ */
+function readLatencyReason(data: unknown): string {
+  if (!data || typeof data !== 'object') return '';
+  const payload = data as { reason?: unknown; message?: unknown };
+  if (typeof payload.reason === 'string' && payload.reason.trim()) {
+    return payload.reason.trim();
+  }
+  return '';
+}
+
 export async function runSectionsCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.OUTBOUNDS;
 
@@ -139,9 +155,16 @@ export async function runSectionsCheck() {
             };
           }
 
+          // The core answers a failed latency test with the reason beside the
+          // message. "Not responding" on its own leaves the user with nothing
+          // to act on. A core without a reason - sing-box answers with the
+          // message alone - simply shows the message.
+          const reason = readLatencyReason(latencyGroup.data);
           return {
             state: 'error',
-            latency: `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}`,
+            latency: reason
+              ? `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}: ${reason}`
+              : `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}`,
           };
         }
 

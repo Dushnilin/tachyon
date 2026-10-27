@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-27 12:19+0300\n"
-"PO-Revision-Date: 2026-10-27 12:19+0300\n"
+"POT-Creation-Date: 2026-10-27 12:41+0300\n"
+"PO-Revision-Date: 2026-10-27 12:41+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -1664,7 +1664,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:172
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:28
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:42
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:48
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:64
 #: src/tachyon/tabs/diagnostic/checks/runSingBoxCheck.ts:31
 #: src/tachyon/tabs/diagnostic/checks/runSteerCheck.ts:25
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:28
@@ -1793,7 +1793,7 @@ msgid "Check update"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/initController.ts:2072
+#: src/tachyon/tabs/dashboard/initController.ts:2078
 msgid "Checking Connection..."
 msgstr ""
 
@@ -1809,7 +1809,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:36
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:160
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:13
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:34
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:50
 #: src/tachyon/tabs/diagnostic/checks/runSingBoxCheck.ts:19
 #: src/tachyon/tabs/diagnostic/checks/runSteerCheck.ts:13
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:16
@@ -2257,7 +2257,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
 #: src/tachyon/methods/custom/getDashboardSections.ts:2723
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1018
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:172
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:195
 msgid "Conflict"
 msgstr ""
 
@@ -2325,7 +2325,7 @@ msgid "Connections from Pool (in Priority Order)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2642
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:223
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:246
 msgid "Connectivity probe failed"
 msgstr ""
 
@@ -4464,8 +4464,8 @@ msgid "Failed to update device"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/initController.ts:1969
-#: src/tachyon/tabs/dashboard/initController.ts:1973
+#: src/tachyon/tabs/dashboard/initController.ts:1975
+#: src/tachyon/tabs/dashboard/initController.ts:1979
 #: src/tachyon/tabs/dashboard/initController.ts:397
 #: src/tachyon/tabs/dashboard/initController.ts:398
 #: src/tachyon/tabs/dashboard/initController.ts:418
@@ -7566,7 +7566,7 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:2726
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1021
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:183
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:206
 msgid "Not configured"
 msgstr ""
 
@@ -7628,10 +7628,11 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2096
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2105
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:853
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:117
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:144
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:150
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:236
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:133
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:166
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:167
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:173
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:259
 msgid "Not responding"
 msgstr ""
 
@@ -9583,7 +9584,7 @@ msgid "Routing section \"%s\" is disabled. Servers using it were also disabled: 
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/initController.ts:2228
+#: src/tachyon/tabs/dashboard/initController.ts:2234
 msgid "Routing sections"
 msgstr ""
 
@@ -9693,7 +9694,7 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:2449
 #: src/tachyon/methods/custom/getDashboardSections.ts:2721
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1016
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:166
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:189
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:441
 msgid "Running"
 msgstr ""
@@ -11042,7 +11043,7 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:2449
 #: src/tachyon/methods/custom/getDashboardSections.ts:2725
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1020
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:178
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:201
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:441
 msgid "Stopped"
 msgstr ""
@@ -11740,7 +11741,7 @@ msgid "Test Telegram Connection"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/initController.ts:2253
+#: src/tachyon/tabs/dashboard/initController.ts:2259
 msgid "Test all sections"
 msgstr ""
 
@@ -11814,7 +11815,7 @@ msgid "Testing URL"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9
-#: src/tachyon/tabs/dashboard/initController.ts:2251
+#: src/tachyon/tabs/dashboard/initController.ts:2257
 msgid "Testing all sections..."
 msgstr ""
 
@@ -12506,7 +12507,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:493
 #: src/tachyon/methods/custom/getDashboardSections.ts:2727
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1022
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:188
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:211
 msgid "Unknown"
 msgstr ""
 

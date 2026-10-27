@@ -32,7 +32,37 @@ export interface MeasureOptions {
     tag: string,
     timeout: string,
     healthUrl: string,
-  ) => Promise<{ success: boolean; data?: unknown }>;
+  ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+  /**
+   * Called with the reason a node did not answer. The core says what failed -
+   * the dial, the tls handshake, the status the server answered with - and
+   * "an error occurred in the delay test" on its own tells the user nothing.
+   */
+  onFailure?: (tag: string, reason: string) => void;
+}
+
+/**
+ * The reason a probe failed, if the answer carries one.
+ *
+ * The core answers a failed delay test with the message and the reason
+ * beside it. Older cores - and sing-box, which answers with the message
+ * alone - have no reason, and their message says nothing about what
+ * actually failed. So the generic message is not passed off as a reason.
+ */
+export function parseFailureReason(data: unknown, fallback?: string): string {
+  const generic = 'an error occurred in the delay test';
+  if (data && typeof data === 'object') {
+    const reason = (data as { reason?: unknown }).reason;
+    if (typeof reason === 'string' && reason.trim()) return reason.trim();
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) {
+      const trimmed = message.trim();
+      // The generic message is not a reason: it names no cause.
+      if (trimmed.toLowerCase() !== generic) return trimmed;
+    }
+  }
+  const rest = (fallback || '').trim();
+  return rest.toLowerCase() === generic ? '' : rest;
 }
 
 /**
@@ -101,9 +131,17 @@ export async function measurePriorityLatencies(
       const tag = tags[next++];
       try {
         const response = await options.probe(tag, timeout, healthUrl);
-        measured.set(tag, response?.success ? parseDelay(response.data) : -1);
-      } catch {
+        if (response?.success) {
+          measured.set(tag, parseDelay(response.data));
+        } else {
+          measured.set(tag, -1);
+          const reason = parseFailureReason(response?.data, response?.error);
+          if (reason && options.onFailure) options.onFailure(tag, reason);
+        }
+      } catch (error) {
         measured.set(tag, -1);
+        const reason = error instanceof Error ? error.message : '';
+        if (reason && options.onFailure) options.onFailure(tag, reason);
       }
     }
   };
