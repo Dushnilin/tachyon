@@ -379,10 +379,12 @@ function smart_detect_extract_domain(line) {
 // looks like. The direct probe reports that as a "dns" failure and the verdict
 // decides against the proxy leg instead.
 
+let smart_plus_reload_pending = false;
+
 function section_linked_condition_domains(c, sec) {
     let out = [];
     if (type(sec) != "object") return out;
-    let conns = get_connections();
+    let conns = type(get_connections) == "function" ? get_connections() : null;
     if (conns && type(conns.set_item_sections_from_cursor) == "function") {
         try { conns.set_item_sections_from_cursor(c, CONFIG_NAME); } catch (e) {}
     }
@@ -430,7 +432,6 @@ function smart_detect_add_domain(sec_name, domain) {
 // confirmed N domains restarted sing-box N times, and every restart drops live
 // connections on the router. Returns what was actually written, so the caller
 // only reports domains that really landed.
-let smart_plus_reload_pending = false;
 function smart_detect_apply_plus_domains(entries) {
     let c = uci_core.cursor();
     if (!c || !length(entries)) return [];

@@ -16,6 +16,7 @@ let cursor={
 let uci_core={cursor:function(){return cursor;},get_all:function(config,name){return values[name]||{};}};
 let smart_detect={probe_status:function(){reloads++;return reload_ok?0:1;}};
 let common={object_or_empty:function(v){return v||{};}};
+function get_connections(){return null;}
 function log_message(msg,lvl){}
 let notifications=[];
 let notification_entries=[];
