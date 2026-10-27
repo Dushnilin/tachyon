@@ -392,14 +392,14 @@ function choose_from_level(group, level_index, probe, skip_tag) {
     let best = null;
     let candidates = array_or_empty(level.outbounds);
 
-    // The order the nodes are tried in. The delays the core already measured
-    // come first, fastest first, so "pick the fastest" costs one HTTP request
-    // for the whole group instead of one probe per node.
+    // The order the nodes are tried in. With pick_fastest on, the delays the
+    // core already measured decide it - one GET on the clash API gives the
+    // delay of every node in the group, instead of one probe per node.
     //
     // A measured delay says nothing about liveness - the node may have died
     // since the last measurement - so the order only decides who is tried
     // first, and the first node that actually answers wins.
-    let measured = clash_delays_snapshot();
+    let measured = group.pick_fastest ? clash_delays_snapshot() : null;
     if (measured != null) {
         let ordered = [];
         let unordered = [];
@@ -425,6 +425,10 @@ function choose_from_level(group, level_index, probe, skip_tag) {
     }
 
     for (let tag_name in candidates) {
+        // The node that just failed must not be picked again - that is the
+        // whole point of the replacement search.
+        if (as_string(skip_tag) != "" && tag_name == skip_tag)
+            continue;
         let result = probe(tag_name, group);
         if (!result.alive)
             continue;
