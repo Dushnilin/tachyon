@@ -1001,7 +1001,9 @@ function renderDefaultState({
               ? 'WDTT'
               : serviceType === 'olcrtc'
                 ? 'OlcRTC'
-                : 'FPTN';
+                : serviceType === 'desync'
+                  ? _('Native Desync')
+                  : 'FPTN';
     const statusColor = ss
       ? ss.ready
         ? 'var(--success-color-medium, green)'
@@ -1176,6 +1178,13 @@ function renderDefaultState({
       }
 
       if (!outbound.latency) {
+        // Service nodes (desync, zapret2, …) have no measurable latency;
+        // colour the badge green when bypass is active, red when stopped.
+        if (isServiceNode) {
+          return section.serviceStatus?.ready
+            ? 'tachyon_dashboard-page__outbound-grid__item__latency--green'
+            : 'tachyon_dashboard-page__outbound-grid__item__latency--red';
+        }
         return 'tachyon_dashboard-page__outbound-grid__item__latency--empty';
       }
 
@@ -1563,7 +1572,13 @@ function renderDefaultState({
                     ? `${outbound.latency}ms`
                     : outbound.latency === -1 || outbound.latency < 0
                       ? _('Not responding')
-                      : 'N/A',
+                      : isServiceNode
+                        ? section.serviceStatus?.ready
+                          ? _('Bypass Active')
+                          : section.serviceStatus?.configured
+                            ? _('Stopped')
+                            : '—'
+                        : '—',
             ),
           ],
         ),
