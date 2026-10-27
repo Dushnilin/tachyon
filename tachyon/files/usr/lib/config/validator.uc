@@ -2461,6 +2461,17 @@ function sing_box_tachyon_core_marker_set(ctx) {
     return sing_box_variant_marker(ctx, "tachyon-core");
 }
 
+// The marker the capability model needs: which core this is. Our own core
+// answers "tachyon-core", a sing-box fork answers its own name, and a stock
+// sing-box answers "".
+function sing_box_core_marker(ctx) {
+    for (let marker in [ "tachyon-core", "extended-compressed", "extended", "lx" ]) {
+        if (sing_box_variant_marker(ctx, marker))
+            return marker;
+    }
+    return "";
+}
+
 function sing_box_version_state(ctx) {
     let path = as_string(ctx.sing_box_version_state_file);
     if (path == "")
@@ -3034,6 +3045,21 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
             // clear error instead of a cryptic sing-box fatal.
             if (action == "openvpn" && !sing_box_is_tachyon_core(ctx, sing_box_version) && !common.sing_box_supports_openvpn(sing_box_version))
                 fail_requirement("Section '" + name + "' uses OpenVPN, but the installed sing-box version (" + as_string(sing_box_version) + ") does not support it. OpenVPN requires sing-box 1.14.0 or newer. Update sing-box-extended in the Updates tab or change the action. Aborted.", "fatal");
+
+            // Native desync is a tachyon-core outbound and arrived in 0.1.7.
+            // No sing-box build has it at all, and an older tachyon-core does
+            // not have the outbound either, so both cases need a gate - a
+            // config that names it on a core without it aborts the whole start.
+            if (action == "desync") {
+                let desync_ok = core_profile().supports_desync(sing_box_version, sing_box_core_marker(ctx)) === true;
+                if (!desync_ok) {
+                    let is_core = sing_box_is_tachyon_core(ctx, sing_box_version);
+                    let hint = is_core
+                        ? " Native desync needs tachyon-core 0.1.7 or newer (installed: " + as_string(sing_box_version) + ")."
+                        : " Native desync is a tachyon-core feature and the installed binary is sing-box.";
+                    fail_requirement("Section '" + name + "' uses Native Desync, but the installed core cannot provide it." + hint + " Update tachyon-core in the Updates tab or change the action. Aborted.", "fatal");
+                }
+            }
         } catch (e) {
             current_validating_section = "";
             if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)

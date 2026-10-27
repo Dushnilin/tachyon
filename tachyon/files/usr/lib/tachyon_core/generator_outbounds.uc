@@ -579,9 +579,16 @@ function apply_link_tls(outbound, scheme, query) {
         // unconditionally broke two things: sing-box-lx and stock sing-box reject
         // the field outright, and a server doing plain X25519 cannot complete a
         // handshake that demands the hybrid exchange.
+        // Three spellings of the same flag are in the wild: the sing-box
+        // snake_case one, the camelCase one some panels emit, and the
+        // kebab-case one a share link carries. Priority order is kept: the
+        // first one that is present wins, and an explicit false is never
+        // turned into true by a later spelling.
         let mlkem_preference = query.support_x25519mlkem768;
         if (mlkem_preference == null)
             mlkem_preference = query.supportX25519MLKEM768;
+        if (mlkem_preference == null)
+            mlkem_preference = query["support-x25519mlkem768"];
         if (mlkem_preference != null)
             tls.reality.support_x25519mlkem768 = bool_query(mlkem_preference);
     }
@@ -997,6 +1004,17 @@ function ensure_imported_vpn_lx() {
     let version = variant_state.read_version_state();
     if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0 && match(version, /^v?0\.[0-9]+\./) == null)
         ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
+}
+
+// A desync outbound exists only in tachyon-core, and only from 0.1.7 on. On
+// any other core the emitted config would be rejected outright, so refuse with
+// a clear error instead of shipping a broken config.
+function ensure_desync_outbound_supported() {
+    let version = variant_state.read_version_state();
+    let variant = variant_state.read_variant_marker();
+    if (core_profile.supports_desync(version, variant) === true)
+        return;
+    ctx.runtime_generate_unsupported("Native Desync requires tachyon-core 0.1.7 or newer (installed: " + as_string(version) + ")");
 }
 
 // An fptn outbound exists only in tachyon-core's protocol list: on every other
@@ -3016,6 +3034,7 @@ function apply_desync_opts_string(outbound, opts_str) {
 }
 
 function add_desync_outbound(config, section) {
+    ensure_desync_outbound_supported();
     let outbound = {
         type: "desync",
         tag: outbound_tag(section[".name"])

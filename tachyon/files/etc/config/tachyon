@@ -26,6 +26,13 @@ config settings 'settings'
         #option dns_mtls_client_key ''
         #option dns_mtls_ca ''
         list source_network_interfaces 'br-lan'
+        # How the traffic is intercepted: tproxy (nftables, default), tun (the
+        # core owns the routes) or socks (no interception at all).
+        option proxy_mode 'tproxy'
+        option tun_interface 'tun0'
+        option tun_stack 'mixed'
+        option tun_auto_route '1'
+        option tun_mtu '9000'
         option enable_output_network_interface '0'
         #option output_network_interface 'wan'
         option enable_badwan_interface_monitoring '0'

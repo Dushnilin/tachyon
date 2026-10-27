@@ -2663,6 +2663,89 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "network",
+    form.ListValue,
+    "proxy_mode",
+    _tr("Режим перехвата трафика", "Traffic Interception Mode"),
+    _tr(
+      "TProxy: ядро Tachyon перехватывает трафик через nftables (по умолчанию). TUN: ядро само владеет маршрутами через tun-интерфейс, nftables не перехватывает. SOCKS: прокси доступен только по SOCKS/HTTP на порту Tachyon.",
+      "TProxy: the Tachyon core intercepts traffic through nftables (default). TUN: the core owns the routes itself through a tun interface, nftables does not intercept. SOCKS: the proxy is only reachable over SOCKS/HTTP on the Tachyon port.",
+    ),
+  );
+  o.value(
+    "tproxy",
+    _tr("TProxy + nftables (по умолчанию)", "TProxy + nftables (Default)"),
+  );
+  o.value(
+    "tun",
+    _tr("TUN (ядро владеет маршрутами)", "TUN (the core owns the routes)"),
+  );
+  o.value(
+    "socks",
+    _tr("SOCKS/HTTP только (без перехвата)", "SOCKS/HTTP only (no interception)"),
+  );
+  o.default = "tproxy";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "tun_interface",
+    _tr("Имя TUN-интерфейса", "TUN Interface Name"),
+    _tr(
+      "Имя tun-интерфейса, который создаёт ядро в режиме TUN.",
+      "The name of the tun interface the core creates in TUN mode.",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.default = "tun0";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "network",
+    form.ListValue,
+    "tun_stack",
+    _tr("Сетевой стек TUN", "TUN Network Stack"),
+    _tr(
+      "Стек пользовательского пространства в tun-интерфейсе: mixed (быстрее), system (системный стек ядра), gvisor.",
+      "The user-space stack behind the tun interface: mixed (faster), system (the kernel stack), gvisor.",
+    ),
+  );
+  o.value("mixed", _tr("Mixed (по умолчанию)", "Mixed (Default)"));
+  o.value("system", _tr("System", "System"));
+  o.value("gvisor", _tr("gVisor", "gVisor"));
+  o.depends("proxy_mode", "tun");
+  o.default = "mixed";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "network",
+    form.Flag,
+    "tun_auto_route",
+    _tr("Ядро само ставит маршрут по умолчанию", "The core installs the default route itself"),
+    _tr(
+      "Ядро переносит маршрут по умолчанию в таблицу 2022 и не трогает main. Выключите, если маршруты управляются вручную.",
+      "The core moves the default route into table 2022 and leaves main alone. Turn this off when the routes are managed by hand.",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.default = "1";
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "tun_mtu",
+    _tr("MTU TUN-интерфейса", "TUN Interface MTU"),
+    _tr(
+      "MTU tun-интерфейса. Слишком большое значение ломает передачу пакетов, слишком маленькое снижает скорость.",
+      "The MTU of the tun interface. Too large a value breaks packet delivery, too small a value costs throughput.",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.default = "9000";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "network",
     widgets.DeviceSelect,
     "source_network_interfaces",
     _("Source Network Interface"),

@@ -786,9 +786,16 @@ function add_tls(url, security, default_tls) {
             tls.reality.public_key = public_key;
         if (short_id != "")
             tls.reality.short_id = short_id;
+        // Three spellings of the same flag are in the wild: the sing-box
+        // snake_case one, the camelCase one some panels emit, and the
+        // kebab-case one a share link carries. Priority order is kept: the
+        // first one that is present wins, and an explicit false is never
+        // turned into true by a later spelling.
         let mlkem_preference = query.support_x25519mlkem768;
         if (mlkem_preference == null)
             mlkem_preference = query.supportX25519MLKEM768;
+        if (mlkem_preference == null)
+            mlkem_preference = query["support-x25519mlkem768"];
         if (mlkem_preference != null)
             tls.reality.support_x25519mlkem768 = is_true(mlkem_preference);
     }

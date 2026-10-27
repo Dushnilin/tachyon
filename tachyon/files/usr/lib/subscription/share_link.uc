@@ -147,6 +147,11 @@ function add_tls_query(params, outbound, trojan_default_tls) {
         add_query(params, "security", "reality");
         add_query(params, "pbk", reality.public_key);
         add_query(params, "sid", reality.short_id);
+        // The hybrid key share is a property of the server, so it has to
+        // survive a round trip through a share link: a link built from a
+        // config that has it must not silently lose it.
+        if (reality.support_x25519mlkem768 != null)
+            add_query(params, "support-x25519mlkem768", reality.support_x25519mlkem768 === true ? "1" : "0");
     }
     else {
         add_query(params, "security", "tls");
