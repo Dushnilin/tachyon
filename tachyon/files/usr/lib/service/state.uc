@@ -1982,6 +1982,12 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".dns_hosts", option(section, "dns_hosts", ""));
     }
 
+    if (connections.routed_dns_enabled(section)) {
+        body = signature_add_value(body, prefix + ".routed_dns_enabled", "1");
+        body = signature_add_value(body, prefix + ".routed_dns_type", connections.routed_dns_type(section));
+        body = signature_add_value(body, prefix + ".routed_dns_server", join(" ", connections.routed_dns_servers(section)));
+    }
+
     body = signature_add_value(body, prefix + ".domain", section_rule_condition_csv(section, "domain", "domains"));
     body = signature_add_value(body, prefix + ".domain_suffix", section_rule_condition_csv(section, "domain_suffix", "domains"));
     body = signature_add_value(body, prefix + ".domain_keyword", section_rule_condition_csv(section, "domain_keyword", "generic"));
