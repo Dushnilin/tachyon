@@ -2255,56 +2255,61 @@ body.dark-theme .tachyon_proto-popover__desc {
 
 .tachyon-inbounds-chip-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+    gap: 8px;
     min-width: 0;
 }
 
+.tachyon-inbound-card,
 .tachyon-inbound-chip {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    gap: 4px;
-    padding: 6px 8px;
-    border-radius: 7px;
+    justify-content: space-between;
+    gap: 7px;
+    padding: 7px 9px;
+    border-radius: 8px;
     background: rgba(128, 128, 128, 0.045);
     border: 1px solid rgba(128, 128, 128, 0.14);
     cursor: pointer;
     min-width: 0;
-    overflow: hidden;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    box-sizing: border-box;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+.tachyon-inbound-card:hover,
 .tachyon-inbound-chip:hover {
-    background: rgba(99, 102, 241, 0.1);
+    background: rgba(99, 102, 241, 0.08);
     border-color: rgba(99, 102, 241, 0.35);
 }
 
+.tachyon-inbound-card--selected,
 .tachyon-inbound-chip--selected {
     background: rgba(59, 130, 246, 0.14);
     border-color: rgba(59, 130, 246, 0.45);
 }
 
-.tachyon-inbound-chip__top {
+.tachyon-inbound-card__top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
     width: 100%;
 }
 
+.tachyon-inbound-card__title-group,
 .tachyon-inbound-chip__left {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     min-width: 0;
     flex: 1 1 auto;
+    overflow: hidden;
 }
 
+.tachyon-inbound-card__name,
 .tachyon-inbound-chip__name {
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
     color: var(--text-color-high, inherit);
     white-space: nowrap;
@@ -2312,44 +2317,131 @@ body.dark-theme .tachyon_proto-popover__desc {
     text-overflow: ellipsis;
 }
 
-.tachyon-inbound-chip__actions {
+.tachyon-inbound-card__badges {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
+    min-width: 0;
     flex-shrink: 0;
 }
 
-.tachyon-inbound-chip__meta {
+.tachyon-inbound-card__bottom {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 4px;
+    gap: 6px;
     min-width: 0;
     width: 100%;
+}
+
+.tachyon-inbound-card__metrics {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
     flex-wrap: wrap;
 }
 
-.tachyon-inbound-chip__meta-left,
-.tachyon-inbound-chip__meta-right,
+.tachyon-inbound-card__actions,
 .tachyon-inbound-chip__right {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    min-width: 0;
     flex-shrink: 0;
+    margin-left: auto;
 }
 
-.tachyon-inbound-chip .tachyon-protocol-pill,
-.tachyon-inbound-chip .tachyon-service-pill--version,
-.tachyon-inbound-chip .tachyon-stat-pill {
-    font-size: 10.5px;
-    padding: 1px 5px;
-    line-height: 1.3;
+.tachyon-stat-pill--idle {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.28);
 }
 
-.tachyon-inbound-chip .tachyon-traffic-pill,
-.tachyon-inbounds-client-chip .tachyon-traffic-pill,
-.tachyon-inbound-card__header-actions .tachyon-traffic-pill {
+.tachyon-port-pill--online {
+    background: rgba(16, 185, 129, 0.12) !important;
+    color: #10b981 !important;
+    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+    font-weight: 600;
+}
+
+.tachyon-port-pill--offline {
+    background: rgba(239, 68, 68, 0.12) !important;
+    color: #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    font-weight: 600;
+}
+
+.tachyon-inbound-clients-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    max-width: 760px;
+}
+
+.tachyon-inbound-clients-modal__summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(128, 128, 128, 0.06);
+    border: 1px solid rgba(128, 128, 128, 0.14);
+}
+
+.tachyon-inbound-clients-modal__table-wrap {
+    max-height: 420px;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid rgba(128, 128, 128, 0.14);
+}
+
+.tachyon-inbound-clients-modal__table {
+    width: 100%;
+    margin: 0 !important;
+    border-collapse: collapse;
+}
+
+.tachyon-inbound-clients-modal__table th {
+    position: sticky;
+    top: 0;
+    background: var(--background-color, #1e293b);
+    z-index: 1;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 8px 10px;
+}
+
+.tachyon-inbound-clients-modal__table td {
+    padding: 7px 10px;
+    font-size: 12px;
+    vertical-align: middle;
+    border-top: 1px solid rgba(128, 128, 128, 0.08);
+}
+
+.tachyon-inbound-clients-modal__table tr:last-child td {
+    border-bottom: none;
+}
+
+.tachyon-inbound-clients-modal__empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-color-medium, #94a3b8);
+}
+
+.tachyon-inbound-clients-modal__client-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon-traffic-pill--compact {
     width: auto;
     min-width: 0;
     max-width: none;
@@ -2409,8 +2501,8 @@ body.dark-theme .tachyon_proto-popover__desc {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 19px;
-    height: 18px;
+    width: 22px;
+    height: 20px;
     padding: 0;
     margin: 0;
     border-radius: 5px;
@@ -2420,6 +2512,7 @@ body.dark-theme .tachyon_proto-popover__desc {
     font-size: 11px;
     line-height: 1;
     cursor: pointer;
+    flex-shrink: 0;
     transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
