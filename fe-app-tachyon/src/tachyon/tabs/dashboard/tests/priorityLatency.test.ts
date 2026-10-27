@@ -194,7 +194,9 @@ describe('priority modal latency', () => {
     });
 
     it('keeps a message that names something', () => {
-      expect(parseFailureReason({ message: 'Unauthorized' })).toBe('Unauthorized');
+      expect(parseFailureReason({ message: 'Unauthorized' })).toBe(
+        'Unauthorized',
+      );
     });
 
     it('has nothing to say about a missing answer', () => {
