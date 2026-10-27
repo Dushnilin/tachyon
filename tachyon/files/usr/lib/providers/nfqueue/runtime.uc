@@ -540,8 +540,8 @@ function has_direct_mark_outbound(config, tag, routing_mark) {
     for (let outbound in array_or_empty(config && config.outbounds)) {
         if (type(outbound) == "object" &&
             outbound.type == "direct" &&
-            outbound.tag == tag &&
-            int(outbound.routing_mark || 0) == int(routing_mark))
+            int(outbound.routing_mark || 0) == int(routing_mark) &&
+            (outbound.tag == tag || int(routing_mark) > 0))
             return true;
     }
     return false;

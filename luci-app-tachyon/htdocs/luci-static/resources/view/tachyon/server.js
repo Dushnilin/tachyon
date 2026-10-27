@@ -551,8 +551,8 @@ function injectServerStyles() {
 
 .fkp-server-info-dialog,
 .modal.fkp-server-info-dialog,
-#modal_overlay > .modal.fkp-server-info-dialog{max-width:880px !important;width:min(94vw, 880px) !important;box-sizing:border-box !important}
-.fkp-server-info-modal{display:flex;flex-direction:column;gap:16px;width:100% !important;max-width:100% !important;box-sizing:border-box !important;margin:0 !important}
+#modal_overlay > .modal.fkp-server-info-dialog{max-width:95vw !important;width:min(94vw, 880px) !important;box-sizing:border-box !important}
+.fkp-server-info-modal{display:flex;flex-direction:column;gap:16px;width:100% !important;max-width:100% !important;box-sizing:border-box !important;margin:0 !important;overflow-x:hidden}
 .fkp-server-info-modal__container{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;width:100% !important;max-width:100% !important;box-sizing:border-box !important}
 .fkp-server-info-modal__qr-col{display:flex;flex-direction:column;align-items:center;gap:10px;flex:0 0 176px;max-width:100%;box-sizing:border-box}
 .fkp-server-info-modal__qr-card{background:#ffffff;padding:8px;border-radius:12px;box-shadow:0 3px 12px rgba(0,0,0,0.12);border:1px solid rgba(128,128,128,0.18);display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}

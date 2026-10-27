@@ -241,6 +241,8 @@ export namespace Tachyon {
     // parental
     PARENTAL_QUOTA_RESET = 'parental_quota_reset',
     PARENTAL_QUOTA_TICK = 'parental_quota_tick',
+    // probe
+    PROBE_OUTBOUND_URL = 'probe_outbound_url',
     // reconcile
     RECONCILE = 'reconcile',
     RECONCILE_PLAN = 'reconcile_plan',
@@ -306,6 +308,8 @@ export namespace Tachyon {
     TELEGRAM_STOP = 'telegram_stop',
     // toggle
     TOGGLE_CLIENT_BYPASS = 'toggle_client_bypass',
+    // trace
+    TRACE_RULES = 'trace_rules',
     // ui
     UI_ACTION_ACK = 'ui_action_ack',
     // uninstall
@@ -529,6 +533,9 @@ export namespace Tachyon {
       | 'subscription_url'
       | 'section_interface'
       | 'urltest'
+      | 'outbound_source'
+      | 'balancer'
+      | 'condition_rule'
       | 'priority_group'
       | 'priority_level';
     label?: string;
@@ -595,6 +602,24 @@ export namespace Tachyon {
     urltest_settings?: string;
     priority_groups?: string[];
     priority_group_settings?: string;
+    condition_refs?: string | string[];
+    outbound_source_refs?: string | string[];
+    outbound_group_refs?: string | string[];
+    balancer_refs?: string | string[];
+    source_type?: string;
+    proxy_links?: string | string[];
+    proxy_links_text?: string;
+    amnezia_configs?: string | string[];
+    awg_private_key?: string;
+    awg_endpoint?: string;
+    interface_name?: string;
+    tor_socks_port?: string;
+    source_refs?: string | string[];
+    group_refs?: string | string[];
+    balancer_type?: 'urltest' | 'priority' | string;
+    outbound_group_levels?: string | string[];
+    include_prefixes?: string | string[];
+    exclude_prefixes?: string | string[];
     dashboard_filter_mode?: 'disabled' | 'exclude' | 'include' | 'mixed';
     dashboard_detect_server_country?: 'flag_emoji' | 'country_is';
     dashboard_include_countries?: string[];
@@ -1590,7 +1615,7 @@ export namespace Tachyon {
     };
     desync?: {
       modes: string[];
-      split_poses: number[];
+      split_poses: Array<string | number>;
       fake_ttls: number[];
       fake_snis: string[];
       repeats: number[];

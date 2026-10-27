@@ -247,6 +247,8 @@ function command_spec(command) {
         uninstall: [ "service/uninstall.uc", "uninstall", 1 ],
         reset_settings: [ "service/reset.uc", "reset-settings", 1 ],
         delete_section: [ "config/connections.uc", "delete-section", 1 ],
+        trace_rules: [ "config/connections.uc", "trace-rules", 1 ],
+        probe_outbound_url: [ "config/connections.uc", "probe-url", 3 ],
         dnsmasq_restore: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
         restore_dnsmasq: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
         main: [ "service/lifecycle.uc", "main", 0 ],

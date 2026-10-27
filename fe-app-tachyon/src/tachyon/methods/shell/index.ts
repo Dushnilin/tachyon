@@ -283,6 +283,8 @@ export const TachyonShellMethods = {
   checkInbounds: async () =>
     callBaseMethod<Tachyon.InboundsCheckResult>(
       Tachyon.AvailableMethods.CHECK_INBOUNDS,
+      [],
+      { timeout: 30000 },
     ),
   getSingBoxStatus: async () =>
     callBaseMethod<Tachyon.GetSingBoxStatus>(

@@ -46,7 +46,11 @@ const CHILD_ITEM_TYPES = [
     "section_interface",
     "urltest",
     "priority_group",
-    "priority_level"
+    "priority_level",
+    "condition",
+    "outbound_source",
+    "outbound_group",
+    "balancer"
 ];
 
 
@@ -285,6 +289,23 @@ function create_child_for_section(ctx, parent, type_name) {
     let child = create_child_section(ctx, type_name);
     set_option(ctx, child, "section", section_name(parent));
     return child;
+}
+
+function create_named_section(ctx, type_name, section_id) {
+    section_id = as_string(section_id);
+    if (ctx.model[type_name] == null)
+        ctx.model[type_name] = [];
+    for (let existing in ctx.model[type_name]) {
+        if (section_name(existing) == section_id)
+            return existing;
+    }
+    let section = {
+        ".name": section_id,
+        ".type": type_name
+    };
+    push(ctx.model[type_name], section);
+    record_operation(ctx, { op: "create", section: section_id, type: type_name, anonymous: false });
+    return section;
 }
 
 function option_list_values(section, key) {
@@ -1829,6 +1850,374 @@ function migrate_engine_identity(ctx) {
     }
 }
 
+function sanitize_uci_id(raw) {
+    let clean = replace(as_string(raw), /[^A-Za-z0-9_]/g, "_");
+    clean = replace(clean, /^_+/, "");
+    clean = replace(clean, /_+$/, "");
+    return clean != "" ? clean : "item";
+}
+
+function migrate_modular_entities_v1(ctx) {
+    let condition_list_keys = [
+        "community_lists",
+        "rule_set",
+        "rule_set_with_subnets",
+        "domain_ip_lists",
+        "domain_suffix",
+        "domain_keyword",
+        "domain_regex",
+        "user_domains",
+        "ip_cidr",
+        "source_ip_cidr",
+        "source_macs",
+        "ports",
+        "protocol",
+        "dscp",
+        "geoip_country",
+        "fully_routed_ips"
+    ];
+    let condition_scalar_keys = [
+        "domain",
+        "domain_text",
+        "domain_suffix_text",
+        "domain_keyword_text",
+        "domain_regex_text",
+        "user_domains_text",
+        "ip_cidr_text",
+        "source_ip_cidr_text",
+        "ports_text",
+        "geoip_mode"
+    ];
+
+    let sub_source_by_url = {};
+    let sub_index = 0;
+    for (let existing_src in (ctx.model.outbound_source || [])) {
+        let u = trim(option(existing_src, "url", ""));
+        if (u != "")
+            sub_source_by_url[u] = section_name(existing_src);
+    }
+
+    for (let section in (ctx.model.sections || [])) {
+        let sname = section_name(section);
+        if (sname == "")
+            continue;
+        let safe_sname = sanitize_uci_id(sname);
+        let sec_action = lc(trim(option(section, "action", "")));
+
+        // 1. Extract inline routing conditions into a reusable condition entity
+        if (length(list_option(section, "condition_refs")) == 0) {
+            let has_cond = false;
+            for (let k in condition_list_keys) {
+                if (length(list_option(section, k)) > 0) {
+                    has_cond = true;
+                    break;
+                }
+            }
+            if (!has_cond) {
+                for (let k in condition_scalar_keys) {
+                    if (trim(option(section, k, "")) != "") {
+                        has_cond = true;
+                        break;
+                    }
+                }
+            }
+            if (has_cond) {
+                let cond_id = "cond_" + safe_sname;
+                let cond = create_named_section(ctx, "condition", cond_id);
+                set_option_if_missing(ctx, cond, "enabled", "1");
+                set_option_if_missing(ctx, cond, "name", option(section, "name", sname));
+                set_option_if_missing(ctx, cond, "condition_type", "atomic");
+                for (let k in condition_list_keys) {
+                    let vals = list_option(section, k);
+                    if (length(vals) > 0)
+                        set_list_option(ctx, cond, k, vals);
+                }
+                for (let k in condition_scalar_keys) {
+                    let val = trim(option(section, k, ""));
+                    if (val != "")
+                        set_option(ctx, cond, k, val);
+                }
+                add_list_unique(ctx, section, "condition_refs", cond_id);
+            }
+        }
+
+        // 2. Extract subscription_url children into deduplicated outbound_source entities
+        for (let sub in (ctx.model.subscription_url || [])) {
+            if (option(sub, "section", "") != sname)
+                continue;
+            let url = trim(option(sub, "url", ""));
+            if (url == "")
+                continue;
+            let src_id = sub_source_by_url[url];
+            if (src_id == null || src_id == "") {
+                sub_index++;
+                src_id = "src_sub_" + sub_index;
+                sub_source_by_url[url] = src_id;
+                let src = create_named_section(ctx, "outbound_source", src_id);
+                set_option_if_missing(ctx, src, "enabled", "1");
+                set_option_if_missing(ctx, src, "name", option(sub, "node_prefix", "") != "" ? option(sub, "node_prefix", "") : ("Subscription " + sub_index));
+                set_option_if_missing(ctx, src, "source_type", "subscription");
+                set_option(ctx, src, "url", url);
+                for (let sk in [
+                    "user_agent", "auto_user_agent", "hwid", "auto_hwid",
+                    "prefix_nodes", "node_prefix", "include_urltest_groups",
+                    "hide_urltest_group_outbounds", "hide_detour_outbounds",
+                    "subscription_update_enabled", "subscription_update_interval",
+                    "download_via_proxy_enabled", "download_via_proxy_section"
+                ]) {
+                    let sval = option(sub, sk, "");
+                    if (sval != "")
+                        set_option(ctx, src, sk, sval);
+                }
+            }
+            add_list_unique(ctx, section, "outbound_source_refs", src_id);
+        }
+
+        // 2b. Extract other connection types (fptn, proxy_links, amnezia_config, awg, interface, outbound_json) into outbound_source
+        let sec_display_name = option(section, "name", sname);
+        let fptn_token = trim(option(section, "access_token", ""));
+        if (fptn_token != "") {
+            let fptn_src_id = "src_fptn_" + safe_sname;
+            let fptn_src = create_named_section(ctx, "outbound_source", fptn_src_id);
+            set_option_if_missing(ctx, fptn_src, "enabled", "1");
+            set_option_if_missing(ctx, fptn_src, "name", sec_display_name);
+            set_option_if_missing(ctx, fptn_src, "source_type", "fptn");
+            set_option_if_missing(ctx, fptn_src, "access_token", fptn_token);
+            add_list_unique(ctx, section, "outbound_source_refs", fptn_src_id);
+        }
+
+        let sec_links = list_option(section, "selector_proxy_links");
+        let sec_links_text = trim(option(section, "selector_proxy_links_text", ""));
+        if (length(sec_links) > 0 || sec_links_text != "") {
+            let links_src_id = "src_links_" + safe_sname;
+            let links_src = create_named_section(ctx, "outbound_source", links_src_id);
+            set_option_if_missing(ctx, links_src, "enabled", "1");
+            set_option_if_missing(ctx, links_src, "name", sec_display_name + " (Links)");
+            set_option_if_missing(ctx, links_src, "source_type", "proxy_links");
+            if (length(sec_links) > 0 && !option_exists(links_src, "proxy_links"))
+                set_list_option(ctx, links_src, "proxy_links", sec_links);
+            if (sec_links_text != "")
+                set_option_if_missing(ctx, links_src, "proxy_links_text", sec_links_text);
+            add_list_unique(ctx, section, "outbound_source_refs", links_src_id);
+        }
+
+        let sec_amnezia = list_option(section, "selector_amnezia_configs");
+        if (length(sec_amnezia) == 0)
+            sec_amnezia = list_option(section, "amnezia_configs");
+        let sec_amnezia_text = trim(option(section, "amnezia_conf_text", ""));
+        if (length(sec_amnezia) > 0 || sec_amnezia_text != "") {
+            let amn_src_id = "src_amnezia_" + safe_sname;
+            let amn_src = create_named_section(ctx, "outbound_source", amn_src_id);
+            set_option_if_missing(ctx, amn_src, "enabled", "1");
+            set_option_if_missing(ctx, amn_src, "name", sec_display_name + " (Amnezia)");
+            set_option_if_missing(ctx, amn_src, "source_type", "amnezia_config");
+            if (length(sec_amnezia) > 0 && !option_exists(amn_src, "amnezia_configs"))
+                set_list_option(ctx, amn_src, "amnezia_configs", sec_amnezia);
+            if (sec_amnezia_text != "")
+                set_option_if_missing(ctx, amn_src, "amnezia_conf_text", sec_amnezia_text);
+            add_list_unique(ctx, section, "outbound_source_refs", amn_src_id);
+        }
+
+        if (sec_action == "awg" || (trim(option(section, "awg_private_key", "")) != "" && trim(option(section, "awg_server_address", "")) != "")) {
+            let awg_src_id = "src_awg_" + safe_sname;
+            let awg_src = create_named_section(ctx, "outbound_source", awg_src_id);
+            set_option_if_missing(ctx, awg_src, "enabled", "1");
+            set_option_if_missing(ctx, awg_src, "name", sec_display_name + " (AWG)");
+            set_option_if_missing(ctx, awg_src, "source_type", "awg");
+            for (let ak in [
+                "awg_private_key", "awg_server_address", "awg_server_port",
+                "awg_peer_public_key", "awg_preshared_key", "awg_mtu", "awg_keepalive",
+                "awg_jc", "awg_jmin", "awg_jmax", "awg_s1", "awg_s2",
+                "awg_h1", "awg_h2", "awg_h3", "awg_h4"
+            ]) {
+                let aval = trim(option(section, ak, ""));
+                if (aval != "")
+                    set_option_if_missing(ctx, awg_src, ak, aval);
+            }
+            let awg_addrs = list_option(section, "awg_local_address");
+            if (length(awg_addrs) > 0 && !option_exists(awg_src, "awg_local_address"))
+                set_list_option(ctx, awg_src, "awg_local_address", awg_addrs);
+            add_list_unique(ctx, section, "outbound_source_refs", awg_src_id);
+        }
+
+        for (let sif in (ctx.model.section_interface || [])) {
+            if (option(sif, "section", "") != sname)
+                continue;
+            let iname = trim(option(sif, "name", ""));
+            if (iname == "")
+                continue;
+            let iface_src_id = "src_iface_" + sanitize_uci_id(iname);
+            let iface_src = create_named_section(ctx, "outbound_source", iface_src_id);
+            set_option_if_missing(ctx, iface_src, "enabled", "1");
+            set_option_if_missing(ctx, iface_src, "name", "Interface " + iname);
+            set_option_if_missing(ctx, iface_src, "source_type", "interface");
+            set_option_if_missing(ctx, iface_src, "interface_name", iname);
+            for (let ik in [ "domain_resolver_enabled", "domain_resolver_dns_type", "domain_resolver_dns_server" ]) {
+                let ival = trim(option(sif, ik, ""));
+                if (ival != "")
+                    set_option_if_missing(ctx, iface_src, ik, ival);
+            }
+            add_list_unique(ctx, section, "outbound_source_refs", iface_src_id);
+        }
+
+        let direct_ifaces = list_option(section, "interfaces");
+        let single_iface = trim(option(section, "interface", ""));
+        if (single_iface != "" && index(direct_ifaces, single_iface) < 0)
+            push(direct_ifaces, single_iface);
+        for (let iname in direct_ifaces) {
+            iname = trim(as_string(iname));
+            if (iname == "")
+                continue;
+            let iface_src_id = "src_iface_" + sanitize_uci_id(iname);
+            let iface_src = create_named_section(ctx, "outbound_source", iface_src_id);
+            set_option_if_missing(ctx, iface_src, "enabled", "1");
+            set_option_if_missing(ctx, iface_src, "name", "Interface " + iname);
+            set_option_if_missing(ctx, iface_src, "source_type", "interface");
+            set_option_if_missing(ctx, iface_src, "interface_name", iname);
+            add_list_unique(ctx, section, "outbound_source_refs", iface_src_id);
+        }
+
+        let sec_jsons = list_option(section, "outbound_jsons");
+        let sec_json_single = trim(option(section, "outbound_json", ""));
+        if (length(sec_jsons) > 0 || sec_json_single != "") {
+            let json_src_id = "src_json_" + safe_sname;
+            let json_src = create_named_section(ctx, "outbound_source", json_src_id);
+            set_option_if_missing(ctx, json_src, "enabled", "1");
+            set_option_if_missing(ctx, json_src, "name", sec_display_name + " (JSON)");
+            set_option_if_missing(ctx, json_src, "source_type", "outbound_json");
+            if (length(sec_jsons) > 0 && !option_exists(json_src, "outbound_jsons"))
+                set_list_option(ctx, json_src, "outbound_jsons", sec_jsons);
+            if (sec_json_single != "")
+                set_option_if_missing(ctx, json_src, "outbound_json", sec_json_single);
+            add_list_unique(ctx, section, "outbound_source_refs", json_src_id);
+        }
+
+        let single_proto_actions = [
+            "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai",
+            "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync",
+            "zapret2", "zapret", "byedpi", "wdtt", "olcrtc"
+        ];
+        if (index(single_proto_actions, sec_action) >= 0) {
+            let proto_src_id = "src_" + sanitize_uci_id(sec_action) + "_" + safe_sname;
+            let proto_src = create_named_section(ctx, "outbound_source", proto_src_id);
+            set_option_if_missing(ctx, proto_src, "enabled", "1");
+            set_option_if_missing(ctx, proto_src, "name", sec_display_name);
+            set_option_if_missing(ctx, proto_src, "source_type", sec_action);
+            for (let pk, pval in section) {
+                if (substr(pk, 0, 1) == "." || pk == "enabled" || pk == "name" || pk == "action" ||
+                    pk == "condition_refs" || pk == "outbound_source_refs" || pk == "outbound_group_refs" || pk == "balancer_refs" ||
+                    index(condition_list_keys, pk) >= 0 || index(condition_scalar_keys, pk) >= 0)
+                    continue;
+                if (type(pval) == "array") {
+                    if (length(pval) > 0 && !option_exists(proto_src, pk))
+                        set_list_option(ctx, proto_src, pk, pval);
+                } else {
+                    let s_pval = trim(as_string(pval));
+                    if (s_pval != "")
+                        set_option_if_missing(ctx, proto_src, pk, s_pval);
+                }
+            }
+            add_list_unique(ctx, section, "outbound_source_refs", proto_src_id);
+        }
+
+        // 3. Extract urltest & priority_group children into reusable balancer entities
+        for (let ut in (ctx.model.urltest || [])) {
+            if (option(ut, "section", "") != sname)
+                continue;
+            let ut_id = section_name(ut);
+            let ut_name = option(ut, "name", "Fastest");
+            let existing_bal = null;
+            for (let b in (ctx.model.balancer || [])) {
+                if (option(b, "name", "") == ut_name && lc(option(b, "balancer_type", "urltest")) == "urltest") {
+                    existing_bal = b;
+                    break;
+                }
+            }
+            let name_slug = sanitize_uci_id(option(ut, "name", ut_id));
+            if (name_slug == "item" && option(ut, "name", ut_id) != "item")
+                name_slug = sanitize_uci_id(ut_id);
+            let bal_id = existing_bal != null ? section_name(existing_bal) : ("bal_" + sanitize_uci_id(sname + "_" + name_slug));
+            let bal = existing_bal != null ? existing_bal : create_named_section(ctx, "balancer", bal_id);
+            set_option_if_missing(ctx, bal, "enabled", "1");
+            set_option_if_missing(ctx, bal, "balancer_type", "urltest");
+            set_option_if_missing(ctx, bal, "name", ut_name);
+            for (let bk in [
+                "testing_url", "check_interval", "tolerance", "idle_timeout",
+                "interrupt_exist_connections", "pin_dashboard",
+                "mode", "sticky_hash", "passive_check",
+                "filter_mode", "detect_server_country",
+                "include_proxy_parameters", "exclude_proxy_parameters"
+            ]) {
+                let bval = option(ut, bk, "");
+                if (bval != "")
+                    set_option_if_missing(ctx, bal, bk, bval);
+            }
+            for (let lk in [
+                "include_prefixes", "exclude_prefixes",
+                "include_countries", "exclude_countries",
+                "include_outbounds", "exclude_outbounds",
+                "include_regex", "exclude_regex",
+                "include_protocols", "exclude_protocols",
+                "include_transports", "exclude_transports",
+                "include_securities", "exclude_securities",
+                "include_ports", "exclude_ports"
+            ]) {
+                let lvals = list_option(ut, lk);
+                if (length(lvals) > 0 && !option_exists(bal, lk))
+                    set_list_option(ctx, bal, lk, lvals);
+            }
+            add_list_unique(ctx, section, "balancer_refs", bal_id);
+        }
+
+        for (let pg in (ctx.model.priority_group || [])) {
+            if (option(pg, "section", "") != sname)
+                continue;
+            let pg_id = section_name(pg);
+            let pg_name = option(pg, "name", pg_id);
+            let existing_bal = null;
+            for (let b in (ctx.model.balancer || [])) {
+                if (option(b, "name", "") == pg_name && lc(option(b, "balancer_type", "urltest")) == "priority") {
+                    existing_bal = b;
+                    break;
+                }
+            }
+            let name_slug = sanitize_uci_id(pg_name);
+            if (name_slug == "item" && pg_name != "item")
+                name_slug = sanitize_uci_id(pg_id);
+            let bal_id = existing_bal != null ? section_name(existing_bal) : ("bal_" + sanitize_uci_id(sname + "_" + name_slug));
+            let bal = existing_bal != null ? existing_bal : create_named_section(ctx, "balancer", bal_id);
+            set_option_if_missing(ctx, bal, "enabled", "1");
+            set_option_if_missing(ctx, bal, "balancer_type", "priority");
+            set_option_if_missing(ctx, bal, "name", pg_name);
+            for (let bk in [ "health_url", "active_check_interval", "check_timeout", "recovery_check_interval", "switch_to_faster_same_priority", "fastest_check_interval", "pin_dashboard" ]) {
+                let bval = option(pg, bk, "");
+                if (bval != "")
+                    set_option_if_missing(ctx, bal, bk, bval);
+            }
+            add_list_unique(ctx, section, "balancer_refs", bal_id);
+        }
+
+        let sec_src_refs = list_option(section, "outbound_source_refs");
+        if (length(sec_src_refs) > 0) {
+            for (let b_ref in list_option(section, "balancer_refs")) {
+                for (let b_obj in (ctx.model.balancer || [])) {
+                    if (section_name(b_obj) == b_ref && length(list_option(b_obj, "source_refs")) == 0) {
+                        for (let s_ref in sec_src_refs) {
+                            if (index(s_ref, "src_zapret") == 0 || index(s_ref, "src_byedpi") == 0 || index(s_ref, "src_desync") == 0)
+                                continue;
+                            add_list_unique(ctx, b_obj, "source_refs", s_ref);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (sec_action != "" && sec_action != "connection" && sec_action != "bypass" && sec_action != "block" && sec_action != "dns" && sec_action != "hosts") {
+            set_option(ctx, section, "action", "connection");
+        }
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1838,7 +2227,9 @@ const MIGRATIONS = [
     { id: "global_hosts_to_section", run: migrate_global_hosts_to_section },
     { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces },
     { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults },
-    { id: "engine_identity_tachyon_core", run: migrate_engine_identity }
+    { id: "engine_identity_tachyon_core", run: migrate_engine_identity },
+    { id: "modular_entities_v1", run: migrate_modular_entities_v1 },
+    { id: "modular_entities_v2", run: migrate_modular_entities_v1 }
 ];
 
 
@@ -1928,6 +2319,7 @@ function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
     migrate_cleanup_accidental_full_domain_prefixes(ctx);
     apply_migrations(ctx);
+    migrate_modular_entities_v1(ctx);
     // How client traffic reaches the proxy. Defaulted rather than left absent:
     // the generator has to be able to express a legal config for a router that
     // predates this option, and "no proxy_mode" would have to be read as tproxy
@@ -2439,6 +2831,7 @@ function module_exports() {
         migrate_model: migrate_model,
         migrate_tachyon_model: migrate_tachyon_model,
         migrate_podkop_model: migrate_podkop_model,
+        migrate_modular_entities_v1: migrate_modular_entities_v1,
         scan_legacy_config_candidates: scan_legacy_config_candidates,
         detect_config_migration_source: detect_config_migration_source,
         import_settings_cli: import_settings_cli,

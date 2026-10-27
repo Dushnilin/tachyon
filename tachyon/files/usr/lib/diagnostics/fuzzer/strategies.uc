@@ -62,12 +62,12 @@ const DEFAULT_PATTERNS = {
         ipfrags: [ "24" ]
     },
     desync: {
-        presets: [ "general", "general_alt", "general_alt2", "general_alt3", "general_fake_tls", "youtube", "discord", "cloudflare" ],
-        modes: [ "fake_split", "fake_disorder", "multisplit", "multidisorder", "tlsrec_split", "fakedsplit", "fakeddisorder", "oob", "syndata" ],
+        presets: [ "fake_split", "tlsrec", "disorder", "split", "fake", "oob", "auto" ],
+        modes: [ "fake_split", "tlsrec", "disorder", "split", "fake", "oob" ],
         splits: [ "1", "2", "midsld", "sni" ],
         ttls: [ 3, 4, 5, 6, 8 ],
         fake_snis: [ "www.google.com", "max.ru", "gosuslugi.ru", "sberbank.ru" ],
-        repeats: [ 4, 6, 8 ]
+        repeats: [ 2, 4, 6, 8 ]
     },
     custom_strategies: []
 };
@@ -1001,132 +1001,132 @@ const STRATEGIES_BYEDPI = [
 const STRATEGIES_DESYNC = [
     // ── 1. BUILT-IN CORE PRESETS ───────────────────────────────────────────────
     {
-        id: "ds_preset_youtube",
-        name: "Native Desync Preset: YouTube",
+        id: "ds_preset_fake_split",
+        name: "Native Desync Preset: Fake + Split (midsld, TTL=6, UDP Fake)",
         engine: "desync",
-        args: "preset=youtube",
-        description: "Built-in tachyon-core YouTube / GoogleVideo DPI desync profile."
+        args: "preset=fake_split",
+        description: "Built-in tachyon-core default preset: low-TTL Fake ClientHello + mid-SLD TCP split + UDP QUIC/STUN fake."
     },
     {
-        id: "ds_preset_general",
-        name: "Native Desync Preset: General",
+        id: "ds_preset_tlsrec",
+        name: "Native Desync Preset: TLS Record Split (pos=sni)",
         engine: "desync",
-        args: "preset=general",
-        description: "Built-in tachyon-core general multi-service DPI desync profile."
+        args: "preset=tlsrec",
+        description: "Built-in tachyon-core RFC-compliant outer TLS Record splitting at SNI extension."
     },
     {
-        id: "ds_preset_general_fake_tls",
-        name: "Native Desync Preset: General Fake TLS",
+        id: "ds_preset_disorder",
+        name: "Native Desync Preset: TTL=1 Disorder (pos=1)",
         engine: "desync",
-        args: "preset=general_fake_tls",
-        description: "Fake TLS ClientHello injection with split fragmentation."
+        args: "preset=disorder",
+        description: "Built-in tachyon-core TTL=1 first-segment drop forcing server retransmission disorder."
     },
     {
-        id: "ds_preset_general_alt",
-        name: "Native Desync Preset: General ALT",
+        id: "ds_preset_split",
+        name: "Native Desync Preset: Mid-SLD Split",
         engine: "desync",
-        args: "preset=general_alt",
-        description: "Alternative general desync profile for stateful TSPU."
+        args: "preset=split",
+        description: "Built-in tachyon-core clean TCP segment split at middle of second-level domain."
     },
     {
-        id: "ds_preset_general_alt2",
-        name: "Native Desync Preset: General ALT2",
+        id: "ds_preset_fake",
+        name: "Native Desync Preset: Low-TTL Fake Only (TTL=6, UDP Fake)",
         engine: "desync",
-        args: "preset=general_alt2",
-        description: "Alternative profile #2 with low-TTL fake and split."
+        args: "preset=fake",
+        description: "Built-in tachyon-core fake ClientHello + UDP QUIC/STUN fake injection without splitting."
     },
     {
-        id: "ds_preset_general_alt3",
-        name: "Native Desync Preset: General ALT3",
+        id: "ds_preset_oob",
+        name: "Native Desync Preset: TCP Out-Of-Band URG (pos=1)",
         engine: "desync",
-        args: "preset=general_alt3",
-        description: "Alternative profile #3 with sequence overlap."
-    },
-    {
-        id: "ds_preset_discord",
-        name: "Native Desync Preset: Discord (TCP + UDP Fake)",
-        engine: "desync",
-        args: "preset=discord udp_fake=true udp_repeats=6",
-        description: "Discord Web/Gateway TLS desync plus UDP voice fake burst."
-    },
-    {
-        id: "ds_preset_cloudflare",
-        name: "Native Desync Preset: Cloudflare Edge",
-        engine: "desync",
-        args: "preset=cloudflare",
-        description: "Optimized for Cloudflare CDN / ECH / SNI inspection."
+        args: "preset=oob",
+        description: "Built-in tachyon-core TCP MSG_OOB urgent byte injection + 1-byte split."
     },
 
-    // ── 2. EXPLICIT MODE & PARAMETER STRATEGIES ────────────────────────────────
+    // ── 2. TUNED MODE & PARAMETER STRATEGIES ───────────────────────────────────
     {
-        id: "ds_fake_split_midsld_ttl4",
-        name: "Fake + Split (midsld, TTL=4, max.ru)",
+        id: "ds_fake_split_midsld_ttl4_max",
+        name: "Fake + Split (midsld, TTL=4, max.ru, repeats=6)",
         engine: "desync",
         args: "mode=fake_split split_pos=midsld fake_ttl=4 fake_sni=max.ru repeats=6",
-        description: "Low-TTL max.ru fake ClientHello followed by mid-SLD split."
+        description: "Low-TTL max.ru fake ClientHello burst followed by mid-SLD split."
     },
     {
-        id: "ds_fake_split_midsld_ttl6",
-        name: "Fake + Split (midsld, TTL=6, www.google.com)",
+        id: "ds_fake_split_midsld_ttl6_google",
+        name: "Fake + Split (midsld, TTL=6, www.google.com, repeats=6)",
         engine: "desync",
         args: "mode=fake_split split_pos=midsld fake_ttl=6 fake_sni=www.google.com repeats=6",
-        description: "TTL=6 Google fake ClientHello followed by mid-SLD split."
+        description: "TTL=6 Google fake ClientHello burst followed by mid-SLD split."
     },
     {
-        id: "ds_fake_disorder_midsld_ttl5",
-        name: "Fake + Disorder (midsld, TTL=5, gosuslugi.ru)",
+        id: "ds_fake_split_sni_ttl5_gosuslugi",
+        name: "Fake + Split (sni, TTL=5, gosuslugi.ru, repeats=6)",
         engine: "desync",
-        args: "mode=fake_disorder split_pos=midsld fake_ttl=5 fake_sni=gosuslugi.ru repeats=6",
-        description: "Gosuslugi fake ClientHello with out-of-order mid-SLD delivery."
+        args: "mode=fake_split split_pos=sni fake_ttl=5 fake_sni=gosuslugi.ru repeats=6",
+        description: "Gosuslugi fake ClientHello with SNI extension boundary split."
     },
     {
-        id: "ds_multisplit_sni",
-        name: "MultiSplit (pos=sni, delay=2ms)",
+        id: "ds_fake_split_pos1_ttl4_sber",
+        name: "Fake + Split (pos=1, TTL=4, sberbank.ru, repeats=6)",
         engine: "desync",
-        args: "mode=multisplit split_pos=sni split_delay_ms=2",
-        description: "Multi-segment TLS ClientHello split at SNI extension."
+        args: "mode=fake_split split_pos=1 fake_ttl=4 fake_sni=sberbank.ru repeats=6",
+        description: "1-byte ClientHello split preceded by Sberbank low-TTL fake burst."
     },
     {
-        id: "ds_multidisorder_midsld",
-        name: "MultiDisorder (pos=midsld, delay=2ms)",
+        id: "ds_fake_split_pos2_ttl8_max",
+        name: "Fake + Split (pos=2, TTL=8, max.ru, repeats=8)",
         engine: "desync",
-        args: "mode=multidisorder split_pos=midsld split_delay_ms=2",
-        description: "Out-of-order multi-segment TLS ClientHello at mid-SLD."
+        args: "mode=fake_split split_pos=2 fake_ttl=8 fake_sni=max.ru repeats=8",
+        description: "Higher TTL=8 fake burst for distant ISP TSPU hops + 2-byte split."
     },
     {
-        id: "ds_tlsrec_split_sni",
-        name: "TLS Record Split + TCP Split (pos=sni)",
+        id: "ds_tlsrec_midsld",
+        name: "TLS Record Split (pos=midsld, delay=2ms)",
         engine: "desync",
-        args: "mode=tlsrec_split split_pos=sni",
-        description: "Splits both outer TLS record layer and inner TCP segments at SNI."
+        args: "mode=tlsrec split_pos=midsld split_delay_ms=2",
+        description: "Splits outer TLS record header right at middle of domain name."
     },
     {
-        id: "ds_fakedsplit_pos1_ttl4",
-        name: "FakedSplit (pos=1, TTL=4, sberbank.ru)",
+        id: "ds_tlsrec_pos2",
+        name: "TLS Record Split (pos=2, delay=1ms)",
         engine: "desync",
-        args: "mode=fakedsplit split_pos=1 fake_ttl=4 fake_sni=sberbank.ru repeats=6",
-        description: "Interleaves fake segments between real split chunks."
+        args: "mode=tlsrec split_pos=2 split_delay_ms=1",
+        description: "2-byte TLS record split for stateless DPI parsers."
     },
     {
-        id: "ds_fakeddisorder_midsld_ttl6",
-        name: "FakedDisorder (pos=midsld, TTL=6, max.ru)",
+        id: "ds_disorder_midsld",
+        name: "TTL=1 Disorder (pos=midsld)",
         engine: "desync",
-        args: "mode=fakeddisorder split_pos=midsld fake_ttl=6 fake_sni=max.ru repeats=6",
-        description: "Out-of-order real segments interleaved with fake max.ru segments."
+        args: "mode=disorder split_pos=midsld",
+        description: "Drops initial segment up to mid-SLD at TTL=1 so real second segment arrives first."
     },
     {
-        id: "ds_oob_pos1",
-        name: "TCP Out-Of-Band URG Desync (pos=1)",
+        id: "ds_disorder_sni",
+        name: "TTL=1 Disorder (pos=sni)",
         engine: "desync",
-        args: "mode=oob split_pos=1",
-        description: "Injects TCP URG out-of-band byte to confuse stateful DPI reassembly."
+        args: "mode=disorder split_pos=sni",
+        description: "Drops initial segment up to SNI extension at TTL=1 to desynchronize stateful DPI."
     },
     {
-        id: "ds_syndata_midsld",
-        name: "TCP SYN Data + Split (pos=midsld)",
+        id: "ds_split_sni_delay2",
+        name: "TCP Split (pos=sni, delay=2ms)",
         engine: "desync",
-        args: "mode=syndata split_pos=midsld",
-        description: "Carries initial payload in TCP SYN and splits at mid-SLD."
+        args: "mode=split split_pos=sni split_delay_ms=2",
+        description: "Clean TCP segmentation at SNI extension with 2ms pacing."
+    },
+    {
+        id: "ds_oob_midsld",
+        name: "TCP Out-Of-Band URG Desync (pos=midsld)",
+        engine: "desync",
+        args: "mode=oob split_pos=midsld",
+        description: "Injects TCP URG out-of-band byte and splits at mid-SLD."
+    },
+    {
+        id: "ds_discord_voice_combo",
+        name: "Discord TCP + UDP Voice Fake Burst (midsld, TTL=6, UDP=8x)",
+        engine: "desync",
+        args: "mode=fake_split split_pos=midsld fake_ttl=6 fake_sni=www.google.com repeats=4 udp_fake=true udp_repeats=8 udp_fake_ttl=6",
+        description: "Combined TCP Fake+Split and 8x UDP STUN/QUIC fake burst for Discord & WebRTC."
     }
 ];
 
@@ -1678,13 +1678,13 @@ function generate_combinatorial_desync() {
     }
 
     let modes = p.modes || DEFAULT_PATTERNS.desync.modes;
-    let splits = p.splits || [ "1", "2", "midsld", "sni" ];
-    let ttls = p.ttls || [ 3, 4, 5, 6, 8 ];
+    let splits = p.splits || p.split_poses || [ "1", "2", "midsld", "sni" ];
+    let ttls = p.ttls || p.fake_ttls || [ 3, 4, 5, 6, 8 ];
     let fake_snis = p.fake_snis || [ "www.google.com", "max.ru", "gosuslugi.ru" ];
 
     for (let mode in modes) {
         for (let pos in splits) {
-            if (index(mode, "fake") >= 0) {
+            if (index(mode, "fake") >= 0 || mode == "disorder") {
                 for (let ttl in ttls) {
                     for (let fsni in fake_snis) {
                         add(sprintf("%s (pos=%s, TTL=%d, sni=%s)", mode, pos, ttl, fsni),

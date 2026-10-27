@@ -1423,23 +1423,21 @@ function write_source_metadata(cache_dir, format_version, section, source_index,
     save_cache(cache_dir, section, format_version, cache);
 }
 
-function get_outbound_metadata(cache_dir, section, legacy_path) {
-    let cache = load_cache(cache_dir, section);
+function merge_section_outbound_metadata(result, cache, legacy_path) {
     let metadata = cache.outboundMetadata;
-    if (type(metadata) != "object")
+    if (type(metadata) != "object" && legacy_path != null && legacy_path != "")
         metadata = read_json(legacy_path);
     metadata = object_or_empty(metadata);
     let names = object_or_empty(metadata.names);
     let countries = object_or_empty(metadata.countries);
     let transports = object_or_empty(metadata.transports);
+    let protocols = object_or_empty(metadata.protocols);
+    let securities = object_or_empty(metadata.securities);
+    let prefixes = object_or_empty(metadata.prefixes);
+    let ports = object_or_empty(metadata.ports);
     let candidate_tags = array_or_empty(cache.urltestCandidateTags);
     let groups = object_or_empty(cache.urltestGroups);
     let priority_groups = object_or_empty(cache.priorityGroups);
-    let result = {
-        names: {},
-        countries: {},
-        transports: {}
-    };
 
     if (length(candidate_tags) > 0) {
         for (let tag in candidate_tags) {
@@ -1452,6 +1450,14 @@ function get_outbound_metadata(cache_dir, section, legacy_path) {
                 result.countries[tag] = countries[tag];
             if (transports[tag] != null)
                 result.transports[tag] = transports[tag];
+            if (protocols[tag] != null)
+                result.protocols[tag] = protocols[tag];
+            if (securities[tag] != null)
+                result.securities[tag] = securities[tag];
+            if (prefixes[tag] != null)
+                result.prefixes[tag] = prefixes[tag];
+            if (ports[tag] != null)
+                result.ports[tag] = ports[tag];
         }
     }
     else {
@@ -1467,6 +1473,54 @@ function get_outbound_metadata(cache_dir, section, legacy_path) {
             if (!groups[tag] && !priority_groups[tag])
                 result.transports[tag] = transport;
         }
+        for (let tag, proto in protocols) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.protocols[tag] = proto;
+        }
+        for (let tag, sec in securities) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.securities[tag] = sec;
+        }
+        for (let tag, pfx in prefixes) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.prefixes[tag] = pfx;
+        }
+        for (let tag, prt in ports) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.ports[tag] = prt;
+        }
+    }
+}
+
+function get_outbound_metadata(cache_dir, section, legacy_path) {
+    let result = {
+        names: {},
+        countries: {},
+        transports: {},
+        protocols: {},
+        securities: {},
+        prefixes: {},
+        ports: {}
+    };
+    let sec_str = trim(as_string(section));
+    if (sec_str == "" || sec_str == "all") {
+        let entries = fs.lsdir(as_string(cache_dir));
+        if (type(entries) == "array") {
+            for (let entry in entries) {
+                entry = as_string(entry);
+                if (length(entry) > 5 && substr(entry, length(entry) - 5) == ".json") {
+                    let sname = substr(entry, 0, length(entry) - 5);
+                    if (safe_section(sname)) {
+                        let c = load_cache(cache_dir, sname);
+                        merge_section_outbound_metadata(result, c, "");
+                    }
+                }
+            }
+        }
+    }
+    else {
+        let cache = load_cache(cache_dir, sec_str);
+        merge_section_outbound_metadata(result, cache, legacy_path);
     }
 
     write_stdout_json(result);
@@ -2962,7 +3016,9 @@ else if (mode == "write-source-metadata") {
 }
 else if (mode == "get-outbound-metadata") {
     let cache_dir = ARGV[1], section = ARGV[2];
-    if (!safe_section(section))
+    if (section == null || trim(as_string(section)) == "" || as_string(section) == "all")
+        get_outbound_metadata(cache_dir, "all", "");
+    else if (!safe_section(section))
         write_empty_outbound_metadata();
     else
         get_outbound_metadata(cache_dir, section, ARGV[3]);

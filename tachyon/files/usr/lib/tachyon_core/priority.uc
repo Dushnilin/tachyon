@@ -198,7 +198,7 @@ function module_capture(args) {
             let health_url = as_string(args[3] || "https://www.gstatic.com/generate_204");
             let max_time = int((int(timeout_ms, 10) + 1999) / 1000);
             if (max_time < 2) max_time = 2;
-            let endpoint = index(tag_name, "-urltest-") >= 0
+            let endpoint = index(tag_name, "-urltest") >= 0
                 ? (info.base_url + "/group/" + urlencode_segment(tag_name) + "/delay")
                 : (info.base_url + "/proxies/" + urlencode_segment(tag_name) + "/delay");
             let curl_args = [ "curl", "-G", "-s", "-m", as_string(max_time), endpoint ];
@@ -259,8 +259,18 @@ function parse_delay_output(output) {
         return null;
 
     let delay = value.delay;
-    if (delay == null || as_string(delay) == "")
-        return null;
+    if (delay == null || as_string(delay) == "") {
+        let min_d = null;
+        for (let k, v in value) {
+            if (k == "message" || k == "error")
+                continue;
+            if (type(v) == "int" && v > 0) {
+                if (min_d == null || v < min_d)
+                    min_d = v;
+            }
+        }
+        return min_d;
+    }
 
     delay = int(delay, 10);
     return delay >= 0 ? delay : null;

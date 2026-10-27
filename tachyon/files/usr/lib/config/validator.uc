@@ -30,6 +30,12 @@ let bool_flag = bool_value;
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const DEFAULT_LATENCY_TEST_URL = "https://www.gstatic.com/generate_204";
 const TAILSCALE_FWMARK_MASK = 0x00ff0000;
+const VALIDATOR_QUARANTINED_FILE = getenv("TACHYON_VALIDATOR_QUARANTINED_FILE") || "/var/run/tachyon/validator-quarantined.json";
+const SECTION_ERRORS_FILE = getenv("TACHYON_SECTION_ERRORS_FILE") || "/var/run/tachyon/section-errors.json";
+
+let runtime_quarantine_mode = false;
+let current_validating_section = "";
+let runtime_quarantined_sections = {};
 
 function read_stdin() {
     let input = fs.open("/dev/stdin", "r");
@@ -165,7 +171,100 @@ function log_message(message, level) {
     run_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
+function expand_validation_error(message) {
+    let raw = trim(as_string(message || ""));
+    let clean = replace(raw, /[ \t]*Aborted\.?$/i, "");
+    if (index(clean, "Причина:") >= 0)
+        return clean;
+
+    let hint = "";
+    if (index(clean, "has no routing conditions") >= 0 || index(clean, "must contain at least one domain condition") >= 0)
+        hint = "Причина: у секции не заданы условия маршрутизации (домены, списки сервисов, IP/подсети или устройства). Решение: привяжите условие во вкладке «Секции», укажите домены или включите «Весь трафик» / Mixed Proxy.";
+    else if (index(clean, "references missing condition") >= 0)
+        hint = "Причина: секция ссылается на удалённое условие. Решение: откройте секцию и обновите список привязанных условий.";
+    else if (index(clean, "references missing outbound source") >= 0 || index(clean, "references missing outbound group") >= 0)
+        hint = "Причина: секция или группа ссылается на удалённый источник серверов. Решение: проверьте привязку во вкладке «Пул серверов» и в настройках секции.";
+    else if (index(clean, "references missing balancer") >= 0)
+        hint = "Причина: секция ссылается на удалённый шаблон автовыбора. Решение: выберите существующий шаблон автовыбора или создайте новый.";
+    else if (index(clean, "JSON outbound") >= 0 || index(clean, "outbound_json") >= 0)
+        hint = "Причина: пустой или синтаксически некорректный JSON-объект outbound. Решение: проверьте JSON-конфигурацию прокси и наличие обязательного поля \"type\" и уникального \"tag\".";
+    else if (index(clean, "Outbound cascade") >= 0)
+        hint = "Причина: цепочка каскадирования (detour) ссылается на отключённую/несуществующую секцию или образует замкнутый цикл. Решение: выберите активную прокси/VPN секцию для каскада или отключите каскадирование.";
+    else if (index(clean, "Section group") >= 0)
+        hint = "Причина: группа секций не содержит активных прокси/VPN секций или ссылается на удалённую секцию. Решение: добавьте хотя бы одну включённую секцию в группу.";
+    else if (index(clean, "reserved internal Tachyon port") >= 0)
+        hint = "Причина: входящий сервер использует зарезервированный системный порт Tachyon (1602, 1053 или 5354). Решение: измените порт прослушивания (например, на 8443 или 443) во вкладке «Входящие серверы».";
+    else if (index(clean, "routing section") >= 0 || index(clean, "routing mode") >= 0)
+        hint = "Причина: входящий сервер настроен на маршрутизацию через секцию, которая отключена, удалена или не поддерживает исходящий прокси. Решение: выберите активную секцию маршрутизации в настройках входящего сервера.";
+    else if (index(clean, "MTProto") >= 0)
+        hint = "Причина: некорректный секрет MTProto или выбранное ядро не поддерживает протокол MTProto. Решение: проверьте формат секрета или переключите вариант ядра.";
+    else if (index(clean, "Tailscale") >= 0 || index(clean, "tailscale") >= 0)
+        hint = "Причина: ошибка конфигурации Tailscale (отсутствует Auth Key, пакет tailscaled или режим exit-node не поддерживается текущим ядром). Решение: укажите ключ авторизации или переключите режим Tailscale.";
+    else if (index(clean, "AmneziaWG") >= 0 || index(clean, "awg_") >= 0)
+        hint = "Причина: параметры AmneziaWG несовместимы с установленным вариантом ядра или заполнены некорректно. Решение: проверьте ключи и параметры обфускации AWG.";
+    else if (index(clean, "FPTN") >= 0 || index(clean, "fptn") >= 0)
+        hint = "Причина: отсутствует или повреждён токен доступа FPTN (fptn://...). Решение: вставьте корректный токен FPTN в пуле серверов или настройках секции.";
+    else if (index(clean, "NFQWS") >= 0 || index(clean, "ByeDPI") >= 0)
+        hint = "Причина: синтаксическая ошибка в параметрах стратегии обхода DPI. Решение: проверьте аргументы стратегии в настройках секции.";
+    else if (index(clean, "DNS") >= 0 || index(clean, "dns") >= 0)
+        hint = "Причина: некорректный адрес DNS-сервера, неподдерживаемый протокол или отсутствуют доменные условия для маршрутизируемого DNS. Решение: проверьте настройки DNS в секции.";
+    else if (index(clean, "Subscription") >= 0 || index(clean, "subscription") >= 0 || index(clean, "proxy link") >= 0)
+        hint = "Причина: некорректный URL подписки, прокси-ссылка или параметры обновления. Решение: проверьте адрес подписки/ссылки во вкладке «Пул серверов».";
+    else if (index(clean, "does not support") >= 0 || index(clean, "only supported by") >= 0 || index(clean, "not installed") >= 0)
+        hint = "Причина: выбранный протокол или функция не поддерживается установленным ядром. Решение: установите подходящий компонент во вкладке «Компоненты» или измените тип секции.";
+    else
+        hint = "Причина: ошибка в параметрах секции. Решение: проверьте выделенные поля в настройках этой секции.";
+
+    return clean + " — " + hint;
+}
+
+function extract_quarantine_target(message) {
+    if (current_validating_section != "")
+        return current_validating_section;
+    let text = as_string(message || "");
+    let m = match(text, /(?:Rule|Section|Server|Section group|rule|section|server) '([A-Za-z0-9_]+)'/);
+    if (m && m[1] != "settings")
+        return m[1];
+    let m2 = match(text, /rule\.([A-Za-z0-9_]+)\./);
+    if (m2 && m2[1] != "settings")
+        return m2[1];
+    return "";
+}
+
+function record_runtime_quarantine(target, message) {
+    target = as_string(target || "");
+    if (target == "")
+        return false;
+    let expanded = expand_validation_error(message);
+    if (runtime_quarantined_sections[target] == null)
+        runtime_quarantined_sections[target] = expanded;
+    log_message("Section/server '" + target + "' quarantined during validation: " + expanded, "warn");
+    return true;
+}
+
+function persist_validator_quarantine() {
+    if (!runtime_quarantine_mode)
+        return;
+    let existing_errors = object_or_empty(read_json_file(SECTION_ERRORS_FILE));
+    let has_any = false;
+    for (let k in keys(runtime_quarantined_sections)) {
+        has_any = true;
+        existing_errors[k] = runtime_quarantined_sections[k];
+    }
+    if (has_any) {
+        common.write_json_file(VALIDATOR_QUARANTINED_FILE, runtime_quarantined_sections);
+        common.write_json_file(SECTION_ERRORS_FILE, existing_errors);
+    } else {
+        common.remove_file(VALIDATOR_QUARANTINED_FILE);
+    }
+}
+
 function fail_requirement(message, level) {
+    if (runtime_quarantine_mode) {
+        let target = extract_quarantine_target(message);
+        if (target != "" && record_runtime_quarantine(target, message))
+            die("__TACHYON_QUARANTINE__");
+    }
     log_message(message, level || "error");
     exit(1);
 }
@@ -483,11 +582,21 @@ function outbound_detour_chain_reaches_source(by_section, source_section, curren
 }
 
 function fail_outbound_detour(message) {
+    if (runtime_quarantine_mode) {
+        let target = extract_quarantine_target(message);
+        if (target != "" && record_runtime_quarantine(target, message))
+            die("__TACHYON_QUARANTINE__");
+    }
     print(message, "\n");
     exit(1);
 }
 
 function fail_validation(message) {
+    if (runtime_quarantine_mode) {
+        let target = extract_quarantine_target(message);
+        if (target != "" && record_runtime_quarantine(target, message))
+            die("__TACHYON_QUARANTINE__");
+    }
     print(message, "\n");
     // A start that aborts on an invalid config has to leave a trace. The user runs
     // it from a console, watches the message scroll by, and then logread shows
@@ -504,35 +613,44 @@ function validate_outbound_detours_rows(rows) {
     for (let row in parsed.rows) {
         if (!row.enabled || !row.detour_enabled)
             continue;
+        if (runtime_quarantine_mode && runtime_quarantined_sections[row.section] != null)
+            continue;
 
-        if (!outbound_detour_source_action(row.action))
-            fail_outbound_detour("Outbound cascade is supported only for Connection and AmneziaWG rules, but rule '" +
-                row.section + "' uses action '" + row.action + "'. Aborted.");
+        current_validating_section = row.section;
+        try {
+            if (!outbound_detour_source_action(row.action))
+                fail_outbound_detour("Outbound cascade is supported only for Connection and AmneziaWG rules, but rule '" +
+                    row.section + "' uses action '" + row.action + "'. Aborted.");
 
-        if (row.detour_section == "")
-            fail_outbound_detour("Outbound cascade is enabled for rule '" + row.section +
-                "', but no intermediate rule is selected. Aborted.");
+            if (row.detour_section == "")
+                fail_outbound_detour("Outbound cascade is enabled for rule '" + row.section +
+                    "', but no intermediate rule is selected. Aborted.");
 
-        if (row.detour_section == row.section)
-            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' cannot point to itself. Aborted.");
+            if (row.detour_section == row.section)
+                fail_outbound_detour("Outbound cascade for rule '" + row.section + "' cannot point to itself. Aborted.");
 
-        let target = parsed.by_section[row.detour_section];
-        if (type(target) != "object")
-            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references missing rule '" +
-                row.detour_section + "'. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
+            let target = parsed.by_section[row.detour_section];
+            if (type(target) != "object")
+                fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references missing rule '" +
+                    row.detour_section + "'. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
 
-        if (!target.enabled)
-            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references disabled rule '" +
-                row.detour_section + "'. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
+            if (!target.enabled || (runtime_quarantine_mode && runtime_quarantined_sections[row.detour_section] != null))
+                fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references disabled rule '" +
+                    row.detour_section + "'. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
 
-        if (!outbound_detour_target_action(target.action))
-            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references rule '" +
-                row.detour_section + "', but it is not a Connection or AmneziaWG rule. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
+            if (!outbound_detour_target_action(target.action))
+                fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references rule '" +
+                    row.detour_section + "', but it is not a Connection or AmneziaWG rule. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
 
-        if (outbound_detour_chain_reaches_source(parsed.by_section, row.section, row.detour_section))
-            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' creates a cycle through '" +
-                row.detour_section + "'. Aborted.");
-
+            if (outbound_detour_chain_reaches_source(parsed.by_section, row.section, row.detour_section))
+                fail_outbound_detour("Outbound cascade for rule '" + row.section + "' creates a cycle through '" +
+                    row.detour_section + "'. Aborted.");
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
     }
 }
 
@@ -764,7 +882,7 @@ function fixture_get_section(section_name) {
     if (section_name == "settings" && type(fixture.settings) == "object")
         return fixture.settings;
 
-    for (let type_name in [ "settings", "server", "section", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
+    for (let type_name in [ "settings", "server", "section", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level", "condition", "outbound_source", "outbound_group", "balancer" ]) {
         for (let section in fixture_section_list(type_name)) {
             if (as_string(section[".name"]) == section_name)
                 return section;
@@ -1437,7 +1555,7 @@ function validate_outbound_json_rule(section) {
 
 function validate_outbound_json_values(section) {
     let name = section_name(section);
-    let values = connections.outbound_jsons(section);
+    let values = connections.outbound_jsons(section, true);
     let require_user_tag = length(list_option(section, "outbound_jsons")) > 0;
     let tags = {};
 
@@ -1909,19 +2027,29 @@ function validate_subscription_download_sections(sections, context) {
             continue;
 
         let name = section_name(section);
-        for (let entry in connections.subscription_urls(section)) {
-            let target = connections.subscription_download_section(section, entry);
-            if (target == "")
-                continue;
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            for (let entry in connections.subscription_urls(section)) {
+                let target = connections.subscription_download_section(section, entry);
+                if (target == "")
+                    continue;
 
-            validate_download_section_rows(
-                target,
-                context.byedpi_installed,
-                context.zapret_installed,
-                context.zapret2_installed,
-                rows
-            );
+                validate_download_section_rows(
+                    target,
+                    context.byedpi_installed,
+                    context.zapret_installed,
+                    context.zapret2_installed,
+                    rows
+                );
+            }
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
         }
+        current_validating_section = "";
     }
 }
 
@@ -1942,39 +2070,48 @@ function validate_server_routing_sections(sections) {
             continue;
 
         let name = section_name(server);
-        let protocol = option(server, "protocol", "vless");
-        if (protocol != "tailscale" && protocol != "json_inbound") {
-            let port_str = trim(as_string(option(server, "listen_port", "")));
-            if (port_str == "")
-                port_str = (protocol == "socks" || protocol == "http" || protocol == "shadowsocks") ? "1080" : "443";
-            let port_num = normalize_port_number_value(port_str);
-            if (port_num == 1602 || port_num == 1053 || port_num == 5354)
-                fail_validation("Server '" + name + "' uses reserved internal Tachyon port " + port_num + " (1602 is tproxy-in, 1053 is dns-block-in, 5354 is dns-source-in). Choose a different listen_port (e.g. 8443 or 443). Aborted.");
-        }
-        let mode = option(server, "routing_mode", "rules");
-        if (!contains([ "rules", "direct", "section" ], mode))
-            fail_validation("Server '" + name + "' uses unsupported routing mode '" + mode + "'. Aborted.");
-
-        if (option(server, "protocol", "vless") == "mtproto") {
-            let faketls = option(server, "mtproto_faketls", "google.com");
-            if (common.mtproto_secret_canonical(option(server, "mtproto_secret", ""), faketls) == null)
-                fail_validation("Server '" + name + "' has an invalid MTProto secret. Provide the full 'ee' secret or a 16-byte key in hex or base64 form. Aborted.");
-        }
-
-        if (mode != "section")
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
             continue;
+        current_validating_section = name;
+        try {
+            let protocol = option(server, "protocol", "vless");
+            if (protocol != "tailscale" && protocol != "json_inbound") {
+                let port_str = trim(as_string(option(server, "listen_port", "")));
+                if (port_str == "")
+                    port_str = (protocol == "socks" || protocol == "http" || protocol == "shadowsocks") ? "1080" : "443";
+                let port_num = normalize_port_number_value(port_str);
+                if (port_num == 1602 || port_num == 1053 || port_num == 5354)
+                    fail_validation("Server '" + name + "' uses reserved internal Tachyon port " + port_num + " (1602 is tproxy-in, 1053 is dns-block-in, 5354 is dns-source-in). Choose a different listen_port (e.g. 8443 or 443). Aborted.");
+            }
+            let mode = option(server, "routing_mode", "rules");
+            if (!contains([ "rules", "direct", "section" ], mode))
+                fail_validation("Server '" + name + "' uses unsupported routing mode '" + mode + "'. Aborted.");
 
-        let target_name = option(server, "routing_section", "");
-        if (target_name == "")
-            fail_validation("Server '" + name + "' uses selected-section routing, but no routing section is selected. Aborted.");
+            if (option(server, "protocol", "vless") == "mtproto") {
+                let faketls = option(server, "mtproto_faketls", "google.com");
+                if (common.mtproto_secret_canonical(option(server, "mtproto_secret", ""), faketls) == null)
+                    fail_validation("Server '" + name + "' has an invalid MTProto secret. Provide the full 'ee' secret or a 16-byte key in hex or base64 form. Aborted.");
+            }
 
-        let target = by_section[target_name];
-        if (type(target) != "object")
-            fail_validation("Server '" + name + "' references missing routing section '" + target_name + "'. Aborted.");
-        if (!target.enabled)
-            fail_validation("Server '" + name + "' references disabled routing section '" + target_name + "'. Aborted.");
-        if (!server_routing_section_action_supported(target.action))
-            fail_validation("Server '" + name + "' references routing section '" + target_name + "' with unsupported action '" + target.action + "'. Select a Connection, proxy, JSON outbound, VPN, AWG, Zapret, Zapret2, or ByeDPI section. Aborted.");
+            if (mode == "section") {
+                let target_name = option(server, "routing_section", "");
+                if (target_name == "")
+                    fail_validation("Server '" + name + "' uses selected-section routing, but no routing section is selected. Aborted.");
+
+                let target = by_section[target_name];
+                if (type(target) != "object")
+                    fail_validation("Server '" + name + "' references missing routing section '" + target_name + "'. Aborted.");
+                if (!target.enabled || (runtime_quarantine_mode && runtime_quarantined_sections[target_name] != null))
+                    fail_validation("Server '" + name + "' references disabled routing section '" + target_name + "'. Aborted.");
+                if (!server_routing_section_action_supported(target.action))
+                    fail_validation("Server '" + name + "' references routing section '" + target_name + "' with unsupported action '" + target.action + "'. Select a Connection, proxy, JSON outbound, VPN, AWG, Zapret, Zapret2, or ByeDPI section. Aborted.");
+            }
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
     }
 }
 
@@ -2230,20 +2367,29 @@ function validate_global_rules(sections) {
 
     for (let section in sections) {
         let name = section_name(section);
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            for (let entry in connections.global_rules(section)) {
+                claim_count++;
+                let claim = connections.global_rule_claim(entry);
+                if (claim == null)
+                    fail_validation("Rule '" + name + "' has a malformed global rule '" + entry +
+                        "'. Expected '<option>:<value>' with a supported option. Aborted.");
 
-        for (let entry in connections.global_rules(section)) {
-            claim_count++;
-            let claim = connections.global_rule_claim(entry);
-            if (claim == null)
-                fail_validation("Rule '" + name + "' has a malformed global rule '" + entry +
-                    "'. Expected '<option>:<value>' with a supported option. Aborted.");
-
-            // A claim that no longer matches the owner's own conditions is inert
-            // and reserves nothing, so it neither blocks others nor collides here.
-            let values = connections.condition_values(section, claim.kind);
-            if (values != null && values[claim.value] == true)
-                owners[claim.kind + ":" + claim.value] = name;
+                // A claim that no longer matches the owner's own conditions is inert
+                // and reserves nothing, so it neither blocks others nor collides here.
+                let values = connections.condition_values(section, claim.kind);
+                if (values != null && values[claim.value] == true)
+                    owners[claim.kind + ":" + claim.value] = name;
+            }
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
         }
+        current_validating_section = "";
     }
 
     if (!claim_count)
@@ -2251,21 +2397,30 @@ function validate_global_rules(sections) {
 
     for (let section in sections) {
         let name = section_name(section);
-
-        for (let kind in connections.GLOBAL_RULE_OPTIONS) {
-            let values = connections.condition_values(section, kind);
-            if (values == null)
-                continue;
-
-            for (let value in keys(values)) {
-                let owner = owners[kind + ":" + value];
-                if (owner == null || owner == name)
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            for (let kind in connections.GLOBAL_RULE_OPTIONS) {
+                let values = connections.condition_values(section, kind);
+                if (values == null)
                     continue;
-                fail_validation("Rule '" + name + "' uses '" + value + "' (" + kind +
-                    "), which rule '" + owner + "' has claimed as a global rule. Remove it from '" +
-                    name + "' or drop the global claim in '" + owner + "'. Aborted.");
+
+                for (let value in keys(values)) {
+                    let owner = owners[kind + ":" + value];
+                    if (owner == null || owner == name)
+                        continue;
+                    fail_validation("Rule '" + name + "' uses '" + value + "' (" + kind +
+                        "), which rule '" + owner + "' has claimed as a global rule. Remove it from '" +
+                        name + "' or drop the global claim in '" + owner + "'. Aborted.");
+                }
             }
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
         }
+        current_validating_section = "";
     }
 }
 
@@ -2400,6 +2555,93 @@ function validate_routing_strategy(settings, sections) {
     }
 }
 
+function validate_modular_entities(sections, context) {
+    let graph_check = connections.validate_condition_graph();
+    if (!graph_check.valid) {
+        if (runtime_quarantine_mode)
+            log_message("Condition graph warning: " + graph_check.message, "warn");
+        else
+            fail_validation(graph_check.message + ". Aborted.");
+    }
+
+    let broken_conditions = {};
+    for (let cond in sections_by_type("condition")) {
+        let cname = section_name(cond);
+        current_validating_section = runtime_quarantine_mode ? cname : "";
+        try {
+            for (let value in list_option(cond, "community_lists"))
+                validate_service_value(value, context);
+            for (let value in list_option(cond, "rule_set"))
+                validate_ruleset_reference_value(value, context);
+            for (let value in list_option(cond, "rule_set_with_subnets"))
+                validate_ruleset_reference_value(value, context);
+            for (let value in list_option(cond, "domain_ip_lists"))
+                validate_plain_domain_ip_list_reference_value(value);
+            for (let value in list_option(cond, "ports"))
+                validate_port_condition_value(value, cname);
+            validate_dscp_values(cond);
+            validate_geoip_country_values(cond);
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+            broken_conditions[cname] = runtime_quarantined_sections[cname] || ("Condition '" + cname + "' is invalid");
+            delete runtime_quarantined_sections[cname];
+        }
+        current_validating_section = "";
+    }
+
+    let broken_groups = {};
+    for (let group in sections_by_type("outbound_group")) {
+        let gname = section_name(group);
+        for (let sref in connections.whitespace_list_value(group, "source_refs")) {
+            if (connections.outbound_source_section(sref) == null) {
+                if (runtime_quarantine_mode) {
+                    broken_groups[gname] = "Outbound group '" + gname + "' references missing outbound source '" + sref + "'.";
+                } else {
+                    fail_validation("Outbound group '" + gname + "' references missing outbound source '" + sref + "'. Aborted.");
+                }
+            }
+        }
+    }
+
+    for (let section in sections) {
+        if (!section_enabled(section))
+            continue;
+        let name = section_name(section);
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            for (let cref in connections.section_condition_refs(section)) {
+                if (connections.condition_section(cref) == null)
+                    fail_validation("Rule '" + name + "' references missing condition '" + cref + "'. Aborted.");
+                if (broken_conditions[cref] != null)
+                    fail_validation("Rule '" + name + "' uses invalid condition '" + cref + "': " + broken_conditions[cref] + " Aborted.");
+            }
+            for (let sref in connections.section_outbound_source_refs(section)) {
+                if (connections.outbound_source_section(sref) == null)
+                    fail_validation("Rule '" + name + "' references missing outbound source '" + sref + "'. Aborted.");
+            }
+            for (let gref in connections.section_outbound_group_refs(section)) {
+                if (connections.outbound_group_section(gref) == null)
+                    fail_validation("Rule '" + name + "' references missing outbound group '" + gref + "'. Aborted.");
+                if (broken_groups[gref] != null)
+                    fail_validation("Rule '" + name + "' uses invalid outbound group '" + gref + "': " + broken_groups[gref] + " Aborted.");
+            }
+            for (let bref in connections.section_balancer_refs(section)) {
+                if (connections.balancer_section(bref) == null)
+                    fail_validation("Rule '" + name + "' references missing balancer '" + bref + "'. Aborted.");
+            }
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
+    }
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
@@ -2408,6 +2650,7 @@ function validate_runtime_config(context) {
     let guest_modes = sections_by_type("guest_mode");
 
     validate_runtime_mark_ranges_context(context);
+    validate_modular_entities(sections, context);
 
     // Native-mode Tailscale servers need the system tailscaled binary; the
     // check lives here so every validation entry point (including fixtures)
@@ -2415,26 +2658,37 @@ function validate_runtime_config(context) {
     for (let ts_server in sections_by_type("server")) {
         if (!server_enabled(ts_server))
             continue;
+        let ts_name = section_name(ts_server);
+        if (runtime_quarantine_mode && runtime_quarantined_sections[ts_name] != null)
+            continue;
         if (option(ts_server, "protocol", "vless") != "tailscale")
             continue;
-        if (option(ts_server, "tailscale_mode", "singbox") != "native") {
-            if (sing_box_is_tachyon_core(context, null)) {
-                if (bool_option(ts_server, "tailscale_advertise_exit_node", false))
-                    fail_requirement("Server '" + section_name(ts_server) + "' enables 'tailscale_advertise_exit_node' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or disable exit node advertising. Aborted.", "fatal");
-                for (let adv_route in list_option(ts_server, "tailscale_advertise_routes")) {
-                    let r = trim(as_string(adv_route));
-                    if (r == "0.0.0.0/0" || r == "::/0")
-                        fail_requirement("Server '" + section_name(ts_server) + "' advertises default exit route '" + r + "' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or remove the default route. Aborted.", "fatal");
+        current_validating_section = ts_name;
+        try {
+            if (option(ts_server, "tailscale_mode", "singbox") != "native") {
+                if (sing_box_is_tachyon_core(context, null)) {
+                    if (bool_option(ts_server, "tailscale_advertise_exit_node", false))
+                        fail_requirement("Server '" + ts_name + "' enables 'tailscale_advertise_exit_node' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or disable exit node advertising. Aborted.", "fatal");
+                    for (let adv_route in list_option(ts_server, "tailscale_advertise_routes")) {
+                        let r = trim(as_string(adv_route));
+                        if (r == "0.0.0.0/0" || r == "::/0")
+                            fail_requirement("Server '" + ts_name + "' advertises default exit route '" + r + "' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or remove the default route. Aborted.", "fatal");
+                    }
                 }
+            } else {
+                // Without a key `tailscale up` falls back to interactive login and
+                // would block the runtime forever on a headless router.
+                if (trim(as_string(option(ts_server, "tailscale_auth_key", "") || "")) == "")
+                    fail_requirement("Server '" + ts_name + "' uses native Tailscale mode without an auth key. Generate one in the Tailscale admin console and fill in 'Tailscale auth key', or switch this server back to sing-box mode. Aborted.", "fatal");
+                if (!command_exists("tailscaled"))
+                    fail_requirement("Server '" + ts_name + "' uses native Tailscale mode, but tailscaled is not installed. Install the Tailscale component on the Updates tab, or switch this server back to sing-box mode. Aborted.", "fatal");
             }
-            continue;
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
         }
-        // Without a key `tailscale up` falls back to interactive login and
-        // would block the runtime forever on a headless router.
-        if (trim(as_string(option(ts_server, "tailscale_auth_key", "") || "")) == "")
-            fail_requirement("Server '" + section_name(ts_server) + "' uses native Tailscale mode without an auth key. Generate one in the Tailscale admin console and fill in 'Tailscale auth key', or switch this server back to sing-box mode. Aborted.", "fatal");
-        if (!command_exists("tailscaled"))
-            fail_requirement("Server '" + section_name(ts_server) + "' uses native Tailscale mode, but tailscaled is not installed. Install the Tailscale component on the Updates tab, or switch this server back to sing-box mode. Aborted.", "fatal");
+        current_validating_section = "";
     }
 
     validate_dns_settings(settings, sections, context);
@@ -2443,33 +2697,99 @@ function validate_runtime_config(context) {
     let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
     if (bt_policy != "" && !contains([ "off", "direct", "block" ], bt_policy))
         fail_validation("Unsupported BitTorrent policy '" + bt_policy + "'. Use off, direct, or block. Aborted.");
-    validate_routing_strategy(settings, sections);
+    if (runtime_quarantine_mode) {
+        try {
+            current_validating_section = "__settings_routing__";
+            validate_routing_strategy(settings, sections);
+            delete runtime_quarantined_sections["__settings_routing__"];
+        } catch (e) {
+            delete runtime_quarantined_sections["__settings_routing__"];
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
+    } else {
+        validate_routing_strategy(settings, sections);
+    }
 
     if (download_via_proxy_enabled(settings, "lists")) {
-        validate_download_section_rows(
-            download_via_proxy_section(settings, "lists"),
-            context.byedpi_installed,
-            context.zapret_installed,
-            context.zapret2_installed,
-            basic_rows_from_sections(sections)
-        );
+        if (runtime_quarantine_mode) {
+            try {
+                current_validating_section = "__settings_dl_lists__";
+                validate_download_section_rows(
+                    download_via_proxy_section(settings, "lists"),
+                    context.byedpi_installed,
+                    context.zapret_installed,
+                    context.zapret2_installed,
+                    basic_rows_from_sections(sections)
+                );
+                delete runtime_quarantined_sections["__settings_dl_lists__"];
+            } catch (e) {
+                delete runtime_quarantined_sections["__settings_dl_lists__"];
+                current_validating_section = "";
+                if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                    die(e);
+            }
+            current_validating_section = "";
+        } else {
+            validate_download_section_rows(
+                download_via_proxy_section(settings, "lists"),
+                context.byedpi_installed,
+                context.zapret_installed,
+                context.zapret2_installed,
+                basic_rows_from_sections(sections)
+            );
+        }
     }
     if (download_via_proxy_enabled(settings, "components")) {
-        validate_download_section_rows(
-            download_via_proxy_section(settings, "components"),
-            context.byedpi_installed,
-            context.zapret_installed,
-            context.zapret2_installed,
-            basic_rows_from_sections(sections)
-        );
+        if (runtime_quarantine_mode) {
+            try {
+                current_validating_section = "__settings_dl_components__";
+                validate_download_section_rows(
+                    download_via_proxy_section(settings, "components"),
+                    context.byedpi_installed,
+                    context.zapret_installed,
+                    context.zapret2_installed,
+                    basic_rows_from_sections(sections)
+                );
+                delete runtime_quarantined_sections["__settings_dl_components__"];
+            } catch (e) {
+                delete runtime_quarantined_sections["__settings_dl_components__"];
+                current_validating_section = "";
+                if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                    die(e);
+            }
+            current_validating_section = "";
+        } else {
+            validate_download_section_rows(
+                download_via_proxy_section(settings, "components"),
+                context.byedpi_installed,
+                context.zapret_installed,
+                context.zapret2_installed,
+                basic_rows_from_sections(sections)
+            );
+        }
     }
 
     validate_outbound_detours_rows(detour_rows_from_sections(sections));
     validate_subscription_download_sections(sections, context);
     validate_server_routing_sections(sections);
 
-    for (let section in sections)
-        validate_rule(section, sections, context);
+    for (let section in sections) {
+        let name = section_name(section);
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            validate_rule(section, sections, context);
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
+    }
 
     validate_global_rules(sections);
 
@@ -2481,6 +2801,8 @@ function validate_runtime_config(context) {
 
     for (let guest_mode in guest_modes)
         validate_guest_mode(guest_mode);
+
+    persist_validator_quarantine();
 }
 
 function context_from_runtime() {
@@ -2606,20 +2928,30 @@ function validate_extended_server_features(ctx, sing_box_version, sing_box_versi
             continue;
 
         let name = section_name(section);
-        let protocol = option(section, "protocol", "vless");
-        let transport = option(section, "transport", "tcp");
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            let protocol = option(section, "protocol", "vless");
+            let transport = option(section, "transport", "tcp");
 
-        if (protocol == "mtproto")
-            fail_requirement("Server '" + name + "' uses MTProto proxy, but sing-box-extended is not installed. Install sing-box-extended or disable this server. Aborted.", "fatal");
+            if (protocol == "mtproto")
+                fail_requirement("Server '" + name + "' uses MTProto proxy, but sing-box-extended is not installed. Install sing-box-extended or disable this server. Aborted.", "fatal");
 
-        // Native-mode Tailscale runs tailscaled outside sing-box and does
-        // not need the with_tailscale build.
-        if (protocol == "tailscale" && option(section, "tailscale_mode", "singbox") != "native" &&
-            !sing_box_supports_tailscale(ctx, sing_box_version, sing_box_version_output))
-            fail_requirement("Server '" + name + "' uses Tailscale, but the installed sing-box binary was built without Tailscale support. Install full sing-box or sing-box-extended, switch this server to native Tailscale mode, or disable this server. Aborted.", "fatal");
+            // Native-mode Tailscale runs tailscaled outside sing-box and does
+            // not need the with_tailscale build.
+            if (protocol == "tailscale" && option(section, "tailscale_mode", "singbox") != "native" &&
+                !sing_box_supports_tailscale(ctx, sing_box_version, sing_box_version_output))
+                fail_requirement("Server '" + name + "' uses Tailscale, but the installed sing-box binary was built without Tailscale support. Install full sing-box or sing-box-extended, switch this server to native Tailscale mode, or disable this server. Aborted.", "fatal");
 
-        if (transport == "xhttp" && !sing_box_supports_xhttp(ctx, sing_box_version, sing_box_version_output))
-            fail_requirement("Server '" + name + "' uses XHTTP transport, but the installed sing-box binary does not support it. Install sing-box-extended or a binary with XHTTP support, or change the transport. Aborted.", "fatal");
+            if (transport == "xhttp" && !sing_box_supports_xhttp(ctx, sing_box_version, sing_box_version_output))
+                fail_requirement("Server '" + name + "' uses XHTTP transport, but the installed sing-box binary does not support it. Install sing-box-extended or a binary with XHTTP support, or change the transport. Aborted.", "fatal");
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
     }
 }
 
@@ -2642,98 +2974,117 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
             continue;
 
         let name = section_name(section);
-        let action = rule_action(section);
-        // tachyon-core carries AmneziaWG inside its wireguard endpoint
-        // (AwgParams::from_obj), so it is a supported target like extended/lx.
-        if (action == "awg" && !sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version) && !sing_box_is_tachyon_core(ctx, sing_box_version))
-            fail_requirement("Section '" + name + "' uses AmneziaWG, but the installed sing-box binary does not support it. Install sing-box-extended, sing-box-lx or tachyon-core, or change the action. Aborted.", "fatal");
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            let action = rule_action(section);
+            // tachyon-core carries AmneziaWG inside its wireguard endpoint
+            // (AwgParams::from_obj), so it is a supported target like extended/lx.
+            if (action == "awg" && !sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version) && !sing_box_is_tachyon_core(ctx, sing_box_version))
+                fail_requirement("Section '" + name + "' uses AmneziaWG, but the installed sing-box binary does not support it. Install sing-box-extended, sing-box-lx or tachyon-core, or change the action. Aborted.", "fatal");
 
-        if (action == "awg") {
-            // NB: sing_box_is_lx() is true for tachyon-core as well (it folds in
-            // sing_box_version_is_foreign_core), so the core has to be excluded
-            // explicitly: its AWG_FIELDS has no j1/j2/j3/itime and an unknown
-            // endpoint key is a hard rejection, not a warning.
-            let is_core_awg = sing_box_is_tachyon_core(ctx, sing_box_version);
-            if (removed_junk_sig_set(section) &&
-                !common.extended_awg_schema_has_junk_signatures(sing_box_version) &&
-                !(sing_box_is_lx(ctx, sing_box_version) && !is_core_awg))
-                fail_requirement("Section '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but the installed core does not accept junk-signature fields: sing-box-extended dropped them in 2.6.1 and tachyon-core never had them. Remove them from the section or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
+            if (action == "awg") {
+                // NB: sing_box_is_lx() is true for tachyon-core as well (it folds in
+                // sing_box_version_is_foreign_core), so the core has to be excluded
+                // explicitly: its AWG_FIELDS has no j1/j2/j3/itime and an unknown
+                // endpoint key is a hard rejection, not a warning.
+                let is_core_awg = sing_box_is_tachyon_core(ctx, sing_box_version);
+                if (removed_junk_sig_set(section) &&
+                    !common.extended_awg_schema_has_junk_signatures(sing_box_version) &&
+                    !(sing_box_is_lx(ctx, sing_box_version) && !is_core_awg))
+                    fail_requirement("Section '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but the installed core does not accept junk-signature fields: sing-box-extended dropped them in 2.6.1 and tachyon-core never had them. Remove them from the section or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
 
-            let has_v31_trailers = bool_option(section, "awg_random_trailers", false);
-            let has_v31_cookies = bool_option(section, "awg_disable_cookies", false);
-            if ((has_v31_trailers || has_v31_cookies) && !sing_box_is_lx(ctx, sing_box_version) && !sing_box_is_tachyon_core(ctx, sing_box_version))
-                fail_requirement("Section '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx and tachyon-core. Install one of them in the Updates tab or disable these options. Aborted.", "fatal");
-        }
-
-        // These actions emit outbound/endpoint shapes that only exist in the
-        // sing-box-extended fork: "warp" and the profiles[]-style "masque"/
-        // "openvpn" endpoints are absent from stock sing-box, and sing-box-lx
-        // uses a different masque schema that our UCI options cannot fill.
-        // Gating here keeps an invalid section from failing the whole config.
-        let extended_only_labels = {
-            warp: "WARP",
-            masque: "MASQUE",
-            openvpn: "OpenVPN",
-            snell: "Snell",
-            mieru: "Mieru",
-            sudoku: "Sudoku"
-        };
-        let extended_only_label = extended_only_labels[as_string(action)];
-        // NB: sing_box_is_extended() also matches sing-box-lx, so exclude it here.
-        if (extended_only_label != null) {
-            let is_extended = sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version);
-            let is_core = sing_box_is_tachyon_core(ctx, sing_box_version);
-            let core_supported = (action == "warp" || action == "masque" || action == "openvpn" || action == "snell" || action == "mieru");
-            if (!is_extended && !(is_core && core_supported)) {
-                let lx_note = (sing_box_is_lx(ctx, sing_box_version) && !is_core)
-                    ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
-                    : (is_core ? " tachyon-core does not implement " + extended_only_label + " yet." : "");
-                fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary" + (core_supported ? " or tachyon-core" : "") + " (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended" + (core_supported ? " or tachyon-core" : "") + " or change the action. Aborted.", "fatal");
+                let has_v31_trailers = bool_option(section, "awg_random_trailers", false);
+                let has_v31_cookies = bool_option(section, "awg_disable_cookies", false);
+                if ((has_v31_trailers || has_v31_cookies) && !sing_box_is_lx(ctx, sing_box_version) && !sing_box_is_tachyon_core(ctx, sing_box_version))
+                    fail_requirement("Section '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx and tachyon-core. Install one of them in the Updates tab or disable these options. Aborted.", "fatal");
             }
-        }
 
-        // OpenVPN was added in sing-box 1.14.0. Older extended builds (e.g.
-        // 1.13.x-extended-2.x.x) don't know the endpoint type and abort with
-        // "unknown endpoint type: openvpn". Gate on version so the user gets a
-        // clear error instead of a cryptic sing-box fatal.
-        if (action == "openvpn" && !sing_box_is_tachyon_core(ctx, sing_box_version) && !common.sing_box_supports_openvpn(sing_box_version))
-            fail_requirement("Section '" + name + "' uses OpenVPN, but the installed sing-box version (" + as_string(sing_box_version) + ") does not support it. OpenVPN requires sing-box 1.14.0 or newer. Update sing-box-extended in the Updates tab or change the action. Aborted.", "fatal");
+            // These actions emit outbound/endpoint shapes that only exist in the
+            // sing-box-extended fork: "warp" and the profiles[]-style "masque"/
+            // "openvpn" endpoints are absent from stock sing-box, and sing-box-lx
+            // uses a different masque schema that our UCI options cannot fill.
+            // Gating here keeps an invalid section from failing the whole config.
+            let extended_only_labels = {
+                warp: "WARP",
+                masque: "MASQUE",
+                openvpn: "OpenVPN",
+                snell: "Snell",
+                mieru: "Mieru",
+                sudoku: "Sudoku"
+            };
+            let extended_only_label = extended_only_labels[as_string(action)];
+            // NB: sing_box_is_extended() also matches sing-box-lx, so exclude it here.
+            if (extended_only_label != null) {
+                let is_extended = sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version);
+                let is_core = sing_box_is_tachyon_core(ctx, sing_box_version);
+                let core_supported = (action == "warp" || action == "masque" || action == "openvpn" || action == "snell" || action == "mieru");
+                if (!is_extended && !(is_core && core_supported)) {
+                    let lx_note = (sing_box_is_lx(ctx, sing_box_version) && !is_core)
+                        ? " sing-box-lx " + as_string(sing_box_version) + " does ship this protocol, but Tachyon cannot fill its different configuration schema yet — support is planned."
+                        : (is_core ? " tachyon-core does not implement " + extended_only_label + " yet." : "");
+                    fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but Tachyon can only configure it with the sing-box-extended binary" + (core_supported ? " or tachyon-core" : "") + " (stock sing-box lacks the endpoint; sing-box-lx uses a different schema)." + lx_note + " Install sing-box-extended" + (core_supported ? " or tachyon-core" : "") + " or change the action. Aborted.", "fatal");
+                }
+            }
+
+            // OpenVPN was added in sing-box 1.14.0. Older extended builds (e.g.
+            // 1.13.x-extended-2.x.x) don't know the endpoint type and abort with
+            // "unknown endpoint type: openvpn". Gate on version so the user gets a
+            // clear error instead of a cryptic sing-box fatal.
+            if (action == "openvpn" && !sing_box_is_tachyon_core(ctx, sing_box_version) && !common.sing_box_supports_openvpn(sing_box_version))
+                fail_requirement("Section '" + name + "' uses OpenVPN, but the installed sing-box version (" + as_string(sing_box_version) + ") does not support it. OpenVPN requires sing-box 1.14.0 or newer. Update sing-box-extended in the Updates tab or change the action. Aborted.", "fatal");
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
     }
 
     for (let server in sections_by_type("server")) {
         if (!server_enabled(server))
             continue;
 
-        let srv_proto = as_string(option(server, "protocol", "vless"));
-        if (srv_proto == "mtproto" && sing_box_is_tachyon_core(ctx, sing_box_version) && match(as_string(sing_box_version), /^v?0\.0\./) != null)
-            fail_requirement("Server '" + section_name(server) + "' uses MTProto, but tachyon-core does not implement MTProto yet. Use sing-box-extended or select another protocol. Aborted.", "fatal");
-
-        if (srv_proto == "tailscale" && option(server, "tailscale_mode", "singbox") != "native" && sing_box_is_tachyon_core(ctx, sing_box_version)) {
-            if (bool_option(server, "tailscale_advertise_exit_node", false))
-                fail_requirement("Server '" + section_name(server) + "' enables 'tailscale_advertise_exit_node' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or disable exit node advertising. Aborted.", "fatal");
-            for (let adv_route in list_option(server, "tailscale_advertise_routes")) {
-                let r = trim(as_string(adv_route));
-                if (r == "0.0.0.0/0" || r == "::/0")
-                    fail_requirement("Server '" + section_name(server) + "' advertises default exit route '" + r + "' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or remove the default route. Aborted.", "fatal");
-            }
-        }
-
-        if (srv_proto != "awg")
-            continue;
-
         let name = section_name(server);
-        // Same NB as on the section side: sing_box_is_lx() is true for
-        // tachyon-core too, and the core rejects j1/j2/j3/itime outright.
-        let is_core_awg = sing_box_is_tachyon_core(ctx, sing_box_version);
-        if (removed_junk_sig_set(server) &&
-            !common.extended_awg_schema_has_junk_signatures(sing_box_version) &&
-            !(sing_box_is_lx(ctx, sing_box_version) && !is_core_awg))
-            fail_requirement("Server '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but the installed core does not accept junk-signature fields: sing-box-extended dropped them in 2.6.1 and tachyon-core never had them. Remove them from the server or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
+        if (runtime_quarantine_mode && runtime_quarantined_sections[name] != null)
+            continue;
+        current_validating_section = name;
+        try {
+            let srv_proto = as_string(option(server, "protocol", "vless"));
+            if (srv_proto == "mtproto" && sing_box_is_tachyon_core(ctx, sing_box_version) && match(as_string(sing_box_version), /^v?0\.0\./) != null)
+                fail_requirement("Server '" + name + "' uses MTProto, but tachyon-core does not implement MTProto yet. Use sing-box-extended or select another protocol. Aborted.", "fatal");
 
-        let has_srv_trailers = bool_option(server, "awg_random_trailers", false);
-        let has_srv_cookies = bool_option(server, "awg_disable_cookies", false);
-        if ((has_srv_trailers || has_srv_cookies) && !sing_box_is_lx(ctx, sing_box_version))
-            fail_requirement("Server '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx and tachyon-core. Install one of them in the Updates tab or disable these options. Aborted.", "fatal");
+            if (srv_proto == "tailscale" && option(server, "tailscale_mode", "singbox") != "native" && sing_box_is_tachyon_core(ctx, sing_box_version)) {
+                if (bool_option(server, "tailscale_advertise_exit_node", false))
+                    fail_requirement("Server '" + name + "' enables 'tailscale_advertise_exit_node' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or disable exit node advertising. Aborted.", "fatal");
+                for (let adv_route in list_option(server, "tailscale_advertise_routes")) {
+                    let r = trim(as_string(adv_route));
+                    if (r == "0.0.0.0/0" || r == "::/0")
+                        fail_requirement("Server '" + name + "' advertises default exit route '" + r + "' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or remove the default route. Aborted.", "fatal");
+                }
+            }
+
+            if (srv_proto == "awg") {
+                // Same NB as on the section side: sing_box_is_lx() is true for
+                // tachyon-core too, and the core rejects j1/j2/j3/itime outright.
+                let is_core_awg = sing_box_is_tachyon_core(ctx, sing_box_version);
+                if (removed_junk_sig_set(server) &&
+                    !common.extended_awg_schema_has_junk_signatures(sing_box_version) &&
+                    !(sing_box_is_lx(ctx, sing_box_version) && !is_core_awg))
+                    fail_requirement("Server '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but the installed core does not accept junk-signature fields: sing-box-extended dropped them in 2.6.1 and tachyon-core never had them. Remove them from the server or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
+
+                let has_srv_trailers = bool_option(server, "awg_random_trailers", false);
+                let has_srv_cookies = bool_option(server, "awg_disable_cookies", false);
+                if ((has_srv_trailers || has_srv_cookies) && !sing_box_is_lx(ctx, sing_box_version))
+                    fail_requirement("Server '" + name + "' enables AmneziaWG 3.1 features (RandomTrailers / DisableCookies), which are only supported by sing-box-lx and tachyon-core. Install one of them in the Updates tab or disable these options. Aborted.", "fatal");
+            }
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+        }
+        current_validating_section = "";
     }
 }
 
@@ -2992,17 +3343,31 @@ else if (mode == "mwan3-has-enabled-interface")
     exit(mwan3_has_enabled_interface() ? 0 : 1);
 else if (mode == "mwan3-is-active")
     exit(mwan3_is_active() ? 0 : 1);
-else if (mode == "check-requirements")
+else if (mode == "check-requirements") {
+    runtime_quarantine_mode = true;
     check_runtime_requirements();
-else if (mode == "validate-runtime")
+    persist_validator_quarantine();
+}
+else if (mode == "validate-runtime") {
+    runtime_quarantine_mode = true;
     validate_runtime_config(context_from_runtime());
+}
 // Both start-path validations in one process: the runtime context is expensive to
 // assemble (it shells out for versions and installed-package markers) and each mode
 // built its own copy. check_runtime_requirements() exits non-zero on failure, so
 // reaching the second call already means the requirements passed.
 else if (mode == "check-requirements-and-validate-runtime") {
+    runtime_quarantine_mode = true;
     check_runtime_requirements();
     validate_runtime_config(context_from_runtime());
+}
+else if (mode == "validate-runtime-quarantine-fixture") {
+    runtime_quarantine_mode = true;
+    use_fixture_cursor(ARGV[1]);
+    let ctx = context_from_json(ARGV[2], context_from_runtime());
+    validate_section_action_variant_support(ctx, ARGV[3] || "0.0.9");
+    validate_runtime_config(ctx);
+    printf("%J\n", runtime_quarantined_sections);
 }
 else if (mode == "validate-runtime-fixture") {
     use_fixture_cursor(ARGV[1]);

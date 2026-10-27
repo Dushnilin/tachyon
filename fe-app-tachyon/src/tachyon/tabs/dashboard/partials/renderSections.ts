@@ -1063,6 +1063,7 @@ function renderDefaultState({
             ),
           ],
         ),
+        renderConfigErrorBanner(section),
         E(
           'div',
           {
@@ -2267,6 +2268,7 @@ function renderDefaultState({
           ),
         ],
       ),
+      renderConfigErrorBanner(section),
       !isCollapsed
         ? E(
             'div',
@@ -2313,6 +2315,36 @@ function renderConfigErrorBadge(section: Tachyon.OutboundGroup) {
       title: section.configError,
     },
     _('Has errors'),
+  );
+}
+
+function renderConfigErrorBanner(section: Tachyon.OutboundGroup) {
+  if (!section.configError) {
+    return '';
+  }
+
+  return E(
+    'div',
+    {
+      class: 'tachyon_dashboard-page__outbound-section__error-banner',
+    },
+    [
+      E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__outbound-section__error-banner__title',
+        },
+        `⚠️ ${_('Section quarantined due to error (other sections continue working):')}`,
+      ),
+      E(
+        'div',
+        {
+          class: 'tachyon_dashboard-page__outbound-section__error-banner__text',
+        },
+        section.configError,
+      ),
+    ],
   );
 }
 

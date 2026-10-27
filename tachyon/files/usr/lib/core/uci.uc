@@ -519,10 +519,13 @@ function set(p1, p2, p3, p4) {
         value = p2;
     }
 
+    let parts = path_parts(path);
+    if (parts != null && parts.option == "")
+        return set_section(path, value);
+
     if (fixture_enabled())
         return state_set(path, value_to_string(value));
 
-    let parts = path_parts(path);
     let c = cursor();
     if (c == null || parts == null || parts.option == "")
         return false;

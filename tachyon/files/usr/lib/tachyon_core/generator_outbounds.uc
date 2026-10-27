@@ -388,7 +388,11 @@ function urltest_leaf_candidate_outbound(outbound) {
         return false;
 
     let t = lc(as_string(outbound.type || ""));
-    if (t == "selector" || t == "urltest" || t == "dns" || t == "block")
+    if (t == "selector" || t == "urltest" || t == "dns" || t == "block" || t == "desync")
+        return false;
+    if (t == "direct" && outbound.routing_mark != null && as_string(outbound.bind_interface || "") == "")
+        return false;
+    if (t == "socks" && as_string(outbound.server || "") == "127.0.0.1" && int(outbound.server_port || 0) >= 1080 && int(outbound.server_port || 0) < 1180)
         return false;
     if (t == "wireguard") {
         let peer = array_or_empty(outbound.peers)[0];
@@ -1227,7 +1231,7 @@ function is_fptn_link(link) {
 // does, so the dashboard lists the servers instead of one opaque card. Falls
 // back to false for anything undecodable, and the caller then keeps the raw
 // token for the core to expand itself.
-function add_fptn_manual_members(config, state, section_name, tag_name, link, taken, selector_tags, urltest_candidate_tags) {
+function add_fptn_manual_members(config, state, section_name, tag_name, link, taken, selector_tags, urltest_candidate_tags, source_id) {
     if (!is_fptn_link(link))
         return false;
     ensure_fptn_outbound_supported();
@@ -1235,7 +1239,23 @@ function add_fptn_manual_members(config, state, section_name, tag_name, link, ta
     if (decoded == null)
         return false;
 
-    for (let server in decoded.servers) {
+    let src_tag = as_string(source_id || "") != "" ? as_string(source_id) : "manual";
+    let src_obj = (connections && connections.outbound_source_section && src_tag != "manual")
+        ? connections.outbound_source_section(src_tag)
+        : null;
+    let fptn_sni = src_obj != null ? trim(option(src_obj, "sni", "")) : "";
+    let fptn_bypass = src_obj != null ? trim(option(src_obj, "bypass_method", "")) : "";
+    let fptn_pref = src_obj != null ? lc(trim(option(src_obj, "preferred_server", ""))) : "";
+    let ordered_servers = [];
+    for (let s in decoded.servers) {
+        if (fptn_pref != "" && (lc(as_string(s.name || "")) == fptn_pref || lc(as_string(s.host || "")) == fptn_pref))
+            push(ordered_servers, s);
+    }
+    for (let s in decoded.servers) {
+        if (fptn_pref == "" || (lc(as_string(s.name || "")) != fptn_pref && lc(as_string(s.host || "")) != fptn_pref))
+            push(ordered_servers, s);
+    }
+    for (let server in ordered_servers) {
         let member_tag = tag_name + "/" + server.name;
         if (taken[member_tag])
             member_tag = unique_tag(member_tag, taken);
@@ -1251,24 +1271,29 @@ function add_fptn_manual_members(config, state, section_name, tag_name, link, ta
         };
         if (server.md5_fingerprint != "")
             member.md5_fingerprint = server.md5_fingerprint;
+        if (fptn_sni != "")
+            member.sni = fptn_sni;
+        if (fptn_bypass != "")
+            member.bypass_method = fptn_bypass;
 
         push(config.outbounds, member);
         push(selector_tags, member_tag);
         push(urltest_candidate_tags, member_tag);
         state.links[member_tag] = as_string(link);
         runtime_subscription.remember_outbound_metadata(state, member_tag, server.name, member);
-        state.outboundMetadata.sources[member_tag] = "manual";
+        state.outboundMetadata.sources[member_tag] = src_tag;
     }
     return true;
 }
 
-function add_manual_proxy_link(config, state, section_name, manual_index, link, taken, selector_tags, urltest_candidate_tags) {
+function add_manual_proxy_link(config, state, section_name, manual_index, link, taken, selector_tags, urltest_candidate_tags, source_id) {
     let tag_name = outbound_tag(section_name + "-" + manual_index);
     if (taken[tag_name])
         tag_name = unique_tag(tag_name, taken);
     taken[tag_name] = true;
 
-    if (add_fptn_manual_members(config, state, section_name, tag_name, link, taken, selector_tags, urltest_candidate_tags))
+    let src_tag = as_string(source_id || "") != "" ? as_string(source_id) : "manual";
+    if (add_fptn_manual_members(config, state, section_name, tag_name, link, taken, selector_tags, urltest_candidate_tags, src_tag))
         return tag_name;
 
     let display_info = {};
@@ -1304,7 +1329,7 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
 
     state.links[tag_name] = as_string(link);
     runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
-    state.outboundMetadata.sources[tag_name] = "manual";
+    state.outboundMetadata.sources[tag_name] = src_tag;
     return tag_name;
 }
 
@@ -1317,6 +1342,9 @@ function add_connection_manual_links(config, state, section, taken, selector_tag
     let manual_links = connections.connection_urls(section);
     for (let i = 0; i < length(manual_links); i++) {
         let link = manual_links[i];
+        let src_id = (connections && connections.source_id_for_manual_item)
+            ? connections.source_id_for_manual_item(section, link)
+            : "";
         add_manual_proxy_link(
             config,
             state,
@@ -1325,7 +1353,8 @@ function add_connection_manual_links(config, state, section, taken, selector_tag
             link,
             taken,
             selector_tags,
-            urltest_candidate_tags
+            urltest_candidate_tags,
+            src_id
         );
     }
 }
@@ -1428,9 +1457,22 @@ function subscription_keyword_fold(value) {
     return result;
 }
 
-function subscription_keyword_filter(section) {
-    let include = list_option(section, "subscription_filter_include_keywords");
-    let exclude = list_option(section, "subscription_filter_exclude_keywords");
+function subscription_keyword_filter(section, source_entry) {
+    let include = [];
+    let exclude = [];
+    for (let kw in list_option(section, "subscription_filter_include_keywords"))
+        push(include, kw);
+    for (let kw in list_option(section, "subscription_filter_exclude_keywords"))
+        push(exclude, kw);
+    if (source_entry != null && source_entry != "" && connections && connections.subscription_url_settings) {
+        let src_settings = connections.subscription_url_settings(section, source_entry);
+        if (src_settings != null && type(src_settings) == "object") {
+            for (let kw in list_option(src_settings, "subscription_filter_include_keywords"))
+                push(include, kw);
+            for (let kw in list_option(src_settings, "subscription_filter_exclude_keywords"))
+                push(exclude, kw);
+        }
+    }
     if (length(include) == 0 && length(exclude) == 0)
         return null;
 
@@ -1471,14 +1513,38 @@ function subscription_keyword_name_passes(filter, name) {
 function add_subscription_source_with_state(config, section, source_index, source_entry, taken, selector_tags, urltest_candidate_tags, state, show_metadata, include_urltest_groups, hide_urltest_group_outbounds, hide_detour_outbounds, node_prefix) {
     let section_name = section[".name"];
     let source_section = runtime_subscription.source_id(section_name, source_index);
-    if (!runtime_subscription.source_cache_is_current(
-        source_section,
-        source_entry,
-        connections.subscription_user_agent(section, source_entry),
-        connections.subscription_hwid(section, source_entry),
-        connections.subscription_device_headers_signature(section, source_entry)
-    ))
-        return 0;
+    let ua = connections.subscription_user_agent(section, source_entry);
+    let hwid = connections.subscription_hwid(section, source_entry);
+    let hdr_sig = connections.subscription_device_headers_signature(section, source_entry);
+    if (!runtime_subscription.source_cache_is_current(source_section, source_entry, ua, hwid, hdr_sig)) {
+        let resolved_source_section = "";
+        for (let src in connections.outbound_source_sections()) {
+            let sname = as_string(src[".name"] || "");
+            if (sname == "" || as_string(src.url || "") != source_entry)
+                continue;
+            for (let cand in [ runtime_subscription.source_id(sname, 1), sname ]) {
+                if (runtime_subscription.source_cache_is_current(cand, source_entry, ua, hwid, hdr_sig)) {
+                    resolved_source_section = cand;
+                    break;
+                }
+            }
+            if (resolved_source_section != "")
+                break;
+        }
+        if (resolved_source_section == "") {
+            let sub_folder = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/tachyon-core/subscriptions";
+            for (let upath in (fs.glob(sub_folder + "/*.url") || [])) {
+                let base_name = replace(replace(upath, /^.*\//, ""), /\.url$/, "");
+                if (base_name != "" && runtime_subscription.source_cache_is_current(base_name, source_entry, ua, hwid, hdr_sig)) {
+                    resolved_source_section = base_name;
+                    break;
+                }
+            }
+        }
+        if (resolved_source_section == "")
+            return 0;
+        source_section = resolved_source_section;
+    }
 
     let source_outbounds = runtime_subscription.read_source_outbounds(source_section);
     if (length(source_outbounds) == 0)
@@ -1518,7 +1584,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     }
     let drop_urltest_members = include_urltest_groups === false && survivors > 0;
     node_prefix = trim(as_string(node_prefix));
-    let keyword_filter = subscription_keyword_filter(section);
+    let keyword_filter = subscription_keyword_filter(section, source_entry);
     let prepared = [];
     let display_names = [];
     let source_links = [];
@@ -1713,7 +1779,10 @@ function add_interface_connection_outbound(config, state, section, interface_ind
     push(selector_tags, tag_name);
     push(urltest_candidate_tags, tag_name);
     runtime_subscription.remember_outbound_metadata(state, tag_name, interface_name, outbound);
-    state.outboundMetadata.sources[tag_name] = "manual";
+    let src_id = (connections && connections.source_id_for_manual_item)
+        ? connections.source_id_for_manual_item(section, interface_name)
+        : "";
+    state.outboundMetadata.sources[tag_name] = src_id != "" ? src_id : "manual";
 }
 
 function add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags) {
@@ -1780,9 +1849,13 @@ function prepare_json_connection_outbounds(section, taken) {
 
         outbound.tag = tag_name;
         push(outbounds, outbound);
+        let src_id = (connections && connections.source_id_for_manual_item)
+            ? connections.source_id_for_manual_item(section, items[i])
+            : "";
         push(prepared, {
             outbound,
-            displayName: display_name != "" ? display_name : "JSON outbound " + (i + 1)
+            displayName: display_name != "" ? display_name : "JSON outbound " + (i + 1),
+            sourceId: src_id != "" ? src_id : "manual"
         });
     }
 
@@ -1804,7 +1877,7 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
             push(urltest_candidate_tags, tag_name);
         runtime_subscription.remember_outbound_metadata(state, tag_name, item.displayName, outbound);
         runtime_subscription.remember_urltest_group(state, tag_name, item.displayName, outbound);
-        state.outboundMetadata.sources[tag_name] = "manual";
+        state.outboundMetadata.sources[tag_name] = item.sourceId || "manual";
     }
 }
 
@@ -1939,7 +2012,8 @@ function apply_section_detour_to_connection_outbounds(config, start_index, detou
         if (outbound_type == "" ||
             outbound_type == "selector" ||
             outbound_type == "urltest" || outbound_type == "dns" ||
-            outbound_type == "block")
+            outbound_type == "block" || outbound_type == "direct" ||
+            outbound_type == "desync")
             continue;
 
         if (as_string(outbound.detour || "") == "")
@@ -1975,6 +2049,237 @@ function apply_section_packet_encoding_to_connection_outbounds(config, start_ind
     }
 }
 
+function enabled_action_index(sections, target_section, action_name) {
+    if (connections && connections.active_provider_section_index)
+        return connections.active_provider_section_index(action_name, sections, target_section);
+    let index = 0;
+    for (let section in sections) {
+        if (option(section, "action", "") != action_name)
+            continue;
+        index++;
+        if (section[".name"] == target_section[".name"])
+            return index;
+    }
+    return 0;
+}
+
+function add_openvpn_endpoint(config, section) {
+    let tag = outbound_tag(section[".name"]);
+    let server = option(section, "openvpn_server", "");
+    if (server == "")
+        ctx.runtime_generate_unsupported("OpenVPN section '" + section[".name"] + "' missing openvpn_server");
+    let port = int_option(section, "openvpn_server_port", "1194");
+    let proto = option(section, "openvpn_proto", "udp");
+    let endpoint = {
+        type: "openvpn-client",
+        tag,
+        server,
+        server_port: port,
+        network: proto
+    };
+
+    let username = option(section, "openvpn_username", "");
+    if (username != "") endpoint.username = username;
+    let password = option(section, "openvpn_password", "");
+    if (password != "") endpoint.password = password;
+
+    let cipher = option(section, "openvpn_cipher", "");
+    if (cipher != "") {
+        endpoint.cipher = cipher;
+        let dc = [ cipher ];
+        if (cipher != "AES-256-GCM") push(dc, "AES-256-GCM");
+        if (cipher != "AES-128-GCM") push(dc, "AES-128-GCM");
+        if (cipher != "CHACHA20-POLY1305") push(dc, "CHACHA20-POLY1305");
+        endpoint.data_ciphers = dc;
+    }
+    let auth = option(section, "openvpn_auth", "");
+    if (auth != "") endpoint.auth = auth;
+
+    let mtu = int_option(section, "openvpn_mtu", "0");
+    if (mtu > 0) endpoint.mtu = mtu;
+
+    let tls = {};
+    let ca   = option(section, "openvpn_ca", "");
+    if (ca != "") {
+        if (index(ca, "\n") == -1 && index(ca, "/") == 0)
+            tls.certificate_path = ca;
+        else
+            tls.certificate = [ ca ];
+    }
+    let cert = option(section, "openvpn_cert", "");
+    if (cert != "") {
+        if (index(cert, "\n") == -1 && index(cert, "/") == 0)
+            tls.client_certificate_path = cert;
+        else
+            tls.client_certificate = [ cert ];
+    }
+    let key  = option(section, "openvpn_key", "");
+    if (key != "") {
+        if (index(key, "\n") == -1 && index(key, "/") == 0)
+            tls.client_key_path = key;
+        else
+            tls.client_key = [ key ];
+    }
+
+    let tls_crypt = option(section, "openvpn_tls_crypt", "");
+    let tls_auth = option(section, "openvpn_tls_auth", "");
+    let direction = option(section, "openvpn_key_direction", "");
+
+    if (tls_crypt != "") {
+        let cw = { type: "tls_crypt" };
+        if (index(tls_crypt, "\n") == -1 && index(tls_crypt, "/") == 0)
+            cw.key_path = tls_crypt;
+        else
+            cw.key = [ tls_crypt ];
+        tls.control_wrap = cw;
+    } else if (tls_auth != "") {
+        let cw = { type: "tls_auth" };
+        if (index(tls_auth, "\n") == -1 && index(tls_auth, "/") == 0)
+            cw.key_path = tls_auth;
+        else
+            cw.key = [ tls_auth ];
+        if (direction == "0" || direction == "server")
+            cw.direction = "server";
+        else if (direction == "1" || direction == "client")
+            cw.direction = "client";
+        tls.control_wrap = cw;
+    }
+
+    let detour = outbound_detour_tag_for_section(section);
+    if (detour == "") {
+        let legacy_detour = option(section, "openvpn_detour", "");
+        if (legacy_detour != "")
+            detour = outbound_tag(legacy_detour);
+    }
+    if (detour != "") {
+        endpoint.detour = detour;
+    }
+
+    if (length(keys(tls)) > 0)
+        endpoint.tls = tls;
+
+    push(config.endpoints, endpoint);
+}
+
+function add_connection_dpi_sources(config, state, section, taken, selector_tags, urltest_candidate_tags, single_dpi_only) {
+    if (!connections || !connections.section_effective_outbound_sources)
+        return;
+    let section_name = section[".name"];
+    let sec_tag = outbound_tag(section_name);
+    let all_sections = (ctx.routes && type(ctx.routes.enabled_sections) == "function")
+        ? ctx.routes.enabled_sections()
+        : [];
+    for (let src in connections.section_effective_outbound_sources(section)) {
+        let stype = lc(trim(option(src, "source_type", "")));
+        let src_id = as_string(src[".name"] || "");
+        let display_name = trim(option(src, "name", src_id)) || src_id;
+        if (stype == "zapret2") {
+            let idx = enabled_action_index(all_sections, section, "zapret2");
+            if (idx <= 0)
+                idx = 1;
+            let tag_name = single_dpi_only ? sec_tag : unique_tag(outbound_tag(section_name + "-zapret2-" + src_id), taken);
+            taken[tag_name] = true;
+            let outbound = {
+                type: "direct",
+                tag: tag_name,
+                routing_mark: runtime_constants.ZAPRET2_ROUTE_MARK_BASE + idx
+            };
+            push(config.outbounds, outbound);
+            push(selector_tags, tag_name);
+            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.sources[tag_name] = src_id;
+        } else if (stype == "zapret") {
+            let idx = enabled_action_index(all_sections, section, "zapret");
+            if (idx <= 0)
+                idx = 1;
+            let tag_name = single_dpi_only ? sec_tag : unique_tag(outbound_tag(section_name + "-zapret-" + src_id), taken);
+            taken[tag_name] = true;
+            let outbound = {
+                type: "direct",
+                tag: tag_name,
+                routing_mark: runtime_constants.ZAPRET_ROUTE_MARK_BASE + idx
+            };
+            push(config.outbounds, outbound);
+            push(selector_tags, tag_name);
+            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.sources[tag_name] = src_id;
+        } else if (stype == "byedpi") {
+            let idx = enabled_action_index(all_sections, section, "byedpi");
+            if (idx <= 0)
+                idx = 1;
+            let tag_name = unique_tag(outbound_tag(section_name + "-byedpi-" + src_id), taken);
+            taken[tag_name] = true;
+            let outbound = {
+                type: "socks",
+                tag: tag_name,
+                server: runtime_constants.BYEDPI_LISTEN_ADDRESS,
+                server_port: runtime_constants.BYEDPI_PORT_BASE + idx - 1,
+                version: "5"
+            };
+            push(config.outbounds, outbound);
+            push(selector_tags, tag_name);
+            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.sources[tag_name] = src_id;
+        } else if (stype == "wdtt") {
+            let idx = enabled_action_index(all_sections, section, "wdtt");
+            if (idx <= 0)
+                idx = 1;
+            let tag_name = unique_tag(outbound_tag(section_name + "-wdtt-" + src_id), taken);
+            taken[tag_name] = true;
+            let outbound = {
+                type: "socks",
+                tag: tag_name,
+                server: runtime_constants.WDTT_LISTEN_ADDRESS,
+                server_port: runtime_constants.WDTT_PORT_BASE + idx - 1,
+                version: "5"
+            };
+            push(config.outbounds, outbound);
+            push(selector_tags, tag_name);
+            push(urltest_candidate_tags, tag_name);
+            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.sources[tag_name] = src_id;
+        } else if (stype == "olcrtc") {
+            let idx = enabled_action_index(all_sections, section, "olcrtc");
+            if (idx <= 0)
+                idx = 1;
+            let tag_name = unique_tag(outbound_tag(section_name + "-olcrtc-" + src_id), taken);
+            taken[tag_name] = true;
+            let outbound = {
+                type: "socks",
+                tag: tag_name,
+                server: runtime_constants.OLCRTC_LISTEN_ADDRESS,
+                server_port: runtime_constants.OLCRTC_PORT_BASE + idx - 1,
+                version: "5"
+            };
+            push(config.outbounds, outbound);
+            push(selector_tags, tag_name);
+            push(urltest_candidate_tags, tag_name);
+            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.sources[tag_name] = src_id;
+        } else if (stype == "openvpn") {
+            let server = trim(option(src, "openvpn_server", ""));
+            if (server == "")
+                continue;
+            let tag_name = unique_tag(outbound_tag(section_name + "-openvpn-" + src_id), taken);
+            taken[tag_name] = true;
+            let ovpn_sec = {};
+            for (let k, v in src)
+                ovpn_sec[k] = v;
+            ovpn_sec[".name"] = tag_name;
+            add_openvpn_endpoint(config, ovpn_sec);
+            push(selector_tags, tag_name);
+            push(urltest_candidate_tags, tag_name);
+            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, {
+                type: "openvpn-client",
+                tag: tag_name,
+                server,
+                server_port: int_option(src, "openvpn_server_port", "1194")
+            });
+            state.outboundMetadata.sources[tag_name] = src_id;
+        }
+    }
+}
+
 function add_connections_outbound(config, section, taken) {
     let section_name = section[".name"];
     let selector_tags = [];
@@ -1982,6 +2287,25 @@ function add_connections_outbound(config, section, taken) {
     let state = runtime_subscription.new_section_state(section_name);
     let cascade_start = length(array_or_empty(config.outbounds));
 
+    let eff_sources = (connections && connections.section_effective_outbound_sources)
+        ? connections.section_effective_outbound_sources(section)
+        : [];
+    let single_dpi_only = false;
+    if (length(eff_sources) == 1 &&
+        length(connections.balancer_refs(section)) == 0 &&
+        length(connections.outbound_group_refs(section)) == 0 &&
+        length(connections.connection_urls(section)) == 0 &&
+        length(connections.subscription_urls(section)) == 0 &&
+        length(connections.interfaces(section)) == 0 &&
+        length(connections.outbound_jsons(section)) == 0) {
+        let only_stype = lc(trim(option(eff_sources[0], "source_type", "")));
+        if (only_stype == "zapret" || only_stype == "zapret2")
+            single_dpi_only = true;
+    }
+
+    add_connection_dpi_sources(config, state, section, taken, selector_tags, urltest_candidate_tags, single_dpi_only);
+    if (single_dpi_only && length(selector_tags) == 1)
+        return;
     let manual_count = length(connections.connection_urls(section));
     add_connection_manual_links(config, state, section, taken, selector_tags, urltest_candidate_tags);
     let text_urltest_tag = add_connection_text_urltest(config, state, section, taken, selector_tags, urltest_candidate_tags, manual_count);
@@ -2586,6 +2910,52 @@ function add_masque_outbound(config, section) {
     });
 }
 
+function normalize_desync_preset_value(val) {
+    val = lc(trim(as_string(val)));
+    if (val == "" || val == "none" || val == "custom")
+        return "";
+    if (val in ["fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "auto"])
+        return val == "fakesplit" ? "fake_split" : (val == "tls_rec" ? "tlsrec" : val);
+    if (val == "youtube" || val == "google_youtube" || val == "discord" || val == "general" || val == "general_fake_tls")
+        return "fake_split";
+    if (val == "general_alt")
+        return "tlsrec";
+    if (val == "aggressive" || val == "general_alt2" || val == "general_multisplit")
+        return "disorder";
+    if (val == "light" || val == "general_simple_fake")
+        return "split";
+    return "fake_split";
+}
+
+function normalize_desync_mode_value(val) {
+    val = lc(trim(as_string(val)));
+    if (val == "")
+        return "";
+    if (val in ["fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "none"])
+        return val == "fakesplit" ? "fake_split" : (val == "tls_rec" ? "tlsrec" : val);
+    if (val == "fake+split")
+        return "fake_split";
+    if (val == "fake+disorder" || val == "fake_disorder" || val == "fakedisorder" || val == "multidisorder")
+        return "disorder";
+    if (val == "multisplit")
+        return "split";
+    return "fake_split";
+}
+
+function normalize_desync_split_pos_value(val) {
+    val = lc(trim(as_string(val)));
+    if (val == "midsld" || val == "sld" || val == "host")
+        return "midsld";
+    if (val == "sni" || val == "sniext")
+        return "sni";
+    if (val != "" && match(val, /^[0-9]+$/)) {
+        let n = int(val, 10);
+        if (n >= 1 && n <= 1400)
+            return n;
+    }
+    return null;
+}
+
 function apply_desync_opts_string(outbound, opts_str) {
     opts_str = trim(as_string(opts_str));
     if (opts_str == "")
@@ -2595,18 +2965,23 @@ function apply_desync_opts_string(outbound, opts_str) {
         if (eq <= 0)
             continue;
         let k = lc(trim(substr(token, 0, eq)));
+        if (substr(k, 0, 2) == "--")
+            k = replace(substr(k, 2), /-/g, "_");
         let v = trim(substr(token, eq + 1));
         if (v == "")
             continue;
         if (k == "preset") {
-            outbound.preset = v;
+            let np = normalize_desync_preset_value(v);
+            if (np != "")
+                outbound.preset = np;
         } else if (k == "mode") {
-            outbound.mode = v;
+            let nm = normalize_desync_mode_value(v);
+            if (nm != "")
+                outbound.mode = nm;
         } else if (k == "split_pos") {
-            if (v == "midsld" || v == "sni")
-                outbound.split_pos = v;
-            else if (match(v, /^[0-9]+$/))
-                outbound.split_pos = int(v, 10);
+            let nsp = normalize_desync_split_pos_value(v);
+            if (nsp != null)
+                outbound.split_pos = nsp;
         } else if (k == "fake_ttl") {
             if (match(v, /^[0-9]+$/))
                 outbound.fake_ttl = int(v, 10);
@@ -2635,19 +3010,18 @@ function add_desync_outbound(config, section) {
         type: "desync",
         tag: outbound_tag(section[".name"])
     };
-    let preset = option(section, "desync_preset", "");
-    let mode = option(section, "desync_mode", "");
-    if (preset != "" && preset != "none" && preset != "custom")
+    let raw_preset = option(section, "desync_preset", "");
+    let preset = normalize_desync_preset_value(raw_preset);
+    let mode = normalize_desync_mode_value(option(section, "desync_mode", ""));
+    if (preset != "")
         outbound.preset = preset;
     if (mode != "")
         outbound.mode = mode;
-    let split_pos = option(section, "desync_split_pos", "");
-    if (split_pos != "") {
-        if (split_pos == "midsld" || split_pos == "sni")
-            outbound.split_pos = split_pos;
-        else if (match(split_pos, /^[0-9]+$/))
-            outbound.split_pos = int(split_pos, 10);
-    }
+    if (lc(trim(raw_preset)) == "discord" && !bool_option(section, "desync_udp_fake", false))
+        outbound.udp_fake = true;
+    let split_pos = normalize_desync_split_pos_value(option(section, "desync_split_pos", ""));
+    if (split_pos != null)
+        outbound.split_pos = split_pos;
     let fake_ttl = int_option(section, "desync_fake_ttl", "0");
     if (fake_ttl > 0)
         outbound.fake_ttl = fake_ttl;
@@ -2672,7 +3046,16 @@ function add_desync_outbound(config, section) {
     apply_desync_opts_string(outbound, option(section, "desync_opts", ""));
 
     if (outbound.preset == null && outbound.mode == null)
-        outbound.mode = "fake_split";
+        outbound.preset = "tlsrec";
+    if (outbound.preset == "fake_split" || outbound.preset == "auto" || outbound.preset == "fake") {
+        outbound.preset = "disorder";
+        if (outbound.split_pos == null) outbound.split_pos = "midsld";
+        if (outbound.udp_fake == null) outbound.udp_fake = true;
+    }
+    if (outbound.mode == "fake_split" || outbound.mode == "fake") {
+        outbound.mode = "disorder";
+        if (outbound.split_pos == null) outbound.split_pos = "midsld";
+    }
 
     let detour = outbound_detour_tag_for_section(section);
     if (detour != "")
@@ -2954,118 +3337,6 @@ function add_tailscale_client_endpoint(config, section) {
     let detour = outbound_detour_tag_for_section(section);
     if (detour != "") endpoint.detour = detour;
     push(config.endpoints, endpoint);
-}
-
-function add_openvpn_endpoint(config, section) {
-    let tag = outbound_tag(section[".name"]);
-    let server = option(section, "openvpn_server", "");
-    if (server == "")
-        ctx.runtime_generate_unsupported("OpenVPN section '" + section[".name"] + "' missing openvpn_server");
-    let port = int_option(section, "openvpn_server_port", "1194");
-    let proto = option(section, "openvpn_proto", "udp");
-    let endpoint = {
-        type: "openvpn-client",
-        tag,
-        server,
-        server_port: port,
-        network: proto
-    };
-
-    let username = option(section, "openvpn_username", "");
-    if (username != "") endpoint.username = username;
-    let password = option(section, "openvpn_password", "");
-    if (password != "") endpoint.password = password;
-
-    let cipher = option(section, "openvpn_cipher", "");
-    if (cipher != "") {
-        endpoint.cipher = cipher;
-        let dc = [ cipher ];
-        if (cipher != "AES-256-GCM") push(dc, "AES-256-GCM");
-        if (cipher != "AES-128-GCM") push(dc, "AES-128-GCM");
-        if (cipher != "CHACHA20-POLY1305") push(dc, "CHACHA20-POLY1305");
-        endpoint.data_ciphers = dc;
-    }
-    let auth = option(section, "openvpn_auth", "");
-    if (auth != "") endpoint.auth = auth;
-
-    let mtu = int_option(section, "openvpn_mtu", "0");
-    if (mtu > 0) endpoint.mtu = mtu;
-
-    let tls = {};
-    let ca   = option(section, "openvpn_ca", "");
-    if (ca != "") {
-        if (index(ca, "\n") == -1 && index(ca, "/") == 0)
-            tls.certificate_path = ca;
-        else
-            tls.certificate = [ ca ];
-    }
-    let cert = option(section, "openvpn_cert", "");
-    if (cert != "") {
-        if (index(cert, "\n") == -1 && index(cert, "/") == 0)
-            tls.client_certificate_path = cert;
-        else
-            tls.client_certificate = [ cert ];
-    }
-    let key  = option(section, "openvpn_key", "");
-    if (key != "") {
-        if (index(key, "\n") == -1 && index(key, "/") == 0)
-            tls.client_key_path = key;
-        else
-            tls.client_key = [ key ];
-    }
-
-    let tls_crypt = option(section, "openvpn_tls_crypt", "");
-    let tls_auth = option(section, "openvpn_tls_auth", "");
-    let direction = option(section, "openvpn_key_direction", "");
-
-    if (tls_crypt != "") {
-        let cw = { type: "tls_crypt" };
-        if (index(tls_crypt, "\n") == -1 && index(tls_crypt, "/") == 0)
-            cw.key_path = tls_crypt;
-        else
-            cw.key = [ tls_crypt ];
-        tls.control_wrap = cw;
-    } else if (tls_auth != "") {
-        let cw = { type: "tls_auth" };
-        if (index(tls_auth, "\n") == -1 && index(tls_auth, "/") == 0)
-            cw.key_path = tls_auth;
-        else
-            cw.key = [ tls_auth ];
-        if (direction == "0" || direction == "server")
-            cw.direction = "server";
-        else if (direction == "1" || direction == "client")
-            cw.direction = "client";
-        tls.control_wrap = cw;
-    }
-
-    let detour = outbound_detour_tag_for_section(section);
-    if (detour == "") {
-        let legacy_detour = option(section, "openvpn_detour", "");
-        if (legacy_detour != "")
-            detour = outbound_tag(legacy_detour);
-    }
-    if (detour != "") {
-        endpoint.detour = detour;
-    }
-
-    if (length(keys(tls)) > 0)
-        endpoint.tls = tls;
-
-    push(config.endpoints, endpoint);
-}
-
-function enabled_action_index(sections, target_section, action_name) {
-    if (connections && connections.active_provider_section_index)
-        return connections.active_provider_section_index(action_name, sections, target_section);
-    let index = 0;
-    for (let section in sections) {
-        if (option(section, "action", "") != action_name)
-            continue;
-        index++;
-        if (section[".name"] == target_section[".name"])
-            return index;
-    }
-    return 0;
 }
 
 function add_zapret_outbound(config, section, sections) {

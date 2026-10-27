@@ -19,6 +19,11 @@
 // Sections
 "require view.tachyon.section as section";
 
+// Modular Conditions, Outbounds, Balancers (#242)
+"require view.tachyon.conditions as conditions";
+"require view.tachyon.outbounds as outbounds";
+"require view.tachyon.balancers as balancers";
+
 // Server
 "require view.tachyon.server as server";
 
@@ -566,6 +571,187 @@ const EntryPoint = {
         if (!uci.get(self.config, "guest_mode")) {
           uci.add(self.config, "guest_mode", "guest_mode");
         }
+        // Sync any section outbound connections & child urltest/priority_group items into outbound_source / balancer sections
+        try {
+          const toArr = (v) =>
+            Array.isArray(v)
+              ? v.map((x) => String(x).trim()).filter(Boolean)
+              : v
+                ? String(v)
+                    .trim()
+                    .split(/[\s,]+/)
+                    .filter(Boolean)
+                : [];
+          const ensureSourceRef = (secName, srcId) => {
+            const cur = toArr(uci.get(self.config, secName, "outbound_source_refs"));
+            if (!cur.includes(srcId)) {
+              uci.set(self.config, secName, "outbound_source_refs", [...cur, srcId]);
+            }
+          };
+          const singleProtoActions = [
+            "anytls",
+            "naive",
+            "mieru",
+            "snell",
+            "sudoku",
+            "masque",
+            "tewfai",
+            "trusttunnel",
+            "openconnect",
+            "shadowtls",
+            "warp",
+            "openvpn",
+            "tailscale",
+            "tor",
+            "desync",
+          ];
+          (uci.sections(self.config, "section") || []).forEach((sec) => {
+            const sname = sec[".name"];
+            if (!sname) return;
+            const safeSname = String(sname).replace(/[^A-Za-z0-9_]/g, "_");
+            const dispName = sec.name || sname;
+            const sAct = (sec.action || "connection").toLowerCase();
+
+            if (sec.access_token || sAct === "fptn") {
+              const fid = `src_fptn_${safeSname}`;
+              if (!uci.get(self.config, fid) && sec.access_token) {
+                uci.add(self.config, "outbound_source", fid);
+                uci.set(self.config, fid, "enabled", "1");
+                uci.set(self.config, fid, "name", dispName);
+                uci.set(self.config, fid, "source_type", "fptn");
+                uci.set(self.config, fid, "access_token", sec.access_token);
+              }
+              if (uci.get(self.config, fid)) ensureSourceRef(sname, fid);
+            }
+
+            const links = toArr(sec.selector_proxy_links || sec.proxy_links);
+            if (links.length || sec.selector_proxy_links_text) {
+              const lid = `src_links_${safeSname}`;
+              if (!uci.get(self.config, lid)) {
+                uci.add(self.config, "outbound_source", lid);
+                uci.set(self.config, lid, "enabled", "1");
+                uci.set(self.config, lid, "name", `${dispName} (Links)`);
+                uci.set(self.config, lid, "source_type", "proxy_links");
+                if (links.length) uci.set(self.config, lid, "proxy_links", links);
+                if (sec.selector_proxy_links_text) {
+                  uci.set(self.config, lid, "proxy_links_text", sec.selector_proxy_links_text);
+                }
+              }
+              ensureSourceRef(sname, lid);
+            }
+
+            const amn = toArr(sec.selector_amnezia_configs || sec.amnezia_configs);
+            if (amn.length || sec.amnezia_conf_text) {
+              const aid = `src_amnezia_${safeSname}`;
+              if (!uci.get(self.config, aid)) {
+                uci.add(self.config, "outbound_source", aid);
+                uci.set(self.config, aid, "enabled", "1");
+                uci.set(self.config, aid, "name", `${dispName} (Amnezia)`);
+                uci.set(self.config, aid, "source_type", "amnezia_config");
+                if (amn.length) uci.set(self.config, aid, "amnezia_configs", amn);
+                if (sec.amnezia_conf_text) {
+                  uci.set(self.config, aid, "amnezia_conf_text", sec.amnezia_conf_text);
+                }
+              }
+              ensureSourceRef(sname, aid);
+            }
+
+            if (sAct === "awg" || (sec.awg_private_key && sec.awg_server_address)) {
+              const wid = `src_awg_${safeSname}`;
+              if (!uci.get(self.config, wid)) {
+                uci.add(self.config, "outbound_source", wid);
+                uci.set(self.config, wid, "enabled", "1");
+                uci.set(self.config, wid, "name", `${dispName} (AWG)`);
+                uci.set(self.config, wid, "source_type", "awg");
+                [
+                  "awg_private_key",
+                  "awg_server_address",
+                  "awg_server_port",
+                  "awg_peer_public_key",
+                  "awg_preshared_key",
+                  "awg_local_address",
+                ].forEach((k) => {
+                  if (sec[k]) uci.set(self.config, wid, k, sec[k]);
+                });
+              }
+              ensureSourceRef(sname, wid);
+            }
+
+            if (singleProtoActions.includes(sAct)) {
+              const pid = `src_${sAct}_${safeSname}`;
+              if (!uci.get(self.config, pid)) {
+                uci.add(self.config, "outbound_source", pid);
+                uci.set(self.config, pid, "enabled", "1");
+                uci.set(self.config, pid, "name", dispName);
+                uci.set(self.config, pid, "source_type", sAct);
+              }
+              ensureSourceRef(sname, pid);
+            }
+          });
+
+          const existingBalancers = uci.sections(self.config, "balancer") || [];
+          (uci.sections(self.config, "urltest") || []).forEach((ut, idx) => {
+            const parentSec = ut.section;
+            const utName = ut.name || ut[".name"] || `urltest_${idx + 1}`;
+            if (!parentSec) return;
+            const safeSuffix = String(utName).replace(/[^A-Za-z0-9_]/g, "_");
+            const balId = `bal_${parentSec}_${safeSuffix || idx + 1}`;
+            const found = existingBalancers.find(
+              (b) =>
+                b[".name"] === balId ||
+                (b.name === utName &&
+                  toArr(uci.get(self.config, parentSec, "balancer_refs")).includes(
+                    b[".name"],
+                  )),
+            );
+            if (!found && !uci.get(self.config, balId)) {
+              uci.add(self.config, "balancer", balId);
+              uci.set(self.config, balId, "enabled", "1");
+              uci.set(self.config, balId, "balancer_type", "urltest");
+              uci.set(self.config, balId, "name", utName);
+              [
+                "testing_url",
+                "check_interval",
+                "tolerance",
+                "idle_timeout",
+                "interrupt_exist_connections",
+                "pin_dashboard",
+                "filter_mode",
+                "include_countries",
+                "exclude_countries",
+                "include_regex",
+                "exclude_regex",
+                "include_outbounds",
+                "exclude_outbounds",
+              ].forEach((k) => {
+                if (ut[k] !== undefined && ut[k] !== null && ut[k] !== "") {
+                  uci.set(self.config, balId, k, ut[k]);
+                }
+              });
+              const arr = toArr(uci.get(self.config, parentSec, "balancer_refs"));
+              if (!arr.includes(balId)) {
+                uci.set(self.config, parentSec, "balancer_refs", [
+                  ...arr,
+                  balId,
+                ]);
+              }
+            }
+          });
+
+          // Ensure every section's balancers have source_refs populated if empty
+          (uci.sections(self.config, "section") || []).forEach((sec) => {
+            const sname = sec[".name"];
+            if (!sname) return;
+            const secSrcRefs = toArr(uci.get(self.config, sname, "outbound_source_refs"));
+            if (!secSrcRefs.length) return;
+            toArr(uci.get(self.config, sname, "balancer_refs")).forEach((bRef) => {
+              const curBRefs = toArr(uci.get(self.config, bRef, "source_refs"));
+              if (curBRefs.length === 0 && uci.get(self.config, bRef)) {
+                uci.set(self.config, bRef, "source_refs", secSrcRefs);
+              }
+            });
+          });
+        } catch (_e) {}
         return form.Map.prototype.load.call(self);
       });
     };
@@ -630,6 +816,193 @@ const EntryPoint = {
       return uci.get(UCI_PACKAGE, "settings", "show_tab_" + id) !== "0";
     };
 
+    let activeSectionSubTab = "sections";
+
+    const mountSectionSubTabs = (mapEl) => {
+      const root = mapEl || document;
+      const secEl = root.querySelector("#cbi-tachyon-section");
+      if (!secEl) return;
+
+      const condEl = root.querySelector("#cbi-tachyon-condition");
+      const outEl = root.querySelector("#cbi-tachyon-outbound_source");
+      const balEl = root.querySelector("#cbi-tachyon-balancer");
+
+      // Remove top-level tab entries for sub-sections so only "Sections" stays in the main navbar
+      const stripTopTabs = (scope) => {
+        [
+          "condition",
+          "cbi-tachyon-condition",
+          "outbound_source",
+          "cbi-tachyon-outbound_source",
+          "balancer",
+          "cbi-tachyon-balancer",
+        ].forEach((tabId) => {
+          (scope || document)
+            .querySelectorAll(
+              `.cbi-tabmenu > li[data-tab="${tabId}"], .cbi-tabmenu > [data-tab="${tabId}"]`,
+            )
+            .forEach((li) => {
+              if (!li.closest(".tachyon-section-subtabs")) {
+                li.remove();
+              }
+            });
+        });
+      };
+      stripTopTabs(root);
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => stripTopTabs(document));
+        window.setTimeout(() => stripTopTabs(document), 120);
+      }
+
+      if (secEl.querySelector(".tachyon-section-subtabs")) {
+        return;
+      }
+
+      const subTabsDef = [
+        { key: "sections", label: _("Sections") },
+        { key: "conditions", label: _("Conditions") },
+        { key: "outbounds", label: _("Outbounds") },
+        { key: "balancers", label: _("Balancers") },
+      ];
+
+      const paneSections = E(
+        "div",
+        {
+          class: "tachyon-section-subpane",
+          "data-subtab": "sections",
+          style: "overflow-x: auto; max-width: 100%;",
+        },
+        [],
+      );
+      while (secEl.firstChild) {
+        paneSections.appendChild(secEl.firstChild);
+      }
+
+      const wrapAuxSection = (key, el) => {
+        const pane = E(
+          "div",
+          {
+            class: "tachyon-section-subpane",
+            "data-subtab": key,
+            style: "display: none; overflow-x: auto; max-width: 100%;",
+          },
+          [],
+        );
+        if (el) {
+          el.removeAttribute("data-tab");
+          el.removeAttribute("data-tab-title");
+          el.classList.remove("cbi-tab-disabled");
+          el.style.display = "";
+          pane.appendChild(el);
+        }
+        return pane;
+      };
+
+      const paneConditions = wrapAuxSection("conditions", condEl);
+      const paneOutbounds = wrapAuxSection("outbounds", outEl);
+      const paneBalancers = wrapAuxSection("balancers", balEl);
+
+      const panesByKey = {
+        sections: paneSections,
+        conditions: paneConditions,
+        outbounds: paneOutbounds,
+        balancers: paneBalancers,
+      };
+
+      const tabItems = {};
+      const selectSubTab = (targetKey) => {
+        activeSectionSubTab = targetKey;
+        subTabsDef.forEach(({ key }) => {
+          const li = tabItems[key];
+          const pane = panesByKey[key];
+          const isActive = key === targetKey;
+          if (li) {
+            li.className = isActive ? "cbi-tab" : "cbi-tab-disabled";
+          }
+          if (pane) {
+            pane.style.display = isActive ? "" : "none";
+          }
+        });
+      };
+
+      const subTabMenu = E(
+        "ul",
+        {
+          class: "cbi-tabmenu tachyon-section-subtabs",
+          style: "margin: 0 0 14px 0;",
+        },
+        subTabsDef.map(({ key, label }) => {
+          const li = E(
+            "li",
+            {
+              class:
+                key === activeSectionSubTab ? "cbi-tab" : "cbi-tab-disabled",
+              "data-subtab": key,
+            },
+            [
+              E(
+                "a",
+                {
+                  href: "#",
+                  click: (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    selectSubTab(key);
+                  },
+                },
+                label,
+              ),
+            ],
+          );
+          tabItems[key] = li;
+          return li;
+        }),
+      );
+
+      secEl.appendChild(subTabMenu);
+      secEl.appendChild(paneSections);
+      secEl.appendChild(paneConditions);
+      secEl.appendChild(paneOutbounds);
+      secEl.appendChild(paneBalancers);
+
+      selectSubTab(activeSectionSubTab);
+    };
+
+    const origMapRender = tachyonMap.render;
+    tachyonMap.render = function () {
+      return origMapRender.apply(this, arguments).then((mapEl) => {
+        mountSectionSubTabs(mapEl);
+        return mapEl;
+      });
+    };
+
+    if (typeof tachyonMap.renderContents === "function") {
+      const origRenderContents = tachyonMap.renderContents;
+      tachyonMap.renderContents = function () {
+        const prevSecEl =
+          typeof document !== "undefined"
+            ? document.querySelector("#cbi-tachyon-section")
+            : null;
+        const wasInSectionTab = Boolean(
+          prevSecEl && !prevSecEl.classList.contains("cbi-tab-disabled"),
+        );
+        return origRenderContents.apply(this, arguments).then((mapEl) => {
+          mountSectionSubTabs(mapEl);
+          if (wasInSectionTab && typeof document !== "undefined") {
+            const root = mapEl || document;
+            const secTabLi = root.querySelector(
+              '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"], .cbi-tabmenu > li[data-tab="section"]',
+            );
+            const secTabLink = secTabLi ? secTabLi.querySelector("a") : null;
+            if (secTabLink) {
+              secTabLink.click();
+            }
+          }
+          return mapEl;
+        });
+      };
+    }
+
     const sectionFactories = {
       dashboard: () => {
         const s = tachyonMap.section(
@@ -659,6 +1032,60 @@ const EntryPoint = {
           loadActionProvidersAvailability: loadUiCapabilities,
         });
         section.createSectionContent(s);
+
+        const sCond = tachyonMap.section(
+          form.GridSection,
+          "condition",
+          _("Conditions"),
+          _(
+            "Reusable atomic traffic conditions and composite boolean rules (AND / OR / NOT) with 2-mode Rule Tracer.",
+          ),
+        );
+        configureGridSection(
+          sCond,
+          "condition",
+          _("Condition"),
+          _("Add a condition"),
+        );
+        conditions.configureConditionsSection(sCond);
+        conditions.createConditionsContent(sCond);
+
+        const sOut = tachyonMap.section(
+          form.GridSection,
+          "outbound_source",
+          _("Outbounds"),
+          _(
+            "Layer 1: Global Server Pool (subscriptions, proxy share links, network interfaces, JSON outbounds) imported once and shared across all groups and sections.",
+          ),
+        );
+        configureGridSection(
+          sOut,
+          "outbound_source",
+          _("Outbound Source"),
+          _("Add an outbound source"),
+        );
+        outbounds.configureOutboundsSection(sOut);
+        outbounds.createOutboundsContent(sOut);
+
+        const sBal = tachyonMap.section(
+          form.GridSection,
+          "balancer",
+          _("Balancers"),
+          _(
+            "Reusable URLTest and Priority selection policies decoupled from specific server pools.",
+          ),
+        );
+        configureGridSection(
+          sBal,
+          "balancer",
+          _("Balancer"),
+          _("Add a balancer"),
+        );
+        if (typeof balancers.configureBalancersSection === "function") {
+          balancers.configureBalancersSection(sBal);
+        }
+        balancers.createBalancersContent(sBal);
+
         return s;
       },
       server: () => {

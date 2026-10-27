@@ -12,6 +12,7 @@ import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { TachyonShellMethods } from '../../methods';
 import { store } from '../../services';
 import { renderFlagEmojis } from './partials/renderFlagEmojis';
+import { readSectionErrors } from '../../methods/custom/getDashboardSections';
 import {
   computeTrafficRates,
   createInitialTrafficRatesState,
@@ -961,15 +962,27 @@ function renderCollapsibleInboundsBlock(params: {
     }
   }
 
+  const sectionErrors: Record<string, string> =
+    (typeof window !== 'undefined' &&
+      (window as unknown as { __tachyonSectionErrors?: Record<string, string> })
+        .__tachyonSectionErrors) ||
+    {};
+
+  const erroredServers = servers.filter((s) =>
+    Boolean(sectionErrors[s.sectionId]),
+  );
+
   const chipNodes = servers.map((s) => {
     const st = summary.bySection.get(s.sectionId);
     const activeConns = st?.activeConns || 0;
     const activeClients = st?.activeClientsCount || 0;
     const totalDown = st?.download || 0;
     const isSelected = selectedServerSectionFilter === s.sectionId;
+    const serverError = sectionErrors[s.sectionId] || '';
 
-    const dotClass =
-      !s.enabled || !isTachyonRunning
+    const dotClass = serverError
+      ? 'tachyon-service-dot tachyon-service-dot--offline'
+      : !s.enabled || !isTachyonRunning
         ? 'tachyon-service-dot tachyon-service-dot--offline'
         : activeConns > 0
           ? 'tachyon-service-dot tachyon-service-dot--online tachyon-service-dot--active-pulse'
@@ -982,11 +995,13 @@ function renderCollapsibleInboundsBlock(params: {
       'div',
       {
         id: `tachyon-inbound-card-${s.sectionId}`,
-        class: `tachyon-inbound-chip${isSelected ? ' tachyon-inbound-chip--selected' : ''}${!s.enabled ? ' tachyon-inbound-card--disabled' : ''}`,
-        title: tr(
-          `Настроить «${s.label}» (${s.protocolFull}${s.security ? ' • ' + s.security : ''}, порт ${s.port})`,
-          `Configure "${s.label}" (${s.protocolFull}${s.security ? ' • ' + s.security : ''}, port ${s.port})`,
-        ),
+        class: `tachyon-inbound-chip${isSelected ? ' tachyon-inbound-chip--selected' : ''}${!s.enabled ? ' tachyon-inbound-card--disabled' : ''}${serverError ? ' tachyon-inbound-chip--error' : ''}`,
+        title: serverError
+          ? `⚠️ ${s.label}: ${serverError}`
+          : tr(
+              `Настроить «${s.label}» (${s.protocolFull}${s.security ? ' • ' + s.security : ''}, порт ${s.port})`,
+              `Configure "${s.label}" (${s.protocolFull}${s.security ? ' • ' + s.security : ''}, port ${s.port})`,
+            ),
         click: (ev: MouseEvent) => {
           ev.preventDefault();
           ev.stopPropagation();
@@ -994,84 +1009,114 @@ function renderCollapsibleInboundsBlock(params: {
         },
       },
       [
-        E('span', { class: 'tachyon-inbound-chip__left' }, [
-          E('span', { class: dotClass }),
-          E(
-            'span',
-            { class: 'tachyon-inbound-chip__name' },
-            renderFlagEmojis(
-              ensureOutboundDisplayFlag({
-                displayName: s.label,
-                country: s.country,
-              }),
+        E('span', { class: 'tachyon-inbound-chip__top' }, [
+          E('span', { class: 'tachyon-inbound-chip__left' }, [
+            E('span', { class: dotClass }),
+            E(
+              'span',
+              { class: 'tachyon-inbound-chip__name' },
+              renderFlagEmojis(
+                ensureOutboundDisplayFlag({
+                  displayName: s.label,
+                  country: s.country,
+                }),
+              ),
             ),
-          ),
-        ]),
-        E('span', { class: 'tachyon-inbound-chip__right' }, [
-          ...(activeConns > 0
-            ? [
-                E(
-                  'span',
-                  {
-                    class: 'tachyon-stat-pill tachyon-stat-pill--conns',
-                    title: `${activeClients} ${tr('устр.', 'dev')} • ${activeConns} ${tr('соед.', 'conns')}`,
-                  },
-                  `${activeConns}`,
-                ),
-              ]
-            : []),
-          ...(totalDown > 0
-            ? [
-                E(
-                  'span',
-                  { class: 'tachyon-traffic-pill tachyon-traffic-pill--down' },
-                  `↓ ${prettyBytes(totalDown)}`,
-                ),
-              ]
-            : []),
-          E('span', { class: 'tachyon-protocol-pill' }, s.protocolShort),
-          E(
-            'span',
-            { class: 'tachyon-service-pill tachyon-service-pill--version' },
-            portDisplay,
-          ),
-          ...(canShowQr
-            ? [
-                E(
-                  'button',
-                  {
-                    type: 'button',
-                    class: 'tachyon-inbound-mini-btn',
-                    title: tr(
-                      'Ссылка подключения и QR-код',
-                      'Connection link & QR code',
-                    ),
-                    click: (ev: MouseEvent) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      navigateToServerInbound(s.sectionId, {
-                        openInfoModal: true,
-                      });
+          ]),
+          E('span', { class: 'tachyon-inbound-chip__actions' }, [
+            ...(canShowQr
+              ? [
+                  E(
+                    'button',
+                    {
+                      type: 'button',
+                      class: 'tachyon-inbound-mini-btn',
+                      title: tr(
+                        'Ссылка подключения и QR-код',
+                        'Connection link & QR code',
+                      ),
+                      click: (ev: MouseEvent) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        navigateToServerInbound(s.sectionId, {
+                          openInfoModal: true,
+                        });
+                      },
                     },
-                  },
-                  'ⓘ',
+                    'ⓘ',
+                  ),
+                ]
+              : []),
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'tachyon-inbound-mini-btn',
+                title: tr(
+                  'Открыть настройки инбаунда',
+                  'Open inbound settings',
                 ),
+                click: (ev: MouseEvent) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  navigateToServerInbound(s.sectionId, { openModal: true });
+                },
+              },
+              createSettingsGearSvg(),
+            ),
+          ]),
+        ]),
+        E('span', { class: 'tachyon-inbound-chip__meta' }, [
+          E('span', { class: 'tachyon-inbound-chip__meta-left' }, [
+            E('span', { class: 'tachyon-protocol-pill' }, s.protocolShort),
+            E(
+              'span',
+              { class: 'tachyon-service-pill tachyon-service-pill--version' },
+              portDisplay,
+            ),
+            ...(serverError
+              ? [
+                  E(
+                    'span',
+                    {
+                      class: 'tachyon-inbound-chip__error-pill',
+                      title: serverError,
+                    },
+                    `⚠️ ${tr('Ошибка', 'Error')}`,
+                  ),
+                ]
+              : []),
+          ]),
+          ...(activeConns > 0 || totalDown > 0
+            ? [
+                E('span', { class: 'tachyon-inbound-chip__meta-right' }, [
+                  ...(activeConns > 0
+                    ? [
+                        E(
+                          'span',
+                          {
+                            class: 'tachyon-stat-pill tachyon-stat-pill--conns',
+                            title: `${activeClients} ${tr('устр.', 'dev')} • ${activeConns} ${tr('соед.', 'conns')}`,
+                          },
+                          `${activeConns}`,
+                        ),
+                      ]
+                    : []),
+                  ...(totalDown > 0
+                    ? [
+                        E(
+                          'span',
+                          {
+                            class:
+                              'tachyon-traffic-pill tachyon-traffic-pill--down',
+                          },
+                          `↓ ${prettyBytes(totalDown)}`,
+                        ),
+                      ]
+                    : []),
+                ]),
               ]
             : []),
-          E(
-            'button',
-            {
-              type: 'button',
-              class: 'tachyon-inbound-mini-btn',
-              title: tr('Открыть настройки инбаунда', 'Open inbound settings'),
-              click: (ev: MouseEvent) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-                navigateToServerInbound(s.sectionId, { openModal: true });
-              },
-            },
-            createSettingsGearSvg(),
-          ),
         ]),
       ],
     );
@@ -1193,6 +1238,24 @@ function renderCollapsibleInboundsBlock(params: {
     },
     [
       headerEl,
+      ...(erroredServers.length > 0
+        ? [
+            E(
+              'div',
+              { class: 'tachyon-inbound-error-banner' },
+              erroredServers.map((s) =>
+                E('div', { class: 'tachyon-inbound-error-banner__item' }, [
+                  E(
+                    'strong',
+                    {},
+                    `⚠️ ${s.label} (${s.protocolShort} :${s.port}): `,
+                  ),
+                  E('span', {}, sectionErrors[s.sectionId] || ''),
+                ]),
+              ),
+            ),
+          ]
+        : []),
       ...(isCollapsed
         ? []
         : [
@@ -1312,6 +1375,7 @@ async function pollInboundsForServersTab() {
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
       fetchHostnames(),
+      readSectionErrors(),
     ]);
     if (hostnames && hostnames.size > 0) {
       lastKnownHostnames = hostnames;

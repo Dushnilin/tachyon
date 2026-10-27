@@ -617,7 +617,7 @@ function combined_domain_condition_text(section) {
     return option(section, "domain_suffix_text", "");
 }
 
-function section_rule_condition_csv(section, key, kind) {
+function single_rule_condition_csv(section, key, kind) {
     return rule_condition_csv_value(
         key,
         kind,
@@ -630,8 +630,30 @@ function section_rule_condition_csv(section, key, kind) {
     );
 }
 
+function section_rule_condition_csv(section, key, kind) {
+    let parts = [];
+    let base_csv = single_rule_condition_csv(section, key, kind);
+    if (base_csv != "")
+        push(parts, base_csv);
+    for (let cond in connections.section_leaf_conditions(section)) {
+        let cond_csv = single_rule_condition_csv(cond, key, kind);
+        if (cond_csv != "")
+            push(parts, cond_csv);
+    }
+    return join(",", parts);
+}
+
 function section_rule_ports_csv(section) {
-    return rule_ports_csv_value(option(section, "ports", ""), option(section, "ports_text", ""));
+    let parts = [];
+    let base_ports = rule_ports_csv_value(option(section, "ports", ""), option(section, "ports_text", ""));
+    if (base_ports != "")
+        push(parts, base_ports);
+    for (let cond in connections.section_leaf_conditions(section)) {
+        let cond_ports = rule_ports_csv_value(option(cond, "ports", ""), option(cond, "ports_text", ""));
+        if (cond_ports != "")
+            push(parts, cond_ports);
+    }
+    return join(",", parts);
 }
 
 function section_option_nonempty(section, key) {
@@ -716,10 +738,21 @@ function section_priority_sets(section) {
 }
 
 function section_source_ip_values(section) {
+    let items = [];
     let raw = section_rule_condition_csv(section, "source_ip_cidr", "subnets");
-    if (raw == "")
+    if (raw != "") {
+        for (let v in nft_csv_values(raw))
+            push(items, v);
+    }
+    for (let mac in list_option(section, "source_macs"))
+        push(items, mac);
+    for (let cond in connections.section_leaf_conditions(section)) {
+        for (let mac in list_option(cond, "source_macs"))
+            push(items, mac);
+    }
+    if (length(items) == 0)
         return "";
-    let cidrs = core_ip.normalize_to_cidrs(nft_csv_values(raw));
+    let cidrs = core_ip.normalize_to_cidrs(items);
     return join(",", cidrs);
 }
 
@@ -2135,9 +2168,15 @@ function nft_create_provider_output_rules_from_sections(sections, table, action,
     let index = 0;
     let added = false;
 
-    for (let section in sections) {
+    let active_list = (connections && connections.active_provider_sections)
+        ? connections.active_provider_sections(action, sections)
+        : sections;
+
+    for (let section in active_list) {
         section = object_or_empty(section);
-        if (!bool_option(section, "enabled", true) || option(section, "action", "") != action)
+        if (!bool_option(section, "enabled", true))
+            continue;
+        if (!(connections && connections.active_provider_sections) && option(section, "action", "") != action)
             continue;
 
         index++;
@@ -2756,7 +2795,7 @@ function sync_server_firewall_uci_rules() {
             let current_enabled = uci_core.get("firewall." + rule_name + ".enabled");
 
             if (current_target != "ACCEPT" || current_port != port_str || current_proto != rule_proto || current_enabled != "1") {
-                uci_core.set("firewall." + rule_name, "rule");
+                uci_core.set_section("firewall." + rule_name, "rule");
                 uci_core.set("firewall." + rule_name + ".name", "Tachyon server " + section_name);
                 uci_core.set("firewall." + rule_name + ".src", "wan");
                 uci_core.set("firewall." + rule_name + ".dest_port", port_str);
@@ -2848,23 +2887,7 @@ function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
         m = match(fw4_forward_out, /meta mark [^ \n]+ return # handle ([0-9]+)/);
     }
 
-    let fw4_input_out = command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
-    if (index(fw4_input_out, "meta mark & " + as_string(mark)) < 0 && index(fw4_input_out, "meta mark " + as_string(mark)) < 0) {
-        run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "meta", "mark", "&", as_string(mark), "==", as_string(mark), "accept", "comment", "\"Allow Tachyon TPROXY marked traffic\"" ]);
-    }
-
     let srv_ports = collect_server_firewall_ports();
-    for (let p in srv_ports.tcp) {
-        if (index(fw4_input_out, "tcp dport " + as_string(p)) < 0) {
-            run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "tcp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound TCP\"" ]);
-        }
-    }
-    for (let p in srv_ports.udp) {
-        if (index(fw4_input_out, "udp dport " + as_string(p)) < 0) {
-            run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "udp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound UDP\"" ]);
-        }
-    }
-
     let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
     let fw4_include_file = fw4_include_dir + "/10-tachyon.nft";
     if (fs.stat("/usr/share/nftables.d") != null) {
@@ -2882,6 +2905,22 @@ function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
         write_text_file(fw4_include_file, nft_content);
     }
     sync_server_firewall_uci_rules();
+
+    let fw4_input_out = command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
+    if (index(fw4_input_out, "meta mark & " + as_string(mark)) < 0 && index(fw4_input_out, "meta mark " + as_string(mark)) < 0) {
+        run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "meta", "mark", "&", as_string(mark), "==", as_string(mark), "accept", "comment", "\"Allow Tachyon TPROXY marked traffic\"" ]);
+    }
+
+    for (let p in srv_ports.tcp) {
+        if (index(fw4_input_out, "tcp dport " + as_string(p)) < 0) {
+            run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "tcp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound TCP\"" ]);
+        }
+    }
+    for (let p in srv_ports.udp) {
+        if (index(fw4_input_out, "udp dport " + as_string(p)) < 0) {
+            run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "udp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound UDP\"" ]);
+        }
+    }
     return true;
 }
 

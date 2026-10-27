@@ -176,4 +176,56 @@ grep -Fq 'write_section_errors(quarantined)' "$RUNTIME_UC" ||
 grep -Fq 'ctx.quarantined_sections = parse_name_set(quarantined_sections)' "$GENERATOR_UC" ||
   fail "the generator must consume the quarantine argument"
 
+# -- 5. runtime validator quarantine for broken outbound & inbound sections ---
+VALIDATOR_UC="$TACHYON_LIB/config/validator.uc"
+cat >"$WORK_DIR/val_quarantine.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_server": [ "77.88.8.8" ],
+    "bootstrap_dns_server": [ "77.88.8.8" ]
+  },
+  "section": [
+    {
+      ".name": "good_sec",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1081#Good" ]
+    },
+    {
+      ".name": "bad_sec",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "ports": [ "99999" ]
+    }
+  ],
+  "server": [
+    {
+      ".name": "bad_srv",
+      ".type": "server",
+      "enabled": "1",
+      "protocol": "vless",
+      "routing_mode": "section",
+      "routing_section": "nonexistent_sec"
+    }
+  ]
+}
+JSON
+
+export TACHYON_VALIDATOR_QUARANTINED_FILE="$WORK_DIR/val-quarantined.json"
+export TACHYON_SECTION_ERRORS_FILE="$WORK_DIR/val-section-errors.json"
+val_out="$(ucode -L "$TACHYON_LIB" "$VALIDATOR_UC" validate-runtime-quarantine-fixture "$WORK_DIR/val_quarantine.json")"
+grep -Fq '"bad_sec":' <<<"$val_out" ||
+  fail "broken outbound section bad_sec must be quarantined by runtime validator, got: $val_out"
+grep -Fq '"bad_srv":' <<<"$val_out" ||
+  fail "broken inbound server bad_srv must be quarantined by runtime validator, got: $val_out"
+grep -Fq 'Причина:' <<<"$val_out" ||
+  fail "quarantined section error must include expanded human-readable explanation, got: $val_out"
+if grep -Fq '"good_sec":' <<<"$val_out"; then
+  fail "valid section good_sec must not be quarantined"
+fi
+
 printf 'section_quarantine: OK\n'

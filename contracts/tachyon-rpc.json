@@ -3042,6 +3042,39 @@
       }
     },
     {
+      "name": "probe_outbound_url",
+      "cli_command": "probe_outbound_url",
+      "category": "system",
+      "acl": "write",
+      "description": "probe-url (config/connections.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of probe_outbound_url"
+        },
+        {
+          "name": "arg2",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 2 of probe_outbound_url"
+        },
+        {
+          "name": "arg3",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 3 of probe_outbound_url"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
       "name": "reconcile",
       "cli_command": "reconcile",
       "category": "system",
@@ -4176,6 +4209,27 @@
           "type": "string",
           "required": false,
           "description": "positional argument 1 of toggle_client_bypass"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "trace_rules",
+      "cli_command": "trace_rules",
+      "category": "system",
+      "acl": "write",
+      "description": "trace-rules (config/connections.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of trace_rules"
         }
       ],
       "returns": {

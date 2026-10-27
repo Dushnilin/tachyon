@@ -843,12 +843,19 @@ function section_safe(section) {
 
 function get_outbound_metadata(section) {
     subscription_cache([ "ensure-runtime-dirs" ]);
-    if (!section_safe(section))
+    let sec_str = trim(as_string(section));
+    if (sec_str == "" || sec_str == "all") {
+        let result = subscription_cache([ "get-outbound-metadata", SECTION_CACHE_DIR, "all", "" ]);
+        if (result.status != 0)
+            result = subscription_cache([ "empty-outbound-metadata" ]);
+        return print_subscription_result(result, "");
+    }
+    if (!section_safe(sec_str))
         return print_subscription_result(subscription_cache([ "empty-outbound-metadata" ]), "");
-    let metadata_path = replace(module_output(SUBSCRIPTION_CACHE_UC, [ "outbound-metadata-path", section ]), /[\r\n]+$/g, "");
+    let metadata_path = replace(module_output(SUBSCRIPTION_CACHE_UC, [ "outbound-metadata-path", sec_str ]), /[\r\n]+$/g, "");
     if (metadata_path == "")
         return print_subscription_result(subscription_cache([ "empty-outbound-metadata" ]), "");
-    let result = subscription_cache([ "get-outbound-metadata", SECTION_CACHE_DIR, section, metadata_path ]);
+    let result = subscription_cache([ "get-outbound-metadata", SECTION_CACHE_DIR, sec_str, metadata_path ]);
     if (result.status != 0)
         result = subscription_cache([ "empty-outbound-metadata" ]);
     return print_subscription_result(result, "");

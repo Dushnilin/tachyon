@@ -57,6 +57,49 @@ function regional_indicator_letter(value, index) {
     return chr(65 + letter);
 }
 
+const COUNTRY_NAME_PATTERNS = [
+    [ "United Kingdom", "GB" ],
+    [ "United States", "US" ],
+    [ "Netherlands", "NL" ],
+    [ "Switzerland", "CH" ],
+    [ "Kazakhstan", "KZ" ],
+    [ "Lithuania", "LT" ],
+    [ "Singapore", "SG" ],
+    [ "Hong Kong", "HK" ],
+    [ "Germany", "DE" ],
+    [ "Finland", "FI" ],
+    [ "Estonia", "EE" ],
+    [ "Austria", "AT" ],
+    [ "Czechia", "CZ" ],
+    [ "Ireland", "IE" ],
+    [ "Denmark", "DK" ],
+    [ "Albania", "AL" ],
+    [ "Vietnam", "VN" ],
+    [ "Ukraine", "UA" ],
+    [ "Belarus", "BY" ],
+    [ "France", "FR" ],
+    [ "Sweden", "SE" ],
+    [ "Poland", "PL" ],
+    [ "Latvia", "LV" ],
+    [ "Turkey", "TR" ],
+    [ "Norway", "NO" ],
+    [ "Greece", "GR" ],
+    [ "Russia", "RU" ],
+    [ "Japan", "JP" ],
+    [ "USA", "US" ]
+];
+
+function country_from_text_name(value) {
+    let text = lc(as_string(value));
+    if (text == "")
+        return "";
+    for (let entry in COUNTRY_NAME_PATTERNS) {
+        if (index(text, lc(entry[0])) >= 0)
+            return entry[1];
+    }
+    return "";
+}
+
 function country_from_flag_emoji(value) {
     value = as_string(value);
 
@@ -70,7 +113,7 @@ function country_from_flag_emoji(value) {
             return first + second;
     }
 
-    return "";
+    return country_from_text_name(value);
 }
 
 function countries_from_flag_names(names) {

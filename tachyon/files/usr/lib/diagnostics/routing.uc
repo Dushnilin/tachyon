@@ -288,7 +288,51 @@ function nolog(message) {
 }
 
 function server_inbound_tag(section) {
-    return helper_output("server-inbound-tag", [ section ]);
+    return "server-" + as_string(section) + "-in";
+}
+
+function find_tagged_runtime_item(items, tag) {
+    if (type(items) != "array")
+        return null;
+    for (let item in items) {
+        if (type(item) == "object" && as_string(item.tag) == tag)
+            return item;
+    }
+    return null;
+}
+
+function runtime_summary_json_from_config(sb_config, section_name, tag) {
+    if (type(sb_config) != "object")
+        return sprintf("%J", { exists: 0 });
+    let item = find_tagged_runtime_item(sb_config[section_name], tag);
+    if (item == null && section_name == "inbounds")
+        item = find_tagged_runtime_item(sb_config.endpoints, tag);
+    if (item == null)
+        return sprintf("%J", { exists: 0 });
+    return sprintf("%J", {
+        exists: 1,
+        type: as_string(item.type),
+        listen: as_string(item.listen),
+        listen_port: arg_number(item.listen_port)
+    });
+}
+
+function has_route_rule_for_inbound_in_config(sb_config, inbound_tag) {
+    if (type(sb_config) != "object" || type(sb_config.route) != "object" || type(sb_config.route.rules) != "array")
+        return false;
+    for (let rule in sb_config.route.rules) {
+        if (type(rule) != "object" || (rule.action != "route" && rule.action != "reject"))
+            continue;
+        let inb = rule.inbound;
+        if (type(inb) == "array") {
+            for (let v in inb)
+                if (as_string(v) == inbound_tag)
+                    return true;
+        } else if (as_string(inb) == inbound_tag) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function server_required_inbound_proto(protocol) {
@@ -334,9 +378,197 @@ function server_listen_requires_firewall(listen, wan_ip) {
     return false;
 }
 
+function uci_fixture_enabled() {
+    let f = getenv("TACHYON_UCI_STATE_FILE") || getenv("UCI_STATE") || "";
+    return f != "";
+}
+
+function netstat_addr_matches_port(addr, listen, port) {
+    addr = as_string(addr);
+    listen = as_string(listen);
+    port = as_string(port);
+    let colon = rindex(addr, ":");
+    let addr_port = colon >= 0 ? substr(addr, colon + 1) : addr;
+    if (addr_port != port)
+        return false;
+    let host = addr;
+    if (substr(addr, 0, 1) == "[") {
+        let end = index(addr, "]");
+        host = end > 0 ? substr(addr, 1, end - 1) : addr;
+    } else if (colon >= 0) {
+        host = substr(addr, 0, colon);
+    }
+    if (host == "0.0.0.0" || host == "::")
+        return true;
+    if (listen == "0.0.0.0")
+        return match(host, /^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$/) != null;
+    if (listen == "::")
+        return index(host, ":") >= 0;
+    return host == listen;
+}
+
+function in_memory_ports_listening(netstat_data, listen, port, required_proto) {
+    for (let proto in words(required_proto)) {
+        let found = false;
+        for (let line in split(as_string(netstat_data), "\n")) {
+            let fields = words(line);
+            if (length(fields) < 4 || substr(fields[0], 0, length(proto)) != proto)
+                continue;
+            if (netstat_addr_matches_port(fields[3], listen, port)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            return false;
+    }
+    return true;
+}
+
+function in_memory_port_conflict_owners(netstat_data, listen, port, required_proto, comm_names) {
+    let owners = [];
+    let seen = {};
+    let lines = split(as_string(netstat_data), "\n");
+    if (length(lines) < 2 || index(as_string(lines[1]), "PID/Program") < 0)
+        return "";
+    for (let proto in words(required_proto)) {
+        for (let i = 2; i < length(lines); i++) {
+            let fields = words(lines[i]);
+            if (length(fields) < 4 || substr(fields[0], 0, length(proto)) != proto)
+                continue;
+            if (!netstat_addr_matches_port(fields[3], listen, port))
+                continue;
+            let owner = as_string(fields[length(fields) - 1]);
+            if (owner == "" || owner == "-" || owner == "LISTEN")
+                owner = "unknown";
+            let is_daemon = false;
+            for (let name in comm_names) {
+                let suffix = "/" + as_string(name);
+                if (length(owner) >= length(suffix) && substr(owner, length(owner) - length(suffix)) == suffix) {
+                    is_daemon = true;
+                    break;
+                }
+            }
+            if (!is_daemon && !seen[owner]) {
+                seen[owner] = true;
+                push(owners, owner);
+            }
+        }
+    }
+    return join(" ", sort(owners));
+}
+
+function firewall_required_protocols_open_cached(port, required_proto, firewall, fw4_in) {
+    if (!uci_fixture_enabled() && fw4_in != "") {
+        let p_str = trim(as_string(port));
+        let proto_str = lc(trim(as_string(required_proto || "tcp")));
+        if (p_str != "" && (proto_str == "tcp" || proto_str == "udp")) {
+            if (index(fw4_in, proto_str + " dport " + p_str + " accept") >= 0)
+                return true;
+            for (let line in split(fw4_in, "\n")) {
+                if (index(line, proto_str + " dport") >= 0 && index(line, "accept") >= 0) {
+                    for (let tok in split(replace(line, /[^0-9]+/g, " "), " ")) {
+                        if (tok == p_str)
+                            return true;
+                    }
+                }
+            }
+        }
+    }
+    if (firewall == null)
+        firewall = firewall_show_data();
+    return status_success([ "firewall-required-protocols-open", port, required_proto ], firewall);
+}
+
 function firewall_required_protocols_open(port, required_proto) {
     let firewall = firewall_show_data();
-    return status_success([ "firewall-required-protocols-open", port, required_proto ], firewall);
+    let fw4_in = uci_fixture_enabled() ? "" : command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
+    return firewall_required_protocols_open_cached(port, required_proto, firewall, fw4_in);
+}
+
+function compute_public_host_flags(public_host, public_host_ips, wan_ip, wan_public) {
+    let resolved = -1;
+    let public_ip = -1;
+    let matches_wan = -1;
+    let ips = words(public_host_ips);
+    if (as_string(public_host) != "") {
+        if (length(ips) > 0) {
+            resolved = 1;
+            public_ip = 1;
+            for (let ip in ips)
+                if (!valid_public_ip(ip))
+                    public_ip = 0;
+            if (as_string(wan_public) == "1") {
+                matches_wan = 0;
+                for (let wan in words(wan_ip)) {
+                    for (let ip in ips) {
+                        if (ip == wan) {
+                            matches_wan = 1;
+                            break;
+                        }
+                    }
+                    if (matches_wan == 1)
+                        break;
+                }
+            }
+        } else {
+            resolved = 0;
+        }
+    }
+    return [ resolved, public_ip, matches_wan ];
+}
+
+function build_inbound_item_object(runtime_obj, section_name, label, protocol, routing_mode, tag, listen, listen_port, public_host, public_host_ips, expected_type, required_proto, listening, firewall_required, firewall_open, port_conflict, port_conflict_owners, routes_configured, flags, native_mode) {
+    let runtime = type(runtime_obj) == "object" ? runtime_obj : {};
+    let runtime_exists = runtime.exists ? 1 : 0;
+    let runtime_type = as_string(runtime.type || "");
+    let runtime_listen = as_string(runtime.listen || "");
+    let runtime_port = arg_number(runtime.listen_port || 0);
+    let runtime_port_text = as_string(runtime_port);
+    if (native_mode) {
+        runtime_exists = 1;
+        runtime_type = expected_type;
+    }
+    let runtime_ok_flag = 0;
+    if (runtime_exists == 1) {
+        if (protocol == "json_inbound" || protocol == "tailscale") {
+            runtime_ok_flag = 1;
+        } else if (runtime_type == expected_type || (protocol == "mtproto" && (runtime_type == "mtproto" || runtime_type == "mtproxy"))) {
+            if (protocol == "awg" && runtime_type == "wireguard" && runtime_listen == "")
+                runtime_ok_flag = runtime_port_text == as_string(listen_port) ? 1 : 0;
+            else
+                runtime_ok_flag = (runtime_listen == as_string(listen) && runtime_port_text == as_string(listen_port)) ? 1 : 0;
+        }
+    }
+    let raw_listening = arg_number(listening);
+    let effective_listening = (runtime_ok_flag == 1 || raw_listening < 0) ? raw_listening : 0;
+    return {
+        section: as_string(section_name),
+        label: as_string(label),
+        protocol: as_string(protocol),
+        routing_mode: as_string(routing_mode),
+        tag: as_string(tag),
+        listen: as_string(listen),
+        listen_port: arg_number(listen_port),
+        public_host: as_string(public_host),
+        public_host_ips: as_string(public_host_ips),
+        expected_type: as_string(expected_type),
+        required_proto: as_string(required_proto),
+        runtime_exists,
+        runtime_type,
+        runtime_listen,
+        runtime_port,
+        runtime_ok: runtime_ok_flag,
+        listening: effective_listening,
+        firewall_required: arg_number(firewall_required),
+        firewall_open: arg_number(firewall_open),
+        port_conflict: arg_number(port_conflict),
+        port_conflict_owners: as_string(port_conflict_owners),
+        routes_configured: arg_number(routes_configured),
+        public_host_resolved: arg_number(flags[0]),
+        public_host_public: arg_number(flags[1]),
+        public_host_matches_wan: arg_number(flags[2])
+    };
 }
 
 
@@ -370,6 +602,13 @@ function check_inbounds() {
     let enabled_count = 0;
     let requires_public_wan = 0;
     let native_tailscale = native_tailscale_enabled();
+    let sb_config = sing_box_config_path != "" ? common.read_json_file(sing_box_config_path) : null;
+    let netstat_lnp_cache = null;
+    let netstat_ln_cache = null;
+    let firewall_cache = null;
+    let fw4_in_cache = null;
+    let resolved_hosts_cache = {};
+    let daemon_comm_names = require("core.process").core_contract().comm_names || [];
 
     for (let section in uci_sections("server")) {
         if (!bool_option(section, "enabled", false))
@@ -389,8 +628,8 @@ function check_inbounds() {
         let expected_type = server_runtime_type_for_protocol(protocol);
         let required_proto = server_required_inbound_proto(protocol);
         let runtime_json = protocol == "tailscale"
-            ? module_output(PROVIDERS_STATUS_UC, [ "endpoint-summary", sing_box_config_path, inbound_tag ])
-            : module_output(PROVIDERS_STATUS_UC, [ "inbound-summary", sing_box_config_path, inbound_tag ]);
+            ? runtime_summary_json_from_config(sb_config, "endpoints", inbound_tag)
+            : runtime_summary_json_from_config(sb_config, "inbounds", inbound_tag);
         // Native mode: tailscaled runs outside sing-box, no endpoint is
         // generated (servers.uc add_server) and no route rule is expected.
         if (protocol == "tailscale" && native_tailscale) {
@@ -404,30 +643,38 @@ function check_inbounds() {
         let port_conflict = 0;
         let port_conflict_owners = "";
         if (protocol != "tailscale" && protocol != "json_inbound") {
-            port_conflict_owners = server_required_port_conflict_owners(listen, listen_port, required_proto);
+            if (netstat_lnp_cache == null)
+                netstat_lnp_cache = command_output_from_args([ "netstat", "-lnp" ]);
+            if (netstat_ln_cache == null)
+                netstat_ln_cache = command_output_from_args([ "netstat", "-ln" ]);
+            port_conflict_owners = in_memory_port_conflict_owners(netstat_lnp_cache, listen, listen_port, required_proto, daemon_comm_names);
             if (port_conflict_owners != "")
                 port_conflict = 1;
-            listening = server_required_ports_listening(listen, listen_port, required_proto) ? 1 : 0;
+            listening = in_memory_ports_listening(netstat_ln_cache, listen, listen_port, required_proto) ? 1 : 0;
             if (server_listen_requires_firewall(listen, wan_ip)) {
                 firewall_required = 1;
-                firewall_open = firewall_required_protocols_open(listen_port, required_proto) ? 1 : 0;
+                if (fw4_in_cache == null)
+                    fw4_in_cache = uci_fixture_enabled() ? "" : command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
+                if (uci_fixture_enabled() && firewall_cache == null)
+                    firewall_cache = firewall_show_data();
+                firewall_open = firewall_required_protocols_open_cached(listen_port, required_proto, firewall_cache, fw4_in_cache) ? 1 : 0;
             }
         }
 
         let routes_configured = protocol == "tailscale" && native_tailscale
             ? 1
-            : (module_success(PROVIDERS_STATUS_UC, [
-                "has-route-rule-for-inbound", sing_box_config_path, inbound_tag
-            ]) ? 1 : 0);
+            : (has_route_rule_for_inbound_in_config(sb_config, inbound_tag) ? 1 : 0);
 
-        let public_host_ips = protocol == "json_inbound" ? "" : resolve_public_host_ips(public_host);
-        let flags = words(public_host_flags(public_host, public_host_ips, wan_ip, wan_public));
-        while (length(flags) < 3)
-            push(flags, "-1");
-
-        let item_json = status_output([
-            "inbound-item-json",
-            runtime_json,
+        let public_host_ips = "";
+        if (protocol != "json_inbound") {
+            if (!(public_host in resolved_hosts_cache))
+                resolved_hosts_cache[public_host] = resolve_public_host_ips(public_host);
+            public_host_ips = resolved_hosts_cache[public_host];
+        }
+        let flags = compute_public_host_flags(public_host, public_host_ips, wan_ip, wan_public);
+        let runtime_obj = runtime_json != "" ? parse_json_or_null(runtime_json) : null;
+        let item = build_inbound_item_object(
+            runtime_obj,
             section_name,
             label,
             protocol,
@@ -445,13 +692,10 @@ function check_inbounds() {
             port_conflict,
             port_conflict_owners,
             routes_configured,
-            flags[0],
-            flags[1],
-            flags[2],
-            (protocol == "tailscale" && native_tailscale) ? "1" : "0"
-        ], null);
-        let item = parse_json_or_null(item_json);
-        push(items, type(item) == "object" ? item : {});
+            flags,
+            protocol == "tailscale" && native_tailscale
+        );
+        push(items, item);
     }
 
     write_json({

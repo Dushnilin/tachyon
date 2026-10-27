@@ -183,6 +183,7 @@ export const TACHYON_RPC_METHODS = [
   'package_prerm',
   'parental_quota_reset',
   'parental_quota_tick',
+  'probe_outbound_url',
   'reconcile',
   'reconcile_plan',
   'reconcile_status',
@@ -240,6 +241,7 @@ export const TACHYON_RPC_METHODS = [
   'telegram_status',
   'telegram_stop',
   'toggle_client_bypass',
+  'trace_rules',
   'ui_action_ack',
   'uninstall',
   'validate_byedpi_strategy_json',
@@ -1386,6 +1388,18 @@ export type ParentalquotatickParams = Record<string, never>;
 
 export type ParentalquotatickResult = Record<string, unknown>;
 
+/** probe-url (config/connections.uc) */
+export interface ProbeoutboundurlParams {
+  /** positional argument 1 of probe_outbound_url */
+  arg1?: string;
+  /** positional argument 2 of probe_outbound_url */
+  arg2?: string;
+  /** positional argument 3 of probe_outbound_url */
+  arg3?: string;
+}
+
+export type ProbeoutboundurlResult = Record<string, unknown>;
+
 /** apply (service/reconciler.uc) */
 export type ReconcileParams = Record<string, never>;
 
@@ -1806,6 +1820,14 @@ export interface ToggleclientbypassParams {
 }
 
 export type ToggleclientbypassResult = Record<string, unknown>;
+
+/** trace-rules (config/connections.uc) */
+export interface TracerulesParams {
+  /** positional argument 1 of trace_rules */
+  arg1?: string;
+}
+
+export type TracerulesResult = Record<string, unknown>;
 
 /** action-ack (service/ui.uc) */
 export interface UiactionackParams {
@@ -2536,6 +2558,10 @@ export interface TachyonRpcRegistry {
     params: ParentalquotatickParams;
     result: ParentalquotatickResult;
   };
+  probe_outbound_url: {
+    params: ProbeoutboundurlParams;
+    result: ProbeoutboundurlResult;
+  };
   reconcile: {
     params: ReconcileParams;
     result: ReconcileResult;
@@ -2763,6 +2789,10 @@ export interface TachyonRpcRegistry {
   toggle_client_bypass: {
     params: ToggleclientbypassParams;
     result: ToggleclientbypassResult;
+  };
+  trace_rules: {
+    params: TracerulesParams;
+    result: TracerulesResult;
   };
   ui_action_ack: {
     params: UiactionackParams;
@@ -5169,6 +5199,35 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 60000,
       params: [],
     },
+    probe_outbound_url: {
+      name: 'probe_outbound_url',
+      cli_command: 'probe_outbound_url',
+      category: 'system',
+      acl: 'write',
+      description: 'probe-url (config/connections.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of probe_outbound_url',
+        },
+        {
+          name: 'arg2',
+          type: 'string',
+          required: false,
+          description: 'positional argument 2 of probe_outbound_url',
+        },
+        {
+          name: 'arg3',
+          type: 'string',
+          required: false,
+          description: 'positional argument 3 of probe_outbound_url',
+        },
+      ],
+    },
     reconcile: {
       name: 'reconcile',
       cli_command: 'reconcile',
@@ -6080,6 +6139,23 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           type: 'string',
           required: false,
           description: 'positional argument 1 of toggle_client_bypass',
+        },
+      ],
+    },
+    trace_rules: {
+      name: 'trace_rules',
+      cli_command: 'trace_rules',
+      category: 'system',
+      acl: 'write',
+      description: 'trace-rules (config/connections.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of trace_rules',
         },
       ],
     },

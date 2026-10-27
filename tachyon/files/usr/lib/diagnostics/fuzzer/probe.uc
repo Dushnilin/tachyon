@@ -382,6 +382,11 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             if (pid_str) {
                 let pid = trim(as_string(pid_str));
                 if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
+                    if (is_desync) {
+                        system("sleep 0.15");
+                        if (system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) != 0)
+                            break;
+                    }
                     pid_running = true;
                     daemon_pid = int(pid);
                     break;

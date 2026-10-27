@@ -35,12 +35,32 @@ function output(command) {
     return replace(as_string(data), /[\r\n]+$/g, "");
 }
 
+const VALIDATOR_QUARANTINED_FILE = getenv("TACHYON_VALIDATOR_QUARANTINED_FILE") || "/var/run/tachyon/validator-quarantined.json";
+const SECTION_ERRORS_FILE = getenv("TACHYON_SECTION_ERRORS_FILE") || "/var/run/tachyon/section-errors.json";
+let CURRENT_PREPARING_SERVER = "";
+
 function log(message, level) {
     level = as_string(level || "info");
     run("logger -t " + shell_quote("tachyon") + " " + shell_quote("[" + level + "] " + as_string(message)));
 }
 
+function quarantine_server_error(server_name, message) {
+    let clean = replace(trim(as_string(message || "")), /[ \t]*Aborted\.?$/i, "");
+    let expanded = clean + " — Причина: ошибка подготовки ключей или TLS-сертификата входящего сервера. Решение: проверьте пути к сертификату/ключу, протокол и настройки безопасности во вкладке «Входящие серверы».";
+    let q_obj = type(read_json_file(VALIDATOR_QUARANTINED_FILE)) == "object" ? read_json_file(VALIDATOR_QUARANTINED_FILE) : {};
+    let e_obj = type(read_json_file(SECTION_ERRORS_FILE)) == "object" ? read_json_file(SECTION_ERRORS_FILE) : {};
+    q_obj[server_name] = expanded;
+    e_obj[server_name] = expanded;
+    common.write_json_file(VALIDATOR_QUARANTINED_FILE, q_obj);
+    common.write_json_file(SECTION_ERRORS_FILE, e_obj);
+    log("Server '" + server_name + "' quarantined during default preparation: " + expanded, "warn");
+}
+
 function fatal(message) {
+    if (CURRENT_PREPARING_SERVER != "") {
+        quarantine_server_error(CURRENT_PREPARING_SERVER, message);
+        die("__TACHYON_SERVER_QUARANTINE__");
+    }
     log(message, "fatal");
     exit(1);
 }
@@ -1478,8 +1498,17 @@ function cleanup_orphaned_server_certs() {
 
 function prepare_all_server_defaults() {
     SERVER_DEFAULTS_CHANGED = false;
-    for (let section in uci_sections("server"))
-        prepare_server_defaults(section);
+    for (let section in uci_sections("server")) {
+        CURRENT_PREPARING_SERVER = as_string(section);
+        try {
+            prepare_server_defaults(section);
+        } catch (e) {
+            CURRENT_PREPARING_SERVER = "";
+            if (index(as_string(e), "__TACHYON_SERVER_QUARANTINE__") < 0)
+                die(e);
+        }
+        CURRENT_PREPARING_SERVER = "";
+    }
     cleanup_orphaned_server_certs();
     if (SERVER_DEFAULTS_CHANGED)
         uci_commit(CONFIG_NAME);

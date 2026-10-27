@@ -158,7 +158,11 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
   };
 }
 
-function configureDefaultTunnelSectionOption(option, sectionOption, capabilities) {
+function configureDefaultTunnelSectionOption(
+  option,
+  sectionOption,
+  capabilities,
+) {
   option.default = "";
   option.rmempty = true;
   option.cfgvalue = function (section_id) {
@@ -168,7 +172,10 @@ function configureDefaultTunnelSectionOption(option, sectionOption, capabilities
     const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
     this.keylist = [""];
     this.vallist = [
-      _tr("Автоматически (первая активная секция)", "Auto (First available active section)"),
+      _tr(
+        "Автоматически (первая активная секция)",
+        "Auto (First available active section)",
+      ),
     ];
     for (const secName in sections) {
       const sec = sections[secName];
@@ -2620,8 +2627,20 @@ function createSettingsContent(section, capabilities) {
       "Choose overall routing model: Selective split routing (only domains/subnets from sections go to proxy) or Full tunnel (all traffic routes through proxy, sections define exceptions and bypasses).",
     ),
   );
-  o.value("split", _tr("Выборочная маршрутизация (по умолчанию)", "Selective Split Routing (Default)"));
-  o.value("full_tunnel", _tr("Всё в туннель, кроме исключений", "Full Tunnel (All traffic via proxy, exceptions direct)"));
+  o.value(
+    "split",
+    _tr(
+      "Выборочная маршрутизация (по умолчанию)",
+      "Selective Split Routing (Default)",
+    ),
+  );
+  o.value(
+    "full_tunnel",
+    _tr(
+      "Всё в туннель, кроме исключений",
+      "Full Tunnel (All traffic via proxy, exceptions direct)",
+    ),
+  );
   o.default = "split";
   o.rmempty = false;
 
@@ -2636,7 +2655,11 @@ function createSettingsContent(section, capabilities) {
     ),
   );
   o.depends("routing_strategy", "full_tunnel");
-  configureDefaultTunnelSectionOption(o, "default_tunnel_section", capabilities);
+  configureDefaultTunnelSectionOption(
+    o,
+    "default_tunnel_section",
+    capabilities,
+  );
 
   o = section.taboption(
     "network",

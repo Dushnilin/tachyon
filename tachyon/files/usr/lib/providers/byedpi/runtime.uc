@@ -70,6 +70,10 @@ function strategy_words(value) {
 }
 
 function enabled_byedpi_sections() {
+    let conn = null;
+    try { conn = require("config.connections"); } catch (e) {}
+    if (conn && conn.active_provider_sections)
+        return conn.active_provider_sections("byedpi", uci_sections("section"));
     let result = [];
     for (let section in uci_sections("section"))
         if (bool_option(section, "enabled", true) && option(section, "action", "") == "byedpi")
@@ -414,9 +418,9 @@ function has_socks_outbound(config, tag, address, port) {
     for (let outbound in array_or_empty(config && config.outbounds)) {
         if (type(outbound) == "object" &&
             outbound.type == "socks" &&
-            outbound.tag == tag &&
             outbound.server == address &&
-            int(outbound.server_port || 0) == int(port))
+            int(outbound.server_port || 0) == int(port) &&
+            (outbound.tag == tag || int(port) > 0))
             return true;
     }
     return false;

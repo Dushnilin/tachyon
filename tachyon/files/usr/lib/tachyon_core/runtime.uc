@@ -1523,6 +1523,35 @@ function repair_outbound_field(temp_config, reason) {
 // sections and still leave the user without a proxy.
 
 const SECTION_ERRORS_FILE = getenv("TACHYON_SECTION_ERRORS_FILE") || "/var/run/tachyon/section-errors.json";
+const VALIDATOR_QUARANTINED_FILE = getenv("TACHYON_VALIDATOR_QUARANTINED_FILE") || "/var/run/tachyon/validator-quarantined.json";
+
+function expand_check_error_reason(reason) {
+    let raw = trim(as_string(reason || ""));
+    let clean = replace(raw, /^.*tachyon-section-error:[A-Za-z0-9_]+:/, "");
+    clean = replace(clean, /^(?:FATAL|ERROR)\[[0-9]+\][ \t]*/, "");
+    if (index(clean, "Причина:") >= 0)
+        return clean;
+
+    let hint = "";
+    if (index(clean, "unknown field") >= 0 || index(clean, "unknown transport") >= 0 || index(clean, "unknown outbound") >= 0 || index(clean, "unknown inbound") >= 0 || index(clean, "unknown endpoint") >= 0)
+        hint = "Причина: установленное ядро не поддерживает указанное поле, транспорт или протокол. Решение: обновите ядро во вкладке «Компоненты» или измените параметры протокола в секции.";
+    else if (index(clean, "missing required field") >= 0 || index(clean, "empty") >= 0)
+        hint = "Причина: в конфигурации прокси-сервера или секции не заполнено обязательное поле (адрес сервера, порт, UUID или ключ). Решение: проверьте параметры подключения.";
+    else if (index(clean, "address already in use") >= 0 || index(clean, "bind:") >= 0)
+        hint = "Причина: порт прослушивания уже занят другой службой или другим входящим сервером. Решение: укажите свободный порт в настройках секции или входящего сервера.";
+    else if (index(clean, "missing outbound tag") >= 0 || index(clean, "unknown outbound tag") >= 0)
+        hint = "Причина: правило маршрутизации или каскадирования ссылается на несуществующий или изолированный прокси-выход. Решение: проверьте настройки источника серверов и каскадирования.";
+    else if (index(clean, "no such file or directory") >= 0)
+        hint = "Причина: не найден файл сертификата, ключа или локального списка правил (ruleset). Решение: проверьте пути к файлам в настройках.";
+    else if (index(clean, "manual proxy link") >= 0 || index(clean, "not supported") >= 0 || index(clean, "unsupported") >= 0)
+        hint = "Причина: неподдерживаемый формат прокси-ссылки или параметра секции. Решение: проверьте синтаксис ссылок во вкладке «Пул серверов» или настройках секции.";
+    else if (index(clean, "invalid") >= 0 || index(clean, "parse") >= 0 || index(clean, "decode") >= 0)
+        hint = "Причина: некорректный формат значения (IP-адрес, порт, ключ, регулярное выражение или JSON). Решение: проверьте введённые данные в настройках секции.";
+    else
+        hint = "Причина: ядро отклонило конфигурацию этой секции при проверке. Решение: проверьте параметры подключения и правила секции (остальные секции работают в штатном режиме).";
+
+    return clean + " — " + hint;
+}
 
 function section_exists(name) {
     name = as_string(name || "");
@@ -1571,12 +1600,22 @@ function config_item_tag(config, list_name, index) {
     return list[i].tag;
 }
 
+function load_config_owners(config_path) {
+    let sidecar = common.read_json_file(as_string(config_path) + ".owners.json");
+    if (type(sidecar) == "object")
+        return sidecar;
+    let global_owners = common.read_json_file(getenv("TACHYON_CONFIG_OWNERS_FILE") || "/var/run/tachyon/config-owners.json");
+    return type(global_owners) == "object" ? global_owners : null;
+}
+
 // Maps a sing-box check failure to the section that produced the blamed
 // element. Returns "" when the failure is not attributable to a section
 // (global settings, inbounds of the service itself, unparseable output).
 function section_from_check_reason(reason, config_path) {
     reason = as_string(reason || "");
     let tag = null;
+    let owners = load_config_owners(config_path);
+    let direct_owner = "";
 
     let m = match(reason, /(outbounds?|endpoints?|inbounds?)\[(\d+)\]/);
     if (m) {
@@ -1588,6 +1627,8 @@ function section_from_check_reason(reason, config_path) {
         else if (kind == "endpoint")
             kind = "endpoints";
         tag = config_item_tag(common.read_json_file(config_path), kind, m[2]);
+        if (type(owners) == "object" && type(owners[kind]) == "object" && owners[kind][as_string(m[2])] != null)
+            direct_owner = as_string(owners[kind][as_string(m[2])]);
     }
 
     if (tag == null) {
@@ -1604,6 +1645,8 @@ function section_from_check_reason(reason, config_path) {
             let i = int(rs[1]);
             if (type(list) == "array" && i >= 0 && i < length(list) && type(list[i]) == "object")
                 tag = list[i].tag;
+            if (type(owners) == "object" && type(owners.rule_set) == "object" && owners.rule_set[as_string(rs[1])] != null)
+                direct_owner = as_string(owners.rule_set[as_string(rs[1])]);
         }
     }
 
@@ -1613,8 +1656,35 @@ function section_from_check_reason(reason, config_path) {
             tag = tm[2];
     }
 
+    if (tag == null) {
+        let br_m = match(reason, /\[[A-Za-z0-9_.-]+\/([^\]]+)\]/);
+        if (br_m)
+            tag = br_m[1];
+    }
+
+    if (direct_owner == "" && type(owners) == "object") {
+        let rr_m = match(reason, /(?:route\.)?rules\[(\d+)\]/);
+        if (rr_m && type(owners.route_rules) == "object" && owners.route_rules[as_string(rr_m[1])] != null)
+            direct_owner = as_string(owners.route_rules[as_string(rr_m[1])]);
+        let ds_m = match(reason, /dns\.servers\[(\d+)\]/);
+        if (ds_m && type(owners.dns_servers) == "object" && owners.dns_servers[as_string(ds_m[1])] != null)
+            direct_owner = as_string(owners.dns_servers[as_string(ds_m[1])]);
+        let port_m = match(reason, /:([0-9]{2,5})\b/);
+        if (port_m && type(owners.ports) == "object" && owners.ports[as_string(port_m[1])] != null)
+            direct_owner = as_string(owners.ports[as_string(port_m[1])]);
+    }
+
     let name = section_from_tag(tag);
-    return section_exists(name) ? name : "";
+    if (section_exists(name))
+        return name;
+    if (tag != null && type(owners) == "object" && type(owners.tags) == "object" && owners.tags[as_string(tag)] != null) {
+        let mapped = as_string(owners.tags[as_string(tag)]);
+        if (section_exists(mapped))
+            return mapped;
+    }
+    if (direct_owner != "" && section_exists(direct_owner))
+        return direct_owner;
+    return "";
 }
 
 // Runs sing-box check and applies the known graceful-degradation repairs
@@ -1905,6 +1975,13 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
     // could attribute by name. 16 bounds the loop for pathological cases; in
     // practice every pass quarantines at least one section or breaks out.
     let quarantined = {};
+    let pre_quarantined = common.read_json_file(VALIDATOR_QUARANTINED_FILE);
+    if (type(pre_quarantined) == "object") {
+        for (let qname in keys(pre_quarantined)) {
+            if (section_exists(qname))
+                quarantined[qname] = as_string(pre_quarantined[qname]);
+        }
+    }
     let check_result = { status: 1, reason: "configuration was not generated" };
     for (let attempt = 0; attempt < 16; attempt++) {
         let generate_status = command_status(
@@ -1923,14 +2000,15 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             let reason = generator_failure_reason(runtime_log, generate_status);
             let section = section_from_generator_log(runtime_log);
             if (section != "" && quarantined[section] == null && section_exists(section)) {
-                log_message("Section '" + section + "' failed to generate: " + reason +
+                let expanded_gen_reason = expand_check_error_reason(reason);
+                log_message("Section '" + section + "' failed to generate: " + expanded_gen_reason +
                     ". Not loading it; the rest of the configuration starts normally", "warn");
-                quarantined[section] = reason;
+                quarantined[section] = expanded_gen_reason;
                 continue;
             }
             log_message("Failed to generate " + core_name + " configuration: " + reason, "fatal");
             log_file_lines(runtime_log, "debug", core_name + " config generator output: ");
-            remove_files([ temp_config, runtime_log ]);
+            remove_files([ temp_config, temp_config + ".owners.json", runtime_log ]);
             exit(1);
         }
         log_file_lines(runtime_log, "warn", core_name + " config generator: ");
@@ -1946,32 +2024,38 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         if (bin_problem != "") {
             log_message("Cannot verify the generated configuration: " + bin_problem +
                 ". This is not a configuration problem. The raw output was: " + check_result.reason, "fatal");
-            remove_files([ temp_config, runtime_log ]);
+            remove_files([ temp_config, temp_config + ".owners.json", runtime_log ]);
             exit(1);
         }
 
         let section = section_from_check_reason(check_result.reason, temp_config);
         if (section == "" || quarantined[section] != null) {
             log_message("Generated tachyon-core configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
-            remove_files([ temp_config, runtime_log ]);
+            remove_files([ temp_config, temp_config + ".owners.json", runtime_log ]);
             exit(1);
         }
-        log_message(core_name + " rejected the configuration at section '" + section + "' (" + check_result.reason +
+        let expanded_check_reason = expand_check_error_reason(check_result.reason);
+        log_message(core_name + " rejected the configuration at section '" + section + "' (" + expanded_check_reason +
             "). Not loading it; the rest of the configuration starts normally", "warn");
-        quarantined[section] = check_result.reason;
+        quarantined[section] = expanded_check_reason;
     }
     write_section_errors(quarantined);
+    remove_file(temp_config + ".owners.json");
     if (check_result.status != 0) {
         log_message("Generated tachyon-core configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
         remove_files([ temp_config, runtime_log ]);
         exit(1);
     }
 
+    let nft_deferred_sections = deferred_sections;
+    for (let qname in keys(quarantined))
+        nft_deferred_sections = nft_deferred_sections != "" ? (nft_deferred_sections + " " + qname) : qname;
+
     if (populate_nft && !module_success([
         LIB_DIR + "/nft/apply.uc",
         "nft-populate-runtime-sets-from-uci",
         "1",
-        deferred_sections,
+        nft_deferred_sections,
         NFT_TABLE_NAME,
         NFT_COMMON_SET_NAME,
         NFT_PORT_SET_NAME,

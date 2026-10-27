@@ -296,10 +296,10 @@ cat >"$WORK_DIR/provider-rules.json" <<'JSON'
 {
   "section": [
     { ".name": "direct", "enabled": "1", "action": "bypass" },
-    { ".name": "zapret_one", "enabled": "1", "action": "zapret" },
-    { ".name": "zapret_disabled", "enabled": "0", "action": "zapret" },
-    { ".name": "zapret_two", "enabled": "1", "action": "zapret" },
-    { ".name": "zapret2_one", "enabled": "1", "action": "zapret2" }
+    { ".name": "zapret_one", "enabled": "1", "action": "zapret", "domain_suffix": [ "example.org" ] },
+    { ".name": "zapret_disabled", "enabled": "0", "action": "zapret", "domain_suffix": [ "example.org" ] },
+    { ".name": "zapret_two", "enabled": "1", "action": "zapret", "domain_suffix": [ "example.com" ] },
+    { ".name": "zapret2_one", "enabled": "1", "action": "zapret2", "domain_suffix": [ "example.net" ] }
   ]
 }
 JSON

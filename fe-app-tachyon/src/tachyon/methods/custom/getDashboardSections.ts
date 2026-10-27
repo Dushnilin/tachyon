@@ -129,7 +129,10 @@ type ChildType =
   | 'section_interface'
   | 'urltest'
   | 'priority_group'
-  | 'priority_level';
+  | 'priority_level'
+  | 'outbound_source'
+  | 'outbound_group'
+  | 'balancer';
 
 const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
 // Written by singbox/runtime.uc when it quarantines a section that sing-box
@@ -248,6 +251,13 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
   const urltests = childSections(configSections, 'urltest');
   const priorityGroups = childSections(configSections, 'priority_group');
   const priorityLevels = childSections(configSections, 'priority_level');
+  const outboundSources = childSections(configSections, 'outbound_source');
+  const outboundGroups = childSections(configSections, 'outbound_group');
+  const balancers = childSections(configSections, 'balancer');
+
+  const sourceById = new Map(outboundSources.map((s) => [s['.name'], s]));
+  const groupById = new Map(outboundGroups.map((g) => [g['.name'], g]));
+  const balancerById = new Map(balancers.map((b) => [b['.name'], b]));
 
   return configSections.map((section) => {
     if (section['.type'] !== 'section') {
@@ -255,10 +265,247 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     }
 
     const next: Tachyon.ConfigSection = { ...section };
-    const subscriptionUrlItems = ownedChildSections(next, subscriptionUrls);
-    const interfaceItems = ownedChildSections(next, interfaces);
-    const urltestItems = ownedChildSections(next, urltests);
-    const priorityGroupItems = ownedChildSections(next, priorityGroups);
+    const subscriptionUrlItems = [
+      ...ownedChildSections(next, subscriptionUrls),
+    ];
+    const interfaceItems = [...ownedChildSections(next, interfaces)];
+    const legacyUrltestItems = ownedChildSections(next, urltests);
+    const legacyPriorityGroupItems = ownedChildSections(next, priorityGroups);
+
+    // Collect effective modular outbound_source items (mirrors connections.uc:section_effective_outbound_sources)
+    const effectiveSources: Tachyon.ConfigSection[] = [];
+    const seenSrcIds = new Set<string>();
+    const addSource = (src?: Tachyon.ConfigSection) => {
+      if (!src || src.enabled === '0') return;
+      const sid = src['.name'];
+      if (!sid || seenSrcIds.has(sid)) return;
+      seenSrcIds.add(sid);
+      effectiveSources.push(src);
+    };
+    const addGroupSources = (grpId: string) => {
+      const grp = groupById.get(grpId);
+      if (!grp || grp.enabled === '0') return;
+      const gSources = getListValues(grp.source_refs);
+      if (!gSources.length || gSources[0] === '*') {
+        outboundSources.forEach(addSource);
+      } else {
+        gSources.forEach((sid) => addSource(sourceById.get(sid)));
+      }
+    };
+
+    getListValues(next.outbound_source_refs).forEach((sid) =>
+      addSource(sourceById.get(sid)),
+    );
+    getListValues(next.outbound_group_refs).forEach(addGroupSources);
+    getListValues(next.balancer_refs).forEach((bid) => {
+      const bal = balancerById.get(bid);
+      if (!bal || bal.enabled === '0') return;
+      getListValues(bal.source_refs).forEach((sid) =>
+        addSource(sourceById.get(sid)),
+      );
+      getListValues(bal.group_refs).forEach(addGroupSources);
+      getListValues(bal.outbound_group_levels).forEach((lvl) => {
+        if (lvl.toLowerCase() !== 'direct') addGroupSources(lvl);
+      });
+    });
+
+    const seenSubUrls = new Set(
+      subscriptionUrlItems.map((it) => (it.url || '').trim()).filter(Boolean),
+    );
+    const extraProxyLinks: string[] = [];
+    const extraAmneziaConfigs: string[] = [];
+    const extraInterfaces: string[] = [];
+    const extraOutboundJsons: string[] = [];
+
+    effectiveSources.forEach((src) => {
+      const stype = (src.source_type || 'subscription').toLowerCase();
+      if (stype === 'subscription' || src.url) {
+        const u = (src.url || '').trim();
+        if (u && !seenSubUrls.has(u)) {
+          seenSubUrls.add(u);
+          subscriptionUrlItems.push(src);
+        }
+      } else if (stype === 'proxy_links' || stype === 'links') {
+        getListValues(src.proxy_links || src.selector_proxy_links).forEach(
+          (l) => extraProxyLinks.push(l),
+        );
+        if (src.proxy_links_text) {
+          src.proxy_links_text
+            .split(/[\r\n]+/)
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith('#'))
+            .forEach((l) => extraProxyLinks.push(l));
+        }
+      } else if (stype === 'amnezia_config' || stype === 'awg') {
+        const awgCfgs = getListValues(
+          src.amnezia_configs || src.selector_amnezia_configs,
+        );
+        if (awgCfgs.length) {
+          awgCfgs.forEach((c) => extraAmneziaConfigs.push(c));
+        } else if (src.awg_private_key || src.awg_endpoint) {
+          const aname = (
+            src.name ||
+            src.label ||
+            src['.name'] ||
+            'AmneziaWG'
+          ).trim();
+          extraProxyLinks.push(`wireguard://${src['.name']}#${aname}`);
+        }
+      } else if (stype === 'fptn' && next.action !== 'fptn') {
+        let ftoken = (src.access_token || '').trim();
+        if (ftoken) {
+          if (!ftoken.includes('#')) {
+            const fname = (src.name || 'FPTN').trim();
+            if (fname) ftoken = `${ftoken}#${fname}`;
+          }
+          extraProxyLinks.push(ftoken);
+        }
+      } else if (stype === 'tor') {
+        const port = (src.tor_socks_port || '9050').trim() || '9050';
+        const tname = (src.name || 'Tor').trim() || 'Tor';
+        extraProxyLinks.push(`socks5://127.0.0.1:${port}#${tname}`);
+      } else if (stype === 'interface' || stype === 'tailscale') {
+        const iname = (
+          src.interface_name ||
+          src.interface ||
+          (stype === 'tailscale' ? 'tailscale0' : '')
+        ).trim();
+        if (iname) extraInterfaces.push(iname);
+      } else if (stype === 'outbound_json' || stype === 'json') {
+        getListValues(src.outbound_jsons || src.outbound_json).forEach((j) =>
+          extraOutboundJsons.push(j),
+        );
+      } else if (
+        [
+          'desync',
+          'warp',
+          'anytls',
+          'naive',
+          'mieru',
+          'snell',
+          'sudoku',
+          'masque',
+          'openconnect',
+          'shadowtls',
+          'trusttunnel',
+          'openvpn',
+        ].includes(stype)
+      ) {
+        const sname = (src.name || src.label || src['.name'] || stype).trim();
+        extraProxyLinks.push(`${stype}://${src['.name']}#${sname}`);
+      }
+    });
+
+    if (extraProxyLinks.length) {
+      next.selector_proxy_links = uniqueCodes([
+        ...getListValues(next.selector_proxy_links),
+        ...extraProxyLinks,
+      ]);
+    }
+    if (extraAmneziaConfigs.length) {
+      next.selector_amnezia_configs = uniqueCodes([
+        ...getListValues(next.selector_amnezia_configs),
+        ...extraAmneziaConfigs,
+      ]);
+    }
+    if (extraOutboundJsons.length) {
+      next.outbound_jsons = uniqueCodes([
+        ...getListValues(next.outbound_jsons),
+        ...extraOutboundJsons,
+      ]);
+    }
+
+    // Hydrate urltests from balancer_refs + legacy urltest child sections (mirrors connections.uc:urltests)
+    const urltestItems: Tachyon.ConfigSection[] = [];
+    const seenUtNames = new Set<string>();
+    const seenUtIds = new Set<string>();
+    getListValues(next.balancer_refs).forEach((bid) => {
+      const bal = balancerById.get(bid);
+      if (bal && (bal.balancer_type || 'urltest').toLowerCase() === 'urltest') {
+        const bname = bal.name || bal['.name'];
+        seenUtNames.add(bname);
+        if (bal.enabled !== '0' && !seenUtIds.has(bal['.name'])) {
+          seenUtIds.add(bal['.name']);
+          let mergedBal: Tachyon.ConfigSection = { ...bal };
+          const grefs = getListValues(bal.group_refs);
+          if (grefs.length > 0 && !bal.filter_mode) {
+            const grp = groupById.get(grefs[0]);
+            if (grp) {
+              mergedBal = { ...grp, ...bal, '.name': bal['.name'] };
+            }
+          }
+          urltestItems.push(mergedBal);
+        }
+      }
+    });
+    legacyUrltestItems.forEach((ut) => {
+      const utName = ut.name || ut['.name'];
+      if (!seenUtNames.has(utName) && !seenUtIds.has(ut['.name'])) {
+        seenUtNames.add(utName);
+        seenUtIds.add(ut['.name']);
+        urltestItems.push(ut);
+      }
+    });
+
+    // Hydrate priority_groups from balancer_refs + legacy priority_group child sections (mirrors connections.uc:priority_groups)
+    const priorityGroupItems: Tachyon.ConfigSection[] = [];
+    const seenPgNames = new Set<string>();
+    const seenPgIds = new Set<string>();
+    getListValues(next.balancer_refs).forEach((bid) => {
+      const bal = balancerById.get(bid);
+      if (
+        bal &&
+        (bal.balancer_type || 'urltest').toLowerCase() === 'priority'
+      ) {
+        const bname = bal.name || bal['.name'];
+        seenPgNames.add(bname);
+        if (bal.enabled !== '0' && !seenPgIds.has(bal['.name'])) {
+          seenPgIds.add(bal['.name']);
+          priorityGroupItems.push(bal);
+        }
+      }
+    });
+    legacyPriorityGroupItems.forEach((pg) => {
+      const pgName = pg.name || pg['.name'];
+      if (!seenPgNames.has(pgName) && !seenPgIds.has(pg['.name'])) {
+        seenPgNames.add(pgName);
+        seenPgIds.add(pg['.name']);
+        priorityGroupItems.push(pg);
+      }
+    });
+
+    const serviceSourceTypes = new Set([
+      'zapret',
+      'zapret2',
+      'byedpi',
+      'wdtt',
+      'olcrtc',
+    ]);
+    const hasNonServiceItems =
+      subscriptionUrlItems.length > 0 ||
+      extraProxyLinks.length > 0 ||
+      getListValues(next.selector_proxy_links).length > 0 ||
+      extraAmneziaConfigs.length > 0 ||
+      getListValues(next.selector_amnezia_configs).length > 0 ||
+      interfaceItems.length > 0 ||
+      extraInterfaces.length > 0 ||
+      extraOutboundJsons.length > 0 ||
+      getListValues(next.outbound_jsons).length > 0 ||
+      urltestItems.length > 0 ||
+      priorityGroupItems.length > 0;
+
+    if (
+      (next.action === 'connection' || next.action === 'proxy') &&
+      !hasNonServiceItems &&
+      effectiveSources.length > 0 &&
+      effectiveSources.every((src) =>
+        serviceSourceTypes.has((src.source_type || '').toLowerCase()),
+      )
+    ) {
+      next.action = (
+        effectiveSources[0].source_type || 'zapret2'
+      ).toLowerCase() as Tachyon.ConfigSection['action'];
+    }
 
     if (subscriptionUrlItems.length) {
       const settings: Record<string, ItemSettings> = {};
@@ -290,7 +537,8 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           app_version: item.app_version,
           accept_language: item.accept_language,
           show_dashboard_metadata: item.show_dashboard_metadata,
-          prefix_nodes: item.prefix_nodes,
+          prefix_nodes:
+            item.prefix_nodes ?? (item.node_prefix ? '1' : undefined),
           node_prefix: item.node_prefix,
           node_prefix_bg: item.node_prefix_bg,
           node_prefix_color: item.node_prefix_color,
@@ -303,10 +551,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       next.subscription_url_settings = compactSettingsMap(settings);
     }
 
-    if (interfaceItems.length) {
-      next.interfaces = interfaceItems
-        .map((item) => item.name || '')
-        .filter(Boolean);
+    if (interfaceItems.length || extraInterfaces.length) {
+      next.interfaces = uniqueCodes([
+        ...interfaceItems.map((item) => item.name || '').filter(Boolean),
+        ...extraInterfaces,
+      ]);
     }
 
     if (urltestItems.length) {
@@ -339,28 +588,71 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       next.priority_groups = priorityGroupItems.map((item) => item['.name']);
       priorityGroupItems.forEach((item) => {
         const groupId = item['.name'];
-        const levels = childSectionsByOwner(priorityLevels, 'group', groupId)
-          .map(
-            (level, index): PriorityLevelConfig => ({
-              id: level['.name'],
-              displayName: level.name || level['.name'],
-              order: Number.parseInt(level.order || `${index}`, 10) || 0,
-              direct: level.direct === '1',
-              filterMode: level.filter_mode || 'include',
-              detectServerCountry: level.detect_server_country || 'flag_emoji',
-              country: getListValues(level.country),
-              serverName: getListValues(level.server_name),
-              regex: getListValues(level.regex),
-              excludeCountries: getListValues(level.exclude_countries),
-              excludeOutbounds: getListValues(level.exclude_outbounds),
-              excludeRegex: getListValues(level.exclude_regex),
-            }),
-          )
-          .sort((left, right) =>
-            left.order === right.order
-              ? left.id.localeCompare(right.id)
-              : left.order - right.order,
-          );
+        const groupRefs = getListValues(item.outbound_group_levels);
+        const levels: PriorityLevelConfig[] = groupRefs.length
+          ? groupRefs.flatMap((ref, idx): PriorityLevelConfig[] => {
+              const synthId = `${groupId}_lvl_${idx + 1}`;
+              if (ref.toLowerCase() === 'direct') {
+                return [
+                  {
+                    id: synthId,
+                    displayName: 'Direct',
+                    order: idx + 1,
+                    direct: true,
+                    filterMode: 'include',
+                    detectServerCountry: 'flag_emoji',
+                    country: [],
+                    serverName: [],
+                    regex: [],
+                    excludeCountries: [],
+                    excludeOutbounds: [],
+                    excludeRegex: [],
+                  },
+                ];
+              }
+              const grp = groupById.get(ref);
+              if (!grp) return [];
+              return [
+                {
+                  id: synthId,
+                  displayName: grp.name || ref,
+                  order: idx + 1,
+                  direct: false,
+                  filterMode: grp.filter_mode || 'include',
+                  detectServerCountry:
+                    grp.detect_server_country || 'flag_emoji',
+                  country: getListValues(grp.include_countries),
+                  serverName: getListValues(grp.include_outbounds),
+                  regex: getListValues(grp.include_regex),
+                  excludeCountries: getListValues(grp.exclude_countries),
+                  excludeOutbounds: getListValues(grp.exclude_outbounds),
+                  excludeRegex: getListValues(grp.exclude_regex),
+                },
+              ];
+            })
+          : childSectionsByOwner(priorityLevels, 'group', groupId)
+              .map(
+                (level, index): PriorityLevelConfig => ({
+                  id: level['.name'],
+                  displayName: level.name || level['.name'],
+                  order: Number.parseInt(level.order || `${index}`, 10) || 0,
+                  direct: level.direct === '1',
+                  filterMode: level.filter_mode || 'include',
+                  detectServerCountry:
+                    level.detect_server_country || 'flag_emoji',
+                  country: getListValues(level.country),
+                  serverName: getListValues(level.server_name),
+                  regex: getListValues(level.regex),
+                  excludeCountries: getListValues(level.exclude_countries),
+                  excludeOutbounds: getListValues(level.exclude_outbounds),
+                  excludeRegex: getListValues(level.exclude_regex),
+                }),
+              )
+              .sort((left, right) =>
+                left.order === right.order
+                  ? left.id.localeCompare(right.id)
+                  : left.order - right.order,
+              );
 
         settings[groupId] = {
           name: item.name,
@@ -1018,17 +1310,43 @@ async function readDashboardSectionCache(
 }
 
 // One flat map { section: reason } from the runtime's quarantine record.
-async function readSectionErrors(): Promise<Record<string, string>> {
+export async function readSectionErrors(): Promise<Record<string, string>> {
   try {
-    const raw = await fs.read(SECTION_ERRORS_FILE);
+    const raw = await fs.read(SECTION_ERRORS_FILE).catch(async () => {
+      const directFs = fs as unknown as {
+        read_direct?: (p: string, type?: string) => Promise<string>;
+      };
+      if (typeof directFs.read_direct === 'function') {
+        return directFs.read_direct(SECTION_ERRORS_FILE, 'text');
+      }
+      return '';
+    });
     const parsed = JSON.parse(raw) as unknown;
 
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      if (typeof window !== 'undefined') {
+        (
+          window as unknown as {
+            __tachyonSectionErrors?: Record<string, string>;
+          }
+        ).__tachyonSectionErrors = {};
+      }
       return {};
     }
 
-    return objectMap(parsed);
+    const map = objectMap(parsed);
+    if (typeof window !== 'undefined') {
+      (
+        window as unknown as { __tachyonSectionErrors?: Record<string, string> }
+      ).__tachyonSectionErrors = map;
+    }
+    return map;
   } catch (_error) {
+    if (typeof window !== 'undefined') {
+      (
+        window as unknown as { __tachyonSectionErrors?: Record<string, string> }
+      ).__tachyonSectionErrors = {};
+    }
     return {};
   }
 }

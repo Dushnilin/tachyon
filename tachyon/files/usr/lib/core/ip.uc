@@ -157,6 +157,24 @@ function resolve_mac_to_ips(mac) {
     let seen = {};
 
     let lease_files = [ "/tmp/dhcp.leases", "/var/lib/misc/dnsmasq.leases", "/tmp/hosts/dhcp", "/tmp/hosts/odhcpd", "/var/run/odhcpd.leases" ];
+    let mock_leases = getenv("TACHYON_MOCK_DHCP_LEASES");
+    if (mock_leases != null && mock_leases != "") {
+        if (index(mock_leases, "=") >= 0) {
+            for (let pair in split(as_string(mock_leases), /[;,\n\t ]+/)) {
+                let eq = index(pair, "=");
+                if (eq > 0) {
+                    let m = lc(replace(trim(substr(pair, 0, eq)), "-", ":"));
+                    let ip = trim(substr(pair, eq + 1));
+                    if (m == mac && valid_ip(ip) && !seen[ip]) {
+                        seen[ip] = true;
+                        push(matched, ip);
+                    }
+                }
+            }
+        } else {
+            lease_files = [ mock_leases, ...lease_files ];
+        }
+    }
     for (let lpath in lease_files) {
         let data = fs.readfile(lpath);
         if (!data)

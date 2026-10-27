@@ -68,9 +68,9 @@ export function renderStrategyFuzzerModal(
       ipfrags: ['24'],
     },
     desync: {
-      modes: ['fake+split', 'fake+disorder', 'split', 'disorder'],
-      split_poses: [1, 2, 3],
-      fake_ttls: [2, 3, 4, 5, 6],
+      modes: ['fake_split', 'tlsrec', 'disorder', 'split', 'fake', 'oob'],
+      split_poses: ['midsld', 'sni', 1, 2],
+      fake_ttls: [3, 4, 5, 6, 8],
       fake_snis: ['www.google.com', 'dl.google.com', 'ya.ru'],
       repeats: [1, 2, 3, 4],
       split_delays: [1, 2, 3],
@@ -184,20 +184,26 @@ export function renderStrategyFuzzerModal(
 
   const getApplicableRules = (engine: Tachyon.FuzzerEngine) => {
     const exact = normalizedRules.filter((r) => {
-      if (!r.action) return true;
+      if (!r.action) return false;
       if (engine === 'all') {
         return dpiActions.includes(r.action);
       }
       return r.action === engine;
     });
+    const connectionRules = normalizedRules.filter(
+      (r) =>
+        (!r.action || r.action === 'connection') &&
+        !exact.some((e) => e.id === r.id),
+    );
     const otherDpi = normalizedRules.filter(
       (r) =>
         r.action &&
         dpiActions.includes(r.action) &&
-        !exact.some((e) => e.id === r.id),
+        !exact.some((e) => e.id === r.id) &&
+        !connectionRules.some((c) => c.id === r.id),
     );
-    if (exact.length > 0 || otherDpi.length > 0) {
-      return [...exact, ...otherDpi];
+    if (exact.length > 0 || connectionRules.length > 0 || otherDpi.length > 0) {
+      return [...exact, ...connectionRules, ...otherDpi];
     }
     return normalizedRules;
   };
@@ -800,9 +806,9 @@ export function renderStrategyFuzzerModal(
     const bd = patternsConfig.byedpi;
     if (!patternsConfig.desync) {
       patternsConfig.desync = {
-        modes: ['fake+split', 'fake+disorder', 'split', 'disorder'],
-        split_poses: [1, 2, 3],
-        fake_ttls: [2, 3, 4, 5, 6],
+        modes: ['fake_split', 'tlsrec', 'disorder', 'split', 'fake', 'oob'],
+        split_poses: ['midsld', 'sni', 1, 2],
+        fake_ttls: [3, 4, 5, 6, 8],
         fake_snis: ['www.google.com', 'dl.google.com', 'ya.ru'],
         repeats: [1, 2, 3, 4],
         split_delays: [1, 2, 3],
@@ -967,7 +973,10 @@ export function renderStrategyFuzzerModal(
         renderChipGroup(
           _('Split Positions (--split-pos)'),
           ds.split_poses,
-          (v) => ds.split_poses.push(Number(v) || 1),
+          (v) =>
+            ds.split_poses.push(
+              v === 'midsld' || v === 'sni' ? v : Number(v) || 1,
+            ),
           (i) => ds.split_poses.splice(i, 1),
         ),
         renderChipGroup(
@@ -2297,6 +2306,7 @@ export function renderStrategyFuzzerModal(
       targetRule &&
       targetRule.action &&
       targetRule.action !== item.engine &&
+      targetRule.action !== 'connection' &&
       !dpiActions.includes(targetRule.action)
     ) {
       showToast(

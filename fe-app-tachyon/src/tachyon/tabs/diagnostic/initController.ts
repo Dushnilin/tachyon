@@ -984,6 +984,26 @@ function handleOpenLeakCheck() {
 function handleOpenStrategyFuzzer() {
   getConfigSections()
     .then((sections) => {
+      const dpiTypes = ['zapret2', 'zapret', 'byedpi', 'desync'];
+      const dpiSources = sections
+        .filter((s) => {
+          const st = String(s.source_type || '').toLowerCase();
+          return s['.type'] === 'outbound_source' && dpiTypes.includes(st);
+        })
+        .map((s) => {
+          const st = String(s.source_type || '').toLowerCase();
+          const label =
+            (typeof s.label === 'string' && s.label.trim()) ||
+            (typeof s.name === 'string' && s.name.trim()) ||
+            s['.name'];
+          return {
+            id: s['.name'],
+            label: `${label} (${_('Connection')})`,
+            action: st,
+          };
+        })
+        .filter((r) => Boolean(r.id));
+
       const ruleSections = sections
         .filter((s) => s['.type'] === 'section' || s['.type'] === 'rule')
         .map((s) => ({
@@ -995,7 +1015,7 @@ function handleOpenStrategyFuzzer() {
           action: s.action || '',
         }))
         .filter((r) => Boolean(r.id));
-      renderStrategyFuzzerModal(ruleSections);
+      renderStrategyFuzzerModal([...dpiSources, ...ruleSections]);
     })
     .catch(() => {
       renderStrategyFuzzerModal([]);
