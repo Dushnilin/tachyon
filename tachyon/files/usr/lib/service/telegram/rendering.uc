@@ -409,6 +409,158 @@ function valid_updatable_component(name) {
     return allowed[name];
 }
 
+// ---------------------------------------------------------------------------
+// The modular layout: conditions, outbound sources and balancers
+// ---------------------------------------------------------------------------
+//
+// A section no longer carries its conditions and its server sources itself.
+// The conditions live in reusable "condition" sections the section points
+// at, the sources in "outbound_source" sections, and the auto-selection
+// rules in "balancer" sections. A bot that only reads the section's own
+// fields therefore sees empty lists.
+//
+// These helpers read the section the way the generator reads it: the
+// section's own fields plus the ones its linked conditions carry.
+
+// The condition sections a section is built from: the ones it references
+// and the ones they are composed of.
+function section_condition_sections(section) {
+    let result = [];
+    let seen = {};
+    if (type(section) != "object")
+        return result;
+
+    let add = function(cond) {
+        if (type(cond) != "object")
+            return;
+        let name = common.option(cond, ".name", "");
+        if (name == "" || seen[name])
+            return;
+        seen[name] = true;
+        push(result, cond);
+    };
+
+    // A section may reference its conditions by name, or name them in a
+    // free-text expression - both are how the interface writes them.
+    for (let ref in common.list_option(section, "condition_refs"))
+        add(uci_core.get_all(CONFIG_NAME, ref));
+
+    let expr = trim(as_string(common.option(section, "condition_expression", "")));
+    if (expr != "") {
+        let c = uci_core.cursor();
+        if (c) {
+            c.load(CONFIG_NAME);
+            let conditions = c.get_all(CONFIG_NAME, "condition");
+            for (let name in conditions) {
+                // Only the names the expression actually mentions, so a
+                // condition the section does not use stays out of the list.
+                if (match(expr, name) != null || match(expr, name + " ") != null)
+                    add(conditions[name]);
+            }
+        }
+    }
+
+    return result;
+}
+
+// The condition sections a section is built from, plus the section itself.
+// The section's own fields count - a config from before the modular layout
+// still holds them there.
+function section_own_and_conditions(section) {
+    let result = [];
+    if (type(section) == "object")
+        push(result, section);
+    for (let cond in section_condition_sections(section))
+        push(result, cond);
+    return result;
+}
+
+// The values of one condition key across the section and its conditions.
+function section_condition_values(section, key) {
+    let result = [];
+    let seen = {};
+    for (let src in section_own_and_conditions(section)) {
+        for (let value in common.list_option(src, key)) {
+            value = as_string(value);
+            if (value == "" || seen[value])
+                continue;
+            seen[value] = true;
+            push(result, value);
+        }
+    }
+    return result;
+}
+
+// The server sources a section draws from: the outbound_source sections it
+// references, and the legacy subscription_url children it still carries.
+function section_outbound_sources(section) {
+    let result = [];
+    let seen = {};
+    if (type(section) != "object")
+        return result;
+
+    let add = function(src) {
+        if (type(src) != "object")
+            return;
+        let name = common.option(src, ".name", "");
+        if (name == "" || seen[name])
+            return;
+        seen[name] = true;
+        push(result, src);
+    };
+
+    for (let ref in common.list_option(section, "outbound_source_refs"))
+        add(uci_core.get_all(CONFIG_NAME, ref));
+
+    let c = uci_core.cursor();
+    if (c) {
+        c.load(CONFIG_NAME);
+        let all = c.get_all(CONFIG_NAME);
+        for (let name in all) {
+            if (all[name][".type"] == "subscription_url" && all[name].section == common.option(section, ".name", ""))
+                add(all[name]);
+        }
+    }
+
+    return result;
+}
+
+// The balancers a section uses: the reusable ones it references and the
+// legacy urltest/priority_group children it still carries.
+function section_balancers(section) {
+    let result = [];
+    let seen = {};
+    if (type(section) != "object")
+        return result;
+
+    let add = function(bal) {
+        if (type(bal) != "object")
+            return;
+        let name = common.option(bal, ".name", "");
+        if (name == "" || seen[name])
+            return;
+        seen[name] = true;
+        push(result, bal);
+    };
+
+    for (let ref in common.list_option(section, "balancer_refs"))
+        add(uci_core.get_all(CONFIG_NAME, ref));
+
+    let c = uci_core.cursor();
+    if (c) {
+        c.load(CONFIG_NAME);
+        let all = c.get_all(CONFIG_NAME);
+        let sec_name = common.option(section, ".name", "");
+        for (let name in all) {
+            let child = all[name];
+            if ((child[".type"] == "urltest" || child[".type"] == "priority_group") && child.section == sec_name)
+                add(child);
+        }
+    }
+
+    return result;
+}
+
 return {
     CONFIG_NAME,
     get_t,
@@ -426,6 +578,11 @@ return {
     safe_execute,
     extract_clean_fptn_token,
     mask_fptn_token,
+    section_condition_sections,
+    section_own_and_conditions,
+    section_condition_values,
+    section_outbound_sources,
+    section_balancers,
     backup_archive_members,
     backup_archive_safe,
     backup_extract_dir,

@@ -53,6 +53,10 @@ let build_transition = rendering.build_transition;
 let build_identity_key = rendering.build_identity_key;
 let extract_clean_fptn_token = rendering.extract_clean_fptn_token;
 let mask_fptn_token = rendering.mask_fptn_token;
+let section_condition_sections = rendering.section_condition_sections;
+let section_condition_values = rendering.section_condition_values;
+let section_outbound_sources = rendering.section_outbound_sources;
+let section_balancers = rendering.section_balancers;
 let normalize_mac = rendering.normalize_mac;
 let find_mac_block_rules = rendering.find_mac_block_rules;
 let valid_updatable_component = rendering.valid_updatable_component;
@@ -503,23 +507,42 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
         text += "🔑 Token: <code>" + escape_html(mask_fptn_token(tok)) + "</code>\n";
     }
     
-    let d_count = length(common.list_option(s, "domain")) + length(common.list_option(s, "domain_suffix")) + length(common.list_option(s, "domain_keyword")) + length(common.list_option(s, "domain_regex"));
-    let ip_count = length(common.list_option(s, "ip")) + length(common.list_option(s, "ip_cidr"));
-    let src_count = length(common.list_option(s, "src_ip")) + length(common.list_option(s, "src_mac")) + length(common.list_option(s, "src_device"));
-    let rs_count = length(common.list_option(s, "community_lists"));
+    let d_count = length(section_condition_values(s, "domain_suffix")) +
+                  length(section_condition_values(s, "domain")) +
+                  length(section_condition_values(s, "domain_keyword")) +
+                  length(section_condition_values(s, "domain_regex"));
+    let ip_count = length(section_condition_values(s, "ip_cidr")) +
+                   length(section_condition_values(s, "ip"));
+    let src_count = length(section_condition_values(s, "source_ip_cidr")) +
+                    length(section_condition_values(s, "source_macs"));
+    let rs_count = length(section_condition_values(s, "community_lists"));
 
-    let sub_count = 0;
-    let all = c.get_all(CONFIG_NAME);
-    for (let sname in all) {
-        if (all[sname][".type"] == "subscription_url" && all[sname].section == sec_name) sub_count++;
+    // The conditions a section is built from are reusable entities now, so
+    // the section has to name them - otherwise the user has no idea which
+    // condition a section really uses.
+    let cond_list = section_condition_sections(s);
+    let cond_names = [];
+    for (let cond in cond_list) {
+        let cname = cond.name || cond[".name"];
+        let ctype = cond.condition_type || "atomic";
+        push(cond_names, escape_html(cname) + " <i>(" + escape_html(ctype) + ")</i>");
     }
-               
+
+    let sources = section_outbound_sources(s);
+    let balancers = section_balancers(s);
+    let bal_names = [];
+    for (let bal in balancers) {
+        let bname = bal.name || bal[".name"];
+        let btype = bal.balancer_type || bal[".type"] || "urltest";
+        push(bal_names, escape_html(bname) + " <i>(" + escape_html(btype) + ")</i>");
+    }
+
     let keyboard = [];
     push(keyboard, [
         { text: (s.enabled == "1" ? "🔴 " + t("status_disabled") : "🟢 " + t("status_enabled")), callback_data: "/sec_toggle " + sec_name },
         { text: t("btn_rename"), callback_data: "/sec_rename " + sec_name }
     ]);
-    
+
     push(keyboard, [{ text: t("section_action") + ": " + (s.action || "none"), callback_data: "/sec_action " + sec_name }]);
     if (s.action == "proxy" || s.action == "route") {
         push(keyboard, [{ text: t("status_target") + ": " + (s.target || "main-out"), callback_data: "/sec_target " + sec_name }]);
@@ -527,7 +550,15 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
     if (s.action == "fptn") {
         push(keyboard, [{ text: "🔑 " + t("fptn_token_change_btn"), callback_data: "/fptn_token " + sec_name }]);
     }
-    
+
+    if (length(cond_names) > 0) {
+        text += "🧩 <b>" + t("section_conditions") + ":</b> " + join(", ", cond_names) + "\n";
+    }
+    if (length(bal_names) > 0) {
+        text += "⚡ <b>" + t("section_balancers") + ":</b> " + join(", ", bal_names) + "\n";
+    }
+    text += "\n";
+
     push(keyboard, [
         { text: t("section_domains") + " (" + d_count + ")", callback_data: "/sec_list " + sec_name + " domain" },
         { text: "📝 IP (" + ip_count + ")", callback_data: "/sec_list " + sec_name + " ip" }
@@ -537,7 +568,7 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
         { text: "📝 Rulesets (" + rs_count + ")", callback_data: "/sec_list " + sec_name + " ruleset" }
     ]);
 
-    push(keyboard, [{ text: t("menu_subscriptions") + " (" + sub_count + ")", callback_data: "/sec_subs " + sec_name }]);
+    push(keyboard, [{ text: t("menu_subscriptions") + " (" + length(sources) + ")", callback_data: "/sec_subs " + sec_name }]);
     
     push(keyboard, [{ text: t("btn_delete_section"), callback_data: "/sec_delete " + sec_name }]);
     push(keyboard, [{ text: t("btn_back_to_sections"), callback_data: "/sections" }]);
@@ -554,34 +585,25 @@ function view_sec_list(token, chat_id, msg_id, sec_name, list_type) {
     
     let items = [];
     let title = "";
+    // The values live in the section's own fields and in the conditions it
+    // is built from - a modular section carries them in the condition.
     if (list_type == "domain") {
         title = t("section_domains");
-        let ds = common.list_option(s, "domain_suffix");
-        for (let x in ds) push(items, {type: "domain_suffix", val: x});
-        let d = common.list_option(s, "domain");
-        for (let x in d) push(items, {type: "domain", val: x});
-        let dk = common.list_option(s, "domain_keyword");
-        for (let x in dk) push(items, {type: "domain_keyword", val: x});
-        let dr = common.list_option(s, "domain_regex");
-        for (let x in dr) push(items, {type: "domain_regex", val: x});
+        for (let x in section_condition_values(s, "domain_suffix")) push(items, {type: "domain_suffix", val: x});
+        for (let x in section_condition_values(s, "domain")) push(items, {type: "domain", val: x});
+        for (let x in section_condition_values(s, "domain_keyword")) push(items, {type: "domain_keyword", val: x});
+        for (let x in section_condition_values(s, "domain_regex")) push(items, {type: "domain_regex", val: x});
     } else if (list_type == "ip") {
         title = t("section_ips");
-        let ipc = common.list_option(s, "ip_cidr");
-        for (let x in ipc) push(items, {type: "ip_cidr", val: x});
-        let ip = common.list_option(s, "ip");
-        for (let x in ip) push(items, {type: "ip", val: x});
+        for (let x in section_condition_values(s, "ip_cidr")) push(items, {type: "ip_cidr", val: x});
+        for (let x in section_condition_values(s, "ip")) push(items, {type: "ip", val: x});
     } else if (list_type == "src") {
         title = t("section_sources");
-        let sdev = common.list_option(s, "src_device");
-        for (let x in sdev) push(items, {type: "src_device", val: x});
-        let sip = common.list_option(s, "src_ip");
-        for (let x in sip) push(items, {type: "src_ip", val: x});
-        let smac = common.list_option(s, "src_mac");
-        for (let x in smac) push(items, {type: "src_mac", val: x});
+        for (let x in section_condition_values(s, "source_ip_cidr")) push(items, {type: "source_ip_cidr", val: x});
+        for (let x in section_condition_values(s, "source_macs")) push(items, {type: "source_macs", val: x});
     } else if (list_type == "ruleset") {
         title = "Rulesets";
-        let rs = common.list_option(s, "community_lists");
-        for (let x in rs) push(items, {type: "community_lists", val: x});
+        for (let x in section_condition_values(s, "community_lists")) push(items, {type: "community_lists", val: x});
     }
     
     let text = t("section_list_header") + " " + escape_html(s.label || s.name || sec_name) + "\n" +
@@ -1064,20 +1086,20 @@ function view_connections(token, chat_id, msg_id, page) {
 function view_sec_subs(token, chat_id, msg_id, sec_name) {
     let c = uci_core.cursor();
     c.load(CONFIG_NAME);
-    let all = c.get_all(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return;
     let keyboard = [];
     let count = 0;
     let idx = 0;
-    for (let sname in all) {
-        let s = all[sname];
-        if (s[".type"] == "subscription_url" && s.section == sec_name) {
-            let url = s.url || t("sub_empty_url");
-            if (length(url) > 35) url = substr(url, 0, 35) + "...";
-            let icon = s.enabled == "0" ? "❌" : "✅";
-            push(keyboard, [{ text: icon + " " + url, callback_data: "/set_cat subscription_url " + sname }]);
-            push(keyboard, [{ text: "   🗑 Удалить", callback_data: "/sec_sub_del " + sec_name + " " + idx }]);
-            count++;
-        }
+    // The sources are reusable entities now, so a section points at them
+    // instead of carrying its own subscription children.
+    for (let src in section_outbound_sources(s)) {
+        let url = src.url || src.name || src[".name"];
+        if (length(url) > 35) url = substr(url, 0, 35) + "...";
+        let icon = src.enabled == "0" ? "❌" : "✅";
+        let stype = src.source_type || "subscription";
+        push(keyboard, [{ text: icon + " [" + stype + "] " + url, callback_data: "/sec_subs " + sec_name }]);
+        count++;
         idx++;
     }
     push(keyboard, [{ text: "➕ Добавить подписку", callback_data: "/sec_sub_add " + sec_name }]);

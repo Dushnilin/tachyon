@@ -502,7 +502,19 @@ function retry_start_on_wan_up_action(runtime_running_value, service_enabled_val
         return "skip_disabled";
     if (bool_text(retry_pending_value))
         return "restart";
-    if (shutdown_correctly_value != null && as_string(shutdown_correctly_value) == "0")
+    // A service that is enabled for boot start has to come up when the
+    // network comes back, whether the previous stop was clean or not.
+    //
+    // It used to answer "skip_no_retry" after a clean stop, which left the
+    // router without a proxy: the user restarted the network, the service
+    // stayed down, and nothing brought it back (issue #240). The only case
+    // where staying down is right is a service the user disabled - and that
+    // is answered above.
+    //
+    // The unclean-shutdown flag is kept as the signal that the runtime has
+    // to be rebuilt from scratch rather than resumed, not as the signal that
+    // the service may stay down.
+    if (shutdown_correctly_value != null)
         return "restart";
     return "skip_no_retry";
 }
@@ -511,13 +523,12 @@ function retry_start_on_wan_up(owner_pid) {
     let running = runtime_is_running();
     let enabled = service_is_enabled();
     let retry_pending = start_retry_pending(START_RETRY_FILE);
-    let boot_completed = file_exists(BOOT_COMPLETED_FILE) || file_exists(RELOAD_STATE_FILE);
     let shutdown_correctly = option(uci_settings(), "shutdown_correctly", "1");
     let action = retry_start_on_wan_up_action(
         running ? "1" : "0",
         enabled ? "1" : "0",
         retry_pending ? "1" : "0",
-        (boot_completed && shutdown_correctly == "0") ? "0" : "1"
+        shutdown_correctly != null ? as_string(shutdown_correctly) : ""
     );
 
     if (action == "skip_running" || action == "skip_disabled") {
