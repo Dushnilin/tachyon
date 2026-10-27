@@ -70,6 +70,7 @@ chmod +x "$FAKE_BIN/ip"
 
 export PATH="$FAKE_BIN:$PATH"
 export NFT_LOG
+export WORK_DIR  # fake nft uses $WORK_DIR to track state; must be visible to child processes
 
 # 1. Test base runtime generation
 ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc" nft-create-runtime-base \
