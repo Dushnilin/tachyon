@@ -9,6 +9,8 @@ const context={E:(tag,attrs,text)=>({tag,attrs,text}),TextEncoder, btoa:value=>B
  atob:value=>Buffer.from(value,'base64').toString('binary'), _:text=>text,
  main:{supportsVpnUrl:()=>supported,validateProxyUrl:link=>({valid:link.startsWith('vpn://')})},
  normalizeDynamicListItems:value=>Array.isArray(value)?value:value?[value]:[],
+ configureLiveDynamicListChoices(){},
+ uci:{sections:()=>[]},
  form:{TextValue:'TextValue'}, ButtonAddSettingsDynamicList:'NamedConfigs',
  outboundNameSourceOptions:new Map(), refreshDashboardFilterChoiceWidgets(){},
  showAmneziaConfigSettingsModal(){},
@@ -17,7 +19,7 @@ const context={E:(tag,attrs,text)=>({tag,attrs,text}),TextEncoder, btoa:value=>B
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('function parseAmneziaConfig('),source.indexOf('function showAmneziaConfigSettingsModal('))+
  source.slice(source.indexOf('function validateAmneziaConfigsBeforeSave('),source.indexOf('function showOutboundJsonSettingsModal(')),context);
-const start=source.indexOf('  o = section.taboption(',source.indexOf('  outboundNameSourceOptions.set("selector_proxy_links", o);'));
+const start=source.lastIndexOf('  o = section.taboption(',source.indexOf('"selector_amnezia_configs",'));
 const end=source.indexOf('  outboundNameSourceOptions.set("selector_amnezia_configs", o);',start);
 vm.runInContext('let o;'+source.slice(start,end)+'outboundNameSourceOptions.set("selector_amnezia_configs",o);',context);
 const option=options.selector_amnezia_configs;

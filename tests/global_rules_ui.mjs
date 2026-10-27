@@ -71,6 +71,12 @@ vm.runInContext(
       'function normalizeOptionValues(value) {',
       'function isOutboundDetourTargetSection(',
     ),
+    // The linked-condition reader: a section may keep its conditions in a
+    // child "cond_<section>" section, and the value readers have to see them.
+    between(
+      'const LINKED_CONDITION_OPTION_KEYS = new Set([',
+      'function syncLinkedConditionOption(',
+    ),
     fn('normalizeDynamicListItems'),
     fn('uniqueDynamicListItems'),
     // The claim picker is declared inside createSectionContent; only its own

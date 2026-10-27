@@ -2166,15 +2166,25 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
         return;
     let section_name = section[".name"];
     let sec_tag = outbound_tag(section_name);
-    let all_sections = (ctx.routes && type(ctx.routes.enabled_sections) == "function")
-        ? ctx.routes.enabled_sections()
-        : [];
+    let all_sections = null;
+    // The section list is only needed for DPI sources, and reading it needs a
+    // UCI cursor the generator may not have (fixtures, unit tests). Read it
+    // lazily so a section without DPI sources never needs the cursor.
+    let dpi_sections = function() {
+        if (all_sections == null) {
+            all_sections = (ctx.routes && type(ctx.routes.enabled_sections) == "function" &&
+                ctx.uci_cursor && type(ctx.uci_cursor) == "function")
+                ? ctx.routes.enabled_sections()
+                : [];
+        }
+        return all_sections;
+    };
     for (let src in connections.section_effective_outbound_sources(section)) {
         let stype = lc(trim(option(src, "source_type", "")));
         let src_id = as_string(src[".name"] || "");
         let display_name = trim(option(src, "name", src_id)) || src_id;
         if (stype == "zapret2") {
-            let idx = enabled_action_index(all_sections, section, "zapret2");
+            let idx = enabled_action_index(dpi_sections(), section, "zapret2");
             if (idx <= 0)
                 idx = 1;
             let tag_name = single_dpi_only ? sec_tag : unique_tag(outbound_tag(section_name + "-zapret2-" + src_id), taken);
@@ -2189,7 +2199,7 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
             state.outboundMetadata.sources[tag_name] = src_id;
         } else if (stype == "zapret") {
-            let idx = enabled_action_index(all_sections, section, "zapret");
+            let idx = enabled_action_index(dpi_sections(), section, "zapret");
             if (idx <= 0)
                 idx = 1;
             let tag_name = single_dpi_only ? sec_tag : unique_tag(outbound_tag(section_name + "-zapret-" + src_id), taken);

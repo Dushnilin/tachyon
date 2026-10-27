@@ -1663,7 +1663,12 @@ function section_from_check_reason(reason, config_path) {
     }
 
     if (direct_owner == "" && type(owners) == "object") {
-        let rr_m = match(reason, /(?:route\.)?rules\[(\d+)\]/);
+        // ucode's regex has no non-capturing group, so the optional
+        // "route." prefix is matched with its own pattern and the index is
+        // taken from whichever one hits.
+        let rr_m = match(reason, /route\.rules\[(\d+)\]/);
+        if (!rr_m)
+            rr_m = match(reason, /rules\[(\d+)\]/);
         if (rr_m && type(owners.route_rules) == "object" && owners.route_rules[as_string(rr_m[1])] != null)
             direct_owner = as_string(owners.route_rules[as_string(rr_m[1])]);
         let ds_m = match(reason, /dns\.servers\[(\d+)\]/);

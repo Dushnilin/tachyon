@@ -377,14 +377,17 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         let pid_running = false;
         let daemon_pid = 0;
         for (let wait_i = 0; wait_i < 15; wait_i++) {
-            system("sleep 0.1");
+            sleep(100);
             let pid_str = fs.readfile(pid_path);
             if (pid_str) {
                 let pid = trim(as_string(pid_str));
-                if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
+                if (pid != "" && match(pid, /^[0-9]+$/) != null && exec.is_alive(pid)) {
                     if (is_desync) {
-                        system("sleep 0.15");
-                        if (system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) != 0)
+                        // A desync engine can bind and die within the same
+                        // tick, so give it a moment and re-check before the
+                        // probe claims the port.
+                        sleep(150);
+                        if (!exec.is_alive(pid))
                             break;
                     }
                     pid_running = true;

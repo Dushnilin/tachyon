@@ -2228,8 +2228,7 @@ const MIGRATIONS = [
     { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces },
     { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults },
     { id: "engine_identity_tachyon_core", run: migrate_engine_identity },
-    { id: "modular_entities_v1", run: migrate_modular_entities_v1 },
-    { id: "modular_entities_v2", run: migrate_modular_entities_v1 }
+    { id: "modular_entities_v1", run: migrate_modular_entities_v1 }
 ];
 
 
