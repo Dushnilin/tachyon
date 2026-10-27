@@ -2189,7 +2189,7 @@ function migrate_modular_entities_v1(ctx) {
             set_option_if_missing(ctx, bal, "enabled", "1");
             set_option_if_missing(ctx, bal, "balancer_type", "priority");
             set_option_if_missing(ctx, bal, "name", pg_name);
-            for (let bk in [ "health_url", "active_check_interval", "check_timeout", "recovery_check_interval", "switch_to_faster_same_priority", "fastest_check_interval", "pin_dashboard" ]) {
+            for (let bk in [ "health_url", "active_check_interval", "check_timeout", "recovery_check_interval", "pick_fastest", "switch_to_faster_same_priority", "fastest_check_interval", "pin_dashboard" ]) {
                 let bval = option(pg, bk, "");
                 if (bval != "")
                     set_option_if_missing(ctx, bal, bk, bval);

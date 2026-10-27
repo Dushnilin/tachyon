@@ -3393,8 +3393,12 @@ function priority_group_recovery_check_interval(section, value) {
 }
 
 function priority_group_pick_fastest(section, value) {
+    // The fastest node of a tier is the expected behaviour, not an opt-in:
+    // taking the first living node in filter order is how the group ended up
+    // on the slowest server of the tier (issue #244). The flag stays, so a
+    // user who wants the stable first node can still ask for it.
     let child = priority_group_child(section, value);
-    return child != null ? child_bool(child, "pick_fastest", false) : false;
+    return child != null ? child_bool(child, "pick_fastest", true) : true;
 }
 
 function priority_group_switch_to_faster_same_priority(section, value) {

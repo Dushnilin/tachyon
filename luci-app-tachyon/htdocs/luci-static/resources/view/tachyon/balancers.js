@@ -560,11 +560,11 @@ function createBalancersContent(section) {
     "pick_fastest",
     _("Select the fastest node"),
     _(
-      "When switching to another level, test every server and select the fastest instead of the first working one.",
+      "Pick the fastest server of the tier instead of the first working one. On by default - the first node in the filter order is not necessarily the quickest.",
     ),
   );
   o.modalonly = true;
-  o.default = "0";
+  o.default = "1";
   o.depends("balancer_type", "priority");
 
   o = section.taboption(

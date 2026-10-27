@@ -305,13 +305,126 @@ function fixture_probe(latencies, tag_name) {
     return { alive: true, delay: int(value, 10) };
 }
 
+// The delays the core already measured. The clash API keeps a history per
+// outbound, so one GET gives the delay of every node in the group without
+// probing each one - which is what made "pick the fastest" expensive before.
+//
+// Returns null when the answer is not available, and the caller then falls
+// back to probing the nodes one by one.
+let cached_delays_mtime = -1;
+let cached_delays = null;
+// A fixture can hand the snapshot in directly, so the ordering logic is
+// testable without a running core.
+let fixture_delays_path = "";
+
+// A fixture can hand the snapshot in directly, so the ordering logic is
+// testable without a running core.
+function fixture_delays_override() {
+    if (fixture_delays_path == "")
+        return null;
+    let data = read_json_file(fixture_delays_path);
+    return type(data) == "object" ? data : null;
+}
+
+function clash_delays_snapshot() {
+    let override = fixture_delays_override();
+    if (override != null)
+        return override;
+
+    let cfg_path = "/etc/tachyon-core/config.json";
+    let st = fs.stat(cfg_path);
+    let mtime = st ? int(st.mtime || 0) : 0;
+    if (cached_delays_mtime == mtime && cached_delays != null)
+        return cached_delays;
+
+    let info = priority_clash_info();
+    let curl_args = [ "curl", "-s", "-m", "5", info.base_url + "/proxies" ];
+    if (info.secret != "") {
+        push(curl_args, "-H");
+        push(curl_args, "Authorization: Bearer " + info.secret);
+    }
+    let res = common.command_capture(command_from_args(curl_args));
+    if (res.status != 0) {
+        cached_delays_mtime = mtime;
+        cached_delays = null;
+        return null;
+    }
+
+    let body = null;
+    try {
+        body = json(res.output);
+    }
+    catch (e) {
+        body = null;
+    }
+    let proxies = type(body) == "object" ? object_or_empty(body.proxies) : {};
+    let delays = {};
+    for (let name in proxies) {
+        let history = object_or_empty(proxies[name]).history;
+        if (type(history) != "array" || length(history) == 0)
+            continue;
+        let last = object_or_empty(history[length(history) - 1]);
+        let delay = int(last.delay, 10);
+        if (delay != null && delay >= 0)
+            delays[as_string(name)] = delay;
+    }
+
+    cached_delays_mtime = mtime;
+    cached_delays = delays;
+    return delays;
+}
+
+// The measured delay of one node, or null when the core has no history for
+// it. A node the core never measured is not a candidate: "the fastest" has to
+// be the fastest of the ones that answered.
+function measured_delay(tag_name) {
+    let delays = clash_delays_snapshot();
+    if (delays == null)
+        return null;
+    let value = delays[as_string(tag_name)];
+    if (value == null)
+        return null;
+    return int(value, 10);
+}
+
 function choose_from_level(group, level_index, probe, skip_tag) {
     let level = object_or_empty(array_or_empty(group.levels)[level_index]);
     let best = null;
+    let candidates = array_or_empty(level.outbounds);
 
-    for (let tag_name in array_or_empty(level.outbounds)) {
-        if (as_string(skip_tag) != "" && tag_name == skip_tag)
-            continue;
+    // The order the nodes are tried in. The delays the core already measured
+    // come first, fastest first, so "pick the fastest" costs one HTTP request
+    // for the whole group instead of one probe per node.
+    //
+    // A measured delay says nothing about liveness - the node may have died
+    // since the last measurement - so the order only decides who is tried
+    // first, and the first node that actually answers wins.
+    let measured = clash_delays_snapshot();
+    if (measured != null) {
+        let ordered = [];
+        let unordered = [];
+        for (let tag_name in candidates) {
+            if (as_string(skip_tag) != "" && tag_name == skip_tag)
+                continue;
+            let delay = measured[as_string(tag_name)];
+            // A negative delay is a node the core could not reach. It still
+            // has a place in the order - last - because it may answer now.
+            if (delay == null || delay < 0) {
+                push(unordered, tag_name);
+                continue;
+            }
+            push(ordered, { tag: tag_name, delay: delay });
+        }
+        sort(ordered, function(a, b) { return a.delay - b.delay; });
+        let result = [];
+        for (let entry in ordered)
+            push(result, entry.tag);
+        for (let tag_name in unordered)
+            push(result, tag_name);
+        candidates = result;
+    }
+
+    for (let tag_name in candidates) {
         let result = probe(tag_name, group);
         if (!result.alive)
             continue;
@@ -567,6 +680,9 @@ function start_runtime() {
 function select_fixture(group_path, latency_path, start_index, end_index, skip_tag) {
     let group = normalize_group(read_json_file(group_path), "fixture");
     let latencies = object_or_empty(read_json_file(latency_path));
+    // The same file feeds the measured-delay snapshot, so the ordering logic
+    // runs exactly as it does on a live core.
+    fixture_delays_path = as_string(latency_path);
     let selected = choose_from_level_range(group, start_index, end_index, function(tag_name, _group) {
         return fixture_probe(latencies, tag_name);
     }, skip_tag);
