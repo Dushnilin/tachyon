@@ -113,4 +113,64 @@ for option in routed_dns_enabled routed_dns_type routed_dns_server; do
   [ "$base_signature" != "$next_signature" ] || fail "$option must invalidate the core reload signature"
 done
 
+# A closed GeoIP mode needs the real address: the country of the destination
+# is decided before the outbound is chosen, and a FakeIP address has none.
+# So the domain rule must not be replaced by FakeIP there.
+for mode in include_all exclude_direct; do
+  closed="$WORK_DIR/geo-1.14.1-zapret2-$mode.json"
+  ucode -e '
+    let cfg = json(require("fs").readfile(ARGV[0]));
+    cfg.section[0].geoip_mode = ARGV[1];
+    print(sprintf("%J\n", cfg));
+  ' "$base" "$mode" >"$closed"
+  mkdir -p "$closed.out.section-cache" "$closed.out.rulesets"
+  SB_VERSION_STATE_FILE="$WORK_DIR/version" \
+    ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$closed" "$closed.out" 127.0.0.1 0 1
+  ucode -e '
+    let cfg = json(require("fs").readfile(ARGV[0]));
+    for (let r in cfg.dns.rules) {
+      if (index(sprintf("%J", r.domain_suffix), "dpi.example") < 0) continue;
+      if (r.server == "fakeip-server")
+        die("a closed geoip mode must keep the real address\n");
+    }
+  ' "$closed.out" || fail "closed geoip mode ($mode) must not receive FakeIP"
+done
+
+# A ruleset that matches addresses as well as domains may not produce FakeIP:
+# the match would lose the real destination, and the DPI rule that follows
+# could not match it. The real answer has to stay.
+mixed="$WORK_DIR/mixed.json"
+ucode -e '
+  let cfg = json(require("fs").readfile(ARGV[0]));
+  cfg.section[0].community_lists = [ "youtube", "telegram" ];
+  print(sprintf("%J\n", cfg));
+' "$base" >"$mixed"
+mkdir -p "$mixed.out.section-cache" "$mixed.out.rulesets"
+SB_VERSION_STATE_FILE="$WORK_DIR/version" \
+  ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$mixed" "$mixed.out" 127.0.0.1 0 1
+ucode -e '
+  let cfg = json(require("fs").readfile(ARGV[0]));
+  let mixed_real = false;
+  for (let r in cfg.dns.rules) {
+    let is_mixed = index(sprintf("%J", r.rule_set), "telegram") >= 0;
+    if (!is_mixed) continue;
+    if (r.server == "fakeip-server")
+      die("a ruleset that matches addresses must not be replaced by FakeIP\n");
+    if (r.server == "dpi-routed-dns-server") mixed_real = true;
+  }
+  if (!mixed_real) die("the mixed ruleset must keep the real answer\n");
+' "$mixed.out" || fail "an address-matching ruleset must keep the real DNS answer"
+
+# The real-engine check: it runs the generated config through a live core and
+# watches the answers. It needs a core binary, so it only runs when one is
+# given.
+if [ -n "${SING_BOX_RUNTIME_BIN:-}" ]; then
+  python3 "$ROOT_DIR/tests/lib/dpi_routed_dns_runtime.py" \
+    "$SING_BOX_RUNTIME_BIN" "$WORK_DIR/1.14.1-zapret2-out.json"
+  for mode in exclude_direct include_all; do
+    python3 "$ROOT_DIR/tests/lib/dpi_routed_dns_runtime.py" \
+      "$SING_BOX_RUNTIME_BIN" "$WORK_DIR/geo-1.14.1-zapret2-$mode-out.json" --geoip-mode "$mode"
+  done
+fi
+
 printf 'DPI routed DNS preserves FakeIP interception and invalidates core reload state\n'
