@@ -1,0 +1,12 @@
+build(tests): node UI checks join the shared test run, add the build image
+
+The .mjs checks run the real view code in a vm and assert on what it
+produced, but they were written as .mjs and the shared runner only walked
+the .sh files - so they never ran in CI. They are picked up now, and the
+summary counts both kinds.
+
+build.Dockerfile is the image the release build runs in: build.sh needs the
+OpenWrt SDK, which is a Linux tarball, so on a Windows host the build has
+to happen inside a container. The image carries exactly the host tools
+build.sh asks for, so the build does not depend on what the machine happens
+to have installed.
