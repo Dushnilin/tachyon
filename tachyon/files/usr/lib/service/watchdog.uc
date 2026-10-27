@@ -357,7 +357,7 @@ function smart_detect_get_proxy_sections() {
     for (let s in sections) {
         if (s.enabled != "1") continue;
         let act = as_string(s.action || "");
-        if (connections.is_remote_proxy_action(act)) {
+        if (connections.is_remote_proxy_action(act) || act == "group") {
             push(secs, s[".name"]);
         }
     }

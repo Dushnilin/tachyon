@@ -135,12 +135,18 @@ tachyon.sec_proxy.action=connection
 tachyon.sec_awg=section
 tachyon.sec_awg.enabled=1
 tachyon.sec_awg.action=awg
+tachyon.sec_group=section
+tachyon.sec_group.enabled=1
+tachyon.sec_group.action=group
+tachyon.sec_group_disabled=section
+tachyon.sec_group_disabled.enabled=0
+tachyon.sec_group_disabled.action=group
 tachyon.sec_disabled=section
 tachyon.sec_disabled.enabled=0
 tachyon.sec_disabled.action=connection
 EOF
 
 proxy_secs="$(UCI_STATE="$UCI_STATE_TEST" ucode "$WATCHDOG_UC" smart-detect-proxy-sections 2>/dev/null || true)"
-[ "$proxy_secs" = "sec_proxy sec_awg" ] || fail "smart_detect_get_proxy_sections: expected 'sec_proxy sec_awg', got '$proxy_secs'"
+[ "$proxy_secs" = "sec_proxy sec_awg sec_group" ] || fail "smart_detect_get_proxy_sections: expected 'sec_proxy sec_awg sec_group', got '$proxy_secs'"
 
 printf 'smart_detect_domain_extraction checks passed\n'

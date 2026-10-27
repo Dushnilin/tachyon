@@ -1219,6 +1219,7 @@ function createSmartDetectSectionsWidget(section_id) {
     "proxy",
     "outbound",
     "vpn",
+    "group",
     "awg",
     "warp",
     "anytls",
@@ -1231,11 +1232,13 @@ function createSmartDetectSectionsWidget(section_id) {
     "olcrtc",
     "fptn",
   ];
+  const sectionActionByName = {};
   const allSections = (uci.sections(UCI_PACKAGE, "section") || [])
     .filter(function (s) {
       return s.enabled !== "0" && TESTABLE_ACTIONS.indexOf(s.action) >= 0;
     })
     .map(function (s) {
+      sectionActionByName[s[".name"]] = s.action;
       return s[".name"];
     });
 
@@ -1348,6 +1351,18 @@ function createSmartDetectSectionsWidget(section_id) {
 
     row.appendChild(cb);
     row.appendChild(label);
+    if (sectionActionByName[name] === "group") {
+      const groupBadge = E("span", {
+        "data-section-type": "group",
+        title: _(
+          "Routing rule target: detected domains are saved to the group's rules, and the group's own logic selects the active member.",
+        ),
+        style:
+          "display:inline-block;padding:1px 6px;font-size:0.75rem;font-weight:600;line-height:1.4;border-radius:4px;background:rgba(49,130,206,0.12);color:var(--blue-color,#3182ce);border:1px solid rgba(49,130,206,0.3);user-select:none;",
+      });
+      groupBadge.textContent = _("Group");
+      row.appendChild(groupBadge);
+    }
     row.appendChild(upBtn);
     row.appendChild(downBtn);
     return row;
@@ -2681,7 +2696,10 @@ function createSettingsContent(section, capabilities) {
   );
   o.value(
     "socks",
-    _tr("SOCKS/HTTP только (без перехвата)", "SOCKS/HTTP only (no interception)"),
+    _tr(
+      "SOCKS/HTTP только (без перехвата)",
+      "SOCKS/HTTP only (no interception)",
+    ),
   );
   o.default = "tproxy";
   o.rmempty = false;
@@ -2721,7 +2739,10 @@ function createSettingsContent(section, capabilities) {
     "network",
     form.Flag,
     "tun_auto_route",
-    _tr("Ядро само ставит маршрут по умолчанию", "The core installs the default route itself"),
+    _tr(
+      "Ядро само ставит маршрут по умолчанию",
+      "The core installs the default route itself",
+    ),
     _tr(
       "Ядро переносит маршрут по умолчанию в таблицу 2022 и не трогает main. Выключите, если маршруты управляются вручную.",
       "The core moves the default route into table 2022 and leaves main alone. Turn this off when the routes are managed by hand.",
