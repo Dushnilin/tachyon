@@ -143,7 +143,7 @@ function get_timeout_prefix(sec) {
 // forever on system()/pipe.read() wedges the whole fuzzer worker (deadline
 // checks in ucode never get to run), so every blocking call must carry a hard
 // wall-clock bound around the entire subshell.
-const _WATCHDOG_SUBSHELL = "( ( %s ) & _bp=$!; ( trap 'kill -9 $_bs 2>/dev/null; exit 0' TERM INT; sleep %d & _bs=$!; wait $_bs 2>/dev/null; kill -9 $_bp 2>/dev/null ) >/dev/null & _bw=$!; wait $_bp 2>/dev/null; _rc=$?; kill -9 $_bw 2>/dev/null; wait $_bw 2>/dev/null; exit $_rc )";
+const _WATCHDOG_SUBSHELL = "( ( %s ) & _bp=$!; ( trap 'kill -9 $_bs 2>/dev/null; exit 0' TERM INT; sleep %d & _bs=$!; wait $_bs 2>/dev/null; kill -9 $_bp 2>/dev/null ) </dev/null >/dev/null 2>&1 & _bw=$!; wait $_bp 2>/dev/null; _rc=$?; kill -9 $_bw 2>/dev/null; wait $_bw 2>/dev/null; exit $_rc )";
 
 function run_bounded(cmd, sec) {
     sec = sec || 8;
