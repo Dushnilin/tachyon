@@ -68,6 +68,50 @@ for version in 1.13.5 1.14.1; do
   done
 done
 
+# Closed GeoIP modes choose the whole section by destination country and skip
+# domain-based resolve rules. Their DNS answers must retain the real address.
+# Open include/exclude filters still have resolve and must retain domain FakeIP.
+for version in 1.13.5 1.14.1; do
+  printf '%s\n' "$version" >"$WORK_DIR/version"
+  for action in zapret zapret2 byedpi; do
+    for mode in exclude_direct include_all include exclude; do
+      fixture="$WORK_DIR/geo-$version-$action-$mode.json"
+      output="$WORK_DIR/geo-$version-$action-$mode-out.json"
+      ucode -e '
+        let cfg = json(require("fs").readfile(ARGV[0]));
+        cfg.section[0].geoip_country = [ "us" ];
+        cfg.section[0].geoip_mode = ARGV[1];
+        print(sprintf("%J\n", cfg));
+      ' "$WORK_DIR/$version-$action.json" "$mode" >"$fixture"
+      mkdir -p "$output.section-cache" "$output.rulesets"
+      SB_VERSION_STATE_FILE="$WORK_DIR/version" \
+        ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$fixture" "$output" 127.0.0.1 0 1
+      ucode -e '
+        let cfg = json(require("fs").readfile(ARGV[0]));
+        let closed = ARGV[1] == "exclude_direct" || ARGV[1] == "include_all";
+        let fake_domain = false, fake_list = false, real_domain = false, real_list = false, resolve = false;
+        for (let r in cfg.dns.rules) {
+          let domain = index(sprintf("%J", r.domain_suffix), "dpi.example") >= 0;
+          let list = index(sprintf("%J", r.rule_set), "youtube") >= 0;
+          if (r.server == "fakeip-server") {
+            if (closed && (domain || list)) die("closed GeoIP must retain real DNS answers before country matching\n");
+            if (domain) fake_domain = true;
+            if (list) fake_list = true;
+          }
+          if (r.server == "dpi-routed-dns-server") {
+            if (domain) real_domain = true;
+            if (list) real_list = true;
+          }
+        }
+        for (let r in cfg.route.rules)
+          if (r.action == "resolve" && r.server == "dpi-routed-dns-server") resolve = true;
+        if (!real_domain || !real_list) die("routed DNS fallback lost with GeoIP\n");
+        if (!closed && (!fake_domain || !fake_list || !resolve)) die("open GeoIP must keep domain FakeIP and resolve\n");
+      ' "$output" "$mode" || fail "$action routed DNS / GeoIP $mode on $version"
+    done
+  done
+done
+
 # Keep client restrictions and exclusions on both halves of the DNS rule.
 scoped="$WORK_DIR/scoped.json"
 ucode -e '
@@ -122,6 +166,10 @@ done
 if [ -n "${SING_BOX_RUNTIME_BIN:-}" ]; then
   python3 "$ROOT_DIR/tests/lib/dpi_routed_dns_runtime.py" \
     "$SING_BOX_RUNTIME_BIN" "$WORK_DIR/1.14.1-zapret2-out.json"
+  for mode in exclude_direct include_all; do
+    python3 "$ROOT_DIR/tests/lib/dpi_routed_dns_runtime.py" \
+      "$SING_BOX_RUNTIME_BIN" "$WORK_DIR/geo-1.14.1-zapret2-$mode-out.json" --geoip-mode "$mode"
+  done
 fi
 
 printf 'DPI routed DNS preserves FakeIP interception and invalidates core reload state\n'

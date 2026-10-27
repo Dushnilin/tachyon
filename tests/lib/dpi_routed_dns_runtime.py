@@ -3,6 +3,7 @@
 Run with: python3 dpi_routed_dns_runtime.py /path/to/sing-box generated.json
 The config comes from dpi_routed_dns.sh; no binary is downloaded by this test.
 """
+import argparse
 import ipaddress
 import json
 import os
@@ -10,7 +11,6 @@ from pathlib import Path
 import socket
 import struct
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -32,7 +32,7 @@ def read_exact(sock, size):
     return data
 
 
-def run(binary, generated):
+def run(binary, generated, geoip_mode=None, country_match=True):
     stop = threading.Event()
     dns_socket = socket.socket(type=socket.SOCK_DGRAM)
     dns_socket.bind(("127.0.0.1", 0))
@@ -68,13 +68,18 @@ def run(binary, generated):
 
     def remap(rule):
         result = dict(rule)
+        if "rules" in result:
+            result["rules"] = [remap(child) for child in result["rules"]]
         if "rule_set" in result:
             tags = result["rule_set"]
             tags = tags if isinstance(tags, list) else [tags]
-            result["rule_set"] = ["mixed" if "telegram" in tag else "domains" for tag in tags]
+            result["rule_set"] = ["geo" if "geoip" in tag else ("mixed" if "telegram" in tag else "domains") for tag in tags]
         if result.get("server") in ("dns-server", "dpi-routed-dns-server"):
             result["server"] = "real"
         return result
+
+    def uses_ruleset(rule):
+        return "rule_set" in rule or any(uses_ruleset(child) for child in rule.get("rules", []))
 
     threads = [threading.Thread(target=dns_server), threading.Thread(target=tcp_server)]
     process = None
@@ -86,6 +91,7 @@ def run(binary, generated):
             for tag, rules in {
                 "domains": [{"domain_suffix": ["domain-only.test"]}],
                 "mixed": [{"domain_suffix": ["listed.example"]}, {"ip_cidr": ["127.0.0.1/32"]}],
+                "geo": [{"ip_cidr": ["127.0.0.1/32" if country_match else "127.0.0.2/32"]}],
             }.items():
                 (root / (tag + ".json")).write_text(json.dumps({"version": 3, "rules": rules}))
             config = {
@@ -100,8 +106,8 @@ def run(binary, generated):
                              {"type": "mixed", "tag": "tproxy-in", "listen": "127.0.0.1", "listen_port": proxy_port}],
                 "outbounds": [{"type": "direct", "tag": "direct-out"}, {"type": "direct", "tag": "dpi-out"}],
                 "route": {
-                    "rule_set": [{"type": "local", "tag": tag, "format": "source", "path": str(root / (tag + ".json"))} for tag in ("domains", "mixed")],
-                    "rules": [{"inbound": "dns-in", "action": "hijack-dns"}] + [remap(rule) for rule in generated["route"]["rules"] if rule.get("rule_set")],
+                    "rule_set": [{"type": "local", "tag": tag, "format": "source", "path": str(root / (tag + ".json"))} for tag in ("domains", "mixed", "geo")],
+                    "rules": [{"inbound": "dns-in", "action": "hijack-dns"}] + [remap(rule) for rule in generated["route"]["rules"] if uses_ruleset(rule)],
                     "final": "direct-out", "default_domain_resolver": "real",
                 },
             }
@@ -120,7 +126,13 @@ def run(binary, generated):
                             time.sleep(.05)
                     else:
                         raise AssertionError("engine did not become ready")
-                    for hostname, expected_fake in [("ip-only.test", False), ("listed.example", False), ("domain-only.test", True)]:
+                    cases = [("ip-only.test", False), ("listed.example", False), ("domain-only.test", True)]
+                    expected_outbound = "dpi-out"
+                    if geoip_mode is not None:
+                        cases = [("domain-only.test", False)]
+                        use_dpi = country_match if geoip_mode == "include_all" else not country_match
+                        expected_outbound = "dpi-out" if use_dpi else "direct-out"
+                    for hostname, expected_fake in cases:
                         labels = b"".join(bytes([len(label)]) + label.encode() for label in hostname.split(".")) + b"\x00"
                         query = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" + labels + struct.pack("!HH", 1, 1)
                         with socket.socket(type=socket.SOCK_DGRAM) as client:
@@ -141,8 +153,11 @@ def run(binary, generated):
                     process.wait(timeout=5)
                 log.seek(0)
                 connections = [line for line in log.read().splitlines() if "outbound/direct[" in line and (":" + str(target_port)) in line]
-                assert len(connections) == 3 and all("[dpi-out]" in line for line in connections), "connection bypassed DPI: " + repr(connections)
-        print("Real-engine DNS and DPI routing passed: IP-only, mixed domain, domain-only")
+                assert len(connections) == len(cases) and all("[" + expected_outbound + "]" in line for line in connections), "wrong outbound: " + repr(connections)
+        if geoip_mode is None:
+            print("Real-engine DNS and DPI routing passed: IP-only, mixed domain, domain-only")
+        else:
+            print("Real-engine GeoIP passed:", geoip_mode, "inside" if country_match else "outside", "->", expected_outbound)
     finally:
         if process is not None and process.poll() is None:
             process.kill()
@@ -155,4 +170,12 @@ def run(binary, generated):
 
 
 if __name__ == "__main__":
-    run(str(Path(sys.argv[1]).resolve()), json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("binary")
+    parser.add_argument("config")
+    parser.add_argument("--geoip-mode", choices=("exclude_direct", "include_all"))
+    args = parser.parse_args()
+    binary = str(Path(args.binary).resolve())
+    generated = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    for country_match in (True, False) if args.geoip_mode else (True,):
+        run(binary, generated, args.geoip_mode, country_match)

@@ -2372,10 +2372,13 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
     let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
     if ((action == "zapret" || action == "zapret2" || action == "byedpi") &&
         connections.routed_dns_enabled(section) && rule.server == routed_tag &&
+        !connections.geoip_country_mode_is_closed(section) &&
         !rule.match_response && (rule.rule_set == null || length(domain_rule_set_tags) > 0)) {
         // Domain-only traffic enters TPROXY through FakeIP. Returning the
         // routed resolver's real address here lets it bypass the DPI output.
         // The route's resolve action still uses this resolver and its detour.
+        // Closed GeoIP modes skip that resolve and need real DNS addresses
+        // to decide the destination country before choosing an outbound.
         let fakeip_rule = {};
         for (let key, value in rule)
             fakeip_rule[key] = value;
