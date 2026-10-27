@@ -3011,7 +3011,7 @@ function build_inverted_subrules(config, section_name, inverted_conditions) {
         add_domain_array(sub, "domain_suffix", ndom.domain_suffix);
         add_domain_array(sub, "domain_keyword", ndom.domain_keyword);
         add_domain_array(sub, "domain_regex", ndom.domain_regex);
-        let nip = legacy_condition_values(neg, "ip_cidr");
+        let nip = core_ip.normalize_to_cidrs(legacy_condition_values(neg, "ip_cidr"));
         if (length(nip) > 0)
             sub.ip_cidr = single_or_array(nip);
         let nsrc_raw = [];
@@ -3052,7 +3052,7 @@ function add_combined_route_for_clause(config, section) {
     let domain_suffix = domains.domain_suffix;
     let domain_keyword = domains.domain_keyword;
     let domain_regex = domains.domain_regex;
-    let ip_cidr = legacy_condition_values(section, "ip_cidr");
+    let ip_cidr = core_ip.normalize_to_cidrs(legacy_condition_values(section, "ip_cidr"));
     let source_ip_cidr = core_ip.normalize_to_cidrs(legacy_condition_values(section, "source_ip_cidr"));
     let excluded_cidrs = core_ip.normalize_to_cidrs(list_option(section, "excluded_ips"));
     let rule_set_tags = [];

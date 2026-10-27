@@ -6352,6 +6352,76 @@ function getRuleResolvedAction(section_id) {
   return getRuleConfiguredAction(section_id) || "connection";
 }
 
+// Returns a human-readable label for a given outbound_source source_type.
+function getSourceTypeLabel(stype) {
+  switch (`${stype}`.toLowerCase()) {
+    case "zapret":       return "Zapret";
+    case "zapret2":      return "Zapret2";
+    case "byedpi":       return "ByeDPI";
+    case "desync":       return "Desync";
+    case "wdtt":         return "WDTT";
+    case "olcrtc":       return "OlcRTC";
+    case "fptn":         return "FPTN";
+    case "awg":
+    case "amnezia_config": return "AmneziaWG";
+    case "warp":         return "WARP";
+    case "anytls":       return "AnyTLS";
+    case "naive":        return "NaiveProxy";
+    case "mieru":        return "Mieru";
+    case "snell":        return "Snell";
+    case "masque":       return "MASQUE";
+    case "openconnect":  return "OpenConnect";
+    case "openvpn":      return "OpenVPN";
+    case "shadowtls":    return "ShadowTLS";
+    case "trusttunnel":  return "TrustTunnel";
+    case "tor":          return "Tor";
+    case "tailscale":    return "Tailscale";
+    case "interface":    return _("Interface");
+    case "outbound_json":
+    case "json":         return _("JSON outbound");
+    case "proxy_links":
+    case "links":        return _("Links");
+    case "subscription": return _("Subscription");
+    default:             return `${stype}`;
+  }
+}
+
+// Returns an HTML string with badges for each unique connection type used by
+// this section (via outbound_source_refs → outbound_source.source_type).
+// For non-connection actions (bypass, block, dns, …) returns null.
+function getSectionConnectionTypeBadges(section_id) {
+  const action = getRuleResolvedAction(section_id);
+  // Only "connection"-family actions use outbound_source_refs.
+  const connectionActions = ["connection", "proxy", "outbound", "vpn", "awg", "fptn", "group"];
+  if (!connectionActions.includes(action)) return null;
+
+  const srcRefRaw = uci.get(UCI_PACKAGE, section_id, "outbound_source_refs");
+  const srcRefs = normalizeOptionValues(srcRefRaw);
+  if (!srcRefs.length) return null;
+
+  // Collect unique source types (preserve insertion order).
+  const seen = {};
+  const types = [];
+  srcRefs.forEach(function(id) {
+    const src = uci.get(UCI_PACKAGE, id);
+    if (!src) return;
+    const stype = (src.source_type || "subscription").toLowerCase();
+    if (!seen[stype]) {
+      seen[stype] = true;
+      types.push(stype);
+    }
+  });
+  if (!types.length) return null;
+  return types.map(function(stype) {
+    return (
+      '<span style="display:inline-block;background:rgba(49,130,206,0.12);color:var(--blue-color,#3182ce);' +
+      'padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid rgba(49,130,206,0.3);margin:1px 2px 1px 0;">' +
+      getSourceTypeLabel(stype) +
+      '</span>'
+    );
+  }).join("");
+}
+
 function getActionOptionLabel(action) {
   switch (`${action}`) {
     case "block":
@@ -10098,33 +10168,41 @@ function createSectionContent(section) {
   };
   o.width = "7rem";
 
-  // The mark the user asked for on the section row itself: one glance tells
-  // which section owns global rules, and the text stays out of the way when no
-  // claim exists.
+  // Connection type column: shows the source_type badges of all outbound_source
+  // items referenced by this section (via outbound_source_refs).  For bypass /
+  // block / dns sections the cell is blank.  Replaces the former "Global rule"
+  // column which required the user to open the modal to understand the setup.
   o = section.taboption(
     "settings",
     form.DummyValue,
-    "_global_rules",
-    _("Global rule"),
+    "_conn_type",
+    _("Connection"),
   );
   o.modalonly = false;
   o.rawhtml = true;
-  o.width = "9rem";
+  o.width = "10rem";
   o.cfgvalue = function (section_id) {
-    if (!activeGlobalRules(section_id).length) {
-      // Always something renderable: an empty cfgvalue is falsy, and a cell
-      // that only renders a non-empty value would show a placeholder in every
-      // row that has no claim.
-      return "&nbsp;";
-    }
-    return (
-      '<span class="badge" style="background:rgba(49,151,149,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid rgba(49,151,149,0.3);">' +
-      _("Global rule enabled") +
-      "</span>"
-    );
+    const badges = getSectionConnectionTypeBadges(section_id);
+    // Return a non-empty string even when there is nothing to display so LuCI
+    // does not fall back to showing a placeholder dash in the cell.
+    return badges || "&nbsp;";
   };
   o.textvalue = function (section_id) {
-    return activeGlobalRules(section_id).length ? _("Global rule enabled") : "";
+    const action = getRuleResolvedAction(section_id);
+    const connectionActions = ["connection", "proxy", "outbound", "vpn", "awg", "fptn", "group"];
+    if (!connectionActions.includes(action)) return "";
+    const srcRefs = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, section_id, "outbound_source_refs")
+    );
+    const seen = {};
+    const types = [];
+    srcRefs.forEach(function(id) {
+      const src = uci.get(UCI_PACKAGE, id);
+      if (!src) return;
+      const stype = (src.source_type || "subscription").toLowerCase();
+      if (!seen[stype]) { seen[stype] = true; types.push(stype); }
+    });
+    return types.map(getSourceTypeLabel).join(", ");
   };
 
   o = section.taboption(

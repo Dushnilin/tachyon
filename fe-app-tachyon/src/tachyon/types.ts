@@ -406,7 +406,7 @@ export namespace Tachyon {
   }
 
   export interface ServiceStatus {
-    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc' | 'fptn';
+    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc' | 'fptn' | 'desync';
     configured: boolean;
     ready: boolean;
     conflict: boolean;

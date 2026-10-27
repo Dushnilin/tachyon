@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-27 16:09+0300\n"
-"PO-Revision-Date: 2026-10-27 16:09+0300\n"
+"POT-Creation-Date: 2026-10-27 19:05+0300\n"
+"PO-Revision-Date: 2026-10-27 19:05+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3185,12 +3185,6 @@ msgstr "Глобальная проверка"
 msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
 
-msgid "Global rule"
-msgstr "Глобальное правило"
-
-msgid "Global rule enabled"
-msgstr "Включено глобальное правило"
-
 msgid "Global rules"
 msgstr "Глобальные правила"
 
@@ -4228,6 +4222,9 @@ msgstr "Светло-розовый"
 
 msgid "Light Yellow"
 msgstr "Светло-жёлтый"
+
+msgid "Links"
+msgstr ""
 
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
@@ -8899,6 +8896,12 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Global rule"
+msgstr "Глобальное правило"
+
+msgid "Global rule enabled"
+msgstr "Включено глобальное правило"
 
 msgid "AND (all attached conditions must match)"
 msgstr "И (все подключённые условия должны выполняться)"

@@ -478,6 +478,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       'zapret',
       'zapret2',
       'byedpi',
+      'desync',
       'wdtt',
       'olcrtc',
     ]);
@@ -736,7 +737,9 @@ function isConnectionAction(action?: string) {
 function isServiceAction(action?: string) {
   return Boolean(
     action &&
-      ['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(action),
+      ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
+        action,
+      ),
   );
 }
 
@@ -2345,7 +2348,14 @@ export async function getDashboardSections(
   >();
 
   const getServiceStatus = (
-    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc' | 'fptn',
+    serviceType:
+      | 'zapret'
+      | 'zapret2'
+      | 'byedpi'
+      | 'desync'
+      | 'wdtt'
+      | 'olcrtc'
+      | 'fptn',
   ) => {
     if (!serviceStatusCache.has(serviceType)) {
       serviceStatusCache.set(
@@ -2449,6 +2459,38 @@ export async function getDashboardSections(
                     s.status_message || (s.ready ? _('Running') : _('Stopped')),
                 };
               }
+            } else if (serviceType === 'desync') {
+              // desync runs inside tachyon-core — there is no separate process.
+              // Reflect readiness from the tachyon-core/sing-box engine status.
+              const result = await TachyonShellMethods.getSingBoxStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                const isRunning = Boolean(s.running);
+                return {
+                  serviceType: 'desync' as const,
+                  configured: true,
+                  ready: isRunning,
+                  conflict: false,
+                  runningProcesses: isRunning ? 1 : 0,
+                  expectedProcesses: 1,
+                  restartCount: 0,
+                  unstable: false,
+                  statusMessage: isRunning ? _('Running') : _('Stopped'),
+                };
+              }
+              // Fallback when the RPC call fails: report as running to avoid
+              // confusing "N/A" — desync has no standalone process to check.
+              return {
+                serviceType: 'desync' as const,
+                configured: true,
+                ready: true,
+                conflict: false,
+                runningProcesses: 1,
+                expectedProcesses: 1,
+                restartCount: 0,
+                unstable: false,
+                statusMessage: _('Running'),
+              };
             }
           } catch (_error) {
             // Status fetch failed — show section without status

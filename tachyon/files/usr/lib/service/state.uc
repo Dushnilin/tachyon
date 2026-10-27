@@ -2339,10 +2339,13 @@ function zapret_runtime_signature_body(sections) {
 function zapret2_runtime_signature_body(sections) {
     let body = "";
 
-    for (let section in sections) {
+    // Use active_provider_sections so that both legacy action=zapret2 sections
+    // and modern action=connection sections with a zapret2 outbound_source are
+    // included. Without this, switching Discord from zapret2 to Desync would not
+    // change the signature, so needs_zapret2_restart would stay false and the
+    // stale nfqws2 worker would keep running until the next full tachyon restart.
+    for (let section in connections.active_provider_sections("zapret2", sections)) {
         section = object_or_empty(section);
-        if (!section_action_is_enabled(section, "zapret2"))
-            continue;
 
         body = append_zapret_runtime_signature_body(
         body,

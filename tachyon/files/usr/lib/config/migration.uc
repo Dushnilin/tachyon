@@ -1857,6 +1857,27 @@ function sanitize_uci_id(raw) {
     return clean != "" ? clean : "item";
 }
 
+function condition_list_tokens(section, key) {
+    let raw = object_or_empty(section)[key];
+    if (raw == null)
+        return [];
+    let lines = type(raw) == "array" ? raw : split(as_string(raw), /[\r\n]+/);
+    let out = [];
+    for (let line in lines) {
+        line = replace(as_string(line), /(^|[ \t]+)\/\/.*$/, "");
+        line = replace(line, /(^|[ \t]+)#.*$/, "");
+        line = trim(line);
+        if (line == "")
+            continue;
+        for (let tok in split(line, /[ \t,]+/)) {
+            tok = trim(as_string(tok));
+            if (tok != "")
+                push(out, tok);
+        }
+    }
+    return out;
+}
+
 function migrate_modular_entities_v1(ctx) {
     let condition_list_keys = [
         "community_lists",
@@ -1908,7 +1929,7 @@ function migrate_modular_entities_v1(ctx) {
         if (length(list_option(section, "condition_refs")) == 0) {
             let has_cond = false;
             for (let k in condition_list_keys) {
-                if (length(list_option(section, k)) > 0) {
+                if (length(condition_list_tokens(section, k)) > 0) {
                     has_cond = true;
                     break;
                 }
@@ -1928,7 +1949,7 @@ function migrate_modular_entities_v1(ctx) {
                 set_option_if_missing(ctx, cond, "name", option(section, "name", sname));
                 set_option_if_missing(ctx, cond, "condition_type", "atomic");
                 for (let k in condition_list_keys) {
-                    let vals = list_option(section, k);
+                    let vals = condition_list_tokens(section, k);
                     if (length(vals) > 0)
                         set_list_option(ctx, cond, k, vals);
                 }
