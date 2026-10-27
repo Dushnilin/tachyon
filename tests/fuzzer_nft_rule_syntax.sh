@@ -37,8 +37,12 @@ fi
 # nft --check reports a parse failure as "syntax error" on stderr. Applying a rule
 # needs privileges we do not have and the queue verdict may still be rejected by the
 # kernel, so the exit code alone is not the signal - the message is.
+# The 10-second timeout guards against nft blocking on a netlink socket when the
+# nfqueue kernel module is absent (observed on GitHub Actions ubuntu-24.04 runners).
 syntax_error() { # <file>
-  nft --check -f "$1" 2>&1 | grep -c 'syntax error' || true
+  local out
+  out="$(timeout 10 nft --check -f "$1" 2>&1)" || true
+  printf '%s\n' "$out" | grep -c 'syntax error' || true
 }
 
 cat >"$WORK_DIR/spec.uc" <<'UCODE'
@@ -58,7 +62,7 @@ for protocol in tcp udp; do
   } >"$WORK_DIR/good-$protocol.nft"
 
   if [ "$(syntax_error "$WORK_DIR/good-$protocol.nft")" != "0" ]; then
-    nft --check -f "$WORK_DIR/good-$protocol.nft" 2>&1 | sed 's/^/  /' >&2
+    timeout 10 nft --check -f "$WORK_DIR/good-$protocol.nft" 2>&1 | sed 's/^/  /' >&2
     fail "the $protocol queue rule is not valid nft syntax:
 $rule"
   fi
