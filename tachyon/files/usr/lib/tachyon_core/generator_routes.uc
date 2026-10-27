@@ -2367,22 +2367,28 @@ function apply_excluded_source_ips(rule, excluded_cidrs) {
     return logical_rule;
 }
 
-function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs) {
+function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, domain_rule_set_tags) {
     let action = option(section, "action", "");
     let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
     if ((action == "zapret" || action == "zapret2" || action == "byedpi") &&
-        connections.routed_dns_enabled(section) && rule.server == routed_tag) {
+        connections.routed_dns_enabled(section) && rule.server == routed_tag &&
+        !rule.match_response && (rule.rule_set == null || length(domain_rule_set_tags) > 0)) {
         // Domain-only traffic enters TPROXY through FakeIP. Returning the
         // routed resolver's real address here lets it bypass the DPI output.
         // The route's resolve action still uses this resolver and its detour.
         let fakeip_rule = {};
         for (let key, value in rule)
             fakeip_rule[key] = value;
+        // In the legacy branch the fallback combines domain and mixed sets.
+        // Only domain-only sets may produce FakeIP: an IP-only match loses
+        // its real destination and cannot match the subsequent DPI route.
+        if (rule.rule_set != null)
+            fakeip_rule.rule_set = single_or_array(domain_rule_set_tags);
         fakeip_rule.server = runtime_constants.FAKEIP_DNS_SERVER_TAG;
         add_fakeip_query_type(fakeip_rule, fakeip_rule.server, section_is_ipv4_only_dpi(section));
         push_dns_matcher_rule(config, apply_excluded_source_ips(fakeip_rule, excluded_cidrs));
     }
-    // Retain routed DNS for non-address queries, e.g. MX, SRV and TXT.
+    // Retain routed DNS for other query types and non-domain rulesets.
     push_dns_matcher_rule(config, apply_excluded_source_ips(rule, excluded_cidrs));
 }
 
@@ -2559,6 +2565,7 @@ function add_combined_route_for_section(config, section) {
     let rule_set_tags = [];
     let dns_query_rule_set_tags = [];
     let dns_response_rule_set_tags = [];
+    let dns_non_domain_query_tags = [];
     let section_name = section[".name"];
 
     add_excluded_protocol_rule(config, section);
@@ -2571,9 +2578,11 @@ function add_combined_route_for_section(config, section) {
         let service = as_string(community);
         let ensured = ensure_community_ruleset(config, section_name, service);
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains" || service == "discord")
+        if (ensured.kind == "domains" || service == "discord") {
             push(dns_query_rule_set_tags, ensured.tag);
-        else if (ensured.kind == "mixed")
+            if (ensured.kind != "domains")
+                push(dns_non_domain_query_tags, ensured.tag);
+        } else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
 
         if (include_community_subnets) {
@@ -2591,9 +2600,11 @@ function add_combined_route_for_section(config, section) {
         if (ensured == null)
             continue;
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains" || ref_str == "discord" || ref_str == "community-discord")
+        if (ensured.kind == "domains" || ref_str == "discord" || ref_str == "community-discord") {
             push(dns_query_rule_set_tags, ensured.tag);
-        else if (ensured.kind == "mixed")
+            if (ensured.kind != "domains")
+                push(dns_non_domain_query_tags, ensured.tag);
+        } else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
     }
     for (let reference in connections.rule_sets_with_subnets(section)) {
@@ -2602,9 +2613,11 @@ function add_combined_route_for_section(config, section) {
         if (ensured == null)
             continue;
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains" || ref_str == "discord" || ref_str == "community-discord")
+        if (ensured.kind == "domains" || ref_str == "discord" || ref_str == "community-discord") {
             push(dns_query_rule_set_tags, ensured.tag);
-        else if (ensured.kind == "mixed")
+            if (ensured.kind != "domains")
+                push(dns_non_domain_query_tags, ensured.tag);
+        } else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
     }
     add_domain_ip_list_ruleset(
@@ -2792,6 +2805,10 @@ function add_combined_route_for_section(config, section) {
 
     let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
     let dns_server_tag = section_dns_server(section);
+    let domain_only_dns_tags = [];
+    for (let tag in dns_query_rule_set_tags)
+        if (index(dns_non_domain_query_tags, tag) < 0)
+            push(domain_only_dns_tags, tag);
     let ipv4_only_dpi = section_is_ipv4_only_dpi(section) &&
         dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;
     if (length(domain) > 0 || length(domain_suffix) > 0 || length(domain_keyword) > 0 || length(domain_regex) > 0) {
@@ -2839,7 +2856,7 @@ function add_combined_route_for_section(config, section) {
             };
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
+            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
             if (ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
@@ -2868,7 +2885,7 @@ function add_combined_route_for_section(config, section) {
                 match_response: true
             };
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
+            push_dns_matcher_rule(config, apply_excluded_source_ips(dns_rule, excluded_cidrs));
         }
     }
     else {
@@ -2887,7 +2904,7 @@ function add_combined_route_for_section(config, section) {
             };
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
+            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
             if (ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",

@@ -18,7 +18,7 @@ for version in 1.13.5 1.14.1; do
         settings: { ".name": "settings", ".type": "settings", enabled: "1", dns_type: "udp", dns_server: "1.1.1.1", service_listen_address: "127.0.0.1" },
         section: [
           { ".name": "dpi", ".type": "section", enabled: "1", action,
-            domain_suffix: [ "dpi.example" ], community_lists: [ "youtube" ],
+            domain_suffix: [ "dpi.example" ], community_lists: [ "youtube", "telegram" ],
             routed_dns_enabled: "1", routed_dns_type: "doh", routed_dns_server: "https://1.1.1.1/dns-query" },
           { ".name": "bypass", ".type": "section", enabled: "1", action: "bypass",
             domain_suffix: [ "direct.example" ], routed_dns_enabled: "1", routed_dns_type: "udp", routed_dns_server: "9.9.9.9" }
@@ -31,10 +31,16 @@ for version in 1.13.5 1.14.1; do
     ucode -e '
       let cfg = json(require("fs").readfile(ARGV[0]));
       let fake_domain = -1, routed_domain = -1, fake_list = -1, routed_list = -1;
-      let bypass_ok = false, routed_resolve = false, detour_ok = false;
+      let bypass_ok = false, routed_resolve = false, detour_ok = false, mixed_real = false;
       for (let i, r in cfg.dns.rules) {
         let domain = index(sprintf("%J", r.domain_suffix), "dpi.example") >= 0;
         let list = index(sprintf("%J", r.rule_set), "youtube") >= 0;
+        let mixed = index(sprintf("%J", r.rule_set), "telegram") >= 0;
+        // IP-only matches must keep the real address so the route can match it.
+        // This also checks the legacy branch that combines both kinds of tags.
+        if (mixed && r.server == "fakeip-server")
+          die("mixed IP response must not be replaced by FakeIP\n");
+        if (mixed && r.server == "dpi-routed-dns-server") mixed_real = true;
         if ((domain || list) && r.server == "fakeip-server") {
           if (length(r.query_type) != 2 || r.query_type[0] != "A" || r.query_type[1] != "AAAA")
             die("DPI FakeIP must only answer A/AAAA\n");
@@ -57,7 +63,7 @@ for version in 1.13.5 1.14.1; do
         if (s.tag == "dpi-routed-dns-server" && s.detour != null) detour_ok = true;
       if (fake_domain < 0 || routed_domain <= fake_domain) die("DPI domain must receive FakeIP before routed DNS fallback\n");
       if (fake_list < 0 || routed_list <= fake_list) die("DPI ruleset must receive FakeIP before routed DNS fallback\n");
-      if (!routed_resolve || !detour_ok || !bypass_ok) die("routed resolver, detour or bypass behavior changed\n");
+      if (!routed_resolve || !detour_ok || !bypass_ok || !mixed_real) die("routed resolver, mixed real response, detour or bypass behavior changed\n");
     ' "$output" || fail "$action routed DNS / FakeIP on $version"
   done
 done
@@ -112,5 +118,10 @@ for option in routed_dns_enabled routed_dns_type routed_dns_server; do
   next_signature="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$candidate")"
   [ "$base_signature" != "$next_signature" ] || fail "$option must invalidate the core reload signature"
 done
+
+if [ -n "${SING_BOX_RUNTIME_BIN:-}" ]; then
+  python3 "$ROOT_DIR/tests/lib/dpi_routed_dns_runtime.py" \
+    "$SING_BOX_RUNTIME_BIN" "$WORK_DIR/1.14.1-zapret2-out.json"
+fi
 
 printf 'DPI routed DNS preserves FakeIP interception and invalidates core reload state\n'
