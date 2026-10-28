@@ -102,6 +102,18 @@ function isoToFlagEmoji(iso) {
   );
 }
 
+function poolServerName(value) {
+  const name = String(value || "").trim();
+  // A connection URI is not a server-name filter and may contain credentials.
+  return /^(?:[a-z][a-z0-9+.-]*:\/\/|fptnb:)/i.test(name) ? "" : name;
+}
+
+function serverNameList(value) {
+  return (Array.isArray(value) ? value : String(value || "").split(","))
+    .map((name) => String(name).trim())
+    .filter(Boolean);
+}
+
 function loadGlobalPoolChoices() {
   const secNames = (uci.sections(UCI_PACKAGE, "section") || [])
     .map((s) => s[".name"])
@@ -130,12 +142,13 @@ function loadGlobalPoolChoices() {
       if (src.node_prefix) prefixSet.add(String(src.node_prefix).trim());
       const stype = String(src.source_type || "subscription").toLowerCase();
       if (DPI_SOURCE_TYPES.has(stype)) return;
-      const sname = String(src.name || src[".name"] || "").trim();
+      const sname = poolServerName(src.name || src[".name"]);
       asArray(src.proxy_links || src.selector_proxy_links).forEach((link) => {
-        const lname =
-          (typeof main.getProxyUrlName === "function" &&
-            main.getProxyUrlName(link)) ||
-          link;
+        const lname = poolServerName(
+          typeof main.getProxyUrlName === "function"
+            ? main.getProxyUrlName(link)
+            : "",
+        );
         if (lname && !serverMap.has(lname)) {
           serverMap.set(lname, lname);
         }
@@ -164,7 +177,7 @@ function loadGlobalPoolChoices() {
 
       Object.entries(names).forEach(([tag, rawName]) => {
         if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
-        const name = String(rawName || "").trim();
+        const name = poolServerName(rawName);
         if (!name) return;
         const proto = String(protocols[tag] || "").toUpperCase();
         if (proto === "URLTEST" || proto === "SELECTOR") return;
@@ -258,16 +271,16 @@ function createChipToggleBar(inputEl, choices, isUpper) {
 }
 
 function createServerChecklistPicker(inputEl) {
-  const container = E("div", { style: "margin-top: 6px;" });
+  const container = E("div", { style: "margin-top: 6px; min-width: 0; max-width: 100%;" });
   const searchInput = E("input", {
     type: "text",
     class: "cbi-input-text",
     placeholder: _("Search servers in pool..."),
-    style: "width: 100%; margin-bottom: 6px; font-size: 12px;",
+    style: "width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-bottom: 6px; font-size: 12px;",
   });
   const listBox = E("div", {
     style:
-      "max-height: 140px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px;",
+      "min-width: 0; max-width: 100%; box-sizing: border-box; max-height: 140px; overflow-y: auto; overflow-x: hidden; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px;",
   });
   let allServers = [];
 
@@ -286,7 +299,7 @@ function createServerChecklistPicker(inputEl) {
       return;
     }
     const q = searchInput.value.trim().toLowerCase();
-    const selected = new Set(asArray(inputEl.value));
+    const selected = new Set(serverNameList(inputEl.value));
     const filtered = q
       ? allServers.filter(
           (s) =>
@@ -303,13 +316,13 @@ function createServerChecklistPicker(inputEl) {
           {
             type: "button",
             class: "btn cbi-button",
-            style: `padding: 2px 7px; font-size: 11px; line-height: 1.35; border-radius: 6px; ${
+            style: `min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: break-word; text-align: left; padding: 2px 7px; font-size: 11px; line-height: 1.35; border-radius: 6px; ${
               active
                 ? "background: rgba(59,130,246,0.22); border-color: #3b82f6; font-weight: 600;"
                 : "opacity: 0.82;"
             }`,
             click: () => {
-              const cur = asArray(inputEl.value);
+              const cur = serverNameList(inputEl.value);
               const idx = cur.indexOf(srv.value);
               if (idx >= 0) cur.splice(idx, 1);
               else cur.push(srv.value);
@@ -777,9 +790,9 @@ function showOutboundGroupModal(existingId, onSaved) {
   });
 
   const fieldRow = (label, input, hint, extraNode) =>
-    E("div", { class: "cbi-value" }, [
+    E("div", { class: "cbi-value", style: "min-width: 0; max-width: 100%;" }, [
       E("label", { class: "cbi-value-title" }, label),
-      E("div", { class: "cbi-value-field" }, [
+      E("div", { class: "cbi-value-field", style: "min-width: 0; max-width: 100%;" }, [
         input,
         extraNode || "",
         hint ? E("div", { class: "cbi-value-description" }, hint) : "",
@@ -969,17 +982,12 @@ function showOutboundGroupModal(existingId, onSaved) {
                   excCountriesInput.value,
                   true,
                 );
-                const splitCsv = (val) =>
-                  String(val || "")
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean);
-                const incSrvs = splitCsv(incOutboundsInput.value);
+                const incSrvs = serverNameList(incOutboundsInput.value);
                 if (incSrvs.length)
                   uci.set(UCI_PACKAGE, rawId, "include_outbounds", incSrvs);
                 else uci.unset(UCI_PACKAGE, rawId, "include_outbounds");
 
-                const excSrvs = splitCsv(excOutboundsInput.value);
+                const excSrvs = serverNameList(excOutboundsInput.value);
                 if (excSrvs.length)
                   uci.set(UCI_PACKAGE, rawId, "exclude_outbounds", excSrvs);
                 else uci.unset(UCI_PACKAGE, rawId, "exclude_outbounds");
