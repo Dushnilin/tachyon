@@ -233,9 +233,23 @@ function device_ipv4_address(interface) {
     return "";
 }
 
+function uci_settings() {
+    return uci_core.get_all(CONFIG_NAME, "settings") || {};
+}
+
 function sing_box_standard_ports_listening(netstat) {
     netstat = as_string(netstat);
     let port_53_ok = index(netstat, "127.0.0.42:53") >= 0;
+    let proxy_mode = lc(trim(as_string(uci_settings().proxy_mode || "tproxy")));
+    if (proxy_mode == "tun") {
+        let tun_ok = fs.stat("/sys/class/net/tun0") != null ||
+            index(command_output_from_args([ "ip", "link", "show", "tun0" ]), "tun0") >= 0;
+        return port_53_ok && tun_ok;
+    }
+    if (proxy_mode == "socks") {
+        let socks_port = as_string(uci_settings().socks_port || "1080");
+        return port_53_ok && index(netstat, ":" + socks_port) >= 0;
+    }
     let tproxy_suffix = ":" + SB_TPROXY_INBOUND_PORT;
     let port_1602_ok = index(netstat, "0.0.0.0" + tproxy_suffix) >= 0 ||
         index(netstat, "127.0.0.1" + tproxy_suffix) >= 0;
@@ -267,10 +281,6 @@ function server_required_ports_listening(listen, port, required_proto) {
         [ "server-required-ports-listening", listen, port, required_proto ],
         netstat
     );
-}
-
-function uci_settings() {
-    return uci_core.get_all(CONFIG_NAME, "settings") || {};
 }
 
 function lan_clients() {

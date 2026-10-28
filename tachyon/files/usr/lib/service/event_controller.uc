@@ -966,11 +966,13 @@ function controller(bus, opts) {
 
         let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
         let routing_mode = ctx.settings.routing_mode || "nftables";
+        let proxy_mode = lc(trim(as_string(ctx.settings.proxy_mode || "tproxy")));
         let out_nft = command_output_from_args(["sh", "-c",
             "nft list table inet " + nft_table + " | grep -E 'chain|tproxy|priority_rules|dscp'; exit 0"]);
 
         if (routing_mode == "nftables") {
-            if (index(out_nft, "tproxy") < 0 || index(out_nft, "priority_rules") < 0) {
+            let need_tproxy = proxy_mode != "tun" && proxy_mode != "socks";
+            if ((need_tproxy && index(out_nft, "tproxy") < 0) || index(out_nft, "priority_rules") < 0) {
                 bus.emit(EV.NFT_MISSING, { table: nft_table });
                 return;
             }
@@ -998,6 +1000,9 @@ function controller(bus, opts) {
 
         let pid = ctx.singbox_pid;
         if (pid == "" || !ctx.singbox_running) return;
+
+        let proxy_mode = lc(trim(as_string(ctx.settings.proxy_mode || "tproxy")));
+        if (proxy_mode == "tun" || proxy_mode == "socks") return;
 
         let port = tproxy_port();
         // /proc/net/tcp encodes the local port in hex; 0A is TCP_LISTEN.

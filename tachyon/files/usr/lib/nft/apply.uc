@@ -2941,10 +2941,44 @@ function extract_server_port_specs(s) {
         } else if (type(obj.listen_ports) == "string") {
             push(raw_specs, obj.listen_ports);
         }
+        if (type(obj.server_ports) == "array") {
+            for (let sp in obj.server_ports)
+                push(raw_specs, as_string(sp));
+        } else if (type(obj.server_ports) == "string") {
+            push(raw_specs, obj.server_ports);
+        }
+        if (type(obj.port_bindings) == "array") {
+            for (let pb in obj.port_bindings) {
+                if (type(pb) == "object") {
+                    if (pb.port != null)
+                        push(raw_specs, as_string(pb.port));
+                    if (pb.port_range != null)
+                        push(raw_specs, as_string(pb.port_range));
+                }
+            }
+        }
     } else if (proto == "awg") {
         push(raw_specs, as_string(s["awg_server_port"] || s["listen_port"] || 51820));
     } else {
-        push(raw_specs, as_string(s["listen_port"] || ""));
+        let lp = as_string(s["listen_port"] || "");
+        if (lp != "")
+            push(raw_specs, lp);
+        if (type(s["listen_ports"]) == "array") {
+            for (let item in s["listen_ports"])
+                push(raw_specs, as_string(item));
+        } else if (as_string(s["listen_ports"] || "") != "") {
+            push(raw_specs, as_string(s["listen_ports"]));
+        }
+        if (type(s["mieru_server_ports"]) == "array") {
+            for (let item in s["mieru_server_ports"])
+                push(raw_specs, as_string(item));
+        } else if (as_string(s["mieru_server_ports"] || "") != "") {
+            push(raw_specs, as_string(s["mieru_server_ports"]));
+        }
+        if (length(raw_specs) == 0) {
+            let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443 };
+            push(raw_specs, as_string(defaults[proto] || 443));
+        }
     }
 
     let ports = [];
@@ -3053,6 +3087,7 @@ function sync_server_firewall_uci_rules() {
     let srv_ports = collect_server_firewall_ports();
     let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
     let fw4_include_file = fw4_include_dir + "/10-tachyon-servers.nft";
+    let include_changed = false;
     if (fs.stat("/usr/share/nftables.d") != null) {
         fs.mkdir("/usr/share/nftables.d/chain-pre");
         fs.mkdir(fw4_include_dir);
@@ -3065,14 +3100,21 @@ function sync_server_firewall_uci_rules() {
             let ports_str = length(srv_ports.udp) == 1 ? as_string(srv_ports.udp[0]) : "{ " + join(", ", srv_ports.udp) + " }";
             nft_content += sprintf("udp dport %s accept comment \"Allow Tachyon server inbound UDP\"\n", ports_str);
         }
-        if (nft_content != "")
-            write_text_file(fw4_include_file, nft_content);
-        else
+        if (nft_content != "") {
+            if (!common.content_unchanged(fw4_include_file, nft_content)) {
+                write_text_file(fw4_include_file, nft_content);
+                include_changed = true;
+            }
+        } else if (fs.stat(fw4_include_file) != null) {
             unlink_file(fw4_include_file);
+            include_changed = true;
+        }
     }
 
     if (changed) {
         uci_core.commit("firewall");
+    }
+    if (changed || include_changed) {
         run_args_quiet([ "/etc/init.d/firewall", "reload" ]);
     }
 

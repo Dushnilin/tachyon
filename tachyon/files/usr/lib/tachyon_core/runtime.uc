@@ -1285,10 +1285,14 @@ function sing_box_check(config_path, output_path) {
     return { status, reason };
 }
 
+function core_engine_label() {
+    return sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
+}
+
 function prepare_subscription_caches(prepared, no_refresh) {
     let result = subscription_cache_capture([ "prepare-caches", "runtime", prepared ? "1" : "0", no_refresh ? "1" : "0" ]);
     if (result.status != 0) {
-        log_message("Subscription caches are not ready for sing-box config generation. Aborted.", "fatal");
+        log_message("Subscription caches are not ready for " + core_engine_label() + " config generation. Aborted.", "fatal");
         log_lines(result.output, "debug", "subscription cache: ");
         return null;
     }
@@ -1371,7 +1375,7 @@ function save_config_file(temp_file_path, config_path) {
     let temp_hash = md5_file(temp_file_path);
 
     if (current_hash != temp_hash) {
-        log_message("sing-box configuration changed; updating " + config_path, "info");
+        log_message(core_engine_label() + " configuration changed; updating " + config_path, "info");
         if (!ensure_parent_dir(config_path))
             return false;
         write_reload_preview(config_path, temp_file_path);
@@ -1379,7 +1383,7 @@ function save_config_file(temp_file_path, config_path) {
     }
 
     write_reload_preview(config_path, temp_file_path);
-    log_message("sing-box configuration is unchanged", "info");
+    log_message(core_engine_label() + " configuration is unchanged", "info");
     remove_file(temp_file_path);
     return true;
 }
@@ -1407,7 +1411,7 @@ function patch_dns_config(state_path) {
     let config_path = option(settings, "config_path", "");
     let config = common.read_json_file(config_path);
     if (config_path == "" || type(config) != "object") {
-        log_message("Cannot read the current sing-box configuration for DNS failover", "error");
+        log_message("Cannot read the current " + core_engine_label() + " configuration for DNS failover", "error");
         exit(1);
     }
 
@@ -1432,7 +1436,7 @@ function patch_dns_config(state_path) {
         ? { status: 1, reason: "unable to create check output file" }
         : sing_box_check(temp_config, check_log);
     if (check_result.status != 0) {
-        log_message("DNS failover produced an invalid sing-box configuration: " + check_result.reason, "error");
+        log_message("DNS failover produced an invalid " + core_engine_label() + " configuration: " + check_result.reason, "error");
         remove_files([ backup_path, temp_config, check_log ]);
         exit(1);
     }

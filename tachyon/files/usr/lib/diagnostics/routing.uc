@@ -335,10 +335,12 @@ function has_route_rule_for_inbound_in_config(sb_config, inbound_tag) {
     return false;
 }
 
-function server_required_inbound_proto(protocol) {
+function server_required_inbound_proto(protocol, section) {
     protocol = as_string(protocol);
     if (protocol == "json_inbound")
         return "";
+    if (protocol == "mieru" && type(section) == "object")
+        return uc(as_string(option(section, "mieru_transport", "TCP"))) == "UDP" ? "udp" : "tcp";
     // AWG is WireGuard underneath, whichever schema the core puts it in;
     // MASQUE is HTTP/3 over QUIC (UDP).
     return protocol == "hysteria2" || protocol == "tuic" || protocol == "awg" || protocol == "masque" ? "udp" : "tcp";
@@ -363,9 +365,17 @@ function server_runtime_type_for_protocol(protocol) {
 // generic listen_port option alone is not what the core binds, so every probe
 // below has to ask about the effective port.
 function server_effective_listen_port(section, protocol) {
-    if (protocol != "awg")
-        return option(section, "listen_port", "");
-    return option(section, "awg_server_port", option(section, "listen_port", "51820"));
+    if (protocol == "awg")
+        return option(section, "awg_server_port", option(section, "listen_port", "51820"));
+    let raw_lp = trim(as_string(option(section, "listen_port", "")));
+    if (protocol == "mieru") {
+        if (raw_lp == "")
+            return "443";
+        let m = match(raw_lp, /^([0-9]+)/);
+        if (m)
+            return as_string(m[1]);
+    }
+    return raw_lp;
 }
 
 function server_listen_requires_firewall(listen, wan_ip) {
@@ -626,7 +636,7 @@ function check_inbounds() {
         let routing_mode = option(section, "routing_mode", "rules");
         let inbound_tag = server_inbound_tag(section_name);
         let expected_type = server_runtime_type_for_protocol(protocol);
-        let required_proto = server_required_inbound_proto(protocol);
+        let required_proto = server_required_inbound_proto(protocol, section);
         let runtime_json = protocol == "tailscale"
             ? runtime_summary_json_from_config(sb_config, "endpoints", inbound_tag)
             : runtime_summary_json_from_config(sb_config, "inbounds", inbound_tag);

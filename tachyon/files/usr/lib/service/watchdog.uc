@@ -1398,20 +1398,30 @@ function heal_uncached_rulesets_detour() {
 
     let has_rulesets = false;
     let proxy_section_name = "";
+    let preferred_proxy_section_name = "";
+    let conn_mod = get_connections();
     
     uci_core.foreach(CONFIG_NAME, "section", function(s) {
         if (!common.bool_option(s, "enabled", true)) return;
         let act = common.option(s, "action", "");
-        if (act != "bypass" && act != "block" && act != "dns" && act != "") {
+        if (act != "bypass" && act != "block" && act != "dns" && act != "hosts" && act != "" &&
+            !conn_mod.is_dpi_or_desync_only_section(s)) {
             if (proxy_section_name == "")
                 proxy_section_name = s[".name"];
+            let has_remote_proxy = length(conn_mod.connection_urls(s)) > 0 ||
+                length(conn_mod.subscription_urls(s)) > 0 ||
+                length(conn_mod.outbound_jsons(s)) > 0 ||
+                trim(common.option(s, "outbound_json", "")) != "";
+            if (preferred_proxy_section_name == "" && (has_remote_proxy || length(conn_mod.interfaces(s)) == 0))
+                preferred_proxy_section_name = s[".name"];
         }
-        let conn_mod = get_connections();
         let lists = conn_mod.community_lists(s);
         let custom_rulesets = conn_mod.rule_sets(s);
         if (length(lists) > 0 || length(custom_rulesets) > 0)
             has_rulesets = true;
     });
+    if (preferred_proxy_section_name != "")
+        proxy_section_name = preferred_proxy_section_name;
 
     if (has_rulesets && proxy_section_name != "") {
         log_message("Watchdog: DNS stalled with remote rulesets on direct WAN; auto-enabling download_lists_via_proxy through " + proxy_section_name, "warn");
@@ -1460,7 +1470,7 @@ function heal_dns_stall(ev) {
     let udp = fs.readfile("/proc/net/udp") || "";
     let core_dns_listening = index(udp, "2A00007F:0035") >= 0;
     if (!core_dns_listening) {
-        log_message("Watchdog: DNS stalled and sing-box is not listening on port 53; restoring failsafe DNS in dnsmasq", "warn");
+        log_message("Watchdog: DNS stalled and " + active_engine + " is not listening on port 53; restoring failsafe DNS in dnsmasq", "warn");
         command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "failsafe-restore" ]);
     }
 
@@ -1727,7 +1737,7 @@ function validate_singbox_config() {
 // of failures and validates the sing-box config before restarting.
 function heal_proxy_health(ev) {
     if (settings().ai_proxy_health_enabled == "0") return;
-    if (settings().recovery_bypass == "1") return;
+    if (settings().recovery_bypass == "1" || is_emergency_failsafe_active()) return;
     // Only a proxy that fails while direct access works is worth restarting
     // over: when direct access is down too, the fault is upstream/WAN and a
     // restart would drop live connections for nothing.

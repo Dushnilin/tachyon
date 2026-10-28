@@ -167,6 +167,8 @@ function mieru(s, inbound, address) {
         port_spec = str(inbound.listen_ports[0]);
     else if (type(inbound.server_ports) == "array" && length(inbound.server_ports) > 0)
         port_spec = str(inbound.server_ports[0]);
+    else if (type(inbound.port_bindings) == "array" && length(inbound.port_bindings) > 0 && type(inbound.port_bindings[0]) == "object")
+        port_spec = str(inbound.port_bindings[0].port_range || inbound.port_bindings[0].port || "");
     else if (inbound.listen_port != null)
         port_spec = str(inbound.listen_port);
     port_spec = trim(replace(port_spec, ":", "-"));

@@ -132,9 +132,20 @@ function p2p_direct_rules(settings, policy_mode) {
 function config(settings, runtime) {
     let output_network_interface = option(settings, "output_network_interface", "");
     let mwan3_active = type(runtime) == "object" && bool_value(runtime.mwan3_active);
-    let sniff_inbounds = [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.DNS_INBOUND_TAG ];
-    if (common.ipv6_supported())
-        push(sniff_inbounds, runtime_constants.TPROXY_INBOUND6_TAG);
+    let mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    let client_inbounds = (type(runtime) == "object" && type(runtime.client_inbounds) == "array" && length(runtime.client_inbounds) > 0)
+        ? runtime.client_inbounds
+        : (mode == "tun"
+            ? [ runtime_constants.TUN_INBOUND_TAG ]
+            : (mode == "socks"
+                ? [ runtime_constants.CLIENT_MIXED_INBOUND_TAG ]
+                : (common.ipv6_supported()
+                    ? [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ]
+                    : [ runtime_constants.TPROXY_INBOUND_TAG ])));
+    let sniff_inbounds = [];
+    for (let ib in client_inbounds)
+        push(sniff_inbounds, ib);
+    push(sniff_inbounds, runtime_constants.DNS_INBOUND_TAG);
     if (type(runtime) == "object" && bool_value(runtime.source_aware_dns))
         push(sniff_inbounds, runtime_constants.SOURCE_DNS_INBOUND_TAG);
     if (type(runtime) == "object" && type(runtime.dns_health_inbounds) == "array")
@@ -152,6 +163,10 @@ function config(settings, runtime) {
         { action: "sniff", inbound: sniff_inbounds },
         { action: "hijack-dns", inbound: dns_hijack_inbounds }
     ];
+    if (length(client_inbounds) == 1 && client_inbounds[0] == runtime_constants.TUN_INBOUND_TAG) {
+        push(rules, { action: "hijack-dns", inbound: runtime_constants.TUN_INBOUND_TAG, port: 53 });
+        push(rules, { action: "hijack-dns", inbound: runtime_constants.TUN_INBOUND_TAG, protocol: "dns" });
+    }
     let result = {
         rules,
         rule_set: [],
@@ -193,8 +208,10 @@ function config(settings, runtime) {
             push(doh_cidrs, cidr);
         for (let cidr in runtime_constants.DOH_BLOCK_IPV6_CIDRS)
             push(doh_cidrs, cidr);
-        push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND_TAG, ip_cidr: doh_cidrs });
-        push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND6_TAG, ip_cidr: doh_cidrs });
+        for (let ib in client_inbounds)
+            push(result.rules, { action: "reject", inbound: ib, ip_cidr: doh_cidrs });
+        if (length(client_inbounds) == 1 && client_inbounds[0] == runtime_constants.TPROXY_INBOUND_TAG)
+            push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND6_TAG, ip_cidr: doh_cidrs });
     }
 
     return result;

@@ -456,16 +456,29 @@ function serialize_snell(outbound) {
 }
 
 function serialize_mieru(outbound) {
+    let port_spec = "";
+    if (type(outbound.server_ports) == "array" && length(outbound.server_ports) > 0)
+        port_spec = replace(as_string(outbound.server_ports[0]), ":", "-");
+    else if (outbound.server_port != null)
+        port_spec = as_string(outbound.server_port);
     if (as_string(outbound.username) == "" || as_string(outbound.password) == "" ||
-        as_string(outbound.server) == "" || outbound.server_port == null)
+        as_string(outbound.server) == "" || port_spec == "")
+        return "";
+    let primary_port = outbound.server_port;
+    if (primary_port == null) {
+        let m = match(port_spec, /^([0-9]+)/);
+        if (m)
+            primary_port = int(m[1]);
+    }
+    if (primary_port == null)
         return "";
     let params = [];
-    add_query(params, "port", outbound.server_port);
+    add_query(params, "port", port_spec);
     add_query(params, "protocol", outbound.transport || "TCP");
     if (as_string(outbound.multiplexing || "") != "")
         add_query(params, "multiplexing", outbound.multiplexing);
     let userinfo = uri_encode(outbound.username) + ":" + uri_encode(outbound.password);
-    return "mierus://" + userinfo + "@" + host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
+    return "mierus://" + userinfo + "@" + host_port(outbound.server, primary_port) + query_string(params) + fragment(outbound);
 }
 
 function serialize_mtproto(outbound) {

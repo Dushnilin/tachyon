@@ -302,9 +302,12 @@ function build_desired_nftables(opts) {
 function build_desired_routing(opts) {
     let enabled = is_service_enabled();
     let is_steer = is_engine_steer();
+    let settings = read_uci_section(CONFIG_NAME, "settings");
+    let proxy_mode = lc(trim(as_string(settings.proxy_mode || "tproxy")));
+    let need_tproxy_routing = proxy_mode != "tun" && proxy_mode != "socks";
 
     return {
-        needed: enabled && !is_steer, // steer owns policy routing when active
+        needed: enabled && !is_steer && need_tproxy_routing, // steer and tun/socks do not use tproxy policy routing
         table_name: RT_TABLE_NAME,
         table_id: RT_TABLE_ID,
         rule_mark: "0x04000000"
@@ -894,11 +897,11 @@ function repair_nftables_subsystem(drift_items, opts) {
     let code = 0;
     if (table_missing) {
         log("Reconciler: rebuilding entire TachyonTable runtime rules...", "info");
-        let cmd = sprintf("ucode -L %s %s/service/lifecycle.uc reload_firewall >/dev/null 2>&1", LIB_DIR, LIB_DIR);
+        let cmd = sprintf("ucode -L %s %s/service/lifecycle.uc reload-firewall >/dev/null 2>&1", LIB_DIR, LIB_DIR);
         code = command_status(cmd);
     } else {
         log("Reconciler: repopulating runtime nftables sets...", "info");
-        let cmd = sprintf("ucode -L %s %s/service/lifecycle.uc nft_populate_runtime_sets >/dev/null 2>&1", LIB_DIR, LIB_DIR);
+        let cmd = sprintf("ucode -L %s %s/service/lifecycle.uc nft-populate-runtime-sets >/dev/null 2>&1", LIB_DIR, LIB_DIR);
         code = command_status(cmd);
     }
 
@@ -909,12 +912,12 @@ function repair_routing_subsystem(drift_items, opts) {
     log("Reconciler: repairing routing subsystem...", "info");
 
     // Ensure policy routing table and rules exist
-    let cmd = sprintf("ucode -L %s %s/nft/apply.uc ensure-tproxy-route-rule %s %s 0x04000000 >/dev/null 2>&1",
-        LIB_DIR, LIB_DIR, RT_TABLE_NAME, RT_TABLE_ID);
+    let cmd = sprintf("ucode -L %s %s/nft/apply.uc ensure-tproxy-route-rule %s 0x04000000 >/dev/null 2>&1",
+        LIB_DIR, LIB_DIR, RT_TABLE_NAME);
     let code = command_status(cmd);
 
     // Ensure local route in table
-    command_status(sprintf("ip route add local default dev lo table %s 2>/dev/null", RT_TABLE_ID));
+    command_status(sprintf("ip route add local default dev lo table %s 2>/dev/null", RT_TABLE_NAME));
 
     return { ok: code == 0, subsystem: SUBSYSTEM_ROUTING };
 }

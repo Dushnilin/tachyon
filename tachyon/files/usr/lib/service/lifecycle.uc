@@ -928,7 +928,7 @@ function prepare_community_rulesets() {
 
         if (!fetched) {
             runtime_rulesets_mod.ensure_empty_srs_stub(tmp_path);
-            log_message("Community ruleset '" + service + "' initialized with local fallback stub to allow sing-box clean start", "info");
+            log_message("Community ruleset '" + service + "' initialized with local fallback stub to allow tachyon-core clean start", "info");
         }
     }
     for (let name in exclusion_lists)
@@ -1110,7 +1110,7 @@ function start_main() {
 
     let sb_start = command_success_from_args([ "/etc/init.d/tachyon-core", "start" ]);
     if (!sb_start) {
-        log_message("Failed to start sing-box. Aborted.", "fatal");
+        log_message("Failed to start tachyon-core. Aborted.", "fatal");
         return 1;
     }
 
@@ -1855,7 +1855,7 @@ function reload(reason) {
             as_string(SING_BOX_START_VERIFY_TIMEOUT)
         ]);
         if (status != 0) {
-            log_message("Reload verification failed after sing-box was reloaded; stopping Tachyon runtime", "fatal");
+            log_message("Reload verification failed after tachyon-core was reloaded; stopping Tachyon runtime", "fatal");
             cleanup_failed_runtime();
             return status;
         }
@@ -1867,13 +1867,13 @@ function reload(reason) {
 
         status = module_status(PRIORITY_UC, [ "start-runtime" ]);
         if (status != 0) {
-            log_message("Failed to start Priority runtime after sing-box reload", "fatal");
+            log_message("Failed to start Priority runtime after tachyon-core reload", "fatal");
             cleanup_failed_runtime();
             return status;
         }
         status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
         if (status != 0) {
-            log_message("Failed to restart DNS failover runtime after sing-box reload", "fatal");
+            log_message("Failed to restart DNS failover runtime after tachyon-core reload", "fatal");
             cleanup_failed_runtime();
             return status;
         }
@@ -2081,8 +2081,10 @@ else if (mode == "start")
     status = start();
 else if (mode == "stop")
     status = stop();
-else if (mode == "reload-firewall")
+else if (mode == "reload-firewall" || mode == "reload_firewall")
     status = reload_firewall();
+else if (mode == "nft-populate-runtime-sets" || mode == "nft_populate_runtime_sets")
+    status = nft_populate_runtime_sets();
 else if (mode == "reload")
     status = reload_tracked(ARGV[1] || "");
 else if (mode == "dns-failover-apply")

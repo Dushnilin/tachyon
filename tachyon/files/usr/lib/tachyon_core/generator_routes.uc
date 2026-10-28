@@ -2591,6 +2591,8 @@ function add_port_matchers(rule, section) {
 }
 
 function tproxy_inbound_matcher() {
+    if (type(ctx.tproxy_inbound_matcher) == "function")
+        return ctx.tproxy_inbound_matcher();
     if (!core_ip.ipv6_supported())
         return [ runtime_constants.TPROXY_INBOUND_TAG ];
     return [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ];
@@ -3974,9 +3976,13 @@ function add_server_routes(config, servers, sections) {
 
         let routing_mode = option(server, "routing_mode", "rules");
         if (routing_mode == "rules") {
+            let client_inbounds = tproxy_inbound_matcher();
+            let primary_client_inbound = length(client_inbounds) > 0
+                ? client_inbounds[0]
+                : runtime_constants.TPROXY_INBOUND_TAG;
             runtime_servers.clone_rules_for_inbound(
                 config,
-                runtime_constants.TPROXY_INBOUND_TAG,
+                primary_client_inbound,
                 inbound,
                 runtime_constants.CHECK_PROXY_IP_DOMAIN
             );

@@ -352,22 +352,45 @@ function download_via_proxy_section(settings, purpose) {
 
     let all_enabled = type(enabled_sections) == "function" ? enabled_sections() : [];
     let valid_proxy_sections = {};
+    let preferred_proxy_sections = {};
+    let first_preferred = "";
     for (let s in all_enabled) {
         if (ctx.deferred_sections && ctx.deferred_sections[s[".name"]])
             continue;
         let act = option(s, "action", "");
-        if (act != "bypass" && act != "block" && act != "dns" && act != "hosts" && act != "")
+        if (act != "bypass" && act != "block" && act != "dns" && act != "hosts" && act != "") {
+            if (connections.is_dpi_or_desync_only_section(s))
+                continue;
             valid_proxy_sections[s[".name"]] = true;
+            let has_remote_proxy = length(connections.connection_urls(s)) > 0 ||
+                length(connections.subscription_urls(s)) > 0 ||
+                length(connections.outbound_jsons(s)) > 0 ||
+                trim(option(s, "outbound_json", "")) != "";
+            if (has_remote_proxy || length(connections.interfaces(s)) == 0) {
+                preferred_proxy_sections[s[".name"]] = true;
+                if (first_preferred == "")
+                    first_preferred = s[".name"];
+            }
+        }
     }
 
     let section_option = download_via_proxy_section_option_for_purpose(purpose);
     let configured = section_option != "" ? option(settings, section_option, "") : "";
-    if (configured != "" && valid_proxy_sections[configured])
-        return configured;
+    if (configured != "" && valid_proxy_sections[configured]) {
+        if (preferred_proxy_sections[configured] || first_preferred == "")
+            return configured;
+        return first_preferred;
+    }
 
     let fallback_configured = option(settings, "download_lists_via_proxy_section", "");
-    if (fallback_configured != "" && valid_proxy_sections[fallback_configured])
-        return fallback_configured;
+    if (fallback_configured != "" && valid_proxy_sections[fallback_configured]) {
+        if (preferred_proxy_sections[fallback_configured] || first_preferred == "")
+            return fallback_configured;
+        return first_preferred;
+    }
+
+    if (first_preferred != "")
+        return first_preferred;
 
     for (let s in all_enabled) {
         if (valid_proxy_sections[s[".name"]])
@@ -493,12 +516,6 @@ function clash_api_config(settings, service_address) {
 
 function cli_bool(value) {
     return value === true || value == "1" || value == "true" || value == "yes" || value == "on";
-}
-
-function tproxy_inbound_matcher() {
-    if (!core_ip.ipv6_supported())
-        return [ runtime_constants.TPROXY_INBOUND_TAG ];
-    return [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ];
 }
 
 let cached_sb_version = null;
@@ -695,11 +712,16 @@ function tun_inbound(settings) {
     if (mtu < 576 || mtu > 65535)
         mtu = runtime_constants.TUN_MTU;
 
+    let addresses = [ inet4 ];
+    let inet6 = trim(option(settings, "tun_inet6", runtime_constants.TUN_INET6_ADDRESS));
+    if (inet6 != "")
+        push(addresses, inet6);
+
     let inbound = {
         type: "tun",
         tag: runtime_constants.TUN_INBOUND_TAG,
         interface_name,
-        inet4_address: inet4,
+        address: addresses,
         mtu,
         // auto_route is the whole point on a router: it is what puts the default
         // route into table 2022 and leaves main alone, instead of Tachyon writing
@@ -710,16 +732,22 @@ function tun_inbound(settings) {
         // by the userspace NAT still fails on replies from a second source port.
         endpoint_independent_nat: bool_option(settings, "tun_endpoint_independent_nat", true),
         stack: trim(option(settings, "tun_stack", "mixed")) || "mixed",
-        gso: bool_option(settings, "tun_gso", true),
-        sniff: bool_option(settings, "tun_sniff", true),
-        sniff_override_destination: bool_option(settings, "tun_sniff_override_destination", false)
+        gso: bool_option(settings, "tun_gso", true)
     };
 
-    let inet6 = trim(option(settings, "tun_inet6", runtime_constants.TUN_INET6_ADDRESS));
-    if (inet6 != "")
-        inbound.inet6_address = inet6;
-
     return inbound;
+}
+
+function tproxy_inbound_matcher() {
+    let settings = runtime_settings();
+    let mode = proxy_mode(settings);
+    if (mode == "tun" && core_profile.supports_inbound("tun", detect_sing_box_version(), null))
+        return [ runtime_constants.TUN_INBOUND_TAG ];
+    if (mode == "socks")
+        return [ runtime_constants.CLIENT_MIXED_INBOUND_TAG ];
+    if (!core_ip.ipv6_supported())
+        return [ runtime_constants.TPROXY_INBOUND_TAG ];
+    return [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ];
 }
 
 function section_enabled(section) {
@@ -1017,7 +1045,10 @@ function base_config(settings, service_address, runtime_context) {
 // The transparent inbound exists only in tproxy mode. In socks mode there is
     // a client-facing listener instead, and in tun mode the core owns the routes
     // and a tproxy socket would only sit there unused.
+    let tun = tun_inbound(settings);
     let mode = proxy_mode(settings);
+    if (mode == "tun" && tun == null)
+        mode = "tproxy";
     let inbounds = [];
     if (mode == "tproxy") {
         push(inbounds, { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND_TAG, listen: runtime_constants.TPROXY_INBOUND_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true });
@@ -1049,7 +1080,6 @@ for (let inbound in dns_config.inbounds)
     // The tun inbound sits after the dns ones so the ordering of what is already
     // here does not move: anything reading the generated file by position keeps
     // reading what it read before.
-    let tun = tun_inbound(settings);
     if (tun != null)
         push(inbounds, tun);
 
@@ -1060,6 +1090,7 @@ for (let inbound in dns_config.inbounds)
 
     runtime_context.dns_health_inbounds = dns_config.sniff_inbounds;
     runtime_context.default_domain_resolver = runtime_dns.default_domain_resolver(settings);
+    runtime_context.client_inbounds = tproxy_inbound_matcher();
 
     let dns_section = {
         servers: dns_servers,
@@ -2432,6 +2463,7 @@ ctx.runtime_generate_unsupported = runtime_generate_unsupported;
 ctx.uci_bin_to_hex = uci_bin_to_hex;
 ctx.download_detour_tag = download_detour_tag;
 ctx.atomic_write_json_file = atomic_write_json_file;
+ctx.tproxy_inbound_matcher = tproxy_inbound_matcher;
 ctx.is_sb_1_14_plus = is_sb_1_14_plus_detected;
 ctx.is_sb_1_15_plus = is_sb_1_15_plus_detected;
 ctx.is_sing_box_lx = is_sing_box_lx_detected;

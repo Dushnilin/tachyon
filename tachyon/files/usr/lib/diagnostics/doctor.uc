@@ -1191,7 +1191,8 @@ function run_doctor_checks_impl(repair) {
             } catch (e) {}
         }
     } else {
-        if (routing_mode == "nftables") {
+        let proxy_mode = lc(trim(as_string(cfg.proxy_mode || "tproxy")));
+        if (routing_mode == "nftables" && proxy_mode != "tun" && proxy_mode != "socks") {
             let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
             if (index(out_nft, "tproxy") >= 0) {
                 doc_check("✅", "nftables table", "present", "");
@@ -2060,12 +2061,23 @@ function run_doctor_checks_impl(repair) {
 
                     if (length(still_missing) > 0) {
                         let first_proxy = "";
+                        let fallback_proxy = "";
                         for (let s in all_sections) {
                             if (s.enabled != "0" && connections.is_remote_proxy_section(s)) {
-                                first_proxy = s[".name"];
-                                break;
+                                if (fallback_proxy == "")
+                                    fallback_proxy = s[".name"];
+                                let has_remote = length(connections.connection_urls(s)) > 0 ||
+                                    length(connections.subscription_urls(s)) > 0 ||
+                                    length(connections.outbound_jsons(s)) > 0 ||
+                                    trim(option(s, "outbound_json", "")) != "";
+                                if (has_remote || length(connections.interfaces(s)) == 0) {
+                                    first_proxy = s[".name"];
+                                    break;
+                                }
                             }
                         }
+                        if (first_proxy == "")
+                            first_proxy = fallback_proxy;
                         if (first_proxy != "") {
                             command_status("uci set tachyon.settings.download_lists_via_proxy='1'; uci set tachyon.settings.download_lists_via_proxy_section=" + shell_quote(first_proxy) + "; uci commit tachyon >/dev/null 2>&1");
                             command_status("/usr/bin/tachyon list_update > /dev/null 2>&1");

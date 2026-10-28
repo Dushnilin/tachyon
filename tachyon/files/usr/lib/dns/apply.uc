@@ -428,17 +428,17 @@ function dnsmasq_configure(force) {
     if (as_string(force) != "force") {
         let sb_pid = sing_box_running_pid();
         if (sb_pid == "") {
-            log("sing-box is not running; dnsmasq will forward to system DNS until sing-box starts", "warn");
+            log("tachyon-core is not running; dnsmasq will forward to system DNS until tachyon-core starts", "warn");
             return true;
         }
 
         if (!sing_box_dns_listening()) {
-            log("sing-box DNS inbound (127.0.0.42:53) is not listening yet; dnsmasq will forward to system DNS", "warn");
+            log("tachyon-core DNS inbound (127.0.0.42:53) is not listening yet; dnsmasq will forward to system DNS", "warn");
             return true;
         }
     }
 
-    log("Configuring dnsmasq to forward DNS to sing-box", "info");
+    log("Configuring dnsmasq to forward DNS to tachyon-core", "info");
     dnsmasq_cleanup_legacy_instance();
     dnsmasq_configure_default_instance();
     uci_commit("dhcp");

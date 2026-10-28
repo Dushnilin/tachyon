@@ -1083,13 +1083,16 @@ let network_check_cache = {
 };
 
 function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
-    let key = as_string(rt_table) + ":" + as_string(nft_table) + ":" + as_string(mark);
+    let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let proxy_mode = lc(trim(as_string(settings.proxy_mode || "tproxy")));
+    let key = as_string(rt_table) + ":" + as_string(nft_table) + ":" + as_string(mark) + ":" + proxy_mode;
     let now = int(clock()[0]);
     if (network_check_cache.key == key && network_check_cache.result && (now - network_check_cache.checked_at) < 5)
         return true;
 
+    let need_tproxy_route = proxy_mode != "tun" && proxy_mode != "socks";
     let result = command_success_from_args([ "nft", "-t", "list", "table", "inet", nft_table ]) &&
-        command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ]);
+        (!need_tproxy_route || command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ]));
 
     network_check_cache.key = key;
     network_check_cache.checked_at = now;
@@ -2317,6 +2320,19 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
     if (bool_option(settings, "lite_mode", false))
         body = signature_add_value(body, "settings.lite_mode", "1");
+    let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    if (proxy_mode != "" && proxy_mode != "tproxy") {
+        body = signature_add_value(body, "settings.proxy_mode", proxy_mode);
+        if (proxy_mode == "tun") {
+            body = signature_add_value(body, "settings.tun_inet4", option(settings, "tun_inet4", "172.19.0.1/30"));
+            body = signature_add_value(body, "settings.tun_inet6", option(settings, "tun_inet6", ""));
+            body = signature_add_value(body, "settings.tun_mtu", option(settings, "tun_mtu", "9000"));
+            body = signature_add_value(body, "settings.tun_stack", option(settings, "tun_stack", "system"));
+        } else if (proxy_mode == "socks") {
+            body = signature_add_value(body, "settings.socks_port", option(settings, "socks_port", "1080"));
+            body = signature_add_value(body, "settings.socks_listen", option(settings, "socks_listen", "0.0.0.0"));
+        }
+    }
     let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
     if (bt_policy == "")
         bt_policy = bool_option(settings, "isolate_p2p", false) ? "direct" : "off";

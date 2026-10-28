@@ -89,4 +89,74 @@ grep -q 'mode != "socks" && mode != "tun"' "$NFT" \
   || fail "nft does not exclude both socks and tun from interception"
 ok
 
+# ─── tun mode emits valid v1.14+ tun inbound without legacy fields ──────────
+cat >"$WORK_DIR/tun-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "proxy_mode": "tun",
+    "tun_inet4": "172.19.0.1/30",
+    "dns_type": "udp",
+    "dns_server": [ "1.1.1.1" ],
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "vpn",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"socks\",\"tag\":\"vpn-out\",\"server\":\"127.0.0.1\",\"server_port\":1080}" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ]
+}
+JSON
+
+printf '0.2.1\n' >"$WORK_DIR/tun-version"
+printf 'tachyon-core\n' >"$WORK_DIR/tun-variant"
+mkdir -p "$WORK_DIR/tun-config.json.section-cache"
+SB_VERSION_STATE_FILE="$WORK_DIR/tun-version" \
+SB_VARIANT_STATE_FILE="$WORK_DIR/tun-variant" \
+  ucode -L "$LIB_DIR" "$GEN" generate-config-fixture \
+  "$WORK_DIR/tun-fixture.json" "$WORK_DIR/tun-config.json" "127.0.0.1" \
+  || fail "tun mode config generation failed"
+ok
+
+ucode -L "$LIB_DIR" -e '
+let fs = require("fs");
+let cfg = json(fs.readfile(ARGV[0]));
+let tun_in = null;
+for (let ib in (cfg.inbounds || [])) {
+    if (ib.tag == "tproxy-in" || ib.tag == "tproxy6-in")
+        die("tproxy inbound must not be emitted in tun mode\n");
+    if (ib.type == "tun" && ib.tag == "tun-in")
+        tun_in = ib;
+}
+if (tun_in == null)
+    die("tun-in inbound missing in tun mode\n");
+if (tun_in.inet4_address != null || tun_in.inet6_address != null)
+    die("legacy tun address fields must not be emitted\n");
+if (tun_in.sniff != null || tun_in.sniff_override_destination != null)
+    die("legacy inbound sniff fields must not be emitted on tun inbound\n");
+if (type(tun_in.address) != "array" || tun_in.address[0] != "172.19.0.1/30")
+    die("tun inbound must emit address array\n");
+let rules = (cfg.route && cfg.route.rules) || [];
+let found_sniff = false;
+let found_section_route = false;
+for (let r in rules) {
+    if (r.action == "sniff" && type(r.inbound) == "array" && index(r.inbound, "tun-in") >= 0)
+        found_sniff = true;
+    if (r.action == "route" && r.outbound == "vpn-out" && type(r.inbound) == "array" && index(r.inbound, "tun-in") >= 0)
+        found_section_route = true;
+}
+if (!found_sniff)
+    die("sniff rule must include tun-in in tun mode\n");
+if (!found_section_route)
+    die("section route rule must match tun-in in tun mode\n");
+' "$WORK_DIR/tun-config.json" || fail "tun mode config shape validation failed"
+ok
+
 echo "ok - $pass_count checks passed"
