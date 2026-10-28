@@ -53,8 +53,12 @@ import {
 } from './activeRoute';
 import { ensureOutboundDisplayFlag } from '../../helpers/country';
 import {
+  computeConnectionRates,
   computeTrafficRates,
+  ConnectionTrafficSample,
+  createInitialConnectionRatesState,
   createInitialTrafficRatesState,
+  TrafficSample,
   TrafficRatesState,
 } from './metrics';
 import {
@@ -108,6 +112,22 @@ let lastRawConnections: any[] = [];
 let cachedHostnames = new Map<string, string>();
 let directSocketsFailed = false;
 let trafficRatesState: TrafficRatesState = createInitialTrafficRatesState();
+let connectionRatesState = createInitialConnectionRatesState();
+let connectionRates = new Map<string, TrafficSample>();
+
+function updateRawConnections(connections: ConnectionTrafficSample[]) {
+  const sample = computeConnectionRates(
+    connections,
+    Date.now(),
+    connectionRatesState,
+  );
+  connectionRatesState = sample.nextState;
+  connectionRates = sample.rates;
+  lastRawConnections = connections;
+  // A final idle snapshot may leave global totals unchanged, but section
+  // speeds still need to return to zero.
+  scheduleSectionDashboardWidgetsRender();
+}
 let pageUnloading = false;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
@@ -665,7 +685,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
       const parsedMsg = JSON.parse(msg);
 
       if (Array.isArray(parsedMsg.connections)) {
-        lastRawConnections = parsedMsg.connections;
+        updateRawConnections(parsedMsg.connections);
         currentConnections = aggregateClientConnections(
           parsedMsg.connections,
           cachedHostnames,
@@ -749,6 +769,8 @@ function stopDashboardDataUpdates() {
   // its own subscription to the same /connections URL and would go silent.
   unsubscribeClashSockets();
   currentConnections = [];
+  connectionRatesState = createInitialConnectionRatesState();
+  connectionRates.clear();
 }
 
 function startDashboardDataUpdates() {
@@ -2466,7 +2488,7 @@ async function fetchConnections() {
       const payload = res.data as any;
 
       if (Array.isArray(payload.connections)) {
-        lastRawConnections = payload.connections;
+        updateRawConnections(payload.connections);
         currentConnections = aggregateClientConnections(
           payload.connections,
           cachedHostnames,
@@ -2643,17 +2665,14 @@ function renderConnectionsWidget() {
 export function getSectionConnectionStats(
   sectionName: string,
   totalProxySections: number,
-  rawConns: Array<{
-    chains?: string[];
-    upload?: number | string;
-    download?: number | string;
-  }>,
+  rawConns: ConnectionTrafficSample[],
   totals: {
     downloadTotal?: number;
     uploadTotal?: number;
     downSpeed?: number;
     upSpeed?: number;
   },
+  rates: ReadonlyMap<string, TrafficSample> = new Map(),
 ) {
   if (totalProxySections <= 1) {
     return {
@@ -2669,6 +2688,8 @@ export function getSectionConnectionStats(
   let conns = 0;
   let upload = 0;
   let download = 0;
+  let downSpeed = 0;
+  let upSpeed = 0;
 
   for (const c of rawConns) {
     const rawChains = Array.isArray(c.chains)
@@ -2677,10 +2698,21 @@ export function getSectionConnectionStats(
         ? (c as any).metadata.chains
         : [];
     const chains = rawChains.map((ch: any) => String(ch).toLowerCase());
-    if (chains.some((ch: string) => ch === target || ch.includes(target))) {
+    if (
+      chains.some(
+        (ch: string) =>
+          ch === target ||
+          ch === `${target}-out` ||
+          ch.startsWith(`${target}-urltest-`) ||
+          ch.startsWith(`${target}-priority-`),
+      )
+    ) {
       conns++;
       upload += Number(c.upload) || 0;
       download += Number(c.download) || 0;
+      const rate = c.id ? rates.get(c.id) : undefined;
+      downSpeed += rate?.down || 0;
+      upSpeed += rate?.up || 0;
     }
   }
 
@@ -2688,8 +2720,8 @@ export function getSectionConnectionStats(
     conns,
     upload,
     download,
-    downSpeed: target === 'main' ? totals.downSpeed || 0 : 0,
-    upSpeed: target === 'main' ? totals.upSpeed || 0 : 0,
+    downSpeed,
+    upSpeed,
   };
 }
 
@@ -2785,6 +2817,7 @@ export async function renderSectionDashboardWidgets() {
           downSpeed: bandwidth.down,
           upSpeed: bandwidth.up,
         },
+        connectionRates,
       );
 
       const downPill = card.querySelector<HTMLElement>(
@@ -2920,6 +2953,7 @@ export async function renderSectionDashboardWidgets() {
         downSpeed: bandwidth.down,
         upSpeed: bandwidth.up,
       },
+      connectionRates,
     );
 
     const latencyClass =

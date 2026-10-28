@@ -270,9 +270,9 @@ describe('dashboard initController', () => {
       const { getSectionConnectionStats } = await import('../initController');
 
       const rawConns = [
-        { chains: ['main', 'proxy-out'], upload: 500, download: 1500 },
-        { metadata: { chains: ['MAIN'] }, upload: 200, download: 400 },
-        { chains: ['other-section'], upload: 1000, download: 2000 },
+        { id: 'a', chains: ['main', 'proxy-out'], upload: 500, download: 1500 },
+        { id: 'b', metadata: { chains: ['MAIN'] }, upload: 200, download: 400 },
+        { id: 'c', chains: ['other-section'], upload: 1000, download: 2000 },
       ] as any;
 
       const totals = {
@@ -282,7 +282,18 @@ describe('dashboard initController', () => {
         upSpeed: 500,
       };
 
-      const resultMain = getSectionConnectionStats('main', 2, rawConns, totals);
+      const rates = new Map([
+        ['a', { down: 700, up: 300 }],
+        ['b', { down: 300, up: 200 }],
+        ['c', { down: 200, up: 100 }],
+      ]);
+      const resultMain = getSectionConnectionStats(
+        'main',
+        2,
+        rawConns,
+        totals,
+        rates,
+      );
       expect(resultMain.conns).toBe(2);
       expect(resultMain.upload).toBe(700);
       expect(resultMain.download).toBe(1900);
@@ -294,10 +305,65 @@ describe('dashboard initController', () => {
         2,
         rawConns,
         totals,
+        rates,
       );
       expect(resultOther.conns).toBe(1);
       expect(resultOther.upload).toBe(1000);
       expect(resultOther.download).toBe(2000);
+      expect(resultOther.downSpeed).toBe(200);
+      expect(resultOther.upSpeed).toBe(100);
+    });
+
+    it.each([
+      'vpn-urltest-out',
+      'vpn-urltest-fast-out',
+      'vpn-priority-failover-out',
+    ])(
+      'attributes a group-only chain %s to its owning section',
+      async (tag) => {
+        const { getSectionConnectionStats } = await import('../initController');
+        const conns = [{ id: 'group', chains: [tag], download: 1000 }];
+        const rates = new Map([['group', { down: 100, up: 10 }]]);
+        expect(getSectionConnectionStats('vpn', 2, conns, {}, rates)).toEqual({
+          conns: 1,
+          upload: 0,
+          download: 1000,
+          downSpeed: 100,
+          upSpeed: 10,
+        });
+      },
+    );
+
+    it('attributes rates to the section selector, not a reused balancer name', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+      const conns = [
+        { id: 'v', chains: ['VPN-OUT'], download: 1000 },
+        {
+          id: 'w',
+          chains: ['warp-out', 'warp-urltest-bal_vpn_Fast-out'],
+          download: 2000,
+        },
+        { id: 'other', chains: ['vpn-work-out'], download: 9000 },
+      ];
+      const rates = new Map([
+        ['v', { down: 100, up: 10 }],
+        ['w', { down: 200, up: 20 }],
+        ['other', { down: 900, up: 90 }],
+      ]);
+      expect(getSectionConnectionStats('vpn', 3, conns, {}, rates)).toEqual({
+        conns: 1,
+        upload: 0,
+        download: 1000,
+        downSpeed: 100,
+        upSpeed: 10,
+      });
+      expect(getSectionConnectionStats('warp', 3, conns, {}, rates)).toEqual({
+        conns: 1,
+        upload: 0,
+        download: 2000,
+        downSpeed: 200,
+        upSpeed: 20,
+      });
     });
   });
 });
