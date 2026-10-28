@@ -851,9 +851,25 @@ function connection_urls(section) {
                 push_unique_str(links, seen, line);
         }
     }
+    if (length(outbound_source_sections()) == 0) {
+        for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
+            let su = trim(as_string(u || ""));
+            if (su != "" && !match(lc(su), /^https?:\/\//))
+                push_unique_str(links, seen, su);
+        }
+    }
     let sec_action = action(section);
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
+        let su = trim(option(src, "url", ""));
+        if (su != "" && !match(lc(su), /^https?:\/\//)) {
+            if (index(su, "#") < 0) {
+                let sname = trim(option(src, "name", ""));
+                if (sname != "")
+                    su = su + "#" + sname;
+            }
+            push_unique_str(links, seen, su);
+        }
         if (stype == "proxy_links" || stype == "links" || raw_option(src, "proxy_links") != null || raw_option(src, "selector_proxy_links") != null) {
             for (let l in whitespace_list_value(src, "proxy_links"))
                 push_unique_str(links, seen, l);
@@ -905,14 +921,17 @@ function subscription_urls(section) {
     let result = [];
     let seen = {};
     if (length(outbound_source_sections()) == 0) {
-        for (let u in child_values(section, "subscription_url", "url", "subscription_urls"))
-            push_unique_str(result, seen, u);
+        for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
+            let su = trim(as_string(u || ""));
+            if (su != "" && match(lc(su), /^https?:\/\//))
+                push_unique_str(result, seen, su);
+        }
     }
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "subscription" || option(src, "url", "") != "") {
             let u = trim(option(src, "url", ""));
-            if (u != "")
+            if (u != "" && match(lc(u), /^https?:\/\//))
                 push_unique_str(result, seen, u);
         }
     }
@@ -4704,15 +4723,22 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                 for (let c in (gspec.include_countries || [])) inc_c[uc(trim(as_string(c)))] = true;
                 let exc_c = {};
                 for (let c in (gspec.exclude_countries || [])) exc_c[uc(trim(as_string(c)))] = true;
+                let inc_o = {};
+                for (let o in (gspec.include_outbounds || [])) inc_o[lc(trim(as_string(o)))] = true;
+                let exc_o = {};
+                for (let o in (gspec.exclude_outbounds || [])) exc_o[lc(trim(as_string(o)))] = true;
                 let inc_p = {};
                 for (let p in (gspec.include_protocols || [])) inc_p[lc(trim(as_string(p)))] = true;
+                let has_inc_c = length(keys(inc_c)) > 0;
+                let has_inc_o = length(keys(inc_o)) > 0;
+                let has_inc_re = length(gspec.include_regex || []) > 0 && runtime_urltest != null;
+                let has_base_inc = has_inc_c || has_inc_o || has_inc_re;
                 let filtered = [];
                 for (let t in candidate_tags) {
                     let tname = names_map[t] || t;
                     let tc = countries_map[t] || "";
                     let tp = protocols_map[t] || "";
                     if (gspec.mode == "include" || gspec.mode == "mixed") {
-                        if (length(keys(inc_c)) > 0 && !inc_c[tc]) continue;
                         if (length(keys(inc_p)) > 0 && !inc_p[tp]) continue;
                         if (length(gspec.include_prefixes || []) > 0) {
                             let p_ok = false;
@@ -4721,13 +4747,20 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                                     p_ok = true;
                             if (!p_ok) continue;
                         }
-                        if (length(gspec.include_regex || []) > 0 && runtime_urltest != null) {
-                            let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: tname }, gspec.include_regex);
-                            if (length(matched_re) == 0) continue;
+                        if (has_base_inc) {
+                            let c_ok = has_inc_c && (inc_c[tc] == true);
+                            let o_ok = has_inc_o && (inc_o[lc(trim(as_string(t)))] == true || inc_o[lc(trim(as_string(tname)))] == true);
+                            let re_ok = false;
+                            if (has_inc_re) {
+                                let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: tname }, gspec.include_regex);
+                                re_ok = length(matched_re) > 0;
+                            }
+                            if (!(c_ok || o_ok || re_ok)) continue;
                         }
                     }
                     if (gspec.mode == "exclude" || gspec.mode == "mixed") {
                         if (length(keys(exc_c)) > 0 && exc_c[tc]) continue;
+                        if (length(keys(exc_o)) > 0 && (exc_o[lc(trim(as_string(t)))] || exc_o[lc(trim(as_string(tname)))])) continue;
                         if (length(gspec.exclude_regex || []) > 0 && runtime_urltest != null) {
                             let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: tname }, gspec.exclude_regex);
                             if (length(matched_re) > 0) continue;

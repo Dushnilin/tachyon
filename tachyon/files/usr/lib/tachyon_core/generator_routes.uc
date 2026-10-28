@@ -190,6 +190,19 @@ function section_needs_country_is(section) {
                 return true;
         }
     }
+
+    for (let grp_id in connections.section_outbound_group_refs(section)) {
+        let gspec = connections.outbound_group_filter_spec(grp_id, section);
+        if (gspec != null && gspec.country_mode == "country_is" &&
+            configured_country_filter(gspec.mode, gspec.include_countries, gspec.exclude_countries))
+            return true;
+    }
+
+    let sec_pool = connections.section_pool_filter_spec(section);
+    if (sec_pool != null && sec_pool.country_mode == "country_is" &&
+        configured_country_filter(sec_pool.mode, sec_pool.include_countries, sec_pool.exclude_countries))
+        return true;
+
     return false;
 }
 
@@ -578,8 +591,8 @@ function country_metadata_for_method(detect_method, state) {
     return result;
 }
 
-// Multi-criteria group filter where non-empty include categories (prefix, country,
-// name/regex, proxy_parameters) intersect via AND, while exclude categories subtract via OR.
+// Multi-criteria group filter where server selectors (country, name, regex) combine via OR,
+// prefix and proxy_parameters intersect via AND, and exclude categories subtract via OR.
 function filter_tags_by_group_spec(candidate_tags, spec, state) {
     if (spec == null || type(spec) != "object")
         return unique_string_array(candidate_tags);
@@ -617,7 +630,8 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
     let has_inc_prefix = length(inc_prefixes) > 0;
     let has_inc_country = length(inc_countries) > 0;
     let has_inc_name_regex = length(inc_names) > 0 || length(inc_regex) > 0;
-    let any_inc_category = has_inc_prefix || has_inc_country || has_inc_name_regex || inc_params;
+    let has_inc_base = has_inc_country || has_inc_name_regex;
+    let any_inc_category = has_inc_prefix || has_inc_base || inc_params;
 
     if (!has_inc_name_regex && length(keys(hidden_tags)) > 0) {
         let vis = [];
@@ -653,10 +667,12 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
                 continue;
             if (has_inc_prefix && !tag_prefix_filter_matches(t, names, metadata, inc_prefixes))
                 continue;
-            if (has_inc_country && !tag_country_filter_matches(t, countries, inc_countries))
-                continue;
-            if (has_inc_name_regex && !tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed))
-                continue;
+            if (has_inc_base) {
+                let base_matches = (has_inc_country && tag_country_filter_matches(t, countries, inc_countries)) ||
+                    (has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed));
+                if (!base_matches)
+                    continue;
+            }
             if (inc_params && !proxy_parameter_filter_matches_all(
                 t, metadata, spec.include_protocols, spec.include_transports, spec.include_securities, spec.include_ports
             ))

@@ -15,13 +15,21 @@ function parse(value) {
         !length(data.config) || length(data.config) > 65536 || index(data.config, "\u0000") >= 0)
         return null;
 
+    let trimmed_cfg = trim(data.config);
+    if (substr(trimmed_cfg, 0, 6) == "vpn://") {
+        let eps = wireguard.from_vpn_endpoints(trimmed_cfg);
+        if (eps == null || length(eps) == 0)
+            return null;
+        return { name, config: data.config, link: trimmed_cfg };
+    }
+
     // Reject ambiguous files before using the shared data-only parser. Several
     // [Peer] blocks are fine: each peer becomes its own endpoint.
     let interfaces = 0, peers = 0;
     for (let line in split(data.config, "\n")) {
-        line = trim(line);
-        if (line == "[Interface]") interfaces++;
-        if (line == "[Peer]") peers++;
+        line = lc(trim(line));
+        if (line == "[interface]") interfaces++;
+        if (line == "[peer]") peers++;
     }
     if (interfaces != 1 || peers < 1)
         return null;

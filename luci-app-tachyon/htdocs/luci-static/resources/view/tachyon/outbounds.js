@@ -964,9 +964,20 @@ function showOutboundGroupModal(existingId, onSaved) {
                   else uci.unset(UCI_PACKAGE, rawId, key);
                 };
 
+                const splitCsv = (val) =>
+                  String(val || "")
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                const setCsvListOrUnset = (key, rawText) => {
+                  const arr = splitCsv(rawText);
+                  if (arr.length) uci.set(UCI_PACKAGE, rawId, key, arr);
+                  else uci.unset(UCI_PACKAGE, rawId, key);
+                };
+
                 setListOrUnset("source_refs", srcRefsInput.value, false);
-                setListOrUnset("include_prefixes", incPfxInput.value, false);
-                setListOrUnset("exclude_prefixes", excPfxInput.value, false);
+                setCsvListOrUnset("include_prefixes", incPfxInput.value);
+                setCsvListOrUnset("exclude_prefixes", excPfxInput.value);
                 setListOrUnset(
                   "include_countries",
                   incCountriesInput.value,
@@ -977,23 +988,10 @@ function showOutboundGroupModal(existingId, onSaved) {
                   excCountriesInput.value,
                   true,
                 );
-                const splitCsv = (val) =>
-                  String(val || "")
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean);
-                const incSrvs = splitCsv(incOutboundsInput.value);
-                if (incSrvs.length)
-                  uci.set(UCI_PACKAGE, rawId, "include_outbounds", incSrvs);
-                else uci.unset(UCI_PACKAGE, rawId, "include_outbounds");
-
-                const excSrvs = splitCsv(excOutboundsInput.value);
-                if (excSrvs.length)
-                  uci.set(UCI_PACKAGE, rawId, "exclude_outbounds", excSrvs);
-                else uci.unset(UCI_PACKAGE, rawId, "exclude_outbounds");
-
-                setListOrUnset("include_regex", incRegexInput.value, false);
-                setListOrUnset("exclude_regex", excRegexInput.value, false);
+                setCsvListOrUnset("include_outbounds", incOutboundsInput.value);
+                setCsvListOrUnset("exclude_outbounds", excOutboundsInput.value);
+                setCsvListOrUnset("include_regex", incRegexInput.value);
+                setCsvListOrUnset("exclude_regex", excRegexInput.value);
 
                 const incProtos = asArray(incProtoInput.value).map((p) =>
                   p.toLowerCase(),
@@ -2029,8 +2027,12 @@ function createOutboundsContent(section) {
               JSON.stringify({ name: item.name, config: item.config }),
             ),
           ];
+          section._loadedAmneziaConfigs = {
+            ...(section._loadedAmneziaConfigs || {}),
+            [sectionId]: next,
+          };
           setModalFieldValue(section, sectionId, "amnezia_configs", next);
-          if (valid.length === 1) {
+          if (valid.length >= 1) {
             setModalFieldValue(
               section,
               sectionId,
@@ -2059,6 +2061,35 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.depends("source_type", "amnezia_config");
+  o.write = function (sectionId, value) {
+    const fromWidget = asRawList(value);
+    const loaded =
+      (section._loadedAmneziaConfigs &&
+        section._loadedAmneziaConfigs[sectionId]) ||
+      [];
+    const merged = [...fromWidget];
+    loaded.forEach((entry) => {
+      if (!merged.includes(entry)) merged.push(entry);
+    });
+    if (merged.length) {
+      uci.set(UCI_PACKAGE, sectionId, "amnezia_configs", merged);
+    }
+  };
+  o.remove = function (sectionId) {
+    const loaded =
+      (section._loadedAmneziaConfigs &&
+        section._loadedAmneziaConfigs[sectionId]) ||
+      [];
+    if (loaded.length) {
+      uci.set(UCI_PACKAGE, sectionId, "amnezia_configs", loaded);
+      return;
+    }
+    const confText = String(
+      uci.get(UCI_PACKAGE, sectionId, "amnezia_conf_text") || "",
+    ).trim();
+    if (confText) return;
+    uci.unset(UCI_PACKAGE, sectionId, "amnezia_configs");
+  };
 
   o = section.taboption(
     "general",

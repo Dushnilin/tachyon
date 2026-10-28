@@ -188,10 +188,20 @@ let fixture = {
             enabled: "1",
             name: "Unlim RU Group",
             source_refs: [ "src_unlim", "src_backup" ],
-            filter_mode: "include",
+            filter_mode: "mixed",
             include_prefixes: [ "Unlim" ],
             include_countries: [ "RU" ],
-            include_regex: [ " Moscow|SPB" ]
+            exclude_regex: [ "Kazan" ]
+        },
+        {
+            ".name": "NL_or_Moscow",
+            ".type": "outbound_group",
+            enabled: "1",
+            name: "NL Flags OR Moscow Regex",
+            source_refs: [ "src_unlim" ],
+            filter_mode: "include",
+            include_countries: [ "NL" ],
+            include_regex: [ "Moscow #1" ]
         },
         {
             ".name": "Unlim_NL",
@@ -312,6 +322,28 @@ if (length(prio_levels) != 3) {
 }
 if (!connections.priority_level_direct("RU_Then_NL", prio_levels[2])) {
     warn("Expected 3rd priority tier to be direct fallback\n");
+    exit(1);
+}
+
+// Verify outbound_group with BOTH include_countries ("NL") and include_regex ("Moscow #1")
+// combines them via OR (union) instead of returning empty intersection and falling back to all servers.
+let union_sec = {
+    ".name": "Union_NL_Moscow",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_group_refs: [ "NL_or_Moscow" ]
+};
+let union_cfg = { outbounds: [], route: { rules: [] }, dns: { servers: [], rules: [] } };
+routes.add_proxy_selector(union_cfg, union_sec, candidate_tags, candidate_tags, state, "");
+let union_sel = null;
+for (let o in union_cfg.outbounds)
+    if (o.tag == "Union_NL_Moscow-out")
+        union_sel = o;
+if (union_sel == null || length(union_sel.outbounds) != 2 ||
+    union_sel.outbounds[0] != "node-ru-moscow-1" ||
+    union_sel.outbounds[1] != "node-nl-ams") {
+    warn("Expected include_countries + include_regex in outbound_group to produce union ['node-ru-moscow-1', 'node-nl-ams'], got: " + sprintf("%J", union_sel) + "\n");
     exit(1);
 }
 UCODE

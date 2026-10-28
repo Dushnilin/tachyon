@@ -2485,7 +2485,10 @@ function add_awg_config_members(config, section) {
     let detour = outbound_detour_tag_for_section(section);
 
     for (let value in connections.amnezia_configs(section)) {
-        let item = subscription_amnezia.parse(value);
+        let trimmed_val = trim(as_string(value));
+        let item = substr(trimmed_val, 0, 6) == "vpn://"
+            ? { name: url_fragment(trimmed_val) || option(section, "label", section_name) || "AmneziaWG", link: trimmed_val }
+            : subscription_amnezia.parse(value);
         if (item == null)
             ctx.runtime_generate_unsupported("Invalid imported Amnezia configuration");
         let endpoints = subscription_wireguard.from_vpn_endpoints(item.link);

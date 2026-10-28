@@ -380,9 +380,17 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       const stype = (src.source_type || 'subscription').toLowerCase();
       if (stype === 'subscription' || src.url) {
         const u = (src.url || '').trim();
-        if (u && !seenSubUrls.has(u)) {
-          seenSubUrls.add(u);
-          subscriptionUrlItems.push(src);
+        if (u) {
+          if (/^https?:\/\//i.test(u)) {
+            if (!seenSubUrls.has(u)) {
+              seenSubUrls.add(u);
+              subscriptionUrlItems.push(src);
+            }
+          } else {
+            extraProxyLinks.push(
+              u.includes('#') || !src.name ? u : `${u}#${src.name}`,
+            );
+          }
         }
       } else if (stype === 'proxy_links' || stype === 'links') {
         getListValues(src.proxy_links || src.selector_proxy_links).forEach(
