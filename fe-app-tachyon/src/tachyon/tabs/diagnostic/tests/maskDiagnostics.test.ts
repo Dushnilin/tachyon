@@ -182,4 +182,25 @@ describe('diagnostic masking', () => {
     expect(maskedLog).not.toContain('dGhpc2lzYXNlY3JldGtleQ==');
     expect(maskedLog).toContain('PrivateKey = *******');
   });
+
+  it('masks list outbound_jsons and trusttunnel credentials in UCI dumps', () => {
+    const raw = [
+      "config outbound_source 'src_json_main'",
+      "\toption type 'outbound_json'",
+      '\tlist outbound_jsons \'{"type": "trusttunnel", "server": "198.51.100.10", "username": "tt-user", "password": "tt-secret-password"}\'',
+      "\toption trusttunnel_password 'direct-tt-secret'",
+      "\toption trusttunnel_username 'direct-tt-user'",
+      '',
+    ].join('\n');
+
+    const masked = maskGlobalCheckText(raw);
+
+    expect(masked).not.toContain('198.51.100.10');
+    expect(masked).not.toContain('tt-user');
+    expect(masked).not.toContain('tt-secret-password');
+    expect(masked).not.toContain('direct-tt-secret');
+    expect(masked).not.toContain('direct-tt-user');
+    expect(masked).toContain("list outbound_jsons '*******'");
+    expect(masked).toContain("option trusttunnel_password '*******'");
+  });
 });

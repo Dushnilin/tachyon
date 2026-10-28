@@ -186,6 +186,8 @@ function expand_validation_error(message) {
         hint = "Причина: секция или группа ссылается на удалённый источник серверов. Решение: проверьте привязку во вкладке «Пул серверов» и в настройках секции.";
     else if (index(clean, "references missing balancer") >= 0)
         hint = "Причина: секция ссылается на удалённый шаблон автовыбора. Решение: выберите существующий шаблон автовыбора или создайте новый.";
+    else if (index(clean, "Duplicate JSON outbound tag") >= 0)
+        hint = "Причина: обнаружены дублирующиеся теги (\"tag\") среди JSON-объектов outbound в одной секции. Решение: убедитесь, что у каждого JSON-объекта указан уникальный \"tag\", или удалите дублирующуюся привязку источника.";
     else if (index(clean, "JSON outbound") >= 0 || index(clean, "outbound_json") >= 0)
         hint = "Причина: пустой или синтаксически некорректный JSON-объект outbound. Решение: проверьте JSON-конфигурацию прокси и наличие обязательного поля \"type\" и уникального \"tag\".";
     else if (index(clean, "Outbound cascade") >= 0)
@@ -222,9 +224,9 @@ function extract_quarantine_target(message) {
     if (current_validating_section != "")
         return current_validating_section;
     let text = as_string(message || "");
-    let m = match(text, /(?:Rule|Section|Server|Section group|rule|section|server) '([A-Za-z0-9_]+)'/);
-    if (m && m[1] != "settings")
-        return m[1];
+    let m = match(text, /(Rule|Section|Server|Section group|rule|section|server) '([A-Za-z0-9_]+)'/);
+    if (m && m[2] != "settings")
+        return m[2];
     let m2 = match(text, /rule\.([A-Za-z0-9_]+)\./);
     if (m2 && m2[1] != "settings")
         return m2[1];

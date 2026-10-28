@@ -166,14 +166,15 @@ function remove_file(path) {
     if (path != "" && fs.stat(path) != null) fs.unlink(path);
 }
 
-function first_line_value(path) {
+function first_line_value(path, fallback) {
+    let fb = fallback != null ? as_string(fallback) : "";
     path = as_string(path);
-    if (path == "" || fs.stat(path) == null) return "";
+    if (path == "" || fs.stat(path) == null) return fb;
     let data = fs.readfile(path);
-    if (!data) return "";
-    let lines = split(as_string(data), "
-");
-    return length(lines) > 0 ? trim(lines[0]) : "";
+    if (!data) return fb;
+    let lines = split(as_string(data), "\n");
+    let val = length(lines) > 0 ? trim(lines[0]) : "";
+    return val != "" ? val : fb;
 }
 
 function check_logs() {
@@ -720,12 +721,31 @@ function dnsmasq_has_tachyon_dns() {
     return module_success(DNS_APPLY_UC, [ "has-tachyon-dns" ]);
 }
 
+function sing_box_variant_label() {
+    let marker = first_line_value(SB_VARIANT_STATE_FILE);
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = first_line_value(SB_LEGACY_VARIANT_STATE_FILE);
+    if (marker == "tachyon-core")
+        return "tachyon-core";
+    if (marker == "extended-compressed")
+        return "sing-box-extended-compressed";
+    if (marker == "extended")
+        return "sing-box-extended";
+    if (marker == "lx" || marker == "sing-box-lx")
+        return "sing-box-lx";
+    if (marker == "tiny")
+        return "sing-box-tiny";
+    if (marker == "stable")
+        return "sing-box";
+    return is_tachyon_core_selected() ? "tachyon-core" : "sing-box";
+}
+
 function get_sing_box_status() {
     let running = module_success(SERVICE_STATE_UC, [
         "tachyon-core-service-stable",
         RUNTIME_STABLE_MIN_AGE
     ]) ? 1 : 0;
-    let enabled = file_executable("/etc/rc.d/S99sing-box") ? 1 : 0;
+    let enabled = file_executable("/etc/rc.d/S99" + TACHYON_SERVICE_NAME) ? 1 : 0;
     let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
     write_service_status(running, enabled, dns_configured);
     return 0;
@@ -748,12 +768,14 @@ function get_engine_status() {
             "tachyon-core-service-stable",
             RUNTIME_STABLE_MIN_AGE
         ]) ? 1 : 0;
-        let enabled = file_executable("/etc/rc.d/S99sing-box") ? 1 : 0;
+        let enabled = file_executable("/etc/rc.d/S99" + TACHYON_SERVICE_NAME) ? 1 : 0;
         let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
         write_json({
             running,
             enabled,
-            engine: "sing-box",
+            engine: "tachyon-core",
+            variant: sing_box_variant_label(),
+            managed_by: TACHYON_SERVICE_NAME,
             status: service_status_label(running, enabled),
             dns_configured
         });

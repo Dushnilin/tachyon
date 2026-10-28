@@ -86,8 +86,8 @@ function command_output(cmd) {
 
 // ─── Secret Redaction Subsystem ───────────────────────────────────────────────
 
-const SENSITIVE_KEY_REGEX = /^(password|secret|token|bot_token|telegram_bot_token|telegram_token|api_key|auth_token|bearer|uuid|private_key|secret_key|psk|preshared_key|shadowsocks_key|vless_uuid|vmess_uuid|trojan_password|hysteria_auth)$/i;
-const SENSITIVE_KEY_SUBSTR = /(bot_token|telegram_token|private_key|secret_key|preshared_key|password)/i;
+const SENSITIVE_KEY_REGEX = /^(password|username|user|secret|token|access_token|bot_token|telegram_bot_token|telegram_token|api_key|auth_token|auth_key|auth_str|auth|bearer|uuid|private_key|private_key_passphrase|public_key|secret_key|psk|pre_shared_key|preshared_key|key|cookie|server_cert_pin|header_protection_key|shadowsocks_key|vless_uuid|vmess_uuid|trojan_password|hysteria_auth|outbound_json|outbound_jsons|amnezia_config|amnezia_configs|selector_amnezia_configs|amnezia_conf_text|proxy_links|selector_proxy_links|urltest_proxy_links|proxy_links_text|selector_proxy_links_text|urltest_proxy_links_text)$/i;
+const SENSITIVE_KEY_SUBSTR = /(bot_token|telegram_token|private_key|secret_key|preshared_key|pre_shared_key|password|username|access_token|auth_key|outbound_json|amnezia_conf)/i;
 
 function is_sensitive_key(key) {
     if (key == null || key == "") return false;
@@ -117,8 +117,12 @@ function redact_string(str) {
     s = replace(s, /([?&](password|secret|key|token|auth)=)[^& \t\r\n]+/gi, "$1[REDACTED]");
 
     // 6. UCI configuration options with sensitive data
-    s = replace(s, /(option\s+([_a-zA-Z0-9]*(telegram_bot_token|bot_token|agent_api_token|api_token|token|password|secret|private_key|preshared_key|uuid|key|auth|pass)[_a-zA-Z0-9]*)\s+['"])[^'"]*(['"])/gi, "$1[REDACTED]$4");
-    s = replace(s, /(list\s+(telegram_chat_id|allowed_chats|admin_ids)\s+['"])[^'"]*(['"])/gi, "$1[REDACTED_CHAT_ID]$3");
+    s = replace(s, /(option[ \t]+([_a-zA-Z0-9]*(telegram_bot_token|bot_token|agent_api_token|api_token|access_token|token|password|username|secret|private_key|public_key|preshared_key|pre_shared_key|psk|cookie|server_cert_pin|uuid|key|auth|pass|outbound_json|amnezia_config|amnezia_conf_text|proxy_links_text|proxy_string|subscription_url|hwid)[_a-zA-Z0-9]*)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED]$4");
+    s = replace(s, /(list[ \t]+(telegram_chat_id|allowed_chats|admin_ids)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED_CHAT_ID]$3");
+    s = replace(s, /(list[ \t]+(outbound_jsons|amnezia_configs|selector_amnezia_configs|proxy_links|selector_proxy_links|urltest_proxy_links|subscription_urls|server_users)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED]$3");
+
+    // 7. Inline JSON credential fields (e.g. inside outbound_jsons / outbound_json)
+    s = replace(s, /("(password|username|user|uuid|secret|token|access_token|auth_token|auth_key|auth_str|auth|private_key|private_key_passphrase|public_key|pre_shared_key|preshared_key|psk|key|cookie|server_cert_pin|header_protection_key)"[ \t]*:[ \t]*")[^"]*(")/gi, "$1[REDACTED]$3");
 
     return s;
 }
@@ -544,10 +548,12 @@ function selftest() {
     assert(index(red_vless, "vless://[REDACTED_UUID]@") >= 0, "inserted REDACTED_UUID marker");
 
     // Test 4: Redaction of UCI configuration text
-    let uci_raw = "config settings\n\toption telegram_bot_token '" + sample_token + "'\n\toption private_key 'MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwgg'\n\toption normal_opt 'hello'\n";
+    let uci_raw = "config settings\n\toption telegram_bot_token '" + sample_token + "'\n\toption private_key 'MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwgg'\n\tlist outbound_jsons '{\"type\":\"trusttunnel\",\"password\":\"SecretTunnelPass123\"}'\n\toption trusttunnel_password 'AnotherTunnelPass456'\n\toption normal_opt 'hello'\n";
     let uci_clean = sanitize_uci_text(uci_raw);
     assert(index(uci_clean, sample_token) < 0, "bot token redacted in UCI text");
     assert(index(uci_clean, "MIIEvgIB") < 0, "private key redacted in UCI text");
+    assert(index(uci_clean, "SecretTunnelPass123") < 0, "password inside list outbound_jsons redacted in UCI text");
+    assert(index(uci_clean, "AnotherTunnelPass456") < 0, "trusttunnel_password redacted in UCI text");
     assert(index(uci_clean, "hello") >= 0, "normal option preserved in UCI text");
 
     // Test 5: Redaction of recursive JSON object
@@ -565,7 +571,7 @@ function selftest() {
     assert(clean_obj.nested.public_value == 42, "public nested value preserved");
 
     // Test 6: Create Bundle in sandbox
-    set_test_overrides(test_dir, null);
+    set_test_overrides(test_dir, null, null);
     let target_bundle = test_dir + "/bundle.tar.gz";
     let b_res = create_bundle(target_bundle);
 
@@ -589,7 +595,7 @@ function selftest() {
 
     // Cleanup & reset
     system("rm -rf " + shell_quote(test_dir));
-    set_test_overrides(null, null);
+    set_test_overrides(null, null, null);
 
     print(sprintf("Support bundle selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;

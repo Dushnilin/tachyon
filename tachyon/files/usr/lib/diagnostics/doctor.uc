@@ -1127,6 +1127,25 @@ function run_doctor_checks_impl(repair) {
                 doc_check("❌", "UCI config", "corrupted or missing", "→ backup не найден, восстановите конфиг вручную");
             }
         }
+
+        let quarantined_errors = {};
+        for (let qfile in [ "/var/run/tachyon/section-errors.json", "/var/run/tachyon/validator-quarantined.json" ]) {
+            let qobj = common.read_json_file(qfile);
+            if (type(qobj) == "object") {
+                for (let qsec, qmsg in qobj) {
+                    if (uci_sections && uci_sections[qsec] && uci_sections[qsec].enabled != "0")
+                        quarantined_errors[qsec] = as_string(qmsg);
+                }
+            }
+        }
+        let qkeys = keys(quarantined_errors);
+        if (length(qkeys) > 0) {
+            sort(qkeys);
+            for (let qsec in qkeys) {
+                issues++;
+                doc_check("❌", "section '" + qsec + "'", "quarantined", "→ " + quarantined_errors[qsec]);
+            }
+        }
     }
 
     // 3. Nftables Table Check

@@ -256,14 +256,22 @@ function valid_ipv4(value) {
 
 function valid_domain(value) {
     value = trim(as_string(value));
-    if (length(value) < 1 || length(value) > 253 || index(value, "..") >= 0)
+    if (length(value) < 3 || length(value) > 253 || index(value, "..") >= 0 || index(value, ".") <= 0)
         return false;
 
-    for (let label in split(value, ".")) {
+    let labels = split(value, ".");
+    if (length(labels) < 2)
+        return false;
+
+    for (let label in labels) {
         if (length(label) < 1 || length(label) > 63 ||
             match(label, /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/) == null)
             return false;
     }
+
+    let tld = labels[length(labels) - 1];
+    if (match(tld, /^[A-Za-z]{2,}$/) == null && match(tld, /^xn--[A-Za-z0-9]{2,}$/) == null)
+        return false;
 
     return true;
 }
@@ -457,9 +465,9 @@ function capabilities() {
         backend_name: backend_name(backend),
         backend_installed: backend != "none",
         backend_running: running,
-        forkop_installed: fs.stat(FORKOP_BIN) != null,
-        podkop_installed: fs.stat(PODKOP_BIN) != null,
-        fixes_available: backend == "forkop" && fs.stat(FORKOP_BIN) != null,
+        forkop_installed: false,
+        podkop_installed: false,
+        fixes_available: false,
         sing_box_config: sing_box_config_path(),
         // Старое поле оставлено для совместимости со страницей предыдущих версий.
         forkop_running: running,
@@ -1857,12 +1865,17 @@ function collect_section_custom_domains(s) {
             for (let d in items) {
                 if (!d)
                     continue;
-                for (let line in split(as_string(d), /[\n\r, \t]+/)) {
-                    let domain_str = trim(replace(line, /^(full:|domain:|keyword:|regex:)/, ""));
-                    domain_str = trim(replace(domain_str, /^\*?\./, ""));
-                    if (domain_str != "" && substr(domain_str, 0, 1) != "#" && substr(domain_str, 0, 2) != "//" && valid_domain(domain_str)) {
-                        if (index(custom_domains, domain_str) < 0)
-                            push(custom_domains, domain_str);
+                for (let raw_line in split(replace(as_string(d), /\r/g, ""), "\n")) {
+                    let clean_line = trim(replace(raw_line, /[ \t]*(#|\/\/).*$/, ""));
+                    if (clean_line == "")
+                        continue;
+                    for (let token in split(clean_line, /[, \t]+/)) {
+                        let domain_str = trim(replace(token, /^(full:|domain:|keyword:|regex:)/, ""));
+                        domain_str = trim(replace(domain_str, /^\*?\./, ""));
+                        if (domain_str != "" && substr(domain_str, 0, 1) != "#" && substr(domain_str, 0, 2) != "//" && valid_domain(domain_str)) {
+                            if (index(custom_domains, domain_str) < 0)
+                                push(custom_domains, domain_str);
+                        }
                     }
                 }
             }
@@ -1909,6 +1922,7 @@ function tachyon_get_targets(all_mode) {
 
     let targets = [];
     let seen_domains = {};
+    let has_gemini_key = read_gemini_api_key() != "";
 
     let sections = uci_core.section_objects("tachyon", "section");
 
@@ -1919,6 +1933,7 @@ function tachyon_get_targets(all_mode) {
             let profile_title = profile.title || profile.name || profile.id;
             for (let j = 0; j < length(profile.targets); j++) {
                 let t = profile.targets[j];
+                if (t.kind == "gemini_geo" && !has_gemini_key) continue;
                 let host = t.host || t.query || "";
                 if (!host || seen_domains[host]) continue;
                 seen_domains[host] = true;
@@ -2011,6 +2026,7 @@ function tachyon_get_targets(all_mode) {
 
             for (let j = 0; j < length(profile.targets); j++) {
                 let t = profile.targets[j];
+                if (t.kind == "gemini_geo" && !has_gemini_key) continue;
                 let host = t.host || t.query || "";
                 if (!host || seen_domains[host]) continue;
                 seen_domains[host] = true;
@@ -2074,8 +2090,8 @@ function tachyon_check_target(target_json_str) {
         tcp_ms: item.tcp_ms || 0,
         tls_ms: item.tls_ms || 0,
         http_ms: http_time || 0,
-        status_class: item.state == "success" ? "OK" : (item.message || item.verdict || "Error"),
-        success: item.state == "success"
+        status_class: (item.state == "success" || item.state == "skipped") ? "OK" : (item.message || item.verdict || "Error"),
+        success: item.state == "success" || item.state == "skipped"
     }];
     write_json(result);
 }

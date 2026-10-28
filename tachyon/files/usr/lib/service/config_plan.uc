@@ -664,6 +664,22 @@ function plan(candidate_source, options) {
     let all_errors = [];
     for (let e in validation.errors) push(all_errors, e);
 
+    if ((candidate_source == null || candidate_source == "") && !options.active_uci) {
+        for (let qfile in [ "/var/run/tachyon/section-errors.json", "/var/run/tachyon/validator-quarantined.json" ]) {
+            let qobj = common.read_json_file(qfile);
+            if (type(qobj) == "object") {
+                for (let qsec, qmsg in qobj) {
+                    let sec_entry = candidate_uci.sections ? candidate_uci.sections[qsec] : null;
+                    if (sec_entry && sec_entry.enabled != "0") {
+                        let err_line = "Section '" + qsec + "' is quarantined: " + as_string(qmsg);
+                        if (index(all_errors, err_line) < 0)
+                            push(all_errors, err_line);
+                    }
+                }
+            }
+        }
+    }
+
     let all_warnings = [];
     for (let w in validation.warnings) push(all_warnings, w);
 

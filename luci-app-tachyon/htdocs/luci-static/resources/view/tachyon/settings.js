@@ -3665,6 +3665,23 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "updates",
+    form.ListValue,
+    "latency_test_mode",
+    _("Latency Measurement Mode"),
+    _(
+      "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (supported on sing-box-extended via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT).",
+    ),
+  );
+  o.default = "standard";
+  o.rmempty = false;
+  o.value("standard", _("Standard (Handshake + HTTP HEAD)"));
+  o.value(
+    "keepalive",
+    _("KeepAlive / Warm Latency (Established Session, sing-box-extended)"),
+  );
+
+  o = section.taboption(
+    "updates",
     form.Flag,
     "download_lists_via_proxy",
     _("Download lists through a section"),

@@ -512,17 +512,17 @@ function outbound_source_by_interface(value) {
 }
 
 function subscription_source_item(section, value) {
-    let child = child_item_by_value(section, "subscription_url", "url", value);
-    if (child != null)
-        return child;
-    return outbound_source_by_url(value);
+    let src = outbound_source_by_url(value);
+    if (src != null)
+        return src;
+    return child_item_by_value(section, "subscription_url", "url", value);
 }
 
 function interface_source_item(section, value) {
-    let child = child_item_by_value(section, "section_interface", "name", value);
-    if (child != null)
-        return child;
-    return outbound_source_by_interface(value);
+    let src = outbound_source_by_interface(value);
+    if (src != null)
+        return src;
+    return child_item_by_value(section, "section_interface", "name", value);
 }
 
 function is_dpi_or_desync_source_type(stype) {
@@ -599,6 +599,8 @@ function fptn_section_token(section) {
         if (stoken != "" && (stype == "fptn" || substr(stoken, 0, 6) == "fptnb:" || substr(stoken, 0, 5) == "fptn:"))
             return stoken;
     }
+    if (length(outbound_source_sections()) > 0)
+        return "";
     let token = trim(as_string(option(section, "access_token", "")));
     if (token != "")
         return token;
@@ -746,8 +748,10 @@ function raw_amnezia_configs_from_obj(obj) {
 function amnezia_configs(section) {
     let result = [];
     let seen = {};
-    for (let c in raw_amnezia_configs_from_obj(section))
-        push_unique_str(result, seen, c);
+    if (length(outbound_source_sections()) == 0) {
+        for (let c in raw_amnezia_configs_from_obj(section))
+            push_unique_str(result, seen, c);
+    }
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
@@ -766,20 +770,25 @@ function amnezia_configs(section) {
 function connection_urls(section) {
     let links = [];
     let seen = {};
-    for (let l in whitespace_list_value(section, "selector_proxy_links"))
-        push_unique_str(links, seen, l);
+    let has_modular_sources = length(outbound_source_sections()) > 0;
+    if (!has_modular_sources) {
+        for (let l in whitespace_list_value(section, "selector_proxy_links"))
+            push_unique_str(links, seen, l);
+    }
     let importer = require("subscription.amnezia_config");
     for (let value in amnezia_configs(section)) {
         let item = importer.parse(value);
         if (item == null) die("Invalid imported Amnezia configuration");
         push_unique_str(links, seen, item.link);
     }
-    let text = option(section, "selector_proxy_links_text", "");
-    if (text != "") {
-        for (let line in split(text, /[\r\n]+/)) {
-            line = trim(line);
-            if (line != "" && match(line, /^[^#\s]/))
-                push_unique_str(links, seen, line);
+    if (!has_modular_sources) {
+        let text = option(section, "selector_proxy_links_text", "");
+        if (text != "") {
+            for (let line in split(text, /[\r\n]+/)) {
+                line = trim(line);
+                if (line != "" && match(line, /^[^#\s]/))
+                    push_unique_str(links, seen, line);
+            }
         }
     }
     let sec_action = action(section);
@@ -835,8 +844,10 @@ function urltest_text_links(section) {
 function subscription_urls(section) {
     let result = [];
     let seen = {};
-    for (let u in child_values(section, "subscription_url", "url", "subscription_urls"))
-        push_unique_str(result, seen, u);
+    if (length(outbound_source_sections()) == 0) {
+        for (let u in child_values(section, "subscription_url", "url", "subscription_urls"))
+            push_unique_str(result, seen, u);
+    }
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "subscription" || option(src, "url", "") != "") {
@@ -851,17 +862,19 @@ function subscription_urls(section) {
 function interfaces(section) {
     let result = [];
     let seen = {};
-    let items = child_values(section, "section_interface", "name", "");
-    if (length(items) > 0) {
-        for (let it in items)
-            push_unique_str(result, seen, it);
-    } else {
-        for (let it in list_value(section, "interfaces"))
-            push_unique_str(result, seen, it);
-        if (length(result) == 0) {
-            let value = option(section, "interface", "");
-            if (value != "")
-                push_unique_str(result, seen, value);
+    if (length(outbound_source_sections()) == 0) {
+        let items = child_values(section, "section_interface", "name", "");
+        if (length(items) > 0) {
+            for (let it in items)
+                push_unique_str(result, seen, it);
+        } else {
+            for (let it in list_value(section, "interfaces"))
+                push_unique_str(result, seen, it);
+            if (length(result) == 0) {
+                let value = option(section, "interface", "");
+                if (value != "")
+                    push_unique_str(result, seen, value);
+            }
         }
     }
     for (let src in section_effective_outbound_sources(section)) {
@@ -1033,7 +1046,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (length(alpn) > 0)
             obj.tls.alpn = alpn;
         if (bool_option(src, "trusttunnel_quic", false))
-            obj.quic = "true";
+            obj.quic = true;
         if (bool_option(src, "trusttunnel_health_check", false))
             obj.health_check = true;
         let cc = trim(option(src, "trusttunnel_congestion_control", ""));
@@ -1435,22 +1448,55 @@ function outbound_jsons(section, raw) {
     let add = raw
         ? function (v) { push(result, as_string(v)); }
         : function (v) { push_unique_str(result, seen, v); };
-    for (let j in list_value(section, "outbound_jsons"))
-        add(j);
-    if (length(result) == 0) {
-        let value = option(section, "outbound_json", "");
-        if (value != "")
-            add(value);
-    }
-    let sec_action = action(section);
-    for (let src in section_effective_outbound_sources(section)) {
+    let eff_sources = section_effective_outbound_sources(section);
+    let sname = section_name(section);
+    let migrated_json_src_id = sname != ""
+        ? ("src_json_" + replace(as_string(sname), /[^a-zA-Z0-9_]/g, "_"))
+        : "";
+    let has_migrated_json_source = false;
+    let src_seen = {};
+    for (let src in eff_sources) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "outbound_json" || stype == "json") {
-            for (let j in list_value(src, "outbound_jsons"))
+            if (migrated_json_src_id != "" && section_name(src) == migrated_json_src_id)
+                has_migrated_json_source = true;
+            let src_jsons = list_value(src, "outbound_jsons");
+            for (let j in src_jsons) {
+                let s = trim(as_string(j));
+                if (s != "")
+                    src_seen[s] = true;
+            }
+            if (length(src_jsons) == 0) {
+                let single = trim(option(src, "outbound_json", ""));
+                if (single != "")
+                    src_seen[single] = true;
+            }
+        }
+    }
+    if (!has_migrated_json_source && length(outbound_source_sections()) == 0) {
+        let sec_jsons = list_value(section, "outbound_jsons");
+        for (let j in sec_jsons) {
+            if (!src_seen[trim(as_string(j))])
                 add(j);
-            let single = option(src, "outbound_json", "");
-            if (single != "")
-                add(single);
+        }
+        if (length(sec_jsons) == 0) {
+            let value = option(section, "outbound_json", "");
+            if (value != "" && !src_seen[trim(as_string(value))])
+                add(value);
+        }
+    }
+    let sec_action = action(section);
+    for (let src in eff_sources) {
+        let stype = lc(option(src, "source_type", "subscription"));
+        if (stype == "outbound_json" || stype == "json") {
+            let src_jsons = list_value(src, "outbound_jsons");
+            for (let j in src_jsons)
+                add(j);
+            if (length(src_jsons) == 0) {
+                let single = option(src, "outbound_json", "");
+                if (single != "")
+                    add(single);
+            }
         } else if (sec_action != stype) {
             let synth = synthesize_protocol_outbound_json_from_source(src, stype);
             if (synth != "")
@@ -1473,13 +1519,15 @@ function urltests(section) {
                 push_unique_str(result, seen, section_name(bal));
         }
     }
-    for (let child in child_items(section, "urltest")) {
-        let id = section_name(child);
-        if (id != "") {
-            let cname = child_option(child, "name", id);
-            if (!seen_names[cname]) {
-                seen_names[cname] = true;
-                push_unique_str(result, seen, id);
+    if (length(balancer_sections()) == 0) {
+        for (let child in child_items(section, "urltest")) {
+            let id = section_name(child);
+            if (id != "") {
+                let cname = child_option(child, "name", id);
+                if (!seen_names[cname]) {
+                    seen_names[cname] = true;
+                    push_unique_str(result, seen, id);
+                }
             }
         }
     }
@@ -1489,7 +1537,7 @@ function urltests(section) {
     if (option(section, "action", "") == "group")
         return [ "urltest" ];
 
-    return bool_option(section, "urltest_enabled", false) ? [ "urltest" ] : [];
+    return (length(balancer_sections()) == 0 && bool_option(section, "urltest_enabled", false)) ? [ "urltest" ] : [];
 }
 
 function priority_groups(section) {
@@ -1505,13 +1553,15 @@ function priority_groups(section) {
                 push_unique_str(result, seen, section_name(bal));
         }
     }
-    for (let child in child_items(section, "priority_group")) {
-        let id = section_name(child);
-        if (id != "") {
-            let cname = child_option(child, "name", id);
-            if (!seen_names[cname]) {
-                seen_names[cname] = true;
-                push_unique_str(result, seen, id);
+    if (length(balancer_sections()) == 0) {
+        for (let child in child_items(section, "priority_group")) {
+            let id = section_name(child);
+            if (id != "") {
+                let cname = child_option(child, "name", id);
+                if (!seen_names[cname]) {
+                    seen_names[cname] = true;
+                    push_unique_str(result, seen, id);
+                }
             }
         }
     }
@@ -2262,15 +2312,24 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         "ports_text"
     ];
 
+    let has_modular_conds = length(positive_conds || []) > 0 || length(negative_conds || []) > 0;
+    let sources = has_modular_conds ? (positive_conds || []) : [ base_section ];
+    if (has_modular_conds) {
+        for (let key in list_keys)
+            delete merged[key];
+        for (let tkey in text_keys)
+            delete merged[tkey];
+    }
+
     for (let key in list_keys) {
         let acc = [];
         let seen = {};
-        for (let src in [ base_section, ...(positive_conds || []) ]) {
+        for (let src in sources) {
             for (let item in clean_condition_tokens(src, key))
                 push_unique_str(acc, seen, item);
         }
         if (key == "source_ip_cidr") {
-            for (let src in [ base_section, ...(positive_conds || []) ]) {
+            for (let src in sources) {
                 for (let mac in clean_condition_tokens(src, "source_macs"))
                     push_unique_str(acc, seen, mac);
             }
@@ -2281,7 +2340,7 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
 
     for (let tkey in text_keys) {
         let parts = [];
-        for (let src in [ base_section, ...(positive_conds || []) ]) {
+        for (let src in sources) {
             let raw = raw_option(src, tkey);
             if (raw == null)
                 continue;
@@ -3008,14 +3067,14 @@ function subscription_auto_hwid(section, value) {
 function subscription_include_urltest_groups(section, value) {
     let child = subscription_source_item(section, value);
     if (child != null)
-        return child_bool(child, "include_urltest_groups", true);
+        return child_bool(child, "include_urltest_groups", child[".type"] != "outbound_source");
     return item_bool(section, "subscription_url_settings", value, "include_urltest_groups", true);
 }
 
 function subscription_hide_urltest_group_outbounds(section, value) {
     let child = subscription_source_item(section, value);
     if (child != null)
-        return child_bool(child, "hide_urltest_group_outbounds", true);
+        return child_bool(child, "hide_urltest_group_outbounds", child[".type"] != "outbound_source");
     return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", true);
 }
 
@@ -3168,6 +3227,19 @@ function subscription_insecure(section, value) {
         return bool_option(child, "subscription_insecure", false) ? "1" : "0";
 
     return item_bool(section, "subscription_url_settings", value, "subscription_insecure", false) ? "1" : "0";
+}
+
+function subscription_tls_fingerprint(section, value) {
+    let child = subscription_source_item(section, value);
+    if (child != null) {
+        let fp = lc(trim(child_option_alias(child, [ "tls_fingerprint", "subscription_tls_fingerprint" ], "")));
+        if (fp != "" && fp != "default")
+            return fp;
+    }
+    let sec_fp = lc(trim(option(section, "subscription_tls_fingerprint", "")));
+    if (sec_fp != "" && sec_fp != "default")
+        return sec_fp;
+    return "";
 }
 
 function urltest_check_interval(section, value) {
@@ -4609,36 +4681,97 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
     let proxy_errors = {};
 
     if (length(batch_jobs) > 0) {
-        let curl_args = [ "curl", "-Z", "--parallel-immediate", "--parallel-max", "64", "-s", "-m", as_string(max_sec) ];
-        if (secret != "") {
-            push(curl_args, "-H");
-            push(curl_args, "Authorization: Bearer " + secret);
-        }
-        for (let job in batch_jobs) {
-            try { fs.unlink(job.file); } catch (e) {}
-            push(curl_args, "-o");
-            push(curl_args, job.file);
-            push(curl_args, job.url);
-        }
-        common.command_capture(common.command_from_args(curl_args));
-        for (let job in batch_jobs) {
-            let raw = null;
-            try { raw = fs.readfile(job.file); } catch (e) { raw = null; }
-            try { fs.unlink(job.file); } catch (e) {}
-            if (raw != null && trim(raw) != "") {
-                try {
-                    let parsed = json(raw);
-                    if (type(parsed) == "object") {
-                        if (parsed.delay != null && int(parsed.delay) > 0)
-                            proxy_delays[job.tag] = int(parsed.delay);
-                        else if (parsed.message != null)
-                            proxy_errors[job.tag] = as_string(parsed.message);
+        let batch_resolved = false;
+        let batch_req_file = "/tmp/tachyon-probe-batch-req.json";
+        let batch_res_file = "/tmp/tachyon-probe-batch-res.json";
+        try {
+            common.write_json_file(batch_req_file, {
+                names: candidate_tags,
+                url: test_url,
+                timeout: timeout
+            });
+            try { fs.unlink(batch_res_file); } catch (e) {}
+            let batch_sec = int((timeout / 1000) * (int(length(candidate_tags) / 64) + 2)) + 5;
+            if (batch_sec < max_sec)
+                batch_sec = max_sec;
+            let batch_args = [
+                "curl", "-s", "-m", as_string(batch_sec),
+                "-X", "POST",
+                "-H", "Content-Type: application/json"
+            ];
+            if (secret != "") {
+                push(batch_args, "-H");
+                push(batch_args, "Authorization: Bearer " + secret);
+            }
+            push(batch_args, "--data-binary");
+            push(batch_args, "@" + batch_req_file);
+            push(batch_args, "-o");
+            push(batch_args, batch_res_file);
+            push(batch_args, "http://" + host + "/tachyon/delay-batch");
+            common.command_capture(common.command_from_args(batch_args));
+            let batch_raw = null;
+            try { batch_raw = fs.readfile(batch_res_file); } catch (e) { batch_raw = null; }
+            try { fs.unlink(batch_req_file); } catch (e) {}
+            try { fs.unlink(batch_res_file); } catch (e) {}
+            if (batch_raw != null && trim(batch_raw) != "") {
+                let batch_parsed = json(batch_raw);
+                if (type(batch_parsed) == "object" && type(batch_parsed.results) == "object") {
+                    batch_resolved = true;
+                    for (let tag, entry in batch_parsed.results) {
+                        if (type(entry) != "object")
+                            continue;
+                        if (entry.delay != null && int(entry.delay) > 0)
+                            proxy_delays[tag] = int(entry.delay);
+                        else if (entry.message != null)
+                            proxy_errors[tag] = as_string(entry.message);
                     }
-                } catch (e) {
-                    proxy_errors[job.tag] = "invalid response";
                 }
-            } else {
-                proxy_errors[job.tag] = "unreachable";
+            }
+        } catch (e) {
+            try { fs.unlink(batch_req_file); } catch (e2) {}
+            try { fs.unlink(batch_res_file); } catch (e2) {}
+        }
+
+        if (!batch_resolved) {
+            let chunk_size = 48;
+            for (let start_idx = 0; start_idx < length(batch_jobs); start_idx += chunk_size) {
+                let end_idx = start_idx + chunk_size;
+                if (end_idx > length(batch_jobs))
+                    end_idx = length(batch_jobs);
+                let curl_args = [ "curl", "-Z", "--parallel-immediate", "--parallel-max", "48", "-s", "-m", as_string(max_sec) ];
+                if (secret != "") {
+                    push(curl_args, "-H");
+                    push(curl_args, "Authorization: Bearer " + secret);
+                }
+                for (let j = start_idx; j < end_idx; j++) {
+                    let job = batch_jobs[j];
+                    try { fs.unlink(job.file); } catch (e) {}
+                    push(curl_args, "-o");
+                    push(curl_args, job.file);
+                    push(curl_args, job.url);
+                }
+                common.command_capture(common.command_from_args(curl_args));
+                for (let j = start_idx; j < end_idx; j++) {
+                    let job = batch_jobs[j];
+                    let raw = null;
+                    try { raw = fs.readfile(job.file); } catch (e) { raw = null; }
+                    try { fs.unlink(job.file); } catch (e) {}
+                    if (raw != null && trim(raw) != "") {
+                        try {
+                            let parsed = json(raw);
+                            if (type(parsed) == "object") {
+                                if (parsed.delay != null && int(parsed.delay) > 0)
+                                    proxy_delays[job.tag] = int(parsed.delay);
+                                else if (parsed.message != null)
+                                    proxy_errors[job.tag] = as_string(parsed.message);
+                            }
+                        } catch (e) {
+                            proxy_errors[job.tag] = "invalid response";
+                        }
+                    } else {
+                        proxy_errors[job.tag] = "unreachable";
+                    }
+                }
             }
         }
     }
@@ -5111,6 +5244,7 @@ return {
     geoip_country_value,
     subscription_download_targets,
     subscription_download_target_port,
+    subscription_tls_fingerprint,
     has_dns_matchers,
     routed_dns_enabled,
     routed_dns_type,

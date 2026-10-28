@@ -84,6 +84,23 @@ function section_name(section) {
     return option(section, ".name", "");
 }
 
+function raw_list_option(section, key) {
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return [];
+    if (type(value) == "array") {
+        let out = [];
+        for (let item in value) {
+            let s = trim(as_string(item));
+            if (s != "")
+                push(out, s);
+        }
+        return out;
+    }
+    let s = trim(as_string(value));
+    return s == "" ? [] : [ s ];
+}
+
 function clone_section(section) {
     let result = {};
     for (let key in keys(object_or_empty(section)))
@@ -1878,6 +1895,206 @@ function condition_list_tokens(section, key) {
     return out;
 }
 
+function cleanup_modular_entities_v1(ctx) {
+    // 1. Remove empty duplicate src_awg_* when amnezia_configs is present without awg_private_key
+    for (let section in (ctx.model.sections || [])) {
+        let sname = section_name(section);
+        if (sname == "")
+            continue;
+        let safe_sname = sanitize_uci_id(sname);
+        let sec_amnezia = raw_list_option(section, "selector_amnezia_configs");
+        if (length(sec_amnezia) == 0)
+            sec_amnezia = raw_list_option(section, "amnezia_configs");
+        let sec_amnezia_text = trim(option(section, "amnezia_conf_text", ""));
+        if (length(sec_amnezia) > 0 || sec_amnezia_text != "") {
+            let awg_src_id = "src_awg_" + safe_sname;
+            let kept_sources = [];
+            let removed_empty_awg = false;
+            for (let existing_src in (ctx.model.outbound_source || [])) {
+                if (section_name(existing_src) == awg_src_id &&
+                    option(existing_src, "source_type", "") == "awg" &&
+                    trim(option(existing_src, "awg_private_key", "")) == "" &&
+                    trim(option(existing_src, "awg_server_address", "")) == "") {
+                    removed_empty_awg = true;
+                    record_operation(ctx, { op: "delete_section", section: awg_src_id });
+                    continue;
+                }
+                push(kept_sources, existing_src);
+            }
+            if (removed_empty_awg) {
+                ctx.model.outbound_source = kept_sources;
+                let kept_refs = [];
+                for (let ref_id in list_option(section, "outbound_source_refs")) {
+                    if (ref_id != awg_src_id)
+                        push(kept_refs, ref_id);
+                }
+                set_list_option(ctx, section, "outbound_source_refs", kept_refs);
+            }
+        }
+    }
+
+    // 2. Deduplicate identical Desync outbound_source entries so multiple sections
+    // using the same Desync strategy share one canonical Desync source.
+    let desync_sig_map = {};
+    let desync_replace_map = {};
+    let kept_outbound_sources = [];
+    for (let src in (ctx.model.outbound_source || [])) {
+        if (lc(trim(option(src, "source_type", ""))) != "desync") {
+            push(kept_outbound_sources, src);
+            continue;
+        }
+        let sig_parts = [];
+        for (let dk in [
+            "desync_preset", "desync_mode", "desync_split_pos", "desync_fake_ttl",
+            "desync_fake_sni", "desync_repeats", "desync_split_delay_ms",
+            "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl", "desync_opts"
+        ]) {
+            push(sig_parts, dk + "=" + lc(trim(option(src, dk, ""))));
+        }
+        let sig = join("|", sig_parts);
+        let src_id = section_name(src);
+        if (desync_sig_map[sig] != null) {
+            let primary = desync_sig_map[sig];
+            let primary_id = section_name(primary);
+            desync_replace_map[src_id] = primary_id;
+            if (option(primary, "name", "") != "Desync" && index(primary_id, "src_desync_") == 0)
+                set_option(ctx, primary, "name", "Desync");
+            record_operation(ctx, { op: "delete_section", section: src_id });
+            continue;
+        }
+        desync_sig_map[sig] = src;
+        push(kept_outbound_sources, src);
+    }
+    if (length(keys(desync_replace_map)) > 0) {
+        ctx.model.outbound_source = kept_outbound_sources;
+        for (let section in (ctx.model.sections || [])) {
+            let refs = list_option(section, "outbound_source_refs");
+            if (length(refs) == 0)
+                continue;
+            let new_refs = [];
+            let changed = false;
+            for (let r in refs) {
+                let mapped = desync_replace_map[r] || r;
+                if (mapped != r)
+                    changed = true;
+                if (index(new_refs, mapped) < 0)
+                    push(new_refs, mapped);
+            }
+            if (changed || length(new_refs) != length(refs))
+                set_list_option(ctx, section, "outbound_source_refs", new_refs);
+        }
+        for (let grp in (ctx.model.outbound_group || [])) {
+            let refs = list_option(grp, "outbound_sources");
+            if (length(refs) == 0)
+                continue;
+            let new_refs = [];
+            let changed = false;
+            for (let r in refs) {
+                let mapped = desync_replace_map[r] || r;
+                if (mapped != r)
+                    changed = true;
+                if (index(new_refs, mapped) < 0)
+                    push(new_refs, mapped);
+            }
+            if (changed || length(new_refs) != length(refs))
+                set_list_option(ctx, grp, "outbound_sources", new_refs);
+        }
+    }
+
+    // 3. Prune dangling references to deleted conditions, outbound_sources, outbound_groups, balancers, or sections
+    let valid_conds = {};
+    for (let c in (ctx.model.condition || [])) {
+        let id = section_name(c);
+        if (id != "") valid_conds[id] = true;
+    }
+    let valid_sources = {};
+    for (let s in (ctx.model.outbound_source || [])) {
+        let id = section_name(s);
+        if (id != "") valid_sources[id] = true;
+    }
+    let valid_groups = {};
+    for (let g in (ctx.model.outbound_group || [])) {
+        let id = section_name(g);
+        if (id != "") valid_groups[id] = true;
+    }
+    let valid_balancers = {};
+    for (let b in (ctx.model.balancer || [])) {
+        let id = section_name(b);
+        if (id != "") valid_balancers[id] = true;
+    }
+    let valid_sections = {};
+    for (let sec in (ctx.model.sections || [])) {
+        let id = section_name(sec);
+        if (id != "") valid_sections[id] = true;
+    }
+
+    let prune_ref_list = function(obj, key, valid_map, keep_special) {
+        let cur = list_option(obj, key);
+        if (length(cur) == 0)
+            return;
+        let next = [];
+        let changed = false;
+        for (let item in cur) {
+            if ((keep_special != null && lc(item) == keep_special) || valid_map[item]) {
+                if (index(next, item) < 0)
+                    push(next, item);
+                else
+                    changed = true;
+            } else {
+                changed = true;
+            }
+        }
+        if (changed) {
+            if (length(next) > 0)
+                set_list_option(ctx, obj, key, next);
+            else
+                delete_option(ctx, obj, key);
+        }
+    };
+
+    for (let sec in (ctx.model.sections || [])) {
+        prune_ref_list(sec, "condition_refs", valid_conds, null);
+        prune_ref_list(sec, "outbound_source_refs", valid_sources, null);
+        prune_ref_list(sec, "outbound_group_refs", valid_groups, null);
+        prune_ref_list(sec, "balancer_refs", valid_balancers, null);
+        prune_ref_list(sec, "group_members", valid_sections, null);
+        let out_detour = trim(option(sec, "outbound_detour_section", ""));
+        if (out_detour != "" && !valid_sections[out_detour]) {
+            delete_option(ctx, sec, "outbound_detour_section");
+            set_option(ctx, sec, "outbound_detour_enabled", "0");
+        }
+        let dns_detour = trim(option(sec, "dns_detour_section", ""));
+        if (dns_detour != "" && !valid_sections[dns_detour]) {
+            delete_option(ctx, sec, "dns_detour_section");
+            set_option(ctx, sec, "dns_detour_enabled", "0");
+        }
+    }
+    for (let bal in (ctx.model.balancer || [])) {
+        prune_ref_list(bal, "source_refs", valid_sources, null);
+        prune_ref_list(bal, "group_refs", valid_groups, null);
+        prune_ref_list(bal, "outbound_group_levels", valid_groups, "direct");
+    }
+    for (let grp in (ctx.model.outbound_group || [])) {
+        prune_ref_list(grp, "source_refs", valid_sources, "*");
+        prune_ref_list(grp, "outbound_sources", valid_sources, "*");
+    }
+    for (let cond in (ctx.model.condition || [])) {
+        prune_ref_list(cond, "members", valid_conds, null);
+    }
+    for (let src in (ctx.model.outbound_source || [])) {
+        let dl_sec = trim(option(src, "download_via_proxy_section", ""));
+        if (dl_sec != "" && !valid_sections[dl_sec]) {
+            delete_option(ctx, src, "download_via_proxy_section");
+            set_option(ctx, src, "download_via_proxy_enabled", "0");
+        }
+        let detour_sec = trim(option(src, "outbound_detour_section", ""));
+        if (detour_sec != "" && !valid_sections[detour_sec]) {
+            delete_option(ctx, src, "outbound_detour_section");
+            set_option(ctx, src, "outbound_detour_enabled", "0");
+        }
+    }
+}
+
 function migrate_modular_entities_v1(ctx) {
     let condition_list_keys = [
         "community_lists",
@@ -1978,17 +2195,16 @@ function migrate_modular_entities_v1(ctx) {
                 set_option_if_missing(ctx, src, "enabled", "1");
                 set_option_if_missing(ctx, src, "name", option(sub, "node_prefix", "") != "" ? option(sub, "node_prefix", "") : ("Subscription " + sub_index));
                 set_option_if_missing(ctx, src, "source_type", "subscription");
-                set_option(ctx, src, "url", url);
+                set_option_if_missing(ctx, src, "url", url);
                 for (let sk in [
                     "user_agent", "auto_user_agent", "hwid", "auto_hwid",
-                    "prefix_nodes", "node_prefix", "include_urltest_groups",
-                    "hide_urltest_group_outbounds", "hide_detour_outbounds",
+                    "prefix_nodes", "node_prefix", "hide_detour_outbounds",
                     "subscription_update_enabled", "subscription_update_interval",
                     "download_via_proxy_enabled", "download_via_proxy_section"
                 ]) {
                     let sval = option(sub, sk, "");
                     if (sval != "")
-                        set_option(ctx, src, sk, sval);
+                        set_option_if_missing(ctx, src, sk, sval);
                 }
             }
             add_list_unique(ctx, section, "outbound_source_refs", src_id);
@@ -2022,9 +2238,9 @@ function migrate_modular_entities_v1(ctx) {
             add_list_unique(ctx, section, "outbound_source_refs", links_src_id);
         }
 
-        let sec_amnezia = list_option(section, "selector_amnezia_configs");
+        let sec_amnezia = raw_list_option(section, "selector_amnezia_configs");
         if (length(sec_amnezia) == 0)
-            sec_amnezia = list_option(section, "amnezia_configs");
+            sec_amnezia = raw_list_option(section, "amnezia_configs");
         let sec_amnezia_text = trim(option(section, "amnezia_conf_text", ""));
         if (length(sec_amnezia) > 0 || sec_amnezia_text != "") {
             let amn_src_id = "src_amnezia_" + safe_sname;
@@ -2039,8 +2255,9 @@ function migrate_modular_entities_v1(ctx) {
             add_list_unique(ctx, section, "outbound_source_refs", amn_src_id);
         }
 
-        if (sec_action == "awg" || (trim(option(section, "awg_private_key", "")) != "" && trim(option(section, "awg_server_address", "")) != "")) {
-            let awg_src_id = "src_awg_" + safe_sname;
+        let has_awg_tunnel = trim(option(section, "awg_private_key", "")) != "" && trim(option(section, "awg_server_address", "")) != "";
+        let awg_src_id = "src_awg_" + safe_sname;
+        if (has_awg_tunnel || (sec_action == "awg" && length(sec_amnezia) == 0 && sec_amnezia_text == "")) {
             let awg_src = create_named_section(ctx, "outbound_source", awg_src_id);
             set_option_if_missing(ctx, awg_src, "enabled", "1");
             set_option_if_missing(ctx, awg_src, "name", sec_display_name + " (AWG)");
@@ -2059,6 +2276,29 @@ function migrate_modular_entities_v1(ctx) {
             if (length(awg_addrs) > 0 && !option_exists(awg_src, "awg_local_address"))
                 set_list_option(ctx, awg_src, "awg_local_address", awg_addrs);
             add_list_unique(ctx, section, "outbound_source_refs", awg_src_id);
+        } else if (length(sec_amnezia) > 0 || sec_amnezia_text != "") {
+            let kept_sources = [];
+            let removed_empty_awg = false;
+            for (let existing_src in (ctx.model.outbound_source || [])) {
+                if (section_name(existing_src) == awg_src_id &&
+                    option(existing_src, "source_type", "") == "awg" &&
+                    trim(option(existing_src, "awg_private_key", "")) == "" &&
+                    trim(option(existing_src, "awg_server_address", "")) == "") {
+                    removed_empty_awg = true;
+                    record_operation(ctx, { op: "delete_section", section: awg_src_id });
+                    continue;
+                }
+                push(kept_sources, existing_src);
+            }
+            if (removed_empty_awg) {
+                ctx.model.outbound_source = kept_sources;
+                let kept_refs = [];
+                for (let ref_id in list_option(section, "outbound_source_refs")) {
+                    if (ref_id != awg_src_id)
+                        push(kept_refs, ref_id);
+                }
+                set_list_option(ctx, section, "outbound_source_refs", kept_refs);
+            }
         }
 
         for (let sif in (ctx.model.section_interface || [])) {
@@ -2098,7 +2338,7 @@ function migrate_modular_entities_v1(ctx) {
             add_list_unique(ctx, section, "outbound_source_refs", iface_src_id);
         }
 
-        let sec_jsons = list_option(section, "outbound_jsons");
+        let sec_jsons = raw_list_option(section, "outbound_jsons");
         let sec_json_single = trim(option(section, "outbound_json", ""));
         if (length(sec_jsons) > 0 || sec_json_single != "") {
             let json_src_id = "src_json_" + safe_sname;
@@ -2108,7 +2348,7 @@ function migrate_modular_entities_v1(ctx) {
             set_option_if_missing(ctx, json_src, "source_type", "outbound_json");
             if (length(sec_jsons) > 0 && !option_exists(json_src, "outbound_jsons"))
                 set_list_option(ctx, json_src, "outbound_jsons", sec_jsons);
-            if (sec_json_single != "")
+            else if (length(sec_jsons) == 0 && sec_json_single != "")
                 set_option_if_missing(ctx, json_src, "outbound_json", sec_json_single);
             add_list_unique(ctx, section, "outbound_source_refs", json_src_id);
         }
@@ -2237,6 +2477,8 @@ function migrate_modular_entities_v1(ctx) {
             set_option(ctx, section, "action", "connection");
         }
     }
+
+    cleanup_modular_entities_v1(ctx);
 }
 
 const MIGRATIONS = [
@@ -2339,7 +2581,7 @@ function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
     migrate_cleanup_accidental_full_domain_prefixes(ctx);
     apply_migrations(ctx);
-    migrate_modular_entities_v1(ctx);
+    cleanup_modular_entities_v1(ctx);
     // How client traffic reaches the proxy. Defaulted rather than left absent:
     // the generator has to be able to express a legal config for a router that
     // predates this option, and "no proxy_mode" would have to be read as tproxy
@@ -2481,6 +2723,8 @@ function runtime_cursor() {
             return uci_core.set(package_name + "." + section_name + "." + option_name, value);
         },
         delete: function(package_name, section_name, option_name) {
+            if (option_name == null)
+                return uci_core.delete(package_name + "." + section_name);
             return uci_core.delete(package_name + "." + section_name + "." + option_name);
         },
         commit: function(package_name) {

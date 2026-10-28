@@ -268,10 +268,16 @@ function summarizeBalancer(sectionId) {
   const btype = (
     uci.get(UCI_PACKAGE, sectionId, "balancer_type") || "urltest"
   ).toLowerCase();
+  const resolveEntityName = (id) =>
+    id === "direct"
+      ? _("Direct Connection (Fallback)")
+      : uci.get(UCI_PACKAGE, id, "name") ||
+        uci.get(UCI_PACKAGE, id, "label") ||
+        id;
   if (btype === "priority") {
     const levels = asArray(
       uci.get(UCI_PACKAGE, sectionId, "outbound_group_levels"),
-    );
+    ).map(resolveEntityName);
     const interval =
       uci.get(UCI_PACKAGE, sectionId, "active_check_interval") || "5s";
     return `${_("Priority Failover")} (${_("Tiers")}: ${levels.length ? levels.join(" → ") : _("Section Pool")}, ${_("Check")}: ${interval})`;
@@ -284,8 +290,12 @@ function summarizeBalancer(sectionId) {
   const parts = [
     `URLTest (${_("Interval")}: ${interval}, ${_("Tolerance")}: ${tol} ms)`,
   ];
-  const srcRefs = asArray(uci.get(UCI_PACKAGE, sectionId, "source_refs"));
-  const grpRefs = asArray(uci.get(UCI_PACKAGE, sectionId, "group_refs"));
+  const srcRefs = asArray(uci.get(UCI_PACKAGE, sectionId, "source_refs")).map(
+    resolveEntityName,
+  );
+  const grpRefs = asArray(uci.get(UCI_PACKAGE, sectionId, "group_refs")).map(
+    resolveEntityName,
+  );
   const fmode = uci.get(UCI_PACKAGE, sectionId, "filter_mode") || "disabled";
   if (srcRefs.length) parts.push(`${_("Sources")}: ${srcRefs.join(", ")}`);
   if (grpRefs.length) parts.push(`${_("Groups")}: ${grpRefs.join(", ")}`);
@@ -322,24 +332,38 @@ function configureBalancersSection(sectionRef) {
     return res;
   };
 
-  const origRemove = sectionRef.handleRemove;
-  if (typeof origRemove === "function") {
-    sectionRef.handleRemove = function (section_id, ev) {
-      const bname = uci.get(UCI_PACKAGE, section_id, "name") || section_id;
-      updateSectionsRef("balancer_refs", section_id, []);
-      for (const ut of uci.sections(UCI_PACKAGE, "urltest") || []) {
-        if (ut[".name"] && (ut.name || ut[".name"]) === bname) {
-          uci.remove(UCI_PACKAGE, ut[".name"]);
-        }
+  const origRemove = sectionRef.remove;
+  sectionRef.remove = function (section_id) {
+    const bname = uci.get(UCI_PACKAGE, section_id, "name") || section_id;
+    updateSectionsRef("balancer_refs", section_id, []);
+    for (const ut of uci.sections(UCI_PACKAGE, "urltest") || []) {
+      if (
+        ut[".name"] &&
+        ((ut.name || ut[".name"]) === bname ||
+          `bal_${ut[".name"]}` === section_id)
+      ) {
+        uci.remove(UCI_PACKAGE, ut[".name"]);
       }
-      for (const pg of uci.sections(UCI_PACKAGE, "priority_group") || []) {
-        if (pg[".name"] && (pg.name || pg[".name"]) === bname) {
-          uci.remove(UCI_PACKAGE, pg[".name"]);
-        }
+    }
+    for (const pg of uci.sections(UCI_PACKAGE, "priority_group") || []) {
+      if (
+        pg[".name"] &&
+        ((pg.name || pg[".name"]) === bname ||
+          `bal_prio_${pg[".name"]}` === section_id)
+      ) {
+        const groupId = pg[".name"];
+        (uci.sections(UCI_PACKAGE, "priority_level") || [])
+          .filter((level) => level.group === groupId)
+          .forEach((level) => {
+            if (level[".name"]) uci.remove(UCI_PACKAGE, level[".name"]);
+          });
+        uci.remove(UCI_PACKAGE, groupId);
       }
-      return origRemove.apply(this, arguments);
-    };
-  }
+    }
+    return origRemove
+      ? origRemove.apply(this, arguments)
+      : form.GridSection.prototype.remove.apply(this, arguments);
+  };
 }
 
 function escapeHtml(str) {
@@ -369,6 +393,7 @@ function createBalancersContent(section) {
       "Display name of this reusable selection policy (e.g. Fastest or Priority Failover).",
     ),
   );
+  o.modalonly = true;
   o.rmempty = false;
   o.placeholder = _("e.g. Fastest");
   o.cfgvalue = function (sectionId) {
@@ -397,7 +422,12 @@ function createBalancersContent(section) {
   );
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
-    const used = sectionsUsingRef("balancer_refs", sectionId);
+    const used = sectionsUsingRef("balancer_refs", sectionId).map(
+      (sid) =>
+        uci.get(UCI_PACKAGE, sid, "label") ||
+        uci.get(UCI_PACKAGE, sid, "name") ||
+        sid,
+    );
     return used.length ? used.join(", ") : "—";
   };
 
@@ -417,7 +447,7 @@ function createBalancersContent(section) {
     (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
       const sid = s[".name"];
       if (!sid) return;
-      this.value(sid, `${s.name || sid} (${sid})`);
+      this.value(sid, s.label || s.name || sid);
     });
     return sectionsUsingRef("balancer_refs", sectionId);
   };
@@ -507,7 +537,7 @@ function createBalancersContent(section) {
     this.vallist = [];
     (uci.sections(UCI_PACKAGE, "outbound_group") || []).forEach((g) => {
       const gid = g[".name"];
-      if (gid) this.value(gid, `${g.name || gid} (${gid})`);
+      if (gid) this.value(gid, g.name || g.label || gid);
     });
     this.value("direct", _("Direct Connection (Fallback)"));
     return form.DynamicList.prototype.load.apply(this, arguments);
@@ -637,7 +667,7 @@ function createBalancersContent(section) {
       if (DPI_SOURCE_TYPES.has(stypeLower)) return;
       const stype = stypeLower.toUpperCase();
       const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
-      this.value(sid, `${src.name || sid}${pfx} (${sid})`);
+      this.value(sid, `${src.name || src.label || sid}${pfx}`);
     });
     return form.DynamicList.prototype.load.apply(this, arguments);
   };
@@ -659,7 +689,7 @@ function createBalancersContent(section) {
     (uci.sections(UCI_PACKAGE, "outbound_group") || []).forEach((grp) => {
       const gid = grp[".name"];
       if (!gid) return;
-      this.value(gid, `${grp.name || gid} (${gid})`);
+      this.value(gid, grp.name || grp.label || gid);
     });
     return form.DynamicList.prototype.load.apply(this, arguments);
   };

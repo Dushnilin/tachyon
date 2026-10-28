@@ -534,8 +534,13 @@ function certificate_pin_field() {
 
 function apply_link_tls(outbound, scheme, query) {
     query = object_or_empty(query);
-    let security = as_string(query.security || "");
+    let security = lc(trim(as_string(query.security || "")));
+    let pbk = trim(as_string(query.pbk || ""));
+    if (security == "" && pbk != "")
+        security = "reality";
     if (security == "" && (scheme == "hysteria2" || scheme == "hy2" || scheme == "tuic"))
+        security = "tls";
+    if (security == "xtls")
         security = "tls";
 
     if (security == "" || security == "none")
@@ -546,8 +551,9 @@ function apply_link_tls(outbound, scheme, query) {
     }
 
     let tls = { enabled: true };
-    if (as_string(query.sni || "") != "")
-        tls.server_name = as_string(query.sni);
+    let sni = trim(as_string(query.sni || query.peer || ""));
+    if (sni != "")
+        tls.server_name = sni;
     if (bool_query(query.allowInsecure || query.insecure || ""))
         tls.insecure = true;
     let certificate_pin = common.certificate_pin_base64(as_string(query.pcs || query.pinSHA256 || ""));
@@ -563,32 +569,38 @@ function apply_link_tls(outbound, scheme, query) {
     if (length(alpn) > 0)
         tls.alpn = alpn;
 
-    if (scheme != "hysteria2" && scheme != "hy2" && scheme != "tuic" && as_string(query.fp || "") != "") {
+    let fp = trim(as_string(query.fp || ""));
+    if (fp == "" && security == "reality")
+        fp = "chrome";
+    if (scheme != "hysteria2" && scheme != "hy2" && scheme != "tuic" && fp != "") {
         tls.utls = {
             enabled: true,
-            fingerprint: as_string(query.fp)
+            fingerprint: fp
         };
     }
     if (security == "reality") {
         tls.reality = {
             enabled: true,
-            public_key: as_string(query.pbk || ""),
+            public_key: pbk,
             short_id: as_string(query.sid || "")
         };
-        // Only carry the flag when the link actually asks for it. Injecting it
-        // unconditionally broke two things: sing-box-lx and stock sing-box reject
-        // the field outright, and a server doing plain X25519 cannot complete a
-        // handshake that demands the hybrid exchange.
-        // Three spellings of the same flag are in the wild: the sing-box
-        // snake_case one, the camelCase one some panels emit, and the
-        // kebab-case one a share link carries. Priority order is kept: the
-        // first one that is present wins, and an explicit false is never
-        // turned into true by a later spelling.
         let mlkem_preference = query.support_x25519mlkem768;
         if (mlkem_preference == null)
             mlkem_preference = query.supportX25519MLKEM768;
         if (mlkem_preference == null)
             mlkem_preference = query["support-x25519mlkem768"];
+        if (mlkem_preference == null && as_string(query.extra || "") != "") {
+            try {
+                let extra_obj = json(as_string(query.extra));
+                if (type(extra_obj) == "object") {
+                    mlkem_preference = extra_obj.support_x25519mlkem768;
+                    if (mlkem_preference == null)
+                        mlkem_preference = extra_obj.supportX25519MLKEM768;
+                    if (mlkem_preference == null)
+                        mlkem_preference = extra_obj["support-x25519mlkem768"];
+                }
+            } catch (e) {}
+        }
         if (mlkem_preference != null)
             tls.reality.support_x25519mlkem768 = bool_query(mlkem_preference);
     }
@@ -653,7 +665,12 @@ function apply_link_transport(outbound, query) {
         // padding, sc* limits. The subscription parser already knows all of
         // that mapping — hand the query over to it instead of keeping a second,
         // dumber copy that silently drops everything extra carries.
-        let built = subscription_parser.add_transport({ query: object_or_empty(query) });
+        let q_copy = {};
+        for (let k, v in object_or_empty(query))
+            q_copy[k] = v;
+        if (as_string(q_copy.sni || "") == "" && as_string(q_copy.peer || "") != "")
+            q_copy.sni = q_copy.peer;
+        let built = subscription_parser.add_transport({ query: q_copy });
         if (type(built) != "object")
             return;
         result = built;
@@ -1603,6 +1620,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     let drop_urltest_members = include_urltest_groups === false && survivors > 0;
     node_prefix = trim(as_string(node_prefix));
     let keyword_filter = subscription_keyword_filter(section, source_entry);
+    let sub_tls_fp = connections.subscription_tls_fingerprint(section, source_entry);
     let prepared = [];
     let display_names = [];
     let source_links = [];
@@ -1638,7 +1656,20 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             tag_map[as_string(outbound.tag)] = new_tag;
         if (as_string(outbound.remark || "") != "")
             tag_map[as_string(outbound.remark)] = new_tag;
-        push(prepared, copy_subscription_outbound(outbound, new_tag));
+        let copied_outbound = copy_subscription_outbound(outbound, new_tag);
+        if (type(copied_outbound.tls) == "object" && copied_outbound.tls.enabled === true) {
+            if (sub_tls_fp != "") {
+                copied_outbound.tls.utls = { enabled: true, fingerprint: sub_tls_fp };
+            } else if (ctx.is_sing_box_extended && ctx.is_sing_box_extended() &&
+                type(copied_outbound.tls.reality) == "object" && copied_outbound.tls.reality.enabled === true &&
+                copied_outbound.tls.reality.support_x25519mlkem768 === true &&
+                type(copied_outbound.tls.utls) == "object" &&
+                lc(as_string(copied_outbound.tls.utls.fingerprint || "")) == "firefox") {
+                warn("node '", display_name, "' in rule '", section_name,
+                    "' uses VLESS REALITY + Firefox uTLS + ML-KEM (support_x25519mlkem768) on sing-box-extended, which may fail reality verification; set TLS Fingerprint Override to 'chrome' on the subscription source if handshake fails\n");
+            }
+        }
+        push(prepared, copied_outbound);
         push(display_names, display_name);
         let source_link = as_string(outbound.share_link || "");
         if (!subscription_share_link.is_copyable_link(source_link))
@@ -1843,7 +1874,31 @@ function rewrite_json_outbound_references(outbounds, tag_map) {
     }
 }
 
-function prepare_json_connection_outbounds(section, taken) {
+function desync_outbound_signature(outbound) {
+    if (type(outbound) != "object" || lc(trim(as_string(outbound.type || ""))) != "desync")
+        return "";
+    let copy = {};
+    let k_list = keys(outbound);
+    sort(k_list);
+    for (let k in k_list) {
+        if (k == "tag")
+            continue;
+        copy[k] = outbound[k];
+    }
+    return sprintf("%J", copy);
+}
+
+function find_existing_desync_outbound(existing_list, sig) {
+    if (sig == "")
+        return null;
+    for (let existing in array_or_empty(existing_list)) {
+        if (desync_outbound_signature(existing) == sig)
+            return existing;
+    }
+    return null;
+}
+
+function prepare_json_connection_outbounds(section, taken, existing_outbounds) {
     let items = connections.outbound_jsons(section);
     let prepared = [];
     let outbounds = [];
@@ -1858,8 +1913,29 @@ function prepare_json_connection_outbounds(section, taken) {
         let display_name = trim(as_string(outbound.tag || ""));
         let legacy_tag = connection_item_tag(section[".name"], "json", i + 1);
         let base = display_name != "" ? display_name : legacy_tag;
-        let tag_name = unique_tag(base, taken);
         ensure_explicit_outbound_supported(outbound, "JSON outbound", display_name != "" ? display_name : legacy_tag);
+
+        let desync_sig = desync_outbound_signature(outbound);
+        let existing_desync = find_existing_desync_outbound(existing_outbounds, desync_sig) || find_existing_desync_outbound(outbounds, desync_sig);
+        let src_id = (connections && connections.source_id_for_manual_item)
+            ? connections.source_id_for_manual_item(section, items[i])
+            : "";
+
+        if (existing_desync != null && as_string(existing_desync.tag || "") != "") {
+            let shared_tag = as_string(existing_desync.tag);
+            if (display_name != "" && !tag_map[display_name])
+                tag_map[display_name] = shared_tag;
+            push(legacy_tags, [ legacy_tag, shared_tag ]);
+            push(prepared, {
+                outbound: existing_desync,
+                displayName: display_name != "" ? display_name : shared_tag,
+                sourceId: src_id != "" ? src_id : "manual",
+                reused: true
+            });
+            continue;
+        }
+
+        let tag_name = unique_tag(base, taken);
         taken[tag_name] = true;
         if (display_name != "" && !tag_map[display_name])
             tag_map[display_name] = tag_name;
@@ -1867,13 +1943,11 @@ function prepare_json_connection_outbounds(section, taken) {
 
         outbound.tag = tag_name;
         push(outbounds, outbound);
-        let src_id = (connections && connections.source_id_for_manual_item)
-            ? connections.source_id_for_manual_item(section, items[i])
-            : "";
         push(prepared, {
             outbound,
             displayName: display_name != "" ? display_name : "JSON outbound " + (i + 1),
-            sourceId: src_id != "" ? src_id : "manual"
+            sourceId: src_id != "" ? src_id : "manual",
+            reused: false
         });
     }
 
@@ -1886,12 +1960,14 @@ function prepare_json_connection_outbounds(section, taken) {
 }
 
 function add_connection_json_outbounds(config, state, section, taken, selector_tags, urltest_candidate_tags) {
-    for (let item in prepare_json_connection_outbounds(section, taken)) {
+    for (let item in prepare_json_connection_outbounds(section, taken, config.outbounds)) {
         let outbound = item.outbound;
         let tag_name = outbound.tag;
-        push(config.outbounds, outbound);
-        push(selector_tags, tag_name);
-        if (urltest_leaf_candidate_outbound(outbound))
+        if (!item.reused)
+            push(config.outbounds, outbound);
+        if (index(selector_tags, tag_name) < 0)
+            push(selector_tags, tag_name);
+        if (urltest_leaf_candidate_outbound(outbound) && index(urltest_candidate_tags, tag_name) < 0)
             push(urltest_candidate_tags, tag_name);
         runtime_subscription.remember_outbound_metadata(state, tag_name, item.displayName, outbound);
         runtime_subscription.remember_urltest_group(state, tag_name, item.displayName, outbound);
@@ -3187,7 +3263,7 @@ function add_trusttunnel_outbound(config, section) {
     let password = option(section, "trusttunnel_password", "");
     if (password != "") outbound.password = password;
     if (bool_option(section, "trusttunnel_quic", false))
-        outbound.quic = "true";
+        outbound.quic = true;
     let cc = option(section, "trusttunnel_congestion_control", "");
     if (cc != "") outbound.quic_congestion_control = cc;
     let sni = option(section, "trusttunnel_sni", "");

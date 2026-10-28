@@ -132,18 +132,19 @@ function configureGridSection(sectionRef, type, title, addTitle) {
   sectionRef.sortable = true;
   sectionRef.rowcolors = true;
   sectionRef.nodescriptions = true;
+  const getDisplayLabel = (sid) =>
+    type === "section"
+      ? uci.get(UCI_PACKAGE, sid, "label") ||
+        uci.get(UCI_PACKAGE, sid, "name") ||
+        sid
+      : uci.get(UCI_PACKAGE, sid, "name") ||
+        uci.get(UCI_PACKAGE, sid, "label") ||
+        sid;
   sectionRef.modaltitle = function (section_id) {
-    const label =
-      uci.get(UCI_PACKAGE, section_id, "label") ||
-      uci.get(UCI_PACKAGE, section_id, "name");
-    return section_id ? `${title}: ${label || section_id}` : addTitle;
+    return section_id ? `${title}: ${getDisplayLabel(section_id)}` : addTitle;
   };
   sectionRef.sectiontitle = function (section_id) {
-    return (
-      uci.get(UCI_PACKAGE, section_id, "label") ||
-      uci.get(UCI_PACKAGE, section_id, "name") ||
-      section_id
-    );
+    return getDisplayLabel(section_id);
   };
   sectionRef.renderSectionAdd = function (extra_class) {
     return renderSectionAdd(sectionRef, extra_class);
@@ -572,6 +573,7 @@ const EntryPoint = {
           uci.add(self.config, "guest_mode", "guest_mode");
         }
         // Sync any section outbound connections & child urltest/priority_group items into outbound_source / balancer sections
+        // only when modular_entities_v1 migration has not run yet; otherwise prune dangling references.
         try {
           const toArr = (v) =>
             Array.isArray(v)
@@ -582,204 +584,287 @@ const EntryPoint = {
                     .split(/[\s,]+/)
                     .filter(Boolean)
                 : [];
-          const ensureSourceRef = (secName, srcId) => {
-            const cur = toArr(
-              uci.get(self.config, secName, "outbound_source_refs"),
-            );
-            if (!cur.includes(srcId)) {
-              uci.set(self.config, secName, "outbound_source_refs", [
-                ...cur,
-                srcId,
-              ]);
-            }
-          };
-          const singleProtoActions = [
-            "anytls",
-            "naive",
-            "mieru",
-            "snell",
-            "sudoku",
-            "masque",
-            "tewfai",
-            "trusttunnel",
-            "openconnect",
-            "shadowtls",
-            "warp",
-            "openvpn",
-            "tailscale",
-            "tor",
-            "desync",
-          ];
-          (uci.sections(self.config, "section") || []).forEach((sec) => {
-            const sname = sec[".name"];
-            if (!sname) return;
-            const safeSname = String(sname).replace(/[^A-Za-z0-9_]/g, "_");
-            const dispName = sec.name || sname;
-            const sAct = (sec.action || "connection").toLowerCase();
+          const stripPrefix = (tok) => String(tok || "").replace(/^[+!-]/, "");
+          const appliedMigrations = toArr(
+            uci.get(self.config, "settings", "applied_migrations"),
+          );
+          const alreadyMigrated =
+            appliedMigrations.includes("modular_entities_v1") ||
+            (uci.sections(self.config, "outbound_source") || []).length > 0 ||
+            (uci.sections(self.config, "condition") || []).length > 0 ||
+            (uci.sections(self.config, "balancer") || []).length > 0;
 
-            if (sec.access_token || sAct === "fptn") {
-              const fid = `src_fptn_${safeSname}`;
-              if (!uci.get(self.config, fid) && sec.access_token) {
-                uci.add(self.config, "outbound_source", fid);
-                uci.set(self.config, fid, "enabled", "1");
-                uci.set(self.config, fid, "name", dispName);
-                uci.set(self.config, fid, "source_type", "fptn");
-                uci.set(self.config, fid, "access_token", sec.access_token);
+          if (!alreadyMigrated) {
+            const ensureSourceRef = (secName, srcId) => {
+              const cur = toArr(
+                uci.get(self.config, secName, "outbound_source_refs"),
+              );
+              if (!cur.includes(srcId)) {
+                uci.set(self.config, secName, "outbound_source_refs", [
+                  ...cur,
+                  srcId,
+                ]);
               }
-              if (uci.get(self.config, fid)) ensureSourceRef(sname, fid);
-            }
+            };
+            const singleProtoActions = [
+              "anytls",
+              "naive",
+              "mieru",
+              "snell",
+              "sudoku",
+              "masque",
+              "tewfai",
+              "trusttunnel",
+              "openconnect",
+              "shadowtls",
+              "warp",
+              "openvpn",
+              "tailscale",
+              "tor",
+              "desync",
+            ];
+            (uci.sections(self.config, "section") || []).forEach((sec) => {
+              const sname = sec[".name"];
+              if (!sname) return;
+              const safeSname = String(sname).replace(/[^A-Za-z0-9_]/g, "_");
+              const dispName = sec.name || sname;
+              const sAct = (sec.action || "connection").toLowerCase();
 
-            const links = toArr(sec.selector_proxy_links || sec.proxy_links);
-            if (links.length || sec.selector_proxy_links_text) {
-              const lid = `src_links_${safeSname}`;
-              if (!uci.get(self.config, lid)) {
-                uci.add(self.config, "outbound_source", lid);
-                uci.set(self.config, lid, "enabled", "1");
-                uci.set(self.config, lid, "name", `${dispName} (Links)`);
-                uci.set(self.config, lid, "source_type", "proxy_links");
-                if (links.length)
-                  uci.set(self.config, lid, "proxy_links", links);
-                if (sec.selector_proxy_links_text) {
+              if (sec.access_token || sAct === "fptn") {
+                const fid = `src_fptn_${safeSname}`;
+                if (!uci.get(self.config, fid) && sec.access_token) {
+                  uci.add(self.config, "outbound_source", fid);
+                  uci.set(self.config, fid, "enabled", "1");
+                  uci.set(self.config, fid, "name", dispName);
+                  uci.set(self.config, fid, "source_type", "fptn");
+                  uci.set(self.config, fid, "access_token", sec.access_token);
+                }
+                if (uci.get(self.config, fid)) ensureSourceRef(sname, fid);
+              }
+
+              const links = toArr(
+                sec.selector_proxy_links || sec.proxy_links,
+              );
+              if (links.length || sec.selector_proxy_links_text) {
+                const lid = `src_links_${safeSname}`;
+                if (!uci.get(self.config, lid)) {
+                  uci.add(self.config, "outbound_source", lid);
+                  uci.set(self.config, lid, "enabled", "1");
                   uci.set(
                     self.config,
                     lid,
-                    "proxy_links_text",
-                    sec.selector_proxy_links_text,
+                    "name",
+                    `${dispName} (Links)`,
                   );
+                  uci.set(self.config, lid, "source_type", "proxy_links");
+                  if (links.length)
+                    uci.set(self.config, lid, "proxy_links", links);
+                  if (sec.selector_proxy_links_text) {
+                    uci.set(
+                      self.config,
+                      lid,
+                      "proxy_links_text",
+                      sec.selector_proxy_links_text,
+                    );
+                  }
                 }
+                ensureSourceRef(sname, lid);
               }
-              ensureSourceRef(sname, lid);
-            }
 
-            const amn = toArr(
-              sec.selector_amnezia_configs || sec.amnezia_configs,
-            );
-            if (amn.length || sec.amnezia_conf_text) {
-              const aid = `src_amnezia_${safeSname}`;
-              if (!uci.get(self.config, aid)) {
-                uci.add(self.config, "outbound_source", aid);
-                uci.set(self.config, aid, "enabled", "1");
-                uci.set(self.config, aid, "name", `${dispName} (Amnezia)`);
-                uci.set(self.config, aid, "source_type", "amnezia_config");
-                if (amn.length)
-                  uci.set(self.config, aid, "amnezia_configs", amn);
-                if (sec.amnezia_conf_text) {
+              const amn = toArr(
+                sec.selector_amnezia_configs || sec.amnezia_configs,
+              );
+              if (amn.length || sec.amnezia_conf_text) {
+                const aid = `src_amnezia_${safeSname}`;
+                if (!uci.get(self.config, aid)) {
+                  uci.add(self.config, "outbound_source", aid);
+                  uci.set(self.config, aid, "enabled", "1");
                   uci.set(
                     self.config,
                     aid,
-                    "amnezia_conf_text",
-                    sec.amnezia_conf_text,
+                    "name",
+                    `${dispName} (Amnezia)`,
                   );
+                  uci.set(
+                    self.config,
+                    aid,
+                    "source_type",
+                    "amnezia_config",
+                  );
+                  if (amn.length)
+                    uci.set(self.config, aid, "amnezia_configs", amn);
+                  if (sec.amnezia_conf_text) {
+                    uci.set(
+                      self.config,
+                      aid,
+                      "amnezia_conf_text",
+                      sec.amnezia_conf_text,
+                    );
+                  }
                 }
+                ensureSourceRef(sname, aid);
               }
-              ensureSourceRef(sname, aid);
-            }
 
-            if (
-              sAct === "awg" ||
-              (sec.awg_private_key && sec.awg_server_address)
-            ) {
-              const wid = `src_awg_${safeSname}`;
-              if (!uci.get(self.config, wid)) {
-                uci.add(self.config, "outbound_source", wid);
-                uci.set(self.config, wid, "enabled", "1");
-                uci.set(self.config, wid, "name", `${dispName} (AWG)`);
-                uci.set(self.config, wid, "source_type", "awg");
-                [
-                  "awg_private_key",
-                  "awg_server_address",
-                  "awg_server_port",
-                  "awg_peer_public_key",
-                  "awg_preshared_key",
-                  "awg_local_address",
-                ].forEach((k) => {
-                  if (sec[k]) uci.set(self.config, wid, k, sec[k]);
-                });
-              }
-              ensureSourceRef(sname, wid);
-            }
-
-            if (singleProtoActions.includes(sAct)) {
-              const pid = `src_${sAct}_${safeSname}`;
-              if (!uci.get(self.config, pid)) {
-                uci.add(self.config, "outbound_source", pid);
-                uci.set(self.config, pid, "enabled", "1");
-                uci.set(self.config, pid, "name", dispName);
-                uci.set(self.config, pid, "source_type", sAct);
-              }
-              ensureSourceRef(sname, pid);
-            }
-          });
-
-          const existingBalancers = uci.sections(self.config, "balancer") || [];
-          (uci.sections(self.config, "urltest") || []).forEach((ut, idx) => {
-            const parentSec = ut.section;
-            const utName = ut.name || ut[".name"] || `urltest_${idx + 1}`;
-            if (!parentSec) return;
-            const safeSuffix = String(utName).replace(/[^A-Za-z0-9_]/g, "_");
-            const balId = `bal_${parentSec}_${safeSuffix || idx + 1}`;
-            const found = existingBalancers.find(
-              (b) =>
-                b[".name"] === balId ||
-                (b.name === utName &&
-                  toArr(
-                    uci.get(self.config, parentSec, "balancer_refs"),
-                  ).includes(b[".name"])),
-            );
-            if (!found && !uci.get(self.config, balId)) {
-              uci.add(self.config, "balancer", balId);
-              uci.set(self.config, balId, "enabled", "1");
-              uci.set(self.config, balId, "balancer_type", "urltest");
-              uci.set(self.config, balId, "name", utName);
-              [
-                "testing_url",
-                "check_interval",
-                "tolerance",
-                "idle_timeout",
-                "interrupt_exist_connections",
-                "pin_dashboard",
-                "filter_mode",
-                "include_countries",
-                "exclude_countries",
-                "include_regex",
-                "exclude_regex",
-                "include_outbounds",
-                "exclude_outbounds",
-              ].forEach((k) => {
-                if (ut[k] !== undefined && ut[k] !== null && ut[k] !== "") {
-                  uci.set(self.config, balId, k, ut[k]);
+              if (
+                sAct === "awg" ||
+                (sec.awg_private_key && sec.awg_server_address)
+              ) {
+                const wid = `src_awg_${safeSname}`;
+                if (!uci.get(self.config, wid)) {
+                  uci.add(self.config, "outbound_source", wid);
+                  uci.set(self.config, wid, "enabled", "1");
+                  uci.set(self.config, wid, "name", `${dispName} (AWG)`);
+                  uci.set(self.config, wid, "source_type", "awg");
+                  [
+                    "awg_private_key",
+                    "awg_server_address",
+                    "awg_server_port",
+                    "awg_peer_public_key",
+                    "awg_preshared_key",
+                    "awg_local_address",
+                  ].forEach((k) => {
+                    if (sec[k]) uci.set(self.config, wid, k, sec[k]);
+                  });
                 }
-              });
-              const arr = toArr(
-                uci.get(self.config, parentSec, "balancer_refs"),
-              );
-              if (!arr.includes(balId)) {
-                uci.set(self.config, parentSec, "balancer_refs", [
-                  ...arr,
-                  balId,
-                ]);
+                ensureSourceRef(sname, wid);
               }
-            }
-          });
 
-          // Ensure every section's balancers have source_refs populated if empty
-          (uci.sections(self.config, "section") || []).forEach((sec) => {
-            const sname = sec[".name"];
-            if (!sname) return;
-            const secSrcRefs = toArr(
-              uci.get(self.config, sname, "outbound_source_refs"),
-            );
-            if (!secSrcRefs.length) return;
-            toArr(uci.get(self.config, sname, "balancer_refs")).forEach(
-              (bRef) => {
-                const curBRefs = toArr(
-                  uci.get(self.config, bRef, "source_refs"),
+              if (singleProtoActions.includes(sAct)) {
+                const pid = `src_${sAct}_${safeSname}`;
+                if (!uci.get(self.config, pid)) {
+                  uci.add(self.config, "outbound_source", pid);
+                  uci.set(self.config, pid, "enabled", "1");
+                  uci.set(self.config, pid, "name", dispName);
+                  uci.set(self.config, pid, "source_type", sAct);
+                }
+                ensureSourceRef(sname, pid);
+              }
+            });
+
+            const existingBalancers =
+              uci.sections(self.config, "balancer") || [];
+            (uci.sections(self.config, "urltest") || []).forEach(
+              (ut, idx) => {
+                const parentSec = ut.section;
+                const utName =
+                  ut.name || ut[".name"] || `urltest_${idx + 1}`;
+                if (!parentSec) return;
+                const safeSuffix = String(utName).replace(
+                  /[^A-Za-z0-9_]/g,
+                  "_",
                 );
-                if (curBRefs.length === 0 && uci.get(self.config, bRef)) {
-                  uci.set(self.config, bRef, "source_refs", secSrcRefs);
+                const balId = `bal_${parentSec}_${safeSuffix || idx + 1}`;
+                const found = existingBalancers.find(
+                  (b) =>
+                    b[".name"] === balId ||
+                    (b.name === utName &&
+                      toArr(
+                        uci.get(self.config, parentSec, "balancer_refs"),
+                      ).includes(b[".name"])),
+                );
+                if (!found && !uci.get(self.config, balId)) {
+                  uci.add(self.config, "balancer", balId);
+                  uci.set(self.config, balId, "enabled", "1");
+                  uci.set(self.config, balId, "balancer_type", "urltest");
+                  uci.set(self.config, balId, "name", utName);
+                  [
+                    "testing_url",
+                    "check_interval",
+                    "tolerance",
+                    "idle_timeout",
+                    "interrupt_exist_connections",
+                    "pin_dashboard",
+                    "filter_mode",
+                    "include_countries",
+                    "exclude_countries",
+                    "include_regex",
+                    "exclude_regex",
+                    "include_outbounds",
+                    "exclude_outbounds",
+                  ].forEach((k) => {
+                    if (
+                      ut[k] !== undefined &&
+                      ut[k] !== null &&
+                      ut[k] !== ""
+                    ) {
+                      uci.set(self.config, balId, k, ut[k]);
+                    }
+                  });
+                  const arr = toArr(
+                    uci.get(self.config, parentSec, "balancer_refs"),
+                  );
+                  if (!arr.includes(balId)) {
+                    uci.set(self.config, parentSec, "balancer_refs", [
+                      ...arr,
+                      balId,
+                    ]);
+                  }
                 }
               },
             );
+          }
+
+          // Prune dangling references across sections, balancers, outbound_groups, and conditions
+          const validSources = new Set(
+            (uci.sections(self.config, "outbound_source") || [])
+              .map((s) => s[".name"])
+              .filter(Boolean),
+          );
+          const validGroups = new Set(
+            (uci.sections(self.config, "outbound_group") || [])
+              .map((g) => g[".name"])
+              .filter(Boolean),
+          );
+          const validBalancers = new Set(
+            (uci.sections(self.config, "balancer") || [])
+              .map((b) => b[".name"])
+              .filter(Boolean),
+          );
+          const validConditions = new Set(
+            (uci.sections(self.config, "condition") || [])
+              .map((c) => c[".name"])
+              .filter(Boolean),
+          );
+
+          const pruneList = (sid, key, validSet, allowPrefix, allowDirect) => {
+            const cur = toArr(uci.get(self.config, sid, key));
+            if (!cur.length) return;
+            const next = cur.filter((tok) => {
+              if (allowDirect && tok === "direct") return true;
+              const bare = allowPrefix ? stripPrefix(tok) : tok;
+              return validSet.has(bare);
+            });
+            if (next.length !== cur.length) {
+              if (next.length) uci.set(self.config, sid, key, next);
+              else uci.unset(self.config, sid, key);
+            }
+          };
+
+          (uci.sections(self.config, "section") || []).forEach((sec) => {
+            const sid = sec[".name"];
+            if (!sid) return;
+            pruneList(sid, "condition_refs", validConditions, true, false);
+            pruneList(sid, "outbound_source_refs", validSources, false, false);
+            pruneList(sid, "outbound_group_refs", validGroups, false, false);
+            pruneList(sid, "balancer_refs", validBalancers, false, false);
+          });
+          (uci.sections(self.config, "balancer") || []).forEach((bal) => {
+            const bid = bal[".name"];
+            if (!bid) return;
+            pruneList(bid, "source_refs", validSources, false, false);
+            pruneList(bid, "group_refs", validGroups, false, false);
+            pruneList(bid, "outbound_group_levels", validGroups, false, true);
+          });
+          (uci.sections(self.config, "outbound_group") || []).forEach((grp) => {
+            const gid = grp[".name"];
+            if (!gid) return;
+            pruneList(gid, "source_refs", validSources, false, false);
+            pruneList(gid, "outbound_sources", validSources, false, false);
+          });
+          (uci.sections(self.config, "condition") || []).forEach((cond) => {
+            const cid = cond[".name"];
+            if (!cid) return;
+            pruneList(cid, "members", validConditions, true, false);
           });
         } catch (_e) {}
         return form.Map.prototype.load.call(self);

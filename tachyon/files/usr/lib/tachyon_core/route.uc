@@ -167,7 +167,7 @@ function config(settings, runtime) {
         result.default_interface = output_network_interface;
     if (disable_quic_mode(option(settings, "disable_quic", "0")) != "off") {
         push(result.rules, { action: "reject", network: "udp", port: [ 443 ] });
-        push(result.rules, { action: "reject", protocol: "quic" });
+        push(result.rules, { action: "reject", protocol: "quic", port: [ 443 ] });
     }
     if (bool_option(settings, "wifi_calling_direct", false)) {
         push(result.rules, {

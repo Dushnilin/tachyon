@@ -1451,20 +1451,35 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
             for (let t in filter_tags_by_group_spec(urltest_candidate_tags, gspec, state))
                 push(union_cand, t);
         }
+        if (length(union_cand) > 0) {
+            urltest_candidate_tags = unique_string_array(union_cand);
+            for (let t in urltest_candidate_tags) {
+                if (state && state.hiddenOutboundTags)
+                    delete state.hiddenOutboundTags[t];
+                push(union_selector, t);
+            }
+        }
         if (length(union_selector) > 0)
             selector_tags = unique_string_array(union_selector);
-        if (length(union_cand) > 0)
-            urltest_candidate_tags = unique_string_array(union_cand);
     }
 
     let sec_pool_spec = connections.section_pool_filter_spec(section);
     if (sec_pool_spec != null) {
         let narrowed_sel = filter_tags_by_group_spec(selector_tags, sec_pool_spec, state);
         let narrowed_cand = filter_tags_by_group_spec(urltest_candidate_tags, sec_pool_spec, state);
+        if (length(narrowed_cand) > 0 || sec_pool_spec.mode == "exclude") {
+            urltest_candidate_tags = narrowed_cand;
+            if (sec_pool_spec.mode == "include" || sec_pool_spec.mode == "mixed") {
+                for (let t in narrowed_cand) {
+                    if (state && state.hiddenOutboundTags)
+                        delete state.hiddenOutboundTags[t];
+                    push(narrowed_sel, t);
+                }
+                narrowed_sel = unique_string_array(narrowed_sel);
+            }
+        }
         if (length(narrowed_sel) > 0 || sec_pool_spec.mode == "exclude")
             selector_tags = narrowed_sel;
-        if (length(narrowed_cand) > 0 || sec_pool_spec.mode == "exclude")
-            urltest_candidate_tags = narrowed_cand;
     }
 
     let selector_tag = outbound_tag(section_name);

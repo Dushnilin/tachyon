@@ -151,6 +151,20 @@ for on_mode in 1 tunneled all; do
   route_fixture "$on_mode" "$WORK_DIR/out_quic_$on_mode"
   grep -Fq '"protocol": "quic"' "$WORK_DIR/out_quic_$on_mode" ||
     fail "disable_quic=$on_mode must push the route-level QUIC reject"
+  ucode -e '
+    import * as fs from "fs";
+    let cfg = json(fs.readfile(ARGV[0]));
+    let quic_rule = null;
+    for (let r in cfg.route.rules) {
+      if (r.protocol == "quic") {
+        quic_rule = r;
+        break;
+      }
+    }
+    if (!quic_rule || type(quic_rule.port) != "array" || length(quic_rule.port) != 1 || quic_rule.port[0] != 443)
+      exit(1);
+  ' -- "$WORK_DIR/out_quic_$on_mode" ||
+    fail "disable_quic=$on_mode protocol=quic rule must be scoped to port 443 so P2P QUIC on other ports is not killed"
 done
 
 route_fixture off "$WORK_DIR/out_quic_off"

@@ -90,10 +90,16 @@ function summarizeCondition(sectionId) {
     return (invert ? "NOT (" + expr + ")" : expr).slice(0, 120);
   }
   if (ctype === "composite" || members.length > 0) {
+    const memberNames = members.map(
+      (id) =>
+        uci.get(UCI_PACKAGE, id, "name") ||
+        uci.get(UCI_PACKAGE, id, "label") ||
+        id,
+    );
     if (op === "NOT") {
-      return `NOT (${members.join(" AND ")})`;
+      return `NOT (${memberNames.join(" AND ")})`;
     }
-    const joined = members.join(` ${op} `);
+    const joined = memberNames.join(` ${op} `);
     return invert ? `NOT (${joined})` : joined || _("Empty composite rule");
   }
 
@@ -315,7 +321,7 @@ function createTwoModeTracerWidget() {
 
           const condItems = condList.map((c) =>
             E("li", { style: "margin: 3px 0;" }, [
-              E("strong", {}, `${c.name || c.id} (${c.id})`),
+              E("strong", {}, `${c.name || c.id}`),
               c.hits && c.hits.length
                 ? ` — ${_("Matched")}: ${c.hits.join(", ")}`
                 : "",
@@ -403,6 +409,60 @@ function createTwoModeTracerWidget() {
 }
 
 function configureConditionsSection(sectionRef) {
+  const origRemove = sectionRef.remove;
+  sectionRef.remove = function (sectionId) {
+    const stripPrefix = (tok) => String(tok || "").replace(/^[+!-]/, "");
+    const inlineConditionKeys = [
+      "community_lists",
+      "rule_set",
+      "rule_set_with_subnets",
+      "domain_ip_lists",
+      "domain",
+      "domain_suffix",
+      "domain_keyword",
+      "domain_regex",
+      "ip_cidr",
+      "source_ip_cidr",
+      "source_macs",
+      "ports",
+      "protocol",
+      "geoip_country",
+      "domain_suffix_text",
+      "domain_text",
+      "ip_cidr_text",
+      "source_ip_cidr_text",
+      "source_macs_text",
+      "ports_text",
+    ];
+    (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
+      const sid = s[".name"];
+      if (!sid) return;
+      const cur = asArray(s.condition_refs);
+      const hasRef = cur.some((tok) => stripPrefix(tok) === sectionId);
+      if (hasRef) {
+        const next = cur.filter((tok) => stripPrefix(tok) !== sectionId);
+        if (next.length) uci.set(UCI_PACKAGE, sid, "condition_refs", next);
+        else uci.unset(UCI_PACKAGE, sid, "condition_refs");
+      }
+      if (hasRef || sectionId === `cond_${sid}`) {
+        inlineConditionKeys.forEach((k) => uci.unset(UCI_PACKAGE, sid, k));
+      }
+    });
+    (uci.sections(UCI_PACKAGE, "condition") || []).forEach((c) => {
+      const cid = c[".name"];
+      if (!cid || cid === sectionId) return;
+      const cur = asArray(c.members);
+      if (cur.some((tok) => stripPrefix(tok) === sectionId)) {
+        const next = cur.filter((tok) => stripPrefix(tok) !== sectionId);
+        if (next.length) uci.set(UCI_PACKAGE, cid, "members", next);
+        else uci.unset(UCI_PACKAGE, cid, "members");
+      }
+    });
+    return origRemove
+      ? origRemove.apply(this, arguments)
+      : form.GridSection.prototype.remove.apply(this, arguments);
+  };
+
   const origRender = sectionRef.render;
   sectionRef.render = function () {
     return origRender.apply(this, arguments).then((node) => {
@@ -440,6 +500,7 @@ function createConditionsContent(section) {
     _("Condition Name"),
     _("Human-readable name of this reusable condition."),
   );
+  o.modalonly = true;
   o.rmempty = false;
   o.placeholder = _("e.g. Banned Domains or My Devices");
 
@@ -469,7 +530,7 @@ function createConditionsContent(section) {
     (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
       const sid = s[".name"];
       if (sid && asArray(s.condition_refs).includes(sectionId)) {
-        used.push(s.name || sid);
+        used.push(s.label || s.name || sid);
       }
     });
     return used.length ? used.join(", ") : "—";
@@ -492,7 +553,7 @@ function createConditionsContent(section) {
     (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
       const sid = s[".name"];
       if (!sid) return;
-      this.value(sid, `${s.name || sid} (${sid})`);
+      this.value(sid, s.label || s.name || sid);
       if (asArray(s.condition_refs).includes(sectionId)) {
         used.push(sid);
       }
@@ -576,7 +637,7 @@ function createConditionsContent(section) {
     (uci.sections(UCI_PACKAGE, "condition") || []).forEach((c) => {
       const cid = c[".name"];
       if (cid && cid !== sectionId) {
-        this.value(cid, `${c.name || cid} (${cid})`);
+        this.value(cid, c.name || c.label || cid);
       }
     });
     return form.DynamicList.prototype.load.apply(this, arguments);

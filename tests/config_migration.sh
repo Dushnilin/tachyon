@@ -746,4 +746,50 @@ grep -Fq 'tachyon.settings.dns_server=77.88.8.8' "$WORK_DIR/no_dns.state" ||
 grep -Fq 'tachyon.settings.bootstrap_dns_server=77.88.8.8' "$WORK_DIR/no_dns.state" ||
   fail "ensure_dns_server_defaults must inject 77.88.8.8 for missing bootstrap_dns_server"
 
+# Regression: awg section with selector_amnezia_configs must not get an empty duplicate src_awg_*
+# alongside src_amnezia_*, and existing src_sub_* options must not be overwritten by legacy subscription_url.
+cat >"$WORK_DIR/awg_and_sub.state" <<'EOF_UCI'
+tachyon.settings=settings
+tachyon.settings.dns_server=77.88.8.8
+tachyon.settings.bootstrap_dns_server=77.88.8.8
+tachyon.proton=section
+tachyon.proton.enabled=1
+tachyon.proton.connection_type=proxy
+tachyon.proton.action=awg
+tachyon.proton.selector_amnezia_configs={"name":"NL_1","config":"[Interface]"}
+tachyon.gemini=section
+tachyon.gemini.enabled=1
+tachyon.gemini.connection_type=proxy
+tachyon.gemini.action=connection
+tachyon.gemini.outbound_source_refs=src_sub_gemini_1
+tachyon.src_sub_gemini_1=outbound_source
+tachyon.src_sub_gemini_1.enabled=1
+tachyon.src_sub_gemini_1.source_type=subscription
+tachyon.src_sub_gemini_1.url=https://sub.example/v1
+tachyon.src_sub_gemini_1.include_urltest_groups=0
+tachyon.src_sub_gemini_1.hide_urltest_group_outbounds=0
+tachyon.legacy_sub=subscription_url
+tachyon.legacy_sub.section=gemini
+tachyon.legacy_sub.url=https://sub.example/v1
+tachyon.legacy_sub.include_urltest_groups=1
+tachyon.legacy_sub.hide_urltest_group_outbounds=1
+EOF_UCI
+: >"$WORK_DIR/awg_and_sub.log"
+TACHYON_UCI_STATE_FILE="$WORK_DIR/awg_and_sub.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/awg_and_sub.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
+TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+
+grep -Fq 'tachyon.src_amnezia_proton=outbound_source' "$WORK_DIR/awg_and_sub.state" ||
+  fail "migrate must create src_amnezia_proton for selector_amnezia_configs"
+if grep -Fq 'tachyon.src_awg_proton=outbound_source' "$WORK_DIR/awg_and_sub.state"; then
+  fail "migrate must not create duplicate empty src_awg_proton when selector_amnezia_configs exists without awg_private_key"
+fi
+grep -Fq 'tachyon.src_sub_gemini_1.include_urltest_groups=0' "$WORK_DIR/awg_and_sub.state" ||
+  fail "migrate must not overwrite existing src_sub_gemini_1.include_urltest_groups=0 from legacy subscription_url"
+
 printf 'installer config migration checks passed\n'

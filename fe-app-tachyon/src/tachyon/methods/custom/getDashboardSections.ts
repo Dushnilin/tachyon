@@ -216,6 +216,19 @@ function getListValues(value?: string[] | string) {
     .filter(Boolean);
 }
 
+function getRawListValues(value?: string[] | string) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => `${item}`.trim()).filter(Boolean);
+  }
+
+  const trimmed = `${value}`.trim();
+  return trimmed ? [trimmed] : [];
+}
+
 function childSections(
   configSections: Tachyon.ConfigSection[],
   type: ChildType,
@@ -265,9 +278,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     }
 
     const next: Tachyon.ConfigSection = { ...section };
-    const subscriptionUrlItems = [
-      ...ownedChildSections(next, subscriptionUrls),
-    ];
+    const legacySubscriptionUrlItems = ownedChildSections(
+      next,
+      subscriptionUrls,
+    );
+    const subscriptionUrlItems: Tachyon.ConfigSection[] = [];
     const interfaceItems = [...ownedChildSections(next, interfaces)];
     const legacyUrltestItems = ownedChildSections(next, urltests);
     const legacyPriorityGroupItems = ownedChildSections(next, priorityGroups);
@@ -309,9 +324,21 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       });
     });
 
-    const seenSubUrls = new Set(
-      subscriptionUrlItems.map((it) => (it.url || '').trim()).filter(Boolean),
-    );
+    const serviceSourceTypes = new Set([
+      'zapret',
+      'zapret2',
+      'byedpi',
+      'desync',
+      'wdtt',
+      'olcrtc',
+    ]);
+    const allSourcesAreService =
+      effectiveSources.length > 0 &&
+      effectiveSources.every((src) =>
+        serviceSourceTypes.has((src.source_type || '').toLowerCase()),
+      );
+
+    const seenSubUrls = new Set<string>();
     const extraProxyLinks: string[] = [];
     const extraAmneziaConfigs: string[] = [];
     const extraInterfaces: string[] = [];
@@ -337,7 +364,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
             .forEach((l) => extraProxyLinks.push(l));
         }
       } else if (stype === 'amnezia_config' || stype === 'awg') {
-        const awgCfgs = getListValues(
+        const awgCfgs = getRawListValues(
           src.amnezia_configs || src.selector_amnezia_configs,
         );
         if (awgCfgs.length) {
@@ -372,12 +399,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         ).trim();
         if (iname) extraInterfaces.push(iname);
       } else if (stype === 'outbound_json' || stype === 'json') {
-        getListValues(src.outbound_jsons || src.outbound_json).forEach((j) =>
+        getRawListValues(src.outbound_jsons || src.outbound_json).forEach((j) =>
           extraOutboundJsons.push(j),
         );
       } else if (
         [
-          'desync',
           'warp',
           'anytls',
           'naive',
@@ -388,11 +414,23 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           'openconnect',
           'shadowtls',
           'trusttunnel',
+          'tewfai',
           'openvpn',
-        ].includes(stype)
+        ].includes(stype) ||
+        (stype === 'desync' && !allSourcesAreService)
       ) {
-        const sname = (src.name || src.label || src['.name'] || stype).trim();
-        extraProxyLinks.push(`${stype}://${src['.name']}#${sname}`);
+        if (next.action !== stype) {
+          const sname = (src.name || src.label || src['.name'] || stype).trim();
+          extraOutboundJsons.push(JSON.stringify({ type: stype, tag: sname }));
+        }
+      }
+    });
+
+    legacySubscriptionUrlItems.forEach((it) => {
+      const u = (it.url || '').trim();
+      if (u && !seenSubUrls.has(u)) {
+        seenSubUrls.add(u);
+        subscriptionUrlItems.push(it);
       }
     });
 
@@ -404,13 +442,13 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     }
     if (extraAmneziaConfigs.length) {
       next.selector_amnezia_configs = uniqueCodes([
-        ...getListValues(next.selector_amnezia_configs),
+        ...getRawListValues(next.selector_amnezia_configs),
         ...extraAmneziaConfigs,
       ]);
     }
     if (extraOutboundJsons.length) {
       next.outbound_jsons = uniqueCodes([
-        ...getListValues(next.outbound_jsons),
+        ...getRawListValues(next.outbound_jsons),
         ...extraOutboundJsons,
       ]);
     }
@@ -474,34 +512,23 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       }
     });
 
-    const serviceSourceTypes = new Set([
-      'zapret',
-      'zapret2',
-      'byedpi',
-      'desync',
-      'wdtt',
-      'olcrtc',
-    ]);
     const hasNonServiceItems =
       subscriptionUrlItems.length > 0 ||
       extraProxyLinks.length > 0 ||
       getListValues(next.selector_proxy_links).length > 0 ||
       extraAmneziaConfigs.length > 0 ||
-      getListValues(next.selector_amnezia_configs).length > 0 ||
+      getRawListValues(next.selector_amnezia_configs).length > 0 ||
       interfaceItems.length > 0 ||
       extraInterfaces.length > 0 ||
       extraOutboundJsons.length > 0 ||
-      getListValues(next.outbound_jsons).length > 0 ||
+      getRawListValues(next.outbound_jsons).length > 0 ||
       urltestItems.length > 0 ||
       priorityGroupItems.length > 0;
 
     if (
       (next.action === 'connection' || next.action === 'proxy') &&
       !hasNonServiceItems &&
-      effectiveSources.length > 0 &&
-      effectiveSources.every((src) =>
-        serviceSourceTypes.has((src.source_type || '').toLowerCase()),
-      )
+      allSourcesAreService
     ) {
       next.action = (
         effectiveSources[0].source_type || 'zapret2'
@@ -686,8 +713,8 @@ function getConnectionInterfaces(section: Tachyon.ConfigSection) {
 }
 
 function getJsonOutbounds(section: Tachyon.ConfigSection) {
-  const values = getListValues(section.outbound_jsons);
-  return values.length ? values : getListValues(section.outbound_json);
+  const values = getRawListValues(section.outbound_jsons);
+  return values.length ? values : getRawListValues(section.outbound_json);
 }
 
 const SINGLE_ENDPOINT_ACTIONS = new Set([
@@ -705,7 +732,6 @@ const SINGLE_ENDPOINT_ACTIONS = new Set([
   'tewfai',
   'trusttunnel',
   'shadowtls',
-  'desync',
 ]);
 
 const ACTION_DISPLAY_NAMES: Record<string, string> = {
@@ -853,12 +879,37 @@ function getSectionProxyConfigType(section: Tachyon.ConfigSection) {
 }
 
 function getJsonOutboundDisplayName(section: Tachyon.ConfigSection) {
+  const raw = getJsonOutbounds(section)[0] || section.outbound_json || '{}';
   try {
-    const parsedOutbound = JSON.parse(section.outbound_json || '{}');
+    const parsedOutbound = JSON.parse(raw);
     return parsedOutbound?.tag ? decodeURIComponent(parsedOutbound.tag) : '';
   } catch (_error) {
     return '';
   }
+}
+
+function buildJsonOutboundByCode(section: Tachyon.ConfigSection) {
+  const result = new Map<string, { name: string; type: string }>();
+  getJsonOutbounds(section).forEach((raw, index) => {
+    try {
+      const parsed = JSON.parse(raw) as { tag?: string; type?: string };
+      const rawTag =
+        typeof parsed?.tag === 'string' && parsed.tag.trim()
+          ? parsed.tag.trim()
+          : getOutboundTagBySection(`${section['.name']}-json-${index + 1}`);
+      const rawType =
+        typeof parsed?.type === 'string' && parsed.type.trim()
+          ? parsed.type.trim().toLowerCase()
+          : 'outbound';
+      result.set(rawTag, {
+        name: rawTag,
+        type: ACTION_DISPLAY_NAMES[rawType] || parsed.type || 'Outbound',
+      });
+    } catch (_error) {
+      // Ignore malformed JSON here; validation reports it.
+    }
+  });
+  return result;
 }
 
 function buildManualLinkByCode(section: Tachyon.ConfigSection) {
@@ -1435,10 +1486,26 @@ function dashboardOutboundType(
   runtimeType: string | undefined,
   outboundMetadata?: Tachyon.GetOutboundMetadata,
 ) {
-  const proto = outboundMetadata?.protocols?.[code];
+  const proto = (
+    outboundMetadata?.protocols?.[code] ||
+    runtimeType ||
+    ''
+  ).toLowerCase();
   if (proto === 'amneziawg') return 'AmneziaWG';
   if (proto === 'fptn') return 'FPTN';
   if (proto === 'shadowtls') return 'ShadowTLS';
+  if (proto === 'desync') return 'Native Desync';
+  if (proto === 'trusttunnel') return 'TrustTunnel';
+  if (proto === 'anytls') return 'AnyTLS';
+  if (proto === 'naive' || proto === 'naiveproxy') return 'NaiveProxy';
+  if (proto === 'mieru') return 'Mieru';
+  if (proto === 'snell') return 'Snell';
+  if (proto === 'sudoku') return 'Sudoku';
+  if (proto === 'masque') return 'MASQUE';
+  if (proto === 'openconnect') return 'OpenConnect';
+  if (proto === 'tewfai') return 'TewFai';
+  if (proto === 'warp') return 'WARP';
+  if (proto === 'openvpn' || proto === 'openvpn-client') return 'OpenVPN';
   return runtimeType || '';
 }
 
@@ -1878,10 +1945,16 @@ function buildProxyGroupOutbounds(
     entry: proxyByCode.get(config.code),
   }));
   const manualLinkByCode = buildManualLinkByCode(section);
+  const jsonOutboundByCode = buildJsonOutboundByCode(section);
   for (const m of memberSections) {
     for (const [k, v] of buildManualLinkByCode(m)) {
       if (!manualLinkByCode.has(k)) {
         manualLinkByCode.set(k, v);
+      }
+    }
+    for (const [k, v] of buildJsonOutboundByCode(m)) {
+      if (!jsonOutboundByCode.has(k)) {
+        jsonOutboundByCode.set(k, v);
       }
     }
   }
@@ -1914,6 +1987,7 @@ function buildProxyGroupOutbounds(
             : [
                 ...Array.from(cachedProxyLinks.keys()),
                 ...Array.from(manualLinkByCode.keys()),
+                ...Array.from(jsonOutboundByCode.keys()),
               ]),
         ]).filter((code) => !hiddenOutboundTags[code])
       : uniqueCodes([
@@ -1921,6 +1995,7 @@ function buildProxyGroupOutbounds(
           ...priorityCodes,
           ...Array.from(cachedProxyLinks.keys()),
           ...Array.from(manualLinkByCode.keys()),
+          ...Array.from(jsonOutboundByCode.keys()),
           ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
           ...priorityEntries.flatMap(({ entry }) => entry?.value.all || []),
         ]).filter((code) => !hiddenOutboundTags[code]);
@@ -1943,23 +2018,29 @@ function buildProxyGroupOutbounds(
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
     const priorityConfig = priorityConfigByCode.get(code);
+    const jsonOutbound = jsonOutboundByCode.get(code);
     const link =
       findManualLink(manualLinkByCode, code) ||
       cachedProxyLinks.get(code) ||
       '';
 
-    if (!item && !urlTestConfig && !priorityConfig && !link) {
+    if (!item && !urlTestConfig && !priorityConfig && !link && !jsonOutbound) {
       return [];
     }
 
     const effectiveItem =
       item ||
-      (link
+      (link || jsonOutbound
         ? ({
             code,
             value: {
-              name: outboundMetadata?.names?.[code] || code,
-              type: outboundMetadata?.transports?.[code] || 'VLESS',
+              name:
+                outboundMetadata?.names?.[code] || jsonOutbound?.name || code,
+              type:
+                jsonOutbound?.type ||
+                outboundMetadata?.protocols?.[code] ||
+                outboundMetadata?.transports?.[code] ||
+                'VLESS',
               udp: true,
               history: [],
               all: [],
@@ -2462,21 +2543,25 @@ export async function getDashboardSections(
             } else if (serviceType === 'desync') {
               // desync runs inside tachyon-core — there is no separate process.
               // Reflect readiness from the tachyon-core/sing-box engine status.
-              const result = await TachyonShellMethods.getSingBoxStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                const isRunning = Boolean(s.running);
-                return {
-                  serviceType: 'desync' as const,
-                  configured: true,
-                  ready: isRunning,
-                  conflict: false,
-                  runningProcesses: isRunning ? 1 : 0,
-                  expectedProcesses: 1,
-                  restartCount: 0,
-                  unstable: false,
-                  statusMessage: isRunning ? _('Running') : _('Stopped'),
-                };
+              try {
+                const result = await TachyonShellMethods.getSingBoxStatus();
+                if (result?.success && result.data) {
+                  const s = result.data;
+                  const isRunning = Boolean(s.running);
+                  return {
+                    serviceType: 'desync' as const,
+                    configured: true,
+                    ready: isRunning,
+                    conflict: false,
+                    runningProcesses: isRunning ? 1 : 0,
+                    expectedProcesses: 1,
+                    restartCount: 0,
+                    unstable: false,
+                    statusMessage: isRunning ? _('Running') : _('Stopped'),
+                  };
+                }
+              } catch (_err) {
+                // Fall through to default running status below
               }
               // Fallback when the RPC call fails: report as running to avoid
               // confusing "N/A" — desync has no standalone process to check.
@@ -2799,12 +2884,69 @@ export async function getDashboardSections(
       }),
   );
 
+  const groupsWithErrors: Tachyon.OutboundGroup[] = data.map((group) =>
+    sectionErrors[group.sectionName]
+      ? { ...group, configError: sectionErrors[group.sectionName] }
+      : group,
+  );
+
+  // Merge single-outbound Desync sections that share the same Desync outbound
+  // (or default Desync-<N> family) into a single combined Dashboard card.
+  const mergedGroups: Tachyon.OutboundGroup[] = [];
+  const desyncGroupByKey = new Map<string, Tachyon.OutboundGroup>();
+
+  for (const group of groupsWithErrors) {
+    const firstOb = group.outbounds?.[0];
+    const isSingleDesync =
+      !group.configError &&
+      group.outbounds?.length === 1 &&
+      (firstOb?.type || '').toUpperCase() === 'DESYNC' &&
+      !firstOb?.urlTestInfo &&
+      !firstOb?.priorityInfo;
+
+    if (!isSingleDesync) {
+      mergedGroups.push(group);
+      continue;
+    }
+
+    const rawCode = (firstOb.code || 'Desync').trim();
+    const canonicalKey = rawCode
+      .replace(/^Desync-\d+$/i, 'Desync')
+      .toLowerCase();
+    const existing = desyncGroupByKey.get(canonicalKey);
+
+    if (!existing) {
+      const cloned: Tachyon.OutboundGroup = {
+        ...group,
+        outbounds: [
+          {
+            ...firstOb,
+            displayName: firstOb.displayName.replace(/^Desync-\d+$/i, 'Desync'),
+          },
+        ],
+      };
+      desyncGroupByKey.set(canonicalKey, cloned);
+      mergedGroups.push(cloned);
+    } else {
+      const parts = existing.displayName
+        .split(' • ')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (group.displayName && !parts.includes(group.displayName)) {
+        existing.displayName = [...parts, group.displayName].join(' • ');
+      }
+      if (
+        (existing.outbounds[0].latency == null ||
+          existing.outbounds[0].latency <= 0) &&
+        firstOb.latency > 0
+      ) {
+        existing.outbounds[0].latency = firstOb.latency;
+      }
+    }
+  }
+
   return {
     success: true,
-    data: data.map((group) =>
-      sectionErrors[group.sectionName]
-        ? { ...group, configError: sectionErrors[group.sectionName] }
-        : group,
-    ),
+    data: mergedGroups,
   };
 }

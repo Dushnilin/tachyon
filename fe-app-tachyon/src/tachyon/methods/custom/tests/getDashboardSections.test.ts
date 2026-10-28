@@ -1716,4 +1716,85 @@ describe('getDashboardSections', () => {
       'max',
     );
   });
+
+  it('renders a modular desync outbound_source section as a Native Desync service section instead of VLESS', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'youtube',
+        '.type': 'section',
+        enabled: '1',
+        connection_type: 'proxy',
+        action: 'connection',
+        outbound_source_refs: ['src_desync_youtube'],
+      },
+      {
+        '.name': 'src_desync_youtube',
+        '.type': 'outbound_source',
+        source_type: 'desync',
+        enabled: '1',
+        desync_profile: 'disorder',
+      },
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+    const [section] = result.data;
+    expect(section.action).toBe('desync');
+    expect(section.serviceStatus).toMatchObject({
+      serviceType: 'desync',
+      configured: true,
+      ready: true,
+      runningProcesses: 1,
+      expectedProcesses: 1,
+    });
+    expect(section.outbounds).toHaveLength(1);
+    expect(section.outbounds[0].type).toBe('DESYNC');
+  });
+
+  it('preserves JSON payloads with spaces in modular outbound_json sources on the Dashboard', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'tt_sec',
+        '.type': 'section',
+        enabled: '1',
+        connection_type: 'proxy',
+        action: 'connection',
+        outbound_source_refs: ['src_json_tt_sec'],
+      },
+      {
+        '.name': 'src_json_tt_sec',
+        '.type': 'outbound_source',
+        source_type: 'outbound_json',
+        enabled: '1',
+        outbound_jsons: [
+          '{\n  "type": "trusttunnel",\n  "tag": "tt-node-1",\n  "server": "198.51.100.10",\n  "server_port": 443\n}',
+        ],
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'tt_sec-out': proxy('Selector', {
+            name: 'tt_sec-out',
+            now: 'tt-node-1',
+            all: ['tt-node-1'],
+          }),
+          'tt-node-1': proxy('TrustTunnel', {
+            name: 'tt-node-1',
+            history: [{ time: '2026-10-28T00:00:00Z', delay: 42 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+    const [section] = result.data;
+    expect(section.outbounds).toHaveLength(1);
+    expect(section.outbounds[0].code).toBe('tt-node-1');
+    expect(section.outbounds[0].selected).toBe(true);
+  });
 });

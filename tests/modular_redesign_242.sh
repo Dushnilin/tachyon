@@ -403,4 +403,144 @@ assert(JSON.stringify(secTwo.outbound_source_refs) === JSON.stringify(['src_sub_
 assert(JSON.stringify(secOne.balancer_refs) === JSON.stringify(['bal_sec_one_Fastest']), 'sec_one should reference bal_sec_one_Fastest');
 NODE
 
+# 4. Test that deleting modular entities after migration does NOT resurrect them on subsequent reloads
+# and automatically prunes dangling references from sections/balancers/groups
+node - "$WORK_DIR/migrated_modular.json" "$WORK_DIR/deleted_modular_input.json" <<'NODE'
+const fs = require('fs');
+const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const cfg = out.config;
+cfg.outbound_source = [];
+cfg.condition = cfg.condition.filter(c => c['.name'] !== 'cond_sec_one');
+cfg.balancer = [];
+fs.writeFileSync(process.argv[3], JSON.stringify(cfg, null, 2));
+NODE
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/deleted_modular_input.json" >"$WORK_DIR/deleted_modular_output.json"
+
+node - "$WORK_DIR/deleted_modular_output.json" <<'NODE'
+const fs = require('fs');
+const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const cfg = out.config;
+
+function assert(cond, msg) {
+  if (!cond) {
+    console.error(msg);
+    process.exit(1);
+  }
+}
+
+assert(!cfg.outbound_source || cfg.outbound_source.length === 0, 'Deleted outbound_source must NOT be resurrected from legacy subscription_url');
+assert(Array.isArray(cfg.condition) && cfg.condition.length === 1 && cfg.condition[0]['.name'] === 'cond_sec_two', 'Deleted condition cond_sec_one must NOT be resurrected');
+assert(!cfg.balancer || cfg.balancer.length === 0, 'Deleted balancer must NOT be resurrected from legacy urltest');
+
+const secOne = cfg.section.find(s => s['.name'] === 'sec_one');
+const secTwo = cfg.section.find(s => s['.name'] === 'sec_two');
+assert(!secOne.outbound_source_refs || secOne.outbound_source_refs.length === 0, 'Dangling outbound_source_refs on sec_one must be pruned');
+assert(!secTwo.outbound_source_refs || secTwo.outbound_source_refs.length === 0, 'Dangling outbound_source_refs on sec_two must be pruned');
+assert(!secOne.condition_refs || secOne.condition_refs.length === 0, 'Dangling condition_refs on sec_one must be pruned');
+assert(!secOne.balancer_refs || secOne.balancer_refs.length === 0, 'Dangling balancer_refs on sec_one must be pruned');
+NODE
+
+# 5. Test #252 (unified_delay profile), #253 (ANSI expand_check_error_reason, single leaf strip, dangling outbound dependency), and #255 (subscription_tls_fingerprint)
+RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
+
+EXPANDED_REASON="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$RUNTIME_UC" expand-check-reason-fixture $'\x1b[31mFATAL\x1b[0m[0000] initialize outbound[52]: parse encryption: invalid encryption key length: 9')"
+case "$EXPANDED_REASON" in
+  initialize\ outbound\[52\]:*Причина:*) ;;
+  *)
+    printf 'Unexpected expand_check_error_reason output: %s\n' "$EXPANDED_REASON" >&2
+    exit 1
+    ;;
+esac
+
+cat >"$WORK_DIR/leaf_strip_cfg.json" <<'JSON'
+{
+  "outbounds": [
+    { "type": "vless", "tag": "good-node-1", "server": "1.1.1.1", "server_port": 443 },
+    { "type": "vless", "tag": "bad-node-2", "server": "2.2.2.2", "server_port": 443, "encryption": "mlkem768x25519plus.bad" },
+    { "type": "selector", "tag": "Proxy-out", "outbounds": [ "good-node-1", "bad-node-2" ], "default": "bad-node-2" },
+    { "type": "selector", "tag": "Instagram-out", "outbounds": [ "Proxy-out" ], "default": "Proxy-out" }
+  ]
+}
+JSON
+
+STRIP_RES="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$RUNTIME_UC" strip-leaf-outbound-fixture "$WORK_DIR/leaf_strip_cfg.json" "FATAL[0000] initialize outbound[1]: parse encryption: invalid encryption key length: 9")"
+[ "$STRIP_RES" = "stripped" ] || { printf 'Expected strip-leaf-outbound-fixture to return stripped, got %s\n' "$STRIP_RES" >&2; exit 1; }
+
+node - "$WORK_DIR/leaf_strip_cfg.json" <<'NODE'
+const fs = require('fs');
+const cfg = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const proxySel = cfg.outbounds.find(o => o.tag === 'Proxy-out');
+if (!proxySel || JSON.stringify(proxySel.outbounds) !== JSON.stringify(['good-node-1']) || proxySel.default !== 'good-node-1') {
+  console.error('Expected Proxy-out to retain good-node-1 after stripping bad-node-2, got:', proxySel);
+  process.exit(1);
+}
+NODE
+
+cat >"$WORK_DIR/dangling_dep_cfg.json" <<'JSON'
+{
+  "outbounds": [
+    { "type": "direct", "tag": "direct-out" },
+    { "type": "selector", "tag": "Instagram-CDN-via-Proxy-out", "outbounds": [ "Proxy-out" ], "default": "Proxy-out" }
+  ]
+}
+JSON
+
+DANGLING_RES="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$RUNTIME_UC" dangling-dependency-fixture "$WORK_DIR/dangling_dep_cfg.json")"
+case "$DANGLING_RES" in
+  *dependency\[Proxy-out\]\ not\ found\ for\ outbound\[Instagram-CDN-via-Proxy-out\]*) ;;
+  *)
+    printf 'Expected dangling dependency on Proxy-out to be reported, got: %s\n' "$DANGLING_RES" >&2
+    exit 1
+    ;;
+esac
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let core_profile = require("tachyon_core.core_profile");
+let connections = require("config.connections");
+
+if (!core_profile.supports_unified_delay("1.14.3-extended-2.7.3", "extended")) {
+    warn("Expected extended profile to support unified_delay\n");
+    exit(1);
+}
+if (core_profile.supports_unified_delay("0.1.7", "tachyon-core") || core_profile.supports_unified_delay("1.14.3", "")) {
+    warn("Expected tachyon-core and upstream profiles to NOT claim unified_delay\n");
+    exit(1);
+}
+
+connections.set_item_sections_from_data({
+    outbound_source: [
+        {
+            ".name": "src_sub_fp",
+            ".type": "outbound_source",
+            enabled: "1",
+            source_type: "subscription",
+            url: "https://provider.example/sub",
+            tls_fingerprint: "chrome"
+        }
+    ],
+    section: [
+        {
+            ".name": "Proxy",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            outbound_source_refs: [ "src_sub_fp" ]
+        }
+    ]
+});
+
+let fp = connections.subscription_tls_fingerprint({
+    ".name": "Proxy",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "src_sub_fp" ]
+}, "https://provider.example/sub");
+if (fp != "chrome") {
+    warn("Expected subscription_tls_fingerprint to return 'chrome', got: " + fp + "\n");
+    exit(1);
+}
+UCODE
+
 printf 'modular redesign #242 checks passed\n'

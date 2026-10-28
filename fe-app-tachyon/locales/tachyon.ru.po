@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-27 23:11+0300\n"
-"PO-Revision-Date: 2026-10-27 23:11+0300\n"
+"POT-Creation-Date: 2026-10-28 18:39+0300\n"
+"PO-Revision-Date: 2026-10-28 18:39+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -698,9 +698,6 @@ msgstr "Авто-SNI"
 msgid "Auto-Select"
 msgstr "Автовыбор"
 
-msgid "Auto-Select / Balancers (URLTest / Priority)"
-msgstr "Автовыбор серверов (URLTest / Балансировщики)"
-
 msgid "Auto-Tune & Benchmark DNS"
 msgstr "Подобрать и протестировать DNS"
 
@@ -831,16 +828,19 @@ msgid "Background:"
 msgstr "Фон:"
 
 msgid "Balancer"
-msgstr "Автовыбор"
+msgstr "Балансировщик"
 
 msgid "Balancer Name"
-msgstr "Название политики автовыбора"
+msgstr "Название балансировщика"
 
 msgid "Balancer Type"
-msgstr "Тип автовыбора"
+msgstr "Тип балансировщика"
 
 msgid "Balancers"
-msgstr "Автовыбор"
+msgstr "Балансировщики"
+
+msgid "Balancers (URLTest / Priority)"
+msgstr "Балансировщики (URLTest / Priority)"
 
 msgid "Base (core only)"
 msgstr "Base (только ядро)"
@@ -2067,7 +2067,7 @@ msgid "Display name of this connection or server source in the global pool."
 msgstr "Отображаемое имя этого подключения или источника серверов в общем пуле."
 
 msgid "Display name of this reusable selection policy (e.g. Fastest or Priority Failover)."
-msgstr "Отображаемое название переиспользуемой политики автовыбора (например, Fastest или Priority Failover)."
+msgstr "Отображаемое название переиспользуемого балансировщика (например, Fastest или Priority Failover)."
 
 msgid "Display name, e.g. Unlim RU Servers"
 msgstr "Отображаемое имя, например Unlim RU Серверы"
@@ -2985,7 +2985,7 @@ msgid "Filter the servers that will be displayed on the dashboard."
 msgstr "Фильтровать серверы, отображаемые на дашборде."
 
 msgid "Filter which servers from the pool participate in this URLTest balancer."
-msgstr "Фильтрация серверов пула, которые участвуют в этом автовыборе URLTest."
+msgstr "Фильтрация серверов пула, которые участвуют в этом балансировщике URLTest."
 
 msgid "Filter:"
 msgstr "Фильтр:"
@@ -3096,7 +3096,7 @@ msgid "Fully Routed IPs / Hostnames (Direct NFT)"
 msgstr "Полностью маршрутизируемые IP / хосты (напрямую в NFT)"
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Обход) before feeding servers into Balancers."
-msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции (например, исключить |WL| или Обход) перед передачей в автовыбор."
+msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции (например, исключить |WL| или Обход) перед передачей в балансировщики."
 
 msgid "Fuzzing is not supported here because Tachyon needs deterministic runtime validation."
 msgstr "Fuzzing не поддерживается здесь, потому что Tachyon нуждается в детерминированной проверке во время выполнения."
@@ -3381,7 +3381,7 @@ msgid "How member conditions are combined."
 msgstr "Способ логического объединения дочерних условий."
 
 msgid "How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails."
-msgstr "Как работают несколько подключений или групп автовыбора в секции: в режиме приоритета 2-е подключение включается только при отказе 1-го."
+msgstr "Как работают несколько подключений или балансировщиков в секции: в режиме приоритета 2-е подключение включается только при отказе 1-го."
 
 msgid "How multiple selected Conditions work together inside this section."
 msgstr "Как несколько выбранных условий объединяются внутри этой секции (И / ИЛИ / НЕ)."
@@ -3412,9 +3412,6 @@ msgstr "Понятное название этого переиспользуе�
 
 msgid "ICMP"
 msgstr "ICMP"
-
-msgid "ID"
-msgstr "ID"
 
 msgid "INACTIVE"
 msgstr "НЕАКТИВЕН"
@@ -4124,6 +4121,9 @@ msgstr "Оставить (по умолчанию)"
 msgid "Keep Priority before latency-sorted servers"
 msgstr "Сохранять приоритет перед серверами, отсортированными по задержке"
 
+msgid "Keep Provider Default"
+msgstr ""
+
 msgid "Keep URLTest before latency-sorted servers"
 msgstr "Сохранять URLTest перед серверами, отсортированными по задержке"
 
@@ -4132,6 +4132,9 @@ msgstr "Оставлять только узлы подписки, имя кот
 
 msgid "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage."
 msgstr "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash."
+
+msgid "KeepAlive / Warm Latency (Established Session, sing-box-extended)"
+msgstr ""
 
 msgid "Keepalive Timeout"
 msgstr "Таймаут Keepalive"
@@ -4180,6 +4183,9 @@ msgstr "Ноутбук / ПК (💻)"
 
 msgid "Latency"
 msgstr "Задержка"
+
+msgid "Latency Measurement Mode"
+msgstr ""
 
 msgid "Latency Tolerance (ms)"
 msgstr "Допуск задержки (мс)"
@@ -5174,6 +5180,9 @@ msgstr "Выходной сетевой интерфейс"
 msgid "Override the default OpenWrt device headers for this subscription"
 msgstr "Переопределить стандартные заголовки устройства OpenWrt для этой подписки"
 
+msgid "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes. Useful when Firefox + REALITY + ML-KEM (support-x25519mlkem768) fails verification on sing-box-extended; switching to Chrome resolves it."
+msgstr ""
+
 msgid "Overview"
 msgstr "Обзор"
 
@@ -6042,7 +6051,7 @@ msgid "Reusable Outbound Server Groups"
 msgstr "Переиспользуемые группы серверов"
 
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
-msgstr "Переиспользуемые политики автовыбора URLTest и Priority, отделённые от конкретных пулов серверов."
+msgstr "Переиспользуемые балансировщики URLTest и Priority, отделённые от конкретных пулов серверов."
 
 msgid "Reusable atomic traffic conditions and composite boolean rules (AND / OR / NOT) with 2-mode Rule Tracer."
 msgstr "Переиспользуемые атомарные условия и составные булевы правила (И / ИЛИ / НЕ) с двухрежимным трассировщиком."
@@ -6506,8 +6515,8 @@ msgstr "Выберите путь к файлу конфигурации tachyon
 msgid "Select pre-filtered Outbound Groups (e.g. Unlim_RU) from the Connections Pool tab."
 msgstr "Выберите отфильтрованные группы серверов (напр. Unlim_RU) из вкладки «Пул подключений»."
 
-msgid "Select reusable URLTest or Priority auto-selection groups from the Auto-Select tab."
-msgstr "Выберите готовые группы автовыбора (URLTest / Приоритет) из вкладки «Автовыбор»."
+msgid "Select reusable URLTest or Priority balancers from the Balancers tab."
+msgstr "Выберите готовые балансировщики (URLTest / Приоритет) из вкладки «Балансировщики»."
 
 msgid "Select sections to merge"
 msgstr "Выберите секции для объединения"
@@ -6552,7 +6561,7 @@ msgid "Select which components are permitted to update automatically"
 msgstr "Выберите, какие компоненты разрешено обновлять автоматически"
 
 msgid "Select which routing Sections use this Balancer (automatically updates the section's Attached Balancers)."
-msgstr "Выберите, в каких секциях используется этот автовыбор (автоматически привяжет его к выбранным секциям)."
+msgstr "Выберите, в каких секциях используется этот балансировщик (автоматически привяжет его к выбранным секциям)."
 
 msgid "Select which routing Sections use this Condition (automatically updates the section's Attached Conditions)."
 msgstr "Выберите, в каких секциях используется это условие (автоматически привяжет его к выбранным секциям)."
@@ -7019,6 +7028,12 @@ msgstr "Сторонний сервис активен параллельно с
 msgid "Standard"
 msgstr "Стандартный"
 
+msgid "Standard (Handshake + HTTP HEAD)"
+msgstr ""
+
+msgid "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (supported on sing-box-extended via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT)."
+msgstr ""
+
 msgid "Start"
 msgstr "Старт"
 
@@ -7288,6 +7303,9 @@ msgstr "Ключ TLS Auth/Crypt"
 
 msgid "TLS Crypt Key"
 msgstr "Ключ TLS Crypt"
+
+msgid "TLS Fingerprint Override (uTLS)"
+msgstr ""
 
 msgid "TLS Handshake SNI"
 msgstr "SNI для TLS-рукопожатия"
@@ -8909,6 +8927,15 @@ msgstr "🧠 Генерация..."
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
 
+msgid "ID"
+msgstr "ID"
+
+msgid "Auto-Select / Balancers (URLTest / Priority)"
+msgstr "Балансировщики (URLTest / Priority)"
+
+msgid "Select reusable URLTest or Priority auto-selection groups from the Auto-Select tab."
+msgstr "Выберите готовые балансировщики (URLTest / Приоритет) из вкладки «Балансировщики»."
+
 msgid "Global rule"
 msgstr "Глобальное правило"
 
@@ -8925,7 +8952,7 @@ msgid "Amnezia / AmneziaWG Config (vpn:// or WireGuard .conf)"
 msgstr "Конфиг Amnezia / AmneziaWG (vpn:// или WireGuard .conf)"
 
 msgid "Attach reusable URLTest or Priority selection policies from the Balancers tab. They automatically operate on this section's narrowed server pool."
-msgstr "Подключите переиспользуемые политики автовыбора URLTest или Priority из вкладки «Автовыбор». Они автоматически работают с суженным пулом серверов этой секции."
+msgstr "Подключите переиспользуемые балансировщики URLTest или Priority из вкладки «Балансировщики». Они автоматически работают с суженным пулом серверов этой секции."
 
 msgid "Attach reusable atomic or composite conditions from the Conditions tab."
 msgstr "Подключите переиспользуемые атомарные или составные условия из вкладки «Условия»."
@@ -10407,4 +10434,4 @@ msgid "Alphabetical (A–Z)"
 msgstr "По алфавиту (А–Я)"
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Bypass) before feeding servers into Balancers."
-msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции перед передачей в автовыбор (URLTest / Priority)."
+msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции перед передачей в балансировщики (URLTest / Priority)."

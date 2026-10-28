@@ -803,75 +803,95 @@ export function renderServiceCheckModal() {
               progressBarContainer.style.display = 'block';
               progressBarInner.style.width = '0%';
 
-              for (let i = 0; i < rowMap.length; i++) {
-                if (
-                  isModalClosed ||
-                  myRunId !== activeCheckRunId ||
-                  !container.isConnected
-                ) {
-                  break;
-                }
-                const itemObj = rowMap[i];
-                const { target, tr } = itemObj;
+              const rowsToCheck = rowMap.filter((r) => {
+                const matchSearch =
+                  !searchQuery ||
+                  r.target.domain.toLowerCase().includes(searchQuery) ||
+                  r.target.section.toLowerCase().includes(searchQuery);
+                const matchTab =
+                  activeFilter === 'ALL' || r.target.section === activeFilter;
+                return matchSearch && matchTab;
+              });
+              const targetRows = rowsToCheck.length > 0 ? rowsToCheck : rowMap;
+              let completedCount = 0;
+              let nextIdx = 0;
+              const concurrency = Math.min(4, targetRows.length || 1);
 
-                progressBarInner.style.width = `${Math.round(((i + 1) / rowMap.length) * 100)}%`;
-
-                const badgeCell = tr.childNodes[6] as HTMLElement;
-                badgeCell.innerHTML = '';
-                badgeCell.appendChild(renderStatusBadge('', true));
-
-                try {
-                  const cRes = (await callBaseMethod(
-                    Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK,
-                    ['check-domain', JSON.stringify(target)],
-                  )) as {
-                    success?: boolean;
-                    data?: string | ServiceCheckResult[];
-                  };
-
-                  if (cRes && cRes.success) {
-                    const cResults: ServiceCheckResult[] =
-                      typeof cRes.data === 'string'
-                        ? JSON.parse(cRes.data)
-                        : cRes.data || [];
-
-                    if (cResults && cResults.length > 0) {
-                      const cItem: ServiceCheckResult = cResults[0];
-                      itemObj.result = cItem;
-
-                      const cBadge = renderStatusBadge(cItem.status_class);
-
-                      (tr.childNodes[2] as HTMLElement).innerHTML = '';
-                      (tr.childNodes[2] as HTMLElement).appendChild(
-                        document.createTextNode(cItem.ip || '?'),
-                      );
-                      (tr.childNodes[2] as HTMLElement).appendChild(E('br'));
-                      (tr.childNodes[2] as HTMLElement).appendChild(
-                        E(
-                          'small',
-                          { style: 'opacity: 0.6;' },
-                          `${cItem.dns_ms}ms`,
-                        ),
-                      );
-
-                      (tr.childNodes[3] as HTMLElement).textContent =
-                        cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : '-';
-                      (tr.childNodes[4] as HTMLElement).textContent =
-                        cItem.tls_ms > 0 ? `${cItem.tls_ms}` : '-';
-                      (tr.childNodes[5] as HTMLElement).textContent =
-                        cItem.http_ms > 0 ? `${cItem.http_ms}` : '-';
-
-                      badgeCell.innerHTML = '';
-                      badgeCell.appendChild(cBadge);
-                    }
+              const runWorker = async () => {
+                while (nextIdx < targetRows.length) {
+                  if (
+                    isModalClosed ||
+                    myRunId !== activeCheckRunId ||
+                    !container.isConnected
+                  ) {
+                    break;
                   }
-                } catch (_e) {
-                  badgeCell.innerHTML = '';
-                  badgeCell.appendChild(renderStatusBadge('Failed'));
-                }
+                  const itemObj = targetRows[nextIdx++];
+                  const { target, tr } = itemObj;
 
-                updateSummaryStats();
-              }
+                  const badgeCell = tr.childNodes[6] as HTMLElement;
+                  badgeCell.innerHTML = '';
+                  badgeCell.appendChild(renderStatusBadge('', true));
+
+                  try {
+                    const cRes = (await callBaseMethod(
+                      Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK,
+                      ['check-domain', JSON.stringify(target)],
+                    )) as {
+                      success?: boolean;
+                      data?: string | ServiceCheckResult[];
+                    };
+
+                    if (cRes && cRes.success) {
+                      const cResults: ServiceCheckResult[] =
+                        typeof cRes.data === 'string'
+                          ? JSON.parse(cRes.data)
+                          : cRes.data || [];
+
+                      if (cResults && cResults.length > 0) {
+                        const cItem: ServiceCheckResult = cResults[0];
+                        itemObj.result = cItem;
+
+                        const cBadge = renderStatusBadge(cItem.status_class);
+
+                        (tr.childNodes[2] as HTMLElement).innerHTML = '';
+                        (tr.childNodes[2] as HTMLElement).appendChild(
+                          document.createTextNode(cItem.ip || '?'),
+                        );
+                        (tr.childNodes[2] as HTMLElement).appendChild(E('br'));
+                        (tr.childNodes[2] as HTMLElement).appendChild(
+                          E(
+                            'small',
+                            { style: 'opacity: 0.6;' },
+                            `${cItem.dns_ms}ms`,
+                          ),
+                        );
+
+                        (tr.childNodes[3] as HTMLElement).textContent =
+                          cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : '-';
+                        (tr.childNodes[4] as HTMLElement).textContent =
+                          cItem.tls_ms > 0 ? `${cItem.tls_ms}` : '-';
+                        (tr.childNodes[5] as HTMLElement).textContent =
+                          cItem.http_ms > 0 ? `${cItem.http_ms}` : '-';
+
+                        badgeCell.innerHTML = '';
+                        badgeCell.appendChild(cBadge);
+                      }
+                    }
+                  } catch (_e) {
+                    badgeCell.innerHTML = '';
+                    badgeCell.appendChild(renderStatusBadge('Failed'));
+                  }
+
+                  completedCount++;
+                  progressBarInner.style.width = `${Math.round((completedCount / targetRows.length) * 100)}%`;
+                  updateSummaryStats();
+                }
+              };
+
+              await Promise.all(
+                Array.from({ length: concurrency }, () => runWorker()),
+              );
 
               checkAllBtn.textContent = _('Check again');
               checkAllBtn.disabled = false;

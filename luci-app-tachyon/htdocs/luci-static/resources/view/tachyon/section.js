@@ -14116,7 +14116,7 @@ function createSectionContent(section) {
       const stype = String(src.source_type || "subscription").toUpperCase();
       return {
         value: src[".name"],
-        label: `${src.name || src[".name"]} [${stype}] (${src[".name"]})`,
+        label: `${src.name || src.label || src[".name"]} [${stype}]`,
       };
     }),
   );
@@ -14126,9 +14126,9 @@ function createSectionContent(section) {
     "settings",
     form.DynamicList,
     "balancer_refs",
-    _("Auto-Select / Balancers (URLTest / Priority)"),
+    _("Balancers (URLTest / Priority)"),
     _(
-      "Select reusable URLTest or Priority auto-selection groups from the Auto-Select tab.",
+      "Select reusable URLTest or Priority balancers from the Balancers tab.",
     ),
   );
   o.modalonly = true;
@@ -14138,7 +14138,7 @@ function createSectionContent(section) {
   configureLiveDynamicListChoices(o, () =>
     (uci.sections(UCI_PACKAGE, "balancer") || []).map((bal) => ({
       value: bal[".name"],
-      label: `${bal.name || bal[".name"]} [${(bal.balancer_type || "urltest").toUpperCase()}]`,
+      label: `${bal.name || bal.label || bal[".name"]} [${(bal.balancer_type || "urltest").toUpperCase()}]`,
     })),
   );
 
@@ -14158,7 +14158,7 @@ function createSectionContent(section) {
   configureLiveDynamicListChoices(o, () =>
     (uci.sections(UCI_PACKAGE, "outbound_group") || []).map((grp) => ({
       value: grp[".name"],
-      label: `${grp.name || grp[".name"]} (${grp[".name"]})`,
+      label: `${grp.name || grp.label || grp[".name"]}`,
     })),
   );
 
@@ -15154,7 +15154,7 @@ function createSectionContent(section) {
   configureLiveDynamicListChoices(o, () =>
     (uci.sections(UCI_PACKAGE, "condition") || []).map((c) => ({
       value: c[".name"],
-      label: `${c.name || c[".name"]} (${c[".name"]})`,
+      label: `${c.name || c.label || c[".name"]}`,
     })),
   );
 
@@ -17696,6 +17696,9 @@ function cascadeDeleteSection(section_id) {
         uci.set(UCI_PACKAGE, sName, "dns_detour_section", "");
         uci.set(UCI_PACKAGE, sName, "dns_detour_enabled", "0");
       }
+      if (sec.download_via_proxy_section === section_id) {
+        uci.unset(UCI_PACKAGE, sName, "download_via_proxy_section");
+      }
       if (
         Array.isArray(sec.group_members) &&
         sec.group_members.includes(section_id)
@@ -17723,7 +17726,39 @@ function cascadeDeleteSection(section_id) {
     });
   } catch (_e) {}
 
-  // 4. Clean references in servers
+  // 4. Clean references in outbound_sources and schedules (keep pools intact)
+  try {
+    (uci.sections(UCI_PACKAGE, "outbound_source") || []).forEach((src) => {
+      const srcId = src[".name"];
+      if (!srcId) return;
+      if (src.download_via_proxy_section === section_id) {
+        uci.unset(UCI_PACKAGE, srcId, "download_via_proxy_section");
+      }
+      if (src.outbound_detour_section === section_id) {
+        uci.unset(UCI_PACKAGE, srcId, "outbound_detour_section");
+        uci.set(UCI_PACKAGE, srcId, "outbound_detour_enabled", "0");
+      }
+    });
+    (uci.sections(UCI_PACKAGE, "schedule") || []).forEach((sched) => {
+      const schedId = sched[".name"];
+      if (!schedId) return;
+      ["sections", "target_sections"].forEach((key) => {
+        const raw = sched[key];
+        const arr = Array.isArray(raw)
+          ? raw
+          : typeof raw === "string" && raw.trim()
+            ? raw.trim().split(/\s+/)
+            : [];
+        if (arr.includes(section_id)) {
+          const next = arr.filter((id) => id !== section_id);
+          if (next.length) uci.set(UCI_PACKAGE, schedId, key, next);
+          else uci.unset(UCI_PACKAGE, schedId, key);
+        }
+      });
+    });
+  } catch (_e) {}
+
+  // 5. Clean references in servers
   try {
     (uci.sections(UCI_PACKAGE, "server") || []).forEach((srv) => {
       const srvName = srv[".name"];

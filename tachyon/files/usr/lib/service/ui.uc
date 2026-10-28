@@ -846,8 +846,10 @@ function service_enabled() {
     return file_executable("/etc/rc.d/S99" + SERVICE_NAME);
 }
 
+// sing-box (tachyon-core) autostart is owned by the main Tachyon service
+// since the engine rename; the legacy /etc/rc.d/S99sing-box symlink is gone.
 function sing_box_enabled() {
-    return file_executable("/etc/rc.d/S99sing-box");
+    return file_executable("/etc/rc.d/S99tachyon");
 }
 
 function sing_box_running() {

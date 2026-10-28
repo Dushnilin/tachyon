@@ -1527,8 +1527,9 @@ const VALIDATOR_QUARANTINED_FILE = getenv("TACHYON_VALIDATOR_QUARANTINED_FILE") 
 
 function expand_check_error_reason(reason) {
     let raw = trim(as_string(reason || ""));
-    let clean = replace(raw, /^.*tachyon-section-error:[A-Za-z0-9_]+:/, "");
-    clean = replace(clean, /^(?:FATAL|ERROR)\[[0-9]+\][ \t]*/, "");
+    let clean = replace(raw, /\x1b\[[0-9;]*[A-Za-z]/g, "");
+    clean = replace(clean, /^.*tachyon-section-error:[A-Za-z0-9_]+:/, "");
+    clean = replace(clean, /^(FATAL|ERROR)\[[0-9]+\][ \t]*/, "");
     if (index(clean, "Причина:") >= 0)
         return clean;
 
@@ -1689,6 +1690,177 @@ function section_from_check_reason(reason, config_path) {
     }
     if (direct_owner != "" && section_exists(direct_owner))
         return direct_owner;
+    return "";
+}
+
+function shift_owners_outbounds(config_path, removed_idx) {
+    let sidecar_path = as_string(config_path) + ".owners.json";
+    let owners = common.read_json_file(sidecar_path);
+    if (type(owners) != "object" || type(owners.outbounds) != "object")
+        return;
+    let updated = {};
+    for (let k, v in owners.outbounds) {
+        let idx = int(k);
+        if (idx == null || idx == removed_idx)
+            continue;
+        if (idx > removed_idx)
+            updated[as_string(idx - 1)] = v;
+        else
+            updated[as_string(idx)] = v;
+    }
+    owners.outbounds = updated;
+    common.write_json_file(sidecar_path, owners);
+}
+
+// Strips a single incompatible leaf outbound (e.g. one subscription VLESS node
+// with unsupported encryption padding) when every group/selector referencing it
+// still has at least one other working member. If the node is the only member
+// of its section selector, returns false so the section quarantine loop handles
+// the section as a whole.
+function strip_broken_leaf_outbound(temp_config, reason) {
+    reason = as_string(reason || "");
+    let m = match(reason, /outbounds?\[(\d+)\]/);
+    if (!m)
+        return false;
+    let out_idx = int(m[1]);
+    let cfg_text = as_string(fs.readfile(temp_config) || "");
+    let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+    if (type(cfg) != "object" || type(cfg.outbounds) != "array" || out_idx < 0 || out_idx >= length(cfg.outbounds))
+        return false;
+    let bad_out = cfg.outbounds[out_idx];
+    if (type(bad_out) != "object")
+        return false;
+    let btype = as_string(bad_out.type || "");
+    let btag = as_string(bad_out.tag || "");
+    if (btag == "" || btype == "selector" || btype == "urltest" || btype == "direct" || btype == "block" || btype == "dns")
+        return false;
+    if (match(btag, /-out$/) != null)
+        return false;
+
+    let referenced_in_group = false;
+    for (let i = 0; i < length(cfg.outbounds); i++) {
+        if (i == out_idx)
+            continue;
+        let outb = cfg.outbounds[i];
+        if (type(outb) != "object")
+            continue;
+        if (as_string(outb.detour || "") == btag)
+            return false;
+        if (type(outb.outbounds) == "array") {
+            let has_btag = false;
+            let remaining = 0;
+            for (let member in outb.outbounds) {
+                if (as_string(member) == btag)
+                    has_btag = true;
+                else
+                    remaining++;
+            }
+            if (has_btag) {
+                referenced_in_group = true;
+                if (remaining == 0)
+                    return false;
+            }
+        }
+    }
+    if (!referenced_in_group)
+        return false;
+
+    if (type(cfg.route) == "object" && type(cfg.route.rules) == "array") {
+        for (let r in cfg.route.rules) {
+            if (type(r) == "object" && as_string(r.outbound || "") == btag)
+                return false;
+        }
+    }
+    if (type(cfg.dns) == "object" && type(cfg.dns.servers) == "array") {
+        for (let ds in cfg.dns.servers) {
+            if (type(ds) == "object" && as_string(ds.detour || "") == btag)
+                return false;
+        }
+    }
+
+    log_message("Skipping incompatible outbound '" + btag + "' at index " + out_idx + " (" + reason + "); keeping remaining working nodes", "warn");
+    splice(cfg.outbounds, out_idx, 1);
+    for (let outb in cfg.outbounds) {
+        if (type(outb) == "object" && type(outb.outbounds) == "array") {
+            let filtered = [];
+            for (let tag in outb.outbounds) {
+                if (as_string(tag) != btag)
+                    push(filtered, tag);
+            }
+            outb.outbounds = filtered;
+            if (as_string(outb.default || "") == btag) {
+                if (length(filtered) > 0)
+                    outb.default = filtered[0];
+                else
+                    delete outb.default;
+            }
+        }
+    }
+    write_file(temp_config, sprintf("%J", cfg));
+    shift_owners_outbounds(temp_config, out_idx);
+    return true;
+}
+
+// Inspects generated outbounds for references (detour or selector/urltest
+// members) to tags that do not exist in outbounds/endpoints (for example, when
+// a target section like Proxy was quarantined and another section references
+// Proxy-out). Prunes missing tags from multi-member groups, and returns a
+// synthetic check failure reason when an outbound's sole target or detour is
+// missing so the quarantine loop isolates the dependent section cleanly before
+// starting the service.
+function repair_or_find_dangling_outbound_dependency(temp_config) {
+    let cfg_text = as_string(fs.readfile(temp_config) || "");
+    let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+    if (type(cfg) != "object" || type(cfg.outbounds) != "array")
+        return "";
+
+    let known_tags = {};
+    for (let outb in cfg.outbounds) {
+        if (type(outb) == "object" && as_string(outb.tag || "") != "")
+            known_tags[as_string(outb.tag)] = true;
+    }
+    if (type(cfg.endpoints) == "array") {
+        for (let ep in cfg.endpoints) {
+            if (type(ep) == "object" && as_string(ep.tag || "") != "")
+                known_tags[as_string(ep.tag)] = true;
+        }
+    }
+
+    let modified = false;
+    for (let i = 0; i < length(cfg.outbounds); i++) {
+        let outb = cfg.outbounds[i];
+        if (type(outb) != "object")
+            continue;
+        let otag = as_string(outb.tag || ("#" + i));
+        let detour = as_string(outb.detour || "");
+        if (detour != "" && !known_tags[detour]) {
+            return "outbounds[" + i + "]: dependency[" + detour + "] not found for outbound[" + otag + "]: missing outbound tag: " + detour;
+        }
+        if (type(outb.outbounds) == "array" && length(outb.outbounds) > 0) {
+            let valid_members = [];
+            let missing_members = [];
+            for (let m in outb.outbounds) {
+                let mtag = as_string(m);
+                if (known_tags[mtag])
+                    push(valid_members, mtag);
+                else if (mtag != "")
+                    push(missing_members, mtag);
+            }
+            if (length(missing_members) > 0) {
+                if (length(valid_members) == 0) {
+                    let first_missing = missing_members[0];
+                    return "outbounds[" + i + "]: dependency[" + first_missing + "] not found for outbound[" + otag + "]: missing outbound tag: " + first_missing;
+                }
+                outb.outbounds = valid_members;
+                if (outb.default != null && !known_tags[as_string(outb.default)])
+                    outb.default = valid_members[0];
+                modified = true;
+            }
+        }
+    }
+
+    if (modified)
+        write_file(temp_config, sprintf("%J", cfg));
     return "";
 }
 
@@ -1899,6 +2071,17 @@ function check_with_field_repairs(temp_config, runtime_log) {
                         }
                     }
                     write_file(temp_config, sprintf("%J", cfg));
+                    shift_owners_outbounds(temp_config, out_idx);
+                    stripped = true;
+                }
+            }
+            else if (match(check_result.reason, /experimental\.unified_delay/)) {
+                log_message("Installed core rejected experimental.unified_delay; stripping unified_delay and retrying", "warn");
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object" && type(cfg.experimental) == "object" && cfg.experimental.unified_delay != null) {
+                    delete cfg.experimental.unified_delay;
+                    write_file(temp_config, sprintf("%J", cfg));
                     stripped = true;
                 }
             }
@@ -1928,6 +2111,9 @@ function check_with_field_repairs(temp_config, runtime_log) {
             else if (match(check_result.reason, /json: unknown field/)) {
                 if (repair_outbound_field(temp_config, check_result.reason))
                     stripped = true;
+            }
+            else if (strip_broken_leaf_outbound(temp_config, check_result.reason)) {
+                stripped = true;
             }
         }
         if (!stripped)
@@ -2018,6 +2204,18 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         }
         log_file_lines(runtime_log, "warn", core_name + " config generator: ");
 
+        let dangling_reason = repair_or_find_dangling_outbound_dependency(temp_config);
+        if (dangling_reason != "") {
+            let dep_section = section_from_check_reason(dangling_reason, temp_config);
+            if (dep_section != "" && quarantined[dep_section] == null && section_exists(dep_section)) {
+                let expanded_dep_reason = expand_check_error_reason(dangling_reason);
+                log_message("Section '" + dep_section + "' depends on a quarantined or missing outbound (" + expanded_dep_reason +
+                    "). Not loading it; the rest of the configuration starts normally", "warn");
+                quarantined[dep_section] = expanded_dep_reason;
+                continue;
+            }
+        }
+
         check_result = check_with_field_repairs(temp_config, runtime_log);
         if (check_result.status == 0)
             break;
@@ -2107,6 +2305,15 @@ else if (mode == "generator-failure-reason-fixture")
     print(generator_failure_reason(ARGV[1] || "", int(ARGV[2] || "1")), "\n");
 else if (mode == "outbound-repair-fixture") {
     printf("%s\n", repair_outbound_field(ARGV[1] || "", ARGV[2] || "") ? "repaired" : "not-repaired");
+}
+else if (mode == "strip-leaf-outbound-fixture") {
+    printf("%s\n", strip_broken_leaf_outbound(ARGV[1] || "", ARGV[2] || "") ? "stripped" : "not-stripped");
+}
+else if (mode == "dangling-dependency-fixture") {
+    printf("%s\n", repair_or_find_dangling_outbound_dependency(ARGV[1] || ""));
+}
+else if (mode == "expand-check-reason-fixture") {
+    printf("%s\n", expand_check_error_reason(ARGV[1] || ""));
 }
 else if (mode == "patch-dns-config")
     patch_dns_config(ARGV[1] || "");

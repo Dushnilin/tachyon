@@ -454,7 +454,12 @@ function summarizeOutboundSource(sectionId) {
 
 function summarizeOutboundGroup(groupObj) {
   const parts = [];
-  const srcs = asArray(groupObj.source_refs);
+  const srcs = asArray(groupObj.source_refs).map(
+    (id) =>
+      uci.get(UCI_PACKAGE, id, "name") ||
+      uci.get(UCI_PACKAGE, id, "label") ||
+      id,
+  );
   parts.push(
     srcs.length
       ? `${_("Sources")}: ${srcs.join(", ")}`
@@ -700,7 +705,7 @@ function showOutboundGroupModal(existingId, onSaved) {
     )
     .map((s) => ({
       value: s[".name"],
-      label: `${s.name || s[".name"]}${s.node_prefix ? " [" + s.node_prefix + "]" : ""}`,
+      label: `${s.name || s.label || s[".name"]}${s.node_prefix ? " [" + s.node_prefix + "]" : ""}`,
     }));
   const srcChips = createChipToggleBar(srcRefsInput, sourceChoices, false);
   const incCountryChips = createChipToggleBar(
@@ -784,7 +789,7 @@ function showOutboundGroupModal(existingId, onSaved) {
   ui.showModal(
     isNew
       ? _("Add Outbound Server Group")
-      : `${_("Edit Outbound Group")}: ${existingId}`,
+      : `${_("Edit Outbound Group")}: ${grp.name || grp.label || existingId}`,
     [
       E("div", { class: "cbi-section-node" }, [
         fieldRow(
@@ -1076,7 +1081,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
         E("tr", { class: "tr cbi-section-table-descr" }, [
           E(
             "td",
-            { class: "td", colspan: "4" },
+            { class: "td", colspan: "3" },
             E(
               "em",
               {},
@@ -1094,8 +1099,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
       const gid = g[".name"];
       groupsTableBody.appendChild(
         E("tr", { class: "tr" }, [
-          E("td", { class: "td" }, E("strong", {}, g.name || gid)),
-          E("td", { class: "td" }, E("code", {}, gid)),
+          E("td", { class: "td" }, E("strong", {}, g.name || g.label || gid)),
           E("td", { class: "td" }, summarizeOutboundGroup(g)),
           E(
             "td",
@@ -1124,6 +1128,31 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                   type: "button",
                   class: "btn cbi-button cbi-button-remove",
                   click: () => {
+                    updateSectionsRef("outbound_group_refs", gid, []);
+                    updateBalancersRef("group_refs", gid, []);
+                    (uci.sections(UCI_PACKAGE, "balancer") || []).forEach(
+                      (b) => {
+                        const bid = b[".name"];
+                        if (!bid) return;
+                        const cur = asArray(b.outbound_group_levels);
+                        if (cur.includes(gid)) {
+                          const next = cur.filter((id) => id !== gid);
+                          if (next.length)
+                            uci.set(
+                              UCI_PACKAGE,
+                              bid,
+                              "outbound_group_levels",
+                              next,
+                            );
+                          else
+                            uci.unset(
+                              UCI_PACKAGE,
+                              bid,
+                              "outbound_group_levels",
+                            );
+                        }
+                      },
+                    );
                     uci.remove(UCI_PACKAGE, gid);
                     renderGroupsRows();
                     refreshProberGroupOptions();
@@ -1155,7 +1184,6 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
           E("thead", {}, [
             E("tr", { class: "tr cbi-section-table-titles" }, [
               E("th", { class: "th" }, _("Group Name")),
-              E("th", { class: "th" }, _("ID")),
               E("th", { class: "th" }, _("Intersection Filter Criteria (AND)")),
               E("th", { class: "th" }, _("Actions")),
             ]),
@@ -1213,7 +1241,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
         E(
           "option",
           { value: `src:${sid}` },
-          `${_("Source")}: ${src.name || sid} [${stype}]`,
+          `${_("Source")}: ${src.name || src.label || sid} [${stype}]`,
         ),
       );
     });
@@ -1224,14 +1252,18 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
         E(
           "option",
           { value: `bal:${bid}` },
-          `${_("Auto-Select")}: ${bal.name || bid}`,
+          `${_("Auto-Select")}: ${bal.name || bal.label || bid}`,
         ),
       );
     });
     (uci.sections(UCI_PACKAGE, "outbound_group") || []).forEach((g) => {
       const gid = g[".name"];
       groupSelect.appendChild(
-        E("option", { value: gid }, `${_("Group")}: ${g.name || gid}`),
+        E(
+          "option",
+          { value: gid },
+          `${_("Group")}: ${g.name || g.label || gid}`,
+        ),
       );
     });
     if (prev) groupSelect.value = prev;
@@ -1407,6 +1439,78 @@ function configureOutboundsSection(sectionRef) {
     return res;
   };
 
+  const origRemove = sectionRef.remove;
+  sectionRef.remove = function (sectionId) {
+    const srcType = String(
+      uci.get(UCI_PACKAGE, sectionId, "source_type") || "subscription",
+    ).toLowerCase();
+    const srcUrl = uci.get(UCI_PACKAGE, sectionId, "url") || "";
+    const srcIface = uci.get(UCI_PACKAGE, sectionId, "interface_name") || "";
+
+    (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
+      const sid = s[".name"];
+      if (!sid) return;
+      const cur = asArray(s.outbound_source_refs);
+      const hasRef = cur.includes(sectionId);
+      const isLegacyChild =
+        sectionId === `src_${sid}_links` ||
+        sectionId === `src_${sid}_awg` ||
+        sectionId === `src_${sid}_fptn` ||
+        sectionId === `src_${sid}_json` ||
+        sectionId === `src_${sid}_desync`;
+      if (hasRef) {
+        const next = cur.filter((id) => id !== sectionId);
+        if (next.length)
+          uci.set(UCI_PACKAGE, sid, "outbound_source_refs", next);
+        else uci.unset(UCI_PACKAGE, sid, "outbound_source_refs");
+      }
+      if (hasRef || isLegacyChild) {
+        if (srcType === "links") {
+          uci.unset(UCI_PACKAGE, sid, "selector_proxy_links");
+          uci.unset(UCI_PACKAGE, sid, "selector_proxy_links_text");
+        } else if (srcType === "awg") {
+          uci.unset(UCI_PACKAGE, sid, "selector_amnezia_configs");
+          uci.unset(UCI_PACKAGE, sid, "amnezia_configs");
+          uci.unset(UCI_PACKAGE, sid, "amnezia_conf_text");
+        } else if (srcType === "fptn") {
+          uci.unset(UCI_PACKAGE, sid, "access_token");
+        } else if (srcType === "json") {
+          uci.unset(UCI_PACKAGE, sid, "outbound_jsons");
+          uci.unset(UCI_PACKAGE, sid, "outbound_json");
+        }
+      }
+    });
+
+    updateBalancersRef("source_refs", sectionId, []);
+    updateGroupsRef("source_refs", sectionId, []);
+    updateGroupsRef("outbound_sources", sectionId, []);
+
+    if (srcUrl) {
+      (uci.sections(UCI_PACKAGE, "subscription_url") || []).forEach((sub) => {
+        if (
+          sub[".name"] &&
+          (sub.url === srcUrl || `src_${sub[".name"]}` === sectionId)
+        ) {
+          uci.remove(UCI_PACKAGE, sub[".name"]);
+        }
+      });
+    }
+    if (srcIface) {
+      (uci.sections(UCI_PACKAGE, "section_interface") || []).forEach((ifc) => {
+        if (
+          ifc[".name"] &&
+          (ifc.name === srcIface || `src_${ifc[".name"]}` === sectionId)
+        ) {
+          uci.remove(UCI_PACKAGE, ifc[".name"]);
+        }
+      });
+    }
+
+    return origRemove
+      ? origRemove.apply(this, arguments)
+      : form.GridSection.prototype.remove.apply(this, arguments);
+  };
+
   const origRender = sectionRef.render;
   sectionRef.render = function () {
     return origRender.apply(this, arguments).then((node) => {
@@ -1549,6 +1653,7 @@ function createOutboundsContent(section) {
     _("Connection Name"),
     _("Display name of this connection or server source in the global pool."),
   );
+  o.modalonly = true;
   o.rmempty = false;
   o.placeholder = _("e.g. Main Subscription, YouTube Zapret2, EU AWG");
 
@@ -1606,7 +1711,7 @@ function createOutboundsContent(section) {
     (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
       const sid = s[".name"];
       if (sid && asArray(s.outbound_source_refs).includes(sectionId)) {
-        used.push(s.name || sid);
+        used.push(s.label || s.name || sid);
       }
     });
     return used.length ? used.join(", ") : "—";
@@ -1629,7 +1734,7 @@ function createOutboundsContent(section) {
     (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
       const sid = s[".name"];
       if (!sid) return;
-      this.value(sid, `${s.name || sid} (${sid})`);
+      this.value(sid, s.label || s.name || sid);
       if (asArray(s.outbound_source_refs).includes(sectionId)) {
         used.push(sid);
       }
@@ -3637,7 +3742,7 @@ function createOutboundsContent(section) {
     this.vallist = [];
     (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
       const sid = s[".name"];
-      if (sid) this.value(sid, `${s.name || sid} (${sid})`);
+      if (sid) this.value(sid, s.label || s.name || sid);
     });
     return uci.get(UCI_PACKAGE, sectionId, "download_via_proxy_section");
   };
@@ -3751,6 +3856,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = "1";
+  o.rmempty = false;
   o.depends("source_type", "subscription");
 
   o = section.taboption(
@@ -3761,6 +3867,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = "0";
+  o.rmempty = false;
   o.depends("source_type", "subscription");
 
   o = section.taboption(
@@ -3771,6 +3878,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = "0";
+  o.rmempty = false;
   o.depends({
     source_type: "subscription",
     include_urltest_groups: "1",
@@ -3797,6 +3905,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = "1";
+  o.rmempty = false;
   o.depends("source_type", "subscription");
 
   o = section.taboption(
@@ -3807,6 +3916,28 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = "0";
+  o.depends("source_type", "subscription");
+
+  o = section.taboption(
+    "advanced",
+    form.ListValue,
+    "tls_fingerprint",
+    _("TLS Fingerprint Override (uTLS)"),
+    _(
+      "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes. Useful when Firefox + REALITY + ML-KEM (support-x25519mlkem768) fails verification on sing-box-extended; switching to Chrome resolves it.",
+    ),
+  );
+  o.modalonly = true;
+  o.default = "";
+  o.value("", _("Keep Provider Default"));
+  o.value("chrome", "Chrome (Recommended for REALITY + ML-KEM)");
+  o.value("firefox", "Firefox");
+  o.value("safari", "Safari");
+  o.value("ios", "iOS");
+  o.value("edge", "Edge");
+  o.value("android", "Android");
+  o.value("random", "Random");
+  o.value("randomized", "Randomized");
   o.depends("source_type", "subscription");
 
   o = section.taboption(
@@ -3857,7 +3988,7 @@ function createOutboundsContent(section) {
     this.vallist = [];
     (uci.sections(UCI_PACKAGE, "section") || []).forEach((s) => {
       const sid = s[".name"];
-      if (sid) this.value(sid, `${s.name || sid} (${sid})`);
+      if (sid) this.value(sid, s.label || s.name || sid);
     });
     return uci.get(UCI_PACKAGE, sectionId, "outbound_detour_section");
   };

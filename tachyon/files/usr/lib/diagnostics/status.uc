@@ -318,7 +318,17 @@ function tachyon_config_masked_line(line) {
     line = mask_after_token(line, "list subscription_urls");
     line = mask_after_token(line, "list urltest_proxy_links");
     line = mask_after_token(line, "list selector_proxy_links");
+    line = mask_after_token(line, "list proxy_links");
+    line = mask_after_token_space(line, "option proxy_links_text");
+    line = mask_after_token_space(line, "option selector_proxy_links_text");
+    line = mask_after_token_space(line, "option urltest_proxy_links_text");
     line = mask_after_token_space(line, "option outbound_json");
+    line = mask_after_token_space(line, "list outbound_jsons");
+    line = mask_after_token_space(line, "option amnezia_config");
+    line = mask_after_token_space(line, "list amnezia_configs");
+    line = mask_after_token_space(line, "option selector_amnezia_configs");
+    line = mask_after_token_space(line, "list selector_amnezia_configs");
+    line = mask_after_token_space(line, "option amnezia_conf_text");
     line = mask_after_token_space(line, "list domain");
     line = mask_after_token_space(line, "list domain_suffix");
     line = mask_after_token_space(line, "list domain_keyword");
@@ -375,6 +385,47 @@ function tachyon_config_masked_line(line) {
     line = mask_after_token_space(line, "option openvpn_ca");
     line = mask_after_token_space(line, "option user_agent");
     line = mask_after_token_space(line, "option hwid_token");
+    line = mask_after_token_space(line, "option access_token");
+    line = mask_after_token_space(line, "option username");
+    line = mask_after_token_space(line, "option password");
+    line = mask_after_token_space(line, "option private_key");
+    line = mask_after_token_space(line, "option awg_private_key");
+    line = mask_after_token_space(line, "option awg_peer_public_key");
+    line = mask_after_token_space(line, "option awg_preshared_key");
+    line = mask_after_token_space(line, "option awg_server_address");
+    line = mask_after_token_space(line, "option trusttunnel_server");
+    line = mask_after_token_space(line, "option trusttunnel_username");
+    line = mask_after_token_space(line, "option trusttunnel_password");
+    line = mask_after_token_space(line, "option trusttunnel_sni");
+    line = mask_after_token_space(line, "option anytls_server");
+    line = mask_after_token_space(line, "option anytls_password");
+    line = mask_after_token_space(line, "option anytls_sni");
+    line = mask_after_token_space(line, "option naive_server");
+    line = mask_after_token_space(line, "option naive_username");
+    line = mask_after_token_space(line, "option naive_password");
+    line = mask_after_token_space(line, "option naive_sni");
+    line = mask_after_token_space(line, "option mieru_server");
+    line = mask_after_token_space(line, "option mieru_username");
+    line = mask_after_token_space(line, "option mieru_password");
+    line = mask_after_token_space(line, "option snell_server");
+    line = mask_after_token_space(line, "option snell_psk");
+    line = mask_after_token_space(line, "option sudoku_server");
+    line = mask_after_token_space(line, "option sudoku_key");
+    line = mask_after_token_space(line, "option tewfai_server");
+    line = mask_after_token_space(line, "option tewfai_uuid");
+    line = mask_after_token_space(line, "option tewfai_password");
+    line = mask_after_token_space(line, "option tewfai_sni");
+    line = mask_after_token_space(line, "option tewfai_reality_public_key");
+    line = mask_after_token_space(line, "option tewfai_reality_short_id");
+    line = mask_after_token_space(line, "option openconnect_server");
+    line = mask_after_token_space(line, "option openconnect_username");
+    line = mask_after_token_space(line, "option openconnect_password");
+    line = mask_after_token_space(line, "option openconnect_cookie");
+    line = mask_after_token_space(line, "option openconnect_server_cert_pin");
+    line = mask_after_token_space(line, "option shadowtls_server");
+    line = mask_after_token_space(line, "option shadowtls_password");
+    line = mask_after_token_space(line, "option shadowtls_sni");
+    line = mask_after_token_space(line, "option mtproto_server");
 
     return line;
 }
@@ -405,7 +456,16 @@ function tachyon_config_masked(path) {
 
         let masked = tachyon_config_masked_line(line);
         print(masked, "\n");
-        if (index(line, "option outbound_json") >= 0) {
+        if (index(line, "option outbound_json") >= 0 ||
+            index(line, "list outbound_jsons") >= 0 ||
+            index(line, "option amnezia_config") >= 0 ||
+            index(line, "list amnezia_configs") >= 0 ||
+            index(line, "option selector_amnezia_configs") >= 0 ||
+            index(line, "list selector_amnezia_configs") >= 0 ||
+            index(line, "option amnezia_conf_text") >= 0 ||
+            index(line, "option proxy_links_text") >= 0 ||
+            index(line, "option selector_proxy_links_text") >= 0 ||
+            index(line, "option urltest_proxy_links_text") >= 0) {
             let first_quote = index(line, "'");
             if (first_quote >= 0 && index(substr(line, first_quote + 1), "'") < 0)
                 in_masked_multiline = true;
@@ -1758,18 +1818,33 @@ function nfqws_strategy_validation(valid, message, needle, needles) {
 
 let masked_sing_box_keys = {
     auth_key: true,
+    auth_str: true,
+    auth: true,
+    token: true,
+    access_token: true,
+    auth_token: true,
+    psk: true,
+    pre_shared_key: true,
+    preshared_key: true,
+    key: true,
+    cookie: true,
+    server_cert_pin: true,
+    header_protection_key: true,
+    obfs: true,
     control_url: true,
     exit_node: true,
     hostname: true,
     listen: true,
     listen_port: true,
     username: true,
+    user: true,
     uuid: true,
     server: true,
     server_name: true,
     secret: true,
     password: true,
     private_key: true,
+    private_key_passphrase: true,
     public_key: true,
     short_id: true,
     fingerprint: true,

@@ -796,6 +796,14 @@ function add_tls(url, security, default_tls) {
             mlkem_preference = query.supportX25519MLKEM768;
         if (mlkem_preference == null)
             mlkem_preference = query["support-x25519mlkem768"];
+        if (mlkem_preference == null) {
+            let extra = xhttp_extra_settings(query);
+            mlkem_preference = extra.support_x25519mlkem768;
+            if (mlkem_preference == null)
+                mlkem_preference = extra.supportX25519MLKEM768;
+            if (mlkem_preference == null)
+                mlkem_preference = extra["support-x25519mlkem768"];
+        }
         if (mlkem_preference != null)
             tls.reality.support_x25519mlkem768 = is_true(mlkem_preference);
     }
@@ -1803,7 +1811,7 @@ function process_trusttunnel(raw, url) {
     if (password != "")
         outbound.password = password;
     if (is_true(url.query.quic))
-        outbound.quic = "true";
+        outbound.quic = true;
     if ((url.query.quic_congestion_control || url.query.cc || "") != "")
         outbound.quic_congestion_control = url.query.quic_congestion_control || url.query.cc;
 
@@ -3296,6 +3304,17 @@ function xray_tls_from_stream(stream, network) {
             tls.reality.public_key = public_key;
         if (short_id != "")
             tls.reality.short_id = short_id;
+        let mlkem_pref = reality.support_x25519mlkem768;
+        if (mlkem_pref == null)
+            mlkem_pref = reality.supportX25519MLKEM768;
+        if (mlkem_pref == null)
+            mlkem_pref = reality["support-x25519mlkem768"];
+        if (mlkem_pref == null)
+            mlkem_pref = settings.support_x25519mlkem768;
+        if (mlkem_pref == null)
+            mlkem_pref = settings.supportX25519MLKEM768;
+        if (mlkem_pref != null)
+            tls.reality.support_x25519mlkem768 = is_true(mlkem_pref);
         if (!tls.utls)
             tls.utls = { enabled: true, fingerprint: "chrome" };
     }

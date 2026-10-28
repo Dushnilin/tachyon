@@ -815,6 +815,17 @@ function is_sing_box_lx_detected(sb_version_val) {
     return sb_variant_val == "lx" || sb_variant_val == "sing-box-lx";
 }
 
+function is_sing_box_extended_detected(sb_version_val) {
+    if (sb_version_val == null || sb_version_val == "")
+        sb_version_val = detect_sing_box_version();
+    let s = as_string(sb_version_val);
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+    let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
+    if (sb_variant_val == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        sb_variant_val = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "");
+    return core_profile.supports_unified_delay(s, sb_variant_val);
+}
+
 // Tachyon's own core reports a version from its own series and prints no build
 // tags, so the -tachyon. suffix and the variant marker file are the only signals.
 function is_tachyon_core_detected(sb_version_val) {
@@ -1060,8 +1071,10 @@ for (let inbound in dns_config.inbounds)
     let sb_version_val = detect_sing_box_version();
     let is_sb_1_14_plus = is_sb_1_14_plus_detected(sb_version_val);
     let is_sb_1_15_plus = is_sb_1_15_plus_detected(sb_version_val);
+    let is_sb_extended = is_sing_box_extended_detected(sb_version_val);
     ctx.is_sb_1_14_plus = function() { return is_sb_1_14_plus; };
     ctx.is_sb_1_15_plus = function() { return is_sb_1_15_plus; };
+    ctx.is_sing_box_extended = function() { return is_sb_extended; };
 
     let use_legacy_rdrc = !is_sb_1_14_plus;
 
@@ -1107,6 +1120,11 @@ for (let inbound in dns_config.inbounds)
         },
         __dns_hosts_predefined: dns_hosts_predefined
     };
+
+    let want_unified_delay = bool_option(settings, "unified_delay", false) ||
+        lc(option(settings, "latency_test_mode", "standard")) == "keepalive";
+    if (want_unified_delay && is_sb_extended)
+        base_cfg.experimental.unified_delay = { enabled: true };
 
     if (is_sb_1_14_plus)
         base_cfg.http_clients = [{ tag: "ruleset-http" }];
@@ -2074,6 +2092,53 @@ function finalize_config_owners(config, owners, output_path) {
     }
 }
 
+// A quarantined section contributes no outbound, but selectors and urltest
+// groups of *other* sections can still reference its tag. sing-box then dies
+// with "dependency[...] not found" at start and procd loops the whole core.
+// Prune every missing reference from group members before the config ships
+// (issue #253).
+function prune_dangling_group_members(config) {
+    let known = {};
+    for (let outbound in array_or_empty(config.outbounds)) {
+        let t = as_string(object_or_empty(outbound).tag || "");
+        if (t != "")
+            known[t] = true;
+    }
+    for (let endpoint in array_or_empty(config.endpoints)) {
+        let t = as_string(object_or_empty(endpoint).tag || "");
+        if (t != "")
+            known[t] = true;
+    }
+    for (let pass = 0; pass < 4; pass++) {
+        let changed = false;
+        for (let outbound in array_or_empty(config.outbounds)) {
+            if (type(outbound) != "object")
+                continue;
+            let t = as_string(outbound.type || "");
+            if (t != "selector" && t != "urltest")
+                continue;
+            if (outbound.tag == null || known[as_string(outbound.tag)] != true)
+                continue;
+            let members = array_or_empty(outbound.outbounds);
+            let kept = [];
+            for (let m in members) {
+                if (known[as_string(m)])
+                    push(kept, m);
+                else
+                    changed = true;
+            }
+            if (length(kept) != length(members))
+                outbound.outbounds = kept;
+            if (as_string(outbound.default || "") != "" && !known[as_string(outbound.default)]) {
+                outbound.default = length(kept) > 0 ? kept[0] : "";
+                changed = true;
+            }
+        }
+        if (!changed)
+            break;
+    }
+}
+
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     // Quarantine reuses the same skip set the deferred sections use: every
@@ -2154,7 +2219,19 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     add_group_urltest_outbounds(config, sections);
     add_service_route_rules(config, sections);
 
-    // Add block and bypass sections before proxy sections so exceptions take precedence
+    // Add block and bypass sections before base policy (disable_quic, etc.) and proxy sections so exceptions take precedence
+    let deferred_base_policy_rules = [];
+    if (type(config.route) == "object" && type(config.route.rules) == "array" && length(config.route.rules) > 2) {
+        let kept_rules = [ config.route.rules[0], config.route.rules[1] ];
+        for (let i = 2; i < length(config.route.rules); i++) {
+            let r = config.route.rules[i];
+            if (type(r) == "object" && r.outbound == null && r.action == "reject")
+                push(deferred_base_policy_rules, r);
+            else
+                push(kept_rules, r);
+        }
+        config.route.rules = kept_rules;
+    }
     for (let section in sections) {
         let act = option(section, "action", "");
         if (act == "block" || act == "bypass") {
@@ -2164,6 +2241,8 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
             record_owner_delta(config, owners, section[".name"], snap);
         }
     }
+    for (let r in deferred_base_policy_rules)
+        push(config.route.rules, r);
     for (let section in sections) {
         let act = option(section, "action", "");
         if (act != "block" && act != "bypass") {
@@ -2219,6 +2298,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
         }
     }
 
+    prune_dangling_group_members(config);
     assert_unique_outbound_tags(config);
     strip_internal_fields(config);
     strip_certificate_pins_if_unsupported(config);
