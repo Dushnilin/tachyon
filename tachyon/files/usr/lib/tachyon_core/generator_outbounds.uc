@@ -167,6 +167,17 @@ function is_dummy_outbound_server(server, port) {
     return false;
 }
 
+function outbound_has_port_ranges(outbound) {
+    if (type(outbound) != "object")
+        return false;
+    let sp = outbound.server_ports;
+    if (type(sp) == "array" && length(sp) > 0)
+        return true;
+    if (type(sp) == "string" && trim(sp) != "")
+        return true;
+    return false;
+}
+
 function supported_subscription_outbound(outbound) {
     if (type(outbound) != "object")
         return false;
@@ -195,7 +206,8 @@ function supported_subscription_outbound(outbound) {
         return false;
     if (t == "masque" && type(outbound.profile) == "object")
         return true;
-    if (is_dummy_outbound_server(outbound.server, outbound.server_port))
+    let check_port = outbound_has_port_ranges(outbound) ? null : outbound.server_port;
+    if (is_dummy_outbound_server(outbound.server, check_port))
         return false;
     return true;
 }
@@ -2862,18 +2874,36 @@ function add_snell_outbound(config, section) {
 }
 
 function add_mieru_outbound(config, section) {
+    let raw_port = trim(as_string(option(section, "mieru_server_port", "")));
+    let server_ports = [];
+    for (let p in list_option(section, "mieru_server_ports"))
+        push(server_ports, replace(trim(as_string(p)), ":", "-"));
+    let single_port = 0;
+    if (raw_port != "") {
+        if (match(raw_port, /^[0-9]+$/) != null && int(raw_port) >= 1 && int(raw_port) <= 65535) {
+            single_port = int(raw_port);
+        } else {
+            for (let token in split(replace(raw_port, /[,\s]+/g, " "), " ")) {
+                token = trim(replace(token, ":", "-"));
+                if (token != "")
+                    push(server_ports, token);
+            }
+        }
+    }
     let outbound = {
         type: "mieru",
         tag: outbound_tag(section[".name"]),
         server: option(section, "mieru_server", ""),
-        server_port: int_option(section, "mieru_server_port", "0"),
-        transport: option(section, "mieru_transport", "TCP"),
+        transport: uc(option(section, "mieru_transport", "TCP")),
         username: option(section, "mieru_username", ""),
         password: option(section, "mieru_password", "")
     };
-    let server_ports = list_option(section, "mieru_server_ports");
+    if (single_port > 0)
+        outbound.server_port = single_port;
     if (length(server_ports) > 0)
         outbound.server_ports = server_ports;
+    if (outbound.server_port == null && outbound.server_ports == null)
+        outbound.server_port = 1080;
     let multiplexing = option(section, "mieru_multiplexing", "");
     if (multiplexing != "")
         outbound.multiplexing = multiplexing;

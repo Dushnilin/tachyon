@@ -1612,9 +1612,31 @@ function process_snell(raw, url) {
 
 function process_mieru(raw, url) {
     let port_val = url.port;
-    if (!valid_port(port_val) && (url.query.port || "") != "")
-        port_val = parse_port_value(url.query.port);
-    if (url.host == "" || is_dummy_server(url.host, port_val) || !valid_port(port_val) || url.userinfo == "")
+    let port_ranges = [];
+    let raw_query_port = trim(as_string(url.query.port || ""));
+    if (!valid_port(port_val) && raw_query_port != "") {
+        let single_q = parse_port_value(raw_query_port);
+        if (valid_port(single_q)) {
+            port_val = single_q;
+        } else {
+            for (let token in split(replace(raw_query_port, /[,\s]+/g, " "), " ")) {
+                token = trim(replace(token, ":", "-"));
+                let m = match(token, /^([0-9]+)-([0-9]+)$/);
+                if (m != null) {
+                    let lo = int(m[1]), hi = int(m[2]);
+                    if (lo >= 1 && hi <= 65535 && lo <= hi)
+                        push(port_ranges, sprintf("%d-%d", lo, hi));
+                } else if (valid_port(token)) {
+                    push(port_ranges, as_string(int(token)));
+                }
+            }
+        }
+    }
+    if (url.host == "" || url.userinfo == "")
+        return null;
+    if (length(port_ranges) == 0 && (is_dummy_server(url.host, port_val) || !valid_port(port_val)))
+        return null;
+    if (length(port_ranges) > 0 && is_dummy_server(url.host, 443))
         return null;
 
     let username = "", password = "";
@@ -1632,17 +1654,21 @@ function process_mieru(raw, url) {
     if (transport != "UDP")
         transport = "TCP";
 
-    let tag_val = url.fragment != "" ? url.fragment : (url.query.profile || (url.host + ":" + port_val));
+    let display_port = length(port_ranges) > 0 ? port_ranges[0] : as_string(port_val);
+    let tag_val = url.fragment != "" ? url.fragment : (url.query.profile || (url.host + ":" + display_port));
     let outbound = {
         type: "mieru",
         tag: tag_val,
         share_link: raw,
         server: url.host,
-        server_port: int(port_val),
         username: username,
         password: password,
         transport: transport
     };
+    if (length(port_ranges) > 0)
+        outbound.server_ports = port_ranges;
+    else
+        outbound.server_port = int(port_val);
     if ((url.query.multiplexing || "") != "")
         outbound.multiplexing = url.query.multiplexing;
     return outbound;

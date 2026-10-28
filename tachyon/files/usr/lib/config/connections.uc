@@ -1082,19 +1082,38 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
     if (stype == "mieru") {
         let srv = trim(option(src, "mieru_server", option(src, "server", "")));
         if (srv == "") return "";
-        let single_p = int(option(src, "mieru_server_port", option(src, "server_port", "1080")) || 1080);
-        let ports = list_value(src, "mieru_server_ports");
-        if (length(ports) == 0)
-            ports = list_value(src, "mieru_port_bindings");
+        let raw_port = trim(as_string(option(src, "mieru_server_port", option(src, "server_port", ""))));
+        let ports = [];
+        for (let p in list_value(src, "mieru_server_ports"))
+            push(ports, replace(trim(as_string(p)), ":", "-"));
+        if (length(ports) == 0) {
+            for (let p in list_value(src, "mieru_port_bindings"))
+                push(ports, replace(trim(as_string(p)), ":", "-"));
+        }
+        let single_p = 0;
+        if (raw_port != "") {
+            if (match(raw_port, /^[0-9]+$/) != null && int(raw_port) >= 1 && int(raw_port) <= 65535) {
+                single_p = int(raw_port);
+            } else {
+                for (let token in split(replace(raw_port, /[,\s]+/g, " "), " ")) {
+                    token = trim(replace(token, ":", "-"));
+                    if (token != "")
+                        push(ports, token);
+                }
+            }
+        }
+        if (single_p <= 0 && length(ports) == 0)
+            single_p = 1080;
         let obj = {
             type: "mieru",
             tag: tag_name,
             server: srv,
-            server_port: single_p,
             transport: uc(option(src, "mieru_transport", "TCP")),
             username: option(src, "mieru_username", option(src, "username", "")),
             password: option(src, "mieru_password", option(src, "password", ""))
         };
+        if (single_p > 0)
+            obj.server_port = single_p;
         if (length(ports) > 0)
             obj.server_ports = ports;
         let mux = trim(option(src, "mieru_multiplexing", ""));

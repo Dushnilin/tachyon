@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-28 21:01+0300\n"
-"PO-Revision-Date: 2026-10-28 21:01+0300\n"
+"POT-Creation-Date: 2026-10-28 23:39+0300\n"
+"PO-Revision-Date: 2026-10-28 23:39+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -6958,6 +6958,9 @@ msgstr "Выборочные секции (Выберите секции ниж�
 
 msgid "Specify a file path"
 msgstr "Укажите путь к файлу"
+
+msgid "Specify a port (1-65535) or port range (e.g. 2000-2010)"
+msgstr ""
 
 msgid "Specify different files"
 msgstr "Укажите разные файлы"

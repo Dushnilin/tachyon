@@ -162,15 +162,31 @@ function password_link(s, user, address, port, pin) {
 
 function mieru(s, inbound, address) {
     let user = inbound.users?.[0];
-    let port = int(inbound.listen_port);
-    let network = inbound.transport || "TCP";
-    if (!user?.name || !user.password || port < 1 || port > 65535 || index([ "TCP", "UDP" ], network) < 0)
+    let port_spec = "";
+    if (type(inbound.listen_ports) == "array" && length(inbound.listen_ports) > 0)
+        port_spec = str(inbound.listen_ports[0]);
+    else if (type(inbound.server_ports) == "array" && length(inbound.server_ports) > 0)
+        port_spec = str(inbound.server_ports[0]);
+    else if (inbound.listen_port != null)
+        port_spec = str(inbound.listen_port);
+    port_spec = trim(replace(port_spec, ":", "-"));
+    let valid_spec = false;
+    let m = match(port_spec, /^([0-9]+)-([0-9]+)$/);
+    if (m != null) {
+        let lo = int(m[1]), hi = int(m[2]);
+        valid_spec = (lo >= 1 && hi <= 65535 && lo <= hi);
+    } else if (match(port_spec, /^[0-9]+$/) != null) {
+        let p = int(port_spec);
+        valid_spec = (p >= 1 && p <= 65535);
+    }
+    let network = uc(str(inbound.transport || "TCP"));
+    if (!user?.name || !user.password || !valid_spec || index([ "TCP", "UDP" ], network) < 0)
         return "";
     let raw_profile = s.label || s[".name"] || "Mieru";
     let flag = country_flag(s.server_country);
     let profile = (flag != "" && index(raw_profile, "\xF0\x9F\x87") < 0) ? (flag + " " + raw_profile) : raw_profile;
     return "mierus://" + encode(user.name) + ":" + encode(user.password) + "@" + uri_host(address) +
-        query({ port, protocol: network, profile });
+        query({ port: port_spec, protocol: network, profile });
 }
 
 function supported(s) {
@@ -189,19 +205,31 @@ function build(s, fallback_host, pin) {
     let protocol = s.protocol || "vless";
     if (protocol == "json_inbound") return mieru(s, json(s.inbound_json), address);
     let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443, awg: 51820 };
+    let user = identity(s);
+    if (protocol == "mieru") {
+        if (!user.password) return "";
+        let raw_lp = trim(replace(str(s.listen_port || "443"), ":", "-"));
+        let first_token = split(replace(raw_lp, /[,\s]+/g, " "), " ")[0] || "443";
+        let valid_lp = false;
+        let m = match(first_token, /^([0-9]+)-([0-9]+)$/);
+        if (m != null) {
+            let lo = int(m[1]), hi = int(m[2]);
+            valid_lp = (lo >= 1 && hi <= 65535 && lo <= hi);
+        } else if (match(first_token, /^[0-9]+$/) != null) {
+            let p = int(first_token);
+            valid_lp = (p >= 1 && p <= 65535);
+        }
+        if (!valid_lp) return "";
+        return "mierus://" + encode(user.username) + ":" + encode(user.password) + "@" + uri_host(address) +
+            query({ port: first_token, protocol: s.mieru_transport || "TCP", profile: user.name });
+    }
     let port = int(s.listen_port || defaults[protocol] || 443);
     if (port < 1 || port > 65535) return "";
-    let user = identity(s);
     pin = match(pin || "", /^[0-9a-f]{64}$/) ? pin : "";
     if (protocol == "vless" || protocol == "trojan") return vless_trojan(s, user, address, port, pin);
     if (protocol == "vmess") return vmess(s, user, address, port, pin);
     if (index([ "hysteria2", "tuic", "anytls", "shadowtls" ], protocol) >= 0)
         return password_link(s, user, address, port, pin);
-    if (protocol == "mieru") {
-        if (!user.password) return "";
-        return "mierus://" + encode(user.username) + ":" + encode(user.password) + "@" + uri_host(address) +
-            query({ port, protocol: s.mieru_transport || "TCP", profile: user.name });
-    }
     if (protocol == "trusttunnel") {
         if (!user.password) return "";
         let params = tls_params(s, protocol, address, pin);

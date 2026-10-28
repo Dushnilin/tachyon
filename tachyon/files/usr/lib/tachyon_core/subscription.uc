@@ -239,6 +239,10 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
         state.outboundMetadata.ports = {};
     let wg_peer = as_string(outbound.type) == "wireguard" ? object_or_empty(array_or_empty(outbound.peers)[0]) : {};
     let port = outbound.server_port != null ? outbound.server_port : (outbound.port != null ? outbound.port : wg_peer.port);
+    if ((port == null || port == "" || int(port) == 0) && type(outbound.server_ports) == "array" && length(outbound.server_ports) > 0)
+        port = as_string(outbound.server_ports[0]);
+    else if ((port == null || port == "" || int(port) == 0) && type(outbound.server_ports) == "string" && trim(outbound.server_ports) != "")
+        port = trim(outbound.server_ports);
     if (port != null && port != "")
         state.outboundMetadata.ports[tag_name] = as_string(port);
 

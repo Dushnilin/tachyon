@@ -429,6 +429,34 @@ function add_standard_inbound(config, section, protocol, tag_name) {
     else if (protocol == "mieru") {
         inbound.users = users(section, protocol);
         inbound.transport = option(section, "mieru_transport", "TCP");
+        let raw_lp = trim(as_string(option(section, "listen_port", "443")));
+        let lp_ranges = [];
+        let first_port = 0;
+        for (let token in split(replace(raw_lp, /[,\s]+/g, " "), " ")) {
+            token = trim(replace(token, ":", "-"));
+            if (token == "")
+                continue;
+            let m = match(token, /^([0-9]+)-([0-9]+)$/);
+            if (m != null) {
+                let lo = int(m[1]), hi = int(m[2]);
+                if (lo >= 1 && hi <= 65535 && lo <= hi) {
+                    push(lp_ranges, sprintf("%d-%d", lo, hi));
+                    if (first_port == 0)
+                        first_port = lo;
+                }
+            } else if (match(token, /^[0-9]+$/) != null) {
+                let p = int(token);
+                if (p >= 1 && p <= 65535) {
+                    push(lp_ranges, as_string(p));
+                    if (first_port == 0)
+                        first_port = p;
+                }
+            }
+        }
+        if (first_port > 0)
+            inbound.listen_port = first_port;
+        if (variant_state.is_tachyon_core() && (length(lp_ranges) > 1 || (length(lp_ranges) == 1 && index(lp_ranges[0], "-") >= 0)))
+            inbound.listen_ports = lp_ranges;
     }
     else if (protocol == "trusttunnel") {
         inbound.users = users(section, protocol);

@@ -736,6 +736,10 @@ function copy_file_if_changed(source, target) {
     return true;
 }
 
+let _cached_kernel_version = "";
+let _cached_generated_hwid = "";
+let _last_download_transport_failed = false;
+
 function get_device_model() {
     let model = fs.readfile("/tmp/sysinfo/model");
     model = trim(as_string(model));
@@ -743,10 +747,15 @@ function get_device_model() {
 }
 
 function get_kernel_version() {
-    return trim(command_output_from_args([ "uname", "-r" ]));
+    if (_cached_kernel_version == "")
+        _cached_kernel_version = trim(command_output_from_args([ "uname", "-r" ]));
+    return _cached_kernel_version;
 }
 
 function generate_hwid() {
+    if (_cached_generated_hwid != "")
+        return _cached_generated_hwid;
+
     let mac = trim(as_string(fs.readfile("/sys/class/net/eth0/address")));
     if (mac == "")
         mac = trim(as_string(fs.readfile("/sys/class/net/br-lan/address")));
@@ -754,7 +763,8 @@ function generate_hwid() {
     let input = mac + "-" + get_device_model();
     let output = command_output("printf %s " + shell_quote(input) + " | md5sum");
     let hash = length(whitespace_values(output)) > 0 ? substr(whitespace_values(output)[0], 0, 16) : "";
-    return substr(hash, 0, 4) + "-" + substr(hash, 4, 4) + "-" + substr(hash, 8, 4) + "-" + substr(hash, 12, 4);
+    _cached_generated_hwid = substr(hash, 0, 4) + "-" + substr(hash, 4, 4) + "-" + substr(hash, 8, 4) + "-" + substr(hash, 12, 4);
+    return _cached_generated_hwid;
 }
 
 function hwid_matches_config(configured_hwid, cached_hwid) {
@@ -1688,6 +1698,9 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
     let tmpfile = filepath + suffix;
     let headers_tmpfile = headers_filepath != "" ? headers_filepath + suffix : "";
     let resolution_failed = false;
+    let saw_transport_failure = false;
+    let saw_http_or_other_failure = false;
+    _last_download_transport_failed = false;
 
     unlink_path(tmpfile);
     if (headers_tmpfile != "")
@@ -1765,6 +1778,7 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             if (status == 5) {
                 // Proxy/SSL tunnel failure — no point retrying this URL
                 resolution_failed = true;
+                saw_transport_failure = true;
                 break;
             }
 
@@ -1773,6 +1787,7 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
                 // after a sing-box restart (Tachyon's intercepting resolver is
                 // briefly unavailable). Retry with an increasing pause so DNS
                 // has time to recover before giving up (issue #24).
+                saw_transport_failure = true;
                 let dns_wait = attempt * 5;
                 if (attempt < retries) {
                     log_message("Subscription DNS resolution failed for rule; retrying in " + dns_wait + "s (attempt " + attempt + "/" + retries + ")", "debug");
@@ -1783,6 +1798,14 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
                 break;
             }
 
+            if (status == 7 || status == 28 || status == 35 || status == 52 || status == 56) {
+                saw_transport_failure = true;
+                if (attempt >= 2)
+                    break;
+            } else {
+                saw_http_or_other_failure = true;
+            }
+
             if (attempt < retries)
                 system("sleep " + int(wait_seconds));
         }
@@ -1790,6 +1813,7 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
 
     unlink_path(tmpfile);
     unlink_path(headers_tmpfile);
+    _last_download_transport_failed = (saw_transport_failure && !saw_http_or_other_failure);
     return resolution_failed ? 6 : 1;
 }
 
@@ -1814,14 +1838,15 @@ function copy_persistent_metadata_output(source_section, metadata_output_path) {
         copy_file(metadata_path, metadata_output_path) || unlink_path(metadata_output_path);
 }
 
-function subscription_config_is_current(section_name_value, subscription_url, subscription_user_agent, subscription_hwid, sections) {
+function subscription_config_is_current(section_name_value, subscription_url, subscription_user_agent, subscription_hwid, sections, subscription_device_headers_signature) {
     let section = find_section(sections, section_name_value);
     for (let entry in connections.subscription_urls(section)) {
         let parsed = subscription_source_profile(section, entry);
         if (type(parsed) == "object" && parsed.valid === true &&
             as_string(parsed.url) == as_string(subscription_url) &&
             as_string(parsed.user_agent) == as_string(subscription_user_agent) &&
-            as_string(parsed.hwid) == as_string(subscription_hwid))
+            as_string(parsed.hwid) == as_string(subscription_hwid) &&
+            (subscription_device_headers_signature == null || as_string(parsed.device_headers_signature) == as_string(subscription_device_headers_signature)))
             return true;
     }
 
@@ -1893,6 +1918,7 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
 
         let effective_hwid = get_subscription_hwid(subscription_hwid);
         let download_status = download_subscription(subscription_url, raw_tmpfile, service_proxy_address_value, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
+        let direct_transport_failed = _last_download_transport_failed;
         if (download_status != 0 && service_proxy_address_value == "" && sing_box_service_running()) {
             let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
             log_message("Direct subscription download failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
@@ -1903,6 +1929,10 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
                 unlink_path(metadata_output_path);
             if (download_status == 6) {
                 log_message("Subscription download failed for rule '" + section_name_value + "' because the subscription host could not be resolved; compatibility retries skipped", "warn");
+                break;
+            }
+            else if (direct_transport_failed && _last_download_transport_failed) {
+                log_message("Subscription download failed for rule '" + section_name_value + "' due to connection/timeout error; skipping User-Agent compatibility retries", "warn");
                 break;
             }
             else if (subscription_user_agent != "")
@@ -2627,7 +2657,7 @@ function trigger_subscription_recovery_reload(worker) {
         command_status_from_args(command_args_with([
             "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",
             "subscription-deferred-recovery-apply"
-        ]));
+        ], []));
     else
         mark_pending_subscription_recovery_reload();
 }
@@ -2805,7 +2835,8 @@ function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
 
     while (remaining_sections != "" && attempts < max_attempts) {
         attempts++;
-        system("sleep 30");
+        let sleep_sec = attempts <= 2 ? 30 : (attempts <= 5 ? 60 : (attempts <= 10 ? 120 : 300));
+        system("sleep " + sleep_sec);
         if (!sing_box_service_running()) {
             log_message("Stopping subscription bootstrap retry worker because sing-box is not running", "warn");
             break;

@@ -42,6 +42,17 @@ function validateServerPort(value: unknown): boolean {
   );
 }
 
+function validateServerPorts(value: unknown): boolean {
+  if (nonEmptyString(value)) {
+    return true;
+  }
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((item) => nonEmptyString(item) || validateServerPort(item))
+  );
+}
+
 function validateOutbounds(value: unknown): boolean {
   return (
     Array.isArray(value) &&
@@ -105,7 +116,12 @@ export function validateOutboundJson(
       );
     }
 
-    if (!validateServerPort(parsed.server_port)) {
+    const allowsPortRanges = type === 'mieru' || type === 'hysteria2';
+    const hasValidServerPort = validateServerPort(parsed.server_port);
+    const hasValidServerPorts =
+      allowsPortRanges && validateServerPorts(parsed.server_ports);
+
+    if (!hasValidServerPort && !hasValidServerPorts) {
       return invalid(
         _('Server outbound must contain a numeric server_port from 1 to 65535'),
       );

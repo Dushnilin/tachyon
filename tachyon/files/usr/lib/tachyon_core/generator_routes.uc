@@ -2907,8 +2907,19 @@ function push_section_geoip_remainder(config, base_rule, target, excluded_cidrs,
     push_section_route_rule(config, remainder, target.outbound, excluded_cidrs, null, country_mode);
 }
 
+function section_leaf_list_option(section, key) {
+    let result = [];
+    for (let item in list_option(section, key))
+        push(result, item);
+    for (let cond in connections.section_leaf_conditions(section)) {
+        for (let item in list_option(cond, key))
+            push(result, item);
+    }
+    return result;
+}
+
 function add_fully_routed_ips_rule(config, section) {
-    let source_ip_cidr = core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips"));
+    let source_ip_cidr = core_ip.normalize_to_cidrs(section_leaf_list_option(section, "fully_routed_ips"));
     if (length(source_ip_cidr) == 0)
         return;
 
@@ -2941,7 +2952,7 @@ function add_fully_routed_ips_rule(config, section) {
 }
 
 function add_excluded_ips_rule(config, section) {
-    let excluded = list_option(section, "excluded_ips");
+    let excluded = section_leaf_list_option(section, "excluded_ips");
     if (length(excluded) == 0)
         return;
 
@@ -2959,7 +2970,7 @@ function add_excluded_ips_rule(config, section) {
 }
 
 function add_excluded_protocol_rule(config, section) {
-    let excluded = list_option(section, "excluded_protocol");
+    let excluded = section_leaf_list_option(section, "excluded_protocol");
     if (length(excluded) == 0)
         return;
 
@@ -2973,7 +2984,7 @@ function add_excluded_protocol_rule(config, section) {
 }
 
 function add_protocol_matchers(rule, section) {
-    let protocols = list_option(section, "protocol");
+    let protocols = section_leaf_list_option(section, "protocol");
     if (length(protocols) > 0)
         rule.protocol = single_or_array(protocols);
 }

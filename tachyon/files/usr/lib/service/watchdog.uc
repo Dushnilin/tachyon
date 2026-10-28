@@ -1905,19 +1905,33 @@ function heal_nfqueue_stopped(ev) {
 }
 
 // ─── AI Empty Sections Recovery ─────────────────────────────────────────────
+let empty_section_heal_state = {};
+
 function heal_empty_sections(ev) {
     let recovered = common.array_or_empty(ev.payload.sections);
     if (length(recovered) == 0) return;
 
+    let now = time();
+    let triggered = [];
     for (let name in recovered) {
-        log_message("Empty proxy section '" + name + "' — triggering subscription update", "warn");
+        let entry = empty_section_heal_state[name] || { attempts: 0, last_ts: 0 };
+        let backoff = entry.attempts <= 1 ? 120 : (entry.attempts == 2 ? 300 : (entry.attempts == 3 ? 600 : 1800));
+        if (entry.last_ts > 0 && (now - entry.last_ts < backoff))
+            continue;
+        entry.attempts++;
+        entry.last_ts = now;
+        empty_section_heal_state[name] = entry;
+        push(triggered, name);
+        log_message("Empty proxy section '" + name + "' — triggering subscription update (attempt " + as_string(entry.attempts) + ")", "warn");
         bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(name));
     }
 
+    if (length(triggered) == 0) return;
+
     ai_heal_report(
         "empty_proxy_sections",
-        "Empty proxy sections detected: " + join(", ", recovered),
-        "Auto-triggering subscription update for " + as_string(length(recovered)) + " section(s)",
+        "Empty proxy sections detected: " + join(", ", triggered),
+        "Auto-triggering subscription update for " + as_string(length(triggered)) + " section(s)",
         "fixed"
     );
 }
@@ -3124,7 +3138,22 @@ function worker() {
     let ubus_conn = setup_ubus_listener();
     let current_ctx = null;
 
+    let last_upnp_leases_sig = "";
+    function sync_upnp_dnat_sets_if_changed() {
+        let sig = "";
+        for (let p in [ "/var/run/miniupnpd.leases", "/tmp/upnp.leases" ]) {
+            let st = fs.stat(p);
+            if (st != null)
+                sig += p + ":" + as_string(st.mtime || 0) + ":" + as_string(st.size || 0) + ";";
+        }
+        if (sig == last_upnp_leases_sig)
+            return;
+        last_upnp_leases_sig = sig;
+        command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "nft-sync-dnat-sets" ]);
+    }
+
     function perform_fast_checks() {
+        safe_call(sync_upnp_dnat_sets_if_changed, "sync_upnp_dnat_sets_if_changed");
         controller.probe_fast(current_ctx);
         // After the probes, so a recovery observed on this very tick closes its
         // watch before the deadline is tested against it.

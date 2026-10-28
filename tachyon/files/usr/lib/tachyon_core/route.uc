@@ -188,8 +188,6 @@ function config(settings, runtime) {
             push(result.rules, rule);
     }
     if (bool_option(settings, "block_doh", false)) {
-        if (option(settings, "dns_type", "udp") == "doh")
-            warn("block_doh is enabled but upstream DNS type is 'doh'; your own DNS queries would be blocked, switch dns_type to 'udp' or 'dot'\n");
         let doh_cidrs = [];
         for (let cidr in runtime_constants.DOH_BLOCK_IPV4_CIDRS)
             push(doh_cidrs, cidr);

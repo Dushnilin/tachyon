@@ -748,12 +748,20 @@ function controller(bus, opts) {
 
         // Adaptive interval pacing: honor ai_proxy_health_interval (default 30s)
         // when healthy (consecutive fails == 0).
-        // On failure, switch to fast retry on every tick (10-15s) until restored.
+        // On failure, switch to fast retry for the first 3 attempts so transient
+        // blips or failover confirm quickly, then back off to avoid hammering CPU
+        // with curl processes when the connection stays down.
         let proxy_interval = int(ctx.settings.ai_proxy_health_interval || "30");
         if (proxy_interval < 15) proxy_interval = 15;
 
-        if (state.proxy_consecutive_fails == 0 && state.last_proxy_probe > 0 &&
-            (ctx.now - state.last_proxy_probe < proxy_interval))
+        let effective_proxy_interval = proxy_interval;
+        if (state.proxy_consecutive_fails > 0 && state.proxy_consecutive_fails < 3)
+            effective_proxy_interval = 15;
+        else if (state.proxy_consecutive_fails >= 6 && effective_proxy_interval < 60)
+            effective_proxy_interval = 60;
+
+        if (state.last_proxy_probe > 0 &&
+            (ctx.now - state.last_proxy_probe < effective_proxy_interval))
             return;
 
         state.last_proxy_probe = ctx.now;
@@ -863,12 +871,17 @@ function controller(bus, opts) {
 
         // Adaptive interval pacing: honor ai_dns_interval (default 60s)
         // when healthy (consecutive fails == 0).
-        // On failure, switch to fast retry on every tick (10-15s) until restored.
+        // On failure, switch to fast retry for the first 3 attempts, then pace at
+        // dns_interval so nslookup probes do not churn CPU while upstream is down.
         let dns_interval = int(ctx.settings.ai_dns_interval || "60");
         if (dns_interval < 15) dns_interval = 15;
 
-        if (state.dns_consecutive_fails == 0 && state.last_dns_probe > 0 &&
-            (ctx.now - state.last_dns_probe < dns_interval))
+        let effective_dns_interval = (state.dns_consecutive_fails > 0 && state.dns_consecutive_fails < 3)
+            ? 15
+            : dns_interval;
+
+        if (state.last_dns_probe > 0 &&
+            (ctx.now - state.last_dns_probe < effective_dns_interval))
             return;
 
         state.last_dns_probe = ctx.now;
