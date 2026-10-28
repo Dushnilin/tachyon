@@ -46,6 +46,15 @@ function uci_settings() {
     return uci_section("settings");
 }
 
+const CT_LITE_PROXY_MARK = "0x00400000";
+const CT_LITE_DIRECT_MARK = "0x00800000";
+
+function lite_mode_enabled(settings) {
+    if (type(settings) != "object")
+        settings = uci_settings();
+    return bool_option(settings, "lite_mode", false);
+}
+
 // True only in tproxy mode.
 //
 // The intercept rules below hand marked packets to a tproxy socket. In socks mode
@@ -876,10 +885,13 @@ function nft_create_priority_sets(table, sets) {
 }
 
 function nft_priority_verdict_args(priority_action, mark) {
+    let lite = lite_mode_enabled(null);
     if (priority_action == "bypass")
-        return [ "counter", "accept" ];
+        return lite ? [ "ct", "mark", "set", CT_LITE_DIRECT_MARK, "counter", "accept" ] : [ "counter", "accept" ];
     if (priority_action == "block")
         return [ "counter", "drop" ];
+    if (lite)
+        return [ "meta", "mark", "set", mark, "ct", "mark", "set", CT_LITE_PROXY_MARK, "counter", "accept" ];
     return [ "meta", "mark", "set", mark, "counter", "accept" ];
 }
 
@@ -2002,6 +2014,14 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
             return false;
     }
 
+    let is_lite_mode = lite_mode_enabled(uci_settings());
+    if (is_lite_mode) {
+        if (!nft_add_rule(table, "mangle", [ "ct", "mark", CT_LITE_DIRECT_MARK, "counter", "return", "comment", "\"tachyon-lite-shortcircuit-direct\"" ]) ||
+            !nft_add_rule(table, "mangle", [ "ct", "mark", CT_LITE_PROXY_MARK, "meta", "mark", "set", fakeip_mark, "counter", "return", "comment", "\"tachyon-lite-shortcircuit-proxy\"" ]))
+            return false;
+        run_args_quiet([ "nft", "add", "rule", "inet", as_string(table), "mangle", "iifname", "@" + as_string(interface_set), "ct", "state", "new", "tcp", "dport", "!=", "{ 53, 80, 443 }", "ct", "count", "over", "256", "counter", "drop", "comment", "\"tachyon-lite-connlimit\"" ]);
+    }
+
     if (!nft_add_rule(table, "mangle", [ "jump", "priority_rules" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(common_set), "meta", "l4proto", "tcp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(common_set), "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
@@ -2043,6 +2063,12 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         option(uci_settings(), "smart_detect_mode", "default") == "plus") {
         if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]) ||
             !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]))
+            return false;
+    }
+
+    if (is_lite_mode) {
+        if (!nft_add_rule(table, "mangle", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "ct", "mark", "set", CT_LITE_PROXY_MARK, "comment", "\"tachyon-lite-mark-proxy\"" ]) ||
+            !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "mark", "0", "ct", "state", "{ new, established }", "ct", "mark", "set", CT_LITE_DIRECT_MARK, "comment", "\"tachyon-lite-mark-direct\"" ]))
             return false;
     }
 
@@ -2828,7 +2854,7 @@ function sync_server_firewall_uci_rules() {
             let rule_name = "tachyon_srv_" + safe_name;
             active_rule_names[rule_name] = true;
 
-            let rule_proto = (proto == "awg" || proto == "hysteria2" || proto == "tuic" || proto == "masque") ? "udp" : "tcp";
+            let rule_proto = (proto == "awg" || proto == "hysteria2" || proto == "tuic" || proto == "masque") ? "udp" : "tcp udp";
             let port_str = as_string(port);
 
             let current_target = uci_core.get("firewall." + rule_name + ".target");
@@ -2860,9 +2886,42 @@ function sync_server_firewall_uci_rules() {
         }
     }
 
+    let srv_ports = collect_server_firewall_ports();
+    let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
+    let fw4_include_file = fw4_include_dir + "/10-tachyon-servers.nft";
+    if (fs.stat("/usr/share/nftables.d") != null) {
+        fs.mkdir("/usr/share/nftables.d/chain-pre");
+        fs.mkdir(fw4_include_dir);
+        let nft_content = "";
+        if (length(srv_ports.tcp) > 0) {
+            let ports_str = length(srv_ports.tcp) == 1 ? as_string(srv_ports.tcp[0]) : "{ " + join(", ", srv_ports.tcp) + " }";
+            nft_content += sprintf("tcp dport %s accept comment \"Allow Tachyon server inbound TCP\"\n", ports_str);
+        }
+        if (length(srv_ports.udp) > 0) {
+            let ports_str = length(srv_ports.udp) == 1 ? as_string(srv_ports.udp[0]) : "{ " + join(", ", srv_ports.udp) + " }";
+            nft_content += sprintf("udp dport %s accept comment \"Allow Tachyon server inbound UDP\"\n", ports_str);
+        }
+        if (nft_content != "")
+            write_text_file(fw4_include_file, nft_content);
+        else
+            unlink_file(fw4_include_file);
+    }
+
     if (changed) {
         uci_core.commit("firewall");
         run_args_quiet([ "/etc/init.d/firewall", "reload" ]);
+    }
+
+    let fw4_input_out = command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
+    if (fw4_input_out != "") {
+        for (let p in srv_ports.tcp) {
+            if (index(fw4_input_out, "tcp dport " + as_string(p)) < 0)
+                run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "input", "tcp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound TCP\"" ]);
+        }
+        for (let p in srv_ports.udp) {
+            if (index(fw4_input_out, "udp dport " + as_string(p)) < 0)
+                run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "input", "udp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound UDP\"" ]);
+        }
     }
 }
 
@@ -2981,15 +3040,24 @@ function ensure_bridge_netfilter_disabled() {
 // TCP keepalive: detect dead connections in ~90s instead of kernel default (hours).
 // Conntrack: expire stale TCP entries in 10 min instead of 5 days.
 // Buffers & TCP fastopen: accelerate QUIC/Hysteria2 and reduce TLS handshake RTT.
+// In Tachyon Lite mode: aggressively cap conntrack table, UDP timeouts and
+// socket buffers to protect single-core MIPS/MIPSEL CPUs from SoftIRQ saturation.
 function apply_connection_tuning() {
+    let lite = lite_mode_enabled(null);
     let sysctls = [
         [ "net.ipv4.tcp_keepalive_time", "60" ],
         [ "net.ipv4.tcp_keepalive_intvl", "10" ],
         [ "net.ipv4.tcp_keepalive_probes", "3" ],
         [ "net.ipv4.tcp_fastopen", "3" ],
         [ "net.netfilter.nf_conntrack_tcp_timeout_established", "600" ],
-        [ "net.netfilter.nf_conntrack_tcp_timeout_time_wait", "30" ]
+        [ "net.netfilter.nf_conntrack_tcp_timeout_time_wait", lite ? "15" : "30" ]
     ];
+    if (lite) {
+        push(sysctls, [ "net.netfilter.nf_conntrack_tcp_timeout_close_wait", "15" ]);
+        push(sysctls, [ "net.netfilter.nf_conntrack_tcp_timeout_fin_wait", "30" ]);
+        push(sysctls, [ "net.netfilter.nf_conntrack_udp_timeout", "15" ]);
+        push(sysctls, [ "net.netfilter.nf_conntrack_udp_timeout_stream", "60" ]);
+    }
     let ok = true;
     for (let pair in sysctls) {
         let current = trim(command_output_from_args([ "sysctl", "-n", pair[0] ]) || "");
@@ -2999,19 +3067,24 @@ function apply_connection_tuning() {
     }
 
     let ct_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.netfilter.nf_conntrack_max" ]) || "0"));
-    if (ct_max > 0 && ct_max < 65536)
+    if (lite) {
+        if (ct_max > 8192)
+            run_args_quiet([ "sysctl", "-w", "net.netfilter.nf_conntrack_max=8192" ]);
+    } else if (ct_max > 0 && ct_max < 65536) {
         run_args_quiet([ "sysctl", "-w", "net.netfilter.nf_conntrack_max=65536" ]);
+    }
 
+    let target_buf = lite ? 262144 : 2621440;
     let rmem_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.core.rmem_max" ]) || "0"));
-    if (rmem_max > 0 && rmem_max < 2621440)
-        run_args_quiet([ "sysctl", "-w", "net.core.rmem_max=2621440" ]);
+    if (lite ? (rmem_max > target_buf) : (rmem_max > 0 && rmem_max < target_buf))
+        run_args_quiet([ "sysctl", "-w", "net.core.rmem_max=" + as_string(target_buf) ]);
 
     let wmem_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.core.wmem_max" ]) || "0"));
-    if (wmem_max > 0 && wmem_max < 2621440)
-        run_args_quiet([ "sysctl", "-w", "net.core.wmem_max=2621440" ]);
+    if (lite ? (wmem_max > target_buf) : (wmem_max > 0 && wmem_max < target_buf))
+        run_args_quiet([ "sysctl", "-w", "net.core.wmem_max=" + as_string(target_buf) ]);
 
     if (ok)
-        log_debug("Connection tuning applied: tcp_keepalive=60/10/3, tcp_fastopen=3, conntrack_established=600");
+        log_debug("Connection tuning applied (lite=" + (lite ? "1" : "0") + "): tcp_keepalive=60/10/3, tcp_fastopen=3, conntrack_established=600");
     return ok;
 }
 
@@ -3232,6 +3305,8 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     }
     if (bool_option(settings, "wifi_calling_direct", false))
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
+    if (bool_option(settings, "lite_mode", false))
+        body = signature_add_value(body, "settings.lite_mode", "1");
 
     for (let section in sections)
         body = nft_rule_signature_body(body, object_or_empty(section));
@@ -4005,6 +4080,12 @@ else if (mode == "nft-sync-router-output-intercept")
     exit(nft_sync_router_output_intercept(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "nft-insert-fully-routed-ip-rules")
     exit(nft_insert_fully_routed_ip_rules(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
+else if (mode == "apply-connection-tuning")
+    exit(apply_connection_tuning() ? 0 : 1);
+else if (mode == "sync-server-firewall-uci-rules") {
+    sync_server_firewall_uci_rules();
+    exit(0);
+}
 else {
     warn("Usage: nft/apply.uc <operation> ...\n");
     exit(1);

@@ -2073,6 +2073,10 @@ function cleanup_modular_entities_v1(ctx) {
         prune_ref_list(bal, "source_refs", valid_sources, null);
         prune_ref_list(bal, "group_refs", valid_groups, null);
         prune_ref_list(bal, "outbound_group_levels", valid_groups, "direct");
+        let bal_id = section_name(bal);
+        if (index(bal_id, "bal_") == 0 && length(list_option(bal, "source_refs")) > 0) {
+            delete_option(ctx, bal, "source_refs");
+        }
     }
     for (let grp in (ctx.model.outbound_group || [])) {
         prune_ref_list(grp, "source_refs", valid_sources, "*");
@@ -2456,21 +2460,6 @@ function migrate_modular_entities_v1(ctx) {
                     set_option_if_missing(ctx, bal, bk, bval);
             }
             add_list_unique(ctx, section, "balancer_refs", bal_id);
-        }
-
-        let sec_src_refs = list_option(section, "outbound_source_refs");
-        if (length(sec_src_refs) > 0) {
-            for (let b_ref in list_option(section, "balancer_refs")) {
-                for (let b_obj in (ctx.model.balancer || [])) {
-                    if (section_name(b_obj) == b_ref && length(list_option(b_obj, "source_refs")) == 0) {
-                        for (let s_ref in sec_src_refs) {
-                            if (index(s_ref, "src_zapret") == 0 || index(s_ref, "src_byedpi") == 0 || index(s_ref, "src_desync") == 0)
-                                continue;
-                            add_list_unique(ctx, b_obj, "source_refs", s_ref);
-                        }
-                    }
-                }
-            }
         }
 
         if (sec_action != "" && sec_action != "connection" && sec_action != "bypass" && sec_action != "block" && sec_action != "dns" && sec_action != "hosts") {

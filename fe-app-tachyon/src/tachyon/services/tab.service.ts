@@ -24,6 +24,13 @@ class TabService {
   }
 
   private init() {
+    if (
+      typeof MutationObserver === 'undefined' ||
+      typeof document === 'undefined' ||
+      !document?.body
+    ) {
+      return;
+    }
     this.observer = new MutationObserver((mutations) =>
       this.handleMutations(mutations),
     );

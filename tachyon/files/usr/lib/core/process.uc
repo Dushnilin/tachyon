@@ -264,6 +264,20 @@ function kill_core_daemons() {
     return killed;
 }
 
+// Adjust scheduling priority of running core daemons for Tachyon Lite mode.
+function apply_lite_mode_priority(enabled) {
+    let is_lite = (enabled === true || as_string(enabled) == "1" || as_string(enabled) == "true");
+    let nice_val = is_lite ? "15" : "0";
+    let updated = 0;
+    for (let pid in core_daemon_pids()) {
+        if (common.command_success_from_args([ "renice", "-n", nice_val, "-p", pid ]) ||
+            common.command_success_from_args([ "renice", nice_val, "-p", pid ])) {
+            updated++;
+        }
+    }
+    return updated;
+}
+
 function init_script_kills_itself(text) {
     let name = core_contract().procd_name;
     for (let line in split(as_string(text), "\n")) {
@@ -357,11 +371,15 @@ function managed_core_init_script(marker, reset_log) {
         "    fi\n\n" +
         log_prep +
         "    _kill_daemon_instances\n\n" +
-    "    procd_open_instance\n" +
+        "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"0\"\n" +
         "    procd_set_param limits nofile=\"65535 65535\"\n" +
+        "    local lite_mode=\"$(uci get tachyon.settings.lite_mode 2>/dev/null || echo 0)\"\n" +
+        "    if [ \"$lite_mode\" = \"1\" ] || [ \"$lite_mode\" = \"true\" ]; then\n" +
+        "        procd_set_param nice 15\n" +
+        "    fi\n" +
         "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
         "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\" GOMEMLIMIT=\"${gomemlimit}MiB\"\n" +
         "    else\n" +
@@ -501,6 +519,7 @@ function module_exports() {
         is_core_initscript,
         core_daemon_pids,
         kill_core_daemons,
+        apply_lite_mode_priority,
         init_script_kills_itself,
         managed_core_init_script,
 
@@ -612,6 +631,7 @@ if (mode == "selftest") {
     _test_assert(index(generated, "_kill_daemon_instances") >= 0, "safe killer is present");
     _test_assert(index(generated_log, contract.log_file) >= 0, "reset-log variant truncates the core log");
     _test_assert(index(generated, contract.log_file) < 0, "plain variant leaves the core log alone");
+    _test_assert(index(generated, "procd_set_param nice 15") >= 0, "generated init supports lite_mode nice 15");
 
     print("process.uc selftest: " + _test_pass + " passed, " + _test_fail + " failed\n");
     exit(_test_fail > 0 ? 1 : 0);

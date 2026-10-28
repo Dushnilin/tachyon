@@ -1963,8 +1963,12 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
     for (let item in prepare_json_connection_outbounds(section, taken, config.outbounds)) {
         let outbound = item.outbound;
         let tag_name = outbound.tag;
-        if (!item.reused)
-            push(config.outbounds, outbound);
+        if (!item.reused) {
+            if (outbound.type == "wireguard")
+                add_imported_wireguard_endpoint(config, outbound);
+            else
+                push(config.outbounds, outbound);
+        }
         if (index(selector_tags, tag_name) < 0)
             push(selector_tags, tag_name);
         if (urltest_leaf_candidate_outbound(outbound) && index(urltest_candidate_tags, tag_name) < 0)

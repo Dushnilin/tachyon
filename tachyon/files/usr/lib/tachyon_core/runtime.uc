@@ -98,6 +98,10 @@ function fallback_managed_core_init_script(marker) {
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"0\"\n" +
         "    procd_set_param limits nofile=\"65535 65535\"\n" +
+        "    local lite_mode=\"$(uci get tachyon.settings.lite_mode 2>/dev/null || echo 0)\"\n" +
+        "    if [ \"$lite_mode\" = \"1\" ] || [ \"$lite_mode\" = \"true\" ]; then\n" +
+        "        procd_set_param nice 15\n" +
+        "    fi\n" +
         "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
         "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\" GOMEMLIMIT=\"${gomemlimit}MiB\"\n" +
         "    else\n" +

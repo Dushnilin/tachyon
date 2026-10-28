@@ -56,21 +56,92 @@ function validateLatencyTestUrl(value) {
 function disablePasswordAutofill(option) {
   if (!option || typeof option.renderWidget !== "function") return;
   const origRenderWidget = option.renderWidget;
+  const origFormvalue = option.formvalue;
   option.renderWidget = function (section_id, option_index, cfgvalue) {
+    const initialValue =
+      cfgvalue != null
+        ? String(cfgvalue)
+        : String(this.cfgvalue(section_id) || "");
     const node = origRenderWidget.call(
       this,
       section_id,
       option_index,
-      cfgvalue,
+      initialValue,
     );
     const applyAttrs = function (el) {
       if (!el) return;
       const input = el.querySelector ? el.querySelector("input") || el : el;
       if (input && input.setAttribute) {
-        input.setAttribute("autocomplete", "new-password");
+        // Switch from type="password" to type="text" with CSS disc masking
+        // BEFORE the node enters the document so browser password managers
+        // (Chrome, Yandex, Safari, Firefox) never autofill the router root
+        // password on page load or after Save & Apply (map.reset()).
+        input.setAttribute("type", "text");
+        try {
+          input.type = "text";
+        } catch (_e) {}
+        input.style.webkitTextSecurity = "disc";
+        input.style.textSecurity = "disc";
+        input.dataset.masked = "1";
+        input.dataset.userEdited = "0";
+        input.dataset.initialValue = initialValue;
+        input.value = initialValue;
+        input.readOnly = true;
+        input.setAttribute("autocomplete", "off");
+        input.setAttribute("autocorrect", "off");
+        input.setAttribute("autocapitalize", "off");
+        input.setAttribute("spellcheck", "false");
+        input.setAttribute("data-form-type", "other");
         input.setAttribute("data-lpignore", "true");
         input.setAttribute("data-1p-ignore", "true");
         input.setAttribute("data-bwignore", "true");
+
+        const unlockForUser = function () {
+          input.readOnly = false;
+        };
+        const markUserEdited = function () {
+          input.readOnly = false;
+          input.dataset.userEdited = "1";
+        };
+        input.addEventListener("mousedown", unlockForUser);
+        input.addEventListener("touchstart", unlockForUser, { passive: true });
+        input.addEventListener("focus", unlockForUser);
+        input.addEventListener("keydown", markUserEdited);
+        input.addEventListener("paste", markUserEdited);
+        input.addEventListener("drop", markUserEdited);
+        input.addEventListener("cut", markUserEdited);
+        input.addEventListener("input", function (ev) {
+          if (
+            input.dataset.userEdited !== "1" &&
+            (!ev || !ev.inputType || ev.inputType === "insertReplacementText")
+          ) {
+            input.value = input.dataset.initialValue || "";
+            return;
+          }
+          input.dataset.userEdited = "1";
+        });
+
+        const revealBtn =
+          el.querySelector && el.querySelector("button, .cbi-button");
+        if (revealBtn && !revealBtn.dataset.tachyonMaskBound) {
+          revealBtn.dataset.tachyonMaskBound = "1";
+          revealBtn.addEventListener(
+            "click",
+            function (ev) {
+              ev.preventDefault();
+              ev.stopImmediatePropagation();
+              const isMasked = input.dataset.masked !== "0";
+              input.dataset.masked = isMasked ? "0" : "1";
+              input.setAttribute("type", "text");
+              try {
+                input.type = "text";
+              } catch (_e) {}
+              input.style.webkitTextSecurity = isMasked ? "none" : "disc";
+              input.style.textSecurity = isMasked ? "none" : "disc";
+            },
+            true,
+          );
+        }
       }
     };
     if (node instanceof Promise) {
@@ -82,6 +153,19 @@ function disablePasswordAutofill(option) {
     applyAttrs(node);
     return node;
   };
+  if (typeof origFormvalue === "function") {
+    option.formvalue = function (section_id) {
+      const val = origFormvalue.call(this, section_id);
+      if (typeof document !== "undefined") {
+        const id = "widget." + this.cbid(section_id);
+        const input = document.getElementById(id);
+        if (input && input.dataset && input.dataset.userEdited !== "1") {
+          return this.cfgvalue(section_id) || "";
+        }
+      }
+      return val;
+    };
+  }
 }
 
 function isDownloadSectionAction(action, capabilities) {
@@ -3164,6 +3248,11 @@ function createSettingsContent(section, capabilities) {
   // GitHub counts the unauthenticated API budget per IP. Everyone behind the
   // same exit node (WARP, CGNAT) shares 60 requests/hour; a personal access
   // token lifts that to 5000 per account without any other change.
+  const isValidGithubToken = function (val) {
+    return /^(?:gh[pousr]_[A-Za-z0-9_]{36,255}|github_pat_[A-Za-z0-9_]{22,255}|[A-Fa-f0-9]{40})$/.test(
+      val,
+    );
+  };
   o = section.taboption(
     "updates",
     form.Value,
@@ -3175,14 +3264,28 @@ function createSettingsContent(section, capabilities) {
   );
   o.password = true;
   o.rmempty = true;
+  o.cfgvalue = function (section_id) {
+    const raw = (uci.get(UCI_PACKAGE, section_id, "github_token") || "").trim();
+    if (raw !== "" && !isValidGithubToken(raw)) {
+      uci.unset(UCI_PACKAGE, section_id, "github_token");
+      return "";
+    }
+    return raw;
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : "";
+    if (val && isValidGithubToken(val)) {
+      uci.set(UCI_PACKAGE, section_id, "github_token", val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, "github_token");
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, "github_token");
+  };
   o.validate = function (section_id, value) {
     const v = (value || "").trim();
-    if (
-      v !== "" &&
-      !/^(?:gh[pousr]_[A-Za-z0-9_]{36,255}|github_pat_[A-Za-z0-9_]{22,255}|[A-Fa-f0-9]{40})$/.test(
-        v,
-      )
-    )
+    if (v !== "" && !isValidGithubToken(v))
       return _(
         "Does not look like a GitHub token (expected ghp_… / github_pat_… or a 40-hex classic token)",
       );
@@ -3723,6 +3826,22 @@ function createSettingsContent(section, capabilities) {
     "download_components_via_proxy_section",
     capabilities,
   );
+
+  o = section.taboption(
+    "advanced",
+    form.Flag,
+    "lite_mode",
+    _tr(
+      "Tachyon Lite (Эко-режим для слабых MIPS/MIPSEL роутеров)",
+      "Tachyon Lite (Eco Mode for Low-Power MIPS/MIPSEL Routers)",
+    ),
+    _tr(
+      "Комплексная защита слабых процессоров (QCA9531 / MT7628, 650 МГц) от 100% загрузки и отвала Wi-Fi/LuCI при прокачке трафика (VLESS WS, Hysteria2): понижает приоритет прокси (nice 15), включает мгновенный пропуск установленных сессий через ct mark Short-Circuit + connlimit в nftables, ужимает таймауты conntrack (600с / буферы 256КБ) и замораживает фоновые проверки при активном трафике.",
+      "Comprehensive stabilization for low-power MIPS/MIPSEL routers (QCA9531 / MT7628, 650 MHz) to prevent 100% CPU lockups and Wi-Fi/LuCI drops under heavy VLESS WS / Hysteria2 traffic: lowers proxy priority (nice 15), enables nftables ct mark Short-Circuit + connlimit, tightens conntrack timeouts (600s / 256KB buffers), and hibernates background probes during active traffic.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
 
   o = section.taboption(
     "advanced",

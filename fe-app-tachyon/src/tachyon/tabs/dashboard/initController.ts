@@ -671,6 +671,15 @@ async function connectToClashSockets(dataUpdatesId: number) {
     },
   );
 
+  const isLiteMode = Boolean(store.get().servicesInfoWidget.data?.liteMode);
+  if (isLiteMode && !expandedSections.has('active_clients')) {
+    logger.info(
+      '[DASHBOARD]',
+      'Tachyon Lite active: skipping /connections WebSocket stream while client list is collapsed',
+    );
+    return;
+  }
+
   trackClashSocketSubscription(
     `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
     (msg) => {
@@ -2445,6 +2454,15 @@ function renderStoreWidget(
 async function fetchConnections() {
   const activeEngine = store.get().activeEngine;
   const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
+  const isLiteMode = Boolean(store.get().servicesInfoWidget.data?.liteMode);
+
+  if (isLiteMode && !expandedSections.has('active_clients')) {
+    const bw = store.get().bandwidthWidget.data;
+    const totalSpeed = (bw?.down || 0) + (bw?.up || 0);
+    if (totalSpeed > 512 * 1024) {
+      return;
+    }
+  }
 
   const hasEnabledInbounds = getConfiguredServerInbounds().some(
     (s) => s.enabled,
@@ -2452,7 +2470,7 @@ async function fetchConnections() {
   const shouldFetchHostnames =
     expandedSections.has('active_clients') || hasEnabledInbounds;
   const needsFallbackPolling =
-    directSocketsFailed || !canUseDirectClashApi() || isSteer;
+    directSocketsFailed || !canUseDirectClashApi() || isSteer || isLiteMode;
   if (!needsFallbackPolling && !shouldFetchHostnames) {
     return;
   }
@@ -3132,6 +3150,12 @@ export async function renderSystemServicesWidget() {
   const enabledInboundsCount = isTachyonRunning
     ? getConfiguredServerInbounds().filter((s) => s.enabled).length
     : 0;
+  const isLiteMode = Boolean(srvData?.liteMode);
+
+  const liteTooltip = tr(
+    'Комплексный эко-режим для слабых MIPS/MIPSEL роутеров (QCA9531 / MT7628): пониженный приоритет прокси (nice 15), ускорение nftables через ct mark Short-Circuit + connlimit, сжатые лимиты conntrack (600с / 256КБ) и гибернация фоновых проверок при нагрузке',
+    'Comprehensive eco mode for low-power MIPS/MIPSEL routers (QCA9531 / MT7628): lower proxy priority (nice 15), nftables ct mark Short-Circuit + connlimit, tighter conntrack limits (600s / 256KB), and Control Plane hibernation under heavy load',
+  );
 
   const routingItems: Array<{
     key?: string | HTMLElement;
@@ -3146,6 +3170,90 @@ export async function renderSystemServicesWidget() {
         { class: 'tachyon-mode-pill tachyon-mode-pill--active' },
         'TProxy + Fake-IP',
       ),
+    },
+    {
+      key: tr('Эко-режим (Lite)', 'Tachyon Lite'),
+      value: E(
+        'button',
+        {
+          type: 'button',
+          class: isLiteMode
+            ? 'tachyon-mode-pill tachyon-mode-pill--active'
+            : 'tachyon-stat-pill tachyon-stat-pill--conns',
+          style: isLiteMode
+            ? 'cursor: pointer; border: 1px solid rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.16); color: #10b981; font-weight: 600;'
+            : 'cursor: pointer; opacity: 0.85;',
+          title: liteTooltip,
+          click: async (event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const btn = event.currentTarget as HTMLButtonElement | null;
+            if (btn) {
+              btn.disabled = true;
+              btn.textContent = tr('Применение...', 'Applying...');
+            }
+            const nextEnabled = !isLiteMode;
+            try {
+              const res = await TachyonShellMethods.setLiteMode(nextEnabled);
+              if (res.success) {
+                const currentSrv = store.get().servicesInfoWidget;
+                store.set({
+                  servicesInfoWidget: {
+                    ...currentSrv,
+                    data: {
+                      ...currentSrv.data,
+                      liteMode: nextEnabled ? 1 : 0,
+                    },
+                  },
+                });
+                showToast(
+                  nextEnabled
+                    ? tr(
+                        'Эко-режим Tachyon Lite включён (nice 15 + ct mark Short-Circuit)',
+                        'Tachyon Lite eco mode enabled (nice 15 + ct mark Short-Circuit)',
+                      )
+                    : tr(
+                        'Эко-режим Tachyon Lite выключен',
+                        'Tachyon Lite eco mode disabled',
+                      ),
+                  'success',
+                );
+                if (dashboardDataUpdatesStarted) {
+                  stopDashboardDataUpdates();
+                  startDashboardDataUpdates();
+                }
+                void refreshRuntimeUiState({ force: true });
+              } else {
+                showToast(
+                  res.error ||
+                    tr(
+                      'Не удалось переключить Tachyon Lite',
+                      'Failed to toggle Tachyon Lite',
+                    ),
+                  'error',
+                );
+                void renderSystemServicesWidget();
+              }
+            } catch (err: any) {
+              showToast(
+                err?.message ||
+                  tr(
+                    'Не удалось переключить Tachyon Lite',
+                    'Failed to toggle Tachyon Lite',
+                  ),
+                'error',
+              );
+              void renderSystemServicesWidget();
+            }
+          },
+        } as any,
+        isLiteMode
+          ? tr('⚡ Включён (MIPS Eco)', '⚡ Enabled (MIPS Eco)')
+          : tr('Выключен', 'Off'),
+      ),
+      attributes: {
+        title: liteTooltip,
+      },
     },
     {
       key: tr('Всего соединений', 'Active Connections'),

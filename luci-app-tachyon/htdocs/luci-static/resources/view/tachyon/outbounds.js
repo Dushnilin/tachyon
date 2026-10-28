@@ -347,6 +347,14 @@ function asArray(val) {
     .filter(Boolean);
 }
 
+function asRawList(val) {
+  if (!val) return [];
+  if (Array.isArray(val))
+    return val.map((v) => String(v).trim()).filter(Boolean);
+  const s = String(val).trim();
+  return s ? [s] : [];
+}
+
 function shortenMiddle(str, maxLen) {
   const s = String(str || "").trim();
   if (s.length <= maxLen) return s;
@@ -375,7 +383,7 @@ function summarizeOutboundSource(sectionId) {
     return `${_("Proxy Links")}: ${links.length}${prefixTag}`;
   }
   if (stype === "amnezia_config") {
-    const cfgs = asArray(
+    const cfgs = asRawList(
       uci.get(UCI_PACKAGE, sectionId, "amnezia_configs") ||
         uci.get(UCI_PACKAGE, sectionId, "selector_amnezia_configs"),
     );
@@ -413,7 +421,7 @@ function summarizeOutboundSource(sectionId) {
     return `${_("Network Interface")}: ${iface || _("Not set")}${prefixTag}`;
   }
   if (stype === "outbound_json" || stype === "json") {
-    const jsons = asArray(uci.get(UCI_PACKAGE, sectionId, "outbound_jsons"));
+    const jsons = asRawList(uci.get(UCI_PACKAGE, sectionId, "outbound_jsons"));
     return `${_("JSON Outbounds")}: ${jsons.length || 1}${prefixTag}`;
   }
   if (stype === "zapret2") {
@@ -1612,25 +1620,58 @@ function setModalFieldValue(sectionRef, sectionId, optName, value) {
   try {
     const mapNode = document.querySelector(".cbi-modal") || document.body;
     const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.${optName}`;
-    const el =
-      mapNode.querySelector(`[id="${fieldId}"]`) ||
-      mapNode.querySelector(`[name="${fieldId}"]`) ||
-      mapNode.querySelector(
-        `[data-field="${fieldId}"] input, [data-field="${fieldId}"] textarea, [data-field="${fieldId}"] select`,
-      );
-    if (el) {
-      el.value = Array.isArray(value) ? value.join(", ") : String(value ?? "");
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+    const containerEl = mapNode.querySelector(`[id="${fieldId}"]`);
+    const fieldWrapEl = mapNode.querySelector(`[data-field="${fieldId}"]`);
+    let uiEl = null;
+    if (
+      typeof L !== "undefined" &&
+      L.dom &&
+      typeof L.dom.findClassInstance === "function"
+    ) {
+      if (containerEl) {
+        try {
+          uiEl = L.dom.findClassInstance(containerEl);
+        } catch (_e) {}
+      }
+      if (!uiEl && fieldWrapEl) {
+        const inner = fieldWrapEl.querySelector(
+          ".cbi-value-field > div, .cbi-value-field > input, .cbi-value-field > textarea, .cbi-value-field > select",
+        );
+        if (inner) {
+          try {
+            uiEl = L.dom.findClassInstance(inner);
+          } catch (_e) {}
+        }
+      }
     }
-    const optObj =
-      sectionRef &&
-      Array.isArray(sectionRef.children) &&
-      sectionRef.children.find((c) => c.option === optName);
-    if (optObj && typeof optObj.getUIElement === "function") {
-      const uiEl = optObj.getUIElement(sectionId);
-      if (uiEl && typeof uiEl.setValue === "function") {
-        uiEl.setValue(value);
+    if (!uiEl) {
+      const optObj =
+        sectionRef &&
+        Array.isArray(sectionRef.children) &&
+        sectionRef.children.find((c) => c.option === optName);
+      if (optObj && typeof optObj.getUIElement === "function") {
+        try {
+          uiEl = optObj.getUIElement(sectionId);
+        } catch (_e) {}
+      }
+    }
+    if (uiEl && typeof uiEl.setValue === "function") {
+      uiEl.setValue(value);
+    }
+    if (!Array.isArray(value)) {
+      const el =
+        mapNode.querySelector(`[id="widget.${fieldId}"]`) ||
+        mapNode.querySelector(
+          `input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"]`,
+        ) ||
+        mapNode.querySelector(`[name="${fieldId}"]`) ||
+        mapNode.querySelector(
+          `[data-field="${fieldId}"] input:not([type="hidden"]), [data-field="${fieldId}"] textarea, [data-field="${fieldId}"] select`,
+        );
+      if (el && "value" in el) {
+        el.value = String(value ?? "");
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
       }
     }
   } catch (_e) {}
@@ -1833,6 +1874,9 @@ function createOutboundsContent(section) {
     form.Value,
     "node_prefix_bg",
     _("Prefix Badge Background Color"),
+    _(
+      "Select a preset background color or enter any HEX/CSS color (leave empty for automatic palette)",
+    ),
   );
   o.modalonly = true;
   o.placeholder = "#dbeafe";
@@ -1843,6 +1887,9 @@ function createOutboundsContent(section) {
     form.Value,
     "node_prefix_color",
     _("Prefix Badge Text Color"),
+    _(
+      "Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)",
+    ),
   );
   o.modalonly = true;
   o.placeholder = "#1e40af";
@@ -1853,6 +1900,9 @@ function createOutboundsContent(section) {
     form.DummyValue,
     "_prefix_color_presets",
     _("Prefix Color Presets"),
+    _(
+      "Click a ready-made badge theme or use the color pickers to set background and text colors",
+    ),
   );
   o.modalonly = true;
   o.depends({ source_type: "subscription", prefix_nodes: "1" });
@@ -1970,7 +2020,7 @@ function createOutboundsContent(section) {
       ).then((loaded) => {
         const valid = loaded.filter((item) => item && item.config);
         if (valid.length) {
-          const cur = asArray(
+          const cur = asRawList(
             uci.get(UCI_PACKAGE, sectionId, "amnezia_configs"),
           );
           const next = [
@@ -2026,10 +2076,19 @@ function createOutboundsContent(section) {
     const trimmed = String(value || "").trim();
     if (!trimmed) return;
     uci.set(UCI_PACKAGE, sectionId, "amnezia_conf_text", trimmed);
-    const cur = asArray(uci.get(UCI_PACKAGE, sectionId, "amnezia_configs"));
+    const cur = asRawList(uci.get(UCI_PACKAGE, sectionId, "amnezia_configs"));
     const name = uci.get(UCI_PACKAGE, sectionId, "name") || sectionId;
     const serialized = JSON.stringify({ name, config: trimmed });
-    if (!cur.includes(serialized) && !cur.includes(trimmed)) {
+    const alreadyExists = cur.some((entry) => {
+      if (entry === serialized || entry === trimmed) return true;
+      try {
+        const parsed = JSON.parse(entry);
+        return parsed && String(parsed.config || "").trim() === trimmed;
+      } catch (_e) {
+        return false;
+      }
+    });
+    if (!alreadyExists) {
       uci.set(UCI_PACKAGE, sectionId, "amnezia_configs", [...cur, serialized]);
     }
   };
@@ -2055,9 +2114,15 @@ function createOutboundsContent(section) {
       .exec("/usr/bin/tachyon", ["generate_warp"])
       .then((res) => {
         const data = JSON.parse((res && res.stdout) || "{}");
-        if (!data || data.error || !data.private_key) {
+        if (
+          !data ||
+          data.error ||
+          data.success === false ||
+          !data.private_key
+        ) {
           throw new Error(
-            (data && data.error) || _("Failed to generate WARP configuration"),
+            (data && (data.error || data.message)) ||
+              _("Failed to generate WARP configuration"),
           );
         }
         setModalFieldValue(
@@ -2076,7 +2141,7 @@ function createOutboundsContent(section) {
           section,
           sectionId,
           "awg_server_address",
-          data.server || "engage.cloudflareclient.com",
+          data.server_address || data.server || "engage.cloudflareclient.com",
         );
         setModalFieldValue(
           section,
@@ -2085,32 +2150,53 @@ function createOutboundsContent(section) {
           String(data.server_port || 2408),
         );
         const addrs = [];
-        if (data.local_address) addrs.push(data.local_address);
-        if (data.ipv6_address) addrs.push(data.ipv6_address);
+        if (data.local_address) {
+          String(data.local_address)
+            .split(/[\s,]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .forEach((a) => {
+              if (!addrs.includes(a)) addrs.push(a);
+            });
+        }
+        if (data.ipv6_address) {
+          String(data.ipv6_address)
+            .split(/[\s,]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .forEach((a) => {
+              if (!addrs.includes(a)) addrs.push(a);
+            });
+        }
         if (addrs.length) {
           setModalFieldValue(section, sectionId, "awg_local_address", addrs);
         }
         if (data.mtu) {
           setModalFieldValue(section, sectionId, "awg_mtu", String(data.mtu));
         }
-        if (data.jc)
-          setModalFieldValue(section, sectionId, "awg_jc", String(data.jc));
-        if (data.jmin)
-          setModalFieldValue(section, sectionId, "awg_jmin", String(data.jmin));
-        if (data.jmax)
-          setModalFieldValue(section, sectionId, "awg_jmax", String(data.jmax));
-        if (data.s1)
-          setModalFieldValue(section, sectionId, "awg_s1", String(data.s1));
-        if (data.s2)
-          setModalFieldValue(section, sectionId, "awg_s2", String(data.s2));
-        if (data.h1)
-          setModalFieldValue(section, sectionId, "awg_h1", String(data.h1));
-        if (data.h2)
-          setModalFieldValue(section, sectionId, "awg_h2", String(data.h2));
-        if (data.h3)
-          setModalFieldValue(section, sectionId, "awg_h3", String(data.h3));
-        if (data.h4)
-          setModalFieldValue(section, sectionId, "awg_h4", String(data.h4));
+        [
+          ["awg_jc", "jc"],
+          ["awg_jmin", "jmin"],
+          ["awg_jmax", "jmax"],
+          ["awg_s1", "s1"],
+          ["awg_s2", "s2"],
+          ["awg_s3", "s3"],
+          ["awg_s4", "s4"],
+          ["awg_h1", "h1"],
+          ["awg_h2", "h2"],
+          ["awg_h3", "h3"],
+          ["awg_h4", "h4"],
+          ["awg_i1", "i1"],
+          ["awg_i2", "i2"],
+          ["awg_i3", "i3"],
+          ["awg_i4", "i4"],
+          ["awg_i5", "i5"],
+        ].forEach(([uciKey, altKey]) => {
+          const val = data[uciKey] !== undefined ? data[uciKey] : data[altKey];
+          if (val !== undefined && val !== null && String(val) !== "") {
+            setModalFieldValue(section, sectionId, uciKey, String(val));
+          }
+        });
         ui.addNotification(
           null,
           E("p", _("WARP configuration generated and filled.")),
@@ -2379,6 +2465,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = "51820";
+  o.rmempty = false;
   o.placeholder = "51820";
   o.depends("source_type", "awg");
 
@@ -2495,9 +2582,15 @@ function createOutboundsContent(section) {
       .exec("/usr/bin/tachyon", ["generate_warp"])
       .then((res) => {
         const data = JSON.parse((res && res.stdout) || "{}");
-        if (!data || data.error || !data.private_key) {
+        if (
+          !data ||
+          data.error ||
+          data.success === false ||
+          !data.private_key
+        ) {
           throw new Error(
-            (data && data.error) || _("Failed to generate WARP configuration"),
+            (data && (data.error || data.message)) ||
+              _("Failed to generate WARP configuration"),
           );
         }
         setModalFieldValue(
@@ -2516,7 +2609,7 @@ function createOutboundsContent(section) {
           section,
           sectionId,
           "warp_server",
-          data.server || "engage.cloudflareclient.com",
+          data.server_address || data.server || "engage.cloudflareclient.com",
         );
         setModalFieldValue(
           section,
@@ -2525,8 +2618,24 @@ function createOutboundsContent(section) {
           String(data.server_port || 2408),
         );
         const addrs = [];
-        if (data.local_address) addrs.push(data.local_address);
-        if (data.ipv6_address) addrs.push(data.ipv6_address);
+        if (data.local_address) {
+          String(data.local_address)
+            .split(/[\s,]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .forEach((a) => {
+              if (!addrs.includes(a)) addrs.push(a);
+            });
+        }
+        if (data.ipv6_address) {
+          String(data.ipv6_address)
+            .split(/[\s,]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .forEach((a) => {
+              if (!addrs.includes(a)) addrs.push(a);
+            });
+        }
         if (addrs.length) {
           setModalFieldValue(section, sectionId, "warp_local_address", addrs);
         }
@@ -3697,6 +3806,7 @@ function createOutboundsContent(section) {
     form.Flag,
     "subscription_update_enabled",
     _("Auto-update Subscription"),
+    _("Update this subscription automatically"),
   );
   o.modalonly = true;
   o.default = "1";
@@ -3707,6 +3817,7 @@ function createOutboundsContent(section) {
     form.Value,
     "subscription_update_interval",
     _("Update Interval"),
+    _("Use sing-box duration format like 1d, 12h or 30m"),
   );
   o.modalonly = true;
   o.default = "1h";
@@ -3721,6 +3832,7 @@ function createOutboundsContent(section) {
     form.Flag,
     "download_via_proxy_enabled",
     _("Download Subscription via Proxy Section"),
+    _("Download subscriptions via the selected section"),
   );
   o.modalonly = true;
   o.default = "0";
@@ -3731,6 +3843,7 @@ function createOutboundsContent(section) {
     form.ListValue,
     "download_via_proxy_section",
     _("Proxy Section for Download"),
+    _("Select a section for downloading this subscription"),
   );
   o.modalonly = true;
   o.depends({
@@ -3752,6 +3865,9 @@ function createOutboundsContent(section) {
     form.Flag,
     "auto_user_agent",
     _("Automatic User-Agent"),
+    _(
+      "Try compatible User-Agent profiles automatically when downloading this subscription",
+    ),
   );
   o.modalonly = true;
   o.default = "1";
@@ -3762,6 +3878,7 @@ function createOutboundsContent(section) {
     form.Value,
     "user_agent",
     _("Custom User-Agent / Client Profile"),
+    _("Select a common client profile or enter a custom User-Agent"),
   );
   o.modalonly = true;
   o.value("sing-box", "sing-box (Default)");
@@ -3783,6 +3900,7 @@ function createOutboundsContent(section) {
     form.Flag,
     "auto_hwid",
     _("Automatic HWID Header (x-hwid)"),
+    _("Generate HWID from router hardware information for this subscription"),
   );
   o.modalonly = true;
   o.default = "1";
@@ -3793,6 +3911,7 @@ function createOutboundsContent(section) {
     form.Value,
     "hwid",
     _("Custom HWID (x-hwid)"),
+    _("Enter the HWID sent with subscription requests"),
   );
   o.modalonly = true;
   o.placeholder = "16-64 hex characters";
@@ -3803,6 +3922,7 @@ function createOutboundsContent(section) {
     form.Button,
     "_generate_hwid",
     _("Generate Random HWID"),
+    _("Generate a random 16-character hexadecimal HWID"),
   );
   o.modalonly = true;
   o.inputtitle = _("Generate HWID");
@@ -3842,7 +3962,13 @@ function createOutboundsContent(section) {
     ["app_version", "App Version", "3.7.1"],
     ["accept_language", "Accept-Language Header", "en-US,en;q=0.9"],
   ].forEach(([key, title, ph]) => {
-    o = section.taboption("advanced", form.Value, key, _(title));
+    o = section.taboption(
+      "advanced",
+      form.Value,
+      key,
+      _(title),
+      _("Leave empty to omit this header"),
+    );
     o.modalonly = true;
     o.placeholder = ph;
     o.depends({ source_type: "subscription", custom_device_headers: "1" });
@@ -3853,6 +3979,7 @@ function createOutboundsContent(section) {
     form.Flag,
     "show_dashboard_metadata",
     _("Show Subscription Quota on Dashboard"),
+    _("Show subscription metadata for this source on the dashboard"),
   );
   o.modalonly = true;
   o.default = "1";
@@ -3864,6 +3991,7 @@ function createOutboundsContent(section) {
     form.Flag,
     "include_urltest_groups",
     _("Import URLTest / Selector Groups from Subscription"),
+    _("Import URLTest groups returned by this subscription provider"),
   );
   o.modalonly = true;
   o.default = "0";
@@ -3875,6 +4003,9 @@ function createOutboundsContent(section) {
     form.Flag,
     "hide_urltest_group_outbounds",
     _("Hide Individual Servers Inside Imported Groups"),
+    _(
+      "Hide individual nodes that are already included in imported subscription URLTest groups",
+    ),
   );
   o.modalonly = true;
   o.default = "0";
@@ -3889,6 +4020,9 @@ function createOutboundsContent(section) {
     form.Value,
     "urltest_idle_timeout",
     _("Imported URLTest Idle Timeout"),
+    _(
+      "Stop checking imported URLTest groups when not used (e.g. 30m, 12h, 1d). Leave empty to use provider or default value.",
+    ),
   );
   o.modalonly = true;
   o.placeholder = "30m";
@@ -3902,6 +4036,7 @@ function createOutboundsContent(section) {
     form.Flag,
     "hide_detour_outbounds",
     _("Hide Intermediate Detour Outbounds"),
+    _("Hide intermediate nodes used as detours by other subscription nodes"),
   );
   o.modalonly = true;
   o.default = "1";
@@ -3913,6 +4048,9 @@ function createOutboundsContent(section) {
     form.Flag,
     "subscription_insecure",
     _("Skip TLS Verification for Imported Nodes (insecure)"),
+    _(
+      "Download this subscription without TLS certificate verification (for panels with self-signed or mismatched certificates)",
+    ),
   );
   o.modalonly = true;
   o.default = "0";
@@ -3930,7 +4068,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.default = "";
   o.value("", _("Keep Provider Default"));
-  o.value("chrome", "Chrome (Recommended for REALITY + ML-KEM)");
+  o.value("chrome", _("Chrome (Recommended for REALITY + ML-KEM)"));
   o.value("firefox", "Firefox");
   o.value("safari", "Safari");
   o.value("ios", "iOS");
@@ -3980,6 +4118,9 @@ function createOutboundsContent(section) {
     form.ListValue,
     "outbound_detour_section",
     _("Detour Target Section"),
+    _(
+      "Select the routing Section through which this connection will establish its upstream tunnel.",
+    ),
   );
   o.modalonly = true;
   o.depends("outbound_detour_enabled", "1");

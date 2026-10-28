@@ -642,20 +642,13 @@ const EntryPoint = {
                 if (uci.get(self.config, fid)) ensureSourceRef(sname, fid);
               }
 
-              const links = toArr(
-                sec.selector_proxy_links || sec.proxy_links,
-              );
+              const links = toArr(sec.selector_proxy_links || sec.proxy_links);
               if (links.length || sec.selector_proxy_links_text) {
                 const lid = `src_links_${safeSname}`;
                 if (!uci.get(self.config, lid)) {
                   uci.add(self.config, "outbound_source", lid);
                   uci.set(self.config, lid, "enabled", "1");
-                  uci.set(
-                    self.config,
-                    lid,
-                    "name",
-                    `${dispName} (Links)`,
-                  );
+                  uci.set(self.config, lid, "name", `${dispName} (Links)`);
                   uci.set(self.config, lid, "source_type", "proxy_links");
                   if (links.length)
                     uci.set(self.config, lid, "proxy_links", links);
@@ -679,18 +672,8 @@ const EntryPoint = {
                 if (!uci.get(self.config, aid)) {
                   uci.add(self.config, "outbound_source", aid);
                   uci.set(self.config, aid, "enabled", "1");
-                  uci.set(
-                    self.config,
-                    aid,
-                    "name",
-                    `${dispName} (Amnezia)`,
-                  );
-                  uci.set(
-                    self.config,
-                    aid,
-                    "source_type",
-                    "amnezia_config",
-                  );
+                  uci.set(self.config, aid, "name", `${dispName} (Amnezia)`);
+                  uci.set(self.config, aid, "source_type", "amnezia_config");
                   if (amn.length)
                     uci.set(self.config, aid, "amnezia_configs", amn);
                   if (sec.amnezia_conf_text) {
@@ -743,65 +726,55 @@ const EntryPoint = {
 
             const existingBalancers =
               uci.sections(self.config, "balancer") || [];
-            (uci.sections(self.config, "urltest") || []).forEach(
-              (ut, idx) => {
-                const parentSec = ut.section;
-                const utName =
-                  ut.name || ut[".name"] || `urltest_${idx + 1}`;
-                if (!parentSec) return;
-                const safeSuffix = String(utName).replace(
-                  /[^A-Za-z0-9_]/g,
-                  "_",
-                );
-                const balId = `bal_${parentSec}_${safeSuffix || idx + 1}`;
-                const found = existingBalancers.find(
-                  (b) =>
-                    b[".name"] === balId ||
-                    (b.name === utName &&
-                      toArr(
-                        uci.get(self.config, parentSec, "balancer_refs"),
-                      ).includes(b[".name"])),
-                );
-                if (!found && !uci.get(self.config, balId)) {
-                  uci.add(self.config, "balancer", balId);
-                  uci.set(self.config, balId, "enabled", "1");
-                  uci.set(self.config, balId, "balancer_type", "urltest");
-                  uci.set(self.config, balId, "name", utName);
-                  [
-                    "testing_url",
-                    "check_interval",
-                    "tolerance",
-                    "idle_timeout",
-                    "interrupt_exist_connections",
-                    "pin_dashboard",
-                    "filter_mode",
-                    "include_countries",
-                    "exclude_countries",
-                    "include_regex",
-                    "exclude_regex",
-                    "include_outbounds",
-                    "exclude_outbounds",
-                  ].forEach((k) => {
-                    if (
-                      ut[k] !== undefined &&
-                      ut[k] !== null &&
-                      ut[k] !== ""
-                    ) {
-                      uci.set(self.config, balId, k, ut[k]);
-                    }
-                  });
-                  const arr = toArr(
-                    uci.get(self.config, parentSec, "balancer_refs"),
-                  );
-                  if (!arr.includes(balId)) {
-                    uci.set(self.config, parentSec, "balancer_refs", [
-                      ...arr,
-                      balId,
-                    ]);
+            (uci.sections(self.config, "urltest") || []).forEach((ut, idx) => {
+              const parentSec = ut.section;
+              const utName = ut.name || ut[".name"] || `urltest_${idx + 1}`;
+              if (!parentSec) return;
+              const safeSuffix = String(utName).replace(/[^A-Za-z0-9_]/g, "_");
+              const balId = `bal_${parentSec}_${safeSuffix || idx + 1}`;
+              const found = existingBalancers.find(
+                (b) =>
+                  b[".name"] === balId ||
+                  (b.name === utName &&
+                    toArr(
+                      uci.get(self.config, parentSec, "balancer_refs"),
+                    ).includes(b[".name"])),
+              );
+              if (!found && !uci.get(self.config, balId)) {
+                uci.add(self.config, "balancer", balId);
+                uci.set(self.config, balId, "enabled", "1");
+                uci.set(self.config, balId, "balancer_type", "urltest");
+                uci.set(self.config, balId, "name", utName);
+                [
+                  "testing_url",
+                  "check_interval",
+                  "tolerance",
+                  "idle_timeout",
+                  "interrupt_exist_connections",
+                  "pin_dashboard",
+                  "filter_mode",
+                  "include_countries",
+                  "exclude_countries",
+                  "include_regex",
+                  "exclude_regex",
+                  "include_outbounds",
+                  "exclude_outbounds",
+                ].forEach((k) => {
+                  if (ut[k] !== undefined && ut[k] !== null && ut[k] !== "") {
+                    uci.set(self.config, balId, k, ut[k]);
                   }
+                });
+                const arr = toArr(
+                  uci.get(self.config, parentSec, "balancer_refs"),
+                );
+                if (!arr.includes(balId)) {
+                  uci.set(self.config, parentSec, "balancer_refs", [
+                    ...arr,
+                    balId,
+                  ]);
                 }
-              },
-            );
+              }
+            });
           }
 
           // Prune dangling references across sections, balancers, outbound_groups, and conditions

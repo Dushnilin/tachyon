@@ -1824,6 +1824,8 @@ function reload(reason) {
     }
 
     if (plan.needs_sing_box_reload == 1) {
+        if (plan.needs_nft_rebuild != 1)
+            module_success(NFT_UC, [ "sync-server-firewall-uci-rules" ]);
         module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]);
         module_success(PRIORITY_UC, [ "stop-runtime" ]);
         status = module_status(SINGBOX_UC, [ "configure-service" ]);

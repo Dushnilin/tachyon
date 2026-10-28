@@ -14127,9 +14127,7 @@ function createSectionContent(section) {
     form.DynamicList,
     "balancer_refs",
     _("Balancers (URLTest / Priority)"),
-    _(
-      "Select reusable URLTest or Priority balancers from the Balancers tab.",
-    ),
+    _("Select reusable URLTest or Priority balancers from the Balancers tab."),
   );
   o.modalonly = true;
   ["connection", "proxy", "outbound", "vpn", "awg", "fptn", "group"].forEach(

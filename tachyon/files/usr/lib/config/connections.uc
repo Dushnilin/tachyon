@@ -530,6 +530,28 @@ function is_dpi_or_desync_source_type(stype) {
     return stype == "zapret" || stype == "zapret2" || stype == "byedpi" || stype == "desync";
 }
 
+function section_has_inline_connection_items(section) {
+    if (type(section) != "object")
+        return false;
+    let raw_amn = raw_option(section, "selector_amnezia_configs");
+    if (raw_amn == null || raw_amn == "")
+        raw_amn = raw_option(section, "amnezia_configs");
+    let has_amn = (type(raw_amn) == "array" && length(raw_amn) > 0) ||
+        (raw_amn != null && trim(as_string(raw_amn)) != "") ||
+        trim(option(section, "amnezia_conf_text", "")) != "";
+    if (has_amn ||
+        length(whitespace_list_value(section, "selector_proxy_links")) > 0 ||
+        length(whitespace_list_value(section, "proxy_links")) > 0 ||
+        length(whitespace_list_value(section, "connection_urls")) > 0 ||
+        trim(option(section, "selector_proxy_links_text", "")) != "" ||
+        trim(option(section, "proxy_links_text", "")) != "" ||
+        length(list_value(section, "outbound_jsons")) > 0 ||
+        trim(option(section, "outbound_json", "")) != "" ||
+        trim(option(section, "access_token", "")) != "")
+        return true;
+    return false;
+}
+
 function section_effective_outbound_sources(section) {
     let result = [];
     let seen = {};
@@ -542,15 +564,31 @@ function section_effective_outbound_sources(section) {
         seen[id] = true;
         push(result, src);
     };
+
+    for (let src_id in section_outbound_source_refs(section))
+        add_src(outbound_source_section(src_id));
+
+    let has_explicit_non_dpi_sources = section_has_inline_connection_items(section);
+    if (!has_explicit_non_dpi_sources) {
+        for (let s in result) {
+            if (!is_dpi_or_desync_source_type(option(s, "source_type", ""))) {
+                has_explicit_non_dpi_sources = true;
+                break;
+            }
+        }
+    }
+
     let add_grp = function(grp_id) {
         let grp = outbound_group_section(grp_id);
         if (grp == null || !bool_option(grp, "enabled", true))
             return;
         let grp_sources = whitespace_list_value(grp, "source_refs");
         if (length(grp_sources) == 0 || grp_sources[0] == "*") {
-            for (let src in outbound_source_sections()) {
-                if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
-                    add_src(src);
+            if (!has_explicit_non_dpi_sources) {
+                for (let src in outbound_source_sections()) {
+                    if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
+                        add_src(src);
+                }
             }
         } else {
             for (let src_id in grp_sources)
@@ -558,31 +596,39 @@ function section_effective_outbound_sources(section) {
         }
     };
 
-    for (let src_id in section_outbound_source_refs(section))
-        add_src(outbound_source_section(src_id));
-
     for (let grp_id in section_outbound_group_refs(section))
         add_grp(grp_id);
 
-    for (let bal_id in section_balancer_refs(section)) {
-        let bal = balancer_section(bal_id);
-        if (bal == null || !bool_option(bal, "enabled", true))
-            continue;
-        let bal_srcs = whitespace_list_value(bal, "source_refs");
-        let bal_grps = whitespace_list_value(bal, "group_refs");
-        let bal_lvls = whitespace_list_value(bal, "outbound_group_levels");
-        for (let src_id in bal_srcs)
-            add_src(outbound_source_section(src_id));
-        for (let grp_id in bal_grps)
-            add_grp(grp_id);
-        for (let lvl_ref in bal_lvls) {
-            if (lc(lvl_ref) != "direct")
-                add_grp(lvl_ref);
+    if (!has_explicit_non_dpi_sources) {
+        for (let s in result) {
+            if (!is_dpi_or_desync_source_type(option(s, "source_type", ""))) {
+                has_explicit_non_dpi_sources = true;
+                break;
+            }
         }
-        if (length(bal_srcs) == 0 && length(bal_grps) == 0 && length(bal_lvls) == 0 && length(result) == 0) {
-            for (let src in outbound_source_sections()) {
-                if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
-                    add_src(src);
+    }
+
+    if (!has_explicit_non_dpi_sources) {
+        for (let bal_id in section_balancer_refs(section)) {
+            let bal = balancer_section(bal_id);
+            if (bal == null || !bool_option(bal, "enabled", true))
+                continue;
+            let bal_srcs = whitespace_list_value(bal, "source_refs");
+            let bal_grps = whitespace_list_value(bal, "group_refs");
+            let bal_lvls = whitespace_list_value(bal, "outbound_group_levels");
+            for (let src_id in bal_srcs)
+                add_src(outbound_source_section(src_id));
+            for (let grp_id in bal_grps)
+                add_grp(grp_id);
+            for (let lvl_ref in bal_lvls) {
+                if (lc(lvl_ref) != "direct")
+                    add_grp(lvl_ref);
+            }
+            if (length(bal_srcs) == 0 && length(bal_grps) == 0 && length(bal_lvls) == 0 && length(result) == 0) {
+                for (let src in outbound_source_sections()) {
+                    if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
+                        add_src(src);
+                }
             }
         }
     }
@@ -599,8 +645,6 @@ function fptn_section_token(section) {
         if (stoken != "" && (stype == "fptn" || substr(stoken, 0, 6) == "fptnb:" || substr(stoken, 0, 5) == "fptn:"))
             return stoken;
     }
-    if (length(outbound_source_sections()) > 0)
-        return "";
     let token = trim(as_string(option(section, "access_token", "")));
     if (token != "")
         return token;
@@ -652,11 +696,19 @@ function normalize_amnezia_config_entry(raw_val, fallback_name) {
 function synthesize_awg_conf_from_source(src) {
     let priv = trim(option(src, "awg_private_key", ""));
     let srv_addr = trim(option(src, "awg_server_address", ""));
-    let srv_port = trim(option(src, "awg_server_port", ""));
+    let srv_port = trim(option(src, "awg_server_port", "51820")) || "51820";
     let pub = trim(option(src, "awg_peer_public_key", ""));
     if (priv == "" || srv_addr == "" || srv_port == "" || pub == "")
         return "";
-    let addr_list = list_value(src, "awg_local_address");
+    let raw_addrs = list_value(src, "awg_local_address");
+    let addr_list = [];
+    for (let entry in raw_addrs) {
+        for (let part in split(as_string(entry), /[,\s]+/)) {
+            part = trim(part);
+            if (part != "")
+                push(addr_list, part);
+        }
+    }
     let addr_str = length(addr_list) > 0 ? join(", ", addr_list) : "10.8.1.2/32";
     let lines = [
         "[Interface]",
@@ -696,6 +748,8 @@ function synthesize_awg_conf_from_source(src) {
         [ "MaxHandshakeAttempts", "awg_max_handshake_attempts" ]
     ]) {
         let v = trim(option(src, pair[1], ""));
+        if (v != "" && (substr(pair[0], 0, 1) == "I" || substr(pair[0], 0, 1) == "J") && pair[0] != "Itime" && pair[0] != "Jc" && pair[0] != "Jmin" && pair[0] != "Jmax")
+            v = common.awg_tag_chain(v);
         if (v != "" && v != "0")
             push(lines, pair[0] + " = " + v);
         else if (v == "0" && (pair[0] == "S1" || pair[0] == "S2" || pair[0] == "S3" || pair[0] == "S4"))
@@ -748,10 +802,6 @@ function raw_amnezia_configs_from_obj(obj) {
 function amnezia_configs(section) {
     let result = [];
     let seen = {};
-    if (length(outbound_source_sections()) == 0) {
-        for (let c in raw_amnezia_configs_from_obj(section))
-            push_unique_str(result, seen, c);
-    }
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
@@ -764,31 +814,41 @@ function amnezia_configs(section) {
                 push_unique_str(result, seen, synth);
         }
     }
+    for (let c in raw_amnezia_configs_from_obj(section))
+        push_unique_str(result, seen, c);
     return result;
 }
 
 function connection_urls(section) {
     let links = [];
     let seen = {};
-    let has_modular_sources = length(outbound_source_sections()) > 0;
-    if (!has_modular_sources) {
-        for (let l in whitespace_list_value(section, "selector_proxy_links"))
-            push_unique_str(links, seen, l);
-    }
+    for (let l in whitespace_list_value(section, "selector_proxy_links"))
+        push_unique_str(links, seen, l);
+    for (let l in whitespace_list_value(section, "proxy_links"))
+        push_unique_str(links, seen, l);
+    for (let l in whitespace_list_value(section, "connection_urls"))
+        push_unique_str(links, seen, l);
     let importer = require("subscription.amnezia_config");
     for (let value in amnezia_configs(section)) {
+        let trimmed_val = trim(as_string(value));
+        if (substr(trimmed_val, 0, 6) == "vpn://") {
+            push_unique_str(links, seen, trimmed_val);
+            continue;
+        }
         let item = importer.parse(value);
-        if (item == null) die("Invalid imported Amnezia configuration");
+        if (item == null) {
+            if (length(outbound_source_sections()) == 0)
+                die("Invalid imported Amnezia configuration");
+            continue;
+        }
         push_unique_str(links, seen, item.link);
     }
-    if (!has_modular_sources) {
-        let text = option(section, "selector_proxy_links_text", "");
-        if (text != "") {
-            for (let line in split(text, /[\r\n]+/)) {
-                line = trim(line);
-                if (line != "" && match(line, /^[^#\s]/))
-                    push_unique_str(links, seen, line);
-            }
+    let text = option(section, "selector_proxy_links_text", "");
+    if (text != "") {
+        for (let line in split(text, /[\r\n]+/)) {
+            line = trim(line);
+            if (line != "" && match(line, /^[^#\s]/))
+                push_unique_str(links, seen, line);
         }
     }
     let sec_action = action(section);
@@ -1248,15 +1308,59 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             if (tok != "") m_obj.auth_token = tok;
             return sprintf("%J", m_obj);
         }
-        return sprintf("%J", {
+        let w_srv = trim(option(src, "warp_server", option(src, "warp_endpoint_host", "engage.cloudflareclient.com"))) || "engage.cloudflareclient.com";
+        let w_port = int(option(src, "warp_server_port", option(src, "warp_endpoint_port", "2408")) || 2408);
+        let w_pub = trim(option(src, "warp_peer_public_key", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=")) || "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
+        let raw_w_addrs = list_value(src, "warp_local_address");
+        let w_addrs = [];
+        for (let entry in raw_w_addrs) {
+            for (let part in split(as_string(entry), /[,\s]+/)) {
+                part = trim(part);
+                if (part != "")
+                    push(w_addrs, part);
+            }
+        }
+        if (length(w_addrs) == 0) {
+            let v4 = trim(option(src, "warp_local_v4", "172.16.0.2/32")) || "172.16.0.2/32";
+            push(w_addrs, v4);
+        }
+        let peer_obj = {
+            address: w_srv,
+            port: w_port,
+            public_key: w_pub,
+            allowed_ips: [ "0.0.0.0/0", "::/0" ]
+        };
+        let raw_res = trim(option(src, "warp_reserved", ""));
+        if (raw_res != "") {
+            let res_arr = [];
+            for (let part in split(raw_res, /[,\s\[\]]+/)) {
+                if (part != "" && match(part, /^[0-9]+$/))
+                    push(res_arr, int(part, 10));
+            }
+            if (length(res_arr) == 3)
+                peer_obj.reserved = res_arr;
+            else
+                peer_obj.reserved = raw_res;
+        }
+        let wg_obj = {
             type: "wireguard",
             tag: tag_name,
-            server: option(src, "warp_endpoint_host", "engage.cloudflareclient.com"),
-            server_port: int(option(src, "warp_endpoint_port", "2408") || 2408),
+            address: w_addrs,
             private_key: pk,
-            peer_public_key: option(src, "warp_peer_public_key", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="),
-            local_address: [ option(src, "warp_local_v4", "172.16.0.2/32") ]
-        });
+            peers: [ peer_obj ]
+        };
+        let w_mtu = int(option(src, "warp_mtu", "0") || 0);
+        if (w_mtu > 0)
+            wg_obj.mtu = w_mtu;
+        let fp = trim(option(src, "warp_fake_packets", ""));
+        if (fp != "") wg_obj.fake_packets = fp;
+        let fps = trim(option(src, "warp_fake_packets_size", ""));
+        if (fps != "") wg_obj.fake_packets_size = fps;
+        let fpd = trim(option(src, "warp_fake_packets_delay", ""));
+        if (fpd != "") wg_obj.fake_packets_delay = fpd;
+        let fpm = trim(option(src, "warp_fake_packets_mode", ""));
+        if (fpm != "") wg_obj.fake_packets_mode = fpm;
+        return sprintf("%J", wg_obj);
     }
     if (stype == "desync") {
         let norm_preset = function(val) {
@@ -1473,7 +1577,7 @@ function outbound_jsons(section, raw) {
             }
         }
     }
-    if (!has_migrated_json_source && length(outbound_source_sections()) == 0) {
+    if (!has_migrated_json_source) {
         let sec_jsons = list_value(section, "outbound_jsons");
         for (let j in sec_jsons) {
             if (!src_seen[trim(as_string(j))])
@@ -1687,18 +1791,17 @@ function child_effective_include_prefixes(child, section) {
                 push(non_dpi_ids, section_name(es));
         }
         if (length(non_dpi_ids) > 0) {
-            let sref_set = {};
-            for (let sid in srefs)
-                sref_set[sid] = true;
-            let all_covered = true;
-            for (let sec_sid in non_dpi_ids) {
-                if (!sref_set[sec_sid]) {
-                    all_covered = false;
-                    break;
-                }
+            let sec_id_set = {};
+            for (let sec_sid in non_dpi_ids)
+                sec_id_set[sec_sid] = true;
+            let intersected = [];
+            for (let sid in srefs) {
+                if (sec_id_set[sid])
+                    push(intersected, sid);
             }
-            if (all_covered)
+            if (length(intersected) == 0 || length(intersected) == length(non_dpi_ids))
                 return [];
+            srefs = intersected;
         }
     }
     let sub_items = type(section) == "object" ? child_items(section, "subscription_url") : [];

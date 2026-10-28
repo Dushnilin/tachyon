@@ -515,6 +515,16 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.UiState>(Tachyon.AvailableMethods.GET_UI_STATE, [], {
       timeout: GET_UI_STATE_RPC_TIMEOUT_MS,
     }),
+  getLiteMode: async () =>
+    callBaseMethod<{ success: boolean; lite_mode: number }>(
+      Tachyon.AvailableMethods.GET_LITE_MODE,
+    ),
+  setLiteMode: async (enabled: boolean) =>
+    callBaseMethod<{
+      success: boolean;
+      lite_mode: number;
+      message?: string;
+    }>(Tachyon.AvailableMethods.SET_LITE_MODE, [enabled ? '1' : '0']),
   serviceActionStart: async (action: Tachyon.ServiceAction) => {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',

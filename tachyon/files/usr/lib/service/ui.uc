@@ -1502,6 +1502,7 @@ function current_ui_state_json() {
     }
     let dnsmasq_uptime = dnsmasq_pid ? get_process_uptime(dnsmasq_pid) : null;
     let dnsmasq_uptime_pretty = format_uptime_pretty(dnsmasq_uptime);
+    let lite_mode_enabled = truthy(uci_core.get(CONFIG_NAME + ".settings.lite_mode"));
 
     write_json({
         active_engine: active_engine,
@@ -1511,6 +1512,7 @@ function current_ui_state_json() {
                 enabled: tachyon_is_enabled,
                 status: tachyon_status,
                 dns_configured: dns_configured() ? 1 : 0,
+                lite_mode: lite_mode_enabled ? 1 : 0,
                 memory_rss_mb: tachyon_rss,
                 pid: tachyon_pid,
                 uptime_seconds: tachyon_uptime,
@@ -2093,6 +2095,44 @@ function action_ack(kind, job_id_value) {
     action_start_response(true, job_id_value, "UI action acknowledged");
 }
 
+function get_lite_mode() {
+    let enabled = truthy(uci_core.get(CONFIG_NAME + ".settings.lite_mode"));
+    write_json({
+        success: true,
+        lite_mode: enabled ? 1 : 0
+    });
+}
+
+function set_lite_mode(value) {
+    let enabled = arg_bool(value) || truthy(as_string(value));
+    let val_str = enabled ? "1" : "0";
+
+    uci_core.set(CONFIG_NAME, "settings", "lite_mode", val_str);
+    uci_core.commit(CONFIG_NAME);
+
+    try {
+        let proc_mod = require("core.process");
+        if (proc_mod && type(proc_mod.apply_lite_mode_priority) == "function")
+            proc_mod.apply_lite_mode_priority(enabled);
+        if (proc_mod && type(proc_mod.ensure_managed_core_service) == "function" && fs.stat("/etc/init.d/tachyon-core") != null)
+            proc_mod.ensure_managed_core_service("/etc/tachyon-core/config.json");
+    } catch (e) {}
+
+    module_success(LIB_DIR + "/nft/apply.uc", [ "apply-connection-tuning" ]);
+
+    if (tachyon_running()) {
+        command_success_from_args([ BIN_PATH, "reload_firewall" ]);
+    }
+
+    write_json({
+        success: true,
+        lite_mode: enabled ? 1 : 0,
+        message: enabled
+            ? "Эко-режим Tachyon Lite активирован (nice 15, ct mark short-circuit, aggressive conntrack, гибернация фоновых проверок)"
+            : "Эко-режим Tachyon Lite отключён"
+    });
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "ui-state-json")
@@ -2101,6 +2141,10 @@ else if (mode == "get-ui-capabilities")
     ui_capabilities_json();
 else if (mode == "get-ui-state")
     current_ui_state_json();
+else if (mode == "get-lite-mode")
+    get_lite_mode();
+else if (mode == "set-lite-mode")
+    set_lite_mode(ARGV[1]);
 else if (mode == "service-status-text")
     print_service_status_text(ARGV[1], ARGV[2]);
 else if (mode == "action-start-response")
