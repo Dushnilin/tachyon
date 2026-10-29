@@ -286,6 +286,8 @@ export interface StoreType {
     direct_bypass_enabled?: number;
     direct_bypass_address?: string;
     direct_bypass_port?: string;
+    torrserver_installed?: number;
+    torrserver_version?: string;
     torrserver_running?: number;
     torrserver_direct_available?: number;
     torrserver_direct_enabled?: number;
@@ -343,6 +345,9 @@ export interface StoreType {
     steerRollback: { loading: boolean };
     directBypassEnable: { loading: boolean };
     directBypassDisable: { loading: boolean };
+    torrserverDirectCheck: { loading: boolean };
+    torrserverDirectInstall: { loading: boolean };
+    torrserverDirectRemove: { loading: boolean };
     torrserverDirectEnable: { loading: boolean };
     torrserverDirectDisable: { loading: boolean };
     engineSwitch: { loading: boolean };

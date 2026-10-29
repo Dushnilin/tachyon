@@ -2030,9 +2030,13 @@ function run_doctor_checks_impl(repair) {
 
         if (length(all_required) > 0) {
             for (let list_name in all_required) {
+                let trs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".trs";
                 let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
+                let trs_stat = fs.stat(trs_path);
                 let srs_stat = fs.stat(srs_path);
-                if (srs_stat == null || srs_stat.size == 0) {
+                let has_trs = trs_stat != null && trs_stat.size > 0;
+                let has_srs = srs_stat != null && srs_stat.size > 0;
+                if (!has_trs && !has_srs) {
                     push(missing_lists, list_name);
                 }
             }
@@ -2052,9 +2056,11 @@ function run_doctor_checks_impl(repair) {
 
                     let still_missing = [];
                     for (let list_name in missing_lists) {
+                        let trs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".trs";
                         let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
+                        let trs_stat = fs.stat(trs_path);
                         let srs_stat = fs.stat(srs_path);
-                        if (srs_stat == null || srs_stat.size == 0) {
+                        if ((trs_stat == null || trs_stat.size == 0) && (srs_stat == null || srs_stat.size == 0)) {
                             push(still_missing, list_name);
                         }
                     }
@@ -2083,9 +2089,11 @@ function run_doctor_checks_impl(repair) {
                             command_status("/usr/bin/tachyon list_update > /dev/null 2>&1");
                             still_missing = [];
                             for (let list_name in missing_lists) {
+                                let trs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".trs";
                                 let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
+                                let trs_stat = fs.stat(trs_path);
                                 let srs_stat = fs.stat(srs_path);
-                                if (srs_stat == null || srs_stat.size == 0) {
+                                if ((trs_stat == null || trs_stat.size == 0) && (srs_stat == null || srs_stat.size == 0)) {
                                     push(still_missing, list_name);
                                 }
                             }

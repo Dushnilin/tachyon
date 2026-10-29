@@ -48,6 +48,7 @@ const SMART_DETECT_SEEN_FILE = "/etc/tachyon/smart_detect_seen.json";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
+let command_status_from_args = common.command_status_from_args;
 
 let proxy_restart_count = 0;
 let proxy_restart_window_start = time();
@@ -3158,8 +3159,13 @@ function worker() {
         }
         if (sig == last_upnp_leases_sig)
             return;
-        last_upnp_leases_sig = sig;
-        command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "nft-sync-dnat-sets" ]);
+        let rc = command_status_from_args([
+            "ucode", "-L", LIB_DIR,
+            LIB_DIR + "/nft/apply.uc", "nft-sync-dnat-sets",
+            getenv("NFT_TABLE_NAME") || "TachyonTable"
+        ]);
+        if (rc == 0)
+            last_upnp_leases_sig = sig;
     }
 
     function perform_fast_checks() {

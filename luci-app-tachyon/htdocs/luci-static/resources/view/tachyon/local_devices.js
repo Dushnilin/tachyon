@@ -240,7 +240,8 @@ function createLocalDeviceDynamicListWidget(option, section_id, cfgvalue) {
     shouldResolveExistingLabels ? loadLocalDeviceChoices() : Promise.resolve({})
   ).then((initialChoices) => {
     const choices = localDeviceChoicesCache || initialChoices || {};
-    const widget = new ui.DynamicList(values, choices, {
+    const DynamicListCtor = ui.DynamicList;
+    const widget = new DynamicListCtor(values, choices, {
       id: option.cbid(section_id),
       sort: sortLocalDeviceChoiceValues(choices),
       optional: option.optional || option.rmempty,
@@ -274,10 +275,11 @@ function createLocalDeviceDynamicListWidget(option, section_id, cfgvalue) {
     };
 
     const maybeLoadChoices = (ev) => {
+      const target = ev.target;
       if (
-        ev.target &&
-        typeof ev.target.closest === "function" &&
-        ev.target.closest(".cbi-dropdown")
+        target &&
+        typeof target.closest === "function" &&
+        target.closest(".cbi-dropdown")
       ) {
         loadChoices();
       }

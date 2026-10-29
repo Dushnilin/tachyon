@@ -17,7 +17,14 @@ export const styles = `
     overflow-wrap: anywhere;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    border-radius: 4px;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 4px 0 12px 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--background-color-low, rgba(15, 23, 42, 0.05));
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.2));
     box-sizing: border-box;
     width: 100%;
 }
@@ -28,6 +35,8 @@ export const styles = `
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.16));
 }
 
 .tachyon-partial-modal__footer button {

@@ -167,6 +167,8 @@ function item_index_from_data(data) {
     for (let type_name in ITEM_TYPES)
         for (let section in fixture_section_list(data, type_name))
             add_item_section(index, type_name, section);
+    for (let section in fixture_section_list(data, "section"))
+        add_item_section(index, "section", section);
     return index;
 }
 
@@ -621,15 +623,38 @@ function section_effective_outbound_sources(section) {
             for (let grp_id in bal_grps)
                 add_grp(grp_id);
             for (let lvl_ref in bal_lvls) {
-                if (lc(lvl_ref) != "direct")
+                if (lc(lvl_ref) != "direct") {
                     add_grp(lvl_ref);
-            }
-            if (length(bal_srcs) == 0 && length(bal_grps) == 0 && length(bal_lvls) == 0 && length(result) == 0) {
-                for (let src in outbound_source_sections()) {
-                    if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
-                        add_src(src);
+                    add_src(outbound_source_section(lvl_ref));
                 }
             }
+        }
+    }
+    if (length(result) == 0 && !has_explicit_non_dpi_sources && type(section) == "object") {
+        let inferred_stype = "";
+        if (trim(option(section, "nfqws2_opt", "")) != "")
+            inferred_stype = "zapret2";
+        else if (trim(option(section, "nfqws_opt", "")) != "")
+            inferred_stype = "zapret";
+        else if (trim(option(section, "byedpi_cmd_opts", option(section, "byedpi_opts", ""))) != "")
+            inferred_stype = "byedpi";
+        else if (trim(option(section, "desync_preset", option(section, "desync_opts", ""))) != "")
+            inferred_stype = "desync";
+        else if (trim(option(section, "wdtt_mode", "")) != "")
+            inferred_stype = "wdtt";
+        else if (trim(option(section, "olcrtc_stun_host", "")) != "")
+            inferred_stype = "olcrtc";
+        if (inferred_stype != "") {
+            let sname = section_name(section);
+            let safe_sname = replace(as_string(sname || "inline"), /[^a-zA-Z0-9_]/g, "_");
+            let synth_src = {};
+            for (let k, v in section)
+                synth_src[k] = v;
+            synth_src[".name"] = "src_" + inferred_stype + "_" + safe_sname;
+            synth_src.enabled = "1";
+            synth_src.source_type = inferred_stype;
+            synth_src.name = option(section, "label", option(section, "name", sname != "" ? sname : inferred_stype));
+            add_src(synth_src);
         }
     }
     return result;
@@ -718,6 +743,7 @@ function synthesize_awg_conf_from_source(src) {
     let mtu = trim(option(src, "awg_mtu", ""));
     if (mtu != "")
         push(lines, "MTU = " + mtu);
+    let has_hpk = trim(option(src, "awg_header_protection_key", "")) != "";
     for (let pair in [
         [ "Jc", "awg_jc" ],
         [ "Jmin", "awg_jmin" ],
@@ -748,6 +774,11 @@ function synthesize_awg_conf_from_source(src) {
         [ "MaxHandshakeAttempts", "awg_max_handshake_attempts" ]
     ]) {
         let v = trim(option(src, pair[1], ""));
+        if (has_hpk && (pair[0] == "S1" || pair[0] == "S2" || pair[0] == "S3" || pair[0] == "S4")) {
+            let sv = int(v || "0", 10);
+            if (sv < 12)
+                v = "20";
+        }
         if (v != "" && (substr(pair[0], 0, 1) == "I" || substr(pair[0], 0, 1) == "J") && pair[0] != "Itime" && pair[0] != "Jc" && pair[0] != "Jmin" && pair[0] != "Jmax")
             v = common.awg_tag_chain(v);
         if (v != "" && v != "0")
@@ -1431,30 +1462,55 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         let norm_preset = function(val) {
             val = lc(trim(as_string(val)));
             if (val == "" || val == "none" || val == "custom") return "";
-            if (val in ["fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "auto"])
-                return val == "fakesplit" ? "fake_split" : (val == "tls_rec" ? "tlsrec" : val);
+            if (val == "auto" || val == "adaptive" || val == "smart")
+                return "auto";
+            if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
+                return "fake_split";
+            if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder")
+                return "fake_disorder";
+            if (val == "multi_split" || val == "multisplit" || val == "multi+split")
+                return "multi_split";
+            if (val == "tlsrec" || val == "tls_rec")
+                return "tlsrec";
+            if (val in ["split", "disorder", "fake", "oob"])
+                return val;
             if (val == "youtube" || val == "google_youtube" || val == "discord" || val == "general" || val == "general_fake_tls")
                 return "fake_split";
             if (val == "general_alt")
                 return "tlsrec";
-            if (val == "aggressive" || val == "general_alt2" || val == "general_multisplit")
-                return "disorder";
+            if (val == "aggressive" || val == "general_alt2")
+                return "fake_disorder";
+            if (val == "general_multisplit")
+                return "multi_split";
             if (val == "light" || val == "general_simple_fake")
                 return "split";
-            return "fake_split";
+            return "auto";
         };
         let norm_mode = function(val) {
             val = lc(trim(as_string(val)));
             if (val == "") return "";
-            if (val in ["fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "none"])
-                return val == "fakesplit" ? "fake_split" : (val == "tls_rec" ? "tlsrec" : val);
-            if (val == "fake+split")
+            if (val == "auto" || val == "adaptive" || val == "smart")
+                return "auto";
+            if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
                 return "fake_split";
-            if (val == "fake+disorder" || val == "fake_disorder" || val == "fakedisorder" || val == "multidisorder")
-                return "disorder";
-            if (val == "multisplit")
-                return "split";
+            if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder" || val == "multidisorder")
+                return "fake_disorder";
+            if (val == "multi_split" || val == "multisplit" || val == "multi+split")
+                return "multi_split";
+            if (val == "tlsrec" || val == "tls_rec")
+                return "tlsrec";
+            if (val in ["split", "disorder", "fake", "oob", "none"])
+                return val;
             return "fake_split";
+        };
+        let norm_fooling = function(val) {
+            val = lc(trim(as_string(val)));
+            if (val == "") return "";
+            if (val == "ts" || val == "timestamp")
+                return "timestamp";
+            if (val in ["md5", "autottl", "badseq", "badsum"])
+                return val;
+            return "";
         };
         let norm_split_pos = function(val) {
             val = lc(trim(as_string(val)));
@@ -1476,14 +1532,20 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         let raw_preset = trim(option(src, "desync_preset", ""));
         let preset = norm_preset(raw_preset);
         let mode = norm_mode(option(src, "desync_mode", ""));
+        let fooling = norm_fooling(option(src, "desync_fooling", ""));
         if (preset != "")
             ds_obj.preset = preset;
         if (mode != "")
             ds_obj.mode = mode;
+        if (fooling != "")
+            ds_obj.fooling = fooling;
+        let auto_tune_raw = trim(option(src, "desync_auto_tune", ""));
+        if (auto_tune_raw != "")
+            ds_obj.auto_tune = bool_option(src, "desync_auto_tune", false);
         if (lc(raw_preset) == "discord" && !bool_option(src, "desync_udp_fake", false))
             ds_obj.udp_fake = true;
         if (ds_obj.preset == null && ds_obj.mode == null)
-            ds_obj.preset = "fake_split";
+            ds_obj.preset = "auto";
         let sp = norm_split_pos(option(src, "desync_split_pos", ""));
         if (sp != null)
             ds_obj.split_pos = sp;
@@ -1523,6 +1585,11 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
                 } else if (k == "mode") {
                     let nm = norm_mode(v);
                     if (nm != "") ds_obj.mode = nm;
+                } else if (k == "fooling") {
+                    let nf = norm_fooling(v);
+                    if (nf != "") ds_obj.fooling = nf;
+                } else if (k == "auto_tune") {
+                    ds_obj.auto_tune = (lc(v) == "1" || lc(v) == "true" || lc(v) == "yes");
                 } else if (k == "split_pos") {
                     let nsp = norm_split_pos(v);
                     if (nsp != null) ds_obj.split_pos = nsp;
@@ -1534,15 +1601,6 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
                 else if (k == "udp_repeats" && match(v, /^[0-9]+$/)) ds_obj.udp_repeats = int(v, 10);
                 else if (k == "udp_fake_ttl" && match(v, /^[0-9]+$/)) ds_obj.udp_fake_ttl = int(v, 10);
             }
-        }
-        if (ds_obj.preset == "fake_split" || ds_obj.preset == "auto" || ds_obj.preset == "fake") {
-            ds_obj.preset = "disorder";
-            if (ds_obj.split_pos == null) ds_obj.split_pos = "midsld";
-            if (ds_obj.udp_fake == null) ds_obj.udp_fake = true;
-        }
-        if (ds_obj.mode == "fake_split" || ds_obj.mode == "fake") {
-            ds_obj.mode = "disorder";
-            if (ds_obj.split_pos == null) ds_obj.split_pos = "midsld";
         }
         return sprintf("%J", ds_obj);
     }
@@ -1560,6 +1618,27 @@ function source_id_for_manual_item(section, value) {
         if (src_id == "")
             continue;
         let stype = lc(option(src, "source_type", "subscription"));
+        let su = trim(option(src, "url", ""));
+        if (su != "") {
+            if (su == value)
+                return src_id;
+            if (!match(lc(su), /^https?:\/\//)) {
+                let sname = trim(option(src, "name", ""));
+                if (sname != "" && (su + "#" + sname) == value)
+                    return src_id;
+            }
+        }
+        if (stype == "tailscale") {
+            let ts_iface = trim(option(src, "interface_name", "tailscale0")) || "tailscale0";
+            if (ts_iface == value)
+                return src_id;
+        }
+        if (stype == "tor") {
+            let tor_port = trim(option(src, "tor_socks_port", "9050")) || "9050";
+            let tor_name = trim(option(src, "name", "Tor")) || "Tor";
+            if (("socks5://127.0.0.1:" + tor_port + "#" + tor_name) == value)
+                return src_id;
+        }
         if (stype == "fptn") {
             let ftoken = trim(option(src, "access_token", ""));
             if (ftoken != "" && (value == ftoken || index(value, ftoken + "#") == 0))
@@ -1688,7 +1767,7 @@ function urltests(section) {
                 push_unique_str(result, seen, section_name(bal));
         }
     }
-    if (length(balancer_sections()) == 0) {
+    if (length(balancer_sections()) == 0 || length(section_balancer_refs(section)) == 0) {
         for (let child in child_items(section, "urltest")) {
             let id = section_name(child);
             if (id != "") {
@@ -1722,7 +1801,7 @@ function priority_groups(section) {
                 push_unique_str(result, seen, section_name(bal));
         }
     }
-    if (length(balancer_sections()) == 0) {
+    if (length(balancer_sections()) == 0 || length(section_balancer_refs(section)) == 0) {
         for (let child in child_items(section, "priority_group")) {
             let id = section_name(child);
             if (id != "") {
@@ -1836,9 +1915,10 @@ function priority_group_settings(section, value) {
     return child != null ? child : {};
 }
 
-function child_effective_include_prefixes(child, section) {
+function child_effective_include_prefixes(child, section, keep_all_source_prefixes) {
     if (child == null)
         return [];
+    keep_all_source_prefixes = keep_all_source_prefixes == true;
     let raw_mode = lc(trim(child_option_alias(child, [ "filter_mode", "urltest_filter_mode" ], "")));
     if (raw_mode != "disabled" && raw_mode != "exclude") {
         let explicit = child_list_alias(child, [ "include_prefixes", "urltest_include_prefixes" ], []);
@@ -1848,7 +1928,7 @@ function child_effective_include_prefixes(child, section) {
     let srefs = whitespace_list_value(child, "source_refs");
     if (length(srefs) == 0 || srefs[0] == "*")
         return [];
-    if (type(section) == "object") {
+    if (type(section) == "object" && !keep_all_source_prefixes) {
         let eff_srcs = section_effective_outbound_sources(section);
         let non_dpi_ids = [];
         for (let es in eff_srcs) {
@@ -1864,9 +1944,10 @@ function child_effective_include_prefixes(child, section) {
                 if (sec_id_set[sid])
                     push(intersected, sid);
             }
-            if (length(intersected) == 0 || length(intersected) == length(non_dpi_ids))
+            if (length(intersected) == length(non_dpi_ids) && !section_has_inline_connection_items(section))
                 return [];
-            srefs = intersected;
+            if (length(intersected) > 0)
+                srefs = intersected;
         }
     }
     let sub_items = type(section) == "object" ? child_items(section, "subscription_url") : [];
@@ -1904,11 +1985,58 @@ function child_effective_include_prefixes(child, section) {
     return prefixes;
 }
 
+function resolve_balancer_owner_section(group_id) {
+    let all_secs = object_or_empty(object_or_empty(get_item_sections())["section"]).list;
+    if (type(all_secs) != "array" || length(all_secs) == 0)
+        all_secs = uci_core.section_objects(CONFIG_NAME, "section");
+    let bal = balancer_section(group_id);
+    if (bal != null) {
+        let sec_name = trim(option(bal, "section", ""));
+        if (sec_name != "") {
+            for (let s in all_secs) {
+                if (section_name(s) == sec_name)
+                    return s;
+            }
+        }
+    }
+    for (let s in all_secs) {
+        for (let bid in section_balancer_refs(s)) {
+            if (bid == as_string(group_id))
+                return s;
+        }
+    }
+    return null;
+}
+
 function synthesized_priority_levels_for_balancer(group_id) {
     let bal = balancer_section(group_id);
     if (bal == null || lc(option(bal, "balancer_type", "urltest")) != "priority")
         return [];
+    let owner_sec = resolve_balancer_owner_section(group_id);
     let group_refs = whitespace_list_value(bal, "outbound_group_levels");
+    if (length(group_refs) == 0) {
+        let has_legacy = length(child_items_by_owner("priority_level", "group", group_id)) > 0;
+        if (!has_legacy) {
+            for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
+                if (option(pg, "name", "") == option(bal, "name", "")) {
+                    if (length(child_items_by_owner("priority_level", "group", section_name(pg))) > 0) {
+                        has_legacy = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!has_legacy) {
+            group_refs = whitespace_list_value(bal, "group_refs");
+            if (length(group_refs) == 0)
+                group_refs = whitespace_list_value(bal, "source_refs");
+            if (length(group_refs) == 0 && type(owner_sec) == "object") {
+                group_refs = section_outbound_group_refs(owner_sec);
+                if (length(group_refs) == 0)
+                    group_refs = section_outbound_source_refs(owner_sec);
+            }
+        }
+    }
     if (length(group_refs) == 0)
         return [];
     let result = [];
@@ -1929,8 +2057,47 @@ function synthesized_priority_levels_for_balancer(group_id) {
             continue;
         }
         let grp = outbound_group_section(ref);
-        if (grp == null)
+        if (grp == null) {
+            let src = outbound_source_section(ref);
+            if (src != null) {
+                let synth_grp = {
+                    ".name": ref,
+                    ".type": "outbound_group",
+                    name: option(src, "name", option(src, "label", ref)) || ref,
+                    filter_mode: "include",
+                    source_refs: [ ref ]
+                };
+                push(result, {
+                    ".name": synth_id,
+                    group: as_string(group_id),
+                    name: synth_grp.name,
+                    order: as_string(i + 1),
+                    direct: "0",
+                    outbound_group_ref: ref,
+                    filter_mode: "include",
+                    detect_server_country: "flag_emoji",
+                    include_countries: [],
+                    include_outbounds: [],
+                    include_regex: [],
+                    include_prefixes: child_effective_include_prefixes(synth_grp, owner_sec, true),
+                    include_proxy_parameters: "0",
+                    include_protocols: [],
+                    include_transports: [],
+                    include_securities: [],
+                    include_ports: [],
+                    exclude_countries: [],
+                    exclude_outbounds: [],
+                    exclude_regex: [],
+                    exclude_prefixes: [],
+                    exclude_proxy_parameters: "0",
+                    exclude_protocols: [],
+                    exclude_transports: [],
+                    exclude_securities: [],
+                    exclude_ports: []
+                });
+            }
             continue;
+        }
         let clone = {
             ".name": synth_id,
             group: as_string(group_id),
@@ -1943,7 +2110,7 @@ function synthesized_priority_levels_for_balancer(group_id) {
             include_countries: list_value(grp, "include_countries"),
             include_outbounds: list_value(grp, "include_outbounds"),
             include_regex: list_value(grp, "include_regex"),
-            include_prefixes: child_effective_include_prefixes(grp, null),
+            include_prefixes: child_effective_include_prefixes(grp, owner_sec, true),
             include_proxy_parameters: (bool_option(grp, "include_proxy_parameters", false) ||
                 length(list_value(grp, "include_protocols")) > 0 ||
                 length(list_value(grp, "include_transports")) > 0 ||
@@ -2482,6 +2649,24 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
 
     let has_modular_conds = length(positive_conds || []) > 0 || length(negative_conds || []) > 0;
     let sources = has_modular_conds ? (positive_conds || []) : [ base_section ];
+    let section_filter_list_keys = {
+        source_ip_cidr: true,
+        source_macs: true,
+        device_ip: true,
+        devices: true,
+        device_mac: true,
+        fully_routed_ips: true,
+        excluded_ips: true,
+        ports: true,
+        port: true,
+        protocol: true,
+        excluded_protocol: true,
+        dscp: true
+    };
+    let section_filter_text_keys = {
+        source_ip_cidr_text: true,
+        ports_text: true
+    };
     if (has_modular_conds) {
         for (let key in list_keys)
             delete merged[key];
@@ -2492,12 +2677,15 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
     for (let key in list_keys) {
         let acc = [];
         let seen = {};
-        for (let src in sources) {
+        let key_sources = (has_modular_conds && section_filter_list_keys[key])
+            ? [ base_section, ...(positive_conds || []) ]
+            : sources;
+        for (let src in key_sources) {
             for (let item in clean_condition_tokens(src, key))
                 push_unique_str(acc, seen, item);
         }
         if (key == "source_ip_cidr") {
-            for (let src in sources) {
+            for (let src in key_sources) {
                 for (let mac in clean_condition_tokens(src, "source_macs"))
                     push_unique_str(acc, seen, mac);
             }
@@ -2508,13 +2696,19 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
 
     for (let tkey in text_keys) {
         let parts = [];
-        for (let src in sources) {
+        let seen_parts = {};
+        let tkey_sources = (has_modular_conds && section_filter_text_keys[tkey])
+            ? [ base_section, ...(positive_conds || []) ]
+            : sources;
+        for (let src in tkey_sources) {
             let raw = raw_option(src, tkey);
             if (raw == null)
                 continue;
             let val = type(raw) == "array" ? trim(join("\n", raw)) : trim(as_string(raw));
-            if (val != "")
+            if (val != "" && !seen_parts[val]) {
+                seen_parts[val] = true;
                 push(parts, val);
+            }
         }
         if (length(parts) > 0)
             merged[tkey] = join("\n", parts);
@@ -2596,18 +2790,33 @@ function rule_sets_with_subnets(section) {
     return result;
 }
 
+function domain_ip_lists(section) {
+    let result = [];
+    let seen = {};
+    for (let item in whitespace_list_value(section, "domain_ip_lists"))
+        push_unique_str(result, seen, item);
+    for (let cond in section_leaf_conditions(section))
+        for (let item in whitespace_list_value(cond, "domain_ip_lists"))
+            push_unique_str(result, seen, item);
+    return result;
+}
+
 function resolved_source_ip_cidrs(section) {
     let core_ip = require("core.ip");
     let raw = [];
     let seen = {};
-    for (let item in whitespace_list_value(section, "source_ip_cidr"))
+    for (let item in clean_condition_tokens(section, "source_ip_cidr"))
         push_unique_str(raw, seen, item);
-    for (let mac in whitespace_list_value(section, "source_macs"))
+    for (let item in clean_condition_tokens(section, "source_ip_cidr_text"))
+        push_unique_str(raw, seen, item);
+    for (let mac in clean_condition_tokens(section, "source_macs"))
         push_unique_str(raw, seen, mac);
     for (let cond in section_leaf_conditions(section)) {
-        for (let item in whitespace_list_value(cond, "source_ip_cidr"))
+        for (let item in clean_condition_tokens(cond, "source_ip_cidr"))
             push_unique_str(raw, seen, item);
-        for (let mac in whitespace_list_value(cond, "source_macs"))
+        for (let item in clean_condition_tokens(cond, "source_ip_cidr_text"))
+            push_unique_str(raw, seen, item);
+        for (let mac in clean_condition_tokens(cond, "source_macs"))
             push_unique_str(raw, seen, mac);
     }
     let result = [];
@@ -2906,6 +3115,10 @@ function geoip_country_value(section) {
 
 function rule_sets_with_subnets_value(section) {
     return list_option_value_from_array(rule_sets_with_subnets(section));
+}
+
+function domain_ip_lists_value(section) {
+    return list_option_value_from_array(domain_ip_lists(section));
 }
 
 function single_object_has_routing_matchers(section) {
@@ -3471,7 +3684,7 @@ function urltest_filter_mode(section, value) {
     let child = urltest_child(section, value);
     if (child != null) {
         let raw_mode = lc(trim(child_option_alias(child, [ "filter_mode", "urltest_filter_mode" ], "")));
-        let src_prefixes = child_effective_include_prefixes(child, section);
+        let src_prefixes = child_effective_include_prefixes(child, section, false);
         if (raw_mode == "exclude" && length(src_prefixes) > 0)
             return "mixed";
         if (raw_mode == "disabled" && length(src_prefixes) > 0)
@@ -3835,7 +4048,7 @@ function priority_level_detect_server_country(group_id, value) {
 function urltest_include_prefixes(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
-        return child_effective_include_prefixes(child, section);
+        return child_effective_include_prefixes(child, section, false);
     return list_value(section, "urltest_include_prefixes");
 }
 
@@ -3875,7 +4088,7 @@ function outbound_group_filter_spec(group_or_id, section) {
     let grp = type(group_or_id) == "object" ? group_or_id : outbound_group_section(group_or_id);
     if (grp == null)
         return null;
-    let inc_prefixes = child_effective_include_prefixes(grp, section);
+    let inc_prefixes = child_effective_include_prefixes(grp, section, false);
     let inc_countries = list_value(grp, "include_countries");
     let inc_outbounds = list_value(grp, "include_outbounds");
     let inc_regex = list_value(grp, "include_regex");
@@ -5315,11 +5528,13 @@ return {
     community_lists,
     rule_sets,
     rule_sets_with_subnets,
+    domain_ip_lists,
     dscp_list,
     dscp_value,
     community_lists_value,
     rule_sets_value,
     rule_sets_with_subnets_value,
+    domain_ip_lists_value,
     has_connection_sources,
     subscription_url_settings,
     interface_settings,

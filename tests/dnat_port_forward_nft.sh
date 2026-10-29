@@ -81,7 +81,7 @@ ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$ROOT_DIR/tachyon/files/usr/lib/nft/
 grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+mangle[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \
   fail "expected ct status dnat return in chain mangle"
 
-grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+proxy[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \
+grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+proxy[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat([[:space:]]+meta[[:space:]]+mark[[:space:]]+set[[:space:]]+0)?[[:space:]]+return' "$NFT_LOG" || \
   fail "expected ct status dnat return in chain proxy"
 
 grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+mangle_forward[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \

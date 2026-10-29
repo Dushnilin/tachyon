@@ -539,6 +539,17 @@ function createBalancersContent(section) {
       const gid = g[".name"];
       if (gid) this.value(gid, g.name || g.label || gid);
     });
+    (uci.sections(UCI_PACKAGE, "outbound_source") || []).forEach((src) => {
+      const sid = src[".name"];
+      if (!sid) return;
+      const stypeLower = String(
+        src.source_type || "subscription",
+      ).toLowerCase();
+      if (DPI_SOURCE_TYPES.has(stypeLower)) return;
+      const stype = stypeLower.toUpperCase();
+      const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
+      this.value(sid, `${src.name || src.label || sid}${pfx}`);
+    });
     this.value("direct", _("Direct Connection (Fallback)"));
     return form.DynamicList.prototype.load.apply(this, arguments);
   };

@@ -565,6 +565,8 @@ export namespace Tachyon {
     routed_dns_enabled?: '0' | '1';
     routed_dns_type?: 'udp' | 'dot' | 'doh' | 'doq';
     routed_dns_server?: string | string[];
+    dns_type?: string;
+    dns_server?: string | string[];
     update_interval?: string;
 
     proxy_string?: string;
@@ -1034,6 +1036,8 @@ export namespace Tachyon {
     direct_bypass_enabled?: 0 | 1;
     direct_bypass_address?: string;
     direct_bypass_port?: string;
+    torrserver_installed?: 0 | 1;
+    torrserver_version?: string;
     torrserver_running?: 0 | 1;
     torrserver_direct_available?: 0 | 1;
     torrserver_direct_enabled?: 0 | 1;

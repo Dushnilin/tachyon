@@ -360,9 +360,13 @@ function tag_attribute_filter_matches(tag, metadata, selected_values) {
     let value = lc(as_string(object_or_empty(metadata)[tag] || ""));
     if (value == "")
         return false;
-    for (let selected in selected_values)
-        if (lc(as_string(selected)) == value)
+    for (let selected in selected_values) {
+        let sel = lc(as_string(selected));
+        if (sel == value)
             return true;
+        if ((sel == "amneziawg" || sel == "wireguard") && (value == "amneziawg" || value == "wireguard"))
+            return true;
+    }
     return false;
 }
 
@@ -550,6 +554,7 @@ function tag_prefix_filter_matches(tag, names, metadata, prefixes) {
         return false;
     let stored_prefix = lc(trim(as_string(object_or_empty(object_or_empty(metadata).prefixes)[tag] || "")));
     let stored_source = lc(trim(as_string(object_or_empty(object_or_empty(metadata).sources)[tag] || "")));
+    let stored_source_id = lc(trim(as_string(object_or_empty(object_or_empty(metadata).source_ids)[tag] || "")));
     let display = lc(trim(tag_display_name(tag, names)));
     let raw_tag = lc(trim(as_string(tag)));
     for (let p in prefixes) {
@@ -562,6 +567,8 @@ function tag_prefix_filter_matches(tag, names, metadata, prefixes) {
         if (stored_prefix != "" && (stored_prefix == bare || stored_prefix == pl))
             return true;
         if (stored_source != "" && (stored_source == bare || stored_source == pl))
+            return true;
+        if (stored_source_id != "" && (stored_source_id == bare || stored_source_id == pl))
             return true;
         if (substr(bare, 0, 4) == "sub:" || substr(bare, 0, 4) == "src_")
             continue;
@@ -662,9 +669,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
         let count = seen_type_counts[name_with_type];
         let name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
 
-        if (mode == "include" || mode == "mixed") {
-            if (!any_inc_category)
-                continue;
+        if ((mode == "include" || mode == "mixed") && any_inc_category) {
             if (has_inc_prefix && !tag_prefix_filter_matches(t, names, metadata, inc_prefixes))
                 continue;
             if (has_inc_base) {
@@ -942,6 +947,28 @@ function priority_levels_with_outbounds(group_id, urltest_candidate_tags, state)
         });
     }
 
+    if (length(result) == 0 && length(array_or_empty(urltest_candidate_tags)) > 0) {
+        let pool_outbounds = [];
+        for (let tag_name in array_or_empty(urltest_candidate_tags)) {
+            tag_name = as_string(tag_name);
+            if (tag_name != "" && !assigned[tag_name]) {
+                assigned[tag_name] = true;
+                push(pool_outbounds, tag_name);
+            }
+        }
+        if (length(pool_outbounds) > 0) {
+            push(result, {
+                id: as_string(group_id) + "_lvl_1",
+                displayName: "Section Pool",
+                order: 1,
+                direct: false,
+                filter_mode: "disabled",
+                detect_server_country: "flag_emoji",
+                outbounds: pool_outbounds
+            });
+        }
+    }
+
     return result;
 }
 
@@ -1138,7 +1165,7 @@ function merge_member_state_into_group(group_state, member, config) {
         for (let item in array_or_empty(member_state.subscriptionMetadata))
             push(group_state.subscriptionMetadata, item);
         let member_meta = object_or_empty(member_state.outboundMetadata);
-        for (let field in [ "names", "countries", "protocols", "transports", "securities", "prefixes", "ports", "details", "sources" ]) {
+        for (let field in [ "names", "countries", "protocols", "transports", "securities", "prefixes", "ports", "details", "sources", "source_ids" ]) {
             if (!group_state.outboundMetadata[field])
                 group_state.outboundMetadata[field] = {};
             for (let k, v in object_or_empty(member_meta[field])) {
@@ -1576,6 +1603,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let sec_source_refs = connections.section_outbound_source_refs(section);
     let sel_mode = lc(trim(option(section, "section_selection_mode", "auto")));
     let meta_sources = object_or_empty(object_or_empty(state.outboundMetadata).sources);
+    let meta_source_ids = object_or_empty(object_or_empty(state.outboundMetadata).source_ids);
     let sub_urls = connections.subscription_urls(section);
     let source_level_entries = [];
     let has_dpi_source = false;
@@ -1607,7 +1635,8 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
             let this_src_tags = [];
             for (let t in filtered_outbounds) {
                 let m_src = as_string(meta_sources[t] || "");
-                if (m_src == src_id || (sub_marker != "" && m_src == sub_marker)) {
+                let m_src_id = as_string(meta_source_ids[t] || "");
+                if (m_src == src_id || m_src_id == src_id || (sub_marker != "" && m_src == sub_marker)) {
                     push(this_src_tags, t);
                     if (!seen_ordered[t]) {
                         seen_ordered[t] = true;
@@ -1723,6 +1752,32 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     });
 }
 
+function plain_ruleset_kind(json_path, etc_json, srs_path, fallback_kind) {
+    if (fs.stat(json_path) == null && fs.stat(etc_json) != null)
+        common.copy_file(etc_json, json_path);
+    if (fs.stat(json_path) == null && srs_path != null && srs_path != "" && runtime_rulesets.is_referenceable_srs_file(srs_path)) {
+        let dec_ok = common.command_success_from_args([ "sing-box", "rule-set", "decompile", srs_path, "-o", json_path ]);
+        if (!dec_ok && fs.stat("/usr/bin/tachyon-core") != null)
+            dec_ok = common.command_success_from_args([ "/usr/bin/tachyon-core", "rule-set", "decompile", srs_path, "-o", json_path ]);
+        if (dec_ok && fs.stat(json_path) != null && etc_json != null && etc_json != "") {
+            common.ensure_dir("/etc/tachyon/rulesets");
+            common.copy_file(json_path, etc_json);
+        }
+    }
+    let inspect_path = fs.stat(json_path) != null ? json_path : (fs.stat(etc_json) != null ? etc_json : "");
+    if (inspect_path != "") {
+        let has_doms = source_rulesets.has_domain_matchers(inspect_path);
+        let has_ips = source_rulesets.has_ip_matchers(inspect_path);
+        if (has_doms && has_ips)
+            return "mixed";
+        if (has_ips)
+            return "subnets";
+        if (has_doms)
+            return "domains";
+    }
+    return (fallback_kind != null && fallback_kind != "" && fallback_kind != "unknown") ? fallback_kind : "domains";
+}
+
 function ensure_custom_ruleset(config, reference) {
     let tag_name;
     let kind = runtime_rulesets.kind_from_reference_hint(reference);
@@ -1732,6 +1787,8 @@ function ensure_custom_ruleset(config, reference) {
         kind = runtime_rulesets.community_kind ? runtime_rulesets.community_kind(reference) : "domains";
         if (!ruleset_registered(config, tag_name)) {
             let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
+            let tmp_trs = folder + "/community-" + reference + ".trs";
+            let etc_trs = "/etc/tachyon/rulesets/community-" + reference + ".trs";
             let tmp_srs = folder + "/community-" + reference + ".srs";
             let etc_srs = "/etc/tachyon/rulesets/community-" + reference + ".srs";
             let local_path = null;
@@ -1749,7 +1806,11 @@ function ensure_custom_ruleset(config, reference) {
 // sing-box cannot parse is refused outright ("unexpected EOF") and leaves the router
 // unable to apply anything. is_populated_srs_file alone answers neither: it accepts
 // the truncation.
-if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
+if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_rulesets.is_referenceable_trs_file(tmp_trs))
+            local_path = tmp_trs;
+        else if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_rulesets.is_referenceable_trs_file(etc_trs))
+            local_path = etc_trs;
+        else if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
             local_path = tmp_srs;
         else if (runtime_rulesets.is_referenceable_srs_file(etc_srs))
             local_path = etc_srs;
@@ -1782,11 +1843,23 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
     }
 
     tag_name = "inline-custom-" + runtime_rulesets.hash12(reference) + "-ruleset";
-    if (ruleset_registered(config, tag_name))
-        return { tag: tag_name, kind };
-
     let extension = runtime_rulesets.file_extension(reference);
     let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
+    if (ruleset_registered(config, tag_name)) {
+        if (runtime_rulesets.is_plain_list_reference(reference)) {
+            return {
+                tag: tag_name,
+                kind: plain_ruleset_kind(
+                    folder + "/" + tag_name + ".json",
+                    "/etc/tachyon/rulesets/" + tag_name + ".json",
+                    folder + "/" + tag_name + ".srs",
+                    kind
+                )
+            };
+        }
+        return { tag: tag_name, kind };
+    }
+
     common.ensure_dir(folder);
 
     if (runtime_rulesets.is_plain_list_reference(reference)) {
@@ -1801,14 +1874,14 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
 
             let ref_st = fs.stat(reference);
             let srs_st = fs.stat(srs_path);
-            if (srs_st && runtime_rulesets.is_valid_srs_file(srs_path) && ref_st && srs_st.mtime >= ref_st.mtime) {
+            if (srs_st && runtime_rulesets.is_valid_srs_file(srs_path) && ref_st && srs_st.mtime >= ref_st.mtime && fs.stat(json_path) != null) {
                 push(config.route.rule_set, {
                     type: "local",
                     tag: tag_name,
                     format: "binary",
                     path: srs_path
                 });
-                return { tag: tag_name, kind: "domains" };
+                return { tag: tag_name, kind: plain_ruleset_kind(json_path, etc_json, srs_path, kind) };
             }
 
             let res = source_rulesets.compile_plain_list(reference, srs_path, json_path);
@@ -1818,7 +1891,7 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
                 format: res.format,
                 path: res.path
             });
-            return { tag: tag_name, kind: res.has_domains ? "domains" : "unknown" };
+            return { tag: tag_name, kind: res.kind || (res.has_domains ? "domains" : "unknown") };
         }
         else if (substr(reference, 0, 7) == "http://" || substr(reference, 0, 8) == "https://") {
             if (runtime_rulesets.is_valid_srs_file(srs_path)) {
@@ -1828,17 +1901,19 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
                     format: "binary",
                     path: srs_path
                 });
-                return { tag: tag_name, kind: "domains" };
+                return { tag: tag_name, kind: plain_ruleset_kind(json_path, etc_json, srs_path, kind) };
             }
             else if (runtime_rulesets.is_valid_srs_file(etc_srs)) {
                 common.copy_file(etc_srs, srs_path);
+                if (fs.stat(etc_json) != null)
+                    common.copy_file(etc_json, json_path);
                 push(config.route.rule_set, {
                     type: "local",
                     tag: tag_name,
                     format: "binary",
                     path: srs_path
                 });
-                return { tag: tag_name, kind: "domains" };
+                return { tag: tag_name, kind: plain_ruleset_kind(json_path, etc_json, srs_path, kind) };
             }
             else if (fs.stat(json_path) != null) {
                 push(config.route.rule_set, {
@@ -1847,7 +1922,7 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
                     format: "source",
                     path: json_path
                 });
-                return { tag: tag_name, kind: "domains" };
+                return { tag: tag_name, kind: plain_ruleset_kind(json_path, etc_json, "", kind) };
             }
             else if (fs.stat(etc_json) != null) {
                 common.copy_file(etc_json, json_path);
@@ -1857,7 +1932,7 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
                     format: "source",
                     path: json_path
                 });
-                return { tag: tag_name, kind: "domains" };
+                return { tag: tag_name, kind: plain_ruleset_kind(json_path, etc_json, "", kind) };
             }
             else {
                 let tmp_plain = folder + "/" + tag_name + ".tmp.plain";
@@ -1872,7 +1947,7 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
                     let res = source_rulesets.compile_plain_list(tmp_plain, srs_path, json_path);
                     if (res.format == "binary")
                         common.copy_file(srs_path, etc_srs);
-                    else
+                    if (fs.stat(json_path) != null)
                         common.copy_file(json_path, etc_json);
                     fs.unlink(tmp_plain);
                     push(config.route.rule_set, {
@@ -1881,7 +1956,7 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
                         format: res.format,
                         path: res.path
                     });
-                    return { tag: tag_name, kind: res.has_domains ? "domains" : "unknown" };
+                    return { tag: tag_name, kind: res.kind || (res.has_domains ? "domains" : "unknown") };
                 }
                 else {
                     fs.unlink(tmp_plain);
@@ -1901,7 +1976,7 @@ if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
         }
     }
     else if (substr(reference, 0, 1) == "/") {
-        if (extension != "srs" && extension != "json")
+        if (extension != "srs" && extension != "trs" && extension != "json")
             ctx.runtime_generate_unsupported("local rule_set extension is not supported by sing-box config generation");
         // Skip broken local ruleset files — nonexistent or suspiciously small
         if (!helpers.file_is_usable(reference, 100))
@@ -1945,6 +2020,8 @@ function ensure_community_ruleset(config, section_name, community) {
     let tag_name = ruleset_tag(section_name, community, "community");
     if (!ruleset_registered(config, tag_name)) {
         let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
+        let tmp_trs = folder + "/community-" + community + ".trs";
+        let etc_trs = "/etc/tachyon/rulesets/community-" + community + ".trs";
         let tmp_srs = folder + "/community-" + community + ".srs";
         let etc_srs = "/etc/tachyon/rulesets/community-" + community + ".srs";
         let local_path = null;
@@ -1954,7 +2031,11 @@ function ensure_community_ruleset(config, section_name, community) {
 // fetch back into startup, where a GitHub hiccup kills the core). A truncated list
 // passes is_populated_srs_file and is unreadable, and a config pointing at it is
 // refused outright, so it falls through to the remote url below.
-if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
+if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_rulesets.is_referenceable_trs_file(tmp_trs))
+            local_path = tmp_trs;
+        else if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_rulesets.is_referenceable_trs_file(etc_trs))
+            local_path = etc_trs;
+        else if (runtime_rulesets.is_referenceable_srs_file(tmp_srs))
             local_path = tmp_srs;
         else if (runtime_rulesets.is_referenceable_srs_file(etc_srs))
             local_path = etc_srs;
@@ -2021,34 +2102,62 @@ function source_file_exists(path) {
 
 function rebuild_local_domain_ip_list_ruleset(section_name, references, domains_only) {
     let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
-    let ruleset_path = folder + "/" + domain_ip_list_ruleset_tag(section_name) + ".json";
+    let tag = domain_ip_list_ruleset_tag(section_name);
+    let ruleset_path = folder + "/" + tag + ".json";
+    let etc_path = "/etc/tachyon/rulesets/" + tag + ".json";
     let has_local = false;
+    let has_remote = false;
 
     for (let reference in references) {
-        if (reference_is_local(reference)) {
+        let ref_str = as_string(reference);
+        if (reference_is_local(ref_str))
             has_local = true;
-            break;
-        }
+        else if (substr(ref_str, 0, 7) == "http://" || substr(ref_str, 0, 8) == "https://")
+            has_remote = true;
     }
 
-    if (!has_local)
+    let need_remote_fetch = has_remote && !source_rulesets.has_rules(ruleset_path) && !source_rulesets.has_rules(etc_path);
+    if (!has_local && !need_remote_fetch)
         return;
 
-    fs.unlink(ruleset_path);
-    source_rulesets.create_source(ruleset_path);
+    common.ensure_dir(folder);
+    if (has_remote && !need_remote_fetch && source_rulesets.has_rules(etc_path) && !source_rulesets.has_rules(ruleset_path)) {
+        common.copy_file(etc_path, ruleset_path);
+    } else if (!has_remote || need_remote_fetch) {
+        fs.unlink(ruleset_path);
+        source_rulesets.create_source(ruleset_path);
+    }
 
     for (let reference in references) {
         reference = as_string(reference);
-        if (!reference_is_local(reference))
-            continue;
-        if (!source_file_exists(reference)) {
-            warn("local domain/IP list not found: ", reference, "\n");
-            continue;
-        }
+        if (reference_is_local(reference)) {
+            if (!source_file_exists(reference)) {
+                warn("local domain/IP list not found: ", reference, "\n");
+                continue;
+            }
+            source_rulesets.import_plain_list(reference, ruleset_path, "domain_suffix", "domains", "5000");
+            if (!domains_only)
+                source_rulesets.import_plain_list(reference, ruleset_path, "ip_cidr", "subnets", "5000");
+        } else if (need_remote_fetch && (substr(reference, 0, 7) == "http://" || substr(reference, 0, 8) == "https://")) {
+            let tmp_plain = folder + "/" + tag + "-" + runtime_rulesets.hash12(reference) + ".tmp.plain";
+            let dl_ok = false;
+            if (common.command_success("command -v curl"))
+                dl_ok = common.command_success_from_args([ "curl", "-fsSL", "--connect-timeout", "5", "-m", "10", reference, "-o", tmp_plain ]);
+            else if (common.command_success("command -v wget"))
+                dl_ok = common.command_success_from_args([ "wget", "-q", "-T", "10", "-O", tmp_plain, reference ]);
 
-        source_rulesets.import_plain_list(reference, ruleset_path, "domain_suffix", "domains", "5000");
-        if (!domains_only)
-            source_rulesets.import_plain_list(reference, ruleset_path, "ip_cidr", "subnets", "5000");
+            if (dl_ok && helpers.file_is_usable(tmp_plain, 1)) {
+                source_rulesets.import_plain_list(tmp_plain, ruleset_path, "domain_suffix", "domains", "5000");
+                if (!domains_only)
+                    source_rulesets.import_plain_list(tmp_plain, ruleset_path, "ip_cidr", "subnets", "5000");
+            }
+            fs.unlink(tmp_plain);
+        }
+    }
+
+    if (need_remote_fetch && source_rulesets.has_rules(ruleset_path)) {
+        common.ensure_dir("/etc/tachyon/rulesets");
+        common.copy_file(ruleset_path, etc_path);
     }
 }
 

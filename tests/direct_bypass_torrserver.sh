@@ -104,5 +104,17 @@ echo "$status_output" | grep -Fq '"available":' ||
   fail "TorrServer status must include available field"
 echo "$status_output" | grep -Fq '"running":' ||
   fail "TorrServer status must include running field"
+echo "$status_output" | grep -Fq '"installed":' ||
+  fail "TorrServer status must include installed field"
+echo "$status_output" | grep -Fq '"version":' ||
+  fail "TorrServer status must include version field"
+
+ucode -L "$TACHYON_LIB" -e '
+let catalog = require("components.catalog");
+if (type(catalog.resolve_torrserver_arch_suffix) != "function" || type(catalog.resolve_torrserver_release) != "function") {
+    warn("FAIL: catalog TorrServer release resolvers missing\n");
+    exit(1);
+}
+'
 
 printf 'direct bypass and torrserver tests passed\n'

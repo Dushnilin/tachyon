@@ -830,6 +830,8 @@ function apply_strategy(engine, args_val, target_rule) {
             if (parsed_ds) {
                 if (parsed_ds.preset) uci.set(CONFIG_NAME, sid, "desync_preset", as_string(parsed_ds.preset));
                 if (parsed_ds.mode) uci.set(CONFIG_NAME, sid, "desync_mode", as_string(parsed_ds.mode));
+                if (parsed_ds.fooling) uci.set(CONFIG_NAME, sid, "desync_fooling", as_string(parsed_ds.fooling));
+                if (parsed_ds.auto_tune != null) uci.set(CONFIG_NAME, sid, "desync_auto_tune", parsed_ds.auto_tune ? "1" : "0");
                 if (parsed_ds.split_pos != null) uci.set(CONFIG_NAME, sid, "desync_split_pos", as_string(parsed_ds.split_pos));
                 if (parsed_ds.fake_ttl != null) uci.set(CONFIG_NAME, sid, "desync_fake_ttl", as_string(parsed_ds.fake_ttl));
                 if (parsed_ds.fake_sni) uci.set(CONFIG_NAME, sid, "desync_fake_sni", as_string(parsed_ds.fake_sni));

@@ -9,6 +9,7 @@ let rule_config = require("config.rule");
 let domain_config = require("config.domain");
 let connections = require("config.connections");
 let routing_rulesets = require("routing.rulesets");
+let singbox_rulesets = require("tachyon_core.rulesets");
 let runtime_constants = require("tachyon_core.constants");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const DNS_BLOCK_PORT = int(getenv("SB_DNS_BLOCK_INBOUND_PORT") || runtime_constants.DNS_BLOCK_INBOUND_PORT);
@@ -795,6 +796,8 @@ function section_source_ip_values(section) {
         for (let v in nft_csv_values(raw))
             push(items, v);
     }
+    for (let v in connections.resolved_source_ip_cidrs(section))
+        push(items, v);
     for (let mac in list_option(section, "source_macs"))
         push(items, mac);
     for (let cond in connections.section_leaf_conditions(section)) {
@@ -811,11 +814,25 @@ function section_has_source_ip_matchers(section) {
     return section_source_ip_values(section) != "";
 }
 
+function section_plain_rule_sets(section) {
+    let result = [];
+    for (let ref in connections.rule_sets(section)) {
+        if (singbox_rulesets.is_plain_list_reference(ref))
+            push(result, ref);
+    }
+    for (let ref in section_leaf_list_option(section, "domain_ip_lists")) {
+        if (singbox_rulesets.is_plain_list_reference(ref) && index(result, ref) < 0)
+            push(result, ref);
+    }
+    return result;
+}
+
 function section_has_subnet_update_sources(section) {
     let has_community = bool_option(section, "community_subnets", true) && rule_config.has_community_subnet_list(connections.community_lists_value(section));
     let sec_name = as_string(section[".name"]);
     return has_community ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
+        length(section_plain_rule_sets(section)) > 0 ||
         length(section_leaf_list_option(section, "domain_ip_lists")) > 0 ||
         helpers.file_is_usable("/tmp/tachyon-core/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
         helpers.file_is_usable("/etc/tachyon/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
@@ -1851,7 +1868,7 @@ function dnat_forwards_signature(dnat_forwards) {
 }
 
 function nft_sync_dnat_sets(table) {
-    table = default_arg(table, "tachyon");
+    table = default_arg(table, getenv("NFT_TABLE_NAME") || "TachyonTable");
     if (!nft_table_present(table))
         return true;
 
@@ -3344,12 +3361,12 @@ function nft_rule_signature_body(body, section) {
     body = signature_add_value(body, "rule." + section_name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
     body = signature_add_value(body, "rule." + section_name + ".ports", section_rule_ports_csv(section));
     body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
-    body = signature_add_value(body, "rule." + section_name + ".excluded_ips", option(section, "excluded_ips", ""));
-    body = signature_add_value(body, "rule." + section_name + ".excluded_protocol", option(section, "excluded_protocol", ""));
+    body = signature_add_value(body, "rule." + section_name + ".excluded_ips", section_leaf_option_text(section, "excluded_ips"));
+    body = signature_add_value(body, "rule." + section_name + ".excluded_protocol", section_leaf_option_text(section, "excluded_protocol"));
     body = signature_add_value(body, "rule." + section_name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
     body = signature_add_value(body, "rule." + section_name + ".routed_dns_type", option(section, "routed_dns_type", ""));
     body = signature_add_value(body, "rule." + section_name + ".routed_dns_server", option(section, "routed_dns_server", ""));
-    body = signature_add_value(body, "rule." + section_name + ".protocol", option(section, "protocol", ""));
+    body = signature_add_value(body, "rule." + section_name + ".protocol", section_leaf_option_text(section, "protocol"));
     let comm_subnets = bool_option(section, "community_subnets", true) ? filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
     body = signature_add_value(body, "rule." + section_name + ".community_subnet_lists", comm_subnets);
     body = signature_add_value(body, "rule." + section_name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
@@ -3826,11 +3843,34 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
             }
         }
 
-        // Load subnets from rule_sets_with_subnets into nftables (local JSON and cached rulesets)
+        // Load subnets from rule_sets_with_subnets and plain rule_sets into nftables (local JSON and cached rulesets)
+        let subnet_refs = [];
+        let seen_subnet_refs = {};
         for (let ref in connections.rule_sets_with_subnets(section)) {
             ref = as_string(ref);
+            if (ref != "" && seen_subnet_refs[ref] != true) {
+                seen_subnet_refs[ref] = true;
+                push(subnet_refs, ref);
+            }
+        }
+        for (let ref in section_plain_rule_sets(section)) {
+            ref = as_string(ref);
+            if (ref != "" && seen_subnet_refs[ref] != true) {
+                seen_subnet_refs[ref] = true;
+                push(subnet_refs, ref);
+            }
+        }
+        for (let ref in subnet_refs) {
+            ref = as_string(ref);
             if (ref == "") continue;
-            let check_paths = (substr(ref, 0, 1) == "/") ? [ ref ] : [
+            let ref_hash = singbox_rulesets.hash12(ref);
+            let check_paths = (substr(ref, 0, 1) == "/") ? [
+                ref,
+                "/tmp/tachyon-core/rulesets/inline-custom-" + ref_hash + "-ruleset.json",
+                "/etc/tachyon/rulesets/inline-custom-" + ref_hash + "-ruleset.json"
+            ] : [
+                "/tmp/tachyon-core/rulesets/inline-custom-" + ref_hash + "-ruleset.json",
+                "/etc/tachyon/rulesets/inline-custom-" + ref_hash + "-ruleset.json",
                 "/tmp/tachyon-core/rulesets/community-subnets-" + ref + ".lst",
                 "/etc/tachyon/rulesets/community-subnets-" + ref + ".lst",
                 "/tmp/tachyon-core/rulesets/custom-" + sec_name + ".json",
@@ -4051,6 +4091,12 @@ function source_aware_dns_values(sections, deferred_sections) {
                 if (!seen[value]) {
                     seen[value] = true;
                     push(values, value);
+                }
+            }
+            for (let exc in core_ip.normalize_to_cidrs(section_leaf_list_option(section, "excluded_ips"))) {
+                if (!seen[exc]) {
+                    seen[exc] = true;
+                    push(values, exc);
                 }
             }
         }
@@ -4299,7 +4345,7 @@ else if (mode == "sync-server-firewall-uci-rules") {
     exit(0);
 }
 else if (mode == "nft-sync-dnat-sets") {
-    exit(nft_sync_dnat_sets(ARGV[1] || "tachyon") ? 0 : 1);
+    exit(nft_sync_dnat_sets(ARGV[1] || getenv("NFT_TABLE_NAME") || "TachyonTable") ? 0 : 1);
 }
 else {
     warn("Usage: nft/apply.uc <operation> ...\n");

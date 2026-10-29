@@ -233,7 +233,7 @@ function createChipToggleBar(inputEl, choices, isUpper) {
             class: "btn cbi-button",
             style: `padding: 2px 8px; font-size: 11px; line-height: 1.4; border-radius: 999px; ${
               active
-                ? "background: rgba(59,130,246,0.22); border-color: #3b82f6; font-weight: 600;"
+                ? "background: rgba(139, 92, 246,0.22); border-color: #8b5cf6; font-weight: 600;"
                 : "opacity: 0.78;"
             }`,
             click: () => {
@@ -305,7 +305,7 @@ function createServerChecklistPicker(inputEl) {
             class: "btn cbi-button",
             style: `padding: 2px 7px; font-size: 11px; line-height: 1.35; border-radius: 6px; ${
               active
-                ? "background: rgba(59,130,246,0.22); border-color: #3b82f6; font-weight: 600;"
+                ? "background: rgba(139, 92, 246,0.22); border-color: #8b5cf6; font-weight: 600;"
                 : "opacity: 0.82;"
             }`,
             click: () => {
@@ -353,6 +353,35 @@ function asRawList(val) {
     return val.map((v) => String(v).trim()).filter(Boolean);
   const s = String(val).trim();
   return s ? [s] : [];
+}
+
+function updateEntityListRef(entityType, refKey, targetId, selectedIds) {
+  const want = new Set(asArray(selectedIds));
+  (uci.sections(UCI_PACKAGE, entityType) || []).forEach((s) => {
+    const sid = s[".name"];
+    if (!sid) return;
+    const current = asArray(s[refKey]);
+    const has = current.includes(targetId);
+    if (want.has(sid) && !has) {
+      uci.set(UCI_PACKAGE, sid, refKey, [...current, targetId]);
+    } else if (!want.has(sid) && has) {
+      const next = current.filter((id) => id !== targetId);
+      if (next.length) uci.set(UCI_PACKAGE, sid, refKey, next);
+      else uci.unset(UCI_PACKAGE, sid, refKey);
+    }
+  });
+}
+
+function updateSectionsRef(refKey, targetId, selectedIds) {
+  updateEntityListRef("section", refKey, targetId, selectedIds);
+}
+
+function updateBalancersRef(refKey, targetId, selectedIds) {
+  updateEntityListRef("balancer", refKey, targetId, selectedIds);
+}
+
+function updateGroupsRef(refKey, targetId, selectedIds) {
+  updateEntityListRef("outbound_group", refKey, targetId, selectedIds);
 }
 
 function shortenMiddle(str, maxLen) {
@@ -445,9 +474,10 @@ function summarizeOutboundSource(sectionId) {
     return `ByeDPI: ${shortenMiddle(opts, 42)}`;
   }
   if (stype === "desync") {
-    const preset =
-      uci.get(UCI_PACKAGE, sectionId, "desync_preset") || "google_youtube";
-    return `Desync (${preset})`;
+    const preset = uci.get(UCI_PACKAGE, sectionId, "desync_preset") || "auto";
+    const fooling = uci.get(UCI_PACKAGE, sectionId, "desync_fooling") || "";
+    const label = preset === "auto" ? "Adaptive 2.0" : preset;
+    return `Desync (${label}${fooling ? ", " + fooling : ""})`;
   }
   const srv =
     uci.get(UCI_PACKAGE, sectionId, "server") ||
@@ -1062,6 +1092,16 @@ function showOutboundGroupModal(existingId, onSaved) {
                 }
 
                 ui.hideModal();
+                Promise.resolve(uci.save())
+                  .then(() => {
+                    if (
+                      ui &&
+                      ui.changes &&
+                      typeof ui.changes.init === "function"
+                    )
+                      ui.changes.init();
+                  })
+                  .catch(() => {});
                 if (typeof onSaved === "function") onSaved();
               },
             },
@@ -1074,146 +1114,162 @@ function showOutboundGroupModal(existingId, onSaved) {
 }
 
 function createOutboundGroupsAndProberPanel(sectionRef) {
-  const wrapper = E("div", {});
+  const wrapper = E("div", { class: "tachyon-studio-aux-stack" });
 
   // Layer 2: Outbound Server Groups panel
-  const groupsTableBody = E("tbody", {});
+  const groupsListWrap = E("div", { class: "tachyon-studio-groups-grid" });
 
   function renderGroupsRows() {
-    groupsTableBody.innerHTML = "";
+    groupsListWrap.innerHTML = "";
     const groups = uci.sections(UCI_PACKAGE, "outbound_group") || [];
     if (!groups.length) {
-      groupsTableBody.appendChild(
-        E("tr", { class: "tr cbi-section-table-descr" }, [
-          E(
-            "td",
-            { class: "td", colspan: "3" },
+      groupsListWrap.appendChild(
+        E(
+          "div",
+          { class: "tachyon-studio-empty tachyon-studio-empty--compact" },
+          [
             E(
-              "em",
-              {},
+              "div",
+              { class: "tachyon-studio-empty__sub" },
               _(
                 "No Outbound Groups defined yet. Create reusable filtered groups (by prefix, country flag, regex, protocol) to use in Sections and Priority Balancers.",
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
       );
       return;
     }
 
     groups.forEach((g) => {
       const gid = g[".name"];
-      groupsTableBody.appendChild(
-        E("tr", { class: "tr" }, [
-          E("td", { class: "td" }, E("strong", {}, g.name || g.label || gid)),
-          E("td", { class: "td" }, summarizeOutboundGroup(g)),
-          E(
-            "td",
-            {
-              class: "td cbi-section-table-cell",
-              style: "white-space: nowrap;",
-            },
-            [
-              E(
-                "button",
-                {
-                  type: "button",
-                  class: "btn cbi-button cbi-button-edit",
-                  style: "margin-right: 6px;",
-                  click: () =>
-                    showOutboundGroupModal(gid, () => {
+      groupsListWrap.appendChild(
+        E(
+          "div",
+          {
+            class: "tachyon-studio-card tachyon-studio-card--group is-enabled",
+          },
+          [
+            E("div", { class: "tachyon-studio-card__head" }, [
+              E("div", { class: "tachyon-studio-card__identity" }, [
+                E(
+                  "div",
+                  {
+                    class:
+                      "tachyon-studio-card__icon tachyon-studio-card__icon--proxy",
+                  },
+                  "🗂️",
+                ),
+                E("div", { class: "tachyon-studio-card__title-wrap" }, [
+                  E("div", { class: "tachyon-studio-card__title-row" }, [
+                    E(
+                      "span",
+                      { class: "tachyon-studio-card__title" },
+                      g.name || g.label || gid,
+                    ),
+                    E(
+                      "span",
+                      {
+                        class:
+                          "tachyon-studio-badge tachyon-studio-badge--proto",
+                      },
+                      "FILTER GROUP",
+                    ),
+                  ]),
+                  E(
+                    "div",
+                    { class: "tachyon-studio-card__sid" },
+                    summarizeOutboundGroup(g),
+                  ),
+                ]),
+              ]),
+              E("div", { class: "tachyon-studio-card__footer" }, [
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    class:
+                      "tachyon-studio-action-btn tachyon-studio-action-btn--primary",
+                    click: () =>
+                      showOutboundGroupModal(gid, () => {
+                        renderGroupsRows();
+                        refreshProberGroupOptions();
+                      }),
+                  },
+                  `⚙️ ${_("Edit")}`,
+                ),
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    class:
+                      "tachyon-studio-action-btn tachyon-studio-action-btn--danger",
+                    click: () => {
+                      updateSectionsRef("outbound_group_refs", gid, []);
+                      updateBalancersRef("group_refs", gid, []);
+                      updateBalancersRef("outbound_group_levels", gid, []);
+                      uci.remove(UCI_PACKAGE, gid);
                       renderGroupsRows();
                       refreshProberGroupOptions();
-                    }),
-                },
-                _("Edit"),
-              ),
-              E(
-                "button",
-                {
-                  type: "button",
-                  class: "btn cbi-button cbi-button-remove",
-                  click: () => {
-                    updateSectionsRef("outbound_group_refs", gid, []);
-                    updateBalancersRef("group_refs", gid, []);
-                    (uci.sections(UCI_PACKAGE, "balancer") || []).forEach(
-                      (b) => {
-                        const bid = b[".name"];
-                        if (!bid) return;
-                        const cur = asArray(b.outbound_group_levels);
-                        if (cur.includes(gid)) {
-                          const next = cur.filter((id) => id !== gid);
-                          if (next.length)
-                            uci.set(
-                              UCI_PACKAGE,
-                              bid,
-                              "outbound_group_levels",
-                              next,
-                            );
-                          else
-                            uci.unset(
-                              UCI_PACKAGE,
-                              bid,
-                              "outbound_group_levels",
-                            );
-                        }
-                      },
-                    );
-                    uci.remove(UCI_PACKAGE, gid);
-                    renderGroupsRows();
-                    refreshProberGroupOptions();
+                      Promise.resolve(uci.save())
+                        .then(() => {
+                          if (
+                            ui &&
+                            ui.changes &&
+                            typeof ui.changes.init === "function"
+                          )
+                            ui.changes.init();
+                        })
+                        .catch(() => {});
+                    },
                   },
-                },
-                _("Delete"),
-              ),
-            ],
-          ),
-        ]),
+                  "🗑",
+                ),
+              ]),
+            ]),
+          ],
+        ),
       );
     });
   }
 
-  const groupsSection = E(
-    "div",
-    { class: "cbi-section", style: "margin-top: 14px;" },
-    [
-      E("h3", {}, _("Layer 2: Reusable Outbound Server Groups")),
-      E(
-        "div",
-        { class: "cbi-section-descr" },
-        _(
-          "Filter servers from the global pool by subscription prefix, country flag, regular expression, or protocol. Multiple include filters in a group act as an intersection (AND).",
+  const groupsSection = E("div", { class: "tachyon-studio-panel" }, [
+    E("div", { class: "tachyon-studio-panel__header" }, [
+      E("div", { class: "tachyon-studio-panel__titles" }, [
+        E(
+          "span",
+          { class: "tachyon-studio-toolbar__kicker" },
+          "SERVER FILTERING • LAYER 2",
         ),
-      ),
-      E("div", { class: "cbi-section-node" }, [
-        E("table", { class: "table cbi-section-table" }, [
-          E("thead", {}, [
-            E("tr", { class: "tr cbi-section-table-titles" }, [
-              E("th", { class: "th" }, _("Group Name")),
-              E("th", { class: "th" }, _("Intersection Filter Criteria (AND)")),
-              E("th", { class: "th" }, _("Actions")),
-            ]),
-          ]),
-          groupsTableBody,
-        ]),
-        E("div", { class: "cbi-section-create", style: "padding: 8px 0;" }, [
-          E(
-            "button",
-            {
-              type: "button",
-              class: "btn cbi-button cbi-button-add",
-              click: () =>
-                showOutboundGroupModal(null, () => {
-                  renderGroupsRows();
-                  refreshProberGroupOptions();
-                }),
-            },
-            _("Add Outbound Group"),
+        E(
+          "h3",
+          { class: "tachyon-studio-panel__title" },
+          _("Layer 2: Reusable Outbound Server Groups"),
+        ),
+        E(
+          "p",
+          { class: "tachyon-studio-panel__subtitle" },
+          _(
+            "Filter servers from the global pool by subscription prefix, country flag, regular expression, or protocol. Multiple include filters in a group act as an intersection (AND).",
           ),
-        ]),
+        ),
       ]),
-    ],
-  );
+      E(
+        "button",
+        {
+          type: "button",
+          class: "tachyon-studio-btn tachyon-studio-btn--primary",
+          click: () =>
+            showOutboundGroupModal(null, () => {
+              renderGroupsRows();
+              refreshProberGroupOptions();
+            }),
+        },
+        `+ ${_("Add Outbound Group")}`,
+      ),
+    ]),
+    groupsListWrap,
+  ]);
 
   // Manual URL Reachability Tester panel
   const urlInput = E("input", {
@@ -1396,31 +1452,35 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
     _("Check URL Reachability"),
   );
 
-  const proberSection = E(
-    "div",
-    { class: "cbi-section", style: "margin-top: 14px;" },
-    [
-      E("h3", {}, _("Manual URL Reachability Tester")),
-      E(
-        "div",
-        { class: "cbi-section-descr" },
-        _(
-          "Test which servers in the pool or in a specific Outbound Group can reach a given URL right now.",
-        ),
-      ),
-      E("div", { class: "cbi-section-node", style: "padding: 10px;" }, [
+  const proberSection = E("div", { class: "tachyon-studio-panel" }, [
+    E("div", { class: "tachyon-studio-panel__header" }, [
+      E("div", { class: "tachyon-studio-panel__titles" }, [
         E(
-          "div",
-          {
-            style:
-              "display: flex; flex-wrap: wrap; gap: 8px; align-items: center;",
-          },
-          [urlInput, groupSelect, probeBtn],
+          "span",
+          { class: "tachyon-studio-toolbar__kicker" },
+          "LIVE CONNECTIVITY PROBER",
         ),
-        probeResults,
+        E(
+          "h3",
+          { class: "tachyon-studio-panel__title" },
+          _("Manual URL Reachability Tester"),
+        ),
+        E(
+          "p",
+          { class: "tachyon-studio-panel__subtitle" },
+          _(
+            "Test which servers in the pool or in a specific Outbound Group can reach a given URL right now.",
+          ),
+        ),
       ]),
-    ],
-  );
+    ]),
+    E("div", { class: "tachyon-studio-panel__controls" }, [
+      urlInput,
+      groupSelect,
+      probeBtn,
+    ]),
+    probeResults,
+  ]);
 
   renderGroupsRows();
   refreshProberGroupOptions();
@@ -1488,6 +1548,7 @@ function configureOutboundsSection(sectionRef) {
     });
 
     updateBalancersRef("source_refs", sectionId, []);
+    updateBalancersRef("outbound_group_levels", sectionId, []);
     updateGroupsRef("source_refs", sectionId, []);
     updateGroupsRef("outbound_sources", sectionId, []);
 
@@ -3109,8 +3170,32 @@ function createOutboundsContent(section) {
   o = section.taboption("general", form.Value, "server_port", _("Server Port"));
   o.modalonly = true;
   o.default = "443";
-  o.placeholder = "443";
+  o.placeholder = "443, 2000-2010";
   directProtoTypes.forEach((t) => o.depends("source_type", t));
+  o.validate = function (_sectionId, value) {
+    const raw = `${value || ""}`.trim();
+    if (!raw) return true;
+    const tokens = raw.split(/[\s,]+/).filter(Boolean);
+    for (const tok of tokens) {
+      if (/^[0-9]+$/.test(tok)) {
+        const p = parseInt(tok, 10);
+        if (p < 1 || p > 65535) {
+          return _("Port must be between 1 and 65535");
+        }
+        continue;
+      }
+      const m = tok.match(/^([0-9]+)[-:]([0-9]+)$/);
+      if (m) {
+        const lo = parseInt(m[1], 10);
+        const hi = parseInt(m[2], 10);
+        if (lo >= 1 && hi >= lo && hi <= 65535) {
+          continue;
+        }
+      }
+      return _("Specify a port (1-65535) or port range (e.g. 2000-2010)");
+    }
+    return true;
+  };
 
   o = section.taboption(
     "general",
@@ -3706,14 +3791,24 @@ function createOutboundsContent(section) {
     _("Pre-configured DPI bypass profile for tachyon-core native desync."),
   );
   o.modalonly = true;
-  o.default = "fake_split";
-  o.value("fake_split", _("Fake + Split (midsld, TTL=5) — Recommended"));
+  o.default = "auto";
+  o.value(
+    "auto",
+    _(
+      "Adaptive 2.0 (Auto-learning: ClientHello clone + RAW inject + cache.db) — Recommended",
+    ),
+  );
+  o.value("fake_split", _("Fake + Split (RAW Fake + MidSLD Split)"));
+  o.value(
+    "fake_disorder",
+    _("Fake + Disorder (RAW Fake + Out-of-order MidSLD)"),
+  );
+  o.value("multi_split", _("Multi-Split (3-way TLS Record + SNI + MidSLD)"));
   o.value("tlsrec", _("TLS Record Fragmentation (tlsrec, midsld)"));
-  o.value("disorder", _("Fake + Disorder (Out-of-order, TTL=5)"));
+  o.value("disorder", _("Disorder (Out-of-order TCP Split)"));
   o.value("split", _("TCP Split Only (midsld)"));
-  o.value("fake", _("Fake Packet Injection Only (TTL=5)"));
+  o.value("fake", _("Fake Packet Injection Only (RAW/TTL)"));
   o.value("oob", _("TCP Urgent OOB Desync (midsld)"));
-  o.value("auto", _("Auto (Fake + Split)"));
   o.value("custom", _("Custom Parameters"));
   o.depends("source_type", "desync");
 
@@ -3726,11 +3821,48 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.default = "fake_split";
   o.value("fake_split", "fake_split (Fake + Split)");
+  o.value("fake_disorder", "fake_disorder (Fake + Out-of-order Split)");
+  o.value("multi_split", "multi_split (3-way TLS Record + SNI + MidSLD)");
   o.value("tlsrec", "tlsrec (TLS Record Fragmentation)");
-  o.value("disorder", "disorder (Fake + Out-of-order Split)");
+  o.value("disorder", "disorder (Out-of-order TCP Split)");
   o.value("split", "split (TCP Segment Split)");
   o.value("fake", "fake (Fake Packet Only)");
   o.value("oob", "oob (TCP Urgent OOB)");
+  o.depends({ source_type: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "general",
+    form.ListValue,
+    "desync_fooling",
+    _("Fake Packet Fooling"),
+    _(
+      "Method used to ensure injected fake ClientHello is inspected by DPI but dropped by the destination server.",
+    ),
+  );
+  o.modalonly = true;
+  o.default = "";
+  o.value("", _("Default (TCP MD5 / Auto)"));
+  o.value("md5", _("TCP MD5 Signature (Option 19 via TCP_REPAIR)"));
+  o.value("autottl", _("Auto-TTL (Calculated from kernel RTT hops)"));
+  o.value("timestamp", _("TCP Timestamp PAWS (Backdated TSval)"));
+  o.value("badseq", _("Out-of-window TCP Sequence (badseq)"));
+  o.value("badsum", _("Invalid TCP Checksum (badsum)"));
+  o.depends({ source_type: "desync", desync_preset: "custom" });
+  o.depends({ source_type: "desync", desync_preset: "fake_split" });
+  o.depends({ source_type: "desync", desync_preset: "fake_disorder" });
+  o.depends({ source_type: "desync", desync_preset: "fake" });
+
+  o = section.taboption(
+    "general",
+    form.Flag,
+    "desync_auto_tune",
+    _("Adaptive 2.0 Auto-Learning (auto_tune)"),
+    _(
+      "Automatically rotate strategies on RST/cutoff/throttling (<20 KiB/s) and persist working profile per SNI in cache.db.",
+    ),
+  );
+  o.modalonly = true;
+  o.default = "1";
   o.depends({ source_type: "desync", desync_preset: "custom" });
 
   o = section.taboption(

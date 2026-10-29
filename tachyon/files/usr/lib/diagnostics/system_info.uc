@@ -632,6 +632,8 @@ function build_system_info() {
         direct_bypass_enabled,
         direct_bypass_address,
         direct_bypass_port,
+        torrserver_installed: int(torrserver_direct_status.installed || 0),
+        torrserver_version: as_string(torrserver_direct_status.version || "not installed"),
         torrserver_running: int(torrserver_direct_status.running || 0),
         torrserver_direct_available: int(torrserver_direct_status.available || 0),
         torrserver_direct_enabled: int(torrserver_direct_status.enabled || 0),

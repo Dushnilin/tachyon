@@ -43,6 +43,9 @@ function formatRouteType(routeType: string): string {
   if (clean.startsWith('byedpi')) {
     return clean.replace(/^byedpi/, 'ByeDPI');
   }
+  if (clean.startsWith('desync')) {
+    return clean.replace(/^desync/, 'Desync');
+  }
 
   return clean;
 }
@@ -92,8 +95,8 @@ function renderStatusBadge(
     return E(
       'span',
       {
-        class: 'badge cbi-value-title',
-        style: 'opacity: 0.6; font-size: 11px; padding: 2px 8px;',
+        style:
+          'display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: rgba(148, 163, 184, 0.14); color: var(--tachyon-text-muted, #94a3b8);',
       },
       _('Pending...'),
     );
@@ -102,8 +105,8 @@ function renderStatusBadge(
     return E(
       'span',
       {
-        class: 'badge cbi-button-action',
-        style: 'font-size: 11px; padding: 2px 8px;',
+        style:
+          'display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.35);',
       },
       _('Testing...'),
     );
@@ -119,8 +122,8 @@ function renderStatusBadge(
     return E(
       'span',
       {
-        class: 'badge cbi-button-save',
-        style: 'font-weight: bold; font-size: 11px; padding: 2px 8px;',
+        style:
+          'display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; padding: 3px 9px; border-radius: 999px; background: rgba(16, 185, 129, 0.16); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);',
       },
       _('Available'),
     );
@@ -129,8 +132,8 @@ function renderStatusBadge(
   return E(
     'span',
     {
-      class: 'badge cbi-button-reset',
-      style: 'font-weight: bold; font-size: 11px; padding: 2px 8px;',
+      style:
+        'display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 11px; line-height: 1.3; padding: 3px 9px; border-radius: 8px; background: rgba(239, 68, 68, 0.14); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.32); text-align: center;',
     },
     cleanStatus || _('Unavailable'),
   );
@@ -287,7 +290,8 @@ export function renderServiceCheckModal() {
         const totalStatEl = E(
           'b',
           {
-            style: 'font-size: 18px; display: block; margin-top: 2px;',
+            style:
+              'font-size: 20px; font-weight: 800; display: block; margin-top: 4px; color: var(--tachyon-text-main, inherit);',
           },
           `${targets.length}`,
         );
@@ -295,7 +299,7 @@ export function renderServiceCheckModal() {
           'b',
           {
             style:
-              'font-size: 18px; color: var(--color-success, #28a745); display: block; margin-top: 2px;',
+              'font-size: 20px; font-weight: 800; color: #10b981; display: block; margin-top: 4px;',
           },
           '0',
         );
@@ -303,7 +307,7 @@ export function renderServiceCheckModal() {
           'b',
           {
             style:
-              'font-size: 18px; color: var(--color-danger, #dc3545); display: block; margin-top: 2px;',
+              'font-size: 20px; font-weight: 800; color: #ef4444; display: block; margin-top: 4px;',
           },
           '0',
         );
@@ -311,23 +315,29 @@ export function renderServiceCheckModal() {
           'b',
           {
             style:
-              'font-size: 18px; color: var(--color-info, #17a2b8); display: block; margin-top: 2px;',
+              'font-size: 20px; font-weight: 800; color: #38bdf8; display: block; margin-top: 4px;',
           },
           '-',
         );
 
-        const createStatCard = (title: string, valueEl: HTMLElement) => {
+        const createStatCard = (
+          title: string,
+          valueEl: HTMLElement,
+          accentBorder = 'var(--tachyon-border-subtle, rgba(148, 163, 184, 0.22))',
+          accentBg = 'var(--tachyon-bg-surface-alt, rgba(148, 163, 184, 0.05))',
+        ) => {
           return E(
             'div',
             {
-              class: 'cbi-value',
-              style:
-                'flex: 1 1 110px; min-width: 100px; padding: 8px 10px; border: 1px solid var(--border-color, rgba(128,128,128,0.25)); border-radius: 6px; text-align: center; background: var(--background-color-secondary, rgba(128,128,128,0.05)); margin: 0; box-sizing: border-box;',
+              style: `padding: 10px 14px; border: 1px solid ${accentBorder}; border-radius: 12px; text-align: left; background: ${accentBg}; margin: 0; box-sizing: border-box;`,
             },
             [
               E(
                 'small',
-                { style: 'display: block; opacity: 0.75; font-size: 11px;' },
+                {
+                  style:
+                    'display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tachyon-text-muted, #94a3b8);',
+                },
                 title,
               ),
               valueEl,
@@ -339,25 +349,40 @@ export function renderServiceCheckModal() {
           'div',
           {
             style:
-              'display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; width: 100%; box-sizing: border-box;',
+              'display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; width: 100%; box-sizing: border-box;',
           },
           [
             createStatCard(_('Total targets'), totalStatEl),
-            createStatCard(_('Available'), passedStatEl),
-            createStatCard(_('Unavailable'), failedStatEl),
-            createStatCard(_('Avg. latency'), latencyStatEl),
+            createStatCard(
+              _('Available'),
+              passedStatEl,
+              'rgba(16, 185, 129, 0.32)',
+              'rgba(16, 185, 129, 0.06)',
+            ),
+            createStatCard(
+              _('Unavailable'),
+              failedStatEl,
+              'rgba(239, 68, 68, 0.32)',
+              'rgba(239, 68, 68, 0.06)',
+            ),
+            createStatCard(
+              _('Avg. latency'),
+              latencyStatEl,
+              'rgba(56, 189, 248, 0.32)',
+              'rgba(56, 189, 248, 0.06)',
+            ),
           ],
         );
 
         const progressBarInner = E('div', {
           style:
-            'width: 0%; height: 100%; background: var(--color-success, #28a745); transition: width 0.2s ease;',
+            'width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.2s ease;',
         });
         const progressBarContainer = E(
           'div',
           {
             style:
-              'width: 100%; height: 6px; background: var(--border-color, rgba(128,128,128,0.2)); border-radius: 3px; overflow: hidden; margin-bottom: 14px; display: none;',
+              'width: 100%; height: 6px; background: var(--tachyon-border-subtle, rgba(148, 163, 184, 0.2)); border-radius: 999px; overflow: hidden; margin-bottom: 14px; display: none;',
           },
           [progressBarInner],
         );
@@ -507,7 +532,7 @@ export function renderServiceCheckModal() {
           'div',
           {
             style:
-              'max-height: 380px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-color, rgba(128,128,128,0.25)); border-radius: 6px; width: 100%; box-sizing: border-box;',
+              'max-height: 400px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.22)); border-radius: 12px; width: 100%; box-sizing: border-box; background: var(--tachyon-bg-card, transparent);',
           },
           [table],
         );

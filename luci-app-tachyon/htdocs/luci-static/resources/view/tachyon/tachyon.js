@@ -132,6 +132,11 @@ function configureGridSection(sectionRef, type, title, addTitle) {
   sectionRef.sortable = true;
   sectionRef.rowcolors = true;
   sectionRef.nodescriptions = true;
+  sectionRef.cfgsections = function () {
+    return (uci.sections(this.map.config, this.sectiontype) || [])
+      .map((s) => s[".name"])
+      .filter(Boolean);
+  };
   const getDisplayLabel = (sid) =>
     type === "section"
       ? uci.get(UCI_PACKAGE, sid, "label") ||
@@ -150,17 +155,40 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     return renderSectionAdd(sectionRef, extra_class);
   };
 
-  if (type === "section") {
-    const origRemove = sectionRef.remove;
-    sectionRef.remove = function (section_id) {
-      if (section && typeof section.cascadeDeleteSection === "function") {
-        section.cascadeDeleteSection(section_id);
+  const origMoreModal = sectionRef.renderMoreOptionsModal;
+  sectionRef.renderMoreOptionsModal = function () {
+    const res = origMoreModal
+      ? origMoreModal.apply(this, arguments)
+      : form.GridSection.prototype.renderMoreOptionsModal.apply(
+          this,
+          arguments,
+        );
+    return Promise.resolve(res).finally(() => {
+      if (typeof sectionRef._refreshStudioDeck === "function") {
+        window.setTimeout(() => sectionRef._refreshStudioDeck(), 80);
       }
-      return origRemove
-        ? origRemove.apply(this, arguments)
-        : form.GridSection.prototype.remove.apply(this, arguments);
-    };
+    });
+  };
 
+  const origRemove = sectionRef.remove;
+  sectionRef.remove = function (section_id) {
+    if (
+      type === "section" &&
+      section &&
+      typeof section.cascadeDeleteSection === "function"
+    ) {
+      section.cascadeDeleteSection(section_id);
+    }
+    if (origRemove) {
+      return origRemove.apply(this, arguments);
+    }
+    if (typeof form.GridSection.prototype.remove === "function") {
+      return form.GridSection.prototype.remove.apply(this, arguments);
+    }
+    return uci.remove(UCI_PACKAGE, section_id);
+  };
+
+  if (type === "section") {
     const origAdd = sectionRef.handleAdd;
     sectionRef.handleAdd = function (ev, name) {
       let sectionName =
@@ -228,9 +256,17 @@ function configureGridSection(sectionRef, type, title, addTitle) {
             ev.stopPropagation();
             const newId = section.cloneSection(section_id);
             if (newId) {
-              Promise.resolve(sectionRef.map.load())
-                .then(() => sectionRef.map.render())
-                .catch(() => null);
+              Promise.resolve(
+                typeof sectionRef.map.reset === "function"
+                  ? sectionRef.map.reset()
+                  : sectionRef.map
+                      .load()
+                      .then(() =>
+                        typeof sectionRef.map.renderContents === "function"
+                          ? sectionRef.map.renderContents()
+                          : sectionRef.map.render(),
+                      ),
+              ).catch(() => null);
               ui.addNotification(
                 null,
                 E("p", {}, _("Section cloned") + `: ${newId}`),
@@ -351,7 +387,11 @@ const EntryPoint = {
       }
 
       if (typeof main.mountLanguageSelector === "function") {
-        main.mountLanguageSelector(uiCapabilities);
+        const langSlot =
+          typeof document !== "undefined"
+            ? document.querySelector(".tachyon-topbar__lang-slot")
+            : null;
+        main.mountLanguageSelector(uiCapabilities, langSlot || undefined);
       }
     };
 
@@ -677,9 +717,16 @@ const EntryPoint = {
             const dispName = sec.name || sec.label || sname;
             const sAct = (sec.action || "connection").toLowerCase();
 
-            if (!alreadyMigrated ? sec.access_token || sAct === "fptn" : sAct === "fptn") {
+            if (
+              !alreadyMigrated
+                ? sec.access_token || sAct === "fptn"
+                : sAct === "fptn"
+            ) {
               const fid = `src_fptn_${safeSname}`;
-              if (!uci.get(self.config, fid) && (sec.access_token || sAct === "fptn")) {
+              if (
+                !uci.get(self.config, fid) &&
+                (sec.access_token || sAct === "fptn")
+              ) {
                 uci.add(self.config, "outbound_source", fid);
                 uci.set(self.config, fid, "enabled", "1");
                 uci.set(self.config, fid, "name", dispName);
@@ -787,7 +834,6 @@ const EntryPoint = {
           });
 
           if (!alreadyMigrated) {
-
             const existingBalancers =
               uci.sections(self.config, "balancer") || [];
             (uci.sections(self.config, "urltest") || []).forEach((ut, idx) => {
@@ -884,13 +930,35 @@ const EntryPoint = {
             pruneList(sid, "outbound_source_refs", validSources, false, false);
             pruneList(sid, "outbound_group_refs", validGroups, false, false);
             pruneList(sid, "balancer_refs", validBalancers, false, false);
+            const curAction = String(
+              uci.get(self.config, sid, "action") || "",
+            ).toLowerCase();
+            const curSrcs = toArr(
+              uci.get(self.config, sid, "outbound_source_refs"),
+            );
+            if (
+              curSrcs.length > 0 &&
+              ["desync", "zapret", "zapret2", "byedpi"].includes(curAction)
+            ) {
+              uci.set(self.config, sid, "action", "connection");
+            }
           });
+          const validGroupsAndSources = new Set([
+            ...validGroups,
+            ...validSources,
+          ]);
           (uci.sections(self.config, "balancer") || []).forEach((bal) => {
             const bid = bal[".name"];
             if (!bid) return;
             pruneList(bid, "source_refs", validSources, false, false);
             pruneList(bid, "group_refs", validGroups, false, false);
-            pruneList(bid, "outbound_group_levels", validGroups, false, true);
+            pruneList(
+              bid,
+              "outbound_group_levels",
+              validGroupsAndSources,
+              false,
+              true,
+            );
           });
           (uci.sections(self.config, "outbound_group") || []).forEach((grp) => {
             const gid = grp[".name"];
@@ -902,6 +970,26 @@ const EntryPoint = {
             const cid = cond[".name"];
             if (!cid) return;
             pruneList(cid, "members", validConditions, true, false);
+          });
+          const validSectionIds = new Set(
+            (uci.sections(self.config, "section") || [])
+              .map((s) => s[".name"])
+              .filter(Boolean),
+          );
+          [
+            "urltest",
+            "priority_group",
+            "priority_level",
+            "subscription_url",
+            "section_interface",
+          ].forEach((childType) => {
+            (uci.sections(self.config, childType) || []).forEach((child) => {
+              const cid = child[".name"];
+              const parentSec = String(child.section || "").trim();
+              if (cid && parentSec && !validSectionIds.has(parentSec)) {
+                uci.remove(self.config, cid);
+              }
+            });
           });
         } catch (_e) {}
         return form.Map.prototype.load.call(self);
@@ -930,7 +1018,7 @@ const EntryPoint = {
       "telegram",
     ];
 
-    const tabOrder = [];
+    const tabOrder = ["dashboard"];
     savedOrder.forEach((id) => {
       if (defaultTabOrder.indexOf(id) >= 0 && tabOrder.indexOf(id) < 0) {
         tabOrder.push(id);
@@ -942,11 +1030,18 @@ const EntryPoint = {
       }
     });
 
+    const configuredDefaultTab = uci.get(
+      UCI_PACKAGE,
+      "settings",
+      "default_tab",
+    );
     const defaultTab =
-      uci.get(UCI_PACKAGE, "settings", "default_tab") || "dashboard";
+      configuredDefaultTab && configuredDefaultTab !== "settings"
+        ? configuredDefaultTab
+        : "dashboard";
 
     const isTabVisible = (id) => {
-      if (id === "settings") return true;
+      if (id === "settings" || id === "settings:navigation") return true;
       if (id === "server") {
         return (
           uci.get(UCI_PACKAGE, "settings", "show_tab_servers") === "1" ||
@@ -965,10 +1060,223 @@ const EntryPoint = {
           uci.get(UCI_PACKAGE, "settings", "show_tab_schedule") === "1"
         );
       }
+      if (id === "outbounds" || id === "conditions" || id === "balancers") {
+        if (uci.get(UCI_PACKAGE, "settings", "show_tab_section") === "0") {
+          return false;
+        }
+      }
       return uci.get(UCI_PACKAGE, "settings", "show_tab_" + id) !== "0";
     };
 
     let activeSectionSubTab = "sections";
+    let selectSectionSubTabFn = null;
+    const gridSectionRegistry = {};
+
+    const subTabToEntityType = {
+      sections: "section",
+      section: "section",
+      conditions: "condition",
+      condition: "condition",
+      outbounds: "outbound_source",
+      outbound_source: "outbound_source",
+      balancers: "balancer",
+      balancer: "balancer",
+      server: "server",
+      profile: "profile",
+      schedule: "schedule",
+    };
+
+    const entityTypeToSubTab = {
+      section: "sections",
+      condition: "conditions",
+      outbound_source: "outbounds",
+      balancer: "balancers",
+    };
+
+    const openEntityModalDirect = (entityType, targetSid, subTab) => {
+      const resolvedSubTab =
+        subTab || entityTypeToSubTab[entityType] || activeSectionSubTab;
+      const resolvedType =
+        subTabToEntityType[entityType] ||
+        subTabToEntityType[resolvedSubTab] ||
+        entityType;
+
+      try {
+        if (typeof ui !== "undefined" && typeof ui.hideModal === "function") {
+          ui.hideModal();
+        }
+      } catch (_e) {
+        // ignore
+      }
+
+      if (
+        ["sections", "conditions", "outbounds", "balancers"].includes(
+          resolvedSubTab,
+        )
+      ) {
+        activeSectionSubTab = resolvedSubTab;
+        const navSub =
+          typeof document !== "undefined"
+            ? document.querySelector(
+                `.tachyon-sidebar__subitem[data-nav-key="section:${resolvedSubTab}"]`,
+              )
+            : null;
+        if (navSub && typeof navSub.click === "function") {
+          navSub.click();
+        } else {
+          const topTab =
+            typeof document !== "undefined"
+              ? document.querySelector(
+                  '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a, .cbi-tabmenu > li[data-tab="section"] a',
+                )
+              : null;
+          if (topTab && typeof topTab.click === "function") {
+            topTab.click();
+          }
+          if (typeof selectSectionSubTabFn === "function") {
+            selectSectionSubTabFn(resolvedSubTab);
+          }
+        }
+      }
+
+      if (!targetSid) return;
+
+      const triggerOpen = () => {
+        try {
+          if (typeof document !== "undefined") {
+            const cardEl = document.querySelector(
+              `.tachyon-studio-card[data-sid="${targetSid}"]`,
+            );
+            if (cardEl && typeof cardEl.scrollIntoView === "function") {
+              cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }
+          const ref = gridSectionRegistry[resolvedType];
+          if (ref && typeof ref.renderMoreOptionsModal === "function") {
+            ref.renderMoreOptionsModal(targetSid);
+          }
+        } catch (_err) {
+          // ignore
+        }
+      };
+
+      if (
+        typeof window !== "undefined" &&
+        typeof window.setTimeout === "function"
+      ) {
+        window.setTimeout(triggerOpen, 30);
+      } else {
+        triggerOpen();
+      }
+    };
+
+    if (typeof globalThis !== "undefined") {
+      globalThis.__tachyonOpenEntityModal = openEntityModalDirect;
+    }
+
+    const selectSectionSubTabExternal = (targetKey, targetSid) => {
+      activeSectionSubTab = targetKey;
+      if (targetSid) {
+        const entityType = subTabToEntityType[targetKey] || targetKey;
+        openEntityModalDirect(entityType, targetSid, targetKey);
+        return;
+      }
+      if (typeof selectSectionSubTabFn === "function") {
+        selectSectionSubTabFn(targetKey);
+      }
+    };
+
+    const mountAllStudioDecks = (mapEl) => {
+      if (typeof main.mountTachyonStudioDeck !== "function") return;
+      const root = mapEl || document;
+      const targets = [
+        {
+          type: "section",
+          el:
+            root.querySelector(
+              '#cbi-tachyon-section .tachyon-section-subpane[data-subtab="sections"]',
+            ) || root.querySelector("#cbi-tachyon-section"),
+        },
+        {
+          type: "condition",
+          el: root.querySelector("#cbi-tachyon-condition"),
+        },
+        {
+          type: "outbound_source",
+          el: root.querySelector("#cbi-tachyon-outbound_source"),
+        },
+        {
+          type: "balancer",
+          el: root.querySelector("#cbi-tachyon-balancer"),
+        },
+        {
+          type: "server",
+          el: root.querySelector("#cbi-tachyon-server"),
+        },
+        {
+          type: "profile",
+          el: root.querySelector("#cbi-tachyon-profile"),
+        },
+        {
+          type: "schedule",
+          el: root.querySelector("#cbi-tachyon-schedule"),
+        },
+      ];
+      targets.forEach(({ type, el }) => {
+        const ref = gridSectionRegistry[type];
+        if (!ref || !el) return;
+        const doMount = () => {
+          main.mountTachyonStudioDeck({
+            type,
+            sectionRef: ref,
+            containerEl: el,
+            onShowSectionRules: (sid) =>
+              section && typeof section.showSectionRulesModal === "function"
+                ? section.showSectionRulesModal(sid)
+                : null,
+            onCloneSection: (sid) =>
+              section && typeof section.cloneSection === "function"
+                ? section.cloneSection(sid)
+                : null,
+            onNavigateSubTab: selectSectionSubTabExternal,
+          });
+        };
+        ref._refreshStudioDeck = doMount;
+        doMount();
+      });
+    };
+
+    const mountShellOnMap = (mapEl) => {
+      if (typeof main.mountTachyonAppShell === "function") {
+        main.mountTachyonAppShell({
+          mapEl: mapEl || document.getElementById("cbi-tachyon"),
+          uiCapabilities,
+          onSelectSectionSubTab: selectSectionSubTabExternal,
+          getActiveSectionSubTab: () => activeSectionSubTab,
+          isTabVisible,
+          getTabOrder: () => {
+            const raw = uci.get(UCI_PACKAGE, "settings", "tab_order");
+            if (Array.isArray(raw)) return raw;
+            if (typeof raw === "string" && raw.trim()) {
+              return raw.trim().split(/\s+/);
+            }
+            return tabOrder;
+          },
+          onReloadMap: () =>
+            Promise.resolve(
+              typeof tachyonMap.reset === "function"
+                ? tachyonMap.reset()
+                : tachyonMap
+                    .load()
+                    .then(() =>
+                      typeof tachyonMap.renderContents === "function"
+                        ? tachyonMap.renderContents()
+                        : tachyonMap.render(),
+                    ),
+            ).catch(() => null),
+        });
+      }
+    };
 
     const mountSectionSubTabs = (mapEl) => {
       const root = mapEl || document;
@@ -1117,6 +1425,7 @@ const EntryPoint = {
       secEl.appendChild(paneOutbounds);
       secEl.appendChild(paneBalancers);
 
+      selectSectionSubTabFn = selectSubTab;
       selectSubTab(activeSectionSubTab);
     };
 
@@ -1124,6 +1433,8 @@ const EntryPoint = {
     tachyonMap.render = function () {
       return origMapRender.apply(this, arguments).then((mapEl) => {
         mountSectionSubTabs(mapEl);
+        mountAllStudioDecks(mapEl);
+        mountShellOnMap(mapEl);
         return mapEl;
       });
     };
@@ -1140,6 +1451,8 @@ const EntryPoint = {
         );
         return origRenderContents.apply(this, arguments).then((mapEl) => {
           mountSectionSubTabs(mapEl);
+          mountAllStudioDecks(mapEl);
+          mountShellOnMap(mapEl);
           if (wasInSectionTab && typeof document !== "undefined") {
             const root = mapEl || document;
             const secTabLi = root.querySelector(
@@ -1180,6 +1493,7 @@ const EntryPoint = {
           ),
         );
         configureGridSection(s, "section", _("Section"), _("Add a section"));
+        gridSectionRegistry.section = s;
         section.configureSectionSection(s, {
           loadActionProvidersAvailability: loadUiCapabilities,
         });
@@ -1199,6 +1513,7 @@ const EntryPoint = {
           _("Condition"),
           _("Add a condition"),
         );
+        gridSectionRegistry.condition = sCond;
         conditions.configureConditionsSection(sCond);
         conditions.createConditionsContent(sCond);
 
@@ -1216,6 +1531,7 @@ const EntryPoint = {
           _("Outbound Source"),
           _("Add an outbound source"),
         );
+        gridSectionRegistry.outbound_source = sOut;
         outbounds.configureOutboundsSection(sOut);
         outbounds.createOutboundsContent(sOut);
 
@@ -1233,6 +1549,7 @@ const EntryPoint = {
           _("Balancer"),
           _("Add a balancer"),
         );
+        gridSectionRegistry.balancer = sBal;
         if (typeof balancers.configureBalancersSection === "function") {
           balancers.configureBalancersSection(sBal);
         }
@@ -1253,6 +1570,7 @@ const EntryPoint = {
           _("Server"),
           _("Add a server inbound"),
         );
+        gridSectionRegistry.server = s;
         serverSectionRef = s;
         server.configureServerSubscription(s);
         server.configureServerSection(s, {
@@ -1276,6 +1594,7 @@ const EntryPoint = {
           _("Family Profile"),
           _("Add a family profile"),
         );
+        gridSectionRegistry.profile = s;
         parental.createProfileContent(s);
         return s;
       },
@@ -1294,6 +1613,7 @@ const EntryPoint = {
           _("Schedule Rule"),
           _("Add a schedule rule"),
         );
+        gridSectionRegistry.schedule = s;
         parental.createParentalContent(s);
         return s;
       },
@@ -1386,12 +1706,9 @@ const EntryPoint = {
       },
     };
 
-    // Instantiate enabled sections in configured tab order
+    // Instantiate all sections in configured tab order so switching between Simple and Advanced modes works seamlessly
     for (const tabId of tabOrder) {
-      if (
-        isTabVisible(tabId) &&
-        typeof sectionFactories[tabId] === "function"
-      ) {
+      if (typeof sectionFactories[tabId] === "function") {
         sectionFactories[tabId]();
       }
     }
@@ -1402,10 +1719,23 @@ const EntryPoint = {
       new Promise((resolve) => window.setTimeout(resolve, 250)),
     ]);
 
+    if (!window.location.hash || window.location.hash === "#") {
+      try {
+        if (
+          typeof L !== "undefined" &&
+          L.session &&
+          typeof L.session.setLocalData === "function"
+        ) {
+          L.session.setLocalData("tab", null);
+        }
+      } catch (_e) {}
+    }
+
     const rendered = await tachyonMap.render();
     if (typeof main.mountLanguageSelector === "function") {
       window.requestAnimationFrame(() => {
-        main.mountLanguageSelector(uiCapabilities);
+        const langSlot = document.querySelector(".tachyon-topbar__lang-slot");
+        main.mountLanguageSelector(uiCapabilities, langSlot || undefined);
       });
     }
     main.coreService({

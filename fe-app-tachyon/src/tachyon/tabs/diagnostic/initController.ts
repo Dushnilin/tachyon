@@ -71,8 +71,6 @@ import {
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import {
   formatSingBoxVersion,
-  formatSteerVersion,
-  isNotInstalled,
   normalizeSingBoxVariantFields,
 } from '../../helpers/singBoxVariant';
 import {
@@ -1407,11 +1405,6 @@ function renderDiagnosticAvailableActionsWidget() {
 function renderDiagnosticSystemInfoWidget() {
   logger.debug('[DIAGNOSTIC]', 'renderDiagnosticSystemInfoWidget');
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
-  const activeEngine =
-    diagnosticsSystemInfo.active_engine ||
-    store.get().activeEngine ||
-    'sing-box';
-  const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
 
   const container = document.getElementById(
     'tachyon_diagnostic-page-system-info',
@@ -1438,45 +1431,15 @@ function renderDiagnosticSystemInfoWidget() {
     },
   ];
 
-  const singBoxInstalled = !isNotInstalled(
-    diagnosticsSystemInfo.sing_box_version,
-  );
-  const steerInstalled = Boolean(diagnosticsSystemInfo.steer_installed);
   const singBoxRowLabel = diagnosticsSystemInfo.sing_box_tachyon_core
     ? 'Tachyon Core'
     : 'Sing-box';
 
-  // Only one engine is installed at a time — engines are swapped, not co-installed.
-  // Show only the active engine in system info.
-  if (isSteer) {
-    items.push({
-      key: 'Steer',
-      value: formatSteerVersion(diagnosticsSystemInfo),
-      tag: { label: _('active'), kind: 'success' as const },
-    });
-  } else {
-    items.push({
-      key: singBoxRowLabel,
-      value: formatSingBoxVersion(diagnosticsSystemInfo),
-      tag: { label: _('active'), kind: 'success' as const },
-    });
-  }
-
-  // Fallback: if both happen to be installed (transitional state during swap),
-  // show the inactive one without the active tag so the user knows to clean up.
-  if (isSteer && singBoxInstalled) {
-    items.push({
-      key: singBoxRowLabel,
-      value: formatSingBoxVersion(diagnosticsSystemInfo),
-      tag: { label: _('installed'), kind: 'warning' as const },
-    });
-  } else if (!isSteer && steerInstalled) {
-    items.push({
-      key: 'Steer',
-      value: formatSteerVersion(diagnosticsSystemInfo),
-      tag: { label: _('installed'), kind: 'warning' as const },
-    });
-  }
+  items.push({
+    key: singBoxRowLabel,
+    value: formatSingBoxVersion(diagnosticsSystemInfo),
+    tag: { label: _('active'), kind: 'success' as const },
+  });
 
   if (diagnosticsSystemInfo.zapret_installed) {
     items.push({
@@ -1501,11 +1464,11 @@ function renderDiagnosticSystemInfoWidget() {
 
   items.push(
     {
-      key: 'OS',
+      key: _('OS'),
       value: diagnosticsSystemInfo.openwrt_version,
     },
     {
-      key: 'Device',
+      key: _('Device'),
       value: diagnosticsSystemInfo.device_model,
     },
   );

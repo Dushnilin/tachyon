@@ -1839,6 +1839,12 @@ function source_aware_dns_sources(sections, settings) {
         if (has_dns_matchers) {
             for (let ip in core_ip.normalize_to_cidrs(connections.resolved_source_ip_cidrs(section)))
                 add_source(ip);
+            for (let exc in core_ip.normalize_to_cidrs(list_option(section, "excluded_ips")))
+                add_source(exc);
+            for (let cond in connections.section_leaf_conditions(section)) {
+                for (let exc in core_ip.normalize_to_cidrs(list_option(cond, "excluded_ips")))
+                    add_source(exc);
+            }
         }
 
         if (action == "bypass" || action == "dns") {
@@ -2190,7 +2196,11 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     let sections = enabled_sections();
     let servers = enabled_servers();
-    if (length(sections) == 0 && length(servers) == 0 && length(keys(ctx.quarantined_sections)) == 0)
+    let has_configured_entries = false;
+    cursor.foreach(CONFIG_NAME, "section", function(_s) { has_configured_entries = true; });
+    if (!has_configured_entries)
+        cursor.foreach(CONFIG_NAME, "server", function(_s) { has_configured_entries = true; });
+    if (length(sections) == 0 && length(servers) == 0 && length(keys(ctx.quarantined_sections)) == 0 && !has_configured_entries)
         runtime_generate_unsupported("no enabled sections");
 
     let owners = {

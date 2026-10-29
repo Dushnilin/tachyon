@@ -788,12 +788,15 @@ function restore_rulesets_from_cache() {
 
     let entry;
     while ((entry = dir.read()) != null) {
-        if (!match(entry, /\.(srs|lst|json)$/)) continue;
+        if (!match(entry, /\.(trs|srs|lst|json)$/)) continue;
         let tmp_path = tmp_dir + "/" + entry;
         let etc_path = etc_dir + "/" + entry;
         let tmp_st = fs.stat(tmp_path);
         let etc_st = fs.stat(etc_path);
         if (!etc_st || etc_st.size <= 0) continue;
+        if (match(entry, /\.trs$/) && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function" &&
+            !runtime_rulesets_mod.is_referenceable_trs_file(etc_path))
+            continue;
         // An .srs copied out of /etc into the ruleset sing-box actually reads has to
         // be one it can parse. Restoring a broken one here is what left the router
         // unable to apply anything, because the copy that was broken was the copy
@@ -866,10 +869,24 @@ function prepare_community_rulesets() {
     }
 
     let has_curl = command_status("command -v curl >/dev/null 2>&1") == 0;
+    let use_trs = type(runtime_rulesets_mod.supports_trs) == "function" &&
+        runtime_rulesets_mod.supports_trs();
 
     for (let service in keys(needed)) {
+        let tmp_trs_path = tmp_dir + "/community-" + service + ".trs";
+        let etc_trs_path = etc_dir + "/community-" + service + ".trs";
         let tmp_path = tmp_dir + "/community-" + service + ".srs";
         let etc_path = etc_dir + "/community-" + service + ".srs";
+
+        if (use_trs && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function") {
+            if (runtime_rulesets_mod.is_referenceable_trs_file(tmp_trs_path))
+                continue;
+            if (runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path)) {
+                let trs_content = fs.readfile(etc_trs_path);
+                if (trs_content && write_file(tmp_trs_path, trs_content))
+                    continue;
+            }
+        }
 
         // The /tmp copy used to be trusted outright, which is what left the reported
         // router stuck: the file an older Tachyon downloaded passed the cheap test,
@@ -897,12 +914,40 @@ function prepare_community_rulesets() {
             }
         }
 
+        let fetched = false;
+
+        if (has_curl && use_trs && type(runtime_rulesets_mod.community_trs_urls) == "function") {
+            let trs_urls = runtime_rulesets_mod.community_trs_urls(service);
+            let trs_candidates = [];
+            for (let tu in trs_urls) {
+                let expanded = type(core_url_mod.download_candidates) == "function" ?
+                    core_url_mod.download_candidates(tu) : [ tu ];
+                for (let ex in expanded)
+                    if (!(ex in trs_candidates))
+                        push(trs_candidates, ex);
+            }
+            for (let trs_candidate in trs_candidates) {
+                let dl_tmp = tmp_dir + "/.fetch-" + service + ".trs.tmp";
+                let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", trs_candidate, "-o", dl_tmp ];
+                if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_trs_file(dl_tmp)) {
+                    command_success_from_args([ "mv", "-f", dl_tmp, tmp_trs_path ]);
+                    command_success_from_args([ "mkdir", "-p", etc_dir ]);
+                    let cdata = fs.readfile(tmp_trs_path);
+                    if (cdata)
+                        write_file(etc_trs_path, cdata);
+                    log_message("Pre-downloaded community ruleset " + service + " (.trs) from " + trs_candidate, "info");
+                    fetched = true;
+                    break;
+                }
+                remove_file(dl_tmp);
+            }
+        }
+
         let url = runtime_rulesets_mod.community_url(service);
         let candidates = type(core_url_mod.download_candidates) == "function" ?
             core_url_mod.download_candidates(url) : [ url ];
-        let fetched = false;
 
-        if (has_curl) {
+        if (has_curl && !fetched) {
             for (let candidate in candidates) {
                 let dl_tmp = tmp_dir + "/.fetch-" + service + ".tmp";
                 let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", candidate, "-o", dl_tmp ];

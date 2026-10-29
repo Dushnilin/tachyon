@@ -370,7 +370,7 @@ const LOG_HOST_PORT = new RegExp(`(${LOG_HOST})(:\\d{1,5})`, 'gi');
 const LOG_SYSLOG_TAG =
   '(?:daemon|user|kern|kernel|local\\d*|auth|authpriv|cron|mail|news|syslog|ftp)\\.(?:emerg|alert|crit|err|error|warn|warning|notice|info|debug)\\b';
 const LOG_BARE_HOST = new RegExp(
-  `(?<![/\\w.-])(?!${LOG_SYSLOG_TAG})(${LOG_HOST})(?![/\\w-])`,
+  `(^|[^/\\w.-])(?!${LOG_SYSLOG_TAG})(${LOG_HOST})(?![/\\w-])`,
   'gi',
 );
 
@@ -378,7 +378,7 @@ function maskLogLine(line: string) {
   return line
     .replace(LOG_URL, '*******')
     .replace(LOG_HOST_PORT, '*******$2')
-    .replace(LOG_BARE_HOST, '*******')
+    .replace(LOG_BARE_HOST, '$1*******')
     .replace(WG_KEY_PATTERN, '$1*******');
 }
 

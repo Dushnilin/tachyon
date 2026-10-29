@@ -66,7 +66,9 @@ function tokenize_strategy_args(raw_args) {
 }
 
 const DESYNC_PRESETS = [
-    "fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "auto",
+    "auto", "adaptive", "smart",
+    "fake_split", "fakesplit", "fake_disorder", "fakedisorder", "multi_split", "multisplit",
+    "split", "disorder", "tlsrec", "tls_rec", "fake", "oob",
     // Legacy aliases mapped to valid tachyon-core presets/parameters
     "general", "general_alt", "general_alt2", "general_alt3", "general_alt4",
     "general_alt5", "general_alt6", "general_alt7", "general_alt8", "general_alt9",
@@ -77,16 +79,25 @@ const DESYNC_PRESETS = [
 ];
 
 const DESYNC_MODES = [
-    "fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "none",
+    "auto", "adaptive", "smart",
+    "fake_split", "fakesplit", "fake_disorder", "fakedisorder", "multi_split", "multisplit",
+    "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "none",
     // Legacy aliases mapped to valid tachyon-core modes
-    "fake+split", "fake+disorder", "multisplit", "multidisorder",
-    "fake_disorder", "tlsrec_split", "fakedsplit", "fakeddisorder", "syndata"
+    "fake+split", "fake+disorder", "multi+split", "multidisorder",
+    "tlsrec_split", "fakedsplit", "fakeddisorder", "syndata"
+];
+
+const DESYNC_FOOLING = [
+    "md5", "autottl", "timestamp", "ts", "badseq", "badsum"
 ];
 
 function normalize_desync_preset(lv, outbound) {
+    if (lv == "auto" || lv == "adaptive" || lv == "smart") return "auto";
     if (lv == "fakesplit" || lv == "fake_split") return "fake_split";
+    if (lv == "fakedisorder" || lv == "fake_disorder") return "fake_disorder";
+    if (lv == "multisplit" || lv == "multi_split") return "multi_split";
     if (lv == "tls_rec" || lv == "tlsrec") return "tlsrec";
-    if (lv == "split" || lv == "disorder" || lv == "fake" || lv == "oob" || lv == "auto") return lv;
+    if (lv == "split" || lv == "disorder" || lv == "fake" || lv == "oob") return lv;
     if (lv == "youtube" || lv == "google_youtube") {
         if (outbound.split_pos == null) outbound.split_pos = "midsld";
         if (outbound.fake_ttl == null) outbound.fake_ttl = 6;
@@ -108,7 +119,7 @@ function normalize_desync_preset(lv, outbound) {
     if (lv == "aggressive" || index(lv, "general_alt") == 0) {
         if (outbound.split_pos == null) outbound.split_pos = 1;
         if (outbound.fake_ttl == null) outbound.fake_ttl = 4;
-        return "disorder";
+        return "fake_disorder";
     }
     if (index(lv, "general") == 0) {
         if (outbound.split_pos == null) outbound.split_pos = "midsld";
@@ -116,15 +127,21 @@ function normalize_desync_preset(lv, outbound) {
         if (outbound.fake_sni == null) outbound.fake_sni = "max.ru";
         return "fake_split";
     }
-    return "fake_split";
+    return "auto";
 }
 
 function normalize_desync_mode(lv) {
+    if (lv == "auto" || lv == "adaptive" || lv == "smart")
+        return "auto";
     if (lv == "fake_split" || lv == "fakesplit" || lv == "fake+split" || lv == "fakedsplit")
         return "fake_split";
-    if (lv == "disorder" || lv == "fake_disorder" || lv == "fake+disorder" || lv == "fakeddisorder" || lv == "multidisorder")
+    if (lv == "fake_disorder" || lv == "fakedisorder" || lv == "fake+disorder" || lv == "fakeddisorder" || lv == "multidisorder")
+        return "fake_disorder";
+    if (lv == "multi_split" || lv == "multisplit" || lv == "multi+split")
+        return "multi_split";
+    if (lv == "disorder")
         return "disorder";
-    if (lv == "split" || lv == "multisplit" || lv == "syndata")
+    if (lv == "split" || lv == "syndata")
         return "split";
     if (lv == "tlsrec" || lv == "tls_rec" || lv == "tlsrec_split")
         return "tlsrec";
@@ -213,6 +230,17 @@ function parse_desync_outbound(args_val, tag_name) {
             if (n < 1 || n > 50) return null;
             outbound.udp_repeats = n;
             recognized++;
+        } else if (k == "fooling") {
+            let lv = lc(v);
+            if (index(DESYNC_FOOLING, lv) < 0) return null;
+            outbound.fooling = (lv == "ts") ? "timestamp" : lv;
+            recognized++;
+        } else if (k == "auto_tune") {
+            let lv = lc(v);
+            if (lv == "true" || lv == "1") outbound.auto_tune = true;
+            else if (lv == "false" || lv == "0") outbound.auto_tune = false;
+            else return null;
+            recognized++;
         } else if (k == "udp_fake_ttl") {
             if (!match(v, /^[0-9]+$/)) return null;
             let n = int(v);
@@ -226,29 +254,6 @@ function parse_desync_outbound(args_val, tag_name) {
 
     if (recognized <= 0 || (outbound.preset == null && outbound.mode == null))
         return null;
-
-    // In tachyon-core <= 0.1.7, DesyncMode::FakeSplit and DesyncMode::Fake write
-    // fake_payload directly into the connected TcpStream before the real ClientHello,
-    // which advances SND.NXT and causes the kernel TCP stack to retransmit fake_payload
-    // to the origin server with normal TTL. Using "disorder" (low-TTL first segment +
-    // out-of-order retransmission) or "tlsrec" preserves a valid TCP sequence stream
-    // while keeping all split_pos, fake_ttl, repeats and udp_fake parameters active.
-    if (outbound.preset == "fake_split" || outbound.preset == "auto") {
-        outbound.preset = "disorder";
-        if (outbound.split_pos == null) outbound.split_pos = "midsld";
-        if (outbound.udp_fake == null) outbound.udp_fake = true;
-    } else if (outbound.preset == "fake") {
-        outbound.preset = "disorder";
-        if (outbound.split_pos == null) outbound.split_pos = 1;
-        if (outbound.udp_fake == null) outbound.udp_fake = true;
-    }
-    if (outbound.mode == "fake_split") {
-        outbound.mode = "disorder";
-        if (outbound.split_pos == null) outbound.split_pos = "midsld";
-    } else if (outbound.mode == "fake") {
-        outbound.mode = "disorder";
-        if (outbound.split_pos == null) outbound.split_pos = 1;
-    }
 
     return outbound;
 }

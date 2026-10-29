@@ -235,6 +235,26 @@ const KNOWN_COMMUNITY_DOMAINS = {
     tiktok: [ "tiktok.com", "tiktokv.com", "tiktokcdn.com", "musical.ly" ],
     twitch: [ "twitch.tv", "ttvnw.net", "jtvnw.net" ],
     steam: [ "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com" ],
+    epicgames: [ "epicgames.com", "unrealengine.com", "fortnite.com" ],
+    riot: [ "riotgames.com", "leagueoflegends.com", "playvalorant.com" ],
+    origin: [ "ea.com", "origin.com" ],
+    escapefromtarkov: [ "escapefromtarkov.com", "battlestategames.com" ],
+    faceit: [ "faceit.com", "faceit-cdn.net" ],
+    apple: [ "apple.com", "icloud.com", "mzstatic.com", "cdn-apple.com" ],
+    microsoft: [ "microsoft.com", "live.com", "office.com", "windowsupdate.com", "azure.com" ],
+    pinterest: [ "pinterest.com", "pinimg.com" ],
+    torrent: [ "rutracker.org", "rutor.info", "nnmclub.to" ],
+    docker: [ "docker.com", "docker.io" ],
+    tor: [ "torproject.org" ],
+    fastly: [ "fastly.net", "fastly.com" ],
+    ai_all: [ "openai.com", "chatgpt.com", "claude.ai", "anthropic.com", "gemini.google.com", "x.ai", "grok.com", "perplexity.ai" ],
+    ru_whitelist: [ "gosuslugi.ru", "yandex.ru", "vk.com", "sberbank.ru", "tbank.ru", "ozon.ru", "wildberries.ru" ],
+    ru_domains: [ "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "ozon.ru", "wildberries.ru" ],
+    ru_only_inside: [ "gosuslugi.ru", "nalog.ru", "mos.ru", "rzd.ru", "sberbank.ru" ],
+    push: [ "push.apple.com", "mtalk.google.com", "fcm.googleapis.com" ],
+    roscomvpn_whitelist: [ "gosuslugi.ru", "yandex.ru", "vk.com", "sberbank.ru", "tbank.ru", "ozon.ru", "wildberries.ru" ],
+    roscomvpn_ru: [ "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "ozon.ru", "wildberries.ru" ],
+    ru_available_only_inside: [ "gosuslugi.ru", "nalog.ru", "mos.ru", "rzd.ru", "sberbank.ru" ],
     geosite_ru: [
         "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
         "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
@@ -582,30 +602,50 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
     if (type(section) != "object" || section.enabled == "0")
         return null;
 
-    // Check excluded client IPs on section if specified
+    let client_Matches_Entry = function(entry) {
+        entry = lc(trim(as_string(entry)));
+        if (entry == "")
+            return false;
+        if (client_info.ip != null && (entry == lc(client_info.ip) || ipv4_in_cidr(client_info.ip, entry)))
+            return true;
+        if (client_info.mac != null && replace(entry, "-", ":") == replace(client_info.mac, "-", ":"))
+            return true;
+        if (core_ip.valid_mac(entry) && client_info.ip != null) {
+            for (let res_ip in core_ip.resolve_mac_to_ips(entry)) {
+                if (lc(res_ip) == lc(client_info.ip) || ipv4_in_cidr(client_info.ip, res_ip))
+                    return true;
+            }
+        }
+        return false;
+    };
+
+    // Check excluded client IPs/MACs on section if specified
     let exc_ips = parse_combined_items(section, [ "excluded_ips" ]);
-    if (length(exc_ips) > 0 && client_info.ip != null) {
+    if (length(exc_ips) > 0) {
         for (let exc in exc_ips) {
-            exc = lc(trim(exc));
-            if (exc == lc(client_info.ip) || ipv4_in_cidr(client_info.ip, exc))
+            if (client_Matches_Entry(exc))
                 return null;
+        }
+    }
+
+    // Check fully_routed_ips (full tunnel for specific client devices)
+    let full_ips = parse_combined_items(section, [ "fully_routed_ips" ]);
+    if (length(full_ips) > 0) {
+        for (let fr in full_ips) {
+            if (client_Matches_Entry(fr))
+                return { rule_type: "fully_routed_ips", rule_value: fr };
         }
     }
 
     // Check device restrictions on section if specified
     let dev_ips = parse_combined_items(section, [
         "device_ip", "devices", "device_mac", "source_macs",
-        "source_ip_cidr", "source_ip_cidr_text", "fully_routed_ips"
+        "source_ip_cidr", "source_ip_cidr_text"
     ]);
     if (length(dev_ips) > 0) {
         let dev_matched = false;
         for (let dev in dev_ips) {
-            dev = lc(trim(dev));
-            if (client_info.ip != null && (dev == lc(client_info.ip) || ipv4_in_cidr(client_info.ip, dev))) {
-                dev_matched = true;
-                break;
-            }
-            if (client_info.mac != null && dev == client_info.mac) {
+            if (client_Matches_Entry(dev)) {
                 dev_matched = true;
                 break;
             }

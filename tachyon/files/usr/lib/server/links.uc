@@ -304,6 +304,17 @@ function build(s, fallback_host, pin) {
     }
     if (protocol == "awg") {
         if (!s.awg_client_private_key || !s.awg_server_public_key) return "";
+        let hpk = str(s.awg_header_protection_key || "");
+        let s1 = int(s.awg_s1 || "0");
+        let s2 = int(s.awg_s2 || "0");
+        let s3 = int(s.awg_s3 || "0");
+        let s4 = int(s.awg_s4 || "0");
+        if (hpk != "") {
+            if (s1 < 12) s1 = 20;
+            if (s2 < 12) s2 = 20;
+            if (s3 < 12) s3 = 20;
+            if (s4 < 12) s4 = 20;
+        }
         let conf = "[Interface]\nPrivateKey = " + s.awg_client_private_key +
             "\nAddress = " + (s.awg_client_address || "10.8.0.2/32") +
             (s.awg_dns ? "\nDNS = " + s.awg_dns : "") +
@@ -311,15 +322,15 @@ function build(s, fallback_host, pin) {
             "\nJc = " + (s.awg_jc || "4") +
             "\nJmin = " + (s.awg_jmin || "40") +
             "\nJmax = " + (s.awg_jmax || "70") +
-            "\nS1 = " + (s.awg_s1 || "0") +
-            "\nS2 = " + (s.awg_s2 || "0") +
-            (s.awg_s3 ? "\nS3 = " + s.awg_s3 : "") +
-            (s.awg_s4 ? "\nS4 = " + s.awg_s4 : "") +
+            "\nS1 = " + s1 +
+            "\nS2 = " + s2 +
+            ((s3 > 0 || s.awg_s3 != null) ? "\nS3 = " + s3 : "") +
+            ((s4 > 0 || s.awg_s4 != null) ? "\nS4 = " + s4 : "") +
             "\nH1 = " + (s.awg_h1 || "1") +
             "\nH2 = " + (s.awg_h2 || "2") +
             "\nH3 = " + (s.awg_h3 || "3") +
             "\nH4 = " + (s.awg_h4 || "4") +
-            (s.awg_header_protection_key ? "\nHeaderProtectionKey = " + s.awg_header_protection_key : "") +
+            (hpk != "" ? "\nHeaderProtectionKey = " + hpk : "") +
             (s.awg_content_padding_addition ? "\nContentPaddingAddition = " + s.awg_content_padding_addition : "") +
             (s.awg_rekey_after_time ? "\nRekeyAfterTime = " + s.awg_rekey_after_time : "") +
             (s.awg_rekey_timeout ? "\nRekeyTimeout = " + s.awg_rekey_timeout : "") +

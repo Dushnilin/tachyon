@@ -69,6 +69,24 @@ check(index(links.build({protocol:"mtproto",label:"MTProto 205",mtproto_secret:s
 let wg_priv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 let wg_pub = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
 check(index(links.build({protocol:"awg",label:"AWG 205",awg_client_private_key:wg_priv,awg_server_public_key:wg_pub}, "vpn.example.com", ""), "amneziawg://") == 0, "AWG amneziawg:// URI");
+let awg31_uri = links.build({
+    protocol: "awg",
+    label: "AWG 3.1",
+    awg_version: "3.1",
+    awg_client_private_key: wg_priv,
+    awg_server_public_key: wg_pub,
+    awg_s1: "25",
+    awg_s2: "30",
+    awg_s3: "0",
+    awg_s4: "0",
+    awg_header_protection_key: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="
+}, "vpn.example.com", "");
+let awg31_b64 = split(substr(awg31_uri, length("amneziawg://")), "#")[0];
+while (length(awg31_b64) % 4 != 0)
+    awg31_b64 += "=";
+let awg31_conf = b64dec(awg31_b64);
+check(index(awg31_conf, "\nS1 = 25\n") >= 0 && index(awg31_conf, "\nS2 = 30\n") >= 0, "AWG 3.1 preserves S1/S2 >= 12");
+check(index(awg31_conf, "\nS3 = 20\n") >= 0 && index(awg31_conf, "\nS4 = 20\n") >= 0, "AWG 3.1 raises S3/S4 < 12 to 20 when HeaderProtectionKey is set");
 check(index(links.build({protocol:"socks",socks_auth_enabled:"false",server_password:"hidden"}, "vpn.example.com", ""), "hidden") < 0, "SOCKS no-auth does not export stale credentials");
 settings.server_subscription_mode = "invalid";
 check(subscription.response(settings, servers, request).code == 422, "unknown selection mode fails closed");

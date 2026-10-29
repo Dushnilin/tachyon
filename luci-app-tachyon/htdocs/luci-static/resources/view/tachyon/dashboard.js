@@ -15,8 +15,8 @@ function createDashboardContent(section) {
   };
 
   const originalRender = section.render;
-  section.render = function () {
-    return originalRender.apply(this, arguments).then((node) => {
+  section.render = function (...args) {
+    return originalRender.apply(this, args).then((node) => {
       if (node) {
         node.style.overflowAnchor = "none";
         const directDiv = node.querySelector(":scope > .cbi-section-node");

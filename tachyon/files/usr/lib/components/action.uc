@@ -3222,7 +3222,7 @@ function normalize_component_name(component) {
         return "tachyon";
     if (component == "direct-bypass" || component == "directbypass" || component == "direct_proxy")
         return "direct_bypass";
-    if (component == "torrserver_direct" || component == "torrserver-direct")
+    if (component == "torrserver_direct" || component == "torrserver-direct" || component == "torrserver")
         return "torrserver_direct";
     return component;
 }
@@ -3626,6 +3626,8 @@ function list_component_releases(component, count, page) {
         owner = "Dushnilin"; repo = "fptn";
     } else if (component == "steer" || component == "steer-extended" || component == "steer_extended") {
         owner = "xyzmean"; repo = "steer";
+    } else if (component == "torrserver_direct") {
+        owner = "YouROK"; repo = "TorrServer";
     } else {
         print("[]\n"); return;
     }
@@ -3664,6 +3666,200 @@ function list_component_releases(component, count, page) {
         }
     }
     write_json(releases);
+}
+
+const TORRSERVER_DIRECT_INIT = getenv("TACHYON_TORRSERVER_DIRECT_INIT") || "/etc/init.d/tachyon-torrserver-direct";
+const TORRSERVER_DIRECT_UC = LIB_DIR + "/torrserver/direct.uc";
+const TORRSERVER_BIN_PATH = "/usr/bin/torrserver";
+const TORRSERVER_TMP_BIN_PATH = "/tmp/torrserver/torrserver";
+const TORRSERVER_OPT_BIN_PATH = "/opt/torrserver/torrserver";
+const TORRSERVER_SERVICE_INIT = "/etc/init.d/torrserver";
+const TORRSERVER_VERSION_FILE = "/etc/tachyon/torrserver-version";
+
+function path_available_kb(target_path) {
+    let out = trim(command_output_from_args([ "df", "-P", "-k", target_path ]));
+    if (out == "")
+        return 0;
+    let lines = split(out, "\n");
+    if (length(lines) < 2)
+        return 0;
+    let last_line = trim(lines[length(lines) - 1]);
+    let cols = split(last_line, /[ \t]+/);
+    if (length(cols) < 4)
+        return 0;
+    let avail = cols[3];
+    if (!match(avail, /^[0-9]+$/))
+        return 0;
+    return int(avail, 10);
+}
+
+function current_torrserver_version() {
+    let ver = trim(read_file(TORRSERVER_VERSION_FILE));
+    if (ver != "" && file_exists(TORRSERVER_BIN_PATH))
+        return ver;
+    let status = null;
+    try {
+        status = json(command_output_from_args([ "ucode", "-L", LIB_DIR, TORRSERVER_DIRECT_UC, "status" ]));
+    } catch (e) {}
+    if (type(status) == "object" && int(status.installed || 0) == 1) {
+        let sver = trim(as_string(status.version || ""));
+        if (sver != "" && sver != "not installed")
+            return sver;
+    }
+    return "";
+}
+
+function write_torrserver_init_script() {
+    let script = "#!/bin/sh /etc/rc.common\n\n" +
+        "START=95\n" +
+        "STOP=10\n" +
+        "USE_PROCD=1\n\n" +
+        "PROG=\"" + TORRSERVER_BIN_PATH + "\"\n" +
+        "DATA_DIR=\"/opt/torrserver\"\n" +
+        "PORT=\"8090\"\n\n" +
+        "start_service() {\n" +
+        "    [ -x \"$PROG\" ] || return 1\n" +
+        "    mkdir -p \"$DATA_DIR\"\n" +
+        "    procd_open_instance\n" +
+        "    procd_set_param command \"$PROG\" -d \"$DATA_DIR\" -p \"$PORT\"\n" +
+        "    procd_set_param respawn\n" +
+        "    procd_set_param stdout 1\n" +
+        "    procd_set_param stderr 1\n" +
+        "    procd_close_instance\n" +
+        "}\n";
+    write_file(TORRSERVER_SERVICE_INIT, script);
+    command_success_from_args([ "chmod", "0755", TORRSERVER_SERVICE_INIT ]);
+}
+
+function place_torrserver_binary(tmp_bin) {
+    if (!command_success_from_args([ "chmod", "0755", tmp_bin ]))
+        return false;
+    let st = fs.stat(tmp_bin);
+    let bin_kb = st && st.size ? int(st.size / 1024) : 65536;
+    let required_flash_kb = bin_kb + 16384;
+
+    if (path_available_kb("/usr/bin") >= required_flash_kb) {
+        remove_file(TORRSERVER_BIN_PATH);
+        if (move_file_portable(tmp_bin, TORRSERVER_BIN_PATH) &&
+            command_success_from_args([ "chmod", "0755", TORRSERVER_BIN_PATH ])) {
+            return true;
+        }
+    }
+
+    ensure_dir("/opt/torrserver");
+    if (path_available_kb("/opt/torrserver") >= required_flash_kb &&
+        path_available_kb("/opt/torrserver") != path_available_kb("/usr/bin")) {
+        remove_file(TORRSERVER_OPT_BIN_PATH);
+        if (move_file_portable(tmp_bin, TORRSERVER_OPT_BIN_PATH) &&
+            command_success_from_args([ "chmod", "0755", TORRSERVER_OPT_BIN_PATH ])) {
+            remove_file(TORRSERVER_BIN_PATH);
+            return command_success_from_args([ "ln", "-sf", TORRSERVER_OPT_BIN_PATH, TORRSERVER_BIN_PATH ]);
+        }
+    }
+
+    // Fallback to RAM tmpfs (/tmp/torrserver/torrserver) when root overlay lacks space for a ~60MB binary
+    ensure_dir("/tmp/torrserver");
+    remove_file(TORRSERVER_TMP_BIN_PATH);
+    if (!command_success_from_args([ "mv", "-f", tmp_bin, TORRSERVER_TMP_BIN_PATH ]) &&
+        !move_file_portable(tmp_bin, TORRSERVER_TMP_BIN_PATH)) {
+        return false;
+    }
+    command_success_from_args([ "chmod", "0755", TORRSERVER_TMP_BIN_PATH ]);
+    remove_file(TORRSERVER_BIN_PATH);
+    return command_success_from_args([ "ln", "-sf", TORRSERVER_TMP_BIN_PATH, TORRSERVER_BIN_PATH ]);
+}
+
+function install_torrserver(action, target_tag) {
+    init_tmp_dir() || action_fail("torrserver_direct", action, "Failed to create temporary directory");
+    let current_version = current_torrserver_version();
+    let release = cmp_cat.resolve_torrserver_release(target_tag);
+    if (release == null)
+        action_fail("torrserver_direct", action, "Failed to resolve TorrServer release from YouROK/TorrServer", current_version);
+    let latest_version = as_string(release.version || release.tag || "");
+
+    if (action == "check_update") {
+        if (current_version == "")
+            action_success("torrserver_direct", action, "TorrServer is not installed", "", latest_version, 0, "", release.release_url);
+        else
+            check_success("torrserver_direct", current_version, latest_version, release.release_url);
+    }
+
+    let tmp_bin = cmp.tmp_dir_path() + "/" + release.package_name;
+    if (!download_with_retry(release.package_url, tmp_bin, release.package_name) || !file_nonempty(tmp_bin))
+        action_fail("torrserver_direct", action, "Failed to download TorrServer binary (" + release.package_name + ")", current_version, latest_version);
+
+    if (file_exists(TORRSERVER_SERVICE_INIT))
+        command_status_from_args([ TORRSERVER_SERVICE_INIT, "stop" ]);
+
+    if (!place_torrserver_binary(tmp_bin)) {
+        remove_file(tmp_bin);
+        action_fail("torrserver_direct", action, "Failed to install TorrServer binary to " + TORRSERVER_BIN_PATH, current_version, latest_version);
+    }
+
+    ensure_dir("/opt/torrserver");
+    ensure_dir("/etc/tachyon");
+    write_file(TORRSERVER_VERSION_FILE, latest_version + "\n");
+    write_torrserver_init_script();
+
+    command_success_from_args([ TORRSERVER_SERVICE_INIT, "enable" ]);
+    command_success_from_args([ TORRSERVER_SERVICE_INIT, "restart" ]);
+    for (let attempt = 0; attempt < 10; attempt++) {
+        sleep(500);
+        let st_check = null;
+        try {
+            st_check = json(command_output_from_args([ "ucode", "-L", LIB_DIR, TORRSERVER_DIRECT_UC, "status" ]));
+        } catch (e) {}
+        if (type(st_check) == "object" && int(st_check.running || 0) == 1 && int(st_check.available || 0) == 1)
+            break;
+    }
+
+    // Automatically enable TorrServer Direct cgroup bypass if kernel supports nft_socket
+    if (command_success_from_args([ "modprobe", "nft_socket" ]) ||
+        (run_logged("Installing TorrServer Direct kernel support", pkg_install_name_command("kmod-nft-socket")) &&
+         command_success_from_args([ "modprobe", "nft_socket" ]))) {
+        let cursor = uci_core.cursor();
+        cursor.load("tachyon");
+        cursor.set("tachyon", "settings", "torrserver_direct_enabled", "1");
+        cursor.commit("tachyon");
+        if (file_exists(TORRSERVER_DIRECT_INIT)) {
+            command_success_from_args([ TORRSERVER_DIRECT_INIT, "enable" ]);
+            command_success_from_args([ TORRSERVER_DIRECT_INIT, "restart" ]);
+        }
+        if (file_exists(TORRSERVER_DIRECT_UC))
+            command_status_from_args([ "ucode", "-L", LIB_DIR, TORRSERVER_DIRECT_UC, "reconcile" ]);
+    }
+
+    clear_version_caches();
+    remove_file(SYSTEM_INFO_CACHE_FILE);
+    updates_log("Installed TorrServer " + latest_version);
+    action_success("torrserver_direct", action, "TorrServer has been installed", latest_version, latest_version, 1, "latest", release.release_url);
+}
+
+function remove_torrserver() {
+    let cursor = uci_core.cursor();
+    cursor.load("tachyon");
+    cursor.set("tachyon", "settings", "torrserver_direct_enabled", "0");
+    cursor.commit("tachyon");
+
+    if (file_exists(TORRSERVER_DIRECT_INIT)) {
+        command_status_from_args([ TORRSERVER_DIRECT_INIT, "stop" ]);
+        command_status_from_args([ TORRSERVER_DIRECT_INIT, "disable" ]);
+    }
+    if (file_exists(TORRSERVER_DIRECT_UC))
+        command_status_from_args([ "ucode", "-L", LIB_DIR, TORRSERVER_DIRECT_UC, "remove" ]);
+    if (file_exists(TORRSERVER_SERVICE_INIT)) {
+        command_status_from_args([ TORRSERVER_SERVICE_INIT, "stop" ]);
+        command_status_from_args([ TORRSERVER_SERVICE_INIT, "disable" ]);
+        remove_file(TORRSERVER_SERVICE_INIT);
+    }
+    remove_file(TORRSERVER_BIN_PATH);
+    remove_file(TORRSERVER_TMP_BIN_PATH);
+    remove_file(TORRSERVER_OPT_BIN_PATH);
+    remove_file(TORRSERVER_VERSION_FILE);
+    clear_version_caches();
+    remove_file(SYSTEM_INFO_CACHE_FILE);
+    updates_log("Removed TorrServer");
+    action_success("torrserver_direct", "remove", "TorrServer has been removed", "not installed", "", 1);
 }
 
 function install_component_version(component, tag) {
@@ -3718,6 +3914,8 @@ function install_component_version(component, tag) {
         install_olcrtc("install", tag);
     } else if (component == "fptn") {
         install_fptn("install", tag);
+    } else if (component == "torrserver_direct") {
+        install_torrserver("install", tag);
     } else {
         action_fail(component, "install_version", "Component " + component + " does not support version installation");
     }
@@ -3768,9 +3966,6 @@ function set_direct_bypass(action) {
     );
 }
 
-const TORRSERVER_DIRECT_INIT = getenv("TACHYON_TORRSERVER_DIRECT_INIT") || "/etc/init.d/tachyon-torrserver-direct";
-const TORRSERVER_DIRECT_UC = LIB_DIR + "/torrserver/direct.uc";
-
 function set_torrserver_direct(action) {
     let cursor = uci_core.cursor();
     cursor.load("tachyon");
@@ -3789,6 +3984,14 @@ function set_torrserver_direct(action) {
         try {
             status = json(command_output_from_args([ "ucode", "-L", LIB_DIR, TORRSERVER_DIRECT_UC, "status" ]));
         } catch (e) {}
+        if ((type(status) != "object" || int(status.running || 0) != 1) && file_exists(TORRSERVER_SERVICE_INIT)) {
+            command_success_from_args([ TORRSERVER_SERVICE_INIT, "enable" ]);
+            command_success_from_args([ TORRSERVER_SERVICE_INIT, "restart" ]);
+            sleep(1000);
+            try {
+                status = json(command_output_from_args([ "ucode", "-L", LIB_DIR, TORRSERVER_DIRECT_UC, "status" ]));
+            } catch (e) {}
+        }
         if (type(status) != "object" || int(status.running || 0) != 1)
             action_fail("torrserver_direct", action, "TorrServer is not running", current_enabled, target_enabled);
         if (int(status.available || 0) != 1)
@@ -4007,6 +4210,10 @@ function component_action(component, action, extra) {
         remove_optional_component("tailscale", "tailscale", "Tailscale", LIB_DIR + "/providers/tailscale/runtime.uc");
     else if (component == "direct_bypass" && (action == "enable" || action == "disable"))
         set_direct_bypass(action);
+    else if (component == "torrserver_direct" && (action == "check_update" || action == "install"))
+        install_torrserver(action, extra);
+    else if (component == "torrserver_direct" && action == "remove")
+        remove_torrserver();
     else if (component == "torrserver_direct" && (action == "enable" || action == "disable"))
         set_torrserver_direct(action);
     else

@@ -41,6 +41,27 @@ interface IRenderAvailableActionsProps {
   stabilityReport?: ActionProps;
 }
 
+function renderActionBentoGroup(
+  title: string,
+  subtitle: string,
+  buttons: HTMLElement[],
+) {
+  if (!buttons.length) {
+    return null;
+  }
+  return E('div', { class: 'tachyon_diagnostic-action-group' }, [
+    E('div', { class: 'tachyon_diagnostic-action-group__header' }, [
+      E('b', { class: 'tachyon_diagnostic-action-group__title' }, title),
+      E(
+        'span',
+        { class: 'tachyon_diagnostic-action-group__subtitle' },
+        subtitle,
+      ),
+    ]),
+    E('div', { class: 'tachyon_diagnostic-action-group__grid' }, buttons),
+  ]);
+}
+
 export function renderAvailableActions({
   restart,
   start,
@@ -61,8 +82,8 @@ export function renderAvailableActions({
   routeExplain,
   stabilityReport,
 }: IRenderAvailableActionsProps) {
-  return E('div', { class: 'tachyon_diagnostic-page__right-bar__actions' }, [
-    E('b', {}, _('Available actions')),
+  // 1. Service Control Group
+  const serviceButtons: HTMLElement[] = [
     ...insertIf(restart.visible, [
       renderButton({
         classNames: ['cbi-button-apply'],
@@ -113,34 +134,6 @@ export function renderAvailableActions({
         disabled: enable.disabled,
       }),
     ]),
-    ...insertIf(globalCheck.visible, [
-      renderButton({
-        onClick: globalCheck.onClick,
-        icon: renderCircleCheckBigIcon24,
-        text: _('Get global check'),
-        loading: globalCheck.loading,
-        disabled: globalCheck.disabled,
-      }),
-    ]),
-    ...insertIf(doctor.visible, [
-      renderButton({
-        onClick: doctor.onClick,
-        icon: renderRotateCcwIcon24,
-        text: _('Run doctor repair'),
-        loading: doctor.loading,
-        disabled: doctor.disabled,
-      }),
-    ]),
-    ...insertIf(aiDoctor.visible, [
-      renderButton({
-        classNames: ['cbi-button-action'],
-        onClick: aiDoctor.onClick,
-        icon: renderRotateCcwIcon24,
-        text: _('Run AI Doctor'),
-        loading: aiDoctor.loading,
-        disabled: aiDoctor.disabled,
-      }),
-    ]),
     ...insertIf(!!restoreNativeInternet?.visible, [
       renderButton({
         classNames: ['cbi-button-reset'],
@@ -151,26 +144,10 @@ export function renderAvailableActions({
         disabled: restoreNativeInternet!.disabled,
       }),
     ]),
-    ...insertIf(!!aiChat?.visible, [
-      renderButton({
-        classNames: ['cbi-button-action'],
-        onClick: aiChat!.onClick,
-        icon: renderCircleCheckBigIcon24,
-        text: _('AI Chat Assistant'),
-        loading: aiChat!.loading,
-        disabled: aiChat!.disabled,
-      }),
-    ]),
-    ...insertIf(!!strategyFuzzer?.visible, [
-      renderButton({
-        classNames: ['cbi-button-action'],
-        onClick: strategyFuzzer!.onClick,
-        icon: renderCirclePlayIcon24,
-        text: _('DPI Strategy Fuzzer'),
-        loading: strategyFuzzer!.loading,
-        disabled: strategyFuzzer!.disabled,
-      }),
-    ]),
+  ];
+
+  // 2. Network & Route Verification Group
+  const networkButtons: HTMLElement[] = [
     ...insertIf(checkServices.visible, [
       renderButton({
         classNames: ['cbi-button-action'],
@@ -211,6 +188,53 @@ export function renderAvailableActions({
         disabled: stabilityReport!.disabled,
       }),
     ]),
+  ];
+
+  // 3. AI & Automated Repair Group
+  const aiAndRepairButtons: HTMLElement[] = [
+    ...insertIf(aiDoctor.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: aiDoctor.onClick,
+        icon: renderRotateCcwIcon24,
+        text: _('Run AI Doctor'),
+        loading: aiDoctor.loading,
+        disabled: aiDoctor.disabled,
+      }),
+    ]),
+    ...insertIf(!!aiChat?.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: aiChat!.onClick,
+        icon: renderCircleCheckBigIcon24,
+        text: _('AI Chat Assistant'),
+        loading: aiChat!.loading,
+        disabled: aiChat!.disabled,
+      }),
+    ]),
+    ...insertIf(doctor.visible, [
+      renderButton({
+        onClick: doctor.onClick,
+        icon: renderRotateCcwIcon24,
+        text: _('Run doctor repair'),
+        loading: doctor.loading,
+        disabled: doctor.disabled,
+      }),
+    ]),
+    ...insertIf(!!strategyFuzzer?.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: strategyFuzzer!.onClick,
+        icon: renderCirclePlayIcon24,
+        text: _('DPI Strategy Fuzzer'),
+        loading: strategyFuzzer!.loading,
+        disabled: strategyFuzzer!.disabled,
+      }),
+    ]),
+  ];
+
+  // 4. Logs, Config & Reports Group
+  const debugButtons: HTMLElement[] = [
     ...insertIf(viewLogs.visible, [
       renderButton({
         onClick: viewLogs.onClick,
@@ -229,6 +253,15 @@ export function renderAvailableActions({
         disabled: showSingBoxConfig.disabled,
       }),
     ]),
+    ...insertIf(globalCheck.visible, [
+      renderButton({
+        onClick: globalCheck.onClick,
+        icon: renderCircleCheckBigIcon24,
+        text: _('Get global check'),
+        loading: globalCheck.loading,
+        disabled: globalCheck.disabled,
+      }),
+    ]),
     ...insertIf(generateBugReport.visible, [
       renderButton({
         onClick: generateBugReport.onClick,
@@ -238,5 +271,34 @@ export function renderAvailableActions({
         disabled: generateBugReport.disabled,
       }),
     ]),
-  ]);
+  ];
+
+  const groups = [
+    renderActionBentoGroup(
+      '⚡ ' + _('Service Control'),
+      _('Manage Tachyon daemon lifecycle and emergency bypass'),
+      serviceButtons,
+    ),
+    renderActionBentoGroup(
+      '🌐 ' + _('Network & Route Verification'),
+      _('Test service reachability, leaks, routing rules and node stability'),
+      networkButtons,
+    ),
+    renderActionBentoGroup(
+      '🤖 ' + _('AI & Automated Repair'),
+      _('Diagnose issues automatically or fuzz DPI bypass strategies'),
+      aiAndRepairButtons,
+    ),
+    renderActionBentoGroup(
+      '🛠 ' + _('Logs, Config & Reports'),
+      _('Inspect live logs, generated engine config and export reports'),
+      debugButtons,
+    ),
+  ].filter(Boolean) as HTMLElement[];
+
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic-page__right-bar__actions' },
+    groups,
+  );
 }

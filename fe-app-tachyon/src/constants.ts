@@ -13,34 +13,169 @@ export const LATENCY_TEST_URL_OPTIONS = [
 ];
 
 export const DOMAIN_LIST_OPTIONS = {
-  russia_inside: 'Russia inside',
-  russia_outside: 'Russia outside',
-  ukraine_inside: 'Ukraine',
-  geoblock: 'Geo Block',
-  block: 'RKN Block',
-  porn: 'Porn',
-  news: 'News',
-  anime: 'Anime',
-  youtube: 'Youtube',
-  discord: 'Discord',
-  meta: 'Meta',
-  twitter: 'Twitter (X)',
-  hdrezka: 'HDRezka',
-  tiktok: 'Tik-Tok',
-  telegram: 'Telegram',
-  cloudflare: 'Cloudflare',
-  google_ai: 'Google AI',
-  google_play: 'Google Play',
-  hodca: 'H.O.D.C.A',
-  roblox: 'Roblox',
-  ads_hagezi_pro: 'Ads (Hagezi Pro)',
-  supercell: 'Supercell',
-  github: 'GitHub',
+  russia_inside: 'Россия (внутри)',
+  geoblock: 'Геоблок (зарубежные сервисы)',
+  block: 'Реестр РКН (прямые блокировки)',
+  ru_blocked: 'Реестр РКН и Антизапрет (очищенный)',
+  ru_blocked_all: 'Реестр РКН (полный)',
+  antifilter: 'Antifilter Community',
+  refilter: 'Re:filter',
+  russia_outside: 'Россия (снаружи)',
+  ru_whitelist: 'Белый список РФ (Direct)',
+  ru_domains: 'Рунет и СНГ (Direct)',
+  ru_only_inside: 'Только из РФ (Direct)',
+  push: 'Push-уведомления (Direct)',
+  ai_all: 'Нейросети и ИИ (все)',
+  openai: 'OpenAI (ChatGPT / Sora)',
+  anthropic: 'Anthropic (Claude AI)',
+  google_ai: 'Google AI (Gemini / NotebookLM)',
+  xai: 'xAI (Grok)',
+  youtube: 'YouTube',
   twitch: 'Twitch',
-  hetzner: 'Hetzner ASN',
-  ovh: 'OVH ASN',
-  digitalocean: 'Digital Ocean ASN',
-  cloudfront: 'CloudFront ASN',
+  twitch_ads: 'Twitch (без рекламы и 1080p+)',
+  spotify: 'Spotify',
+  netflix: 'Netflix',
+  tiktok: 'TikTok',
+  hdrezka: 'HDRezka',
+  anime: 'Аниме',
+  pinterest: 'Pinterest',
+  discord: 'Discord',
+  telegram: 'Telegram',
+  meta: 'Meta (Instagram / Facebook / Threads)',
+  twitter: 'X (Twitter)',
+  steam: 'Steam',
+  epicgames: 'Epic Games (Fortnite / Unreal)',
+  riot: 'Riot Games (Valorant / LoL)',
+  origin: 'EA / Origin (EA App / Apex / BF)',
+  roblox: 'Roblox',
+  supercell: 'Supercell (Brawl Stars / Clash)',
+  escapefromtarkov: 'Escape from Tarkov',
+  faceit: 'FACEIT (CS2)',
+  apple: 'Apple и iCloud',
+  microsoft: 'Microsoft и Xbox',
+  google_play: 'Google Play (Android)',
+  github: 'GitHub',
+  docker: 'Docker Hub',
+  hodca: 'Центры сертификации SSL/TLS (CA)',
+  cloudflare: 'Cloudflare (CDN и подсети)',
+  cloudfront: 'Amazon CloudFront (CDN подсети)',
+  fastly: 'Fastly CDN',
+  hetzner: 'Hetzner (подсети ДЦ)',
+  ovh: 'OVHcloud (подсети ДЦ)',
+  digitalocean: 'DigitalOcean (подсети ДЦ)',
+  news: 'СМИ и новости',
+  torrent: 'Торренты и трекеры',
+  tor: 'Tor и анонимайзеры',
+  porn: 'Сайты 18+ (Adult)',
+  ads_hagezi_pro: 'Реклама и трекеры (Block)',
+  win_spy: 'Телеметрия Windows (Block)',
+};
+
+export const DOMAIN_LIST_HINTS: Record<string, string> = {
+  russia_inside:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)',
+  geoblock:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] 150+ зарубежных сервисов, закрывших доступ с российских IP: PayPal, Notion, Canva, Trello, Jira, Zoom, Intel, Dell, Coursera, JetBrains, Adobe, GitLab',
+  block:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Домены и сайты из официальной выгрузки запрещённых ресурсов Роскомнадзора',
+  ru_blocked:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РКН без мёртвых сайтов)',
+  ru_blocked_all:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Полная нефильтрованная выгрузка всех доменов, поддоменов и зеркал из реестра блокировок РФ и ТСПУ',
+  antifilter:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Народный список доменов и сервисов, заблокированных РКН или замедляемых на ТСПУ в России',
+  refilter:
+    '[Маршрут: В Прокси / VPN] Выверенный список реальных блокировок РКН и геоблока западных сервисов без избыточных доменов',
+  russia_outside:
+    '[Маршрут: В Прокси с IP РФ (из-за рубежа) или Direct (в РФ)] Сервисы РФ: Госуслуги, банки, Ozon, WB, Кинопоиск, Иви, Wink, РЖД',
+  ru_whitelist:
+    '[Маршрут: Напрямую (Direct)] Госуслуги, ФНС, банки РФ (Сбер, Т-Банк, Альфа, ВТБ), Ozon, WB, Авито, Яндекс, VK, РЖД, капчи и корневые сертификаты',
+  ru_domains:
+    '[Маршрут: Напрямую (Direct)] Все национальные зоны (.ru, .рф, .su, .by, .kz) и домены компаний РФ (Яндекс, VK, Mail.ru, Kaspersky, 1С, 2ГИС)',
+  ru_only_inside:
+    '[Маршрут: Строго Напрямую (Direct)] Госпорталы, банки, суды, ЕМИАС и сервисы ЖКХ РФ, жёстко блокирующие вход с зарубежных и VPN IP-адресов',
+  push: '[Маршрут: Напрямую (Direct)] Серверы мобильных и системных push-уведомлений: Apple APNs, Google FCM, Huawei, Xiaomi, Samsung, Windows WNS',
+  ai_all:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Hugging Face',
+  openai:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] ChatGPT, Sora, GPT API, o1/o3 и статика (chatgpt.com, openai.com, sora.com, oaistatic.com, oaiusercontent.com)',
+  anthropic:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Нейросеть Claude AI, Claude Code, Console и API (claude.ai, anthropic.com, claudeusercontent.com)',
+  google_ai:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Gemini, AI Studio, NotebookLM, DeepMind и Vertex AI (gemini.google.com, aistudio.google.com, notebooklm.google.com)',
+  xai: '[Маршрут: Только в Прокси / VPN — геоблок по IP] Нейросеть Grok от xAI (grok.com, x.ai, api.x.ai и медиа-CDN)',
+  youtube:
+    '[Маршрут: В Обход DPI (Desync / Zapret) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)',
+  twitch:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)',
+  twitch_ads:
+    '[Маршрут: Только в Прокси / VPN] Серверы манифестов качества видео и рекламы Twitch (usher.ttvnw.net, gql.twitch.tv) — отключает рекламу и разблокирует 1080p60/1440p без проксирования видеопотока',
+  spotify:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Музыкальный стриминг, аудио-CDN и клиентские API (spotify.com, scdn.co, spotifycdn.com, akamaized.net)',
+  netflix:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Онлайн-кинотеатр, видеопотоки и статика (netflix.com, nflxvideo.net, nflximg.net, nflxext.com, fast.com)',
+  tiktok:
+    '[Маршрут: Только в Прокси / VPN — региональный блок РФ] Приложение, веб-версия и медиа-CDN ByteDance (tiktok.com, tiktokv.com, tiktokcdn.com) для снятия ограничений на новые видео',
+  hdrezka:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Онлайн-кинотеатр HDRezka, видео-балансеры (Voidboost) и актуальные зеркала (rezka.ag, hdrezka.ag, voidboost.cc)',
+  anime:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Популярные аниме-порталы и плееры: Shikimori, AnimeGO, Jut.su, Kodik, Anilibria, Crunchyroll, MyAnimeList',
+  pinterest:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Визуальная соцсеть и серверы картинок (pinterest.com, pin.it, i.pinimg.com — лечит незагрузку фото на ТСПУ)',
+  discord:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Мессенджер, текстовые чаты, CDN вложений и голосовые шлюзы (discord.com, discord.gg, discordapp.net, discord.media + подсети)',
+  telegram:
+    '[Маршрут: В Прокси / VPN] Мессенджер, веб-клиенты, Telegraph и IPv4/IPv6-подсети всех датацентров DC1–DC5 (telegram.org, t.me, telesco.pe)',
+  meta: '[Маршрут: В Прокси / VPN] Instagram, Facebook, Threads, Messenger и медиа-серверы (instagram.com, facebook.com, fbcdn.net, cdninstagram.com + подсети)',
+  twitter:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Соцсеть X / Twitter, короткие ссылки и медиа-CDN (x.com, twitter.com, t.co, twimg.com + подсети)',
+  steam:
+    '[Маршрут: Напрямую (Direct) или в Прокси для смены региона магазина] Магазин, сообщество, инвентарь, чат и CDN загрузок Valve (steampowered.com, steamcommunity.com, steamstatic.com, steamcontent.com)',
+  epicgames:
+    '[Маршрут: В Прокси / VPN (для раздач/покупок) или Direct] Epic Games Store, Fortnite, Rocket League, Unreal Engine и античит EasyAntiCheat (epicgames.com, unrealengine.com, fortnite.com, easy.ac)',
+  riot: '[Маршрут: В Прокси / VPN или Direct] Valorant, League of Legends, TFT, Riot Client и Vanguard (riotgames.com, playvalorant.com, leagueoflegends.com, pvp.net)',
+  origin:
+    '[Маршрут: В Прокси / VPN] EA App, Origin, Apex Legends, Battlefield, EA Sports FC и Sims (ea.com, origin.com, tnt-ea.com, apexlegends.com)',
+  roblox:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Игровая платформа, лаунчер, Roblox Studio и игровые IP-подсети (roblox.com, rbxcdn.com, robloxlabs.com)',
+  supercell:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Brawl Stars, Clash Royale, Clash of Clans, Squad Busters и авторизация Supercell ID (обход геоблока для РФ и РБ)',
+  escapefromtarkov:
+    '[Маршрут: В Прокси / VPN или Direct] Лаунчер, сайт, API профилей и серверы Battlestate Games (escapefromtarkov.com, tarkov.com, battlestategames.com)',
+  faceit:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Киберспортивная платформа CS2, античит и матчмейкинг (faceit.com, faceit-cdn.net)',
+  apple:
+    '[Маршрут: Напрямую (Direct) или в Прокси для Apple Intelligence] App Store, iCloud, обновления iOS/macOS, Apple Music, TV+ и Apple Intelligence (apple.com, icloud.com, mzstatic.com, cdn-apple.com)',
+  microsoft:
+    '[Маршрут: В Прокси / VPN (для Copilot, Xbox и ISO Windows) или Direct] Windows Update, Office 365, OneDrive, Xbox Live, Teams, Visual Studio и Azure (microsoft.com, live.com, office.com, xbox.com)',
+  google_play:
+    '[Маршрут: В Прокси / VPN (для платных приложений и смены региона) или Direct] Магазин приложений Android и серверы скачивания APK (play.google.com, gvt1.com, gvt2.com)',
+  github:
+    '[Маршрут: В Прокси / VPN (для Copilot и при сбоях ТСПУ) или Direct] Репозитории, GitHub Actions, Packages, Pages, Raw и Gist (github.com, githubusercontent.com, githubassets.com, ghcr.io)',
+  docker:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Docker Hub, реестр контейнеров и пакеты (docker.com, docker.io, registry-1.docker.io, download.docker.com)',
+  hodca:
+    '[Маршрут: В Прокси / VPN] Серверы проверки SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, Comodo, GlobalSign, Let’s Encrypt (устраняет долгую загрузку HTTPS из-за геоблока)',
+  cloudflare:
+    '[Маршрут: В Прокси / VPN или Обход DPI] IPv4/IPv6-подсети и домены Cloudflare CDN (обход блокировки TLS ECH и сайтов за Cloudflare на ТСПУ)',
+  cloudfront:
+    '[Маршрут: В Прокси / VPN] IP-подсети глобальной CDN-сети Amazon CloudFront (AWS), часто попадающие под веерные блокировки',
+  fastly:
+    '[Маршрут: В Прокси / VPN] Домены и подсети CDN-провайдера Fastly (fastly.net, fastlylb.net, fsdn.com), используемого множеством зарубежных сайтов',
+  hetzner:
+    '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров Hetzner (Германия и Финляндия), блокируемые на ТСПУ целыми диапазонами',
+  ovh: '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров OVHcloud, на которых размещены игровые серверы и веб-проекты',
+  digitalocean:
+    '[Маршрут: В Прокси / VPN] IP-подсети облачного хостинга DigitalOcean, большая часть которых заблокирована или ограничена в РФ',
+  news: '[Маршрут: В Прокси / VPN или Обход DPI] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)',
+  torrent:
+    '[Маршрут: В Обход DPI (Desync / Zapret) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa',
+  tor: '[Маршрут: В Прокси / VPN] Домены и узлы сети Tor, каталогов мостов, I2P, Tails, Whonix и анонимайзеров',
+  porn: '[Маршрут: В Прокси / VPN или Обход DPI] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate',
+  ads_hagezi_pro:
+    '[Маршрут: Блокировать (Block)] Комплексная фильтрация рекламных сетей, аналитики, трекеров и фишинга Hagezi Multi PRO',
+  win_spy:
+    '[Маршрут: Блокировать (Block)] Серверы слежки, телеметрии, отчётов об ошибках и рекламы Windows 10/11',
 };
 
 export const DNS_SERVERS_BY_PROTOCOL: Record<string, Record<string, string>> = {

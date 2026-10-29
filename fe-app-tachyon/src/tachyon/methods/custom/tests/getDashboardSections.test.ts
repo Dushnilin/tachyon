@@ -1797,4 +1797,70 @@ describe('getDashboardSections', () => {
     expect(section.outbounds[0].code).toBe('tt-node-1');
     expect(section.outbounds[0].selected).toBe(true);
   });
+
+  it('includes block, bypass, dns, and distinct desync sections on the Dashboard without merging separate desync sections', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'block',
+        '.type': 'section',
+        enabled: '1',
+        action: 'block',
+      },
+      {
+        '.name': 'ByPass',
+        '.type': 'section',
+        enabled: '1',
+        action: 'bypass',
+      },
+      {
+        '.name': 'YandexDns',
+        '.type': 'section',
+        enabled: '1',
+        action: 'dns',
+        dns_server: ['77.88.8.8', '77.88.8.1'],
+      },
+      {
+        '.name': 'XboxDns',
+        '.type': 'section',
+        enabled: '1',
+        label: 'dns-ai',
+        action: 'dns',
+        dns_server: 'https://dns.dns-ai.ru/dns-query',
+      },
+      {
+        '.name': 'Zapret2',
+        '.type': 'section',
+        enabled: '1',
+        label: 'Youtube',
+        action: 'connection',
+        outbound_source_refs: ['Desync'],
+      },
+      {
+        '.name': 'Discord',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        outbound_source_refs: ['Desync'],
+      },
+      {
+        '.name': 'Desync',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'desync',
+      },
+      proxySection({ '.name': 'Main', label: 'Main' }),
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data.map((s) => s.sectionName)).toEqual([
+      'block',
+      'ByPass',
+      'YandexDns',
+      'XboxDns',
+      'Zapret2',
+      'Discord',
+      'Main',
+    ]);
+  });
 });

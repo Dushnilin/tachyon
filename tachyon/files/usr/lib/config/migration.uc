@@ -1969,25 +1969,48 @@ function cleanup_modular_entities_v1(ctx) {
                 set_option(ctx, fptn_src, "access_token", fptn_token);
                 add_list_unique(ctx, section, "outbound_source_refs", fptn_src_id);
             }
-        } else if (index(single_proto_actions, sec_action) >= 0) {
-            let proto_src_id = "src_" + sanitize_uci_id(sec_action) + "_" + safe_sname;
-            let proto_src = create_named_section(ctx, "outbound_source", proto_src_id);
-            set_option_if_missing(ctx, proto_src, "enabled", "1");
-            set_option_if_missing(ctx, proto_src, "name", sec_display_name);
-            set_option_if_missing(ctx, proto_src, "source_type", sec_action);
-            for (let pk, pval in section) {
-                if (index(pk, sec_action + "_") != 0 && pk != "nfqws_opt" && pk != "nfqws2_opt" && pk != "byedpi_opts")
-                    continue;
-                if (type(pval) == "array") {
-                    if (length(pval) > 0)
-                        set_list_option(ctx, proto_src, pk, pval);
-                } else {
-                    let s_pval = trim(as_string(pval));
-                    if (s_pval != "")
-                        set_option(ctx, proto_src, pk, s_pval);
-                }
+        } else {
+            let eff_proto = index(single_proto_actions, sec_action) >= 0 ? sec_action : "";
+            if (eff_proto == "" && sec_action == "connection" &&
+                length(list_option(section, "outbound_source_refs")) == 0 &&
+                length(list_option(section, "outbound_group_refs")) == 0 &&
+                length(list_option(section, "balancer_refs")) == 0 &&
+                length(list_option(section, "selector_proxy_links")) == 0 &&
+                trim(option(section, "selector_proxy_links_text", "")) == "" &&
+                length(sec_amnezia) == 0 && sec_amnezia_text == "") {
+                if (trim(option(section, "nfqws2_opt", "")) != "")
+                    eff_proto = "zapret2";
+                else if (trim(option(section, "nfqws_opt", "")) != "")
+                    eff_proto = "zapret";
+                else if (trim(option(section, "byedpi_cmd_opts", option(section, "byedpi_opts", ""))) != "")
+                    eff_proto = "byedpi";
+                else if (trim(option(section, "desync_preset", option(section, "desync_opts", ""))) != "")
+                    eff_proto = "desync";
+                else if (trim(option(section, "wdtt_mode", "")) != "")
+                    eff_proto = "wdtt";
+                else if (trim(option(section, "olcrtc_stun_host", "")) != "")
+                    eff_proto = "olcrtc";
             }
-            add_list_unique(ctx, section, "outbound_source_refs", proto_src_id);
+            if (eff_proto != "") {
+                let proto_src_id = "src_" + sanitize_uci_id(eff_proto) + "_" + safe_sname;
+                let proto_src = create_named_section(ctx, "outbound_source", proto_src_id);
+                set_option_if_missing(ctx, proto_src, "enabled", "1");
+                set_option_if_missing(ctx, proto_src, "name", sec_display_name);
+                set_option_if_missing(ctx, proto_src, "source_type", eff_proto);
+                for (let pk, pval in section) {
+                    if (index(pk, eff_proto + "_") != 0 && pk != "nfqws_opt" && pk != "nfqws2_opt" && pk != "byedpi_opts" && pk != "byedpi_cmd_opts")
+                        continue;
+                    if (type(pval) == "array") {
+                        if (length(pval) > 0)
+                            set_list_option(ctx, proto_src, pk, pval);
+                    } else {
+                        let s_pval = trim(as_string(pval));
+                        if (s_pval != "")
+                            set_option(ctx, proto_src, pk, s_pval);
+                    }
+                }
+                add_list_unique(ctx, section, "outbound_source_refs", proto_src_id);
+            }
         }
 
         if (length(sec_amnezia) > 0 || sec_amnezia_text != "") {
@@ -2028,7 +2051,8 @@ function cleanup_modular_entities_v1(ctx) {
         }
         let sig_parts = [];
         for (let dk in [
-            "desync_preset", "desync_mode", "desync_split_pos", "desync_fake_ttl",
+            "desync_preset", "desync_mode", "desync_fooling", "desync_auto_tune",
+            "desync_split_pos", "desync_fake_ttl",
             "desync_fake_sni", "desync_repeats", "desync_split_delay_ms",
             "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl", "desync_opts"
         ]) {
@@ -2152,14 +2176,15 @@ function cleanup_modular_entities_v1(ctx) {
             set_option(ctx, sec, "dns_detour_enabled", "0");
         }
     }
+    let valid_groups_and_sources = {};
+    for (let k, v in valid_groups)
+        valid_groups_and_sources[k] = v;
+    for (let k, v in valid_sources)
+        valid_groups_and_sources[k] = v;
     for (let bal in (ctx.model.balancer || [])) {
         prune_ref_list(bal, "source_refs", valid_sources, null);
         prune_ref_list(bal, "group_refs", valid_groups, null);
-        prune_ref_list(bal, "outbound_group_levels", valid_groups, "direct");
-        let bal_id = section_name(bal);
-        if (index(bal_id, "bal_") == 0 && length(list_option(bal, "source_refs")) > 0) {
-            delete_option(ctx, bal, "source_refs");
-        }
+        prune_ref_list(bal, "outbound_group_levels", valid_groups_and_sources, "direct");
     }
     for (let grp in (ctx.model.outbound_group || [])) {
         prune_ref_list(grp, "source_refs", valid_sources, "*");
@@ -2179,6 +2204,19 @@ function cleanup_modular_entities_v1(ctx) {
             delete_option(ctx, src, "outbound_detour_section");
             set_option(ctx, src, "outbound_detour_enabled", "0");
         }
+    }
+    for (let legacy_type in [ "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
+        let kept_children = [];
+        for (let child in (ctx.model[legacy_type] || [])) {
+            let parent_sec = trim(option(child, "section", ""));
+            let child_id = section_name(child);
+            if (parent_sec != "" && !valid_sections[parent_sec] && child_id != "") {
+                record_operation(ctx, { op: "delete_section", section: child_id });
+                continue;
+            }
+            push(kept_children, child);
+        }
+        ctx.model[legacy_type] = kept_children;
     }
 }
 
@@ -2543,7 +2581,7 @@ function migrate_modular_entities_v1(ctx) {
             set_option_if_missing(ctx, bal, "enabled", "1");
             set_option_if_missing(ctx, bal, "balancer_type", "priority");
             set_option_if_missing(ctx, bal, "name", pg_name);
-            for (let bk in [ "health_url", "active_check_interval", "check_timeout", "recovery_check_interval", "pick_fastest", "switch_to_faster_same_priority", "fastest_check_interval", "pin_dashboard" ]) {
+            for (let bk in [ "health_url", "active_check_interval", "check_timeout", "recovery_check_interval", "pick_fastest", "switch_to_faster_same_priority", "fastest_check_interval", "interrupt_exist_connections", "pin_dashboard" ]) {
                 let bval = option(pg, bk, "");
                 if (bval != "")
                     set_option_if_missing(ctx, bal, bk, bval);
@@ -2657,8 +2695,25 @@ function migrate_podkop_model(model, constants) {
 
 function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
+    let converted_any_rules = false;
+    if (length(model.rules || []) > 0) {
+        let constants = constants_context();
+        let converted_sections = [];
+        for (let section in model.rules) {
+            migrate_rule_section(ctx, section, constants);
+            push(converted_sections, section);
+        }
+        model.rules = [];
+        for (let section in converted_sections) {
+            migrate_rule_set_settings(ctx, section);
+            push(model.sections, section);
+            converted_any_rules = true;
+        }
+    }
     migrate_cleanup_accidental_full_domain_prefixes(ctx);
     apply_migrations(ctx);
+    if (converted_any_rules)
+        migrate_modular_entities_v1(ctx);
     cleanup_modular_entities_v1(ctx);
     // How client traffic reaches the proxy. Defaulted rather than left absent:
     // the generator has to be able to express a legal config for a router that

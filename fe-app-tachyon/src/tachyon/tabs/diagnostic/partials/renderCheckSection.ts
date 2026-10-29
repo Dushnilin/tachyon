@@ -14,7 +14,7 @@ type IRenderCheckSectionProps = IDiagnosticsChecksStoreItem;
 
 function renderCheckSummary(items: IRenderCheckSectionProps['items']) {
   if (!items.length) {
-    return E('div', {}, '');
+    return E('div', { class: 'tachyon_diagnostic_alert__summary' });
   }
 
   const renderedItems = items.map((item) => {
@@ -71,7 +71,6 @@ function renderLoadingState(props: IRenderCheckSectionProps) {
           props.description,
         ),
       ]),
-      E('div', {}, ''),
       renderCheckSummary(props.items),
     ],
   );
@@ -94,7 +93,6 @@ function renderWarningState(props: IRenderCheckSectionProps) {
           props.description,
         ),
       ]),
-      E('div', {}, ''),
       renderCheckSummary(props.items),
     ],
   );
@@ -117,7 +115,6 @@ function renderErrorState(props: IRenderCheckSectionProps) {
           props.description,
         ),
       ]),
-      E('div', {}, ''),
       renderCheckSummary(props.items),
     ],
   );
@@ -140,7 +137,6 @@ function renderSuccessState(props: IRenderCheckSectionProps) {
           props.description,
         ),
       ]),
-      E('div', {}, ''),
       renderCheckSummary(props.items),
     ],
   );
@@ -163,7 +159,6 @@ function renderSkippedState(props: IRenderCheckSectionProps) {
           props.description,
         ),
       ]),
-      E('div', {}, ''),
       renderCheckSummary(props.items),
     ],
   );

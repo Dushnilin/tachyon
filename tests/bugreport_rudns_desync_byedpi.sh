@@ -160,4 +160,192 @@ grep -Fq '" >/dev/null"' "$RULESETS" ||
 grep -Fq 'append_reload_action(actions, plan.needs_sing_box_reload, "tachyon-core")' "$LIFECYCLE" ||
   fail "lifecycle.uc reload_actions_summary must label reload as tachyon-core"
 
+# Verify newly created Priority & URLTest balancers with AmneziaWG + Subscription sources
+ucode -L "$TACHYON_LIB" - <<'UCODE'
+let connections = require("config.connections");
+let routes = require("tachyon_core.generator_routes");
+let subscription = require("tachyon_core.subscription");
+
+function assert(cond, msg) {
+    if (!cond) {
+        warn("FAIL: " + msg + "\n");
+        exit(1);
+    }
+}
+
+let fixture = {
+    outbound_source: [
+        {
+            ".name": "src_awg_main",
+            ".type": "outbound_source",
+            enabled: "1",
+            name: "AmneziaWG Main",
+            source_type: "awg",
+            awg_private_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            awg_server_address: "198.51.100.10",
+            awg_server_port: "51820",
+            awg_peer_public_key: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            awg_local_address: [ "10.8.1.2/32" ]
+        },
+        {
+            ".name": "src_sub_vless",
+            ".type": "outbound_source",
+            enabled: "1",
+            name: "VLESS Sub",
+            source_type: "subscription",
+            url: "https://sub.example.com/vless",
+            prefix_nodes: "0"
+        }
+    ],
+    outbound_group: [
+        {
+            ".name": "grp_awg_only",
+            ".type": "outbound_group",
+            enabled: "1",
+            name: "AWG Group",
+            source_refs: [ "src_awg_main" ],
+            filter_mode: "include"
+        }
+    ],
+    balancer: [
+        {
+            ".name": "bal_new_prio_direct_sources",
+            ".type": "balancer",
+            enabled: "1",
+            name: "New Priority (Direct Sources)",
+            balancer_type: "priority",
+            outbound_group_levels: [ "src_awg_main", "src_sub_vless", "direct" ]
+        },
+        {
+            ".name": "bal_new_prio_pool",
+            ".type": "balancer",
+            enabled: "1",
+            name: "New Priority (Section Pool)",
+            balancer_type: "priority"
+        },
+        {
+            ".name": "bal_new_urltest_include",
+            ".type": "balancer",
+            enabled: "1",
+            name: "New URLTest Include AWG",
+            balancer_type: "urltest",
+            filter_mode: "include",
+            include_proxy_parameters: "1",
+            include_protocols: [ "amneziawg" ]
+        }
+    ],
+    section: [
+        {
+            ".name": "Main",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            outbound_source_refs: [ "src_awg_main", "src_sub_vless" ],
+            balancer_refs: [ "bal_new_prio_direct_sources", "bal_new_prio_pool", "bal_new_urltest_include" ]
+        },
+        {
+            ".name": "SingleAwgSec",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            outbound_group_refs: [ "grp_awg_only" ]
+        }
+    ]
+};
+
+connections.set_item_sections_from_data(fixture);
+
+let state = subscription.new_section_state("Main");
+let candidates = [ "Main-1-out", "vless-de-1", "vless-nl-2" ];
+state.outboundMetadata.names = {
+    "Main-1-out": "AmneziaWG Main",
+    "vless-de-1": "🇩🇪 Germany #1",
+    "vless-nl-2": "🇳🇱 Netherlands #2"
+};
+state.outboundMetadata.protocols = {
+    "Main-1-out": "wireguard",
+    "vless-de-1": "vless",
+    "vless-nl-2": "vless"
+};
+state.outboundMetadata.sources = {
+    "Main-1-out": "src_awg_main",
+    "vless-de-1": "sub:1",
+    "vless-nl-2": "sub:1"
+};
+state.outboundMetadata.source_ids = {
+    "vless-de-1": "src_sub_vless",
+    "vless-nl-2": "src_sub_vless"
+};
+
+let cfg = { outbounds: [], route: { rules: [] }, dns: { servers: [], rules: [] } };
+routes.add_proxy_selector(cfg, fixture.section[0], candidates, candidates, state, "");
+
+let by_tag = {};
+for (let o in cfg.outbounds)
+    by_tag[o.tag] = o;
+
+let prio1 = by_tag["Main-priority-bal_new_prio_direct_sources-out"];
+assert(prio1 != null, "Priority balancer with outbound_source IDs in outbound_group_levels must be emitted");
+assert(length(prio1.outbounds) == 4 &&
+    prio1.outbounds[0] == "Main-1-out" &&
+    prio1.outbounds[1] == "vless-de-1" &&
+    prio1.outbounds[2] == "vless-nl-2" &&
+    prio1.outbounds[3] == "direct-out",
+    "Priority balancer must order AmneziaWG first, then VLESS subscription nodes, then direct-out, got: " + sprintf("%J", prio1.outbounds));
+
+let prio2 = by_tag["Main-priority-bal_new_prio_pool-out"];
+assert(prio2 != null, "Priority balancer with empty outbound_group_levels (Section Pool) must be emitted");
+assert(length(prio2.outbounds) == 3 && prio2.outbounds[0] == "Main-1-out",
+    "Section Pool Priority balancer must include section sources in order, got: " + sprintf("%J", prio2.outbounds));
+
+let ut1 = by_tag["Main-urltest-bal_new_urltest_include-out"];
+assert(ut1 != null, "URLTest balancer with include_protocols=['amneziawg'] must be emitted");
+assert(length(ut1.outbounds) == 1 && ut1.outbounds[0] == "Main-1-out",
+    "include_protocols=['amneziawg'] must match wireguard/amneziawg endpoint, got: " + sprintf("%J", ut1.outbounds));
+
+// Verify single-source section with outbound_group (filter_mode='include' and no extra criteria) does not drop all outbounds
+let single_state = subscription.new_section_state("SingleAwgSec");
+single_state.outboundMetadata.names = { "SingleAwgSec-1-out": "AmneziaWG Main" };
+single_state.outboundMetadata.sources = { "SingleAwgSec-1-out": "src_awg_main" };
+let single_cfg = { outbounds: [], route: { rules: [] }, dns: { servers: [], rules: [] } };
+routes.add_proxy_selector(single_cfg, fixture.section[1], [ "SingleAwgSec-1-out" ], [ "SingleAwgSec-1-out" ], single_state, "");
+let single_sel = null;
+for (let o in single_cfg.outbounds)
+    if (o.tag == "SingleAwgSec-out")
+        single_sel = o;
+assert(single_sel != null && length(single_sel.outbounds) == 1 && single_sel.outbounds[0] == "SingleAwgSec-1-out",
+    "Single-source section with outbound_group (filter_mode=include) must retain its outbound, got: " + sprintf("%J", single_sel));
+
+// Verify Adaptive Desync 2.0 presets, modes, fooling, and auto_tune
+let outbounds_gen = require("tachyon_core.generator_outbounds");
+outbounds_gen.init({
+    detect_sing_box_version: function() { return "0.2.3"; },
+    ensure_sing_box_variant_supported: function() { return true; },
+    runtime_generate_unsupported: function(msg) { warn("FAIL: " + msg + "\n"); exit(1); }
+});
+let desync_cfg = { outbounds: [] };
+outbounds_gen.add_desync_outbound(desync_cfg, {
+    ".name": "sec_auto",
+    desync_preset: "auto",
+    desync_fooling: "md5",
+    desync_auto_tune: "1"
+});
+let ob_auto = desync_cfg.outbounds[0];
+assert(ob_auto != null && ob_auto.tag == "sec_auto-out" && ob_auto.preset == "auto" && ob_auto.fooling == "md5" && ob_auto.auto_tune === true,
+    "Adaptive Desync 2.0 auto preset with fooling=md5 and auto_tune=true must be preserved, got: " + sprintf("%J", ob_auto));
+
+outbounds_gen.add_desync_outbound(desync_cfg, {
+    ".name": "sec_custom",
+    desync_preset: "custom",
+    desync_mode: "fake_disorder",
+    desync_split_pos: "sni",
+    desync_fake_ttl: "4",
+    desync_fooling: "autottl",
+    desync_auto_tune: "0"
+});
+let ob_custom = desync_cfg.outbounds[1];
+assert(ob_custom != null && ob_custom.tag == "sec_custom-out" && ob_custom.mode == "fake_disorder" && ob_custom.fooling == "autottl" && ob_custom.auto_tune === false && ob_custom.split_pos == "sni" && ob_custom.fake_ttl == 4,
+    "Custom fake_disorder mode with fooling=autottl and auto_tune=false must be preserved, got: " + sprintf("%J", ob_custom));
+UCODE
+
 printf 'PASS: bugreport_rudns_desync_byedpi\n'

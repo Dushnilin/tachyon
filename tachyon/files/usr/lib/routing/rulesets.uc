@@ -145,9 +145,11 @@ function import_plain_list(plain_path, ruleset_path, key, kind, chunk_size_text,
     let invalid = [];
 
     for (let line in split(as_string(data), "\n")) {
+        line = replace(as_string(line), /[ \t]*\/\/.*$/, "");
+        line = replace(line, /[ \t]*#.*$/, "");
         line = trim_string(line);
 
-        if (line == "" || substr(line, 0, 1) == "#")
+        if (line == "" || substr(line, 0, 1) == "#" || substr(line, 0, 1) == ";")
             continue;
 
         let normalized = normalize_plain_ruleset_value(line, kind);
@@ -652,18 +654,24 @@ function compile_plain_list(plain_path, ruleset_srs_path, ruleset_json_path) {
     import_plain_list(plain_path, ruleset_json_path, "ip_cidr", "subnets", "5000");
 
     let has_doms = has_domain_matchers(ruleset_json_path);
+    let has_ips = has_ip_matchers(ruleset_json_path);
+    let kind = (has_doms && has_ips) ? "mixed" : (has_ips ? "subnets" : (has_doms ? "domains" : "unknown"));
     let rules_exist = has_rules(ruleset_json_path);
 
     if (rules_exist) {
         let compile_ok = common.command_success_from_args([
             "sing-box", "rule-set", "compile", ruleset_json_path, "-o", ruleset_srs_path
         ]);
+        if (!compile_ok && fs.stat("/usr/bin/tachyon-core") != null) {
+            compile_ok = common.command_success_from_args([
+                "/usr/bin/tachyon-core", "rule-set", "compile", ruleset_json_path, "-o", ruleset_srs_path
+            ]);
+        }
         let srs_st = fs.stat(ruleset_srs_path);
         if (compile_ok && srs_st != null && srs_st.size >= 16) {
-            fs.unlink(ruleset_json_path);
-            return { format: "binary", path: ruleset_srs_path, has_domains: has_doms };
+            return { format: "binary", path: ruleset_srs_path, has_domains: has_doms, has_ips, kind };
         }
-        return { format: "source", path: ruleset_json_path, has_domains: has_doms };
+        return { format: "source", path: ruleset_json_path, has_domains: has_doms, has_ips, kind };
     }
 
     let rulesets_mod = null;
@@ -671,7 +679,7 @@ function compile_plain_list(plain_path, ruleset_srs_path, ruleset_json_path) {
     if (rulesets_mod && rulesets_mod.ensure_empty_srs_stub)
         rulesets_mod.ensure_empty_srs_stub(ruleset_srs_path);
     fs.unlink(ruleset_json_path);
-    return { format: "binary", path: ruleset_srs_path, has_domains: false };
+    return { format: "binary", path: ruleset_srs_path, has_domains: false, has_ips: false, kind: "unknown" };
 }
 
 function module_exports() {

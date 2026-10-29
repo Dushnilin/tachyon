@@ -111,7 +111,7 @@ export interface IRenderDualWidgetProps {
   failed: boolean;
   title: string | HTMLElement;
   badge?: string | HTMLElement;
-  columns: [IRenderDualWidgetColumn, IRenderDualWidgetColumn];
+  columns: IRenderDualWidgetColumn[];
   attributes?: Record<string, string>;
 }
 
@@ -138,11 +138,15 @@ export function renderDualWidget(props: IRenderDualWidgetProps) {
     );
   }
 
+  const singleColClass =
+    props.columns.length === 1 ? 'tachyon-dual-card--single-col' : '';
+
   return E(
     'div',
     {
       ...props.attributes,
-      class: `tachyon_dashboard-page__widgets-section__item tachyon-dual-card ${props.attributes?.class || ''}`,
+      class:
+        `tachyon_dashboard-page__widgets-section__item tachyon-dual-card ${singleColClass} ${props.attributes?.class || ''}`.trim(),
     },
     [
       E('div', { class: 'tachyon-dual-card__header' }, headerChildren),

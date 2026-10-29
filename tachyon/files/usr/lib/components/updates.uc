@@ -75,18 +75,33 @@ const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x04000000";
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
 const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-const GITHUB_RAW_URL = getenv("GITHUB_RAW_URL") || "https://raw.githubusercontent.com/itdoginfo/allow-domains/main";
+const GITHUB_RAW_URL = getenv("GITHUB_RAW_URL") || "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release";
+const TACHYON_LISTS_SUBNETS_BASE = getenv("TACHYON_LISTS_SUBNETS_URL") || "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets";
 const BUILTIN_SUBNET_URLS = {
-    twitter: [ getenv("SUBNETS_TWITTER") || GITHUB_RAW_URL + "/Subnets/IPv4/twitter.lst", getenv("SUBNETS_TWITTER6") || GITHUB_RAW_URL + "/Subnets/IPv6/twitter.lst" ],
-    meta: [ getenv("SUBNETS_META") || GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst", getenv("SUBNETS_META6") || GITHUB_RAW_URL + "/Subnets/IPv6/meta.lst" ],
-    discord: [ getenv("SUBNETS_DISCORD") || GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst", getenv("SUBNETS_DISCORD6") || GITHUB_RAW_URL + "/Subnets/IPv6/discord.lst" ],
-    roblox: [ getenv("SUBNETS_ROBLOX") || GITHUB_RAW_URL + "/Subnets/IPv4/roblox.lst" ],
-    telegram: [ getenv("SUBNETS_TELEGRAM") || GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst", getenv("SUBNETS_TELEGRAM6") || GITHUB_RAW_URL + "/Subnets/IPv6/telegram.lst" ],
-    cloudflare: [ getenv("SUBNETS_CLOUDFLARE") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudflare.lst", getenv("SUBNETS_CLOUDFLARE6") || GITHUB_RAW_URL + "/Subnets/IPv6/cloudflare.lst" ],
-    hetzner: [ getenv("SUBNETS_HETZNER") || GITHUB_RAW_URL + "/Subnets/IPv4/hetzner.lst", getenv("SUBNETS_HETZNER6") || GITHUB_RAW_URL + "/Subnets/IPv6/hetzner.lst" ],
-    ovh: [ getenv("SUBNETS_OVH") || GITHUB_RAW_URL + "/Subnets/IPv4/ovh.lst", getenv("SUBNETS_OVH6") || GITHUB_RAW_URL + "/Subnets/IPv6/ovh.lst" ],
-    digitalocean: [ getenv("SUBNETS_DIGITALOCEAN") || GITHUB_RAW_URL + "/Subnets/IPv4/digitalocean.lst", getenv("SUBNETS_DIGITALOCEAN6") || GITHUB_RAW_URL + "/Subnets/IPv6/digitalocean.lst" ],
-    cloudfront: [ getenv("SUBNETS_CLOUDFRONT") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") || GITHUB_RAW_URL + "/Subnets/IPv6/cloudfront.lst" ]
+    twitter: getenv("SUBNETS_TWITTER6") ? [ getenv("SUBNETS_TWITTER") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/twitter.lst", getenv("SUBNETS_TWITTER6") ] : [ getenv("SUBNETS_TWITTER") || TACHYON_LISTS_SUBNETS_BASE + "/twitter.lst" ],
+    meta: getenv("SUBNETS_META6") ? [ getenv("SUBNETS_META") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/meta.lst", getenv("SUBNETS_META6") ] : [ getenv("SUBNETS_META") || TACHYON_LISTS_SUBNETS_BASE + "/meta.lst" ],
+    discord: getenv("SUBNETS_DISCORD6") ? [ getenv("SUBNETS_DISCORD") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/discord.lst", getenv("SUBNETS_DISCORD6") ] : [ getenv("SUBNETS_DISCORD") || TACHYON_LISTS_SUBNETS_BASE + "/discord.lst" ],
+    roblox: [ getenv("SUBNETS_ROBLOX") || TACHYON_LISTS_SUBNETS_BASE + "/roblox.lst" ],
+    telegram: getenv("SUBNETS_TELEGRAM6") ? [ getenv("SUBNETS_TELEGRAM") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/telegram.lst", getenv("SUBNETS_TELEGRAM6") ] : [ getenv("SUBNETS_TELEGRAM") || TACHYON_LISTS_SUBNETS_BASE + "/telegram.lst" ],
+    cloudflare: getenv("SUBNETS_CLOUDFLARE6") ? [ getenv("SUBNETS_CLOUDFLARE") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/cloudflare.lst", getenv("SUBNETS_CLOUDFLARE6") ] : [ getenv("SUBNETS_CLOUDFLARE") || TACHYON_LISTS_SUBNETS_BASE + "/cloudflare.lst" ],
+    hetzner: getenv("SUBNETS_HETZNER6") ? [ getenv("SUBNETS_HETZNER") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/hetzner.lst", getenv("SUBNETS_HETZNER6") ] : [ getenv("SUBNETS_HETZNER") || TACHYON_LISTS_SUBNETS_BASE + "/hetzner.lst" ],
+    ovh: getenv("SUBNETS_OVH6") ? [ getenv("SUBNETS_OVH") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/ovh.lst", getenv("SUBNETS_OVH6") ] : [ getenv("SUBNETS_OVH") || TACHYON_LISTS_SUBNETS_BASE + "/ovh.lst" ],
+    digitalocean: getenv("SUBNETS_DIGITALOCEAN6") ? [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/digitalocean.lst", getenv("SUBNETS_DIGITALOCEAN6") ] : [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/digitalocean.lst" ],
+    cloudfront: getenv("SUBNETS_CLOUDFRONT6") ? [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") ] : [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/cloudfront.lst" ],
+    ru_whitelist: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_whitelist.lst" ],
+    ru_domains: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_domains.lst" ],
+    ru_blocked: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked.lst" ],
+    ru_blocked_all: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked_all.lst" ],
+    antifilter: [ TACHYON_LISTS_SUBNETS_BASE + "/antifilter.lst" ],
+    roscomvpn_whitelist: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_whitelist.lst" ],
+    roscomvpn_ru: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_domains.lst" ],
+    runetfreedom_blocked: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked.lst" ],
+    runetfreedom_blocked_all: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked_all.lst" ],
+    antifilter_community: [ TACHYON_LISTS_SUBNETS_BASE + "/antifilter.lst" ],
+    refilter: [ TACHYON_LISTS_SUBNETS_BASE + "/refilter.lst" ],
+    netflix: [ TACHYON_LISTS_SUBNETS_BASE + "/netflix.lst" ],
+    tor: [ TACHYON_LISTS_SUBNETS_BASE + "/tor.lst" ],
+    fastly: [ TACHYON_LISTS_SUBNETS_BASE + "/fastly.lst" ]
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;
@@ -562,7 +577,7 @@ function rule_has_list_update_source(section) {
     if (!bool_option(section, "enabled", true))
         return false;
     if (option(section, "action", "") == "dns")
-        return list_has_remote_references(option(section, "domain_ip_lists", ""));
+        return list_has_remote_references(connections.domain_ip_lists_value(section));
     if (option(section, "action", "") == "hosts")
         return false;
 
@@ -571,7 +586,8 @@ function rule_has_list_update_source(section) {
         option(section, "remote_domain_lists", "") != "" ||
         option(section, "remote_subnet_lists", "") != "" ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
-        list_has_remote_references(option(section, "domain_ip_lists", ""))
+        list_has_remote_references(connections.rule_sets_value(section)) ||
+        list_has_remote_references(connections.domain_ip_lists_value(section))
     );
 }
 
@@ -612,13 +628,15 @@ function normalize_component_name(component) {
         return "sing_box";
     if (component == "tachyon")
         return "tachyon";
+    if (component == "torrserver_direct" || component == "torrserver-direct" || component == "torrserver")
+        return "torrserver_direct";
     return component;
 }
 
 function valid_component_name(component) {
     component = normalize_component_name(component);
     return component == "tachyon" || component == "sing_box" || component == "zapret" ||
-        component == "zapret2" || component == "byedpi" || component == "wdtt" || component == "olcrtc" || component == "fptn" || component == "tailscale";
+        component == "zapret2" || component == "byedpi" || component == "wdtt" || component == "olcrtc" || component == "fptn" || component == "tailscale" || component == "torrserver_direct";
 }
 
 function settings_component_auto_update_enabled(settings) {
@@ -2557,7 +2575,7 @@ function rebuild_domain_ip_lists_from_rule(section, settings) {
     if (!bool_option(section, "enabled", true))
         return true;
 
-    let references = list_option_values(section, "domain_ip_lists");
+    let references = connections.domain_ip_lists(section);
     if (length(references) == 0)
         return true;
 
@@ -2573,7 +2591,7 @@ function rebuild_domain_ip_lists_from_rule(section, settings) {
     return ok;
 }
 
-function import_community_srs_file(service, settings) {
+function import_community_srs_file(service, settings, skip_flash_persist) {
     service = as_string(service);
     if (!singbox_rulesets_module().is_community(service))
         return true;
@@ -2581,13 +2599,59 @@ function import_community_srs_file(service, settings) {
     let url = singbox_rulesets_module().community_url(service);
     let cached_file = TMP_RULESET_FOLDER + "/community-" + service + ".srs";
     let persistent_file = "/etc/tachyon/rulesets/community-" + service + ".srs";
+    let cached_trs_file = TMP_RULESET_FOLDER + "/community-" + service + ".trs";
+    let persistent_trs_file = "/etc/tachyon/rulesets/community-" + service + ".trs";
     let tmpfile = temp_path();
     if (tmpfile == "")
         return false;
 
     let core_url_mod = core_url_module_or_null();
+    let use_trs = type(singbox_rulesets_module().supports_trs) == "function" &&
+        singbox_rulesets_module().supports_trs();
+
+    if (use_trs && type(singbox_rulesets_module().community_trs_urls) == "function") {
+        let trs_base_urls = singbox_rulesets_module().community_trs_urls(service);
+        let trs_candidates = [];
+        for (let tu in trs_base_urls) {
+            let expanded = core_url_mod && type(core_url_mod.download_candidates) == "function" ?
+                core_url_mod.download_candidates(tu) : [ tu ];
+            for (let ex in expanded)
+                if (!(ex in trs_candidates))
+                    push(trs_candidates, ex);
+        }
+        for (let trs_candidate in trs_candidates) {
+            if (download_to_file(trs_candidate, tmpfile, service_proxy_address(settings, "lists")) &&
+                file_nonempty(tmpfile) &&
+                singbox_rulesets_module().is_usable_trs_file(tmpfile)) {
+                ensure_dir(TMP_RULESET_FOLDER);
+                copy_file(tmpfile, cached_trs_file);
+                let st = fs.stat(tmpfile);
+                let sz = st != null ? int(st.size || 0) : 0;
+                if (!skip_flash_persist && sz > 0 && sz <= 524288) {
+                    ensure_dir("/etc/tachyon/rulesets");
+                    copy_file(tmpfile, persistent_trs_file);
+                } else if (sz > 524288) {
+                    remove_file(persistent_trs_file);
+                }
+                log_message("Successfully cached preset ruleset " + service + " (.trs) from " + trs_candidate, "info");
+                remove_file(tmpfile);
+                return true;
+            }
+            remove_file(tmpfile);
+        }
+    }
+
     let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ?
         core_url_mod.download_candidates(url) : [ url ];
+    let fallback_url = type(singbox_rulesets_module().fallback_community_url) == "function" ?
+        singbox_rulesets_module().fallback_community_url(service) : "";
+    if (fallback_url != "" && fallback_url != url) {
+        let fb_candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ?
+            core_url_mod.download_candidates(fallback_url) : [ fallback_url ];
+        for (let fb in fb_candidates)
+            if (!(fb in candidates))
+                push(candidates, fb);
+    }
     let downloaded = false;
 
     for (let candidate in candidates) {
@@ -2602,9 +2666,15 @@ function import_community_srs_file(service, settings) {
                 ensure_dir(TMP_RULESET_FOLDER);
                 copy_file(tmpfile, cached_file);
                 singbox_rulesets_module().remember_srs_file_verified(cached_file);
-                ensure_dir("/etc/tachyon/rulesets");
-                copy_file(tmpfile, persistent_file);
-                singbox_rulesets_module().remember_srs_file_verified(persistent_file);
+                let st = fs.stat(tmpfile);
+                let sz = st != null ? int(st.size || 0) : 0;
+                if (!skip_flash_persist && sz > 0 && sz <= 524288) {
+                    ensure_dir("/etc/tachyon/rulesets");
+                    copy_file(tmpfile, persistent_file);
+                    singbox_rulesets_module().remember_srs_file_verified(persistent_file);
+                } else if (sz > 524288) {
+                    remove_file(persistent_file);
+                }
                 log_message("Successfully cached preset ruleset " + service + (candidate != url ? " via mirror " + candidate : ""), "info");
                 downloaded = true;
                 break;
@@ -2616,6 +2686,12 @@ function import_community_srs_file(service, settings) {
     let ok = true;
     if (downloaded) {
         // Cached successfully
+    }
+    else if (use_trs && type(singbox_rulesets_module().is_referenceable_trs_file) == "function" &&
+             singbox_rulesets_module().is_referenceable_trs_file(persistent_trs_file)) {
+        ensure_dir(TMP_RULESET_FOLDER);
+        copy_file(persistent_trs_file, cached_trs_file);
+        log_message("Using persistent cached .trs ruleset for " + service + " after download failure", "warn");
     }
     else if (singbox_rulesets_module().is_adoptable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 100)) {
         ensure_dir(TMP_RULESET_FOLDER);
@@ -2832,14 +2908,12 @@ function import_all_preset_lists(settings) {
         if (length(combined_lines) > 0) {
             ensure_dir(TMP_RULESET_FOLDER);
             write_file(cached_file, join("\n", combined_lines) + "\n");
-            ensure_dir("/etc/tachyon/rulesets");
-            write_file(persistent_file, join("\n", combined_lines) + "\n");
         }
     }
 
     let community_services = keys(singbox_rulesets_module().COMMUNITY_SERVICES);
     for (let service in community_services) {
-        if (!import_community_srs_file(service, settings))
+        if (!import_community_srs_file(service, settings, true))
             ok = false;
     }
 
@@ -3078,10 +3152,14 @@ function import_rule_sets_with_subnets_from_rule(section, settings) {
                         common.ensure_dir("/etc/tachyon/rulesets");
                         common.ensure_dir(TMP_RULESET_FOLDER);
                         let res = routing_rulesets_module().compile_plain_list(tmpfile, srs_path, json_path);
-                        if (res.format == "binary")
+                        if (res.format == "binary") {
                             common.copy_file(srs_path, etc_srs);
-                        else
+                            if (fs.stat(json_path) != null)
+                                common.copy_file(json_path, etc_json);
+                        }
+                        else {
                             common.copy_file(json_path, etc_json);
+                        }
                     } else {
                         log_message("Failed to download remote plain list " + reference + "; keeping existing cache", "warn");
                     }
@@ -3136,10 +3214,16 @@ function update_remote_plain_rulesets_from_rule(section, settings) {
             common.ensure_dir("/etc/tachyon/rulesets");
             common.ensure_dir(TMP_RULESET_FOLDER);
             let res = routing_rulesets_module().compile_plain_list(tmpfile, srs_path, json_path);
-            if (res.format == "binary")
+            if (res.format == "binary") {
                 common.copy_file(srs_path, etc_srs);
-            else
+                if (fs.stat(json_path) != null)
+                    common.copy_file(json_path, etc_json);
+            }
+            else {
                 common.copy_file(json_path, etc_json);
+            }
+            if (res.has_ips)
+                add_plain_subnet_file_to_nft_for_section(section, tmpfile);
         }
         else {
             log_message("Failed to download remote plain rule set " + reference + "; keeping existing cache", "warn");

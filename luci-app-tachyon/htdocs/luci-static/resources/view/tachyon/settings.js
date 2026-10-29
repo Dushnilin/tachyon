@@ -1470,17 +1470,19 @@ function createMenuTabsOrderWidget(option, section_id) {
   const ALL_MENU_TABS = [
     {
       id: "dashboard",
-      label: _tr("Дашборд", "Dashboard"),
+      group: _tr("Обзор", "Overview"),
+      label: _tr("Обзор (Дашборд)", "Overview (Dashboard)"),
       desc: _tr(
-        "Главный экран и виджеты статуса",
-        "Main overview and status widgets",
+        "Главный экран, сводка трафика и статус служб роутера",
+        "Main overview, traffic summary and router service status",
       ),
       defaultVisible: true,
       fixed: false,
     },
     {
       id: "section",
-      label: _tr("Секции", "Sections"),
+      group: _tr("Маршруты", "Routing"),
+      label: _tr("Секции маршрутов", "Routing Sections"),
       desc: _tr(
         "Секции маршрутизации, правила и стратегии",
         "Routing sections, rules and strategies",
@@ -1489,17 +1491,52 @@ function createMenuTabsOrderWidget(option, section_id) {
       fixed: false,
     },
     {
-      id: "server",
-      label: _tr("Серверы", "Servers"),
+      id: "outbounds",
+      group: _tr("Маршруты", "Routing"),
+      label: _tr("Узлы и подписки", "Nodes & Subscriptions"),
       desc: _tr(
-        "Внешние серверы и входящие подключения",
-        "External inbound proxy servers",
+        "Глобальный пул подписок, прокси-ссылок, туннелей и Desync",
+        "Global pool of subscriptions, proxy links, tunnels and Desync",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "conditions",
+      group: _tr("Маршруты", "Routing"),
+      label: _tr("Условия трафика", "Traffic Conditions"),
+      desc: _tr(
+        "Атомарные и составные булевы правила фильтрации (AND / OR / NOT)",
+        "Atomic and composite boolean traffic matching rules",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "balancers",
+      group: _tr("Маршруты", "Routing"),
+      label: _tr("Балансировщики", "Balancers"),
+      desc: _tr(
+        "Политики автоматического выбора URLTest и отказоустойчивости Priority",
+        "URLTest auto-selection and Priority failover policies",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "server",
+      group: _tr("Клиенты и сеть", "Clients & Network"),
+      label: _tr("Серверы (Inbound)", "Inbound Servers"),
+      desc: _tr(
+        "Собственные VPN и прокси-серверы на роутере для внешних устройств",
+        "External inbound VPN and proxy servers on the router",
       ),
       defaultVisible: false,
       fixed: false,
     },
     {
       id: "profile",
+      group: _tr("Клиенты и сеть", "Clients & Network"),
       label: _tr("Семейные профили", "Family Profiles"),
       desc: _tr(
         "Семейные профили и группы устройств",
@@ -1510,6 +1547,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: "schedule",
+      group: _tr("Клиенты и сеть", "Clients & Network"),
       label: _tr("Родительский контроль", "Parental Control"),
       desc: _tr(
         "Расписание доступа и лимиты экранного времени",
@@ -1520,6 +1558,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: "guest_mode",
+      group: _tr("Клиенты и сеть", "Clients & Network"),
       label: _tr("Гостевой режим", "Guest Mode"),
       desc: _tr(
         "Изоляция гостевой сети и квоты устройств",
@@ -1529,17 +1568,8 @@ function createMenuTabsOrderWidget(option, section_id) {
       fixed: false,
     },
     {
-      id: "monitoring",
-      label: _tr("Мониторинг", "Monitoring"),
-      desc: _tr(
-        "Статистика трафика и активные соединения",
-        "Traffic statistics and active connections",
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
       id: "diagnostic",
+      group: _tr("Аналитика", "Analytics"),
       label: _tr("Диагностика", "Diagnostics"),
       desc: _tr(
         "Системная диагностика, AI Доктор и журналы",
@@ -1549,8 +1579,64 @@ function createMenuTabsOrderWidget(option, section_id) {
       fixed: false,
     },
     {
+      id: "monitoring",
+      group: _tr("Аналитика", "Analytics"),
+      label: _tr("Мониторинг сессий", "Live Monitoring"),
+      desc: _tr(
+        "Статистика трафика и активные соединения",
+        "Traffic statistics and active connections",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "settings_dns",
+      group: _tr("Настройки", "Settings"),
+      label: _tr("DNS и защита", "DNS & Protection"),
+      desc: _tr(
+        "Параметры DNS-резолвера, шифрования DoH/DoT и отказоустойчивости",
+        "DNS resolver, DoH/DoT encryption and failover settings",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "settings_network",
+      group: _tr("Настройки", "Settings"),
+      label: _tr("Сеть и TUN", "Network & TUN"),
+      desc: _tr(
+        "Параметры перехвата трафика, интерфейсов LAN/WAN и TUN",
+        "Traffic interception, LAN/WAN interfaces and TUN settings",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "settings_services",
+      group: _tr("Настройки", "Settings"),
+      label: _tr("Сервисы и порты", "Services & Ports"),
+      desc: _tr(
+        "Порты прокси, панель YACD, P2P и сопутствующие службы",
+        "Proxy ports, YACD panel, P2P and companion services",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "settings_advanced",
+      group: _tr("Настройки", "Settings"),
+      label: _tr("Система и бэкап", "System & Backup"),
+      desc: _tr(
+        "Выбор ядра, резервное копирование конфигурации и логирование",
+        "Engine selection, configuration backup and logging",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
       id: "updates",
-      label: _tr("Компоненты", "Components"),
+      group: _tr("Настройки", "Settings"),
+      label: _tr("Компоненты и ядро", "Components & Core"),
       desc: _tr(
         "Версии компонентов и менеджер обновлений",
         "Component versions and update manager",
@@ -1559,17 +1645,8 @@ function createMenuTabsOrderWidget(option, section_id) {
       fixed: false,
     },
     {
-      id: "settings",
-      label: _tr("Настройки", "Settings"),
-      desc: _tr(
-        "Основные настройки системы",
-        "Core configuration and preferences",
-      ),
-      defaultVisible: true,
-      fixed: true,
-    },
-    {
       id: "telegram",
+      group: _tr("Настройки", "Settings"),
       label: _tr("Телеграм-бот", "Telegram Bot"),
       desc: _tr(
         "Удаленное управление через Telegram",
@@ -1577,6 +1654,39 @@ function createMenuTabsOrderWidget(option, section_id) {
       ),
       defaultVisible: true,
       fixed: false,
+    },
+    {
+      id: "settings_ai",
+      group: _tr("Настройки", "Settings"),
+      label: _tr("ИИ и самоисцеление", "AI & Self-Healing"),
+      desc: _tr(
+        "Автоматический сторож (Watchdog), восстановление и ИИ-агент",
+        "Automated Watchdog recovery and AI diagnostics agent",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "settings_updates",
+      group: _tr("Настройки", "Settings"),
+      label: _tr("Обновления списков", "Lists & Presets"),
+      desc: _tr(
+        "Расписание обновления гео-баз, правил и компонентов",
+        "Geo-databases, rulesets and component update schedule",
+      ),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "settings",
+      group: _tr("Настройки", "Settings"),
+      label: _tr("Интерфейс и меню", "Menu & Navigation"),
+      desc: _tr(
+        "Управление боковым меню, вкладками и видом дашборда",
+        "Sidebar navigation, tabs order and dashboard layout",
+      ),
+      defaultVisible: true,
+      fixed: true,
     },
   ];
 
@@ -1625,8 +1735,7 @@ function createMenuTabsOrderWidget(option, section_id) {
 
   const wrapper = E("div", { id: "menu-tabs-order-widget-" + section_id });
   const listEl = E("div", {
-    style:
-      "border:1px solid var(--border-color,#dee2e6);border-radius:6px;overflow:hidden;margin-bottom:8px;max-width:560px;background:var(--card-bg,transparent);",
+    class: "tachyon-settings-list-card",
   });
 
   function syncToUci() {
@@ -1663,25 +1772,25 @@ function createMenuTabsOrderWidget(option, section_id) {
   }
 
   function renderTabRow(id, idx, totalLen) {
-    const tabMeta = tabMap[id] || { id: id, label: id, desc: "", fixed: false };
+    const tabMeta = tabMap[id] || {
+      id: id,
+      group: "",
+      label: id,
+      desc: "",
+      fixed: false,
+    };
     const isVisible = Boolean(visibility[id]);
     const isFixed = Boolean(tabMeta.fixed);
 
     const row = E("div", {
-      style: [
-        "display:flex;align-items:center;gap:12px;padding:8px 12px;",
-        idx < totalLen - 1
-          ? "border-bottom:1px solid var(--border-color,#dee2e6);"
-          : "",
-        isVisible ? "" : "opacity:0.5;background:rgba(0,0,0,0.02);",
-      ].join(""),
+      class: "tachyon-settings-list-row" + (isVisible ? "" : " is-hidden"),
     });
 
     const badge = E(
       "span",
       {
         style:
-          "font-size:0.75rem;font-weight:bold;color:var(--text-color-medium,#888);min-width:18px;text-align:center;",
+          "font-size:0.75rem;font-weight:bold;color:var(--text-color-medium,#888);min-width:22px;text-align:center;",
       },
       String(idx + 1),
     );
@@ -1696,14 +1805,14 @@ function createMenuTabsOrderWidget(option, section_id) {
           ? _("Click to hide")
           : _("Click to show"),
       style: [
-        "width:20px;height:20px;padding:0;border-radius:3px;border:2px solid;",
+        "width:22px;height:22px;padding:0;border-radius:6px;border:2px solid;",
         "display:flex;align-items:center;justify-content:center;",
         "font-size:13px;font-weight:bold;line-height:1;cursor:",
         isFixed ? "default;" : "pointer;",
         "flex-shrink:0;",
         isFixed || isVisible
-          ? "border-color:var(--primary-color,#2196f3);background:var(--primary-color,#2196f3);color:#fff;"
-          : "border-color:var(--border-color,#aaa);background:transparent;color:transparent;",
+          ? "border-color:#7c3aed;background:#7c3aed;color:#fff;"
+          : "border-color:var(--border-color-medium,#94a3b8);background:transparent;color:transparent;",
       ].join(""),
     });
     toggleBtn.textContent = "✓";
@@ -1715,23 +1824,33 @@ function createMenuTabsOrderWidget(option, section_id) {
         visibility[id] = !visibility[id];
         syncToUci();
         renderList();
+        if (main && typeof main.refreshTachyonAppShell === "function") {
+          main.refreshTachyonAppShell();
+        }
       });
     }
 
     const textCol = E(
       "div",
       {
-        style: "flex:1;display:flex;flex-direction:column;",
+        style: "flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;",
       },
       [
-        E("span", { style: "font-weight:600;font-size:0.95rem;" }, [
+        E("span", { style: "font-weight:700;font-size:0.88rem;" }, [
           tabMeta.label,
+          tabMeta.group
+            ? E(
+                "span",
+                { class: "tachyon-settings-group-badge" },
+                tabMeta.group,
+              )
+            : "",
           isFixed
             ? E(
                 "em",
                 {
                   style:
-                    "font-size:0.75rem;font-weight:normal;margin-left:6px;color:var(--text-color-medium,#888);",
+                    "font-size:0.72rem;font-weight:normal;margin-left:6px;color:var(--text-color-medium,#888);",
                 },
                 " (" + _("Always visible") + ")",
               )
@@ -1756,7 +1875,7 @@ function createMenuTabsOrderWidget(option, section_id) {
         type: "button",
         title: _("Move Up"),
         style:
-          "padding:2px 8px;font-size:0.8rem;line-height:1.2;cursor:pointer;",
+          "padding:3px 9px;font-size:0.78rem;line-height:1.2;border-radius:7px;cursor:pointer;",
       },
       "▲",
     );
@@ -1769,6 +1888,9 @@ function createMenuTabsOrderWidget(option, section_id) {
         ordered[idx] = tmp;
         syncToUci();
         renderList();
+        if (main && typeof main.refreshTachyonAppShell === "function") {
+          main.refreshTachyonAppShell();
+        }
       }
     });
 
@@ -1779,7 +1901,7 @@ function createMenuTabsOrderWidget(option, section_id) {
         type: "button",
         title: _("Move Down"),
         style:
-          "padding:2px 8px;font-size:0.8rem;line-height:1.2;cursor:pointer;",
+          "padding:3px 9px;font-size:0.78rem;line-height:1.2;border-radius:7px;cursor:pointer;",
       },
       "▼",
     );
@@ -1792,6 +1914,9 @@ function createMenuTabsOrderWidget(option, section_id) {
         ordered[idx] = tmp;
         syncToUci();
         renderList();
+        if (main && typeof main.refreshTachyonAppShell === "function") {
+          main.refreshTachyonAppShell();
+        }
       }
     });
 
@@ -1944,8 +2069,7 @@ function createComponentsVisibilityWidget(option, section_id) {
     id: "components-visibility-widget-" + section_id,
   });
   const listEl = E("div", {
-    style:
-      "border:1px solid var(--border-color,#dee2e6);border-radius:6px;overflow:hidden;margin-bottom:8px;max-width:560px;background:var(--card-bg,transparent);",
+    class: "tachyon-settings-list-card",
   });
 
   function syncToUci() {
@@ -1967,18 +2091,12 @@ function createComponentsVisibilityWidget(option, section_id) {
 
   function renderList() {
     listEl.innerHTML = "";
-    ALL_COMPONENTS.forEach(function (c, idx) {
+    ALL_COMPONENTS.forEach(function (c, _idx) {
       const isVisible = Boolean(visibility[c.id]);
       const isFixed = Boolean(c.fixed);
 
       const row = E("div", {
-        style: [
-          "display:flex;align-items:center;gap:12px;padding:8px 12px;",
-          idx < ALL_COMPONENTS.length - 1
-            ? "border-bottom:1px solid var(--border-color,#dee2e6);"
-            : "",
-          isVisible ? "" : "opacity:0.5;background:rgba(0,0,0,0.02);",
-        ].join(""),
+        class: "tachyon-settings-list-row" + (isVisible ? "" : " is-hidden"),
       });
 
       const toggleBtn = E("button", {
@@ -1989,14 +2107,14 @@ function createComponentsVisibilityWidget(option, section_id) {
             ? _("Click to hide")
             : _("Click to show"),
         style: [
-          "width:20px;height:20px;padding:0;border-radius:3px;border:2px solid;",
+          "width:22px;height:22px;padding:0;border-radius:6px;border:2px solid;",
           "display:flex;align-items:center;justify-content:center;",
           "font-size:13px;font-weight:bold;line-height:1;cursor:",
           isFixed ? "default;" : "pointer;",
           "flex-shrink:0;",
           isFixed || isVisible
-            ? "border-color:var(--primary-color,#2196f3);background:var(--primary-color,#2196f3);color:#fff;"
-            : "border-color:var(--border-color,#aaa);background:transparent;color:transparent;",
+            ? "border-color:#7c3aed;background:#7c3aed;color:#fff;"
+            : "border-color:var(--border-color-medium,#94a3b8);background:transparent;color:transparent;",
         ].join(""),
       });
       toggleBtn.textContent = "✓";
@@ -2046,7 +2164,10 @@ function createComponentsVisibilityWidget(option, section_id) {
 }
 
 function createSettingsContent(section, capabilities) {
-  section.tab("navigation", _tr("Меню и навигация", "Menu & Navigation"));
+  section.tab(
+    "navigation",
+    _tr("Дашборд и интерфейс", "Dashboard & Interface"),
+  );
   section.tab("dns", _("DNS Settings"));
   section.tab("network", _("Network & Interfaces"));
   section.tab("services", _("Services & Access"));
@@ -2055,6 +2176,29 @@ function createSettingsContent(section, capabilities) {
   section.tab("advanced", _("Advanced System"));
 
   // ── Navigation & Menu Settings ──────────────────────────────────────────
+
+  const dashLayoutOpt = section.taboption(
+    "navigation",
+    form.Value,
+    "_dashboard_layout_widget",
+    _tr("Виджеты и пресеты дашборда", "Dashboard Widgets & Presets"),
+    _tr(
+      "Выберите один из 5 готовых пресетов дашборда или настройте вид отображения, ширину (100% / 50%), видимость и расположение каждого виджета на 2-колоночном макете.",
+      "Select one of 5 dashboard presets or customize the display view, width (100% / 50%), visibility, and placement of every widget on the 2-column layout.",
+    ),
+  );
+  dashLayoutOpt.renderWidget = function (section_id) {
+    if (main && typeof main.renderDashboardLayoutSettingsPanel === "function") {
+      return main.renderDashboardLayoutSettingsPanel(section_id);
+    }
+    return E("div", {}, "");
+  };
+  dashLayoutOpt.formvalue = function (section_id) {
+    const el = document.getElementById("dashboard-layout-editor-" + section_id);
+    return el && el._layoutConfig ? JSON.stringify(el._layoutConfig) : "";
+  };
+  dashLayoutOpt.write = function (_section_id) {};
+  dashLayoutOpt.remove = function () {};
 
   let o = section.taboption(
     "navigation",

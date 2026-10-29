@@ -1987,9 +1987,22 @@ function tachyon_get_targets(all_mode) {
         "twitter": "x",
         "cloudflare": "baseline",
         "google_ai": "gemini",
+        "ai_all": "chatgpt",
+        "openai": "chatgpt",
+        "anthropic": "claude",
+        "xai": "grok",
         "geoblock": "blocked_ru",
+        "roscomvpn_geoblock": "blocked_ru",
         "russia_inside": "blocked_ru",
         "russia_outside": "blocked_ru",
+        "ru_blocked": "blocked_ru",
+        "ru_blocked_all": "blocked_ru",
+        "antifilter": "blocked_ru",
+        "runetfreedom_blocked": "blocked_ru",
+        "runetfreedom_blocked_all": "blocked_ru",
+        "antifilter_community": "blocked_ru",
+        "refilter": "blocked_ru",
+        "torrent": "rutracker",
         "hodca": "hdrezka"
     };
 

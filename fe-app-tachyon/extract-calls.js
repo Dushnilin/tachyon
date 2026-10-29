@@ -20,12 +20,10 @@ function stripIllegalReturn(code) {
 const rawFiles = await glob([
     'src/**/*.ts',
     'src/**/*.tsx',
-    '../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/**/*.js',
 ], {
     cwd: __dirname,
     ignore: [
         '**/*.test.ts',
-        '**/main.js',
     ],
     absolute: true,
 });
@@ -65,6 +63,24 @@ for (const file of files) {
 
                     if (!results[key]) {
                         results[key] = { call: key, key, places: [] };
+                    }
+
+                    results[key].places.push(location);
+                }
+            } else if (t.isIdentifier(path.node.callee, { name: 'tr' })) {
+                const ruArg = path.node.arguments[0];
+                const enArg = path.node.arguments[1];
+                if (t.isStringLiteral(ruArg) && t.isStringLiteral(enArg)) {
+                    const ru = ruArg.value.trim();
+                    const key = enArg.value.trim();
+                    if (!key) return;
+                    const location = `${relativePath}:${path.node.loc?.start.line ?? '?'}`;
+
+                    if (!results[key]) {
+                        results[key] = { call: key, key, places: [] };
+                    }
+                    if (ru && !results[key].ru) {
+                        results[key].ru = ru;
                     }
 
                     results[key].places.push(location);

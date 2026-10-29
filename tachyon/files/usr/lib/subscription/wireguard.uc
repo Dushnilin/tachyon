@@ -97,6 +97,10 @@ function build(input, host, port, name, raw) {
     if (endpoint.header_protection_key != null) {
         endpoint.header_protection_key = key32(endpoint.header_protection_key);
         if (!endpoint.header_protection_key) return null;
+        for (let sk in ['s1', 's2', 's3', 's4']) {
+            if (endpoint[sk] == null || int(endpoint[sk], 10) < 12)
+                endpoint[sk] = 20;
+        }
     }
     for (let k in flags) {
         if (v[k] == null) continue;

@@ -1031,6 +1031,10 @@ function manual_tuic_outbound(link, tag_name) {
 function ensure_imported_vpn_lx() {
     let variant = variant_state.read_variant_marker();
     let version = variant_state.read_version_state();
+    if (version == "" && ctx.detect_sing_box_version)
+        version = as_string(ctx.detect_sing_box_version() || "");
+    if (variant == "" && match(version, /^v?0\.[0-9]+\.[0-9]+/) != null)
+        variant = "tachyon-core";
     if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0 && match(version, /^v?0\.[0-9]+\./) == null)
         ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
 }
@@ -1773,6 +1777,14 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             node_prefix,
             "sub:" + source_index
         );
+        let sub_src_id = (connections && connections.source_id_for_manual_item)
+            ? connections.source_id_for_manual_item(section, source_entry)
+            : "";
+        if (sub_src_id != "") {
+            if (!state.outboundMetadata.source_ids)
+                state.outboundMetadata.source_ids = {};
+            state.outboundMetadata.source_ids[outbound.tag] = sub_src_id;
+        }
         if (hidden_flags[i] !== true) {
             push(selector_tags, outbound.tag);
             runtime_subscription.remember_urltest_group(state, outbound.tag, display_names[i], outbound);
@@ -2524,6 +2536,10 @@ function add_awg_config_members(config, section) {
             push(urltest_candidate_tags, member_tag);
             state.links[member_tag] = as_string(item.link || "");
             runtime_subscription.remember_outbound_metadata(state, member_tag, display_name, member);
+            let src_id = (connections && connections.source_id_for_manual_item)
+                ? connections.source_id_for_manual_item(section, value)
+                : "";
+            state.outboundMetadata.sources[member_tag] = src_id != "" ? src_id : "manual";
         }
     }
 
@@ -3060,32 +3076,59 @@ function normalize_desync_preset_value(val) {
     val = lc(trim(as_string(val)));
     if (val == "" || val == "none" || val == "custom")
         return "";
-    if (val in ["fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "auto"])
-        return val == "fakesplit" ? "fake_split" : (val == "tls_rec" ? "tlsrec" : val);
+    if (val == "auto" || val == "adaptive" || val == "smart")
+        return "auto";
+    if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
+        return "fake_split";
+    if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder")
+        return "fake_disorder";
+    if (val == "multi_split" || val == "multisplit" || val == "multi+split")
+        return "multi_split";
+    if (val == "tlsrec" || val == "tls_rec")
+        return "tlsrec";
+    if (val in ["split", "disorder", "fake", "oob"])
+        return val;
     if (val == "youtube" || val == "google_youtube" || val == "discord" || val == "general" || val == "general_fake_tls")
         return "fake_split";
     if (val == "general_alt")
         return "tlsrec";
-    if (val == "aggressive" || val == "general_alt2" || val == "general_multisplit")
-        return "disorder";
+    if (val == "aggressive" || val == "general_alt2")
+        return "fake_disorder";
+    if (val == "general_multisplit")
+        return "multi_split";
     if (val == "light" || val == "general_simple_fake")
         return "split";
-    return "fake_split";
+    return "auto";
 }
 
 function normalize_desync_mode_value(val) {
     val = lc(trim(as_string(val)));
     if (val == "")
         return "";
-    if (val in ["fake_split", "fakesplit", "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "none"])
-        return val == "fakesplit" ? "fake_split" : (val == "tls_rec" ? "tlsrec" : val);
-    if (val == "fake+split")
+    if (val == "auto" || val == "adaptive" || val == "smart")
+        return "auto";
+    if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
         return "fake_split";
-    if (val == "fake+disorder" || val == "fake_disorder" || val == "fakedisorder" || val == "multidisorder")
-        return "disorder";
-    if (val == "multisplit")
-        return "split";
+    if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder" || val == "multidisorder")
+        return "fake_disorder";
+    if (val == "multi_split" || val == "multisplit" || val == "multi+split")
+        return "multi_split";
+    if (val == "tlsrec" || val == "tls_rec")
+        return "tlsrec";
+    if (val in ["split", "disorder", "fake", "oob", "none"])
+        return val;
     return "fake_split";
+}
+
+function normalize_desync_fooling_value(val) {
+    val = lc(trim(as_string(val)));
+    if (val == "")
+        return "";
+    if (val == "ts" || val == "timestamp")
+        return "timestamp";
+    if (val in ["md5", "autottl", "badseq", "badsum"])
+        return val;
+    return "";
 }
 
 function normalize_desync_split_pos_value(val) {
@@ -3124,6 +3167,12 @@ function apply_desync_opts_string(outbound, opts_str) {
             let nm = normalize_desync_mode_value(v);
             if (nm != "")
                 outbound.mode = nm;
+        } else if (k == "fooling") {
+            let nf = normalize_desync_fooling_value(v);
+            if (nf != "")
+                outbound.fooling = nf;
+        } else if (k == "auto_tune") {
+            outbound.auto_tune = is_true(v);
         } else if (k == "split_pos") {
             let nsp = normalize_desync_split_pos_value(v);
             if (nsp != null)
@@ -3160,10 +3209,16 @@ function add_desync_outbound(config, section) {
     let raw_preset = option(section, "desync_preset", "");
     let preset = normalize_desync_preset_value(raw_preset);
     let mode = normalize_desync_mode_value(option(section, "desync_mode", ""));
+    let fooling = normalize_desync_fooling_value(option(section, "desync_fooling", ""));
     if (preset != "")
         outbound.preset = preset;
     if (mode != "")
         outbound.mode = mode;
+    if (fooling != "")
+        outbound.fooling = fooling;
+    let auto_tune_raw = trim(option(section, "desync_auto_tune", ""));
+    if (auto_tune_raw != "")
+        outbound.auto_tune = bool_option(section, "desync_auto_tune", false);
     if (lc(trim(raw_preset)) == "discord" && !bool_option(section, "desync_udp_fake", false))
         outbound.udp_fake = true;
     let split_pos = normalize_desync_split_pos_value(option(section, "desync_split_pos", ""));
@@ -3193,16 +3248,7 @@ function add_desync_outbound(config, section) {
     apply_desync_opts_string(outbound, option(section, "desync_opts", ""));
 
     if (outbound.preset == null && outbound.mode == null)
-        outbound.preset = "tlsrec";
-    if (outbound.preset == "fake_split" || outbound.preset == "auto" || outbound.preset == "fake") {
-        outbound.preset = "disorder";
-        if (outbound.split_pos == null) outbound.split_pos = "midsld";
-        if (outbound.udp_fake == null) outbound.udp_fake = true;
-    }
-    if (outbound.mode == "fake_split" || outbound.mode == "fake") {
-        outbound.mode = "disorder";
-        if (outbound.split_pos == null) outbound.split_pos = "midsld";
-    }
+        outbound.preset = "auto";
 
     let detour = outbound_detour_tag_for_section(section);
     if (detour != "")

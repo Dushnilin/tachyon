@@ -67,6 +67,8 @@ export function getComponentCardTitle(
       return 'Steer';
     case 'steer-extended':
       return 'Steer extended';
+    case 'torrserver_direct':
+      return _('TorrServer Direct');
     case 'engine':
       return _('Routing Engine');
     default:
@@ -104,6 +106,8 @@ export function getComponentCurrentVersion(
     case 'steer':
     case 'steer-extended':
       return sys.steer_version;
+    case 'torrserver_direct':
+      return sys.torrserver_version;
     default:
       return undefined;
   }
@@ -165,6 +169,8 @@ export function getComponentInstallKey(
     case 'steer':
     case 'steer-extended':
       return 'steerInstall';
+    case 'torrserver_direct':
+      return 'torrserverDirectInstall';
     case 'engine':
       return 'engineSwitch';
     default:
@@ -308,6 +314,6 @@ export const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   steer: 'https://github.com/xyzmean/steer',
   'steer-extended': 'https://github.com/xyzmean/steer',
   direct_bypass: '',
-  torrserver_direct: '',
+  torrserver_direct: 'https://github.com/YouROK/TorrServer',
   engine: '',
 };

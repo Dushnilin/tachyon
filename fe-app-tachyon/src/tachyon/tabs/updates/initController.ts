@@ -69,16 +69,6 @@ import {
 } from './notifications';
 import { computeSystemInfoMutation } from './mutations';
 import {
-  normalizeSteerModules,
-  presetForSteerModules,
-  steerModulesUciArgs,
-  STEER_MODULE_PRESETS,
-  STEER_MODULES,
-  toggleSteerModule,
-  type SteerModulesPreset,
-  type SteerModule,
-} from './steerModules';
-import {
   COMPONENT_REPO_URLS,
   getCheckAction,
   getComponentBackupVersion as getComponentBackupVersionHelper,
@@ -1148,6 +1138,14 @@ function getComponentCards(): ComponentCard[] {
   const directBypassEndpoint = systemInfo.direct_bypass_address
     ? `${systemInfo.direct_bypass_address}:${systemInfo.direct_bypass_port || '2080'}`
     : '';
+  const torrserverInstalled = Boolean(
+    systemInfo.torrserver_installed || systemInfo.torrserver_running,
+  );
+  const torrserverVersion =
+    systemInfo.torrserver_version &&
+    systemInfo.torrserver_version !== 'not installed'
+      ? systemInfo.torrserver_version
+      : '';
   const torrserverRunning = Boolean(systemInfo.torrserver_running);
   const torrserverDirectAvailable = Boolean(
     systemInfo.torrserver_direct_available,
@@ -1173,24 +1171,42 @@ function getComponentCards(): ComponentCard[] {
         },
   ];
 
-  const torrserverDirectActions: ComponentActionButton[] = [
-    torrserverDirectEnabled
-      ? {
-          key: 'torrserverDirectDisable' as const,
-          text: _('Disable'),
+  const torrserverDirectActions: ComponentActionButton[] = !torrserverInstalled
+    ? [getInstallAction('torrserver_direct', 'torrserverDirectInstall', false)]
+    : [
+        getCheckAction('torrserver_direct', 'torrserverDirectCheck'),
+        ...(shouldShowInstallAfterCheck('torrserver_direct')
+          ? [
+              getInstallAction(
+                'torrserver_direct',
+                'torrserverDirectInstall',
+                true,
+              ),
+            ]
+          : []),
+        torrserverDirectEnabled
+          ? {
+              key: 'torrserverDirectDisable' as const,
+              text: _('Disable Direct'),
+              icon: renderXIcon24,
+              component: 'torrserver_direct' as const,
+              action: 'disable' as const,
+            }
+          : {
+              key: 'torrserverDirectEnable' as const,
+              text: _('Enable Direct'),
+              icon: renderRotateCcwIcon24,
+              component: 'torrserver_direct' as const,
+              action: 'enable' as const,
+            },
+        {
+          key: 'torrserverDirectRemove' as const,
+          text: _('Remove'),
           icon: renderXIcon24,
           component: 'torrserver_direct' as const,
-          action: 'disable' as const,
-        }
-      : {
-          key: 'torrserverDirectEnable' as const,
-          text: _('Enable'),
-          icon: renderRotateCcwIcon24,
-          component: 'torrserver_direct' as const,
-          action: 'enable' as const,
-          disabled: !torrserverDirectAvailable,
+          action: 'remove' as const,
         },
-  ];
+      ];
 
   return [
     {
@@ -1253,16 +1269,26 @@ function getComponentCards(): ComponentCard[] {
       component: 'torrserver_direct',
       column: 0,
       title: _('TorrServer Direct'),
-      version: !torrserverRunning
-        ? _('TorrServer not found')
-        : !torrserverDirectAvailable
-          ? _('Dedicated cgroup unavailable')
-          : torrserverDirectEnabled && torrserverDirectActive
-            ? _('Enabled')
-            : torrserverDirectEnabled
-              ? _('Waiting for TorrServer')
-              : _('Disabled'),
+      version: systemInfoLoading
+        ? _('Loading...')
+        : !torrserverInstalled
+          ? _('Not installed')
+          : `${torrserverVersion || 'TorrServer'} · ${
+              !torrserverRunning
+                ? _('Stopped')
+                : !torrserverDirectAvailable
+                  ? _('Dedicated cgroup unavailable')
+                  : torrserverDirectEnabled && torrserverDirectActive
+                    ? _('Enabled')
+                    : torrserverDirectEnabled
+                      ? _('Waiting for TorrServer')
+                      : _('Disabled')
+            }`,
+      latestVersion: getLatestVersion('torrserver_direct'),
+      releaseUrl: getGitHubReleaseUrl('torrserver_direct'),
+      repoUrl: COMPONENT_REPO_URLS.torrserver_direct,
       actions: torrserverDirectActions,
+      supportsVersions: true,
     },
     {
       component: 'zapret',
@@ -2141,6 +2167,10 @@ function renderComponentCard(card: ComponentCard) {
         )
       : null;
 
+  if (detailsContainer) {
+    headerChildren.push(detailsContainer);
+  }
+
   const primaryActions: ComponentActionButton[] = [];
   const dangerActions: ComponentActionButton[] = [];
   const variantActions: ComponentActionButton[] = [];
@@ -2187,25 +2217,39 @@ function renderComponentCard(card: ComponentCard) {
     });
   });
 
-  if (primaryButtons.length > 0 || dangerButtons.length > 0) {
-    actionElements.push(
-      E('div', { class: 'tachyon_updates-page__component__actions-main' }, [
-        ...primaryButtons,
-        ...dangerButtons,
-      ]),
+  const mainRowButtons: Node[] = [...primaryButtons, ...dangerButtons];
+
+  if (card.copyValue) {
+    mainRowButtons.push(
+      renderButton({
+        text: _('Copy address'),
+        icon: renderCopyIcon24,
+        disabled: anyActionLoading,
+        onClick: () => copyToClipboard(card.copyValue || ''),
+      }),
     );
   }
 
-  if (card.copyValue) {
+  const isPickerOpen =
+    card.supportsVersions && activeVersionPickerComponent === card.component;
+  if (card.supportsVersions) {
+    mainRowButtons.push(
+      renderButton({
+        text: isPickerOpen ? _('Hide versions') : _('Versions'),
+        loading: isPickerOpen && versionPickerLoading,
+        disabled: systemInfoLoading || anyActionLoading,
+        onClick: () => void toggleVersionPicker(card.component),
+      }),
+    );
+  }
+
+  if (mainRowButtons.length > 0) {
     actionElements.push(
-      E('div', { class: 'tachyon_updates-page__component__actions-main' }, [
-        renderButton({
-          text: _('Copy address'),
-          icon: renderCopyIcon24,
-          disabled: anyActionLoading,
-          onClick: () => copyToClipboard(card.copyValue || ''),
-        }),
-      ]),
+      E(
+        'div',
+        { class: 'tachyon_updates-page__component__actions-main' },
+        mainRowButtons,
+      ),
     );
   }
 
@@ -2237,51 +2281,19 @@ function renderComponentCard(card: ComponentCard) {
     );
   }
 
-  if (card.supportsVersions) {
-    const isPickerOpen = activeVersionPickerComponent === card.component;
-    actionElements.push(
-      E(
-        'div',
-        {
-          class: 'tachyon_updates-page__component__versions',
-          style: 'display: flex; gap: 8px; flex-wrap: wrap;',
-        },
-        [
-          renderButton({
-            text: isPickerOpen ? _('Hide versions') : _('Versions'),
-            loading: isPickerOpen && versionPickerLoading,
-            disabled: systemInfoLoading || anyActionLoading,
-            onClick: () => void toggleVersionPicker(card.component),
-          }),
-        ],
-      ),
-    );
-
-    if (isPickerOpen) {
-      actionElements.push(renderVersionPickerDropdown(card.component));
-    }
+  if (isPickerOpen) {
+    actionElements.push(renderVersionPickerDropdown(card.component));
   }
 
   const actionsContainer = E(
     'div',
     {
-      class: [
-        'tachyon_updates-page__component__actions',
-        detailsContainer
-          ? 'tachyon_updates-page__component__actions--with-details'
-          : '',
-      ]
-        .filter(Boolean)
-        .join(' '),
+      class: 'tachyon_updates-page__component__actions',
     },
     actionElements,
   );
 
-  const cardChildren: Node[] = [header];
-  if (detailsContainer) {
-    cardChildren.push(detailsContainer);
-  }
-  cardChildren.push(actionsContainer);
+  const cardChildren: Node[] = [header, actionsContainer];
 
   return E('div', { class: 'tachyon_updates-page__component' }, cardChildren);
 }
@@ -2322,23 +2334,7 @@ async function refreshEngineInfo(): Promise<void> {
 
 let selectedEngineOverride: string | null = null;
 
-// steer 2.0 module selection, kept across renders like the engine override
-// above: the checkboxes update it, UCI stores it, the install reads it back.
-let steerModulesOverride: SteerModule[] | null = null;
-
-async function persistSteerModules(selection: SteerModule[]): Promise<void> {
-  try {
-    for (const args of steerModulesUciArgs(selection)) {
-      await TachyonShellMethods.uciRunCommand(args);
-    }
-    await TachyonShellMethods.uciRunCommand(['commit', 'tachyon']);
-  } catch {
-    // Best effort: the UI keeps the selection even when a write fails, and the
-    // next successful write converges UCI back to what is on screen.
-  }
-}
-
-// One card for the routing engine: sing-box variants and steer variants in a
+// One card for the routing engine: tachyon-core and sing-box variants in a
 // single place, with the active engine marked. Installing a variant also makes
 // it active, so choosing an engine is one click.
 function renderEngineCard(): Node {
@@ -2351,14 +2347,6 @@ function renderEngineCard(): Node {
   const active = info?.active || 'tachyon-core';
   const installing = steerBusy;
   const singBoxLoading = isSystemInfoLoading();
-
-  const base = info?.engines.find((e) => e.engine === 'steer');
-  const extended = info?.engines.find((e) => e.engine === 'steer-extended');
-  const baseInstalled = Boolean(base?.installed || systemInfo.steer_installed);
-  const extendedInstalled = Boolean(
-    extended?.installed ||
-      (systemInfo.steer_installed && systemInfo.steer_extended),
-  );
 
   // sing-box variant availability
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
@@ -2382,54 +2370,29 @@ function renderEngineCard(): Node {
     !singBoxLx &&
     !tachyonCore;
 
-  const isSingBoxActive = active === 'tachyon-core' || active === 'sing-box';
+  const isSingBoxActive = true;
 
-  const engineVersion = isSingBoxActive
-    ? singBoxLoading
-      ? _('Loading...')
-      : formatSingBoxVersion(systemInfo)
-    : systemInfo.steer_version ||
-      (baseInstalled || extendedInstalled
-        ? _('Installed')
-        : _('Not installed'));
+  const engineVersion = singBoxLoading
+    ? _('Loading...')
+    : formatSingBoxVersion(systemInfo);
 
   // Badge
-  let engineBadgeNode: Node | null = null;
-  if (isSingBoxActive) {
-    engineBadgeNode = singBoxLoading
-      ? null
-      : renderSingBoxVariantBadge(systemInfo);
-  } else if (extendedInstalled) {
-    engineBadgeNode = E(
-      'span',
-      { class: 'tachyon_updates-page__component__badge' },
-      'Extended',
-    );
-  } else if (baseInstalled) {
-    engineBadgeNode = E(
-      'span',
-      { class: 'tachyon_updates-page__component__badge' },
-      'Base',
-    );
-  }
+  const engineBadgeNode: Node | null = singBoxLoading
+    ? null
+    : renderSingBoxVariantBadge(systemInfo);
 
   // Repo URL
-  const engineRepoUrl = isSingBoxActive
-    ? systemInfo.sing_box_repo_url ||
-      (tachyonCore
-        ? 'https://github.com/Dushnilin/tachyon-core'
-        : singBoxLx
-          ? 'https://github.com/Leadaxe/sing-box-lx'
-          : singBoxExtended || singBoxExtendedCompressed
-            ? 'https://github.com/shtorm-7/sing-box-extended'
-            : COMPONENT_REPO_URLS.sing_box)
-    : systemInfo.steer_repo_url || COMPONENT_REPO_URLS.steer;
+  const engineRepoUrl =
+    systemInfo.sing_box_repo_url ||
+    (tachyonCore
+      ? 'https://github.com/Dushnilin/tachyon-core'
+      : singBoxLx
+        ? 'https://github.com/Leadaxe/sing-box-lx'
+        : singBoxExtended || singBoxExtendedCompressed
+          ? 'https://github.com/shtorm-7/sing-box-extended'
+          : COMPONENT_REPO_URLS.sing_box);
 
-  const checkComponent: Tachyon.ComponentName = isSingBoxActive
-    ? 'sing_box'
-    : active === 'steer-extended'
-      ? 'steer-extended'
-      : 'steer';
+  const checkComponent: Tachyon.ComponentName = 'sing_box';
   const checkResult = getVisibleCheckResult(checkComponent);
 
   // Header
@@ -2601,11 +2564,15 @@ function renderEngineCard(): Node {
         )
       : null;
 
-  // ── Variant selector: tachyon-core + sing-box flavours + steer in one dropdown ────────
+  if (detailsContainer) {
+    headerChildren.push(detailsContainer);
+  }
+
+  // ── Variant selector: tachyon-core + sing-box flavours in one dropdown ────────
   interface SelectableVariant {
     id: string;
     label: string;
-    group: 'tachyon-core' | 'sing-box' | 'steer';
+    group: 'tachyon-core' | 'sing-box';
     installed: boolean;
     active: boolean;
   }
@@ -2665,38 +2632,21 @@ function renderEngineCard(): Node {
       installed: singBoxInstalled && singBoxLx,
       active: isSingBoxActive && singBoxLx,
     },
-    {
-      id: 'steer',
-      label: 'Steer (Base)',
-      group: 'steer',
-      installed: baseInstalled && !extendedInstalled,
-      active: active === 'steer',
-    },
-    {
-      id: 'steer-extended',
-      label: 'Steer extended',
-      group: 'steer',
-      installed: extendedInstalled,
-      active: active === 'steer-extended',
-    },
   ];
 
-  const defaultSelectedId =
-    selectedEngineOverride ||
-    (isSingBoxActive ? currentSingBoxVariant : active);
+  const defaultSelectedId = selectedEngineOverride || currentSingBoxVariant;
   const selectedVariant =
     selectableVariants.find((v) => v.id === defaultSelectedId) ??
     selectableVariants[0]!;
 
   const picker = E('select', {
     class: 'cbi-input-select',
-    style: 'min-width: 210px;',
+    style: 'width: auto; max-width: 195px; min-width: 140px;',
   }) as HTMLSelectElement;
   const tcGroup = E('optgroup', {
     label: 'Tachyon Core',
   }) as HTMLOptGroupElement;
   const sbGroup = E('optgroup', { label: 'sing-box' }) as HTMLOptGroupElement;
-  const stGroup = E('optgroup', { label: 'Steer' }) as HTMLOptGroupElement;
 
   selectableVariants.forEach((entry) => {
     const suffix = entry.active
@@ -2710,16 +2660,10 @@ function renderEngineCard(): Node {
       `${entry.label}${suffix}`,
     ) as HTMLOptionElement;
     opt.selected = entry.id === selectedVariant.id;
-    (entry.group === 'tachyon-core'
-      ? tcGroup
-      : entry.group === 'sing-box'
-        ? sbGroup
-        : stGroup
-    ).appendChild(opt);
+    (entry.group === 'tachyon-core' ? tcGroup : sbGroup).appendChild(opt);
   });
   picker.appendChild(tcGroup);
   picker.appendChild(sbGroup);
-  picker.appendChild(stGroup);
   picker.addEventListener('change', (e) => {
     selectedEngineOverride = (e.target as HTMLSelectElement).value;
     renderUpdatesComponents();
@@ -2730,21 +2674,7 @@ function renderEngineCard(): Node {
       'font-size:12px;color:var(--text-color-medium,#b58900);margin-top:6px;display:none;',
   });
 
-  function getVariantEngine(
-    id: string,
-  ): 'tachyon-core' | 'sing-box' | 'steer' | 'steer-extended' {
-    if (id === 'tachyon-core') return 'tachyon-core';
-    if (id === 'steer') return 'steer';
-    if (id === 'steer-extended') return 'steer-extended';
-    return 'sing-box';
-  }
-  // The versions picker belongs to whatever the dropdown has selected. It used
-  // checkComponent, which is derived from `active` and exists for the engine
-  // that is currently running: picking "Steer extended" listed sing-box
-  // releases, and the picker's open state was keyed to the wrong component too.
   function getVariantComponent(id: string): Tachyon.ComponentName {
-    if (id === 'steer') return 'steer';
-    if (id === 'steer-extended') return 'steer-extended';
     if (id === 'tachyon-core') return 'tachyon-core';
     if (id === 'sing-box-lx') return 'sing-box-lx';
     if (id === 'sing-box-extended') return 'sing-box-extended';
@@ -2769,10 +2699,6 @@ function renderEngineCard(): Node {
     }
   }
 
-  const isSelectedSingBox =
-    selectedVariant.group === 'tachyon-core' ||
-    selectedVariant.group === 'sing-box';
-  const isSelectedSteer = selectedVariant.group === 'steer';
   const isSelectedActive = selectedVariant.active;
   const isSelectedInstalled = selectedVariant.installed;
 
@@ -2787,47 +2713,29 @@ function renderEngineCard(): Node {
       installing || singBoxLoading || isSelectedActive || anyActionLoading,
     onClick: () => {
       if (isSelectedActive) return;
-      const engineId = getVariantEngine(selectedVariant.id);
-      if (isSelectedSingBox) {
-        if (!isSelectedInstalled || isSingBoxActive) {
-          void runComponentAction(
-            'sing_box',
-            getVariantInstallAction(selectedVariant.id),
-            'singBoxInstall',
-            selectedVariant.label,
-          );
-        } else {
-          void applyEngineSelection(
-            'tachyon-core',
-            active,
-            warning as HTMLElement,
-            selectedVariant.label,
-          );
-        }
+      if (!isSelectedInstalled || isSingBoxActive) {
+        void runComponentAction(
+          'sing_box',
+          getVariantInstallAction(selectedVariant.id),
+          'singBoxInstall',
+          selectedVariant.label,
+        );
       } else {
-        if (!isSelectedInstalled) {
-          void runSteerAction(engineId, 'install');
-        } else {
-          void applyEngineSelection(
-            engineId,
-            active,
-            warning as HTMLElement,
-            selectedVariant.label,
-          );
-        }
+        void applyEngineSelection(
+          'tachyon-core',
+          active,
+          warning as HTMLElement,
+          selectedVariant.label,
+        );
       }
     },
   });
 
-  const selectedCheckComponent: Tachyon.ComponentName = isSelectedSingBox
-    ? 'sing_box'
-    : selectedVariant.id === 'steer-extended'
-      ? 'steer-extended'
-      : 'steer';
+  const selectedCheckComponent: Tachyon.ComponentName = 'sing_box';
 
   // ── "Check update" button for selected/installed engine ────────────────────
   const checkUpdateAction: ComponentActionButton = {
-    key: isSelectedSingBox ? 'singBoxCheck' : 'steerCheck',
+    key: 'singBoxCheck',
     text: _('Check update'),
     icon: renderSearchIcon24,
     component: selectedCheckComponent,
@@ -2854,7 +2762,7 @@ function renderEngineCard(): Node {
   const updateButton = showUpdateBtn
     ? (() => {
         const ua: ComponentActionButton = {
-          key: isSelectedSingBox ? 'singBoxInstall' : 'steerInstall',
+          key: 'singBoxInstall',
           text: _('Update'),
           icon: renderRotateCcwIcon24,
           component: selectedCheckComponent,
@@ -2888,133 +2796,6 @@ function renderEngineCard(): Node {
     );
   }
 
-  // Row 1: picker + Apply + Check update [+ Update]
-  const primaryRow: Node[] = [picker, applyButton, checkUpdateButton];
-  if (updateButton) primaryRow.push(updateButton);
-  actionElements.push(
-    E(
-      'div',
-      {
-        class: 'tachyon_updates-page__component__actions-main',
-        style: 'margin-bottom:8px;gap:8px;align-items:center;flex-wrap:wrap;',
-      },
-      primaryRow,
-    ),
-    warning,
-    featureHint,
-  );
-
-  // steer 2.0 modules: preset + checkboxes. The selection goes into UCI the
-  // moment it changes, so any install button picks it up as-is.
-  if (isSelectedSteer) {
-    const selection =
-      steerModulesOverride ?? normalizeSteerModules(systemInfo.steer_modules);
-    const applySelection = (next: SteerModule[]): void => {
-      steerModulesOverride = next;
-      void persistSteerModules(next);
-      renderUpdatesComponents();
-    };
-
-    const presetId = presetForSteerModules(selection);
-    const presetSelect = E('select', {
-      class: 'cbi-input-select',
-      style: 'font-size:12px;width:auto;max-width:100%;',
-    }) as HTMLSelectElement;
-    const presetChoices: Array<{ id: string; label: string }> = [
-      { id: 'all', label: _('All modules') },
-      { id: 'extended', label: _('Extended preset') },
-      { id: 'base', label: _('Base (core only)') },
-    ];
-    if (presetId === 'custom') {
-      presetChoices.push({ id: 'custom', label: _('Custom') });
-    }
-    for (const choice of presetChoices) {
-      const option = E(
-        'option',
-        { value: choice.id },
-        choice.label,
-      ) as HTMLOptionElement;
-      option.selected = choice.id === presetId;
-      presetSelect.appendChild(option);
-    }
-    presetSelect.addEventListener('change', () => {
-      const id = presetSelect.value;
-      if (id === 'custom') return;
-      applySelection([...STEER_MODULE_PRESETS[id as SteerModulesPreset]]);
-    });
-
-    const moduleBoxes = STEER_MODULES.map((module) => {
-      const box = E('input', { type: 'checkbox' }) as HTMLInputElement;
-      box.checked = selection.includes(module);
-      box.addEventListener('change', () => {
-        applySelection(
-          toggleSteerModule(steerModulesOverride ?? selection, module),
-        );
-      });
-      return E('label', { style: 'white-space:nowrap;' }, [box, ` ${module}`]);
-    });
-
-    // Label and preset on their own row, checkboxes on the next one. Sharing a
-    // single wrapping row let the select eat the width and left the first line
-    // with two modules while the second carried the rest.
-    const presetRow = E(
-      'div',
-      {
-        style:
-          'display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;',
-      },
-      [
-        E('span', { style: 'font-size:12px;' }, `${_('Modules')}:`),
-        presetSelect,
-      ],
-    );
-    const moduleRow = E(
-      'div',
-      {
-        style:
-          'display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;font-size:12px;',
-      },
-      moduleBoxes,
-    );
-    actionElements.push(
-      E(
-        'div',
-        {
-          style:
-            'margin-top:8px;display:flex;flex-direction:column;gap:6px;min-width:0;',
-        },
-        [presetRow, moduleRow],
-      ),
-    );
-  }
-
-  // Remove (steer only)
-  if (isSelectedSteer && (baseInstalled || extendedInstalled)) {
-    const removeLoading = Boolean(updatesActions.steerRemove?.loading);
-    actionElements.push(
-      E(
-        'div',
-        {
-          class: 'tachyon_updates-page__component__actions-main',
-          style: 'margin-top:4px;',
-        },
-        [
-          renderButton({
-            text: _('Remove'),
-            classNames: ['cbi-button-remove'],
-            loading: removeLoading,
-            disabled: installing || anyActionLoading,
-            onClick: () =>
-              void runSteerAction(
-                getVariantEngine(selectedVariant.id),
-                'remove',
-              ),
-          }),
-        ],
-      ),
-    );
-  }
-
   // Versions picker. The package variants install whatever the OpenWrt repository
   // carries, and the backend refuses a picked tag for them (issue #108), so do
   // not offer a picker that can only end in that error.
@@ -3024,25 +2805,35 @@ function renderEngineCard(): Node {
   const pickerComponent = getVariantComponent(selectedVariant.id);
   const isPickerOpen =
     pickerHonoursTag && activeVersionPickerComponent === pickerComponent;
+
+  // Row 1: picker + Apply + Check update [+ Update] [+ Versions]
+  const primaryRow: Node[] = [picker, applyButton, checkUpdateButton];
+  if (updateButton) primaryRow.push(updateButton);
   if (pickerHonoursTag) {
-    actionElements.push(
-      E(
-        'div',
-        {
-          class: 'tachyon_updates-page__component__versions',
-          style: 'display: flex; gap: 8px; flex-wrap: wrap;',
-        },
-        [
-          renderButton({
-            text: isPickerOpen ? _('Hide versions') : _('Versions'),
-            loading: isPickerOpen && versionPickerLoading,
-            disabled: singBoxLoading || anyActionLoading || steerBusy,
-            onClick: () => void toggleVersionPicker(pickerComponent),
-          }),
-        ],
-      ),
+    primaryRow.push(
+      renderButton({
+        text: isPickerOpen ? _('Hide versions') : _('Versions'),
+        loading: isPickerOpen && versionPickerLoading,
+        disabled: singBoxLoading || anyActionLoading || steerBusy,
+        onClick: () => void toggleVersionPicker(pickerComponent),
+      }),
     );
   }
+  if (featureHint.textContent) {
+    picker.title = featureHint.textContent;
+  }
+  actionElements.push(
+    E(
+      'div',
+      {
+        class: 'tachyon_updates-page__component__actions-main',
+        style: 'gap:6px;align-items:center;flex-wrap:wrap;',
+      },
+      primaryRow,
+    ),
+    warning,
+  );
+
   if (isPickerOpen) {
     actionElements.push(renderVersionPickerDropdown(pickerComponent));
   }
@@ -3050,21 +2841,12 @@ function renderEngineCard(): Node {
   const actionsContainer = E(
     'div',
     {
-      class: [
-        'tachyon_updates-page__component__actions',
-        detailsContainer
-          ? 'tachyon_updates-page__component__actions--with-details'
-          : '',
-      ]
-        .filter(Boolean)
-        .join(' '),
+      class: 'tachyon_updates-page__component__actions',
     },
     actionElements,
   );
 
-  const cardChildren: Node[] = [header];
-  if (detailsContainer) cardChildren.push(detailsContainer);
-  cardChildren.push(actionsContainer);
+  const cardChildren: Node[] = [header, actionsContainer];
 
   return E('div', { class: 'tachyon_updates-page__component' }, cardChildren);
 }
@@ -3285,44 +3067,6 @@ async function runComponentAction(
   );
 }
 
-// Install/update a steer variant, then make it the active engine so the
-// user's choice takes effect without a second step.
-async function runSteerAction(
-  component: string,
-  action: string,
-): Promise<void> {
-  const jobs: EngineFlowJob[] = [
-    {
-      component: component as Tachyon.ComponentName,
-      action: action as Tachyon.ComponentAction,
-      key: action === 'remove' ? 'steerRemove' : 'steerInstall',
-    },
-  ];
-  if (action === 'install') {
-    jobs.push({
-      component: 'engine',
-      action: 'switch',
-      key: 'engineSwitch',
-      extra: component,
-    });
-  }
-
-  await runEngineFlow(
-    jobs,
-    {
-      component: component as Tachyon.ComponentName,
-      action: action as Tachyon.ComponentAction,
-      componentTitle: getComponentCardTitle(component as Tachyon.ComponentName),
-      currentVersion: getComponentCurrentVersion(
-        component as Tachyon.ComponentName,
-      ),
-    },
-    action === 'install'
-      ? `${_('Active engine')}: ${engineLabel(component)}`
-      : `${_('Steer')}: ${action}`,
-  );
-}
-
 async function applyEngineSelection(
   engine: string,
   current: string,
@@ -3389,21 +3133,17 @@ function renderUpdatesComponents() {
     .filter((card) => card.component !== 'sing_box')
     .filter((card) => isComponentCardVisible(card, systemInfo));
 
-  const columns: Node[][] = [[], [], []];
-  const colCounts = [0, 0, 0];
-  visibleCards.forEach((card) => {
-    colCounts[card.column] = (colCounts[card.column] || 0) + 1;
-  });
-  const hasEmptyColumn =
-    colCounts.some((c) => c === 0) && visibleCards.length >= 3;
-
+  const allCards: Node[] = [];
   visibleCards.forEach((card, idx) => {
-    const colIdx = hasEmptyColumn ? idx % 3 : card.column;
-    columns[colIdx]?.push(renderComponentCard(card));
-
+    allCards.push(renderComponentCard(card));
     if (idx === 0) {
-      columns[colIdx]?.push(renderEngineCard());
+      allCards.push(renderEngineCard());
     }
+  });
+
+  const columns: Node[][] = [[], []];
+  allCards.forEach((node, idx) => {
+    columns[idx % 2]?.push(node);
   });
 
   return preserveScrollForPage(() => {

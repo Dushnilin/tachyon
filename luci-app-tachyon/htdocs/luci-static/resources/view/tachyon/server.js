@@ -1322,8 +1322,10 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     defaultPort = "51820";
   } else if (protocol === "hysteria2") {
     defaultPort = "443";
-  } else if (protocol === "tuic" || protocol === "mieru") {
+  } else if (protocol === "tuic") {
     defaultPort = "8443";
+  } else if (protocol === "mieru") {
+    defaultPort = "2012-2022";
   } else if (protocol === "shadowsocks") {
     defaultPort = "8388";
   } else if (protocol === "socks") {
@@ -1684,7 +1686,8 @@ function getServerPort(sectionId) {
     return `${routerNetworkEnvCache.recommended_ports[protocol]}`;
   }
   if (protocol === "awg") return "51820";
-  if (protocol === "tuic" || protocol === "mieru") return "8443";
+  if (protocol === "mieru") return "2012-2022";
+  if (protocol === "tuic") return "8443";
   if (protocol === "shadowsocks") return "8388";
   if (protocol === "socks") return "1080";
   if (protocol === "http" || protocol === "mixed") return "8080";
@@ -2074,7 +2077,9 @@ function buildMieruLink(sectionId, identity, options = {}) {
   const uriHost = formatHostForUri(host);
   const rawPort =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
-    (typeof getServerPort === "function" ? getServerPort(sectionId) : "8443");
+    (typeof getServerPort === "function"
+      ? getServerPort(sectionId)
+      : "2012-2022");
   const port = `${rawPort}`
     .trim()
     .split(/[\s,]+/)
@@ -2302,10 +2307,20 @@ function buildAwgClientConfig(sectionId, targetVersion, options = {}) {
     const jc = uci.get(UCI_PACKAGE, sectionId, "awg_jc") || "4";
     const jmin = uci.get(UCI_PACKAGE, sectionId, "awg_jmin") || "40";
     const jmax = uci.get(UCI_PACKAGE, sectionId, "awg_jmax") || "70";
-    const s1 = uci.get(UCI_PACKAGE, sectionId, "awg_s1") || "0";
-    const s2 = uci.get(UCI_PACKAGE, sectionId, "awg_s2") || "0";
-    const s3 = uci.get(UCI_PACKAGE, sectionId, "awg_s3") || "0";
-    const s4 = uci.get(UCI_PACKAGE, sectionId, "awg_s4") || "0";
+    let s1 = uci.get(UCI_PACKAGE, sectionId, "awg_s1") || "0";
+    let s2 = uci.get(UCI_PACKAGE, sectionId, "awg_s2") || "0";
+    let s3 = uci.get(UCI_PACKAGE, sectionId, "awg_s3") || "0";
+    let s4 = uci.get(UCI_PACKAGE, sectionId, "awg_s4") || "0";
+    const hpk =
+      effectiveVer === "3.0" || effectiveVer === "3.1"
+        ? uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || ""
+        : "";
+    if (hpk) {
+      if ((parseInt(s1, 10) || 0) < 12) s1 = "20";
+      if ((parseInt(s2, 10) || 0) < 12) s2 = "20";
+      if ((parseInt(s3, 10) || 0) < 12) s3 = "20";
+      if ((parseInt(s4, 10) || 0) < 12) s4 = "20";
+    }
     const h1 = uci.get(UCI_PACKAGE, sectionId, "awg_h1") || "1";
     const h2 = uci.get(UCI_PACKAGE, sectionId, "awg_h2") || "2";
     const h3 = uci.get(UCI_PACKAGE, sectionId, "awg_h3") || "3";
@@ -2332,8 +2347,6 @@ function buildAwgClientConfig(sectionId, targetVersion, options = {}) {
     if (itime) conf += `Itime = ${itime}\n`;
 
     if (effectiveVer === "3.0" || effectiveVer === "3.1") {
-      const hpk =
-        uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || "";
       const cpa =
         uci.get(UCI_PACKAGE, sectionId, "awg_content_padding_addition") || "";
       if (hpk) conf += `HeaderProtectionKey = ${hpk}\n`;
@@ -4209,7 +4222,7 @@ function autoConfigureServer(sectionId) {
     } else if (protocol === "http" || protocol === "mixed") {
       chosenPort = "8080";
     } else if (protocol === "mieru") {
-      chosenPort = recPorts.mieru ? `${recPorts.mieru}` : "2012";
+      chosenPort = recPorts.mieru ? `${recPorts.mieru}` : "2012-2022";
     } else if (protocol === "trusttunnel") {
       chosenPort = recPorts.trusttunnel ? `${recPorts.trusttunnel}` : "9443";
     } else if (protocol === "tewfai") {
@@ -4225,13 +4238,51 @@ function autoConfigureServer(sectionId) {
     for (const s of serverSections) {
       if (s[".name"] === sectionId) continue;
       const p = uci.get(UCI_PACKAGE, s[".name"], "listen_port");
-      if (p) usedPorts.add(parseInt(p, 10));
+      if (!p) continue;
+      const tokens = `${p}`.split(/[\s,]+/).filter(Boolean);
+      for (const tok of tokens) {
+        const rm = tok.match(/^([0-9]+)[-:]([0-9]+)$/);
+        if (rm) {
+          const lo = parseInt(rm[1], 10);
+          const hi = Math.min(parseInt(rm[2], 10), lo + 200);
+          for (let k = lo; k <= hi; k += 1) usedPorts.add(k);
+        } else {
+          const single = parseInt(tok, 10);
+          if (single) usedPorts.add(single);
+        }
+      }
     }
-    let pNum = parseInt(chosenPort, 10) || 443;
-    while (usedPorts.has(pNum) && pNum < 65535) {
-      pNum = pNum === 443 ? 8443 : pNum + 1;
+    if (protocol === "mieru") {
+      let basePort = 2012;
+      const rangeMatch = `${chosenPort}`.match(/^([0-9]+)[-:]([0-9]+)$/);
+      if (rangeMatch) {
+        basePort = parseInt(rangeMatch[1], 10) || 2012;
+      } else if (/^[0-9]+$/.test(`${chosenPort}`)) {
+        const parsedBase = parseInt(chosenPort, 10);
+        if (parsedBase && parsedBase !== 8443 && parsedBase !== 443) {
+          basePort = parsedBase;
+        }
+      }
+      const rangeIntersects = (lo, hi) => {
+        for (let p = lo; p <= hi; p += 1) {
+          if (usedPorts.has(p)) return true;
+        }
+        return false;
+      };
+      while (
+        rangeIntersects(basePort, basePort + 10) &&
+        basePort + 10 < 65535
+      ) {
+        basePort += 20;
+      }
+      chosenPort = `${basePort}-${basePort + 10}`;
+    } else {
+      let pNum = parseInt(chosenPort, 10) || 443;
+      while (usedPorts.has(pNum) && pNum < 65535) {
+        pNum = pNum === 443 ? 8443 : pNum + 1;
+      }
+      chosenPort = `${pNum}`;
     }
-    chosenPort = `${pNum}`;
 
     if (protocol !== "tailscale" && protocol !== "json_inbound") {
       setWidgetValue(sectionId, "listen_port", chosenPort);
@@ -4372,8 +4423,20 @@ function autoConfigureServer(sectionId) {
       setWidgetValue(sectionId, "awg_jmax", "70");
       setWidgetValue(sectionId, "awg_s1", `${randomIntInRange(15, 45)}`);
       setWidgetValue(sectionId, "awg_s2", `${randomIntInRange(15, 45)}`);
-      setWidgetValue(sectionId, "awg_s3", "0");
-      setWidgetValue(sectionId, "awg_s4", "0");
+      setWidgetValue(
+        sectionId,
+        "awg_s3",
+        awgVer === "3.0" || awgVer === "3.1"
+          ? `${randomIntInRange(15, 45)}`
+          : "0",
+      );
+      setWidgetValue(
+        sectionId,
+        "awg_s4",
+        awgVer === "3.0" || awgVer === "3.1"
+          ? `${randomIntInRange(15, 45)}`
+          : "0",
+      );
       setWidgetValue(sectionId, "awg_h1", h1);
       setWidgetValue(sectionId, "awg_h2", h2);
       setWidgetValue(sectionId, "awg_h3", h3);
@@ -6390,6 +6453,12 @@ function createServerContent(section, options = {}) {
   o.depends("protocol", "awg");
   o.onchange = function (_ev, sectionId, value) {
     if (value === "3.0" || value === "3.1") {
+      for (const sk of ["awg_s1", "awg_s2", "awg_s3", "awg_s4"]) {
+        const curS = parseInt(getCurrentOptionValue(sectionId, sk, "0"), 10);
+        if (isNaN(curS) || curS < 12) {
+          setWidgetValue(sectionId, sk, `${randomIntInRange(15, 45)}`);
+        }
+      }
       if (!getCurrentOptionValue(sectionId, "awg_header_protection_key", "")) {
         setWidgetValue(
           sectionId,
@@ -6436,6 +6505,14 @@ function createServerContent(section, options = {}) {
       uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
       uci.unset(UCI_PACKAGE, section_id, "awg_keepalive_timeout");
       uci.unset(UCI_PACKAGE, section_id, "awg_max_handshake_attempts");
+    }
+    if (formvalue === "3.0" || formvalue === "3.1") {
+      for (const sk of ["awg_s1", "awg_s2", "awg_s3", "awg_s4"]) {
+        const curS = parseInt(getCurrentOptionValue(section_id, sk, "0"), 10);
+        if (isNaN(curS) || curS < 12) {
+          uci.set(UCI_PACKAGE, section_id, sk, "20");
+        }
+      }
     }
     return uci.set(UCI_PACKAGE, section_id, "awg_version", formvalue);
   };

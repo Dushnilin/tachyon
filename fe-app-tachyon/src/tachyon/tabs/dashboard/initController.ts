@@ -14,7 +14,7 @@ import {
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
-import { renderCopyIcon24, renderLoaderCircleIcon24 } from '../../../icons';
+import { renderCopyIcon24 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import { tr, isRussianLanguage } from '../../helpers/i18n';
 import {
@@ -37,6 +37,11 @@ import {
   patchConnections,
   patchExistingClientRowsByIp,
   IConnection,
+  renderKpiRow,
+  renderTrafficChartCard,
+  renderDashboardSectionsAndNodes,
+  renderSectionConditionsAndBalancersView,
+  openSectionIconPickerModal,
 } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
@@ -62,9 +67,13 @@ import {
   TrafficRatesState,
 } from './metrics';
 import {
+  applyDashboardLayoutToDom,
+  getWidgetViewMode,
+  subscribeDashboardLayoutChanges,
+} from './dashboardLayout';
+import {
   getConfiguredServerInbounds,
   renderInboundServersDashboardWidget,
-  switchToServersTab,
 } from './inboundServers';
 
 let expandedSections = getExpandedSections();
@@ -166,8 +175,11 @@ function unsubscribeClashSockets() {
 export const customProxyLatencies = new Map<string, number>();
 const activeCountryFilters = new Map<string, string>();
 const activeRegionFilters = new Map<string, string>();
+const collapsedSourceGroups = new Set<string>();
 const singleTestingOutboundCodes: Record<string, boolean> = {};
 let isTestingAllSections = false;
+let selectedDashboardSectionCode = '';
+let activeSectionModalTab: 'nodes' | 'conditions' = 'nodes';
 
 let dashboardVisibilityPaused = false;
 
@@ -1664,7 +1676,11 @@ function renderCommonDetailsModal(
           type: 'button',
           class: 'btn cbi-button cbi-button-neutral',
           click: () => {
-            ui.hideModal();
+            if (selectedDashboardSectionCode) {
+              openSectionInspectorModal(selectedDashboardSectionCode);
+            } else {
+              ui.hideModal();
+            }
           },
         },
         _('Close'),
@@ -2055,11 +2071,15 @@ function canUpdateLatencyProgressInline(
 }
 
 function findLatencyTestButton(container: HTMLElement, sectionName: string) {
-  return Array.from(
-    container.querySelectorAll<HTMLButtonElement>(
-      `.${LATENCY_TEST_BUTTON_CLASS}`,
-    ),
-  ).find((button) => button.dataset.latencySection === sectionName);
+  const modalRoot = document.getElementById('tachyon-section-inspector-modal');
+  const roots = modalRoot ? [modalRoot, container] : [container];
+  for (const root of roots) {
+    const found = Array.from(
+      root.querySelectorAll<HTMLButtonElement>(`.${LATENCY_TEST_BUTTON_CLASS}`),
+    ).find((button) => button.dataset.latencySection === sectionName);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 function updateLatencyProgressInline(
@@ -2134,23 +2154,11 @@ function scheduleSectionsWidgetRender() {
   }) as unknown as number;
 }
 
-async function renderSectionsWidget() {
-  logger.debug('[DASHBOARD]', 'renderSectionsWidget');
+function getSectionsWithCustomLatencies(): Tachyon.OutboundGroup[] {
   const sectionsWidget = store.get().sectionsWidget;
-  const container = document.getElementById('dashboard-sections-grid');
-
-  if (!container) {
-    return;
-  }
-
-  if (isUserActivelyScrolling()) {
-    scheduleSectionsWidgetRender();
-    return;
-  }
-
   const SERVICE_TYPES = new Set(['SING_BOX', 'ZAPRET', 'ZAPRET2', 'BYEDPI']);
 
-  const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
+  return sectionsWidget.data.map((section) => ({
     ...section,
     outbounds: section.outbounds.map((outbound) => {
       const customLatency = customProxyLatencies.get(outbound.code);
@@ -2191,6 +2199,311 @@ async function renderSectionsWidget() {
       };
     }),
   }));
+}
+
+function renderSectionInspectorModalContent(
+  section: Tachyon.OutboundGroup,
+  allSections: Tachyon.OutboundGroup[],
+  proxySectionCount: number,
+): HTMLElement {
+  const sectionsWidget = store.get().sectionsWidget;
+  const bwData = store.get().bandwidthWidget.data;
+  const totData = store.get().trafficTotalWidget.data;
+
+  const sectionSwitcher =
+    allSections.length > 1
+      ? E(
+          'div',
+          { class: 'tachyon-sec-modal__switcher' },
+          allSections.map((sec) => {
+            const isSelected = sec.code === section.code;
+            return E(
+              'button',
+              {
+                type: 'button',
+                class: `tachyon-sec-modal__switch-pill ${
+                  isSelected ? 'is-active' : ''
+                }`,
+                click: (e: MouseEvent) => {
+                  e.preventDefault();
+                  selectedDashboardSectionCode = sec.code;
+                  openSectionInspectorModal(sec.code);
+                  void renderSectionsWidget();
+                },
+              },
+              renderFlagEmojis(sec.displayName || sec.sectionName || sec.code),
+            );
+          }),
+        )
+      : null;
+
+  const tabsBar = E('ul', { class: 'cbi-tabmenu tachyon-sec-modal-tabs' }, [
+    E(
+      'li',
+      {
+        class:
+          activeSectionModalTab === 'nodes' ? 'cbi-tab' : 'cbi-tab-disabled',
+      },
+      [
+        E(
+          'a',
+          {
+            href: '#',
+            click: (e: MouseEvent) => {
+              e.preventDefault();
+              activeSectionModalTab = 'nodes';
+              openSectionInspectorModal(section.code);
+            },
+          },
+          tr('Узлы и балансировщики', 'Nodes & Balancers'),
+        ),
+      ],
+    ),
+    E(
+      'li',
+      {
+        class:
+          activeSectionModalTab === 'conditions'
+            ? 'cbi-tab'
+            : 'cbi-tab-disabled',
+      },
+      [
+        E(
+          'a',
+          {
+            href: '#',
+            click: (e: MouseEvent) => {
+              e.preventDefault();
+              activeSectionModalTab = 'conditions';
+              openSectionInspectorModal(section.code);
+            },
+          },
+          tr('Условия и правила', 'Conditions & Rules'),
+        ),
+      ],
+    ),
+  ]);
+
+  const tabBody =
+    activeSectionModalTab === 'nodes'
+      ? E('div', { class: 'tachyon-sec-modal__nodes-pane' }, [
+          renderSections({
+            loading: false,
+            failed: false,
+            section,
+            isCollapsed: false,
+            collapsedSourceGroups,
+            onToggleSourceGroupCollapse: (groupKey: string) => {
+              if (collapsedSourceGroups.has(groupKey)) {
+                collapsedSourceGroups.delete(groupKey);
+              } else {
+                collapsedSourceGroups.add(groupKey);
+              }
+              void renderSectionsWidget();
+            },
+            activeCountryFilter: activeCountryFilters.get(section.sectionName),
+            onFilterCountry: (sectionName: string, countryCode?: string) => {
+              if (countryCode) {
+                activeCountryFilters.set(sectionName, countryCode);
+              } else {
+                activeCountryFilters.delete(sectionName);
+              }
+              void renderSectionsWidget();
+            },
+            activeRegionFilter: activeRegionFilters.get(section.sectionName),
+            onFilterRegion: (sectionName: string, regionCode?: string) => {
+              if (regionCode && regionCode !== 'all') {
+                activeRegionFilters.set(sectionName, regionCode);
+              } else {
+                activeRegionFilters.delete(sectionName);
+              }
+              void renderSectionsWidget();
+            },
+            onTestLatency: (tag: string | string[]) => {
+              if (Array.isArray(tag)) {
+                void handleTestLatency(
+                  'proxy_list',
+                  section.sectionName,
+                  JSON.stringify(tag),
+                );
+                return;
+              }
+              if (section.withTagSelect) {
+                void handleTestLatency('group', section.sectionName, tag);
+                return;
+              }
+              void handleTestLatency(
+                'proxy',
+                section.sectionName,
+                tag,
+                section.latencyTestTimeout,
+              );
+            },
+            onChooseOutbound: (sectionName, selector, tag) => {
+              void handleChooseOutbound(sectionName, selector, tag);
+            },
+            onCopyOutbound: (_sec, outbound) => {
+              void handleCopyOutbound(outbound);
+            },
+            onShowUrlTestInfo: (sec, outbound) => {
+              handleShowUrlTestInfo(sec, outbound);
+            },
+            onShowPriorityInfo: (sec, outbound) => {
+              handleShowPriorityInfo(sec, outbound);
+            },
+            onUpdateSubscription: (sec) => {
+              void handleUpdateSubscription(sec);
+            },
+            latencyFetching: Boolean(
+              sectionsWidget.latencyFetchingSections[section.sectionName],
+            ),
+            latencyProgress:
+              sectionsWidget.latencyProgressSections[section.sectionName],
+            subscriptionUpdating: Boolean(
+              sectionsWidget.subscriptionUpdatingSections[section.sectionName],
+            ),
+            selectorSwitchingTag:
+              sectionsWidget.selectorSwitchingSections[section.sectionName],
+            onTestSingleOutbound: (sectionName, outboundCode) => {
+              void handleTestSingleOutbound(sectionName, outboundCode);
+            },
+            testingOutboundCodes: singleTestingOutboundCodes,
+            sectionStats: getSectionConnectionStats(
+              section.sectionName || 'main',
+              proxySectionCount || 1,
+              lastRawConnections,
+              {
+                downloadTotal: totData?.downloadTotal,
+                uploadTotal: totData?.uploadTotal,
+                downSpeed: bwData?.down,
+                upSpeed: bwData?.up,
+              },
+              connectionRates,
+            ),
+          }),
+        ])
+      : E('div', { class: 'tachyon-sec-modal__conditions-pane' }, [
+          renderSectionConditionsAndBalancersView(section, {
+            onShowUrlTestInfo: (sec, outbound) => {
+              handleShowUrlTestInfo(sec, outbound);
+            },
+            onShowPriorityInfo: (sec, outbound) => {
+              handleShowPriorityInfo(sec, outbound);
+            },
+            onChooseOutbound: (sectionName, selector, tag) => {
+              void handleChooseOutbound(sectionName, selector, tag);
+            },
+          }),
+        ]);
+
+  return E(
+    'div',
+    {
+      id: 'tachyon-section-inspector-modal',
+      class: 'tachyon-section-inspector-modal',
+    },
+    [
+      ...(sectionSwitcher ? [sectionSwitcher] : []),
+      tabsBar,
+      tabBody,
+      E('div', { class: 'tachyon-sec-modal__footer' }, [
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button',
+            click: (e: MouseEvent) => {
+              e.preventDefault();
+              openSectionIconPickerModal(section, () => {
+                openSectionInspectorModal(section.code);
+              });
+            },
+          },
+          tr('🎨 Иконка сайта (favicon)', '🎨 Website Icon (favicon)'),
+        ),
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button',
+            click: (e: MouseEvent) => {
+              e.preventDefault();
+              const targetSecId = section.sectionName || section.code;
+              selectedDashboardSectionCode = '';
+              ui.hideModal();
+              const openEntity = (globalThis as any).__tachyonOpenEntityModal;
+              if (typeof openEntity === 'function' && targetSecId) {
+                openEntity('section', targetSecId, 'sections');
+                return;
+              }
+              const navSub = document.querySelector<HTMLElement>(
+                '.tachyon-sidebar__subitem[data-nav-key="section:sections"]',
+              );
+              if (navSub) {
+                navSub.click();
+              } else {
+                const topTab = document.querySelector<HTMLElement>(
+                  '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a',
+                );
+                topTab?.click();
+              }
+            },
+          },
+          tr('Настроить секцию и правила →', 'Configure section & rules →'),
+        ),
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button cbi-button-neutral',
+            click: (e: MouseEvent) => {
+              e.preventDefault();
+              selectedDashboardSectionCode = '';
+              ui.hideModal();
+              void renderSectionsWidget();
+            },
+          },
+          _('Close'),
+        ),
+      ]),
+    ],
+  );
+}
+
+function openSectionInspectorModal(sectionCode: string) {
+  const allSections = getSectionsWithCustomLatencies();
+  const section =
+    allSections.find((s) => s.code === sectionCode) || allSections[0];
+  if (!section) return;
+  selectedDashboardSectionCode = section.code;
+  const totalSectionCount = Math.max(1, allSections.length);
+
+  const titleText = `${tr('Секция', 'Section')}: ${
+    section.displayName || section.sectionName || section.code
+  }`;
+  const content = renderSectionInspectorModalContent(
+    section,
+    allSections,
+    totalSectionCount,
+  );
+  ui.showModal(titleText, [content]);
+}
+
+async function renderSectionsWidget() {
+  logger.debug('[DASHBOARD]', 'renderSectionsWidget');
+  const sectionsWidget = store.get().sectionsWidget;
+  const container = document.getElementById('dashboard-sections-grid');
+
+  if (!container) {
+    return;
+  }
+
+  if (isUserActivelyScrolling()) {
+    scheduleSectionsWidgetRender();
+    return;
+  }
+
+  const sectionsWithCustomLatencies = getSectionsWithCustomLatencies();
 
   if (sectionsWidget.loading || sectionsWidget.failed) {
     const renderedWidget = renderSections({
@@ -2222,188 +2535,130 @@ async function renderSectionsWidget() {
     }, container);
   }
 
-  const hasTestableSections = sectionsWithCustomLatencies.some(
-    (s) =>
-      s.outbounds &&
-      s.outbounds.length > 0 &&
-      !SERVICE_TYPES.has(s.outbounds[0]?.type),
+  const totalSectionCount = Math.max(1, sectionsWithCustomLatencies.length);
+  const bwData = store.get().bandwidthWidget.data;
+  const totData = store.get().trafficTotalWidget.data;
+
+  const existingModal = document.getElementById(
+    'tachyon-section-inspector-modal',
   );
-
-  const testAllHeader = hasTestableSections
-    ? E(
-        'div',
-        {
-          class: 'tachyon_dashboard-page__sections-header',
-        },
-        [
-          E(
-            'div',
-            {
-              class: 'tachyon_dashboard-page__sections-header__title',
-            },
-            [
-              svgEl(
-                'svg',
-                {
-                  width: '16',
-                  height: '16',
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  'stroke-width': '2',
-                  'stroke-linecap': 'round',
-                  'stroke-linejoin': 'round',
-                },
-                [
-                  svgEl('circle', { cx: '6', cy: '19', r: '3' }),
-                  svgEl('path', {
-                    d: 'M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15',
-                  }),
-                  svgEl('circle', { cx: '18', cy: '5', r: '3' }),
-                ],
-              ),
-              E('span', {}, _('Routing sections')),
-            ],
-          ),
-          E(
-            'div',
-            {
-              class: 'tachyon_dashboard-page__sections-header__actions',
-            },
-            [
-              E(
-                'button',
-                {
-                  type: 'button',
-                  id: 'dashboard-test-all-sections-button',
-                  class: 'btn',
-                  disabled: isTestingAllSections ? true : undefined,
-                  click: () => {
-                    void handleTestAllSections();
-                  },
-                },
-                isTestingAllSections
-                  ? [
-                      renderLoaderCircleIcon24(),
-                      E('span', {}, _('Testing all sections...')),
-                    ]
-                  : E('span', {}, _('Test all sections')),
-              ),
-            ],
-          ),
-        ],
-      )
-    : null;
-
-  const renderedWidgets: HTMLElement[] = [];
-  let pendingServiceCards: HTMLElement[] = [];
-
-  const flushServiceCards = () => {
-    if (pendingServiceCards.length === 0) return;
-    if (pendingServiceCards.length === 1) {
-      renderedWidgets.push(pendingServiceCards[0]);
-    } else {
-      renderedWidgets.push(
-        E(
-          'div',
-          { class: 'tachyon_dashboard-page__service-sections-row' },
-          pendingServiceCards,
-        ),
-      );
-    }
-    pendingServiceCards = [];
-  };
-
-  for (const section of sectionsWithCustomLatencies) {
-    const widget = renderSections({
-      loading: sectionsWidget.loading,
-      failed: sectionsWidget.failed,
-      section,
-      isCollapsed: !expandedSections.has(section.code),
-      onToggleCollapse: () => toggleSectionExpanded(section.code),
-      collapsedSourceGroups: expandedSections,
-      onToggleSourceGroupCollapse: (groupKey: string) =>
-        toggleSectionExpanded(groupKey),
-      activeCountryFilter: activeCountryFilters.get(section.sectionName),
-      onFilterCountry: (sectionName: string, countryCode?: string) => {
-        if (countryCode) {
-          activeCountryFilters.set(sectionName, countryCode);
-        } else {
-          activeCountryFilters.delete(sectionName);
-        }
-        void renderSectionsWidget();
-      },
-      activeRegionFilter: activeRegionFilters.get(section.sectionName) || 'all',
-      onFilterRegion: (sectionName: string, region: string) => {
-        activeRegionFilters.set(sectionName, region);
-        activeCountryFilters.delete(sectionName);
-        void renderSectionsWidget();
-      },
-      latencyFetching: Boolean(
-        sectionsWidget.latencyFetchingSections[section.sectionName],
-      ),
-      latencyProgress:
-        sectionsWidget.latencyProgressSections[section.sectionName],
-      subscriptionUpdating: Boolean(
-        sectionsWidget.subscriptionUpdatingSections[section.sectionName],
-      ),
-      selectorSwitchingTag:
-        sectionsWidget.selectorSwitchingSections[section.sectionName],
-      onTestSingleOutbound: (sectionName, outboundCode) => {
-        void handleTestSingleOutbound(sectionName, outboundCode);
-      },
-      testingOutboundCodes: singleTestingOutboundCodes,
-      onTestLatency: (tag) => {
-        if (section.withTagSelect) {
-          if (Array.isArray(tag)) {
-            return handleTestLatency(
-              'proxy_list',
-              section.sectionName,
-              JSON.stringify(tag),
-            );
-          }
-
-          return handleTestLatency('group', section.sectionName, tag);
-        }
-
-        return handleTestLatency(
-          'proxy',
-          section.sectionName,
-          Array.isArray(tag) ? JSON.stringify(tag) : tag,
-          section.latencyTestTimeout,
-        );
-      },
-      onChooseOutbound: (sectionName, selector, tag) => {
-        void handleChooseOutbound(sectionName, selector, tag);
-      },
-      onCopyOutbound: (_section, outbound) => {
-        handleCopyOutbound(outbound);
-      },
-      onShowUrlTestInfo: (section, outbound) => {
-        handleShowUrlTestInfo(section, outbound);
-      },
-      onShowPriorityInfo: (section, outbound) => {
-        handleShowPriorityInfo(section, outbound);
-      },
-      onUpdateSubscription: (section) => {
-        void handleUpdateSubscription(section);
-      },
-    });
-
-    if (isServiceGroup(section)) {
-      pendingServiceCards.push(widget);
-    } else {
-      flushServiceCards();
-      renderedWidgets.push(widget);
+  if (!existingModal && selectedDashboardSectionCode) {
+    // Keep selection only while a modal is active
+    const anyModalOpen = document.body.classList.contains(
+      'modal-overlay-active',
+    );
+    if (!anyModalOpen) {
+      selectedDashboardSectionCode = '';
     }
   }
-  flushServiceCards();
+
+  const dashboardBlocks = renderDashboardSectionsAndNodes({
+    sections: sectionsWithCustomLatencies,
+    selectedSectionCode: selectedDashboardSectionCode,
+    onSelectSection: (sectionCode: string) => {
+      selectedDashboardSectionCode = sectionCode;
+      const clickedSec = sectionsWithCustomLatencies.find(
+        (s) => s.code === sectionCode || s.sectionName === sectionCode,
+      );
+      activeSectionModalTab =
+        clickedSec && isServiceGroup(clickedSec) ? 'conditions' : 'nodes';
+      openSectionInspectorModal(sectionCode);
+      void renderSectionsWidget();
+    },
+    getSectionStats: (sec) =>
+      getSectionConnectionStats(
+        sec.sectionName || 'main',
+        totalSectionCount,
+        lastRawConnections,
+        {
+          downloadTotal: totData?.downloadTotal,
+          uploadTotal: totData?.uploadTotal,
+          downSpeed: bwData?.down,
+          upSpeed: bwData?.up,
+        },
+        connectionRates,
+      ),
+    isTestingAllSections,
+    onTestAllSections: () => {
+      void handleTestAllSections();
+    },
+    latencyFetchingSections: sectionsWidget.latencyFetchingSections,
+    latencyProgressSections: sectionsWidget.latencyProgressSections,
+    subscriptionUpdatingSections: sectionsWidget.subscriptionUpdatingSections,
+    selectorSwitchingSections: sectionsWidget.selectorSwitchingSections,
+    testingOutboundCodes: singleTestingOutboundCodes,
+    activeCountryFilters,
+    onFilterCountry: (sectionName: string, countryCode?: string) => {
+      if (countryCode) {
+        activeCountryFilters.set(sectionName, countryCode);
+      } else {
+        activeCountryFilters.delete(sectionName);
+      }
+      void renderSectionsWidget();
+    },
+    onTestSectionLatency: (section) => {
+      if (section.withTagSelect) {
+        const tag = section.latencyTestCodes?.length
+          ? section.latencyTestCodes
+          : section.latencyTestCode || section.code;
+        if (Array.isArray(tag)) {
+          void handleTestLatency(
+            'proxy_list',
+            section.sectionName,
+            JSON.stringify(tag),
+          );
+          return;
+        }
+        void handleTestLatency('group', section.sectionName, tag);
+        return;
+      }
+      if (section.outbounds.length) {
+        void handleTestLatency(
+          'proxy',
+          section.sectionName,
+          section.outbounds[0].code,
+          section.latencyTestTimeout,
+        );
+      }
+    },
+    onTestSingleOutbound: (sectionName, outboundCode) => {
+      void handleTestSingleOutbound(sectionName, outboundCode);
+    },
+    onChooseOutbound: (sectionName, selector, tag) => {
+      void handleChooseOutbound(sectionName, selector, tag);
+    },
+    onCopyOutbound: (_section, outbound) => {
+      handleCopyOutbound(outbound);
+    },
+    onShowUrlTestInfo: (section, outbound) => {
+      handleShowUrlTestInfo(section, outbound);
+    },
+    onShowPriorityInfo: (section, outbound) => {
+      handleShowPriorityInfo(section, outbound);
+    },
+    onUpdateSubscription: (section) => {
+      void handleUpdateSubscription(section);
+    },
+  });
+
+  if (existingModal && selectedDashboardSectionCode) {
+    const activeSec = sectionsWithCustomLatencies.find(
+      (s) => s.code === selectedDashboardSectionCode,
+    );
+    if (activeSec) {
+      const updatedModalContent = renderSectionInspectorModalContent(
+        activeSec,
+        sectionsWithCustomLatencies,
+        totalSectionCount,
+      );
+      preserveScrollForPage(() => {
+        existingModal.replaceWith(updatedModalContent);
+      }, existingModal);
+    }
+  }
 
   return preserveScrollForPage(() => {
-    container.replaceChildren(
-      ...(testAllHeader ? [testAllHeader] : []),
-      ...renderedWidgets,
-    );
+    container.replaceChildren(...dashboardBlocks);
   }, container);
 }
 
@@ -2628,7 +2883,11 @@ function renderConnectionsWidget() {
     return;
   }
 
-  const isCollapsed = !expandedSections.has('active_clients');
+  const clientsViewMode = getWidgetViewMode('active_clients') || 'collapsible';
+  const isCollapsed =
+    clientsViewMode === 'expanded' || clientsViewMode === 'domains_focus'
+      ? false
+      : !expandedSections.has('active_clients');
 
   // Fast-path in-place DOM update without replacing children
   if (
@@ -2637,6 +2896,7 @@ function renderConnectionsWidget() {
       currentConnections,
       isCollapsed,
       currentTopDomains,
+      clientsViewMode,
     )
   ) {
     return;
@@ -2675,6 +2935,7 @@ function renderConnectionsWidget() {
         isCollapsed,
         () => toggleSectionExpanded('active_clients'),
         currentTopDomains,
+        clientsViewMode,
       ),
     );
   }, container);
@@ -2692,24 +2953,8 @@ export function getSectionConnectionStats(
   },
   rates: ReadonlyMap<string, TrafficSample> = new Map(),
 ) {
-  if (totalProxySections <= 1) {
-    return {
-      conns: rawConns.length,
-      upload: totals.uploadTotal || 0,
-      download: totals.downloadTotal || 0,
-      downSpeed: totals.downSpeed || 0,
-      upSpeed: totals.upSpeed || 0,
-    };
-  }
-
   const target = (sectionName || '').toLowerCase();
-  let conns = 0;
-  let upload = 0;
-  let download = 0;
-  let downSpeed = 0;
-  let upSpeed = 0;
-
-  for (const c of rawConns) {
+  const matchesTarget = (c: ConnectionTrafficSample): boolean => {
     const rawChains = Array.isArray(c.chains)
       ? c.chains
       : Array.isArray((c as any).metadata?.chains)
@@ -2725,6 +2970,45 @@ export function getSectionConnectionStats(
           ch.startsWith(`${target}-priority-`),
       )
     ) {
+      return true;
+    }
+    const ruleStr = String(
+      (c as any).rule || (c as any).rulePayload || '',
+    ).toLowerCase();
+    if (
+      ruleStr &&
+      (ruleStr.includes(`route(${target}-out)`) ||
+        ruleStr.includes(`route(${target})`) ||
+        ruleStr.includes(`rule_set=${target}-`) ||
+        ruleStr.includes(`[${target}-`) ||
+        ruleStr.includes(` ${target}-`))
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  if (
+    totalProxySections <= 1 &&
+    (rawConns.length === 0 || rawConns.every(matchesTarget))
+  ) {
+    return {
+      conns: rawConns.length,
+      upload: totals.uploadTotal || 0,
+      download: totals.downloadTotal || 0,
+      downSpeed: totals.downSpeed || 0,
+      upSpeed: totals.upSpeed || 0,
+    };
+  }
+
+  let conns = 0;
+  let upload = 0;
+  let download = 0;
+  let downSpeed = 0;
+  let upSpeed = 0;
+
+  for (const c of rawConns) {
+    if (matchesTarget(c)) {
       conns++;
       upload += Number(c.upload) || 0;
       download += Number(c.download) || 0;
@@ -2743,9 +3027,26 @@ export function getSectionConnectionStats(
   };
 }
 
+const kpiClientsHistory: number[] = [];
+const kpiSectionsHistory: number[] = [];
+const kpiTrafficHistory: number[] = [];
+const kpiLatencyHistory: number[] = [];
+const trafficChartHistory: Array<{ ts: number; down: number; up: number }> = [];
+
+function pushBoundedSample(arr: number[], value: number, maxLen = 28) {
+  arr.push(Number.isFinite(value) && value >= 0 ? value : 0);
+  if (arr.length > maxLen) {
+    arr.shift();
+  }
+}
+
 export async function renderSectionDashboardWidgets() {
   const container = document.getElementById('dashboard-widgets-sections-list');
-  if (!container) return;
+  const kpiContainer = document.getElementById('dashboard-kpi-row');
+  const chartContainer = document.getElementById(
+    'dashboard-traffic-chart-card',
+  );
+  if (!container && !kpiContainer && !chartContainer) return;
 
   const sectionsWidget = store.get().sectionsWidget;
   const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
@@ -2788,6 +3089,124 @@ export async function renderSectionDashboardWidgets() {
   const total = store.get().trafficTotalWidget.data;
   const loading = sectionsWidget.loading;
   const failed = sectionsWidget.failed;
+
+  const downSpeed = Number(bandwidth?.down) || 0;
+  const upSpeed = Number(bandwidth?.up) || 0;
+  const downloadTotal = Number(total?.downloadTotal) || 0;
+  const uploadTotal = Number(total?.uploadTotal) || 0;
+  const validLatencies = activeRoutes
+    .map((r) => r.latency)
+    .filter((lat) => typeof lat === 'number' && lat > 0);
+  const avgLatencyMs =
+    validLatencies.length > 0
+      ? Math.round(
+          validLatencies.reduce((acc, v) => acc + v, 0) / validLatencies.length,
+        )
+      : 0;
+
+  pushBoundedSample(kpiClientsHistory, currentConnections.length, 20);
+  pushBoundedSample(kpiSectionsHistory, activeRoutes.length, 20);
+  pushBoundedSample(kpiTrafficHistory, downSpeed + upSpeed, 20);
+  if (avgLatencyMs > 0) {
+    pushBoundedSample(kpiLatencyHistory, avgLatencyMs, 20);
+  }
+  trafficChartHistory.push({ ts: Date.now(), down: downSpeed, up: upSpeed });
+  if (trafficChartHistory.length > 30) {
+    trafficChartHistory.shift();
+  }
+
+  if (kpiContainer) {
+    const isLiteMode = Boolean(store.get().servicesInfoWidget.data?.liteMode);
+    kpiContainer.replaceChildren(
+      ...renderKpiRow({
+        activeClients: currentConnections.length,
+        activeConnections:
+          store.get().systemInfoWidget.data?.connections ||
+          lastRawConnections.length ||
+          0,
+        activeSections: activeRoutes.length,
+        downloadTotal,
+        uploadTotal,
+        downSpeed,
+        upSpeed,
+        avgLatencyMs,
+        isLiteMode,
+        clientsHistory: kpiClientsHistory,
+        sectionsHistory: kpiSectionsHistory,
+        trafficHistory: kpiTrafficHistory,
+        latencyHistory: kpiLatencyHistory,
+      }),
+    );
+  }
+
+  if (chartContainer) {
+    chartContainer.replaceChildren(
+      renderTrafficChartCard(trafficChartHistory, downSpeed, upSpeed),
+    );
+  }
+
+  // Patch compact section row metrics in-place inside #dashboard-sections-grid
+  const sectionsGridEl = document.getElementById('dashboard-sections-grid');
+  if (sectionsGridEl) {
+    const totalSectionCount = Math.max(
+      1,
+      sectionsWithCustomLatencies.length,
+      activeRoutes.length,
+    );
+    const rowMetricsNodes = Array.from(
+      sectionsGridEl.querySelectorAll<HTMLElement>(
+        '[data-section-row-metrics]',
+      ),
+    );
+    for (const rowNode of rowMetricsNodes) {
+      const secName =
+        rowNode.getAttribute('data-section-row-metrics') || 'main';
+      const stats = getSectionConnectionStats(
+        secName,
+        totalSectionCount,
+        lastRawConnections,
+        {
+          downloadTotal,
+          uploadTotal,
+          downSpeed,
+          upSpeed,
+        },
+        connectionRates,
+      );
+      const totalEl = rowNode.querySelector<HTMLElement>(
+        '[data-row-metric="session-total"]',
+      );
+      if (totalEl) {
+        const nextTotal = prettyBytes(
+          (stats.download || 0) + (stats.upload || 0),
+        );
+        if (totalEl.textContent !== nextTotal) totalEl.textContent = nextTotal;
+      }
+      const downEl = rowNode.querySelector<HTMLElement>(
+        '[data-row-metric="session-down"]',
+      );
+      if (downEl) {
+        const nextDown = `↓ ${prettyBytes(stats.download || 0)}`;
+        if (downEl.textContent !== nextDown) downEl.textContent = nextDown;
+      }
+      const upEl = rowNode.querySelector<HTMLElement>(
+        '[data-row-metric="session-up"]',
+      );
+      if (upEl) {
+        const nextUp = `↑ ${prettyBytes(stats.upload || 0)}`;
+        if (upEl.textContent !== nextUp) upEl.textContent = nextUp;
+      }
+      const connsEl = rowNode.querySelector<HTMLElement>(
+        '[data-row-metric="conns"]',
+      );
+      if (connsEl) {
+        const nextConns = String(stats.conns);
+        if (connsEl.textContent !== nextConns) connsEl.textContent = nextConns;
+      }
+    }
+  }
+
+  if (!container) return;
 
   const routesToRender: ActiveRouteInfo[] =
     activeRoutes.length > 0
@@ -3147,9 +3566,6 @@ export async function renderSystemServicesWidget() {
     : 0;
   const activeSectionsCount = isTachyonRunning ? proxySections.length : 0;
   const activeClientsCount = isTachyonRunning ? currentConnections.length : 0;
-  const enabledInboundsCount = isTachyonRunning
-    ? getConfiguredServerInbounds().filter((s) => s.enabled).length
-    : 0;
   const isLiteMode = Boolean(srvData?.liteMode);
 
   const liteTooltip = tr(
@@ -3281,21 +3697,6 @@ export async function renderSystemServicesWidget() {
     },
   ];
 
-  if (enabledInboundsCount > 0) {
-    routingItems.push({
-      key: tr('Входящие серверы', 'Inbound Servers'),
-      value: E(
-        'span',
-        {
-          class: 'tachyon-stat-pill tachyon-stat-pill--conns',
-          style: 'cursor: pointer;',
-        },
-        `${enabledInboundsCount} ${tr('активных', 'active')}`,
-      ),
-      onClick: () => switchToServersTab(),
-    });
-  }
-
   const srvItems: Array<{
     key?: string | HTMLElement;
     value: string | HTMLElement | (string | HTMLElement)[];
@@ -3332,12 +3733,6 @@ export async function renderSystemServicesWidget() {
         (() => {
           if (srvData.engineVariant) {
             return srvData.engineVariant;
-          }
-          if (
-            store.get().activeEngine === 'steer' ||
-            store.get().activeEngine === 'steer-extended'
-          ) {
-            return 'Steer';
           }
           const systemInfo = store.get().diagnosticsSystemInfo;
           if (systemInfo?.sing_box_tachyon_core) {
@@ -3399,6 +3794,398 @@ export async function renderSystemServicesWidget() {
         }),
       );
     }
+  }
+
+  const stripContainer = document.getElementById(
+    'dashboard-router-services-strip',
+  );
+  const sysViewMode = getWidgetViewMode('system_status') || 'card';
+  const srvViewMode = getWidgetViewMode('router_services') || 'strip';
+
+  if (stripContainer) {
+    let routingWidget: HTMLElement;
+    if (sysViewMode === 'tiles' && !loading && !failed) {
+      routingWidget = E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__widgets-section__item tachyon-dual-card tachyon-system-tiles-card',
+          'data-system-view': 'tiles',
+        },
+        [
+          E('div', { class: 'tachyon-dual-card__header' }, [
+            E(
+              'span',
+              { class: 'tachyon-dual-card__title-text' },
+              tr('Маршрутизация и система', 'Routing & System'),
+            ),
+            E('span', {
+              class: `tachyon-routing-row__status-dot ${
+                isTachyonRunning ? 'is-online' : 'is-offline'
+              }`,
+              title: isTachyonRunning
+                ? tr('Работает', 'Running')
+                : tr('Остановлен', 'Stopped'),
+            }),
+          ]),
+          E(
+            'div',
+            { class: 'tachyon-system-tiles-grid' },
+            routingItems.map((item) =>
+              E(
+                'div',
+                {
+                  class: 'tachyon-system-tile',
+                  ...(item.attributes || {}),
+                },
+                [
+                  E(
+                    'span',
+                    { class: 'tachyon-system-tile__label' },
+                    item.key || '',
+                  ),
+                  E('div', { class: 'tachyon-system-tile__val' }, item.value),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (sysViewMode === 'cockpit_hud' && !loading && !failed) {
+      routingWidget = E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__widgets-section__item tachyon-dual-card tachyon-system-hud-card',
+          'data-system-view': 'cockpit_hud',
+        },
+        [
+          E('div', { class: 'tachyon-system-hud-card__head' }, [
+            E('div', { class: 'tachyon-system-hud-card__title-wrap' }, [
+              E('span', {
+                class: `tachyon-routing-row__status-dot ${
+                  isTachyonRunning ? 'is-online' : 'is-offline'
+                }`,
+              }),
+              E(
+                'span',
+                { class: 'tachyon-dual-card__title-text' },
+                tr('Приборная панель ядра (HUD)', 'Core Telemetry HUD'),
+              ),
+            ]),
+            E(
+              'span',
+              {
+                class: `tachyon-system-hud-card__status-pill ${
+                  isTachyonRunning ? 'is-online' : 'is-offline'
+                }`,
+              },
+              isTachyonRunning
+                ? tr('ЯДРО АКТИВНО', 'CORE ONLINE')
+                : tr('ОСТАНОВЛЕНО', 'STOPPED'),
+            ),
+          ]),
+          E(
+            'div',
+            { class: 'tachyon-system-hud-grid' },
+            routingItems.map((item, idx) =>
+              E(
+                'div',
+                {
+                  class: `tachyon-system-hud-cell is-accent-${(idx % 4) + 1}`,
+                  ...(item.attributes || {}),
+                },
+                [
+                  E(
+                    'span',
+                    { class: 'tachyon-system-hud-cell__label' },
+                    item.key || '',
+                  ),
+                  E(
+                    'div',
+                    { class: 'tachyon-system-hud-cell__val' },
+                    item.value,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (sysViewMode === 'banner' && !loading && !failed) {
+      routingWidget = E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__widgets-section__item tachyon-dual-card tachyon-system-banner-card',
+          'data-system-view': 'banner',
+        },
+        [
+          E('div', { class: 'tachyon-system-banner-card__left' }, [
+            E('span', {
+              class: `tachyon-routing-row__status-dot ${
+                isTachyonRunning ? 'is-online' : 'is-offline'
+              }`,
+              title: isTachyonRunning
+                ? tr('Работает', 'Running')
+                : tr('Остановлен', 'Stopped'),
+            }),
+            E(
+              'strong',
+              { class: 'tachyon-system-banner-card__title' },
+              tr('Маршрутизация', 'Routing'),
+            ),
+          ]),
+          E(
+            'div',
+            { class: 'tachyon-system-banner-card__items' },
+            routingItems.map((item) =>
+              E(
+                'div',
+                {
+                  class: 'tachyon-system-banner-card__item',
+                  ...(item.attributes || {}),
+                },
+                [
+                  E(
+                    'span',
+                    { class: 'tachyon-system-banner-card__key' },
+                    `${item.key || ''}:`,
+                  ),
+                  E(
+                    'span',
+                    { class: 'tachyon-system-banner-card__val' },
+                    item.value,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    } else {
+      routingWidget = renderDualWidget({
+        loading,
+        failed,
+        title: tr('Маршрутизация и правила', 'Routing & Rules'),
+        badge: isTachyonRunning
+          ? tr('Активна', 'Active')
+          : tr('Остановлена', 'Stopped'),
+        attributes: {
+          class:
+            'tachyon-dual-card--system-pinned tachyon-dual-card--single-col',
+          'data-system-view': 'card',
+        },
+        columns: [
+          {
+            items: routingItems,
+          },
+        ],
+      });
+    }
+
+    preserveScrollForPage(() => {
+      container.replaceChildren(routingWidget);
+    }, container);
+
+    if (loading || failed || srvItems.length === 0) {
+      stripContainer.replaceChildren();
+    } else if (srvViewMode === 'cards') {
+      const servicesCards = E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__widgets-section__item tachyon-router-services-cards-wrap',
+          'data-services-view': 'cards',
+        },
+        [
+          E('div', { class: 'tachyon-router-services-cards-head' }, [
+            E(
+              'span',
+              { class: 'tachyon-router-services-bar__title' },
+              tr('Службы роутера', 'Router Services'),
+            ),
+          ]),
+          E(
+            'div',
+            { class: 'tachyon-router-services-cards-grid' },
+            srvItems.map((item) => {
+              const rowAttrs: Record<string, unknown> = {
+                class:
+                  `tachyon-router-service-card ${item?.attributes?.class || ''}`.trim(),
+              };
+              if (item?.attributes?.title) {
+                rowAttrs.title = item.attributes.title;
+              }
+              return E('div', rowAttrs, [
+                E(
+                  'div',
+                  { class: 'tachyon-router-service-card__top' },
+                  item.key || '',
+                ),
+                E(
+                  'div',
+                  { class: 'tachyon-router-service-card__bottom' },
+                  item.value,
+                ),
+              ]);
+            }),
+          ),
+        ],
+      );
+      preserveScrollForPage(() => {
+        stripContainer.replaceChildren(servicesCards);
+      }, stripContainer);
+    } else if (srvViewMode === 'resource_bars') {
+      const servicesBars = E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__widgets-section__item tachyon-router-services-cards-wrap tachyon-router-services-resource-wrap',
+          'data-services-view': 'resource_bars',
+        },
+        [
+          E('div', { class: 'tachyon-router-services-cards-head' }, [
+            E(
+              'span',
+              { class: 'tachyon-router-services-bar__title' },
+              tr(
+                'Ресурсы служб роутера (RAM)',
+                'Router Services Resources (RAM)',
+              ),
+            ),
+          ]),
+          E(
+            'div',
+            { class: 'tachyon-router-services-resource-grid' },
+            srvItems.map((item, idx) => {
+              const titleStr = String(item?.attributes?.title || '');
+              const mbMatch = titleStr.match(/(\d+(?:\.\d+)?)\s*(?:MB|МБ)/i);
+              const mbVal = mbMatch ? parseFloat(mbMatch[1]) : 12 + idx * 8;
+              const pct = Math.min(
+                100,
+                Math.max(8, Math.round((mbVal / 128) * 100)),
+              );
+              const rowAttrs: Record<string, unknown> = {
+                class:
+                  `tachyon-router-service-res-card ${item?.attributes?.class || ''}`.trim(),
+              };
+              if (item?.attributes?.title) {
+                rowAttrs.title = item.attributes.title;
+              }
+              return E('div', rowAttrs, [
+                E('div', { class: 'tachyon-router-service-res-card__top' }, [
+                  E(
+                    'div',
+                    { class: 'tachyon-router-service-card__top' },
+                    item.key || '',
+                  ),
+                  E(
+                    'div',
+                    { class: 'tachyon-router-service-card__bottom' },
+                    item.value,
+                  ),
+                ]),
+                E('div', { class: 'tachyon-router-service-res-card__bar' }, [
+                  E('div', {
+                    class: 'tachyon-router-service-res-card__bar-fill',
+                    style: `width: ${pct}%;`,
+                  }),
+                ]),
+              ]);
+            }),
+          ),
+        ],
+      );
+      preserveScrollForPage(() => {
+        stripContainer.replaceChildren(servicesBars);
+      }, stripContainer);
+    } else if (srvViewMode === 'minimal') {
+      const servicesMinimal = E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__widgets-section__item tachyon-router-services-bar tachyon-router-services-bar--minimal',
+          'data-services-view': 'minimal',
+        },
+        [
+          E(
+            'span',
+            { class: 'tachyon-router-services-bar__title' },
+            tr('Службы', 'Services'),
+          ),
+          E(
+            'div',
+            { class: 'tachyon-router-services-bar__list' },
+            srvItems.map((item) => {
+              const rowAttrs: Record<string, unknown> = {
+                class:
+                  `tachyon-router-services-bar__item tachyon-router-services-bar__item--minimal ${item?.attributes?.class || ''}`.trim(),
+              };
+              if (item?.attributes?.title) {
+                rowAttrs.title = item.attributes.title;
+              }
+              return E('div', rowAttrs, [
+                E(
+                  'span',
+                  { class: 'tachyon-router-services-bar__item-key' },
+                  item.key || '',
+                ),
+              ]);
+            }),
+          ),
+        ],
+      );
+      preserveScrollForPage(() => {
+        stripContainer.replaceChildren(servicesMinimal);
+      }, stripContainer);
+    } else {
+      const servicesBar = E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__widgets-section__item tachyon-router-services-bar',
+          'data-services-view': 'strip',
+        },
+        [
+          E(
+            'span',
+            { class: 'tachyon-router-services-bar__title' },
+            tr('Службы роутера', 'Router Services'),
+          ),
+          E(
+            'div',
+            { class: 'tachyon-router-services-bar__list' },
+            srvItems.map((item) => {
+              const rowAttrs: Record<string, unknown> = {
+                class:
+                  `tachyon-router-services-bar__item ${item?.attributes?.class || ''}`.trim(),
+              };
+              if (item?.attributes?.title) {
+                rowAttrs.title = item.attributes.title;
+              }
+              return E('div', rowAttrs, [
+                E(
+                  'span',
+                  { class: 'tachyon-router-services-bar__item-key' },
+                  item.key || '',
+                ),
+                E(
+                  'span',
+                  { class: 'tachyon-router-services-bar__item-val' },
+                  item.value,
+                ),
+              ]);
+            }),
+          ),
+        ],
+      );
+
+      preserveScrollForPage(() => {
+        stripContainer.replaceChildren(servicesBar);
+      }, stripContainer);
+    }
+    return;
   }
 
   const widget = renderDualWidget({
@@ -3855,6 +4642,21 @@ async function onPageMount() {
     }
   }
 
+  applyDashboardLayoutToDom();
+  if (!layoutChangesUnsubscribe) {
+    layoutChangesUnsubscribe = subscribeDashboardLayoutChanges(() => {
+      if (!dashboardMounted) return;
+      applyDashboardLayoutToDom();
+      void renderSectionsWidget();
+      void renderSectionDashboardWidgets();
+      void renderSystemServicesWidget();
+      renderConnectionsWidget();
+      renderInboundServersDashboardWidget({
+        rawConnections: lastRawConnections,
+        hostnames: cachedHostnames,
+      });
+    });
+  }
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
@@ -3923,6 +4725,10 @@ function onPageUnmount() {
     sectionsRenderFrame = null;
   }
 
+  if (layoutChangesUnsubscribe) {
+    layoutChangesUnsubscribe();
+    layoutChangesUnsubscribe = null;
+  }
   stopDashboardDataUpdates();
   stopActionStateWatcher();
   sectionsRefreshQueued = false;
@@ -3931,6 +4737,7 @@ function onPageUnmount() {
   store.reset(['bandwidthWidget', 'trafficTotalWidget', 'systemInfoWidget']);
 }
 
+let layoutChangesUnsubscribe: (() => void) | null = null;
 let dashboardLifecycleRegistered = false;
 let dashboardControllerInitialized = false;
 

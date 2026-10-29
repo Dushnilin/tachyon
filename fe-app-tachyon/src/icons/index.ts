@@ -1,4 +1,5 @@
 import { svgEl } from '../helpers';
+export { renderTachyonLogoSvg, renderTachyonDuckMascotSvg } from './duckMascot';
 
 function createIcon(
   className: string,

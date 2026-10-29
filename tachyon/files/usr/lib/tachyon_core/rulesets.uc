@@ -19,11 +19,57 @@ const SRS_GEOIP_RU_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules
 const SRS_GEOSITE_RU_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/category-ru.srs";
 const SRS_GEOIP_US_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/us.srs";
 const SRS_GEOIP_CN_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs";
+const SRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box";
+const TRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon-core";
+const SRS_ROSCOMVPN_GEOSITE_BASE = "https://raw.githubusercontent.com/hydraponique/roscomvpn-geosite/master/release/sing-box";
+const SRS_RUNETFREEDOM_GEOSITE_BASE = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite";
+
+const ROSCOMVPN_GEOSITE_MAP = {
+    ru_whitelist: "whitelist",
+    ru_domains: "category-ru",
+    push: "push",
+    roscomvpn_whitelist: "whitelist",
+    roscomvpn_geoblock: "category-geoblock-ru",
+    roscomvpn_ru: "category-ru",
+    roscomvpn_push: "push",
+    apple: "apple",
+    microsoft: "microsoft",
+    win_spy: "win-spy",
+    steam: "steam",
+    epicgames: "epicgames",
+    riot: "riot",
+    origin: "origin",
+    escapefromtarkov: "escapefromtarkov",
+    faceit: "faceit",
+    pinterest: "pinterest",
+    torrent: "torrent",
+    twitch_ads: "twitch-ads"
+};
+
+const RUNETFREEDOM_GEOSITE_MAP = {
+    ru_blocked: "geosite-ru-blocked",
+    ru_blocked_all: "geosite-ru-blocked-all",
+    antifilter: "geosite-antifilter-download-community",
+    ru_only_inside: "geosite-ru-available-only-inside",
+    runetfreedom_blocked: "geosite-ru-blocked",
+    runetfreedom_blocked_all: "geosite-ru-blocked-all",
+    antifilter_community: "geosite-antifilter-download-community",
+    refilter: "geosite-refilter",
+    ru_available_only_inside: "geosite-ru-available-only-inside",
+    ai_all: "geosite-category-ai-!cn",
+    openai: "geosite-openai",
+    anthropic: "geosite-anthropic",
+    xai: "geosite-xai",
+    spotify: "geosite-spotify",
+    netflix: "geosite-netflix",
+    docker: "geosite-docker",
+    tor: "geosite-tor",
+    fastly: "geosite-fastly"
+};
 
 const COMMUNITY_SERVICES = {
     russia_inside: true,
     russia_outside: true,
-    ukraine_inside: true,
     geoblock: true,
     block: true,
     porn: true,
@@ -53,12 +99,49 @@ const COMMUNITY_SERVICES = {
     geosite_ru: true,
     geoip_us: true,
     geoip_cn: true,
-    google_meet: true
+    google_meet: true,
+    ru_whitelist: true,
+    ru_domains: true,
+    ru_only_inside: true,
+    push: true,
+    ru_blocked: true,
+    ru_blocked_all: true,
+    antifilter: true,
+    refilter: true,
+    roscomvpn_whitelist: true,
+    roscomvpn_geoblock: true,
+    roscomvpn_ru: true,
+    roscomvpn_push: true,
+    apple: true,
+    microsoft: true,
+    win_spy: true,
+    steam: true,
+    epicgames: true,
+    riot: true,
+    origin: true,
+    escapefromtarkov: true,
+    faceit: true,
+    pinterest: true,
+    torrent: true,
+    twitch_ads: true,
+    runetfreedom_blocked: true,
+    runetfreedom_blocked_all: true,
+    antifilter_community: true,
+    ru_available_only_inside: true,
+    ai_all: true,
+    openai: true,
+    anthropic: true,
+    xai: true,
+    spotify: true,
+    netflix: true,
+    docker: true,
+    tor: true,
+    fastly: true
 };
 
 // Classification of community rule-sets based on upstream rule-set generation.
 // Upstream allow-domains (itdoginfo/allow-domains convert.py) compiles:
-// - general lists (russia_inside, russia_outside, ukraine_inside) and category lists as domain-only ("domains");
+// - general lists (russia_inside, russia_outside) and category lists as domain-only ("domains");
 // - SUBNET_SERVICES (meta, twitter, telegram, roblox, google_meet)
 //   as mixed containing both domain_suffix and ip_cidr ("mixed");
 // - infrastructure / CDN provider lists (cloudflare, cloudfront, hetzner, ovh, digitalocean) as IP subnets ("subnets").
@@ -93,7 +176,6 @@ const COMMUNITY_INFRASTRUCTURE_SERVICES = {
 const COMMUNITY_DOMAIN_SERVICES = {
     russia_inside: true,
     russia_outside: true,
-    ukraine_inside: true,
     geoblock: true,
     block: true,
     porn: true,
@@ -108,7 +190,44 @@ const COMMUNITY_DOMAIN_SERVICES = {
     ads_hagezi_pro: true,
     supercell: true,
     github: true,
-    twitch: true
+    twitch: true,
+    ru_whitelist: true,
+    ru_domains: true,
+    ru_only_inside: true,
+    push: true,
+    ru_blocked: true,
+    ru_blocked_all: true,
+    antifilter: true,
+    refilter: true,
+    roscomvpn_whitelist: true,
+    roscomvpn_geoblock: true,
+    roscomvpn_ru: true,
+    roscomvpn_push: true,
+    apple: true,
+    microsoft: true,
+    win_spy: true,
+    steam: true,
+    epicgames: true,
+    riot: true,
+    origin: true,
+    escapefromtarkov: true,
+    faceit: true,
+    pinterest: true,
+    torrent: true,
+    twitch_ads: true,
+    runetfreedom_blocked: true,
+    runetfreedom_blocked_all: true,
+    antifilter_community: true,
+    ru_available_only_inside: true,
+    ai_all: true,
+    openai: true,
+    anthropic: true,
+    xai: true,
+    spotify: true,
+    netflix: true,
+    docker: true,
+    tor: true,
+    fastly: true
 };
 
 let as_string = common.as_string;
@@ -137,7 +256,75 @@ function community_kind(name) {
     return "unknown";
 }
 
-function community_url(name) {
+const TACHYON_LISTS_ALIAS_MAP = {
+    roscomvpn_whitelist: "ru_whitelist",
+    roscomvpn_geoblock: "geoblock",
+    roscomvpn_ru: "ru_domains",
+    roscomvpn_push: "push",
+    runetfreedom_blocked: "ru_blocked",
+    runetfreedom_blocked_all: "ru_blocked_all",
+    antifilter_community: "antifilter",
+    ru_available_only_inside: "ru_only_inside"
+};
+
+function tachyon_lists_srs_url(name) {
+    name = as_string(name);
+    let canonical = TACHYON_LISTS_ALIAS_MAP[name] || name;
+    let custom_base = as_string(getenv("TACHYON_LISTS_SRS_URL") || "");
+    if (custom_base != "")
+        return replace(custom_base, /\/+$/, "") + "/" + canonical + ".srs";
+    return SRS_TACHYON_LISTS_BASE + "/" + canonical + ".srs";
+}
+
+function tachyon_lists_trs_url(name) {
+    name = as_string(name);
+    let canonical = TACHYON_LISTS_ALIAS_MAP[name] || name;
+    let custom_base = as_string(getenv("TACHYON_LISTS_TRS_URL") || "");
+    if (custom_base != "")
+        return replace(custom_base, /\/+$/, "") + "/" + canonical + ".trs";
+    let custom_srs_base = as_string(getenv("TACHYON_LISTS_SRS_URL") || "");
+    if (custom_srs_base != "")
+        return replace(custom_srs_base, /\/+$/, "") + "/" + canonical + ".trs";
+    return TRS_TACHYON_LISTS_BASE + "/" + canonical + ".trs";
+}
+
+function community_trs_url(name) {
+    name = as_string(name);
+    if (COMMUNITY_SERVICES[name] === true)
+        return tachyon_lists_trs_url(name);
+    return "";
+}
+
+function community_trs_urls(name) {
+    name = as_string(name);
+    if (COMMUNITY_SERVICES[name] !== true)
+        return [];
+    let canonical = TACHYON_LISTS_ALIAS_MAP[name] || name;
+    let custom_trs = as_string(getenv("TACHYON_LISTS_TRS_URL") || "");
+    if (custom_trs != "")
+        return [ replace(custom_trs, /\/+$/, "") + "/" + canonical + ".trs" ];
+    let custom_srs = as_string(getenv("TACHYON_LISTS_SRS_URL") || "");
+    if (custom_srs != "")
+        return [ replace(custom_srs, /\/+$/, "") + "/" + canonical + ".trs" ];
+    return [
+        TRS_TACHYON_LISTS_BASE + "/" + canonical + ".trs",
+        SRS_TACHYON_LISTS_BASE + "/" + canonical + ".trs"
+    ];
+}
+
+function supports_trs() {
+    if (getenv("TACHYON_DISABLE_TRS") == "1")
+        return false;
+    if (getenv("TACHYON_ALLOW_TRS") == "1")
+        return true;
+    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
+    if (fs.stat(bin) != null)
+        return true;
+    let variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant")));
+    return variant == "tachyon-core";
+}
+
+function fallback_community_url(name) {
     name = as_string(name);
     if (name == "ads_hagezi_pro")
         return SRS_ADS_HAGEZI_PRO_URL;
@@ -149,6 +336,10 @@ function community_url(name) {
         return SRS_TWITCH_URL;
     if (name == "geosite_ru")
         return SRS_GEOSITE_RU_URL;
+    if (ROSCOMVPN_GEOSITE_MAP[name] != null)
+        return SRS_ROSCOMVPN_GEOSITE_BASE + "/" + ROSCOMVPN_GEOSITE_MAP[name] + ".srs";
+    if (RUNETFREEDOM_GEOSITE_MAP[name] != null)
+        return SRS_RUNETFREEDOM_GEOSITE_BASE + "/" + RUNETFREEDOM_GEOSITE_MAP[name] + ".srs";
 
     let geoip_match = match(name, /^geoip_([a-z]{2})$/);
     if (geoip_match)
@@ -159,6 +350,14 @@ function community_url(name) {
         return "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/" + geosite_match[1] + ".srs";
 
     return SRS_MAIN_URL + "/" + name + ".srs";
+}
+
+function community_url(name) {
+    name = as_string(name);
+    if (COMMUNITY_SERVICES[name] === true)
+        return tachyon_lists_srs_url(name);
+
+    return fallback_community_url(name);
 }
 
 function hash12(value) {
@@ -238,6 +437,34 @@ function is_valid_srs_file(path) {
     let magic = f.read(3);
     f.close();
     return magic == "SRS";
+}
+
+function is_valid_trs_file(path) {
+    let p = as_string(path);
+    let st = fs.stat(p);
+    if (!st || st.size < 8)
+        return false;
+    let f = fs.open(p, "r");
+    if (!f)
+        return false;
+    let magic = f.read(4);
+    f.close();
+    if (!magic || length(magic) < 3)
+        return false;
+    let m3 = substr(magic, 0, 3);
+    return m3 == "TRS" || magic == "TCRS";
+}
+
+function is_usable_trs_file(path) {
+    let p = as_string(path);
+    let st = fs.stat(p);
+    if (!st || st.size < 16)
+        return false;
+    return is_valid_trs_file(p);
+}
+
+function is_referenceable_trs_file(path) {
+    return is_usable_trs_file(path);
 }
 
 // The placeholder this module writes when a list cannot be fetched is itself a
@@ -397,6 +624,12 @@ function module_exports() {
         COMMUNITY_DOMAIN_SERVICES,
         COMMUNITY_INFRASTRUCTURE_SERVICES,
         is_community,
+        tachyon_lists_srs_url,
+        tachyon_lists_trs_url,
+        community_trs_url,
+        community_trs_urls,
+        supports_trs,
+        fallback_community_url,
         community_url,
         community_kind,
         hash12,
@@ -405,6 +638,9 @@ function module_exports() {
         remote_format,
         is_plain_list_reference,
         is_valid_srs_file,
+        is_valid_trs_file,
+        is_usable_trs_file,
+        is_referenceable_trs_file,
         is_populated_srs_file,
         srs_file_parses,
         srs_file_already_verified,

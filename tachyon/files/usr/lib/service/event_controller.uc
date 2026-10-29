@@ -248,13 +248,46 @@ function parse_singbox_config() {
     }
 }
 
+// An inbound whose route rule points at a "direct" outbound (an external OS
+// interface via bind_interface such as awg-out, a routing_mark daemon, or
+// direct-bypass-in) does not traverse any proxy inside the core: restarting
+// tachyon-core cannot heal an external interface that lost connectivity.
+function inbound_routes_to_direct(sb_cfg, inb_tag) {
+    if (type(sb_cfg) != "object" || inb_tag == null || inb_tag == "")
+        return false;
+    if (inb_tag == "direct-bypass-in")
+        return true;
+    let rules = (type(sb_cfg.route) == "object" && type(sb_cfg.route.rules) == "array")
+        ? sb_cfg.route.rules
+        : [];
+    let target_out = "";
+    for (let r in rules) {
+        if (type(r) != "object" || r.ip_is_private == true || r.outbound == null)
+            continue;
+        let matches = (r.inbound == inb_tag) ||
+            (type(r.inbound) == "array" && index(r.inbound, inb_tag) >= 0);
+        if (matches) {
+            target_out = as_string(r.outbound);
+            break;
+        }
+    }
+    if (target_out == "")
+        return false;
+    let outbounds = type(sb_cfg.outbounds) == "array" ? sb_cfg.outbounds : [];
+    for (let out in outbounds) {
+        if (type(out) == "object" && out.tag == target_out)
+            return out.type == "direct";
+    }
+    return false;
+}
+
 // Reads the http/mixed inbound port from the generated sing-box config.
 // Cached because the config only changes across a reload.
 let cached_proxy_port = null;
 let cached_proxy_host = null;
 let cached_tproxy_port = null;
 function proxy_port() {
-    if (cached_proxy_port !== null)
+    if (cached_proxy_port != null)
         return as_string(cached_proxy_port);
 
     // Empty when the generated config has no http/mixed inbound: probing the
@@ -263,9 +296,10 @@ function proxy_port() {
     let host = "127.0.0.1";
     let sb_cfg = parse_singbox_config();
     if (sb_cfg && sb_cfg.inbounds) {
-        // 1. Prefer service-mixed-in
+        // 1. Prefer service-mixed-in (unless bound to an external direct interface)
         for (let inb in sb_cfg.inbounds) {
-            if (inb.tag == "service-mixed-in" && inb.listen_port != null) {
+            if (inb.tag == "service-mixed-in" && inb.listen_port != null &&
+                !inbound_routes_to_direct(sb_cfg, inb.tag)) {
                 port = as_string(inb.listen_port);
                 let h = as_string(inb.listen || "127.0.0.1");
                 if (h != "0.0.0.0" && h != "::" && h != "") host = h;
@@ -275,7 +309,8 @@ function proxy_port() {
         // 2. Localhost listeners
         if (port == "") {
             for (let inb in sb_cfg.inbounds) {
-                if ((inb.type == "http" || inb.type == "mixed") && inb.listen_port != null) {
+                if ((inb.type == "http" || inb.type == "mixed") && inb.listen_port != null &&
+                    !inbound_routes_to_direct(sb_cfg, inb.tag)) {
                     let listen = as_string(inb.listen || "");
                     if (listen == "127.0.0.1" || listen == "0.0.0.0" || listen == "::" || listen == "") {
                         port = as_string(inb.listen_port);
@@ -288,7 +323,8 @@ function proxy_port() {
         // 3. Any http or mixed inbound
         if (port == "") {
             for (let inb in sb_cfg.inbounds) {
-                if ((inb.type == "http" || inb.type == "mixed") && inb.listen_port != null) {
+                if ((inb.type == "http" || inb.type == "mixed") && inb.listen_port != null &&
+                    !inbound_routes_to_direct(sb_cfg, inb.tag)) {
                     port = as_string(inb.listen_port);
                     let h = as_string(inb.listen || "127.0.0.1");
                     if (h != "0.0.0.0" && h != "::" && h != "") host = h;
@@ -303,7 +339,7 @@ function proxy_port() {
 }
 
 function proxy_host() {
-    if (cached_proxy_host !== null)
+    if (cached_proxy_host != null)
         return cached_proxy_host;
     proxy_port();
     return cached_proxy_host || "127.0.0.1";
@@ -317,7 +353,7 @@ function forget_proxy_port() {
 }
 
 function tproxy_port() {
-    if (cached_tproxy_port !== null)
+    if (cached_tproxy_port != null)
         return cached_tproxy_port;
     let port = 4530;
     let sb_cfg = parse_singbox_config();

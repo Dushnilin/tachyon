@@ -4050,7 +4050,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
         label: tr("Auto", "Авто"),
         bg: "",
         color: "",
-        previewBg: "rgba(59, 130, 246, 0.24)",
+        previewBg: "rgba(139, 92, 246, 0.24)",
         previewColor: "#93c5fd",
       },
       { label: tr("Blue", "Синий"), bg: "#1e3a8a", color: "#93c5fd" },
@@ -6424,6 +6424,10 @@ function getSectionConnectionTypeBadges(section_id) {
     "vpn",
     "awg",
     "fptn",
+    "desync",
+    "zapret",
+    "zapret2",
+    "byedpi",
     "group",
   ];
   if (!connectionActions.includes(action)) return null;
@@ -6587,7 +6591,11 @@ function getRuleActionDisplayValue(section_id) {
 function getRuleActionDisplayMarkup(section_id) {
   const base = getRuleActionDisplayValue(section_id);
   const action = getRuleResolvedAction(section_id);
-  if (action !== "connection") return base;
+  if (
+    !["connection", "desync", "zapret", "zapret2", "byedpi"].includes(action)
+  ) {
+    return base;
+  }
   const srcRefs = normalizeOptionValues(
     uci.get(UCI_PACKAGE, section_id, "outbound_source_refs"),
   );
@@ -6708,7 +6716,26 @@ const LINKED_CONDITION_OPTION_KEYS = new Set([
 function getLinkedSectionConditionId(section_id) {
   if (!section_id || String(section_id).startsWith("cond_")) return null;
   const condId = `cond_${section_id}`;
-  return uci.get(UCI_PACKAGE, condId, ".type") === "condition" ? condId : null;
+  if (uci.get(UCI_PACKAGE, condId, ".type") === "condition") return condId;
+  const rawRefs = uci.get(UCI_PACKAGE, section_id, "condition_refs");
+  const refs = Array.isArray(rawRefs)
+    ? rawRefs.map((x) => String(x || "").trim()).filter(Boolean)
+    : rawRefs
+      ? String(rawRefs)
+          .trim()
+          .split(/[\s,]+/)
+          .filter(Boolean)
+      : [];
+  if (
+    refs.length === 1 &&
+    uci.get(UCI_PACKAGE, refs[0], ".type") === "condition"
+  ) {
+    const ctype = String(
+      uci.get(UCI_PACKAGE, refs[0], "condition_type") || "atomic",
+    ).toLowerCase();
+    if (ctype !== "composite") return refs[0];
+  }
+  return null;
 }
 
 function getSectionOrLinkedConditionOption(section_id, key) {
@@ -9585,35 +9612,110 @@ function addTextConditionField(section, config) {
 }
 
 var DOMAIN_LIST_HINTS = {
-  russia_inside: "youtube.com, instagram.com, twitter.com, ...",
-  russia_outside: "gosuslugi.ru, ozon.ru, rzd.ru, ...",
-  ukraine_inside: "ukr.net, pravda.com.ua, suspilne.media, ...",
+  russia_inside:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)",
   geoblock:
-    "Домены, заблокированные снаружи России (гео-блокировка зарубежными сервисами)",
-  block: "Домены, заблокированные внутри России (полный реестр блокировок РКН)",
-  porn: "pornhub.com, xvideos.com, xhamster.com, ...",
-  news: "meduza.io, bbc.com, pravda.com.ua, ...",
-  anime: "bato.to, mangadex.org, myanimelist.net, ...",
-  youtube: "youtube.com, youtu.be, googlevideo.com, ...",
-  discord: "discord.com, discord.gg, discordapp.com, ...",
-  meta: "facebook.com, instagram.com, whatsapp.com, ...",
-  twitter: "twitter.com, x.com, t.co, ...",
-  hdrezka: "hdrezka.ag, hdrezka.me, ...",
-  tiktok: "tiktok.com, tiktokcdn.com, ...",
-  telegram: "telegram.org, t.me, ...",
-  cloudflare: "все IP/домены Cloudflare (1.1.1.1, etc.)",
-  google_ai: "gemini.google.com, bard.google.com, ...",
-  google_play: "play.google.com, googleplay.com, ...",
-  hodca: "Домены на CDN: Hetzner, OVH, DigitalOcean, Cloudflare, AWS",
-  roblox: "roblox.com, rbxcdn.com, ...",
-  ads_hagezi_pro: "Блокировка рекламы (Hagezi Pro список)",
-  supercell: "supercell.com, clashofclans.com, ...",
-  github: "github.com, raw.githubusercontent.com, ...",
-  twitch: "twitch.tv, ttvnw.net, jtvnw.net, ...",
-  hetzner: "IP-адреса Hetzner (ASN)",
-  ovh: "IP-адреса OVH (ASN)",
-  digitalocean: "IP-адреса DigitalOcean (ASN)",
-  cloudfront: "IP-адреса CloudFront/Amazon (ASN)",
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] 150+ зарубежных сервисов, закрывших доступ с российских IP: PayPal, Notion, Canva, Trello, Jira, Zoom, Intel, Dell, Coursera, JetBrains, Adobe, GitLab",
+  block:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Домены и сайты из официальной выгрузки запрещённых ресурсов Роскомнадзора",
+  ru_blocked:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РКН без мёртвых сайтов)",
+  ru_blocked_all:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Полная нефильтрованная выгрузка всех доменов, поддоменов и зеркал из реестра блокировок РФ и ТСПУ",
+  antifilter:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Народный список доменов и сервисов, заблокированных РКН или замедляемых на ТСПУ в России",
+  refilter:
+    "[Маршрут: В Прокси / VPN] Выверенный список реальных блокировок РКН и геоблока западных сервисов без избыточных доменов",
+  russia_outside:
+    "[Маршрут: В Прокси с IP РФ (из-за рубежа) или Direct (в РФ)] Сервисы РФ: Госуслуги, банки, Ozon, WB, Кинопоиск, Иви, Wink, РЖД",
+  ru_whitelist:
+    "[Маршрут: Напрямую (Direct)] Госуслуги, ФНС, банки РФ (Сбер, Т-Банк, Альфа, ВТБ), Ozon, WB, Авито, Яндекс, VK, РЖД, капчи и корневые сертификаты",
+  ru_domains:
+    "[Маршрут: Напрямую (Direct)] Все национальные зоны (.ru, .рф, .su, .by, .kz) и домены компаний РФ (Яндекс, VK, Mail.ru, Kaspersky, 1С, 2ГИС)",
+  ru_only_inside:
+    "[Маршрут: Строго Напрямую (Direct)] Госпорталы, банки, суды, ЕМИАС и сервисы ЖКХ РФ, жёстко блокирующие вход с зарубежных и VPN IP-адресов",
+  push: "[Маршрут: Напрямую (Direct)] Серверы мобильных и системных push-уведомлений: Apple APNs, Google FCM, Huawei, Xiaomi, Samsung, Windows WNS",
+  ai_all:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Hugging Face",
+  openai:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] ChatGPT, Sora, GPT API, o1/o3 и статика (chatgpt.com, openai.com, sora.com, oaistatic.com, oaiusercontent.com)",
+  anthropic:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Нейросеть Claude AI, Claude Code, Console и API (claude.ai, anthropic.com, claudeusercontent.com)",
+  google_ai:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Gemini, AI Studio, NotebookLM, DeepMind и Vertex AI (gemini.google.com, aistudio.google.com, notebooklm.google.com)",
+  xai: "[Маршрут: Только в Прокси / VPN — геоблок по IP] Нейросеть Grok от xAI (grok.com, x.ai, api.x.ai и медиа-CDN)",
+  youtube:
+    "[Маршрут: В Обход DPI (Desync / Zapret) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)",
+  twitch:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)",
+  twitch_ads:
+    "[Маршрут: Только в Прокси / VPN] Серверы манифестов качества видео и рекламы Twitch (usher.ttvnw.net, gql.twitch.tv) — отключает рекламу и разблокирует 1080p60/1440p без проксирования видеопотока",
+  spotify:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Музыкальный стриминг, аудио-CDN и клиентские API (spotify.com, scdn.co, spotifycdn.com, akamaized.net)",
+  netflix:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Онлайн-кинотеатр, видеопотоки и статика (netflix.com, nflxvideo.net, nflximg.net, nflxext.com, fast.com)",
+  tiktok:
+    "[Маршрут: Только в Прокси / VPN — региональный блок РФ] Приложение, веб-версия и медиа-CDN ByteDance (tiktok.com, tiktokv.com, tiktokcdn.com) для снятия ограничений на новые видео",
+  hdrezka:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Онлайн-кинотеатр HDRezka, видео-балансеры (Voidboost) и актуальные зеркала (rezka.ag, hdrezka.ag, voidboost.cc)",
+  anime:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Популярные аниме-порталы и плееры: Shikimori, AnimeGO, Jut.su, Kodik, Anilibria, Crunchyroll, MyAnimeList",
+  pinterest:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Визуальная соцсеть и серверы картинок (pinterest.com, pin.it, i.pinimg.com — лечит незагрузку фото на ТСПУ)",
+  discord:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Мессенджер, текстовые чаты, CDN вложений и голосовые шлюзы (discord.com, discord.gg, discordapp.net, discord.media + подсети)",
+  telegram:
+    "[Маршрут: В Прокси / VPN] Мессенджер, веб-клиенты, Telegraph и IPv4/IPv6-подсети всех датацентров DC1–DC5 (telegram.org, t.me, telesco.pe)",
+  meta: "[Маршрут: В Прокси / VPN] Instagram, Facebook, Threads, Messenger и медиа-серверы (instagram.com, facebook.com, fbcdn.net, cdninstagram.com + подсети)",
+  twitter:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Соцсеть X / Twitter, короткие ссылки и медиа-CDN (x.com, twitter.com, t.co, twimg.com + подсети)",
+  steam:
+    "[Маршрут: Напрямую (Direct) или в Прокси для смены региона магазина] Магазин, сообщество, инвентарь, чат и CDN загрузок Valve (steampowered.com, steamcommunity.com, steamstatic.com, steamcontent.com)",
+  epicgames:
+    "[Маршрут: В Прокси / VPN (для раздач/покупок) или Direct] Epic Games Store, Fortnite, Rocket League, Unreal Engine и античит EasyAntiCheat (epicgames.com, unrealengine.com, fortnite.com, easy.ac)",
+  riot: "[Маршрут: В Прокси / VPN или Direct] Valorant, League of Legends, TFT, Riot Client и Vanguard (riotgames.com, playvalorant.com, leagueoflegends.com, pvp.net)",
+  origin:
+    "[Маршрут: В Прокси / VPN] EA App, Origin, Apex Legends, Battlefield, EA Sports FC и Sims (ea.com, origin.com, tnt-ea.com, apexlegends.com)",
+  roblox:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Игровая платформа, лаунчер, Roblox Studio и игровые IP-подсети (roblox.com, rbxcdn.com, robloxlabs.com)",
+  supercell:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Brawl Stars, Clash Royale, Clash of Clans, Squad Busters и авторизация Supercell ID (обход геоблока для РФ и РБ)",
+  escapefromtarkov:
+    "[Маршрут: В Прокси / VPN или Direct] Лаунчер, сайт, API профилей и серверы Battlestate Games (escapefromtarkov.com, tarkov.com, battlestategames.com)",
+  faceit:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Киберспортивная платформа CS2, античит и матчмейкинг (faceit.com, faceit-cdn.net)",
+  apple:
+    "[Маршрут: Напрямую (Direct) или в Прокси для Apple Intelligence] App Store, iCloud, обновления iOS/macOS, Apple Music, TV+ и Apple Intelligence (apple.com, icloud.com, mzstatic.com, cdn-apple.com)",
+  microsoft:
+    "[Маршрут: В Прокси / VPN (для Copilot, Xbox и ISO Windows) или Direct] Windows Update, Office 365, OneDrive, Xbox Live, Teams, Visual Studio и Azure (microsoft.com, live.com, office.com, xbox.com)",
+  google_play:
+    "[Маршрут: В Прокси / VPN (для платных приложений и смены региона) или Direct] Магазин приложений Android и серверы скачивания APK (play.google.com, gvt1.com, gvt2.com)",
+  github:
+    "[Маршрут: В Прокси / VPN (для Copilot и при сбоях ТСПУ) или Direct] Репозитории, GitHub Actions, Packages, Pages, Raw и Gist (github.com, githubusercontent.com, githubassets.com, ghcr.io)",
+  docker:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Docker Hub, реестр контейнеров и пакеты (docker.com, docker.io, registry-1.docker.io, download.docker.com)",
+  hodca:
+    "[Маршрут: В Прокси / VPN] Серверы проверки SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, Comodo, GlobalSign, Let’s Encrypt (устраняет долгую загрузку HTTPS из-за геоблока)",
+  cloudflare:
+    "[Маршрут: В Прокси / VPN или Обход DPI] IPv4/IPv6-подсети и домены Cloudflare CDN (обход блокировки TLS ECH и сайтов за Cloudflare на ТСПУ)",
+  cloudfront:
+    "[Маршрут: В Прокси / VPN] IP-подсети глобальной CDN-сети Amazon CloudFront (AWS), часто попадающие под веерные блокировки",
+  fastly:
+    "[Маршрут: В Прокси / VPN] Домены и подсети CDN-провайдера Fastly (fastly.net, fastlylb.net, fsdn.com), используемого множеством зарубежных сайтов",
+  hetzner:
+    "[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров Hetzner (Германия и Финляндия), блокируемые на ТСПУ целыми диапазонами",
+  ovh: "[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров OVHcloud, на которых размещены игровые серверы и веб-проекты",
+  digitalocean:
+    "[Маршрут: В Прокси / VPN] IP-подсети облачного хостинга DigitalOcean, большая часть которых заблокирована или ограничена в РФ",
+  news: "[Маршрут: В Прокси / VPN или Обход DPI] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)",
+  torrent:
+    "[Маршрут: В Обход DPI (Desync / Zapret) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa",
+  tor: "[Маршрут: В Прокси / VPN] Домены и узлы сети Tor, каталогов мостов, I2P, Tails, Whonix и анонимайзеров",
+  porn: "[Маршрут: В Прокси / VPN или Обход DPI] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate",
+  ads_hagezi_pro:
+    "[Маршрут: Блокировать (Block)] Комплексная фильтрация рекламных сетей, аналитики, трекеров и фишинга Hagezi Multi PRO",
+  win_spy:
+    "[Маршрут: Блокировать (Block)] Серверы слежки, телеметрии, отчётов об ошибках и рекламы Windows 10/11",
 };
 
 // --- global (section-exclusive) rules ---------------------------------------
@@ -9891,8 +9993,7 @@ function loadRulesetValues(option, sectionId) {
       return;
     }
     const displayLabel = label;
-    const hint = DOMAIN_LIST_HINTS[key];
-    option.value(key, hint ? `${displayLabel} — ${hint}` : displayLabel);
+    option.value(key, displayLabel);
   });
 }
 
@@ -9942,9 +10043,9 @@ function validateFileReference(value, extensions, errorMessage, options = {}) {
 function validateCustomRulesetReference(value) {
   return validateFileReference(
     value,
-    [".srs", ".json", ".lst", ".txt"],
+    [".trs", ".srs", ".json", ".lst", ".txt"],
     _(
-      "Rule set must be an HTTP(S) URL or a local .srs / .json / .lst / .txt path",
+      "Rule set must be an HTTP(S) URL or a local .trs / .srs / .json / .lst / .txt path",
     ),
     { allowRemoteWithoutExtension: true },
   );
@@ -10231,6 +10332,10 @@ function createSectionContent(section) {
       "vpn",
       "awg",
       "fptn",
+      "desync",
+      "zapret",
+      "zapret2",
+      "byedpi",
       "group",
     ];
     if (!connectionActions.includes(action)) return "";
@@ -13046,15 +13151,25 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.rmempty = false;
-  o.value("fake_split", _("Fake + Split (midsld, TTL=5) — Recommended"));
+  o.value(
+    "auto",
+    _(
+      "Adaptive 2.0 (Auto-learning: ClientHello clone + RAW inject + cache.db) — Recommended",
+    ),
+  );
+  o.value("fake_split", _("Fake + Split (RAW Fake + MidSLD Split)"));
+  o.value(
+    "fake_disorder",
+    _("Fake + Disorder (RAW Fake + Out-of-order MidSLD)"),
+  );
+  o.value("multi_split", _("Multi-Split (3-way TLS Record + SNI + MidSLD)"));
   o.value("tlsrec", _("TLS Record Fragmentation (tlsrec, midsld)"));
-  o.value("disorder", _("Fake + Disorder (Out-of-order, TTL=5)"));
+  o.value("disorder", _("Disorder (Out-of-order TCP Split)"));
   o.value("split", _("TCP Split Only (midsld)"));
-  o.value("fake", _("Fake Packet Injection Only (TTL=5)"));
+  o.value("fake", _("Fake Packet Injection Only (RAW/TTL)"));
   o.value("oob", _("TCP Urgent OOB Desync (midsld)"));
-  o.value("auto", _("Auto (Fake + Split)"));
   o.value("custom", _("Custom Parameters"));
-  o.default = "fake_split";
+  o.default = "auto";
   o.depends("action", "desync");
 
   o = section.taboption(
@@ -13066,12 +13181,50 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.value("fake_split", "fake_split (Fake + Split)");
+  o.value("fake_disorder", "fake_disorder (Fake + Out-of-order Split)");
+  o.value("multi_split", "multi_split (3-way TLS Record + SNI + MidSLD)");
   o.value("tlsrec", "tlsrec (TLS Record Fragmentation)");
-  o.value("disorder", "disorder (Fake + Out-of-order Split)");
+  o.value("disorder", "disorder (Out-of-order TCP Split)");
   o.value("split", "split (TCP Segment Split)");
   o.value("fake", "fake (Fake Packet Only)");
   o.value("oob", "oob (TCP Urgent OOB)");
   o.default = "fake_split";
+  o.depends({ action: "desync", desync_preset: "custom" });
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "desync_fooling",
+    _("Fake Packet Fooling"),
+    _(
+      "Method used to ensure injected fake ClientHello is inspected by DPI but dropped by the destination server.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.default = "";
+  o.value("", _("Default (TCP MD5 / Auto)"));
+  o.value("md5", _("TCP MD5 Signature (Option 19 via TCP_REPAIR)"));
+  o.value("autottl", _("Auto-TTL (Calculated from kernel RTT hops)"));
+  o.value("timestamp", _("TCP Timestamp PAWS (Backdated TSval)"));
+  o.value("badseq", _("Out-of-window TCP Sequence (badseq)"));
+  o.value("badsum", _("Invalid TCP Checksum (badsum)"));
+  o.depends({ action: "desync", desync_preset: "custom" });
+  o.depends({ action: "desync", desync_preset: "fake_split" });
+  o.depends({ action: "desync", desync_preset: "fake_disorder" });
+  o.depends({ action: "desync", desync_preset: "fake" });
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "desync_auto_tune",
+    _("Adaptive 2.0 Auto-Learning (auto_tune)"),
+    _(
+      "Automatically rotate strategies on RST/cutoff/throttling (<20 KiB/s) and persist working profile per SNI in cache.db.",
+    ),
+  );
+  o.modalonly = true;
+  o.default = "1";
   o.depends({ action: "desync", desync_preset: "custom" });
 
   o = section.taboption(
@@ -14125,6 +14278,37 @@ function createSectionContent(section) {
     refreshDashboardFilterChoiceWidgets(section_id);
   };
   outboundNameSourceOptions.set("selector_proxy_links", o);
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "icon_domain",
+    _("Website Icon Domain (favicon.ico)"),
+    _(
+      "Specify a website domain (e.g. youtube.com, discord.com, chatgpt.com) to automatically load its favicon.ico on the Dashboard, or leave empty for automatic detection.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "youtube.com, discord.com, chatgpt.com...";
+  o.value("youtube.com", "YouTube (youtube.com)");
+  o.value("discord.com", "Discord (discord.com)");
+  o.value("telegram.org", "Telegram (telegram.org)");
+  o.value("chatgpt.com", "ChatGPT / OpenAI (chatgpt.com)");
+  o.value("claude.ai", "Claude (claude.ai)");
+  o.value("instagram.com", "Instagram / Meta (instagram.com)");
+  o.value("x.com", "X / Twitter (x.com)");
+  o.value("tiktok.com", "TikTok (tiktok.com)");
+  o.value("twitch.tv", "Twitch (twitch.tv)");
+  o.value("store.steampowered.com", "Steam (store.steampowered.com)");
+  o.value("roblox.com", "Roblox (roblox.com)");
+  o.value("spotify.com", "Spotify (spotify.com)");
+  o.value("netflix.com", "Netflix (netflix.com)");
+  o.value("github.com", "GitHub (github.com)");
+  o.value("rutracker.org", "RuTracker (rutracker.org)");
+  o.value("cloudflare.com", "Cloudflare (cloudflare.com)");
+  o.value("google.com", "Google (google.com)");
+  o.value("svg", _("Default vector icon (SVG)"));
 
   // Modular Outbounds, Groups, Section-level Narrowing, and Balancers (#242)
   o = section.taboption(
@@ -15432,7 +15616,7 @@ function createSectionContent(section) {
     "community_lists",
     _("Built-in rule sets"),
     _("Select a predefined domain list") +
-      ' (source: <a href="https://github.com/itdoginfo/allow-domains" target="_blank" rel="noopener noreferrer">itdoginfo/allow-domains</a>)',
+      ' (<a href="https://github.com/Dushnilin/tachyon-lists" target="_blank" rel="noopener noreferrer">Tachyon Lists</a>)',
   );
   builtInRulesetOption.modalonly = true;
   builtInRulesetOption.placeholder = _("Service list");
@@ -15449,6 +15633,12 @@ function createSectionContent(section) {
     uci.unset(UCI_PACKAGE, section_id, "community_lists");
     syncLinkedConditionOption(section_id, "community_lists", null);
   };
+  if (typeof main.attachCommunityListPicker === "function") {
+    main.attachCommunityListPicker(builtInRulesetOption, {
+      getBlockedKeys: (secId) =>
+        secId ? foreignGlobalValues("community_lists", secId) : new Set(),
+    });
+  }
   let isProcessingBuiltIns = false;
   builtInRulesetOption.onchange = function (_ev, section_id, value) {
     if (isProcessingBuiltIns) {
@@ -15603,6 +15793,118 @@ function createSectionContent(section) {
   dnsDomainListsOption.validate = function (_section_id, value) {
     return validatePlainListReference(value);
   };
+
+  [
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked.srs",
+      "Tachyon Lists: Реестр РКН и Антизапрет (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked_all.srs",
+      "Tachyon Lists: Реестр РКН полный (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/antifilter.srs",
+      "Tachyon Lists: Antifilter Community (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/refilter.srs",
+      "Tachyon Lists: Re:filter (.srs) — [Маршрут: В Прокси / VPN]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoblock.srs",
+      "Tachyon Lists: Геоблок зарубежных сервисов (.srs) — [Маршрут: Только в Прокси / VPN]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ai_all.srs",
+      "Tachyon Lists: Все зарубежные ИИ и нейросети (.srs) — [Маршрут: Только в Прокси / VPN]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_whitelist.srs",
+      "Tachyon Lists: Белый список РФ (.srs) — [Маршрут: Напрямую (Direct)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_domains.srs",
+      "Tachyon Lists: Домены Рунета и СНГ (.srs) — [Маршрут: Напрямую (Direct)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_only_inside.srs",
+      "Tachyon Lists: Сервисы строго внутри РФ (.srs) — [Маршрут: Строго Напрямую (Direct)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/push.srs",
+      "Tachyon Lists: Push-уведомления APNs/FCM (.srs) — [Маршрут: Напрямую (Direct)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ads_hagezi_pro.srs",
+      "Tachyon Lists: Реклама и трекеры Hagezi Pro (.srs) — [Маршрут: Блокировать (Block)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/win_spy.srs",
+      "Tachyon Lists: Телеметрия и слежка Windows (.srs) — [Маршрут: Блокировать (Block)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoip_ru.srs",
+      "Tachyon Lists: GeoIP России (.srs) — [Маршрут: Напрямую (Direct)]",
+    ],
+  ].forEach(([url, label]) => {
+    ruleSetOption.value(url, label);
+    if (!url.endsWith("/geoip_ru.srs")) {
+      dnsRuleSetOption.value(url, label);
+    }
+  });
+
+  [
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked.lst",
+      "Tachyon Lists: Реестр РКН и Антизапрет — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked_all.lst",
+      "Tachyon Lists: Реестр РКН полный — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/antifilter.lst",
+      "Tachyon Lists: Antifilter Community — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/refilter.lst",
+      "Tachyon Lists: Re:filter — домены (.lst) — [Маршрут: В Прокси / VPN]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_whitelist.lst",
+      "Tachyon Lists: Белый список РФ — домены (.lst) — [Маршрут: Напрямую (Direct)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_domains.lst",
+      "Tachyon Lists: Домены Рунета и СНГ (.lst) — [Маршрут: Напрямую (Direct)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/ru_blocked.lst",
+      "Tachyon Lists: Реестр РКН — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/antifilter.lst",
+      "Tachyon Lists: Antifilter Community — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/refilter.lst",
+      "Tachyon Lists: Re:filter — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/ru_whitelist.lst",
+      "Tachyon Lists: Белый список РФ — подсети CIDR (.lst) — [Маршрут: Напрямую (Direct)]",
+    ],
+    [
+      "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/ru_domains.lst",
+      "Tachyon Lists: Рунет и РФ — подсети CIDR (.lst) — [Маршрут: Напрямую (Direct)]",
+    ],
+  ].forEach(([url, label]) => {
+    domainIpListsOption.value(url, label);
+    if (url.includes("/release/domains/")) {
+      dnsDomainListsOption.value(url, label);
+    }
+  });
 
   const globalRulesOption = section.taboption(
     "conditions",

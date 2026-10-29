@@ -202,6 +202,65 @@ grep -q "tachyon_rule_sec_compiled_subnets6.*2001:db8::99" "$NFT_LOG" || fail "s
 
 rm -rf /tmp/tachyon-core/rulesets/sec_compiled-lists-ruleset.json
 
+# Verify remote http/https .lst URL inside a modular condition (referenced via condition_refs)
+# is recognized by connections.has_domain_ip_lists, compiled into the section's ruleset JSON,
+# and loaded into nftables sets from the cached remote list file.
+REMOTE_URL="https://example.com/custom-subnets.lst"
+REMOTE_HASH="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - <<UCODE
+let singbox_rulesets = require("tachyon_core.rulesets");
+print(singbox_rulesets.hash12("$REMOTE_URL"));
+UCODE
+)"
+mkdir -p /tmp/tachyon-core/rulesets
+cat >"/tmp/tachyon-core/rulesets/inline-custom-${REMOTE_HASH}-ruleset.json" <<'EOF'
+{
+  "version": 3,
+  "rules": [
+    {
+      "ip_cidr": [
+        "198.51.100.123/32",
+        "2001:db8::123/128"
+      ]
+    }
+  ]
+}
+EOF
+
+cat >"$WORK_DIR/test-remote-cond-fixture.json" <<JSON
+{
+  "settings": {
+    "source_network_interfaces": [ "br-lan" ]
+  },
+  "condition": [
+    {
+      ".name": "cond_remote_lst",
+      ".type": "condition",
+      "enabled": "1",
+      "condition_type": "atomic",
+      "domain_ip_lists": [ "$REMOTE_URL" ]
+    }
+  ],
+  "section": [
+    {
+      ".name": "sec_remote_cond",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "condition_refs": [ "cond_remote_lst" ]
+    }
+  ]
+}
+JSON
+
+: > "$NFT_LOG"
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/nft/apply.uc" nft-populate-runtime-sets-fixture \
+  "$WORK_DIR/test-remote-cond-fixture.json" 1 "" TachyonTable tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces localv4 0x00100000
+
+grep -q "tachyon_rule_sec_remote_cond_subnets.*198.51.100.123" "$NFT_LOG" || fail "sec_remote_cond IPv4 subnet from remote .lst condition missing in nft set"
+grep -q "tachyon_rule_sec_remote_cond_subnets6.*2001:db8::123" "$NFT_LOG" || fail "sec_remote_cond IPv6 subnet from remote .lst condition missing in nft set"
+
+rm -rf "/tmp/tachyon-core/rulesets/inline-custom-${REMOTE_HASH}-ruleset.json"
+
 export PATH="$OLD_PATH"
 
 echo "PASS: domain_ip_lists_subnets_nft"

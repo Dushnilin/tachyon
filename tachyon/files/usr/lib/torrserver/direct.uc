@@ -120,8 +120,31 @@ function apply_rule(info) {
     }
     return true;
 }
+function find_torrserver_bin() {
+    for (let p in [ "/usr/bin/torrserver", "/usr/sbin/torrserver", "/opt/torrserver/torrserver", "/opt/bin/torrserver", "/tmp/torrserver/torrserver" ]) {
+        let st = fs.stat(p);
+        if (st != null && st.type == "file" && int(st.size || 0) > 0)
+            return p;
+    }
+    return "";
+}
+function read_torrserver_version(bin_path) {
+    let state_ver = trim(read("/etc/tachyon/torrserver-version"));
+    if (state_ver != "")
+        return state_ver;
+    if (bin_path == "")
+        return "not installed";
+    let out = trim(command_output([ bin_path, "--version" ]));
+    let m = match(out, /TorrServer\s+([^\r\n]+)/i);
+    if (m != null && trim(m[1]) != "")
+        return trim(m[1]);
+    return out != "" ? split(out, /[\r\n]+/)[0] : "installed";
+}
 function status() {
     let info = discover();
+    let bin = find_torrserver_bin();
+    info.installed = (bin != "" || info.running == 1) ? 1 : 0;
+    info.version = info.installed ? read_torrserver_version(bin) : "not installed";
     info.enabled = enabled() ? 1 : 0;
     info.active = active(info) ? 1 : 0;
     return info;
@@ -143,7 +166,7 @@ function worker() {
             remove_rule();
             last_cgroup = "";
         }
-        sleep(60000);
+        sleep(info.available ? 60000 : 5000);
     }
     remove_rule();
 }

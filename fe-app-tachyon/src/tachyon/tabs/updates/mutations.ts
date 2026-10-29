@@ -211,10 +211,29 @@ export function computeSystemInfoMutation(
     nextSystemInfo.direct_bypass_enabled = result.action === 'enable' ? 1 : 0;
   }
   if (result.component === 'torrserver_direct') {
-    nextSystemInfo.torrserver_direct_enabled =
-      result.action === 'enable' ? 1 : 0;
-    nextSystemInfo.torrserver_direct_active =
-      result.action === 'enable' ? 1 : 0;
+    if (result.action === 'remove') {
+      nextSystemInfo.torrserver_installed = 0;
+      nextSystemInfo.torrserver_version = 'not installed';
+      nextSystemInfo.torrserver_running = 0;
+      nextSystemInfo.torrserver_direct_available = 0;
+      nextSystemInfo.torrserver_direct_enabled = 0;
+      nextSystemInfo.torrserver_direct_active = 0;
+    } else if (
+      result.action === 'install' ||
+      result.action === 'install_version'
+    ) {
+      nextSystemInfo.torrserver_installed = 1;
+      nextSystemInfo.torrserver_version = version;
+      nextSystemInfo.torrserver_running = 1;
+      nextSystemInfo.torrserver_direct_available = 1;
+      nextSystemInfo.torrserver_direct_enabled = 1;
+      nextSystemInfo.torrserver_direct_active = 1;
+    } else {
+      nextSystemInfo.torrserver_direct_enabled =
+        result.action === 'enable' ? 1 : 0;
+      nextSystemInfo.torrserver_direct_active =
+        result.action === 'enable' ? 1 : 0;
+    }
   }
 
   const normalizedSystemInfo = normalizeSingBoxVariantFields(nextSystemInfo);

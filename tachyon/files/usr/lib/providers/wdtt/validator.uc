@@ -16,7 +16,7 @@ function array_contains(arr, val) {
 const WDTT_MODES = [ "selective", "lan-all", "full" ];
 const QWDTT_MODES = [ "rawtun", "socks", "vpn" ];
 const WDTT_COMMUNITY_LISTS = [
-    "russia-inside", "russia-outside", "ukraine", "telegram", "meta",
+    "russia-inside", "russia-outside", "telegram", "meta",
     "youtube", "discord", "tiktok", "twitter", "hdrezka", "roblox",
     "cloudflare", "cloudfront", "google_ai", "google_meet", "google_play",
     "hetzner", "ovh", "digitalocean", "anime", "news", "geoblock",

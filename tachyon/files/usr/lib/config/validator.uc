@@ -482,7 +482,8 @@ function ruleset_reference_valid(reference, community_services) {
     return reference == "" ||
         community_service_valid(reference, community_services) ||
         remote_reference(reference) ||
-        absolute_reference_with_extension(reference, ".srs", ".json") ||
+        absolute_reference_with_extension(reference, ".trs", ".srs") ||
+        absolute_reference_with_extension(reference, ".json", null) ||
         absolute_reference_with_extension(reference, ".lst", ".txt");
 }
 

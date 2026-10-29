@@ -65,6 +65,13 @@ interface IRenderSectionsProps {
   selectorSwitchingTag?: string;
   onTestSingleOutbound?: (sectionName: string, outboundCode: string) => void;
   testingOutboundCodes?: Record<string, boolean>;
+  sectionStats?: {
+    conns: number;
+    download: number;
+    upload: number;
+    downSpeed: number;
+    upSpeed: number;
+  };
 }
 
 const CONNECTION_ACTION_LABELS: Record<string, string> = {
@@ -138,7 +145,11 @@ function formatDate(seconds?: number) {
   });
 }
 
-function renderMetadataAction(label: string, url?: string) {
+function renderMetadataAction(
+  label: string,
+  url?: string,
+  shortLabel?: string,
+) {
   if (!isValidHttpUrl(url)) {
     return undefined;
   }
@@ -153,7 +164,18 @@ function renderMetadataAction(label: string, url?: string) {
       title: label,
       'aria-label': label,
     },
-    renderLinkIcon24(),
+    shortLabel
+      ? [
+          renderLinkIcon24(),
+          E(
+            'span',
+            {
+              class: 'tachyon_dashboard-page__subscription-meta__action-label',
+            },
+            shortLabel,
+          ),
+        ]
+      : renderLinkIcon24(),
   );
 }
 
@@ -192,10 +214,26 @@ function renderSubscriptionMetadata(
     refillDate ? { label: _('Refill'), value: refillDate } : undefined,
   ].filter(Boolean) as { label: string; value: string }[];
 
+  const isRu =
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
+
   const actions = [
-    renderMetadataAction('Profile', metadata?.webPageUrl),
-    renderMetadataAction('Support', metadata?.supportUrl),
-    renderMetadataAction('More details', metadata?.announceUrl),
+    renderMetadataAction(
+      _('Profile'),
+      metadata?.webPageUrl,
+      isRu ? 'Кабинет' : 'Profile',
+    ),
+    renderMetadataAction(
+      _('Support'),
+      metadata?.supportUrl,
+      isRu ? 'Поддержка' : 'Support',
+    ),
+    renderMetadataAction(
+      _('More details'),
+      metadata?.announceUrl,
+      isRu ? 'Инфо' : 'Info',
+    ),
   ].filter(Boolean) as HTMLElement[];
 
   const isToggleable = Boolean(options?.onToggleGroup);
@@ -956,6 +994,7 @@ function renderDefaultState({
   onFilterCountry,
   activeRegionFilter,
   onFilterRegion,
+  sectionStats,
 }: IRenderSectionsProps) {
   const isConnectionNode =
     !section.withTagSelect &&
@@ -2224,6 +2263,155 @@ function renderDefaultState({
                   : '',
             ],
           ),
+          sectionStats
+            ? (() => {
+                const isRu =
+                  typeof document !== 'undefined' &&
+                  (document.documentElement?.lang || '')
+                    .toLowerCase()
+                    .startsWith('ru');
+                const selectedOutbound = section.outbounds.find(
+                  (o) => o.selected,
+                );
+                const hasUrlTest = Boolean(selectedOutbound?.urlTestInfo);
+                const hasPriority = Boolean(selectedOutbound?.priorityInfo);
+                const isInteractiveSelector = hasUrlTest || hasPriority;
+                const selectorLabel = hasUrlTest
+                  ? selectedOutbound?.displayName || 'URLTest'
+                  : hasPriority
+                    ? selectedOutbound?.displayName || 'Priority'
+                    : isConnectionNode
+                      ? (section.action &&
+                          CONNECTION_ACTION_LABELS[section.action]) ||
+                        'Tunnel'
+                      : isRu
+                        ? 'Ручной выбор'
+                        : 'Manual';
+
+                let latencyMs = selectedOutbound?.latency;
+                if ((!latencyMs || latencyMs <= 0) && isInteractiveSelector) {
+                  const info =
+                    selectedOutbound?.urlTestInfo ||
+                    selectedOutbound?.priorityInfo;
+                  const member = info?.outbounds?.find(
+                    (m) =>
+                      m.selected ||
+                      (info.selectedCode && m.code === info.selectedCode) ||
+                      (info.selectedName &&
+                        m.displayName === info.selectedName),
+                  );
+                  if (member && member.latency) {
+                    latencyMs = member.latency;
+                  }
+                }
+
+                const latencyBadgeClass =
+                  latencyMs && latencyMs > 0
+                    ? latencyMs <= 150
+                      ? 'tachyon-latency-pill tachyon-latency-pill--fast'
+                      : latencyMs <= 300
+                        ? 'tachyon-latency-pill tachyon-latency-pill--medium'
+                        : 'tachyon-latency-pill tachyon-latency-pill--slow'
+                    : 'tachyon-latency-pill tachyon-latency-pill--neutral';
+
+                return E(
+                  'div',
+                  {
+                    class: 'tachyon-section-row__metrics',
+                    'data-section-row-metrics': section.sectionName,
+                  } as Record<string, unknown>,
+                  [
+                    E(
+                      isInteractiveSelector ? 'button' : 'span',
+                      {
+                        ...(isInteractiveSelector ? { type: 'button' } : {}),
+                        class: `tachyon-section-row__selector${
+                          isInteractiveSelector
+                            ? ' tachyon-section-row__selector--interactive'
+                            : ''
+                        }`,
+                        title: isInteractiveSelector
+                          ? isRu
+                            ? 'Нажмите для просмотра деталей автовыбора'
+                            : 'Click to inspect auto-selection details'
+                          : selectorLabel,
+                        click: isInteractiveSelector
+                          ? (ev: MouseEvent) => {
+                              ev.preventDefault();
+                              ev.stopPropagation();
+                              if (!selectedOutbound) return;
+                              if (hasUrlTest) {
+                                onShowUrlTestInfo(section, selectedOutbound);
+                              } else if (hasPriority) {
+                                onShowPriorityInfo(section, selectedOutbound);
+                              }
+                            }
+                          : undefined,
+                      } as Record<string, unknown>,
+                      [
+                        E(
+                          'span',
+                          { class: 'tachyon-section-row__selector-dot' },
+                          '⚡',
+                        ),
+                        E('span', {}, selectorLabel),
+                        ...(isInteractiveSelector ? [renderInfoIcon24()] : []),
+                      ],
+                    ),
+                    E(
+                      'div',
+                      {
+                        class: 'tachyon-section-row__traffic',
+                        'data-row-metric': 'traffic',
+                      } as Record<string, unknown>,
+                      [
+                        E(
+                          'span',
+                          {
+                            class:
+                              'tachyon-traffic-pill tachyon-traffic-pill--down',
+                            'data-row-metric': 'session-down',
+                          } as Record<string, unknown>,
+                          `↓ ${prettyBytes(sectionStats.download || 0)}`,
+                        ),
+                        E(
+                          'span',
+                          {
+                            class:
+                              'tachyon-traffic-pill tachyon-traffic-pill--up',
+                            'data-row-metric': 'session-up',
+                          } as Record<string, unknown>,
+                          `↑ ${prettyBytes(sectionStats.upload || 0)}`,
+                        ),
+                      ],
+                    ),
+                    E(
+                      'span',
+                      {
+                        class: 'tachyon-stat-pill tachyon-stat-pill--conns',
+                        'data-row-metric': 'conns',
+                        title: isRu
+                          ? 'Активные соединения секции'
+                          : 'Active section connections',
+                      } as Record<string, unknown>,
+                      `${sectionStats.conns} ${isRu ? 'соед.' : 'conns'}`,
+                    ),
+                    E(
+                      'span',
+                      {
+                        class: latencyBadgeClass,
+                        'data-row-metric': 'latency',
+                      } as Record<string, unknown>,
+                      latencyMs && latencyMs > 0
+                        ? `${latencyMs} ms`
+                        : latencyFetching
+                          ? _('Checking...')
+                          : '—',
+                    ),
+                  ],
+                );
+              })()
+            : '',
           E(
             'div',
             {

@@ -11,6 +11,7 @@ import { tr } from '../../helpers/i18n';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { TachyonShellMethods } from '../../methods';
 import { store } from '../../services';
+import { getWidgetViewMode } from './dashboardLayout';
 import { renderFlagEmojis } from './partials/renderFlagEmojis';
 import { readSectionErrors } from '../../methods/custom/getDashboardSections';
 import {
@@ -186,7 +187,7 @@ const DEFAULT_PORTS_BY_PROTOCOL: Record<string, string> = {
   shadowtls: '443',
   fptn: '443',
   mtproto: '443',
-  mieru: '8443',
+  mieru: '2012-2022',
   trusttunnel: '443',
   tewfai: '443',
   masque: '443',
@@ -1177,6 +1178,7 @@ export function renderCollapsibleInboundsBlock(params: {
   storageKey: string;
   showGoToServersLink: boolean;
   onRerender: () => void;
+  viewMode?: string;
 }) {
   const {
     container,
@@ -1186,9 +1188,15 @@ export function renderCollapsibleInboundsBlock(params: {
     storageKey,
     showGoToServersLink,
     onRerender,
+    viewMode = 'collapsible',
   } = params;
 
-  const isCollapsed = isCollapsedInStorage(storageKey);
+  const isCollapsed =
+    viewMode === 'expanded_cards' ||
+    viewMode === 'compact_chips' ||
+    viewMode === 'port_matrix'
+      ? false
+      : isCollapsedInStorage(storageKey);
 
   if (
     selectedServerSectionFilter &&
@@ -1565,7 +1573,25 @@ export function renderCollapsibleInboundsBlock(params: {
         : []),
       ...(isCollapsed
         ? []
-        : [E('div', { class: 'tachyon-inbounds-chip-grid' }, chipNodes)]),
+        : [
+            E(
+              'div',
+              {
+                class: [
+                  'tachyon-inbounds-chip-grid',
+                  viewMode === 'compact_chips'
+                    ? 'tachyon-inbounds-chip-grid--compact'
+                    : '',
+                  viewMode === 'port_matrix'
+                    ? 'tachyon-inbounds-chip-grid--matrix'
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+              },
+              chipNodes,
+            ),
+          ]),
     ],
   );
 
@@ -1616,6 +1642,7 @@ export function renderInboundServersDashboardWidget(options?: {
     storageKey: COLLAPSE_STORAGE_KEY_DASHBOARD,
     showGoToServersLink: true,
     onRerender: () => renderInboundServersDashboardWidget(options),
+    viewMode: getWidgetViewMode('inbounds') || 'collapsible',
   });
 }
 

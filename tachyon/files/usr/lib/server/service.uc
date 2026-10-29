@@ -1083,7 +1083,7 @@ function get_router_network_env() {
             http: 8080,
             mixed: 8080,
             mtproto: standard_tls_port,
-            mieru: 8443,
+            mieru: "2012-2022",
             trusttunnel: standard_tls_port,
             tewfai: standard_tls_port,
             masque: standard_quic_port,
@@ -1292,21 +1292,41 @@ function prepare_server_defaults(section) {
     let env = get_router_network_env();
 
     server_default_set_option(section, "listen", "0.0.0.0");
-    let rec_port = int(env.recommended_ports[protocol] ?? 443);
-    if (uci_get(config_path(section, "listen_port")) == "") {
-        let used_ports = {};
-        for (let other in uci_sections("server")) {
-            if (other == section)
-                continue;
-            let op = uci_get(config_path(other, "listen_port"));
-            if (op != "")
-                used_ports[as_string(op)] = true;
+    if (protocol == "mieru") {
+        let rec_range = as_string(env.recommended_ports[protocol] ?? "2012-2022");
+        if (uci_get(config_path(section, "listen_port")) == "") {
+            let used_ports = {};
+            for (let other in uci_sections("server")) {
+                if (other == section)
+                    continue;
+                let op = uci_get(config_path(other, "listen_port"));
+                if (op != "")
+                    used_ports[as_string(op)] = true;
+            }
+            let base_p = 2012;
+            while (used_ports[rec_range] || used_ports[as_string(base_p)]) {
+                base_p += 20;
+                rec_range = base_p + "-" + (base_p + 10);
+            }
         }
-        while (used_ports[as_string(rec_port)] || rec_port == 1602 || rec_port == 1053 || rec_port == 5354) {
-            rec_port = (rec_port == 443) ? 8443 : (rec_port + 1);
+        server_default_set_option(section, "listen_port", rec_range);
+    } else {
+        let rec_port = int(env.recommended_ports[protocol] ?? 443);
+        if (uci_get(config_path(section, "listen_port")) == "") {
+            let used_ports = {};
+            for (let other in uci_sections("server")) {
+                if (other == section)
+                    continue;
+                let op = uci_get(config_path(other, "listen_port"));
+                if (op != "")
+                    used_ports[as_string(op)] = true;
+            }
+            while (used_ports[as_string(rec_port)] || rec_port == 1602 || rec_port == 1053 || rec_port == 5354) {
+                rec_port = (rec_port == 443) ? 8443 : (rec_port + 1);
+            }
         }
+        server_default_set_option(section, "listen_port", as_string(rec_port));
     }
-    server_default_set_option(section, "listen_port", as_string(rec_port));
     server_default_set_option(section, "public_host", env.public_host);
     server_default_set_option(section, "server_country", env.country_code || "RU");
 
@@ -1403,6 +1423,10 @@ function prepare_server_defaults(section) {
     if (protocol == "shadowsocks")
         server_default_set_option(section, "shadowsocks_method", "aes-128-gcm");
     if (protocol == "awg") {
+        let awg_ver = uci_get(config_path(section, "awg_version"));
+        let awg_hpk = uci_get(config_path(section, "awg_header_protection_key"));
+        let needs_min_s = (awg_ver == "3.0" || awg_ver == "3.1" || awg_hpk != "");
+        let default_s = needs_min_s ? "20" : "0";
         server_default_set_option(section, "listen_port", "51820");
         server_default_set_option(section, "awg_mtu", "1280");
         server_default_set_option(section, "awg_local_address", env.awg.local_address);
@@ -1411,10 +1435,17 @@ function prepare_server_defaults(section) {
         server_default_set_option(section, "awg_jc", "4");
         server_default_set_option(section, "awg_jmin", "40");
         server_default_set_option(section, "awg_jmax", "70");
-        server_default_set_option(section, "awg_s1", "0");
-        server_default_set_option(section, "awg_s2", "0");
-        server_default_set_option(section, "awg_s3", "0");
-        server_default_set_option(section, "awg_s4", "0");
+        server_default_set_option(section, "awg_s1", default_s);
+        server_default_set_option(section, "awg_s2", default_s);
+        server_default_set_option(section, "awg_s3", default_s);
+        server_default_set_option(section, "awg_s4", default_s);
+        if (needs_min_s) {
+            for (let sk in [ "awg_s1", "awg_s2", "awg_s3", "awg_s4" ]) {
+                let cur_s = int(uci_get(config_path(section, sk)) || "0", 10);
+                if (cur_s < 12)
+                    server_set_option(section, sk, "20");
+            }
+        }
         server_default_set_option(section, "awg_h1", env.awg.h1);
         server_default_set_option(section, "awg_h2", env.awg.h2);
         server_default_set_option(section, "awg_h3", env.awg.h3);

@@ -1573,12 +1573,12 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         body = signature_add_value(body, "rule." + name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
         body = signature_add_value(body, "rule." + name + ".ports", section_rule_ports_csv(section));
         body = signature_add_value(body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
-        body = signature_add_value(body, "rule." + name + ".excluded_ips", option(section, "excluded_ips", ""));
-        body = signature_add_value(body, "rule." + name + ".excluded_protocol", option(section, "excluded_protocol", ""));
+        body = signature_add_value(body, "rule." + name + ".excluded_ips", section_leaf_option_text(section, "excluded_ips"));
+        body = signature_add_value(body, "rule." + name + ".excluded_protocol", section_leaf_option_text(section, "excluded_protocol"));
         body = signature_add_value(body, "rule." + name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
         body = signature_add_value(body, "rule." + name + ".routed_dns_type", option(section, "routed_dns_type", ""));
         body = signature_add_value(body, "rule." + name + ".routed_dns_server", option(section, "routed_dns_server", ""));
-        body = signature_add_value(body, "rule." + name + ".protocol", option(section, "protocol", ""));
+        body = signature_add_value(body, "rule." + name + ".protocol", section_leaf_option_text(section, "protocol"));
         let comm_subnets = bool_option(section, "community_subnets", true) ? rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
         body = signature_add_value(body, "rule." + name + ".community_subnet_lists", comm_subnets);
 
@@ -2701,7 +2701,7 @@ function has_list_update_sources_from_sections(sections) {
             option(section, "remote_domain_lists", ""),
             option(section, "remote_subnet_lists", ""),
             connections.rule_sets_with_subnets_value(section),
-            option(section, "domain_ip_lists", ""),
+            connections.domain_ip_lists_value(section),
             connections.rule_sets_value(section)
         ))
             return true;
@@ -2717,7 +2717,7 @@ function has_nft_list_update_sources_from_sections(sections) {
             connections.community_lists_value(section),
             option(section, "remote_subnet_lists", ""),
             connections.rule_sets_with_subnets_value(section),
-            option(section, "domain_ip_lists", "")
+            connections.domain_ip_lists_value(section)
         ))
             return true;
 

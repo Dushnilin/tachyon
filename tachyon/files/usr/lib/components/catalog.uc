@@ -730,6 +730,77 @@ function resolve_tachyon_i18n_release(version_tag, lang_code) {
     };
 }
 
+function resolve_torrserver_arch_suffix() {
+    let host_arch = lc(trim(command_output_from_args([ "uname", "-m" ])));
+    let distrib_arch = lc(trim(helpers.read_openwrt_release_value("DISTRIB_ARCH")));
+
+    if (index(distrib_arch, "mips64el") >= 0 || index(distrib_arch, "mips64le") >= 0 || host_arch == "mips64el" || host_arch == "mips64le")
+        return "mips64le";
+    if (index(distrib_arch, "mips64") >= 0 || host_arch == "mips64")
+        return "mips64";
+    if (index(distrib_arch, "mipsel") >= 0 || index(distrib_arch, "mipsle") >= 0 || host_arch == "mipsel" || host_arch == "mipsle")
+        return "mipsle";
+    if (index(distrib_arch, "mips") >= 0 || host_arch == "mips")
+        return "mips";
+    if (host_arch == "aarch64" || host_arch == "arm64" || index(distrib_arch, "aarch64") >= 0)
+        return "arm64";
+    if (host_arch == "x86_64" || host_arch == "amd64" || index(distrib_arch, "x86_64") >= 0)
+        return "amd64";
+    if (substr(host_arch, 0, 5) == "armv7" || index(distrib_arch, "arm_cortex") >= 0)
+        return "arm7";
+    if (substr(host_arch, 0, 3) == "arm" || index(distrib_arch, "arm_") >= 0)
+        return "arm5";
+    if (host_arch == "riscv64" || index(distrib_arch, "riscv64") >= 0)
+        return "riscv64";
+    if (host_arch == "i386" || host_arch == "i686" || index(distrib_arch, "i386") >= 0)
+        return "386";
+    return "";
+}
+
+function resolve_torrserver_release(target_tag) {
+    let arch_suffix = resolve_torrserver_arch_suffix();
+    if (arch_suffix == "")
+        return null;
+    let asset_name = "TorrServer-linux-" + arch_suffix;
+    let owner = "YouROK";
+    let repo = "TorrServer";
+    let tag = trim(as_string(target_tag || ""));
+
+    if (tag == "") {
+        let rel_json = downloader.fetch_github_release_json(owner, repo);
+        if (rel_json != "") {
+            try {
+                let parsed = json(rel_json);
+                if (type(parsed) == "object" && parsed.tag_name)
+                    tag = trim(as_string(parsed.tag_name));
+            } catch (e) {}
+        }
+    }
+    if (tag == "") {
+        let rels_json = downloader.fetch_github_releases_json(owner, repo, "10");
+        if (rels_json != "" && rels_json != "[]") {
+            try {
+                let parsed = json(rels_json);
+                if (type(parsed) == "array" && length(parsed) > 0 && type(parsed[0]) == "object" && parsed[0].tag_name)
+                    tag = trim(as_string(parsed[0].tag_name));
+            } catch (e) {}
+        }
+    }
+    if (tag == "")
+        tag = downloader.fetch_github_release_tag_fallback(owner, repo);
+    if (tag == "")
+        return null;
+
+    return {
+        arch: arch_suffix,
+        tag: tag,
+        version: tag,
+        package_name: asset_name,
+        package_url: "https://github.com/" + owner + "/" + repo + "/releases/download/" + tag + "/" + asset_name,
+        release_url: "https://github.com/" + owner + "/" + repo + "/releases/tag/" + tag
+    };
+}
+
 function module_exports() {
     return {
         latest_tachyon_release_json,
@@ -755,7 +826,9 @@ function module_exports() {
         steer_module_names,
         steer_modules_from_settings,
         resolve_tachyon_release,
-        resolve_tachyon_i18n_release
+        resolve_tachyon_i18n_release,
+        resolve_torrserver_arch_suffix,
+        resolve_torrserver_release
     };
 }
 

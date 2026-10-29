@@ -493,4 +493,8 @@ function createController() {
   };
 }
 
-return baseclass.extend({ createController, normalizeDomains, formatMs });
+return baseclass.extend({
+  createController,
+  normalizeDomains,
+  formatMs,
+});

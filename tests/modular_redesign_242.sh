@@ -573,6 +573,73 @@ if (fp != "chrome") {
     warn("Expected subscription_tls_fingerprint to return 'chrome', got: " + fp + "\n");
     exit(1);
 }
+
+// Regression check (DenSilent): a reusable balancer with empty source_refs/group_refs
+// attached to a section without non-DPI outbound_source_refs must NOT pull unrelated
+// global outbound_source entries into the section.
+connections.set_item_sections_from_data({
+    outbound_source: [
+        {
+            ".name": "src_links_old_ghost",
+            ".type": "outbound_source",
+            enabled: "1",
+            source_type: "proxy_links",
+            proxy_links: [ "vless://11111111-1111-1111-1111-111111111111@198.51.100.10:443?security=none#Ghost" ]
+        }
+    ],
+    balancer: [
+        {
+            ".name": "bal_reusable_urltest",
+            ".type": "balancer",
+            enabled: "1",
+            balancer_type: "urltest"
+        }
+    ],
+    section: [
+        {
+            ".name": "SecWithoutSources",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            balancer_refs: [ "bal_reusable_urltest" ]
+        }
+    ]
+});
+let leaked_srcs = connections.section_effective_outbound_sources({
+    ".name": "SecWithoutSources",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    balancer_refs: [ "bal_reusable_urltest" ]
+});
+if (length(leaked_srcs) != 0) {
+    warn("Expected 0 effective outbound sources on section with empty balancer, got: " + sprintf("%J", leaked_srcs) + "\n");
+    exit(1);
+}
 UCODE
+
+cat >"$WORK_DIR/all_disabled_sections.json" <<'JSON'
+{
+  "settings": {
+    "dns_server": "1.1.1.1"
+  },
+  "section": [
+    {
+      ".name": "Proxy",
+      ".type": "section",
+      "enabled": "0",
+      "action": "connection"
+    }
+  ]
+}
+JSON
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" \
+  generate-config-fixture "$WORK_DIR/all_disabled_sections.json" "$WORK_DIR/all_disabled_out.json" 127.0.0.42 0 1
+
+grep -q '"direct-out"' "$WORK_DIR/all_disabled_out.json" || {
+  printf 'Expected generate-config-fixture with all sections disabled to produce direct-only config\n' >&2
+  exit 1
+}
 
 printf 'modular redesign #242 checks passed\n'

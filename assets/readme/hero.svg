@@ -244,13 +244,13 @@
   <!-- BOTTOM ROW: 4 COPIED ARCHITECTURAL PILLARS (Glassmorphism Cards) -->
   <!-- ================================================================= -->
   <g transform="translate(60, 325)">
-    <!-- Card 1: Multi-Engine (sing-box / Steer) -->
+    <!-- Card 1: Multi-Engine (tachyon-core / sing-box) -->
     <g transform="translate(0, 0)">
       <rect width="255" height="95" rx="10" fill="url(#card-grad)" stroke="#38BDF8" stroke-opacity="0.25" stroke-width="1" class="hud-card"/>
       <circle cx="28" cy="28" r="14" fill="#0284C7" fill-opacity="0.2"/>
       <text x="21" y="34" font-size="16">🛡️</text>
       <text x="50" y="32" class="card-h">Multi-Engine Core</text>
-      <text x="16" y="58" class="card-p">sing-box, Steer &amp; OpenVPN,</text>
+      <text x="16" y="58" class="card-p">tachyon-core, sing-box &amp; OpenVPN,</text>
       <text x="16" y="76" class="card-p">VLESS Reality, Hysteria2 &amp; AWG</text>
     </g>
 

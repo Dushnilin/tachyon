@@ -1,0 +1,1620 @@
+/* eslint-disable */
+// @ts-nocheck
+'use strict';
+'require baseclass';
+'require form';
+'require ui';
+'require uci';
+'require view.tachyon.main as main';
+'require view.tachyon.local_devices as local_devices';
+
+const UCI_PACKAGE = 'tachyon';
+
+const AVATAR_PRESETS = {
+  '👶': _('Toddler (👶)'),
+  '🧒': _('Child (🧒)'),
+  '🧑': _('Teen (🧑)'),
+  '🎮': _('Gamer (🎮)'),
+  '📱': _('Phone (📱)'),
+  '💻': _('Laptop / PC (💻)'),
+  '🏠': _('Family (🏠)'),
+  '🔒': _('Strict (🔒)'),
+  '🐾': _('Pets / IoT (🐾)'),
+};
+
+const DAY_LABELS = {
+  monday: _('Monday'),
+  tuesday: _('Tuesday'),
+  wednesday: _('Wednesday'),
+  thursday: _('Thursday'),
+  friday: _('Friday'),
+  saturday: _('Saturday'),
+  sunday: _('Sunday'),
+};
+
+const DAY_SHORT_LABELS = {
+  monday: _('Mon'),
+  tuesday: _('Tue'),
+  wednesday: _('Wed'),
+  thursday: _('Thu'),
+  friday: _('Fri'),
+  saturday: _('Sat'),
+  sunday: _('Sun'),
+};
+
+const DAY_INDEX_MAP = {
+  0: 'sunday',
+  1: 'monday',
+  2: 'tuesday',
+  3: 'wednesday',
+  4: 'thursday',
+  5: 'friday',
+  6: 'saturday',
+};
+
+const DOMAIN_PRESETS = {
+  social: {
+    label: _('Social media'),
+    icon: '📱',
+    domains: [
+      'facebook.com',
+      'instagram.com',
+      'tiktok.com',
+      'twitter.com',
+      'x.com',
+      'vk.com',
+      'snapchat.com',
+      'reddit.com',
+      'discord.com',
+      'discord.gg',
+      'twitch.tv',
+      'pinterest.com',
+      'telegram.org',
+      't.me',
+      'whatsapp.com',
+      'signal.org',
+      'wechat.com',
+      'youtube.com',
+      'tumblr.com',
+    ],
+  },
+  video: {
+    label: _('Video streaming'),
+    icon: '🎬',
+    domains: [
+      'youtube.com',
+      'youtu.be',
+      'googlevideo.com',
+      'ytimg.com',
+      'netflix.com',
+      'primevideo.com',
+      'hulu.com',
+      'disneyplus.com',
+      'hbomax.com',
+      'okko.tv',
+      'ivi.ru',
+      'kinopoisk.ru',
+      'twitch.tv',
+      'vimeo.com',
+      'dailymotion.com',
+      'rutube.ru',
+    ],
+  },
+  gaming: {
+    label: _('Gaming'),
+    icon: '🎮',
+    domains: [
+      'steampowered.com',
+      'steamcommunity.com',
+      'epicgames.com',
+      'roblox.com',
+      'fortnite.com',
+      'xbox.com',
+      'playstation.com',
+      'battle.net',
+      'ea.com',
+      'ubisoft.com',
+      'riotgames.com',
+      'minecraft.net',
+      'origin.com',
+      'discord.com',
+      'discord.gg',
+    ],
+  },
+  adult: {
+    label: _('Adult content'),
+    icon: '🔞',
+    domains: [
+      'pornhub.com',
+      'xvideos.com',
+      'xhamster.com',
+      'xnxx.com',
+      'onlyfans.com',
+      'stripchat.com',
+      'chaturbate.com',
+      'youporn.com',
+      'redtube.com',
+      'tubegalore.com',
+      'porntrex.com',
+      'pornhd.com',
+      'nudevista.com',
+      'porn.com',
+      'spankbang.com',
+      'eporner.com',
+    ],
+  },
+  messengers: {
+    label: _('Messengers'),
+    icon: '💬',
+    domains: [
+      'telegram.org',
+      't.me',
+      'whatsapp.com',
+      'wa.me',
+      'viber.com',
+      'signal.org',
+      'wechat.com',
+      'qq.com',
+      'icq.com',
+      'discord.com',
+      'discord.gg',
+      'skype.com',
+      'zoom.us',
+      'slack.com',
+      'teams.microsoft.com',
+    ],
+  },
+  shopping: {
+    label: _('Shopping'),
+    icon: '🛒',
+    domains: [
+      'amazon.com',
+      'ebay.com',
+      'aliexpress.com',
+      'ozon.ru',
+      'wildberries.ru',
+      'wb.ru',
+      'yandex.market',
+      'market.yandex.ru',
+      'avito.ru',
+      'lamoda.ru',
+      'shein.com',
+      'temu.com',
+      'wish.com',
+    ],
+  },
+};
+
+function validateTime(sectionId, value) {
+  if (!value) {
+    return true;
+  }
+  const str = `${value}`.trim();
+  if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(str)) {
+    return _('Invalid time format. Expected HH:MM (e.g. 22:00)');
+  }
+  return true;
+}
+
+function normalizeDays(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw))
+    return raw.map((d) => `${d}`.toLowerCase().trim()).filter(Boolean);
+  return `${raw}`
+    .split(/\s+/)
+    .map((d) => d.toLowerCase().trim())
+    .filter(Boolean);
+}
+
+function normalizeListValues(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw))
+    return raw.map((item) => `${item}`.trim()).filter(Boolean);
+  return `${raw}`
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isScheduleCurrentlyActive(sectionId) {
+  const enabled = uci.get(UCI_PACKAGE, sectionId, 'enabled') !== '0';
+  if (!enabled) return false;
+
+  const startTime = uci.get(UCI_PACKAGE, sectionId, 'start_time');
+  const endTime = uci.get(UCI_PACKAGE, sectionId, 'end_time');
+  const rawDays = uci.get(UCI_PACKAGE, sectionId, 'days');
+  const days = normalizeDays(rawDays);
+
+  const now = new Date();
+  const currentDay = DAY_INDEX_MAP[now.getDay()];
+
+  if (days.length > 0 && days.length < 7 && !days.includes(currentDay)) {
+    return false;
+  }
+
+  if (!startTime && !endTime) {
+    return true;
+  }
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  const [sH, sM] = (startTime || '00:00').split(':').map(Number);
+  const [eH, eM] = (endTime || '23:59').split(':').map(Number);
+  const startMinutes = (sH || 0) * 60 + (sM || 0);
+  const endMinutes = (eH || 0) * 60 + (eM || 0);
+
+  if (startMinutes > endMinutes) {
+    // Crosses midnight, e.g. 22:00 -> 08:00
+    return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+  }
+
+  return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+}
+
+function formatDaysDisplay(rawDays) {
+  const days = normalizeDays(rawDays);
+  if (!days || days.length === 0 || days.length === 7) {
+    return _('Every day');
+  }
+
+  const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+  const weekends = ['saturday', 'sunday'];
+
+  const isWeekdays =
+    days.length === 5 && weekdays.every((d) => days.includes(d));
+  if (isWeekdays) return _('Weekdays (Mon-Fri)');
+
+  const isWeekends =
+    days.length === 2 && weekends.every((d) => days.includes(d));
+  if (isWeekends) return _('Weekends (Sat-Sun)');
+
+  return days.map((d) => DAY_SHORT_LABELS[d] || d).join(', ');
+}
+
+function validateDevice(sectionId, value) {
+  if (!value) return true;
+  const str = `${value}`.trim();
+  if (main.validateIP(str).valid) return true;
+  if (/^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(str)) return true;
+  return _(
+    'Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF',
+  );
+}
+
+// ─── Family Profiles Section ──────────────────────────────────────────────────
+
+function createProfileContent(section) {
+  // Enabled switch
+  let o = section.option(form.Flag, 'enabled', _('Enable'));
+  o.default = '1';
+  o.rmempty = false;
+  o.editable = true;
+  o.width = '5rem';
+
+  // Profile display (Avatar + Name)
+  o = section.option(form.DummyValue, '_profile_display', _('Profile'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const avatar = uci.get(UCI_PACKAGE, sectionId, 'avatar') || '👶';
+    const label =
+      uci.get(UCI_PACKAGE, sectionId, 'label') ||
+      uci.get(UCI_PACKAGE, sectionId, 'name') ||
+      sectionId;
+    const rawDevs = uci.get(UCI_PACKAGE, sectionId, 'device_ip');
+    const devCount = normalizeListValues(rawDevs).length;
+    const devBadge =
+      devCount > 0
+        ? `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.08));color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-left:6px;font-weight:600;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));">${devCount} ${_('dev.')}</span>`
+        : `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));opacity:0.75;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:6px;">${_('no devices')}</span>`;
+
+    return (
+      `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">` +
+      `<span style="font-size:1.3rem;line-height:1;">${avatar}</span>` +
+      `<strong style="font-size:13px;color:inherit;">${label}</strong>` +
+      devBadge +
+      `</div>`
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const avatar = uci.get(UCI_PACKAGE, sectionId, 'avatar') || '👶';
+    const label =
+      uci.get(UCI_PACKAGE, sectionId, 'label') ||
+      uci.get(UCI_PACKAGE, sectionId, 'name') ||
+      sectionId;
+    return `${avatar} ${label}`;
+  };
+
+  // Assigned Devices column
+  o = section.option(
+    form.DummyValue,
+    '_devices_display',
+    _('Devices (MAC / IP)'),
+  );
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const rawIp = uci.get(UCI_PACKAGE, sectionId, 'device_ip');
+    const devs = normalizeListValues(rawIp);
+    if (devs.length === 0) {
+      return (
+        '<span style="opacity:0.5;">' + _('No devices assigned') + '</span>'
+      );
+    }
+    const isMacAddr = (dev) =>
+      /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
+    const macs = devs.filter(isMacAddr);
+    const ips = devs.filter((d) => !isMacAddr(d));
+    const badges = [...macs, ...ips]
+      .map((dev) => {
+        const isMac = isMacAddr(dev);
+        const label = isMac ? 'MAC' : 'IP';
+        return (
+          `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));max-width:100%;word-break:break-all;overflow-wrap:anywhere;">` +
+          `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
+          dev +
+          '</span>'
+        );
+      })
+      .join('');
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + '</div>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const devs = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'device_ip'),
+    );
+    return devs.length === 0 ? _('No devices assigned') : devs.join(', ');
+  };
+
+  // Daily quota column
+  o = section.option(form.DummyValue, '_quota_display', _('Daily Quota'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, 'daily_quota_minutes')) || 0;
+    if (raw <= 0) {
+      return '<span style="opacity:0.5;">' + _('Unlimited') + '</span>';
+    }
+    return (
+      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:600;">⏳ ' +
+      raw +
+      ' ' +
+      _('min/day') +
+      '</span>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, 'daily_quota_minutes')) || 0;
+    return raw > 0 ? `${raw} ${_('min/day')}` : _('Unlimited');
+  };
+
+  // Protection / Features column
+  o = section.option(form.DummyValue, '_features_display', _('Protection'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const safeSearch = uci.get(UCI_PACKAGE, sectionId, 'safe_search') === '1';
+    const blockDoh = uci.get(UCI_PACKAGE, sectionId, 'block_doh') === '1';
+    const rawDomains = uci.get(UCI_PACKAGE, sectionId, 'blocked_domains');
+    const domainCount = normalizeListValues(rawDomains).length;
+    const notify = uci.get(UCI_PACKAGE, sectionId, 'notify') === '1';
+
+    let badges = [];
+    if (safeSearch) {
+      badges.push(
+        '<span class="badge" style="background:rgba(79,209,197,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(79,209,197,0.3);">🛡️ ' +
+          _('SafeSearch') +
+          '</span>',
+      );
+    }
+    if (blockDoh) {
+      badges.push(
+        '<span class="badge" style="background:rgba(183,148,244,0.15);color:var(--purple-color, #805ad5);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(183,148,244,0.3);">🔒 ' +
+          _('Anti-Bypass (DoH)') +
+          '</span>',
+      );
+    }
+    if (domainCount > 0) {
+      badges.push(
+        '<span class="badge" style="background:rgba(229,62,62,0.15);color:var(--error-color-medium, #e53e3e);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(229,62,62,0.3);">🚫 ' +
+          domainCount +
+          ' ' +
+          _('sites') +
+          '</span>',
+      );
+    }
+    if (notify) {
+      badges.push(
+        '<span class="badge" style="background:rgba(49,130,206,0.15);color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(49,130,206,0.3);">🔔 ' +
+          _('Telegram') +
+          '</span>',
+      );
+    }
+
+    if (badges.length === 0) {
+      return '<span style="opacity:0.5;">' + _('Standard') + '</span>';
+    }
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:4px;">' +
+      badges.join('') +
+      '</div>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const safeSearch = uci.get(UCI_PACKAGE, sectionId, 'safe_search') === '1';
+    const blockDoh = uci.get(UCI_PACKAGE, sectionId, 'block_doh') === '1';
+    const rawDomains = uci.get(UCI_PACKAGE, sectionId, 'blocked_domains');
+    const domainCount = normalizeListValues(rawDomains).length;
+    let list = [];
+    if (safeSearch) list.push('SafeSearch');
+    if (blockDoh) list.push('DoH Block');
+    if (domainCount > 0) list.push(`${domainCount} sites`);
+    return list.length === 0 ? _('Standard') : list.join(', ');
+  };
+
+  // Status column
+  o = section.option(form.DummyValue, '_status_display', _('Status'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const enabled = uci.get(UCI_PACKAGE, sectionId, 'enabled') !== '0';
+    if (!enabled) {
+      return (
+        '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:var(--background-color-low, rgba(0,0,0,0.08));color:var(--text-color-medium, #888);border:1px solid var(--border-color-low, rgba(0,0,0,0.1));">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;display:inline-block;opacity:0.7;"></span>' +
+        _('Disabled') +
+        '</span>'
+      );
+    }
+    return (
+      '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(72,187,120,0.15);color:var(--success-color-medium, #38a169);border:1px solid rgba(72,187,120,0.3);">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:#38a169;margin-right:5px;box-shadow:0 0 4px #38a169;display:inline-block;"></span>' +
+      _('Active') +
+      '</span>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const enabled = uci.get(UCI_PACKAGE, sectionId, 'enabled') !== '0';
+    return enabled ? _('Active') : _('Disabled');
+  };
+
+  // ─── Modal Form Options ───────────────────────────────────────────────────
+
+  // Profile Avatar selector
+  o = section.option(
+    form.ListValue,
+    'avatar',
+    _('Profile Icon / Avatar'),
+    _('Choose a visual icon for this profile'),
+  );
+  o.modalonly = true;
+  o.default = '👶';
+  Object.entries(AVATAR_PRESETS).forEach(([icon, label]) => {
+    o.value(icon, label);
+  });
+
+  // Profile Label / Name
+  o = section.option(
+    form.Value,
+    'label',
+    _('Profile Name'),
+    _('e.g. Kids (Alice & Tim), Teenager, School PC, Guests'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.placeholder = _('e.g. Kids');
+
+  // Device selector with LAN hostnames integration
+  o = section.option(
+    form.DynamicList,
+    'device_ip',
+    _('Assigned Devices (MAC / IP)'),
+    _(
+      "Select LAN devices to assign to this profile, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes via DHCP.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '192.168.1.150 or AA:BB:CC:DD:EE:FF';
+  o.validate = validateDevice;
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    return local_devices.createLocalDeviceDynamicListWidget(
+      this,
+      sectionId,
+      cfgvalue,
+    );
+  };
+
+  // Daily time quota (minutes per day); 0 disables the limit
+  o = section.option(
+    form.Value,
+    'daily_quota_minutes',
+    _('Daily Screen Time Quota (minutes)'),
+    _(
+      'Total allowed network usage per day for devices in this profile. When the quota is reached, access is blocked until midnight. Enter 0 for unlimited.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.default = '0';
+  o.placeholder = '0';
+  o.validate = function (_sectionId, value) {
+    if (value === '' || value === null || value === undefined) return true;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 1440)
+      return _('Enter a whole number of minutes between 0 and 1440');
+    return true;
+  };
+
+  // Enforce SafeSearch
+  o = section.option(
+    form.Flag,
+    'safe_search',
+    _('Enforce SafeSearch & YouTube Restricted Mode'),
+    _(
+      'Forces SafeSearch on Google, Yandex, Bing, DuckDuckGo and Strict Restricted Mode on YouTube via DNS rewrite for all devices in this profile.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  // Block DoH / DoT (Anti-Bypass)
+  o = section.option(
+    form.Flag,
+    'block_doh',
+    _('Anti-Bypass: Block Private DNS / DoH / DoT'),
+    _(
+      'Blocks port 853 (DNS-over-TLS) and prevents bypass via encrypted DNS or Private Relay on smartphones for devices in this profile.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  // Profile-level blocked domains
+  o = section.option(
+    form.TextValue,
+    'blocked_domains',
+    _('Profile Blocked Sites (24/7)'),
+    _(
+      'Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 5;
+  o.wrap = 'soft';
+  o.textarea = true;
+  o.placeholder = 'tiktok.com\nroblox.com';
+  o.validate = function (sectionId, value) {
+    if (!value) return true;
+    const lines = `${value}`
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      const clean = line
+        .replace(/^(full:|keyword:|regex:)/, '')
+        .replace(/^\*?\./, '');
+      if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
+        return _('Invalid domain: empty prefix value');
+      }
+      if (/^regex:/.test(line)) continue;
+      if (
+        !/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)
+      ) {
+        return _('Invalid domain: %s').format(line);
+      }
+    }
+    return true;
+  };
+  o.cfgvalue = function (sectionId) {
+    return normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'blocked_domains'),
+    ).join('\n');
+  };
+  o.load = o.cfgvalue;
+  o.formvalue = function (sectionId) {
+    const node = document.getElementById(this.cbid(sectionId));
+    return node ? node.value : null;
+  };
+  o.write = function (sectionId, value) {
+    const lines = [];
+    for (const raw of `${value || ''}`.split(/\r?\n/)) {
+      const l = raw.trim();
+      if (l && !lines.includes(l)) {
+        lines.push(l);
+      }
+    }
+    if (lines.length === 0) {
+      uci.unset(UCI_PACKAGE, sectionId, 'blocked_domains');
+    } else {
+      uci.set(UCI_PACKAGE, sectionId, 'blocked_domains', lines);
+    }
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, 'blocked_domains');
+  };
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    const container = E('div', { style: 'width:100%;box-sizing:border-box;' });
+    const presetRow = E('div', {
+      style: 'margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;',
+    });
+    Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
+      const btn = E(
+        'button',
+        {
+          class: 'cbi-button cbi-button-neutral',
+          type: 'button',
+          style: 'padding:2px 8px;font-size:11px;',
+          title: preset.domains.join(', '),
+        },
+        preset.icon + ' ' + preset.label,
+      );
+      btn.addEventListener('click', function () {
+        const textarea = container.querySelector('textarea');
+        if (!textarea) return;
+        const current = textarea.value
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const merged = current.slice();
+        for (const d of preset.domains) {
+          if (!merged.includes(d)) merged.push(d);
+        }
+        textarea.value = merged.join('\n');
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      presetRow.appendChild(btn);
+    });
+    container.appendChild(presetRow);
+
+    const cbid = this.cbid(sectionId);
+    const textarea = E('textarea', {
+      id: cbid,
+      name: cbid,
+      class: 'cbi-input-textarea',
+      style: 'width:100%;min-height:100px;box-sizing:border-box;',
+      placeholder: 'tiktok.com\nroblox.com',
+    });
+    const strVal = Array.isArray(cfgvalue)
+      ? cfgvalue.join('\n')
+      : cfgvalue || '';
+    if (strVal) textarea.value = strVal;
+    container.appendChild(textarea);
+    return container;
+  };
+
+  // Telegram notifications
+  o = section.option(
+    form.Flag,
+    'notify',
+    _('Telegram Alerts'),
+    _(
+      'Send Telegram alerts to parents when daily screen time is exhausted or blocked sites are accessed.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.rmempty = false;
+}
+
+// ─── Schedule Rules Section ───────────────────────────────────────────────────
+
+function createParentalContent(section) {
+  // Enabled switch
+  let o = section.option(form.Flag, 'enabled', _('Enable'));
+  o.default = '1';
+  o.rmempty = false;
+  o.editable = true;
+  o.width = '5rem';
+
+  // Device / Target profile column in table
+  o = section.option(
+    form.DummyValue,
+    '_device_display',
+    _('Profile / Devices'),
+  );
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const rawProfiles = uci.get(UCI_PACKAGE, sectionId, 'profile');
+    const profiles = normalizeListValues(rawProfiles);
+    const rawIp = uci.get(UCI_PACKAGE, sectionId, 'device_ip');
+    const devs = normalizeListValues(rawIp);
+
+    let items = [];
+
+    if (profiles.length > 0) {
+      profiles.forEach((pName) => {
+        const prof = uci.get(UCI_PACKAGE, pName);
+        const avatar = (prof && prof.avatar) || '👶';
+        const label = (prof && prof.label) || pName;
+        const devCount = prof ? normalizeListValues(prof.device_ip).length : 0;
+        items.push(
+          `<span class="badge" style="background:rgba(49,151,149,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid rgba(49,151,149,0.3);max-width:100%;word-break:break-all;">` +
+            `${avatar} ${label} (${devCount} ${_('dev.')})` +
+            `</span>`,
+        );
+      });
+    }
+
+    if (devs.length > 0) {
+      const isMacAddr = (dev) =>
+        /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
+      const macs = devs.filter(isMacAddr);
+      const ips = devs.filter((d) => !isMacAddr(d));
+      [...macs, ...ips].forEach((dev) => {
+        const isMac = isMacAddr(dev);
+        const label = isMac ? 'MAC' : 'IP';
+        items.push(
+          `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));max-width:100%;word-break:break-all;overflow-wrap:anywhere;">` +
+            `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
+            dev +
+            '</span>',
+        );
+      });
+    }
+
+    if (items.length === 0) {
+      return '<span style="opacity:0.5;">' + _('All devices') + '</span>';
+    }
+
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:2px;">' +
+      items.join('') +
+      '</div>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const profiles = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'profile'),
+    );
+    const devs = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'device_ip'),
+    );
+    const list = [...profiles.map((p) => `Profile: ${p}`), ...devs];
+    return list.length === 0 ? _('All devices') : list.join(', ');
+  };
+
+  // Target column in table
+  o = section.option(form.DummyValue, '_target_display', _('Target'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const target = uci.get(UCI_PACKAGE, sectionId, 'target') || 'domains';
+    if (target === 'all') {
+      return (
+        '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' +
+        _('All Internet') +
+        '</span>'
+      );
+    }
+    if (target === 'domains') {
+      const rawDomains = normalizeListValues(
+        uci.get(UCI_PACKAGE, sectionId, 'blocked_domains'),
+      );
+      const count = rawDomains.length;
+      return (
+        '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;margin-bottom:2px;">🌐 ' +
+        _('Blocked Sites') +
+        (count > 0 ? ' (' + count + ')' : '') +
+        '</span>'
+      );
+    }
+    const rawSecs = uci.get(UCI_PACKAGE, sectionId, 'sections');
+    const secNames = normalizeListValues(rawSecs);
+    if (secNames.length === 0) {
+      return (
+        '<span style="opacity:0.6;">' + _('No sections selected') + '</span>'
+      );
+    }
+    const badges = secNames
+      .map((name) => {
+        const sec = uci.get(UCI_PACKAGE, name);
+        const label = (sec && (sec.label || sec['.name'])) || name;
+        return (
+          '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;margin-bottom:2px;max-width:100%;word-break:break-all;">🔒 ' +
+          label +
+          '</span>'
+        );
+      })
+      .join('');
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + '</div>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const target = uci.get(UCI_PACKAGE, sectionId, 'target') || 'domains';
+    if (target === 'all') return _('All Internet');
+    if (target === 'domains') {
+      const rawDomains = normalizeListValues(
+        uci.get(UCI_PACKAGE, sectionId, 'blocked_domains'),
+      );
+      return (
+        _('Blocked Sites') +
+        (rawDomains.length > 0 ? ' (' + rawDomains.length + ')' : '')
+      );
+    }
+    const secNames = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'sections'),
+    );
+    return secNames.length === 0
+      ? _('No sections selected')
+      : secNames.join(', ');
+  };
+
+  // Action column in table
+  o = section.option(form.DummyValue, '_action_display', _('Mode'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const action = uci.get(UCI_PACKAGE, sectionId, 'action') || 'block';
+    const s = uci.get(UCI_PACKAGE, sectionId, 'start_time');
+    const e = uci.get(UCI_PACKAGE, sectionId, 'end_time');
+    const is247 = !s && !e;
+    if (action === 'allow') {
+      return (
+        '<span style="color:var(--success-color-medium, #38a169);font-weight:500;">✅ ' +
+        (is247 ? _('Allow always') : _('Allow in interval')) +
+        '</span>'
+      );
+    }
+    return (
+      '<span style="color:var(--error-color-medium, #e53e3e);font-weight:500;">🚫 ' +
+      (is247 ? _('Block always') : _('Block in interval')) +
+      '</span>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const action = uci.get(UCI_PACKAGE, sectionId, 'action') || 'block';
+    const s = uci.get(UCI_PACKAGE, sectionId, 'start_time');
+    const e = uci.get(UCI_PACKAGE, sectionId, 'end_time');
+    const is247 = !s && !e;
+    if (action === 'allow') {
+      return is247 ? _('Allow always') : _('Allow in interval');
+    }
+    return is247 ? _('Block always') : _('Block in interval');
+  };
+
+  // Schedule column in table
+  o = section.option(form.DummyValue, '_schedule_display', _('Schedule'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const s = uci.get(UCI_PACKAGE, sectionId, 'start_time');
+    const e = uci.get(UCI_PACKAGE, sectionId, 'end_time');
+    const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, 'days'));
+    if (!s && !e) {
+      return (
+        '<div style="line-height:1.3;"><strong style="color:var(--success-color, #38a169);">⚡ ' +
+        _('Always Active (24/7)') +
+        '</strong><br><small style="opacity:0.75;">' +
+        days +
+        '</small></div>'
+      );
+    }
+    return (
+      '<div style="line-height:1.3;"><strong style="color:inherit;">' +
+      (s || '00:00') +
+      ' — ' +
+      (e || '23:59') +
+      '</strong><br><small style="opacity:0.75;">' +
+      days +
+      '</small></div>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const s = uci.get(UCI_PACKAGE, sectionId, 'start_time');
+    const e = uci.get(UCI_PACKAGE, sectionId, 'end_time');
+    const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, 'days'));
+    if (!s && !e) {
+      return `${_('Always Active (24/7)')}, ${days}`;
+    }
+    return `${s || '00:00'} - ${e || '23:59'}, ${days}`;
+  };
+
+  // Daily quota column in table
+  o = section.option(form.DummyValue, '_quota_display', _('Daily Quota'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const target = uci.get(UCI_PACKAGE, sectionId, 'target') || 'domains';
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, 'daily_quota_minutes')) || 0;
+    if (raw <= 0) {
+      return '<span style="opacity:0.5;">' + _('None') + '</span>';
+    }
+    if (target !== 'all') {
+      return (
+        '<span style="color:var(--warning-color-medium, #d69e2e);font-size:11px;" title="' +
+        _('Daily quota applies only when Target Scope is All Internet') +
+        '">⚠️ ' +
+        raw +
+        ' ' +
+        _('min/day') +
+        '</span>'
+      );
+    }
+    return (
+      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:500;">⏳ ' +
+      raw +
+      ' ' +
+      _('min/day') +
+      '</span>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const target = uci.get(UCI_PACKAGE, sectionId, 'target') || 'domains';
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, 'daily_quota_minutes')) || 0;
+    if (raw <= 0) return _('None');
+    return target === 'all'
+      ? `${raw} ${_('min/day')}`
+      : `${raw} ${_('min/day')} (target!=all)`;
+  };
+
+  // Blocked sites column in table
+  o = section.option(form.DummyValue, '_sites_display', _('Blocked Sites'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const domains = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'blocked_domains'),
+    );
+    const mode = uci.get(UCI_PACKAGE, sectionId, 'mode') || 'block';
+    if (domains.length === 0) {
+      return '<span style="opacity:0.5;">' + _('None') + '</span>';
+    }
+    const modeBadge =
+      mode === 'allow'
+        ? '<span style="color:var(--success-color-medium, #38a169);font-weight:600;">🟢 ' +
+          _('Allow only') +
+          '</span>'
+        : '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' +
+          _('Block') +
+          '</span>';
+    const badges = domains
+      .map(
+        (d) =>
+          '<span class="badge" style="background:rgba(237,100,166,0.15);color:var(--pink-color, #d53f8c);padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;border:1px solid rgba(237,100,166,0.3);display:inline-flex;align-items:center;margin-bottom:2px;max-width:100%;word-break:break-all;">' +
+          d +
+          '</span>',
+      )
+      .join('');
+    return (
+      '<div>' +
+      modeBadge +
+      '<br><div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;">' +
+      badges +
+      '</div></div>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const domains = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'blocked_domains'),
+    );
+    const mode = uci.get(UCI_PACKAGE, sectionId, 'mode') || 'block';
+    if (domains.length === 0) return _('None');
+    return (
+      (mode === 'allow' ? _('Allow only:') + ' ' : _('Block:') + ' ') +
+      domains.join(', ')
+    );
+  };
+
+  // Live status badge in table
+  o = section.option(form.DummyValue, '_live_status', _('Status'));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const enabled = uci.get(UCI_PACKAGE, sectionId, 'enabled') !== '0';
+    if (!enabled) {
+      return (
+        '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:var(--background-color-low, rgba(0,0,0,0.08));color:var(--text-color-medium, #888);border:1px solid var(--border-color-low, rgba(0,0,0,0.1));">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;display:inline-block;opacity:0.7;"></span>' +
+        _('Disabled') +
+        '</span>'
+      );
+    }
+    const active = isScheduleCurrentlyActive(sectionId);
+    const action = uci.get(UCI_PACKAGE, sectionId, 'action') || 'block';
+    if (active) {
+      const color =
+        action === 'allow'
+          ? 'var(--success-color-medium, #38a169)'
+          : 'var(--error-color-medium, #e53e3e)';
+      const bg =
+        action === 'allow' ? 'rgba(72,187,120,0.15)' : 'rgba(229,62,62,0.15)';
+      const border =
+        action === 'allow' ? 'rgba(72,187,120,0.3)' : 'rgba(229,62,62,0.3)';
+      const text =
+        action === 'allow' ? _('Active (Allowed)') : _('Active (Blocking)');
+      return (
+        `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:${bg};color:${color};border:1px solid ${border};">` +
+        `<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;box-shadow:0 0 4px currentColor;display:inline-block;"></span>` +
+        text +
+        '</span>'
+      );
+    }
+    return (
+      '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:var(--background-color-low, rgba(0,0,0,0.06));color:var(--text-color-medium, #718096);border:1px solid var(--border-color-low, rgba(0,0,0,0.1));">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;display:inline-block;opacity:0.6;"></span>' +
+      _('Pending') +
+      '</span>'
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const enabled = uci.get(UCI_PACKAGE, sectionId, 'enabled') !== '0';
+    if (!enabled) return _('Disabled');
+    const active = isScheduleCurrentlyActive(sectionId);
+    const action = uci.get(UCI_PACKAGE, sectionId, 'action') || 'block';
+    if (active)
+      return action === 'allow'
+        ? _('Active (Allowed)')
+        : _('Active (Blocking)');
+    return _('Pending');
+  };
+
+  // ─── Modal only configuration options ──────────────────────────────────────
+
+  // Label / Rule name (Modal only)
+  o = section.option(form.Value, 'label', _('Rule Name'));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = _('e.g. Kids Phone (Night YouTube)');
+
+  // Target Family Profile selector
+  o = section.option(
+    form.DynamicList,
+    'profile',
+    _('Target Family Profiles'),
+    _(
+      'Apply this schedule rule to all devices in the selected family profile(s).',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    const profList = uci.sections(UCI_PACKAGE, 'profile') || [];
+    profList.forEach((p) => {
+      const pName = p['.name'];
+      const pAvatar = p.avatar || '👶';
+      const pLabel = p.label ? `${pAvatar} ${p.label}` : `${pAvatar} ${pName}`;
+      this.value(pName, pLabel);
+    });
+    return form.DynamicList.prototype.load.apply(this, [sectionId]);
+  };
+
+  // Device selector with LAN hostnames integration
+  o = section.option(
+    form.DynamicList,
+    'device_ip',
+    _('Additional Individual Devices (IP / MAC)'),
+    _(
+      'Optionally specify individual devices not in a profile. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the IP changes.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '192.168.1.150 or AA:BB:CC:DD:EE:FF';
+  o.validate = validateDevice;
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    return local_devices.createLocalDeviceDynamicListWidget(
+      this,
+      sectionId,
+      cfgvalue,
+    );
+  };
+
+  // Target Type selector
+  o = section.option(
+    form.ListValue,
+    'target',
+    _('Target Scope'),
+    _(
+      'Choose whether to restrict the entire internet (with optional daily screen time quota) or only specific sites/domains (by scheduled hours). Screen time quotas can also be set per child directly in Profiles.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.default = 'domains';
+  o.value(
+    'domains',
+    _('Blocked Sites (Block specified domains during scheduled hours)'),
+  );
+  o.value(
+    'all',
+    _('All Internet (Screen time quota or total internet cutoff)'),
+  );
+  o.value('sections', _('Specific Sections (Select sections below)'));
+
+  // Multi-select for sections
+  o = section.option(
+    form.MultiValue,
+    'sections',
+    _('Select Sections'),
+    _('Choose which routing sections to apply this schedule to.'),
+  );
+  o.modalonly = true;
+  o.depends('target', 'sections');
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    const secList = uci.sections(UCI_PACKAGE, 'section') || [];
+    secList.forEach((s) => {
+      const sName = s['.name'];
+      const sLabel = s.label ? `${s.label} (${s.action || 'rule'})` : sName;
+      this.value(sName, sLabel);
+    });
+    return form.MultiValue.prototype.load.apply(this, [sectionId]);
+  };
+
+  // Action Mode (Block vs Allow)
+  o = section.option(
+    form.ListValue,
+    'action',
+    _('Action Mode'),
+    _(
+      'Select whether to disable the target during the schedule or enable it ONLY during the schedule.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'block';
+  o.value('block', _('Block / Disable in scheduled hours (Standard)'));
+  o.value('allow', _('Allow / Enable ONLY in scheduled hours (White period)'));
+
+  // Schedule Active Hours Mode (24/7 vs Specific Time Window)
+  o = section.option(
+    form.ListValue,
+    '_time_mode',
+    _('Active Hours Mode'),
+    _(
+      'Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'always';
+  o.value('always', _('Always Active (24/7)'));
+  o.value('interval', _('Scheduled Hours (Time window)'));
+  o.cfgvalue = function (sectionId) {
+    const s = uci.get(UCI_PACKAGE, sectionId, 'start_time');
+    const e = uci.get(UCI_PACKAGE, sectionId, 'end_time');
+    return s || e ? 'interval' : 'always';
+  };
+  o.write = function (sectionId, value) {
+    if (value === 'always') {
+      uci.unset(UCI_PACKAGE, sectionId, 'start_time');
+      uci.unset(UCI_PACKAGE, sectionId, 'end_time');
+    }
+  };
+
+  // Start Time
+  o = section.option(
+    form.Value,
+    'start_time',
+    _('Start Time (HH:MM)'),
+    _('Beginning of the schedule interval (e.g. 22:00)'),
+  );
+  o.modalonly = true;
+  o.depends('_time_mode', 'interval');
+  o.default = '22:00';
+  o.placeholder = '22:00';
+  o.rmempty = true;
+  o.validate = validateTime;
+
+  // End Time
+  o = section.option(
+    form.Value,
+    'end_time',
+    _('End Time (HH:MM)'),
+    _(
+      'End of the schedule interval (e.g. 08:00). Supports spans crossing midnight.',
+    ),
+  );
+  o.modalonly = true;
+  o.depends('_time_mode', 'interval');
+  o.default = '08:00';
+  o.placeholder = '08:00';
+  o.rmempty = true;
+  o.validate = validateTime;
+
+  // Days of week
+  o = section.option(
+    form.MultiValue,
+    'days',
+    _('Days of Week'),
+    _('Select active days. If none selected, the rule applies every day.'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  Object.entries(DAY_LABELS).forEach(([key, label]) => {
+    o.value(key, label);
+  });
+
+  // Daily time quota (minutes per day); 0 disables the limit
+  o = section.option(
+    form.Value,
+    'daily_quota_minutes',
+    _('Daily Screen Time Quota (minutes)'),
+    _(
+      "Total allowed network usage per day for devices in this rule. When reached, ALL internet access is blocked until midnight (not just specific domains). Enter 0 for unlimited. Note: Applies when Target Scope is 'All Internet' (or configured in Profile).",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.default = '0';
+  o.placeholder = '0';
+  o.validate = function (_sectionId, value) {
+    if (value === '' || value === null || value === undefined) return true;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 1440)
+      return _('Enter a whole number of minutes between 0 and 1440');
+    return true;
+  };
+
+  // ─── Content blocking (domains) ────────────────────────────────────────────
+
+  // Blocked domains with quick presets
+  o = section.option(
+    form.TextValue,
+    'blocked_domains',
+    _('Blocked Sites (Domains)'),
+    _(
+      'Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories.',
+    ),
+  );
+  o.modalonly = true;
+  o.depends('target', 'domains');
+  o.rmempty = true;
+  o.rows = 6;
+  o.wrap = 'soft';
+  o.textarea = true;
+  o.placeholder = 'youtube.com\ngooglevideo.com';
+  o.validate = function (sectionId, value) {
+    if (!value) return true;
+    const lines = `${value}`
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      const clean = line
+        .replace(/^(full:|keyword:|regex:)/, '')
+        .replace(/^\*?\./, '');
+      if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
+        return _('Invalid domain: empty prefix value');
+      }
+      if (/^regex:/.test(line)) continue;
+      if (
+        !/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)
+      ) {
+        return _('Invalid domain: %s').format(line);
+      }
+    }
+    return true;
+  };
+  o.cfgvalue = function (sectionId) {
+    return normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, 'blocked_domains'),
+    ).join('\n');
+  };
+  o.load = o.cfgvalue;
+  o.formvalue = function (sectionId) {
+    const node = document.getElementById(this.cbid(sectionId));
+    return node ? node.value : null;
+  };
+  o.write = function (sectionId, value) {
+    const lines = [];
+    for (const raw of `${value || ''}`.split(/\r?\n/)) {
+      const l = raw.trim();
+      if (l && !lines.includes(l)) {
+        lines.push(l);
+      }
+    }
+    if (lines.length === 0) {
+      uci.unset(UCI_PACKAGE, sectionId, 'blocked_domains');
+    } else {
+      uci.set(UCI_PACKAGE, sectionId, 'blocked_domains', lines);
+    }
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, 'blocked_domains');
+  };
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    const container = E('div', { style: 'width:100%;box-sizing:border-box;' });
+
+    // Preset buttons row
+    const presetRow = E('div', {
+      style: 'margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;',
+    });
+    Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
+      const btn = E(
+        'button',
+        {
+          class: 'cbi-button cbi-button-neutral',
+          type: 'button',
+          style: 'padding:2px 8px;font-size:11px;',
+          title: preset.domains.join(', '),
+        },
+        preset.icon + ' ' + preset.label,
+      );
+      btn.addEventListener('click', function () {
+        const textarea = container.querySelector('textarea');
+        if (!textarea) return;
+        const current = textarea.value
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const merged = current.slice();
+        for (const d of preset.domains) {
+          if (!merged.includes(d)) merged.push(d);
+        }
+        textarea.value = merged.join('\n');
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      presetRow.appendChild(btn);
+    });
+    container.appendChild(presetRow);
+
+    const cbid = this.cbid(sectionId);
+    const textarea = E('textarea', {
+      id: cbid,
+      name: cbid,
+      class: 'cbi-input-textarea',
+      style: 'width:100%;min-height:110px;box-sizing:border-box;',
+      placeholder: 'youtube.com\ngooglevideo.com',
+    });
+    const strVal = Array.isArray(cfgvalue)
+      ? cfgvalue.join('\n')
+      : cfgvalue || '';
+    if (strVal) textarea.value = strVal;
+    container.appendChild(textarea);
+    return container;
+  };
+
+  // Content mode: block listed vs allow only listed (whitelist)
+  o = section.option(
+    form.ListValue,
+    'mode',
+    _('Content Mode'),
+    _(
+      'Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'block';
+  o.value('block', _('Block listed sites (Standard)'));
+  o.value('allow', _('Allow only listed sites (Whitelist)'));
+
+  // DNS-level blocking
+  o = section.option(
+    form.Flag,
+    'dns_level',
+    _('Block at DNS level'),
+    _(
+      'Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  // Telegram notification
+  o = section.option(
+    form.Flag,
+    'notify',
+    _('Notify in Telegram'),
+    _(
+      'Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.rmempty = false;
+}
+
+// ─── Guest Mode Section ───────────────────────────────────────────────────────
+
+function validateGuestDevice(_sectionId, value) {
+  if (value === '' || value === null || value === undefined) return true;
+  const v = String(value).trim();
+  const isMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(v);
+  const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(v);
+  const isIpv6 = /^[0-9a-fA-F:]+(\/\d{1,3})?$/.test(v);
+  if (isMac || isIpv4 || isIpv6) return true;
+  return _('Invalid IP or MAC address format');
+}
+
+function validateGuestTime(_sectionId, value) {
+  if (value === '' || value === null || value === undefined) return true;
+  const v = String(value).trim();
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) return true;
+  return _('Invalid time format. Use HH:MM (e.g. 08:00 or 22:30)');
+}
+
+function createGuestModeContent(section) {
+  // Enabled switch
+  let o = section.option(form.Flag, 'enabled', _('Enable Guest Mode'));
+  o.default = '0';
+  o.rmempty = false;
+
+  // Policy Mode: selected vs inverted
+  o = section.option(
+    form.ListValue,
+    'mode',
+    _('Policy Mode'),
+    _(
+      'Selected: specified devices become guests. Inverted: all devices on the network become guests EXCEPT the trusted ones (Zero-Trust).',
+    ),
+  );
+  o.default = 'selected';
+  o.value('selected', _('Selected Devices are Guests (Explicit list)'));
+  o.value('inverted', _('All Devices are Guests EXCEPT Trusted (Zero-Trust)'));
+
+  // Guest devices (for selected mode)
+  o = section.option(
+    form.DynamicList,
+    'guest_devices',
+    _('Guest Devices (MAC / IP)'),
+    _(
+      'Devices that are isolated as guests. Enter IP or MAC addresses, or pick from active LAN devices.',
+    ),
+  );
+  o.rmempty = true;
+  o.placeholder = '192.168.1.150 or AA:BB:CC:DD:EE:FF';
+  o.validate = validateGuestDevice;
+  o.depends('mode', 'selected');
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    return local_devices.createLocalDeviceDynamicListWidget(
+      this,
+      sectionId,
+      cfgvalue,
+    );
+  };
+
+  // Trusted devices (for inverted mode)
+  o = section.option(
+    form.DynamicList,
+    'trusted_devices',
+    _('Trusted Master Devices (MAC / IP)'),
+    _(
+      'Master and family devices with full LAN and router access. Any device NOT in this list will be treated as a guest.',
+    ),
+  );
+  o.rmempty = true;
+  o.placeholder = '192.168.1.100 or AA:BB:CC:DD:EE:FF';
+  o.validate = validateGuestDevice;
+  o.depends('mode', 'inverted');
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    return local_devices.createLocalDeviceDynamicListWidget(
+      this,
+      sectionId,
+      cfgvalue,
+    );
+  };
+
+  // LAN Isolation
+  o = section.option(
+    form.Flag,
+    'isolate_lan',
+    _('Isolate Local LAN'),
+    _(
+      'Prevent guest devices from accessing other local network devices (RFC1918 and IPv6 local subnets).',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  // Block Router Admin
+  o = section.option(
+    form.Flag,
+    'block_router_admin',
+    _('Block Router Administration'),
+    _(
+      'Prevent guest devices from accessing router management services (LuCI Web UI, SSH, Clash API). DHCP and DNS remain accessible.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  // Daily Time Quota (minutes)
+  o = section.option(
+    form.Value,
+    'daily_time_limit',
+    _('Daily Time Limit (minutes)'),
+    _(
+      'Maximum allowed online time per guest device per day. When reached, access is blocked until midnight. Enter 0 for unlimited.',
+    ),
+  );
+  o.default = '0';
+  o.placeholder = '0';
+  o.rmempty = true;
+  o.validate = function (_sectionId, value) {
+    if (value === '' || value === null || value === undefined) return true;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 1440)
+      return _('Enter a whole number of minutes between 0 and 1440');
+    return true;
+  };
+
+  // Daily Traffic Quota (MB)
+  o = section.option(
+    form.Value,
+    'daily_traffic_limit',
+    _('Daily Traffic Limit (MB)'),
+    _(
+      'Maximum allowed download and upload traffic per guest device per day in megabytes. Enter 0 for unlimited.',
+    ),
+  );
+  o.default = '0';
+  o.placeholder = '0';
+  o.rmempty = true;
+  o.validate = function (_sectionId, value) {
+    if (value === '' || value === null || value === undefined) return true;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0)
+      return _('Enter a positive whole number in megabytes');
+    return true;
+  };
+
+  // Schedule Active Window (start_time, end_time)
+  o = section.option(
+    form.Value,
+    'start_time',
+    _('Allowed Start Time'),
+    _('Start of allowed daily access window in HH:MM format (24-hour clock).'),
+  );
+  o.placeholder = '08:00';
+  o.rmempty = true;
+  o.validate = validateGuestTime;
+
+  o = section.option(
+    form.Value,
+    'end_time',
+    _('Allowed End Time'),
+    _('End of allowed daily access window in HH:MM format (24-hour clock).'),
+  );
+  o.placeholder = '22:00';
+  o.rmempty = true;
+  o.validate = validateGuestTime;
+
+  // Days of week
+  o = section.option(
+    form.MultiValue,
+    'days',
+    _('Allowed Days of Week'),
+    _('Select days when guest access is permitted. Leave empty for all days.'),
+  );
+  o.rmempty = true;
+  Object.entries(DAY_LABELS).forEach(([val, label]) => {
+    o.value(val, label);
+  });
+
+  // Telegram notification
+  o = section.option(
+    form.Flag,
+    'notify',
+    _('Telegram Alerts'),
+    _(
+      'Send Telegram notification when a guest device hits its daily time or traffic quota.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+}
+
+const EntryPoint = {
+  createProfileContent,
+  createParentalContent,
+  createGuestModeContent,
+};
+
+export default baseclass.extend(EntryPoint);

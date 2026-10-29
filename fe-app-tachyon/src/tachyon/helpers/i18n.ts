@@ -48,8 +48,17 @@ export function isRussianLanguage(): boolean {
 }
 
 /**
- * Returns Russian text if current UI is RU, otherwise English.
+ * Returns Russian text if current UI is RU, otherwise English (or LuCI _() translation).
  */
 export function tr(ru: string, en: string): string {
-  return isRussianLanguage() ? ru : en;
+  if (isRussianLanguage()) return ru;
+  try {
+    if (typeof _ === 'function') {
+      const translated = _(en);
+      if (translated) return translated;
+    }
+  } catch {
+    // Ignore translation resolution errors
+  }
+  return en;
 }

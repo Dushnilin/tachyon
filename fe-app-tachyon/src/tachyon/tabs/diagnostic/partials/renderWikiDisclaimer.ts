@@ -32,7 +32,7 @@ export function renderWikiDisclaimer(kind: 'default' | 'error' | 'warning') {
       ]),
     ]),
     renderButton({
-      classNames: ['cbi-button-save'],
+      classNames: ['tachyon_diagnostic-wiki-btn'],
       text: _('Open Project Page'),
       onClick: () =>
         window.open(
@@ -42,7 +42,7 @@ export function renderWikiDisclaimer(kind: 'default' | 'error' | 'warning') {
         ),
     }),
     renderButton({
-      classNames: ['cbi-button-save'],
+      classNames: ['tachyon_diagnostic-wiki-btn'],
       icon: renderSendIcon24,
       text: _('Telegram Channel'),
       onClick: () =>
@@ -53,7 +53,10 @@ export function renderWikiDisclaimer(kind: 'default' | 'error' | 'warning') {
         ),
     }),
     renderButton({
-      classNames: ['cbi-button-save'],
+      classNames: [
+        'tachyon_diagnostic-wiki-btn',
+        'tachyon_diagnostic-wiki-btn--support',
+      ],
       icon: renderHeartIcon24,
       text: _('Support Development'),
       onClick: () => renderSupportModal(),

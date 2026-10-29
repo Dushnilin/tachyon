@@ -384,28 +384,41 @@ function createTwoModeTracerWidget() {
     _("Trace"),
   );
 
-  return E("div", { class: "cbi-section", style: "margin-bottom: 12px;" }, [
-    E("h3", {}, _("2-Mode Rule & Condition Tracer")),
-    E("div", { class: "cbi-section-node", style: "padding: 10px;" }, [
+  return E(
+    "div",
+    { class: "tachyon-studio-panel", style: "margin-bottom: 12px;" },
+    [
+      E("div", { class: "tachyon-studio-panel__header" }, [
+        E("div", { class: "tachyon-studio-panel__titles" }, [
+          E(
+            "span",
+            { class: "tachyon-studio-toolbar__kicker" },
+            "RULE SIMULATION & SEARCH",
+          ),
+          E(
+            "h3",
+            { class: "tachyon-studio-panel__title" },
+            _("2-Mode Rule & Condition Tracer"),
+          ),
+        ]),
+      ]),
       E(
         "div",
         {
-          style:
-            "display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;",
+          class: "tachyon-studio-panel__controls",
+          style: "margin-bottom: 8px;",
         },
         [modeSelect, searchInput],
       ),
-      E(
-        "div",
-        {
-          style:
-            "display: flex; flex-wrap: wrap; gap: 8px; align-items: center;",
-        },
-        [srcIpInput, srcMacInput, portInput, runBtn],
-      ),
+      E("div", { class: "tachyon-studio-panel__controls" }, [
+        srcIpInput,
+        srcMacInput,
+        portInput,
+        runBtn,
+      ]),
       resultsBox,
-    ]),
-  ]);
+    ],
+  );
 }
 
 function configureConditionsSection(sectionRef) {
@@ -693,6 +706,9 @@ function createConditionsContent(section) {
     Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
       o.value(key, label);
     });
+  }
+  if (typeof main.attachCommunityListPicker === "function") {
+    main.attachCommunityListPicker(o);
   }
 
   o = section.taboption(

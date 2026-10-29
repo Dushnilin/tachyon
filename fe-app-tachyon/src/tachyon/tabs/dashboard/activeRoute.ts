@@ -14,14 +14,24 @@ const SERVICE_ACTIONS = new Set([
   'zapret',
   'zapret2',
   'byedpi',
+  'desync',
   'wdtt',
   'olcrtc',
+  'block',
+  'reject',
+  'bypass',
+  'direct',
+  'dns',
 ]);
 const SERVICE_OUTBOUND_TYPES = new Set([
   'SING_BOX',
   'ZAPRET',
   'ZAPRET2',
   'BYEDPI',
+  'DESYNC',
+  'BLOCK',
+  'DIRECT',
+  'DNS',
 ]);
 
 export function isServiceGroup(group: Tachyon.OutboundGroup): boolean {

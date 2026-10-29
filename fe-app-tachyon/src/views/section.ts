@@ -1,0 +1,18343 @@
+/* eslint-disable */
+// @ts-nocheck
+'use strict';
+'require form';
+'require baseclass';
+'require fs';
+'require network';
+'require ui';
+'require uci';
+'require view.tachyon.local_devices as localDevices';
+'require view.tachyon.main as main';
+
+const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
+const ACTION_PROVIDERS_AVAILABILITY_EVENT =
+  main.TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT ||
+  'tachyon:action-providers-availability';
+const RULE_SET_ITEM_SETTINGS_KEY = 'rule_set_settings';
+const ROUTING_ACTIONS = [
+  'connection',
+  'proxy',
+  'outbound',
+  'vpn',
+  'bypass',
+  'block',
+  'zapret',
+  'zapret2',
+  'byedpi',
+  'wdtt',
+  'olcrtc',
+  'fptn',
+  'awg',
+  'warp',
+  'anytls',
+  'snell',
+  'mieru',
+  'naive',
+  'sudoku',
+  'masque',
+  'openvpn',
+  'openconnect',
+  'desync',
+  'shadowtls',
+  'trusttunnel',
+  'tewfai',
+  'hosts',
+  'group',
+];
+const CONNECTIONS_BLOCKED_INTERFACES = [
+  'br-lan',
+  'eth0',
+  'eth1',
+  'wan',
+  'phy0-ap0',
+  'phy1-ap0',
+  'pppoe-wan',
+  'lan',
+];
+
+function valuesToText(values) {
+  if (!values) {
+    return '';
+  }
+
+  if (Array.isArray(values)) {
+    return values.filter(Boolean).join('\n');
+  }
+
+  return values ? `${values}` : '';
+}
+
+function normalizeOptionValues(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter(Boolean)
+      .map((item) => `${item}`.trim())
+      .filter(Boolean);
+  }
+
+  return `${value}`
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getUciSectionName(section) {
+  return section && section['.name'] ? section['.name'] : '';
+}
+
+function getUciSectionLabel(section) {
+  return (
+    (section && section.label) ||
+    (section && section.name) ||
+    getUciSectionName(section)
+  );
+}
+
+function isOutboundDetourTargetSection(section, currentSectionId) {
+  const sectionName = getUciSectionName(section);
+  const action = (section && section.action) || '';
+
+  return (
+    sectionName &&
+    sectionName !== currentSectionId &&
+    section.enabled !== '0' &&
+    [
+      'connection',
+      'proxy',
+      'outbound',
+      'vpn',
+      'awg',
+      'warp',
+      'anytls',
+      'snell',
+      'mieru',
+      'naive',
+      'sudoku',
+      'masque',
+      'openvpn',
+      'openconnect',
+      'fptn',
+      'desync',
+      'shadowtls',
+      'trusttunnel',
+      'tewfai',
+      'group',
+    ].includes(action)
+  );
+}
+
+function getOutboundDetourTargetSections(currentSectionId) {
+  return (uci.sections(UCI_PACKAGE, 'section') || []).filter((section) =>
+    isOutboundDetourTargetSection(section, currentSectionId),
+  );
+}
+
+function getDefaultOutboundDetourSection(currentSectionId) {
+  const targetSections = getOutboundDetourTargetSections(currentSectionId);
+
+  return targetSections.length ? getUciSectionName(targetSections[0]) : '';
+}
+
+function refreshOutboundDetourSectionOptionValues(option, sectionId) {
+  option.keylist = [];
+  option.vallist = [];
+
+  getOutboundDetourTargetSections(sectionId).forEach((targetSection) => {
+    option.value(
+      getUciSectionName(targetSection),
+      getUciSectionLabel(targetSection),
+    );
+  });
+}
+
+function isDnsDetourTargetSection(section, currentSectionId) {
+  const sectionName = getUciSectionName(section);
+  const action = (section && section.action) || '';
+
+  if (
+    !sectionName ||
+    sectionName === currentSectionId ||
+    section.enabled === '0'
+  ) {
+    return false;
+  }
+
+  if (
+    [
+      'connection',
+      'proxy',
+      'outbound',
+      'vpn',
+      'awg',
+      'warp',
+      'anytls',
+      'snell',
+      'mieru',
+      'naive',
+      'sudoku',
+      'masque',
+      'openvpn',
+      'openconnect',
+      'fptn',
+      'desync',
+      'shadowtls',
+      'trusttunnel',
+      'tewfai',
+      'group',
+    ].includes(action)
+  ) {
+    return true;
+  }
+  if (action === 'zapret') {
+    return isZapretInstalledForUi();
+  }
+  if (action === 'zapret2') {
+    return isZapret2InstalledForUi();
+  }
+  return action === 'byedpi' && isByedpiInstalledForUi();
+}
+
+function refreshDnsDetourSectionOptionValues(option, sectionId) {
+  option.keylist = [];
+  option.vallist = [];
+
+  (uci.sections(UCI_PACKAGE, 'section') || [])
+    .filter((section) => isDnsDetourTargetSection(section, sectionId))
+    .forEach((targetSection) => {
+      option.value(
+        getUciSectionName(targetSection),
+        getUciSectionLabel(targetSection),
+      );
+    });
+}
+
+function dependsOnRoutingAction(option) {
+  ROUTING_ACTIONS.forEach((action) => option.depends('action', action));
+  return option;
+}
+
+function dependsOnRuleConditions(option) {
+  const routingConditions = [
+    'domain',
+    'ip_cidr',
+    'community_lists',
+    'rule_set',
+    'domain_ip_lists',
+    'ports',
+  ];
+  ROUTING_ACTIONS.forEach((action) =>
+    routingConditions.forEach((condition) =>
+      option.depends({ action, [condition]: /\S/ }),
+    ),
+  );
+  [
+    'domain',
+    'community_lists',
+    '_dns_rule_set',
+    '_dns_domain_ip_lists',
+  ].forEach((condition) =>
+    option.depends({ action: 'dns', [condition]: /\S/ }),
+  );
+  return option;
+}
+
+const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT =
+  '--filter-tcp=80 <HOSTLIST> --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin --new --filter-udp=443 <HOSTLIST_NOAUTO> --dpi-desync=fake --dpi-desync-repeats=11 --new --filter-tcp=443 <HOSTLIST> --dpi-desync=multidisorder --dpi-desync-split-pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1';
+
+const ZAPRET_DEFAULT_NFQWS_OPT =
+  '--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin';
+
+const ZAPRET2_DEFAULT_NFQWS2_OPT =
+  '--filter-tcp=80 --filter-l7=http --payload=http_req --lua-desync=fake:blob=fake_default_http:tcp_md5 --lua-desync=multisplit:pos=method+2 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000 --lua-desync=multidisorder:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6';
+
+const BYEDPI_DEFAULT_CMD_OPTS = '-o 2 --auto=t,r,a,s -d 2';
+const ANNOTATED_TEXTAREA_STYLE_ID = 'fkp-annotated-textarea-styles';
+const CONNECTIONS_DYNLIST_STYLE_ID = 'fkp-connections-dynlist-styles';
+const NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS = 500;
+const NFQWS_VALIDATION_COMMAND = '/usr/bin/tachyon';
+const nfqwsRemoteValidationCache = new Map();
+const nfqwsRemoteValidationInflight = new Map();
+const nfqws2RemoteValidationCache = new Map();
+const nfqws2RemoteValidationInflight = new Map();
+const byedpiRemoteValidationCache = new Map();
+const byedpiRemoteValidationInflight = new Map();
+const BYEDPI_LONG_VALUE_OPTIONS = new Set([
+  '--max-conn',
+  '--conn-ip',
+  '--buf-size',
+  '--debug',
+  '--def-ttl',
+  '--auto',
+  '--auto-mode',
+  '--cache-ttl',
+  '--cache-dump',
+  '--timeout',
+  '--proto',
+  '--hosts',
+  '--ipset',
+  '--pf',
+  '--round',
+  '--split',
+  '--disorder',
+  '--oob',
+  '--disoob',
+  '--fake',
+  '--fake-sni',
+  '--ttl',
+  '--fake-offset',
+  '--fake-data',
+  '--fake-tls-mod',
+  '--oob-data',
+  '--mod-http',
+  '--tlsrec',
+  '--tlsminor',
+  '--udp-fake',
+]);
+const BYEDPI_LONG_FLAG_OPTIONS = new Set([
+  '--md5sig',
+  '--tfo',
+  '--drop-sack',
+  '--no-domain',
+  '--no-udp',
+]);
+const BYEDPI_SHORT_VALUE_OPTIONS = new Set([
+  '-c',
+  '-I',
+  '-b',
+  '-x',
+  '-g',
+  '-A',
+  '-L',
+  '-u',
+  '-y',
+  '-T',
+  '-K',
+  '-H',
+  '-j',
+  '-V',
+  '-R',
+  '-s',
+  '-d',
+  '-o',
+  '-q',
+  '-f',
+  '-n',
+  '-t',
+  '-O',
+  '-l',
+  '-Q',
+  '-e',
+  '-M',
+  '-r',
+  '-m',
+  '-a',
+]);
+const BYEDPI_SHORT_FLAG_OPTIONS = new Set(['-N', '-U', '-F', '-S', '-Y']);
+const NFQWS_OPTIONAL_ARG_OPTIONS = new Set([
+  '--comment',
+  '--ctrack-disable',
+  '--debug',
+  '--dpi-desync-any-protocol',
+  '--dpi-desync-autottl',
+  '--dpi-desync-autottl6',
+  '--dpi-desync-skip-nosni',
+  '--dpi-desync-tcp-flags-set',
+  '--dpi-desync-tcp-flags-unset',
+  '--dup-autottl',
+  '--dup-autottl6',
+  '--dup-replace',
+  '--dup-tcp-flags-set',
+  '--dup-tcp-flags-unset',
+  '--ipcache-hostname',
+  '--orig-autottl',
+  '--orig-autottl6',
+  '--orig-tcp-flags-set',
+  '--orig-tcp-flags-unset',
+  '--synack-split',
+]);
+const NFQWS_NO_ARG_OPTIONS = new Set([
+  '--bind-fix4',
+  '--bind-fix6',
+  '--daemon',
+  '--domcase',
+  '--dry-run',
+  '--hostcase',
+  '--hostnospace',
+  '--methodeol',
+  '--new',
+  '--skip',
+  '--version',
+]);
+const NFQWS_REQUIRED_ARG_OPTIONS = new Set([
+  '--ctrack-timeouts',
+  '--dpi-desync',
+  '--dpi-desync-badack-increment',
+  '--dpi-desync-badseq-increment',
+  '--dpi-desync-cutoff',
+  '--dpi-desync-fake-dht',
+  '--dpi-desync-fake-discord',
+  '--dpi-desync-fake-http',
+  '--dpi-desync-fake-quic',
+  '--dpi-desync-fake-stun',
+  '--dpi-desync-fake-syndata',
+  '--dpi-desync-fake-tcp-mod',
+  '--dpi-desync-fake-tls',
+  '--dpi-desync-fake-tls-mod',
+  '--dpi-desync-fake-unknown',
+  '--dpi-desync-fake-unknown-udp',
+  '--dpi-desync-fake-wireguard',
+  '--dpi-desync-fakedsplit-mod',
+  '--dpi-desync-fakedsplit-pattern',
+  '--dpi-desync-fooling',
+  '--dpi-desync-fwmark',
+  '--dpi-desync-hostfakesplit-midhost',
+  '--dpi-desync-hostfakesplit-mod',
+  '--dpi-desync-ipfrag-pos-tcp',
+  '--dpi-desync-ipfrag-pos-udp',
+  '--dpi-desync-repeats',
+  '--dpi-desync-split-http-req',
+  '--dpi-desync-split-pos',
+  '--dpi-desync-split-seqovl',
+  '--dpi-desync-split-seqovl-pattern',
+  '--dpi-desync-split-tls',
+  '--dpi-desync-start',
+  '--dpi-desync-ts-increment',
+  '--dpi-desync-ttl',
+  '--dpi-desync-ttl6',
+  '--dpi-desync-udplen-increment',
+  '--dpi-desync-udplen-pattern',
+  '--dup',
+  '--dup-badack-increment',
+  '--dup-badseq-increment',
+  '--dup-cutoff',
+  '--dup-fooling',
+  '--dup-ip-id',
+  '--dup-start',
+  '--dup-ts-increment',
+  '--dup-ttl',
+  '--dup-ttl6',
+  '--filter-l3',
+  '--filter-l7',
+  '--filter-tcp',
+  '--filter-udp',
+  '--hostlist',
+  '--hostlist-auto',
+  '--hostlist-auto-debug',
+  '--hostlist-auto-fail-threshold',
+  '--hostlist-auto-fail-time',
+  '--hostlist-auto-retrans-threshold',
+  '--hostlist-domains',
+  '--hostlist-exclude',
+  '--hostlist-exclude-domains',
+  '--hostspell',
+  '--ip-id',
+  '--ipcache-lifetime',
+  '--ipset',
+  '--ipset-exclude',
+  '--ipset-exclude-ip',
+  '--ipset-ip',
+  '--orig-mod-cutoff',
+  '--orig-mod-start',
+  '--orig-ttl',
+  '--orig-ttl6',
+  '--pidfile',
+  '--qnum',
+  '--uid',
+  '--user',
+  '--wsize',
+  '--wssize',
+  '--wssize-cutoff',
+  '--wssize-forced-cutoff',
+]);
+const NFQWS2_OPTIONAL_ARG_OPTIONS = new Set([
+  '--chdir',
+  '--comment',
+  '--ctrack-disable',
+  '--debug',
+  '--hostlist-auto-retrans-reset',
+  '--intercept',
+  '--ipcache-hostname',
+  '--new',
+  '--payload-disable',
+  '--reasm-disable',
+  '--server',
+  '--template',
+  '--writeable',
+]);
+const NFQWS2_NO_ARG_OPTIONS = new Set([
+  '--bind-fix4',
+  '--bind-fix6',
+  '--daemon',
+  '--dry-run',
+  '--skip',
+  '--version',
+]);
+const NFQWS2_REQUIRED_ARG_OPTIONS = new Set([
+  '--blob',
+  '--cookie',
+  '--ctrack-timeouts',
+  '--filter-l3',
+  '--filter-l7',
+  '--filter-tcp',
+  '--filter-udp',
+  '--fwmark',
+  '--fuzz',
+  '--hostlist',
+  '--hostlist-auto',
+  '--hostlist-auto-debug',
+  '--hostlist-auto-fail-threshold',
+  '--hostlist-auto-fail-time',
+  '--hostlist-auto-retrans-threshold',
+  '--hostlist-domains',
+  '--hostlist-exclude',
+  '--hostlist-exclude-domains',
+  '--import',
+  '--in-range',
+  '--ipcache-lifetime',
+  '--ipset',
+  '--ipset-exclude',
+  '--ipset-exclude-ip',
+  '--ipset-ip',
+  '--lua-gc',
+  '--lua-init',
+  '--lua-desync',
+  '--name',
+  '--out-range',
+  '--payload',
+  '--pidfile',
+  '--qnum',
+  '--uid',
+  '--user',
+]);
+const actionProvidersAvailabilityState = {
+  loaded: false,
+  zapretInstalled: false,
+  zapret2Installed: false,
+  byedpiInstalled: false,
+  wdttInstalled: false,
+  olcrtcInstalled: false,
+  fptnInstalled: false,
+  torInstalled: false,
+  singBoxExtended: false,
+  singBoxTachyonCore: false,
+};
+let actionProvidersAvailabilityPromise = null;
+let actionProvidersAvailabilityLoader = null;
+const outboundNameChoicesCache = new Map();
+const outboundNameChoicesFetchedAt = new Map();
+// Server lists change when a subscription is refreshed or the node prefix is
+// edited; without an expiry the filter dropdown kept serving the names that
+// were current when the page was opened.
+const OUTBOUND_NAME_CHOICES_TTL_MS = 30000;
+const outboundNameChoicesInflight = new Map();
+const outboundTypeByNameCache = new Map();
+const outboundNameSourceOptions = new Map();
+const sectionGroupSourceOptions = new Map();
+const dashboardFilterChoiceRefreshers = new Map();
+const perRuleDnsTypeState = new Map();
+const perRuleDnsWidgets = new Map();
+const SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
+
+function normalizeProtocolName(protocol) {
+  if (!protocol) {
+    return '';
+  }
+  const p = `${protocol}`.trim().toLowerCase();
+  switch (p) {
+    case 'vless':
+      return 'VLESS';
+    case 'vmess':
+      return 'VMess';
+    case 'shadowsocks':
+    case 'ss':
+      return 'Shadowsocks';
+    case 'trojan':
+      return 'Trojan';
+    case 'wireguard':
+    case 'wg':
+      return 'WireGuard';
+    case 'vpn':
+      return 'WG/AWG';
+    case 'hysteria2':
+    case 'hy2':
+      return 'Hysteria2';
+    case 'hysteria':
+      return 'Hysteria';
+    case 'tuic':
+      return 'TUIC';
+    case 'socks':
+    case 'socks5':
+      return 'SOCKS5';
+    case 'http':
+      return 'HTTP';
+    case 'direct':
+      return 'Direct';
+    case 'block':
+      return 'Block';
+    default:
+      return p.charAt(0).toUpperCase() + p.slice(1);
+  }
+}
+
+function normalizeTransportName(transport) {
+  if (!transport) {
+    return '';
+  }
+  const t = `${transport}`.trim().toLowerCase();
+  switch (t) {
+    case 'xhttp':
+      return 'XHTTP';
+    case 'ws':
+    case 'websocket':
+      return 'WS';
+    case 'grpc':
+      return 'gRPC';
+    case 'http':
+    case 'h2':
+      return 'HTTP';
+    case 'tcp':
+    case 'raw':
+      return 'TCP';
+    case 'quic':
+      return 'QUIC';
+    case 'upgrade':
+    case 'httpupgrade':
+      return 'HTTPUpgrade';
+    default:
+      return t.toUpperCase();
+  }
+}
+
+function formatOutboundTypeLabel(protocol, transport) {
+  const normProto = normalizeProtocolName(protocol);
+  const normTrans = normalizeTransportName(transport);
+
+  if (!normProto && !normTrans) {
+    return '';
+  }
+  if (!normProto) {
+    return normTrans;
+  }
+  if (!normTrans) {
+    return normProto;
+  }
+  if (normProto.toUpperCase().includes(normTrans.toUpperCase())) {
+    return normProto;
+  }
+  if (['WireGuard', 'Hysteria', 'Hysteria2', 'TUIC'].includes(normProto)) {
+    return normProto;
+  }
+  return `${normProto} (${normTrans})`;
+}
+
+function getProxyUrlTypeLabel(url) {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+  const trimmed = url.trim();
+  const schemeMatch = trimmed.match(/^([a-zA-Z0-9_-]+):\/\//);
+  if (!schemeMatch) {
+    return '';
+  }
+  const scheme = schemeMatch[1].toLowerCase();
+
+  let proto = scheme;
+  let transport = '';
+
+  if (scheme === 'vmess') {
+    proto = 'VMess';
+    try {
+      const b64 = trimmed.slice(8).split('#')[0];
+      if (typeof atob === 'function') {
+        const jsonStr = atob(b64.replace(/[\r\n]/g, ''));
+        const obj = JSON.parse(jsonStr);
+        if (obj && typeof obj.net === 'string') {
+          transport = obj.net;
+        }
+      }
+    } catch (_e) {}
+  } else {
+    try {
+      const [base] = trimmed.split('#');
+      const queryIdx = base.indexOf('?');
+      if (queryIdx !== -1) {
+        const query = base.slice(queryIdx + 1);
+        const params = new URLSearchParams(query);
+        const t = params.get('type');
+        if (t && t.trim()) {
+          transport = t.trim();
+        }
+      }
+    } catch (_e) {}
+  }
+
+  return formatOutboundTypeLabel(proto, transport);
+}
+const COUNTRY_CODES =
+  'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW XK'.split(
+    ' ',
+  );
+const REGION_NAME_FALLBACKS = {
+  XK: 'Kosovo',
+};
+let regionDisplayNamesCache = {};
+
+function updateActionProvidersAvailabilityState(nextState) {
+  if (!nextState) {
+    return;
+  }
+
+  actionProvidersAvailabilityState.loaded = true;
+
+  if (typeof nextState.zapretInstalled !== 'undefined') {
+    actionProvidersAvailabilityState.zapretInstalled = Boolean(
+      nextState.zapretInstalled,
+    );
+  }
+
+  if (typeof nextState.zapret2Installed !== 'undefined') {
+    actionProvidersAvailabilityState.zapret2Installed = Boolean(
+      nextState.zapret2Installed,
+    );
+  }
+
+  if (typeof nextState.byedpiInstalled !== 'undefined') {
+    actionProvidersAvailabilityState.byedpiInstalled = Boolean(
+      nextState.byedpiInstalled,
+    );
+  }
+
+  if (typeof nextState.wdttInstalled !== 'undefined') {
+    actionProvidersAvailabilityState.wdttInstalled = Boolean(
+      nextState.wdttInstalled,
+    );
+  }
+
+  if (typeof nextState.olcrtcInstalled !== 'undefined') {
+    actionProvidersAvailabilityState.olcrtcInstalled = Boolean(
+      nextState.olcrtcInstalled,
+    );
+  }
+
+  if (typeof nextState.fptnInstalled !== 'undefined') {
+    actionProvidersAvailabilityState.fptnInstalled = Boolean(
+      nextState.fptnInstalled,
+    );
+  }
+
+  if (typeof nextState.singBoxTachyonCore !== 'undefined') {
+    actionProvidersAvailabilityState.singBoxTachyonCore = Boolean(
+      nextState.singBoxTachyonCore,
+    );
+  }
+
+  if (typeof nextState.singBoxExtended !== 'undefined') {
+    actionProvidersAvailabilityState.singBoxExtended = Boolean(
+      nextState.singBoxExtended,
+    );
+  }
+
+  if (typeof nextState.torInstalled !== 'undefined') {
+    actionProvidersAvailabilityState.torInstalled = Boolean(
+      nextState.torInstalled,
+    );
+  }
+
+  actionProvidersAvailabilityPromise = null;
+}
+
+function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
+  if (!systemInfo || !systemInfo.providerInfoLoaded) {
+    return;
+  }
+
+  updateActionProvidersAvailabilityState({
+    zapretInstalled: Boolean(systemInfo.zapret_installed),
+    zapret2Installed: Boolean(systemInfo.zapret2_installed),
+    byedpiInstalled: Boolean(systemInfo.byedpi_installed),
+    wdttInstalled: Boolean(systemInfo.wdtt_installed),
+    olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
+    // FPTN is compiled into tachyon-core itself, so the built-in flag makes
+    // the action available even with no fptn package on disk.
+    fptnInstalled: Boolean(
+      systemInfo.fptn_installed || systemInfo.sing_box_fptn,
+    ),
+    singBoxExtended: Boolean(systemInfo.sing_box_extended),
+    singBoxTachyonCore: Boolean(systemInfo.sing_box_tachyon_core),
+    torInstalled: Boolean(systemInfo.tor_installed),
+  });
+}
+
+function setActionProvidersAvailabilityLoader(loader) {
+  actionProvidersAvailabilityLoader =
+    typeof loader === 'function' ? loader : null;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(ACTION_PROVIDERS_AVAILABILITY_EVENT, (event) => {
+    updateActionProvidersAvailabilityState(event.detail);
+  });
+}
+
+function refreshVpnUrlHints() {
+  if (typeof document === 'undefined') return;
+  const supported = main.supportsVpnUrl();
+  const hint = supported ? '; vpn:// (AWG, LX / tachyon-core)' : '';
+  document.querySelectorAll('[data-tachyon-vpn-url-hint]').forEach((node) => {
+    node.textContent = hint;
+  });
+  document
+    .querySelectorAll('[data-tachyon-amnezia-configs]')
+    .forEach((node) => {
+      node.style.display = supported ? '' : 'none';
+    });
+}
+
+if (main.store && typeof main.store.subscribe === 'function') {
+  main.store.subscribe((next, _prev, diff) => {
+    if (!diff || diff.diagnosticsSystemInfo) {
+      updateActionProvidersAvailabilityFromSystemInfo(
+        next.diagnosticsSystemInfo,
+      );
+    }
+    if (!diff || diff.diagnosticsSystemInfo || diff.activeEngine)
+      refreshVpnUrlHints();
+  });
+}
+
+function getLuciLanguage() {
+  if (typeof L !== 'undefined' && L.env && L.env.lang) {
+    return `${L.env.lang}`.replace('_', '-');
+  }
+
+  if (document.documentElement.lang) {
+    return document.documentElement.lang;
+  }
+
+  return navigator.language || 'en';
+}
+
+function getRegionDisplayName(code) {
+  const normalizedCode = `${code || ''}`.toUpperCase();
+  const language = getLuciLanguage();
+  const cacheKey = `${language}:${normalizedCode}`;
+
+  if (regionDisplayNamesCache[cacheKey]) {
+    return regionDisplayNamesCache[cacheKey];
+  }
+
+  try {
+    if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+      const displayNames = new Intl.DisplayNames([language, 'en'], {
+        type: 'region',
+      });
+      const displayName = displayNames.of(normalizedCode);
+      if (displayName && displayName !== normalizedCode) {
+        regionDisplayNamesCache[cacheKey] = displayName;
+        return displayName;
+      }
+    }
+  } catch (_error) {
+    // Fall through to the static fallback.
+  }
+
+  const fallback = REGION_NAME_FALLBACKS[normalizedCode] || normalizedCode;
+  regionDisplayNamesCache[cacheKey] = fallback;
+  return fallback;
+}
+
+function getCountryFlagEmoji(code) {
+  const normalizedCode = `${code || ''}`.toUpperCase();
+
+  if (!/^[A-Z]{2}$/.test(normalizedCode)) {
+    return '';
+  }
+
+  return String.fromCodePoint(
+    ...normalizedCode
+      .split('')
+      .map((char) => 0x1f1e6 + char.charCodeAt(0) - 65),
+  );
+}
+
+function getCountryOptionLabel(code) {
+  return `${getCountryFlagEmoji(code)} ${getRegionDisplayName(code)}`;
+}
+
+function validateCountryCode(_section_id, value) {
+  const values = Array.isArray(value) ? value : [value];
+  const normalizedValues = values
+    .filter((item) => item && `${item}`.length)
+    .map((item) => `${item}`.toUpperCase());
+
+  if (!normalizedValues.length) {
+    return true;
+  }
+
+  return normalizedValues.every((item) => COUNTRY_CODES.includes(item))
+    ? true
+    : _('Unknown country');
+}
+
+function plainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : {};
+}
+
+function safeCacheSectionName(section_id) {
+  return /^[A-Za-z0-9_-]+$/.test(`${section_id || ''}`);
+}
+
+function filteredOutboundMetadataFromCache(cache) {
+  const metadata = plainObject(plainObject(cache).outboundMetadata);
+  const names = plainObject(metadata.names);
+  const countries = plainObject(metadata.countries);
+  const protocols = plainObject(metadata.protocols);
+  const transports = plainObject(metadata.transports);
+  const securities = plainObject(metadata.securities);
+  const ports = plainObject(metadata.ports);
+  const candidateTags = Array.isArray(cache.urltestCandidateTags)
+    ? cache.urltestCandidateTags
+    : [];
+  const groups = plainObject(cache.urltestGroups);
+  const result = {
+    names: {},
+    countries: {},
+    protocols: {},
+    transports: {},
+    securities: {},
+    ports: {},
+  };
+
+  if (candidateTags.length > 0) {
+    candidateTags.forEach((tag) => {
+      tag = `${tag || ''}`;
+      if (!tag) {
+        return;
+      }
+      if (names[tag] != null) {
+        result.names[tag] = names[tag];
+      }
+      if (countries[tag] != null) {
+        result.countries[tag] = countries[tag];
+      }
+      if (protocols[tag] != null) {
+        result.protocols[tag] = protocols[tag];
+      }
+      if (transports[tag] != null) {
+        result.transports[tag] = transports[tag];
+      }
+      if (securities[tag] != null) {
+        result.securities[tag] = securities[tag];
+      }
+      if (ports[tag] != null) {
+        result.ports[tag] = ports[tag];
+      }
+    });
+    return result;
+  }
+
+  Object.entries(names).forEach(([tag, name]) => {
+    if (!groups[tag]) {
+      result.names[tag] = name;
+    }
+  });
+  Object.entries(countries).forEach(([tag, country]) => {
+    if (!groups[tag]) {
+      result.countries[tag] = country;
+    }
+  });
+  Object.entries(protocols).forEach(([tag, protocol]) => {
+    if (!groups[tag]) {
+      result.protocols[tag] = protocol;
+    }
+  });
+  Object.entries(transports).forEach(([tag, transport]) => {
+    if (!groups[tag]) {
+      result.transports[tag] = transport;
+    }
+  });
+  Object.entries(securities).forEach(([tag, security]) => {
+    if (!groups[tag]) {
+      result.securities[tag] = security;
+    }
+  });
+  Object.entries(ports).forEach(([tag, port]) => {
+    if (!groups[tag]) {
+      result.ports[tag] = port;
+    }
+  });
+
+  return result;
+}
+
+function readSingleSectionCacheMetadata(targetId) {
+  if (!safeCacheSectionName(targetId)) {
+    return Promise.resolve({
+      names: {},
+      countries: {},
+      protocols: {},
+      transports: {},
+      securities: {},
+      ports: {},
+    });
+  }
+
+  const cachePath = `${SECTION_CACHE_DIR}/${targetId}.json`;
+  return fs
+    .read(cachePath)
+    .catch(() =>
+      typeof fs.read_direct === 'function'
+        ? fs.read_direct(cachePath, 'text')
+        : typeof fs.exec_direct === 'function'
+          ? fs.exec_direct('/bin/cat', [cachePath], 'text')
+          : fs
+              .exec('/bin/cat', [cachePath])
+              .then((res) => (res && res.stdout) || '{}'),
+    )
+    .then((raw) => filteredOutboundMetadataFromCache(JSON.parse(raw || '{}')))
+    .catch(() => ({
+      names: {},
+      countries: {},
+      protocols: {},
+      transports: {},
+      securities: {},
+      ports: {},
+    }));
+}
+
+function readOutboundMetadataFromSectionCache(section_id) {
+  const targetId = section_id || 'Main';
+  const memberIds =
+    getRuleResolvedAction(targetId) === 'group'
+      ? currentSourceOptionValues(targetId, 'group_members')
+      : [];
+  const sourceRefs = currentSourceOptionValues(
+    targetId,
+    'outbound_source_refs',
+  );
+  const extraIds = [...new Set([...memberIds, ...sourceRefs])].filter(
+    (id) => id && id !== targetId,
+  );
+
+  if (extraIds.length === 0) {
+    return readSingleSectionCacheMetadata(targetId);
+  }
+
+  return Promise.all([
+    readSingleSectionCacheMetadata(targetId),
+    ...extraIds.map((memberId) => readSingleSectionCacheMetadata(memberId)),
+  ]).then((metaList) => {
+    const merged = {
+      names: {},
+      countries: {},
+      protocols: {},
+      transports: {},
+      securities: {},
+      ports: {},
+    };
+    metaList.forEach((meta) => {
+      if (!meta) return;
+      Object.assign(merged.names, meta.names);
+      Object.assign(merged.countries, meta.countries);
+      Object.assign(merged.protocols, meta.protocols);
+      Object.assign(merged.transports, meta.transports);
+      Object.assign(merged.securities, meta.securities);
+      Object.assign(merged.ports, meta.ports);
+    });
+    return merged;
+  });
+}
+
+function extractCountryFromFlagEmojiName(name) {
+  const str = `${name || ''}`;
+  const chars = Array.from(str);
+  for (let i = 0; i + 1 < chars.length; i += 1) {
+    const cp1 = chars[i].codePointAt(0);
+    const cp2 = chars[i + 1].codePointAt(0);
+    if (cp1 >= 0x1f1e6 && cp1 <= 0x1f1ff && cp2 >= 0x1f1e6 && cp2 <= 0x1f1ff) {
+      const code =
+        String.fromCharCode(65 + (cp1 - 0x1f1e6)) +
+        String.fromCharCode(65 + (cp2 - 0x1f1e6));
+      if (COUNTRY_CODES.includes(code)) {
+        return code;
+      }
+    }
+  }
+  return '';
+}
+
+function portMatchesFilterCondition(portNum, condition) {
+  const cond = `${condition || ''}`.trim();
+  if (!cond) return false;
+  const dash = cond.indexOf('-');
+  if (dash < 0) {
+    return Number.parseInt(cond, 10) === portNum;
+  }
+  const start = Number.parseInt(cond.slice(0, dash), 10);
+  const end = Number.parseInt(cond.slice(dash + 1), 10);
+  if (Number.isNaN(start) || Number.isNaN(end)) return false;
+  return portNum >= start && portNum <= end;
+}
+
+function evaluateLiveServerFilterPreview(metadata, filterSpec) {
+  const meta = plainObject(metadata);
+  const namesMap = plainObject(meta.names);
+  const countriesMap = plainObject(meta.countries);
+  const protocolsMap = plainObject(meta.protocols);
+  const transportsMap = plainObject(meta.transports);
+  const securitiesMap = plainObject(meta.securities);
+  const portsMap = plainObject(meta.ports);
+
+  const filterMode = `${filterSpec.filterMode || 'disabled'}`.trim();
+  const detectMethod =
+    `${filterSpec.detectServerCountry || 'flag_emoji'}`.trim();
+  const normalizeArr = (arr) =>
+    (Array.isArray(arr) ? arr : arr ? [arr] : [])
+      .map((v) => `${v || ''}`.trim())
+      .filter(Boolean);
+
+  const includeCountries = normalizeArr(filterSpec.includeCountries).map((c) =>
+    c.toUpperCase(),
+  );
+  const includeOutbounds = normalizeArr(filterSpec.includeOutbounds);
+  const includeRegexes = normalizeArr(filterSpec.includeRegex);
+  const includeProxyParams =
+    `${filterSpec.includeProxyParameters || '0'}` === '1';
+  const includeProtocols = normalizeArr(filterSpec.includeProtocols).map((p) =>
+    p.toLowerCase(),
+  );
+  const includeTransports = normalizeArr(filterSpec.includeTransports).map(
+    (t) => t.toLowerCase(),
+  );
+  const includeSecurities = normalizeArr(filterSpec.includeSecurities).map(
+    (s) => s.toLowerCase(),
+  );
+  const includePorts = normalizeArr(filterSpec.includePorts);
+
+  const excludeCountries = normalizeArr(filterSpec.excludeCountries).map((c) =>
+    c.toUpperCase(),
+  );
+  const excludeOutbounds = normalizeArr(filterSpec.excludeOutbounds);
+  const excludeRegexes = normalizeArr(filterSpec.excludeRegex);
+  const excludeProxyParams =
+    `${filterSpec.excludeProxyParameters || '0'}` === '1';
+  const excludeProtocols = normalizeArr(filterSpec.excludeProtocols).map((p) =>
+    p.toLowerCase(),
+  );
+  const excludeTransports = normalizeArr(filterSpec.excludeTransports).map(
+    (t) => t.toLowerCase(),
+  );
+  const excludeSecurities = normalizeArr(filterSpec.excludeSecurities).map(
+    (s) => s.toLowerCase(),
+  );
+  const excludePorts = normalizeArr(filterSpec.excludePorts);
+
+  const compileRegexList = (patterns) =>
+    patterns
+      .map((pat) => {
+        try {
+          return new RegExp(pat);
+        } catch (_e) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+  const includeCompiledRegexes = compileRegexList(includeRegexes);
+  const excludeCompiledRegexes = compileRegexList(excludeRegexes);
+
+  const seenTypeCounts = new Map();
+  const entries = [];
+
+  Object.entries(namesMap).forEach(([tag, rawName]) => {
+    const name = `${rawName || tag}`.trim();
+    if (!name) return;
+    const protocol = `${protocolsMap[tag] || ''}`.trim();
+    const transport = `${transportsMap[tag] || ''}`.trim();
+    const security = `${securitiesMap[tag] || ''}`.trim();
+    const port = Number.parseInt(`${portsMap[tag] || ''}`, 10) || 0;
+    const typeLabel = formatOutboundTypeLabel(protocol, transport);
+    const nameWithType = typeLabel ? `${name} [${typeLabel}]` : name;
+    const count = (seenTypeCounts.get(nameWithType) || 0) + 1;
+    seenTypeCounts.set(nameWithType, count);
+    const indexedLabel =
+      count > 1 ? `${nameWithType} (#${count})` : nameWithType;
+
+    const flagCountry = extractCountryFromFlagEmojiName(name);
+    const metaCountry = `${countriesMap[tag] || ''}`.trim().toUpperCase();
+    const country =
+      detectMethod === 'flag_emoji' ? flagCountry : metaCountry || flagCountry;
+
+    entries.push({
+      tag,
+      name,
+      label: indexedLabel,
+      nameWithType,
+      country,
+      protocol: protocol.toLowerCase(),
+      transport: transport.toLowerCase(),
+      security: security.toLowerCase(),
+      port,
+    });
+  });
+
+  const matchesCandidate = (
+    entry,
+    nameFilter,
+    compiledRegexes,
+    countryFilter,
+    proxyParamsEnabled,
+    operator,
+    protocols,
+    transports,
+    securities,
+    ports,
+  ) => {
+    const nameMatched =
+      nameFilter.includes(entry.name) ||
+      nameFilter.includes(entry.tag) ||
+      nameFilter.includes(entry.nameWithType) ||
+      nameFilter.includes(entry.label) ||
+      compiledRegexes.some((rx) => rx.test(entry.name));
+    const countryMatched =
+      Boolean(entry.country) && countryFilter.includes(entry.country);
+    const baseConfigured =
+      nameFilter.length > 0 ||
+      compiledRegexes.length > 0 ||
+      countryFilter.length > 0;
+    let baseMatches = nameMatched || countryMatched;
+
+    const attrMatches = (val, selected) =>
+      selected.length === 0 ? true : Boolean(val) && selected.includes(val);
+    const portMatches = (portNum, selected) =>
+      selected.length === 0
+        ? true
+        : portNum > 0 &&
+          selected.some((cond) => portMatchesFilterCondition(portNum, cond));
+
+    if (proxyParamsEnabled && operator === 'or') {
+      const anyParam =
+        (protocols.length > 0 && attrMatches(entry.protocol, protocols)) ||
+        (transports.length > 0 && attrMatches(entry.transport, transports)) ||
+        (securities.length > 0 && attrMatches(entry.security, securities)) ||
+        (ports.length > 0 && portMatches(entry.port, ports));
+      return baseMatches || anyParam;
+    }
+
+    if (proxyParamsEnabled) {
+      if (!baseConfigured) {
+        baseMatches = true;
+      }
+      const allParams =
+        attrMatches(entry.protocol, protocols) &&
+        attrMatches(entry.transport, transports) &&
+        attrMatches(entry.security, securities) &&
+        portMatches(entry.port, ports);
+      return baseMatches && allParams;
+    }
+
+    return baseMatches;
+  };
+
+  const matchedServers = [];
+  const excludedServers = [];
+
+  entries.forEach((entry) => {
+    if (!filterMode || filterMode === 'disabled' || filterMode === 'all') {
+      matchedServers.push(entry);
+      return;
+    }
+
+    const isIncluded = matchesCandidate(
+      entry,
+      includeOutbounds,
+      includeCompiledRegexes,
+      includeCountries,
+      includeProxyParams,
+      'and',
+      includeProtocols,
+      includeTransports,
+      includeSecurities,
+      includePorts,
+    );
+    const isExcluded = matchesCandidate(
+      entry,
+      excludeOutbounds,
+      excludeCompiledRegexes,
+      excludeCountries,
+      excludeProxyParams,
+      'or',
+      excludeProtocols,
+      excludeTransports,
+      excludeSecurities,
+      excludePorts,
+    );
+
+    let keep = true;
+    if (filterMode === 'include') {
+      keep = isIncluded;
+    } else if (filterMode === 'exclude') {
+      keep = !isExcluded;
+    } else if (filterMode === 'mixed') {
+      keep = isIncluded && !isExcluded;
+    }
+
+    if (keep) {
+      matchedServers.push(entry);
+    } else {
+      excludedServers.push(entry);
+    }
+  });
+
+  return {
+    totalCount: entries.length,
+    matchedCount: matchedServers.length,
+    excludedCount: excludedServers.length,
+    matchedServers,
+    excludedServers,
+  };
+}
+
+function loadOutboundNameChoices(section_id) {
+  const targetId = section_id || 'Main';
+  const isGroup = getRuleResolvedAction(targetId) === 'group';
+  const fetchedAt = outboundNameChoicesFetchedAt.get(targetId) || 0;
+  if (
+    !isGroup &&
+    outboundNameChoicesCache.has(targetId) &&
+    Date.now() - fetchedAt < OUTBOUND_NAME_CHOICES_TTL_MS
+  ) {
+    return Promise.resolve(outboundNameChoicesCache.get(targetId));
+  }
+
+  if (outboundNameChoicesInflight.has(targetId)) {
+    return outboundNameChoicesInflight.get(targetId);
+  }
+
+  const task = readOutboundMetadataFromSectionCache(targetId)
+    .then((metadata) => {
+      const namesMap = plainObject(metadata.names);
+      const nameCounts = new Map();
+      Object.values(namesMap).forEach((rawName) => {
+        const n = `${rawName || ''}`.trim();
+        if (n) {
+          nameCounts.set(n, (nameCounts.get(n) || 0) + 1);
+        }
+      });
+
+      const typeMap = outboundTypeByNameCache.get(targetId) || new Map();
+      const choices = [];
+      const seenLabels = new Map();
+
+      Object.entries(namesMap).forEach(([tag, rawName]) => {
+        const name = `${rawName || ''}`.trim();
+        if (!name) {
+          return;
+        }
+        const proto = metadata.protocols ? metadata.protocols[tag] : '';
+        const trans = metadata.transports ? metadata.transports[tag] : '';
+        const typeLabel = formatOutboundTypeLabel(proto, trans);
+        if (typeLabel) {
+          typeMap.set(tag, typeLabel);
+          typeMap.set(name, typeLabel);
+        }
+
+        const isDuplicateName = (nameCounts.get(name) || 0) > 1;
+        let choiceValue = name;
+        let choiceLabel = name;
+
+        if (typeLabel) {
+          choiceLabel = `${name} [${typeLabel}]`;
+          if (isDuplicateName) {
+            choiceValue = choiceLabel;
+          }
+        }
+
+        if (seenLabels.has(choiceLabel)) {
+          const count = seenLabels.get(choiceLabel) + 1;
+          seenLabels.set(choiceLabel, count);
+          choiceLabel = `${choiceLabel} (#${count})`;
+          choiceValue = choiceLabel;
+        } else {
+          seenLabels.set(choiceLabel, 1);
+        }
+
+        if (typeLabel) {
+          typeMap.set(choiceValue, typeLabel);
+        }
+
+        choices.push({ value: choiceValue, label: choiceLabel });
+      });
+
+      outboundTypeByNameCache.set(targetId, typeMap);
+
+      choices.sort((a, b) => `${a.label}`.localeCompare(`${b.label}`));
+
+      outboundNameChoicesCache.set(targetId, choices);
+      outboundNameChoicesFetchedAt.set(targetId, Date.now());
+
+      refreshDashboardFilterChoiceWidgets(targetId);
+
+      return choices;
+    })
+    .catch(() => [])
+    .finally(() => {
+      outboundNameChoicesInflight.delete(targetId);
+    });
+
+  outboundNameChoicesInflight.set(targetId, task);
+
+  return task;
+}
+
+function normalizeDynamicListItems(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => `${item || ''}`.trim())
+      .filter((item) => item.length);
+  }
+
+  const normalized = `${value}`.trim();
+  return normalized.length ? [normalized] : [];
+}
+
+function uniqueDynamicListItems(value) {
+  const seen = new Set();
+  const result = [];
+
+  normalizeDynamicListItems(value).forEach((item) => {
+    if (!seen.has(item)) {
+      seen.add(item);
+      result.push(item);
+    }
+  });
+
+  return result;
+}
+
+function readItemSettingsMap(section_id, settingsKey) {
+  const raw = uci.get(UCI_PACKAGE, section_id, settingsKey);
+
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(`${raw}`);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function compactItemSettings(values) {
+  const result = {};
+
+  Object.entries(values || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      const items = value
+        .map((item) => `${item || ''}`.trim())
+        .filter((item) => item.length);
+
+      if (items.length) {
+        result[key] = items;
+      }
+      return;
+    }
+
+    result[key] = `${value}`;
+  });
+
+  return result;
+}
+
+function writeItemSettingsMap(section_id, settingsKey, map) {
+  const result = {};
+
+  Object.entries(map || {}).forEach(([item, settings]) => {
+    const compact = compactItemSettings(settings);
+    if (item && Object.keys(compact).length) {
+      result[item] = compact;
+    }
+  });
+
+  if (Object.keys(result).length) {
+    uci.set(UCI_PACKAGE, section_id, settingsKey, JSON.stringify(result));
+  } else {
+    uci.unset(UCI_PACKAGE, section_id, settingsKey);
+  }
+}
+
+function cleanupListItemSettings(section_id, settingsKey, values) {
+  if (!settingsKey) {
+    return;
+  }
+
+  const keep = new Set(normalizeDynamicListItems(values));
+  const map = readItemSettingsMap(section_id, settingsKey);
+  let changed = false;
+
+  Object.keys(map).forEach((item) => {
+    if (!keep.has(item)) {
+      delete map[item];
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    writeItemSettingsMap(section_id, settingsKey, map);
+  }
+}
+
+function itemSettingsFlag(settings, key, defaultValue) {
+  const value = settings ? settings[key] : null;
+
+  if (value === undefined || value === null || value === '') {
+    return Boolean(defaultValue);
+  }
+
+  return value === true || `${value}` === '1';
+}
+
+function ensureConnectionsDynamicListStyles() {
+  if (document.getElementById(CONNECTIONS_DYNLIST_STYLE_ID)) {
+    return;
+  }
+
+  document.head.appendChild(
+    E(
+      'style',
+      { id: CONNECTIONS_DYNLIST_STYLE_ID },
+      `
+.fkp-connections-dynlist > .item {
+  --fkp-dynlist-action-width: 2em;
+  padding-right: calc(var(--fkp-dynlist-action-width) * 2);
+  position: relative;
+}
+
+.fkp-connections-dynlist > .item > .fkp-dynlist-settings {
+  align-items: center;
+  border: 1px solid var(--border-color-high, currentColor);
+  border-right: 0;
+  border-radius: 0;
+  bottom: -1px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.9em;
+  justify-content: center;
+  line-height: 1;
+  min-height: 0;
+  padding: 0;
+  pointer-events: auto;
+  position: absolute;
+  right: calc(var(--fkp-dynlist-action-width) - 1px);
+  user-select: none;
+  text-decoration: none;
+  top: -1px;
+  width: var(--fkp-dynlist-action-width);
+  z-index: 1;
+}
+
+.fkp-connections-dynlist > .item > .fkp-dynlist-settings:hover,
+.fkp-connections-dynlist > .item > .fkp-dynlist-settings:focus {
+  --focus-color-rgb: 82, 168, 236;
+  outline: 0;
+  border-color: rgba(var(--focus-color-rgb), 0.8) !important;
+  box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01), 0 0 8px rgba(var(--focus-color-rgb), 0.6);
+  text-decoration: none;
+}
+
+.fkp-connections-dynlist > .add-item > .cbi-dropdown {
+  width: 100%;
+}
+
+.fkp-interface-dynlist-label {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.25em;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.fkp-interface-dynlist-label > img {
+  flex: 0 0 auto;
+  height: 1.35em;
+  width: auto;
+}
+
+.fkp-interface-dynlist-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fkp-button-add-dynlist > .add-item {
+  align-items: stretch;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: visible;
+  padding: 0;
+  width: var(--fkp-button-add-width, 210px);
+}
+
+.fkp-button-add-dynlist > .add-item > input[type="text"] {
+  display: none !important;
+}
+
+.fkp-button-add-dynlist > .add-item > .cbi-button-add {
+  align-items: center !important;
+  background: linear-gradient(var(--background-color-high) 0%, var(--border-color-low) 100%) !important;
+  border: 1px solid var(--border-color-high) !important;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01) !important;
+  box-sizing: border-box !important;
+  color: var(--text-color-medium) !important;
+  cursor: pointer !important;
+  display: flex !important;
+  font-size: 13px !important;
+  height: 30px !important;
+  justify-content: flex-start !important;
+  margin-left: 0 !important;
+  max-height: 30px !important;
+  min-height: 30px !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  padding: 0 4px !important;
+  text-overflow: ellipsis !important;
+  transition: border linear .2s, box-shadow linear .2s !important;
+  white-space: nowrap !important;
+  width: 100% !important;
+}
+
+.fkp-button-add-dynlist > .add-item > .cbi-button-add:hover,
+.fkp-button-add-dynlist > .add-item > .cbi-button-add:focus {
+  border-color: rgba(82, 168, 236, .8) !important;
+  box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01), 0 0 8px rgba(82, 168, 236, .6) !important;
+  outline: 0;
+}
+
+body.modal-overlay-active > #modal_overlay > .modal.cbi-modal > .cbi-map.flash {
+  animation: none !important;
+}
+
+`,
+    ),
+  );
+}
+
+function findDynamicListItemByValue(dl, value) {
+  const stringValue = `${value}`;
+  const items = dl.querySelectorAll('.item');
+
+  for (let i = 0; i < items.length; i += 1) {
+    const hidden = items[i].querySelector('input[type="hidden"]');
+    if (
+      hidden &&
+      hidden.parentNode === items[i] &&
+      hidden.value === stringValue
+    ) {
+      return items[i];
+    }
+  }
+
+  return null;
+}
+
+function dynamicListItemCurrentValue(item, fallback) {
+  const hidden = item ? item.querySelector('input[type="hidden"]') : null;
+  return hidden && hidden.parentNode === item ? hidden.value : fallback;
+}
+
+function dynamicListItemValues(dl) {
+  return Array.from(dl.querySelectorAll('.item'))
+    .map((item) => {
+      const hidden = item.querySelector('input[type="hidden"]');
+      return hidden && hidden.parentNode === item ? hidden.value : null;
+    })
+    .filter((value) => value != null);
+}
+
+function updateDynamicListItemLabel(item, label) {
+  const labelNode = item ? item.querySelector('.fkp-dynlist-label') : null;
+  if (labelNode) {
+    labelNode.textContent = `${label || ''}`;
+  }
+}
+
+function addDynamicListItem(widget, value, text) {
+  if (!widget || !widget.node) {
+    return null;
+  }
+
+  const normalized = `${value || ''}`.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    typeof widget.options.hasEquivalentValue === 'function' &&
+    widget.options.hasEquivalentValue(normalized, widget.node)
+  ) {
+    widget.dispatchCbiDynlistChange(widget.node, normalized);
+    return null;
+  }
+
+  widget.addItem(widget.node, normalized, text || null, false);
+  widget.dispatchCbiDynlistChange(widget.node, normalized);
+  updateButtonAddDynamicListLayout(widget.node, widget.options.addButtonLabel);
+
+  return findDynamicListItemByValue(widget.node, normalized);
+}
+
+function updateButtonAddDynamicListLayout(dl, label) {
+  const addButton = dl ? dl.querySelector('.add-item > .cbi-button-add') : null;
+  if (!addButton) {
+    return;
+  }
+
+  addButton.textContent = label || '+';
+  addButton.setAttribute('role', 'button');
+  addButton.setAttribute('tabindex', '0');
+  dl.style.setProperty(
+    '--fkp-button-add-width',
+    dl.querySelector('.item') ? '100%' : '210px',
+  );
+}
+
+function setDynamicListItemValue(item, value) {
+  const hidden = item ? item.querySelector('input[type="hidden"]') : null;
+  if (hidden && hidden.parentNode === item) {
+    hidden.value = `${value || ''}`;
+  }
+}
+
+function parseOutboundJsonObject(value) {
+  try {
+    const parsed = JSON.parse(`${value || ''}`);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function outboundJsonDisplayTag(value) {
+  const parsed = parseOutboundJsonObject(value);
+  const tag = parsed && typeof parsed.tag === 'string' ? parsed.tag.trim() : '';
+  return tag || '';
+}
+
+function outboundJsonListItemLabel(value) {
+  return E(
+    'span',
+    { class: 'fkp-dynlist-label' },
+    outboundJsonDisplayTag(value) || _('JSON outbound'),
+  );
+}
+
+function cleanFormSectionData(sectionData) {
+  const result = {};
+
+  Object.entries(sectionData || {}).forEach(([key, value]) => {
+    if (!key || key.charAt(0) === '.') {
+      return;
+    }
+
+    result[key] = Array.isArray(value) ? value.slice() : value;
+  });
+
+  return result;
+}
+
+const SettingsUIDynamicList = ui.DynamicList.extend({
+  render() {
+    ensureConnectionsDynamicListStyles();
+
+    const node = ui.DynamicList.prototype.render.apply(this, arguments);
+    node.classList.add('fkp-connections-dynlist');
+    return node;
+  },
+
+  addItem(dl, value, text, flash) {
+    if (
+      flash &&
+      typeof this.options.hasEquivalentValue === 'function' &&
+      this.options.hasEquivalentValue(value, dl)
+    ) {
+      this.dispatchCbiDynlistChange(dl, value);
+      return;
+    }
+
+    const itemText =
+      typeof this.options.itemLabel === 'function'
+        ? this.options.itemLabel(value, text)
+        : text;
+
+    ui.DynamicList.prototype.addItem.call(this, dl, value, itemText, flash);
+
+    const item = findDynamicListItemByValue(dl, value);
+    const hasSettings =
+      typeof this.options.hasSettings === 'function'
+        ? this.options.hasSettings(value)
+        : true;
+
+    if (!item || item.querySelector('.fkp-dynlist-settings') || !hasSettings) {
+      return;
+    }
+
+    item.appendChild(
+      E(
+        'span',
+        {
+          role: 'button',
+          tabindex: this.options.disabled ? null : '0',
+          class: 'fkp-dynlist-settings',
+          'aria-label': _('Settings'),
+          'aria-disabled': this.options.disabled ? 'true' : null,
+          click: (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (this.options.disabled) {
+              return;
+            }
+
+            if (typeof this.options.settingsHandler === 'function') {
+              this.options.settingsHandler(
+                dynamicListItemCurrentValue(item, value),
+                item,
+                this,
+                {},
+              );
+            }
+          },
+          keydown: (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') {
+              return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (
+              !this.options.disabled &&
+              typeof this.options.settingsHandler === 'function'
+            ) {
+              this.options.settingsHandler(
+                dynamicListItemCurrentValue(item, value),
+                item,
+                this,
+                {},
+              );
+            }
+          },
+        },
+        '\u2699',
+      ),
+    );
+
+    // Optional per-row on/off. Opt-in through setItemEnabled so the widget stays
+    // generic: a list without it renders exactly as before.
+    //
+    // The write is staged through uci.save() and read back from UCI rather than
+    // kept in widget state, because the row is re-rendered from the list value
+    // and any local copy would be lost on the next render - the checkbox would
+    // snap back while the section was still unapplied.
+    if (typeof this.options.setItemEnabled === 'function') {
+      const checkbox = E('input', {
+        type: 'checkbox',
+        class: 'cbi-input-checkbox fkp-dynlist-enabled',
+        'aria-label': _('Enabled'),
+        'aria-disabled': this.options.disabled ? 'true' : null,
+      });
+
+      const applyEnabled = (next) => {
+        if (this.options.disabled) {
+          return;
+        }
+        this.options.setItemEnabled(
+          dynamicListItemCurrentValue(item, value),
+          next,
+        );
+        checkbox.checked = next;
+        checkbox.indeterminate = false;
+      };
+
+      checkbox.checked = this.options.setItemEnabled(
+        dynamicListItemCurrentValue(item, value),
+      );
+
+      checkbox.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        applyEnabled(checkbox.checked);
+      });
+      checkbox.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        applyEnabled(!checkbox.checked);
+      });
+
+      item.insertBefore(checkbox, item.firstChild);
+    }
+  },
+  handleClick(event) {
+    if (
+      event.target.closest('.fkp-dynlist-settings') ||
+      event.target.closest('.fkp-dynlist-enabled')
+    ) {
+      return;
+    }
+
+    return ui.DynamicList.prototype.handleClick.apply(this, arguments);
+  },
+});
+
+const ButtonAddSettingsUIDynamicList = SettingsUIDynamicList.extend({
+  render() {
+    const node = SettingsUIDynamicList.prototype.render.apply(this, arguments);
+    node.classList.add('fkp-button-add-dynlist');
+
+    const input = node.querySelector('.add-item > input[type="text"]');
+    if (input) {
+      input.setAttribute('aria-hidden', 'true');
+      input.setAttribute('tabindex', '-1');
+    }
+
+    updateButtonAddDynamicListLayout(node, this.options.addButtonLabel);
+
+    node.addEventListener('cbi-dynlist-change', () => {
+      updateButtonAddDynamicListLayout(node, this.options.addButtonLabel);
+    });
+
+    return node;
+  },
+
+  addButtonItem() {
+    if (typeof this.options.settingsHandler === 'function') {
+      this.options.settingsHandler('', null, this, { adding: true });
+    }
+  },
+
+  handleClick(event) {
+    if (
+      !this.options.disabled &&
+      event.target.closest('.add-item > .cbi-button-add')
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.addButtonItem(event.currentTarget);
+      return;
+    }
+
+    return SettingsUIDynamicList.prototype.handleClick.apply(this, arguments);
+  },
+
+  handleKeydown(event) {
+    if (
+      !this.options.disabled &&
+      event.target.closest('.add-item > .cbi-button-add') &&
+      (event.key === 'Enter' || event.key === ' ')
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.addButtonItem(event.currentTarget);
+      return;
+    }
+
+    return ui.DynamicList.prototype.handleKeydown.apply(this, arguments);
+  },
+});
+
+const SettingsDynamicList = form.DynamicList.extend({
+  childOwner(section_id) {
+    return typeof this.childOwnerId === 'function'
+      ? `${this.childOwnerId(section_id) || ''}`.trim()
+      : section_id;
+  },
+
+  parentSection(section_id) {
+    return typeof this.parentSectionId === 'function'
+      ? `${this.parentSectionId(section_id) || ''}`.trim()
+      : section_id;
+  },
+
+  load(section_id) {
+    if (this.childType) {
+      return getChildItemIds(
+        this.childOwner(section_id),
+        this.childType,
+        this.ownerOption,
+      );
+    }
+
+    return form.DynamicList.prototype.load.apply(this, arguments);
+  },
+
+  renderWidget(section_id, _option_index, cfgvalue) {
+    const value = cfgvalue != null ? cfgvalue : this.default;
+    const choices = this.transformChoices();
+    const WidgetClass = this.buttonAdd
+      ? ButtonAddSettingsUIDynamicList
+      : SettingsUIDynamicList;
+    const widget = new WidgetClass(L.toArray(value), choices, {
+      id: this.cbid(section_id),
+      sort: this.keylist,
+      allowduplicates: this.allowduplicates,
+      optional: this.optional || this.rmempty,
+      datatype: this.datatype,
+      placeholder: this.placeholder,
+      validate: L.bind(this.validate, this, section_id),
+      disabled: this.readonly != null ? this.readonly : this.map.readonly,
+      addButtonLabel:
+        typeof this.addButtonLabel === 'function'
+          ? this.addButtonLabel(section_id)
+          : this.addButtonLabel,
+      settingsHandler: (itemValue, _item, widget, context) => {
+        if (typeof this.renderItemSettingsModal === 'function') {
+          const ownerId = this.childOwner(section_id);
+          this.renderItemSettingsModal(
+            ownerId,
+            `${itemValue}`,
+            this,
+            widget,
+            _item,
+            Object.assign({}, context || {}, {
+              parentSectionId: this.parentSection(section_id),
+              ownerId,
+            }),
+          );
+        }
+      },
+      itemLabel: (itemValue, text) => {
+        if (typeof this.renderListItemLabel === 'function') {
+          return this.renderListItemLabel(
+            this.childOwner(section_id),
+            `${itemValue}`,
+            text,
+          );
+        }
+
+        return text;
+      },
+      hasSettings: (itemValue) => {
+        if (typeof this.hasItemSettings === 'function') {
+          return this.hasItemSettings(
+            this.childOwner(section_id),
+            `${itemValue}`,
+          );
+        }
+
+        if (this.childType) {
+          return isExistingChildItem(
+            this.childOwner(section_id),
+            `${itemValue}`,
+            this.childType,
+            this.ownerOption,
+          );
+        }
+
+        return true;
+      },
+      hasEquivalentValue: (itemValue, dl) => {
+        const inputValueForItem = (value) => {
+          const ownerId = this.childOwner(section_id);
+
+          if (typeof this.inputValueForItem === 'function') {
+            return `${this.inputValueForItem(ownerId, `${value || ''}`) || ''}`.trim();
+          }
+
+          if (this.childType && this.childValueOption) {
+            return childItemInputValue(
+              ownerId,
+              `${value || ''}`,
+              this.childType,
+              this.childValueOption,
+              this.ownerOption,
+            );
+          }
+
+          return `${value || ''}`.trim();
+        };
+        const normalized = inputValueForItem(itemValue);
+
+        return Boolean(
+          normalized &&
+            dynamicListItemValues(dl).some(
+              (existingValue) =>
+                inputValueForItem(existingValue) === normalized,
+            ),
+        );
+      },
+    });
+
+    const node = widget.render();
+    if (typeof this.onListChange === 'function') {
+      node.addEventListener('cbi-dynlist-change', () => {
+        this.onListChange(section_id);
+      });
+    }
+
+    return node;
+  },
+
+  parse(section_id) {
+    if (
+      this.isActive(section_id) &&
+      typeof this.validateItemsOnSave === 'function'
+    ) {
+      const result = this.validateItemsOnSave(
+        this.childType ? this.childOwner(section_id) : section_id,
+        this.formvalue(section_id),
+        this,
+        section_id,
+      );
+      if (result !== true) {
+        const title = this.stripTags(this.title).trim();
+        return Promise.reject(
+          new TypeError(
+            `${_('Option "%s" contains an invalid input value.').format(title || this.option)} ${result}`,
+          ),
+        );
+      }
+    }
+
+    return form.DynamicList.prototype.parse.apply(this, arguments);
+  },
+
+  write(section_id, value) {
+    if (this.childType) {
+      const ownerId = this.childOwner(section_id);
+      const itemIds = materializeChildItems(
+        ownerId,
+        {
+          typeName: this.childType,
+          valueOption: this.childValueOption,
+          ownerOption: this.ownerOption,
+          createId: this.createId,
+          defaults: this.childDefaults,
+          stagedSettings:
+            typeof this.stagedChildSettings === 'function'
+              ? (itemValue, itemId, created) =>
+                  this.stagedChildSettings(ownerId, itemValue, itemId, created)
+              : null,
+        },
+        value,
+      );
+      cleanupRemovedChildItems(
+        ownerId,
+        this.childType,
+        itemIds,
+        this.ownerOption,
+      );
+      itemIds.forEach((itemId, index) => {
+        uci.set(UCI_PACKAGE, itemId, 'order', `${index}`);
+      });
+      if (typeof uci.reorder === 'function') {
+        uci.reorder(UCI_PACKAGE, itemIds);
+      }
+      if (typeof this.afterMaterializeChildItems === 'function') {
+        this.afterMaterializeChildItems(ownerId, itemIds);
+      }
+      uci.unset(UCI_PACKAGE, section_id, this.option);
+      cleanupListItemSettings(ownerId, this.settingsKey, itemIds);
+      if (typeof this.clearStagedChildSettings === 'function') {
+        this.clearStagedChildSettings(ownerId);
+      }
+      return;
+    }
+
+    const result = form.DynamicList.prototype.write.apply(this, arguments);
+    cleanupListItemSettings(section_id, this.settingsKey, value);
+    return result;
+  },
+
+  remove(section_id) {
+    if (this.childType) {
+      cleanupRemovedChildItems(
+        this.childOwner(section_id),
+        this.childType,
+        [],
+        this.ownerOption,
+      );
+      uci.unset(UCI_PACKAGE, section_id, this.option);
+      return;
+    }
+
+    if (this.settingsKey) {
+      uci.unset(UCI_PACKAGE, section_id, this.settingsKey);
+    }
+
+    return form.DynamicList.prototype.remove.apply(this, arguments);
+  },
+});
+
+const ButtonAddSettingsDynamicList = SettingsDynamicList.extend({
+  buttonAdd: true,
+});
+
+function configureLiveDynamicListChoices(option, getChoices) {
+  option.renderWidget = function (section_id, _option_index, cfgvalue) {
+    const values = L.toArray(cfgvalue != null ? cfgvalue : this.default);
+    const choices = getChoices(section_id, values);
+    const labels = {};
+    choices.forEach((choice) => {
+      labels[choice.value] = choice.label;
+    });
+    refreshOptionChoices(this, choices);
+    let choiceSignature = JSON.stringify(
+      choices.map((choice) => [choice.value, choice.label]),
+    );
+    // form.DynamicList passes null when there are no choices, which permanently
+    // renders a plain input. An empty object keeps the stock combobox alive so
+    // later live choices can be added without reopening the modal.
+    const widget = new ui.DynamicList(values, labels, {
+      id: this.cbid(section_id),
+      sort: this.keylist,
+      allowduplicates: this.allowduplicates,
+      optional: this.optional || this.rmempty,
+      datatype: this.datatype,
+      placeholder: this.placeholder,
+      validate: L.bind(this.validate, this, section_id),
+      disabled: this.readonly != null ? this.readonly : this.map.readonly,
+    });
+    const node = widget.render();
+    const refreshChoices = () => {
+      if (!node.isConnected) {
+        return false;
+      }
+
+      const currentValues = widget.getValue();
+      const currentChoices = getChoices(section_id, currentValues);
+      const currentLabels = {};
+      currentChoices.forEach((choice) => {
+        currentLabels[choice.value] = choice.label;
+      });
+      const currentSignature = JSON.stringify(
+        currentChoices.map((choice) => [choice.value, choice.label]),
+      );
+
+      if (currentSignature === choiceSignature) {
+        return;
+      }
+      choiceSignature = currentSignature;
+
+      refreshOptionChoices(this, currentChoices);
+      widget.choices = currentLabels;
+      widget.clearChoices();
+      widget.addChoices(
+        currentChoices.map((choice) => choice.value),
+        currentLabels,
+      );
+
+      const cboxElem = node.querySelector('.cbi-dropdown');
+      if (
+        cboxElem &&
+        typeof dom !== 'undefined' &&
+        typeof dom.callClassMethod === 'function'
+      ) {
+        try {
+          dom.callClassMethod(cboxElem, 'clearChoices');
+          dom.callClassMethod(
+            cboxElem,
+            'addChoices',
+            currentChoices.map((choice) => choice.value),
+            currentLabels,
+          );
+        } catch (_err) {}
+      }
+      return true;
+    };
+    const refreshBeforeOpening = () => {
+      refreshChoices();
+    };
+    node.addEventListener('mousedown', refreshBeforeOpening, true);
+    node.addEventListener('focusin', refreshBeforeOpening, true);
+    node.addEventListener('pointerdown', refreshBeforeOpening, true);
+
+    if (!dashboardFilterChoiceRefreshers.has(section_id)) {
+      dashboardFilterChoiceRefreshers.set(section_id, new Set());
+    }
+    dashboardFilterChoiceRefreshers.get(section_id).add(refreshChoices);
+
+    const targetSectionId = parentSectionIdForItem(section_id) || 'Main';
+    if (targetSectionId && targetSectionId !== section_id) {
+      if (!dashboardFilterChoiceRefreshers.has(targetSectionId)) {
+        dashboardFilterChoiceRefreshers.set(targetSectionId, new Set());
+      }
+      dashboardFilterChoiceRefreshers.get(targetSectionId).add(refreshChoices);
+    }
+    perRuleDnsWidgets.set(section_id, widget);
+
+    loadOutboundNameChoices(targetSectionId).then(() => {
+      refreshChoices();
+    });
+
+    return node;
+  };
+}
+
+function countryChoices() {
+  return COUNTRY_CODES.map((code) => ({
+    value: code,
+    label: getCountryOptionLabel(code),
+  })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function getOutboundTypeForName(section_id, name) {
+  if (!name) {
+    return '';
+  }
+  const targetId = section_id || 'Main';
+
+  const typeMap = outboundTypeByNameCache.get(targetId);
+  if (typeMap && typeMap.has(name)) {
+    return typeMap.get(name);
+  }
+
+  if (targetId !== 'Main') {
+    const mainMap = outboundTypeByNameCache.get('Main');
+    if (mainMap && mainMap.has(name)) {
+      return mainMap.get(name);
+    }
+  }
+
+  for (const map of outboundTypeByNameCache.values()) {
+    if (map && typeof map.get === 'function' && map.has(name)) {
+      return map.get(name);
+    }
+  }
+
+  let found = '';
+  currentSourceOptionValues(section_id, 'selector_proxy_links').forEach(
+    (link) => {
+      if (found) {
+        return;
+      }
+      const linkName = main.getProxyUrlName(`${link || ''}`);
+      if (linkName === name) {
+        found = getProxyUrlTypeLabel(link);
+      }
+    },
+  );
+  if (found) {
+    return found;
+  }
+
+  currentSourceOptionValues(section_id, 'selector_amnezia_configs').forEach(
+    (value) => {
+      const config = parseAmneziaConfig(value);
+      if (config && config.name === name) found = 'AmneziaWG';
+    },
+  );
+  if (found) return found;
+
+  currentSourceOptionValues(section_id, 'outbound_jsons').forEach((jsonStr) => {
+    if (found) {
+      return;
+    }
+    const parsed = parseOutboundJsonObject(jsonStr);
+    if (parsed && (parsed.tag || '') === name) {
+      const proto = parsed.type || '';
+      const trans = (parsed.transport && parsed.transport.type) || '';
+      found = formatOutboundTypeLabel(proto, trans);
+    }
+  });
+
+  return found;
+}
+
+function currentOutboundNameChoices(section_id, values) {
+  if (!outboundNameChoicesCache.has(section_id)) {
+    loadOutboundNameChoices(section_id);
+  }
+
+  const seen = new Set();
+  const result = [];
+  const append = (item) => {
+    if (!item) {
+      return;
+    }
+    let value = '';
+    let label = '';
+    if (typeof item === 'object' && item.value != null) {
+      value = `${item.value || ''}`.trim();
+      label = `${item.label || item.value || ''}`.trim();
+    } else {
+      value = `${item || ''}`.trim();
+      label = value;
+    }
+    if (!value || seen.has(value)) {
+      return;
+    }
+
+    seen.add(value);
+    const typeStr = getOutboundTypeForName(section_id, value);
+    if (
+      typeStr &&
+      !label.includes(`[${typeStr}]`) &&
+      !value.includes(`[${typeStr}]`) &&
+      !/\[[^\]]+\]$/.test(label)
+    ) {
+      label = `${label} [${typeStr}]`;
+    }
+    result.push({ value, label });
+  };
+
+  (outboundNameChoicesCache.get(section_id) || []).forEach(append);
+  currentDraftOutboundNames(section_id).forEach(append);
+  normalizeDynamicListItems(values).forEach(append);
+
+  return result.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function currentSourceOptionValues(section_id, optionName) {
+  const liveValues = currentLiveDynamicListValues(section_id, optionName);
+  if (liveValues != null) {
+    return liveValues;
+  }
+
+  const option = outboundNameSourceOptions.get(optionName);
+
+  if (option && typeof option.formvalue === 'function') {
+    try {
+      const value = option.formvalue(section_id);
+      if (value != null) {
+        return normalizeDynamicListItems(value);
+      }
+    } catch (_error) {
+      // Fall back to the LuCI UCI cache when the section widget is not mounted.
+    }
+  }
+
+  return getConfigListValues(section_id, optionName);
+}
+
+function currentLiveDynamicListValues(section_id, optionName) {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const widget = document.getElementById(
+    `cbid.${UCI_PACKAGE}.${section_id}.${optionName}`,
+  );
+  if (!widget) {
+    return null;
+  }
+
+  const values = Array.from(
+    widget.querySelectorAll('.item > input[type="hidden"]'),
+  )
+    .map((input) => `${input.value || ''}`.trim())
+    .filter(Boolean);
+  const pendingInput = widget.querySelector('.add-item > input[type="text"]');
+  const pendingValue = `${(pendingInput && pendingInput.value) || ''}`.trim();
+
+  if (
+    pendingValue &&
+    !pendingInput.classList.contains('cbi-input-invalid') &&
+    !values.includes(pendingValue)
+  ) {
+    values.push(pendingValue);
+  }
+
+  if (!values.length && widget.tagName === 'INPUT' && widget.value) {
+    // A plain form.Value rather than a DynamicList: the fptn access token is
+    // a scalar input, so there are no list items to read.
+    const scalar = `${widget.value}`.trim();
+    if (scalar) values.push(scalar);
+  }
+
+  return values;
+}
+
+// Node names inside an fptn access token: the backend emits one outbound per
+// `servers[]` entry, so the draft picker needs those names before the section
+// is saved. fptnb: is brotli — the backend decodes it through the core
+// binary, and the draft waits for the saved state.
+function fptnTokenServerNames(value) {
+  let token = `${value || ''}`.trim();
+  const hashIdx = token.indexOf('#');
+  if (hashIdx >= 0) {
+    token = token.slice(0, hashIdx);
+  }
+  if (
+    token.startsWith('fptnb:') ||
+    token.startsWith('fptnb//') ||
+    token.startsWith('fptnb://')
+  )
+    return [];
+
+  let body = null;
+  if (token.startsWith('fptn://')) body = token.slice(7);
+  else if (token.startsWith('fptn:')) body = token.slice(5);
+  if (body === null) return [];
+  if (body.startsWith('//')) body = body.slice(2);
+
+  try {
+    const b64 = body
+      .replace(/[\r\n\t =]/g, '')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const payload = JSON.parse(
+      atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
+    );
+    return (Array.isArray(payload.servers) ? payload.servers : [])
+      .map((server) => `${(server && server.name) || ''}`.trim())
+      .filter(Boolean);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function currentDraftOutboundNames(section_id) {
+  const names = [];
+
+  currentSourceOptionValues(section_id, 'selector_proxy_links').forEach(
+    (value, index) => {
+      const valStr = `${value || ''}`.trim();
+      const fptnServers = fptnTokenServerNames(valStr);
+      if (fptnServers.length > 0) {
+        fptnServers.forEach((sName) => names.push(sName));
+      } else {
+        const name = main.getProxyUrlName(valStr);
+        names.push(name || `${section_id}-${index + 1}-out`);
+      }
+    },
+  );
+  currentSourceOptionValues(section_id, 'selector_amnezia_configs').forEach(
+    (value) => {
+      const config = parseAmneziaConfig(value);
+      if (config) names.push(config.name);
+    },
+  );
+  currentSourceOptionValues(section_id, 'interfaces').forEach((itemId) => {
+    const normalized = childItemInputValue(
+      section_id,
+      itemId,
+      'section_interface',
+      'name',
+    ).trim();
+    if (normalized) {
+      names.push(normalized);
+    }
+  });
+  currentSourceOptionValues(section_id, 'outbound_jsons').forEach((value) => {
+    const tag = outboundJsonDisplayTag(value);
+    if (tag) {
+      names.push(tag);
+    }
+  });
+  currentSourceOptionValues(section_id, 'access_token').forEach((value) => {
+    fptnTokenServerNames(value).forEach((name) => names.push(name));
+  });
+
+  return names;
+}
+
+function currentSectionGroupValues(section_id, typeName) {
+  const liveValues = currentLiveDynamicListValues(section_id, typeName);
+  if (liveValues != null) {
+    return liveValues;
+  }
+
+  const option = sectionGroupSourceOptions.get(typeName);
+  if (option && typeof option.formvalue === 'function') {
+    try {
+      const value = option.formvalue(section_id);
+      if (value != null) {
+        return normalizeDynamicListItems(value);
+      }
+    } catch (_error) {
+      // Fall back to the child sections when the widget is not mounted.
+    }
+  }
+
+  return getChildItemIds(section_id, typeName);
+}
+
+function sectionGroupDisplayName(section_id, typeName, value) {
+  const itemId = `${value || ''}`.trim();
+  if (isExistingChildItem(section_id, itemId, typeName)) {
+    return `${uci.get(UCI_PACKAGE, itemId, 'name') || itemId}`.trim();
+  }
+
+  const option = sectionGroupSourceOptions.get(typeName);
+  const pending =
+    option && option.pendingChildSettings
+      ? option.pendingChildSettings[section_id]
+      : null;
+  const settings = pending && pending[itemId];
+  return `${(settings && settings.name) || itemId}`.trim();
+}
+
+function currentSectionGroupChoices(section_id, selectedValues = []) {
+  const seen = new Set();
+  const result = [];
+  const append = (typeName, value) => {
+    value = `${value || ''}`.trim();
+    if (!value) {
+      return;
+    }
+
+    const name = sectionGroupDisplayName(section_id, typeName, value) || value;
+    if (seen.has(name)) {
+      return;
+    }
+
+    seen.add(name);
+    result.push({ value: name, label: name });
+  };
+
+  currentSectionGroupValues(section_id, 'urltest').forEach((value) =>
+    append('urltest', value),
+  );
+  currentSectionGroupValues(section_id, 'priority_group').forEach((value) =>
+    append('priority_group', value),
+  );
+  normalizeOptionValues(
+    uci.get(UCI_PACKAGE, section_id, 'balancer_refs'),
+  ).forEach((balId) => {
+    const name = `${uci.get(UCI_PACKAGE, balId, 'name') || balId}`.trim();
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      result.push({ value: name, label: name });
+    }
+  });
+  normalizeDynamicListItems(selectedValues).forEach((value) => {
+    value = `${value || ''}`.trim();
+    if (value && !seen.has(value)) {
+      seen.add(value);
+      result.push({ value, label: value });
+    }
+  });
+
+  return result.sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function refreshDashboardFilterChoiceWidgets(section_id) {
+  const refreshers = dashboardFilterChoiceRefreshers.get(section_id);
+  if (!refreshers) {
+    return;
+  }
+
+  refreshers.forEach((refresh) => {
+    if (refresh() === false) {
+      refreshers.delete(refresh);
+    }
+  });
+
+  if (refreshers.size === 0) {
+    dashboardFilterChoiceRefreshers.delete(section_id);
+  }
+}
+
+function isDownloadThroughTargetSection(section, currentSectionId) {
+  const sectionName = getUciSectionName(section);
+  const action = (section && section.action) || '';
+
+  if (!sectionName || section.enabled === '0') {
+    return false;
+  }
+
+  if (
+    [
+      'connection',
+      'proxy',
+      'outbound',
+      'vpn',
+      'awg',
+      'warp',
+      'anytls',
+      'snell',
+      'mieru',
+      'naive',
+      'sudoku',
+      'masque',
+      'openvpn',
+      'openconnect',
+      'fptn',
+      'desync',
+      'shadowtls',
+      'trusttunnel',
+      'tewfai',
+      'group',
+    ].includes(action)
+  ) {
+    return true;
+  }
+
+  if (action === 'zapret') {
+    return isZapretInstalledForUi();
+  }
+
+  if (action === 'zapret2') {
+    return isZapret2InstalledForUi();
+  }
+
+  if (action === 'byedpi') {
+    return isByedpiInstalledForUi();
+  }
+
+  if (action === 'wdtt') {
+    return isWdttInstalledForUi();
+  }
+
+  if (action === 'olcrtc') {
+    return isOlcrtcInstalledForUi();
+  }
+
+  if (action === 'fptn') {
+    return isFptnInstalledForUi();
+  }
+
+  return false;
+}
+
+function subscriptionDownloadTargetChoices(section_id) {
+  return (uci.sections(UCI_PACKAGE, 'section') || [])
+    .filter((section) => isDownloadThroughTargetSection(section, section_id))
+    .map((section) => {
+      const name = getUciSectionName(section);
+      let label = getUciSectionLabel(section);
+      if (name === section_id) {
+        label += ' ' + _('(this rule, when active)');
+      }
+      return {
+        value: name,
+        label: label,
+      };
+    });
+}
+
+function dnsTypeChoices() {
+  return [
+    { value: 'doh', label: _('DNS over HTTPS (DoH)') },
+    { value: 'dot', label: _('DNS over TLS (DoT)') },
+    { value: 'doq', label: _('DNS over QUIC (DoQ)') },
+    { value: 'udp', label: 'UDP' },
+  ];
+}
+
+function optionListValues(option, section_id) {
+  const value = option.cfgvalue
+    ? option.cfgvalue(section_id)
+    : uci.get(UCI_PACKAGE, section_id, option.option);
+  return L.toArray(value)
+    .map((item) => `${item || ''}`.trim())
+    .filter(Boolean);
+}
+
+function configureDnsList(option, choices, defaultValue) {
+  if (choices) {
+    Object.entries(choices).forEach(([key, label]) => {
+      option.value(key, _(label));
+    });
+  }
+  option.default = [defaultValue];
+  option.rmempty = false;
+  option.validate = function (_section_id, value) {
+    const normalized = `${value || ''}`.trim();
+    if (!normalized) {
+      return optionListValues(option, _section_id).length > 0
+        ? true
+        : _('Add at least one DNS server');
+    }
+    const validation = main.validateDNS(normalized);
+    return validation.valid ? true : validation.message;
+  };
+}
+
+function isConnectionNetworkInterfaceAllowed(deviceName, device) {
+  if (CONNECTIONS_BLOCKED_INTERFACES.includes(deviceName)) {
+    return false;
+  }
+
+  if (!device) {
+    return true;
+  }
+
+  const type = device.getType();
+  const isWireless =
+    type === 'wifi' || type === 'wireless' || type.indexOf('wlan') >= 0;
+
+  return !isWireless;
+}
+
+function renderNetworkInterfaceChoice(device) {
+  const name = device.getName();
+  const type = device.getType();
+
+  return E([
+    E('img', {
+      title: device.getI18n(),
+      src: L.resource(
+        'icons/%s%s.svg'.format(type, device.isUp() ? '' : '_disabled'),
+      ),
+    }),
+    E('span', { class: 'hide-open' }, [name]),
+    E('span', { class: 'hide-close' }, [device.getI18n()]),
+  ]);
+}
+
+function renderNetworkInterfaceListItem(device, fallbackName) {
+  const name = device ? device.getName() : fallbackName;
+  const type = device ? device.getType() : 'ethernet';
+  const up = device ? device.isUp() : false;
+
+  return E('span', { class: 'fkp-interface-dynlist-label' }, [
+    E('img', {
+      title: device ? device.getI18n() : _('Network Interface'),
+      src: L.resource('icons/%s%s.svg'.format(type, up ? '' : '_disabled')),
+    }),
+    E('span', {}, [name]),
+  ]);
+}
+
+function refreshNetworkInterfaceOptionValues(option) {
+  option.keylist = [];
+  option.vallist = [];
+  option.interfaceChoiceMap = {};
+  option.interfaceDeviceMap = {};
+
+  (option.devices || []).forEach((device) => {
+    const name = device.getName();
+    const type = device.getType();
+
+    if (
+      name === 'lo' ||
+      type === 'alias' ||
+      !isConnectionNetworkInterfaceAllowed(name, device)
+    ) {
+      return;
+    }
+
+    option.value(name, renderNetworkInterfaceChoice(device));
+    option.interfaceChoiceMap[name] = true;
+    option.interfaceDeviceMap[name] = device;
+  });
+}
+
+const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
+  load(section_id) {
+    return network.getDevices().then(
+      L.bind(function (devices) {
+        this.devices = devices || [];
+        refreshNetworkInterfaceOptionValues(this);
+
+        return this.super('load', section_id);
+      }, this),
+    );
+  },
+
+  validate(section_id, value) {
+    value = childItemInputValue(section_id, value, 'section_interface', 'name');
+
+    if (!value || value.length === 0) {
+      return true;
+    }
+
+    if (!this.interfaceChoiceMap || !this.interfaceChoiceMap[value]) {
+      return _('Select an existing network interface');
+    }
+
+    return true;
+  },
+
+  renderListItemLabel(section_id, value, text) {
+    value = childItemInputValue(section_id, value, 'section_interface', 'name');
+
+    return renderNetworkInterfaceListItem(
+      this.interfaceDeviceMap ? this.interfaceDeviceMap[value] : null,
+      value || text,
+    );
+  },
+});
+
+function urlTestFilterModeChoices() {
+  return [
+    { value: 'disabled', label: _('All servers') },
+    { value: 'exclude', label: _('All except selected') },
+    { value: 'include', label: _('Only selected') },
+    { value: 'mixed', label: _('Only selected except exclusions') },
+  ];
+}
+
+function priorityLevelFilterModeChoices() {
+  return [
+    { value: 'disabled', label: _('All remaining servers') },
+    { value: 'include', label: _('Only selected') },
+    { value: 'exclude', label: _('All remaining except selected') },
+    { value: 'mixed', label: _('Only selected except exclusions') },
+  ];
+}
+
+function serverCountryDetectionChoices() {
+  return [
+    { value: 'flag_emoji', label: _('By flag emoji from name') },
+    { value: 'country_is', label: _('Via country.is') },
+  ];
+}
+
+function proxyProtocolChoices() {
+  return [
+    ['vless', 'VLESS'],
+    ['hysteria2', 'Hysteria2'],
+    ['tuic', 'TUIC'],
+    ['trojan', 'Trojan'],
+    ['vmess', 'VMess'],
+    ['shadowsocks', 'Shadowsocks'],
+    ['anytls', 'AnyTLS'],
+    ['naive', 'NaiveProxy'],
+    ['amneziawg', 'AmneziaWG / WireGuard'],
+    ['wireguard', 'WireGuard'],
+    ['openvpn', 'OpenVPN'],
+    ['fptn', 'FPTN'],
+    ['mieru', 'Mieru'],
+    ['trusttunnel', 'TrustTunnel'],
+    ['masque', 'MASQUE'],
+    ['openconnect', 'OpenConnect'],
+    ['shadowtls', 'ShadowTLS'],
+    ['snell', 'Snell'],
+    ['sudoku', 'Sudoku'],
+    ['socks', 'SOCKS'],
+    ['http', 'HTTP'],
+    ['direct', 'Direct'],
+  ];
+}
+
+function proxyTransportChoices() {
+  return [
+    ['tcp', 'TCP'],
+    ['ws', 'WebSocket'],
+    ['grpc', 'gRPC'],
+    ['http', 'HTTP'],
+    ['httpupgrade', 'HTTPUpgrade'],
+    ['quic', 'QUIC'],
+    ['xhttp', 'XHTTP'],
+  ];
+}
+
+function proxySecurityChoices() {
+  return [
+    ['none', 'None'],
+    ['tls', 'TLS'],
+    ['reality', 'Reality'],
+  ];
+}
+
+function proxyPortChoices() {
+  return [
+    ['443', '443 (HTTPS)'],
+    ['80', '80 (HTTP)'],
+    ['8443', '8443'],
+    ['2053', '2053 (Cloudflare)'],
+    ['2083', '2083 (Cloudflare)'],
+    ['2087', '2087 (Cloudflare)'],
+    ['2096', '2096 (Cloudflare)'],
+    ['8080', '8080'],
+  ];
+}
+
+function validateProxyPortCondition(sectionId, value) {
+  if (!value || `${value}`.trim().length === 0) {
+    return true;
+  }
+  const text = `${value}`.trim();
+  const dash = text.indexOf('-');
+  if (dash < 0) {
+    const num = parseInt(text, 10);
+    if (/^[0-9]+$/.test(text) && !isNaN(num) && num >= 1 && num <= 65535) {
+      return true;
+    }
+  } else {
+    const s1 = text.substring(0, dash).trim();
+    const s2 = text.substring(dash + 1).trim();
+    const n1 = parseInt(s1, 10);
+    const n2 = parseInt(s2, 10);
+    if (
+      /^[0-9]+$/.test(s1) &&
+      /^[0-9]+$/.test(s2) &&
+      !isNaN(n1) &&
+      !isNaN(n2) &&
+      n1 >= 1 &&
+      n2 <= 65535 &&
+      n1 <= n2
+    ) {
+      return true;
+    }
+  }
+  return _('Must be a port (1 - 65535) or port range (e.g. 1000-2000)');
+}
+
+function addProxyParameterFilterOptions(itemSection, options) {
+  const prefix = options.prefix;
+  const dependencies = options.dependencies;
+
+  let o = itemSection.option(
+    form.Flag,
+    `${prefix}_proxy_parameters`,
+    options.toggleLabel,
+    options.toggleDescription,
+  );
+  dependencies.forEach((dependency) => o.depends(dependency));
+  o.default = '0';
+  o.rmempty = false;
+
+  [
+    [
+      'protocols',
+      _('Protocol'),
+      options.protocolDescription,
+      proxyProtocolChoices(),
+      null,
+    ],
+    [
+      'transports',
+      _('Transport'),
+      options.transportDescription,
+      proxyTransportChoices(),
+      null,
+    ],
+    [
+      'securities',
+      _('Security'),
+      options.securityDescription,
+      proxySecurityChoices(),
+      null,
+    ],
+    [
+      'ports',
+      _('Port'),
+      options.portDescription,
+      proxyPortChoices(),
+      validateProxyPortCondition,
+    ],
+  ].forEach(([suffix, label, description, choices, validator]) => {
+    const list = itemSection.option(
+      form.DynamicList,
+      `${prefix}_${suffix}`,
+      label,
+      description,
+    );
+    dependencies.forEach((dependency) =>
+      list.depends(
+        Object.assign({}, dependency, {
+          [`${prefix}_proxy_parameters`]: '1',
+        }),
+      ),
+    );
+    list.rmempty = true;
+    if (choices) {
+      choices.forEach(([value, choiceLabel]) => list.value(value, choiceLabel));
+    }
+    if (validator) {
+      list.validate = function (_section_id, value) {
+        return validator(null, value);
+      };
+    }
+    list.placeholder = _('-- Select or type port/range --');
+  });
+}
+
+function findSectionFilterOption(ownerOption, key) {
+  const sec = ownerOption && ownerOption.section;
+  if (!sec || !Array.isArray(sec.children)) return null;
+  for (let i = 0; i < sec.children.length; i += 1) {
+    if (sec.children[i] && sec.children[i].option === key) {
+      return sec.children[i];
+    }
+  }
+  return null;
+}
+
+function readLiveFilterOptionValue(ownerOption, itemId, key, fallback = '') {
+  const opt = findSectionFilterOption(ownerOption, key);
+  if (opt) {
+    try {
+      const uiEl =
+        typeof opt.getUIElement === 'function'
+          ? opt.getUIElement(itemId)
+          : null;
+      if (uiEl && typeof uiEl.getValue === 'function') {
+        const val = uiEl.getValue();
+        if (val != null) return val;
+      }
+    } catch (_e) {}
+    try {
+      if (typeof opt.formvalue === 'function') {
+        const val = opt.formvalue(itemId);
+        if (val != null) return val;
+      }
+    } catch (_e) {}
+  }
+  const mapVal = optionMapValue(ownerOption, itemId, key);
+  return mapVal !== '' && mapVal != null ? mapVal : fallback;
+}
+
+function addLiveServerFilterPreviewOption(optionTarget, config = {}) {
+  const optionKey = config.optionKey || '_server_filter_preview';
+  const dependencies = Array.isArray(config.dependencies)
+    ? config.dependencies
+    : [];
+  const resolveSectionId =
+    typeof config.resolveSectionId === 'function'
+      ? config.resolveSectionId
+      : (itemId) => itemId || 'Main';
+  const keys = Object.assign(
+    {
+      filterMode: 'filter_mode',
+      detectServerCountry: 'detect_server_country',
+      includeCountries: 'include_countries',
+      includeOutbounds: 'include_outbounds',
+      includeRegex: 'include_regex',
+      includeProxyParameters: 'include_proxy_parameters',
+      includeProtocols: 'include_protocols',
+      includeTransports: 'include_transports',
+      includeSecurities: 'include_securities',
+      includePorts: 'include_ports',
+      excludeCountries: 'exclude_countries',
+      excludeOutbounds: 'exclude_outbounds',
+      excludeRegex: 'exclude_regex',
+      excludeProxyParameters: 'exclude_proxy_parameters',
+      excludeProtocols: 'exclude_protocols',
+      excludeTransports: 'exclude_transports',
+      excludeSecurities: 'exclude_securities',
+      excludePorts: 'exclude_ports',
+    },
+    config.keys || {},
+  );
+
+  const o = optionTarget.option(
+    form.DummyValue,
+    optionKey,
+    _('Live filter preview'),
+    _('Preview matched and excluded servers in real time before saving.'),
+  );
+  dependencies.forEach((dep) => o.depends(dep));
+
+  o.renderWidget = function (itemId) {
+    const ownerOption = this;
+    let showDetails = false;
+    let cachedMeta = null;
+    let timerId = null;
+
+    const statusBadge = E(
+      'span',
+      {
+        class: 'badge',
+        style:
+          'display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#28a745;color:#fff;',
+      },
+      _('Loading servers...'),
+    );
+
+    const summaryText = E(
+      'span',
+      { style: 'font-size:12px;opacity:0.85;' },
+      '',
+    );
+
+    const detailsBox = E('div', {
+      style:
+        'display:none;margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid rgba(128,128,128,0.2);background:rgba(128,128,128,0.04);max-height:180px;overflow-y:auto;font-size:12px;',
+    });
+
+    const toggleBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button',
+        style: 'padding:1px 8px;min-height:24px;font-size:11px;',
+        click: function (ev) {
+          ev.preventDefault();
+          showDetails = !showDetails;
+          detailsBox.style.display = showDetails ? 'block' : 'none';
+          toggleBtn.textContent = showDetails
+            ? _('Hide servers')
+            : _('Show servers');
+        },
+      },
+      _('Show servers'),
+    );
+
+    const refreshBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button',
+        style: 'padding:1px 8px;min-height:24px;font-size:11px;',
+        click: function (ev) {
+          ev.preventDefault();
+          cachedMeta = null;
+          updatePreview();
+        },
+      },
+      _('Refresh preview'),
+    );
+
+    function collectCurrentSpec() {
+      return {
+        filterMode: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.filterMode,
+          'disabled',
+        ),
+        detectServerCountry: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.detectServerCountry,
+          'flag_emoji',
+        ),
+        includeCountries: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeCountries,
+          [],
+        ),
+        includeOutbounds: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeOutbounds,
+          [],
+        ),
+        includeRegex: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeRegex,
+          [],
+        ),
+        includeProxyParameters: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeProxyParameters,
+          '0',
+        ),
+        includeProtocols: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeProtocols,
+          [],
+        ),
+        includeTransports: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeTransports,
+          [],
+        ),
+        includeSecurities: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includeSecurities,
+          [],
+        ),
+        includePorts: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.includePorts,
+          [],
+        ),
+        excludeCountries: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeCountries,
+          [],
+        ),
+        excludeOutbounds: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeOutbounds,
+          [],
+        ),
+        excludeRegex: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeRegex,
+          [],
+        ),
+        excludeProxyParameters: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeProxyParameters,
+          '0',
+        ),
+        excludeProtocols: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeProtocols,
+          [],
+        ),
+        excludeTransports: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeTransports,
+          [],
+        ),
+        excludeSecurities: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludeSecurities,
+          [],
+        ),
+        excludePorts: readLiveFilterOptionValue(
+          ownerOption,
+          itemId,
+          keys.excludePorts,
+          [],
+        ),
+      };
+    }
+
+    function renderDetails(preview) {
+      detailsBox.innerHTML = '';
+      if (preview.totalCount === 0) {
+        detailsBox.appendChild(
+          E(
+            'div',
+            { style: 'opacity:0.75;' },
+            _('No cached servers found for this section yet.'),
+          ),
+        );
+        return;
+      }
+
+      const renderServerGroup = (title, list, badgeBg) => {
+        if (!list.length) return null;
+        return E('div', { style: 'margin-bottom:6px;' }, [
+          E(
+            'div',
+            { style: 'font-weight:600;margin-bottom:4px;font-size:11px;' },
+            `${title} (${list.length}):`,
+          ),
+          E(
+            'div',
+            { style: 'display:flex;flex-wrap:wrap;gap:4px;' },
+            list.map((srv) =>
+              E(
+                'span',
+                {
+                  style: `display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;background:${badgeBg};border:1px solid rgba(128,128,128,0.25);`,
+                },
+                srv.label,
+              ),
+            ),
+          ),
+        ]);
+      };
+
+      const matchedNode = renderServerGroup(
+        _('Matched servers'),
+        preview.matchedServers,
+        'rgba(40,167,69,0.12)',
+      );
+      const excludedNode = renderServerGroup(
+        _('Excluded servers'),
+        preview.excludedServers,
+        'rgba(220,53,69,0.10)',
+      );
+      if (matchedNode) detailsBox.appendChild(matchedNode);
+      if (excludedNode) detailsBox.appendChild(excludedNode);
+      if (!matchedNode && !excludedNode) {
+        detailsBox.appendChild(
+          E('div', { style: 'opacity:0.75;' }, _('No servers matched.')),
+        );
+      }
+    }
+
+    function updatePreview() {
+      const targetSection = resolveSectionId(itemId) || 'Main';
+      const metaPromise = cachedMeta
+        ? Promise.resolve(cachedMeta)
+        : readOutboundMetadataFromSectionCache(targetSection).then((m) => {
+            cachedMeta = m;
+            return m;
+          });
+
+      metaPromise.then((meta) => {
+        const spec = collectCurrentSpec();
+        const preview = evaluateLiveServerFilterPreview(meta, spec);
+
+        if (preview.totalCount === 0) {
+          statusBadge.style.background = '#6c757d';
+          statusBadge.textContent = _('0 servers cached');
+          summaryText.textContent = _(
+            'Save & update subscriptions once to populate the server cache.',
+          );
+        } else if (preview.matchedCount === 0) {
+          statusBadge.style.background = '#dc3545';
+          statusBadge.textContent = `${_('Matched')}: 0 / ${preview.totalCount}`;
+          summaryText.textContent = _(
+            'Warning: current filter excludes all servers!',
+          );
+        } else {
+          statusBadge.style.background = '#28a745';
+          statusBadge.textContent = `${_('Matched')}: ${preview.matchedCount} / ${preview.totalCount}`;
+          summaryText.textContent = `${_('Excluded')}: ${preview.excludedCount}`;
+        }
+        renderDetails(preview);
+      });
+    }
+
+    function scheduleUpdate() {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(updatePreview, 80);
+    }
+
+    const root = E(
+      'div',
+      {
+        class: 'tachyon-live-filter-preview',
+        style: 'padding:4px 0;',
+      },
+      [
+        E(
+          'div',
+          { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;' },
+          [statusBadge, summaryText, toggleBtn, refreshBtn],
+        ),
+        detailsBox,
+      ],
+    );
+
+    setTimeout(() => {
+      const scopeEl =
+        root.closest('.cbi-section') ||
+        root.closest('.modal') ||
+        root.parentElement;
+      if (scopeEl && !scopeEl._tachyonFilterPreviewBound) {
+        scopeEl._tachyonFilterPreviewBound = true;
+        scopeEl.addEventListener('change', scheduleUpdate, true);
+        scopeEl.addEventListener('input', scheduleUpdate, true);
+        scopeEl.addEventListener('click', scheduleUpdate, true);
+      }
+      updatePreview();
+    }, 60);
+
+    return root;
+  };
+
+  return o;
+}
+
+function urlTestUrlChoices() {
+  return Array.isArray(main.LATENCY_TEST_URL_OPTIONS)
+    ? main.LATENCY_TEST_URL_OPTIONS
+    : [main.DEFAULT_LATENCY_TEST_URL || 'https://www.gstatic.com/generate_204'];
+}
+
+function validateUrlTestTolerance(value) {
+  if (!value || `${value}`.length === 0) {
+    return _('Must be a number in the range of 0 - 10000');
+  }
+
+  const normalized = `${value}`;
+  const parsed = parseFloat(normalized);
+  if (
+    /^[0-9]+$/.test(normalized) &&
+    !isNaN(parsed) &&
+    isFinite(parsed) &&
+    parsed >= 0 &&
+    parsed <= 10000
+  ) {
+    return true;
+  }
+
+  return _('Must be a number in the range of 0 - 10000');
+}
+
+function validateUrlTestUrl(value) {
+  const validation = main.validateUrl(`${value || ''}`.trim());
+  return validation.valid ? true : validation.message;
+}
+
+function generateHwid16() {
+  const bytes = new Uint8Array(8);
+
+  if (window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function optionMapValue(option, section_id, key) {
+  const value =
+    option && option.map && option.map.data
+      ? option.map.data.get(option.map.config, section_id, key)
+      : uci.get(UCI_PACKAGE, section_id, key);
+
+  return value == null ? '' : value;
+}
+
+function subscriptionUrlSettingsKeys() {
+  return [
+    'enabled',
+    'subscription_update_enabled',
+    'subscription_update_interval',
+    'download_via_proxy_enabled',
+    'download_via_proxy_section',
+    'auto_user_agent',
+    'user_agent',
+    'auto_hwid',
+    'hwid',
+    'custom_device_headers',
+    'device_os',
+    'ver_os',
+    'device_model',
+    'device_locale',
+    'app_version',
+    'accept_language',
+    'show_dashboard_metadata',
+    'prefix_nodes',
+    'node_prefix',
+    'node_prefix_bg',
+    'node_prefix_color',
+    'include_urltest_groups',
+    'hide_urltest_group_outbounds',
+    'urltest_idle_timeout',
+    'hide_detour_outbounds',
+    'subscription_insecure',
+  ];
+}
+
+function defaultSubscriptionUrlSettings() {
+  return {
+    enabled: '1',
+    subscription_update_enabled: '1',
+    subscription_update_interval: '1h',
+    download_via_proxy_enabled: '0',
+    download_via_proxy_section: '',
+    auto_user_agent: '1',
+    user_agent: '',
+    auto_hwid: '1',
+    hwid: '',
+    custom_device_headers: '0',
+    device_os: '',
+    ver_os: '',
+    device_model: '',
+    device_locale: '',
+    app_version: '',
+    accept_language: '',
+    show_dashboard_metadata: '1',
+    prefix_nodes: '0',
+    node_prefix: '',
+    node_prefix_bg: '',
+    node_prefix_color: '',
+    include_urltest_groups: '1',
+    hide_urltest_group_outbounds: '1',
+    urltest_idle_timeout: '',
+    hide_detour_outbounds: '1',
+    subscription_insecure: '0',
+  };
+}
+
+function interfaceSettingsKeys() {
+  return [
+    'domain_resolver_enabled',
+    'domain_resolver_dns_type',
+    'domain_resolver_dns_server',
+  ];
+}
+
+function defaultInterfaceSettings() {
+  return {
+    domain_resolver_enabled: '0',
+    domain_resolver_dns_type: 'udp',
+    domain_resolver_dns_server: '8.8.8.8',
+  };
+}
+
+function subscriptionUserAgentChoices() {
+  return [
+    'sing-box',
+    'Happ',
+    'v2rayN',
+    'v2rayNG',
+    'v2RayTun',
+    'Incy',
+    'Hiddify',
+    'HiddifyNext',
+    'Clash',
+    'Clash.Meta',
+    'ClashMetaForAndroid',
+    'Mihomo',
+    'NekoBox',
+    'Karing',
+    'Husi',
+  ];
+}
+
+function urlTestSettingsKeys() {
+  return [
+    'name',
+    'check_interval',
+    'tolerance',
+    'testing_url',
+    'idle_timeout',
+    'interrupt_exist_connections',
+    'pin_dashboard',
+    'filter_mode',
+    'detect_server_country',
+    'include_countries',
+    'include_outbounds',
+    'include_regex',
+    'include_proxy_parameters',
+    'include_protocols',
+    'include_transports',
+    'include_securities',
+    'include_ports',
+    'exclude_countries',
+    'exclude_outbounds',
+    'exclude_regex',
+    'exclude_proxy_parameters',
+    'exclude_protocols',
+    'exclude_transports',
+    'exclude_securities',
+    'exclude_ports',
+  ];
+}
+
+function defaultUrlTestSettings(name) {
+  return {
+    name: '',
+    check_interval: '3m',
+    tolerance: '50',
+    testing_url: 'https://www.gstatic.com/generate_204',
+    idle_timeout: '30m',
+    interrupt_exist_connections: '1',
+    pin_dashboard: '1',
+    filter_mode: 'disabled',
+    detect_server_country: 'flag_emoji',
+  };
+}
+
+function urlTestChildDefaults() {
+  return {
+    check_interval: '3m',
+    tolerance: '50',
+    testing_url: 'https://www.gstatic.com/generate_204',
+    idle_timeout: '30m',
+    interrupt_exist_connections: '1',
+    pin_dashboard: '1',
+    filter_mode: 'disabled',
+    detect_server_country: 'flag_emoji',
+  };
+}
+
+function priorityGroupSettingsKeys() {
+  return [
+    'name',
+    'health_url',
+    'active_check_interval',
+    'check_timeout',
+    'recovery_check_interval',
+    'pick_fastest',
+    'switch_to_faster_same_priority',
+    'fastest_check_interval',
+    'interrupt_exist_connections',
+    'pin_dashboard',
+  ];
+}
+
+function defaultPriorityGroupSettings() {
+  return {
+    name: '',
+    health_url: 'https://www.gstatic.com/generate_204',
+    active_check_interval: '5s',
+    check_timeout: '2s',
+    recovery_check_interval: '15s',
+    pick_fastest: '1',
+    switch_to_faster_same_priority: '0',
+    fastest_check_interval: '3m',
+    interrupt_exist_connections: '1',
+    pin_dashboard: '1',
+  };
+}
+
+function priorityGroupChildDefaults() {
+  return {
+    health_url: 'https://www.gstatic.com/generate_204',
+    active_check_interval: '5s',
+    check_timeout: '2s',
+    recovery_check_interval: '15s',
+    pick_fastest: '1',
+    switch_to_faster_same_priority: '0',
+    fastest_check_interval: '3m',
+    interrupt_exist_connections: '1',
+    pin_dashboard: '1',
+  };
+}
+
+function priorityLevelSettingsKeys() {
+  return [
+    'name',
+    'order',
+    'direct',
+    'filter_mode',
+    'detect_server_country',
+    'country',
+    'server_name',
+    'regex',
+    'include_proxy_parameters',
+    'include_protocols',
+    'include_transports',
+    'include_securities',
+    'include_ports',
+    'exclude_countries',
+    'exclude_outbounds',
+    'exclude_regex',
+    'exclude_proxy_parameters',
+    'exclude_protocols',
+    'exclude_transports',
+    'exclude_securities',
+    'exclude_ports',
+  ];
+}
+
+function defaultPriorityLevelSettings() {
+  return {
+    name: '',
+    order: '0',
+    direct: '0',
+    filter_mode: 'include',
+    detect_server_country: 'flag_emoji',
+  };
+}
+
+function randomPriorityGroupId() {
+  for (let i = 0; i < 100; i += 1) {
+    const value = Math.floor(Math.random() * 0xffffffff)
+      .toString(16)
+      .padStart(8, '0');
+    const id = `pg_${value}`;
+
+    if (!uci.get(UCI_PACKAGE, id)) {
+      return id;
+    }
+  }
+
+  return `pg_${Date.now().toString(16)}`;
+}
+
+function addSubscriptionUrlItemOptions(itemSection, options = {}) {
+  const parentSectionForItem =
+    typeof options.parentSectionId === 'function'
+      ? options.parentSectionId
+      : parentSectionIdForItem;
+
+  let o = itemSection.option(
+    form.Flag,
+    'enabled',
+    _('Enabled'),
+    _(
+      'Use this subscription. A disabled one is neither downloaded nor added to the config',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'subscription_update_enabled',
+    _('Subscription auto update'),
+    _('Update this subscription automatically'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Value,
+    'subscription_update_interval',
+    _('Subscription update interval'),
+    _('Use sing-box duration format like 1d, 12h or 30m'),
+  );
+  o.depends('subscription_update_enabled', '1');
+  o.placeholder = '1h';
+  o.validate = function (itemId, value) {
+    return optionMapValue(this, itemId, 'subscription_update_enabled') === '1'
+      ? validateRequiredSingBoxDuration(value)
+      : validateOptionalSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'download_via_proxy_enabled',
+    _('Download subscription through a section'),
+    _('Download subscriptions via the selected section'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.ListValue,
+    'download_via_proxy_section',
+    _('Download through'),
+  );
+  o.depends('download_via_proxy_enabled', '1');
+  o.load = function (itemId) {
+    const sectionId = parentSectionForItem(itemId);
+    refreshOptionChoices(this, subscriptionDownloadTargetChoices(sectionId));
+    return optionMapValue(this, itemId, 'download_via_proxy_section') || '';
+  };
+  o.validate = function (itemId, value) {
+    const sectionId = parentSectionForItem(itemId);
+    if (optionMapValue(this, itemId, 'download_via_proxy_enabled') !== '1') {
+      return true;
+    }
+    if (!value) {
+      return _('Select a section for downloading this subscription');
+    }
+    return true;
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'auto_user_agent',
+    _('Automatic User-Agent selection'),
+    _(
+      'Try compatible User-Agent profiles automatically when downloading this subscription',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Value,
+    'user_agent',
+    _('User-Agent'),
+    _('Select a common client profile or enter a custom User-Agent'),
+  );
+  o.depends('auto_user_agent', '0');
+  o.placeholder = _('-- Select --');
+  o.rmempty = false;
+  subscriptionUserAgentChoices().forEach((choice) => o.value(choice));
+  o.load = function (itemId) {
+    return optionMapValue(this, itemId, 'user_agent') || '';
+  };
+  o.validate = function (itemId, value) {
+    if (optionMapValue(this, itemId, 'auto_user_agent') !== '0') {
+      return true;
+    }
+    return `${value || ''}`.trim() ? true : _('Select or enter a User-Agent');
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'auto_hwid',
+    _('Auto-generate HWID'),
+    _('Generate HWID from router hardware information for this subscription'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  const hwidOption = itemSection.option(
+    form.Value,
+    'hwid',
+    _('HWID'),
+    _('Enter the HWID sent with subscription requests'),
+  );
+  hwidOption.depends('auto_hwid', '0');
+  hwidOption.rmempty = false;
+  hwidOption.validate = function (itemId, value) {
+    if (optionMapValue(this, itemId, 'auto_hwid') !== '0') {
+      return true;
+    }
+    return `${value || ''}`.trim() ? true : _('Enter HWID');
+  };
+
+  o = itemSection.option(
+    form.Button,
+    '_generate_hwid',
+    _('Generate HWID'),
+    _('Generate a random 16-character hexadecimal HWID'),
+  );
+  o.depends('auto_hwid', '0');
+  o.inputstyle = 'action';
+  o.inputtitle = _('Generate HWID');
+  o.onclick = function (_event, itemId) {
+    hwidOption.getUIElement(itemId).setValue(generateHwid16());
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'custom_device_headers',
+    _('Custom device headers'),
+    _('Override the default OpenWrt device headers for this subscription'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Value,
+    'urltest_idle_timeout',
+    _('URLTest idle timeout'),
+    _(
+      'Stop checking imported URLTest groups when not used (e.g. 30m, 12h, 1d). Leave empty to use provider or default value.',
+    ),
+  );
+  o.rmempty = true;
+  o.validate = function (_itemId, value) {
+    return value ? validateOptionalSingBoxDuration(value) : true;
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'check_interval',
+    _('URLTest check interval'),
+    _('Interval between URLTest latency checks (e.g. 3m, 30s)'),
+  );
+  o.rmempty = true;
+  o.validate = function (_itemId, value) {
+    return value ? validateOptionalSingBoxDuration(value) : true;
+  };
+
+  o.rmempty = false;
+
+  [
+    ['device_os', 'X-Device-OS'],
+    ['ver_os', 'X-Ver-OS'],
+    ['device_model', 'X-Device-Model'],
+    ['device_locale', 'X-Device-Locale'],
+    ['app_version', 'X-App-Version'],
+    ['accept_language', 'Accept-Language'],
+  ].forEach(([key, label]) => {
+    o = itemSection.option(
+      form.Value,
+      key,
+      label,
+      _('Leave empty to omit this header'),
+    );
+    o.depends('custom_device_headers', '1');
+    o.rmempty = true;
+    o.retain = true;
+  });
+
+  o = itemSection.option(
+    form.Flag,
+    'show_dashboard_metadata',
+    _('Show metadata on dashboard'),
+    _('Show subscription metadata for this source on the dashboard'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'prefix_nodes',
+    _('Add prefix to nodes'),
+    _(
+      'Automatically add text to the name of each server from this subscription for convenient filtering.',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  const isRu =
+    _('Add prefix to nodes') !== 'Add prefix to nodes' ||
+    (typeof document !== 'undefined' &&
+      document.documentElement &&
+      document.documentElement.lang === 'ru');
+  const tr = (en, ru) => (isRu ? ru : _(en));
+
+  const prefixTextOption = itemSection.option(
+    form.Value,
+    'node_prefix',
+    _('Prefix text'),
+  );
+  prefixTextOption.depends('prefix_nodes', '1');
+  prefixTextOption.rmempty = false;
+
+  const prefixBgOption = itemSection.option(
+    form.Value,
+    'node_prefix_bg',
+    tr('Prefix background color', 'Цвет фона префикса'),
+    tr(
+      'Select a preset background color or enter any HEX/CSS color (leave empty for automatic palette)',
+      'Выберите цвет фона из базового набора или укажите свой HEX/CSS-цвет (пусто — авто-палитра)',
+    ),
+  );
+  prefixBgOption.depends('prefix_nodes', '1');
+  prefixBgOption.rmempty = true;
+  prefixBgOption.placeholder = tr('Auto (by name)', 'Авто (по названию)');
+  [
+    ['', tr('Auto (by name)', 'Авто (по названию)')],
+    ['#1e3a8a', tr('Blue (Indigo) — #1e3a8a', 'Синий (Индиго) — #1e3a8a')],
+    [
+      '#065f46',
+      tr('Emerald (Green) — #065f46', 'Изумрудный (Зелёный) — #065f46'),
+    ],
+    ['#78350f', tr('Amber (Gold) — #78350f', 'Янтарный (Золотой) — #78350f')],
+    ['#4c1d95', tr('Purple (Violet) — #4c1d95', 'Фиолетовый — #4c1d95')],
+    ['#831843', tr('Rose (Pink) — #831843', 'Розовый — #831843')],
+    ['#155e75', tr('Cyan (Teal) — #155e75', 'Бирюзовый — #155e75')],
+    ['#7c2d12', tr('Orange — #7c2d12', 'Оранжевый — #7c2d12')],
+    ['#7f1d1d', tr('Red — #7f1d1d', 'Красный — #7f1d1d')],
+    ['#334155', tr('Slate (Dark Gray) — #334155', 'Графитовый — #334155')],
+  ].forEach(([val, label]) => prefixBgOption.value(val, label));
+
+  const prefixColorOption = itemSection.option(
+    form.Value,
+    'node_prefix_color',
+    tr('Prefix text color', 'Цвет текста префикса'),
+    tr(
+      'Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)',
+      'Выберите цвет текста из базового набора или укажите свой HEX/CSS-цвет (пусто — авто-палитра)',
+    ),
+  );
+  prefixColorOption.depends('prefix_nodes', '1');
+  prefixColorOption.rmempty = true;
+  prefixColorOption.placeholder = tr('Auto (by name)', 'Авто (по названию)');
+  [
+    ['', tr('Auto (by name)', 'Авто (по названию)')],
+    ['#ffffff', tr('White — #ffffff', 'Белый — #ffffff')],
+    ['#93c5fd', tr('Light Blue — #93c5fd', 'Голубой — #93c5fd')],
+    ['#6ee7b7', tr('Mint Green — #6ee7b7', 'Мятно-зелёный — #6ee7b7')],
+    ['#fcd34d', tr('Amber Gold — #fcd34d', 'Золотистый — #fcd34d')],
+    ['#c4b5fd', tr('Lavender — #c4b5fd', 'Лавандовый — #c4b5fd')],
+    ['#f9a8d4', tr('Light Pink — #f9a8d4', 'Светло-розовый — #f9a8d4')],
+    ['#67e8f9', tr('Cyan — #67e8f9', 'Бирюзовый — #67e8f9')],
+    ['#fdba74', tr('Peach Orange — #fdba74', 'Персиковый — #fdba74')],
+    ['#fca5a5', tr('Light Red — #fca5a5', 'Светло-красный — #fca5a5')],
+    ['#e2e8f0', tr('Light Silver — #e2e8f0', 'Светло-серый — #e2e8f0')],
+  ].forEach(([val, label]) => prefixColorOption.value(val, label));
+
+  o = itemSection.option(
+    form.DummyValue,
+    '_prefix_color_presets',
+    tr('Quick color palette', 'Быстрый выбор палитры'),
+    tr(
+      'Click a ready-made badge theme or use the color pickers to set background and text colors',
+      'Нажмите на готовый стиль бейджа или выберите произвольные цвета пипеткой',
+    ),
+  );
+  o.depends('prefix_nodes', '1');
+  o.renderWidget = function (section_id) {
+    const presets = [
+      {
+        label: tr('Auto', 'Авто'),
+        bg: '',
+        color: '',
+        previewBg: 'rgba(139, 92, 246, 0.24)',
+        previewColor: '#93c5fd',
+      },
+      { label: tr('Blue', 'Синий'), bg: '#1e3a8a', color: '#93c5fd' },
+      { label: tr('Emerald', 'Изумруд'), bg: '#065f46', color: '#6ee7b7' },
+      { label: tr('Amber', 'Янтарь'), bg: '#78350f', color: '#fcd34d' },
+      { label: tr('Purple', 'Фиолет'), bg: '#4c1d95', color: '#c4b5fd' },
+      { label: tr('Rose', 'Розовый'), bg: '#831843', color: '#f9a8d4' },
+      { label: tr('Cyan', 'Циан'), bg: '#155e75', color: '#67e8f9' },
+      { label: tr('Orange', 'Оранж'), bg: '#7c2d12', color: '#fdba74' },
+      { label: tr('Red', 'Красный'), bg: '#7f1d1d', color: '#fca5a5' },
+      { label: tr('Slate', 'Графит'), bg: '#334155', color: '#e2e8f0' },
+    ];
+
+    const previewBadge = E(
+      'span',
+      {
+        style:
+          'display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.03em;border:1px solid rgba(147,197,253,0.45);background:#1e3a8a;color:#93c5fd;box-shadow:0 1px 2px rgba(0,0,0,0.2);',
+      },
+      'Префикс',
+    );
+
+    const bgColorInput = E('input', {
+      type: 'color',
+      value: '#1e3a8a',
+      title: tr('Pick background color', 'Выбрать цвет фона'),
+      style:
+        'width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;',
+      change: function (ev) {
+        const val = ev.target.value;
+        const uiEl = prefixBgOption.getUIElement(section_id);
+        if (uiEl) uiEl.setValue(val);
+        updatePreview();
+      },
+    });
+
+    const textColorInput = E('input', {
+      type: 'color',
+      value: '#93c5fd',
+      title: tr('Pick text color', 'Выбрать цвет текста'),
+      style:
+        'width:28px;height:26px;padding:0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;background:transparent;',
+      change: function (ev) {
+        const val = ev.target.value;
+        const uiEl = prefixColorOption.getUIElement(section_id);
+        if (uiEl) uiEl.setValue(val);
+        updatePreview();
+      },
+    });
+
+    function updatePreview() {
+      const textUi = prefixTextOption.getUIElement(section_id);
+      const bgUi = prefixBgOption.getUIElement(section_id);
+      const colUi = prefixColorOption.getUIElement(section_id);
+      const txt =
+        (textUi && textUi.getValue ? textUi.getValue() : '') ||
+        tr('Prefix', 'Префикс');
+      const bg = (bgUi && bgUi.getValue ? bgUi.getValue() : '') || '#1e3a8a';
+      const col =
+        (colUi && colUi.getValue ? colUi.getValue() : '') || '#93c5fd';
+      previewBadge.textContent = txt.trim() || tr('Prefix', 'Префикс');
+      previewBadge.style.background = bg;
+      previewBadge.style.color = col;
+      previewBadge.style.borderColor = col;
+      if (/^#[0-9a-fA-F]{6}$/.test(bg)) bgColorInput.value = bg;
+      if (/^#[0-9a-fA-F]{6}$/.test(col)) textColorInput.value = col;
+    }
+
+    const pills = presets.map((p) => {
+      const pBg = p.bg || p.previewBg;
+      const pCol = p.color || p.previewColor;
+      return E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button',
+          style: `padding:2px 8px;min-height:24px;line-height:1.3;font-size:11px;font-weight:700;border-radius:6px;background:${pBg};color:${pCol};border:1px solid ${pCol};cursor:pointer;`,
+          click: function (ev) {
+            ev.preventDefault();
+            const bgUi = prefixBgOption.getUIElement(section_id);
+            const colUi = prefixColorOption.getUIElement(section_id);
+            if (bgUi) bgUi.setValue(p.bg);
+            if (colUi) colUi.setValue(p.color);
+            updatePreview();
+          },
+        },
+        p.label,
+      );
+    });
+
+    setTimeout(updatePreview, 60);
+
+    return E(
+      'div',
+      {
+        style: 'display:flex;flex-direction:column;gap:8px;padding:4px 0;',
+      },
+      [
+        E(
+          'div',
+          { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;' },
+          pills,
+        ),
+        E(
+          'div',
+          {
+            style:
+              'display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;opacity:0.9;',
+          },
+          [
+            E(
+              'span',
+              { style: 'display:inline-flex;align-items:center;gap:6px;' },
+              [bgColorInput, E('span', {}, tr('Background', 'Пипетка фона'))],
+            ),
+            E(
+              'span',
+              { style: 'display:inline-flex;align-items:center;gap:6px;' },
+              [textColorInput, E('span', {}, tr('Text', 'Пипетка текста'))],
+            ),
+            E(
+              'span',
+              { style: 'display:inline-flex;align-items:center;gap:6px;' },
+              [
+                E(
+                  'span',
+                  { style: 'opacity:0.75;' },
+                  tr('Preview:', 'Предпросмотр:'),
+                ),
+                previewBadge,
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'include_urltest_groups',
+    _('Import subscription URLTest groups'),
+    _('Import URLTest groups returned by this subscription provider'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'hide_urltest_group_outbounds',
+    _('Hide URLTest group nodes'),
+    _(
+      'Hide individual nodes that are already included in imported subscription URLTest groups',
+    ),
+  );
+  o.depends('include_urltest_groups', '1');
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Value,
+    'urltest_idle_timeout',
+    _('URLTest idle timeout'),
+    _(
+      'Stop checking imported URLTest groups when not used (e.g. 30m, 12h, 1d). Leave empty to use provider or default value.',
+    ),
+  );
+  o.depends('include_urltest_groups', '1');
+  o.placeholder = '30m';
+  o.rmempty = true;
+  o.validate = function (_itemId, value) {
+    if (value == null || `${value}`.trim() === '') return true;
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'hide_detour_outbounds',
+    _('Hide cascade connection nodes'),
+    _('Hide intermediate nodes used as detours by other subscription nodes'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'subscription_insecure',
+    _('Allow insecure TLS'),
+    _(
+      'Download this subscription without TLS certificate verification (for panels with self-signed or mismatched certificates)',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+}
+
+function addInterfaceItemOptions(itemSection) {
+  let o = itemSection.option(
+    form.Flag,
+    'domain_resolver_enabled',
+    _('Domain Resolver'),
+    _('Enable built-in DNS resolver for domains handled by this section'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.ListValue,
+    'domain_resolver_dns_type',
+    _('DNS protocol'),
+    _('DNS protocol used by the resolver'),
+  );
+  o.depends('domain_resolver_enabled', '1');
+  dnsTypeChoices().forEach((choice) => o.value(choice.value, choice.label));
+  o.default = 'udp';
+
+  o = itemSection.option(
+    form.Value,
+    'domain_resolver_dns_server',
+    _('DNS server'),
+    _('DNS server used by the resolver'),
+  );
+  o.depends('domain_resolver_enabled', '1');
+  o.default = '8.8.8.8';
+  o.validate = function (itemId, value) {
+    if (optionMapValue(this, itemId, 'domain_resolver_enabled') !== '1') {
+      return true;
+    }
+    const validation = main.validateDNS(value);
+    return validation.valid ? true : validation.message;
+  };
+}
+
+function addUrlTestItemOptions(itemSection, options = {}) {
+  const parentSectionForItem =
+    typeof options.parentSectionId === 'function'
+      ? options.parentSectionId
+      : parentSectionIdForItem;
+
+  let o = itemSection.option(
+    form.Value,
+    'name',
+    _('Display name'),
+    _('Name displayed on the dashboard'),
+  );
+  o.rmempty = false;
+  o.load = function (itemId) {
+    return (
+      optionMapValue(this, itemId, 'name') ||
+      optionMapValue(this, itemId, 'display_name') ||
+      ''
+    );
+  };
+  o.validate = function (_itemId, value) {
+    return `${value || ''}`.trim() ? true : _('Enter a display name');
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'check_interval',
+    _('Check interval'),
+    _('Use sing-box duration format like 1d, 12h or 30m'),
+  );
+  o.default = '3m';
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'tolerance',
+    _('Tolerance'),
+    _(
+      'Minimum latency difference in milliseconds that triggers switching to a faster server.',
+    ),
+  );
+  o.default = '50';
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateUrlTestTolerance(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'testing_url',
+    _('Check URL'),
+    _('URL used to test server latency'),
+  );
+  o.default = 'https://www.gstatic.com/generate_204';
+  o.rmempty = false;
+  urlTestUrlChoices().forEach((value) => o.value(value));
+  o.validate = function (_itemId, value) {
+    return validateUrlTestUrl(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'idle_timeout',
+    _('Idle timeout'),
+    _(
+      'Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m.',
+    ),
+  );
+  o.default = '30m';
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'interrupt_exist_connections',
+    _('Interrupt connections'),
+    _('Interrupt connections when URLTest switches the selected server'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'pin_dashboard',
+    _('Pin on dashboard'),
+    _('Keep URLTest before latency-sorted servers'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.ListValue,
+    'filter_mode',
+    _('Server filtering'),
+    _('Allows limiting the list of servers for URLTest'),
+  );
+  urlTestFilterModeChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = 'disabled';
+
+  o = itemSection.option(
+    form.ListValue,
+    'detect_server_country',
+    _('Detect server country'),
+  );
+  o.depends('filter_mode', 'exclude');
+  o.depends('filter_mode', 'include');
+  o.depends('filter_mode', 'mixed');
+  serverCountryDetectionChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = 'flag_emoji';
+
+  const includeProxyParameterOptions = {
+    prefix: 'include',
+    toggleLabel: _('Include by proxy parameters'),
+    toggleDescription: _(
+      'Additionally filter servers by protocol, transport, and security. Add only servers matching the specified parameters.',
+    ),
+    dependencies: [{ filter_mode: 'include' }, { filter_mode: 'mixed' }],
+    protocolDescription: _(
+      'Test only servers with one of the selected protocols.',
+    ),
+    transportDescription: _(
+      'Test only servers with one of the selected transports.',
+    ),
+    securityDescription: _(
+      'Test only servers with one of the selected security types.',
+    ),
+    portDescription: _(
+      'Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000).',
+    ),
+  };
+  const excludeProxyParameterOptions = {
+    prefix: 'exclude',
+    toggleLabel: _('Exclude by proxy parameters'),
+    toggleDescription: _(
+      'Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters.',
+    ),
+    dependencies: [{ filter_mode: 'exclude' }, { filter_mode: 'mixed' }],
+    protocolDescription: _(
+      'Do not test servers with one of the selected protocols.',
+    ),
+    transportDescription: _(
+      'Do not test servers with one of the selected transports.',
+    ),
+    securityDescription: _(
+      'Do not test servers with one of the selected security types.',
+    ),
+    portDescription: _(
+      'Do not test servers with one of the selected ports or port ranges.',
+    ),
+  };
+
+  [
+    [
+      'include_countries',
+      _('Include countries'),
+      _('Test servers only from the specified countries.'),
+      countryChoices(),
+      validateCountryCode,
+      ['include', 'mixed'],
+    ],
+    [
+      'include_outbounds',
+      _('Include servers'),
+      _('Test only selected servers.'),
+      null,
+      null,
+      ['include', 'mixed'],
+    ],
+    [
+      'include_regex',
+      _('Include by regular expression'),
+      _('Test servers whose names match the expression.'),
+      null,
+      validateRegex,
+      ['include', 'mixed'],
+    ],
+    [
+      'exclude_countries',
+      _('Exclude countries'),
+      _('Do not test servers from these countries.'),
+      countryChoices(),
+      validateCountryCode,
+      ['exclude', 'mixed'],
+    ],
+    [
+      'exclude_outbounds',
+      _('Exclude servers'),
+      _('Do not test specified servers.'),
+      null,
+      null,
+      ['exclude', 'mixed'],
+    ],
+    [
+      'exclude_regex',
+      _('Exclude by regular expression'),
+      _('Do not test servers whose names match the expression.'),
+      null,
+      validateRegex,
+      ['exclude', 'mixed'],
+    ],
+  ].forEach(([key, label, description, choices, validator, modes]) => {
+    const list = itemSection.option(form.DynamicList, key, label, description);
+    modes.forEach((mode) => list.depends('filter_mode', mode));
+    list.rmempty = true;
+    if (choices) {
+      choices.forEach((choice) => list.value(choice.value, choice.label));
+      list.placeholder = _('-- Select --');
+    }
+    if (key.endsWith('_outbounds')) {
+      list.load = function (itemId) {
+        const sectionId = parentSectionForItem(itemId) || 'Main';
+        const values = normalizeOptionValues(optionMapValue(this, itemId, key));
+
+        return loadOutboundNameChoices(sectionId).then(() => {
+          refreshOptionChoices(
+            this,
+            currentOutboundNameChoices(sectionId, values),
+          );
+          return values;
+        });
+      };
+      list.placeholder = _('-- Select --');
+      configureLiveDynamicListChoices(list, (itemId, values) =>
+        currentOutboundNameChoices(
+          parentSectionForItem(itemId) || 'Main',
+          values,
+        ),
+      );
+    }
+    if (validator) {
+      list.validate = function (_itemId, value) {
+        return validator(null, value);
+      };
+    }
+    if (key === 'include_regex') {
+      addProxyParameterFilterOptions(itemSection, includeProxyParameterOptions);
+    } else if (key === 'exclude_regex') {
+      addProxyParameterFilterOptions(itemSection, excludeProxyParameterOptions);
+    }
+  });
+
+  addLiveServerFilterPreviewOption(itemSection, {
+    optionKey: '_urltest_filter_preview',
+    dependencies: [
+      { filter_mode: 'include' },
+      { filter_mode: 'exclude' },
+      { filter_mode: 'mixed' },
+    ],
+    resolveSectionId: (itemId) => parentSectionForItem(itemId) || 'Main',
+  });
+}
+
+function priorityLevelSettingsForValidation(groupId, levelId, option) {
+  const store = childPendingSettingsStore(option, groupId);
+
+  if (isExistingChildItem(groupId, levelId, 'priority_level', 'group')) {
+    return readChildSettings(
+      levelId,
+      priorityLevelSettingsKeys(),
+      defaultPriorityLevelSettings(),
+    );
+  }
+
+  return Object.assign({}, store[levelId] || {});
+}
+
+function validatePriorityLevelItemsBeforeSave(groupId, values, option) {
+  const normalizedValues = normalizeDynamicListItems(values);
+
+  for (const value of normalizedValues) {
+    const levelId = `${value || ''}`;
+    const settings = priorityLevelSettingsForValidation(
+      groupId,
+      levelId,
+      option,
+    );
+
+    if (!`${settings.name || ''}`.trim()) {
+      return _('Enter a level name');
+    }
+  }
+
+  return true;
+}
+
+function addPriorityLevelItemOptions(itemSection, options = {}) {
+  const parentSectionForItem =
+    typeof options.parentSectionId === 'function'
+      ? options.parentSectionId
+      : parentSectionIdForItem;
+
+  let o = itemSection.option(
+    form.Value,
+    'name',
+    _('Level name'),
+    _('Name shown in the priority level list'),
+  );
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return `${value || ''}`.trim() ? true : _('Enter a level name');
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'direct',
+    _('Direct connection'),
+    _('Traffic for this level goes directly.'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.ListValue,
+    'filter_mode',
+    _('Server filtering'),
+    _(
+      'All remaining servers means every server not already assigned to a higher-priority level.',
+    ),
+  );
+  priorityLevelFilterModeChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = 'include';
+  o.depends('direct', '0');
+
+  o = itemSection.option(
+    form.ListValue,
+    'detect_server_country',
+    _('Detect server country'),
+  );
+  ['exclude', 'include', 'mixed'].forEach((mode) =>
+    o.depends({ direct: '0', filter_mode: mode }),
+  );
+  serverCountryDetectionChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = 'flag_emoji';
+
+  const includeProxyParameterOptions = {
+    prefix: 'include',
+    toggleLabel: _('Include by proxy parameters'),
+    toggleDescription: _(
+      'Additionally filter servers by protocol, transport, and security. Add only servers matching the specified parameters.',
+    ),
+    dependencies: [
+      { direct: '0', filter_mode: 'include' },
+      { direct: '0', filter_mode: 'mixed' },
+    ],
+    protocolDescription: _('Only servers with one of the selected protocols.'),
+    transportDescription: _(
+      'Only servers with one of the selected transports.',
+    ),
+    securityDescription: _(
+      'Only servers with one of the selected security types.',
+    ),
+    portDescription: _(
+      'Only servers with one of the selected ports or port ranges.',
+    ),
+  };
+  const excludeProxyParameterOptions = {
+    prefix: 'exclude',
+    toggleLabel: _('Exclude by proxy parameters'),
+    toggleDescription: _(
+      'Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters.',
+    ),
+    dependencies: [
+      { direct: '0', filter_mode: 'exclude' },
+      { direct: '0', filter_mode: 'mixed' },
+    ],
+    protocolDescription: _(
+      'Exclude servers with one of the selected protocols from this level.',
+    ),
+    transportDescription: _(
+      'Exclude servers with one of the selected transports from this level.',
+    ),
+    securityDescription: _(
+      'Exclude servers with one of the selected security types from this level.',
+    ),
+    portDescription: _(
+      'Exclude servers with one of the selected ports or port ranges from this level.',
+    ),
+  };
+
+  [
+    [
+      'country',
+      _('Include countries'),
+      _('Only from the specified countries.'),
+      countryChoices(),
+      validateCountryCode,
+      ['include', 'mixed'],
+    ],
+    [
+      'server_name',
+      _('Include servers'),
+      _('Only the specified servers.'),
+      null,
+      null,
+      ['include', 'mixed'],
+    ],
+    [
+      'regex',
+      _('Include by regular expression'),
+      _('Only servers whose names match the expression.'),
+      null,
+      validateRegex,
+      ['include', 'mixed'],
+    ],
+    [
+      'exclude_countries',
+      _('Exclude countries'),
+      _('Remove servers from the specified countries from this level.'),
+      countryChoices(),
+      validateCountryCode,
+      ['exclude', 'mixed'],
+    ],
+    [
+      'exclude_outbounds',
+      _('Exclude servers'),
+      _('Remove the specified servers from this level.'),
+      null,
+      null,
+      ['exclude', 'mixed'],
+    ],
+    [
+      'exclude_regex',
+      _('Exclude by regular expression'),
+      _('Remove servers whose names match the expression from this level.'),
+      null,
+      validateRegex,
+      ['exclude', 'mixed'],
+    ],
+  ].forEach(([key, label, description, choices, validator, modes]) => {
+    const list = itemSection.option(form.DynamicList, key, label, description);
+    modes.forEach((mode) => list.depends({ direct: '0', filter_mode: mode }));
+    list.rmempty = true;
+    if (choices) {
+      choices.forEach((choice) => list.value(choice.value, choice.label));
+      list.placeholder = _('-- Select --');
+    }
+    if (key === 'server_name' || key.endsWith('_outbounds')) {
+      list.load = function (itemId) {
+        const sectionId = parentSectionForItem(itemId) || 'Main';
+        const values = normalizeOptionValues(optionMapValue(this, itemId, key));
+
+        return loadOutboundNameChoices(sectionId).then(() => {
+          refreshOptionChoices(
+            this,
+            currentOutboundNameChoices(sectionId, values),
+          );
+          return values;
+        });
+      };
+      list.placeholder = _('-- Select --');
+      configureLiveDynamicListChoices(list, (itemId, values) =>
+        currentOutboundNameChoices(
+          parentSectionForItem(itemId) || 'Main',
+          values,
+        ),
+      );
+    }
+    if (validator) {
+      list.validate = function (_itemId, value) {
+        return validator(null, value);
+      };
+    }
+    if (key === 'regex') {
+      addProxyParameterFilterOptions(itemSection, includeProxyParameterOptions);
+    } else if (key === 'exclude_regex') {
+      addProxyParameterFilterOptions(itemSection, excludeProxyParameterOptions);
+    }
+  });
+
+  addLiveServerFilterPreviewOption(itemSection, {
+    optionKey: '_priority_level_filter_preview',
+    dependencies: [
+      { direct: '0', filter_mode: 'include' },
+      { direct: '0', filter_mode: 'exclude' },
+      { direct: '0', filter_mode: 'mixed' },
+    ],
+    resolveSectionId: (itemId) => parentSectionForItem(itemId) || 'Main',
+    keys: {
+      includeCountries: 'country',
+      includeOutbounds: 'server_name',
+      includeRegex: 'regex',
+    },
+  });
+}
+
+function addPriorityGroupItemOptions(itemSection, options = {}) {
+  const parentSectionForGroup =
+    typeof options.parentSectionId === 'function'
+      ? options.parentSectionId
+      : parentSectionIdForItem;
+  const ownerId =
+    typeof options.ownerId === 'function' ? options.ownerId : () => '';
+
+  let o = itemSection.option(
+    form.Value,
+    'name',
+    _('Display name'),
+    _('Name displayed on the dashboard'),
+  );
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return `${value || ''}`.trim() ? true : _('Enter a display name');
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'health_url',
+    _('Check URL'),
+    _('URL used to check whether a server is alive'),
+  );
+  o.default = 'https://www.gstatic.com/generate_204';
+  o.rmempty = false;
+  urlTestUrlChoices().forEach((value) => o.value(value));
+  o.validate = function (_itemId, value) {
+    return validateUrlTestUrl(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'active_check_interval',
+    _('Check interval'),
+    _('How often the currently selected server is checked'),
+  );
+  o.default = '5s';
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'check_timeout',
+    _('Unavailability timeout'),
+    _('Check timeout after which the server is considered dead'),
+  );
+  o.default = '2s';
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    'recovery_check_interval',
+    _('Higher-level check interval'),
+    _(
+      'How often higher priority levels are checked while a lower level is active',
+    ),
+  );
+  o.default = '15s';
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'pick_fastest',
+    _('Select the fastest node'),
+    _(
+      'When switching to another level, test every server and select the fastest instead of the first working one.',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'switch_to_faster_same_priority',
+    _('Automatically select the fastest node in the current level'),
+    _(
+      'Periodically check the current level and switch to a faster server even when the current one works.',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Value,
+    'fastest_check_interval',
+    _('Faster server search interval'),
+    _('Use sing-box duration format like 1d, 12h or 30m'),
+  );
+  o.depends('switch_to_faster_same_priority', '1');
+  o.default = '3m';
+  o.rmempty = false;
+  o.validate = function (itemId, value) {
+    return optionMapValue(this, itemId, 'switch_to_faster_same_priority') ===
+      '1'
+      ? validateRequiredSingBoxDuration(value)
+      : true;
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    'interrupt_exist_connections',
+    _('Interrupt connections'),
+    _('Interrupt connections when priority failover switches server'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'pin_dashboard',
+    _('Pin on dashboard'),
+    _('Keep Priority before latency-sorted servers'),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    ButtonAddSettingsDynamicList,
+    'priority_level',
+    _('Priority levels'),
+    _('Top level has the highest priority; lower levels are used as fallback'),
+  );
+  o.rmempty = true;
+  o.modalonly = true;
+  o.addButtonLabel = _('+ Add level');
+  o.childType = 'priority_level';
+  o.ownerOption = 'group';
+  o.childOwnerId = ownerId;
+  o.parentSectionId = parentSectionForGroup;
+  o.childValueOption = 'name';
+  o.childDefaults = defaultPriorityLevelSettings();
+  o.renderItemSettingsModal = showPriorityLevelSettingsModal;
+  o.validateItemsOnSave = function (groupId, values) {
+    return validatePriorityLevelItemsBeforeSave(groupId, values, this);
+  };
+  o.hasItemSettings = function (groupId, value) {
+    const normalized = `${value || ''}`.trim();
+
+    if (isExistingChildItem(groupId, normalized, 'priority_level', 'group')) {
+      return true;
+    }
+
+    return normalized.length > 0;
+  };
+  o.inputValueForItem = function (groupId, value) {
+    const inputValue = childItemInputValue(
+      groupId,
+      value,
+      'priority_level',
+      'name',
+      'group',
+    );
+    const store = childPendingSettingsStore(this, groupId);
+    return store[inputValue] && store[inputValue].name
+      ? store[inputValue].name
+      : inputValue;
+  };
+  o.stagedChildSettings = function (groupId, value) {
+    const id = childItemInputValue(
+      groupId,
+      value,
+      'priority_level',
+      'name',
+      'group',
+    );
+    const store = childPendingSettingsStore(this, groupId);
+    return store[id] ? Object.assign({}, store[id]) : null;
+  };
+  o.clearStagedChildSettings = function (groupId) {
+    if (this.pendingChildSettings) {
+      delete this.pendingChildSettings[groupId];
+    }
+  };
+  o.afterMaterializeChildItems = function (_groupId, itemIds) {
+    itemIds.forEach((itemId, index) => {
+      uci.set(UCI_PACKAGE, itemId, 'order', `${index}`);
+    });
+  };
+  o.renderListItemLabel = function (groupId, itemId) {
+    return E(
+      'span',
+      { class: 'fkp-dynlist-label' },
+      this.inputValueForItem(groupId, itemId),
+    );
+  };
+}
+
+function addDashboardGroupFilterOption(
+  optionSection,
+  key,
+  label,
+  description,
+  modes,
+) {
+  const list = optionSection.option(form.DynamicList, key, label, description);
+  modes.forEach((mode) => {
+    list.depends({
+      action: 'connection',
+      dashboard_filter_mode: mode,
+      urltest: /.+/,
+    });
+    list.depends({
+      action: 'connection',
+      dashboard_filter_mode: mode,
+      priority_group: /.+/,
+    });
+    list.depends({
+      action: 'connection',
+      dashboard_filter_mode: mode,
+      balancer_refs: /.+/,
+    });
+  });
+  list.rmempty = true;
+  list.placeholder = _('-- Select --');
+  list.load = function (section_id) {
+    const values = getConfigListValues(section_id, key);
+    const choices = currentSectionGroupChoices(section_id, values);
+    refreshOptionChoices(this, choices);
+    return values;
+  };
+  list.validate = function (section_id, value) {
+    const selected = new Set(
+      currentSectionGroupChoices(section_id).map((choice) => choice.value),
+    );
+    return normalizeDynamicListItems(value).every((item) => selected.has(item))
+      ? true
+      : _('Select an existing URLTest or Priority group');
+  };
+  configureLiveDynamicListChoices(list, currentSectionGroupChoices);
+}
+
+function addDashboardServerFilterOptions(section) {
+  const optionSection = {
+    option: (optionType, ...args) => {
+      const option = section.taboption('settings', optionType, ...args);
+      option.modalonly = true;
+      return option;
+    },
+  };
+  let o = optionSection.option(
+    form.ListValue,
+    'dashboard_filter_mode',
+    _('Servers on dashboard'),
+    _('Filter the servers that will be displayed on the dashboard.'),
+  );
+  urlTestFilterModeChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = 'disabled';
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+
+  o = optionSection.option(
+    form.ListValue,
+    'dashboard_detect_server_country',
+    _('Detect server country'),
+  );
+  ['exclude', 'include', 'mixed'].forEach((mode) => {
+    o.depends({ action: 'connection', dashboard_filter_mode: mode });
+    o.depends({ action: 'fptn', dashboard_filter_mode: mode });
+  });
+  serverCountryDetectionChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = 'flag_emoji';
+
+  o = optionSection.option(
+    form.Flag,
+    'dashboard_hide_na_servers',
+    _('Hide N/A servers'),
+    _(
+      'Hide servers that are configured in a section but not present in the sing-box runtime. These servers appear as N/A on the dashboard.',
+    ),
+  );
+  o.default = '0';
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+  o.modalonly = true;
+
+  const includeProxyParameterOptions = {
+    prefix: 'dashboard_include',
+    toggleLabel: _('Include by proxy parameters'),
+    toggleDescription: _(
+      'Additionally show servers by protocol, transport, and security. Add only servers matching the specified parameters.',
+    ),
+    dependencies: [
+      { action: 'connection', dashboard_filter_mode: 'include' },
+      { action: 'connection', dashboard_filter_mode: 'mixed' },
+      { action: 'fptn', dashboard_filter_mode: 'include' },
+      { action: 'fptn', dashboard_filter_mode: 'mixed' },
+    ],
+    protocolDescription: _(
+      'Show only servers with one of the selected protocols.',
+    ),
+    transportDescription: _(
+      'Show only servers with one of the selected transports.',
+    ),
+    securityDescription: _(
+      'Show only servers with one of the selected security types.',
+    ),
+    portDescription: _(
+      'Show only servers with one of the selected ports or port ranges.',
+    ),
+  };
+  const excludeProxyParameterOptions = {
+    prefix: 'dashboard_exclude',
+    toggleLabel: _('Exclude by proxy parameters'),
+    toggleDescription: _(
+      'Additionally hide servers by protocol, transport, and security. Hide servers matching the specified parameters.',
+    ),
+    dependencies: [
+      { action: 'connection', dashboard_filter_mode: 'exclude' },
+      { action: 'connection', dashboard_filter_mode: 'mixed' },
+      { action: 'fptn', dashboard_filter_mode: 'exclude' },
+      { action: 'fptn', dashboard_filter_mode: 'mixed' },
+    ],
+    protocolDescription: _('Hide servers with one of the selected protocols.'),
+    transportDescription: _(
+      'Hide servers with one of the selected transports.',
+    ),
+    securityDescription: _(
+      'Hide servers with one of the selected security types.',
+    ),
+    portDescription: _(
+      'Hide servers with one of the selected ports or port ranges.',
+    ),
+  };
+
+  [
+    [
+      'dashboard_include_countries',
+      _('Include countries'),
+      _('Show servers only from the specified countries.'),
+      countryChoices(),
+      validateCountryCode,
+      ['include', 'mixed'],
+    ],
+    [
+      'dashboard_include_outbounds',
+      _('Include servers'),
+      _('Show only selected servers.'),
+      null,
+      null,
+      ['include', 'mixed'],
+    ],
+    [
+      'dashboard_include_regex',
+      _('Include by regular expression'),
+      _('Show servers whose names match the expression.'),
+      null,
+      validateRegex,
+      ['include', 'mixed'],
+    ],
+    [
+      'dashboard_exclude_countries',
+      _('Exclude countries'),
+      _('Hide servers from the specified countries.'),
+      countryChoices(),
+      validateCountryCode,
+      ['exclude', 'mixed'],
+    ],
+    [
+      'dashboard_exclude_outbounds',
+      _('Exclude servers'),
+      _('Hide selected servers.'),
+      null,
+      null,
+      ['exclude', 'mixed'],
+    ],
+    [
+      'dashboard_exclude_regex',
+      _('Exclude by regular expression'),
+      _('Hide servers whose names match the expression.'),
+      null,
+      validateRegex,
+      ['exclude', 'mixed'],
+    ],
+  ].forEach(([key, label, description, choices, validator, modes]) => {
+    const list = optionSection.option(
+      form.DynamicList,
+      key,
+      label,
+      description,
+    );
+    modes.forEach((mode) => {
+      list.depends({ action: 'connection', dashboard_filter_mode: mode });
+      list.depends({ action: 'fptn', dashboard_filter_mode: mode });
+    });
+    list.rmempty = true;
+    if (choices) {
+      choices.forEach((choice) => list.value(choice.value, choice.label));
+      list.placeholder = _('-- Select --');
+    }
+    if (key.endsWith('_outbounds')) {
+      list.load = function (section_id) {
+        const values = getConfigListValues(section_id, key);
+        loadOutboundNameChoices(section_id).then(() => {
+          refreshDashboardFilterChoiceWidgets(section_id);
+        });
+        return values;
+      };
+      list.placeholder = _('-- Select --');
+      configureLiveDynamicListChoices(list, currentOutboundNameChoices);
+    }
+    if (validator) {
+      list.validate = function (_section_id, value) {
+        return validator(null, value);
+      };
+    }
+    if (key === 'dashboard_include_regex') {
+      addDashboardGroupFilterOption(
+        optionSection,
+        'dashboard_include_groups',
+        _('Add URLTest / Priority group'),
+        _(
+          'Show servers from selected groups without repeating their filtering criteria.',
+        ),
+        ['include', 'mixed'],
+      );
+      addProxyParameterFilterOptions(
+        optionSection,
+        includeProxyParameterOptions,
+      );
+    } else if (key === 'dashboard_exclude_regex') {
+      addDashboardGroupFilterOption(
+        optionSection,
+        'dashboard_exclude_groups',
+        _('Exclude URLTest / Priority group'),
+        _(
+          'Hide servers from selected groups without repeating their filtering criteria.',
+        ),
+        ['exclude', 'mixed'],
+      );
+      addProxyParameterFilterOptions(
+        optionSection,
+        excludeProxyParameterOptions,
+      );
+    }
+  });
+
+  addLiveServerFilterPreviewOption(optionSection, {
+    optionKey: '_dashboard_server_filter_preview',
+    dependencies: [
+      { action: 'connection', dashboard_filter_mode: 'include' },
+      { action: 'connection', dashboard_filter_mode: 'exclude' },
+      { action: 'connection', dashboard_filter_mode: 'mixed' },
+      { action: 'fptn', dashboard_filter_mode: 'include' },
+      { action: 'fptn', dashboard_filter_mode: 'exclude' },
+      { action: 'fptn', dashboard_filter_mode: 'mixed' },
+    ],
+    resolveSectionId: (sectionId) => sectionId || 'Main',
+    keys: {
+      filterMode: 'dashboard_filter_mode',
+      detectServerCountry: 'dashboard_detect_server_country',
+      includeCountries: 'dashboard_include_countries',
+      includeOutbounds: 'dashboard_include_outbounds',
+      includeRegex: 'dashboard_include_regex',
+      includeProxyParameters: 'dashboard_include_proxy_parameters',
+      includeProtocols: 'dashboard_include_protocols',
+      includeTransports: 'dashboard_include_transports',
+      includeSecurities: 'dashboard_include_securities',
+      includePorts: 'dashboard_include_ports',
+      excludeCountries: 'dashboard_exclude_countries',
+      excludeOutbounds: 'dashboard_exclude_outbounds',
+      excludeRegex: 'dashboard_exclude_regex',
+      excludeProxyParameters: 'dashboard_exclude_proxy_parameters',
+      excludeProtocols: 'dashboard_exclude_protocols',
+      excludeTransports: 'dashboard_exclude_transports',
+      excludeSecurities: 'dashboard_exclude_securities',
+      excludePorts: 'dashboard_exclude_ports',
+    },
+  });
+}
+
+function settingValueEquals(left, right) {
+  const normalize = (value) => {
+    if (Array.isArray(value)) {
+      return JSON.stringify(value.map((item) => `${item || ''}`));
+    }
+
+    return value === undefined || value === null ? '' : `${value}`;
+  };
+
+  return normalize(left) === normalize(right);
+}
+
+function readChildSettings(itemId, keys, defaults) {
+  const result = Object.assign({}, defaults || {});
+
+  keys.forEach((key) => {
+    const value = uci.get(UCI_PACKAGE, itemId, key);
+    if (value !== null && value !== undefined) {
+      result[key] = Array.isArray(value) ? value.slice() : value;
+    }
+  });
+
+  return result;
+}
+
+function changedSettings(base, next, keys) {
+  const result = {};
+
+  keys.forEach((key) => {
+    if (!settingValueEquals(base ? base[key] : null, next ? next[key] : null)) {
+      result[key] = next ? next[key] : null;
+    }
+  });
+
+  return result;
+}
+
+function hasChangedSettings(settings) {
+  return Object.keys(settings || {}).length > 0;
+}
+
+function childPendingSettingsStore(option, section_id) {
+  if (!option.pendingChildSettings) {
+    option.pendingChildSettings = {};
+  }
+
+  if (!option.pendingChildSettings[section_id]) {
+    option.pendingChildSettings[section_id] = {};
+  }
+
+  return option.pendingChildSettings[section_id];
+}
+
+function pendingChildSettings(option, section_id, value, defaults) {
+  value = `${value || ''}`.trim();
+  const store = childPendingSettingsStore(option, section_id);
+
+  if (!store[value]) {
+    store[value] = Object.assign({}, defaults || {});
+  }
+
+  return store[value];
+}
+
+function renderStackedJsonSettingsModal(title, map, onSave) {
+  const modal = document.querySelector('#modal_overlay > .modal.cbi-modal');
+  const activeMap = modal ? modal.querySelector('.cbi-map:not(.hidden)') : null;
+  const buttonRow = modal ? modal.querySelector('div.button-row') : null;
+  const heading = modal ? modal.querySelector('h4') : null;
+
+  if (!modal || !activeMap || !buttonRow || !heading) {
+    return Promise.resolve();
+  }
+
+  return map
+    .load()
+    .then(() => map.render())
+    .then((nodes) => {
+      const titleNode = E('span', title ? ` » ${title}` : '');
+      const originalButtonClass = buttonRow.getAttribute('class') || '';
+      const originalButtonNodes = Array.from(buttonRow.childNodes);
+      let closed = false;
+      let saveButton;
+      let validationSummary;
+
+      const clearValidationSummary = () => {
+        if (validationSummary && validationSummary.parentNode) {
+          validationSummary.parentNode.removeChild(validationSummary);
+        }
+        validationSummary = null;
+      };
+
+      const showValidationSummary = (error) => {
+        clearValidationSummary();
+
+        const message = error?.message || '';
+        validationSummary = E(
+          'div',
+          {
+            class:
+              'alert-message warning fkp-stacked-settings-validation-summary',
+          },
+          [
+            E('strong', {}, _('Cannot save settings')),
+            E('div', {}, _('Fix the highlighted fields and save again.')),
+            message ? E('small', {}, message) : '',
+          ],
+        );
+        buttonRow.parentNode.insertBefore(validationSummary, buttonRow);
+
+        const invalidInput = nodes.querySelector('.cbi-input-invalid');
+        if (invalidInput) {
+          invalidInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          invalidInput.focus({ preventScroll: true });
+        }
+      };
+
+      const restoreButtonRow = () => {
+        buttonRow.textContent = '';
+        originalButtonNodes.forEach((node) => buttonRow.appendChild(node));
+        buttonRow.setAttribute('class', originalButtonClass);
+      };
+
+      const close = () => {
+        if (closed) {
+          return;
+        }
+
+        closed = true;
+        clearValidationSummary();
+
+        if (nodes.parentNode) {
+          nodes.parentNode.removeChild(nodes);
+        }
+        if (titleNode.parentNode) {
+          titleNode.parentNode.removeChild(titleNode);
+        }
+
+        activeMap.classList.remove('hidden');
+        restoreButtonRow();
+      };
+
+      const save = () => {
+        if (saveButton) {
+          saveButton.disabled = true;
+        }
+        clearValidationSummary();
+
+        return map
+          .parse()
+          .then(() => {
+            onSave(cleanFormSectionData(map.data.get(map.config, 'settings')));
+            close();
+          })
+          .catch((error) => {
+            if (saveButton) {
+              saveButton.disabled = false;
+            }
+            showValidationSummary(error);
+          });
+      };
+
+      buttonRow.textContent = '';
+      buttonRow.append(
+        E(
+          'button',
+          {
+            class: 'btn cbi-button',
+            click: close,
+          },
+          _('Close'),
+        ),
+        ' ',
+        (saveButton = E(
+          'button',
+          {
+            class: 'btn cbi-button cbi-button-positive important',
+            click: save,
+          },
+          _('Save'),
+        )),
+      );
+
+      heading.appendChild(titleNode);
+      activeMap.classList.add('hidden');
+      activeMap.parentNode.insertBefore(nodes, activeMap.nextElementSibling);
+    });
+}
+
+function showChildItemSettingsModal(section_id, itemValue, option, settings) {
+  const value = `${itemValue || ''}`.trim();
+  const existing = isExistingChildItem(
+    section_id,
+    value,
+    settings.typeName,
+    settings.ownerOption,
+  );
+  const inputValue = childItemInputValue(
+    section_id,
+    value,
+    settings.typeName,
+    settings.valueOption,
+    settings.ownerOption,
+  );
+  const defaults =
+    typeof settings.defaults === 'function'
+      ? settings.defaults(inputValue)
+      : Object.assign({}, settings.defaults || {});
+  const initialSettings = existing
+    ? readChildSettings(value, settings.keys, defaults)
+    : Object.assign(
+        {},
+        pendingChildSettings(option, section_id, inputValue, defaults),
+      );
+  const data = {
+    settings: Object.assign({}, initialSettings),
+  };
+  const map = new form.JSONMap(data);
+  const itemSection = map.section(form.NamedSection, 'settings');
+  itemSection.anonymous = true;
+  itemSection.addremove = false;
+  settings.addOptions(itemSection, {
+    parentSectionId: () => section_id,
+    ownerId: () => value || section_id,
+  });
+
+  return renderStackedJsonSettingsModal(
+    settings.title(inputValue),
+    map,
+    (nextSettings) => {
+      if (existing) {
+        const diff = changedSettings(
+          initialSettings,
+          nextSettings,
+          settings.keys,
+        );
+        if (hasChangedSettings(diff)) {
+          applyChildItemSettings(value, diff);
+        }
+        if (typeof settings.afterSave === 'function') {
+          settings.afterSave(value, inputValue, nextSettings, existing);
+        }
+        return;
+      }
+
+      const nextInputValue =
+        `${nextSettings[settings.valueOption] || inputValue || ''}`.trim();
+      const store = childPendingSettingsStore(option, section_id);
+      if (nextInputValue !== inputValue) {
+        delete store[inputValue];
+      }
+      store[nextInputValue] = nextSettings;
+      if (typeof settings.afterSave === 'function') {
+        settings.afterSave(value, nextInputValue, nextSettings, existing);
+      }
+    },
+  );
+}
+
+function ruleSetIncludesSubnets(section_id, value) {
+  const settings = readItemSettingsMap(section_id, RULE_SET_ITEM_SETTINGS_KEY);
+  const itemSettings = settings && settings[value];
+
+  if (
+    itemSettings &&
+    typeof itemSettings === 'object' &&
+    itemSettings.include_subnets != null
+  ) {
+    return itemSettingsFlag(itemSettings, 'include_subnets', false);
+  }
+
+  return getConfigListValues(section_id, 'rule_set_with_subnets').includes(
+    value,
+  );
+}
+
+function showSubscriptionUrlSettingsModal(_section_id, itemValue, option) {
+  return showChildItemSettingsModal(_section_id, itemValue, option, {
+    typeName: 'subscription_url',
+    valueOption: 'url',
+    keys: subscriptionUrlSettingsKeys(),
+    defaults: defaultSubscriptionUrlSettings(),
+    addOptions: addSubscriptionUrlItemOptions,
+    title: () => _('Subscription URL settings'),
+  });
+}
+
+function showInterfaceSettingsModal(_section_id, itemValue, option) {
+  return showChildItemSettingsModal(_section_id, itemValue, option, {
+    typeName: 'section_interface',
+    valueOption: 'name',
+    keys: interfaceSettingsKeys(),
+    defaults: defaultInterfaceSettings(),
+    addOptions: addInterfaceItemOptions,
+    title: () => _('Network interface settings'),
+  });
+}
+
+function showUrlTestSettingsModal(
+  _section_id,
+  itemValue,
+  option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  const sectionId = _section_id || 'Main';
+  // Pre-warm the cache BEFORE opening the modal.
+  // CBINamedSection.render() calls renderUCISection() directly without
+  // calling section.load() first, so list.load() (which would populate
+  // the outbound name cache) is never awaited before renderWidget().
+  // By loading the cache here the dropdown has choices on first render.
+  loadOutboundNameChoices(sectionId).then(() => {
+    showChildItemSettingsModal(_section_id, itemValue, option, {
+      typeName: 'urltest',
+      valueOption: 'name',
+      keys: urlTestSettingsKeys(),
+      defaults: defaultUrlTestSettings,
+      addOptions: addUrlTestItemOptions,
+      title: (name) => {
+        const normalized = `${name || ''}`.trim();
+        return !normalized || /^urltest-[a-z0-9]+-\d+$/.test(normalized)
+          ? _('URLTest settings')
+          : `${_('URLTest settings')}: ${normalized}`;
+      },
+      afterSave: (itemId, inputValue, settings, existing) => {
+        const displayName = `${settings.name || inputValue || ''}`.trim();
+
+        if (existing) {
+          uci.unset(UCI_PACKAGE, itemId, 'id');
+          uci.unset(UCI_PACKAGE, itemId, 'display_name');
+          updateDynamicListItemLabel(itemNode, displayName);
+          return;
+        }
+
+        if (context.adding) {
+          addDynamicListItem(widget, displayName, displayName);
+        } else {
+          updateDynamicListItemLabel(itemNode, displayName);
+        }
+      },
+    });
+  });
+}
+
+function showPriorityLevelSettingsModal(
+  groupId,
+  itemValue,
+  option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  const sectionId = context.parentSectionId || groupId || 'Main';
+  // Pre-warm the outbound name cache before opening the modal.
+  // CBINamedSection.render() never calls section.load(), so list.load()
+  // is never invoked before renderWidget() — cache would be empty otherwise.
+  loadOutboundNameChoices(sectionId).then(() => {
+    showChildItemSettingsModal(groupId, itemValue, option, {
+      typeName: 'priority_level',
+      ownerOption: 'group',
+      valueOption: 'name',
+      keys: priorityLevelSettingsKeys(),
+      defaults: defaultPriorityLevelSettings(),
+      addOptions: (itemSection) =>
+        addPriorityLevelItemOptions(itemSection, {
+          parentSectionId: () => context.parentSectionId || '',
+        }),
+      title: (name) => {
+        const normalized = `${name || ''}`.trim();
+        return normalized
+          ? `${_('Priority level settings')}: ${normalized}`
+          : _('Priority level settings');
+      },
+      afterSave: (itemId, inputValue, settings, existing) => {
+        const displayName = `${settings.name || inputValue || ''}`.trim();
+
+        if (existing) {
+          updateDynamicListItemLabel(itemNode, displayName);
+          return;
+        }
+
+        if (context.adding) {
+          addDynamicListItem(widget, displayName, displayName);
+        } else {
+          updateDynamicListItemLabel(itemNode, displayName);
+        }
+      },
+    });
+  });
+}
+
+function createPriorityGroupItem(section_id, groupId, settings) {
+  const created = uci.add(UCI_PACKAGE, 'priority_group', groupId) || groupId;
+
+  uci.set(UCI_PACKAGE, created, 'section', section_id);
+  Object.entries(priorityGroupChildDefaults()).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      uci.set(UCI_PACKAGE, created, key, `${value}`);
+    }
+  });
+  applyChildItemSettings(created, settings);
+
+  return created;
+}
+
+function showPriorityGroupSettingsModal(
+  section_id,
+  itemValue,
+  option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  const groupId = context.adding
+    ? randomPriorityGroupId()
+    : `${itemValue || ''}`.trim();
+
+  if (!groupId) {
+    return null;
+  }
+
+  return showChildItemSettingsModal(section_id, groupId, option, {
+    typeName: 'priority_group',
+    valueOption: 'name',
+    keys: priorityGroupSettingsKeys(),
+    defaults: defaultPriorityGroupSettings(),
+    addOptions: addPriorityGroupItemOptions,
+    title: (name) => {
+      if (context.adding) {
+        return _('Priority settings');
+      }
+
+      const normalized = `${name || ''}`.trim();
+      return normalized
+        ? `${_('Priority settings')}: ${normalized}`
+        : _('Priority settings');
+    },
+    afterSave: (itemId, inputValue, settings, existing) => {
+      const displayName = `${settings.name || inputValue || ''}`.trim();
+
+      if (!existing) {
+        const created = createPriorityGroupItem(section_id, groupId, settings);
+        const store = childPendingSettingsStore(option, section_id);
+        delete store[groupId];
+        delete store[inputValue];
+        delete store[displayName];
+        addDynamicListItem(widget, created, displayName);
+        return;
+      }
+
+      updateDynamicListItemLabel(itemNode, displayName);
+    },
+  });
+}
+
+function validateUrlTestItemsBeforeSave(section_id, values, option) {
+  const store = childPendingSettingsStore(option, section_id);
+
+  for (const value of normalizeDynamicListItems(values)) {
+    const itemId = `${value || ''}`;
+    let name = '';
+
+    if (isExistingChildItem(section_id, itemId, 'urltest')) {
+      name =
+        uci.get(UCI_PACKAGE, itemId, 'name') ||
+        uci.get(UCI_PACKAGE, itemId, 'display_name') ||
+        '';
+    } else if (store[itemId]) {
+      name = store[itemId].name || '';
+    }
+
+    if (!`${name || ''}`.trim()) {
+      return _('Enter a display name');
+    }
+  }
+
+  return true;
+}
+
+function validatePriorityGroupItemsBeforeSave(section_id, values) {
+  for (const value of normalizeDynamicListItems(values)) {
+    const groupId = `${value || ''}`.trim();
+
+    if (!isExistingChildItem(section_id, groupId, 'priority_group')) {
+      return _('Open priority settings and enter a display name');
+    }
+
+    if (!`${uci.get(UCI_PACKAGE, groupId, 'name') || ''}`.trim()) {
+      return _('Enter a display name');
+    }
+  }
+
+  return true;
+}
+
+function parseAmneziaConfig(value) {
+  try {
+    if (typeof value !== 'string' || value.length > 262144) return null;
+    const config = JSON.parse(value);
+    return config &&
+      typeof config.name === 'string' &&
+      typeof config.config === 'string'
+      ? config
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function amneziaConfigLink(name, config) {
+  const bytes = new TextEncoder().encode(`# ${name.trim()}\n${config}`);
+  if (bytes.length > 65536) return null;
+  // Encode UTF-8 without placing keys in a URL visible to the user.
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `vpn://${btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+}
+
+function amneziaConfigTextForSave(original, edited) {
+  // Textareas normalize CRLF; preserve an unchanged uploaded file verbatim.
+  return original.replace(/\r\n?/g, '\n') === edited ? original : edited;
+}
+
+function validateAmneziaConfig(name, config) {
+  name = `${name || ''}`.trim();
+  if (
+    !name ||
+    /[\x00-\x1f\x7f]/.test(name) ||
+    new TextEncoder().encode(name).length > 200
+  ) {
+    return _(
+      'Enter a display name of up to 200 bytes without control characters',
+    );
+  }
+  if (!config || config.includes('\0')) return _('Invalid Amnezia .conf file');
+  const link = amneziaConfigLink(name, config);
+  if (!link)
+    return _('Amnezia configuration must not exceed 64 KiB including its name');
+  const validation = main.validateProxyUrl(link);
+  if (!validation.valid) return _('Invalid Amnezia .conf file');
+  // The shared backend parser validates the same AWG fields before applying.
+  const fields = {};
+  for (const line of config.split('\n')) {
+    const match = line.trim().match(/^([^#=]+)\s*=\s*(.*?)\s*$/);
+    if (match)
+      fields[match[1].trim().toLowerCase().replace(/_/g, '')] = match[2];
+  }
+  const ranges = [
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'contentpaddingaddition',
+    'rekeyaftertime',
+    'rekeytimeout',
+    'rejectaftertime',
+    'keepalivetimeout',
+    'maxhandshakeattempts',
+    'persistentkeepalive',
+    'persistentkeepaliveinterval',
+  ];
+  for (const key of ['jc', 'jmin', 'jmax', 's1', 's2', 's3', 's4', ...ranges]) {
+    if (fields[key] == null || (ranges.includes(key) && fields[key] === ''))
+      continue;
+    const range = fields[key].match(/^(\d+)(?:-(\d+))?$/);
+    if (
+      !range ||
+      (!ranges.includes(key) && range[2] != null) ||
+      Number(range[1]) > Number(range[2] != null ? range[2] : range[1]) ||
+      Number(range[2] != null ? range[2] : range[1]) > 4294967295
+    )
+      return _('Invalid Amnezia .conf file');
+  }
+  if (
+    fields.mtu != null &&
+    (!/^\d+$/.test(fields.mtu) ||
+      Number(fields.mtu) < 576 ||
+      Number(fields.mtu) > 65535)
+  )
+    return _('Invalid Amnezia .conf file');
+  if (
+    fields.headerprotectionkey &&
+    (!/^[A-Za-z0-9+/]{43}=$/.test(fields.headerprotectionkey) ||
+      atob(fields.headerprotectionkey).length !== 32)
+  )
+    return _('Invalid Amnezia .conf file');
+  for (const key of ['randomtrailers', 'disablecookies']) {
+    if (
+      fields[key] != null &&
+      !/^(1|true|on|yes|0|false|off|no)$/i.test(fields[key])
+    )
+      return _('Invalid Amnezia .conf file');
+  }
+  return true;
+}
+
+function showAmneziaConfigSettingsModal(
+  section_id,
+  itemValue,
+  _option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  if (context.adding && !itemValue) {
+    const input = E('input', {
+      type: 'file',
+      accept: '.conf',
+      multiple: true,
+      hidden: true,
+      'data-tachyon-amnezia-upload': '1',
+      style: 'display:none!important',
+      'aria-hidden': 'true',
+      tabindex: '-1',
+    });
+    input.addEventListener('cancel', () => input.remove());
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files || []);
+      input.remove();
+      if (!files.length) return;
+      if (files.length > 1) {
+        // Several files at once: each becomes its own item straight away —
+        // a review modal per file would be noise. Content is validated per
+        // file; duplicates and anything else are caught on save.
+        const validFiles = [];
+        for (const file of files) {
+          if (!/\.conf$/i.test(file.name) || file.size > 65536) {
+            ui.addNotification(
+              null,
+              E(
+                'p',
+                _('%s: select an Amnezia .conf file up to 64 KiB').format(
+                  file.name,
+                ),
+              ),
+            );
+            continue;
+          }
+          validFiles.push(file);
+        }
+        if (!validFiles.length) return;
+        Promise.all(
+          validFiles.map(
+            (file) =>
+              new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onerror = () => resolve({ file, error: true });
+                reader.onload = () =>
+                  resolve({
+                    file,
+                    config: `${reader.result || ''}`.replace(/^\uFEFF/, ''),
+                  });
+                reader.readAsText(file);
+              }),
+          ),
+        ).then((results) => {
+          const existingNames = new Set(
+            (widget && widget.node ? dynamicListItemValues(widget.node) : [])
+              .map((v) => {
+                const parsed = parseAmneziaConfig(v);
+                return parsed && parsed.name ? parsed.name.trim() : '';
+              })
+              .filter(Boolean),
+          );
+          let addedCount = 0;
+          let lastAddedValue = '';
+          for (const res of results) {
+            if (res.error) {
+              ui.addNotification(
+                null,
+                E('p', _('Cannot read the Amnezia .conf file')),
+              );
+              continue;
+            }
+            const baseName = res.file.name.replace(/\.conf$/i, '').trim();
+            let name = baseName;
+            let suffix = 2;
+            while (existingNames.has(name)) {
+              name = `${baseName} (${suffix})`;
+              suffix += 1;
+            }
+            const result = validateAmneziaConfig(name, res.config);
+            if (result !== true) {
+              ui.addNotification(
+                null,
+                E('p', '%s: %s'.format(res.file.name, result)),
+              );
+              continue;
+            }
+            existingNames.add(name);
+            const serialized = JSON.stringify({ name, config: res.config });
+            if (widget && widget.node) {
+              widget.addItem(widget.node, serialized, null, false);
+              lastAddedValue = serialized;
+              addedCount += 1;
+            }
+          }
+          if (addedCount > 0 && widget && widget.node) {
+            widget.dispatchCbiDynlistChange(widget.node, lastAddedValue);
+            updateButtonAddDynamicListLayout(
+              widget.node,
+              widget.options.addButtonLabel,
+            );
+          }
+        });
+        return;
+      }
+      const file = files[0];
+      if (!/\.conf$/i.test(file.name) || file.size > 65536) {
+        ui.addNotification(
+          null,
+          E('p', _('Select an Amnezia .conf file up to 64 KiB')),
+        );
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () =>
+        ui.addNotification(
+          null,
+          E('p', _('Cannot read the Amnezia .conf file')),
+        );
+      reader.onload = () => {
+        const config = `${reader.result || ''}`.replace(/^\uFEFF/, '');
+        showAmneziaConfigSettingsModal(
+          section_id,
+          JSON.stringify({ name: file.name.replace(/\.conf$/i, ''), config }),
+          _option,
+          widget,
+          itemNode,
+          context,
+        );
+      };
+      reader.readAsText(file);
+    });
+    const oldInput = document.querySelector('[data-tachyon-amnezia-upload]');
+    if (oldInput) oldInput.remove();
+    document.body.appendChild(input);
+    input.click();
+    return;
+  }
+  const config = parseAmneziaConfig(itemValue) || { name: '', config: '' };
+  const map = new form.JSONMap({
+    settings: { name: config.name, config: config.config },
+  });
+  const itemSection = map.section(form.NamedSection, 'settings');
+  itemSection.anonymous = true;
+  itemSection.addremove = false;
+  const nameOption = itemSection.option(form.Value, 'name', _('Display name'));
+  nameOption.rmempty = false;
+  nameOption.validate = function (_id, value) {
+    const result = validateAmneziaConfig(
+      value,
+      configOption.formvalue('settings') || config.config,
+    );
+    if (result !== true) return result;
+    const names = currentDraftOutboundNames(section_id);
+    if (!context.adding) {
+      const index = names.indexOf(config.name);
+      if (index >= 0) names.splice(index, 1);
+    }
+    if (widget && widget.node) {
+      for (const item of widget.node.querySelectorAll('.item')) {
+        if (item === itemNode) continue;
+        const other = parseAmneziaConfig(dynamicListItemCurrentValue(item, ''));
+        if (other) names.push(other.name.trim());
+      }
+    }
+    return names.includes(`${value || ''}`.trim())
+      ? _('This display name is already in use')
+      : true;
+  };
+  const configOption = itemSection.option(
+    form.TextValue,
+    'config',
+    _('Amnezia .conf'),
+    _(
+      'Private keys are stored on the router. DNS and command hooks from the file are not applied.',
+    ),
+  );
+  configOption.rows = 12;
+  configOption.wrap = 'off';
+  configOption.rmempty = false;
+  configOption.validate = function (_id, value) {
+    return validateAmneziaConfig(
+      nameOption.formvalue('settings') || config.name,
+      `${value || ''}`,
+    );
+  };
+  configureTextareaOption(configOption);
+  return renderStackedJsonSettingsModal(
+    _('Amnezia configuration'),
+    map,
+    (settings) => {
+      const value = JSON.stringify({
+        name: `${settings.name || ''}`.trim(),
+        config: amneziaConfigTextForSave(config.config, settings.config),
+      });
+      if (context.adding) addDynamicListItem(widget, value);
+      else {
+        setDynamicListItemValue(itemNode, value);
+        updateDynamicListItemLabel(itemNode, settings.name.trim());
+        if (widget && widget.node)
+          widget.dispatchCbiDynlistChange(widget.node, value);
+      }
+    },
+  );
+}
+
+function validateAmneziaConfigsBeforeSave(_section_id, values) {
+  const names = new Set();
+  for (const value of normalizeDynamicListItems(values)) {
+    const config = parseAmneziaConfig(value);
+    if (!config) return _('Invalid Amnezia .conf file');
+    const result = validateAmneziaConfig(config.name, config.config);
+    if (result !== true) return result;
+    if (names.has(config.name.trim()))
+      return _('This display name is already in use');
+    names.add(config.name.trim());
+  }
+  return true;
+}
+
+function showOutboundJsonSettingsModal(
+  _section_id,
+  itemValue,
+  _option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  const data = {
+    settings: {
+      outbound_json: `${itemValue || ''}`,
+    },
+  };
+  const map = new form.JSONMap(data);
+  const itemSection = map.section(form.NamedSection, 'settings');
+  itemSection.anonymous = true;
+  itemSection.addremove = false;
+
+  const jsonOption = itemSection.option(
+    form.TextValue,
+    'outbound_json',
+    _('JSON outbound'),
+    _('Enter a complete sing-box outbound object'),
+  );
+  jsonOption.rows = 12;
+  jsonOption.wrap = 'soft';
+  jsonOption.textarea = true;
+  jsonOption.modalonly = true;
+  jsonOption.rmempty = false;
+  jsonOption.validate = function (_itemId, value) {
+    const usedTags =
+      widget && widget.node
+        ? Array.from(widget.node.querySelectorAll('.item'))
+            .filter((item) => item !== itemNode)
+            .map((item) =>
+              outboundJsonDisplayTag(dynamicListItemCurrentValue(item, '')),
+            )
+            .filter(Boolean)
+        : [];
+    const validation = main.validateOutboundJson(`${value || ''}`, usedTags);
+    return validation.valid ? true : validation.message;
+  };
+  configureTextareaOption(jsonOption);
+
+  return renderStackedJsonSettingsModal(
+    _('JSON outbound settings'),
+    map,
+    (settings) => {
+      const value = `${settings.outbound_json || ''}`.trim();
+      if (context.adding) {
+        addDynamicListItem(widget, value);
+        return;
+      }
+
+      setDynamicListItemValue(itemNode, value);
+      updateDynamicListItemLabel(itemNode, outboundJsonDisplayTag(value));
+      if (widget && widget.node) {
+        widget.dispatchCbiDynlistChange(widget.node, value);
+      }
+    },
+  );
+}
+
+function validateOutboundJsonItemsBeforeSave(_section_id, values) {
+  const items = Array.isArray(values) ? values : values ? [values] : [];
+  const tags = [];
+
+  for (const value of items) {
+    const validation = main.validateOutboundJson(`${value || ''}`, tags);
+    if (!validation.valid) {
+      const tag = outboundJsonDisplayTag(value);
+      return tag ? `${tag}: ${validation.message}` : validation.message;
+    }
+
+    const tag = outboundJsonDisplayTag(value);
+    tags.push(tag);
+  }
+
+  return true;
+}
+
+function showRuleSetSettingsModal(section_id, itemValue, option, widget) {
+  const data = {
+    settings: {
+      include_subnets: ruleSetIncludesSubnets(section_id, itemValue)
+        ? '1'
+        : '0',
+    },
+  };
+  const map = new form.JSONMap(data);
+  const section = map.section(form.NamedSection, 'settings');
+  section.anonymous = true;
+  section.addremove = false;
+
+  const includeSubnets = section.option(
+    form.Flag,
+    'include_subnets',
+    _('Include IP addresses and subnets'),
+    _('Subnets from the list will be extracted and added to nftables'),
+  );
+  includeSubnets.default = '0';
+  includeSubnets.rmempty = false;
+
+  return renderStackedJsonSettingsModal(
+    _('Rule set settings'),
+    map,
+    (settings) => {
+      const value = settings.include_subnets === '1';
+      const refs = uniqueDynamicListItems(
+        widget && typeof widget.getValue === 'function'
+          ? widget.getValue()
+          : getCustomRulesetReferences(section_id),
+      );
+      const subnets = new Set(
+        getConfigListValues(section_id, 'rule_set_with_subnets').filter((ref) =>
+          refs.includes(ref),
+        ),
+      );
+
+      if (value) {
+        subnets.add(itemValue);
+      } else {
+        subnets.delete(itemValue);
+      }
+
+      writeListOption(
+        section_id,
+        'rule_set',
+        refs.filter((ref) => !subnets.has(ref)),
+      );
+      writeListOption(section_id, 'rule_set_with_subnets', [...subnets]);
+      if (option && typeof option.getUIElement === 'function') {
+        option.getUIElement(section_id).setValue(refs);
+      }
+    },
+  );
+}
+
+function ensureActionProvidersAvailabilityLoaded() {
+  if (actionProvidersAvailabilityState.loaded) {
+    return Promise.resolve(actionProvidersAvailabilityState);
+  }
+
+  if (actionProvidersAvailabilityPromise) {
+    return actionProvidersAvailabilityPromise;
+  }
+
+  if (actionProvidersAvailabilityLoader) {
+    actionProvidersAvailabilityPromise = actionProvidersAvailabilityLoader()
+      .then((capabilities) => {
+        updateActionProvidersAvailabilityState({
+          zapretInstalled: Boolean(capabilities?.zapretInstalled),
+          zapret2Installed: Boolean(capabilities?.zapret2Installed),
+          byedpiInstalled: Boolean(capabilities?.byedpiInstalled),
+          singBoxExtended: Boolean(capabilities?.singBoxExtended),
+          singBoxTachyonCore: Boolean(capabilities?.singBoxTachyonCore),
+        });
+        return actionProvidersAvailabilityState;
+      })
+      .catch(() => {
+        actionProvidersAvailabilityLoader = null;
+        actionProvidersAvailabilityPromise = null;
+        return ensureActionProvidersAvailabilityLoaded();
+      })
+      .finally(() => {
+        actionProvidersAvailabilityPromise = null;
+      });
+
+    return actionProvidersAvailabilityPromise;
+  }
+
+  actionProvidersAvailabilityPromise = Promise.allSettled([
+    main.TachyonShellMethods.checkZapretRuntime(),
+    main.TachyonShellMethods.checkZapret2Runtime(),
+    main.TachyonShellMethods.checkByedpiRuntime(),
+  ])
+    .then(([zapretResult, zapret2Result, byedpiResult]) => {
+      const zapret =
+        zapretResult && zapretResult.status === 'fulfilled'
+          ? zapretResult.value
+          : null;
+      const zapret2 =
+        zapret2Result && zapret2Result.status === 'fulfilled'
+          ? zapret2Result.value
+          : null;
+      const byedpi =
+        byedpiResult && byedpiResult.status === 'fulfilled'
+          ? byedpiResult.value
+          : null;
+
+      actionProvidersAvailabilityState.loaded = true;
+      actionProvidersAvailabilityState.zapretInstalled = Boolean(
+        zapret && zapret.success && zapret.data && zapret.data.zapret_installed,
+      );
+      actionProvidersAvailabilityState.zapret2Installed = Boolean(
+        zapret2 &&
+          zapret2.success &&
+          zapret2.data &&
+          zapret2.data.zapret2_installed,
+      );
+      actionProvidersAvailabilityState.byedpiInstalled = Boolean(
+        byedpi && byedpi.success && byedpi.data && byedpi.data.byedpi_installed,
+      );
+
+      return actionProvidersAvailabilityState;
+    })
+    .catch(() => {
+      actionProvidersAvailabilityState.loaded = true;
+      actionProvidersAvailabilityState.zapretInstalled = false;
+      actionProvidersAvailabilityState.zapret2Installed = false;
+      actionProvidersAvailabilityState.byedpiInstalled = false;
+
+      // singBoxExtended is set via systemInfo, keep existing value
+      return actionProvidersAvailabilityState;
+    })
+    .finally(() => {
+      actionProvidersAvailabilityPromise = null;
+    });
+
+  return actionProvidersAvailabilityPromise;
+}
+
+function isZapretInstalledForUi() {
+  return actionProvidersAvailabilityState.zapretInstalled;
+}
+
+function isZapret2InstalledForUi() {
+  return actionProvidersAvailabilityState.zapret2Installed;
+}
+
+function isByedpiInstalledForUi() {
+  return actionProvidersAvailabilityState.byedpiInstalled;
+}
+
+function isWdttInstalledForUi() {
+  return actionProvidersAvailabilityState.wdttInstalled;
+}
+
+function isOlcrtcInstalledForUi() {
+  return actionProvidersAvailabilityState.olcrtcInstalled;
+}
+
+function isFptnInstalledForUi() {
+  return actionProvidersAvailabilityState.fptnInstalled;
+}
+
+function isSingBoxExtendedForUi() {
+  return actionProvidersAvailabilityState.singBoxExtended;
+}
+
+function isTachyonCoreForUi() {
+  return actionProvidersAvailabilityState.singBoxTachyonCore;
+}
+
+function getRuleConfiguredAction(section_id) {
+  const action = uci.get(UCI_PACKAGE, section_id, 'action');
+  return action ? `${action}` : null;
+}
+
+function getRuleResolvedAction(section_id) {
+  return getRuleConfiguredAction(section_id) || 'connection';
+}
+
+// Returns a human-readable label for a given outbound_source source_type.
+function getSourceTypeLabel(stype) {
+  switch (`${stype}`.toLowerCase()) {
+    case 'zapret':
+      return 'Zapret';
+    case 'zapret2':
+      return 'Zapret2';
+    case 'byedpi':
+      return 'ByeDPI';
+    case 'desync':
+      return 'Desync';
+    case 'wdtt':
+      return 'WDTT';
+    case 'olcrtc':
+      return 'OlcRTC';
+    case 'fptn':
+      return 'FPTN';
+    case 'awg':
+    case 'amnezia_config':
+      return 'AmneziaWG';
+    case 'warp':
+      return 'WARP';
+    case 'anytls':
+      return 'AnyTLS';
+    case 'naive':
+      return 'NaiveProxy';
+    case 'mieru':
+      return 'Mieru';
+    case 'snell':
+      return 'Snell';
+    case 'masque':
+      return 'MASQUE';
+    case 'openconnect':
+      return 'OpenConnect';
+    case 'openvpn':
+      return 'OpenVPN';
+    case 'shadowtls':
+      return 'ShadowTLS';
+    case 'trusttunnel':
+      return 'TrustTunnel';
+    case 'tor':
+      return 'Tor';
+    case 'tailscale':
+      return 'Tailscale';
+    case 'interface':
+      return _('Interface');
+    case 'outbound_json':
+    case 'json':
+      return _('JSON outbound');
+    case 'proxy_links':
+    case 'links':
+      return _('Links');
+    case 'subscription':
+      return _('Subscription');
+    default:
+      return `${stype}`;
+  }
+}
+
+// Returns an HTML string with badges for each unique connection type used by
+// this section (via outbound_source_refs → outbound_source.source_type).
+// For non-connection actions (bypass, block, dns, …) returns null.
+function getSectionConnectionTypeBadges(section_id) {
+  const action = getRuleResolvedAction(section_id);
+  // Only "connection"-family actions use outbound_source_refs.
+  const connectionActions = [
+    'connection',
+    'proxy',
+    'outbound',
+    'vpn',
+    'awg',
+    'fptn',
+    'desync',
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'group',
+  ];
+  if (!connectionActions.includes(action)) return null;
+
+  const srcRefRaw = uci.get(UCI_PACKAGE, section_id, 'outbound_source_refs');
+  const srcRefs = normalizeOptionValues(srcRefRaw);
+  if (!srcRefs.length) return null;
+
+  // Collect unique source types (preserve insertion order).
+  const seen = {};
+  const types = [];
+  srcRefs.forEach(function (id) {
+    const src = uci.get(UCI_PACKAGE, id);
+    if (!src) return;
+    const stype = (src.source_type || 'subscription').toLowerCase();
+    if (!seen[stype]) {
+      seen[stype] = true;
+      types.push(stype);
+    }
+  });
+  if (!types.length) return null;
+  return types
+    .map(function (stype) {
+      return (
+        '<span style="display:inline-block;background:rgba(49,130,206,0.12);color:var(--blue-color,#3182ce);' +
+        'padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid rgba(49,130,206,0.3);margin:1px 2px 1px 0;">' +
+        getSourceTypeLabel(stype) +
+        '</span>'
+      );
+    })
+    .join('');
+}
+
+function getActionOptionLabel(action) {
+  switch (`${action}`) {
+    case 'block':
+      return 'Block';
+    case 'bypass':
+      return 'Bypass';
+    case 'connection':
+      return 'Connection';
+    case 'group':
+      return _('Group');
+    case 'dns':
+      return 'DNS';
+    case 'vpn':
+      return 'VPN';
+    case 'zapret':
+      return 'Zapret';
+    case 'zapret2':
+      return 'Zapret2';
+    case 'byedpi':
+      return 'ByeDPI';
+    case 'wdtt':
+      return 'WDTT';
+    case 'olcrtc':
+      return 'OlcRTC';
+    case 'fptn':
+      return 'FPTN';
+
+    case 'awg':
+      return 'AmneziaWG';
+    case 'warp':
+      return 'WARP';
+    case 'anytls':
+      return 'AnyTLS';
+    case 'snell':
+      return 'Snell';
+    case 'mieru':
+      return 'Mieru';
+    case 'naive':
+      return 'NaiveProxy';
+    case 'sudoku':
+      return isTachyonCoreForUi() ? _('Sudoku (не реализован)') : 'Sudoku';
+    case 'masque':
+      return 'MASQUE';
+    case 'openvpn':
+      return 'OpenVPN';
+    case 'openconnect':
+      return 'OpenConnect';
+    case 'desync':
+      return 'Native Desync';
+    case 'shadowtls':
+      return 'ShadowTLS';
+    case 'trusttunnel':
+      return 'TrustTunnel';
+    case 'tewfai':
+      return 'TewFai';
+    case 'hosts':
+      return _('Hosts');
+    case 'outbound':
+      return _('JSON outbound');
+    case 'proxy':
+    default:
+      return 'Proxy';
+  }
+}
+
+function getRuleActionDisplayValue(section_id) {
+  const action = getRuleResolvedAction(section_id);
+
+  if (action === 'zapret') {
+    return 'Zapret';
+  }
+
+  if (action === 'zapret2') {
+    return 'Zapret2';
+  }
+
+  if (action === 'byedpi') {
+    return 'ByeDPI';
+  }
+
+  if (action === 'wdtt') {
+    return 'WDTT';
+  }
+
+  if (action === 'olcrtc') {
+    return 'OlcRTC';
+  }
+
+  if (action === 'fptn') {
+    return 'FPTN';
+  }
+
+  if (action === 'awg') {
+    return 'AmneziaWG';
+  }
+
+  if (action === 'warp') {
+    return 'WARP';
+  }
+
+  if (action === 'anytls') {
+    return 'AnyTLS';
+  }
+
+  if (action === 'snell') {
+    return 'Snell';
+  }
+
+  if (action === 'mieru') {
+    return 'Mieru';
+  }
+
+  if (action === 'sudoku') {
+    return 'Sudoku';
+  }
+
+  if (action === 'masque') {
+    return 'MASQUE';
+  }
+
+  if (action === 'openvpn') {
+    return 'OpenVPN';
+  }
+
+  return getActionOptionLabel(action);
+}
+
+function getRuleActionDisplayMarkup(section_id) {
+  const base = getRuleActionDisplayValue(section_id);
+  const action = getRuleResolvedAction(section_id);
+  if (
+    !['connection', 'desync', 'zapret', 'zapret2', 'byedpi'].includes(action)
+  ) {
+    return base;
+  }
+  const srcRefs = normalizeOptionValues(
+    uci.get(UCI_PACKAGE, section_id, 'outbound_source_refs'),
+  );
+  const balRefs = normalizeOptionValues(
+    uci.get(UCI_PACKAGE, section_id, 'balancer_refs'),
+  );
+  const tags = [];
+  srcRefs.forEach((id) => {
+    const s = uci.get(UCI_PACKAGE, id);
+    if (s) tags.push(s.name || id);
+  });
+  balRefs.forEach((id) => {
+    const b = uci.get(UCI_PACKAGE, id);
+    if (b) tags.push(b.name || id);
+  });
+  if (!tags.length) return base;
+  return `${base} <span style="font-size:11px;opacity:0.78;">(${tags.join(' → ')})</span>`;
+}
+
+function populateActionOptionValues(option) {
+  delete option.keylist;
+  delete option.vallist;
+
+  option.value('connection', getActionOptionLabel('connection'));
+  // A group merges other sections into one flat URLTest; it is plain urltest
+  // machinery, so it needs no variant gate.
+  option.value('group', getActionOptionLabel('group'));
+  // NaiveProxy ships an outbound in every core we support, so it needs no
+  // variant gate of its own.
+  option.value('naive', getActionOptionLabel('naive'));
+  if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
+    option.value('awg', getActionOptionLabel('awg'));
+    option.value('warp', getActionOptionLabel('warp'));
+    option.value('masque', getActionOptionLabel('masque'));
+    option.value('openvpn', getActionOptionLabel('openvpn'));
+    option.value('anytls', getActionOptionLabel('anytls'));
+    option.value('snell', getActionOptionLabel('snell'));
+    option.value('mieru', getActionOptionLabel('mieru'));
+    option.value('sudoku', getActionOptionLabel('sudoku'));
+  }
+  if (isTachyonCoreForUi()) {
+    option.value('openconnect', getActionOptionLabel('openconnect'));
+    option.value('desync', getActionOptionLabel('desync'));
+    option.value('shadowtls', getActionOptionLabel('shadowtls'));
+    option.value('trusttunnel', getActionOptionLabel('trusttunnel'));
+    option.value('tewfai', getActionOptionLabel('tewfai'));
+  }
+  option.value('bypass', 'Bypass');
+  option.value('block', 'Block');
+  option.value('dns', 'DNS');
+  if (isZapretInstalledForUi()) {
+    option.value('zapret', getActionOptionLabel('zapret'));
+  }
+  if (isZapret2InstalledForUi()) {
+    option.value('zapret2', getActionOptionLabel('zapret2'));
+  }
+  if (isByedpiInstalledForUi()) {
+    option.value('byedpi', getActionOptionLabel('byedpi'));
+  }
+  if (isWdttInstalledForUi()) {
+    option.value('wdtt', getActionOptionLabel('wdtt'));
+  }
+  if (isOlcrtcInstalledForUi()) {
+    option.value('olcrtc', getActionOptionLabel('olcrtc'));
+  }
+  if (isFptnInstalledForUi()) {
+    option.value('fptn', getActionOptionLabel('fptn'));
+  }
+  option.value('hosts', getActionOptionLabel('hosts'));
+}
+
+const LINKED_CONDITION_OPTION_KEYS = new Set([
+  'community_lists',
+  'community_subnets',
+  'rule_set',
+  'rule_set_with_subnets',
+  'domain_ip_lists',
+  'domain',
+  'domain_suffix',
+  'domain_keyword',
+  'domain_regex',
+  'domain_text',
+  'domain_suffix_text',
+  'domain_keyword_text',
+  'domain_regex_text',
+  'domain_text_mode',
+  'domain_suffix_text_mode',
+  'domain_keyword_text_mode',
+  'domain_regex_text_mode',
+  'user_domains',
+  'user_domains_text',
+  'user_domains_text_mode',
+  'ip_cidr',
+  'ip_cidr_text',
+  'ip_cidr_text_mode',
+  'source_ip_cidr',
+  'source_ip_cidr_text',
+  'source_ip_cidr_text_mode',
+  'source_macs',
+  'fully_routed_ips',
+  'fully_routed_ips_text',
+  'fully_routed_ips_text_mode',
+  'excluded_ips',
+  'excluded_ips_text',
+  'excluded_ips_text_mode',
+  'ports',
+  'ports_text',
+  'ports_text_mode',
+  'dscp',
+  'dscp_text',
+  'dscp_text_mode',
+  'protocol',
+  'excluded_protocol',
+  'geoip_mode',
+  'geoip_country',
+]);
+
+function getLinkedSectionConditionId(section_id) {
+  if (!section_id || String(section_id).startsWith('cond_')) return null;
+  const condId = `cond_${section_id}`;
+  if (uci.get(UCI_PACKAGE, condId, '.type') === 'condition') return condId;
+  const rawRefs = uci.get(UCI_PACKAGE, section_id, 'condition_refs');
+  const refs = Array.isArray(rawRefs)
+    ? rawRefs.map((x) => String(x || '').trim()).filter(Boolean)
+    : rawRefs
+      ? String(rawRefs)
+          .trim()
+          .split(/[\s,]+/)
+          .filter(Boolean)
+      : [];
+  if (
+    refs.length === 1 &&
+    uci.get(UCI_PACKAGE, refs[0], '.type') === 'condition'
+  ) {
+    const ctype = String(
+      uci.get(UCI_PACKAGE, refs[0], 'condition_type') || 'atomic',
+    ).toLowerCase();
+    if (ctype !== 'composite') return refs[0];
+  }
+  return null;
+}
+
+function getSectionOrLinkedConditionOption(section_id, key) {
+  const direct = uci.get(UCI_PACKAGE, section_id, key);
+  if (
+    direct !== null &&
+    direct !== undefined &&
+    direct !== '' &&
+    (!Array.isArray(direct) || direct.length > 0)
+  ) {
+    return direct;
+  }
+  if (LINKED_CONDITION_OPTION_KEYS.has(key)) {
+    const condId = getLinkedSectionConditionId(section_id);
+    if (condId) {
+      return uci.get(UCI_PACKAGE, condId, key);
+    }
+  }
+  return direct;
+}
+
+function syncLinkedConditionOption(section_id, key, value) {
+  if (!LINKED_CONDITION_OPTION_KEYS.has(key)) return;
+  const condId = getLinkedSectionConditionId(section_id);
+  if (!condId) return;
+  if (
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0)
+  ) {
+    uci.unset(UCI_PACKAGE, condId, key);
+  } else {
+    uci.set(UCI_PACKAGE, condId, key, value);
+  }
+}
+
+function getConfigListValues(section_id, key) {
+  return normalizeOptionValues(
+    getSectionOrLinkedConditionOption(section_id, key),
+  );
+}
+
+function stringArraysEqual(left, right) {
+  left = normalizeDynamicListItems(left);
+  right = normalizeDynamicListItems(right);
+
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+function writeListOption(section_id, key, values) {
+  const normalized = normalizeOptionValues(values);
+  syncLinkedConditionOption(section_id, key, normalized);
+
+  if (
+    stringArraysEqual(
+      normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key)),
+      normalized,
+    )
+  ) {
+    return;
+  }
+
+  if (normalized.length) {
+    uci.set(UCI_PACKAGE, section_id, key, normalized);
+  } else {
+    uci.unset(UCI_PACKAGE, section_id, key);
+  }
+}
+
+function makeDeviceOptionsExclusive(firstOption, secondOption) {
+  let changing = false;
+  const firstWidgets = {};
+  const secondWidgets = {};
+
+  function removeMatches(section_id, value, otherWidgets) {
+    if (changing) {
+      return;
+    }
+
+    const selected = new Set(normalizeOptionValues(value));
+    if (!selected.size) {
+      return;
+    }
+
+    const widget = otherWidgets[section_id];
+    if (!widget) {
+      return;
+    }
+
+    const current = normalizeOptionValues(widget.getValue());
+    const filtered = current.filter((item) => !selected.has(item));
+    if (stringArraysEqual(current, filtered)) {
+      return;
+    }
+
+    changing = true;
+    try {
+      widget.setValue(filtered);
+    } finally {
+      changing = false;
+    }
+  }
+
+  firstOption.onDeviceWidgetReady = function (section_id, widget) {
+    firstWidgets[section_id] = widget;
+  };
+  secondOption.onDeviceWidgetReady = function (section_id, widget) {
+    secondWidgets[section_id] = widget;
+  };
+  firstOption.onDeviceListChange = function (section_id, value) {
+    removeMatches(section_id, value, secondWidgets);
+  };
+  secondOption.onDeviceListChange = function (section_id, value) {
+    removeMatches(section_id, value, firstWidgets);
+  };
+}
+
+function childOwnerOption(ownerOption) {
+  return ownerOption || 'section';
+}
+
+function childItemOrder(item) {
+  const value = item ? item.order : null;
+  const parsed = Number.parseInt(value == null ? '0' : `${value}`, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getChildItemIds(section_id, typeName, ownerOption) {
+  const ownerKey = childOwnerOption(ownerOption);
+  const items = uci
+    .sections(UCI_PACKAGE, typeName)
+    .filter((item) => item[ownerKey] === section_id);
+
+  items.sort((a, b) => {
+    const hasOrderA = a && a.order != null && a.order !== '';
+    const hasOrderB = b && b.order != null && b.order !== '';
+    if (hasOrderA && hasOrderB) {
+      const orderDiff = childItemOrder(a) - childItemOrder(b);
+      if (orderDiff !== 0) {
+        return orderDiff;
+      }
+    } else if (hasOrderA) {
+      return -1;
+    } else if (hasOrderB) {
+      return 1;
+    }
+
+    if (typeName === 'priority_level') {
+      return `${a['.name'] || ''}`.localeCompare(`${b['.name'] || ''}`);
+    }
+
+    const indexA = a && a['.index'] != null ? a['.index'] : 0;
+    const indexB = b && b['.index'] != null ? b['.index'] : 0;
+    return indexA - indexB;
+  });
+
+  return items.map((item) => item['.name']).filter(Boolean);
+}
+
+function childItemValue(itemId, valueOption, fallback) {
+  if (!valueOption) {
+    return itemId;
+  }
+
+  const value = uci.get(UCI_PACKAGE, itemId, valueOption);
+  return value == null || value === '' ? fallback || itemId : `${value}`;
+}
+
+function childItemInputValue(
+  section_id,
+  value,
+  typeName,
+  valueOption,
+  ownerOption,
+) {
+  const itemId = `${value || ''}`;
+
+  if (isExistingChildItem(section_id, itemId, typeName, ownerOption)) {
+    return childItemValue(itemId, valueOption, itemId);
+  }
+
+  return itemId;
+}
+
+function isExistingChildItem(section_id, itemId, typeName, ownerOption) {
+  const ownerKey = childOwnerOption(ownerOption);
+
+  return Boolean(
+    itemId &&
+      uci.get(UCI_PACKAGE, itemId, '.type') === typeName &&
+      uci.get(UCI_PACKAGE, itemId, ownerKey) === section_id,
+  );
+}
+
+function findChildItemForInput(section_id, options, inputValue) {
+  const rawValue = `${inputValue || ''}`.trim();
+
+  if (
+    isExistingChildItem(
+      section_id,
+      rawValue,
+      options.typeName,
+      options.ownerOption,
+    )
+  ) {
+    return rawValue;
+  }
+
+  if (options.valueOption) {
+    return getChildItemIds(
+      section_id,
+      options.typeName,
+      options.ownerOption,
+    ).find(
+      (itemId) =>
+        childItemValue(itemId, options.valueOption, itemId) === rawValue,
+    );
+  }
+
+  return null;
+}
+
+function createChildItem(section_id, options, inputValue) {
+  const rawValue = `${inputValue || ''}`.trim();
+  const existing = findChildItemForInput(section_id, options, rawValue);
+
+  if (existing) {
+    return {
+      value: existing,
+      text: options.valueOption
+        ? childItemValue(existing, options.valueOption, existing)
+        : existing,
+      created: false,
+    };
+  }
+
+  const requestedId =
+    typeof options.createId === 'function'
+      ? `${options.createId(rawValue, section_id) || ''}`.trim()
+      : '';
+  const itemId =
+    (requestedId && uci.add(UCI_PACKAGE, options.typeName, requestedId)) ||
+    requestedId ||
+    uci.add(UCI_PACKAGE, options.typeName);
+
+  uci.set(
+    UCI_PACKAGE,
+    itemId,
+    childOwnerOption(options.ownerOption),
+    section_id,
+  );
+
+  if (options.valueOption) {
+    uci.set(UCI_PACKAGE, itemId, options.valueOption, rawValue);
+  }
+
+  if (options.defaults && typeof options.defaults === 'object') {
+    Object.entries(options.defaults).forEach(([key, value]) => {
+      value =
+        typeof value === 'function'
+          ? value(rawValue, section_id, itemId)
+          : value;
+      if (value !== undefined && value !== null && value !== '') {
+        uci.set(UCI_PACKAGE, itemId, key, `${value}`);
+      }
+    });
+  }
+
+  return {
+    value: itemId,
+    text: options.valueOption ? rawValue : itemId,
+    created: true,
+  };
+}
+
+function applyChildItemSettings(itemId, settings) {
+  Object.entries(settings || {}).forEach(([key, value]) => {
+    if (!key || key.charAt(0) === '.') {
+      return;
+    }
+
+    if (value === undefined || value === null || value === '') {
+      uci.unset(UCI_PACKAGE, itemId, key);
+    } else if (Array.isArray(value)) {
+      uci.set(
+        UCI_PACKAGE,
+        itemId,
+        key,
+        value
+          .map((item) => `${item || ''}`.trim())
+          .filter((item) => item.length),
+      );
+    } else {
+      uci.set(UCI_PACKAGE, itemId, key, `${value}`);
+    }
+  });
+}
+
+function materializeChildItems(section_id, options, inputValue) {
+  const result = [];
+  const seen = new Set();
+
+  normalizeDynamicListItems(inputValue).forEach((value) => {
+    const createdItem = createChildItem(section_id, options, value);
+    const itemId = createdItem.value;
+    const stagedSettings =
+      createdItem.created && typeof options.stagedSettings === 'function'
+        ? options.stagedSettings(value, itemId, createdItem.created)
+        : null;
+
+    if (stagedSettings) {
+      applyChildItemSettings(itemId, stagedSettings);
+    }
+
+    if (itemId && !seen.has(itemId)) {
+      seen.add(itemId);
+      result.push(itemId);
+    }
+  });
+
+  return result;
+}
+
+function cleanupPriorityLevelsForGroup(groupId) {
+  getChildItemIds(groupId, 'priority_level', 'group').forEach((levelId) => {
+    uci.remove(UCI_PACKAGE, levelId);
+  });
+}
+
+function cleanupRemovedChildItems(
+  section_id,
+  typeName,
+  keepValues,
+  ownerOption,
+) {
+  const keep = new Set(normalizeDynamicListItems(keepValues));
+
+  getChildItemIds(section_id, typeName, ownerOption).forEach((itemId) => {
+    if (!keep.has(itemId)) {
+      if (typeName === 'priority_group') {
+        cleanupPriorityLevelsForGroup(itemId);
+      }
+      uci.remove(UCI_PACKAGE, itemId);
+    }
+  });
+}
+
+function parentSectionIdForItem(itemId) {
+  return uci.get(UCI_PACKAGE, itemId, 'section') || '';
+}
+
+function refreshOptionChoices(option, choices) {
+  delete option.keylist;
+  delete option.vallist;
+
+  (choices || []).forEach((choice) => {
+    if (typeof choice === 'object') {
+      option.value(choice.value, choice.label);
+    } else {
+      option.value(choice);
+    }
+  });
+}
+
+function validateRegex(_section_id, value) {
+  if (!value || !value.length) {
+    return true;
+  }
+
+  try {
+    new RegExp(value);
+    return true;
+  } catch (_error) {
+    return _('Invalid regular expression');
+  }
+}
+
+function validateKeyword(_section_id, value) {
+  if (!value || !value.length) {
+    return true;
+  }
+
+  if (/[,\s]/.test(value)) {
+    return _('Keyword must not contain spaces or commas');
+  }
+
+  return true;
+}
+
+function isSingBoxDuration(value) {
+  return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
+}
+
+function writeOptionalDurationOption(section_id, key, value) {
+  const normalized = value ? `${value}`.trim() : '';
+  const disabledKey = `${key}_disabled`;
+
+  if (normalized.length) {
+    uci.set(UCI_PACKAGE, section_id, key, normalized);
+    uci.unset(UCI_PACKAGE, section_id, disabledKey);
+  } else {
+    uci.unset(UCI_PACKAGE, section_id, key);
+    uci.set(UCI_PACKAGE, section_id, disabledKey, '1');
+  }
+}
+
+function validateOptionalSingBoxDuration(value) {
+  const normalized = value ? `${value}`.trim() : '';
+
+  if (!normalized.length) {
+    return true;
+  }
+
+  if (isSingBoxDuration(normalized)) {
+    return true;
+  }
+
+  return _('Use sing-box duration format like 1d, 12h or 30m');
+}
+
+function validateRequiredSingBoxDuration(value) {
+  const normalized = value ? `${value}`.trim() : '';
+
+  if (!normalized.length) {
+    return _('Use sing-box duration format like 1d, 12h or 30m');
+  }
+
+  if (isSingBoxDuration(normalized)) {
+    return true;
+  }
+
+  return _('Use sing-box duration format like 1d, 12h or 30m');
+}
+
+function parseSubscriptionUrlEntry(value) {
+  const normalized = value ? `${value}`.trim() : '';
+
+  if (!normalized.length) {
+    return { valid: true, url: '' };
+  }
+
+  if (normalized.includes('|')) {
+    return {
+      valid: false,
+      message: _('Configure User-Agent in the item settings'),
+    };
+  }
+
+  return { valid: true, url: normalized };
+}
+
+function validateSubscriptionUrlEntry(_section_id, value) {
+  if (!value || value.length === 0) {
+    return true;
+  }
+
+  const parsed = parseSubscriptionUrlEntry(value);
+  if (!parsed.valid) {
+    return parsed.message;
+  }
+
+  const validation = main.validateUrl(parsed.url);
+  return validation.valid ? true : validation.message;
+}
+
+function getDuplicateTextListErrors(values, normalizeValue, duplicateMessage) {
+  const seen = new Set();
+  const duplicates = [];
+
+  values.forEach((item) => {
+    const normalized = normalizeValue ? normalizeValue(item) : item;
+
+    if (seen.has(normalized)) {
+      if (!duplicates.includes(item)) {
+        duplicates.push(item);
+      }
+      return;
+    }
+
+    seen.add(normalized);
+  });
+
+  return duplicates.map((item) => `${item}: ${duplicateMessage}`);
+}
+
+function getValidationHeaderText() {
+  return _('Validation errors:');
+}
+
+function getDuplicateValueText() {
+  return _('Duplicate value');
+}
+
+function escapeHtml(value) {
+  return `${value}`
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function ensureAnnotatedTextareaStyles() {
+  if (
+    typeof document === 'undefined' ||
+    !document.head ||
+    document.getElementById(ANNOTATED_TEXTAREA_STYLE_ID)
+  ) {
+    return;
+  }
+
+  document.head.insertAdjacentHTML(
+    'beforeend',
+    `<style id="${ANNOTATED_TEXTAREA_STYLE_ID}">
+      .fkp-annotated-textarea {
+        position: relative;
+      }
+
+      .fkp-annotated-textarea > textarea {
+        position: relative;
+        z-index: 1;
+        background: transparent !important;
+      }
+
+      .fkp-annotated-textarea__overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+        box-sizing: border-box;
+        color: transparent;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: break-word;
+      }
+
+      .fkp-annotated-textarea__invalid {
+        color: transparent;
+        text-decoration-line: underline;
+        text-decoration-style: wavy;
+        text-decoration-color: var(--error-color-medium, #d44);
+        text-decoration-thickness: 1.5px;
+        text-underline-offset: 2px;
+        text-decoration-skip-ink: none;
+      }
+    </style>`,
+  );
+}
+
+function applyTextareaInputAttributes(textarea) {
+  textarea.setAttribute('spellcheck', 'false');
+  textarea.setAttribute('autocomplete', 'off');
+  textarea.setAttribute('autocorrect', 'off');
+  textarea.setAttribute('autocapitalize', 'off');
+  textarea.setAttribute('data-gramm', 'false');
+  textarea.setAttribute('data-gramm_editor', 'false');
+  textarea.setAttribute('data-enable-grammarly', 'false');
+  textarea.style.resize = 'vertical';
+  textarea.style.maxWidth = '100%';
+
+  const getRowsMinHeight = () => {
+    const rows = Number.parseInt(textarea.getAttribute('rows') || '0', 10);
+    if (!rows || typeof window === 'undefined') {
+      return 0;
+    }
+
+    const style = window.getComputedStyle(textarea);
+    const fontSize = Number.parseFloat(style.fontSize) || 16;
+    const lineHeight =
+      Number.parseFloat(style.lineHeight) || Math.ceil(fontSize * 1.2);
+    const verticalPadding =
+      (Number.parseFloat(style.paddingTop) || 0) +
+      (Number.parseFloat(style.paddingBottom) || 0);
+    const verticalBorder =
+      (Number.parseFloat(style.borderTopWidth) || 0) +
+      (Number.parseFloat(style.borderBottomWidth) || 0);
+
+    return Math.ceil(rows * lineHeight + verticalPadding + verticalBorder);
+  };
+
+  const applyMinHeight = () => {
+    const storedMinHeight = Number.parseFloat(
+      textarea.getAttribute('data-fkp-default-min-height') || '0',
+    );
+    const nextMinHeight = Math.max(
+      storedMinHeight,
+      textarea.offsetHeight,
+      getRowsMinHeight(),
+    );
+
+    if (nextMinHeight > 0) {
+      if (storedMinHeight <= 0) {
+        textarea.setAttribute(
+          'data-fkp-default-min-height',
+          `${nextMinHeight}`,
+        );
+      }
+
+      textarea.style.minHeight = `${nextMinHeight}px`;
+      return true;
+    }
+
+    return false;
+  };
+
+  if (
+    !applyMinHeight() &&
+    typeof window !== 'undefined' &&
+    typeof window.requestAnimationFrame === 'function'
+  ) {
+    window.requestAnimationFrame(() => {
+      if (!applyMinHeight()) {
+        window.setTimeout(applyMinHeight, 0);
+      }
+    });
+  }
+
+  textarea.addEventListener('focus', applyMinHeight);
+  textarea.addEventListener('pointerdown', applyMinHeight);
+}
+
+function syncAnnotatedTextareaOverlay(textarea, wrapper, overlay) {
+  if (
+    typeof window === 'undefined' ||
+    !textarea ||
+    !wrapper ||
+    !overlay ||
+    typeof window.getComputedStyle !== 'function'
+  ) {
+    return;
+  }
+
+  const style = window.getComputedStyle(textarea);
+
+  wrapper.style.backgroundColor = style.backgroundColor;
+  wrapper.style.borderRadius = style.borderRadius;
+
+  overlay.style.font = style.font;
+  overlay.style.lineHeight = style.lineHeight;
+  overlay.style.letterSpacing = style.letterSpacing;
+  overlay.style.paddingTop = style.paddingTop;
+  overlay.style.paddingRight = style.paddingRight;
+  overlay.style.paddingBottom = style.paddingBottom;
+  overlay.style.paddingLeft = style.paddingLeft;
+  overlay.style.borderTopWidth = style.borderTopWidth;
+  overlay.style.borderRightWidth = style.borderRightWidth;
+  overlay.style.borderBottomWidth = style.borderBottomWidth;
+  overlay.style.borderLeftWidth = style.borderLeftWidth;
+  overlay.style.borderStyle = 'solid';
+  overlay.style.borderColor = 'transparent';
+  overlay.style.textAlign = style.textAlign;
+  overlay.style.direction = style.direction;
+  overlay.style.tabSize = style.tabSize;
+  overlay.style.textIndent = style.textIndent;
+  overlay.style.textTransform = style.textTransform;
+  overlay.style.boxSizing = style.boxSizing;
+  overlay.style.scrollPaddingTop = style.scrollPaddingTop;
+
+  overlay.scrollTop = textarea.scrollTop;
+  overlay.scrollLeft = textarea.scrollLeft;
+}
+
+function createAnnotationKey(annotation) {
+  return `${annotation.start}:${annotation.end}`;
+}
+
+function addAnnotationIssue(annotationMap, annotation, message) {
+  const key = createAnnotationKey(annotation);
+  const existing = annotationMap.get(key);
+  if (existing) {
+    if (!existing.messages.includes(message)) {
+      existing.messages.push(message);
+    }
+    return;
+  }
+
+  annotationMap.set(key, {
+    start: annotation.start,
+    end: annotation.end,
+    messages: [message],
+  });
+}
+
+function finalizeAnnotations(annotationMap) {
+  return Array.from(annotationMap.values())
+    .map((annotation) => ({
+      start: annotation.start,
+      end: annotation.end,
+      message: annotation.messages.join('; '),
+    }))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
+function renderAnnotatedTextareaOverlay(value, annotations) {
+  const text = value ? `${value}` : '';
+  const normalizedAnnotations = Array.isArray(annotations) ? annotations : [];
+
+  if (!text.length) {
+    return '&#8203;';
+  }
+
+  if (!normalizedAnnotations.length) {
+    return `${escapeHtml(text)}${text.endsWith('\n') ? '\n ' : ''}`;
+  }
+
+  let cursor = 0;
+  let html = '';
+
+  normalizedAnnotations.forEach((annotation) => {
+    if (
+      annotation.start < cursor ||
+      annotation.start >= annotation.end ||
+      annotation.start < 0
+    ) {
+      return;
+    }
+
+    html += escapeHtml(text.slice(cursor, annotation.start));
+    html += `<span class="fkp-annotated-textarea__invalid">${escapeHtml(
+      text.slice(annotation.start, annotation.end),
+    )}</span>`;
+    cursor = annotation.end;
+  });
+
+  html += escapeHtml(text.slice(cursor));
+
+  if (text.endsWith('\n')) {
+    html += '\n ';
+  }
+
+  return html;
+}
+
+function attachAnnotatedTextarea(textarea, analyzer) {
+  if (!textarea || typeof analyzer !== 'function') {
+    return;
+  }
+
+  ensureAnnotatedTextareaStyles();
+
+  if (textarea.__tachyonAnnotatedTextareaController) {
+    textarea.__tachyonAnnotatedTextareaController.analyzer = analyzer;
+    textarea.__tachyonAnnotatedTextareaController.update();
+    return;
+  }
+
+  const wrapper = textarea.parentNode;
+  if (!wrapper) {
+    return;
+  }
+
+  wrapper.classList.add('fkp-annotated-textarea');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'fkp-annotated-textarea__overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  wrapper.insertBefore(overlay, textarea.nextSibling);
+
+  const controller = {
+    analyzer,
+    textarea,
+    wrapper,
+    overlay,
+    update() {
+      const analysis = this.analyzer(this.textarea.value);
+      this.overlay.innerHTML = renderAnnotatedTextareaOverlay(
+        this.textarea.value,
+        analysis.annotations,
+      );
+      syncAnnotatedTextareaOverlay(this.textarea, this.wrapper, this.overlay);
+    },
+  };
+
+  textarea.__tachyonAnnotatedTextareaController = controller;
+
+  const updateAnnotatedTextarea = () => controller.update();
+  const syncAnnotatedScroll = () => {
+    overlay.scrollTop = textarea.scrollTop;
+    overlay.scrollLeft = textarea.scrollLeft;
+  };
+  textarea.addEventListener('input', updateAnnotatedTextarea);
+  textarea.addEventListener('change', updateAnnotatedTextarea);
+  textarea.addEventListener('scroll', syncAnnotatedScroll, {
+    passive: true,
+  });
+  textarea.addEventListener('keyup', updateAnnotatedTextarea);
+
+  if (typeof ResizeObserver === 'function') {
+    const resizeObserver = new ResizeObserver(() => {
+      if (!textarea.isConnected) {
+        resizeObserver.disconnect();
+        return;
+      }
+      controller.update();
+    });
+    resizeObserver.observe(textarea);
+    controller.resizeObserver = resizeObserver;
+  }
+
+  controller.update();
+}
+
+function refreshAnnotatedTextareaValidation(option, section_id, textarea) {
+  if (option && typeof option.triggerValidation === 'function') {
+    option.triggerValidation(section_id);
+  }
+
+  if (
+    textarea &&
+    textarea.__tachyonAnnotatedTextareaController &&
+    typeof textarea.__tachyonAnnotatedTextareaController.update === 'function'
+  ) {
+    textarea.__tachyonAnnotatedTextareaController.update();
+  }
+}
+
+function attachNfqwsRemoteValidation(option, section_id, textarea) {
+  if (!textarea || textarea.__tachyonNfqwsRemoteValidationAttached) {
+    return;
+  }
+
+  textarea.__tachyonNfqwsRemoteValidationAttached = true;
+  textarea.__tachyonNfqwsRemoteValidationRequestId = 0;
+  textarea.__tachyonNfqwsRemoteValidationTimer = null;
+
+  const runValidation = () => {
+    const value = textarea.value;
+    const localAnalysis = buildNfqwsLocalAnalysis(value);
+    if (!localAnalysis.valid) {
+      refreshAnnotatedTextareaValidation(option, section_id, textarea);
+      return;
+    }
+
+    const requestId =
+      (textarea.__tachyonNfqwsRemoteValidationRequestId || 0) + 1;
+    textarea.__tachyonNfqwsRemoteValidationRequestId = requestId;
+
+    validateNfqwsStrategyRemotely(value).then(() => {
+      if (textarea.__tachyonNfqwsRemoteValidationRequestId !== requestId) {
+        return;
+      }
+
+      refreshAnnotatedTextareaValidation(option, section_id, textarea);
+    });
+  };
+
+  const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
+    if (textarea.__tachyonNfqwsRemoteValidationTimer) {
+      window.clearTimeout(textarea.__tachyonNfqwsRemoteValidationTimer);
+    }
+
+    textarea.__tachyonNfqwsRemoteValidationTimer = window.setTimeout(() => {
+      textarea.__tachyonNfqwsRemoteValidationTimer = null;
+      runValidation();
+    }, delay);
+  };
+
+  textarea.addEventListener('input', () => scheduleValidation());
+  textarea.addEventListener('change', () => scheduleValidation(0));
+  textarea.addEventListener('blur', () => scheduleValidation(0));
+
+  scheduleValidation(0);
+}
+
+function attachNfqws2RemoteValidation(option, section_id, textarea) {
+  if (!textarea || textarea.__tachyonNfqws2RemoteValidationAttached) {
+    return;
+  }
+
+  textarea.__tachyonNfqws2RemoteValidationAttached = true;
+  textarea.__tachyonNfqws2RemoteValidationRequestId = 0;
+  textarea.__tachyonNfqws2RemoteValidationTimer = null;
+
+  const runValidation = () => {
+    const value = textarea.value;
+    const localAnalysis = buildNfqws2LocalAnalysis(value);
+    if (!localAnalysis.valid) {
+      refreshAnnotatedTextareaValidation(option, section_id, textarea);
+      return;
+    }
+
+    const requestId =
+      (textarea.__tachyonNfqws2RemoteValidationRequestId || 0) + 1;
+    textarea.__tachyonNfqws2RemoteValidationRequestId = requestId;
+
+    validateNfqws2StrategyRemotely(value).then(() => {
+      if (textarea.__tachyonNfqws2RemoteValidationRequestId !== requestId) {
+        return;
+      }
+
+      refreshAnnotatedTextareaValidation(option, section_id, textarea);
+    });
+  };
+
+  const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
+    if (textarea.__tachyonNfqws2RemoteValidationTimer) {
+      window.clearTimeout(textarea.__tachyonNfqws2RemoteValidationTimer);
+    }
+
+    textarea.__tachyonNfqws2RemoteValidationTimer = window.setTimeout(() => {
+      textarea.__tachyonNfqws2RemoteValidationTimer = null;
+      runValidation();
+    }, delay);
+  };
+
+  textarea.addEventListener('input', () => scheduleValidation());
+  textarea.addEventListener('change', () => scheduleValidation(0));
+  textarea.addEventListener('blur', () => scheduleValidation(0));
+
+  scheduleValidation(0);
+}
+
+function parseCommentAwareListTokens(value) {
+  const text = value ? `${value}` : '';
+  const tokens = [];
+  const lines = text.split(/\r\n|\r|\n/);
+  const newlines = text.match(/\r\n|\r|\n/g) || [];
+  let offset = 0;
+
+  lines.forEach((line, index) => {
+    const cleanLine = line.replace(
+      /^(full|keyword|regex):[ \t]*(\/\/|#).*$/,
+      '',
+    );
+    const hashIndex = cleanLine.indexOf('#');
+    const slashIndex = cleanLine.indexOf('//');
+    let commentIndex = -1;
+
+    if (hashIndex >= 0 && slashIndex >= 0) {
+      commentIndex = Math.min(hashIndex, slashIndex);
+    } else if (hashIndex >= 0) {
+      commentIndex = hashIndex;
+    } else if (slashIndex >= 0) {
+      commentIndex = slashIndex;
+    }
+
+    const source =
+      commentIndex >= 0 ? cleanLine.slice(0, commentIndex) : cleanLine;
+    const matcher = /[^,\s]+/g;
+    let match;
+
+    while ((match = matcher.exec(source)) !== null) {
+      tokens.push({
+        value: match[0],
+        start: offset + match.index,
+        end: offset + match.index + match[0].length,
+      });
+    }
+
+    offset += line.length + (newlines[index] ? newlines[index].length : 0);
+  });
+
+  return tokens;
+}
+
+function analyzeTextListValue(value, validateItem, emptyMessage, options = {}) {
+  const text = value ? `${value}` : '';
+  if (!text.length) {
+    return { valid: true, message: '', annotations: [] };
+  }
+
+  const tokens = parseCommentAwareListTokens(text);
+  if (!tokens.length) {
+    return { valid: false, message: emptyMessage, annotations: [] };
+  }
+
+  const duplicateMessage = options.duplicateMessage || getDuplicateValueText();
+  const annotationMap = new Map();
+  const errors = [];
+  const seen = new Set();
+
+  tokens.forEach((token) => {
+    if (typeof validateItem === 'function') {
+      const validation = validateItem(token.value);
+      if (!validation.valid) {
+        errors.push(`${token.value}: ${validation.message}`);
+        addAnnotationIssue(annotationMap, token, validation.message);
+      }
+    }
+
+    const normalized = options.normalizeDuplicateValue
+      ? options.normalizeDuplicateValue(token.value)
+      : token.value;
+
+    if (!normalized) {
+      return;
+    }
+
+    if (seen.has(normalized)) {
+      errors.push(`${token.value}: ${duplicateMessage}`);
+      addAnnotationIssue(annotationMap, token, duplicateMessage);
+      return;
+    }
+
+    seen.add(normalized);
+  });
+
+  if (!errors.length) {
+    return { valid: true, message: '', annotations: [] };
+  }
+
+  return {
+    valid: false,
+    message: [getValidationHeaderText(), ...errors].join('\n'),
+    annotations: finalizeAnnotations(annotationMap),
+  };
+}
+
+function analyzeDomainSuffixText(value) {
+  const validateDomainCondition = (domain) => {
+    const normalized = `${domain || ''}`.trim();
+    if (normalized.includes('/')) {
+      return { valid: false, message: _('Invalid domain address') };
+    }
+
+    return main.validateDomain(normalized, true);
+  };
+
+  return analyzeTextListValue(
+    value,
+    (item) => {
+      const colonIndex = item.indexOf(':');
+      const prefix = colonIndex > 0 ? item.slice(0, colonIndex) : '';
+      const body = colonIndex > 0 ? item.slice(colonIndex + 1) : item;
+
+      if (!prefix) {
+        return validateDomainCondition(body);
+      }
+
+      if (!['full', 'keyword', 'regex'].includes(prefix)) {
+        return {
+          valid: false,
+          message: _('Allowed domain prefixes are full:, keyword:, and regex:'),
+        };
+      }
+
+      if (!body.length) {
+        return { valid: false, message: _('Value cannot be empty') };
+      }
+
+      if (prefix === 'full') {
+        return validateDomainCondition(body);
+      }
+
+      if (prefix === 'keyword') {
+        const validation = validateKeyword(null, body);
+        return validation === true
+          ? { valid: true, message: _('Valid') }
+          : { valid: false, message: validation };
+      }
+
+      if (/[,\s]/.test(body)) {
+        return {
+          valid: false,
+          message: _('Regular expression must not contain spaces or commas'),
+        };
+      }
+
+      const validation = validateRegex(null, body);
+      return validation === true
+        ? { valid: true, message: _('Valid') }
+        : { valid: false, message: validation };
+    },
+    _('At least one valid domain must be specified.'),
+    {
+      normalizeDuplicateValue: (item) => `${item}`.toLowerCase(),
+    },
+  );
+}
+
+function domainValuesWithPrefix(section_id, key, prefix) {
+  return getConfigListValues(section_id, key).map((value) =>
+    prefix ? `${prefix}:${value}` : value,
+  );
+}
+
+function domainTextValuesWithPrefix(section_id, key, prefix) {
+  const legacyText = getSectionOrLinkedConditionOption(
+    section_id,
+    `${key}_text`,
+  );
+  if (!legacyText) {
+    return [];
+  }
+
+  return main
+    .parseValueList(legacyText)
+    .map((value) => (prefix ? `${prefix}:${value}` : value));
+}
+
+function uniqueDomainTextValues(values) {
+  const seen = new Set();
+
+  return values.filter((value) => {
+    const key = `${value}`.toLowerCase();
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function appendUniqueDomainTextValues(textValue, values) {
+  const originalText = typeof textValue === 'string' ? textValue : '';
+  const seen = new Set(
+    main.parseValueList(originalText).map((value) => `${value}`.toLowerCase()),
+  );
+  const additions = uniqueDomainTextValues(values).filter((value) => {
+    const key = `${value}`.toLowerCase();
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+
+  if (!additions.length) {
+    return originalText;
+  }
+
+  const base = originalText.replace(/\s+$/, '');
+  return [base, ...additions].filter(Boolean).join('\n');
+}
+
+function stripDomainFullPrefix(val) {
+  if (!val) return '';
+  const lines =
+    typeof val === 'string'
+      ? val.split('\n')
+      : Array.isArray(val)
+        ? val
+        : [String(val)];
+  return lines
+    .map((line) => {
+      const trimmed = String(line || '').trim();
+      if (trimmed.startsWith('full:')) {
+        const body = trimmed.substring(5).trim();
+        if (
+          body &&
+          !body.includes('/') &&
+          !body.includes(':') &&
+          !body.includes(' ') &&
+          !body.includes(',')
+        ) {
+          return body;
+        }
+      }
+      return trimmed;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function loadCombinedDomainText(section_id) {
+  const rawTextValue =
+    getSectionOrLinkedConditionOption(section_id, 'domain') ||
+    getSectionOrLinkedConditionOption(section_id, 'domain_suffix_text');
+  const textValue = stripDomainFullPrefix(rawTextValue);
+  const values = [
+    ...domainValuesWithPrefix(section_id, 'domain_suffix', ''),
+    ...domainValuesWithPrefix(section_id, 'domain_keyword', 'keyword'),
+    ...domainValuesWithPrefix(section_id, 'domain_regex', 'regex'),
+    ...domainTextValuesWithPrefix(section_id, 'domain_suffix', ''),
+    ...domainTextValuesWithPrefix(section_id, 'domain', ''),
+    ...domainTextValuesWithPrefix(section_id, 'domain_keyword', 'keyword'),
+    ...domainTextValuesWithPrefix(section_id, 'domain_regex', 'regex'),
+  ];
+
+  return appendUniqueDomainTextValues(textValue, values);
+}
+
+function analyzeIpCidrText(value) {
+  return analyzeTextListValue(
+    value,
+    (item) => main.validateSubnet(item),
+    _('At least one valid IP or subnet must be specified.'),
+    {
+      normalizeDuplicateValue: (item) => `${item}`.trim(),
+    },
+  );
+}
+
+function validatePortCondition(_section_id, value) {
+  const normalized = value ? `${value}`.trim() : '';
+
+  if (!normalized.length) {
+    return true;
+  }
+
+  const match = normalized.match(/^(\d+)(?:-(\d+))?$/);
+  if (!match) {
+    return _('Invalid port or range. Use 80 or 1000-2000');
+  }
+
+  const start = Number.parseInt(match[1], 10);
+  const end = match[2] ? Number.parseInt(match[2], 10) : start;
+
+  if (start < 1 || start > 65535 || end < 1 || end > 65535) {
+    return _('Port must be between 1 and 65535');
+  }
+
+  if (start > end) {
+    return _('Port range start must be less than or equal to end');
+  }
+
+  return true;
+}
+
+function getNfqwsOptionArgumentMode(option) {
+  if (NFQWS_REQUIRED_ARG_OPTIONS.has(option)) {
+    return 'required';
+  }
+
+  if (NFQWS_OPTIONAL_ARG_OPTIONS.has(option)) {
+    return 'optional';
+  }
+
+  if (NFQWS_NO_ARG_OPTIONS.has(option)) {
+    return 'none';
+  }
+
+  return 'unknown';
+}
+
+function getNfqws2OptionArgumentMode(option) {
+  if (NFQWS2_REQUIRED_ARG_OPTIONS.has(option)) {
+    return 'required';
+  }
+
+  if (NFQWS2_OPTIONAL_ARG_OPTIONS.has(option)) {
+    return 'optional';
+  }
+
+  if (NFQWS2_NO_ARG_OPTIONS.has(option)) {
+    return 'none';
+  }
+
+  return 'unknown';
+}
+
+function normalizeNfqwsStrategyWhitespace(value) {
+  return value ? `${value}`.replace(/\s+/g, ' ').trim() : '';
+}
+
+function parseNfqwsRuntimeTokens(value) {
+  const text = value ? `${value}` : '';
+  const tokens = [];
+  const matcher = /\S+/g;
+  let match;
+
+  while ((match = matcher.exec(text)) !== null) {
+    tokens.push({
+      value: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+
+  return tokens;
+}
+function normalizeNfqwsStrategyValue(value) {
+  const normalized = normalizeNfqwsStrategyWhitespace(value);
+  if (!normalized.length) {
+    return '';
+  }
+
+  return normalized === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
+    ? ZAPRET_DEFAULT_NFQWS_OPT
+    : normalized;
+}
+
+function getCachedNfqwsRemoteValidation(value) {
+  const normalized = normalizeNfqwsStrategyValue(value);
+  return normalized.length
+    ? nfqwsRemoteValidationCache.get(normalized) || null
+    : null;
+}
+
+function cacheNfqwsRemoteValidation(value, result) {
+  const normalized = normalizeNfqwsStrategyValue(value);
+  if (!normalized.length) {
+    return result;
+  }
+
+  const cached = {
+    valid: result && result.valid === true,
+    message: result && result.message ? `${result.message}` : '',
+    needle: result && result.needle ? `${result.needle}` : '',
+    needles:
+      result && Array.isArray(result.needles)
+        ? result.needles.filter(Boolean).map((item) => `${item}`)
+        : result && result.needle
+          ? [`${result.needle}`]
+          : [],
+  };
+
+  if (nfqwsRemoteValidationCache.size >= 100) {
+    nfqwsRemoteValidationCache.delete(
+      nfqwsRemoteValidationCache.keys().next().value,
+    );
+  }
+  nfqwsRemoteValidationCache.set(normalized, cached);
+  return cached;
+}
+
+function buildNfqwsRemoteValidationFallback(error) {
+  const message =
+    error && error.message
+      ? `${error.message}`
+      : _('Unable to validate the NFQWS strategy through the backend parser.');
+
+  return {
+    valid: false,
+    message: _('Backend validation failed: %s').format(message),
+    needle: '',
+    needles: [],
+  };
+}
+
+function validateNfqwsStrategyRemotely(value) {
+  const normalized = normalizeNfqwsStrategyValue(value);
+
+  if (!normalized.length) {
+    return Promise.resolve({
+      valid: true,
+      message: '',
+      needle: '',
+      needles: [],
+    });
+  }
+
+  if (nfqwsRemoteValidationCache.has(normalized)) {
+    return Promise.resolve(nfqwsRemoteValidationCache.get(normalized));
+  }
+
+  if (nfqwsRemoteValidationInflight.has(normalized)) {
+    return nfqwsRemoteValidationInflight.get(normalized);
+  }
+
+  const validationTask = fs
+    .exec(NFQWS_VALIDATION_COMMAND, [
+      'validate_nfqws_strategy_json',
+      normalized,
+    ])
+    .then((result) => {
+      const payload = JSON.parse(
+        (result && result.stdout ? result.stdout : '{}').trim() || '{}',
+      );
+      return cacheNfqwsRemoteValidation(normalized, {
+        valid: payload.valid === true,
+        message: payload.message || '',
+        needle: payload.needle || '',
+        needles: Array.isArray(payload.needles)
+          ? payload.needles.filter(Boolean)
+          : payload.needle
+            ? [payload.needle]
+            : [],
+      });
+    })
+    .catch((error) =>
+      cacheNfqwsRemoteValidation(
+        normalized,
+        buildNfqwsRemoteValidationFallback(error),
+      ),
+    )
+    .finally(() => {
+      nfqwsRemoteValidationInflight.delete(normalized);
+    });
+
+  nfqwsRemoteValidationInflight.set(normalized, validationTask);
+  return validationTask;
+}
+
+function getNfqwsForbiddenTokenInfo(token, index) {
+  const configFileMessage = _(
+    'External nfqws config files bypass Tachyon queue management and explicit validation.',
+  );
+  const hostSelectionMessage = _(
+    'Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE.',
+  );
+  const ipSelectionMessage = _(
+    'Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE.',
+  );
+  const placeholderMessage = _(
+    'Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies.',
+  );
+  const queueMessage = _(
+    'The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.',
+  );
+  const fwmarkMessage = _(
+    'The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.',
+  );
+  const daemonMessage = _(
+    'Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here.',
+  );
+  const dryRunMessage = _(
+    'This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here.',
+  );
+  const versionMessage = _(
+    'This field must start a working nfqws strategy; --version exits immediately and is not allowed here.',
+  );
+
+  if (index === 0 && (token.startsWith('@') || token.startsWith('$'))) {
+    return {
+      reason: configFileMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (token === '<HOSTLIST>' || token === '<HOSTLIST_NOAUTO>') {
+    return {
+      reason: placeholderMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (
+    token === '--hostlist' ||
+    token.startsWith('--hostlist=') ||
+    token === '--hostlist-domains' ||
+    token.startsWith('--hostlist-domains=') ||
+    token === '--hostlist-exclude' ||
+    token.startsWith('--hostlist-exclude=') ||
+    token === '--hostlist-exclude-domains' ||
+    token.startsWith('--hostlist-exclude-domains=') ||
+    token === '--hostlist-auto' ||
+    token.startsWith('--hostlist-auto=') ||
+    token === '--hostlist-auto-fail-threshold' ||
+    token.startsWith('--hostlist-auto-fail-threshold=') ||
+    token === '--hostlist-auto-fail-time' ||
+    token.startsWith('--hostlist-auto-fail-time=') ||
+    token === '--hostlist-auto-retrans-threshold' ||
+    token.startsWith('--hostlist-auto-retrans-threshold=') ||
+    token === '--hostlist-auto-debug' ||
+    token.startsWith('--hostlist-auto-debug=')
+  ) {
+    return {
+      reason: hostSelectionMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (
+    token === '--ipset' ||
+    token.startsWith('--ipset=') ||
+    token === '--ipset-ip' ||
+    token.startsWith('--ipset-ip=') ||
+    token === '--ipset-exclude' ||
+    token.startsWith('--ipset-exclude=') ||
+    token === '--ipset-exclude-ip' ||
+    token.startsWith('--ipset-exclude-ip=')
+  ) {
+    return {
+      reason: ipSelectionMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (token === '--qnum' || token.startsWith('--qnum=')) {
+    return {
+      reason: queueMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (
+    token === '--dpi-desync-fwmark' ||
+    token.startsWith('--dpi-desync-fwmark=')
+  ) {
+    return {
+      reason: fwmarkMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (token === '--daemon') {
+    return {
+      reason: daemonMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (token === '--dry-run') {
+    return {
+      reason: dryRunMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (token === '--version') {
+    return {
+      reason: versionMessage,
+      captureNextValue: false,
+    };
+  }
+
+  return null;
+}
+
+function buildNfqwsLocalAnalysis(value) {
+  const text = value ? `${value}` : '';
+  if (!text.trim().length) {
+    return {
+      valid: false,
+      message: _('NFQWS strategy cannot be empty'),
+      annotations: [],
+    };
+  }
+
+  if (text.trim() === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT) {
+    return { valid: true, message: '', annotations: [] };
+  }
+
+  const tokens = parseNfqwsRuntimeTokens(text);
+  const annotationMap = new Map();
+  const errors = [];
+
+  for (let index = 0; index < tokens.length; ) {
+    const token = tokens[index];
+    const bareToken = token.value.includes('=')
+      ? token.value.slice(0, token.value.indexOf('='))
+      : token.value;
+    const nextToken = tokens[index + 1] || null;
+
+    const forbidden = getNfqwsForbiddenTokenInfo(token.value, index);
+    if (forbidden) {
+      addAnnotationIssue(annotationMap, token, forbidden.reason);
+
+      let displayToken = token.value;
+
+      if (
+        forbidden.captureNextValue &&
+        nextToken &&
+        !nextToken.value.startsWith('--')
+      ) {
+        addAnnotationIssue(annotationMap, nextToken, forbidden.reason);
+        displayToken = `${displayToken} ${nextToken.value}`;
+        index += 2;
+      } else {
+        index += 1;
+      }
+
+      errors.push(`${displayToken}: ${forbidden.reason}`);
+      continue;
+    }
+
+    if (!token.value.startsWith('--')) {
+      const reason = _(
+        'Unexpected standalone token. Use explicit flags such as --name or --name=value.',
+      );
+      addAnnotationIssue(annotationMap, token, reason);
+      errors.push(`${token.value}: ${reason}`);
+      index += 1;
+      continue;
+    }
+
+    const mode = getNfqwsOptionArgumentMode(bareToken);
+    if (mode === 'unknown') {
+      const reason = _('Unknown NFQWS flag.');
+      addAnnotationIssue(annotationMap, token, reason);
+      errors.push(`${token.value}: ${reason}`);
+      index += 1;
+      continue;
+    }
+
+    if (mode === 'none') {
+      if (token.value.includes('=')) {
+        const reason = _('This flag does not accept a value.');
+        addAnnotationIssue(annotationMap, token, reason);
+        errors.push(`${token.value}: ${reason}`);
+      }
+
+      index += 1;
+      continue;
+    }
+
+    if (mode === 'optional') {
+      if (
+        nextToken &&
+        !token.value.includes('=') &&
+        !nextToken.value.startsWith('--')
+      ) {
+        const reason = _(
+          "Optional values must be attached with '=' here; a separate token would be ignored by nfqws.",
+        );
+        addAnnotationIssue(annotationMap, token, reason);
+        addAnnotationIssue(annotationMap, nextToken, reason);
+        errors.push(`${token.value} ${nextToken.value}: ${reason}`);
+        index += 2;
+      } else {
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (!token.value.includes('=')) {
+      if (!nextToken || nextToken.value.startsWith('--')) {
+        const reason = _('This option requires a value.');
+        addAnnotationIssue(annotationMap, token, reason);
+        errors.push(`${token.value}: ${reason}`);
+        index += 1;
+        continue;
+      }
+
+      index += 2;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  if (!errors.length) {
+    return { valid: true, message: '', annotations: [] };
+  }
+
+  return {
+    valid: false,
+    message: [getValidationHeaderText(), ...errors].join('\n'),
+    annotations: finalizeAnnotations(annotationMap),
+  };
+}
+
+function addNfqwsRemoteValidationNeedleAnnotations(
+  annotationMap,
+  tokens,
+  remoteValidation,
+  needle,
+) {
+  if (!needle.length) {
+    return;
+  }
+
+  let matched = false;
+
+  tokens.forEach((token) => {
+    const tokenValue = token.value || '';
+    const optionMatch =
+      needle.startsWith('--') &&
+      (tokenValue === needle || tokenValue.startsWith(`${needle}=`));
+    const valueMatch =
+      tokenValue === needle ||
+      tokenValue.endsWith(`=${needle}`) ||
+      (!needle.startsWith('--') && tokenValue.includes(`=${needle},`)) ||
+      (!needle.startsWith('--') && tokenValue.endsWith(`=${needle}`));
+
+    if (optionMatch || valueMatch) {
+      addAnnotationIssue(annotationMap, token, remoteValidation.message);
+      matched = true;
+    }
+  });
+
+  if (matched) {
+    return;
+  }
+
+  if (needle.startsWith('--')) {
+    tokens
+      .filter((token) => token.value && token.value.startsWith(needle))
+      .forEach((token) =>
+        addAnnotationIssue(annotationMap, token, remoteValidation.message),
+      );
+  }
+}
+
+function addNfqwsRemoteValidationAnnotations(
+  annotationMap,
+  tokens,
+  remoteValidation,
+) {
+  const needles =
+    remoteValidation &&
+    Array.isArray(remoteValidation.needles) &&
+    remoteValidation.needles.length
+      ? remoteValidation.needles.map((needle) => `${needle}`)
+      : remoteValidation && remoteValidation.needle
+        ? [`${remoteValidation.needle}`]
+        : [];
+
+  needles.forEach((needle) =>
+    addNfqwsRemoteValidationNeedleAnnotations(
+      annotationMap,
+      tokens,
+      remoteValidation,
+      needle,
+    ),
+  );
+}
+
+function analyzeNfqwsStrategy(value) {
+  const localAnalysis = buildNfqwsLocalAnalysis(value);
+  if (!localAnalysis.valid) {
+    return localAnalysis;
+  }
+
+  const remoteValidation = getCachedNfqwsRemoteValidation(value);
+  if (!remoteValidation || remoteValidation.valid) {
+    return localAnalysis;
+  }
+
+  const text = value ? `${value}` : '';
+  const tokens = parseNfqwsRuntimeTokens(text);
+  const annotationMap = new Map();
+
+  localAnalysis.annotations.forEach((annotation) =>
+    addAnnotationIssue(annotationMap, annotation, annotation.message),
+  );
+  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
+
+  return {
+    valid: false,
+    message: [getValidationHeaderText(), remoteValidation.message].join('\n'),
+    annotations: finalizeAnnotations(annotationMap),
+  };
+}
+
+function normalizeNfqws2StrategyValue(value) {
+  const normalized = normalizeNfqwsStrategyWhitespace(value);
+  return normalized.length ? normalized : ZAPRET2_DEFAULT_NFQWS2_OPT;
+}
+
+function getCachedNfqws2RemoteValidation(value) {
+  const normalized = normalizeNfqws2StrategyValue(value);
+  return normalized.length
+    ? nfqws2RemoteValidationCache.get(normalized) || null
+    : null;
+}
+
+function cacheNfqws2RemoteValidation(value, result) {
+  const normalized = normalizeNfqws2StrategyValue(value);
+  if (!normalized.length) {
+    return result;
+  }
+
+  const cached = {
+    valid: result && result.valid === true,
+    message: result && result.message ? `${result.message}` : '',
+    needle: result && result.needle ? `${result.needle}` : '',
+    needles:
+      result && Array.isArray(result.needles)
+        ? result.needles.filter(Boolean).map((item) => `${item}`)
+        : result && result.needle
+          ? [`${result.needle}`]
+          : [],
+  };
+
+  if (nfqws2RemoteValidationCache.size >= 100) {
+    nfqws2RemoteValidationCache.delete(
+      nfqws2RemoteValidationCache.keys().next().value,
+    );
+  }
+  nfqws2RemoteValidationCache.set(normalized, cached);
+  return cached;
+}
+
+function buildNfqws2RemoteValidationFallback(error) {
+  const message =
+    error && error.message
+      ? `${error.message}`
+      : _('Unable to validate the NFQWS2 strategy through the backend parser.');
+
+  return {
+    valid: false,
+    message: _('Backend validation failed: %s').format(message),
+    needle: '',
+    needles: [],
+  };
+}
+
+function validateNfqws2StrategyRemotely(value) {
+  const normalized = normalizeNfqws2StrategyValue(value);
+
+  if (!normalized.length) {
+    return Promise.resolve({
+      valid: true,
+      message: '',
+      needle: '',
+      needles: [],
+    });
+  }
+
+  if (nfqws2RemoteValidationCache.has(normalized)) {
+    return Promise.resolve(nfqws2RemoteValidationCache.get(normalized));
+  }
+
+  if (nfqws2RemoteValidationInflight.has(normalized)) {
+    return nfqws2RemoteValidationInflight.get(normalized);
+  }
+
+  const validationTask = fs
+    .exec(NFQWS_VALIDATION_COMMAND, [
+      'validate_nfqws2_strategy_json',
+      normalized,
+    ])
+    .then((result) => {
+      const payload = JSON.parse(
+        (result && result.stdout ? result.stdout : '{}').trim() || '{}',
+      );
+      return cacheNfqws2RemoteValidation(normalized, {
+        valid: payload.valid === true,
+        message: payload.message || '',
+        needle: payload.needle || '',
+        needles: Array.isArray(payload.needles)
+          ? payload.needles.filter(Boolean)
+          : payload.needle
+            ? [payload.needle]
+            : [],
+      });
+    })
+    .catch((error) =>
+      cacheNfqws2RemoteValidation(
+        normalized,
+        buildNfqws2RemoteValidationFallback(error),
+      ),
+    )
+    .finally(() => {
+      nfqws2RemoteValidationInflight.delete(normalized);
+    });
+
+  nfqws2RemoteValidationInflight.set(normalized, validationTask);
+  return validationTask;
+}
+
+function getNfqws2ForbiddenTokenInfo(token, index, nextToken) {
+  const configFileMessage = _(
+    'External nfqws2 config files bypass Tachyon queue management and explicit validation.',
+  );
+  const hostSelectionMessage = _(
+    'Resource selection by hostname inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.',
+  );
+  const ipSelectionMessage = _(
+    'Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.',
+  );
+  const placeholderMessage = _(
+    'Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies.',
+  );
+  const queueMessage = _(
+    'The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.',
+  );
+  const fwmarkMessage = _(
+    'The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.',
+  );
+  const fuzzMessage = _(
+    'Fuzzing is not supported here because Tachyon needs deterministic runtime validation.',
+  );
+  const interceptMessage = _(
+    'Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE.',
+  );
+  const daemonMessage = _(
+    'Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here.',
+  );
+  const dryRunMessage = _(
+    'This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here.',
+  );
+  const versionMessage = _(
+    'This field must start a working nfqws2 strategy; --version exits immediately and is not allowed here.',
+  );
+
+  if (index === 0 && (token.startsWith('@') || token.startsWith('$'))) {
+    return {
+      reason: configFileMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (token === '<HOSTLIST>' || token === '<HOSTLIST_NOAUTO>') {
+    return {
+      reason: placeholderMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (
+    token === '--hostlist' ||
+    token.startsWith('--hostlist=') ||
+    token === '--hostlist-domains' ||
+    token.startsWith('--hostlist-domains=') ||
+    token === '--hostlist-exclude' ||
+    token.startsWith('--hostlist-exclude=') ||
+    token === '--hostlist-exclude-domains' ||
+    token.startsWith('--hostlist-exclude-domains=') ||
+    token === '--hostlist-auto' ||
+    token.startsWith('--hostlist-auto=') ||
+    token === '--hostlist-auto-fail-threshold' ||
+    token.startsWith('--hostlist-auto-fail-threshold=') ||
+    token === '--hostlist-auto-fail-time' ||
+    token.startsWith('--hostlist-auto-fail-time=') ||
+    token === '--hostlist-auto-retrans-threshold' ||
+    token.startsWith('--hostlist-auto-retrans-threshold=') ||
+    token === '--hostlist-auto-debug' ||
+    token.startsWith('--hostlist-auto-debug=') ||
+    token === '--hostlist-auto-retrans-reset' ||
+    token.startsWith('--hostlist-auto-retrans-reset=')
+  ) {
+    return {
+      reason: hostSelectionMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (
+    token === '--ipset' ||
+    token.startsWith('--ipset=') ||
+    token === '--ipset-ip' ||
+    token.startsWith('--ipset-ip=') ||
+    token === '--ipset-exclude' ||
+    token.startsWith('--ipset-exclude=') ||
+    token === '--ipset-exclude-ip' ||
+    token.startsWith('--ipset-exclude-ip=')
+  ) {
+    return {
+      reason: ipSelectionMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (token === '--qnum' || token.startsWith('--qnum=')) {
+    return {
+      reason: queueMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (
+    token === '--fwmark' ||
+    token.startsWith('--fwmark=') ||
+    token === '--dpi-desync-fwmark' ||
+    token.startsWith('--dpi-desync-fwmark=')
+  ) {
+    return {
+      reason: fwmarkMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (token === '--fuzz' || token.startsWith('--fuzz=')) {
+    return {
+      reason: fuzzMessage,
+      captureNextValue: !token.includes('='),
+    };
+  }
+
+  if (
+    token === '--intercept=0' ||
+    token === '--intercept=false' ||
+    token === '--intercept=no' ||
+    (token === '--intercept' && nextToken && nextToken.value === '0')
+  ) {
+    return {
+      reason: interceptMessage,
+      captureNextValue: token === '--intercept',
+    };
+  }
+
+  if (token === '--daemon') {
+    return {
+      reason: daemonMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (token === '--dry-run') {
+    return {
+      reason: dryRunMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (token === '--version') {
+    return {
+      reason: versionMessage,
+      captureNextValue: false,
+    };
+  }
+
+  return null;
+}
+
+function buildNfqws2LocalAnalysis(value) {
+  const text = value ? `${value}` : '';
+  if (!text.trim().length) {
+    return {
+      valid: false,
+      message: _('NFQWS2 strategy cannot be empty'),
+      annotations: [],
+    };
+  }
+
+  const tokens = parseNfqwsRuntimeTokens(text);
+  const annotationMap = new Map();
+  const errors = [];
+
+  for (let index = 0; index < tokens.length; ) {
+    const token = tokens[index];
+    const bareToken = token.value.includes('=')
+      ? token.value.slice(0, token.value.indexOf('='))
+      : token.value;
+    const nextToken = tokens[index + 1] || null;
+
+    const forbidden = getNfqws2ForbiddenTokenInfo(
+      token.value,
+      index,
+      nextToken,
+    );
+    if (forbidden) {
+      addAnnotationIssue(annotationMap, token, forbidden.reason);
+
+      let displayToken = token.value;
+
+      if (
+        forbidden.captureNextValue &&
+        nextToken &&
+        !nextToken.value.startsWith('--')
+      ) {
+        addAnnotationIssue(annotationMap, nextToken, forbidden.reason);
+        displayToken = `${displayToken} ${nextToken.value}`;
+        index += 2;
+      } else {
+        index += 1;
+      }
+
+      errors.push(`${displayToken}: ${forbidden.reason}`);
+      continue;
+    }
+
+    if (!token.value.startsWith('--')) {
+      const reason = _(
+        'Unexpected standalone token. Use explicit flags such as --name or --name=value.',
+      );
+      addAnnotationIssue(annotationMap, token, reason);
+      errors.push(`${token.value}: ${reason}`);
+      index += 1;
+      continue;
+    }
+
+    const mode = getNfqws2OptionArgumentMode(bareToken);
+    if (mode === 'unknown') {
+      const reason = _('Unknown NFQWS2 flag.');
+      addAnnotationIssue(annotationMap, token, reason);
+      errors.push(`${token.value}: ${reason}`);
+      index += 1;
+      continue;
+    }
+
+    if (mode === 'none') {
+      if (token.value.includes('=')) {
+        const reason = _('This flag does not accept a value.');
+        addAnnotationIssue(annotationMap, token, reason);
+        errors.push(`${token.value}: ${reason}`);
+      }
+
+      index += 1;
+      continue;
+    }
+
+    if (mode === 'optional') {
+      if (
+        nextToken &&
+        !token.value.includes('=') &&
+        !nextToken.value.startsWith('--')
+      ) {
+        const reason = _(
+          "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2.",
+        );
+        addAnnotationIssue(annotationMap, token, reason);
+        addAnnotationIssue(annotationMap, nextToken, reason);
+        errors.push(`${token.value} ${nextToken.value}: ${reason}`);
+        index += 2;
+      } else {
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (!token.value.includes('=')) {
+      if (!nextToken || nextToken.value.startsWith('--')) {
+        const reason = _('This option requires a value.');
+        addAnnotationIssue(annotationMap, token, reason);
+        errors.push(`${token.value}: ${reason}`);
+        index += 1;
+        continue;
+      }
+
+      index += 2;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  if (!errors.length) {
+    return { valid: true, message: '', annotations: [] };
+  }
+
+  return {
+    valid: false,
+    message: [getValidationHeaderText(), ...errors].join('\n'),
+    annotations: finalizeAnnotations(annotationMap),
+  };
+}
+
+function analyzeNfqws2Strategy(value) {
+  const localAnalysis = buildNfqws2LocalAnalysis(value);
+  if (!localAnalysis.valid) {
+    return localAnalysis;
+  }
+
+  const remoteValidation = getCachedNfqws2RemoteValidation(value);
+  if (!remoteValidation || remoteValidation.valid) {
+    return localAnalysis;
+  }
+
+  const text = value ? `${value}` : '';
+  const tokens = parseNfqwsRuntimeTokens(text);
+  const annotationMap = new Map();
+
+  localAnalysis.annotations.forEach((annotation) =>
+    addAnnotationIssue(annotationMap, annotation, annotation.message),
+  );
+  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
+
+  return {
+    valid: false,
+    message: [getValidationHeaderText(), remoteValidation.message].join('\n'),
+    annotations: finalizeAnnotations(annotationMap),
+  };
+}
+
+function normalizeByedpiStrategyWhitespace(value) {
+  return value ? `${value}`.replace(/\s+/g, ' ').trim() : '';
+}
+
+function normalizeByedpiStrategyValue(value) {
+  const normalized = normalizeByedpiStrategyWhitespace(value);
+  return normalized.length ? normalized : BYEDPI_DEFAULT_CMD_OPTS;
+}
+
+function getCachedByedpiRemoteValidation(value) {
+  const normalized = normalizeByedpiStrategyValue(value);
+  return normalized.length
+    ? byedpiRemoteValidationCache.get(normalized) || null
+    : null;
+}
+
+function cacheByedpiRemoteValidation(value, result) {
+  const normalized = normalizeByedpiStrategyValue(value);
+  if (!normalized.length) {
+    return result;
+  }
+
+  const cached = {
+    valid: result && result.valid === true,
+    message: result && result.message ? `${result.message}` : '',
+    needle: result && result.needle ? `${result.needle}` : '',
+    needles:
+      result && Array.isArray(result.needles)
+        ? result.needles.filter(Boolean).map((item) => `${item}`)
+        : result && result.needle
+          ? [`${result.needle}`]
+          : [],
+  };
+
+  if (byedpiRemoteValidationCache.size >= 100) {
+    byedpiRemoteValidationCache.delete(
+      byedpiRemoteValidationCache.keys().next().value,
+    );
+  }
+  byedpiRemoteValidationCache.set(normalized, cached);
+  return cached;
+}
+
+function buildByedpiRemoteValidationFallback(error) {
+  const message =
+    error && error.message
+      ? `${error.message}`
+      : _('Unable to validate the ByeDPI strategy through the backend parser.');
+
+  return {
+    valid: false,
+    message: _('Backend validation failed: %s').format(message),
+    needle: '',
+    needles: [],
+  };
+}
+
+function validateByedpiStrategyRemotely(value) {
+  const normalized = normalizeByedpiStrategyValue(value);
+
+  if (!normalized.length) {
+    return Promise.resolve({
+      valid: true,
+      message: '',
+      needle: '',
+      needles: [],
+    });
+  }
+
+  if (byedpiRemoteValidationCache.has(normalized)) {
+    return Promise.resolve(byedpiRemoteValidationCache.get(normalized));
+  }
+
+  if (byedpiRemoteValidationInflight.has(normalized)) {
+    return byedpiRemoteValidationInflight.get(normalized);
+  }
+
+  const validationTask = fs
+    .exec(NFQWS_VALIDATION_COMMAND, [
+      'validate_byedpi_strategy_json',
+      normalized,
+    ])
+    .then((result) => {
+      const payload = JSON.parse(
+        (result && result.stdout ? result.stdout : '{}').trim() || '{}',
+      );
+      return cacheByedpiRemoteValidation(normalized, {
+        valid: payload.valid === true,
+        message: payload.message || '',
+        needle: payload.needle || '',
+        needles: Array.isArray(payload.needles)
+          ? payload.needles.filter(Boolean)
+          : payload.needle
+            ? [payload.needle]
+            : [],
+      });
+    })
+    .catch((error) =>
+      cacheByedpiRemoteValidation(
+        normalized,
+        buildByedpiRemoteValidationFallback(error),
+      ),
+    )
+    .finally(() => {
+      byedpiRemoteValidationInflight.delete(normalized);
+    });
+
+  byedpiRemoteValidationInflight.set(normalized, validationTask);
+  return validationTask;
+}
+
+function getByedpiShortOptionName(token) {
+  return token.length > 2 ? token.slice(0, 2) : token;
+}
+
+function byedpiTokenLooksLikeOption(token) {
+  return /^--.+/.test(token) || /^-[A-Za-z].*/.test(token);
+}
+
+function getByedpiControlledTokenInfo(token) {
+  const listenMessage = _(
+    'ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy.',
+  );
+  const transparentMessage = _(
+    'Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS.',
+  );
+  const daemonMessage = _(
+    'Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here.',
+  );
+  const pidfileMessage = _(
+    'Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here.',
+  );
+  const exitMessage = _(
+    'This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here.',
+  );
+
+  if (
+    token === '--ip' ||
+    token.startsWith('--ip=') ||
+    token === '-i' ||
+    /^-i.+/.test(token) ||
+    token === '--port' ||
+    token.startsWith('--port=') ||
+    token === '-p' ||
+    /^-p.+/.test(token)
+  ) {
+    return {
+      reason: listenMessage,
+      captureNextValue:
+        token === '--ip' ||
+        token === '-i' ||
+        token === '--port' ||
+        token === '-p',
+    };
+  }
+
+  if (token === '--transparent' || token === '-E' || /^-E.+/.test(token)) {
+    return {
+      reason: transparentMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (token === '--daemon' || token === '-D' || /^-D.+/.test(token)) {
+    return {
+      reason: daemonMessage,
+      captureNextValue: false,
+    };
+  }
+
+  if (
+    token === '--pidfile' ||
+    token.startsWith('--pidfile=') ||
+    token === '-w' ||
+    /^-w.+/.test(token)
+  ) {
+    return {
+      reason: pidfileMessage,
+      captureNextValue: token === '--pidfile' || token === '-w',
+    };
+  }
+
+  if (
+    token === '--help' ||
+    token === '-h' ||
+    /^-h.+/.test(token) ||
+    token === '--version' ||
+    token === '-v' ||
+    /^-v.+/.test(token)
+  ) {
+    return {
+      reason: exitMessage,
+      captureNextValue: false,
+    };
+  }
+
+  return null;
+}
+
+function validateByedpiStrategyToken(token, nextToken) {
+  const controlled = getByedpiControlledTokenInfo(token);
+  if (controlled) {
+    return {
+      valid: false,
+      reason: controlled.reason,
+      captureNextValue: controlled.captureNextValue,
+    };
+  }
+
+  if (/^--[^=]+=/.test(token)) {
+    const base = token.split('=', 1)[0];
+    const value = token.slice(base.length + 1);
+
+    if (BYEDPI_LONG_VALUE_OPTIONS.has(base)) {
+      return value.length
+        ? { valid: true, consumeNext: false }
+        : {
+            valid: false,
+            reason: _('ByeDPI option requires a value: %s').format(base),
+            captureNextValue: false,
+          };
+    }
+
+    if (BYEDPI_LONG_FLAG_OPTIONS.has(base)) {
+      return {
+        valid: false,
+        reason: _('ByeDPI option does not accept a value: %s').format(base),
+        captureNextValue: false,
+      };
+    }
+
+    return {
+      valid: false,
+      reason: _('Unknown ByeDPI option: %s').format(base),
+      captureNextValue: false,
+    };
+  }
+
+  if (/^--.+/.test(token)) {
+    if (BYEDPI_LONG_VALUE_OPTIONS.has(token)) {
+      return nextToken && !byedpiTokenLooksLikeOption(nextToken)
+        ? { valid: true, consumeNext: true }
+        : {
+            valid: false,
+            reason: _('ByeDPI option requires a value: %s').format(token),
+            captureNextValue: false,
+          };
+    }
+
+    if (BYEDPI_LONG_FLAG_OPTIONS.has(token)) {
+      return { valid: true, consumeNext: false };
+    }
+
+    return {
+      valid: false,
+      reason: _('Unknown ByeDPI option: %s').format(token),
+      captureNextValue: false,
+    };
+  }
+
+  if (/^-./.test(token)) {
+    if (token === '-') {
+      return {
+        valid: false,
+        reason: _('Unexpected ByeDPI strategy argument: %s').format(token),
+        captureNextValue: false,
+      };
+    }
+
+    const short = getByedpiShortOptionName(token);
+    const compactValue = token.slice(short.length);
+
+    if (BYEDPI_SHORT_VALUE_OPTIONS.has(short)) {
+      if (token === short) {
+        return nextToken && !byedpiTokenLooksLikeOption(nextToken)
+          ? { valid: true, consumeNext: true }
+          : {
+              valid: false,
+              reason: _('ByeDPI option requires a value: %s').format(short),
+              captureNextValue: false,
+            };
+      }
+
+      return compactValue.length
+        ? { valid: true, consumeNext: false }
+        : {
+            valid: false,
+            reason: _('ByeDPI option requires a value: %s').format(short),
+            captureNextValue: false,
+          };
+    }
+
+    if (BYEDPI_SHORT_FLAG_OPTIONS.has(short)) {
+      return token === short
+        ? { valid: true, consumeNext: false }
+        : {
+            valid: false,
+            reason: _(
+              'ByeDPI option does not accept a compact value: %s',
+            ).format(short),
+            captureNextValue: false,
+          };
+    }
+
+    return {
+      valid: false,
+      reason: _('Unknown ByeDPI option: %s').format(short),
+      captureNextValue: false,
+    };
+  }
+
+  return {
+    valid: false,
+    reason: _('Unexpected ByeDPI strategy argument: %s').format(token),
+    captureNextValue: false,
+  };
+}
+
+function buildByedpiLocalAnalysis(value) {
+  const text = value ? `${value}` : '';
+  if (!text.trim().length) {
+    return {
+      valid: false,
+      message: _('ByeDPI strategy cannot be empty'),
+      annotations: [],
+    };
+  }
+
+  const tokens = parseNfqwsRuntimeTokens(text);
+  const annotationMap = new Map();
+  const errors = [];
+
+  for (let index = 0; index < tokens.length; ) {
+    const token = tokens[index];
+    const nextToken = tokens[index + 1] || null;
+    const tokenValidation = validateByedpiStrategyToken(
+      token.value,
+      nextToken ? nextToken.value : null,
+    );
+
+    if (tokenValidation.valid) {
+      index += tokenValidation.consumeNext ? 2 : 1;
+      continue;
+    }
+
+    addAnnotationIssue(annotationMap, token, tokenValidation.reason);
+    let displayToken = token.value;
+
+    if (
+      tokenValidation.captureNextValue &&
+      nextToken &&
+      !nextToken.value.startsWith('-')
+    ) {
+      addAnnotationIssue(annotationMap, nextToken, tokenValidation.reason);
+      displayToken = `${displayToken} ${nextToken.value}`;
+      index += 2;
+    } else {
+      index += 1;
+    }
+
+    errors.push(`${displayToken}: ${tokenValidation.reason}`);
+  }
+
+  if (!errors.length) {
+    return { valid: true, message: '', annotations: [] };
+  }
+
+  return {
+    valid: false,
+    message: [getValidationHeaderText(), ...errors].join('\n'),
+    annotations: finalizeAnnotations(annotationMap),
+  };
+}
+
+function analyzeByedpiStrategy(value) {
+  const localAnalysis = buildByedpiLocalAnalysis(value);
+  if (!localAnalysis.valid) {
+    return localAnalysis;
+  }
+
+  const remoteValidation = getCachedByedpiRemoteValidation(value);
+  if (!remoteValidation || remoteValidation.valid) {
+    return localAnalysis;
+  }
+
+  const text = value ? `${value}` : '';
+  const tokens = parseNfqwsRuntimeTokens(text);
+  const annotationMap = new Map();
+
+  localAnalysis.annotations.forEach((annotation) =>
+    addAnnotationIssue(annotationMap, annotation, annotation.message),
+  );
+  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
+
+  return {
+    valid: false,
+    message: [getValidationHeaderText(), remoteValidation.message].join('\n'),
+    annotations: finalizeAnnotations(annotationMap),
+  };
+}
+
+function configureTextareaOption(option, analyzer, remoteValidationAttacher) {
+  const originalRenderWidget = option.renderWidget;
+
+  option.renderWidget = function (section_id, option_index, cfgvalue) {
+    const node = originalRenderWidget.call(
+      this,
+      section_id,
+      option_index,
+      cfgvalue,
+    );
+    const textarea =
+      node && typeof node.querySelector === 'function'
+        ? node.querySelector('textarea')
+        : node;
+
+    if (textarea) {
+      applyTextareaInputAttributes(textarea);
+      if (typeof analyzer === 'function') {
+        attachAnnotatedTextarea(textarea, analyzer);
+      }
+      if (typeof remoteValidationAttacher === 'function') {
+        remoteValidationAttacher(this, section_id, textarea);
+      }
+    }
+
+    return node;
+  };
+}
+
+function getOptionTextarea(option, section_id) {
+  const field =
+    typeof option.map.findElement === 'function'
+      ? option.map.findElement('data-field', option.cbid(section_id))
+      : null;
+
+  if (field && typeof field.querySelector === 'function') {
+    return field.querySelector('textarea');
+  }
+
+  const elem =
+    typeof option.getUIElement === 'function'
+      ? option.getUIElement(section_id)
+      : null;
+  const node = elem && elem.node ? elem.node : null;
+
+  if (node && node.nodeName === 'TEXTAREA') {
+    return node;
+  }
+
+  return node && typeof node.querySelector === 'function'
+    ? node.querySelector('textarea')
+    : null;
+}
+
+function rejectStrategyValidation(option, section_id, message) {
+  const title = option.stripTags(option.title).trim();
+  const error = message || option.getValidationError(section_id) || '';
+
+  return Promise.reject(
+    new TypeError(
+      `${_('Option "%s" contains an invalid input value.').format(title || option.option)} ${error}`,
+    ),
+  );
+}
+
+function parseStrategyWithRemoteValidation(section_id, config) {
+  const active = this.isActive(section_id);
+
+  if (active) {
+    if (typeof this.triggerValidation === 'function') {
+      this.triggerValidation(section_id);
+    }
+
+    if (!this.isValid(section_id)) {
+      return rejectStrategyValidation(
+        this,
+        section_id,
+        this.getValidationError(section_id),
+      );
+    }
+
+    const cval = this.cfgvalue(section_id);
+    const fval = this.formvalue(section_id);
+    const cvalString = cval == null ? '' : `${cval}`;
+    const fvalString = fval == null ? '' : `${fval}`;
+    const shouldWrite = this.forcewrite || cvalString !== fvalString;
+
+    if (!shouldWrite) {
+      return Promise.resolve();
+    }
+
+    return config.remoteValidate(fvalString).then((result) => {
+      const textarea = getOptionTextarea(this, section_id);
+
+      if (textarea) {
+        refreshAnnotatedTextareaValidation(this, section_id, textarea);
+      }
+
+      if (typeof this.triggerValidation === 'function') {
+        this.triggerValidation(section_id);
+      }
+
+      if (!result || result.valid !== true) {
+        return rejectStrategyValidation(
+          this,
+          section_id,
+          result && result.message ? result.message : config.invalidMessage,
+        );
+      }
+
+      return Promise.resolve(this.write(section_id, fvalString));
+    });
+  }
+
+  if (!this.retain) {
+    return Promise.resolve(this.remove(section_id));
+  }
+
+  return Promise.resolve();
+}
+
+function parseNfqwsStrategyOnSave(section_id) {
+  return parseStrategyWithRemoteValidation.call(this, section_id, {
+    remoteValidate: validateNfqwsStrategyRemotely,
+    invalidMessage: _(
+      'Unable to validate the NFQWS strategy through the backend parser.',
+    ),
+  });
+}
+
+function parseNfqws2StrategyOnSave(section_id) {
+  return parseStrategyWithRemoteValidation.call(this, section_id, {
+    remoteValidate: validateNfqws2StrategyRemotely,
+    invalidMessage: _(
+      'Unable to validate the NFQWS2 strategy through the backend parser.',
+    ),
+  });
+}
+
+function addDynamicConditionField(section, config) {
+  const o = section.taboption(
+    'conditions',
+    form.DynamicList,
+    config.key,
+    config.label,
+    config.description,
+  );
+
+  o.modalonly = true;
+  if (config.placeholder) {
+    o.placeholder = config.placeholder;
+  }
+  if (config.dynamicValidate) {
+    o.validate = config.dynamicValidate;
+  }
+
+  o.load = function (section_id) {
+    const values = getConfigListValues(section_id, config.key);
+    if (values.length) {
+      return values;
+    }
+
+    const legacyText = getSectionOrLinkedConditionOption(
+      section_id,
+      `${config.key}_text`,
+    );
+    return legacyText ? main.parseValueList(legacyText) : [];
+  };
+
+  o.write = function (section_id, value) {
+    writeListOption(section_id, config.key, value);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    syncLinkedConditionOption(section_id, `${config.key}_text`, null);
+    syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
+  };
+
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, config.key);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    syncLinkedConditionOption(section_id, config.key, null);
+    syncLinkedConditionOption(section_id, `${config.key}_text`, null);
+    syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
+  };
+
+  return o;
+}
+
+function addLocalDeviceSubnetDynamicField(section, config) {
+  const o = section.taboption(
+    'conditions',
+    form.DynamicList,
+    config.key,
+    config.label,
+    config.description,
+  );
+
+  o.modalonly = true;
+  o.placeholder = _('Device or IP');
+  o.validate = function (_section_id, value) {
+    if (!value || value.length === 0) {
+      return true;
+    }
+
+    const validation = main.validateSubnet(value);
+    return validation.valid ? true : validation.message;
+  };
+  o.load = function (section_id) {
+    const values = getConfigListValues(section_id, config.key);
+    if (values.length) {
+      return values;
+    }
+
+    const legacyText = getSectionOrLinkedConditionOption(
+      section_id,
+      `${config.key}_text`,
+    );
+    return legacyText ? main.parseValueList(legacyText) : [];
+  };
+  o.write = function (section_id, value) {
+    writeListOption(section_id, config.key, value);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    syncLinkedConditionOption(section_id, `${config.key}_text`, null);
+    syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, config.key);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    syncLinkedConditionOption(section_id, config.key, null);
+    syncLinkedConditionOption(section_id, `${config.key}_text`, null);
+    syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
+  };
+  o.renderWidget = function (section_id, _option_index, cfgvalue) {
+    return localDevices.createLocalDeviceDynamicListWidget(
+      this,
+      section_id,
+      cfgvalue,
+    );
+  };
+
+  return o;
+}
+
+function addTextConditionField(section, config) {
+  const optionName = config.optionName || `${config.key}_text`;
+  const legacyTextOptionName =
+    config.legacyTextOptionName || `${config.key}_text`;
+  const o = section.taboption(
+    'conditions',
+    form.TextValue,
+    optionName,
+    config.label,
+    config.description,
+  );
+
+  o.rows = 8;
+  o.wrap = 'soft';
+  o.textarea = true;
+  o.modalonly = true;
+  if (config.textAnalyze) {
+    o.validate = function (_section_id, value) {
+      const analysis = config.textAnalyze(value);
+      return analysis.valid ? true : analysis.message;
+    };
+  } else if (config.textValidate) {
+    o.validate = config.textValidate;
+  }
+  configureTextareaOption(o, config.textAnalyze);
+
+  o.load = function (section_id) {
+    if (typeof config.loadText === 'function') {
+      return config.loadText(section_id);
+    }
+
+    const textValue =
+      getSectionOrLinkedConditionOption(section_id, optionName) ||
+      getSectionOrLinkedConditionOption(section_id, legacyTextOptionName);
+    if (textValue) {
+      return valuesToText(textValue);
+    }
+
+    return valuesToText(
+      getSectionOrLinkedConditionOption(section_id, config.key),
+    );
+  };
+
+  o.write = function (section_id, value) {
+    const normalized = value ? `${value}`.trim() : '';
+
+    if (normalized.length) {
+      uci.set(UCI_PACKAGE, section_id, optionName, normalized);
+      syncLinkedConditionOption(section_id, optionName, normalized);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, optionName);
+      syncLinkedConditionOption(section_id, optionName, null);
+    }
+
+    if (config.key !== optionName) {
+      uci.unset(UCI_PACKAGE, section_id, config.key);
+      syncLinkedConditionOption(section_id, config.key, null);
+    }
+    if (legacyTextOptionName !== optionName) {
+      uci.unset(UCI_PACKAGE, section_id, legacyTextOptionName);
+      syncLinkedConditionOption(section_id, legacyTextOptionName, null);
+    }
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
+
+    if (typeof config.afterWrite === 'function') {
+      config.afterWrite(section_id);
+    }
+  };
+
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, optionName);
+    syncLinkedConditionOption(section_id, optionName, null);
+    if (config.key !== optionName) {
+      uci.unset(UCI_PACKAGE, section_id, config.key);
+      syncLinkedConditionOption(section_id, config.key, null);
+    }
+    if (legacyTextOptionName !== optionName) {
+      uci.unset(UCI_PACKAGE, section_id, legacyTextOptionName);
+      syncLinkedConditionOption(section_id, legacyTextOptionName, null);
+    }
+    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
+    if (typeof config.afterWrite === 'function') {
+      config.afterWrite(section_id);
+    }
+  };
+
+  return o;
+}
+
+var DOMAIN_LIST_HINTS = {
+  russia_inside:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)',
+  geoblock:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] 150+ зарубежных сервисов, закрывших доступ с российских IP: PayPal, Notion, Canva, Trello, Jira, Zoom, Intel, Dell, Coursera, JetBrains, Adobe, GitLab',
+  block:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Домены и сайты из официальной выгрузки запрещённых ресурсов Роскомнадзора',
+  ru_blocked:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РКН без мёртвых сайтов)',
+  ru_blocked_all:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Полная нефильтрованная выгрузка всех доменов, поддоменов и зеркал из реестра блокировок РФ и ТСПУ',
+  antifilter:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Народный список доменов и сервисов, заблокированных РКН или замедляемых на ТСПУ в России',
+  refilter:
+    '[Маршрут: В Прокси / VPN] Выверенный список реальных блокировок РКН и геоблока западных сервисов без избыточных доменов',
+  russia_outside:
+    '[Маршрут: В Прокси с IP РФ (из-за рубежа) или Direct (в РФ)] Сервисы РФ: Госуслуги, банки, Ozon, WB, Кинопоиск, Иви, Wink, РЖД',
+  ru_whitelist:
+    '[Маршрут: Напрямую (Direct)] Госуслуги, ФНС, банки РФ (Сбер, Т-Банк, Альфа, ВТБ), Ozon, WB, Авито, Яндекс, VK, РЖД, капчи и корневые сертификаты',
+  ru_domains:
+    '[Маршрут: Напрямую (Direct)] Все национальные зоны (.ru, .рф, .su, .by, .kz) и домены компаний РФ (Яндекс, VK, Mail.ru, Kaspersky, 1С, 2ГИС)',
+  ru_only_inside:
+    '[Маршрут: Строго Напрямую (Direct)] Госпорталы, банки, суды, ЕМИАС и сервисы ЖКХ РФ, жёстко блокирующие вход с зарубежных и VPN IP-адресов',
+  push: '[Маршрут: Напрямую (Direct)] Серверы мобильных и системных push-уведомлений: Apple APNs, Google FCM, Huawei, Xiaomi, Samsung, Windows WNS',
+  ai_all:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Hugging Face',
+  openai:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] ChatGPT, Sora, GPT API, o1/o3 и статика (chatgpt.com, openai.com, sora.com, oaistatic.com, oaiusercontent.com)',
+  anthropic:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Нейросеть Claude AI, Claude Code, Console и API (claude.ai, anthropic.com, claudeusercontent.com)',
+  google_ai:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Gemini, AI Studio, NotebookLM, DeepMind и Vertex AI (gemini.google.com, aistudio.google.com, notebooklm.google.com)',
+  xai: '[Маршрут: Только в Прокси / VPN — геоблок по IP] Нейросеть Grok от xAI (grok.com, x.ai, api.x.ai и медиа-CDN)',
+  youtube:
+    '[Маршрут: В Обход DPI (Desync / Zapret) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)',
+  twitch:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)',
+  twitch_ads:
+    '[Маршрут: Только в Прокси / VPN] Серверы манифестов качества видео и рекламы Twitch (usher.ttvnw.net, gql.twitch.tv) — отключает рекламу и разблокирует 1080p60/1440p без проксирования видеопотока',
+  spotify:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Музыкальный стриминг, аудио-CDN и клиентские API (spotify.com, scdn.co, spotifycdn.com, akamaized.net)',
+  netflix:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Онлайн-кинотеатр, видеопотоки и статика (netflix.com, nflxvideo.net, nflximg.net, nflxext.com, fast.com)',
+  tiktok:
+    '[Маршрут: Только в Прокси / VPN — региональный блок РФ] Приложение, веб-версия и медиа-CDN ByteDance (tiktok.com, tiktokv.com, tiktokcdn.com) для снятия ограничений на новые видео',
+  hdrezka:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Онлайн-кинотеатр HDRezka, видео-балансеры (Voidboost) и актуальные зеркала (rezka.ag, hdrezka.ag, voidboost.cc)',
+  anime:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Популярные аниме-порталы и плееры: Shikimori, AnimeGO, Jut.su, Kodik, Anilibria, Crunchyroll, MyAnimeList',
+  pinterest:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Визуальная соцсеть и серверы картинок (pinterest.com, pin.it, i.pinimg.com — лечит незагрузку фото на ТСПУ)',
+  discord:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Мессенджер, текстовые чаты, CDN вложений и голосовые шлюзы (discord.com, discord.gg, discordapp.net, discord.media + подсети)',
+  telegram:
+    '[Маршрут: В Прокси / VPN] Мессенджер, веб-клиенты, Telegraph и IPv4/IPv6-подсети всех датацентров DC1–DC5 (telegram.org, t.me, telesco.pe)',
+  meta: '[Маршрут: В Прокси / VPN] Instagram, Facebook, Threads, Messenger и медиа-серверы (instagram.com, facebook.com, fbcdn.net, cdninstagram.com + подсети)',
+  twitter:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Соцсеть X / Twitter, короткие ссылки и медиа-CDN (x.com, twitter.com, t.co, twimg.com + подсети)',
+  steam:
+    '[Маршрут: Напрямую (Direct) или в Прокси для смены региона магазина] Магазин, сообщество, инвентарь, чат и CDN загрузок Valve (steampowered.com, steamcommunity.com, steamstatic.com, steamcontent.com)',
+  epicgames:
+    '[Маршрут: В Прокси / VPN (для раздач/покупок) или Direct] Epic Games Store, Fortnite, Rocket League, Unreal Engine и античит EasyAntiCheat (epicgames.com, unrealengine.com, fortnite.com, easy.ac)',
+  riot: '[Маршрут: В Прокси / VPN или Direct] Valorant, League of Legends, TFT, Riot Client и Vanguard (riotgames.com, playvalorant.com, leagueoflegends.com, pvp.net)',
+  origin:
+    '[Маршрут: В Прокси / VPN] EA App, Origin, Apex Legends, Battlefield, EA Sports FC и Sims (ea.com, origin.com, tnt-ea.com, apexlegends.com)',
+  roblox:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Игровая платформа, лаунчер, Roblox Studio и игровые IP-подсети (roblox.com, rbxcdn.com, robloxlabs.com)',
+  supercell:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Brawl Stars, Clash Royale, Clash of Clans, Squad Busters и авторизация Supercell ID (обход геоблока для РФ и РБ)',
+  escapefromtarkov:
+    '[Маршрут: В Прокси / VPN или Direct] Лаунчер, сайт, API профилей и серверы Battlestate Games (escapefromtarkov.com, tarkov.com, battlestategames.com)',
+  faceit:
+    '[Маршрут: В Прокси / VPN или Обход DPI] Киберспортивная платформа CS2, античит и матчмейкинг (faceit.com, faceit-cdn.net)',
+  apple:
+    '[Маршрут: Напрямую (Direct) или в Прокси для Apple Intelligence] App Store, iCloud, обновления iOS/macOS, Apple Music, TV+ и Apple Intelligence (apple.com, icloud.com, mzstatic.com, cdn-apple.com)',
+  microsoft:
+    '[Маршрут: В Прокси / VPN (для Copilot, Xbox и ISO Windows) или Direct] Windows Update, Office 365, OneDrive, Xbox Live, Teams, Visual Studio и Azure (microsoft.com, live.com, office.com, xbox.com)',
+  google_play:
+    '[Маршрут: В Прокси / VPN (для платных приложений и смены региона) или Direct] Магазин приложений Android и серверы скачивания APK (play.google.com, gvt1.com, gvt2.com)',
+  github:
+    '[Маршрут: В Прокси / VPN (для Copilot и при сбоях ТСПУ) или Direct] Репозитории, GitHub Actions, Packages, Pages, Raw и Gist (github.com, githubusercontent.com, githubassets.com, ghcr.io)',
+  docker:
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Docker Hub, реестр контейнеров и пакеты (docker.com, docker.io, registry-1.docker.io, download.docker.com)',
+  hodca:
+    '[Маршрут: В Прокси / VPN] Серверы проверки SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, Comodo, GlobalSign, Let’s Encrypt (устраняет долгую загрузку HTTPS из-за геоблока)',
+  cloudflare:
+    '[Маршрут: В Прокси / VPN или Обход DPI] IPv4/IPv6-подсети и домены Cloudflare CDN (обход блокировки TLS ECH и сайтов за Cloudflare на ТСПУ)',
+  cloudfront:
+    '[Маршрут: В Прокси / VPN] IP-подсети глобальной CDN-сети Amazon CloudFront (AWS), часто попадающие под веерные блокировки',
+  fastly:
+    '[Маршрут: В Прокси / VPN] Домены и подсети CDN-провайдера Fastly (fastly.net, fastlylb.net, fsdn.com), используемого множеством зарубежных сайтов',
+  hetzner:
+    '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров Hetzner (Германия и Финляндия), блокируемые на ТСПУ целыми диапазонами',
+  ovh: '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров OVHcloud, на которых размещены игровые серверы и веб-проекты',
+  digitalocean:
+    '[Маршрут: В Прокси / VPN] IP-подсети облачного хостинга DigitalOcean, большая часть которых заблокирована или ограничена в РФ',
+  news: '[Маршрут: В Прокси / VPN или Обход DPI] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)',
+  torrent:
+    '[Маршрут: В Обход DPI (Desync / Zapret) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa',
+  tor: '[Маршрут: В Прокси / VPN] Домены и узлы сети Tor, каталогов мостов, I2P, Tails, Whonix и анонимайзеров',
+  porn: '[Маршрут: В Прокси / VPN или Обход DPI] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate',
+  ads_hagezi_pro:
+    '[Маршрут: Блокировать (Block)] Комплексная фильтрация рекламных сетей, аналитики, трекеров и фишинга Hagezi Multi PRO',
+  win_spy:
+    '[Маршрут: Блокировать (Block)] Серверы слежки, телеметрии, отчётов об ошибках и рекламы Windows 10/11',
+};
+
+// --- global (section-exclusive) rules ---------------------------------------
+// A section may claim one of its own condition values as global: the claim
+// reserves the value for that section alone, every other picker stops offering
+// it and the owning row gets a small "Global rule enabled" mark. Storage keys,
+// not widget names - GLOBAL_RULE_WIDGET_KINDS maps the LuCI names (including the
+// DNS aliases that write into another option's storage) onto the same kinds
+// config/connections.uc knows.
+const GLOBAL_RULE_OPTION_KEYS = {
+  community_lists: ['community_lists'],
+  rule_set: ['rule_set', 'rule_set_with_subnets'],
+  domain_ip_lists: ['domain_ip_lists'],
+  geoip_country: ['geoip_country'],
+  ports: ['ports'],
+  dscp: ['dscp'],
+  domain: [
+    'domain',
+    'domain_suffix',
+    'domain_suffix_text',
+    'domain_keyword',
+    'domain_keyword_text',
+    'domain_regex',
+    'domain_regex_text',
+    'domain_text',
+  ],
+  user_domains: ['user_domains', 'user_domains_text'],
+  ip_cidr: ['ip_cidr', 'ip_cidr_text'],
+};
+
+const GLOBAL_RULE_TEXT_KINDS = new Set(['domain', 'user_domains', 'ip_cidr']);
+
+const GLOBAL_RULE_WIDGET_KINDS = {
+  community_lists: 'community_lists',
+  rule_set: 'rule_set',
+  _dns_rule_set: 'rule_set',
+  domain_ip_lists: 'domain_ip_lists',
+  _dns_domain_ip_lists: 'domain_ip_lists',
+  geoip_country: 'geoip_country',
+  ports: 'ports',
+  dscp: 'dscp',
+  domain: 'domain',
+  user_domains: 'user_domains',
+  ip_cidr: 'ip_cidr',
+};
+
+// Labels are resolved per call, not once at module load: like the rest of this
+// file, nothing here may assume _() is usable before the view runs.
+function globalRuleKindLabel(kind) {
+  const labels = {
+    community_lists: _('Built-in rule sets'),
+    rule_set: _('Rule sets'),
+    domain_ip_lists: _('Domain and IP lists'),
+    geoip_country: _('GeoIP Countries'),
+    ports: _('Ports'),
+    dscp: _('DSCP marks (QoS)'),
+    domain: _('Domains'),
+    user_domains: _('Auto-detected Domains'),
+    ip_cidr: _('IPs'),
+  };
+  return labels[kind] || kind;
+}
+
+// Three kinds live in a textarea (newline/comma separated), the rest in a UCI
+// list or a whitespace separated single option. One splitter keeps reading UCI
+// identical between the value set, the picker and the exclusivity guard.
+function splitGlobalRuleConditionValues(kind, raw) {
+  if (raw == null || raw === '') {
+    return [];
+  }
+
+  const items = Array.isArray(raw)
+    ? raw
+    : `${raw}`.split(GLOBAL_RULE_TEXT_KINDS.has(kind) ? /[\n,]/ : /\s+/);
+
+  return items.map((item) => `${item}`.trim()).filter(Boolean);
+}
+
+function globalRuleConditionValues(sectionId, kind) {
+  const keys = GLOBAL_RULE_OPTION_KEYS[kind];
+  if (!keys) {
+    return new Set();
+  }
+
+  const values = new Set();
+  keys.forEach((key) => {
+    splitGlobalRuleConditionValues(
+      kind,
+      getSectionOrLinkedConditionOption(sectionId, key),
+    ).forEach((value) => values.add(value));
+  });
+  return values;
+}
+
+// A claim is stored as "<kind>:<value>"; the value may itself carry colons (a
+// rule-set URL, a "full:" domain prefix), so only the first one separates.
+function parseGlobalRule(entry) {
+  const raw = `${entry || ''}`.trim();
+  const colon = raw.indexOf(':');
+  if (colon <= 0) {
+    return null;
+  }
+
+  const kind = raw.slice(0, colon);
+  const value = raw.slice(colon + 1).trim();
+  if (!value || !GLOBAL_RULE_OPTION_KEYS[kind]) {
+    return null;
+  }
+
+  return { kind, value };
+}
+
+// Only a claim whose owner still uses the value counts. A stale claim reserves
+// nothing, so removing a condition later neither blocks other sections nor
+// leaves a badge behind.
+function activeGlobalRules(sectionId) {
+  const active = [];
+  normalizeOptionValues(
+    uci.get(UCI_PACKAGE, sectionId, 'global_rules'),
+  ).forEach((entry) => {
+    const claim = parseGlobalRule(entry);
+    if (
+      claim &&
+      globalRuleConditionValues(sectionId, claim.kind).has(claim.value)
+    ) {
+      active.push(claim);
+    }
+  });
+  return active;
+}
+
+// "<kind>:<value>" -> owning section label, for every section but this one.
+function globalRuleClaimsByOtherSections(sectionId) {
+  const owners = new Map();
+  (uci.sections(UCI_PACKAGE, 'section') || []).forEach((section) => {
+    const otherId = getUciSectionName(section);
+    if (!otherId || otherId === sectionId) {
+      return;
+    }
+    activeGlobalRules(otherId).forEach((claim) => {
+      owners.set(`${claim.kind}:${claim.value}`, getUciSectionLabel(section));
+    });
+  });
+  return owners;
+}
+
+function foreignGlobalValues(kind, sectionId) {
+  const values = new Set();
+  globalRuleClaimsByOtherSections(sectionId).forEach((_owner, key) => {
+    const claim = parseGlobalRule(key);
+    if (claim && claim.kind === kind) {
+      values.add(claim.value);
+    }
+  });
+  return values;
+}
+
+// Condition pickers may not offer a value another section claims as global.
+// Wrapped around the option's own validate so format checks still run first.
+function enforceGlobalRuleExclusivity(option, kind) {
+  const original =
+    typeof option.validate === 'function' ? option.validate : null;
+
+  option.validate = function (section_id, value) {
+    const result = original ? original.apply(this, [section_id, value]) : true;
+    if (result !== true) {
+      return result;
+    }
+
+    const owners = globalRuleClaimsByOtherSections(section_id);
+    for (const item of splitGlobalRuleConditionValues(kind, value)) {
+      const owner = owners.get(`${kind}:${item}`);
+      if (owner) {
+        return _(
+          '"%s" is the global rule of section "%s" and cannot be used here',
+        ).format(item, owner);
+      }
+    }
+    return true;
+  };
+}
+
+// Drops a claimed value from every other section's storage for that kind and
+// returns the labels of the sections that actually lost it. Returning the same
+// value to a list it is not in is a no-op, so a value can never be stripped
+// twice and an untouched section is never marked dirty.
+function removeGlobalRuleValueFromSection(sectionId, kind, value) {
+  let changed = false;
+
+  (GLOBAL_RULE_OPTION_KEYS[kind] || []).forEach((key) => {
+    const raw = uci.get(UCI_PACKAGE, sectionId, key);
+    if (raw == null) {
+      return;
+    }
+
+    const before = splitGlobalRuleConditionValues(kind, raw);
+    const after = before.filter((item) => item !== value);
+    if (after.length === before.length) {
+      return;
+    }
+
+    changed = true;
+    if (after.length) {
+      uci.set(
+        UCI_PACKAGE,
+        sectionId,
+        key,
+        Array.isArray(raw)
+          ? after
+          : after.join(GLOBAL_RULE_TEXT_KINDS.has(kind) ? '\n' : ' '),
+      );
+    } else {
+      uci.unset(UCI_PACKAGE, sectionId, key);
+    }
+  });
+
+  return changed;
+}
+
+// Saving a claim makes it effective right away: the value leaves every other
+// section instead of waiting for the next time each of those is opened.
+function releaseGlobalRuleFromOtherSections(sectionId, claim) {
+  const key = `${claim.kind}:${claim.value}`;
+  const removed = [];
+
+  (uci.sections(UCI_PACKAGE, 'section') || []).forEach((section) => {
+    const otherId = getUciSectionName(section);
+    if (!otherId || otherId === sectionId) {
+      return;
+    }
+
+    const current = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, otherId, 'global_rules'),
+    );
+    const remaining = current.filter((entry) => entry !== key);
+    if (remaining.length !== current.length) {
+      if (remaining.length) {
+        uci.set(UCI_PACKAGE, otherId, 'global_rules', remaining);
+      } else {
+        uci.unset(UCI_PACKAGE, otherId, 'global_rules');
+      }
+    }
+
+    if (removeGlobalRuleValueFromSection(otherId, claim.kind, claim.value)) {
+      removed.push(getUciSectionLabel(section));
+    }
+  });
+
+  return removed;
+}
+
+function globalRuleChoices(sectionId) {
+  const choices = [];
+  Object.keys(GLOBAL_RULE_OPTION_KEYS).forEach((kind) => {
+    globalRuleConditionValues(sectionId, kind).forEach((value) => {
+      choices.push({
+        value: `${kind}:${value}`,
+        label: `${globalRuleKindLabel(kind)}: ${value}`,
+      });
+    });
+  });
+  return choices;
+}
+
+function loadRulesetValues(option, sectionId) {
+  delete option.keylist;
+  delete option.vallist;
+
+  const blocked = sectionId
+    ? foreignGlobalValues('community_lists', sectionId)
+    : new Set();
+
+  Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
+    if (blocked.has(key)) {
+      return;
+    }
+    const displayLabel = label;
+    option.value(key, displayLabel);
+  });
+}
+
+function isBuiltinRulesetValue(value) {
+  return Object.prototype.hasOwnProperty.call(main.DOMAIN_LIST_OPTIONS, value);
+}
+
+function normalizeReferenceForExtensionCheck(value) {
+  return `${value || ''}`.split(/[?#]/, 1)[0].toLowerCase();
+}
+
+function hasAllowedReferenceExtension(value, extensions) {
+  const normalized = normalizeReferenceForExtensionCheck(value);
+  return extensions.some((extension) => normalized.endsWith(extension));
+}
+
+function validateFileReference(value, extensions, errorMessage, options = {}) {
+  if (!value || value.length === 0) {
+    return true;
+  }
+
+  if (value.startsWith('http://') || value.startsWith('https://')) {
+    const validation = main.validateUrl(value);
+    if (
+      validation.valid &&
+      (options.allowRemoteWithoutExtension ||
+        hasAllowedReferenceExtension(value, extensions))
+    ) {
+      return true;
+    }
+
+    return errorMessage;
+  }
+
+  if (value.startsWith('/')) {
+    const validation = main.validatePath(value);
+    if (validation.valid && hasAllowedReferenceExtension(value, extensions)) {
+      return true;
+    }
+
+    return errorMessage;
+  }
+
+  return errorMessage;
+}
+
+function validateCustomRulesetReference(value) {
+  return validateFileReference(
+    value,
+    ['.trs', '.srs', '.json', '.lst', '.txt'],
+    _(
+      'Rule set must be an HTTP(S) URL or a local .trs / .srs / .json / .lst / .txt path',
+    ),
+    { allowRemoteWithoutExtension: true },
+  );
+}
+
+function validatePlainListReference(value) {
+  return validateFileReference(
+    value,
+    ['.lst', '.txt'],
+    _('List must be an HTTP(S) URL or a local .lst / .txt path'),
+    { allowRemoteWithoutExtension: true },
+  );
+}
+
+function getRulesetReferences(section_id) {
+  return getConfigListValues(section_id, 'rule_set');
+}
+
+function getBuiltInRulesetReferences(section_id) {
+  const values = getConfigListValues(section_id, 'community_lists').filter(
+    (value) => isBuiltinRulesetValue(value),
+  );
+
+  return values.filter(
+    (value, index, values) =>
+      isBuiltinRulesetValue(value) && values.indexOf(value) === index,
+  );
+}
+
+function getCustomRulesetReferences(section_id) {
+  return uniqueDynamicListItems([
+    ...getRulesetReferences(section_id).filter(
+      (value) => !isBuiltinRulesetValue(value),
+    ),
+    ...getConfigListValues(section_id, 'rule_set_with_subnets'),
+  ]);
+}
+
+function writeBuiltInRulesetReferences(section_id, values) {
+  const refs = normalizeDynamicListItems(values).filter((value) =>
+    isBuiltinRulesetValue(value),
+  );
+  writeListOption(section_id, 'community_lists', refs);
+}
+
+function writeCustomRulesetReferences(section_id, values) {
+  const refs = uniqueDynamicListItems(values);
+  if (getRuleResolvedAction(section_id) === 'dns') {
+    writeDnsRulesetReferences(section_id, refs);
+    return;
+  }
+  const subnetRefs = getConfigListValues(
+    section_id,
+    'rule_set_with_subnets',
+  ).filter((value) => refs.includes(value));
+  const subnetRefSet = new Set(subnetRefs);
+
+  writeListOption(
+    section_id,
+    'rule_set',
+    refs.filter((value) => !subnetRefSet.has(value)),
+  );
+  writeListOption(section_id, 'rule_set_with_subnets', subnetRefs);
+  uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
+}
+
+function writeDnsRulesetReferences(section_id, values) {
+  writeListOption(section_id, 'rule_set', uniqueDynamicListItems(values));
+  uci.unset(UCI_PACKAGE, section_id, 'rule_set_with_subnets');
+  syncLinkedConditionOption(section_id, 'rule_set_with_subnets', null);
+  uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
+}
+
+function readDependentServerNotices() {
+  try {
+    const entries = JSON.parse(
+      window.localStorage.getItem('tachyon:disabled-section-servers:v1') ||
+        '[]',
+    );
+    return Array.isArray(entries)
+      ? entries.filter(
+          (entry) =>
+            entry &&
+            typeof entry.sectionId === 'string' &&
+            typeof entry.sectionName === 'string' &&
+            Array.isArray(entry.servers) &&
+            entry.servers.every((name) => typeof name === 'string'),
+        )
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writeDependentServerNotices(entries) {
+  try {
+    const key = 'tachyon:disabled-section-servers:v1';
+    if (entries.length)
+      window.localStorage.setItem(key, JSON.stringify(entries));
+    else window.localStorage.removeItem(key);
+  } catch (_error) {
+    // Blocked browser storage must not prevent saving the configuration.
+  }
+}
+
+function showDependentServerNotice(entry) {
+  const id = 'tachyon-disabled-servers-' + encodeURIComponent(entry.sectionId);
+  if (document.getElementById(id)) return;
+  const notification = ui.addNotification(
+    null,
+    E('div', {}, [
+      E(
+        'p',
+        {},
+        _(
+          'Routing section "%s" is disabled. Servers using it were also disabled: %s.',
+        ).format(entry.sectionName, entry.servers.join(', ')),
+      ),
+      E(
+        'p',
+        {},
+        _(
+          'Their routing settings are preserved. Enable these servers manually after enabling the section.',
+        ),
+      ),
+    ]),
+    'warning',
+  );
+  notification.id = id;
+  notification.querySelector('button').addEventListener('click', () => {
+    writeDependentServerNotices(
+      readDependentServerNotices().filter(
+        (saved) => saved.sectionId !== entry.sectionId,
+      ),
+    );
+  });
+}
+
+function restoreDependentServerNotices() {
+  readDependentServerNotices().forEach(showDependentServerNotice);
+}
+
+function disableServersUsingDisabledSections(map) {
+  if (map.readonly) return;
+
+  const disabledSections = new Map(
+    (uci.sections(UCI_PACKAGE, 'section') || [])
+      .filter((item) => item.enabled === '0')
+      .map((item) => [item['.name'], item]),
+  );
+  const disabledServers = new Map();
+
+  (uci.sections(UCI_PACKAGE, 'server') || []).forEach((server) => {
+    if (
+      server.enabled === '0' ||
+      server.routing_mode !== 'section' ||
+      !disabledSections.has(server.routing_section)
+    ) {
+      return;
+    }
+
+    uci.set(UCI_PACKAGE, server['.name'], 'enabled', '0');
+    const names = disabledServers.get(server.routing_section) || [];
+    names.push(server.label || server.name || server['.name']);
+    disabledServers.set(server.routing_section, names);
+  });
+
+  disabledServers.forEach((names, sectionId) => {
+    const target = disabledSections.get(sectionId);
+    const entry = {
+      sectionId,
+      sectionName: target.label || target.name || sectionId,
+      servers: names,
+    };
+    writeDependentServerNotices([
+      ...readDependentServerNotices().filter(
+        (saved) => saved.sectionId !== sectionId,
+      ),
+      entry,
+    ]);
+    // Replace a previous event for this section, if it is still displayed.
+    const previous = document.getElementById(
+      'tachyon-disabled-servers-' + encodeURIComponent(sectionId),
+    );
+    if (previous) previous.remove();
+    showDependentServerNotice(entry);
+  });
+}
+
+function configureDependentServerDisable(map) {
+  if (map.__tachyonDependentServerDisable) return;
+  map.__tachyonDependentServerDisable = true;
+  const originalParse = map.parse;
+  map.parse = function () {
+    return Promise.resolve(originalParse.apply(this, arguments)).then(
+      (result) => {
+        // All fields must be parsed first: a server checkbox or routing-mode
+        // edit in another tab must not overwrite the dependent disable.
+        disableServersUsingDisabledSections(this);
+        return result;
+      },
+    );
+  };
+}
+
+function createSectionContent(section) {
+  let o;
+
+  // One hook keeps every condition picker in sync with global-rule ownership:
+  // whatever stores a claimable condition gets the exclusivity guard, including
+  // the DNS aliases that write into another option's storage. The guard itself
+  // is installed at the end of this function - the text and dynamic condition
+  // helpers assign their own validate after creation and would overwrite it.
+  const globalRuleExclusivityTargets = [];
+  const baseTaboption = section.taboption;
+  section.taboption = function (...args) {
+    const option = baseTaboption.apply(this, args);
+    const kind = GLOBAL_RULE_WIDGET_KINDS[args[2]];
+    if (kind) {
+      globalRuleExclusivityTargets.push({ option, kind });
+    }
+    return option;
+  };
+
+  section.tab('settings', _('Settings'));
+  section.tab('conditions', _('Conditions'));
+  section.tab('servers', _('Servers'));
+  section.tab('awg_manual', _('Manual setup'));
+
+  o = section.taboption('settings', form.Flag, 'enabled', _('Enable'));
+  o.default = '1';
+  o.rmempty = false;
+  o.editable = true;
+  o.width = '6rem';
+  const originalEnabledRenderWidget = o.renderWidget;
+  o.renderWidget = function () {
+    // GridSection creates a separate map for the modal and copies the option.
+    // Install the same post-parse guard in both the table and modal maps.
+    configureDependentServerDisable(this.map);
+    return originalEnabledRenderWidget.apply(this, arguments);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.DummyValue,
+    '_action_display',
+    _('Action'),
+  );
+  o.modalonly = false;
+  o.rawhtml = true;
+  o.cfgvalue = function (section_id) {
+    return getRuleActionDisplayMarkup(section_id);
+  };
+  o.textvalue = function (section_id) {
+    return getRuleActionDisplayValue(section_id);
+  };
+  o.width = '7rem';
+
+  // Connection type column: shows the source_type badges of all outbound_source
+  // items referenced by this section (via outbound_source_refs).  For bypass /
+  // block / dns sections the cell is blank.  Replaces the former "Global rule"
+  // column which required the user to open the modal to understand the setup.
+  o = section.taboption(
+    'settings',
+    form.DummyValue,
+    '_conn_type',
+    _('Connection'),
+  );
+  o.modalonly = false;
+  o.rawhtml = true;
+  o.width = '10rem';
+  o.cfgvalue = function (section_id) {
+    const badges = getSectionConnectionTypeBadges(section_id);
+    // Return a non-empty string even when there is nothing to display so LuCI
+    // does not fall back to showing a placeholder dash in the cell.
+    return badges || '&nbsp;';
+  };
+  o.textvalue = function (section_id) {
+    const action = getRuleResolvedAction(section_id);
+    const connectionActions = [
+      'connection',
+      'proxy',
+      'outbound',
+      'vpn',
+      'awg',
+      'fptn',
+      'desync',
+      'zapret',
+      'zapret2',
+      'byedpi',
+      'group',
+    ];
+    if (!connectionActions.includes(action)) return '';
+    const srcRefs = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, section_id, 'outbound_source_refs'),
+    );
+    const seen = {};
+    const types = [];
+    srcRefs.forEach(function (id) {
+      const src = uci.get(UCI_PACKAGE, id);
+      if (!src) return;
+      const stype = (src.source_type || 'subscription').toLowerCase();
+      if (!seen[stype]) {
+        seen[stype] = true;
+        types.push(stype);
+      }
+    });
+    return types.map(getSourceTypeLabel).join(', ');
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'label',
+    _('Section name'),
+    _('Visible name of this section'),
+  );
+  o.rmempty = false;
+  o.modalonly = true;
+  o.load = function (section_id) {
+    return (
+      uci.get(UCI_PACKAGE, section_id, 'label') ||
+      uci.get(UCI_PACKAGE, section_id, 'name') ||
+      section_id
+    );
+  };
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'action',
+    _('Action'),
+    _('What Tachyon should do when this section matches'),
+  );
+  populateActionOptionValues(o);
+
+  const super_validate = o.validate;
+  o.validate = function (section_id, value) {
+    // mieru is implemented in tachyon-core (outbound/mieru.rs + inbound/mieru.rs
+    // and its type is in KNOWN_OUTBOUND_TYPES), so only sudoku stays blocked.
+    if (isTachyonCoreForUi() && value === 'sudoku') {
+      return _('This protocol is not implemented in tachyon-core yet');
+    }
+    return super_validate
+      ? super_validate.apply(this, [section_id, value])
+      : true;
+  };
+
+  const originalActionRenderWidget = o.renderWidget;
+  o.renderWidget = function (section_id, option_index, cfgvalue) {
+    const node = originalActionRenderWidget.apply(this, arguments);
+    if (isTachyonCoreForUi()) {
+      Promise.resolve(node).then((elem) => {
+        if (!elem) return;
+        const disabledItems = elem.querySelectorAll
+          ? elem.querySelectorAll(
+              '[data-value="sudoku"], option[value="sudoku"]',
+            )
+          : [];
+        disabledItems.forEach((opt) => {
+          opt.disabled = true;
+          opt.setAttribute('disabled', 'disabled');
+          opt.classList.add('disabled');
+        });
+      });
+    }
+    return node;
+  };
+
+  o.default = 'connection';
+  o.rmempty = false;
+  o.modalonly = true;
+  o.cfgvalue = function (section_id) {
+    return getRuleConfiguredAction(section_id);
+  };
+  o.load = function (section_id) {
+    return ensureActionProvidersAvailabilityLoaded().then(() => {
+      populateActionOptionValues(this);
+      const configured = getRuleConfiguredAction(section_id);
+      if (configured && !this.keylist.includes(configured)) {
+        this.value(configured, getActionOptionLabel(configured));
+      }
+      return this.cfgvalue(section_id);
+    });
+  };
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'group_members',
+    _('Group members'),
+    _(
+      'Sections merged into one flat URLTest group: their rules keep matching traffic, but all their servers are selected together by one URLTest. DPI, marker and route-only sections cannot be members.',
+    ),
+  );
+  o.depends('action', 'group');
+  o.modalonly = true;
+  o.rmempty = false;
+  o.placeholder = _('Select sections to merge');
+  configureLiveDynamicListChoices(o, (section_id) =>
+    getOutboundDetourTargetSections(section_id).map((targetSection) => ({
+      value: getUciSectionName(targetSection),
+      label: getUciSectionLabel(targetSection),
+    })),
+  );
+  o.validate = function (section_id, value) {
+    // The stock combobox also re-validates its empty "add" input on blur and
+    // keyup; that empty string is not the list. The save path passes the real
+    // array of picked members, so only that one has to be non-empty.
+    const members = L.toArray(value != null ? value : []);
+    if (value !== '' && !members.filter(Boolean).length) {
+      return _('Select at least one section to merge');
+    }
+    return true;
+  };
+  outboundNameSourceOptions.set('group_members', o);
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'interrupt_exist_connections',
+    _('Interrupt connections'),
+    _(
+      'Interrupt existing connections when group URLTest switches the active server',
+    ),
+  );
+  o.depends('action', 'group');
+  o.default = '1';
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'check_interval',
+    _('Check interval'),
+    _('Interval between URLTest latency checks (e.g. 3m, 30s)'),
+  );
+  o.depends('action', 'group');
+  o.placeholder = '3m';
+  o.default = '3m';
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'tolerance',
+    _('Tolerance (ms)'),
+    _('Latency difference threshold in milliseconds to switch server'),
+  );
+  o.depends('action', 'group');
+  o.placeholder = '50';
+  o.default = '50';
+  o.datatype = 'uinteger';
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateUrlTestTolerance(value);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'testing_url',
+    _('Testing URL'),
+    _('URL used to test server latency and availability'),
+  );
+  o.depends('action', 'group');
+  o.placeholder = 'https://www.gstatic.com/generate_204';
+  o.default = 'https://www.gstatic.com/generate_204';
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateUrlTestUrl(value);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'idle_timeout',
+    _('Idle timeout'),
+    _('URLTest idle timeout (e.g. 30m)'),
+  );
+  o.depends('action', 'group');
+  o.placeholder = '30m';
+  o.modalonly = true;
+  o.validate = function (section_id, value) {
+    if (!value) return true;
+    return validateOptionalSingBoxDuration(value);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'dns_type',
+    _('DNS protocol'),
+    _('DNS protocol used by the resolver'),
+  );
+  o.depends('action', 'dns');
+  dnsTypeChoices().forEach((choice) => o.value(choice.value, choice.label));
+  o.default = 'udp';
+  o.rmempty = false;
+  o.modalonly = true;
+  const perRuleDnsTypeOption = o;
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'dns_server',
+    _('DNS server'),
+    _('DNS server used by the resolver'),
+  );
+  o.depends('action', 'dns');
+  o.modalonly = true;
+  configureLiveDynamicListChoices(o, (section_id) => {
+    const dnsType = perRuleDnsTypeState.get(section_id) || 'udp';
+    const servers =
+      main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
+    return Object.entries(servers).map(([value, label]) => ({
+      value,
+      label: _(label),
+    }));
+  });
+  perRuleDnsTypeOption.onchange = function (_ev, section_id, value) {
+    const newType = value || 'udp';
+    const oldType = perRuleDnsTypeState.get(section_id) || 'udp';
+    perRuleDnsTypeState.set(section_id, newType);
+
+    if (newType !== oldType) {
+      const widget = perRuleDnsWidgets.get(section_id);
+      if (widget) {
+        const servers =
+          main.DNS_SERVERS_BY_PROTOCOL[newType] ||
+          main.DNS_SERVERS_BY_PROTOCOL.udp;
+        const defaultLabels = {};
+        Object.entries(servers).forEach(([v, l]) => {
+          defaultLabels[v] = _(l);
+        });
+        const defaultServers = Object.keys(servers).slice(0, 1);
+        widget.choices = defaultLabels;
+        widget.setValue(defaultServers);
+      }
+    }
+
+    const refreshers = dashboardFilterChoiceRefreshers.get(section_id);
+    if (refreshers) {
+      refreshers.forEach((fn) => {
+        if (fn() === false) {
+          refreshers.delete(fn);
+        }
+      });
+      if (refreshers.size === 0) {
+        dashboardFilterChoiceRefreshers.delete(section_id);
+      }
+    }
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'dns_detour_enabled',
+    _('DNS through section'),
+    _('Route requests to this DNS server through another section.'),
+  );
+  o.depends('action', 'dns');
+  o.default = '0';
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'dns_detour_section',
+    _('DNS requests through section'),
+  );
+  o.depends({ action: 'dns', dns_detour_enabled: '1' });
+  o.rmempty = false;
+  o.modalonly = true;
+  o.load = function (section_id) {
+    refreshDnsDetourSectionOptionValues(this, section_id);
+    return uci.get(UCI_PACKAGE, section_id, 'dns_detour_section') || '';
+  };
+  o.validate = function (_section_id, value) {
+    return value ? true : _('Select a section');
+  };
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'nfqws_opt',
+    _('NFQWS Strategy'),
+  );
+  o.depends('action', 'zapret');
+  o.rows = 6;
+  o.wrap = 'soft';
+  o.textarea = true;
+  o.modalonly = true;
+  o.load = function (section_id) {
+    const value = uci.get(UCI_PACKAGE, section_id, 'nfqws_opt');
+    if (!value || value === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT) {
+      return ZAPRET_DEFAULT_NFQWS_OPT;
+    }
+
+    return value;
+  };
+  o.write = function (section_id, value) {
+    const normalized = normalizeNfqwsStrategyValue(value);
+    const nextValue =
+      !normalized.length || normalized === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
+        ? ZAPRET_DEFAULT_NFQWS_OPT
+        : normalized;
+
+    uci.set(UCI_PACKAGE, section_id, 'nfqws_opt', nextValue);
+  };
+  o.validate = function (_section_id, value) {
+    const analysis = analyzeNfqwsStrategy(value);
+    return analysis.valid ? true : analysis.message;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'nfqws2_opt',
+    _('NFQWS2 Strategy'),
+  );
+  o.depends('action', 'zapret2');
+  o.rows = 6;
+  o.wrap = 'soft';
+  o.textarea = true;
+  o.modalonly = true;
+  o.load = function (section_id) {
+    return (
+      uci.get(UCI_PACKAGE, section_id, 'nfqws2_opt') ||
+      ZAPRET2_DEFAULT_NFQWS2_OPT
+    );
+  };
+  o.write = function (section_id, value) {
+    const normalized = normalizeNfqws2StrategyValue(value);
+    uci.set(UCI_PACKAGE, section_id, 'nfqws2_opt', normalized);
+  };
+  o.validate = function (_section_id, value) {
+    const analysis = analyzeNfqws2Strategy(value);
+    return analysis.valid ? true : analysis.message;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'byedpi_cmd_opts',
+    _('ByeDPI Strategy'),
+  );
+  o.depends('action', 'byedpi');
+  o.rows = 6;
+  o.wrap = 'soft';
+  o.textarea = true;
+  o.modalonly = true;
+  o.load = function (section_id) {
+    return (
+      uci.get(UCI_PACKAGE, section_id, 'byedpi_cmd_opts') ||
+      BYEDPI_DEFAULT_CMD_OPTS
+    );
+  };
+  o.write = function (section_id, value) {
+    const normalized = normalizeByedpiStrategyValue(value);
+
+    return validateByedpiStrategyRemotely(normalized).then((result) => {
+      if (!result || result.valid !== true) {
+        throw new TypeError(
+          result && result.message
+            ? result.message
+            : _('Invalid ByeDPI strategy'),
+        );
+      }
+
+      uci.set(UCI_PACKAGE, section_id, 'byedpi_cmd_opts', normalized);
+    });
+  };
+  o.validate = function (_section_id, value) {
+    const analysis = analyzeByedpiStrategy(value);
+    return analysis.valid ? true : analysis.message;
+  };
+  configureTextareaOption(o, analyzeByedpiStrategy);
+
+  // ─── WDTT Fields ──────────────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_flow_uri',
+    _('WDTT URI'),
+    _('WDTT connection URI (wdtt://...)'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'warp_flow_mode',
+    _('WDTT Mode'),
+  );
+  o.depends('action', 'wdtt');
+  o.value('', _('Default'));
+  o.value('freedom', _('Freedom'));
+  o.value('captive', _('Captive'));
+  o.value('camou', _('Camou'));
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_flow_device_id',
+    _('WDTT Device ID'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_flow_workers',
+    _('WDTT Workers'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_flow_max_hashes',
+    _('WDTT Max Hashes'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption('settings', form.Value, 'warp_flow_mtu', _('WDTT MTU'));
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_flow_refresh',
+    _('WDTT Refresh'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'warp_flow_auto_update',
+    _('WDTT Auto Update'),
+  );
+  o.default = '1';
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'warp_flow_block_doh',
+    _('WDTT Block DoH'),
+  );
+  o.default = '0';
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'warp_flow_block_ipv6',
+    _('WDTT Block IPv6'),
+  );
+  o.default = '0';
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'warp_flow_qwdtt_mode',
+    _('WDTT QWDTT Mode'),
+  );
+  o.depends('action', 'wdtt');
+  o.value('', _('Default'));
+  o.value('client', _('Client'));
+  o.value('server', _('Server'));
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'warp_flow_subscription_links',
+    _('WDTT Subscription Links'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'warp_flow_community_lists',
+    _('WDTT Community Lists'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'warp_flow_remote_domain_list',
+    _('WDTT Remote Domain List'),
+  );
+  o.depends('action', 'wdtt');
+  o.modalonly = true;
+
+  // ─── OlcRTC Fields ────────────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'olcrtc_provider',
+    _('OlcRTC Provider'),
+  );
+  o.depends('action', 'olcrtc');
+  o.value('jitsi', _('Jitsi'));
+  o.value('wrt', _('WRT'));
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'olcrtc_transport',
+    _('OlcRTC Transport'),
+  );
+  o.depends('action', 'olcrtc');
+  o.value('whep', _('WHEP'));
+  o.value('whip', _('WHIP'));
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'olcrtc_room_id',
+    _('OlcRTC Room ID'),
+  );
+  o.depends('action', 'olcrtc');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'olcrtc_crypto_key',
+    _('OlcRTC Crypto Key'),
+  );
+  o.depends('action', 'olcrtc');
+  o.password = true;
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'olcrtc_socks_host',
+    _('OlcRTC SOCKS Host'),
+  );
+  o.depends('action', 'olcrtc');
+  o.default = '127.0.0.1';
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'olcrtc_socks_port',
+    _('OlcRTC SOCKS Port'),
+  );
+  o.depends('action', 'olcrtc');
+  o.default = '1082';
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'olcrtc_dns_server',
+    _('OlcRTC DNS Server'),
+  );
+  o.depends('action', 'olcrtc');
+  o.default = '8.8.8.8:53';
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'olcrtc_subscription_links',
+    _('OlcRTC Subscription Links'),
+  );
+  o.depends('action', 'olcrtc');
+  o.modalonly = true;
+
+  // ─── FPTN Fields ───────────────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'access_token',
+    _('FPTN Access Token'),
+  );
+  o.depends('action', 'fptn');
+  o.password = true;
+  o.rmempty = true;
+  o.modalonly = true;
+  outboundNameSourceOptions.set('access_token', o);
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'sni',
+    _('FPTN SNI'),
+    _('Optional: override TLS SNI for FPTN connection'),
+  );
+  o.depends('action', 'fptn');
+  o.optional = true;
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'bypass_method',
+    _('FPTN Bypass Method'),
+    _('Optional: override bypass method (e.g. quic, tcp)'),
+  );
+  o.depends('action', 'fptn');
+  o.optional = true;
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'preferred_server',
+    _('FPTN Preferred Server'),
+    _('Optional: preferred FPTN server address'),
+  );
+  o.depends('action', 'fptn');
+  o.optional = true;
+  o.modalonly = true;
+
+  // ─── Hosts Import Helpers ──────────────────────────────────────────────
+
+  function parseHostsFile(text, options) {
+    options = options || {};
+    const skipLoopback = options.skipLoopback !== false;
+    const lines = (text || '').split(/\r?\n/);
+    const entries = [];
+    let skippedComments = 0;
+    let skippedLoopback = 0;
+    let skippedInvalid = 0;
+
+    const loopbackIPs = new Set([
+      '127.0.0.1',
+      '0.0.0.0',
+      '::1',
+      '0:0:0:0:0:0:0:1',
+      '0000:0000:0000:0000:0000:0000:0000:0001',
+    ]);
+    const loopbackHosts = new Set([
+      'localhost',
+      'localhost.localdomain',
+      'local',
+      'broadcasthost',
+    ]);
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+      if (!line) continue;
+
+      const hashIdx = line.indexOf('#');
+      if (hashIdx !== -1) {
+        if (hashIdx === 0) {
+          skippedComments++;
+          continue;
+        }
+        line = line.substring(0, hashIdx).trim();
+        if (!line) {
+          skippedComments++;
+          continue;
+        }
+      }
+
+      const parts = line.split(/\s+/);
+      if (parts.length < 2) {
+        skippedInvalid++;
+        continue;
+      }
+
+      const ip = parts[0].trim();
+      const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
+      const isIPv6 = ip.indexOf(':') !== -1 && /^[0-9a-fA-F:]+$/.test(ip);
+      if (!isIPv4 && !isIPv6) {
+        skippedInvalid++;
+        continue;
+      }
+
+      const isIpLoopback = loopbackIPs.has(ip);
+      for (let j = 1; j < parts.length; j++) {
+        const domain = parts[j].toLowerCase().trim();
+        if (!domain) continue;
+        if (skipLoopback && (isIpLoopback || loopbackHosts.has(domain))) {
+          skippedLoopback++;
+          continue;
+        }
+        if (domain.length > 253 || /^[^a-z0-9_.-]/i.test(domain)) {
+          skippedInvalid++;
+          continue;
+        }
+        entries.push({ domain: domain, ip: ip });
+      }
+    }
+
+    return {
+      entries,
+      skippedComments,
+      skippedLoopback,
+      skippedInvalid,
+      totalLines: lines.length,
+    };
+  }
+
+  function showImportHostsModal(section_id, dnsHostsOptRef) {
+    const fileInput = E('input', {
+      type: 'file',
+      accept: '.txt,.hosts,hosts,*',
+      style: 'display:none',
+    });
+
+    const fileSelectBtn = E(
+      'button',
+      {
+        class: 'cbi-button cbi-button-neutral',
+        type: 'button',
+        click: function () {
+          fileInput.click();
+        },
+      },
+      _('Choose Hosts File...'),
+    );
+
+    const loadCurrentBtn = E(
+      'button',
+      {
+        class: 'cbi-button cbi-button-action',
+        type: 'button',
+        click: function () {
+          let existingEntries = [];
+          const uiEl = dnsHostsOptRef
+            ? dnsHostsOptRef.getUIElement(section_id)
+            : null;
+          if (uiEl && typeof uiEl.getValue === 'function') {
+            const v = uiEl.getValue();
+            if (typeof v === 'string' && v)
+              existingEntries = v
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l);
+          }
+          if (!existingEntries.length) {
+            const uciVal = uci.get(UCI_PACKAGE, section_id, 'dns_hosts');
+            existingEntries = Array.isArray(uciVal)
+              ? uciVal
+              : uciVal
+                ? [uciVal]
+                : [];
+          }
+          textArea.value = existingEntries.join('\n');
+          fileStatus.textContent = _('Loaded %d current record(s)').format(
+            existingEntries.length,
+          );
+          updatePreview();
+        },
+      },
+      _('Load Current Records'),
+    );
+
+    const fileStatus = E(
+      'span',
+      {
+        style:
+          'margin-left:10px;font-size:0.85rem;color:var(--text-color-medium,#888);',
+      },
+      _('No file selected'),
+    );
+
+    const textArea = E('textarea', {
+      class: 'cbi-input-textarea',
+      rows: 8,
+      style:
+        'width:100%;font-family:monospace;font-size:0.85rem;margin-top:8px;resize:vertical;',
+      placeholder:
+        '127.0.0.1 localhost\n192.168.1.100 server.local\n10.0.0.5 example.com alias.com',
+    });
+
+    const skipLoopbackCb = E('input', {
+      type: 'checkbox',
+      id: 'hosts-skip-loopback',
+      checked: true,
+      style: 'margin-right:6px;vertical-align:middle;',
+    });
+    const overwriteCb = E('input', {
+      type: 'checkbox',
+      id: 'hosts-overwrite',
+      checked: false,
+      style: 'margin-right:6px;vertical-align:middle;',
+    });
+
+    const previewBox = E(
+      'div',
+      {
+        style:
+          'margin-top:12px;padding:10px 14px;background:var(--background-color-secondary,#f8f9fa);border:1px solid var(--border-color-medium,#e0e0e0);border-radius:4px;font-size:0.85rem;line-height:1.5;',
+      },
+      [
+        E(
+          'em',
+          {},
+          _('Paste content or upload a file to preview imported DNS records.'),
+        ),
+      ],
+    );
+
+    const importBtn = E(
+      'button',
+      {
+        class: 'cbi-button cbi-button-action',
+        type: 'button',
+        disabled: true,
+      },
+      _('Import'),
+    );
+
+    let currentParsedResult = null;
+
+    function updatePreview() {
+      const text = textArea.value;
+      const skipLoopback = skipLoopbackCb.checked;
+      const overwrite = overwriteCb.checked;
+
+      if (!text.trim()) {
+        previewBox.innerHTML = '';
+        previewBox.appendChild(
+          E(
+            'em',
+            {},
+            _(
+              'Paste content or upload a file to preview imported DNS records.',
+            ),
+          ),
+        );
+        importBtn.disabled = true;
+        importBtn.textContent = _('Import');
+        currentParsedResult = null;
+        return;
+      }
+
+      const result = parseHostsFile(text, { skipLoopback: skipLoopback });
+      currentParsedResult = result;
+
+      let existingEntries = [];
+      const uiEl = dnsHostsOptRef
+        ? dnsHostsOptRef.getUIElement(section_id)
+        : null;
+      if (uiEl && typeof uiEl.getValue === 'function') {
+        const v = uiEl.getValue();
+        if (typeof v === 'string' && v)
+          existingEntries = v
+            .split('\n')
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith('#'));
+      }
+      if (!existingEntries.length) {
+        const uciVal = uci.get(UCI_PACKAGE, section_id, 'dns_hosts');
+        existingEntries = Array.isArray(uciVal)
+          ? uciVal
+          : uciVal
+            ? [uciVal]
+            : [];
+      }
+
+      const domainMap = new Map();
+      if (!overwrite) {
+        for (const entry of existingEntries) {
+          const parts = `${entry}`.trim().split(/\s+/);
+          if (parts.length >= 2)
+            domainMap.set(parts[0].toLowerCase(), parts[1]);
+        }
+      }
+
+      let newCount = 0,
+        updatedCount = 0;
+      for (const item of result.entries) {
+        if (domainMap.has(item.domain.toLowerCase())) updatedCount++;
+        else newCount++;
+        domainMap.set(item.domain.toLowerCase(), item.ip);
+      }
+
+      previewBox.innerHTML = '';
+      previewBox.appendChild(
+        E(
+          'div',
+          {
+            style:
+              'display:grid;grid-template-columns:1fr 1fr;gap:6px;row-gap:4px;',
+          },
+          [
+            E('div', {}, [
+              E('strong', {}, _('Total lines:') + ' '),
+              `${result.totalLines}`,
+            ]),
+            E('div', {}, [
+              E('strong', {}, _('Parsed records:') + ' '),
+              `${result.entries.length}`,
+            ]),
+            E('div', {}, [
+              E('strong', {}, _('Skipped loopback:') + ' '),
+              `${result.skippedLoopback}`,
+            ]),
+            E('div', {}, [
+              E('strong', {}, _('Skipped comments/invalid:') + ' '),
+              `${result.skippedComments + result.skippedInvalid}`,
+            ]),
+            E('div', {}, [
+              E('strong', {}, _('New domains:') + ' '),
+              `${newCount}`,
+            ]),
+            E('div', {}, [
+              E('strong', {}, _('Updated/duplicates:') + ' '),
+              `${updatedCount}`,
+            ]),
+          ],
+        ),
+      );
+
+      if (result.entries.length > 0) {
+        importBtn.disabled = false;
+        importBtn.textContent = _('Import (%d records)').format(
+          result.entries.length,
+        );
+      } else {
+        importBtn.disabled = true;
+        importBtn.textContent = _('Import');
+      }
+    }
+
+    fileInput.addEventListener('change', function (ev) {
+      const file = ev.target.files[0];
+      if (!file) return;
+      fileStatus.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        textArea.value = e.target.result || '';
+        updatePreview();
+      };
+      reader.readAsText(file);
+    });
+
+    textArea.addEventListener('input', updatePreview);
+    skipLoopbackCb.addEventListener('change', updatePreview);
+    overwriteCb.addEventListener('change', updatePreview);
+
+    importBtn.addEventListener('click', function () {
+      if (!currentParsedResult || !currentParsedResult.entries.length) return;
+
+      const overwrite = overwriteCb.checked;
+      const uiEl = dnsHostsOptRef
+        ? dnsHostsOptRef.getUIElement(section_id)
+        : null;
+      let existingEntries = [];
+      if (uiEl && typeof uiEl.getValue === 'function') {
+        const v = uiEl.getValue();
+        if (typeof v === 'string' && v)
+          existingEntries = v
+            .split('\n')
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith('#'));
+      }
+      if (!existingEntries.length) {
+        const uciVal = uci.get(UCI_PACKAGE, section_id, 'dns_hosts');
+        existingEntries = Array.isArray(uciVal)
+          ? uciVal
+          : uciVal
+            ? [uciVal]
+            : [];
+      }
+
+      const domainMap = new Map();
+      if (!overwrite) {
+        for (const entry of existingEntries) {
+          const parts = `${entry}`.trim().split(/\s+/);
+          if (parts.length >= 2)
+            domainMap.set(parts[0].toLowerCase(), parts[1]);
+        }
+      }
+      for (const item of currentParsedResult.entries)
+        domainMap.set(item.domain.toLowerCase(), item.ip);
+
+      const finalEntries = [];
+      for (const [domain, ip] of domainMap.entries())
+        finalEntries.push(`${domain} ${ip}`);
+
+      uci.set(UCI_PACKAGE, section_id, 'dns_hosts', finalEntries.join('\n'));
+      if (uiEl && typeof uiEl.setValue === 'function')
+        uiEl.setValue(finalEntries.join('\n'));
+
+      ui.hideModal();
+      ui.addNotification(
+        null,
+        _('Successfully imported %d DNS record(s)').format(finalEntries.length),
+        'info',
+      );
+    });
+
+    ui.showModal(_('Import Hosts File'), [
+      E('div', { class: 'cbi-map' }, [
+        E(
+          'div',
+          {
+            style:
+              'margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;',
+          },
+          [fileInput, fileSelectBtn, loadCurrentBtn, fileStatus],
+        ),
+        E(
+          'label',
+          { style: 'display:block;margin-bottom:4px;font-weight:bold;' },
+          _('Or paste hosts file content:'),
+        ),
+        textArea,
+        E('div', { style: 'margin-top:10px;' }, [
+          E(
+            'label',
+            {
+              style:
+                'display:flex;align-items:center;cursor:pointer;margin-bottom:6px;',
+            },
+            [
+              skipLoopbackCb,
+              E(
+                'span',
+                {},
+                _(
+                  'Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)',
+                ),
+              ),
+            ],
+          ),
+          E(
+            'label',
+            { style: 'display:flex;align-items:center;cursor:pointer;' },
+            [
+              overwriteCb,
+              E(
+                'span',
+                {},
+                _(
+                  'Overwrite existing records (if unchecked, merge with existing records)',
+                ),
+              ),
+            ],
+          ),
+        ]),
+        previewBox,
+      ]),
+      E('div', { class: 'button-row', style: 'margin-top:16px;' }, [
+        importBtn,
+        E(
+          'button',
+          {
+            class: 'btn cbi-button cbi-button-neutral',
+            click: ui.createHandlerFn(this, function () {
+              ui.hideModal();
+            }),
+          },
+          _('Cancel'),
+        ),
+      ]),
+    ]);
+  }
+
+  // ─── Hosts Section Options ──────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'dns_hosts',
+    _('Custom DNS Records (Hosts)'),
+    _(
+      'One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored.',
+    ),
+  );
+  o.depends('action', 'hosts');
+  o.rows = 8;
+  o.wrap = 'soft';
+  o.textarea = true;
+  o.modalonly = true;
+  o.cfgvalue = function (section_id) {
+    const val = uci.get(UCI_PACKAGE, section_id, 'dns_hosts');
+    if (!val) return '';
+    if (Array.isArray(val)) return val.join('\n');
+    return String(val || '');
+  };
+  o.write = function (section_id, value) {
+    const lines = String(value || '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'));
+    if (lines.length === 0) {
+      uci.unset(UCI_PACKAGE, section_id, 'dns_hosts');
+    } else {
+      uci.set(UCI_PACKAGE, section_id, 'dns_hosts', lines.join('\n'));
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'dns_hosts');
+  };
+  o.validate = function (_section_id, value) {
+    if (!value) return true;
+    const lines = value.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const parts = trimmed.split(/\s+/);
+      if (parts.length < 2) {
+        return _('Invalid line: "%s". Use: domain ip or ip domain').format(
+          trimmed.length > 40 ? trimmed.substring(0, 40) + '\u2026' : trimmed,
+        );
+      }
+    }
+    return true;
+  };
+  const _origDnsHostsRenderWidget = o.renderWidget;
+  o.renderWidget = function (section_id, option_index, cfgvalue) {
+    const node = _origDnsHostsRenderWidget.call(
+      this,
+      section_id,
+      option_index,
+      cfgvalue,
+    );
+    const ta =
+      node.tagName === 'TEXTAREA' ? node : node.querySelector('textarea');
+    if (ta) {
+      ta.style.fontFamily = 'monospace';
+      ta.style.fontSize = '0.85rem';
+      ta.style.lineHeight = '1.4';
+      ta.style.resize = 'vertical';
+    }
+
+    const countBadge = E('span', {
+      style:
+        'font-weight:600;font-size:0.85rem;margin-left:auto;color:var(--text-color-medium,#666);',
+    });
+
+    function updateCount() {
+      const text = ta ? ta.value : '';
+      const validLines = text
+        .split('\n')
+        .filter((l) => l.trim() && !l.trim().startsWith('#'));
+      countBadge.textContent = _('Records: %d').format(validLines.length);
+    }
+
+    if (ta) {
+      ta.addEventListener('input', updateCount);
+      setTimeout(updateCount, 50);
+    }
+
+    const sortBtn = E(
+      'button',
+      {
+        class: 'cbi-button cbi-button-neutral',
+        type: 'button',
+        style: 'margin-left:6px;',
+        click: function () {
+          if (!ta) return;
+          const lines = ta.value
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean);
+          const comments = lines.filter((l) => l.startsWith('#'));
+          const records = lines.filter((l) => !l.startsWith('#')).sort();
+          ta.value = [...comments, ...records].join('\n');
+          updateCount();
+        },
+      },
+      _('Sort Alphabetically'),
+    );
+
+    const cleanBtn = E(
+      'button',
+      {
+        class: 'cbi-button cbi-button-neutral',
+        type: 'button',
+        style: 'margin-left:6px;',
+        click: function () {
+          if (!ta) return;
+          const lines = ta.value
+            .split('\n')
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith('#'));
+          ta.value = lines.join('\n');
+          updateCount();
+        },
+      },
+      _('Clean Comments'),
+    );
+
+    const importHostsBtn = E(
+      'button',
+      {
+        class: 'cbi-button cbi-button-action',
+        type: 'button',
+        style: 'margin-left:6px;',
+        click: function () {
+          showImportHostsModal(section_id, o);
+        },
+      },
+      _('Import Hosts File'),
+    );
+
+    return E('div', {}, [
+      node,
+      E(
+        'div',
+        {
+          style:
+            'display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:8px;',
+        },
+        [sortBtn, cleanBtn, importHostsBtn, countBadge],
+      ),
+    ]);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'hosts_list_urls',
+    _('Remote Hosts Lists'),
+    _(
+      'URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>.',
+    ),
+  );
+  o.depends('action', 'hosts');
+  o.placeholder = 'https://raw.githubusercontent.com/.../hosts';
+  o.modalonly = true;
+  o.renderWidget = function (section_id, _option_index, _cfgvalue) {
+    const pkg = UCI_PACKAGE;
+
+    function getUrls() {
+      let v = uci.get(pkg, section_id, 'hosts_list_urls') || [];
+      if (!Array.isArray(v)) v = v ? [v] : [];
+      return v;
+    }
+
+    function getDisabled() {
+      let v = uci.get(pkg, section_id, 'hosts_list_disabled') || [];
+      if (!Array.isArray(v)) v = v ? [v] : [];
+      return v;
+    }
+
+    function setUrls(urls) {
+      uci.set(pkg, section_id, 'hosts_list_urls', urls.length ? urls : null);
+    }
+
+    function setDisabled(disabled) {
+      uci.set(
+        pkg,
+        section_id,
+        'hosts_list_disabled',
+        disabled.length ? disabled : null,
+      );
+    }
+
+    const container = E('div', { class: 'cbi-section-node' });
+
+    function render() {
+      container.innerHTML = '';
+      const urls = getUrls();
+      const disabled = getDisabled();
+
+      const table = E('table', {
+        class: 'cbi-section-table',
+        style: 'width:100%;',
+      });
+      const tbody = E('tbody');
+
+      urls.forEach(function (url, idx) {
+        const isOff = disabled.includes(url);
+        const tr = E('tr', { class: 'cbi-section-table-row' });
+
+        const tdCheck = E('td', {
+          class: 'cbi-section-table-cell',
+          style: 'width:30px;text-align:center;',
+        });
+        const cb = E('input', {
+          type: 'checkbox',
+          class: 'cbi-input-checkbox',
+          checked: !isOff,
+          change: function () {
+            const nowEnabled = this.checked;
+            let d = getDisabled();
+            if (nowEnabled) {
+              d = d.filter(function (x) {
+                return x !== url;
+              });
+            } else {
+              if (!d.includes(url)) d.push(url);
+            }
+            setDisabled(d);
+            uci.save();
+            render();
+          },
+        });
+        tdCheck.appendChild(cb);
+        tr.appendChild(tdCheck);
+
+        const tdUrl = E('td', {
+          class: 'cbi-section-table-cell',
+          style:
+            'word-break:break-all;overflow-wrap:anywhere;font-size:12px;line-height:1.3;max-width:320px;',
+        });
+        let displayUrl = url;
+        try {
+          displayUrl = decodeURIComponent(url);
+        } catch (e) {}
+        const urlSpan = E(
+          'span',
+          {
+            style: isOff ? 'text-decoration:line-through;opacity:0.6;' : '',
+            title: url,
+          },
+          displayUrl,
+        );
+        tdUrl.appendChild(urlSpan);
+        tr.appendChild(tdUrl);
+
+        const tdStatus = E('td', {
+          class: 'cbi-section-table-cell',
+          style: 'width:60px;text-align:center;white-space:nowrap;',
+        });
+        tdStatus.appendChild(
+          E(
+            'span',
+            {
+              style: isOff ? 'color:#e53935;' : 'color:#2e7d32;',
+            },
+            isOff ? 'OFF' : 'ON',
+          ),
+        );
+        tr.appendChild(tdStatus);
+
+        const tdDel = E('td', {
+          class: 'cbi-section-table-cell',
+          style: 'width:40px;text-align:center;',
+        });
+        const delBtn = E(
+          'button',
+          {
+            class: 'btn cbi-button cbi-button-remove',
+            type: 'button',
+            title: _('Remove'),
+            click: function () {
+              let u = getUrls();
+              let d = getDisabled();
+              u.splice(idx, 1);
+              d = d.filter(function (x) {
+                return x !== url;
+              });
+              setUrls(u);
+              setDisabled(d);
+              uci.save();
+              render();
+            },
+          },
+          '\u2715',
+        );
+        tdDel.appendChild(delBtn);
+        tr.appendChild(tdDel);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      container.appendChild(table);
+
+      const addRow = E('div', {
+        class: 'cbi-section-create',
+        style: 'margin-top:8px;display:flex;gap:4px;align-items:center;',
+      });
+
+      const input = E('input', {
+        type: 'text',
+        class: 'cbi-input-text',
+        placeholder: 'https://raw.githubusercontent.com/.../hosts',
+        style: 'flex:1;',
+      });
+
+      const addBtn = E(
+        'button',
+        {
+          class: 'btn cbi-button cbi-button-action',
+          type: 'button',
+          click: function () {
+            let val = (input.value || '').trim();
+            if (!val) return;
+            val = val.replace(
+              /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/,
+              'https://raw.githubusercontent.com/$1/$2/$3',
+            );
+            val = val.replace(
+              /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/raw\/(.+)$/,
+              'https://raw.githubusercontent.com/$1/$2/$3',
+            );
+            let u = getUrls();
+            if (u.includes(val)) {
+              input.value = '';
+              return;
+            }
+            u.push(val);
+            setUrls(u);
+            uci.save();
+            input.value = '';
+            render();
+          },
+        },
+        '+',
+      );
+
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') addBtn.click();
+      });
+
+      addRow.appendChild(input);
+      addRow.appendChild(addBtn);
+      container.appendChild(addRow);
+
+      if (urls.length > 0) {
+        const updateRow = E('div', {
+          style: 'margin-top:8px;display:flex;justify-content:flex-end;',
+        });
+        const updateBtn = E(
+          'button',
+          {
+            class: 'cbi-button cbi-button-action',
+            type: 'button',
+            click: function () {
+              updateBtn.disabled = true;
+              updateBtn.textContent = _('Updating…');
+              fs.exec('/usr/bin/tachyon', ['hosts_list_update'])
+                .then(function (res) {
+                  updateBtn.disabled = false;
+                  updateBtn.textContent = _('Update Lists Now');
+                  let ok = false;
+                  let msg = '';
+                  try {
+                    const data = JSON.parse(res.stdout || '{}');
+                    if (data.success) {
+                      ok = true;
+                      msg = _('Successfully updated %d hosts entries').format(
+                        data.entries,
+                      );
+                    } else {
+                      msg =
+                        _('Update failed:') +
+                        ' ' +
+                        (data.error || res.stderr || '');
+                    }
+                  } catch (e) {
+                    msg =
+                      res.stdout ||
+                      res.stderr ||
+                      _('Finished with code') + ' ' + res.code;
+                  }
+                  ui.addNotification(
+                    null,
+                    E('p', {}, msg),
+                    ok ? 'info' : 'danger',
+                  );
+                })
+                .catch(function (err) {
+                  updateBtn.disabled = false;
+                  updateBtn.textContent = _('Update Lists Now');
+                  ui.addNotification(
+                    null,
+                    E('p', {}, err.message || err),
+                    'danger',
+                  );
+                });
+            },
+          },
+          _('Update Lists Now'),
+        );
+        updateRow.appendChild(updateBtn);
+        container.appendChild(updateRow);
+      }
+    }
+
+    render();
+    return container;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'hosts_list_auto_update',
+    _('Auto-update Hosts Lists'),
+    _('Automatically update remote hosts lists on schedule'),
+  );
+  o.depends('action', 'hosts');
+  o.default = '0';
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'hosts_list_update_interval',
+    _('Hosts Lists Update Interval'),
+    _('Use sing-box duration format like 1d, 12h or 6h'),
+  );
+  o.depends('action', 'hosts');
+  o.depends({ action: 'hosts', hosts_list_auto_update: '1' });
+  o.placeholder = '24h';
+  o.default = '24h';
+  o.rmempty = false;
+  o.modalonly = true;
+  o.validate = function (_section_id, value) {
+    if (!value) return true;
+    return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value)
+      ? true
+      : _('Use sing-box duration format like 1d, 12h or 6h');
+  };
+
+  // Keep tag chains (<b 0x..>, <t>, <r..>, etc.) and plain hex intact
+  // Normalizes plain hex to <b 0xHEX> and auto-heals previously truncated tags
+  const cleanAwgPayload = (v) => {
+    if (typeof v !== 'string') return '';
+    let s = v.trim();
+    if (!s || s === '0') return s;
+    // Heal previously truncated opening binary tag if missing (e.g. 729cd...><t>...)
+    if (/^[0-9a-fA-F]+><[^<>]+>/.test(s)) s = '<b 0x' + s;
+    // Heal previously truncated closing bracket if missing (e.g. ...<rd 5)
+    if (/<[^<>]+$/.test(s)) s += '>';
+    // If plain hex (classic AWG payload or stripped <b 0x..>), normalize to <b 0xHEX>
+    const plainHex = s.replace(/^0x/i, '');
+    if (/^[0-9a-fA-F]+$/.test(plainHex) && plainHex.length >= 2) {
+      const padded = plainHex.length % 2 !== 0 ? plainHex + '0' : plainHex;
+      return '<b 0x' + padded.toLowerCase() + '>';
+    }
+    return s;
+  };
+
+  // An AmneziaWG section is set up one of three ways; a heading per way keeps
+  // the long option list readable. LuCI renders the label on the left and this
+  // markup on the right.
+  function addAwgModeTitle(key, title, description) {
+    const o = section.taboption('servers', form.DummyValue, key, title);
+    o.modalonly = true;
+    o.rawhtml = true;
+    o.depends('action', 'awg');
+    o.cfgvalue = function () {
+      return `<span style="opacity:.75">${description}</span>`;
+    };
+    return o;
+  }
+
+  addAwgModeTitle(
+    '_awg_mode_generate',
+    _('Generate for 2.0'),
+    _(
+      'Generate an AmneziaWG 2.0 configuration from a Cloudflare WARP account. Only 2.0 can be generated: WARP does not run AmneziaWG, so 3.0 and 3.1 cannot be produced here — load a .conf for those.',
+    ),
+  );
+
+  o = section.taboption(
+    'servers',
+    form.Button,
+    '_generate_warp',
+    _('AmneziaWG Generator'),
+    _(
+      'Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings.',
+    ),
+  );
+  o.modalonly = true;
+  o.inputtitle = _('Generate WARP Config');
+  o.depends('action', 'awg');
+
+  // Custom render: beautiful gradient button with loading / success / error states
+  o.renderWidget = function (section_id) {
+    if (!document.getElementById('tachyon-warp-btn-css')) {
+      const s = document.createElement('style');
+      s.id = 'tachyon-warp-btn-css';
+      s.textContent = `
+        .twg-spinner {
+          width: 13px; height: 13px;
+          border: 1.5px solid currentColor;
+          border-top-color: transparent;
+          border-radius: 50%;
+          display: none;
+          flex-shrink: 0;
+          animation: twg-spin 0.7s linear infinite;
+          opacity: 0.6;
+        }
+        .twg-loading .twg-spinner { display: inline-block; }
+        .twg-loading .twg-icon    { display: none; }
+        .twg-icon { flex-shrink: 0; }
+        .twg-btn.twg-loading { opacity: 0.65; }
+        .twg-btn.twg-success { color: #4caf50 !important; border-color: #4caf50 !important; }
+        .twg-btn.twg-error   { color: #ef5350 !important; border-color: #ef5350 !important; animation: twg-shake 0.4s ease; }
+        @keyframes twg-spin  { to { transform: rotate(360deg); } }
+        @keyframes twg-shake {
+          0%,100% { transform: translateX(0); }
+          20%     { transform: translateX(-5px); }
+          60%     { transform: translateX(5px); }
+          80%     { transform: translateX(-3px); }
+        }
+      `;
+      document.head.appendChild(s);
+    }
+
+    const spinner = E('span', { class: 'twg-spinner' });
+    const icon = E('span', { class: 'twg-icon' }, ['↺']);
+    const label = E('span', { class: 'twg-label' }, [
+      _('Generate WARP Config'),
+    ]);
+    const btn = E(
+      'button',
+      {
+        class: 'btn cbi-button cbi-button-neutral twg-btn',
+        type: 'button',
+        style: 'display:inline-flex;align-items:center;gap:8px;',
+      },
+      [spinner, icon, label],
+    );
+
+    btn.addEventListener(
+      'click',
+      (ev) => this.onclick && this.onclick.call(this, ev, section_id),
+    );
+    return btn;
+  };
+
+  o.onclick = function (ev, section_id) {
+    const btn = ev.target.closest('.twg-btn');
+    const label = btn ? btn.querySelector('.twg-label') : null;
+    const origText = _('Generate WARP Config');
+
+    const setState = (state, text) => {
+      if (!btn) return;
+      btn.className =
+        'btn cbi-button cbi-button-neutral twg-btn' +
+        (state ? ' twg-' + state : '');
+      btn.disabled = state === 'loading';
+      if (label && text) label.textContent = text;
+    };
+
+    const showStatusModal = (title, msg, isError) =>
+      ui.addNotification(
+        title,
+        E('p', {}, msg),
+        isError ? 'danger' : 'success',
+      );
+
+    const resetAfter = (ms) => setTimeout(() => setState('', origText), ms);
+
+    const getControlWidget = (opt) => {
+      const widget = document.getElementById(
+        `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
+      );
+      if (!widget) return null;
+      if (/^(INPUT|SELECT|TEXTAREA)$/.test(widget.tagName)) return widget;
+      return widget.querySelector(
+        "input:not([type='hidden']), select, textarea",
+      );
+    };
+
+    const verWidget = getControlWidget('awg_version');
+    const currentVersion =
+      (verWidget ? verWidget.value : null) ||
+      uci.get(UCI_PACKAGE, section_id, 'awg_version') ||
+      '2.0';
+
+    setState('loading', _('Generating…'));
+
+    fs.exec('/usr/bin/tachyon', ['generate_warp', '', '2.0'])
+      .then(function (response) {
+        if (!response || (response.code ?? 0) !== 0 || !response.stdout) {
+          setState('error', _('Error'));
+          resetAfter(2500);
+          showStatusModal(
+            _('Error'),
+            _('Failed to generate WARP config:') +
+              ' ' +
+              (response?.stderr || 'Unknown error'),
+            true,
+          );
+          return;
+        }
+
+        try {
+          const data = JSON.parse(response.stdout);
+          if (!data.success) {
+            setState('error', _('Error'));
+            resetAfter(2500);
+            showStatusModal(
+              _('Error'),
+              _('Failed to generate WARP config:') +
+                ' ' +
+                (data.message || 'Unknown error'),
+              true,
+            );
+            return;
+          }
+
+          const setWidgetValue = (opt, val) => {
+            const widget = getControlWidget(opt);
+            if (widget) {
+              widget.value = val;
+              widget.dispatchEvent(new Event('input', { bubbles: true }));
+              widget.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            uci.set(UCI_PACKAGE, section_id, opt, val);
+          };
+
+          const genVer = data.awg_version || '2.0';
+
+          setWidgetValue('awg_local_address', data.local_address);
+          setWidgetValue('awg_private_key', data.private_key);
+          setWidgetValue('awg_peer_public_key', data.peer_public_key);
+          setWidgetValue('awg_server_address', data.server_address);
+          setWidgetValue('awg_server_port', data.server_port);
+          setWidgetValue('awg_jc', `${data.awg_jc}`);
+          setWidgetValue('awg_jmin', `${data.awg_jmin}`);
+          setWidgetValue('awg_jmax', `${data.awg_jmax}`);
+          setWidgetValue('awg_s1', `${data.awg_s1}`);
+          setWidgetValue('awg_s2', `${data.awg_s2}`);
+          setWidgetValue('awg_h1', `${data.awg_h1}`);
+          setWidgetValue('awg_h2', `${data.awg_h2}`);
+          setWidgetValue('awg_h3', `${data.awg_h3}`);
+          setWidgetValue('awg_h4', `${data.awg_h4}`);
+          setWidgetValue('awg_s3', `${data.awg_s3}`);
+          setWidgetValue('awg_s4', `${data.awg_s4}`);
+          setWidgetValue('awg_i1', cleanAwgPayload(data.awg_i1));
+          setWidgetValue('awg_i2', cleanAwgPayload(data.awg_i2));
+          setWidgetValue('awg_i3', cleanAwgPayload(data.awg_i3));
+          setWidgetValue('awg_i4', cleanAwgPayload(data.awg_i4));
+          setWidgetValue('awg_i5', cleanAwgPayload(data.awg_i5));
+
+          setWidgetValue('awg_version', genVer);
+
+          // Clear 3.x specific options when generating WARP (Cloudflare only supports AWG 2.0)
+          setWidgetValue('awg_header_protection_key', '');
+          setWidgetValue('awg_content_padding_addition', '');
+          setWidgetValue('awg_rekey_after_time', '');
+          setWidgetValue('awg_rekey_timeout', '');
+          setWidgetValue('awg_reject_after_time', '');
+          setWidgetValue('awg_keepalive_timeout', '');
+          setWidgetValue('awg_max_handshake_attempts', '');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_header_protection_key');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_content_padding_addition');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_after_time');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_timeout');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_reject_after_time');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_keepalive_timeout');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_max_handshake_attempts');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_random_trailers');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_disable_cookies');
+
+          setState('success', _('Generated!'));
+          resetAfter(2500);
+          let successMsg = _(
+            'AmneziaWG (Cloudflare WARP) configuration generated and loaded successfully!',
+          );
+          if (currentVersion !== '2.0') {
+            successMsg +=
+              '\n\n' +
+              _(
+                "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (WireGuard). The profile has been automatically set to 2.0 so the connection works properly. Versions 3.0 and 3.1 require an AmneziaWG server via 'Import .conf'.",
+              );
+          }
+          showStatusModal(_('Success'), successMsg, false);
+        } catch (err) {
+          setState('error', _('Error'));
+          resetAfter(2500);
+          showStatusModal(
+            _('Error'),
+            _('Failed to parse WARP config:') + ' ' + err.message,
+            true,
+          );
+        }
+      })
+      .catch(function (error) {
+        setState('error', _('Error'));
+        resetAfter(2500);
+        showStatusModal(
+          _('Error'),
+          _('Error running generator:') + ' ' + error.message,
+          true,
+        );
+      });
+  };
+
+  // ── Load .conf button ──────────────────────────────────────────────────────
+  o = section.taboption(
+    'servers',
+    form.Button,
+    '_load_awg_conf',
+    _('Load .conf config'),
+    _('Import AmneziaWG settings from .conf file'),
+  );
+  o.modalonly = true;
+  o.depends('action', 'awg');
+
+  o.renderWidget = function (section_id) {
+    // Parse INI-style .conf into { sectionName: { key: value } }
+    const parseConf = (text) => {
+      const out = {};
+      let cur = null;
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+        const sm = line.match(/^\[([^\]]+)\]$/);
+        if (sm) {
+          cur = sm[1].trim().toLowerCase();
+          out[cur] = out[cur] || {};
+          continue;
+        }
+        const kv = line.match(/^([^=]+)\s*=\s*(.+)$/);
+        if (kv && cur) {
+          const key = kv[1].trim();
+          let val = kv[2].trim();
+          // Strip inline comments if not inside payload tags
+          if (!val.startsWith('<')) {
+            const commentIdx = val.search(/[#;]/);
+            if (commentIdx >= 0) val = val.slice(0, commentIdx).trim();
+          }
+          out[cur][key] = val;
+        }
+      }
+      return out;
+    };
+
+    // Add /32 or /128 prefix if missing; join with space
+    const normalizeAddr = (str) =>
+      str
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((a) =>
+          a.includes('/') ? a : a.includes(':') ? a + '/128' : a + '/32',
+        )
+        .join(' ');
+
+    // Use shared payload cleaner for tag chains and hex normalization
+    const cleanPayload = cleanAwgPayload;
+
+    // Write value into a form widget and the UCI cache
+    const setVal = (opt, val) => {
+      if (val === undefined || val === null) return;
+      const str = String(val);
+      const el =
+        document.getElementById(
+          `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
+        ) ||
+        document.getElementById(`cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
+      const w =
+        el &&
+        (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
+          ? el
+          : el.querySelector("input:not([type='hidden']),select,textarea"));
+      if (w) {
+        if (w.type === 'checkbox') {
+          w.checked =
+            str === '1' || str === 'true' || str === 'on' || str === 'yes';
+        } else {
+          w.value = str;
+        }
+        w.dispatchEvent(new Event('input', { bubbles: true }));
+        w.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      uci.set(UCI_PACKAGE, section_id, opt, str);
+    };
+
+    // Hidden file picker
+    const fileInput = E('input', {
+      type: 'file',
+      accept: '.conf',
+      style: 'display:none',
+    });
+
+    const label = E('span', { class: 'twg-label' }, [_('Load .conf')]);
+    const btn = E(
+      'button',
+      {
+        class: 'btn cbi-button cbi-button-neutral twg-btn',
+        type: 'button',
+        style: 'display:inline-flex;align-items:center;gap:8px;',
+      },
+      [label],
+    );
+
+    const setBtn = (state, text) => {
+      btn.className =
+        'btn cbi-button cbi-button-neutral twg-btn' +
+        (state ? ' twg-' + state : '');
+      label.textContent = text || _('Load .conf');
+    };
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      fileInput.value = '';
+      if (!file) return;
+
+      if (!file.name.endsWith('.conf')) {
+        ui.addNotification(
+          _('Error'),
+          E('p', {}, _('Select a file with .conf extension')),
+          'danger',
+        );
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = (ev) => {
+        let cfg;
+        try {
+          cfg = parseConf(ev.target.result);
+        } catch (err) {
+          setBtn('error', _('Error'));
+          setTimeout(() => setBtn('', null), 2500);
+          ui.addNotification(
+            _('Error'),
+            E('p', {}, _('Failed to parse file:') + ' ' + err.message),
+            'danger',
+          );
+          return;
+        }
+
+        const iface = cfg.interface || {};
+        const peer = cfg.peer || {};
+
+        // Case-insensitive lookup across [Interface] and [Peer]
+        const getConfVal = (k) => {
+          const lk = k.toLowerCase();
+          for (const s of [iface, peer]) {
+            if (!s) continue;
+            for (const key in s) {
+              if (key.toLowerCase() === lk) return s[key];
+            }
+          }
+          return undefined;
+        };
+
+        // --- [Interface] / [Peer] ---
+        const addr = getConfVal('Address') || getConfVal('awg_local_address');
+        if (addr) setVal('awg_local_address', normalizeAddr(addr));
+
+        const priv = getConfVal('PrivateKey') || getConfVal('awg_private_key');
+        if (priv) setVal('awg_private_key', priv);
+
+        const mtu = getConfVal('MTU');
+        if (mtu !== undefined) setVal('awg_mtu', mtu);
+
+        const keepalive =
+          getConfVal('PersistentKeepalive') || getConfVal('Keepalive');
+        if (keepalive !== undefined) setVal('awg_keepalive', keepalive);
+
+        const jc = getConfVal('Jc');
+        if (jc !== undefined) setVal('awg_jc', jc);
+
+        const jmin = getConfVal('Jmin');
+        if (jmin !== undefined) setVal('awg_jmin', jmin);
+
+        const jmax = getConfVal('Jmax');
+        if (jmax !== undefined) setVal('awg_jmax', jmax);
+
+        const s1 = getConfVal('S1');
+        if (s1 !== undefined) setVal('awg_s1', s1);
+
+        const s2 = getConfVal('S2');
+        if (s2 !== undefined) setVal('awg_s2', s2);
+
+        const s3 = getConfVal('S3');
+        if (s3 !== undefined) setVal('awg_s3', s3);
+
+        const s4 = getConfVal('S4');
+        if (s4 !== undefined) setVal('awg_s4', s4);
+
+        const h1 = getConfVal('H1');
+        if (h1 !== undefined) setVal('awg_h1', h1);
+
+        const h2 = getConfVal('H2');
+        if (h2 !== undefined) setVal('awg_h2', h2);
+
+        const h3 = getConfVal('H3');
+        if (h3 !== undefined) setVal('awg_h3', h3);
+
+        const h4 = getConfVal('H4');
+        if (h4 !== undefined) setVal('awg_h4', h4);
+
+        const i1 = getConfVal('I1');
+        if (i1) setVal('awg_i1', cleanPayload(i1));
+
+        const i2 = getConfVal('I2');
+        if (i2) setVal('awg_i2', cleanPayload(i2));
+
+        const i3 = getConfVal('I3');
+        if (i3) setVal('awg_i3', cleanPayload(i3));
+
+        const i4 = getConfVal('I4');
+        if (i4) setVal('awg_i4', cleanPayload(i4));
+
+        const i5 = getConfVal('I5');
+        if (i5) setVal('awg_i5', cleanPayload(i5));
+
+        const j1 = getConfVal('J1');
+        if (j1) setVal('awg_j1', cleanPayload(j1));
+
+        const j2 = getConfVal('J2');
+        if (j2) setVal('awg_j2', cleanPayload(j2));
+
+        const j3 = getConfVal('J3');
+        if (j3) setVal('awg_j3', cleanPayload(j3));
+
+        const itime = getConfVal('Itime');
+        if (itime !== undefined) setVal('awg_itime', itime);
+
+        // --- AmneziaWG version detection and parameters ---
+        const hpk = getConfVal('HeaderProtectionKey') || '';
+        const cpa = getConfVal('ContentPaddingAddition') || '';
+        const rka = getConfVal('RekeyAfterTime') || '';
+        const rkt = getConfVal('RekeyTimeout') || '';
+        const rja = getConfVal('RejectAfterTime') || '';
+        const kpt = getConfVal('KeepaliveTimeout') || '';
+        const mha = getConfVal('MaxHandshakeAttempts') || '';
+        const randomTrailers = getConfVal('RandomTrailers') || '';
+        const disableCookies = getConfVal('DisableCookies') || '';
+
+        const isV31 = !!(
+          rka ||
+          rkt ||
+          rja ||
+          kpt ||
+          mha ||
+          randomTrailers ||
+          disableCookies
+        );
+        const isV30 = !isV31 && !!(hpk || cpa);
+        const detectedVersion = isV31 ? '3.1' : isV30 ? '3.0' : '2.0';
+
+        setVal('awg_version', detectedVersion);
+
+        if (isV31 || isV30) {
+          setVal('awg_header_protection_key', hpk);
+          setVal('awg_content_padding_addition', cpa);
+        } else {
+          setVal('awg_header_protection_key', '');
+          setVal('awg_content_padding_addition', '');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_header_protection_key');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_content_padding_addition');
+        }
+
+        if (isV31) {
+          setVal('awg_rekey_after_time', rka);
+          setVal('awg_rekey_timeout', rkt);
+          setVal('awg_reject_after_time', rja);
+          setVal('awg_keepalive_timeout', kpt);
+          setVal('awg_max_handshake_attempts', mha);
+          const rtVal = /^(1|true|yes|on)$/i.test(String(randomTrailers).trim())
+            ? '1'
+            : '0';
+          setVal('awg_random_trailers', rtVal);
+          const dcVal = /^(1|true|yes|on)$/i.test(String(disableCookies).trim())
+            ? '1'
+            : '0';
+          setVal('awg_disable_cookies', dcVal);
+        } else {
+          setVal('awg_rekey_after_time', '');
+          setVal('awg_rekey_timeout', '');
+          setVal('awg_reject_after_time', '');
+          setVal('awg_keepalive_timeout', '');
+          setVal('awg_max_handshake_attempts', '');
+          setVal('awg_random_trailers', '0');
+          setVal('awg_disable_cookies', '0');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_after_time');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_timeout');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_reject_after_time');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_keepalive_timeout');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_max_handshake_attempts');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_random_trailers');
+          uci.unset(UCI_PACKAGE, section_id, 'awg_disable_cookies');
+        }
+
+        // --- [Peer] ---
+        const pub =
+          getConfVal('PublicKey') || getConfVal('awg_peer_public_key');
+        if (pub) setVal('awg_peer_public_key', pub);
+
+        const psk =
+          getConfVal('PresharedKey') || getConfVal('awg_preshared_key');
+        if (psk) setVal('awg_preshared_key', psk);
+
+        const ep = getConfVal('Endpoint');
+        if (ep) {
+          const i = ep.lastIndexOf(':');
+          if (i > 0) {
+            setVal('awg_server_address', ep.slice(0, i));
+            setVal('awg_server_port', ep.slice(i + 1));
+          }
+        }
+
+        setBtn('success', _('Loaded!'));
+        setTimeout(() => setBtn('', null), 2000);
+        ui.addNotification(
+          _('Done'),
+          E('p', {}, _('AmneziaWG config loaded successfully!')),
+          'success',
+        );
+      };
+
+      reader.onerror = () => {
+        setBtn('error', _('Read error'));
+        setTimeout(() => setBtn('', null), 2500);
+      };
+
+      reader.readAsText(file);
+    });
+
+    btn.addEventListener('click', () => fileInput.click());
+
+    return E('div', { style: 'display:contents' }, [fileInput, btn]);
+  };
+
+  const validateAwgManualRequiredText = function (section_id, value) {
+    if (
+      currentSourceOptionValues(section_id, 'selector_amnezia_configs').length >
+      0
+    ) {
+      return true;
+    }
+    return validateRequiredText.call(this, section_id, value);
+  };
+
+  o = section.taboption(
+    'awg_manual',
+    form.Value,
+    'awg_local_address',
+    _('Local Address'),
+  );
+
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'awg');
+  o.validate = validateAwgManualRequiredText;
+
+  o = section.taboption(
+    'awg_manual',
+    form.Value,
+    'awg_private_key',
+    _('Private Key'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'awg');
+  o.validate = validateAwgManualRequiredText;
+
+  o = section.taboption(
+    'awg_manual',
+    form.Value,
+    'awg_peer_public_key',
+    _('Peer Public Key'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'awg');
+  o.validate = validateAwgManualRequiredText;
+
+  o = section.taboption(
+    'awg_manual',
+    form.Value,
+    'awg_server_address',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'awg');
+  o.validate = validateAwgManualRequiredText;
+
+  o = section.taboption(
+    'awg_manual',
+    form.Value,
+    'awg_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'port';
+  o.depends('action', 'awg');
+  o.validate = validateAwgManualRequiredText;
+
+  o = section.taboption(
+    'awg_manual',
+    form.Value,
+    'awg_preshared_key',
+    _('Preshared Key'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'awg');
+
+  o = section.taboption('awg_manual', form.Value, 'awg_mtu', _('MTU'));
+  o.datatype = 'uinteger';
+  o.placeholder = '1280';
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'awg');
+
+  o = section.taboption(
+    'awg_manual',
+    form.Value,
+    'awg_keepalive',
+    _('Persistent Keepalive'),
+  );
+  o.placeholder = '25-35';
+  o.validate = function (_section_id, value) {
+    if (!value) return true;
+    if (/^\d+$/.test(value)) return true;
+    const m = value.match(/^(\d+)-(\d+)$/);
+    if (m && Number(m[1]) <= Number(m[2])) return true;
+    return _('Enter a number or range, e.g. 25 or 25-35');
+  };
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'awg');
+
+  o = section.taboption(
+    'awg_manual',
+    form.ListValue,
+    'awg_version',
+    _('AmneziaWG Version'),
+    _(
+      'Protocol version: 2.0 (standard headers, WARP compatible), 3.0 (header protection key, padding ranges), or 3.1 (header protection key, padding ranges, advanced timers)',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.default = '2.0';
+  o.value('2.0', 'AmneziaWG 2.0');
+  o.value('3.0', 'AmneziaWG 3.0');
+  o.value('3.1', 'AmneziaWG 3.1');
+  o.depends('action', 'awg');
+  o.write = function (section_id, formvalue) {
+    if (formvalue === '2.0') {
+      uci.unset(UCI_PACKAGE, section_id, 'awg_header_protection_key');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_content_padding_addition');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_after_time');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_timeout');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_reject_after_time');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_keepalive_timeout');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_max_handshake_attempts');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_random_trailers');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_disable_cookies');
+    } else if (formvalue === '3.0') {
+      uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_after_time');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_rekey_timeout');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_reject_after_time');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_keepalive_timeout');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_max_handshake_attempts');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_random_trailers');
+      uci.unset(UCI_PACKAGE, section_id, 'awg_disable_cookies');
+    }
+    return uci.set(UCI_PACKAGE, section_id, 'awg_version', formvalue);
+  };
+
+  // ── AmneziaWG obfuscation parameters (NATIVE LUCI CBI STYLE) ──────────────
+  const addAwgParam = (name, title, desc, def) => {
+    let opt = section.taboption('awg_manual', form.Value, name, title, desc);
+    opt.modalonly = true;
+    opt.rmempty = false;
+    opt.default = def;
+    opt.depends('action', 'awg');
+    return opt;
+  };
+
+  addAwgParam('awg_jc', _('Junk Packet Count (Jc)'), '', '120');
+  addAwgParam('awg_jmin', _('Junk Min Size (Jmin)'), '', '23');
+  addAwgParam('awg_jmax', _('Junk Max Size (Jmax)'), '', '911');
+  addAwgParam('awg_s1', _('Init Packet Magic Header (S1)'), '', '0');
+  addAwgParam('awg_s2', _('Response Packet Magic Header (S2)'), '', '0');
+  addAwgParam('awg_s3', _('Init Packet Magic Header (S3)'), '', '0');
+  addAwgParam('awg_s4', _('Response Packet Magic Header (S4)'), '', '0');
+  addAwgParam('awg_h1', _('Underload Packet Magic Header (H1)'), '', '1');
+  addAwgParam('awg_h2', _('Underload Packet Magic Header (H2)'), '', '2');
+  addAwgParam('awg_h3', _('Underload Packet Magic Header (H3)'), '', '3');
+  addAwgParam('awg_h4', _('Underload Packet Magic Header (H4)'), '', '4');
+  const addAwgPayloadParam = (name, title, desc, def) => {
+    let opt = section.taboption('awg_manual', form.Value, name, title, desc);
+    opt.modalonly = true;
+    opt.rmempty = false;
+    opt.default = def;
+    opt.depends('action', 'awg');
+    opt.cfgvalue = function (section_id) {
+      let val = uci.get(UCI_PACKAGE, section_id, name);
+      if (val === undefined || val === null || val === '') return def;
+      return cleanAwgPayload(String(val));
+    };
+    opt.write = function (section_id, formvalue) {
+      return uci.set(UCI_PACKAGE, section_id, name, cleanAwgPayload(formvalue));
+    };
+    return opt;
+  };
+
+  addAwgPayloadParam('awg_i1', _('Init Packet Payload (I1)'), '', '0');
+  addAwgPayloadParam('awg_i2', _('Init Packet Payload (I2)'), '', '0');
+  addAwgPayloadParam('awg_i3', _('Init Packet Payload (I3)'), '', '0');
+  addAwgPayloadParam('awg_i4', _('Init Packet Payload (I4)'), '', '0');
+  addAwgPayloadParam('awg_i5', _('Init Packet Payload (I5)'), '', '0');
+
+  // ── AmneziaWG 3.0 & 3.1 Advanced Parameters ───────────────────────────────
+  const addAwgV3Param = (name, title, desc) => {
+    let opt = section.taboption('awg_manual', form.Value, name, title, desc);
+    opt.modalonly = true;
+    opt.rmempty = true;
+    opt.depends({ action: 'awg', awg_version: '3.0' });
+    opt.depends({ action: 'awg', awg_version: '3.1' });
+    return opt;
+  };
+
+  const addAwgV31Param = (name, title, desc) => {
+    let opt = section.taboption('awg_manual', form.Value, name, title, desc);
+    opt.modalonly = true;
+    opt.rmempty = true;
+    opt.depends({ action: 'awg', awg_version: '3.1' });
+    return opt;
+  };
+
+  addAwgV3Param(
+    'awg_header_protection_key',
+    _('Header Protection Key'),
+    _('AmneziaWG 3.0 / 3.1 header protection key'),
+  );
+  addAwgV3Param(
+    'awg_content_padding_addition',
+    _('Content Padding Addition'),
+    _('AmneziaWG 3.0 / 3.1 content padding range, e.g. 38-104'),
+  );
+  addAwgV31Param(
+    'awg_rekey_after_time',
+    _('Rekey After Time'),
+    _('AmneziaWG 3.1 rekey after time'),
+  );
+  addAwgV31Param(
+    'awg_rekey_timeout',
+    _('Rekey Timeout'),
+    _('AmneziaWG 3.1 rekey timeout'),
+  );
+  addAwgV31Param(
+    'awg_reject_after_time',
+    _('Reject After Time'),
+    _('AmneziaWG 3.1 reject after time'),
+  );
+  addAwgV31Param(
+    'awg_keepalive_timeout',
+    _('Keepalive Timeout'),
+    _('AmneziaWG 3.1 keepalive timeout'),
+  );
+  addAwgV31Param(
+    'awg_max_handshake_attempts',
+    _('Max Handshake Attempts'),
+    _('AmneziaWG 3.1 max handshake attempts'),
+  );
+
+  o = section.taboption(
+    'awg_manual',
+    form.Flag,
+    'awg_random_trailers',
+    _('Random Trailers'),
+    _('AmneziaWG 3.1 random packet trailers'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.default = '0';
+  o.depends({ action: 'awg', awg_version: '3.1' });
+
+  o = section.taboption(
+    'awg_manual',
+    form.Flag,
+    'awg_disable_cookies',
+    _('Disable Cookies'),
+    _('AmneziaWG 3.1 disable cookie replies'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.default = '0';
+  o.depends({ action: 'awg', awg_version: '3.1' });
+
+  // ── WARP (Cloudflare WARP via sing-box-extended) ──────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_private_key',
+    _('WARP Private Key'),
+    _('WireGuard private key from your Cloudflare WARP account'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'warp');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_account_id',
+    _('WARP Account ID'),
+    _('Cloudflare WARP account / device ID'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'warp');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'warp_access_token',
+    _('WARP Access Token'),
+    _('Cloudflare WARP API access token'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'warp');
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'warp_detour',
+    _('Registration Detour'),
+    _('Proxy to use for WARP API registration (api.cloudflareclient.com)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'warp');
+  o.load = function (itemId) {
+    const choices = subscriptionDownloadTargetChoices(itemId);
+    choices.unshift({ value: '', label: _('Direct (Default)') });
+    refreshOptionChoices(this, choices);
+    return optionMapValue(this, itemId, 'warp_detour') || '';
+  };
+
+  // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'anytls_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'anytls');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'anytls_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.depends('action', 'anytls');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'anytls_password',
+    _('Password'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends('action', 'anytls');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'anytls_sni',
+    _('TLS SNI'),
+    _('Server Name Indication — leave empty to use server address'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'anytls');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'anytls_insecure',
+    _('Allow Insecure TLS'),
+    _('Skip TLS certificate verification (not recommended)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'anytls');
+
+  // ── Snell (sing-box-extended) ─────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'snell_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'snell');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'snell_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.depends('action', 'snell');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'snell_psk',
+    _('PSK'),
+    _('Pre-shared key'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends('action', 'snell');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'snell_version',
+    _('Snell Version'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('4', 'v4');
+  o.value('3', 'v3');
+  o.value('2', 'v2');
+  o.value('1', 'v1');
+  o.default = '4';
+  o.depends('action', 'snell');
+
+  // ── Mieru (sing-box-extended, tachyon-core) ──────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'mieru_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'mieru');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'mieru_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.placeholder = '1080, 2000-2010';
+  o.depends('action', 'mieru');
+  o.validate = function (_sectionId, value) {
+    const raw = `${value || ''}`.trim();
+    if (!raw) {
+      return _('This field is required');
+    }
+    const tokens = raw.split(/[\s,]+/).filter(Boolean);
+    if (tokens.length === 0) {
+      return _('This field is required');
+    }
+    for (const tok of tokens) {
+      if (/^[0-9]+$/.test(tok)) {
+        const p = parseInt(tok, 10);
+        if (p < 1 || p > 65535) {
+          return _('Port must be between 1 and 65535');
+        }
+        continue;
+      }
+      const m = tok.match(/^([0-9]+)[-:]([0-9]+)$/);
+      if (m) {
+        const lo = parseInt(m[1], 10);
+        const hi = parseInt(m[2], 10);
+        if (lo >= 1 && hi >= lo && hi <= 65535) {
+          continue;
+        }
+      }
+      return _('Specify a port (1-65535) or port range (e.g. 2000-2010)');
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'mieru_transport',
+    _('Transport'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('TCP', 'TCP');
+  o.value('UDP', 'UDP');
+  o.default = 'TCP';
+  o.depends('action', 'mieru');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'mieru_username',
+    _('Username'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'mieru');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'mieru_password',
+    _('Password'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends('action', 'mieru');
+  o.validate = validateRequiredText;
+
+  // ── NaiveProxy (every core) ──────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'naive_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'naive');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'naive_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.depends('action', 'naive');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'naive_username',
+    _('Username'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'naive');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'naive_password',
+    _('Password'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends('action', 'naive');
+  o.validate = validateRequiredText;
+
+  // NaiveProxy always speaks HTTPS. The SNI defaults to the server address,
+  // and tachyon-core refuses tls.insecure outright, so there is deliberately
+  // no skip-verification option here.
+  o = section.taboption('settings', form.Value, 'naive_sni', _('SNI'));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'naive');
+
+  // ── Sudoku (sing-box-extended) ────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'sudoku_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'sudoku');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'sudoku_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.depends('action', 'sudoku');
+
+  o = section.taboption('settings', form.Value, 'sudoku_key', _('Key'));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends('action', 'sudoku');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'sudoku_aead_method',
+    _('AEAD Method'),
+    _('Optional — leave empty for default'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'sudoku');
+
+  // ── MASQUE (Cloudflare MASQUE via sing-box-extended) ──────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'masque_private_key',
+    _('MASQUE Private Key'),
+    _('WireGuard private key from your Cloudflare account'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'masque');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'masque_account_id',
+    _('MASQUE Account ID'),
+    _('Cloudflare account / device ID'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'masque');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'masque_access_token',
+    _('MASQUE Access Token'),
+    _('Cloudflare API access token'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'masque');
+  o.validate = validateRequiredText;
+
+  // ── Native Desync (tachyon-core) ──────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'desync_preset',
+    _('Desync Preset'),
+    _('Pre-configured DPI bypass profile for tachyon-core native desync'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.value(
+    'auto',
+    _(
+      'Adaptive 2.0 (Auto-learning: ClientHello clone + RAW inject + cache.db) — Recommended',
+    ),
+  );
+  o.value('fake_split', _('Fake + Split (RAW Fake + MidSLD Split)'));
+  o.value(
+    'fake_disorder',
+    _('Fake + Disorder (RAW Fake + Out-of-order MidSLD)'),
+  );
+  o.value('multi_split', _('Multi-Split (3-way TLS Record + SNI + MidSLD)'));
+  o.value('tlsrec', _('TLS Record Fragmentation (tlsrec, midsld)'));
+  o.value('disorder', _('Disorder (Out-of-order TCP Split)'));
+  o.value('split', _('TCP Split Only (midsld)'));
+  o.value('fake', _('Fake Packet Injection Only (RAW/TTL)'));
+  o.value('oob', _('TCP Urgent OOB Desync (midsld)'));
+  o.value('custom', _('Custom Parameters'));
+  o.default = 'auto';
+  o.depends('action', 'desync');
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'desync_mode',
+    _('Desync Mode'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('fake_split', 'fake_split (Fake + Split)');
+  o.value('fake_disorder', 'fake_disorder (Fake + Out-of-order Split)');
+  o.value('multi_split', 'multi_split (3-way TLS Record + SNI + MidSLD)');
+  o.value('tlsrec', 'tlsrec (TLS Record Fragmentation)');
+  o.value('disorder', 'disorder (Out-of-order TCP Split)');
+  o.value('split', 'split (TCP Segment Split)');
+  o.value('fake', 'fake (Fake Packet Only)');
+  o.value('oob', 'oob (TCP Urgent OOB)');
+  o.default = 'fake_split';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'desync_fooling',
+    _('Fake Packet Fooling'),
+    _(
+      'Method used to ensure injected fake ClientHello is inspected by DPI but dropped by the destination server.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.default = '';
+  o.value('', _('Default (TCP MD5 / Auto)'));
+  o.value('md5', _('TCP MD5 Signature (Option 19 via TCP_REPAIR)'));
+  o.value('autottl', _('Auto-TTL (Calculated from kernel RTT hops)'));
+  o.value('timestamp', _('TCP Timestamp PAWS (Backdated TSval)'));
+  o.value('badseq', _('Out-of-window TCP Sequence (badseq)'));
+  o.value('badsum', _('Invalid TCP Checksum (badsum)'));
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+  o.depends({ action: 'desync', desync_preset: 'fake_split' });
+  o.depends({ action: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ action: 'desync', desync_preset: 'fake' });
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'desync_auto_tune',
+    _('Adaptive 2.0 Auto-Learning (auto_tune)'),
+    _(
+      'Automatically rotate strategies on RST/cutoff/throttling (<20 KiB/s) and persist working profile per SNI in cache.db.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_split_pos',
+    _('Split Position'),
+    _('midsld, sni, or byte offset in ClientHello (1..1400)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = 'midsld';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_fake_ttl',
+    _('Fake Packet TTL'),
+    _('TTL for fake TLS packets so they expire before the destination server'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'range(1,64)';
+  o.placeholder = '4';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_fake_sni',
+    _('Fake SNI'),
+    _('Decoy hostname injected into fake ClientHello (e.g. www.google.com)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = 'www.google.com';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_repeats',
+    _('Fake Repeats'),
+    _('Number of fake TCP packets to send'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'range(1,20)';
+  o.placeholder = '2';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_split_delay_ms',
+    _('Split Delay (ms)'),
+    _('Delay between split TCP segments in milliseconds'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '2';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'desync_udp_fake',
+    _('UDP Fake (QUIC / Voice)'),
+    _('Send fake low-TTL UDP packets before real UDP/QUIC payload'),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_udp_repeats',
+    _('UDP Fake Repeats'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'range(1,20)';
+  o.placeholder = '4';
+  o.depends({
+    action: 'desync',
+    desync_preset: 'custom',
+    desync_udp_fake: '1',
+  });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_udp_fake_ttl',
+    _('UDP Fake TTL'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'range(1,64)';
+  o.placeholder = '3';
+  o.depends({
+    action: 'desync',
+    desync_preset: 'custom',
+    desync_udp_fake: '1',
+  });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_opts',
+    _('Desync Strategy String (Fuzzer / CLI)'),
+    _(
+      'Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'desync');
+
+  // ── ShadowTLS (tachyon-core) ──────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'shadowtls_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'shadowtls');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'shadowtls_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.placeholder = '443';
+  o.depends('action', 'shadowtls');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'shadowtls_password',
+    _('Password'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends('action', 'shadowtls');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'shadowtls_version',
+    _('ShadowTLS Version'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('3', 'v3');
+  o.value('2', 'v2');
+  o.value('1', 'v1');
+  o.default = '3';
+  o.depends('action', 'shadowtls');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'shadowtls_sni',
+    _('TLS Handshake SNI'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = 'www.microsoft.com';
+  o.depends('action', 'shadowtls');
+
+  // ── TrustTunnel (tachyon-core) ────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'trusttunnel_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'trusttunnel');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'trusttunnel_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.placeholder = '443';
+  o.depends('action', 'trusttunnel');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'trusttunnel_username',
+    _('Username'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'trusttunnel');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'trusttunnel_password',
+    _('Password'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'trusttunnel');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'trusttunnel_sni',
+    _('TLS SNI'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'trusttunnel');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'trusttunnel_quic',
+    _('Use QUIC (HTTP/3)'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('action', 'trusttunnel');
+
+  // ── TewFai (tachyon-core) ─────────────────────────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'tewfai_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'tewfai');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'tewfai_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.placeholder = '443';
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'tewfai_uuid',
+    _('UUID / Password'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends('action', 'tewfai');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'tewfai_password',
+    _('Password (optional second PSK)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'tewfai');
+
+  o = section.taboption('settings', form.Value, 'tewfai_sni', _('TLS SNI'));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'tewfai_insecure',
+    _('Allow Insecure TLS'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'tewfai_transport',
+    _('Transport Race List'),
+    _('Transports to race (e.g. tcp, quic)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('tcp', 'TCP');
+  o.value('quic', 'QUIC');
+  o.value('h3_datagram', 'H3 Datagram');
+  o.value('h3_stream', 'H3 Stream');
+  o.value('h2', 'HTTP/2');
+  o.value('ws', 'WebSocket');
+  o.value('raw_tls', 'Raw TLS');
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'tewfai_inner_cipher',
+    _('Inner Cipher'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('', _('Auto (Default)'));
+  o.value('aes-256-gcm', 'AES-256-GCM');
+  o.value('none', _('None'));
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'tewfai_morph_profile',
+    _('Morph Profile'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('', _('None (Default)'));
+  o.value('browsing', 'Browsing');
+  o.value('video', 'Video');
+  o.value('webrtc', 'WebRTC');
+  o.value('bulk', 'Bulk');
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'tewfai_max_streams',
+    _('Max Streams'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '64';
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'tewfai_pqc_enabled',
+    _('Post-Quantum Key Exchange (PQC)'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'tewfai_handover_enabled',
+    _('Roaming / Handover'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('action', 'tewfai');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'tewfai_fec_enabled',
+    _('Forward Error Correction (FEC)'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('action', 'tewfai');
+
+  o = section.taboption('settings', form.Value, 'tewfai_mtu', _('MTU'));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '1400';
+  o.depends('action', 'tewfai');
+
+  // ── OpenConnect / AnyConnect (tachyon-core) ───────────────────────────────
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'openconnect');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.placeholder = '443';
+  o.default = '443';
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'openconnect_flavor',
+    _('VPN Flavor'),
+  );
+  o.modalonly = true;
+  o.default = 'anyconnect';
+  o.value('anyconnect', 'Cisco AnyConnect / ocserv');
+  o.value('gp', 'Palo Alto GlobalProtect');
+  o.value('pulse', 'Ivanti Pulse Connect Secure');
+  o.value('fortinet', 'Fortinet FortiGate SSL VPN');
+  o.value('array', 'Array Networks SSL VPN');
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_username',
+    _('Username'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_password',
+    _('Password'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_cookie',
+    _('Session Cookie / Pre-Auth Token'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_urlpath',
+    _('Group / URL Path'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '/vpn';
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_realm',
+    _('Auth Realm'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_sni',
+    _('TLS SNI'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'openconnect_insecure',
+    _('Allow Insecure TLS'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openconnect_server_cert_pin',
+    _('Server Certificate Pin (SHA-256)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'openconnect_dtls',
+    _('Enable DTLS'),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.depends('action', 'openconnect');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'openconnect_esp',
+    _('Enable ESP UDP Tunnel'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('action', 'openconnect');
+
+  o = section.taboption('settings', form.Value, 'openconnect_mtu', _('MTU'));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '1400';
+  o.depends('action', 'openconnect');
+
+  // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
+
+  const parseOpenvpnConfig = (text) => {
+    const result = {
+      server: '',
+      port: '1194',
+      proto: 'udp',
+      cipher: '',
+      auth: '',
+      ca: '',
+      cert: '',
+      key: '',
+      tls_auth: '',
+      tls_crypt: '',
+      key_direction: '',
+      username: '',
+      password: '',
+      mtu: '',
+      auth_user_pass_required: false,
+    };
+
+    if (!text || typeof text !== 'string') return result;
+
+    const blockRegex = /<([a-zA-Z0-9_-]+)>([\s\S]*?)<\/\1>/gi;
+    let blockMatch;
+    while ((blockMatch = blockRegex.exec(text)) !== null) {
+      const tagName = blockMatch[1].toLowerCase();
+      const tagContent = blockMatch[2].trim();
+      if (tagName === 'ca') result.ca = tagContent;
+      else if (tagName === 'cert') result.cert = tagContent;
+      else if (tagName === 'key') result.key = tagContent;
+      else if (tagName === 'tls-auth' || tagName === 'tls_auth')
+        result.tls_auth = tagContent;
+      else if (tagName === 'tls-crypt' || tagName === 'tls_crypt')
+        result.tls_crypt = tagContent;
+      else if (tagName === 'auth-user-pass' || tagName === 'auth_user_pass') {
+        result.auth_user_pass_required = true;
+        const creds = tagContent
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        if (creds.length >= 1) result.username = creds[0];
+        if (creds.length >= 2) result.password = creds[1];
+      }
+    }
+
+    const cleanedText = text.replace(/<([a-zA-Z0-9_-]+)>[\s\S]*?<\/\1>/gi, '');
+    const lines = cleanedText.split(/\r?\n/);
+    for (const rawLine of lines) {
+      let line = rawLine.trim();
+      if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+
+      const commentIdx = line.search(/\s+[#;]/);
+      if (commentIdx >= 0) line = line.slice(0, commentIdx).trim();
+
+      const parts = line.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+
+      if (cmd === 'remote') {
+        if (!result.server && parts[1]) {
+          result.server = parts[1];
+          if (parts[2] && /^\d+$/.test(parts[2])) result.port = parts[2];
+          if (parts[3] && /^(udp|tcp)/i.test(parts[3])) {
+            result.proto = parts[3].toLowerCase().startsWith('tcp')
+              ? 'tcp'
+              : 'udp';
+          }
+        }
+      } else if (cmd === 'port' && parts[1] && /^\d+$/.test(parts[1])) {
+        if (!result.server || result.port === '1194') result.port = parts[1];
+      } else if (cmd === 'proto' && parts[1]) {
+        result.proto = parts[1].toLowerCase().startsWith('tcp') ? 'tcp' : 'udp';
+      } else if (cmd === 'cipher' && parts[1]) {
+        result.cipher = parts[1].toUpperCase();
+      } else if (cmd === 'data-ciphers' && parts[1] && !result.cipher) {
+        const ciphers = parts[1].split(':');
+        if (ciphers.length > 0) result.cipher = ciphers[0].toUpperCase();
+      } else if (cmd === 'auth' && parts[1]) {
+        result.auth = parts[1].toUpperCase();
+      } else if (cmd === 'key-direction' && parts[1]) {
+        result.key_direction = parts[1];
+      } else if (cmd === 'tls-auth' && parts[1]) {
+        if (!result.tls_auth) result.tls_auth = parts[1];
+        if (parts[2]) result.key_direction = parts[2];
+      } else if (cmd === 'tls-crypt' && parts[1]) {
+        if (!result.tls_crypt) result.tls_crypt = parts[1];
+      } else if (cmd === 'ca' && parts[1] && !result.ca) {
+        result.ca = parts[1];
+      } else if (cmd === 'cert' && parts[1] && !result.cert) {
+        result.cert = parts[1];
+      } else if (cmd === 'key' && parts[1] && !result.key) {
+        result.key = parts[1];
+      } else if (cmd === 'tun-mtu' && parts[1] && /^\d+$/.test(parts[1])) {
+        result.mtu = parts[1];
+      } else if (cmd === 'auth-user-pass') {
+        result.auth_user_pass_required = true;
+      }
+    }
+
+    return result;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Button,
+    '_load_openvpn_conf',
+    _('Load .ovpn config'),
+    _('Import OpenVPN settings from .ovpn or .conf file'),
+  );
+  o.modalonly = true;
+  o.depends('action', 'openvpn');
+
+  o.renderWidget = function (section_id) {
+    const fileInput = E('input', {
+      type: 'file',
+      accept: '.ovpn,.conf,text/plain,*',
+      style: 'display:none',
+    });
+
+    const label = E('span', { class: 'twg-label' }, [_('Load .ovpn')]);
+    const btn = E(
+      'button',
+      {
+        class: 'btn cbi-button cbi-button-neutral twg-btn',
+        type: 'button',
+        style: 'display:inline-flex;align-items:center;gap:8px;',
+      },
+      [label],
+    );
+
+    const setBtn = (state, text) => {
+      btn.className =
+        'btn cbi-button cbi-button-neutral twg-btn' +
+        (state ? ' twg-' + state : '');
+      label.textContent = text || _('Load .ovpn');
+    };
+
+    const setVal = (opt, val) => {
+      if (val === undefined || val === null) return;
+      const str = String(val);
+      const el =
+        document.getElementById(
+          `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
+        ) ||
+        document.getElementById(`cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
+      const w =
+        el &&
+        (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
+          ? el
+          : el.querySelector("input:not([type='hidden']),select,textarea"));
+      if (w) {
+        if (w.type === 'checkbox') {
+          w.checked =
+            str === '1' || str === 'true' || str === 'on' || str === 'yes';
+        } else {
+          w.value = str;
+        }
+        w.dispatchEvent(new Event('input', { bubbles: true }));
+        w.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      uci.set(UCI_PACKAGE, section_id, opt, str);
+    };
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      fileInput.value = '';
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target.result;
+        if (typeof text !== 'string') return;
+
+        let parsed;
+        try {
+          parsed = parseOpenvpnConfig(text);
+        } catch (err) {
+          setBtn('error', _('Error'));
+          setTimeout(() => setBtn('', null), 2500);
+          ui.addNotification(
+            _('Error'),
+            E(
+              'p',
+              {},
+              _('Failed to parse OpenVPN config:') + ' ' + err.message,
+            ),
+            'danger',
+          );
+          return;
+        }
+
+        if (parsed.server) setVal('openvpn_server', parsed.server);
+        if (parsed.port) setVal('openvpn_server_port', parsed.port);
+        if (parsed.proto) setVal('openvpn_proto', parsed.proto);
+        if (parsed.cipher) setVal('openvpn_cipher', parsed.cipher);
+        if (parsed.auth) setVal('openvpn_auth', parsed.auth);
+        if (parsed.ca) setVal('openvpn_ca', parsed.ca);
+        if (parsed.cert) setVal('openvpn_cert', parsed.cert);
+        if (parsed.key) setVal('openvpn_key', parsed.key);
+        if (parsed.tls_crypt) {
+          setVal('openvpn_tls_crypt', parsed.tls_crypt);
+          setVal('openvpn_tls_auth', '');
+          uci.unset(UCI_PACKAGE, section_id, 'openvpn_tls_auth');
+        } else if (parsed.tls_auth) {
+          setVal('openvpn_tls_auth', parsed.tls_auth);
+          setVal('openvpn_tls_crypt', '');
+          uci.unset(UCI_PACKAGE, section_id, 'openvpn_tls_crypt');
+        }
+        if (parsed.key_direction !== undefined && parsed.key_direction !== '') {
+          setVal('openvpn_key_direction', parsed.key_direction);
+        }
+        if (parsed.username) setVal('openvpn_username', parsed.username);
+        if (parsed.password) setVal('openvpn_password', parsed.password);
+        if (parsed.mtu) setVal('openvpn_mtu', parsed.mtu);
+
+        setBtn('success', _('Loaded!'));
+        setTimeout(() => setBtn('', null), 2000);
+
+        if (
+          parsed.auth_user_pass_required &&
+          (!parsed.username || !parsed.password)
+        ) {
+          ui.addNotification(
+            _('OpenVPN Credentials Required'),
+            E(
+              'p',
+              {},
+              _(
+                'OpenVPN config loaded. Please enter your username and password below.',
+              ),
+            ),
+            'info',
+          );
+          const uEl =
+            document.getElementById(
+              `cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`,
+            ) ||
+            document.getElementById(
+              `widget.cbid.${UCI_PACKAGE}.${section_id}.openvpn_username`,
+            );
+          if (uEl) {
+            const input = uEl.querySelector
+              ? uEl.querySelector('input') || uEl
+              : uEl;
+            if (input && input.focus) input.focus();
+          }
+        } else {
+          ui.addNotification(
+            _('Done'),
+            E('p', {}, _('OpenVPN configuration loaded successfully!')),
+            'success',
+          );
+        }
+      };
+
+      reader.onerror = () => {
+        setBtn('error', _('Read error'));
+        setTimeout(() => setBtn('', null), 2500);
+      };
+
+      reader.readAsText(file);
+    });
+
+    btn.addEventListener('click', () => fileInput.click());
+
+    return E('div', { style: 'display:contents' }, [fileInput, btn]);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openvpn_server',
+    _('Server Address'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('action', 'openvpn');
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openvpn_server_port',
+    _('Server Port'),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = 'port';
+  o.placeholder = '1194';
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'openvpn_proto',
+    _('Protocol'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('udp', 'UDP');
+  o.value('tcp', 'TCP');
+  o.default = 'udp';
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openvpn_username',
+    _('Username'),
+    _('Username for auth-user-pass authentication'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openvpn_password',
+    _('Password'),
+    _('Password for auth-user-pass authentication'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openvpn_cipher',
+    _('Cipher'),
+    _('e.g. AES-256-GCM — leave empty for default'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openvpn_auth',
+    _('Auth Digest'),
+    _('e.g. SHA256 — leave empty for default'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'openvpn_ca',
+    _('CA Certificate'),
+    _('PEM-encoded CA certificate'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'openvpn_cert',
+    _('Client Certificate'),
+    _('PEM-encoded client certificate'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'openvpn_key',
+    _('Client Key'),
+    _('PEM-encoded client private key'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'openvpn_tls_auth',
+    _('TLS Auth/Crypt Key'),
+    _('Optional tls-auth or tls-crypt key'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'openvpn_tls_crypt',
+    _('TLS Crypt Key'),
+    _('Inline tls-crypt key (mutually exclusive with tls-auth)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'openvpn_key_direction',
+    _('TLS Auth Key Direction'),
+    _(
+      'Key direction for tls-auth (0 = server, 1 = client, empty = bidirectional)',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('', _('Bidirectional (default)'));
+  o.value('0', '0 (server)');
+  o.value('1', '1 (client)');
+  o.default = '';
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'openvpn_mtu',
+    _('Tunnel MTU'),
+    _('Custom MTU, e.g. 1500 (leave empty for default)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '1500';
+  o.depends('action', 'openvpn');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'selector_proxy_links',
+    _('Connection URL'),
+    _(
+      'vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2:// links, fptn://',
+    ),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  const originalVpnUrlRender = o.render;
+  o.render = function () {
+    return Promise.resolve(originalVpnUrlRender.apply(this, arguments)).then(
+      (node) => {
+        const description =
+          node && node.querySelector('.cbi-value-description');
+        if (description) {
+          description.appendChild(
+            E(
+              'span',
+              { 'data-tachyon-vpn-url-hint': '1' },
+              main.supportsVpnUrl() ? '; vpn:// (AWG, LX / tachyon-core)' : '',
+            ),
+          );
+          refreshVpnUrlHints();
+        }
+        return node;
+      },
+    );
+  };
+  o.validate = function (section_id, value) {
+    if (!value || value.length === 0) {
+      return true;
+    }
+
+    const validation = main.validateProxyUrl(value);
+    if (!validation.valid) {
+      return validation.message;
+    }
+
+    if (
+      uci.get(UCI_PACKAGE, section_id, 'action') === 'fptn' &&
+      !/^fptnb?:/.test(value)
+    ) {
+      return _('FPTN section accepts only fptn:// or fptnb:// links');
+    }
+
+    return true;
+  };
+  o.onchange = function (_event, section_id) {
+    refreshDashboardFilterChoiceWidgets(section_id);
+  };
+  outboundNameSourceOptions.set('selector_proxy_links', o);
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'icon_domain',
+    _('Website Icon Domain (favicon.ico)'),
+    _(
+      'Specify a website domain (e.g. youtube.com, discord.com, chatgpt.com) to automatically load its favicon.ico on the Dashboard, or leave empty for automatic detection.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = 'youtube.com, discord.com, chatgpt.com...';
+  o.value('youtube.com', 'YouTube (youtube.com)');
+  o.value('discord.com', 'Discord (discord.com)');
+  o.value('telegram.org', 'Telegram (telegram.org)');
+  o.value('chatgpt.com', 'ChatGPT / OpenAI (chatgpt.com)');
+  o.value('claude.ai', 'Claude (claude.ai)');
+  o.value('instagram.com', 'Instagram / Meta (instagram.com)');
+  o.value('x.com', 'X / Twitter (x.com)');
+  o.value('tiktok.com', 'TikTok (tiktok.com)');
+  o.value('twitch.tv', 'Twitch (twitch.tv)');
+  o.value('store.steampowered.com', 'Steam (store.steampowered.com)');
+  o.value('roblox.com', 'Roblox (roblox.com)');
+  o.value('spotify.com', 'Spotify (spotify.com)');
+  o.value('netflix.com', 'Netflix (netflix.com)');
+  o.value('github.com', 'GitHub (github.com)');
+  o.value('rutracker.org', 'RuTracker (rutracker.org)');
+  o.value('cloudflare.com', 'Cloudflare (cloudflare.com)');
+  o.value('google.com', 'Google (google.com)');
+  o.value('svg', _('Default vector icon (SVG)'));
+
+  // Modular Outbounds, Groups, Section-level Narrowing, and Balancers (#242)
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'outbound_source_refs',
+    _('Connections from Pool (in Priority Order)'),
+    _(
+      'Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails.',
+    ),
+  );
+  o.modalonly = true;
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+  configureLiveDynamicListChoices(o, () =>
+    (uci.sections(UCI_PACKAGE, 'outbound_source') || []).map((src) => {
+      const stype = String(src.source_type || 'subscription').toUpperCase();
+      return {
+        value: src['.name'],
+        label: `${src.name || src.label || src['.name']} [${stype}]`,
+      };
+    }),
+  );
+  outboundNameSourceOptions.set('outbound_source_refs', o);
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'balancer_refs',
+    _('Balancers (URLTest / Priority)'),
+    _('Select reusable URLTest or Priority balancers from the Balancers tab.'),
+  );
+  o.modalonly = true;
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+  configureLiveDynamicListChoices(o, () =>
+    (uci.sections(UCI_PACKAGE, 'balancer') || []).map((bal) => ({
+      value: bal['.name'],
+      label: `${bal.name || bal.label || bal['.name']} [${(bal.balancer_type || 'urltest').toUpperCase()}]`,
+    })),
+  );
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'outbound_group_refs',
+    _('Filtered Server Groups from Pool (Optional)'),
+    _(
+      'Select pre-filtered Outbound Groups (e.g. Unlim_RU) from the Connections Pool tab.',
+    ),
+  );
+  o.modalonly = true;
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+  configureLiveDynamicListChoices(o, () =>
+    (uci.sections(UCI_PACKAGE, 'outbound_group') || []).map((grp) => ({
+      value: grp['.name'],
+      label: `${grp.name || grp.label || grp['.name']}`,
+    })),
+  );
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'section_selection_mode',
+    _('Multi-Connection Selection Mode'),
+    _(
+      'How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'auto';
+  o.value(
+    'auto',
+    _('Automatic (Priority Failover when mixing connections / DPI + VPN)'),
+  );
+  o.value(
+    'priority_failover',
+    _('Priority Failover (2nd activates only after 1st fails)'),
+  );
+  o.value('default', _('Manual Selector on Dashboard'));
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'section_health_url',
+    _('Failover Health Check URL'),
+    _(
+      'URL probed to verify whether the primary connection (e.g. Zapret2 on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG).',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = 'https://www.gstatic.com/generate_204';
+  urlTestUrlChoices().forEach((value) => o.value(value));
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'section_filter_mode',
+    _('Section Pool Narrowing Filter'),
+    _(
+      'Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Обход) before feeding servers into Balancers.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'disabled';
+  o.value('disabled', _('Disabled (Keep full group/source pool)'));
+  o.value('exclude', _('Exclude matching servers'));
+  o.value('include', _('Include only matching servers'));
+  o.value('mixed', _('Include + Exclude (Intersection AND)'));
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'section_include_prefixes',
+    _('Section Include Prefixes'),
+  );
+  o.modalonly = true;
+  o.depends('section_filter_mode', 'include');
+  o.depends('section_filter_mode', 'mixed');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'section_exclude_prefixes',
+    _('Section Exclude Prefixes'),
+  );
+  o.modalonly = true;
+  o.depends('section_filter_mode', 'exclude');
+  o.depends('section_filter_mode', 'mixed');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'section_include_countries',
+    _('Section Include Country Flags (ISO)'),
+  );
+  o.modalonly = true;
+  countryChoices().forEach((choice) => o.value(choice.value, choice.label));
+  o.depends('section_filter_mode', 'include');
+  o.depends('section_filter_mode', 'mixed');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'section_exclude_countries',
+    _('Section Exclude Country Flags (ISO)'),
+  );
+  o.modalonly = true;
+  countryChoices().forEach((choice) => o.value(choice.value, choice.label));
+  o.depends('section_filter_mode', 'exclude');
+  o.depends('section_filter_mode', 'mixed');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'section_include_regex',
+    _('Section Include Name Regex'),
+  );
+  o.modalonly = true;
+  o.depends('section_filter_mode', 'include');
+  o.depends('section_filter_mode', 'mixed');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'section_exclude_regex',
+    _('Section Exclude Name Regex'),
+    _('e.g. \\|WL\\| or Bypass'),
+  );
+  o.modalonly = true;
+  o.depends('section_filter_mode', 'exclude');
+  o.depends('section_filter_mode', 'mixed');
+
+  addAwgModeTitle(
+    '_awg_mode_import',
+    _('Load several configs'),
+    _(
+      'Import several AmneziaWG .conf files. They are combined into one group: Tachyon picks the fastest and the URLTest / Priority groups below can select among them.',
+    ),
+  );
+
+  o = section.taboption(
+    'servers',
+    ButtonAddSettingsDynamicList,
+    'selector_amnezia_configs',
+    _('Amnezia configurations'),
+    _(
+      'Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core.',
+    ),
+  );
+  o.depends('action', 'awg');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.addButtonLabel = `\u{1F4C1} ${_('Load .conf')}`;
+  o.renderItemSettingsModal = showAmneziaConfigSettingsModal;
+  o.renderListItemLabel = function (_id, value) {
+    const config = parseAmneziaConfig(value);
+    return E(
+      'span',
+      { class: 'fkp-dynlist-label' },
+      config ? config.name : _('Invalid Amnezia .conf file'),
+    );
+  };
+  o.inputValueForItem = function (_id, value) {
+    const parsed = parseAmneziaConfig(value);
+    return (parsed && parsed.name) || value;
+  };
+  o.validateItemsOnSave = validateAmneziaConfigsBeforeSave;
+  o.validate = function (_id, value) {
+    return !value ? true : validateAmneziaConfigsBeforeSave(_id, [value]);
+  };
+  const originalAmneziaIsActive = o.isActive;
+  o.isActive = function () {
+    return (
+      main.supportsVpnUrl() && originalAmneziaIsActive.apply(this, arguments)
+    );
+  };
+  const originalAmneziaRender = o.render;
+  o.render = function () {
+    return Promise.resolve(originalAmneziaRender.apply(this, arguments)).then(
+      (node) => {
+        if (node) {
+          node.setAttribute('data-tachyon-amnezia-configs', '1');
+          refreshVpnUrlHints();
+          node.style.display = main.supportsVpnUrl() ? '' : 'none';
+        }
+        return node;
+      },
+    );
+  };
+  o.onListChange = function (section_id) {
+    refreshDashboardFilterChoiceWidgets(section_id);
+    if (typeof document !== 'undefined') {
+      [
+        'awg_local_address',
+        'awg_private_key',
+        'awg_peer_public_key',
+        'awg_server_address',
+        'awg_server_port',
+      ].forEach((optName) => {
+        const el =
+          document.getElementById(
+            `widget.cbid.${UCI_PACKAGE}.${section_id}.${optName}`,
+          ) ||
+          document.getElementById(
+            `cbid.${UCI_PACKAGE}.${section_id}.${optName}`,
+          );
+        const input =
+          el &&
+          (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
+            ? el
+            : el.querySelector("input:not([type='hidden']),select,textarea"));
+        if (input) {
+          input.classList.remove('cbi-input-invalid');
+          input.dispatchEvent(new Event('keyup', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+  };
+  outboundNameSourceOptions.set('selector_amnezia_configs', o);
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'selector_proxy_links_text',
+    _('Connection links (text)'),
+    _('Paste proxy links one per line; they are added to the connection list'),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.rows = 5;
+
+  o = section.taboption(
+    'settings',
+    form.TextValue,
+    'urltest_proxy_links_text',
+    _('URLTest links (text)'),
+    _(
+      'Paste proxy links one per line; they form a URLTest group with automatic fastest selection',
+    ),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.rows = 5;
+
+  o = section.taboption(
+    'settings',
+    SettingsDynamicList,
+    'subscription_url',
+    _('Subscription URL'),
+    _('Enter the subscription URL'),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.childType = 'subscription_url';
+  o.childValueOption = 'url';
+  o.childDefaults = defaultSubscriptionUrlSettings();
+  o.renderItemSettingsModal = showSubscriptionUrlSettingsModal;
+  o.hasItemSettings = function (section_id, value) {
+    const normalized = `${value || ''}`.trim();
+    if (isExistingChildItem(section_id, normalized, 'subscription_url')) {
+      return true;
+    }
+
+    return this.validate(section_id, normalized) === true;
+  };
+  o.stagedChildSettings = function (section_id, value) {
+    const inputValue = childItemInputValue(
+      section_id,
+      value,
+      'subscription_url',
+      'url',
+    );
+    const store = childPendingSettingsStore(this, section_id);
+    return store[inputValue] ? Object.assign({}, store[inputValue]) : null;
+  };
+  o.clearStagedChildSettings = function (section_id) {
+    if (this.pendingChildSettings) {
+      delete this.pendingChildSettings[section_id];
+    }
+  };
+  o.renderListItemLabel = function (section_id, itemId) {
+    return childItemInputValue(section_id, itemId, 'subscription_url', 'url');
+  };
+  o.afterMaterializeChildItems = function (_section_id, itemIds) {
+    itemIds.forEach((itemId, index) => {
+      uci.set(UCI_PACKAGE, itemId, 'order', `${index}`);
+    });
+  };
+  o.validate = validateSubscriptionUrlEntry;
+
+  o.setItemEnabled = function (value, next) {
+    const itemId = `${value || ''}`;
+    if (
+      !itemId ||
+      !isExistingChildItem(section_id, itemId, 'subscription_url')
+    ) {
+      return true;
+    }
+
+    const raw = uci.get(UCI_PACKAGE, itemId, 'enabled');
+    const isEnabled = raw == null || raw === '' || raw === '1';
+
+    if (next == null || next === isEnabled) {
+      return isEnabled;
+    }
+
+    uci.set(UCI_PACKAGE, itemId, 'enabled', next ? '1' : '0');
+    uci.save();
+    return next;
+  };
+  o.validate = function (section_id, value) {
+    return validateSubscriptionUrlEntry(
+      section_id,
+      childItemInputValue(section_id, value, 'subscription_url', 'url'),
+    );
+  };
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'subscription_filter_include_keywords',
+    _('Subscription include keywords'),
+    _(
+      'Keep only subscription nodes whose name contains any of these keywords (empty keeps all). Case-insensitive, emoji supported.',
+    ),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.placeholder = _('Add include keyword');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'subscription_filter_exclude_keywords',
+    _('Subscription exclude keywords'),
+    _(
+      'Drop subscription nodes whose name contains any of these keywords. Case-insensitive, emoji supported.',
+    ),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.placeholder = _('Add exclude keyword');
+
+  o = section.taboption(
+    'settings',
+    InterfaceSettingsDynamicList,
+    'interfaces',
+    _('Network Interface'),
+    _('Select network interface for VPN connection'),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.placeholder = _('Select a network interface');
+  o.childType = 'section_interface';
+  o.childValueOption = 'name';
+  o.childDefaults = defaultInterfaceSettings();
+  o.renderItemSettingsModal = showInterfaceSettingsModal;
+  o.hasItemSettings = function (section_id, value) {
+    const normalized = `${value || ''}`.trim();
+    if (isExistingChildItem(section_id, normalized, 'section_interface')) {
+      return true;
+    }
+
+    return this.validate(section_id, normalized) === true;
+  };
+  o.stagedChildSettings = function (section_id, value) {
+    const inputValue = childItemInputValue(
+      section_id,
+      value,
+      'section_interface',
+      'name',
+    );
+    const store = childPendingSettingsStore(this, section_id);
+    return store[inputValue] ? Object.assign({}, store[inputValue]) : null;
+  };
+  o.clearStagedChildSettings = function (section_id) {
+    if (this.pendingChildSettings) {
+      delete this.pendingChildSettings[section_id];
+    }
+  };
+  o.onListChange = refreshDashboardFilterChoiceWidgets;
+  outboundNameSourceOptions.set('interfaces', o);
+
+  o = section.taboption(
+    'settings',
+    ButtonAddSettingsDynamicList,
+    'outbound_jsons',
+    _('JSON outbound'),
+    _('Custom outbound configurations in JSON format'),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.addButtonLabel = _('+ Add JSON outbound');
+  o.renderItemSettingsModal = showOutboundJsonSettingsModal;
+  o.renderListItemLabel = function (_section_id, value) {
+    return outboundJsonListItemLabel(value);
+  };
+  o.validateItemsOnSave = validateOutboundJsonItemsBeforeSave;
+  o.validate = function (_section_id, value) {
+    if (!value || value.length === 0) {
+      return true;
+    }
+
+    const validation = main.validateOutboundJson(value);
+    return validation.valid ? true : validation.message;
+  };
+  o.onListChange = refreshDashboardFilterChoiceWidgets;
+  outboundNameSourceOptions.set('outbound_jsons', o);
+
+  o = section.taboption(
+    'settings',
+    ButtonAddSettingsDynamicList,
+    'urltest',
+    _('URLTest'),
+    _('Server group for automatic lowest-latency selection'),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.addButtonLabel = _('+ Add URLTest');
+  o.childType = 'urltest';
+  o.childValueOption = 'name';
+  o.childDefaults = urlTestChildDefaults();
+  o.renderItemSettingsModal = showUrlTestSettingsModal;
+  o.validateItemsOnSave = function (section_id, values) {
+    return validateUrlTestItemsBeforeSave(section_id, values, this);
+  };
+  o.hasItemSettings = function (section_id, value) {
+    const normalized = `${value || ''}`.trim();
+
+    if (isExistingChildItem(section_id, normalized, 'urltest')) {
+      return true;
+    }
+
+    return normalized.length > 0;
+  };
+  o.inputValueForItem = function (section_id, value) {
+    const inputValue = childItemInputValue(
+      section_id,
+      value,
+      'urltest',
+      'name',
+    );
+    const store = childPendingSettingsStore(this, section_id);
+    return store[inputValue] && store[inputValue].name
+      ? store[inputValue].name
+      : inputValue;
+  };
+  o.stagedChildSettings = function (section_id, value) {
+    const id = childItemInputValue(section_id, value, 'urltest', 'name');
+    const store = childPendingSettingsStore(this, section_id);
+    return store[id] ? Object.assign({}, store[id]) : null;
+  };
+  o.clearStagedChildSettings = function (section_id) {
+    if (this.pendingChildSettings) {
+      delete this.pendingChildSettings[section_id];
+    }
+  };
+  o.renderListItemLabel = function (section_id, itemId) {
+    return E(
+      'span',
+      { class: 'fkp-dynlist-label' },
+      this.inputValueForItem(section_id, itemId),
+    );
+  };
+  o.onListChange = refreshDashboardFilterChoiceWidgets;
+  sectionGroupSourceOptions.set('urltest', o);
+
+  o = section.taboption(
+    'settings',
+    ButtonAddSettingsDynamicList,
+    'priority_group',
+    _('Priority'),
+    _('Server group for priority failover'),
+  );
+  o.depends('action', '__legacy_inline__');
+  o.rmempty = true;
+  o.retain = true;
+  o.modalonly = true;
+  o.addButtonLabel = _('+ Add priority');
+  o.childType = 'priority_group';
+  o.childValueOption = 'name';
+  o.childDefaults = priorityGroupChildDefaults();
+  o.createId = () => randomPriorityGroupId();
+  o.renderItemSettingsModal = showPriorityGroupSettingsModal;
+  o.validateItemsOnSave = validatePriorityGroupItemsBeforeSave;
+  o.hasItemSettings = function (section_id, value) {
+    const normalized = `${value || ''}`.trim();
+
+    if (isExistingChildItem(section_id, normalized, 'priority_group')) {
+      return true;
+    }
+
+    return normalized.length > 0;
+  };
+  o.inputValueForItem = function (section_id, value) {
+    return childItemInputValue(section_id, value, 'priority_group', 'name');
+  };
+  o.renderListItemLabel = function (section_id, itemId) {
+    return E(
+      'span',
+      { class: 'fkp-dynlist-label' },
+      this.inputValueForItem(section_id, itemId),
+    );
+  };
+  o.onListChange = refreshDashboardFilterChoiceWidgets;
+  sectionGroupSourceOptions.set('priority_group', o);
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'outbound_detour_enabled',
+    _('Cascade connection'),
+    _(
+      'Use another section as an intermediate hop to connect to servers in this section. Does not apply to network interfaces or JSON outbounds.',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+  o.depends('action', 'awg');
+  o.modalonly = true;
+  o.write = function (section_id, value) {
+    if (value === '1') {
+      const currentValue =
+        uci.get(UCI_PACKAGE, section_id, 'outbound_detour_section') || '';
+      const targetSections = getOutboundDetourTargetSections(section_id);
+      const currentIsValid = targetSections.some(
+        (targetSection) => getUciSectionName(targetSection) === currentValue,
+      );
+      const selectedValue = currentIsValid
+        ? currentValue
+        : getDefaultOutboundDetourSection(section_id);
+
+      if (selectedValue) {
+        uci.set(
+          UCI_PACKAGE,
+          section_id,
+          'outbound_detour_section',
+          selectedValue,
+        );
+      }
+    }
+
+    return form.Flag.prototype.write.apply(this, arguments);
+  };
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'outbound_detour_section',
+    _('Connect through'),
+    _('Select a transit section'),
+  );
+  o.rmempty = false;
+  o.depends({ action: 'connection', outbound_detour_enabled: '1' });
+  o.depends({ action: 'fptn', outbound_detour_enabled: '1' });
+  o.depends({ action: 'awg', outbound_detour_enabled: '1' });
+  o.modalonly = true;
+  o.load = function (section_id) {
+    refreshOutboundDetourSectionOptionValues(this, section_id);
+    return Promise.resolve(
+      uci.get(UCI_PACKAGE, section_id, 'outbound_detour_section') || '',
+    );
+  };
+  o.validate = function (section_id, value) {
+    if (!value) {
+      return _('Select an intermediate section');
+    }
+    if (value === section_id) {
+      return _('Current section cannot be used as its own transit section');
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'sort_by_latency',
+    _('Sort by latency'),
+    _('Sorts servers in this section by lowest latency in the dashboard.'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'packet_encoding',
+    _('UDP over TCP (Packet Encoding)'),
+    _(
+      'Encapsulates UDP inside a TCP/TLS stream (UoT / xudp). Essential for mobile/LTE operators (MegaFon, MTS, etc.) that throttle, block, or drop incoming raw UDP in games (GTA RP, CS, etc.).',
+    ),
+  );
+  o.value('', _('Auto (from server link)'));
+  o.value('xudp', _('Force xudp (UDP over TCP - recommended for LTE / games)'));
+  o.value('packetaddr', _('Force packetaddr'));
+  o.value('disabled', _('Disabled (raw UDP)'));
+  o.default = '';
+  o.rmempty = true;
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'fail_policy',
+    _('Section Fail Policy'),
+    _(
+      "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly).",
+    ),
+  );
+  o.value('keep', _('Keep (default behavior)'));
+  o.value('block', _('Fail-Closed (Block / Kill-switch)'));
+  o.value('direct', _('Fail-Open (Direct bypass)'));
+  o.default = 'keep';
+  o.rmempty = true;
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+  o.depends('action', 'awg');
+  o.depends('action', 'byedpi');
+  o.depends('action', 'wdtt');
+  o.depends('action', 'olcrtc');
+  o.depends('action', 'zapret');
+  o.depends('action', 'zapret2');
+  o.depends('action', 'outbound');
+  o.depends('action', 'group');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'fail_policy_urls',
+    _('Fail Policy Probe URLs'),
+    _(
+      "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice.",
+    ),
+  );
+  o.placeholder = 'https://www.gstatic.com/generate_204';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'fail_policy_timeout',
+    _('Fail Policy Probe Timeout (ms)'),
+    _('Timeout in milliseconds for each probe request through this section.'),
+  );
+  o.datatype = 'range(500,30000)';
+  o.placeholder = '3000';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'fail_policy_threshold',
+    _('Fail Policy Failure Threshold'),
+    _(
+      'Consecutive failed probes required before activating Fail-Closed or Fail-Open.',
+    ),
+  );
+  o.datatype = 'range(1,20)';
+  o.placeholder = '3';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'fail_policy_recover_threshold',
+    _('Fail Policy Recovery Threshold'),
+    _(
+      'Consecutive successful probes through the original outbound/strategy required before restoring normal routing.',
+    ),
+  );
+  o.datatype = 'range(1,20)';
+  o.placeholder = '2';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'fail_policy_cooldown',
+    _('Fail Policy Cooldown (s)'),
+    _(
+      'Minimum delay in seconds between route transitions to prevent flapping.',
+    ),
+  );
+  o.datatype = 'range(0,86400)';
+  o.placeholder = '60';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'fail_policy_check_direct',
+    _('Verify Direct Reachability Before Fail-Open'),
+    _(
+      'Before switching to Direct, verify that the probe URLs are reachable via Direct so a general internet outage does not trigger a pointless switch.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = true;
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'fail_policy_check_interval',
+    _('Fail Policy Check Interval (s)'),
+    _(
+      'Interval in seconds between failure check probes when the section is healthy (e.g. 15).',
+    ),
+  );
+  o.datatype = 'range(1,3600)';
+  o.placeholder = '15';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'fail_policy_recover_interval',
+    _('Fail Policy Recovery Interval (s)'),
+    _(
+      'Interval in seconds between recovery probes when the section is in failed state (e.g. 60).',
+    ),
+  );
+  o.datatype = 'range(1,3600)';
+  o.placeholder = '60';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'fail_policy_expected_status',
+    _('Fail Policy Expected HTTP Status'),
+    _(
+      'Expected HTTP status code(s) for probe success (e.g. 200, 204). Leave empty for any completed request.',
+    ),
+  );
+  o.placeholder = '204';
+  o.rmempty = true;
+  o.depends('fail_policy', 'block');
+  o.depends('fail_policy', 'direct');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'mixed_proxy_enabled',
+    _('Enable Mixed Proxy'),
+    _('Expose this section as a local HTTP+SOCKS proxy'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+  o.depends('action', 'awg');
+  o.depends('action', 'byedpi');
+  o.depends('action', 'wdtt');
+  o.depends('action', 'olcrtc');
+  o.depends('action', 'zapret');
+  o.depends('action', 'zapret2');
+  o.depends('action', 'group');
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'mixed_proxy_port',
+    _('Mixed Proxy Port'),
+    _('Port for the local mixed proxy of this section'),
+  );
+  o.rmempty = false;
+  o.depends({ action: 'connection', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'fptn', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'awg', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'byedpi', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'zapret', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'zapret2', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'group', mixed_proxy_enabled: '1' });
+  o.modalonly = true;
+  o.validate = function (_section_id, value) {
+    if (!value || value.length === 0) {
+      return _('Port cannot be empty');
+    }
+
+    const parsed = parseInt(value, 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= 65535) {
+      return true;
+    }
+
+    return _('Invalid port number. Must be between 1 and 65535');
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'mixed_proxy_auth_enabled',
+    _('Enable Mixed Proxy Authentication'),
+    _('Require a username and password for the local mixed proxy'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.depends({ action: 'connection', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'fptn', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'awg', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'byedpi', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'zapret', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'zapret2', mixed_proxy_enabled: '1' });
+  o.depends({ action: 'group', mixed_proxy_enabled: '1' });
+  o.modalonly = true;
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'mixed_proxy_username',
+    _('Mixed Proxy Username'),
+  );
+  o.rmempty = false;
+  o.depends({
+    action: 'connection',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'fptn',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'awg',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'byedpi',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'zapret',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'zapret2',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'group',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.modalonly = true;
+  o.validate = function (_section_id, value) {
+    if (!value || value.length === 0) {
+      return _('Username cannot be empty');
+    }
+
+    return true;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'mixed_proxy_password',
+    _('Mixed Proxy Password'),
+  );
+  o.rmempty = false;
+  o.depends({
+    action: 'connection',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'fptn',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'awg',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'byedpi',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'zapret',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'zapret2',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.depends({
+    action: 'group',
+    mixed_proxy_enabled: '1',
+    mixed_proxy_auth_enabled: '1',
+  });
+  o.modalonly = true;
+  o.validate = function (_section_id, value) {
+    if (!value || value.length === 0) {
+      return _('Password cannot be empty');
+    }
+
+    return true;
+  };
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'resolve_real_ip_for_routing',
+    _('Resolve real IP for routing'),
+    _(
+      'Resolve domain names before routing so sing-box can use real destination IPs.',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.depends('action', 'connection');
+  o.depends('action', 'fptn');
+  o.depends('action', 'group');
+  o.modalonly = true;
+  o.cfgvalue = function (section_id) {
+    const value = uci.get(
+      UCI_PACKAGE,
+      section_id,
+      'resolve_real_ip_for_routing',
+    );
+    if (value !== null && value !== undefined && value !== '') {
+      return value;
+    }
+
+    return getRuleResolvedAction(section_id) === 'byedpi' ? '1' : '0';
+  };
+
+  // Modular Reusable Conditions (#242)
+  o = section.taboption(
+    'conditions',
+    form.DynamicList,
+    'condition_refs',
+    _('Conditions from Pool'),
+    _(
+      'Select one or more Conditions created in the Conditions tab and choose how they work together in this section.',
+    ),
+  );
+  o.modalonly = true;
+  dependsOnRoutingAction(o);
+  o.depends('action', 'dns');
+  configureLiveDynamicListChoices(o, () =>
+    (uci.sections(UCI_PACKAGE, 'condition') || []).map((c) => ({
+      value: c['.name'],
+      label: `${c.name || c.label || c['.name']}`,
+    })),
+  );
+
+  o = section.taboption(
+    'conditions',
+    form.ListValue,
+    'condition_operator',
+    _('Conditions Combination Mode'),
+    _('How multiple selected Conditions work together inside this section.'),
+  );
+  o.modalonly = true;
+  o.default = 'and';
+  o.value('and', _('AND (all selected conditions must match)'));
+  o.value('or', _('OR (any selected condition matches)'));
+  o.value('not', _('NOT (invert selected conditions)'));
+  dependsOnRoutingAction(o);
+  o.depends('action', 'dns');
+
+  o = section.taboption(
+    'conditions',
+    form.Value,
+    'condition_expression',
+    _('Boolean Condition Expression (Optional)'),
+    _(
+      'Optional boolean expression combining Condition IDs with AND / OR / NOT, e.g. baned_domains AND my_devices.',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = 'baned_domains AND my_devices';
+  dependsOnRoutingAction(o);
+  o.depends('action', 'dns');
+
+  o = section.taboption(
+    'conditions',
+    form.Flag,
+    'match_all',
+    _('Match All Traffic (Catch-All Section)'),
+    _(
+      'Route all remaining traffic through this section without requiring specific domain/IP conditions.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  dependsOnRoutingAction(o);
+
+  let geoipModeOption = section.taboption(
+    'conditions',
+    form.ListValue,
+    'geoip_mode',
+    _('GeoIP Mode'),
+    _(
+      'Include sends only the selected countries to this section and leaves the rest to the sections below. Exclude sends everything except them. Exclude Direct additionally pins the selected countries to direct, so the section works whatever its position in the order. Include All keeps the rest in this section too, and then the countries are the whole section: any other matcher set here is ignored.',
+    ),
+  );
+  geoipModeOption.value('exclude', _('Exclude selected countries'));
+  geoipModeOption.value('include', _('Include selected countries'));
+  geoipModeOption.value(
+    'exclude_direct',
+    _('Exclude selected countries and route them direct'),
+  );
+  geoipModeOption.value(
+    'include_all',
+    _('Include selected countries and everything else'),
+  );
+  geoipModeOption.default = 'exclude';
+  geoipModeOption.rmempty = false;
+  geoipModeOption.modalonly = true;
+  geoipModeOption.load = function (section_id) {
+    let mode = getSectionOrLinkedConditionOption(section_id, 'geoip_mode');
+    if (
+      mode === 'exclude' ||
+      mode === 'include' ||
+      mode === 'exclude_direct' ||
+      mode === 'include_all'
+    )
+      return mode;
+    let act = uci.get(UCI_PACKAGE, section_id, 'action');
+    if (act === 'bypass' || act === 'block') return 'include';
+    return 'exclude';
+  };
+  geoipModeOption.write = function (section_id, value) {
+    syncLinkedConditionOption(section_id, 'geoip_mode', value);
+    return form.ListValue.prototype.write.apply(this, arguments);
+  };
+  [
+    'connection',
+    'proxy',
+    'outbound',
+    'vpn',
+    'awg',
+    'warp',
+    'anytls',
+    'snell',
+    'mieru',
+    'naive',
+    'sudoku',
+    'masque',
+    'openvpn',
+    'openconnect',
+    'desync',
+    'shadowtls',
+    'trusttunnel',
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'wdtt',
+    'olcrtc',
+    'fptn',
+    'bypass',
+    'group',
+  ].forEach((act) => geoipModeOption.depends('action', act));
+
+  o = section.taboption(
+    'conditions',
+    form.DynamicList,
+    'geoip_country',
+    _('GeoIP Countries'),
+    _(
+      'Select one or more country ISO codes (e.g. ru, us, de, nl, fr, fi, se, tr, cn, jp, sg, by, kz, ua).',
+    ),
+  );
+  o.value('ru', _('Russia (ru)'));
+  o.value('us', _('United States (us)'));
+  o.value('de', _('Germany (de)'));
+  o.value('nl', _('Netherlands (nl)'));
+  o.value('gb', _('United Kingdom (gb)'));
+  o.value('fr', _('France (fr)'));
+  o.value('fi', _('Finland (fi)'));
+  o.value('se', _('Sweden (se)'));
+  o.value('tr', _('Turkey (tr)'));
+  o.value('cn', _('China (cn)'));
+  o.value('jp', _('Japan (jp)'));
+  o.value('sg', _('Singapore (sg)'));
+  o.value('by', _('Belarus (by)'));
+  o.value('kz', _('Kazakhstan (kz)'));
+  o.value('ua', _('Ukraine (ua)'));
+  o.placeholder = _('Country code (e.g. ru, us, de)');
+  o.modalonly = true;
+  o.load = function (section_id) {
+    let val = getSectionOrLinkedConditionOption(section_id, 'geoip_country');
+    if (!val || val === 'all') return [];
+    if (val === 'non-ru') return ['ru'];
+    if (Array.isArray(val))
+      return val.filter((v) => v && v !== 'all' && v !== 'non-ru');
+    let parts = String(val)
+      .trim()
+      .split(/\s+/)
+      .filter((v) => v && v !== 'all' && v !== 'non-ru');
+    return parts;
+  };
+  o.write = function (section_id, value) {
+    writeListOption(section_id, 'geoip_country', value);
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'geoip_country');
+    syncLinkedConditionOption(section_id, 'geoip_country', null);
+  };
+  [
+    'connection',
+    'proxy',
+    'outbound',
+    'vpn',
+    'awg',
+    'warp',
+    'anytls',
+    'snell',
+    'mieru',
+    'naive',
+    'sudoku',
+    'masque',
+    'openvpn',
+    'openconnect',
+    'desync',
+    'shadowtls',
+    'trusttunnel',
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'wdtt',
+    'olcrtc',
+    'fptn',
+    'bypass',
+    'group',
+  ].forEach((act) => o.depends('action', act));
+  const geoipCountryChoices = (o.keylist || []).map((value, index) => ({
+    value,
+    label: (o.vallist && o.vallist[index]) || value,
+  }));
+  configureLiveDynamicListChoices(o, (section_id) => {
+    const blocked = foreignGlobalValues('geoip_country', section_id);
+    return geoipCountryChoices.filter((choice) => !blocked.has(choice.value));
+  });
+
+  const domainConditionOption = addTextConditionField(section, {
+    key: 'domain_suffix',
+    optionName: 'domain',
+    legacyTextOptionName: 'domain_suffix_text',
+    label: _('Domains'),
+    description: _(
+      'The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression.',
+    ),
+    textAnalyze: analyzeDomainSuffixText,
+    loadText: loadCombinedDomainText,
+    afterWrite: function (section_id) {
+      [
+        'domain_suffix',
+        'domain_suffix_text',
+        'domain_suffix_text_mode',
+        'domain_keyword',
+        'domain_regex',
+        'domain_text',
+        'domain_keyword_text',
+        'domain_regex_text',
+        'domain_text_mode',
+        'domain_keyword_text_mode',
+        'domain_regex_text_mode',
+      ].forEach((key) => {
+        uci.unset(UCI_PACKAGE, section_id, key);
+        syncLinkedConditionOption(section_id, key, null);
+      });
+    },
+  });
+
+  const userDomainsConditionOption = addTextConditionField(section, {
+    key: 'user_domains',
+    optionName: 'user_domains',
+    legacyTextOptionName: 'user_domains_text',
+    label: _('Auto-detected Domains'),
+    description: _(
+      'Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here.',
+    ),
+    textAnalyze: analyzeDomainSuffixText,
+  });
+
+  const ipConditionOption = addTextConditionField(section, {
+    key: 'ip_cidr',
+    optionName: 'ip_cidr',
+    legacyTextOptionName: 'ip_cidr_text',
+    label: _('IPs'),
+    description: _('Match destination IPs or subnets'),
+    textAnalyze: analyzeIpCidrText,
+  });
+  dependsOnRoutingAction(ipConditionOption);
+
+  const builtInRulesetOption = section.taboption(
+    'conditions',
+    form.DynamicList,
+    'community_lists',
+    _('Built-in rule sets'),
+    _('Select a predefined domain list') +
+      ' (<a href="https://github.com/Dushnilin/tachyon-lists" target="_blank" rel="noopener noreferrer">Tachyon Lists</a>)',
+  );
+  builtInRulesetOption.modalonly = true;
+  builtInRulesetOption.placeholder = _('Service list');
+  dependsOnRoutingAction(builtInRulesetOption);
+  builtInRulesetOption.depends('action', 'dns');
+  builtInRulesetOption.load = function (section_id) {
+    loadRulesetValues(this, section_id);
+    return getBuiltInRulesetReferences(section_id);
+  };
+  builtInRulesetOption.write = function (section_id, values) {
+    writeBuiltInRulesetReferences(section_id, values);
+  };
+  builtInRulesetOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'community_lists');
+    syncLinkedConditionOption(section_id, 'community_lists', null);
+  };
+  if (typeof main.attachCommunityListPicker === 'function') {
+    main.attachCommunityListPicker(builtInRulesetOption, {
+      getBlockedKeys: (secId) =>
+        secId ? foreignGlobalValues('community_lists', secId) : new Set(),
+    });
+  }
+  let isProcessingBuiltIns = false;
+  builtInRulesetOption.onchange = function (_ev, section_id, value) {
+    if (isProcessingBuiltIns) {
+      return;
+    }
+
+    isProcessingBuiltIns = true;
+
+    try {
+      const values = Array.isArray(value)
+        ? value.filter(Boolean)
+        : value
+          ? [value]
+          : [];
+      let newValues = [...values];
+      const notifications = [];
+
+      if (
+        JSON.stringify(newValues.slice().sort()) !==
+        JSON.stringify(values.slice().sort())
+      ) {
+        this.getUIElement(section_id).setValue(newValues);
+      }
+
+      notifications.forEach((notification) =>
+        ui.addNotification(null, notification),
+      );
+    } finally {
+      isProcessingBuiltIns = false;
+    }
+  };
+
+  const communitySubnetsOption = section.taboption(
+    'conditions',
+    form.Flag,
+    'community_subnets',
+    _('Route community list subnets (IP/CIDR)'),
+    _(
+      'Route IP subnets associated with built-in community lists (e.g. Discord voice/media). Disable this if community subnets overlap with CDN/Anycast networks (such as Cloudflare/Google Cloud) and interfere with unrelated services (e.g. game launchers).',
+    ),
+  );
+  communitySubnetsOption.modalonly = true;
+  communitySubnetsOption.default = '1';
+  communitySubnetsOption.rmempty = false;
+  dependsOnRoutingAction(communitySubnetsOption);
+  communitySubnetsOption.write = function (section_id, value) {
+    syncLinkedConditionOption(section_id, 'community_subnets', value);
+    return form.Flag.prototype.write.apply(this, arguments);
+  };
+
+  const ruleSetOption = section.taboption(
+    'conditions',
+    SettingsDynamicList,
+    'rule_set',
+    _('Rule sets'),
+    _(
+      'Add URLs or local paths to .srs / .json / .lst / .txt lists. Subnets are ignored by default.',
+    ),
+  );
+  ruleSetOption.modalonly = true;
+  ruleSetOption.retain = true;
+  dependsOnRoutingAction(ruleSetOption);
+  ruleSetOption.renderItemSettingsModal = showRuleSetSettingsModal;
+  ruleSetOption.load = function (section_id) {
+    return getCustomRulesetReferences(section_id);
+  };
+  ruleSetOption.write = function (section_id, value) {
+    writeCustomRulesetReferences(section_id, value);
+  };
+  ruleSetOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'rule_set');
+    uci.unset(UCI_PACKAGE, section_id, 'rule_set_with_subnets');
+    uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
+    syncLinkedConditionOption(section_id, 'rule_set', null);
+    syncLinkedConditionOption(section_id, 'rule_set_with_subnets', null);
+  };
+  ruleSetOption.validate = function (section_id, value) {
+    return validateCustomRulesetReference(value);
+  };
+
+  const dnsRuleSetOption = section.taboption(
+    'conditions',
+    form.DynamicList,
+    '_dns_rule_set',
+    _('Rule sets'),
+    _(
+      'Add URLs or local paths to .srs / .json / .lst / .txt lists. Only domain rules are supported.',
+    ),
+  );
+  dnsRuleSetOption.depends('action', 'dns');
+  dnsRuleSetOption.modalonly = true;
+  dnsRuleSetOption.retain = true;
+  dnsRuleSetOption.load = function (section_id) {
+    return getCustomRulesetReferences(section_id);
+  };
+  dnsRuleSetOption.write = function (section_id, value) {
+    writeDnsRulesetReferences(section_id, value);
+  };
+  dnsRuleSetOption.remove = function (section_id) {
+    writeDnsRulesetReferences(section_id, []);
+  };
+  dnsRuleSetOption.validate = function (_section_id, value) {
+    return validateCustomRulesetReference(value);
+  };
+
+  const domainIpListsOption = section.taboption(
+    'conditions',
+    form.DynamicList,
+    'domain_ip_lists',
+    _('Domain and IP lists'),
+    _('Add URLs or local paths to .lst lists containing domains and subnets.'),
+  );
+  domainIpListsOption.modalonly = true;
+  domainIpListsOption.retain = true;
+  dependsOnRoutingAction(domainIpListsOption);
+  domainIpListsOption.load = function (section_id) {
+    return getConfigListValues(section_id, 'domain_ip_lists');
+  };
+  domainIpListsOption.write = function (section_id, value) {
+    writeListOption(section_id, 'domain_ip_lists', value);
+  };
+  domainIpListsOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'domain_ip_lists');
+    syncLinkedConditionOption(section_id, 'domain_ip_lists', null);
+  };
+  domainIpListsOption.validate = function (_section_id, value) {
+    return validatePlainListReference(value);
+  };
+
+  const dnsDomainListsOption = section.taboption(
+    'conditions',
+    form.DynamicList,
+    '_dns_domain_ip_lists',
+    _('Domain lists'),
+    _(
+      'Add URLs or local paths to .lst lists containing domains. IP entries are ignored.',
+    ),
+  );
+  dnsDomainListsOption.depends('action', 'dns');
+  dnsDomainListsOption.modalonly = true;
+  dnsDomainListsOption.retain = true;
+  dnsDomainListsOption.load = function (section_id) {
+    return getConfigListValues(section_id, 'domain_ip_lists');
+  };
+  dnsDomainListsOption.write = function (section_id, value) {
+    writeListOption(section_id, 'domain_ip_lists', value);
+  };
+  dnsDomainListsOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'domain_ip_lists');
+    syncLinkedConditionOption(section_id, 'domain_ip_lists', null);
+  };
+  dnsDomainListsOption.validate = function (_section_id, value) {
+    return validatePlainListReference(value);
+  };
+
+  [
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked.srs',
+      'Tachyon Lists: Реестр РКН и Антизапрет (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked_all.srs',
+      'Tachyon Lists: Реестр РКН полный (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/antifilter.srs',
+      'Tachyon Lists: Antifilter Community (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/refilter.srs',
+      'Tachyon Lists: Re:filter (.srs) — [Маршрут: В Прокси / VPN]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoblock.srs',
+      'Tachyon Lists: Геоблок зарубежных сервисов (.srs) — [Маршрут: Только в Прокси / VPN]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ai_all.srs',
+      'Tachyon Lists: Все зарубежные ИИ и нейросети (.srs) — [Маршрут: Только в Прокси / VPN]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_whitelist.srs',
+      'Tachyon Lists: Белый список РФ (.srs) — [Маршрут: Напрямую (Direct)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_domains.srs',
+      'Tachyon Lists: Домены Рунета и СНГ (.srs) — [Маршрут: Напрямую (Direct)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_only_inside.srs',
+      'Tachyon Lists: Сервисы строго внутри РФ (.srs) — [Маршрут: Строго Напрямую (Direct)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/push.srs',
+      'Tachyon Lists: Push-уведомления APNs/FCM (.srs) — [Маршрут: Напрямую (Direct)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ads_hagezi_pro.srs',
+      'Tachyon Lists: Реклама и трекеры Hagezi Pro (.srs) — [Маршрут: Блокировать (Block)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/win_spy.srs',
+      'Tachyon Lists: Телеметрия и слежка Windows (.srs) — [Маршрут: Блокировать (Block)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoip_ru.srs',
+      'Tachyon Lists: GeoIP России (.srs) — [Маршрут: Напрямую (Direct)]',
+    ],
+  ].forEach(([url, label]) => {
+    ruleSetOption.value(url, label);
+    if (!url.endsWith('/geoip_ru.srs')) {
+      dnsRuleSetOption.value(url, label);
+    }
+  });
+
+  [
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked.lst',
+      'Tachyon Lists: Реестр РКН и Антизапрет — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked_all.lst',
+      'Tachyon Lists: Реестр РКН полный — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/antifilter.lst',
+      'Tachyon Lists: Antifilter Community — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/refilter.lst',
+      'Tachyon Lists: Re:filter — домены (.lst) — [Маршрут: В Прокси / VPN]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_whitelist.lst',
+      'Tachyon Lists: Белый список РФ — домены (.lst) — [Маршрут: Напрямую (Direct)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_domains.lst',
+      'Tachyon Lists: Домены Рунета и СНГ (.lst) — [Маршрут: Напрямую (Direct)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/ru_blocked.lst',
+      'Tachyon Lists: Реестр РКН — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/antifilter.lst',
+      'Tachyon Lists: Antifilter Community — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/refilter.lst',
+      'Tachyon Lists: Re:filter — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/ru_whitelist.lst',
+      'Tachyon Lists: Белый список РФ — подсети CIDR (.lst) — [Маршрут: Напрямую (Direct)]',
+    ],
+    [
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/ru_domains.lst',
+      'Tachyon Lists: Рунет и РФ — подсети CIDR (.lst) — [Маршрут: Напрямую (Direct)]',
+    ],
+  ].forEach(([url, label]) => {
+    domainIpListsOption.value(url, label);
+    if (url.includes('/release/domains/')) {
+      dnsDomainListsOption.value(url, label);
+    }
+  });
+
+  const globalRulesOption = section.taboption(
+    'conditions',
+    form.DynamicList,
+    'global_rules',
+    _('Global rules'),
+    _(
+      'Values listed here belong to this section alone: every other section stops offering them and loses them on save, and this section gets a "Global rule enabled" mark. Only values already used by this section can be claimed.',
+    ),
+  );
+  globalRulesOption.modalonly = true;
+  globalRulesOption.placeholder = _('Condition value');
+  globalRulesOption.load = function (section_id) {
+    return normalizeOptionValues(
+      uci.get(UCI_PACKAGE, section_id, 'global_rules'),
+    );
+  };
+  globalRulesOption.validate = function (section_id, value) {
+    for (const entry of uniqueDynamicListItems(normalizeOptionValues(value))) {
+      const claim = parseGlobalRule(entry);
+      if (!claim) {
+        return _(
+          'Invalid global rule "%s": expected "option: value" with a supported option',
+        ).format(entry);
+      }
+      if (!globalRuleConditionValues(section_id, claim.kind).has(claim.value)) {
+        return _(
+          '"%s" is not part of this section - add it to its conditions first',
+        ).format(claim.value);
+      }
+      const owner = globalRuleClaimsByOtherSections(section_id).get(
+        `${claim.kind}:${claim.value}`,
+      );
+      if (owner) {
+        return _(
+          '"%s" is the global rule of section "%s" and cannot be used here',
+        ).format(claim.value, owner);
+      }
+    }
+    return true;
+  };
+  globalRulesOption.write = function (section_id, value) {
+    const entries = uniqueDynamicListItems(
+      normalizeOptionValues(value).filter((entry) => parseGlobalRule(entry)),
+    );
+    writeListOption(section_id, 'global_rules', entries);
+
+    const removed = new Set();
+    entries.forEach((entry) => {
+      releaseGlobalRuleFromOtherSections(
+        section_id,
+        parseGlobalRule(entry),
+      ).forEach((label) => removed.add(label));
+    });
+    if (removed.size) {
+      ui.addNotification(
+        null,
+        E(
+          'p',
+          _('Removed from other sections as global: %s').format(
+            [...removed].join(', '),
+          ),
+        ),
+      );
+    }
+  };
+  globalRulesOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'global_rules');
+  };
+  configureLiveDynamicListChoices(globalRulesOption, (section_id) =>
+    globalRuleChoices(section_id),
+  );
+
+  const sourceIpOption = addLocalDeviceSubnetDynamicField(section, {
+    key: 'source_ip_cidr',
+    label: _('Device filter'),
+    description: _(
+      'Apply section rules only to the specified local IP addresses',
+    ),
+  });
+  dependsOnRoutingAction(sourceIpOption);
+  sourceIpOption.depends('action', 'dns');
+
+  const fullyRoutedOption = addLocalDeviceSubnetDynamicField(section, {
+    key: 'fully_routed_ips',
+    label: _('Forced device routing'),
+    description: _(
+      'All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions.',
+    ),
+  });
+  dependsOnRoutingAction(fullyRoutedOption);
+  fullyRoutedOption.depends('action', 'dns');
+  makeDeviceOptionsExclusive(sourceIpOption, fullyRoutedOption);
+
+  const excludedIpsOption = addLocalDeviceSubnetDynamicField(section, {
+    key: 'excluded_ips',
+    label: _('Excluded devices'),
+    description: _(
+      'Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match.',
+    ),
+  });
+  dependsOnRoutingAction(excludedIpsOption);
+
+  const routedDnsEnabledOption = section.taboption(
+    'conditions',
+    form.Flag,
+    'routed_dns_enabled',
+    _('Routed DNS'),
+    _(
+      "Resolve matched domains through an encrypted DNS server of this section instead of FakeIP. DNS queries traverse the same proxy as the section's outbound.",
+    ),
+  );
+  dependsOnRoutingAction(routedDnsEnabledOption);
+  routedDnsEnabledOption.default = '0';
+  routedDnsEnabledOption.rmempty = false;
+  routedDnsEnabledOption.modalonly = true;
+
+  const routedDnsTypeOption = section.taboption(
+    'conditions',
+    form.ListValue,
+    'routed_dns_type',
+    _('Routed DNS Protocol'),
+    _('Protocol for the routed DNS resolver.'),
+  );
+  routedDnsTypeOption.depends({ routed_dns_enabled: '1' });
+  routedDnsTypeOption.rmempty = false;
+  routedDnsTypeOption.modalonly = true;
+  routedDnsTypeOption.value('udp', 'UDP');
+  routedDnsTypeOption.value('dot', 'DNS over TLS');
+  routedDnsTypeOption.value('doh', 'DNS over HTTPS');
+  routedDnsTypeOption.value('doq', 'DNS over QUIC');
+
+  const routedDnsServerOption = addDynamicConditionField(section, {
+    key: 'routed_dns_server',
+    label: _('Routed DNS Servers'),
+    description: _(
+      'DNS server addresses for domain resolution in this section (e.g. 1.1.1.1, https://cloudflare-dns.com/dns-query).',
+    ),
+  });
+  routedDnsServerOption.depends({ routed_dns_enabled: '1' });
+
+  const portsOption = addDynamicConditionField(section, {
+    key: 'ports',
+    label: _('Ports'),
+    description: _('Match destination ports. Use a single port or a range'),
+    dynamicValidate: validatePortCondition,
+  });
+  dependsOnRoutingAction(portsOption);
+
+  const dscpOption = addDynamicConditionField(section, {
+    key: 'dscp',
+    label: _('DSCP marks (QoS)'),
+    description: _(
+      'Match traffic by packet DSCP mark (assigned in Windows via Policy-Based QoS). Examples: 46 (EF), 0x2e, 34 (AF41)',
+    ),
+  });
+  dependsOnRoutingAction(dscpOption);
+
+  const excludedProtocolOption = section.taboption(
+    'conditions',
+    form.MultiValue,
+    'excluded_protocol',
+    _('Exclude traffic types'),
+    _(
+      'Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section.',
+    ),
+  );
+  excludedProtocolOption.value('bittorrent', _('BitTorrent / P2P'));
+  excludedProtocolOption.value('quic', _('QUIC (HTTP/3)'));
+  excludedProtocolOption.value('stun', _('STUN (P2P Calls)'));
+  excludedProtocolOption.value('dns', _('DNS'));
+  excludedProtocolOption.value('http', _('HTTP'));
+  excludedProtocolOption.value('tls', _('TLS / HTTPS'));
+  excludedProtocolOption.value('ssh', _('SSH'));
+  excludedProtocolOption.value('rdp', _('RDP'));
+  excludedProtocolOption.value('tcp', _('TCP'));
+  excludedProtocolOption.value('udp', _('UDP'));
+  excludedProtocolOption.value('icmp', _('ICMP'));
+  excludedProtocolOption.modalonly = true;
+  excludedProtocolOption.rmempty = true;
+  dependsOnRoutingAction(excludedProtocolOption);
+  excludedProtocolOption.load = function (section_id) {
+    return getConfigListValues(section_id, 'excluded_protocol');
+  };
+  excludedProtocolOption.write = function (section_id, value) {
+    writeListOption(section_id, 'excluded_protocol', value);
+  };
+  excludedProtocolOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'excluded_protocol');
+    syncLinkedConditionOption(section_id, 'excluded_protocol', null);
+  };
+
+  const protocolOption = section.taboption(
+    'conditions',
+    form.MultiValue,
+    'protocol',
+    _('Traffic type filter'),
+    _('Apply rules of this section only to selected protocols.'),
+  );
+  protocolOption.value('bittorrent', _('BitTorrent / P2P'));
+  protocolOption.value('quic', _('QUIC (HTTP/3)'));
+  protocolOption.value('stun', _('STUN (P2P Calls)'));
+  protocolOption.value('dns', _('DNS'));
+  protocolOption.value('http', _('HTTP'));
+  protocolOption.value('tls', _('TLS / HTTPS'));
+  protocolOption.value('ssh', _('SSH'));
+  protocolOption.value('rdp', _('RDP'));
+  protocolOption.value('tcp', _('TCP'));
+  protocolOption.value('udp', _('UDP'));
+  protocolOption.value('icmp', _('ICMP'));
+  protocolOption.modalonly = true;
+  protocolOption.rmempty = true;
+  dependsOnRoutingAction(protocolOption);
+  protocolOption.load = function (section_id) {
+    return getConfigListValues(section_id, 'protocol');
+  };
+  protocolOption.write = function (section_id, value) {
+    writeListOption(section_id, 'protocol', value);
+  };
+  protocolOption.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'protocol');
+    syncLinkedConditionOption(section_id, 'protocol', null);
+  };
+
+  addDashboardServerFilterOptions(section);
+
+  globalRuleExclusivityTargets.forEach(({ option, kind }) =>
+    enforceGlobalRuleExclusivity(option, kind),
+  );
+}
+
+function loadSectionTableOptions(sectionRef) {
+  const sectionIds = sectionRef.cfgsections();
+  const tasks = [];
+
+  for (let i = 0; i < sectionIds.length; i += 1) {
+    const sectionId = sectionIds[i];
+
+    for (let j = 0; j < sectionRef.children.length; j += 1) {
+      const option = sectionRef.children[j];
+
+      if (option.disable || option.modalonly) {
+        continue;
+      }
+
+      tasks.push(
+        Promise.resolve(option.load.call(option, sectionId)).then((value) => {
+          option.cfgvalue(
+            sectionId,
+            value !== undefined && value !== null ? value : option.default,
+          );
+        }),
+      );
+    }
+  }
+
+  return Promise.all(tasks);
+}
+
+const ACTION_COLORS = {
+  connection: '#2980b9',
+  proxy: '#2980b9',
+  outbound: '#3498db',
+  vpn: '#1abc9c',
+  bypass: '#27ae60',
+  block: '#c0392b',
+  zapret: '#8e44ad',
+  zapret2: '#9b59b6',
+  byedpi: '#d35400',
+  wdtt: '#27ae60',
+  olcrtc: '#2980b9',
+  fptn: '#e74c3c',
+  awg: '#008080',
+  warp: '#e67e22',
+  anytls: '#16a085',
+  snell: '#2c3e50',
+  mieru: '#34495e',
+  naive: '#1f618d',
+  sudoku: '#7f8c8d',
+  masque: '#8e44ad',
+  openvpn: '#e74c3c',
+  hosts: '#2ecc71',
+  group: '#2980b9',
+};
+
+const CLOUDFLARE_SHARED_CIDRS = [
+  '104.16.0.0/12',
+  '104.24.0.0/14',
+  '172.64.0.0/13',
+  '162.158.0.0/15',
+  '108.162.192.0/18',
+  '190.93.240.0/20',
+  '188.114.96.0/20',
+  '197.234.240.0/22',
+  '198.41.128.0/17',
+  '162.159.0.0/16',
+  '173.245.48.0/20',
+  '103.21.244.0/22',
+  '103.22.200.0/22',
+  '103.31.4.0/22',
+  '141.101.64.0/18',
+  '2606:4700::/32',
+  '2400:cb00::/32',
+  '2405:b500::/32',
+  '2803:f800::/32',
+  '2a06:98c0::/29',
+  '2c0f:f248::/32',
+];
+
+function ip4ToInt(ip) {
+  const octets = ip.split('.');
+  if (octets.length !== 4) return null;
+  let res = 0;
+  for (let i = 0; i < 4; i++) {
+    const oct = parseInt(octets[i], 10);
+    if (isNaN(oct) || oct < 0 || oct > 255) return null;
+    res = ((res << 8) + oct) >>> 0;
+  }
+  return res;
+}
+
+function ipv6ToBigInt(ip) {
+  try {
+    ip = ip.toLowerCase();
+    if (ip.includes('.')) {
+      const lastColon = ip.lastIndexOf(':');
+      if (lastColon === -1) return null;
+      const v4Part = ip.substring(lastColon + 1);
+      const v4Octets = v4Part.split('.');
+      if (v4Octets.length !== 4) return null;
+      const hexPart1 = (
+        (parseInt(v4Octets[0], 10) << 8) |
+        parseInt(v4Octets[1], 10)
+      ).toString(16);
+      const hexPart2 = (
+        (parseInt(v4Octets[2], 10) << 8) |
+        parseInt(v4Octets[3], 10)
+      ).toString(16);
+      ip = ip.substring(0, lastColon + 1) + hexPart1 + ':' + hexPart2;
+    }
+
+    let parts = ip.split('::');
+    if (parts.length > 2) return null;
+    let head = parts[0] ? parts[0].split(':').filter(Boolean) : [];
+    let tail =
+      parts.length === 2 && parts[1] ? parts[1].split(':').filter(Boolean) : [];
+    if (parts.length === 1 && head.length !== 8) return null;
+    if (parts.length === 2 && head.length + tail.length > 7) return null;
+
+    let middleCount = 8 - (head.length + tail.length);
+    let full = [...head];
+    for (let i = 0; i < middleCount; i++) full.push('0');
+    full = full.concat(tail);
+
+    let res = 0n;
+    for (let i = 0; i < 8; i++) {
+      let val = BigInt(parseInt(full[i], 16));
+      if (val < 0n || val > 0xffffn) return null;
+      res = (res << 16n) | val;
+    }
+    return res;
+  } catch (e) {
+    return null;
+  }
+}
+
+function ipMatchesCidr(ip, cidr) {
+  if (!ip || !cidr) return false;
+  const parts = cidr.trim().split('/');
+  const subnet = parts[0].trim();
+  const bitsStr = parts[1];
+
+  const isV6 = ip.includes(':') || subnet.includes(':');
+  if (isV6) {
+    const bits = bitsStr !== undefined ? parseInt(bitsStr, 10) : 128;
+    if (isNaN(bits) || bits < 0 || bits > 128) return false;
+    if (bits === 0) return true;
+    const ipBig = ipv6ToBigInt(ip);
+    const subnetBig = ipv6ToBigInt(subnet);
+    if (ipBig === null || subnetBig === null) return false;
+    const shift = 128n - BigInt(bits);
+    return ipBig >> shift === subnetBig >> shift;
+  } else {
+    const bits = bitsStr !== undefined ? parseInt(bitsStr, 10) : 32;
+    if (isNaN(bits) || bits < 0 || bits > 32) return false;
+    if (bits === 0) return true;
+    const ipInt = ip4ToInt(ip);
+    const subnetInt = ip4ToInt(subnet);
+    if (ipInt === null || subnetInt === null) return false;
+    const mask = (0xffffffff << (32 - bits)) >>> 0;
+    return (ipInt & mask) === (subnetInt & mask);
+  }
+}
+
+function getSharedCdnWarning(cidr) {
+  if (!cidr) return null;
+  const normalized = cidr.trim();
+  for (const cfCidr of CLOUDFLARE_SHARED_CIDRS) {
+    if (normalized === cfCidr) {
+      return _(
+        'Subnet %s is a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section.',
+      ).format(normalized, 'Cloudflare');
+    }
+  }
+  const ipOnly = normalized.split('/')[0];
+  for (const cfCidr of CLOUDFLARE_SHARED_CIDRS) {
+    if (ipMatchesCidr(ipOnly, cfCidr)) {
+      return _(
+        'Subnet %s belongs to a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section.',
+      ).format(normalized, `Cloudflare ${cfCidr}`);
+    }
+  }
+  return null;
+}
+
+function isCloudflareSharedCidr(cidr) {
+  if (!cidr) return false;
+  const normalized = cidr.trim();
+  for (const cfCidr of CLOUDFLARE_SHARED_CIDRS) {
+    if (normalized === cfCidr) return true;
+  }
+  const ipOnly = normalized.split('/')[0];
+  for (const cfCidr of CLOUDFLARE_SHARED_CIDRS) {
+    if (ipMatchesCidr(ipOnly, cfCidr)) return true;
+  }
+  return false;
+}
+
+let _subnetListCache = {};
+let _communityDomainsCache = {};
+
+async function readSubnetListFile(service) {
+  if (!service) return [];
+  if (_subnetListCache[service]) return _subnetListCache[service];
+
+  const paths = [
+    `/tmp/tachyon-core/rulesets/community-subnets-${service}.lst`,
+    `/tmp/sing-box/rulesets/community-subnets-${service}.lst`,
+    `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
+    `/usr/share/tachyon/rulesets/community-subnets-${service}.lst`,
+    // steer cache: decoded from .srs by steer srs-read
+    `/etc/steer/lists/cache/${service}.prefixes`,
+  ];
+
+  for (const p of paths) {
+    try {
+      let content = await fs.read(p).catch(() => null);
+      if (!content) {
+        const res = await fs.exec('/bin/cat', [p]).catch(() => null);
+        if (res && res.code === 0 && res.stdout) {
+          content = res.stdout;
+        }
+      }
+      if (content) {
+        const lines = content
+          .split('\n')
+          .map((l) => l.trim().replace(/\r/g, ''))
+          .filter((l) => l && !l.startsWith('#'));
+        if (lines.length > 0) {
+          _subnetListCache[service] = lines;
+          return lines;
+        }
+      }
+    } catch (e) {}
+  }
+
+  _subnetListCache[service] = [];
+  return [];
+}
+
+function matchIpInCidrs(ip, cidrs) {
+  for (let i = 0; i < cidrs.length; i++) {
+    const cidr = cidrs[i];
+    if (!cidr) continue;
+    try {
+      if (ipMatchesCidr(ip, cidr)) {
+        return cidr;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+function matchIpInRuleset(ip, ruleset) {
+  if (!ruleset || !Array.isArray(ruleset.rules)) return null;
+  for (const rule of ruleset.rules) {
+    if (Array.isArray(rule.ip_cidr)) {
+      const matched = matchIpInCidrs(ip, rule.ip_cidr);
+      if (matched) {
+        return matched;
+      }
+    }
+  }
+  return null;
+}
+
+function matchDomainInList(domain, list) {
+  domain = domain.toLowerCase();
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i].trim().toLowerCase();
+    if (!item) continue;
+
+    if (item.startsWith('full:')) {
+      const target = item.substring(5);
+      if (domain === target) return item;
+    } else if (item.startsWith('keyword:')) {
+      const target = item.substring(8);
+      if (domain.indexOf(target) !== -1) return item;
+    } else if (item.startsWith('regex:')) {
+      const target = item.substring(6);
+      try {
+        const re = new RegExp(target);
+        if (re.test(domain)) return item;
+      } catch (e) {}
+    } else {
+      if (domain === item || domain.endsWith('.' + item)) {
+        return item;
+      }
+    }
+  }
+  return null;
+}
+
+function matchDomainInRuleset(domain, ruleset) {
+  if (!ruleset || !Array.isArray(ruleset.rules)) return null;
+  domain = domain.toLowerCase();
+
+  for (const rule of ruleset.rules) {
+    if (Array.isArray(rule.domain)) {
+      for (let i = 0; i < rule.domain.length; i++) {
+        const d = rule.domain[i];
+        if (d.toLowerCase() === domain) return `domain:${d}`;
+      }
+    }
+    if (Array.isArray(rule.domain_suffix)) {
+      for (let i = 0; i < rule.domain_suffix.length; i++) {
+        const ds = rule.domain_suffix[i];
+        const dsLower = ds.toLowerCase();
+        if (domain === dsLower || domain.endsWith('.' + dsLower)) {
+          return `domain_suffix:${ds}`;
+        }
+      }
+    }
+    if (Array.isArray(rule.domain_keyword)) {
+      for (let i = 0; i < rule.domain_keyword.length; i++) {
+        const dk = rule.domain_keyword[i];
+        if (domain.indexOf(dk.toLowerCase()) !== -1) {
+          return `domain_keyword:${dk}`;
+        }
+      }
+    }
+    if (Array.isArray(rule.domain_regex)) {
+      for (let i = 0; i < rule.domain_regex.length; i++) {
+        const dr = rule.domain_regex[i];
+        try {
+          const re = new RegExp(dr);
+          if (re.test(domain)) return `domain_regex:${dr}`;
+        } catch (e) {}
+      }
+    }
+  }
+  return null;
+}
+
+function matchPort(port, portsList) {
+  const queryPort = parseInt(port, 10);
+  if (isNaN(queryPort)) return null;
+
+  for (let i = 0; i < portsList.length; i++) {
+    const item = portsList[i];
+    if (!item) continue;
+    if (item.indexOf('-') !== -1) {
+      const parts = item.split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parseInt(parts[1], 10);
+      if (
+        !isNaN(start) &&
+        !isNaN(end) &&
+        queryPort >= start &&
+        queryPort <= end
+      ) {
+        return item;
+      }
+    } else {
+      const p = parseInt(item, 10);
+      if (p === queryPort) return item;
+    }
+  }
+  return null;
+}
+
+function detectQueryType(query) {
+  query = query.trim();
+  if (/^\d+$/.test(query)) {
+    return 'port';
+  }
+  if (/^[\d./]+$/.test(query) && query.indexOf('.') !== -1) {
+    return 'ip';
+  }
+  if (query.indexOf(':') !== -1) {
+    return 'ip';
+  }
+  return 'domain';
+}
+
+async function readRulesetFile(path) {
+  const candidates = [path];
+  if (path.startsWith('/tmp/sing-box/rulesets/')) {
+    candidates.unshift(
+      path.replace('/tmp/sing-box/rulesets/', '/tmp/tachyon-core/rulesets/'),
+    );
+  } else if (path.startsWith('/tmp/tachyon-core/rulesets/')) {
+    candidates.push(
+      path.replace('/tmp/tachyon-core/rulesets/', '/tmp/sing-box/rulesets/'),
+    );
+  }
+  for (const candidate of candidates) {
+    try {
+      let content = await fs.read(candidate).catch(() => null);
+      if (!content) {
+        const res = await fs.exec('/bin/cat', [candidate]).catch(() => null);
+        if (res && res.code === 0 && res.stdout) {
+          content = res.stdout;
+        }
+      }
+      if (!content) continue;
+      return JSON.parse(content);
+    } catch (e) {
+      console.warn('Failed to parse ruleset file JSON:', candidate, e);
+    }
+  }
+  return null;
+}
+
+async function findCachedSrsFile(secName, community) {
+  const candidates = [
+    `/tmp/tachyon-core/rulesets/community-${community}.srs`,
+    `/tmp/sing-box/rulesets/community-${community}.srs`,
+    `/etc/tachyon/rulesets/community-${community}.srs`,
+  ];
+
+  for (const srsPath of candidates) {
+    const st = await fs.stat(srsPath).catch(() => null);
+    if (st && st.type === 'file') {
+      return srsPath;
+    }
+  }
+
+  return null;
+}
+
+async function matchCommunityList(secName, community, query, type) {
+  const srsPath = await findCachedSrsFile(secName, community);
+
+  if (srsPath) {
+    const checkMatch = (res) => {
+      if (!res || res.code !== 0) return false;
+      const output = (res.stdout || '') + (res.stderr || '');
+      return (
+        /\[\d+\]\s*match/.test(output) ||
+        (output.includes('match') && !output.includes('no match'))
+      );
+    };
+
+    const matchArgs = [
+      'rule-set',
+      'match',
+      srsPath,
+      ...(type === 'ip'
+        ? ['--ip', query]
+        : ['--domain', (query || '').toLowerCase()]),
+    ];
+
+    for (const bin of [
+      '/usr/bin/tachyon-core',
+      '/usr/bin/sing-box',
+      '/usr/sbin/sing-box',
+    ]) {
+      const res = await fs.exec(bin, matchArgs).catch(() => null);
+      if (checkMatch(res)) return true;
+    }
+  }
+
+  // Steer fallback: when steer is active engine, sing-box may not be installed.
+  // Read the decoded domain cache that steer srs-read produces.
+  if (type === 'domain') {
+    if (!_communityDomainsCache[community]) {
+      const cachePath = `/etc/steer/lists/cache/${community}.domains`;
+      try {
+        let content = await fs.read(cachePath).catch(() => null);
+        if (!content) {
+          const res2 = await fs.exec('/bin/cat', [cachePath]).catch(() => null);
+          if (res2 && res2.code === 0 && res2.stdout) content = res2.stdout;
+        }
+        if (content) {
+          _communityDomainsCache[community] = content
+            .split('\n')
+            .map((l) => l.trim().replace(/\r/g, ''))
+            .filter((l) => l && !l.startsWith('#'));
+        } else {
+          _communityDomainsCache[community] = [];
+        }
+      } catch (e) {
+        _communityDomainsCache[community] = [];
+      }
+    }
+    const domainList = _communityDomainsCache[community] || [];
+    if (domainList.length > 0) {
+      const matched = matchDomainInList(query, domainList);
+      if (matched) return true;
+    }
+  }
+
+  return false;
+}
+
+function isSyntheticFakeIp(ip) {
+  const s = (ip || '').trim().toLowerCase();
+  return /^198\.(18|19)\./.test(s) || /^fc[0-3][0-9a-f]:/.test(s);
+}
+
+async function resolveDomainToIps(domain) {
+  domain = (domain || '').trim().toLowerCase();
+  if (!domain) return [];
+
+  // 1. Try Tachyon CLI: /usr/bin/tachyon resolve_domain <domain>
+  try {
+    const res = await fs
+      .exec('/usr/bin/tachyon', ['resolve_domain', domain])
+      .catch(() => null);
+    if (res && res.code === 0 && res.stdout) {
+      const parsed = JSON.parse(res.stdout.trim());
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter((ip) => ip && !isSyntheticFakeIp(ip));
+        if (filtered.length > 0) {
+          return filtered;
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 2. Fallback: nslookup via /usr/bin/nslookup (local then public resolver if FakeIP)
+  for (const args of [[domain], [domain, '77.88.8.8'], [domain, '1.1.1.1']]) {
+    try {
+      const res = await fs.exec('/usr/bin/nslookup', args).catch(() => null);
+      if (res && res.stdout) {
+        const ips = [];
+        const lines = res.stdout.split('\n');
+        let pastHeader = false;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (/^(Name:|Non-authoritative answer:)/i.test(trimmed)) {
+            pastHeader = true;
+          }
+          if (!pastHeader) continue;
+          const m = trimmed.match(/^Address\s*\d*:\s*([0-9a-fA-F:.]+)/);
+          if (m) {
+            const addr = m[1].split('#')[0].trim();
+            if (
+              !addr.startsWith('127.') &&
+              addr !== '::1' &&
+              addr !== '' &&
+              !isSyntheticFakeIp(addr)
+            ) {
+              if (!ips.includes(addr)) ips.push(addr);
+            }
+          }
+        }
+        if (ips.length > 0) return ips;
+      }
+    } catch (e) {}
+  }
+
+  return [];
+}
+
+function getSectionLeafConditionIds(secName) {
+  const result = [];
+  const visited = new Set();
+  const visitCond = (condId) => {
+    if (!condId || visited.has(condId)) return;
+    visited.add(condId);
+    if (uci.get(UCI_PACKAGE, condId, 'enabled') === '0') return;
+    const expr = (uci.get(UCI_PACKAGE, condId, 'expression') || '').trim();
+    const members = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, condId, 'members'),
+    );
+    if (expr) {
+      const tokens = expr
+        .replace(/[()&|!~]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean);
+      for (const tok of tokens) {
+        const up = tok.toUpperCase();
+        if (
+          up === 'AND' ||
+          up === 'OR' ||
+          up === 'NOT' ||
+          up === 'И' ||
+          up === 'ИЛИ' ||
+          up === 'НЕ'
+        ) {
+          continue;
+        }
+        visitCond(tok);
+      }
+    } else if (members.length > 0) {
+      for (const m of members) visitCond(m);
+    } else {
+      result.push(condId);
+    }
+  };
+
+  const secExpr = (
+    uci.get(UCI_PACKAGE, secName, 'condition_expression') || ''
+  ).trim();
+  const secRefs = normalizeOptionValues(
+    uci.get(UCI_PACKAGE, secName, 'condition_refs'),
+  );
+  if (secExpr) {
+    const tokens = secExpr
+      .replace(/[()&|!~]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+    for (const tok of tokens) {
+      const up = tok.toUpperCase();
+      if (
+        up === 'AND' ||
+        up === 'OR' ||
+        up === 'NOT' ||
+        up === 'И' ||
+        up === 'ИЛИ' ||
+        up === 'НЕ'
+      ) {
+        continue;
+      }
+      visitCond(tok);
+    }
+  } else {
+    for (const cid of secRefs) visitCond(cid);
+  }
+  return result;
+}
+
+function getSectionEffectiveOptionValues(secName, key) {
+  const out = [];
+  const seen = new Set();
+  const addItems = (items) => {
+    for (const it of items) {
+      if (it && !seen.has(it)) {
+        seen.add(it);
+        out.push(it);
+      }
+    }
+  };
+  const targets = [secName, ...getSectionLeafConditionIds(secName)];
+  for (const tid of targets) {
+    addItems(normalizeOptionValues(uci.get(UCI_PACKAGE, tid, key)));
+    const textVal = uci.get(UCI_PACKAGE, tid, `${key}_text`);
+    if (textVal) {
+      addItems(normalizeOptionValues(textVal));
+    }
+  }
+  return out;
+}
+
+function getSectionEffectiveScalar(secName, key) {
+  const direct = uci.get(UCI_PACKAGE, secName, key);
+  if (direct != null && `${direct}`.trim() !== '') {
+    return `${direct}`.trim();
+  }
+  for (const cid of getSectionLeafConditionIds(secName)) {
+    const val = uci.get(UCI_PACKAGE, cid, key);
+    if (val != null && `${val}`.trim() !== '') {
+      return `${val}`.trim();
+    }
+  }
+  return '';
+}
+
+function getSectionGeoCountries(secName) {
+  const raw = getSectionEffectiveOptionValues(secName, 'geoip_country');
+  const countries = [];
+  for (let item of raw) {
+    item = (item || '').trim().toLowerCase();
+    if (!item || item === 'all') continue;
+    if (item === 'non-ru') {
+      if (!countries.includes('ru')) countries.push('ru');
+      continue;
+    }
+    if (/^[a-z]{2}$/.test(item) && !countries.includes(item)) {
+      countries.push(item);
+    }
+  }
+  return countries;
+}
+
+function getSectionGeoMode(secName) {
+  const mode = getSectionEffectiveScalar(secName, 'geoip_mode').toLowerCase();
+  if (
+    mode === 'include' ||
+    mode === 'exclude' ||
+    mode === 'include_all' ||
+    mode === 'exclude_direct'
+  ) {
+    return mode;
+  }
+  const act = uci.get(UCI_PACKAGE, secName, 'action');
+  if (act === 'bypass' || act === 'block') return 'include';
+  return 'exclude';
+}
+
+async function matchesGeoCountrySet(secName, countries, domain, ips) {
+  for (const cc of countries) {
+    if (domain) {
+      const d = domain.toLowerCase();
+      if (d === cc || d.endsWith('.' + cc)) {
+        return { matched: true, source: `tld_${cc}`, pattern: domain };
+      }
+      if (
+        cc === 'ru' &&
+        (d.endsWith('.su') || d.endsWith('.xn--p1ai') || d.endsWith('.рф'))
+      ) {
+        return { matched: true, source: 'tld_ru', pattern: domain };
+      }
+      if (
+        await matchCommunityList(secName, `geosite_${cc}`, domain, 'domain')
+      ) {
+        return { matched: true, source: `geosite_${cc}`, pattern: domain };
+      }
+      if (
+        cc === 'ru' &&
+        (await matchCommunityList(secName, 'russia_inside', domain, 'domain'))
+      ) {
+        return { matched: true, source: 'russia_inside', pattern: domain };
+      }
+    }
+    const geoService = `geoip_${cc}`;
+    const geoSubnets = await readSubnetListFile(geoService);
+    for (const ip of ips || []) {
+      if (!ip || isSyntheticFakeIp(ip)) continue;
+      const matchedCidr = matchIpInCidrs(ip, geoSubnets);
+      if (matchedCidr) {
+        return {
+          matched: true,
+          source: geoService,
+          pattern: `${matchedCidr} (IP: ${ip})`,
+          ip: ip,
+        };
+      }
+      if (await matchCommunityList(secName, geoService, ip, 'ip')) {
+        return {
+          matched: true,
+          source: geoService,
+          pattern: `${ip}`,
+          ip: ip,
+        };
+      }
+      if (
+        cc === 'ru' &&
+        (await matchCommunityList(secName, 'russia_inside', ip, 'ip'))
+      ) {
+        return {
+          matched: true,
+          source: 'russia_inside',
+          pattern: `${ip}`,
+          ip: ip,
+        };
+      }
+    }
+  }
+  return { matched: false };
+}
+
+async function performTrace(query) {
+  query = (query || '').trim();
+  if (!query) return { matched: false };
+
+  // Strip protocol and port if user pasted a URL or domain:port
+  if (query.match(/^https?:\/\//i)) {
+    query = query
+      .replace(/^https?:\/\//i, '')
+      .split('/')[0]
+      .split(':')[0];
+  }
+
+  const type = detectQueryType(query);
+  const sections = uci.sections(UCI_PACKAGE, 'section') || [];
+  const totalSections = sections.length;
+
+  let queryForMatching = query;
+  if (type === 'ip' && query.indexOf('/') !== -1) {
+    queryForMatching = query.split('/')[0];
+  } else if (type === 'domain') {
+    queryForMatching = queryForMatching.toLowerCase();
+  }
+
+  // Check DNS Detour from settings if enabled
+  const dnsDetourEnabled = uci.get(
+    UCI_PACKAGE,
+    'settings',
+    'dns_detour_enabled',
+  );
+  if (dnsDetourEnabled === '1') {
+    const detourSection = uci.get(
+      UCI_PACKAGE,
+      'settings',
+      'dns_detour_section',
+    );
+    if (detourSection) {
+      const dnsServers = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, 'settings', 'dns_server'),
+      );
+      const fallbackServers = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, 'settings', 'dns_fallback_server'),
+      );
+      const allDns = [...dnsServers, ...fallbackServers];
+      const detourIps = [];
+      const detourDomains = [];
+      for (let s of allDns) {
+        if (!s) continue;
+        s = s.split('#')[0].split('/')[0].trim();
+        if (s.match(/^[0-9.]+$|^[0-9a-fA-F:]+$/)) {
+          detourIps.push(s);
+        } else if (s) {
+          detourDomains.push(s);
+        }
+      }
+      const isDnsMatch =
+        (type === 'ip' && detourIps.includes(queryForMatching)) ||
+        (type === 'domain' && detourDomains.includes(queryForMatching));
+      if (isDnsMatch) {
+        const label =
+          uci.get(UCI_PACKAGE, detourSection, 'label') ||
+          uci.get(UCI_PACKAGE, detourSection, 'name') ||
+          detourSection;
+        const action =
+          uci.get(UCI_PACKAGE, detourSection, 'action') || 'connection';
+        return {
+          matched: true,
+          sectionName: detourSection,
+          label: label,
+          action: action,
+          ruleType: 'DNS Detour (Settings)',
+          pattern: queryForMatching,
+          priority: 0,
+          totalSections: totalSections,
+        };
+      }
+    }
+  }
+
+  for (let i = 0; i < sections.length; i++) {
+    const sec = sections[i];
+    const secName = sec['.name'];
+
+    if (uci.get(UCI_PACKAGE, secName, 'enabled') === '0') {
+      continue;
+    }
+
+    const label =
+      uci.get(UCI_PACKAGE, secName, 'label') ||
+      uci.get(UCI_PACKAGE, secName, 'name') ||
+      secName;
+    const action = uci.get(UCI_PACKAGE, secName, 'action') || 'connection';
+
+    if (type === 'port') {
+      const ports = getSectionEffectiveOptionValues(secName, 'ports');
+      const matchedPort = matchPort(queryForMatching, ports);
+      if (matchedPort) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: 'Ports',
+          pattern: matchedPort,
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+    }
+
+    if (type === 'ip') {
+      const ipCidr = getSectionEffectiveOptionValues(secName, 'ip_cidr');
+      const matchedCidr = matchIpInCidrs(queryForMatching, ipCidr);
+      if (matchedCidr) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: 'IPs (UCI)',
+          pattern: matchedCidr,
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+
+      const listsRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+        ));
+      const matchedListIp = matchIpInRuleset(queryForMatching, listsRuleset);
+      if (matchedListIp) {
+        const domainIpLists = getSectionEffectiveOptionValues(
+          secName,
+          'domain_ip_lists',
+        );
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: 'IP/Subnet List (community/plain)',
+          pattern: matchedListIp,
+          sourceUrls: domainIpLists,
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+
+      const remoteSubnetRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`,
+        ));
+      const matchedRemoteIp = matchIpInRuleset(
+        queryForMatching,
+        remoteSubnetRuleset,
+      );
+      if (matchedRemoteIp) {
+        const domainIpLists = getSectionEffectiveOptionValues(
+          secName,
+          'domain_ip_lists',
+        );
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: 'Remote Subnet List',
+          pattern: matchedRemoteIp,
+          sourceUrls: domainIpLists,
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+
+      // Check community list rulesets for matching IPs
+      const communitySubnetsEnabled =
+        getSectionEffectiveScalar(secName, 'community_subnets') !== '0';
+      if (communitySubnetsEnabled) {
+        const communityLists = getSectionEffectiveOptionValues(
+          secName,
+          'community_lists',
+        );
+        for (const community of communityLists) {
+          const subnets = await readSubnetListFile(community);
+          const matchedCidr = matchIpInCidrs(queryForMatching, subnets);
+          if (matchedCidr) {
+            const isDiscordCfVoice =
+              community === 'discord' && isCloudflareSharedCidr(matchedCidr);
+            return {
+              matched: true,
+              sectionName: secName,
+              label: label,
+              action: action,
+              ruleType: isDiscordCfVoice
+                ? 'Community Subnets (' + community + ' Voice UDP)'
+                : 'Community Subnets (' + community + ')',
+              pattern: matchedCidr,
+              matchedIp: queryForMatching,
+              priority: i + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: isDiscordCfVoice
+                ? _(
+                    'Subnet %s is a Cloudflare Anycast range used by Discord Voice. Only UDP voice traffic (ports 50000-65535, 3478, 19294-19344, 5000-5020) is routed through this section; web traffic (TCP 80/443) goes direct.',
+                  ).format(matchedCidr)
+                : getSharedCdnWarning(matchedCidr),
+            };
+          }
+          if (
+            await matchCommunityList(secName, community, queryForMatching, type)
+          ) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label: label,
+              action: action,
+              ruleType: 'Community List (' + community + ')',
+              pattern: queryForMatching,
+              priority: i + 1,
+              totalSections: totalSections,
+            };
+          }
+        }
+      }
+
+      const geoCountries = getSectionGeoCountries(secName);
+      if (geoCountries.length > 0) {
+        const geoMode = getSectionGeoMode(secName);
+        const geoCheck = await matchesGeoCountrySet(
+          secName,
+          geoCountries,
+          null,
+          [queryForMatching],
+        );
+        const inverts = geoMode === 'exclude' || geoMode === 'exclude_direct';
+        if (inverts ? !geoCheck.matched : geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: inverts
+              ? `GeoIP Exclude (!${geoCountries.join(',')})`
+              : `GeoIP Include (${geoCountries.join(',')})`,
+            pattern: geoCheck.pattern || queryForMatching,
+            matchedIp: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === 'exclude_direct' && geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: 'bypass',
+            ruleType: `GeoIP Exclude Direct (${geoCountries.join(',')})`,
+            pattern: geoCheck.pattern || queryForMatching,
+            matchedIp: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === 'include_all') {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: `GeoIP Include All (${geoCountries.join(',')})`,
+            pattern: queryForMatching,
+            matchedIp: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+
+      if (getSectionEffectiveScalar(secName, 'match_all') === '1') {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: 'Match All',
+          pattern: queryForMatching,
+          matchedIp: queryForMatching,
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+    }
+
+    if (type === 'domain') {
+      const domainSuffixes = getSectionEffectiveOptionValues(
+        secName,
+        'domain_suffix',
+      );
+      const rawDomains = getSectionEffectiveOptionValues(secName, 'domain');
+      const domainKeywords = getSectionEffectiveOptionValues(
+        secName,
+        'domain_keyword',
+      ).map((k) => `keyword:${k}`);
+      const domainRegexes = getSectionEffectiveOptionValues(
+        secName,
+        'domain_regex',
+      ).map((r) => `regex:${r}`);
+      const userDomains = getSectionEffectiveOptionValues(
+        secName,
+        'user_domains',
+      );
+      const allUciDomains = [
+        ...domainSuffixes,
+        ...rawDomains,
+        ...domainKeywords,
+        ...domainRegexes,
+        ...userDomains,
+      ];
+
+      const matchedUciDomain = matchDomainInList(
+        queryForMatching,
+        allUciDomains,
+      );
+      if (matchedUciDomain) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: 'Domains (UCI)',
+          pattern: matchedUciDomain,
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+
+      const listsRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+        ));
+      if (listsRuleset) {
+        const matchedListDomain = matchDomainInRuleset(
+          queryForMatching,
+          listsRuleset,
+        );
+        if (matchedListDomain) {
+          const domainIpLists = getSectionEffectiveOptionValues(
+            secName,
+            'domain_ip_lists',
+          );
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: 'Domain List (community/plain)',
+            pattern: matchedListDomain,
+            sourceUrls: domainIpLists,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+
+      const remoteDomainRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-remote-domain-ruleset.json`,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-remote-domain-ruleset.json`,
+        ));
+      if (remoteDomainRuleset) {
+        const matchedRemoteDomain = matchDomainInRuleset(
+          queryForMatching,
+          remoteDomainRuleset,
+        );
+        if (matchedRemoteDomain) {
+          const domainIpLists = getSectionEffectiveOptionValues(
+            secName,
+            'domain_ip_lists',
+          );
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: 'Remote Domain List',
+            pattern: matchedRemoteDomain,
+            sourceUrls: domainIpLists,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+
+      // Check community list rulesets for matching domains
+      const communityLists = getSectionEffectiveOptionValues(
+        secName,
+        'community_lists',
+      );
+      for (const community of communityLists) {
+        if (
+          await matchCommunityList(secName, community, queryForMatching, type)
+        ) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: 'Community List (' + community + ')',
+            pattern: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+    }
+  }
+
+  if (type === 'domain') {
+    // No direct domain rule matched. Resolve domain to IP addresses and check IP / GeoIP routing rules
+    const resolvedIps = await resolveDomainToIps(queryForMatching);
+    for (let i = 0; i < sections.length; i++) {
+      const sec = sections[i];
+      const secName = sec['.name'];
+      if (uci.get(UCI_PACKAGE, secName, 'enabled') === '0') continue;
+
+      const label =
+        uci.get(UCI_PACKAGE, secName, 'label') ||
+        uci.get(UCI_PACKAGE, secName, 'name') ||
+        secName;
+      const action = uci.get(UCI_PACKAGE, secName, 'action') || 'connection';
+
+      if (resolvedIps && resolvedIps.length > 0) {
+        const ipCidr = getSectionEffectiveOptionValues(secName, 'ip_cidr');
+        const listsRuleset = await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+        );
+        const remoteSubnetRuleset = await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
+        );
+        const communitySubnetsEnabled =
+          getSectionEffectiveScalar(secName, 'community_subnets') !== '0';
+        const communityLists = communitySubnetsEnabled
+          ? getSectionEffectiveOptionValues(secName, 'community_lists')
+          : [];
+
+        for (const ip of resolvedIps) {
+          const matchedCidr = matchIpInCidrs(ip, ipCidr);
+          if (matchedCidr) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label: label,
+              action: action,
+              ruleType: 'Resolved IP -> IPs (UCI)',
+              pattern: `${matchedCidr} (resolved: ${ip})`,
+              resolvedDomain: queryForMatching,
+              resolvedIps: resolvedIps,
+              matchedIp: ip,
+              priority: i + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: getSharedCdnWarning(matchedCidr),
+            };
+          }
+
+          if (listsRuleset) {
+            const matchedListIp = matchIpInRuleset(ip, listsRuleset);
+            if (matchedListIp) {
+              const domainIpLists = normalizeOptionValues(
+                uci.get(UCI_PACKAGE, secName, 'domain_ip_lists'),
+              );
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: 'Resolved IP -> IP/Subnet List (community/plain)',
+                pattern: `${matchedListIp} (resolved: ${ip})`,
+                sourceUrls: domainIpLists,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(matchedListIp),
+              };
+            }
+          }
+
+          if (remoteSubnetRuleset) {
+            const matchedRemoteIp = matchIpInRuleset(ip, remoteSubnetRuleset);
+            if (matchedRemoteIp) {
+              const domainIpLists = normalizeOptionValues(
+                uci.get(UCI_PACKAGE, secName, 'domain_ip_lists'),
+              );
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: 'Resolved IP -> Remote Subnet List',
+                pattern: `${matchedRemoteIp} (resolved: ${ip})`,
+                sourceUrls: domainIpLists,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(matchedRemoteIp),
+              };
+            }
+          }
+
+          for (const community of communityLists) {
+            let subnets = await readSubnetListFile(community);
+            const matchedCommunityCidr = matchIpInCidrs(ip, subnets);
+            if (matchedCommunityCidr) {
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: `Resolved IP -> Community Subnets (${community})`,
+                pattern: `${matchedCommunityCidr} (resolved: ${ip})`,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(matchedCommunityCidr),
+              };
+            }
+            if (await matchCommunityList(secName, community, ip, 'ip')) {
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: `Resolved IP -> Community List (${community})`,
+                pattern: `${ip} (resolved: ${ip})`,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(ip),
+              };
+            }
+          }
+        }
+      }
+
+      const geoCountries = getSectionGeoCountries(secName);
+      if (geoCountries.length > 0) {
+        const geoMode = getSectionGeoMode(secName);
+        const geoCheck = await matchesGeoCountrySet(
+          secName,
+          geoCountries,
+          queryForMatching,
+          resolvedIps,
+        );
+        const inverts = geoMode === 'exclude' || geoMode === 'exclude_direct';
+        const resolvedSuffix =
+          resolvedIps && resolvedIps.length > 0
+            ? ` (resolved: ${resolvedIps.join(', ')})`
+            : '';
+        if (inverts ? !geoCheck.matched : geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: inverts
+              ? `GeoIP Exclude (!${geoCountries.join(',')})`
+              : `GeoIP Include (${geoCountries.join(',')})`,
+            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === 'exclude_direct' && geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: 'bypass',
+            ruleType: `GeoIP Exclude Direct (${geoCountries.join(',')})`,
+            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === 'include_all') {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: `GeoIP Include All (${geoCountries.join(',')})`,
+            pattern: `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: resolvedIps && resolvedIps[0],
+            priority: i + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+
+      if (getSectionEffectiveScalar(secName, 'match_all') === '1') {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: 'Match All',
+          pattern: queryForMatching,
+          resolvedDomain: queryForMatching,
+          resolvedIps: resolvedIps,
+          matchedIp: resolvedIps && resolvedIps[0],
+          priority: i + 1,
+          totalSections: totalSections,
+        };
+      }
+    }
+
+    if (resolvedIps && resolvedIps.length > 0) {
+      return {
+        matched: false,
+        resolvedDomain: queryForMatching,
+        resolvedIps: resolvedIps,
+      };
+    }
+  }
+
+  return { matched: false };
+}
+
+function createTracerSearchWidget(sectionRef) {
+  const container = document.createElement('div');
+  container.className = 'cbi-section';
+
+  container.innerHTML = `
+    <div class="cbi-section-node">
+      <div class="cbi-value">
+        <label class="cbi-value-title">${_('Routing Rule Tracer')}</label>
+        <div class="cbi-value-field">
+          <div style="display:flex; gap: 5px;">
+            <input type="text" class="cbi-input-text pdk-tracer-input" placeholder="${_('e.g. google.com, 1.1.1.1, 443')}" style="flex: 1;" />
+            <button class="btn cbi-button cbi-button-action pdk-tracer-btn">${_('Trace')}</button>
+            <button class="btn cbi-button cbi-button-neutral pdk-tracer-clear-btn" style="display: none;">${_('Clear')}</button>
+          </div>
+          <div class="pdk-tracer-results" style="margin-top: 10px; display: none;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const inputEl = container.querySelector('.pdk-tracer-input');
+  const btnEl = container.querySelector('.pdk-tracer-btn');
+  const clearEl = container.querySelector('.pdk-tracer-clear-btn');
+  const resultsEl = container.querySelector('.pdk-tracer-results');
+
+  function clearResults() {
+    inputEl.value = '';
+    resultsEl.style.display = 'none';
+    resultsEl.innerHTML = '';
+    clearEl.style.display = 'none';
+  }
+
+  async function handleTrace() {
+    const query = inputEl.value.trim();
+    if (!query) {
+      clearResults();
+      return;
+    }
+
+    clearEl.style.display = 'inline-block';
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = '';
+    resultsEl.appendChild(
+      E(
+        'div',
+        {
+          style:
+            'color: var(--text-color-medium, #666); display: flex; align-items: center; gap: 0.5rem; font-size: 90%;',
+        },
+        [
+          E('span', {
+            class: 'pdk-spinner',
+            style:
+              'border: 2px solid var(--border-color, #ccc); border-top: 2px solid var(--primary-color, #4a90d9); border-radius: 50%; width: 12px; height: 12px; display: inline-block; animation: spin 1s linear infinite;',
+          }),
+          E('span', {}, _('Tracing routing rules...')),
+        ],
+      ),
+    );
+
+    try {
+      const result = await performTrace(query);
+      resultsEl.innerHTML = '';
+      if (result && result.matched) {
+        let actionBadgeColor = ACTION_COLORS[result.action] || '#7f8c8d';
+        let actionLabel = String(result.action || '').toUpperCase();
+
+        const matchDiv = E(
+          'div',
+          {
+            style: `padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid ${actionBadgeColor}; font-size: 90%; line-height: 1.4;`,
+          },
+          [
+            E(
+              'div',
+              {
+                style:
+                  'display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center;',
+              },
+              [
+                E('strong', {}, _('Match Found') + ':'),
+                E('span', {}, [
+                  result.label || '',
+                  ' ',
+                  E(
+                    'span',
+                    {
+                      style: `background: ${actionBadgeColor}; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: bold; font-size: 80%; margin-left: 0.1rem;`,
+                    },
+                    actionLabel,
+                  ),
+                ]),
+                E(
+                  'span',
+                  { style: 'color: var(--text-color-medium, #666);' },
+                  '|',
+                ),
+                E('span', {}, [
+                  E('strong', {}, _('Rule') + ': '),
+                  E('code', {}, result.ruleType || ''),
+                  ` (${result.pattern || ''})`,
+                ]),
+                ...(result.sourceUrls && result.sourceUrls.length > 0
+                  ? [
+                      E(
+                        'span',
+                        { style: 'color: var(--text-color-medium, #666);' },
+                        '|',
+                      ),
+                      E('span', {}, [
+                        E('strong', {}, _('Source') + ': '),
+                        ...result.sourceUrls.map((url, idx) => {
+                          let short = url;
+                          try {
+                            const u = new URL(url);
+                            const parts = u.pathname.split('/').filter(Boolean);
+                            short =
+                              parts.length > 0
+                                ? parts[parts.length - 1]
+                                : u.hostname;
+                          } catch (e) {}
+                          return E('span', {}, [
+                            idx > 0 ? ', ' : '',
+                            E(
+                              'a',
+                              {
+                                href: url,
+                                target: '_blank',
+                                rel: 'noopener',
+                                style:
+                                  'font-family: monospace; font-size: 85%; word-break: break-all;',
+                              },
+                              short,
+                            ),
+                          ]);
+                        }),
+                      ]),
+                    ]
+                  : []),
+                E(
+                  'span',
+                  { style: 'color: var(--text-color-medium, #666);' },
+                  '|',
+                ),
+                E('span', {}, [
+                  E('strong', {}, _('Priority') + ': '),
+                  `${result.priority}/${result.totalSections}`,
+                ]),
+              ],
+            ),
+            ...(result.resolvedIps && result.resolvedIps.length > 0
+              ? [
+                  E(
+                    'div',
+                    {
+                      style:
+                        'margin-top: 4px; font-size: 85%; color: var(--text-color-medium, #666);',
+                    },
+                    _('DNS: Resolved %s to %s').format(
+                      result.resolvedDomain,
+                      result.resolvedIps.join(', '),
+                    ),
+                  ),
+                ]
+              : []),
+          ],
+        );
+        resultsEl.appendChild(matchDiv);
+
+        if (result.sharedCdnWarning) {
+          const warnDiv = E(
+            'div',
+            {
+              style:
+                'margin-top: 8px; padding: 0.5rem 0.7rem; border-radius: 4px; background: rgba(243, 156, 18, 0.12); border-left: 3px solid var(--warning-color, #e67e22); font-size: 85%; color: var(--text-color-high, #333); line-height: 1.4;',
+            },
+            [
+              E(
+                'strong',
+                {
+                  style:
+                    'color: var(--warning-color, #d35400); display: block; margin-bottom: 2px;',
+                },
+                ['⚠️ ', _('Shared CDN / Anycast Warning')],
+              ),
+              E('span', {}, result.sharedCdnWarning),
+            ],
+          );
+          resultsEl.appendChild(warnDiv);
+        }
+      } else {
+        const noMatchDiv = E(
+          'div',
+          {
+            style:
+              'padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--warning-color, #f1c40f); font-size: 90%; color: var(--text-color-high, #333);',
+          },
+          [
+            E('strong', {}, _('No Custom Rules Matched') + ': '),
+            _('Traffic will go through the default route (Direct/Default).'),
+            ...(result && result.resolvedIps && result.resolvedIps.length > 0
+              ? [
+                  E(
+                    'div',
+                    {
+                      style:
+                        'margin-top: 4px; font-size: 85%; color: var(--text-color-medium, #666);',
+                    },
+                    _('DNS: Resolved to %s (no subnet rules matched)').format(
+                      result.resolvedIps.join(', '),
+                    ),
+                  ),
+                ]
+              : []),
+          ],
+        );
+        resultsEl.appendChild(noMatchDiv);
+      }
+    } catch (e) {
+      console.error(e);
+      resultsEl.innerHTML = '';
+      const errorDiv = E(
+        'div',
+        {
+          style:
+            'padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--error-color, #e74c3c); color: var(--error-color, #e74c3c); font-size: 90%;',
+        },
+        [
+          E('strong', {}, _('Error running trace:')),
+          ' ' + (e?.message || String(e)),
+        ],
+      );
+      resultsEl.appendChild(errorDiv);
+    }
+  }
+
+  btnEl.addEventListener('click', handleTrace);
+  clearEl.addEventListener('click', clearResults);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleTrace();
+    }
+  });
+
+  if (!document.getElementById('pdk-tracer-styles')) {
+    const style = document.createElement('style');
+    style.id = 'pdk-tracer-styles';
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  return container;
+}
+
+function showSectionRulesModal(section_id) {
+  const sectionLabel =
+    uci.get(UCI_PACKAGE, section_id, 'label') ||
+    uci.get(UCI_PACKAGE, section_id, 'name') ||
+    section_id;
+
+  const getCleanList = (key) => {
+    const out = [];
+    const seen = new Set();
+    const targets = [section_id, ...getSectionLeafConditionIds(section_id)];
+    for (const tid of targets) {
+      for (const k of [key, `${key}_text`]) {
+        let val = uci.get(UCI_PACKAGE, tid, k);
+        if (!val) continue;
+        if (Array.isArray(val)) val = val.join('\n');
+        for (const t of parseCommentAwareListTokens(val)) {
+          if (t.value && !seen.has(t.value)) {
+            seen.add(t.value);
+            out.push(t.value);
+          }
+        }
+      }
+    }
+    return out;
+  };
+
+  const domains = [
+    ...getCleanList('domain'),
+    ...getCleanList('user_domains'),
+    ...getCleanList('domain_suffix'),
+    ...getCleanList('domain_keyword').map((k) => `keyword:${k}`),
+    ...getCleanList('domain_regex').map((r) => `regex:${r}`),
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+  const ips = getCleanList('ip_cidr');
+  const community = getCleanList('community_lists');
+  const ruleSets = [
+    ...getCleanList('rule_set'),
+    ...getCleanList('rule_set_with_subnets'),
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+  const domainIpLists = getCleanList('domain_ip_lists');
+  const geosite = getCleanList('geosite');
+  let geoipCountry = getCleanList('geoip_country');
+  if (geoipCountry.length === 1 && geoipCountry[0] === 'non-ru') {
+    geoipCountry = ['ru'];
+  }
+  const geoipMode = getSectionGeoMode(section_id);
+  const geoipInverted =
+    geoipMode === 'exclude' || geoipMode === 'exclude_direct';
+  const geoip = geoipCountry.map(
+    (c) => (geoipInverted ? 'NOT ' : '') + c.toUpperCase(),
+  );
+  const sourceIp = [
+    ...getCleanList('source_ip_cidr'),
+    ...getCleanList('source_macs'),
+    ...getCleanList('fully_routed_ips'),
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+  const ports = getCleanList('ports');
+  const dscp = getCleanList('dscp');
+
+  const createCard = (title, items) => {
+    let contentNode;
+    if (!items || items.length === 0) {
+      contentNode = E('em', {}, _('Not set'));
+    } else {
+      contentNode = E(
+        'div',
+        {
+          style:
+            'display: flex; flex-wrap: wrap; gap: 4px; max-height: 180px; overflow-y: auto;',
+        },
+        items.map((item) =>
+          E(
+            'span',
+            {
+              style:
+                'padding: 2px 6px; border: 1px solid var(--border-color, #ccc); background: var(--background-color-low, #f9f9f9); border-radius: 3px; word-break: break-all; font-size: 90%;',
+            },
+            item,
+          ),
+        ),
+      );
+    }
+
+    return E('div', { class: 'cbi-value' }, [
+      E(
+        'label',
+        { class: 'cbi-value-title', style: 'padding-top: 0;' },
+        `${title} (${items ? items.length : 0})`,
+      ),
+      E('div', { class: 'cbi-value-field' }, [contentNode]),
+    ]);
+  };
+
+  const modalBody = E(
+    'div',
+    { class: 'cbi-section-node', style: 'min-width: 320px; max-width: 650px;' },
+    [
+      E('div', { class: 'cbi-value' }, [
+        E(
+          'label',
+          {
+            class: 'cbi-value-title',
+            style: 'padding-top: 0; font-weight: bold;',
+          },
+          _('Section action'),
+        ),
+        E(
+          'div',
+          {
+            class: 'cbi-value-field',
+            style: 'font-weight: bold; color: var(--text-color-high, #2980b9);',
+          },
+          getRuleActionDisplayValue(section_id),
+        ),
+      ]),
+      createCard(_('Community Lists'), community),
+      createCard(_('Domains'), domains),
+      createCard(_('IP Addresses (IP CIDR)'), ips),
+      createCard(_('Rule Sets (.srs / .json)'), ruleSets),
+      createCard(_('.lst Lists'), domainIpLists),
+      geosite.length || geoip.length
+        ? createCard(_('GeoSite / GeoIP'), [...geosite, ...geoip])
+        : null,
+      sourceIp.length ? createCard(_('Source Devices'), sourceIp) : null,
+      ports.length ? createCard(_('Ports'), ports) : null,
+      dscp.length ? createCard(_('DSCP marks (QoS)'), dscp) : null,
+    ].filter(Boolean),
+  );
+
+  ui.showModal(
+    _('Section Rules Content') + `: ${sectionLabel}`,
+    [
+      modalBody,
+      E(
+        'div',
+        {
+          class: 'button-row',
+          style:
+            'display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;',
+        },
+        [
+          E(
+            'button',
+            {
+              class: 'btn cbi-button cbi-button-action',
+              type: 'button',
+              click: () => ui.hideModal(),
+            },
+            _('Close'),
+          ),
+        ],
+      ),
+    ],
+    'cbi-modal',
+  );
+}
+
+function cascadeDeleteSection(section_id) {
+  if (!section_id) return;
+
+  // 1. Remove child sections: priority_group, priority_level, subscription_url, section_interface, urltest
+  try {
+    const priorityGroups = (
+      uci.sections(UCI_PACKAGE, 'priority_group') || []
+    ).filter((item) => item.section === section_id);
+
+    priorityGroups.forEach((group) => {
+      const groupId = group['.name'];
+      (uci.sections(UCI_PACKAGE, 'priority_level') || [])
+        .filter(
+          (level) => level.group === groupId || level.section === section_id,
+        )
+        .forEach((level) => {
+          uci.remove(UCI_PACKAGE, level['.name']);
+        });
+      uci.remove(UCI_PACKAGE, groupId);
+    });
+
+    (uci.sections(UCI_PACKAGE, 'priority_level') || [])
+      .filter((level) => level.section === section_id)
+      .forEach((level) => {
+        uci.remove(UCI_PACKAGE, level['.name']);
+      });
+
+    ['subscription_url', 'section_interface', 'urltest'].forEach((typeName) => {
+      (uci.sections(UCI_PACKAGE, typeName) || [])
+        .filter((item) => item.section === section_id)
+        .forEach((item) => {
+          uci.remove(UCI_PACKAGE, item['.name']);
+        });
+    });
+  } catch (_e) {}
+
+  // 2. Clean references in settings
+  try {
+    const smartDetect = uci.get(
+      UCI_PACKAGE,
+      'settings',
+      'smart_detect_sections',
+    );
+    if (Array.isArray(smartDetect)) {
+      const filtered = smartDetect.filter((sec) => sec !== section_id);
+      if (filtered.length !== smartDetect.length) {
+        uci.set(UCI_PACKAGE, 'settings', 'smart_detect_sections', filtered);
+      }
+    } else if (
+      typeof smartDetect === 'string' &&
+      smartDetect.trim() === section_id
+    ) {
+      uci.set(UCI_PACKAGE, 'settings', 'smart_detect_sections', []);
+    }
+
+    [
+      'dns_detour_section',
+      'download_lists_via_proxy_section',
+      'download_components_via_proxy_section',
+      'warp_proxy_section',
+    ].forEach((opt) => {
+      if (uci.get(UCI_PACKAGE, 'settings', opt) === section_id) {
+        uci.set(UCI_PACKAGE, 'settings', opt, '');
+      }
+    });
+  } catch (_e) {}
+
+  // 3. Clean references in other sections
+  try {
+    (uci.sections(UCI_PACKAGE, 'section') || []).forEach((sec) => {
+      const sName = sec['.name'];
+      if (sName === section_id) return;
+      if (sec.outbound_detour_section === section_id) {
+        uci.set(UCI_PACKAGE, sName, 'outbound_detour_section', '');
+        uci.set(UCI_PACKAGE, sName, 'outbound_detour_enabled', '0');
+      }
+      if (sec.dns_detour_section === section_id) {
+        uci.set(UCI_PACKAGE, sName, 'dns_detour_section', '');
+        uci.set(UCI_PACKAGE, sName, 'dns_detour_enabled', '0');
+      }
+      if (sec.download_via_proxy_section === section_id) {
+        uci.unset(UCI_PACKAGE, sName, 'download_via_proxy_section');
+      }
+      if (
+        Array.isArray(sec.group_members) &&
+        sec.group_members.includes(section_id)
+      ) {
+        const nextMembers = sec.group_members.filter((m) => m !== section_id);
+        if (nextMembers.length > 0) {
+          uci.set(UCI_PACKAGE, sName, 'group_members', nextMembers);
+        } else {
+          uci.unset(UCI_PACKAGE, sName, 'group_members');
+        }
+      } else if (
+        typeof sec.group_members === 'string' &&
+        sec.group_members.trim() !== ''
+      ) {
+        const parts = sec.group_members.trim().split(/\s+/);
+        if (parts.includes(section_id)) {
+          const nextMembers = parts.filter((m) => m !== section_id);
+          if (nextMembers.length > 0) {
+            uci.set(UCI_PACKAGE, sName, 'group_members', nextMembers);
+          } else {
+            uci.unset(UCI_PACKAGE, sName, 'group_members');
+          }
+        }
+      }
+    });
+  } catch (_e) {}
+
+  // 4. Clean references in outbound_sources and schedules (keep pools intact)
+  try {
+    (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
+      const srcId = src['.name'];
+      if (!srcId) return;
+      if (src.download_via_proxy_section === section_id) {
+        uci.unset(UCI_PACKAGE, srcId, 'download_via_proxy_section');
+      }
+      if (src.outbound_detour_section === section_id) {
+        uci.unset(UCI_PACKAGE, srcId, 'outbound_detour_section');
+        uci.set(UCI_PACKAGE, srcId, 'outbound_detour_enabled', '0');
+      }
+    });
+    (uci.sections(UCI_PACKAGE, 'schedule') || []).forEach((sched) => {
+      const schedId = sched['.name'];
+      if (!schedId) return;
+      ['sections', 'target_sections'].forEach((key) => {
+        const raw = sched[key];
+        const arr = Array.isArray(raw)
+          ? raw
+          : typeof raw === 'string' && raw.trim()
+            ? raw.trim().split(/\s+/)
+            : [];
+        if (arr.includes(section_id)) {
+          const next = arr.filter((id) => id !== section_id);
+          if (next.length) uci.set(UCI_PACKAGE, schedId, key, next);
+          else uci.unset(UCI_PACKAGE, schedId, key);
+        }
+      });
+    });
+  } catch (_e) {}
+
+  // 5. Clean references in servers
+  try {
+    (uci.sections(UCI_PACKAGE, 'server') || []).forEach((srv) => {
+      const srvName = srv['.name'];
+      if (srv.routing_section === section_id) {
+        uci.set(UCI_PACKAGE, srvName, 'routing_section', '');
+        if (srv.routing_mode === 'section') {
+          uci.set(UCI_PACKAGE, srvName, 'routing_mode', 'rules');
+        }
+      }
+    });
+  } catch (_e) {}
+
+  // 5. Clean disk caches
+  try {
+    if (typeof fs !== 'undefined') {
+      if (typeof fs.remove === 'function') {
+        fs.remove(`/var/run/tachyon/section-cache/${section_id}.json`).catch(
+          () => null,
+        );
+        fs.remove(`/etc/tachyon/subscription-cache/${section_id}.json`).catch(
+          () => null,
+        );
+        fs.remove(`/etc/tachyon/subscription-cache/${section_id}.yaml`).catch(
+          () => null,
+        );
+        fs.remove(`/etc/tachyon/subscription-cache/${section_id}.txt`).catch(
+          () => null,
+        );
+      }
+      if (typeof fs.exec === 'function') {
+        fs.exec('/bin/rm', [
+          '-f',
+          `/var/run/tachyon/section-cache/${section_id}.json`,
+          `/etc/tachyon/subscription-cache/${section_id}.json`,
+          `/etc/tachyon/subscription-cache/${section_id}.yaml`,
+          `/etc/tachyon/subscription-cache/${section_id}.txt`,
+        ]).catch(() => null);
+      }
+    }
+  } catch (_e) {}
+}
+
+function makeUniqueSectionId(baseId) {
+  const base = `${baseId || 'section'}`.replace(/[^A-Za-z0-9_]/g, '_');
+  if (!uci.get(UCI_PACKAGE, base)) return base;
+
+  let index = 1;
+  let candidate = `${base}_copy`;
+  while (uci.get(UCI_PACKAGE, candidate)) {
+    index += 1;
+    candidate = `${base}_copy${index}`;
+  }
+  return candidate;
+}
+
+function copySectionOptions(sourceId, targetId, overrides = {}) {
+  const source = (uci.sections(UCI_PACKAGE, 'section') || []).find(
+    (item) => item['.name'] === sourceId,
+  );
+  if (!source) return;
+
+  Object.entries(source).forEach(([key, value]) => {
+    if (key.startsWith('.')) return;
+    // A global-rule claim stays with the original. Copying it would leave two
+    // sections claiming one value, which is exactly what validation rejects -
+    // the clone would brick the apply before anyone opened it.
+    if (key === 'global_rules') return;
+    if (Object.prototype.hasOwnProperty.call(overrides, key)) return;
+    if (value === undefined || value === null) return;
+    uci.set(UCI_PACKAGE, targetId, key, value);
+  });
+
+  Object.entries(overrides).forEach(([key, value]) => {
+    uci.set(UCI_PACKAGE, targetId, key, value);
+  });
+}
+
+function copyChildSections(sourceId, targetId) {
+  // Subscriptions, interfaces and URLTest groups are owned directly by the
+  // section. Priority levels are owned by their group, so groups are cloned
+  // first and their levels remapped to the fresh group id.
+  try {
+    const groups = (uci.sections(UCI_PACKAGE, 'priority_group') || []).filter(
+      (item) => item.section === sourceId,
+    );
+
+    groups.forEach((group) => {
+      const sourceGroupId = group['.name'];
+      const newGroupId = uci.add(UCI_PACKAGE, 'priority_group');
+      if (!newGroupId) return;
+
+      Object.entries(group).forEach(([key, value]) => {
+        if (key.startsWith('.')) return;
+        if (key === 'section') return;
+        if (value === undefined || value === null) return;
+        uci.set(UCI_PACKAGE, newGroupId, key, value);
+      });
+      uci.set(UCI_PACKAGE, newGroupId, 'section', targetId);
+
+      (uci.sections(UCI_PACKAGE, 'priority_level') || [])
+        .filter((level) => level.group === sourceGroupId)
+        .forEach((level) => {
+          const newLevelId = uci.add(UCI_PACKAGE, 'priority_level');
+          if (!newLevelId) return;
+          Object.entries(level).forEach(([key, value]) => {
+            if (key.startsWith('.')) return;
+            if (key === 'group' || key === 'section') return;
+            if (value === undefined || value === null) return;
+            uci.set(UCI_PACKAGE, newLevelId, key, value);
+          });
+          uci.set(UCI_PACKAGE, newLevelId, 'group', newGroupId);
+        });
+    });
+
+    (uci.sections(UCI_PACKAGE, 'priority_level') || [])
+      .filter((level) => level.section === sourceId && !level.group)
+      .forEach((level) => {
+        const newLevelId = uci.add(UCI_PACKAGE, 'priority_level');
+        if (!newLevelId) return;
+        Object.entries(level).forEach(([key, value]) => {
+          if (key.startsWith('.')) return;
+          if (key === 'section') return;
+          if (value === undefined || value === null) return;
+          uci.set(UCI_PACKAGE, newLevelId, key, value);
+        });
+        uci.set(UCI_PACKAGE, newLevelId, 'section', targetId);
+      });
+
+    ['subscription_url', 'section_interface', 'urltest'].forEach((typeName) => {
+      (uci.sections(UCI_PACKAGE, typeName) || [])
+        .filter((item) => item.section === sourceId)
+        .forEach((item) => {
+          const newItemId = uci.add(UCI_PACKAGE, typeName);
+          if (!newItemId) return;
+          Object.entries(item).forEach(([key, value]) => {
+            if (key.startsWith('.')) return;
+            if (key === 'section') return;
+            if (value === undefined || value === null) return;
+            uci.set(UCI_PACKAGE, newItemId, key, value);
+          });
+          uci.set(UCI_PACKAGE, newItemId, 'section', targetId);
+        });
+    });
+  } catch (_e) {}
+}
+
+function cloneSection(section_id) {
+  if (!section_id || !uci.get(UCI_PACKAGE, section_id)) return null;
+
+  const targetId = makeUniqueSectionId(section_id);
+  if (!uci.add(UCI_PACKAGE, 'section', targetId)) return null;
+
+  const sourceLabel =
+    uci.get(UCI_PACKAGE, section_id, 'label') ||
+    uci.get(UCI_PACKAGE, section_id, 'name') ||
+    section_id;
+  const sourceName = uci.get(UCI_PACKAGE, section_id, 'name') || section_id;
+
+  copySectionOptions(section_id, targetId, {
+    label: `${sourceLabel} (Copy)`,
+    name: `${sourceName} (Copy)`,
+  });
+  copyChildSections(section_id, targetId);
+
+  return targetId;
+}
+
+function configureSectionSection(sectionRef, options = {}) {
+  setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
+
+  sectionRef.sectiontitle = function (section_id) {
+    return (
+      uci.get(UCI_PACKAGE, section_id, 'label') ||
+      uci.get(UCI_PACKAGE, section_id, 'name') ||
+      section_id
+    );
+  };
+
+  sectionRef.load = function () {
+    // The table renders only non-modal fields; the cloned Add/Edit modal loads
+    // action/provider details when the user opens it.
+    return loadSectionTableOptions(this);
+  };
+
+  const originalRemove = sectionRef.remove;
+  sectionRef.remove = function (section_id) {
+    cascadeDeleteSection(section_id);
+    return originalRemove
+      ? originalRemove.apply(this, arguments)
+      : form.GridSection.prototype.remove.apply(this, arguments);
+  };
+
+  const originalAdd = sectionRef.handleAdd;
+  sectionRef.handleAdd = function (ev, name) {
+    let sectionName =
+      typeof name === 'string' && name.trim() ? name.trim() : null;
+    if (!sectionName && ev && ev.target) {
+      const container = ev.target.closest
+        ? ev.target.closest('.cbi-section-create')
+        : null;
+      const input = container
+        ? container.querySelector('.cbi-section-create-name')
+        : this.map
+          ? document.querySelector('.cbi-section-create-name')
+          : null;
+      if (input && input.value) {
+        sectionName = input.value.trim();
+      }
+    }
+    if (sectionName) {
+      cascadeDeleteSection(sectionName);
+    }
+    return originalAdd
+      ? originalAdd.apply(this, arguments)
+      : form.GridSection.prototype.handleAdd.apply(this, arguments);
+  };
+
+  const originalRender = sectionRef.render;
+  sectionRef.render = function () {
+    return originalRender.apply(this, arguments).then((node) => {
+      if (node) {
+        const tracer = createTracerSearchWidget(sectionRef);
+        node.appendChild(tracer);
+        // The view inserts its rendered map before the next event-loop turn.
+        window.setTimeout(restoreDependentServerNotices, 0);
+      }
+      return node;
+    });
+  };
+}
+
+const EntryPoint = {
+  cascadeDeleteSection,
+  cloneSection,
+  configureSectionSection,
+  createSectionContent,
+  setActionProvidersAvailabilityLoader,
+  showSectionRulesModal,
+};
+
+export default baseclass.extend(EntryPoint);
+
+function validateRequiredText(_sectionId, value) {
+  const normalized = value ? String(value).trim() : '';
+  if (!normalized) {
+    return _('This field is required');
+  }
+  return /[\u0000-\u001F\u007F]/.test(normalized)
+    ? _('Value must not contain control characters')
+    : true;
+}

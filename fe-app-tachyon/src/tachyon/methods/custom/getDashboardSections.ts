@@ -832,6 +832,15 @@ function isServiceAction(action?: string) {
   );
 }
 
+function isPolicyAction(action?: string) {
+  return Boolean(
+    action &&
+      ['block', 'reject', 'bypass', 'direct', 'dns'].includes(
+        action.toLowerCase(),
+      ),
+  );
+}
+
 function hasSubscriptionSources(section: Tachyon.ConfigSection) {
   return getSubscriptionSourceCount(section) > 0;
 }
@@ -2691,9 +2700,11 @@ export async function getDashboardSections(
     configSections
       .filter(
         (section) =>
+          section['.type'] === 'section' &&
           section.enabled !== '0' &&
           (isConnectionAction(section.action) ||
-            isServiceAction(section.action)),
+            isServiceAction(section.action) ||
+            isPolicyAction(section.action)),
       )
       .map(async (section) => {
         const displayName = getDisplayName(section);
@@ -2942,6 +2953,74 @@ export async function getDashboardSections(
           };
         }
 
+        if (isPolicyAction(sectionAction)) {
+          const actLower = (sectionAction || '').toLowerCase();
+          if (actLower === 'block' || actLower === 'reject') {
+            return {
+              withTagSelect: false,
+              code: sectionName,
+              sectionName,
+              displayName,
+              action: sectionAction,
+              outbounds: [
+                {
+                  code: 'block-out',
+                  displayName: _('Block (Reject)'),
+                  latency: 0,
+                  type: 'BLOCK',
+                  selected: true,
+                  canCopyLink: false,
+                },
+              ],
+            };
+          }
+          if (actLower === 'bypass' || actLower === 'direct') {
+            return {
+              withTagSelect: false,
+              code: sectionName,
+              sectionName,
+              displayName,
+              action: sectionAction,
+              outbounds: [
+                {
+                  code: 'direct-out',
+                  displayName: section.interface
+                    ? `WAN (${section.interface})`
+                    : _('Direct (WAN)'),
+                  latency: 0,
+                  type: 'DIRECT',
+                  selected: true,
+                  canCopyLink: false,
+                },
+              ],
+            };
+          }
+          if (actLower === 'dns') {
+            const dnsServers = getListValues(
+              section.dns_server || section.routed_dns_server,
+            );
+            const dnsLabel =
+              dnsServers.length > 0 ? dnsServers.join(', ') : 'DNS';
+            return {
+              withTagSelect: false,
+              code: sectionName,
+              sectionName,
+              displayName,
+              action: sectionAction,
+              outbounds: [
+                {
+                  code: `${sectionName}-dns`,
+                  displayName: dnsLabel,
+                  latency: 0,
+                  type: 'DNS',
+                  selected: true,
+                  canCopyLink: false,
+                },
+              ],
+            };
+          }
+        }
+
         return {
           withTagSelect: false,
           code: sectionName,
@@ -2959,63 +3038,8 @@ export async function getDashboardSections(
       : group,
   );
 
-  // Merge single-outbound Desync sections that share the same Desync outbound
-  // (or default Desync-<N> family) into a single combined Dashboard card.
-  const mergedGroups: Tachyon.OutboundGroup[] = [];
-  const desyncGroupByKey = new Map<string, Tachyon.OutboundGroup>();
-
-  for (const group of groupsWithErrors) {
-    const firstOb = group.outbounds?.[0];
-    const isSingleDesync =
-      !group.configError &&
-      group.outbounds?.length === 1 &&
-      (firstOb?.type || '').toUpperCase() === 'DESYNC' &&
-      !firstOb?.urlTestInfo &&
-      !firstOb?.priorityInfo;
-
-    if (!isSingleDesync) {
-      mergedGroups.push(group);
-      continue;
-    }
-
-    const rawCode = (firstOb.code || 'Desync').trim();
-    const canonicalKey = rawCode
-      .replace(/^Desync-\d+$/i, 'Desync')
-      .toLowerCase();
-    const existing = desyncGroupByKey.get(canonicalKey);
-
-    if (!existing) {
-      const cloned: Tachyon.OutboundGroup = {
-        ...group,
-        outbounds: [
-          {
-            ...firstOb,
-            displayName: firstOb.displayName.replace(/^Desync-\d+$/i, 'Desync'),
-          },
-        ],
-      };
-      desyncGroupByKey.set(canonicalKey, cloned);
-      mergedGroups.push(cloned);
-    } else {
-      const parts = existing.displayName
-        .split(' • ')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (group.displayName && !parts.includes(group.displayName)) {
-        existing.displayName = [...parts, group.displayName].join(' • ');
-      }
-      if (
-        (existing.outbounds[0].latency == null ||
-          existing.outbounds[0].latency <= 0) &&
-        firstOb.latency > 0
-      ) {
-        existing.outbounds[0].latency = firstOb.latency;
-      }
-    }
-  }
-
   return {
     success: true,
-    data: mergedGroups,
+    data: groupsWithErrors,
   };
 }

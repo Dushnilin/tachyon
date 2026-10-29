@@ -107,9 +107,13 @@ async function generatePo() {
     const bodyParts = [];
 
     // First: all keys from calls.json (source-of-truth for what's used in code)
-    for (const { key } of calls) {
+    for (const { key, ru } of calls) {
         const msgid = key;
-        const msgstr = oldTranslations.get(msgid) || '';
+        const msgstr =
+            oldTranslations.get(msgid) || (lang === 'ru' && ru ? ru : '');
+        if (msgstr && !oldTranslations.get(msgid)) {
+            oldTranslations.set(msgid, msgstr);
+        }
         bodyParts.push(
             `msgid "${escapePoString(msgid)}"\nmsgstr "${escapePoString(msgstr)}"`
         );

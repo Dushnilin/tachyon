@@ -78,15 +78,23 @@ let outsideClickBound = false;
 
 export function mountLanguageSelector(
   capabilities?: UiLanguageCapabilities,
+  targetContainer?: HTMLElement | null,
 ): void {
   if (typeof document === 'undefined') return;
 
   const mapHeader =
+    targetContainer ||
+    document.querySelector<HTMLElement>('.tachyon-topbar__lang-slot') ||
     document.querySelector<HTMLElement>('#cbi-tachyon > h2') ||
     document.querySelector<HTMLElement>('.cbi-map > h2');
   if (!mapHeader) return;
 
-  mapHeader.classList.add('tachyon-map-header');
+  if (
+    !targetContainer &&
+    !mapHeader.classList.contains('tachyon-topbar__lang-slot')
+  ) {
+    mapHeader.classList.add('tachyon-map-header');
+  }
 
   let wrapper = mapHeader.querySelector<HTMLElement>('.tachyon-lang-selector');
   if (!wrapper) {

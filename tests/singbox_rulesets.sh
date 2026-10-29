@@ -48,9 +48,15 @@ fi
 ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); if (rulesets.kind_from_reference_hint("geoip") != "subnets") exit(1);'
 ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); if (type(rulesets.COMMUNITY_SERVICES) != "object" || !rulesets.COMMUNITY_SERVICES.discord) exit(1);'
 ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); if (!rulesets.COMMUNITY_SERVICES.twitch) exit(1);'
-assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/twitch.srs" \
+assert_eq "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/twitch.srs" \
   "$(ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); print(rulesets.community_url("twitch"));')" \
   "twitch community ruleset url"
+assert_eq "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon-core/twitch.trs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); print(rulesets.community_trs_url("twitch"));')" \
+  "twitch community trs ruleset url"
+assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/twitch.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); print(rulesets.fallback_community_url("twitch"));')" \
+  "twitch fallback community ruleset url"
 
 assert_eq mixed \
   "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind telegram)" \

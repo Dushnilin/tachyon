@@ -19,6 +19,8 @@ let common = require("core.common");
 let helpers = require("components.helpers");
 let downloader = require("components.downloader");
 let engine = require("core.engine");
+let connections = require("config.connections");
+let singbox_rulesets = require("tachyon_core.rulesets");
 
 let as_string = common.as_string;
 let file_exists = common.file_exists;
@@ -307,24 +309,84 @@ function option(section, key, fallback) {
 // geosite. Returns "" when there is no known text source.
 const ITDOGINFO_BASE = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main";
 const METACUBEX_BASE = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo";
+const RUNETFREEDOM_BLOCKED_GEOSITE_BASE = "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release";
+
+const RUNETFREEDOM_TEXT_MAP = {
+    ru_blocked: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/ru-blocked.txt",
+    ru_blocked_all: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/ru-blocked-all.txt",
+    antifilter: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/antifilter-download-community.txt",
+    runetfreedom_blocked: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/ru-blocked.txt",
+    runetfreedom_blocked_all: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/ru-blocked-all.txt",
+    antifilter_community: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/antifilter-download-community.txt",
+    refilter: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/refilter.txt",
+    win_spy: RUNETFREEDOM_BLOCKED_GEOSITE_BASE + "/win-spy.txt"
+};
+
+const SRS_ONLY_COMMUNITY = {
+    supercell: true,
+    ru_whitelist: true,
+    ru_domains: true,
+    ru_only_inside: true,
+    push: true,
+    roscomvpn_whitelist: true,
+    roscomvpn_geoblock: true,
+    roscomvpn_ru: true,
+    roscomvpn_push: true,
+    apple: true,
+    microsoft: true,
+    steam: true,
+    epicgames: true,
+    riot: true,
+    origin: true,
+    escapefromtarkov: true,
+    faceit: true,
+    pinterest: true,
+    torrent: true,
+    twitch_ads: true,
+    ru_available_only_inside: true,
+    ai_all: true,
+    openai: true,
+    anthropic: true,
+    xai: true,
+    spotify: true,
+    netflix: true,
+    docker: true,
+    tor: true,
+    fastly: true
+};
+
+const TACHYON_LISTS_DOMAINS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains";
+const TACHYON_LISTS_ALIAS_MAP = {
+    roscomvpn_whitelist: "ru_whitelist",
+    roscomvpn_geoblock: "geoblock",
+    roscomvpn_ru: "ru_domains",
+    roscomvpn_push: "push",
+    runetfreedom_blocked: "ru_blocked",
+    runetfreedom_blocked_all: "ru_blocked_all",
+    antifilter_community: "antifilter",
+    ru_available_only_inside: "ru_only_inside"
+};
 
 function community_text_url(name) {
     name = as_string(name);
+    let canonical = TACHYON_LISTS_ALIAS_MAP[name] || name;
 
-    let geoip = match(name, /^geoip_([a-z]{2})$/);
-    if (geoip)
+    let geoip = match(canonical, /^geoip_([a-z]{2})$/);
+    if (geoip && canonical != "geoip_ru" && canonical != "geoip_us" && canonical != "geoip_cn")
         return METACUBEX_BASE + "/geoip/" + geoip[1] + ".list";
-    let geosite = match(name, /^geosite_([a-z]{2})$/);
-    if (geosite)
+    let geosite = match(canonical, /^geosite_([a-z]{2})$/);
+    if (geosite && canonical != "geosite_ru")
         return METACUBEX_BASE + "/geosite/" + geosite[1] + ".list";
 
-    if (name == "supercell")
-        return "";
-    return ITDOGINFO_BASE + "/Categories/" + name + ".lst";
+    return TACHYON_LISTS_DOMAINS_BASE + "/" + canonical + ".lst";
 }
 
 function community_text_url_alt(name) {
     name = as_string(name);
+    if (RUNETFREEDOM_TEXT_MAP[name] != null)
+        return RUNETFREEDOM_TEXT_MAP[name];
+    if (SRS_ONLY_COMMUNITY[name] === true)
+        return "";
     return ITDOGINFO_BASE + "/Services/" + name + ".lst";
 }
 
@@ -582,7 +644,30 @@ function materialize_section_lists(section, catalog) {
         prefixes[trim(as_string(value))] = true;
 
     // External references: URLs or local files, split by entry type.
-    for (let reference in list_option(section, "domain_ip_lists")) {
+    let ext_refs = [];
+    let seen_ext_refs = {};
+    for (let reference in connections.domain_ip_lists(section)) {
+        reference = as_string(reference);
+        if (reference != "" && seen_ext_refs[reference] !== true) {
+            seen_ext_refs[reference] = true;
+            push(ext_refs, reference);
+        }
+    }
+    for (let reference in connections.rule_sets(section)) {
+        reference = as_string(reference);
+        if (reference != "" && singbox_rulesets.is_plain_list_reference(reference) && seen_ext_refs[reference] !== true) {
+            seen_ext_refs[reference] = true;
+            push(ext_refs, reference);
+        }
+    }
+    for (let reference in connections.rule_sets_with_subnets(section)) {
+        reference = as_string(reference);
+        if (reference != "" && singbox_rulesets.is_plain_list_reference(reference) && seen_ext_refs[reference] !== true) {
+            seen_ext_refs[reference] = true;
+            push(ext_refs, reference);
+        }
+    }
+    for (let reference in ext_refs) {
         let text = read_reference(reference);
         for (let line in split(as_string(text), "\n")) {
             line = trim(line);
@@ -597,7 +682,7 @@ function materialize_section_lists(section, catalog) {
 
     // Community ids: prefer local compiled rulesets (.srs / .json / .lst),
     // then explicit catalog file, otherwise fetch upstream plain-text.
-    for (let value in list_option(section, "community_lists")) {
+    for (let value in connections.community_lists(section)) {
         if (load_local_ruleset(value, domains, prefixes))
             continue;
 
