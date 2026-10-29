@@ -203,4 +203,23 @@ describe('diagnostic masking', () => {
     expect(masked).toContain("list outbound_jsons '*******'");
     expect(masked).toContain("option trusttunnel_password '*******'");
   });
+
+  it('masks bare hosts without lookbehind while preserving separators and syslog tags', () => {
+    const raw = [
+      'hosts: example.com, next example.net',
+      'url https://example.org/path and /example.net/path',
+      'daemon.err sing-box[1]: host openwrt.org',
+      'embedded xexample.com should remain unchanged',
+    ].join('\\n');
+
+    const masked = maskLogText(raw);
+
+    expect(masked).toContain('hosts: *******, next *******');
+    expect(masked).toContain('url ******* and /example.net/path');
+    expect(masked).toContain('daemon.err sing-box[1]: host *******');
+    expect(masked).toContain('xexample.com');
+    expect(masked).not.toContain('example.org');
+    expect(masked).not.toContain('openwrt.org');
+  });
+
 });
