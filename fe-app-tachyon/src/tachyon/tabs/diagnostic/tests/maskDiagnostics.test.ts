@@ -221,5 +221,4 @@ describe('diagnostic masking', () => {
     expect(masked).not.toContain('example.org');
     expect(masked).not.toContain('openwrt.org');
   });
-
 });
