@@ -2518,6 +2518,7 @@ function add_awg_config_members(config, section) {
             add_imported_wireguard_endpoint(config, member);
             push(selector_tags, member_tag);
             push(urltest_candidate_tags, member_tag);
+            state.links[member_tag] = as_string(item.link || "");
             runtime_subscription.remember_outbound_metadata(state, member_tag, display_name, member);
         }
     }

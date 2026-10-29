@@ -1896,18 +1896,101 @@ function condition_list_tokens(section, key) {
 }
 
 function cleanup_modular_entities_v1(ctx) {
-    // 1. Remove empty duplicate src_awg_* when amnezia_configs is present without awg_private_key
+    let awg_scalar_keys = [
+        "awg_private_key", "awg_server_address", "awg_server_port",
+        "awg_peer_public_key", "awg_preshared_key", "awg_mtu", "awg_keepalive",
+        "awg_jc", "awg_jmin", "awg_jmax", "awg_s1", "awg_s2", "awg_s3", "awg_s4",
+        "awg_h1", "awg_h2", "awg_h3", "awg_h4",
+        "awg_i1", "awg_i2", "awg_i3", "awg_i4", "awg_i5",
+        "awg_j1", "awg_j2", "awg_j3", "awg_itime", "awg_version",
+        "awg_header_protection_key", "awg_content_padding_addition",
+        "awg_rekey_after_time", "awg_rekey_timeout", "awg_reject_after_time",
+        "awg_keepalive_timeout", "awg_max_handshake_attempts",
+        "awg_random_trailers", "awg_disable_cookies"
+    ];
+    let single_proto_actions = [
+        "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai",
+        "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync",
+        "zapret2", "zapret", "byedpi", "wdtt", "olcrtc"
+    ];
+
+    // 1. Sync inline protocol sections (e.g. action='awg') into outbound_source and
+    // remove empty duplicate src_awg_* when amnezia_configs is present without awg_private_key.
     for (let section in (ctx.model.sections || [])) {
         let sname = section_name(section);
         if (sname == "")
             continue;
         let safe_sname = sanitize_uci_id(sname);
+        let sec_display_name = option(section, "label", option(section, "name", sname));
+        let sec_action = lc(trim(option(section, "action", "")));
         let sec_amnezia = raw_list_option(section, "selector_amnezia_configs");
         if (length(sec_amnezia) == 0)
             sec_amnezia = raw_list_option(section, "amnezia_configs");
         let sec_amnezia_text = trim(option(section, "amnezia_conf_text", ""));
+        let has_awg_tunnel = trim(option(section, "awg_private_key", "")) != "" && trim(option(section, "awg_server_address", "")) != "";
+        let awg_src_id = "src_awg_" + safe_sname;
+
+        if (sec_action == "awg") {
+            if (length(sec_amnezia) > 0 || sec_amnezia_text != "") {
+                let amn_src_id = "src_amnezia_" + safe_sname;
+                let amn_src = create_named_section(ctx, "outbound_source", amn_src_id);
+                set_option_if_missing(ctx, amn_src, "enabled", "1");
+                set_option_if_missing(ctx, amn_src, "name", sec_display_name + " (Amnezia)");
+                set_option_if_missing(ctx, amn_src, "source_type", "amnezia_config");
+                if (length(sec_amnezia) > 0)
+                    set_list_option(ctx, amn_src, "amnezia_configs", sec_amnezia);
+                if (sec_amnezia_text != "")
+                    set_option(ctx, amn_src, "amnezia_conf_text", sec_amnezia_text);
+                add_list_unique(ctx, section, "outbound_source_refs", amn_src_id);
+            }
+            if (has_awg_tunnel || (length(sec_amnezia) == 0 && sec_amnezia_text == "")) {
+                let awg_src = create_named_section(ctx, "outbound_source", awg_src_id);
+                set_option_if_missing(ctx, awg_src, "enabled", "1");
+                set_option_if_missing(ctx, awg_src, "name", sec_display_name + " (AWG)");
+                set_option_if_missing(ctx, awg_src, "source_type", "awg");
+                for (let ak in awg_scalar_keys) {
+                    let aval = trim(option(section, ak, ""));
+                    if (aval != "")
+                        set_option(ctx, awg_src, ak, aval);
+                }
+                let awg_addrs = list_option(section, "awg_local_address");
+                if (length(awg_addrs) > 0)
+                    set_list_option(ctx, awg_src, "awg_local_address", awg_addrs);
+                add_list_unique(ctx, section, "outbound_source_refs", awg_src_id);
+            }
+        } else if (sec_action == "fptn") {
+            let fptn_token = trim(option(section, "access_token", ""));
+            if (fptn_token != "") {
+                let fptn_src_id = "src_fptn_" + safe_sname;
+                let fptn_src = create_named_section(ctx, "outbound_source", fptn_src_id);
+                set_option_if_missing(ctx, fptn_src, "enabled", "1");
+                set_option_if_missing(ctx, fptn_src, "name", sec_display_name);
+                set_option_if_missing(ctx, fptn_src, "source_type", "fptn");
+                set_option(ctx, fptn_src, "access_token", fptn_token);
+                add_list_unique(ctx, section, "outbound_source_refs", fptn_src_id);
+            }
+        } else if (index(single_proto_actions, sec_action) >= 0) {
+            let proto_src_id = "src_" + sanitize_uci_id(sec_action) + "_" + safe_sname;
+            let proto_src = create_named_section(ctx, "outbound_source", proto_src_id);
+            set_option_if_missing(ctx, proto_src, "enabled", "1");
+            set_option_if_missing(ctx, proto_src, "name", sec_display_name);
+            set_option_if_missing(ctx, proto_src, "source_type", sec_action);
+            for (let pk, pval in section) {
+                if (index(pk, sec_action + "_") != 0 && pk != "nfqws_opt" && pk != "nfqws2_opt" && pk != "byedpi_opts")
+                    continue;
+                if (type(pval) == "array") {
+                    if (length(pval) > 0)
+                        set_list_option(ctx, proto_src, pk, pval);
+                } else {
+                    let s_pval = trim(as_string(pval));
+                    if (s_pval != "")
+                        set_option(ctx, proto_src, pk, s_pval);
+                }
+            }
+            add_list_unique(ctx, section, "outbound_source_refs", proto_src_id);
+        }
+
         if (length(sec_amnezia) > 0 || sec_amnezia_text != "") {
-            let awg_src_id = "src_awg_" + safe_sname;
             let kept_sources = [];
             let removed_empty_awg = false;
             for (let existing_src in (ctx.model.outbound_source || [])) {
@@ -2269,8 +2352,14 @@ function migrate_modular_entities_v1(ctx) {
             for (let ak in [
                 "awg_private_key", "awg_server_address", "awg_server_port",
                 "awg_peer_public_key", "awg_preshared_key", "awg_mtu", "awg_keepalive",
-                "awg_jc", "awg_jmin", "awg_jmax", "awg_s1", "awg_s2",
-                "awg_h1", "awg_h2", "awg_h3", "awg_h4"
+                "awg_jc", "awg_jmin", "awg_jmax", "awg_s1", "awg_s2", "awg_s3", "awg_s4",
+                "awg_h1", "awg_h2", "awg_h3", "awg_h4",
+                "awg_i1", "awg_i2", "awg_i3", "awg_i4", "awg_i5",
+                "awg_j1", "awg_j2", "awg_j3", "awg_itime", "awg_version",
+                "awg_header_protection_key", "awg_content_padding_addition",
+                "awg_rekey_after_time", "awg_rekey_timeout", "awg_reject_after_time",
+                "awg_keepalive_timeout", "awg_max_handshake_attempts",
+                "awg_random_trailers", "awg_disable_cookies"
             ]) {
                 let aval = trim(option(section, ak, ""));
                 if (aval != "")

@@ -772,7 +772,7 @@ function synthesize_awg_conf_from_source(src) {
     if (ka != "")
         push(lines, "PersistentKeepalive = " + ka);
 
-    let nm = trim(option(src, "name", section_name(src) || "AmneziaWG"));
+    let nm = trim(option(src, "name", option(src, "label", section_name(src) || "AmneziaWG")));
     return sprintf("%J", { name: nm != "" ? nm : "AmneziaWG", config: join("\n", lines) });
 }
 
@@ -802,17 +802,44 @@ function raw_amnezia_configs_from_obj(obj) {
 function amnezia_configs(section) {
     let result = [];
     let seen = {};
+    let is_awg_action = lc(trim(option(section, "action", ""))) == "awg";
+    let raw_list = [];
+    for (let src in section_effective_outbound_sources(section)) {
+        let stype = lc(option(src, "source_type", "subscription"));
+        if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
+            for (let c in raw_amnezia_configs_from_obj(src))
+                push(raw_list, c);
+        }
+    }
+    for (let c in raw_amnezia_configs_from_obj(section))
+        push(raw_list, c);
+
+    // For a legacy action='awg' section with no imported .conf files, keep
+    // amnezia_configs() empty so add_awg_endpoint emits a single wireguard
+    // endpoint (<section>-out). Once .conf files are added (or when the
+    // section uses action='connection'), include synthesized inline AWG
+    // tunnels alongside the imported .conf files.
+    let include_synthesized = !is_awg_action || length(raw_list) > 0;
+    let has_awg_source = false;
+
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
             for (let c in raw_amnezia_configs_from_obj(src))
                 push_unique_str(result, seen, c);
         }
-        if (stype == "awg") {
+        if (include_synthesized && stype == "awg") {
             let synth = synthesize_awg_conf_from_source(src);
-            if (synth != "")
+            if (synth != "") {
+                has_awg_source = true;
                 push_unique_str(result, seen, synth);
+            }
         }
+    }
+    if (include_synthesized && !has_awg_source) {
+        let sec_synth = synthesize_awg_conf_from_source(section);
+        if (sec_synth != "")
+            push_unique_str(result, seen, sec_synth);
     }
     for (let c in raw_amnezia_configs_from_obj(section))
         push_unique_str(result, seen, c);

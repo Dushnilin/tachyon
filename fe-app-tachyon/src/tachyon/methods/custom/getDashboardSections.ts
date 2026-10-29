@@ -434,10 +434,10 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               extraProxyLinks.push(`wireguard://${src['.name']}#${cname}`);
             }
           });
-        } else if (
-          src.awg_private_key ||
-          src.awg_server_address ||
-          src.awg_endpoint
+        }
+        if (
+          next.action !== 'awg' &&
+          (src.awg_private_key || src.awg_server_address || src.awg_endpoint)
         ) {
           extraProxyLinks.push(`wireguard://${src['.name']}#${aname}`);
         }
@@ -862,7 +862,7 @@ function getUrlTestIds(section: Tachyon.ConfigSection) {
   }
   if (
     section.action === 'awg' &&
-    getListValues(section.selector_amnezia_configs).length > 0
+    getRawListValues(section.selector_amnezia_configs).length > 0
   ) {
     return ['urltest'];
   }
@@ -895,7 +895,7 @@ function shouldUseProxyGroup(section: Tachyon.ConfigSection) {
     getListValues(section.group_members).length > 0 ||
     section.action === 'fptn' ||
     Boolean(section.access_token) ||
-    getListValues(section.selector_amnezia_configs).length > 0 ||
+    getRawListValues(section.selector_amnezia_configs).length > 0 ||
     getManualProxyLinks(section).length > 0 ||
     hasSubscriptionSources(section) ||
     getConnectionInterfaces(section).length > 0 ||
@@ -918,7 +918,10 @@ function getSectionProxyConfigType(section: Tachyon.ConfigSection) {
     return 'urltest' as const;
   }
 
-  if (getManualProxyLinks(section).length > 0) {
+  if (
+    getManualProxyLinks(section).length > 0 ||
+    getRawListValues(section.selector_amnezia_configs).length > 0
+  ) {
     return 'selector' as const;
   }
 

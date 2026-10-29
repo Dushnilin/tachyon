@@ -1888,9 +1888,10 @@ function urltest_enabled_sections_value(sections) {
 
     for (let section in sections) {
         section = object_or_empty(section);
+        let act = option(section, "action", "");
         if (bool_option(section, "enabled", true) &&
-            connections.is_connections_action(option(section, "action", "")) &&
-            length(connections.urltests(section)) > 0)
+            ((connections.is_connections_action(act) && length(connections.urltests(section)) > 0) ||
+             (act == "awg" && (length(connections.amnezia_configs(section)) > 0 || length(connections.urltests(section)) > 0))))
             push(result, section_name(section));
     }
 
@@ -2009,6 +2010,47 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", "1");
     }
     else if (action == "awg") {
+        body = signature_add_value(body, prefix + ".label", option(section, "label", ""));
+        body = signature_add_value(body, prefix + ".connection_urls", connection_urls_signature(section));
+        body = signature_add_value(body, prefix + ".urltests", urltests_signature(section));
+        body = signature_add_value(body, prefix + ".priority_groups", priority_groups_signature(section));
+        body = signature_add_value(body, prefix + ".dashboard_filter", dashboard_filter_signature(section));
+        body = signature_add_value(body, prefix + ".urltest_check_interval", section_urltest_check_interval(section));
+        body = signature_add_value(body, prefix + ".urltest_tolerance", option(section, "urltest_tolerance", "50"));
+        body = signature_add_value(body, prefix + ".urltest_testing_url", option(section, "urltest_testing_url", "https://www.gstatic.com/generate_204"));
+        body = signature_add_value(body, prefix + ".awg_local_address", join(",", list_option(section, "awg_local_address")));
+        for (let awg_key in [
+            "awg_private_key", "awg_peer_public_key", "awg_server_address", "awg_server_port",
+            "awg_preshared_key", "awg_mtu", "awg_keepalive", "awg_jc", "awg_jmin", "awg_jmax",
+            "awg_s1", "awg_s2", "awg_s3", "awg_s4", "awg_h1", "awg_h2", "awg_h3", "awg_h4",
+            "awg_i1", "awg_i2", "awg_i3", "awg_i4", "awg_i5", "awg_j1", "awg_j2", "awg_j3",
+            "awg_itime", "awg_version", "awg_header_protection_key", "awg_content_padding_addition",
+            "awg_rekey_after_time", "awg_rekey_timeout", "awg_reject_after_time",
+            "awg_keepalive_timeout", "awg_max_handshake_attempts", "awg_random_trailers",
+            "awg_disable_cookies"
+        ]) {
+            let awg_val = option(section, awg_key, "");
+            if (awg_val != "")
+                body = signature_add_value(body, prefix + "." + awg_key, awg_val);
+        }
+        body = signature_add_outbound_detour_body(body, section, prefix);
+        body = signature_add_mixed_proxy_body(body, section, prefix);
+    }
+    else if (index([
+        "warp", "masque", "openvpn", "anytls", "snell", "mieru", "naive",
+        "sudoku", "openconnect", "tewfai", "trusttunnel", "mtproto",
+        "shadowtls", "desync", "tailscale", "fptn", "tor"
+    ], action) >= 0) {
+        let pkeys = keys(section);
+        sort(pkeys);
+        for (let pk in pkeys) {
+            if (index(pk, action + "_") == 0 || pk == "access_token" || pk == "label") {
+                let pv = section[pk];
+                let pv_str = type(pv) == "array" ? join(",", pv) : as_string(pv || "");
+                if (pv_str != "")
+                    body = signature_add_value(body, prefix + "." + pk, pv_str);
+            }
+        }
         body = signature_add_outbound_detour_body(body, section, prefix);
         body = signature_add_mixed_proxy_body(body, section, prefix);
     }

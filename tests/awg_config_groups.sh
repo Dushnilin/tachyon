@@ -233,3 +233,139 @@ for (let outbound in config.outbounds || [])
 ' "$WORK_DIR/awg-manual-config.json"
 
 printf 'PASS: manual-only AWG section keeps its single endpoint\n'
+
+# An AWG section with BOTH inline WARP/AWG fields AND imported .conf files
+# expands all of them (inline tunnel + imported .conf files) into endpoints,
+# auto urltest, and section selector, and records links in the section cache.
+node - "$WORK_DIR" "$NL_148" "$NL_282" "$KEY" <<'JS'
+const fs = require('fs');
+const [work, first, second, key] = process.argv.slice(2);
+const item = (name, path) => JSON.stringify({ name, config: fs.readFileSync(path, 'utf8') });
+
+fs.writeFileSync(
+  `${work}/awg-hybrid-fixture.json`,
+  JSON.stringify({
+    settings: { '.name': 'settings', '.type': 'settings', dns_server: ['77.88.8.8'] },
+    section: [
+      {
+        '.name': 'hybrid',
+        '.type': 'section',
+        enabled: '1',
+        action: 'awg',
+        domain_suffix: ['example.org'],
+        label: 'WARP Inline',
+        awg_local_address: '172.16.0.2',
+        awg_private_key: key,
+        awg_peer_public_key: key,
+        awg_server_address: '162.159.198.1',
+        awg_server_port: '2408',
+        selector_amnezia_configs: [item('NL_148', first), item('NL_282', second)],
+      },
+    ],
+  }),
+);
+JS
+
+generate_config "$WORK_DIR/awg-hybrid-fixture.json" "$WORK_DIR/awg-hybrid-config.json"
+
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let cache = json(fs.readfile(ARGV[1]));
+
+let expected = [ "hybrid-out/WARP Inline", "hybrid-out/NL_148", "hybrid-out/NL_282" ];
+let wg_tags = [];
+for (let ep in config.endpoints || [])
+    if (ep && ep.type == "wireguard")
+        push(wg_tags, ep.tag);
+if (length(wg_tags) != 3)
+    die("expected 3 wireguard endpoints (inline WARP + 2 .conf files), got " + length(wg_tags) + ": " + json(wg_tags) + "\n");
+for (let tag in expected) {
+    if (index(wg_tags, tag) < 0)
+        die("missing wireguard endpoint " + tag + " in " + json(wg_tags) + "\n");
+    if (!cache.links || !cache.links[tag])
+        die("section cache is missing link for " + tag + "\n");
+}
+' "$WORK_DIR/awg-hybrid-config.json" "$WORK_DIR/awg-hybrid-config.json.section-cache/hybrid.json"
+
+printf 'PASS: hybrid AWG section (inline WARP + imported .conf files) includes all endpoints and caches links\n'
+
+# Verify that service/state.uc sing-box-signature-fixture changes when
+# selector_amnezia_configs or awg_private_key changes on an action=awg section.
+STATE_UC="$TACHYON_LIB/service/state.uc"
+SIG_MANUAL="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/awg-manual-fixture.json")"
+SIG_HYBRID="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/awg-hybrid-fixture.json")"
+[ -n "$SIG_MANUAL" ] && [ -n "$SIG_HYBRID" ] && [ "$SIG_MANUAL" != "$SIG_HYBRID" ] ||
+  fail "sing-box-signature-fixture did not change when AWG configs changed ($SIG_MANUAL vs $SIG_HYBRID)"
+UT_SECTIONS="$(ucode -L "$TACHYON_LIB" "$STATE_UC" urltest-enabled-sections-fixture "$WORK_DIR/awg-hybrid-fixture.json")"
+printf '%s\n' "$UT_SECTIONS" | grep -Fxq "hybrid" ||
+  fail "urltest-enabled-sections-fixture missed AWG section with selector_amnezia_configs (got '$UT_SECTIONS')"
+
+printf 'PASS: service/state.uc tracks AWG configs in sing-box-signature and urltest-enabled-sections\n'
+
+# Verify that config/migration.uc syncs a newly added action=awg section into
+# outbound_source (src_awg_<name> and src_amnezia_<name>) even when
+# modular_entities_v1 is already in applied_migrations.
+MIGRATION_UC="$TACHYON_LIB/config/migration.uc"
+node - "$WORK_DIR" "$NL_148" "$KEY" <<'JS'
+const fs = require('fs');
+const [work, first, key] = process.argv.slice(2);
+const item = (name, path) => JSON.stringify({ name, config: fs.readFileSync(path, 'utf8') });
+
+fs.writeFileSync(
+  `${work}/awg-post-migration-fixture.json`,
+  JSON.stringify({
+    settings: {
+      '.name': 'settings',
+      '.type': 'settings',
+      config_version: '1.0.5',
+      applied_migrations: [
+        'interface_sections',
+        'enable_component_checks',
+        'http_connection_urls',
+        'dns_hosts_to_option',
+        'global_hosts_to_section',
+        'orphan_section_interface_cleanup',
+        'ensure_dns_server_defaults',
+        'steer_spec_v2',
+        'engine_identity_tachyon_core',
+        'modular_entities_v1',
+      ],
+    },
+    section: [
+      {
+        '.name': 'new_awg',
+        '.type': 'section',
+        enabled: '1',
+        action: 'awg',
+        label: 'New AWG',
+        awg_local_address: '172.16.0.2',
+        awg_private_key: key,
+        awg_peer_public_key: key,
+        awg_server_address: '162.159.198.1',
+        awg_server_port: '2408',
+        selector_amnezia_configs: [item('NL_148', first)],
+      },
+    ],
+  }),
+);
+JS
+
+ucode -L "$TACHYON_LIB" "$MIGRATION_UC" migrate-fixture "$WORK_DIR/awg-post-migration-fixture.json" tachyon >"$WORK_DIR/awg-post-migration-out.json"
+ucode -e '
+let fs = require("fs");
+let res = json(fs.readfile(ARGV[0]));
+let sources = res.config?.outbound_source || [];
+let has_awg = false;
+let has_amn = false;
+for (let src in sources) {
+    if (src[".name"] == "src_awg_new_awg" && src.awg_private_key != null)
+        has_awg = true;
+    if (src[".name"] == "src_amnezia_new_awg" && length(src.amnezia_configs || []) == 1)
+        has_amn = true;
+}
+if (!has_awg || !has_amn)
+    die(sprintf("expected both src_awg_new_awg and src_amnezia_new_awg in outbound_source after migration cleanup, got %J\n", sources));
+' "$WORK_DIR/awg-post-migration-out.json"
+
+printf 'PASS: post-migration AWG section syncs into outbound_source\n'
