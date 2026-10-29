@@ -364,13 +364,13 @@ const LOG_HOST =
 const LOG_HOST_PORT = new RegExp(`(${LOG_HOST})(:\\d{1,5})`, 'gi');
 // `<facility>.<priority>` is syslog framing, not a host: `daemon.err` and
 // `user.notice` name the facility and severity that produced the line, which is
-// exactly the part a bug report needs. Refusing the match at the start of the
-// token is enough — the lookbehind already rejects every later start position,
-// so the tag cannot be re-entered one character in.
+// exactly the part a bug report needs. Capture the preceding separator instead
+// of using lookbehind, which older WebKit/Safari versions cannot parse. The
+// captured separator is preserved by the replacement below.
 const LOG_SYSLOG_TAG =
   '(?:daemon|user|kern|kernel|local\\d*|auth|authpriv|cron|mail|news|syslog|ftp)\\.(?:emerg|alert|crit|err|error|warn|warning|notice|info|debug)\\b';
 const LOG_BARE_HOST = new RegExp(
-  `(?<![/\\w.-])(?!${LOG_SYSLOG_TAG})(${LOG_HOST})(?![/\\w-])`,
+  `(^|[^/\\w.-])(?!${LOG_SYSLOG_TAG})(${LOG_HOST})(?![/\\w-])`,
   'gi',
 );
 
@@ -378,7 +378,7 @@ function maskLogLine(line: string) {
   return line
     .replace(LOG_URL, '*******')
     .replace(LOG_HOST_PORT, '*******$2')
-    .replace(LOG_BARE_HOST, '*******')
+    .replace(LOG_BARE_HOST, '$1*******')
     .replace(WG_KEY_PATTERN, '$1*******');
 }
 
