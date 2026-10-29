@@ -121,6 +121,7 @@ export const TACHYON_RPC_METHODS = [
   'get_byedpi_status',
   'get_engine_status',
   'get_fptn_status',
+  'get_lite_mode',
   'get_olcrtc_status',
   'get_outbound_metadata',
   'get_router_network_env',
@@ -211,6 +212,7 @@ export const TACHYON_RPC_METHODS = [
   'service_action_async',
   'service_action_status',
   'service_health_check',
+  'set_lite_mode',
   'show_config',
   'show_sing_box_config',
   'show_sing_box_version',
@@ -973,6 +975,11 @@ export type GetfptnstatusParams = Record<string, never>;
 
 export type GetfptnstatusResult = Record<string, unknown>;
 
+/** get-lite-mode (service/ui.uc) */
+export type GetlitemodeParams = Record<string, never>;
+
+export type GetlitemodeResult = Record<string, unknown>;
+
 /** get-olcrtc-status (diagnostics/runtime.uc) */
 export type GetolcrtcstatusParams = Record<string, never>;
 
@@ -1611,6 +1618,14 @@ export interface ServicehealthcheckParams {
 }
 
 export type ServicehealthcheckResult = Record<string, unknown>;
+
+/** set-lite-mode (service/ui.uc) */
+export interface SetlitemodeParams {
+  /** positional argument 1 of set_lite_mode */
+  arg1?: string;
+}
+
+export type SetlitemodeResult = Record<string, unknown>;
 
 /** show-config (diagnostics/runtime.uc) */
 export interface ShowconfigParams {
@@ -2310,6 +2325,10 @@ export interface TachyonRpcRegistry {
     params: GetfptnstatusParams;
     result: GetfptnstatusResult;
   };
+  get_lite_mode: {
+    params: GetlitemodeParams;
+    result: GetlitemodeResult;
+  };
   get_olcrtc_status: {
     params: GetolcrtcstatusParams;
     result: GetolcrtcstatusResult;
@@ -2669,6 +2688,10 @@ export interface TachyonRpcRegistry {
   service_health_check: {
     params: ServicehealthcheckParams;
     result: ServicehealthcheckResult;
+  };
+  set_lite_mode: {
+    params: SetlitemodeParams;
+    result: SetlitemodeResult;
   };
   show_config: {
     params: ShowconfigParams;
@@ -4322,6 +4345,16 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 5000,
       params: [],
     },
+    get_lite_mode: {
+      name: 'get_lite_mode',
+      cli_command: 'get_lite_mode',
+      category: 'system',
+      acl: 'read',
+      description: 'get-lite-mode (service/ui.uc)',
+      async: false,
+      timeout_ms: 5000,
+      params: [],
+    },
     get_olcrtc_status: {
       name: 'get_olcrtc_status',
       cli_command: 'get_olcrtc_status',
@@ -5692,6 +5725,23 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           type: 'string',
           required: false,
           description: 'positional argument 2 of service_health_check',
+        },
+      ],
+    },
+    set_lite_mode: {
+      name: 'set_lite_mode',
+      cli_command: 'set_lite_mode',
+      category: 'system',
+      acl: 'write',
+      description: 'set-lite-mode (service/ui.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of set_lite_mode',
         },
       ],
     },

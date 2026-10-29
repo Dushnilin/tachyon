@@ -175,6 +175,7 @@ export namespace Tachyon {
     GET_BYEDPI_STATUS = 'get_byedpi_status',
     GET_ENGINE_STATUS = 'get_engine_status',
     GET_FPTN_STATUS = 'get_fptn_status',
+    GET_LITE_MODE = 'get_lite_mode',
     GET_OLCRTC_STATUS = 'get_olcrtc_status',
     GET_OUTBOUND_METADATA = 'get_outbound_metadata',
     GET_ROUTER_NETWORK_ENV = 'get_router_network_env',
@@ -271,6 +272,8 @@ export namespace Tachyon {
     SERVICE_ACTION_ASYNC = 'service_action_async',
     SERVICE_ACTION_STATUS = 'service_action_status',
     SERVICE_HEALTH_CHECK = 'service_health_check',
+    // set
+    SET_LITE_MODE = 'set_lite_mode',
     // show
     SHOW_CONFIG = 'show_config',
     SHOW_SING_BOX_CONFIG = 'show_sing_box_config',
@@ -600,6 +603,7 @@ export namespace Tachyon {
     preferred_server?: string;
 
     selector_proxy_links?: string[];
+    selector_proxy_links_text?: string;
     selector_amnezia_configs?: string[];
     subscription_urls?: string[];
     interfaces?: string[];
@@ -617,8 +621,10 @@ export namespace Tachyon {
     proxy_links?: string | string[];
     proxy_links_text?: string;
     amnezia_configs?: string | string[];
+    amnezia_conf_text?: string;
     awg_private_key?: string;
     awg_endpoint?: string;
+    awg_server_address?: string;
     interface_name?: string;
     tor_socks_port?: string;
     source_refs?: string | string[];
@@ -904,6 +910,7 @@ export namespace Tachyon {
     enabled: number;
     status: string;
     dns_configured?: number;
+    lite_mode?: number;
     memory_rss_mb?: number;
     pid?: number;
     uptime_seconds?: number;

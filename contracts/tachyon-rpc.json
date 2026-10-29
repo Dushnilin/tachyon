@@ -1917,6 +1917,20 @@
       }
     },
     {
+      "name": "get_lite_mode",
+      "cli_command": "get_lite_mode",
+      "category": "system",
+      "acl": "read",
+      "description": "get-lite-mode (service/ui.uc)",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
       "name": "get_olcrtc_status",
       "cli_command": "get_olcrtc_status",
       "category": "diagnostics",
@@ -3642,6 +3656,27 @@
           "type": "string",
           "required": false,
           "description": "positional argument 2 of service_health_check"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "set_lite_mode",
+      "cli_command": "set_lite_mode",
+      "category": "system",
+      "acl": "write",
+      "description": "set-lite-mode (service/ui.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of set_lite_mode"
         }
       ],
       "returns": {

@@ -657,7 +657,9 @@ if grep -Fq $'mangle\tiifname\t@tachyon_interfaces\tip\tsaddr\t192.168.1.53' "$N
   fail "DNS action should not create fully routed mangle rules"
 fi
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_dns_sources\t{ 192.168.1.53/32 }' "DNS action populates dns sources set"
-if [ "$(grep -F $'ip\tsaddr\t192.168.1.20/32' "$NFT_LOG" | wc -l | tr -d ' ')" != "5" ]; then
+assert_contains "$NFT_LOG" $'nft\tinsert\trule\tinet\tTachyonTable\tmangle\tip\tsaddr\t192.168.1.20/32\tip\tsaddr\t.\ttcp\tsport\t@tachyon_dnat_tcp_v4\treturn' "fully routed source dnat tcp sport guard (#256)"
+assert_contains "$NFT_LOG" $'nft\tinsert\trule\tinet\tTachyonTable\tmangle\tip\tsaddr\t192.168.1.20/32\tip\tsaddr\t.\tudp\tsport\t@tachyon_dnat_udp_v4\treturn' "fully routed source dnat udp sport guard (#256)"
+if [ "$(grep -F $'ip\tsaddr\t192.168.1.20/32' "$NFT_LOG" | wc -l | tr -d ' ')" != "7" ]; then
   fail "duplicate fully routed source should insert exactly one tcp/udp/local rule set"
 fi
 

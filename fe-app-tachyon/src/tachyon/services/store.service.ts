@@ -167,6 +167,7 @@ export interface StoreType {
       tachyonRunning: number;
       tachyonEnabled: number;
       tachyonStatus: string;
+      liteMode?: number;
       tachyonMemoryMb?: number;
       tachyonPid?: number;
       tachyonUptimeSeconds?: number;

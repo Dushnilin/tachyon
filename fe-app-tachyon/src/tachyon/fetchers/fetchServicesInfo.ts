@@ -108,6 +108,10 @@ export async function fetchServicesInfo() {
         tachyonStatus: tachyon.success
           ? tachyon.data.status
           : previousData.tachyonStatus,
+        liteMode:
+          tachyon.success && tachyon.data.lite_mode != null
+            ? tachyon.data.lite_mode
+            : previousData.liteMode,
         tachyonMemoryMb: tachyon.success
           ? tachyon.data.memory_rss_mb
           : previousData.tachyonMemoryMb,

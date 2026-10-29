@@ -215,7 +215,9 @@ export function extractServerInboundSectionId(conn: any): string | null {
       ? conn.metadata.inbound.trim()
       : '';
   if (metaInbound) {
-    const match = metaInbound.match(/(?:^|\/)server-([A-Za-z0-9_.-]+)-in$/);
+    const match = metaInbound.match(
+      /(?:^|\/)server-([A-Za-z0-9_.-]+)-in(?:-inner)?$/,
+    );
     if (match && match[1]) {
       return match[1];
     }
@@ -224,7 +226,9 @@ export function extractServerInboundSectionId(conn: any): string | null {
   const metaType =
     typeof conn.metadata?.type === 'string' ? conn.metadata.type.trim() : '';
   if (metaType) {
-    const match = metaType.match(/(?:^|\/)server-([A-Za-z0-9_.-]+)-in$/);
+    const match = metaType.match(
+      /(?:^|\/)server-([A-Za-z0-9_.-]+)-in(?:-inner)?$/,
+    );
     if (match && match[1]) {
       return match[1];
     }
@@ -232,7 +236,9 @@ export function extractServerInboundSectionId(conn: any): string | null {
 
   const rule = typeof conn.rule === 'string' ? conn.rule : '';
   if (rule) {
-    const match = rule.match(/inbound=\[?server-([A-Za-z0-9_.-]+)-in\]?/);
+    const match = rule.match(
+      /inbound=\[?server-([A-Za-z0-9_.-]+)-in(?:-inner)?\]?/,
+    );
     if (match && match[1]) {
       return match[1];
     }

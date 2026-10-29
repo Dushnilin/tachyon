@@ -12832,8 +12832,37 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.rmempty = false;
-  o.datatype = "port";
+  o.placeholder = "1080, 2000-2010";
   o.depends("action", "mieru");
+  o.validate = function (_sectionId, value) {
+    const raw = `${value || ""}`.trim();
+    if (!raw) {
+      return _("This field is required");
+    }
+    const tokens = raw.split(/[\s,]+/).filter(Boolean);
+    if (tokens.length === 0) {
+      return _("This field is required");
+    }
+    for (const tok of tokens) {
+      if (/^[0-9]+$/.test(tok)) {
+        const p = parseInt(tok, 10);
+        if (p < 1 || p > 65535) {
+          return _("Port must be between 1 and 65535");
+        }
+        continue;
+      }
+      const m = tok.match(/^([0-9]+)[-:]([0-9]+)$/);
+      if (m) {
+        const lo = parseInt(m[1], 10);
+        const hi = parseInt(m[2], 10);
+        if (lo >= 1 && hi >= lo && hi <= 65535) {
+          continue;
+        }
+      }
+      return _("Specify a port (1-65535) or port range (e.g. 2000-2010)");
+    }
+    return true;
+  };
 
   o = section.taboption(
     "settings",
@@ -14127,9 +14156,7 @@ function createSectionContent(section) {
     form.DynamicList,
     "balancer_refs",
     _("Balancers (URLTest / Priority)"),
-    _(
-      "Select reusable URLTest or Priority balancers from the Balancers tab.",
-    ),
+    _("Select reusable URLTest or Priority balancers from the Balancers tab."),
   );
   o.modalonly = true;
   ["connection", "proxy", "outbound", "vpn", "awg", "fptn", "group"].forEach(

@@ -1546,6 +1546,8 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     body = signature_add_value(body, "settings.route_router_traffic_section", option(settings, "route_router_traffic_section", ""));
     if (bool_option(settings, "wifi_calling_direct", false))
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
+    if (bool_option(settings, "lite_mode", false))
+        body = signature_add_value(body, "settings.lite_mode", "1");
 
     for (let section in sections) {
         section = object_or_empty(section);
@@ -2313,6 +2315,8 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     body = signature_add_value(body, "settings.route_router_traffic_section", option(settings, "route_router_traffic_section", ""));
     if (bool_option(settings, "wifi_calling_direct", false))
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
+    if (bool_option(settings, "lite_mode", false))
+        body = signature_add_value(body, "settings.lite_mode", "1");
     let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
     if (bt_policy == "")
         bt_policy = bool_option(settings, "isolate_p2p", false) ? "direct" : "off";

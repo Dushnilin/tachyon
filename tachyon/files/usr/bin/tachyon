@@ -302,6 +302,8 @@ function command_spec(command) {
         get_server_capabilities: [ "diagnostics/runtime.uc", "get-server-capabilities", 0 ],
         get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
         get_ui_state: [ "service/ui.uc", "get-ui-state", 0 ],
+        get_lite_mode: [ "service/ui.uc", "get-lite-mode", 0 ],
+        set_lite_mode: [ "service/ui.uc", "set-lite-mode", 1 ],
         service_action_async: [ "service/ui.uc", "service-action-async", 1 ],
         service_action_status: [ "service/ui.uc", "service-action-status", 1 ],
         latency_test_async: [ "service/ui.uc", "latency-test-async", 4 ],

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-28 18:39+0300\n"
-"PO-Revision-Date: 2026-10-28 18:39+0300\n"
+"POT-Creation-Date: 2026-10-28 23:39+0300\n"
+"PO-Revision-Date: 2026-10-28 23:39+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1044,7 +1044,7 @@ msgid "ByeDPI strategy cannot be empty"
 msgstr "Стратегия ByeDPI не может быть пустой"
 
 msgid "Bypass Active"
-msgstr ""
+msgstr "Обход активен"
 
 msgid "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."
 msgstr "Обходит UDP-трафик для выбранных игровых консолей (PS5/Xbox) для достижения NAT Type 1 / 2 (Full Cone NAT) для P2P-матчмейкинга, сохраняя TCP (PSN/Auth) через прокси."
@@ -1059,7 +1059,7 @@ msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
 
 msgid "CUSTOM DNS → DIRECT"
-msgstr ""
+msgstr "ПОЛЬЗОВАТЕЛЬСКИЙ DNS → НАПРЯМУЮ"
 
 msgid "Cache File Path"
 msgstr "Путь к файлу кэша"
@@ -1217,6 +1217,9 @@ msgstr "Выберите, ограничивать ли весь интерне�
 msgid "Choose which routing sections to apply this schedule to."
 msgstr "Выберите секции маршрутизации, к которым применяется данное расписание."
 
+msgid "Chrome (Recommended for REALITY + ML-KEM)"
+msgstr "Chrome (рекомендуется для REALITY + ML-KEM)"
+
 msgid "Cipher"
 msgstr "Шифр"
 
@@ -1234,6 +1237,9 @@ msgstr "Очистить кэш DNS"
 
 msgid "Clear History"
 msgstr "Очистить историю"
+
+msgid "Click a ready-made badge theme or use the color pickers to set background and text colors"
+msgstr "Нажмите на готовый пресет бейджа или укажите собственные цвета фона и текста"
 
 msgid "Click servers from the pool below to exclude them from this group."
 msgstr "Нажмите на серверы из пула ниже, чтобы исключить их из этой группы."
@@ -4122,7 +4128,7 @@ msgid "Keep Priority before latency-sorted servers"
 msgstr "Сохранять приоритет перед серверами, отсортированными по задержке"
 
 msgid "Keep Provider Default"
-msgstr ""
+msgstr "По умолчанию из подписки"
 
 msgid "Keep URLTest before latency-sorted servers"
 msgstr "Сохранять URLTest перед серверами, отсортированными по задержке"
@@ -4134,7 +4140,7 @@ msgid "Keep the previous working binary/package on the router flash for instant 
 msgstr "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash."
 
 msgid "KeepAlive / Warm Latency (Established Session, sing-box-extended)"
-msgstr ""
+msgstr "KeepAlive / тёплая задержка (установленная сессия, sing-box-extended)"
 
 msgid "Keepalive Timeout"
 msgstr "Таймаут Keepalive"
@@ -4185,7 +4191,7 @@ msgid "Latency"
 msgstr "Задержка"
 
 msgid "Latency Measurement Mode"
-msgstr ""
+msgstr "Режим замера задержки (пинга)"
 
 msgid "Latency Tolerance (ms)"
 msgstr "Допуск задержки (мс)"
@@ -4236,7 +4242,7 @@ msgid "Light Yellow"
 msgstr "Светло-жёлтый"
 
 msgid "Links"
-msgstr ""
+msgstr "Ссылки"
 
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
@@ -5181,7 +5187,7 @@ msgid "Override the default OpenWrt device headers for this subscription"
 msgstr "Переопределить стандартные заголовки устройства OpenWrt для этой подписки"
 
 msgid "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes. Useful when Firefox + REALITY + ML-KEM (support-x25519mlkem768) fails verification on sing-box-extended; switching to Chrome resolves it."
-msgstr ""
+msgstr "Переопределить отпечаток uTLS (fp) провайдера на импортируемых узлах TLS/REALITY. Полезно, когда связка Firefox + REALITY + ML-KEM (support-x25519mlkem768) не проходит проверку на sing-box-extended — переключение на Chrome решает проблему."
 
 msgid "Overview"
 msgstr "Обзор"
@@ -5349,7 +5355,7 @@ msgid "Pick Fastest Server Within Active Tier"
 msgstr "Выбирать самый быстрый сервер внутри активной ступени"
 
 msgid "Pick the fastest server of the tier instead of the first working one. On by default - the first node in the filter order is not necessarily the quickest."
-msgstr ""
+msgstr "Выбирать самый быстрый сервер внутри ступени вместо первого рабочего по списку. Включено по умолчанию — первый сервер после фильтрации не обязательно самый быстрый."
 
 msgid "Pin P2P policy to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is matched."
 msgstr "Привязка политики P2P к портам торрент-клиента через запятую. Каждая запись: \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp). Без указания порта правило применяется ко всему протоколу."
@@ -6273,7 +6279,7 @@ msgid "SSH"
 msgstr "SSH"
 
 msgid "STATIC HOSTS → DIRECT"
-msgstr ""
+msgstr "СТАТИЧЕСКИЙ HOSTS → НАПРЯМУЮ"
 
 msgid "STUN (P2P Calls)"
 msgstr "STUN (P2P-звонки)"
@@ -6443,6 +6449,12 @@ msgstr "Выберите сетевой интерфейс"
 msgid "Select a predefined domain list"
 msgstr "Выберите предустановленный список доменов"
 
+msgid "Select a preset background color or enter any HEX/CSS color (leave empty for automatic palette)"
+msgstr "Выберите готовый пресет цвета фона или введите любой HEX/CSS-цвет (оставьте пустым для автоматической палитры)"
+
+msgid "Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)"
+msgstr "Выберите готовый пресет цвета текста или введите любой HEX/CSS-цвет (оставьте пустым для автоматической палитры)"
+
 msgid "Select a section"
 msgstr "Выберите секцию"
 
@@ -6550,6 +6562,9 @@ msgstr "Выберите интерфейс, с которого будет ид
 
 msgid "Select the network interface to which the traffic will originate"
 msgstr "Выберите интерфейс, на который будет идти трафик"
+
+msgid "Select the routing Section through which this connection will establish its upstream tunnel."
+msgstr "Выберите секцию маршрутизации, через которую это подключение будет устанавливать исходящий туннель."
 
 msgid "Select the section to route router's own traffic through."
 msgstr "Выберите секцию для маршрутизации трафика роутера."
@@ -6944,6 +6959,9 @@ msgstr "Выборочные секции (Выберите секции ниж�
 msgid "Specify a file path"
 msgstr "Укажите путь к файлу"
 
+msgid "Specify a port (1-65535) or port range (e.g. 2000-2010)"
+msgstr ""
+
 msgid "Specify different files"
 msgstr "Укажите разные файлы"
 
@@ -7029,10 +7047,10 @@ msgid "Standard"
 msgstr "Стандартный"
 
 msgid "Standard (Handshake + HTTP HEAD)"
-msgstr ""
+msgstr "Стандартный (рукопожатие + HTTP HEAD)"
 
 msgid "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (supported on sing-box-extended via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT)."
-msgstr ""
+msgstr "Стандартный режим замеряет полное установление соединения + HTTP HEAD-запрос. Режим KeepAlive / тёплая задержка (поддерживается в sing-box-extended через experimental.unified_delay) замеряет 2-й HTTP HEAD-запрос поверх уже установленной TLS-сессии (аналогично режиму KeepAlive в Happ; не учитывает время первичного рукопожатия)."
 
 msgid "Start"
 msgstr "Старт"
@@ -7305,7 +7323,7 @@ msgid "TLS Crypt Key"
 msgstr "Ключ TLS Crypt"
 
 msgid "TLS Fingerprint Override (uTLS)"
-msgstr ""
+msgstr "Переопределение TLS-отпечатка (uTLS)"
 
 msgid "TLS Handshake SNI"
 msgstr "SNI для TLS-рукопожатия"
@@ -7935,7 +7953,7 @@ msgid "URLTest (Lowest Latency)"
 msgstr "URLTest (минимальная задержка)"
 
 msgid "URLTest check interval"
-msgstr ""
+msgstr "Интервал проверки URLTest"
 
 msgid "URLTest details"
 msgstr "Детали URLTest"

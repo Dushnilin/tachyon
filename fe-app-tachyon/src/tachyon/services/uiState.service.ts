@@ -140,6 +140,7 @@ function applyServiceState(uiState: Tachyon.UiState) {
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
+        liteMode: uiState.service.tachyon.lite_mode,
         tachyonMemoryMb: uiState.service.tachyon.memory_rss_mb,
         tachyonPid: uiState.service.tachyon.pid,
         tachyonUptimeSeconds: uiState.service.tachyon.uptime_seconds,

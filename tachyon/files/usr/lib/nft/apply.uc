@@ -46,6 +46,15 @@ function uci_settings() {
     return uci_section("settings");
 }
 
+const CT_LITE_PROXY_MARK = "0x00400000";
+const CT_LITE_DIRECT_MARK = "0x00800000";
+
+function lite_mode_enabled(settings) {
+    if (type(settings) != "object")
+        settings = uci_settings();
+    return bool_option(settings, "lite_mode", false);
+}
+
 // True only in tproxy mode.
 //
 // The intercept rules below hand marked packets to a tproxy socket. In socks mode
@@ -876,10 +885,13 @@ function nft_create_priority_sets(table, sets) {
 }
 
 function nft_priority_verdict_args(priority_action, mark) {
+    let lite = lite_mode_enabled(null);
     if (priority_action == "bypass")
-        return [ "counter", "accept" ];
+        return lite ? [ "ct", "mark", "set", CT_LITE_DIRECT_MARK, "counter", "accept" ] : [ "counter", "accept" ];
     if (priority_action == "block")
         return [ "counter", "drop" ];
+    if (lite)
+        return [ "meta", "mark", "set", mark, "ct", "mark", "set", CT_LITE_PROXY_MARK, "counter", "accept" ];
     return [ "meta", "mark", "set", mark, "counter", "accept" ];
 }
 
@@ -899,7 +911,7 @@ function nft_source_match_args(section, family, sets) {
 
 // nft accepts: ip saddr != { addr1, addr2, ... }  as a single argument.
 function nft_excluded_source_match_args(section, family) {
-    let excluded = list_option(section, "excluded_ips");
+    let excluded = section_leaf_list_option(section, "excluded_ips");
     if (length(excluded) == 0)
         return [];
     let ip_key = family == 6 ? "ip6" : "ip";
@@ -1019,10 +1031,14 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     }
 
     let has_source_only_matchers = section_has_source_ip_matchers(section) &&
+        !section_has_destination_matchers(section) &&
+        section_rule_ports_csv(section) == "" &&
         !needs_plain_ip_rules &&
         !needs_ip_port_rules &&
         !has_port_only_matchers &&
-        !section_has_dscp_matchers(section);
+        !section_has_dscp_matchers(section) &&
+        length(section_leaf_list_option(section, "protocol")) == 0 &&
+        length(connections.geoip_country_list(section)) == 0;
 
     if (has_source_only_matchers) {
         if (is_bypass) {
@@ -1693,90 +1709,192 @@ function nft_add_quic_block_rule(table, interface_set, fakeip_mark, mode) {
     return nft_add_rule(table, "mangle", rule);
 }
 
+const DNAT_FORWARDS_SIG_FILE = "/var/run/tachyon/dnat-forwards.sig";
+
 function collect_firewall_dnat_forwards() {
     let tcp_v4 = [];
     let udp_v4 = [];
     let tcp_v6 = [];
     let udp_v6 = [];
-    let redirects = uci_core.section_objects("firewall", "redirect");
-    if (type(redirects) != "array")
-        return { tcp_v4: tcp_v4, udp_v4: udp_v4, tcp_v6: tcp_v6, udp_v6: udp_v6 };
+    let seen_tcp_v4 = {};
+    let seen_udp_v4 = {};
+    let seen_tcp_v6 = {};
+    let seen_udp_v6 = {};
 
-    for (let r in redirects) {
-        let enabled = as_string(r["enabled"] ?? "1");
-        if (enabled == "0" || enabled == "false")
-            continue;
-        let target = uc(as_string(r["target"] || "DNAT"));
-        if (target != "DNAT")
-            continue;
-        let dest_ip = trim(as_string(r["dest_ip"] || ""));
-        if (dest_ip == "")
-            continue;
-        let family = core_ip.ip_family(dest_ip);
-        if (family != 4 && family != 6)
-            continue;
-
-        let port_str = trim(as_string(r["dest_port"] || r["src_dport"] || ""));
-        if (port_str == "")
-            continue;
-
-        let ports = [];
-        let raw_ports = split(replace(port_str, /[,\s]+/g, " "), " ");
-        for (let p in raw_ports) {
-            let p_int = int(p);
-            if (p_int > 0 && p_int <= 65535)
-                push(ports, p_int);
-        }
-        if (length(ports) == 0)
-            continue;
-
-        let proto_val = lc(as_string(r["proto"] || "tcp"));
-        let has_tcp = index(proto_val, "tcp") >= 0 || proto_val == "all";
-        let has_udp = index(proto_val, "udp") >= 0 || proto_val == "all";
-
-        for (let p in ports) {
-            let item = sprintf("%s . %d", dest_ip, p);
-            if (family == 4) {
-                if (has_tcp) push(tcp_v4, item);
-                if (has_udp) push(udp_v4, item);
-            } else if (family == 6) {
-                if (has_tcp) push(tcp_v6, item);
-                if (has_udp) push(udp_v6, item);
+    function add_dnat_entry(family, has_tcp, has_udp, dest_ip, port_val) {
+        let p_norm = normalize_port_condition_value(replace(as_string(port_val), ":", "-"));
+        if (p_norm == null)
+            return;
+        let item = sprintf("%s . %s", dest_ip, as_string(p_norm));
+        if (family == 4) {
+            if (has_tcp && !seen_tcp_v4[item]) {
+                seen_tcp_v4[item] = true;
+                push(tcp_v4, item);
+            }
+            if (has_udp && !seen_udp_v4[item]) {
+                seen_udp_v4[item] = true;
+                push(udp_v4, item);
+            }
+        } else if (family == 6) {
+            if (has_tcp && !seen_tcp_v6[item]) {
+                seen_tcp_v6[item] = true;
+                push(tcp_v6, item);
+            }
+            if (has_udp && !seen_udp_v6[item]) {
+                seen_udp_v6[item] = true;
+                push(udp_v6, item);
             }
         }
     }
+
+    let redirects = uci_core.section_objects("firewall", "redirect");
+    if (type(redirects) == "array") {
+        for (let r in redirects) {
+            let enabled = as_string(r["enabled"] ?? "1");
+            if (enabled == "0" || enabled == "false")
+                continue;
+            let target = uc(as_string(r["target"] || "DNAT"));
+            if (target != "DNAT")
+                continue;
+            let dest_ip = trim(as_string(r["dest_ip"] || ""));
+            if (dest_ip == "")
+                continue;
+            let family = core_ip.ip_family(dest_ip);
+            if (family != 4 && family != 6)
+                continue;
+
+            let port_str = trim(as_string(r["dest_port"] || r["src_dport"] || ""));
+            if (port_str == "")
+                continue;
+
+            let proto_val = lc(as_string(r["proto"] || "tcp"));
+            let has_tcp = index(proto_val, "tcp") >= 0 || proto_val == "all";
+            let has_udp = index(proto_val, "udp") >= 0 || proto_val == "all";
+
+            for (let p in split(replace(port_str, /[,\s]+/g, " "), " ")) {
+                if (p != "")
+                    add_dnat_entry(family, has_tcp, has_udp, dest_ip, p);
+            }
+        }
+    }
+
+    let lease_paths = [];
+    let env_lease = trim(as_string(getenv("TACHYON_UPNP_LEASES_FILE") || ""));
+    if (env_lease != "")
+        push(lease_paths, env_lease);
+    let uci_lease = trim(as_string(uci_core.get("upnpd.config.upnp_lease_file") || ""));
+    if (uci_lease != "" && uci_lease != env_lease)
+        push(lease_paths, uci_lease);
+    for (let def_path in [ "/var/run/miniupnpd.leases", "/tmp/upnp.leases" ]) {
+        if (def_path != env_lease && def_path != uci_lease)
+            push(lease_paths, def_path);
+    }
+
+    for (let lpath in lease_paths) {
+        if (fs.stat(lpath) == null)
+            continue;
+        let content = as_string(fs.readfile(lpath) || "");
+        for (let line in split(content, /\r?\n/)) {
+            line = trim(line);
+            if (line == "")
+                continue;
+            let fields = split(line, ":");
+            if (length(fields) < 4)
+                continue;
+            let proto_lc = lc(trim(as_string(fields[0])));
+            let int_ip = trim(as_string(fields[2]));
+            let int_port = trim(as_string(fields[3]));
+            let fam = core_ip.ip_family(int_ip);
+            if (fam != 4 && fam != 6)
+                continue;
+            add_dnat_entry(fam, proto_lc == "tcp", proto_lc == "udp", int_ip, int_port);
+        }
+    }
+
+    if (fs.stat("/var/run/miniupnpd.pid") != null || getenv("TACHYON_UPNP_SCAN_FW4") == "1") {
+        let fw4_upnp = as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "upnp_prerouting" ]) || "");
+        for (let line in split(fw4_upnp, /\r?\n/)) {
+            if (index(line, "dnat") < 0)
+                continue;
+            let m = match(line, /\b(tcp|udp)\b.*\bdnat\s+(?:ip\s+|ip6\s+)?to\s+([0-9a-fA-F.:]+):([0-9]+(?:-[0-9]+)?)/);
+            if (m != null) {
+                let proto_m = lc(as_string(m[1]));
+                let ip_m = as_string(m[2]);
+                let port_m = as_string(m[3]);
+                let fam_m = core_ip.ip_family(ip_m);
+                if (fam_m == 4 || fam_m == 6)
+                    add_dnat_entry(fam_m, proto_m == "tcp", proto_m == "udp", ip_m, port_m);
+            }
+        }
+    }
+
     return { tcp_v4: tcp_v4, udp_v4: udp_v4, tcp_v6: tcp_v6, udp_v6: udp_v6 };
+}
+
+function nft_table_present(table) {
+    return run_args_quiet([ "nft", "list", "table", "inet", table ]);
+}
+
+function nft_delete_table(table) {
+    return run_args([ "nft", "delete", "table", "inet", table ]);
+}
+
+function dnat_forwards_signature(dnat_forwards) {
+    if (type(dnat_forwards) != "object")
+        return "";
+    return join("|", [
+        join(",", dnat_forwards.tcp_v4 || []),
+        join(",", dnat_forwards.udp_v4 || []),
+        join(",", dnat_forwards.tcp_v6 || []),
+        join(",", dnat_forwards.udp_v6 || [])
+    ]);
+}
+
+function nft_sync_dnat_sets(table) {
+    table = default_arg(table, "tachyon");
+    if (!nft_table_present(table))
+        return true;
+
+    let dnat_forwards = collect_firewall_dnat_forwards();
+    let new_sig = dnat_forwards_signature(dnat_forwards);
+    let old_sig = trim(as_string(fs.readfile(DNAT_FORWARDS_SIG_FILE) || ""));
+    if (new_sig == old_sig)
+        return true;
+
+    run_args_quiet([ "nft", "flush", "set", "inet", table, "tachyon_dnat_tcp_v4" ]);
+    run_args_quiet([ "nft", "flush", "set", "inet", table, "tachyon_dnat_udp_v4" ]);
+    run_args_quiet([ "nft", "flush", "set", "inet", table, "tachyon_dnat_tcp_v6" ]);
+    run_args_quiet([ "nft", "flush", "set", "inet", table, "tachyon_dnat_udp_v6" ]);
+
+    if (length(dnat_forwards.tcp_v4) > 0)
+        nft_add_set_elements(table, "tachyon_dnat_tcp_v4", join(", ", dnat_forwards.tcp_v4));
+    if (length(dnat_forwards.udp_v4) > 0)
+        nft_add_set_elements(table, "tachyon_dnat_udp_v4", join(", ", dnat_forwards.udp_v4));
+    if (length(dnat_forwards.tcp_v6) > 0)
+        nft_add_set_elements(table, "tachyon_dnat_tcp_v6", join(", ", dnat_forwards.tcp_v6));
+    if (length(dnat_forwards.udp_v6) > 0)
+        nft_add_set_elements(table, "tachyon_dnat_udp_v6", join(", ", dnat_forwards.udp_v6));
+
+    common.write_file(DNAT_FORWARDS_SIG_FILE, new_sig + "\n");
+    return true;
 }
 
 function nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address, dnat_forwards) {
     if (!tproxy_intercept_enabled())
         return true;
     run_args_quiet([ "modprobe", "nft_tproxy" ]);
-    if (!nft_add_rule(table, "proxy", [ "ct", "status", "dnat", "return" ]) ||
+    if (!nft_add_rule(table, "proxy", [ "ct", "status", "dnat", "meta", "mark", "set", "0", "return" ]) ||
         !nft_add_rule(table, "proxy", [ "fib", "daddr", "type", "local", "return" ]))
         return false;
-    if (type(dnat_forwards) == "object") {
-        if (length(dnat_forwards.tcp_v4) > 0) {
-            if (!nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "return" ]) ||
-                !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v4", "return" ]))
-                return false;
-        }
-        if (length(dnat_forwards.udp_v4) > 0) {
-            if (!nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "return" ]) ||
-                !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v4", "return" ]))
-                return false;
-        }
-        if (length(dnat_forwards.tcp_v6) > 0) {
-            if (!nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v6", "return" ]) ||
-                !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v6", "return" ]))
-                return false;
-        }
-        if (length(dnat_forwards.udp_v6) > 0) {
-            if (!nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v6", "return" ]) ||
-                !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v6", "return" ]))
-                return false;
-        }
-    }
+    if (!nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "0", "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "0", "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "meta", "mark", "set", "0", "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v4", "meta", "mark", "set", "0", "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v6", "meta", "mark", "set", "0", "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v6", "meta", "mark", "set", "0", "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v6", "meta", "mark", "set", "0", "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v6", "meta", "mark", "set", "0", "return" ]))
+        return false;
     if (!nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ]) ||
@@ -1828,6 +1946,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         return false;
     if (length(dnat_forwards.udp_v6) > 0 && !nft_add_set_elements(table, "tachyon_dnat_udp_v6", join(", ", dnat_forwards.udp_v6)))
         return false;
+    common.write_file(DNAT_FORWARDS_SIG_FILE, dnat_forwards_signature(dnat_forwards) + "\n");
 
     for (let interface in whitespace_values(source_interfaces))
         if (!nft_add_set_elements(table, interface_set, interface))
@@ -1850,26 +1969,15 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle", [ "fib", "daddr", "type", "local", "return" ]))
         return false;
 
-    if (length(dnat_forwards.tcp_v4) > 0) {
-        if (!nft_add_rule(table, "mangle", [ "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "ip", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v4", "return" ]))
-            return false;
-    }
-    if (length(dnat_forwards.udp_v4) > 0) {
-        if (!nft_add_rule(table, "mangle", [ "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "ip", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v4", "return" ]))
-            return false;
-    }
-    if (length(dnat_forwards.tcp_v6) > 0) {
-        if (!nft_add_rule(table, "mangle", [ "ip6", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v6", "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "ip6", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v6", "return" ]))
-            return false;
-    }
-    if (length(dnat_forwards.udp_v6) > 0) {
-        if (!nft_add_rule(table, "mangle", [ "ip6", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v6", "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "ip6", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v6", "return" ]))
-            return false;
-    }
+    if (!nft_add_rule(table, "mangle", [ "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "ip", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v4", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "ip", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v4", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "ip6", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v6", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "ip6", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v6", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "ip6", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v6", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "ip6", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v6", "return" ]))
+        return false;
 
     if (!nft_add_rule(table, "predefrag", [ "meta", "mark", "&", "0x60000000", "!=", "0", "notrack", "counter" ]) ||
         !nft_add_rule(table, "predefrag_prerouting", [ "meta", "mark", "&", "0x60000000", "!=", "0", "notrack", "counter" ]))
@@ -2002,6 +2110,14 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
             return false;
     }
 
+    let is_lite_mode = lite_mode_enabled(uci_settings());
+    if (is_lite_mode) {
+        if (!nft_add_rule(table, "mangle", [ "ct", "mark", CT_LITE_DIRECT_MARK, "counter", "return", "comment", "\"tachyon-lite-shortcircuit-direct\"" ]) ||
+            !nft_add_rule(table, "mangle", [ "ct", "mark", CT_LITE_PROXY_MARK, "meta", "mark", "set", fakeip_mark, "counter", "return", "comment", "\"tachyon-lite-shortcircuit-proxy\"" ]))
+            return false;
+        run_args_quiet([ "nft", "add", "rule", "inet", as_string(table), "mangle", "iifname", "@" + as_string(interface_set), "ct", "state", "new", "tcp", "dport", "!=", "{ 53, 80, 443 }", "ct", "count", "over", "256", "counter", "drop", "comment", "\"tachyon-lite-connlimit\"" ]);
+    }
+
     if (!nft_add_rule(table, "mangle", [ "jump", "priority_rules" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(common_set), "meta", "l4proto", "tcp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(common_set), "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
@@ -2043,6 +2159,12 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         option(uci_settings(), "smart_detect_mode", "default") == "plus") {
         if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]) ||
             !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]))
+            return false;
+    }
+
+    if (is_lite_mode) {
+        if (!nft_add_rule(table, "mangle", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "ct", "mark", "set", CT_LITE_PROXY_MARK, "comment", "\"tachyon-lite-mark-proxy\"" ]) ||
+            !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "mark", "0", "ct", "state", "{ new, established }", "ct", "mark", "set", CT_LITE_DIRECT_MARK, "comment", "\"tachyon-lite-mark-direct\"" ]))
             return false;
     }
 
@@ -2552,14 +2674,30 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
     let family = core_ip.ip_family(source_ip);
     let ip_key = family == 6 ? "ip6" : "ip";
     let local_set = family == 6 ? default_arg(localv6_set, "localv6") : localv4_set;
+    let is_bypass = as_string(mark) == "bypass";
+    let is_block = as_string(mark) == "block";
+    let lite = lite_mode_enabled(null);
+    let verdict_args = is_bypass
+        ? (lite ? [ "ct", "mark", "set", CT_LITE_DIRECT_MARK, "counter", "return" ] : [ "counter", "return" ])
+        : (is_block
+            ? [ "counter", "drop" ]
+            : (lite
+                ? [ "meta", "mark", "set", mark, "ct", "mark", "set", CT_LITE_PROXY_MARK, "counter" ]
+                : [ "meta", "mark", "set", mark, "counter" ]));
 
     if (family == 0) {
         if (core_ip.valid_mac(source_ip)) {
             let mac = lc(replace(source_ip, "-", ":"));
             let localv4 = as_string(localv4_set);
             let localv6 = as_string(default_arg(localv6_set, "localv6"));
-            let ok = run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "tcp", "meta", "mark", "set", mark, "counter" ]) &&
-                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "udp", "meta", "mark", "set", mark, "counter" ]) &&
+            let tcp_args = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "tcp" ];
+            append_array(tcp_args, verdict_args);
+            let udp_args = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "udp" ];
+            append_array(udp_args, verdict_args);
+            let ok = run_args(tcp_args) &&
+                     run_args(udp_args) &&
+                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "return" ]) &&
+                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "return" ]) &&
                      run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip", "daddr", "@" + localv4, "return" ]) &&
                      run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip6", "daddr", "@" + localv6, "return" ]) &&
                      run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "fib", "daddr", "type", "local", "return" ]) &&
@@ -2571,9 +2709,18 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
         return true;
     }
 
+    let dnat_tcp_set = family == 6 ? "@tachyon_dnat_tcp_v6" : "@tachyon_dnat_tcp_v4";
+    let dnat_udp_set = family == 6 ? "@tachyon_dnat_udp_v6" : "@tachyon_dnat_udp_v4";
+    let tcp_rule = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "tcp" ];
+    append_array(tcp_rule, verdict_args);
+    let udp_rule = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "udp" ];
+    append_array(udp_rule, verdict_args);
+
     return (
-        run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "tcp", "meta", "mark", "set", mark, "counter" ]) &&
-        run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "udp", "meta", "mark", "set", mark, "counter" ]) &&
+        run_args(tcp_rule) &&
+        run_args(udp_rule) &&
+        run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, ip_key, "saddr", ".", "tcp", "sport", dnat_tcp_set, "return" ]) &&
+        run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, ip_key, "saddr", ".", "udp", "sport", dnat_udp_set, "return" ]) &&
         run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, ip_key, "daddr", "@" + as_string(local_set), "return" ]) &&
         run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, "fib", "daddr", "type", "local", "return" ]) &&
         run_args([ "nft", "insert", "rule", "inet", table, "mangle", ip_key, "saddr", source_ip, "ct", "status", "dnat", "return" ])
@@ -2769,6 +2916,51 @@ function tproxy_route_rule_present(table, mark) {
     return tproxy_route_present(table) && tproxy_marking_rule_present(table, mark);
 }
 
+function extract_server_port_specs(s) {
+    let proto = as_string(s["protocol"] || "vless");
+    if (proto == "tailscale")
+        return { proto: "", ports: [] };
+
+    let raw_specs = [];
+    let effective_proto = proto;
+    if (proto == "json_inbound") {
+        let obj = null;
+        try {
+            obj = json(as_string(s["inbound_json"] || ""));
+        } catch (e) {
+            obj = null;
+        }
+        if (type(obj) != "object")
+            return { proto: "", ports: [] };
+        effective_proto = lc(as_string(obj.type || ""));
+        if (obj.listen_port != null)
+            push(raw_specs, as_string(obj.listen_port));
+        if (type(obj.listen_ports) == "array") {
+            for (let lp in obj.listen_ports)
+                push(raw_specs, as_string(lp));
+        } else if (type(obj.listen_ports) == "string") {
+            push(raw_specs, obj.listen_ports);
+        }
+    } else if (proto == "awg") {
+        push(raw_specs, as_string(s["awg_server_port"] || s["listen_port"] || 51820));
+    } else {
+        push(raw_specs, as_string(s["listen_port"] || ""));
+    }
+
+    let ports = [];
+    for (let spec in raw_specs) {
+        for (let token in split(replace(as_string(spec), /[,\s]+/g, " "), " ")) {
+            token = trim(replace(token, ":", "-"));
+            if (token == "")
+                continue;
+            let norm = normalize_port_condition_value(token);
+            if (norm != null)
+                push(ports, as_string(norm));
+        }
+    }
+    return { proto: effective_proto, ports: ports };
+}
+
 function collect_server_firewall_ports() {
     let tcp_ports = [];
     let udp_ports = [];
@@ -2781,17 +2973,18 @@ function collect_server_firewall_ports() {
             continue;
         if (as_string(s["open_firewall_port"] ?? "1") == "0")
             continue;
-        let proto = as_string(s["protocol"] || "vless");
-        if (proto == "tailscale" || proto == "json_inbound")
+        let extracted = extract_server_port_specs(s);
+        if (length(extracted.ports) == 0)
             continue;
-        let port = proto == "awg" ? int(s["awg_server_port"] || s["listen_port"] || 51820) : int(s["listen_port"] || 0);
-        if (port <= 0 || port > 65535)
-            continue;
-        if (proto == "awg" || proto == "hysteria2" || proto == "tuic" || proto == "masque") {
-            push(udp_ports, port);
-        } else {
-            push(tcp_ports, port);
-            push(udp_ports, port);
+        let proto = extracted.proto;
+        for (let port_spec in extracted.ports) {
+            let port_val = index(port_spec, "-") >= 0 ? port_spec : int(port_spec);
+            if (proto == "awg" || proto == "wireguard" || proto == "hysteria2" || proto == "tuic" || proto == "masque") {
+                push(udp_ports, port_val);
+            } else {
+                push(tcp_ports, port_val);
+                push(udp_ports, port_val);
+            }
         }
     }
     return { tcp: tcp_ports, udp: udp_ports };
@@ -2816,20 +3009,17 @@ function sync_server_firewall_uci_rules() {
             if (open_port == "0" || open_port == "false")
                 continue;
 
-            let proto = as_string(s["protocol"] || "vless");
-            if (proto == "tailscale" || proto == "json_inbound")
+            let extracted = extract_server_port_specs(s);
+            if (length(extracted.ports) == 0)
                 continue;
-
-            let port = proto == "awg" ? int(s["awg_server_port"] || s["listen_port"] || 51820) : int(s["listen_port"] || 0);
-            if (port <= 0 || port > 65535)
-                continue;
+            let proto = extracted.proto;
 
             let safe_name = replace(section_name, /[^A-Za-z0-9_]/g, "_");
             let rule_name = "tachyon_srv_" + safe_name;
             active_rule_names[rule_name] = true;
 
-            let rule_proto = (proto == "awg" || proto == "hysteria2" || proto == "tuic" || proto == "masque") ? "udp" : "tcp";
-            let port_str = as_string(port);
+            let rule_proto = (proto == "awg" || proto == "wireguard" || proto == "hysteria2" || proto == "tuic" || proto == "masque") ? "udp" : "tcp udp";
+            let port_str = join(" ", extracted.ports);
 
             let current_target = uci_core.get("firewall." + rule_name + ".target");
             let current_port = uci_core.get("firewall." + rule_name + ".dest_port");
@@ -2860,9 +3050,42 @@ function sync_server_firewall_uci_rules() {
         }
     }
 
+    let srv_ports = collect_server_firewall_ports();
+    let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
+    let fw4_include_file = fw4_include_dir + "/10-tachyon-servers.nft";
+    if (fs.stat("/usr/share/nftables.d") != null) {
+        fs.mkdir("/usr/share/nftables.d/chain-pre");
+        fs.mkdir(fw4_include_dir);
+        let nft_content = "";
+        if (length(srv_ports.tcp) > 0) {
+            let ports_str = length(srv_ports.tcp) == 1 ? as_string(srv_ports.tcp[0]) : "{ " + join(", ", srv_ports.tcp) + " }";
+            nft_content += sprintf("tcp dport %s accept comment \"Allow Tachyon server inbound TCP\"\n", ports_str);
+        }
+        if (length(srv_ports.udp) > 0) {
+            let ports_str = length(srv_ports.udp) == 1 ? as_string(srv_ports.udp[0]) : "{ " + join(", ", srv_ports.udp) + " }";
+            nft_content += sprintf("udp dport %s accept comment \"Allow Tachyon server inbound UDP\"\n", ports_str);
+        }
+        if (nft_content != "")
+            write_text_file(fw4_include_file, nft_content);
+        else
+            unlink_file(fw4_include_file);
+    }
+
     if (changed) {
         uci_core.commit("firewall");
         run_args_quiet([ "/etc/init.d/firewall", "reload" ]);
+    }
+
+    let fw4_input_out = command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
+    if (fw4_input_out != "") {
+        for (let p in srv_ports.tcp) {
+            if (index(fw4_input_out, "tcp dport " + as_string(p)) < 0)
+                run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "input", "tcp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound TCP\"" ]);
+        }
+        for (let p in srv_ports.udp) {
+            if (index(fw4_input_out, "udp dport " + as_string(p)) < 0)
+                run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "input", "udp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound UDP\"" ]);
+        }
     }
 }
 
@@ -2981,15 +3204,24 @@ function ensure_bridge_netfilter_disabled() {
 // TCP keepalive: detect dead connections in ~90s instead of kernel default (hours).
 // Conntrack: expire stale TCP entries in 10 min instead of 5 days.
 // Buffers & TCP fastopen: accelerate QUIC/Hysteria2 and reduce TLS handshake RTT.
+// In Tachyon Lite mode: aggressively cap conntrack table, UDP timeouts and
+// socket buffers to protect single-core MIPS/MIPSEL CPUs from SoftIRQ saturation.
 function apply_connection_tuning() {
+    let lite = lite_mode_enabled(null);
     let sysctls = [
         [ "net.ipv4.tcp_keepalive_time", "60" ],
         [ "net.ipv4.tcp_keepalive_intvl", "10" ],
         [ "net.ipv4.tcp_keepalive_probes", "3" ],
         [ "net.ipv4.tcp_fastopen", "3" ],
         [ "net.netfilter.nf_conntrack_tcp_timeout_established", "600" ],
-        [ "net.netfilter.nf_conntrack_tcp_timeout_time_wait", "30" ]
+        [ "net.netfilter.nf_conntrack_tcp_timeout_time_wait", lite ? "15" : "30" ]
     ];
+    if (lite) {
+        push(sysctls, [ "net.netfilter.nf_conntrack_tcp_timeout_close_wait", "15" ]);
+        push(sysctls, [ "net.netfilter.nf_conntrack_tcp_timeout_fin_wait", "30" ]);
+        push(sysctls, [ "net.netfilter.nf_conntrack_udp_timeout", "15" ]);
+        push(sysctls, [ "net.netfilter.nf_conntrack_udp_timeout_stream", "60" ]);
+    }
     let ok = true;
     for (let pair in sysctls) {
         let current = trim(command_output_from_args([ "sysctl", "-n", pair[0] ]) || "");
@@ -2999,19 +3231,24 @@ function apply_connection_tuning() {
     }
 
     let ct_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.netfilter.nf_conntrack_max" ]) || "0"));
-    if (ct_max > 0 && ct_max < 65536)
+    if (lite) {
+        if (ct_max > 8192)
+            run_args_quiet([ "sysctl", "-w", "net.netfilter.nf_conntrack_max=8192" ]);
+    } else if (ct_max > 0 && ct_max < 65536) {
         run_args_quiet([ "sysctl", "-w", "net.netfilter.nf_conntrack_max=65536" ]);
+    }
 
+    let target_buf = lite ? 262144 : 2621440;
     let rmem_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.core.rmem_max" ]) || "0"));
-    if (rmem_max > 0 && rmem_max < 2621440)
-        run_args_quiet([ "sysctl", "-w", "net.core.rmem_max=2621440" ]);
+    if (lite ? (rmem_max > target_buf) : (rmem_max > 0 && rmem_max < target_buf))
+        run_args_quiet([ "sysctl", "-w", "net.core.rmem_max=" + as_string(target_buf) ]);
 
     let wmem_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.core.wmem_max" ]) || "0"));
-    if (wmem_max > 0 && wmem_max < 2621440)
-        run_args_quiet([ "sysctl", "-w", "net.core.wmem_max=2621440" ]);
+    if (lite ? (wmem_max > target_buf) : (wmem_max > 0 && wmem_max < target_buf))
+        run_args_quiet([ "sysctl", "-w", "net.core.wmem_max=" + as_string(target_buf) ]);
 
     if (ok)
-        log_debug("Connection tuning applied: tcp_keepalive=60/10/3, tcp_fastopen=3, conntrack_established=600");
+        log_debug("Connection tuning applied (lite=" + (lite ? "1" : "0") + "): tcp_keepalive=60/10/3, tcp_fastopen=3, conntrack_established=600");
     return ok;
 }
 
@@ -3232,6 +3469,8 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     }
     if (bool_option(settings, "wifi_calling_direct", false))
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
+    if (bool_option(settings, "lite_mode", false))
+        body = signature_add_value(body, "settings.lite_mode", "1");
 
     for (let section in sections)
         body = nft_rule_signature_body(body, object_or_empty(section));
@@ -3311,14 +3550,6 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
         nft_create_provider_output_rules_from_uci(table, "zapret", zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat) &&
         nft_create_provider_output_rules_from_uci(table, "zapret2", zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat) &&
         nft_create_runtime_output_rules(table, localv4_set, common_set, port_set, ip_port_set, fakeip_mark, fakeip_range, localv6_set, common6_set, ip_port6_set, fakeip6_range);
-}
-
-function nft_table_present(table) {
-    return run_args_quiet([ "nft", "list", "table", "inet", table ]);
-}
-
-function nft_delete_table(table) {
-    return run_args([ "nft", "delete", "table", "inet", table ]);
 }
 
 function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
@@ -3613,8 +3844,10 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
     // depend on whether the section happens to have priority matchers.
     nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set);
     if (section_action(section) != "dns") {
+        let p_action = section_priority_action(section);
+        let fr_verdict = p_action == "bypass" ? "bypass" : (p_action == "block" ? "block" : mark);
         for (let source_ip in section_leaf_list_option(section, "fully_routed_ips"))
-            if (!nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface_set, localv4_set, localv6_set, mark, nft_mangle_chain_text(mangle_chain_context, table), inserted_fully_routed_ips))
+            if (!nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface_set, localv4_set, localv6_set, fr_verdict, nft_mangle_chain_text(mangle_chain_context, table), inserted_fully_routed_ips))
                 return false;
     }
 
@@ -3856,9 +4089,21 @@ function nft_populate_runtime_sets_from_sections(sections, populate_enabled, def
     if (!nft_add_source_aware_dns_sources(sections, deferred_sections, table))
         return false;
 
-    for (let section in sections)
+    for (let section in sections) {
+        let p_action = section_priority_action(section);
+        if (p_action != "bypass" && p_action != "block")
+            continue;
         if (!nft_populate_runtime_set_for_section(section, deferred_sections, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, mangle_chain_context, inserted_fully_routed_ips, common6_set, ip_port6_set, localv6_set))
             return false;
+    }
+
+    for (let section in sections) {
+        let p_action = section_priority_action(section);
+        if (p_action == "bypass" || p_action == "block")
+            continue;
+        if (!nft_populate_runtime_set_for_section(section, deferred_sections, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, mangle_chain_context, inserted_fully_routed_ips, common6_set, ip_port6_set, localv6_set))
+            return false;
+    }
 
     return true;
 }
@@ -4005,6 +4250,15 @@ else if (mode == "nft-sync-router-output-intercept")
     exit(nft_sync_router_output_intercept(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "nft-insert-fully-routed-ip-rules")
     exit(nft_insert_fully_routed_ip_rules(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
+else if (mode == "apply-connection-tuning")
+    exit(apply_connection_tuning() ? 0 : 1);
+else if (mode == "sync-server-firewall-uci-rules") {
+    sync_server_firewall_uci_rules();
+    exit(0);
+}
+else if (mode == "nft-sync-dnat-sets") {
+    exit(nft_sync_dnat_sets(ARGV[1] || "tachyon") ? 0 : 1);
+}
 else {
     warn("Usage: nft/apply.uc <operation> ...\n");
     exit(1);

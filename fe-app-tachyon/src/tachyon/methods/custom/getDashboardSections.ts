@@ -290,6 +290,15 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     // Collect effective modular outbound_source items (mirrors connections.uc:section_effective_outbound_sources)
     const effectiveSources: Tachyon.ConfigSection[] = [];
     const seenSrcIds = new Set<string>();
+    const dpiSourceTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
+    const hasInlineConnectionItems =
+      getListValues(next.selector_proxy_links).length > 0 ||
+      Boolean((next.selector_proxy_links_text || '').trim()) ||
+      getRawListValues(next.selector_amnezia_configs || next.amnezia_configs)
+        .length > 0 ||
+      Boolean((next.amnezia_conf_text || '').trim()) ||
+      getRawListValues(next.outbound_jsons || next.outbound_json).length > 0 ||
+      Boolean((next.access_token || '').trim());
     const addSource = (src?: Tachyon.ConfigSection) => {
       if (!src || src.enabled === '0') return;
       const sid = src['.name'];
@@ -297,32 +306,55 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       seenSrcIds.add(sid);
       effectiveSources.push(src);
     };
+
+    getListValues(next.outbound_source_refs).forEach((sid) =>
+      addSource(sourceById.get(sid)),
+    );
+
+    let hasExplicitNonDpiSources =
+      hasInlineConnectionItems ||
+      effectiveSources.some(
+        (s) => !dpiSourceTypes.has((s.source_type || '').toLowerCase()),
+      );
+
     const addGroupSources = (grpId: string) => {
       const grp = groupById.get(grpId);
       if (!grp || grp.enabled === '0') return;
       const gSources = getListValues(grp.source_refs);
       if (!gSources.length || gSources[0] === '*') {
-        outboundSources.forEach(addSource);
+        if (!hasExplicitNonDpiSources) {
+          outboundSources.forEach((src) => {
+            if (!dpiSourceTypes.has((src.source_type || '').toLowerCase())) {
+              addSource(src);
+            }
+          });
+        }
       } else {
         gSources.forEach((sid) => addSource(sourceById.get(sid)));
       }
     };
 
-    getListValues(next.outbound_source_refs).forEach((sid) =>
-      addSource(sourceById.get(sid)),
-    );
     getListValues(next.outbound_group_refs).forEach(addGroupSources);
-    getListValues(next.balancer_refs).forEach((bid) => {
-      const bal = balancerById.get(bid);
-      if (!bal || bal.enabled === '0') return;
-      getListValues(bal.source_refs).forEach((sid) =>
-        addSource(sourceById.get(sid)),
+
+    if (!hasExplicitNonDpiSources) {
+      hasExplicitNonDpiSources = effectiveSources.some(
+        (s) => !dpiSourceTypes.has((s.source_type || '').toLowerCase()),
       );
-      getListValues(bal.group_refs).forEach(addGroupSources);
-      getListValues(bal.outbound_group_levels).forEach((lvl) => {
-        if (lvl.toLowerCase() !== 'direct') addGroupSources(lvl);
+    }
+
+    if (!hasExplicitNonDpiSources) {
+      getListValues(next.balancer_refs).forEach((bid) => {
+        const bal = balancerById.get(bid);
+        if (!bal || bal.enabled === '0') return;
+        getListValues(bal.source_refs).forEach((sid) =>
+          addSource(sourceById.get(sid)),
+        );
+        getListValues(bal.group_refs).forEach(addGroupSources);
+        getListValues(bal.outbound_group_levels).forEach((lvl) => {
+          if (lvl.toLowerCase() !== 'direct') addGroupSources(lvl);
+        });
       });
-    });
+    }
 
     const serviceSourceTypes = new Set([
       'zapret',
@@ -348,9 +380,17 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       const stype = (src.source_type || 'subscription').toLowerCase();
       if (stype === 'subscription' || src.url) {
         const u = (src.url || '').trim();
-        if (u && !seenSubUrls.has(u)) {
-          seenSubUrls.add(u);
-          subscriptionUrlItems.push(src);
+        if (u) {
+          if (/^https?:\/\//i.test(u)) {
+            if (!seenSubUrls.has(u)) {
+              seenSubUrls.add(u);
+              subscriptionUrlItems.push(src);
+            }
+          } else {
+            extraProxyLinks.push(
+              u.includes('#') || !src.name ? u : `${u}#${src.name}`,
+            );
+          }
         }
       } else if (stype === 'proxy_links' || stype === 'links') {
         getListValues(src.proxy_links || src.selector_proxy_links).forEach(
@@ -364,18 +404,41 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
             .forEach((l) => extraProxyLinks.push(l));
         }
       } else if (stype === 'amnezia_config' || stype === 'awg') {
-        const awgCfgs = getRawListValues(
-          src.amnezia_configs || src.selector_amnezia_configs,
-        );
+        const awgCfgs = [
+          ...getRawListValues(
+            src.amnezia_configs || src.selector_amnezia_configs,
+          ),
+          ...(src.amnezia_conf_text && src.amnezia_conf_text.trim()
+            ? [src.amnezia_conf_text.trim()]
+            : []),
+        ];
+        const aname = (
+          src.name ||
+          src.label ||
+          src['.name'] ||
+          'AmneziaWG'
+        ).trim();
         if (awgCfgs.length) {
-          awgCfgs.forEach((c) => extraAmneziaConfigs.push(c));
-        } else if (src.awg_private_key || src.awg_endpoint) {
-          const aname = (
-            src.name ||
-            src.label ||
-            src['.name'] ||
-            'AmneziaWG'
-          ).trim();
+          awgCfgs.forEach((c) => {
+            extraAmneziaConfigs.push(c);
+            let cname = aname;
+            try {
+              const parsed = JSON.parse(c) as { name?: string };
+              if (parsed?.name && parsed.name.trim()) {
+                cname = parsed.name.trim();
+              }
+            } catch {
+              // Raw .conf text uses aname
+            }
+            if (next.action !== 'awg') {
+              extraProxyLinks.push(`wireguard://${src['.name']}#${cname}`);
+            }
+          });
+        } else if (
+          src.awg_private_key ||
+          src.awg_server_address ||
+          src.awg_endpoint
+        ) {
           extraProxyLinks.push(`wireguard://${src['.name']}#${aname}`);
         }
       } else if (stype === 'fptn' && next.action !== 'fptn') {
@@ -1492,6 +1555,7 @@ function dashboardOutboundType(
     ''
   ).toLowerCase();
   if (proto === 'amneziawg') return 'AmneziaWG';
+  if (proto === 'wireguard') return 'WireGuard';
   if (proto === 'fptn') return 'FPTN';
   if (proto === 'shadowtls') return 'ShadowTLS';
   if (proto === 'desync') return 'Native Desync';
@@ -2040,7 +2104,9 @@ function buildProxyGroupOutbounds(
                 jsonOutbound?.type ||
                 outboundMetadata?.protocols?.[code] ||
                 outboundMetadata?.transports?.[code] ||
-                'VLESS',
+                (link.startsWith('wireguard://') || link.startsWith('vpn://')
+                  ? 'AmneziaWG'
+                  : 'VLESS'),
               udp: true,
               history: [],
               all: [],

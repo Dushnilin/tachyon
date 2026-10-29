@@ -2072,9 +2072,15 @@ function buildMixedLink(sectionId, identity, options = {}) {
 function buildMieruLink(sectionId, identity, options = {}) {
   const host = getPublicHost(sectionId, options);
   const uriHost = formatHostForUri(host);
-  const port =
+  const rawPort =
     uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
     (typeof getServerPort === "function" ? getServerPort(sectionId) : "8443");
+  const port = `${rawPort}`
+    .trim()
+    .split(/[\s,]+/)
+    .map((t) => t.replace(/:/g, "-"))
+    .filter(Boolean)
+    .join(",");
   const username = identity.username || identity.name || sectionId;
   const transport = uci.get(UCI_PACKAGE, sectionId, "mieru_transport") || "TCP";
   const query = encodeQuery({
@@ -3257,6 +3263,48 @@ function validatePort(_sectionId, value) {
     return _("Port must be between 1 and 65535");
   }
   return true;
+}
+
+function validatePortOrPortRange(_sectionId, value) {
+  const raw = `${value || ""}`.trim();
+  if (!raw) {
+    return _("Port must be between 1 and 65535");
+  }
+  const tokens = raw.split(/[\s,]+/).filter(Boolean);
+  if (tokens.length === 0) {
+    return _("Port must be between 1 and 65535");
+  }
+  for (const tok of tokens) {
+    if (/^[0-9]+$/.test(tok)) {
+      const p = parseInt(tok, 10);
+      if (p < 1 || p > 65535) {
+        return _("Port must be between 1 and 65535");
+      }
+      continue;
+    }
+    const m = tok.match(/^([0-9]+)[-:]([0-9]+)$/);
+    if (m) {
+      const lo = parseInt(m[1], 10);
+      const hi = parseInt(m[2], 10);
+      if (lo >= 1 && hi >= lo && hi <= 65535) {
+        continue;
+      }
+    }
+    return _("Specify a port (1-65535) or port range (e.g. 2000-2010)");
+  }
+  return true;
+}
+
+function validateListenPort(sectionId, value) {
+  const protocol = getCurrentOptionValue(
+    sectionId,
+    "protocol",
+    getProtocol(sectionId),
+  );
+  if (protocol === "mieru") {
+    return validatePortOrPortRange(sectionId, value);
+  }
+  return validatePort(sectionId, value);
 }
 
 function validateOptionalPort(_sectionId, value) {
@@ -5204,7 +5252,8 @@ function createServerContent(section, options = {}) {
   o.default = "443";
   o.rmempty = false;
   o.modalonly = true;
-  o.validate = validatePort;
+  o.placeholder = "443, 2000-2010";
+  o.validate = validateListenPort;
   addPortProtocolDepends(o, true);
 
   o = section.option(

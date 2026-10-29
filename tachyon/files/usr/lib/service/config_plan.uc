@@ -543,12 +543,6 @@ function validate_uci_semantics(candidate_uci) {
         }
     }
 
-    // 3. DNS settings sanity
-    let settings = candidate_uci.settings || {};
-    if (settings.block_doh == "1" && settings.dns_type == "doh") {
-        push(warnings, "block_doh is enabled but upstream dns_type is set to 'doh'. Upstream queries may be blocked.");
-    }
-
     return {
         status: length(errors) == 0 ? "ok" : "failed",
         errors: errors,

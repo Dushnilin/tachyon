@@ -1905,19 +1905,33 @@ function heal_nfqueue_stopped(ev) {
 }
 
 // ─── AI Empty Sections Recovery ─────────────────────────────────────────────
+let empty_section_heal_state = {};
+
 function heal_empty_sections(ev) {
     let recovered = common.array_or_empty(ev.payload.sections);
     if (length(recovered) == 0) return;
 
+    let now = time();
+    let triggered = [];
     for (let name in recovered) {
-        log_message("Empty proxy section '" + name + "' — triggering subscription update", "warn");
+        let entry = empty_section_heal_state[name] || { attempts: 0, last_ts: 0 };
+        let backoff = entry.attempts <= 1 ? 120 : (entry.attempts == 2 ? 300 : (entry.attempts == 3 ? 600 : 1800));
+        if (entry.last_ts > 0 && (now - entry.last_ts < backoff))
+            continue;
+        entry.attempts++;
+        entry.last_ts = now;
+        empty_section_heal_state[name] = entry;
+        push(triggered, name);
+        log_message("Empty proxy section '" + name + "' — triggering subscription update (attempt " + as_string(entry.attempts) + ")", "warn");
         bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(name));
     }
 
+    if (length(triggered) == 0) return;
+
     ai_heal_report(
         "empty_proxy_sections",
-        "Empty proxy sections detected: " + join(", ", recovered),
-        "Auto-triggering subscription update for " + as_string(length(recovered)) + " section(s)",
+        "Empty proxy sections detected: " + join(", ", triggered),
+        "Auto-triggering subscription update for " + as_string(length(triggered)) + " section(s)",
         "fixed"
     );
 }
@@ -2996,6 +3010,78 @@ function register_subscribers() {
         { name: "resume_after_pause", priority: 5 });
 }
 
+// ─── Tachyon Lite: Control Plane Hibernation during Heavy Data Plane Load ─────
+// On single-core 650 MHz MIPS/MIPSEL routers (QCA9531 / MT7628), spawning curl,
+// dig, or ucode sub-processes during active Hysteria2 / VLESS WS throughput
+// starves SoftIRQ and hostapd. When lite_mode is enabled and CPU busy >= 75%
+// (or 1-min loadavg >= 0.85), heavy background probes hibernate while lightweight
+// PID liveness and tmpfs log trimming keep running.
+let lite_cpu_prev_total = 0;
+let lite_cpu_prev_idle = 0;
+
+function is_lite_data_plane_busy(cfg, stat_path, loadavg_path) {
+    let c = cfg || settings();
+    let lm = trim(as_string(c.lite_mode || "0"));
+    if (lm != "1" && lm != "true")
+        return false;
+
+    let sp = stat_path || getenv("TACHYON_LITE_STAT_FILE") || "/proc/stat";
+    let lp = loadavg_path || getenv("TACHYON_LITE_LOADAVG_FILE") || "/proc/loadavg";
+
+    let stat_raw = fs.readfile(sp);
+    if (stat_raw != null && stat_raw != "") {
+        let lines = split(as_string(stat_raw), "\n");
+        if (length(lines) > 0 && index(lines[0], "cpu ") == 0) {
+            let parts = split(trim(lines[0]), /[ \t]+/);
+            if (length(parts) >= 5) {
+                let user = int(parts[1] || "0");
+                let nice = int(parts[2] || "0");
+                let sys = int(parts[3] || "0");
+                let idle = int(parts[4] || "0");
+                let iowait = length(parts) > 5 ? int(parts[5] || "0") : 0;
+                let irq = length(parts) > 6 ? int(parts[6] || "0") : 0;
+                let softirq = length(parts) > 7 ? int(parts[7] || "0") : 0;
+                let steal = length(parts) > 8 ? int(parts[8] || "0") : 0;
+                let total = user + nice + sys + idle + iowait + irq + softirq + steal;
+                let idle_all = idle + iowait;
+                if (lite_cpu_prev_total == 0) {
+                    let saved = trim(as_string(fs.readfile("/tmp/tachyon_lite_cpu.stat") || ""));
+                    if (saved != "") {
+                        let sparts = split(saved, " ");
+                        if (length(sparts) >= 2) {
+                            lite_cpu_prev_total = int(sparts[0] || "0");
+                            lite_cpu_prev_idle = int(sparts[1] || "0");
+                        }
+                    }
+                }
+                let prev_total = lite_cpu_prev_total;
+                let prev_idle = lite_cpu_prev_idle;
+                lite_cpu_prev_total = total;
+                lite_cpu_prev_idle = idle_all;
+                try { fs.writefile("/tmp/tachyon_lite_cpu.stat", total + " " + idle_all + "\n"); } catch (e) {}
+                if (prev_total > 0 && total > prev_total) {
+                    let d_total = total - prev_total;
+                    let d_idle = idle_all - prev_idle;
+                    let busy_pct = int(((d_total - d_idle) * 100) / d_total);
+                    if (busy_pct >= 75)
+                        return true;
+                }
+            }
+        }
+    }
+
+    let load_raw = fs.readfile(lp);
+    if (load_raw != null && load_raw != "") {
+        let lparts = split(trim(as_string(load_raw)), /[ \t]+/);
+        if (length(lparts) >= 1) {
+            let load1 = double(lparts[0]);
+            if (load1 >= 0.85)
+                return true;
+        }
+    }
+    return false;
+}
+
 // One synchronous sweep of every tier, used by the `ai-heal` CLI mode where no
 // worker is running: probe, let the subscribers repair, then publish status.
 function ai_full_health_audit() {
@@ -3052,7 +3138,22 @@ function worker() {
     let ubus_conn = setup_ubus_listener();
     let current_ctx = null;
 
+    let last_upnp_leases_sig = "";
+    function sync_upnp_dnat_sets_if_changed() {
+        let sig = "";
+        for (let p in [ "/var/run/miniupnpd.leases", "/tmp/upnp.leases" ]) {
+            let st = fs.stat(p);
+            if (st != null)
+                sig += p + ":" + as_string(st.mtime || 0) + ":" + as_string(st.size || 0) + ";";
+        }
+        if (sig == last_upnp_leases_sig)
+            return;
+        last_upnp_leases_sig = sig;
+        command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "nft-sync-dnat-sets" ]);
+    }
+
     function perform_fast_checks() {
+        safe_call(sync_upnp_dnat_sets_if_changed, "sync_upnp_dnat_sets_if_changed");
         controller.probe_fast(current_ctx);
         // After the probes, so a recovery observed on this very tick closes its
         // watch before the deadline is tested against it.
@@ -3074,6 +3175,7 @@ function worker() {
 
     function perform_smart_plus_checks() {
         let cfg = settings();
+        if (is_lite_data_plane_busy(cfg)) return;
         if (smart_plus.mode(cfg) != "plus" && smart_mode_last != "plus") return;
         current_ctx = current_ctx || controller.create_tick_context();
         controller.set_tick_context(current_ctx);
@@ -3092,6 +3194,11 @@ function worker() {
     }
 
     function perform_normal_checks() {
+        let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
+        if (is_lite_data_plane_busy(cfg)) {
+            log_message("Tachyon Lite: Data Plane busy, hibernating normal Control Plane probes", "debug");
+            return;
+        }
         controller.probe_normal(current_ctx);
         safe_call(smart_detect_process_pending, "smart_detect_process_pending");
         safe_call(export_metrics, "export_metrics");
@@ -3436,6 +3543,13 @@ function check_watchdog_outdated() {
 }
 
 function perform_slow_checks() {
+    let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
+    if (is_lite_data_plane_busy(cfg)) {
+        log_message("Tachyon Lite: Data Plane busy, hibernating heavy slow-tier probes", "debug");
+        safe_call(reap_dead_jobs, "reap_dead_jobs");
+        safe_call(trim_runtime_logs, "trim_runtime_logs");
+        return;
+    }
     controller.probe_slow(current_ctx);
     safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
     safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
@@ -3715,7 +3829,12 @@ else if (mode == "emergency-trigger") {
     print("Emergency failsafe triggered\n");
     exit(0);
 }
+else if (mode == "lite-busy-check") {
+    let busy = is_lite_data_plane_busy(null, ARGV[1], ARGV[2]);
+    print((busy ? "1" : "0") + "\n");
+    exit(0);
+}
 else {
-    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|supervise|worker|status|ai-heal|ai-status|ai-status-full|smart-detect-extract-domain|smart-detect-proxy-sections|escalation-status|emergency-status|emergency-reset|emergency-trigger> ...\n");
+    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|supervise|worker|status|ai-heal|ai-status|ai-status-full|smart-detect-extract-domain|smart-detect-proxy-sections|escalation-status|emergency-status|emergency-reset|emergency-trigger|lite-busy-check> ...\n");
     exit(1);
 }
