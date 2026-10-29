@@ -53,6 +53,21 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "action": "byedpi",
       "byedpi_cmd_opts": "-s1 -s3+s -r1+s -S",
       "condition_refs": [ "cond_bye" ]
+    },
+    {
+      ".name": "Discord",
+      ".type": "section",
+      "enabled": "1",
+      "action": "desync",
+      "desync_preset": "auto",
+      "desync_opts": "mode=fake_split split_pos=2 fake_ttl=8 fake_sni=max.ru repeats=8",
+      "desync_mode": "fake_split",
+      "desync_split_pos": "2",
+      "desync_fake_ttl": "8",
+      "desync_fake_sni": "max.ru",
+      "desync_repeats": "8",
+      "community_lists": [ "discord" ],
+      "community_subnets": "1"
     }
   ],
   "condition": [
@@ -152,6 +167,18 @@ assert(yt_udp_reject >= 0 && yt_tcp_route > yt_udp_reject,
     sprintf("TCP-only desync must reject UDP before TCP route (udp=%d, tcp=%d)", yt_udp_reject, yt_tcp_route));
 assert(bye_udp_reject >= 0 && bye_tcp_route > bye_udp_reject,
     sprintf("ByeDPI must reject UDP before TCP route (udp=%d, tcp=%d)", bye_udp_reject, bye_tcp_route));
+
+let discord_udp_reject = -1;
+let discord_route = -1;
+for (let i = 0; i < length(route_rules); i++) {
+    let r = route_rules[i];
+    if (r.action == "reject" && has(r.network, "udp") && has(r.rule_set, "Discord-discord-community-ruleset"))
+        discord_udp_reject = i;
+    if (r.outbound == "Discord-out" && has(r.rule_set, "Discord-discord-community-ruleset"))
+        discord_route = i;
+}
+assert(discord_udp_reject < 0 && discord_route >= 0,
+    sprintf("Desync with preset=auto must support UDP and NOT reject Discord UDP (reject=%d, route=%d)", discord_udp_reject, discord_route));
 ' -- "$WORK_DIR/out.json"
 
 grep -Fq '" >/dev/null"' "$RULESETS" ||
@@ -346,6 +373,52 @@ outbounds_gen.add_desync_outbound(desync_cfg, {
 let ob_custom = desync_cfg.outbounds[1];
 assert(ob_custom != null && ob_custom.tag == "sec_custom-out" && ob_custom.mode == "fake_disorder" && ob_custom.fooling == "autottl" && ob_custom.auto_tune === false && ob_custom.split_pos == "sni" && ob_custom.fake_ttl == 4,
     "Custom fake_disorder mode with fooling=autottl and auto_tune=false must be preserved, got: " + sprintf("%J", ob_custom));
+
+// Verify non-custom preset (e.g. "auto") ignores leftover custom fuzzer fields (desync_opts, desync_mode, desync_split_pos)
+// and that outbound_supports_udp treats preset="auto" / "fake_split" / "fake_disorder" / "fake" as UDP-capable
+outbounds_gen.add_desync_outbound(desync_cfg, {
+    ".name": "sec_auto_dirty",
+    desync_preset: "auto",
+    desync_opts: "mode=fake_split split_pos=2 fake_ttl=8 fake_sni=max.ru repeats=8",
+    desync_mode: "fake_split",
+    desync_split_pos: "2",
+    desync_fake_ttl: "8",
+    desync_fake_sni: "max.ru",
+    desync_repeats: "8"
+});
+let ob_auto_dirty = desync_cfg.outbounds[2];
+assert(ob_auto_dirty != null && ob_auto_dirty.preset == "auto" && ob_auto_dirty.mode == null && ob_auto_dirty.split_pos == null && ob_auto_dirty.fake_sni == null,
+    "Non-custom preset='auto' must ignore leftover custom fuzzer fields, got: " + sprintf("%J", ob_auto_dirty));
+
+let src_desync_dirty = {
+    ".name": "DesyncSrc",
+    ".type": "outbound_source",
+    enabled: "1",
+    source_type: "desync",
+    desync_preset: "auto",
+    desync_opts: "mode=fake_split split_pos=2 fake_ttl=8 fake_sni=max.ru repeats=8",
+    desync_mode: "fake_split",
+    desync_split_pos: "2",
+    desync_fake_ttl: "8",
+    desync_fake_sni: "max.ru",
+    desync_repeats: "8"
+};
+let disc_sec = {
+    ".name": "Discord",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "DesyncSrc" ]
+};
+connections.set_item_sections_from_data({
+    outbound_source: [ src_desync_dirty ],
+    section: [ disc_sec ]
+});
+let disc_links = connections.outbound_jsons(disc_sec);
+assert(length(disc_links) == 1, "expected 1 synthesized desync JSON link for Discord section");
+let disc_ob = json(disc_links[0]);
+assert(disc_ob.preset == "auto" && disc_ob.mode == null && disc_ob.split_pos == null && disc_ob.fake_sni == null,
+    "Synthesized outbound_source desync JSON with preset='auto' must ignore leftover custom fuzzer fields, got: " + disc_links[0]);
 UCODE
 
 printf 'PASS: bugreport_rudns_desync_byedpi\n'

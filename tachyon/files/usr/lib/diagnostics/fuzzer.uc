@@ -828,7 +828,7 @@ function apply_strategy(engine, args_val, target_rule) {
             let parsed_ds = fuzzer_runner.parse_desync_outbound(args_val, "desync-out");
             uci.set(CONFIG_NAME, sid, "desync_opts", args_val);
             if (parsed_ds) {
-                if (parsed_ds.preset) uci.set(CONFIG_NAME, sid, "desync_preset", as_string(parsed_ds.preset));
+                uci.set(CONFIG_NAME, sid, "desync_preset", parsed_ds.preset ? as_string(parsed_ds.preset) : "custom");
                 if (parsed_ds.mode) uci.set(CONFIG_NAME, sid, "desync_mode", as_string(parsed_ds.mode));
                 if (parsed_ds.fooling) uci.set(CONFIG_NAME, sid, "desync_fooling", as_string(parsed_ds.fooling));
                 if (parsed_ds.auto_tune != null) uci.set(CONFIG_NAME, sid, "desync_auto_tune", parsed_ds.auto_tune ? "1" : "0");

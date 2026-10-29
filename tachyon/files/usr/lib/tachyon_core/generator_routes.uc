@@ -2746,8 +2746,19 @@ function outbound_supports_udp(config, tag_name, visited) {
             let t = as_string(outb.type);
             if (t == "http" || (t == "socks" && as_string(outb.version) == "4") || t == "block")
                 return false;
-            if (t == "desync" && !outb.udp_fake)
-                return false;
+            if (t == "desync") {
+                if (outb.udp_fake === true)
+                    return true;
+                if (outb.udp_fake === false)
+                    return false;
+                let p = lc(trim(as_string(outb.preset || "")));
+                let m = lc(trim(as_string(outb.mode || "")));
+                if (p == "split" || p == "disorder" || p == "tlsrec" || p == "tls_rec" || p == "oob" || p == "multi_split" || p == "multisplit")
+                    return false;
+                if (p == "" && (m == "split" || m == "disorder" || m == "tlsrec" || m == "tls_rec" || m == "oob" || m == "multi_split" || m == "multisplit"))
+                    return false;
+                return true;
+            }
             if (t == "socks" && as_string(outb.server) == runtime_constants.BYEDPI_LISTEN_ADDRESS &&
                 int(outb.server_port || 0) >= runtime_constants.BYEDPI_PORT_BASE &&
                 int(outb.server_port || 0) < runtime_constants.BYEDPI_PORT_BASE + 100)

@@ -35,7 +35,9 @@ export { showToast } from './helpers/showToast';
 export { getClashUIUrl } from './helpers/getClashApiUrl';
 export {
   attachCommunityListPicker,
+  COMMUNITY_LIST_SUPERSETS,
   createInteractiveHintBanner,
+  getSubsumedCommunityLists,
   parseCommunityHint,
 } from './helpers/communityListPicker';
 export { TachyonShellMethods } from './tachyon/methods/shell';

@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { tr } from './helpers/i18n';
 import { showToast } from '../helpers/showToast';
-import { createInteractiveHintBanner } from '../helpers/communityListPicker';
+import {
+  createInteractiveHintBanner,
+  getSubsumedCommunityLists,
+} from '../helpers/communityListPicker';
 import { renderTachyonDuckMascotSvg } from '../icons/duckMascot';
 import {
   DOMAIN_LIST_HINTS,
@@ -321,19 +324,19 @@ const TRAFFIC_PRESETS: Array<{
     id: 'rkn_geoblock',
     labelRu: '🛡️ Базовый обход РФ + Геоблок 150+ сервисов + SSL CA',
     labelEn: '🛡️ Base Russia Bypass + GeoBlock 150+ + SSL CA',
-    domains: ['russia_inside', 'geoblock', 'hodca'],
+    domains: ['russia_inside', 'hodca'],
   },
   {
     id: 'antifilter_refilter',
     labelRu: '📚 Расширенный реестр РКН, Антизапрет и Re:filter',
     labelEn: '📚 Extended RKN Registry, Antizapret & Re:filter',
-    domains: ['ru_blocked', 'refilter', 'antifilter', 'block'],
+    domains: ['ru_blocked', 'refilter', 'antifilter'],
   },
   {
     id: 'ai',
     labelRu: '🤖 Нейросети и ИИ (ChatGPT, Claude, Gemini, Grok, Cursor)',
     labelEn: '🤖 AI Services (ChatGPT, Claude, Gemini, Grok, Cursor)',
-    domains: ['ai_all', 'openai', 'anthropic', 'google_ai', 'xai'],
+    domains: ['ai_all', 'google_ai'],
   },
   {
     id: 'social',
@@ -346,7 +349,7 @@ const TRAFFIC_PRESETS: Array<{
     labelRu:
       '🎬 Кино, музыка и стримы (Spotify, Netflix, Twitch, HDRezka, Аниме)',
     labelEn: '🎬 Streaming & Music (Spotify, Netflix, Twitch, HDRezka, Anime)',
-    domains: ['spotify', 'netflix', 'twitch', 'twitch_ads', 'hdrezka', 'anime'],
+    domains: ['spotify', 'netflix', 'twitch', 'hdrezka', 'anime'],
   },
   {
     id: 'gaming',
@@ -3436,6 +3439,18 @@ export function openConnectionWizardModal(
     const { element: step3HintBanner, showHint: showStep3Hint } =
       createInteractiveHintBanner();
 
+    const presetDomainSet = new Set<string>();
+    for (const preset of TRAFFIC_PRESETS) {
+      if (selectedPresets.has(preset.id)) {
+        for (const d of preset.domains) presetDomainSet.add(d);
+      }
+    }
+    const combinedSelectedSet = new Set<string>([
+      ...presetDomainSet,
+      ...selectedIndividualLists,
+    ]);
+    const step3SubsumedMap = getSubsumedCommunityLists(combinedSelectedSet);
+
     return E('div', { class: 'tachyon-wizard__new-section-box' }, [
       E('div', { class: 'tachyon-wizard__field' }, [
         E(
@@ -3534,28 +3549,65 @@ export function openConnectionWizardModal(
                     'div',
                     { class: 'tachyon-wizard__chips' },
                     cat.keys.map((key) => {
-                      const active = selectedIndividualLists.has(key);
+                      const subsumedParents = step3SubsumedMap.get(key);
+                      const isSubsumed = Boolean(
+                        subsumedParents && subsumedParents.length > 0,
+                      );
+                      const active =
+                        (selectedIndividualLists.has(key) ||
+                          presetDomainSet.has(key)) &&
+                        !isSubsumed;
                       const label = DOMAIN_LIST_OPTIONS[key] || key;
-                      const hint = DOMAIN_LIST_HINTS[key] || '';
+                      const rawHint = DOMAIN_LIST_HINTS[key] || '';
+                      const parentLabels = (subsumedParents || []).map(
+                        (p) =>
+                          (DOMAIN_LIST_OPTIONS as Record<string, string>)[p] ||
+                          p,
+                      );
+                      const hint = isSubsumed
+                        ? tr(
+                            `[Уже входит в: ${parentLabels.join(', ')}] ${rawHint}`,
+                            `[Already included in: ${parentLabels.join(', ')}] ${rawHint}`,
+                          )
+                        : rawHint;
                       return E(
                         'button',
                         {
                           type: 'button',
-                          class: `tachyon-wizard__chip ${active ? 'is-active' : ''}`,
+                          class: `tachyon-wizard__chip ${active ? 'is-active' : ''} ${isSubsumed ? 'is-subsumed' : ''}`,
+                          disabled: isSubsumed ? true : undefined,
+                          'aria-disabled': isSubsumed ? 'true' : 'false',
                           title: hint,
-                          mouseenter: () => showStep3Hint(key),
-                          focus: () => showStep3Hint(key),
+                          mouseenter: () => showStep3Hint(key, subsumedParents),
+                          focus: () => showStep3Hint(key, subsumedParents),
                           click: () => {
+                            if (isSubsumed) {
+                              showStep3Hint(key, subsumedParents);
+                              return;
+                            }
                             if (selectedIndividualLists.has(key)) {
                               selectedIndividualLists.delete(key);
                             } else {
                               selectedIndividualLists.add(key);
+                              const nextCombined = new Set<string>([
+                                ...presetDomainSet,
+                                ...selectedIndividualLists,
+                              ]);
+                              const nextSub =
+                                getSubsumedCommunityLists(nextCombined);
+                              for (const subKey of nextSub.keys()) {
+                                selectedIndividualLists.delete(subKey);
+                              }
                             }
                             rerender();
                           },
                         } as any,
                         [
-                          E('span', {}, `${active ? '✓ ' : ''}${label}`),
+                          E(
+                            'span',
+                            {},
+                            `${isSubsumed ? '⊂ ' : active ? '✓ ' : ''}${label}`,
+                          ),
                           E(
                             'span',
                             {
@@ -3564,7 +3616,7 @@ export function openConnectionWizardModal(
                               click: (ev: Event) => {
                                 ev.preventDefault();
                                 ev.stopPropagation();
-                                showStep3Hint(key);
+                                showStep3Hint(key, subsumedParents);
                               },
                             } as any,
                             'ⓘ',
@@ -4171,6 +4223,9 @@ export function openConnectionWizardModal(
               (() => {
                 const { element: step4HintBanner, showHint: showStep4Hint } =
                   createInteractiveHintBanner();
+                const step4SubsumedMap = getSubsumedCommunityLists(
+                  selectedDirectBypassLists,
+                );
                 return E('div', { class: 'tachyon-wizard__field' }, [
                   E(
                     'label',
@@ -4185,21 +4240,50 @@ export function openConnectionWizardModal(
                     'div',
                     { class: 'tachyon-wizard__chips' },
                     DIRECT_BYPASS_PRESETS.map((item) => {
-                      const active = selectedDirectBypassLists.has(item.key);
-                      const hint = DOMAIN_LIST_HINTS[item.key] || '';
+                      const subsumedParents = step4SubsumedMap.get(item.key);
+                      const isSubsumed = Boolean(
+                        subsumedParents && subsumedParents.length > 0,
+                      );
+                      const active =
+                        selectedDirectBypassLists.has(item.key) && !isSubsumed;
+                      const rawHint = DOMAIN_LIST_HINTS[item.key] || '';
+                      const parentLabels = (subsumedParents || []).map(
+                        (p) =>
+                          (DOMAIN_LIST_OPTIONS as Record<string, string>)[p] ||
+                          p,
+                      );
+                      const hint = isSubsumed
+                        ? tr(
+                            `[Уже входит в: ${parentLabels.join(', ')}] ${rawHint}`,
+                            `[Already included in: ${parentLabels.join(', ')}] ${rawHint}`,
+                          )
+                        : rawHint;
                       return E(
                         'button',
                         {
                           type: 'button',
-                          class: `tachyon-wizard__chip ${active ? 'is-active' : ''}`,
+                          class: `tachyon-wizard__chip ${active ? 'is-active' : ''} ${isSubsumed ? 'is-subsumed' : ''}`,
+                          disabled: isSubsumed ? true : undefined,
+                          'aria-disabled': isSubsumed ? 'true' : 'false',
                           title: hint,
-                          mouseenter: () => showStep4Hint(item.key),
-                          focus: () => showStep4Hint(item.key),
+                          mouseenter: () =>
+                            showStep4Hint(item.key, subsumedParents),
+                          focus: () => showStep4Hint(item.key, subsumedParents),
                           click: () => {
+                            if (isSubsumed) {
+                              showStep4Hint(item.key, subsumedParents);
+                              return;
+                            }
                             if (selectedDirectBypassLists.has(item.key)) {
                               selectedDirectBypassLists.delete(item.key);
                             } else {
                               selectedDirectBypassLists.add(item.key);
+                              const nextSub = getSubsumedCommunityLists(
+                                selectedDirectBypassLists,
+                              );
+                              for (const subKey of nextSub.keys()) {
+                                selectedDirectBypassLists.delete(subKey);
+                              }
                             }
                             rerender();
                           },
@@ -4208,7 +4292,7 @@ export function openConnectionWizardModal(
                           E(
                             'span',
                             {},
-                            `${active ? '✓ ' : ''}${tr(item.labelRu, item.labelEn)}`,
+                            `${isSubsumed ? '⊂ ' : active ? '✓ ' : ''}${tr(item.labelRu, item.labelEn)}`,
                           ),
                           E(
                             'span',
@@ -4218,7 +4302,7 @@ export function openConnectionWizardModal(
                               click: (ev: Event) => {
                                 ev.preventDefault();
                                 ev.stopPropagation();
-                                showStep4Hint(item.key);
+                                showStep4Hint(item.key, subsumedParents);
                               },
                             } as any,
                             'ⓘ',

@@ -54,6 +54,63 @@ export interface CommunityListCategory {
   keys: Array<keyof typeof DOMAIN_LIST_OPTIONS>;
 }
 
+/**
+ * Exact 100% inclusion map verified against compiled tachyon-lists rulesets:
+ * when a parent superset list is selected, every child list whose rules (domains,
+ * suffixes, keywords, regexes, and subnets) are 100% covered by the parent
+ * becomes redundant and is visually dimmed + disabled to avoid duplicates.
+ */
+export const COMMUNITY_LIST_SUPERSETS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  // russia_inside is domain-only and 100% covers these domain-only lists
+  // (ru_blocked, refilter, antifilter also have IP subnets, so they are only 100% covered
+  // when combined or in domain-only mode; geoblock/block/xai/hdrezka/anime/news are domain-only)
+  russia_inside: ['geoblock', 'block', 'xai', 'hdrezka', 'anime', 'news'],
+  geoblock: ['xai'],
+  // ru_blocked_all 100% covers both domains and subnets of antifilter
+  ru_blocked_all: ['antifilter'],
+  // russia_outside 100% covers all domains of ru_only_inside
+  russia_outside: ['ru_only_inside'],
+  // ru_domains 100% covers geosite_ru and ru_only_inside (plus adds RU IP subnets)
+  ru_domains: ['geosite_ru', 'ru_only_inside'],
+  // geosite_ru 100% covers ru_only_inside
+  geosite_ru: ['ru_only_inside'],
+  // ai_all 100% covers openai, anthropic, and xai
+  ai_all: ['openai', 'anthropic', 'xai'],
+  // twitch 100% covers twitch_ads
+  twitch: ['twitch_ads'],
+};
+
+/**
+ * Returns a Map from each redundant child list key to the array of currently selected
+ * superset list keys that 100% include it.
+ */
+export function getSubsumedCommunityLists(
+  selectedKeys: Iterable<string>,
+): Map<string, string[]> {
+  const selectedSet = new Set(selectedKeys);
+  const subsumedBy = new Map<string, string[]>();
+
+  for (const parentKey of selectedSet) {
+    const children = COMMUNITY_LIST_SUPERSETS[parentKey];
+    if (!children) continue;
+    for (const childKey of children) {
+      if (childKey === parentKey) continue;
+      const existing = subsumedBy.get(childKey);
+      if (existing) {
+        if (!existing.includes(parentKey)) {
+          existing.push(parentKey);
+        }
+      } else {
+        subsumedBy.set(childKey, [parentKey]);
+      }
+    }
+  }
+
+  return subsumedBy;
+}
+
 export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   {
     id: 'popular',
@@ -182,7 +239,7 @@ function isRussianLocale(): boolean {
 
 export function createInteractiveHintBanner(): {
   element: HTMLElement;
-  showHint: (key: string) => void;
+  showHint: (key: string, subsumedParents?: string[]) => void;
 } {
   const ru = isRussianLocale();
   const titleEl = E(
@@ -212,26 +269,42 @@ export function createInteractiveHintBanner(): {
     descEl,
   ]);
 
-  function showHint(key: string) {
+  function showHint(key: string, subsumedParents?: string[]) {
     const label =
       (DOMAIN_LIST_OPTIONS as Record<string, string>)[key] || String(key || '');
     const rawHint = DOMAIN_LIST_HINTS[key] || '';
+    const parentLabels = (subsumedParents || []).map(
+      (p) => (DOMAIN_LIST_OPTIONS as Record<string, string>)[p] || p,
+    );
+    const subsumedPrefix =
+      parentLabels.length > 0
+        ? ru
+          ? `🔒 Полностью входит в выбранный список «${parentLabels.join('», «')}» (выбор не требуется). `
+          : `🔒 100% included in selected list "${parentLabels.join('", "')}" (already covered). `
+        : '';
+
     if (!rawHint) {
       titleEl.textContent = label;
       badgeEl.style.display = 'none';
-      descEl.textContent = '';
+      descEl.textContent = subsumedPrefix;
       return;
     }
     const parsed = parseCommunityHint(rawHint);
     titleEl.textContent = `${label} (${key})`;
-    if (parsed.routeBadge) {
+    if (parentLabels.length > 0) {
+      badgeEl.textContent = ru
+        ? `Входит в: ${parentLabels.join(', ')}`
+        : `Included in: ${parentLabels.join(', ')}`;
+      badgeEl.className = 'tachyon-ruleset-picker__hint-badge is-subsumed';
+      badgeEl.style.display = 'inline-flex';
+    } else if (parsed.routeBadge) {
       badgeEl.textContent = parsed.routeBadge;
       badgeEl.className = `tachyon-ruleset-picker__hint-badge is-${parsed.routeKind}`;
       badgeEl.style.display = 'inline-flex';
     } else {
       badgeEl.style.display = 'none';
     }
-    descEl.textContent = parsed.description;
+    descEl.textContent = `${subsumedPrefix}${parsed.description}`;
     bannerEl.classList.add('is-highlighted');
   }
 
@@ -320,12 +393,24 @@ export function attachCommunityListPicker(
         decorateNativeDynamicListItems();
       };
 
+      let searchQuery = '';
+
       const toggleKey = (key: string) => {
         const current = getValues();
+        const subsumedMap = getSubsumedCommunityLists(current);
+        if (subsumedMap.has(key) && !current.includes(key)) {
+          showHint(key, subsumedMap.get(key));
+          return;
+        }
         const exists = current.includes(key);
-        const next = exists
+        let next = exists
           ? current.filter((k) => k !== key)
           : [...current, key];
+        // Automatically prune any child lists that are now 100% covered by the new selection
+        const nextSubsumed = getSubsumedCommunityLists(next);
+        if (nextSubsumed.size > 0) {
+          next = next.filter((k) => !nextSubsumed.has(k));
+        }
         setValues(next, key);
       };
 
@@ -335,21 +420,55 @@ export function attachCommunityListPicker(
       const catTabsContainer = E('div', {
         class: 'tachyon-ruleset-picker__cats',
       });
+      const searchInput = E('input', {
+        type: 'search',
+        class: 'cbi-input-text tachyon-ruleset-picker__search',
+        placeholder: ru
+          ? '🔍 Быстрый поиск списка по названию, сервису или домену (например: youtube, openai, игра, геоблок)...'
+          : '🔍 Filter lists by name, service, or domain (e.g. youtube, openai, game, geoblock)...',
+        input: (ev: Event) => {
+          searchQuery = (ev.target as HTMLInputElement).value || '';
+          renderChips();
+        },
+      } as any) as HTMLInputElement;
 
       function syncChipStates() {
-        const selectedSet = new Set(getValues());
+        const currentVals = getValues();
+        const selectedSet = new Set(currentVals);
+        const subsumedMap = getSubsumedCommunityLists(selectedSet);
         const buttons = chipsContainer.querySelectorAll<HTMLButtonElement>(
           '.tachyon-ruleset-picker__chip[data-key]',
         );
         buttons.forEach((btn) => {
           const key = btn.getAttribute('data-key') || '';
-          const isSel = selectedSet.has(key);
+          const subsumedParents = subsumedMap.get(key);
+          const isSubsumed = Boolean(
+            subsumedParents && subsumedParents.length > 0,
+          );
+          const isSel = selectedSet.has(key) && !isSubsumed;
           btn.classList.toggle('is-selected', isSel);
+          btn.classList.toggle('is-subsumed', isSubsumed);
+          btn.disabled = isSubsumed;
+          btn.setAttribute('aria-disabled', isSubsumed ? 'true' : 'false');
+
+          const rawHint = DOMAIN_LIST_HINTS[key] || '';
+          if (isSubsumed && subsumedParents) {
+            const parentLabels = subsumedParents.map(
+              (p) => (DOMAIN_LIST_OPTIONS as Record<string, string>)[p] || p,
+            );
+            const subNote = ru
+              ? `[Уже входит в: ${parentLabels.join(', ')}] `
+              : `[Already included in: ${parentLabels.join(', ')}] `;
+            btn.title = subNote + rawHint;
+          } else {
+            btn.title = rawHint;
+          }
+
           const checkEl = btn.querySelector(
             '.tachyon-ruleset-picker__chip-check',
           );
           if (checkEl) {
-            checkEl.textContent = isSel ? '✓' : '+';
+            checkEl.textContent = isSubsumed ? '⊂' : isSel ? '✓' : '+';
           }
         });
       }
@@ -368,7 +487,7 @@ export function attachCommunityListPicker(
         ];
 
         allCats.forEach((cat) => {
-          const isAct = activeCategory === cat.id;
+          const isAct = activeCategory === cat.id && !searchQuery.trim();
           catTabsContainer.appendChild(
             E(
               'button',
@@ -377,6 +496,10 @@ export function attachCommunityListPicker(
                 class: `tachyon-ruleset-picker__cat-btn ${isAct ? 'is-active' : ''}`,
                 click: () => {
                   activeCategory = cat.id;
+                  if (searchQuery.trim()) {
+                    searchQuery = '';
+                    searchInput.value = '';
+                  }
                   renderCategoryTabs();
                   renderChips();
                 },
@@ -389,10 +512,26 @@ export function attachCommunityListPicker(
 
       function renderChips() {
         chipsContainer.innerHTML = '';
-        const selectedSet = new Set(getValues());
+        const currentVals = getValues();
+        const selectedSet = new Set(currentVals);
+        const subsumedMap = getSubsumedCommunityLists(selectedSet);
 
         let keysToShow: string[] = [];
-        if (activeCategory === 'all') {
+        const q = searchQuery.trim().toLowerCase();
+        if (q) {
+          keysToShow = Object.keys(DOMAIN_LIST_OPTIONS).filter((key) => {
+            if (blocked.has(key)) return false;
+            const label = String(
+              (DOMAIN_LIST_OPTIONS as Record<string, string>)[key] || '',
+            ).toLowerCase();
+            const hint = String(DOMAIN_LIST_HINTS[key] || '').toLowerCase();
+            return (
+              key.toLowerCase().includes(q) ||
+              label.includes(q) ||
+              hint.includes(q)
+            );
+          });
+        } else if (activeCategory === 'all') {
           keysToShow = Object.keys(DOMAIN_LIST_OPTIONS).filter(
             (key) => !blocked.has(key),
           );
@@ -423,19 +562,32 @@ export function attachCommunityListPicker(
             (DOMAIN_LIST_OPTIONS as Record<string, string>)[key] || key;
           const rawHint = DOMAIN_LIST_HINTS[key] || '';
           const parsed = parseCommunityHint(rawHint);
-          const isSel = selectedSet.has(key);
+          const subsumedParents = subsumedMap.get(key);
+          const isSubsumed = Boolean(
+            subsumedParents && subsumedParents.length > 0,
+          );
+          const isSel = selectedSet.has(key) && !isSubsumed;
+          const parentLabels = (subsumedParents || []).map(
+            (p) => (DOMAIN_LIST_OPTIONS as Record<string, string>)[p] || p,
+          );
+          const chipTitle = isSubsumed
+            ? (ru
+                ? `[Уже входит в: ${parentLabels.join(', ')}] `
+                : `[Already included in: ${parentLabels.join(', ')}] `) +
+              rawHint
+            : rawHint;
 
           const infoBtn = E(
             'span',
             {
               class: 'tachyon-ruleset-picker__chip-info',
-              title: rawHint,
+              title: chipTitle,
               role: 'button',
               tabindex: '0',
               click: (ev: Event) => {
                 ev.preventDefault();
                 ev.stopPropagation();
-                showHint(key);
+                showHint(key, subsumedMap.get(key));
               },
             } as any,
             'ⓘ',
@@ -445,29 +597,41 @@ export function attachCommunityListPicker(
             'button',
             {
               type: 'button',
-              class: `tachyon-ruleset-picker__chip ${isSel ? 'is-selected' : ''}`,
+              class: `tachyon-ruleset-picker__chip ${isSel ? 'is-selected' : ''} ${isSubsumed ? 'is-subsumed' : ''}`,
               'data-key': key,
-              title: rawHint,
-              mouseenter: () => showHint(key),
-              focus: () => showHint(key),
+              disabled: isSubsumed ? true : undefined,
+              'aria-disabled': isSubsumed ? 'true' : 'false',
+              title: chipTitle,
+              mouseenter: () => showHint(key, subsumedMap.get(key)),
+              focus: () => showHint(key, subsumedMap.get(key)),
               click: () => toggleKey(key),
             } as any,
             [
               E(
                 'span',
                 { class: 'tachyon-ruleset-picker__chip-check' },
-                isSel ? '✓' : '+',
+                isSubsumed ? '⊂' : isSel ? '✓' : '+',
               ),
               E('span', { class: 'tachyon-ruleset-picker__chip-label' }, label),
-              parsed.routeShort
+              isSubsumed
                 ? E(
                     'span',
                     {
-                      class: `tachyon-ruleset-picker__chip-route is-${parsed.routeKind}`,
+                      class: 'tachyon-ruleset-picker__chip-route is-subsumed',
                     },
-                    parsed.routeShort,
+                    ru
+                      ? `⊂ ${subsumedParents![0]}`
+                      : `⊂ ${subsumedParents![0]}`,
                   )
-                : '',
+                : parsed.routeShort
+                  ? E(
+                      'span',
+                      {
+                        class: `tachyon-ruleset-picker__chip-route is-${parsed.routeKind}`,
+                      },
+                      parsed.routeShort,
+                    )
+                  : '',
               infoBtn,
             ],
           );
@@ -515,7 +679,10 @@ export function attachCommunityListPicker(
       const pickerWrapper = E('div', { class: 'tachyon-ruleset-picker' }, [
         hintBanner,
         E('div', { class: 'tachyon-ruleset-picker__cats-block' }, [
-          catTabsContainer,
+          E('div', { class: 'tachyon-ruleset-picker__toolbar' }, [
+            searchInput,
+            catTabsContainer,
+          ]),
         ]),
         E('div', { class: 'tachyon-ruleset-picker__list-block' }, [
           chipsContainer,
