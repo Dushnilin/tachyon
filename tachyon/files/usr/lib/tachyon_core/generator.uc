@@ -1837,21 +1837,18 @@ function source_aware_dns_sources(sections, settings) {
         let has_dns_matchers = connections.has_dns_matchers(section);
 
         if (has_dns_matchers) {
-            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "source_ip_cidr")))
+            for (let ip in core_ip.normalize_to_cidrs(connections.resolved_source_ip_cidrs(section)))
                 add_source(ip);
         }
 
-        if (action == "bypass") {
+        if (action == "bypass" || action == "dns") {
             for (let ip in core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips")))
                 add_source(ip);
-            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "source_ip_cidr")))
-                add_source(ip);
-        }
-
-        if (action == "dns") {
-            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips")))
-                add_source(ip);
-            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "source_ip_cidr")))
+            for (let cond in connections.section_leaf_conditions(section)) {
+                for (let ip in core_ip.normalize_to_cidrs(list_option(cond, "fully_routed_ips")))
+                    add_source(ip);
+            }
+            for (let ip in core_ip.normalize_to_cidrs(connections.resolved_source_ip_cidrs(section)))
                 add_source(ip);
         }
     }
@@ -2276,7 +2273,16 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
         push(config.route.rules, r);
     for (let section in sections) {
         let act = option(section, "action", "");
-        if (act != "block" && act != "bypass") {
+        if (act != "block" && act != "bypass" && act != "dns") {
+            ctx.current_section = section[".name"];
+            let snap = snapshot_config_counts(config);
+            add_route_for_section(config, section);
+            record_owner_delta(config, owners, section[".name"], snap);
+        }
+    }
+    for (let section in sections) {
+        let act = option(section, "action", "");
+        if (act == "dns") {
             ctx.current_section = section[".name"];
             let snap = snapshot_config_counts(config);
             add_route_for_section(config, section);
@@ -2468,6 +2474,7 @@ ctx.is_sb_1_14_plus = is_sb_1_14_plus_detected;
 ctx.is_sb_1_15_plus = is_sb_1_15_plus_detected;
 ctx.is_sing_box_lx = is_sing_box_lx_detected;
 ctx.is_tachyon_core = is_tachyon_core_detected;
+ctx.detect_sing_box_version = detect_sing_box_version;
 ctx.is_certificate_sha256_supported = is_certificate_sha256_supported;
 
 generator_outbounds.init(ctx);

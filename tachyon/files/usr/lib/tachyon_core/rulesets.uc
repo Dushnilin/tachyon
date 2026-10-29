@@ -274,7 +274,8 @@ function srs_file_parses(path) {
     // a ceiling it is free to balloon exactly like `check` does.
     return common.command_status(
         gomemlimit.gomemlimit_env() +
-        command_from_args([ bin, "rule-set", "match", "--format", "binary", p, "tachyon-validation.invalid" ])
+        command_from_args([ bin, "rule-set", "match", "--format", "binary", p, "tachyon-validation.invalid" ]) +
+        " >/dev/null"
     ) == 0;
 }
 

@@ -2613,6 +2613,12 @@ function outbound_supports_udp(config, tag_name, visited) {
             let t = as_string(outb.type);
             if (t == "http" || (t == "socks" && as_string(outb.version) == "4") || t == "block")
                 return false;
+            if (t == "desync" && !outb.udp_fake)
+                return false;
+            if (t == "socks" && as_string(outb.server) == runtime_constants.BYEDPI_LISTEN_ADDRESS &&
+                int(outb.server_port || 0) >= runtime_constants.BYEDPI_PORT_BASE &&
+                int(outb.server_port || 0) < runtime_constants.BYEDPI_PORT_BASE + 100)
+                return false;
             if (t == "selector" || t == "urltest") {
                 if (type(outb.outbounds) == "array" && length(outb.outbounds) > 0) {
                     for (let nested_tag in outb.outbounds) {

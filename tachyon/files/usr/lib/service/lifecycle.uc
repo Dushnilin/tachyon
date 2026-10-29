@@ -1314,7 +1314,7 @@ function stop_main() {
         command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
 
     if (module_success(STATE_UC, [ "core-is-foreign" ]))
-        log_message("Sing-box PID provenance mismatch: the running sing-box was not started by Tachyon; stopping it anyway", "warn");
+        log_message("tachyon-core PID provenance mismatch: the running tachyon-core was not started by Tachyon; stopping it anyway", "warn");
 
     let core_proc = require("core.process");
     let core_init = core_proc.core_contract().init_script;
@@ -1545,7 +1545,7 @@ function append_reload_action(actions, enabled, label) {
 
 function reload_actions_summary(plan) {
     let actions = "";
-    actions = append_reload_action(actions, plan.needs_sing_box_reload, "sing-box");
+    actions = append_reload_action(actions, plan.needs_sing_box_reload, "tachyon-core");
     actions = append_reload_action(actions, plan.needs_nft_rebuild, "nftables");
     actions = append_reload_action(actions, plan.needs_zapret_restart, "Zapret");
     actions = append_reload_action(actions, plan.needs_zapret2_restart, "Zapret2");

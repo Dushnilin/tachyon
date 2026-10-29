@@ -872,11 +872,11 @@ function hup_sing_box_runtime() {
     // and fall back to a restart only when the process does not survive it.
     let active_pid = sing_box_service_pid_runtime();
     if (active_pid > 0 && try_sighup_reload(active_pid)) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via sing-box SIGHUP (graceful)" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via tachyon-core SIGHUP (graceful)" ]);
         return;
     }
 
-    command_success_from_args([ "logger", "-t", "tachyon", "[warn] sing-box SIGHUP did not take, falling back to a full restart" ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[warn] tachyon-core SIGHUP did not take, falling back to a full restart" ]);
     if (!command_success_from_args([ "/etc/init.d/tachyon-core", "restart" ]))
         exit(1);
 }
@@ -1023,19 +1023,19 @@ function has_active_mtproxy_inbound() {
 
 function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_after, force) {
     if (!sing_box_runtime_reload_needed(config_hash_before, config_hash_after, force)) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] sing-box reload skipped: configuration is unchanged" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] tachyon-core reload skipped: configuration is unchanged" ]);
         return;
     }
 
     if (has_active_mtproxy_inbound()) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: terminating sing-box and performing full restart (issue #30)" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: terminating tachyon-core and performing full restart (issue #30)" ]);
         let active_pid = sing_box_service_pid_runtime();
         if (active_pid > 0 && pid_is_sing_box(active_pid)) {
             command_success_from_args([ "kill", "-9", as_string(active_pid) ]);
             command_success_from_args([ "sleep", "0.2" ]);
         }
         if (!command_success_from_args([ "/etc/init.d/tachyon-core", "restart" ])) {
-            command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart sing-box. Aborted." ]);
+            command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart tachyon-core. Aborted." ]);
             exit(1);
         }
         return;
@@ -1045,17 +1045,17 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
     // config in-place without terminating the process, preserving active sessions.
     let active_pid = sing_box_service_pid_runtime();
     if (active_pid > 0 && as_string(force) != "restart" && pid_is_tachyon_core(active_pid)) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading sing-box runtime via SIGHUP (graceful)" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading tachyon-core runtime via SIGHUP (graceful)" ]);
         if (try_sighup_reload(active_pid)) {
-            command_success_from_args([ "logger", "-t", "tachyon", "[info] sing-box graceful reload succeeded" ]);
+            command_success_from_args([ "logger", "-t", "tachyon", "[info] tachyon-core graceful reload succeeded" ]);
             return;
         }
-        command_success_from_args([ "logger", "-t", "tachyon", "[warn] sing-box SIGHUP reload failed; falling back to full restart" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[warn] tachyon-core SIGHUP reload failed; falling back to full restart" ]);
     }
 
-    command_success_from_args([ "logger", "-t", "tachyon", "[info] Restarting sing-box runtime" ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[info] Restarting tachyon-core runtime" ]);
     if (!command_success_from_args([ "/etc/init.d/tachyon-core", "restart" ])) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart sing-box. Aborted." ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart tachyon-core. Aborted." ]);
         exit(1);
     }
 }

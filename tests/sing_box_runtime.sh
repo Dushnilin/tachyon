@@ -1352,10 +1352,11 @@ assert(route_rule(dns_action, r => contains(r.domain_suffix, "dns-first.example"
 assert(route_rule(dns_action, r => contains(r.domain_suffix, "list-dns.example")) == null, "DNS action does not create route rules");
 let dns_first_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.server == "dns_first-dns-server");
 let proxy_after_dns_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.server == "fakeip-server");
-assert(dns_first_index >= 0 && proxy_after_dns_index > dns_first_index, "higher DNS action wins over lower proxy DNS rule");
+assert(proxy_after_dns_index >= 0 && dns_first_index > proxy_after_dns_index, "traffic-routing FakeIP DNS rule precedes DNS-only action so TPROXY intercepts traffic");
 let proxy_first_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "proxy-first.example") && r.server == "fakeip-server");
 let dns_after_proxy_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "proxy-first.example") && r.server == "dns_second-dns-server");
 assert(proxy_first_index >= 0 && dns_after_proxy_index > proxy_first_index, "higher proxy DNS rule wins over lower DNS action");
+assert(dns_first_index >= 0 && dns_after_proxy_index > dns_first_index, "higher DNS action precedes lower DNS action");
 assert(dns_rule(dns_action, r => contains(r.rule_set, "dns_first-youtube-community-ruleset") && r.server == "dns_first-dns-server") != null, "DNS action built-in domain rule set");
 let dns_custom_ruleset = ruleset_url(dns_action, "https://example.com/domain-only.srs");
 assert(dns_custom_ruleset && dns_rule(dns_action, r => contains(r.rule_set, dns_custom_ruleset.tag) && r.server == "dns_first-dns-server") != null, "DNS action custom domain rule set");
@@ -1378,6 +1379,7 @@ let providers = cfg("providers");
 assert(outbound(providers, "zap-out").routing_mark == 0x01000001, "Zapret mark");
 assert(outbound(providers, "zap2-out").routing_mark == 0x02000001, "Zapret2 mark");
 assert(outbound(providers, "bye-out").type == "socks" && outbound(providers, "bye-out").server_port == 1080, "ByeDPI outbound");
+assert(route_rule(providers, r => r.action == "reject" && contains(r.network, "udp") && contains(r.domain_suffix, "bye.example")) != null, "ByeDPI outbound rejects UDP to force QUIC fallback to TCP");
 
 let manual = cfg("manual");
 let vless = outbound(manual, "proxy-1-out");

@@ -1040,7 +1040,11 @@ function ensure_imported_vpn_lx() {
 // a clear error instead of shipping a broken config.
 function ensure_desync_outbound_supported() {
     let version = variant_state.read_version_state();
+    if (version == "" && ctx.detect_sing_box_version)
+        version = as_string(ctx.detect_sing_box_version() || "");
     let variant = variant_state.read_variant_marker();
+    if (variant == "" && match(version, /^v?0\.[0-9]+\.[0-9]+/) != null)
+        variant = "tachyon-core";
     if (core_profile.supports_desync(version, variant) === true)
         return;
     ctx.runtime_generate_unsupported("Native Desync requires tachyon-core 0.1.7 or newer (installed: " + as_string(version) + ")");
