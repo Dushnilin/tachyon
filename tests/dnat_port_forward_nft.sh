@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Port forwarding / DNAT isolation test:
 # 1. DNAT connections must be immune to TPROXY capture:
-#    - ct status dnat return must be placed at the top of mangle, proxy, and mangle_forward
+#    - ct status dnat return must be placed at the top of mangle and mangle_forward
+#    - proxy must clear the mark before returning DNAT connections
 #    - Firewall redirects must populate tachyon_dnat_tcp_v4 and add bypass return rules
 #    - Fully routed clients must check ct status dnat before marking
 # 2. inet fw4 forward must NEVER contain "meta mark ... return" (which drops forwarded packets)
@@ -77,12 +78,12 @@ ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$ROOT_DIR/tachyon/files/usr/lib/nft/
   TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces "br-lan" \
   0x04000000 0x08000000 198.18.0.0/15 1602 0 localv6 tachyon_subnets6 tachyon_ip6_ports fc00::/18 ::1 0 off
 
-# Verify ct status dnat return is in mangle, proxy, and mangle_forward
+# Verify DNAT bypass in each chain, including proxy's mark reset.
 grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+mangle[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \
   fail "expected ct status dnat return in chain mangle"
 
-grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+proxy[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \
-  fail "expected ct status dnat return in chain proxy"
+grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+proxy[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+meta[[:space:]]+mark[[:space:]]+set[[:space:]]+0[[:space:]]+return' "$NFT_LOG" || \
+  fail "expected ct status dnat meta mark set 0 return in chain proxy"
 
 grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+mangle_forward[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \
   fail "expected ct status dnat return in chain mangle_forward"
