@@ -210,7 +210,7 @@ describe('diagnostic masking', () => {
       'url https://example.org/path and /example.net/path',
       'daemon.err sing-box[1]: host openwrt.org',
       'embedded xexample.com should remain unchanged',
-    ].join('\\n');
+    ].join('\n');
 
     const masked = maskLogText(raw);
 
