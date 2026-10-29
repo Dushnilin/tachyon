@@ -166,7 +166,10 @@ function worker() {
             remove_rule();
             last_cgroup = "";
         }
-        sleep(info.available ? 60000 : 5000);
+        if (info.available)
+            sleep(60000);
+        else
+            sleep(5000);
     }
     remove_rule();
 }

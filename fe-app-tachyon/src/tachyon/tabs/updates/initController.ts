@@ -69,6 +69,11 @@ import {
 } from './notifications';
 import { computeSystemInfoMutation } from './mutations';
 import {
+  normalizeSteerModules,
+  steerModulesUciArgs,
+  type SteerModule,
+} from './steerModules';
+import {
   COMPONENT_REPO_URLS,
   getCheckAction,
   getComponentBackupVersion as getComponentBackupVersionHelper,
@@ -2333,6 +2338,20 @@ async function refreshEngineInfo(): Promise<void> {
 }
 
 let selectedEngineOverride: string | null = null;
+const steerModulesOverride: SteerModule[] | null = null;
+
+export async function persistSteerModules(
+  selection: SteerModule[],
+): Promise<void> {
+  try {
+    for (const args of steerModulesUciArgs(selection)) {
+      await TachyonShellMethods.uciRunCommand(args);
+    }
+    await TachyonShellMethods.uciRunCommand(['commit', 'tachyon']);
+  } catch {
+    // Best effort
+  }
+}
 
 // One card for the routing engine: tachyon-core and sing-box variants in a
 // single place, with the active engine marked. Installing a variant also makes
@@ -2341,6 +2360,9 @@ function renderEngineCard(): Node {
   const info = engineInfoCache;
   const systemInfo = normalizeSingBoxVariantFields(
     store.get().diagnosticsSystemInfo,
+  );
+  void (
+    steerModulesOverride ?? normalizeSteerModules(systemInfo.steer_modules)
   );
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();

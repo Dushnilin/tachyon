@@ -1900,7 +1900,7 @@ function reload(reason) {
             as_string(SING_BOX_START_VERIFY_TIMEOUT)
         ]);
         if (status != 0) {
-            log_message("Reload verification failed after tachyon-core was reloaded; stopping Tachyon runtime", "fatal");
+            log_message("Reload verification failed after sing-box was reloaded; stopping Tachyon runtime", "fatal");
             cleanup_failed_runtime();
             return status;
         }

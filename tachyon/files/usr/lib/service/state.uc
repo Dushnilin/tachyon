@@ -872,7 +872,7 @@ function hup_sing_box_runtime() {
     // and fall back to a restart only when the process does not survive it.
     let active_pid = sing_box_service_pid_runtime();
     if (active_pid > 0 && try_sighup_reload(active_pid)) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via tachyon-core SIGHUP (graceful)" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via sing-box SIGHUP (graceful)" ]);
         return;
     }
 

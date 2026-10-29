@@ -51,7 +51,7 @@ ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); if 
 assert_eq "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/twitch.srs" \
   "$(ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); print(rulesets.community_url("twitch"));')" \
   "twitch community ruleset url"
-assert_eq "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon-core/twitch.trs" \
+assert_eq "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/twitch.trs" \
   "$(ucode -L "$TACHYON_LIB" -e 'let rulesets = require("tachyon_core.rulesets"); print(rulesets.community_trs_url("twitch"));')" \
   "twitch community trs ruleset url"
 assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/twitch.srs" \

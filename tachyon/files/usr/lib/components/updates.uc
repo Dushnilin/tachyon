@@ -2289,9 +2289,12 @@ function service_proxy_address(settings, purpose) {
 function download_to_file(url, filepath, proxy_address) {
     let core_url_mod = core_url_module_or_null();
     let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ? core_url_mod.download_candidates(url) : [ url ];
+    let had_existing = file_nonempty(filepath);
+    let existing_backup = had_existing ? fs.readfile(filepath) : null;
 
     // download_one: try url via the given proxy (or direct if proxy=="")
     function download_one(target_url, proxy_addr) {
+        remove_file(filepath);
         if (command_exists("curl")) {
             let curl_args = [ "curl", "--connect-timeout", "5", "-m", "15", "-y", "6", "-Y", "32768", "-fsSL" ];
             if (as_string(proxy_addr) != "") {
@@ -2343,7 +2346,9 @@ function download_to_file(url, filepath, proxy_address) {
         }
     }
 
-    if (file_nonempty(filepath)) {
+    remove_file(filepath);
+    if (had_existing && existing_backup != null) {
+        write_file(filepath, existing_backup);
         log_message("Failed to download " + as_string(url) + " (tried direct and mirrors); keeping existing cached file on disk", "warn");
         return true;
     }

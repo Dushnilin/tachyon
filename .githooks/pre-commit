@@ -9,5 +9,5 @@ npm run build
 npm run format
 
 cd ..
-git add fe-app-tachyon/locales/ luci-app-tachyon/po/ luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js
+git add fe-app-tachyon/src/ fe-app-tachyon/locales/ luci-app-tachyon/po/ luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/
 echo "==> [pre-commit] Frontend and locales actualized & staged."

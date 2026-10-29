@@ -302,7 +302,7 @@ function build_desired_nftables(opts) {
 function build_desired_routing(opts) {
     let enabled = is_service_enabled();
     let is_steer = is_engine_steer();
-    let settings = read_uci_section(CONFIG_NAME, "settings");
+    let settings = get_settings();
     let proxy_mode = lc(trim(as_string(settings.proxy_mode || "tproxy")));
     let need_tproxy_routing = proxy_mode != "tun" && proxy_mode != "socks";
 

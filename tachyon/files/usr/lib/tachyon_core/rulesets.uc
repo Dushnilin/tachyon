@@ -20,7 +20,7 @@ const SRS_GEOSITE_RU_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rul
 const SRS_GEOIP_US_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/us.srs";
 const SRS_GEOIP_CN_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs";
 const SRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box";
-const TRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon-core";
+const TRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon";
 const SRS_ROSCOMVPN_GEOSITE_BASE = "https://raw.githubusercontent.com/hydraponique/roscomvpn-geosite/master/release/sing-box";
 const SRS_RUNETFREEDOM_GEOSITE_BASE = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite";
 
@@ -307,8 +307,7 @@ function community_trs_urls(name) {
     if (custom_srs != "")
         return [ replace(custom_srs, /\/+$/, "") + "/" + canonical + ".trs" ];
     return [
-        TRS_TACHYON_LISTS_BASE + "/" + canonical + ".trs",
-        SRS_TACHYON_LISTS_BASE + "/" + canonical + ".trs"
+        TRS_TACHYON_LISTS_BASE + "/" + canonical + ".trs"
     ];
 }
 
