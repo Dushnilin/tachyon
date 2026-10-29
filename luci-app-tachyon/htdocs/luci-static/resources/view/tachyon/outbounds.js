@@ -102,6 +102,25 @@ function isoToFlagEmoji(iso) {
   );
 }
 
+function poolServerName(rawName, rawPrefix) {
+  const name = String(rawName || "").trim();
+  const prefix = String(rawPrefix || "").trim();
+  if (!name) return "";
+  if (!prefix) return name;
+  const fullPrefix = `${prefix}: `;
+  return name.startsWith(fullPrefix) ? name.slice(fullPrefix.length) : name;
+}
+
+function serverNameList(val) {
+  if (!val) return [];
+  if (Array.isArray(val))
+    return val.map((v) => String(v).trim()).filter(Boolean);
+  return String(val)
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
 function loadGlobalPoolChoices() {
   const secNames = (uci.sections(UCI_PACKAGE, "section") || [])
     .map((s) => s[".name"])
@@ -164,7 +183,7 @@ function loadGlobalPoolChoices() {
 
       Object.entries(names).forEach(([tag, rawName]) => {
         if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
-        const name = String(rawName || "").trim();
+        const name = poolServerName(rawName, prefixes[tag]);
         if (!name) return;
         const proto = String(protocols[tag] || "").toUpperCase();
         if (proto === "URLTEST" || proto === "SELECTOR") return;
@@ -258,7 +277,9 @@ function createChipToggleBar(inputEl, choices, isUpper) {
 }
 
 function createServerChecklistPicker(inputEl) {
-  const container = E("div", { style: "margin-top: 6px;" });
+  const container = E("div", {
+    style: "margin-top: 6px; min-width: 0; max-width: 100%;",
+  });
   const searchInput = E("input", {
     type: "text",
     class: "cbi-input-text",
@@ -267,7 +288,7 @@ function createServerChecklistPicker(inputEl) {
   });
   const listBox = E("div", {
     style:
-      "max-height: 140px; overflow-y: auto; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px;",
+      "max-height: 140px; min-width: 0; max-width: 100%; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px;",
   });
   let allServers = [];
 
@@ -286,7 +307,7 @@ function createServerChecklistPicker(inputEl) {
       return;
     }
     const q = searchInput.value.trim().toLowerCase();
-    const selected = new Set(asArray(inputEl.value));
+    const selected = new Set(serverNameList(inputEl.value));
     const filtered = q
       ? allServers.filter(
           (s) =>
@@ -303,13 +324,13 @@ function createServerChecklistPicker(inputEl) {
           {
             type: "button",
             class: "btn cbi-button",
-            style: `padding: 2px 7px; font-size: 11px; line-height: 1.35; border-radius: 6px; ${
+            style: `padding: 2px 7px; font-size: 11px; line-height: 1.35; border-radius: 6px; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${
               active
                 ? "background: rgba(139, 92, 246,0.22); border-color: #8b5cf6; font-weight: 600;"
                 : "opacity: 0.82;"
             }`,
             click: () => {
-              const cur = asArray(inputEl.value);
+              const cur = serverNameList(inputEl.value);
               const idx = cur.indexOf(srv.value);
               if (idx >= 0) cur.splice(idx, 1);
               else cur.push(srv.value);
@@ -513,9 +534,9 @@ function summarizeOutboundGroup(groupObj) {
   const excC = asArray(groupObj.exclude_countries);
   if (excC.length)
     parts.push(`-${_("Flags")}: ${excC.join(", ").toUpperCase()}`);
-  const incSrv = asArray(groupObj.include_outbounds);
+  const incSrv = serverNameList(groupObj.include_outbounds);
   if (incSrv.length) parts.push(`+${_("Servers")}: ${incSrv.length}`);
-  const excSrv = asArray(groupObj.exclude_outbounds);
+  const excSrv = serverNameList(groupObj.exclude_outbounds);
   if (excSrv.length) parts.push(`-${_("Servers")}: ${excSrv.length}`);
   const incRx = asArray(groupObj.include_regex);
   if (incRx.length) parts.push(`+${_("Regex")}: ${incRx.join(", ")}`);
@@ -636,7 +657,7 @@ function showOutboundGroupModal(existingId, onSaved) {
   const incOutboundsInput = E("input", {
     type: "text",
     class: "cbi-input-text",
-    value: asArray(grp.include_outbounds).join(", "),
+    value: serverNameList(grp.include_outbounds).join(", "),
     placeholder: _(
       "Select servers below or enter comma-separated server names",
     ),
@@ -646,7 +667,7 @@ function showOutboundGroupModal(existingId, onSaved) {
   const excOutboundsInput = E("input", {
     type: "text",
     class: "cbi-input-text",
-    value: asArray(grp.exclude_outbounds).join(", "),
+    value: serverNameList(grp.exclude_outbounds).join(", "),
     placeholder: _(
       "Select servers below or enter comma-separated server names",
     ),
@@ -817,11 +838,15 @@ function showOutboundGroupModal(existingId, onSaved) {
   const fieldRow = (label, input, hint, extraNode) =>
     E("div", { class: "cbi-value" }, [
       E("label", { class: "cbi-value-title" }, label),
-      E("div", { class: "cbi-value-field" }, [
-        input,
-        extraNode || "",
-        hint ? E("div", { class: "cbi-value-description" }, hint) : "",
-      ]),
+      E(
+        "div",
+        { class: "cbi-value-field", style: "min-width: 0; max-width: 100%;" },
+        [
+          input,
+          extraNode || "",
+          hint ? E("div", { class: "cbi-value-description" }, hint) : "",
+        ],
+      ),
     ]);
 
   ui.showModal(
@@ -1005,6 +1030,12 @@ function showOutboundGroupModal(existingId, onSaved) {
                   else uci.unset(UCI_PACKAGE, rawId, key);
                 };
 
+                const setServerListOrUnset = (key, rawText) => {
+                  const arr = serverNameList(rawText);
+                  if (arr.length) uci.set(UCI_PACKAGE, rawId, key, arr);
+                  else uci.unset(UCI_PACKAGE, rawId, key);
+                };
+
                 setListOrUnset("source_refs", srcRefsInput.value, false);
                 setCsvListOrUnset("include_prefixes", incPfxInput.value);
                 setCsvListOrUnset("exclude_prefixes", excPfxInput.value);
@@ -1018,8 +1049,14 @@ function showOutboundGroupModal(existingId, onSaved) {
                   excCountriesInput.value,
                   true,
                 );
-                setCsvListOrUnset("include_outbounds", incOutboundsInput.value);
-                setCsvListOrUnset("exclude_outbounds", excOutboundsInput.value);
+                setServerListOrUnset(
+                  "include_outbounds",
+                  incOutboundsInput.value,
+                );
+                setServerListOrUnset(
+                  "exclude_outbounds",
+                  excOutboundsInput.value,
+                );
                 setCsvListOrUnset("include_regex", incRegexInput.value);
                 setCsvListOrUnset("exclude_regex", excRegexInput.value);
 

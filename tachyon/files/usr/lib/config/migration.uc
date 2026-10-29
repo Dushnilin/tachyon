@@ -840,6 +840,9 @@ function migrate_interface_item_settings(ctx, section) {
     let seen_values = {};
 
     for (let child in ctx.model.section_interface || []) {
+        let child_id = section_name(child);
+        if (child_id != "")
+            seen_values[child_id] = true;
         if (option(child, "section", "") != owner)
             continue;
 
@@ -2452,13 +2455,19 @@ function migrate_modular_entities_v1(ctx) {
             add_list_unique(ctx, section, "outbound_source_refs", iface_src_id);
         }
 
+        let section_iface_ids = {};
+        for (let si in (ctx.model.section_interface || [])) {
+            let si_id = section_name(si);
+            if (si_id != "")
+                section_iface_ids[si_id] = true;
+        }
         let direct_ifaces = list_option(section, "interfaces");
         let single_iface = trim(option(section, "interface", ""));
         if (single_iface != "" && index(direct_ifaces, single_iface) < 0)
             push(direct_ifaces, single_iface);
         for (let iname in direct_ifaces) {
             iname = trim(as_string(iname));
-            if (iname == "")
+            if (iname == "" || section_iface_ids[iname])
                 continue;
             let iface_src_id = "src_iface_" + sanitize_uci_id(iname);
             let iface_src = create_named_section(ctx, "outbound_source", iface_src_id);
@@ -2513,22 +2522,25 @@ function migrate_modular_entities_v1(ctx) {
         }
 
         // 3. Extract urltest & priority_group children into reusable balancer entities
+        let sec_bal_refs = list_option(section, "balancer_refs");
         for (let ut in (ctx.model.urltest || [])) {
             if (option(ut, "section", "") != sname)
                 continue;
             let ut_id = section_name(ut);
             let ut_name = option(ut, "name", "Fastest");
+            let name_slug = sanitize_uci_id(option(ut, "name", ut_id));
+            if (name_slug == "item" && option(ut, "name", ut_id) != "item")
+                name_slug = sanitize_uci_id(ut_id);
+            let target_bal_id = "bal_" + sanitize_uci_id(sname + "_" + name_slug);
             let existing_bal = null;
             for (let b in (ctx.model.balancer || [])) {
-                if (option(b, "name", "") == ut_name && lc(option(b, "balancer_type", "urltest")) == "urltest") {
+                let bid = section_name(b);
+                if (bid == target_bal_id || (index(sec_bal_refs, bid) >= 0 && option(b, "name", "") == ut_name && lc(option(b, "balancer_type", "urltest")) == "urltest")) {
                     existing_bal = b;
                     break;
                 }
             }
-            let name_slug = sanitize_uci_id(option(ut, "name", ut_id));
-            if (name_slug == "item" && option(ut, "name", ut_id) != "item")
-                name_slug = sanitize_uci_id(ut_id);
-            let bal_id = existing_bal != null ? section_name(existing_bal) : ("bal_" + sanitize_uci_id(sname + "_" + name_slug));
+            let bal_id = existing_bal != null ? section_name(existing_bal) : target_bal_id;
             let bal = existing_bal != null ? existing_bal : create_named_section(ctx, "balancer", bal_id);
             set_option_if_missing(ctx, bal, "enabled", "1");
             set_option_if_missing(ctx, bal, "balancer_type", "urltest");
@@ -2566,17 +2578,19 @@ function migrate_modular_entities_v1(ctx) {
                 continue;
             let pg_id = section_name(pg);
             let pg_name = option(pg, "name", pg_id);
+            let name_slug = sanitize_uci_id(pg_name);
+            if (name_slug == "item" && pg_name != "item")
+                name_slug = sanitize_uci_id(pg_id);
+            let target_bal_id = "bal_" + sanitize_uci_id(sname + "_" + name_slug);
             let existing_bal = null;
             for (let b in (ctx.model.balancer || [])) {
-                if (option(b, "name", "") == pg_name && lc(option(b, "balancer_type", "urltest")) == "priority") {
+                let bid = section_name(b);
+                if (bid == target_bal_id || (index(sec_bal_refs, bid) >= 0 && option(b, "name", "") == pg_name && lc(option(b, "balancer_type", "urltest")) == "priority")) {
                     existing_bal = b;
                     break;
                 }
             }
-            let name_slug = sanitize_uci_id(pg_name);
-            if (name_slug == "item" && pg_name != "item")
-                name_slug = sanitize_uci_id(pg_id);
-            let bal_id = existing_bal != null ? section_name(existing_bal) : ("bal_" + sanitize_uci_id(sname + "_" + name_slug));
+            let bal_id = existing_bal != null ? section_name(existing_bal) : target_bal_id;
             let bal = existing_bal != null ? existing_bal : create_named_section(ctx, "balancer", bal_id);
             set_option_if_missing(ctx, bal, "enabled", "1");
             set_option_if_missing(ctx, bal, "balancer_type", "priority");

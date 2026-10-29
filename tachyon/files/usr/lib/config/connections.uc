@@ -2015,17 +2015,18 @@ function synthesized_priority_levels_for_balancer(group_id) {
     let owner_sec = resolve_balancer_owner_section(group_id);
     let group_refs = whitespace_list_value(bal, "outbound_group_levels");
     if (length(group_refs) == 0) {
-        let has_legacy = length(child_items_by_owner("priority_level", "group", group_id)) > 0;
-        if (!has_legacy) {
-            for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
-                if (option(pg, "name", "") == option(bal, "name", "")) {
-                    if (length(child_items_by_owner("priority_level", "group", section_name(pg))) > 0) {
-                        has_legacy = true;
-                        break;
-                    }
-                }
+        let has_legacy = false;
+        let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
+        for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
+            if (section_name(pg) == as_string(group_id) ||
+                (option(pg, "name", "") == option(bal, "name", "") &&
+                 (owner_sec_name == "" || option(pg, "section", "") == owner_sec_name))) {
+                has_legacy = true;
+                break;
             }
         }
+        if (!has_legacy && length(child_items_by_owner("priority_level", "group", group_id)) > 0)
+            has_legacy = true;
         if (!has_legacy) {
             group_refs = whitespace_list_value(bal, "group_refs");
             if (length(group_refs) == 0)
@@ -2177,11 +2178,23 @@ function priority_level_items(group_id) {
     if (length(result) == 0) {
         let bal = balancer_section(group_id);
         if (bal != null) {
+            let owner_sec = resolve_balancer_owner_section(group_id);
+            let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
             for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
-                if (option(pg, "name", "") == option(bal, "name", "")) {
+                if (option(pg, "name", "") == option(bal, "name", "") &&
+                    (owner_sec_name == "" || option(pg, "section", "") == owner_sec_name)) {
                     result = child_items_by_owner("priority_level", "group", section_name(pg));
                     if (length(result) > 0)
                         break;
+                }
+            }
+            if (length(result) == 0 && owner_sec_name != "") {
+                for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
+                    if (option(pg, "name", "") == option(bal, "name", "")) {
+                        result = child_items_by_owner("priority_level", "group", section_name(pg));
+                        if (length(result) > 0)
+                            break;
+                    }
                 }
             }
         }

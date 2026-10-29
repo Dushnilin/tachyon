@@ -947,7 +947,7 @@ function priority_levels_with_outbounds(group_id, urltest_candidate_tags, state)
         });
     }
 
-    if (length(result) == 0 && length(array_or_empty(urltest_candidate_tags)) > 0) {
+    if (length(result) == 0 && connections.balancer_section(group_id) != null && length(array_or_empty(urltest_candidate_tags)) > 0) {
         let pool_outbounds = [];
         for (let tag_name in array_or_empty(urltest_candidate_tags)) {
             tag_name = as_string(tag_name);
@@ -1648,6 +1648,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
                 push(source_level_entries, {
                     id: src_id,
                     displayName: src != null ? (option(src, "name", src_id) || src_id) : src_id,
+                    is_dpi: is_dpi,
                     outbounds: this_src_tags
                 });
             }
@@ -1675,7 +1676,36 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     if (sel_mode == "priority_failover" || (sel_mode != "default" && has_dpi_source)) {
         let auto_levels = [];
         let lvl_order = 1;
+        let prefer_balancer_for_non_dpi = sel_mode != "priority_failover" && (length(urltest_tags) > 0 || length(priority_tags) > 0);
+        let added_balancers = false;
+        let append_balancer_levels = () => {
+            if (added_balancers)
+                return;
+            added_balancers = true;
+            for (let ut_tag in urltest_tags) {
+                push(auto_levels, {
+                    id: ut_tag,
+                    displayName: ut_tag,
+                    order: lvl_order++,
+                    direct: false,
+                    outbounds: [ ut_tag ]
+                });
+            }
+            for (let pr_tag in priority_tags) {
+                push(auto_levels, {
+                    id: pr_tag,
+                    displayName: pr_tag,
+                    order: lvl_order++,
+                    direct: false,
+                    outbounds: [ pr_tag ]
+                });
+            }
+        };
         for (let entry in source_level_entries) {
+            if (prefer_balancer_for_non_dpi && !entry.is_dpi) {
+                append_balancer_levels();
+                continue;
+            }
             push(auto_levels, {
                 id: entry.id,
                 displayName: entry.displayName,
@@ -1684,15 +1714,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
                 outbounds: entry.outbounds
             });
         }
-        for (let ut_tag in urltest_tags) {
-            push(auto_levels, {
-                id: ut_tag,
-                displayName: ut_tag,
-                order: lvl_order++,
-                direct: false,
-                outbounds: [ ut_tag ]
-            });
-        }
+        append_balancer_levels();
         if (length(auto_levels) >= 2) {
             let h_url = trim(option(section, "section_health_url", "https://www.gstatic.com/generate_204"));
             if (h_url == "")
@@ -1739,7 +1761,9 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let saved_selector_state = read_json_file(persistent_selector_file);
     if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
         let saved_target = as_string(saved_selector_state[selector_tag]);
-        if (index(selector_outbounds, saved_target) >= 0)
+        let auto_balancer_preferred = sel_mode != "default" && sel_mode != "priority_failover" && !first_is_dpi && (length(urltest_tags) > 0 || length(priority_tags) > 0);
+        let saved_is_balancer = index(urltest_tags, saved_target) >= 0 || index(priority_tags, saved_target) >= 0;
+        if (index(selector_outbounds, saved_target) >= 0 && (!auto_balancer_preferred || saved_is_balancer))
             selector_default = saved_target;
     }
 

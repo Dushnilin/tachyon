@@ -312,7 +312,9 @@ function fixture_probe(latencies, tag_name) {
 // Returns null when the answer is not available, and the caller then falls
 // back to probing the nodes one by one.
 let cached_delays_mtime = -1;
+let cached_delays_at = -1;
 let cached_delays = null;
+const CLASH_DELAYS_CACHE_TTL_S = 10;
 // A fixture can hand the snapshot in directly, so the ordering logic is
 // testable without a running core.
 let fixture_delays_path = "";
@@ -334,7 +336,9 @@ function clash_delays_snapshot() {
     let cfg_path = "/etc/tachyon-core/config.json";
     let st = fs.stat(cfg_path);
     let mtime = st ? int(st.mtime || 0) : 0;
-    if (cached_delays_mtime == mtime && cached_delays != null)
+    let now = now_seconds();
+    if (cached_delays_mtime == mtime && cached_delays != null &&
+        cached_delays_at >= 0 && (now - cached_delays_at) < CLASH_DELAYS_CACHE_TTL_S)
         return cached_delays;
 
     let info = priority_clash_info();
@@ -346,6 +350,7 @@ function clash_delays_snapshot() {
     let res = common.command_capture(command_from_args(curl_args));
     if (res.status != 0) {
         cached_delays_mtime = mtime;
+        cached_delays_at = now;
         cached_delays = null;
         return null;
     }
@@ -370,6 +375,7 @@ function clash_delays_snapshot() {
     }
 
     cached_delays_mtime = mtime;
+    cached_delays_at = now;
     cached_delays = delays;
     return delays;
 }
@@ -400,6 +406,7 @@ function choose_from_level(group, level_index, probe, skip_tag) {
     // since the last measurement - so the order only decides who is tried
     // first, and the first node that actually answers wins.
     let measured = group.pick_fastest ? clash_delays_snapshot() : null;
+    let ordered_tags = {};
     if (measured != null) {
         let ordered = [];
         let unordered = [];
@@ -413,6 +420,7 @@ function choose_from_level(group, level_index, probe, skip_tag) {
                 push(unordered, tag_name);
                 continue;
             }
+            ordered_tags[as_string(tag_name)] = true;
             push(ordered, { tag: tag_name, delay: delay });
         }
         sort(ordered, function(a, b) { return a.delay - b.delay; });
@@ -433,7 +441,7 @@ function choose_from_level(group, level_index, probe, skip_tag) {
         if (!result.alive)
             continue;
 
-        if (!group.pick_fastest)
+        if (!group.pick_fastest || ordered_tags[as_string(tag_name)])
             return {
                 tag: tag_name,
                 levelIndex: level_index,

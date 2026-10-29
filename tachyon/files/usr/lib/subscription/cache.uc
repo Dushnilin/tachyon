@@ -1583,12 +1583,19 @@ function persist_subscription_cache(source_section, subscription_json_path, subs
         !write_text_if_changed(persistent_device_headers, effective_device_headers_signature))
         return false;
 
+    let runtime_metadata = runtime_metadata_path(cache_key);
     if (metadata_path != null && metadata_path != "" && file_nonempty(metadata_path) && object_has_extra_keys(metadata_path)) {
         if (!copy_file_if_changed(metadata_path, persistent_metadata))
             return false;
+        if (ensure_dir(TACHYON_SUBSCRIPTION_METADATA_DIR))
+            copy_file_if_changed(metadata_path, runtime_metadata);
     }
     else if (!can_keep_previous_metadata) {
         unlink_path(persistent_metadata);
+        unlink_path(runtime_metadata);
+    }
+    else if (file_nonempty(persistent_metadata) && ensure_dir(TACHYON_SUBSCRIPTION_METADATA_DIR)) {
+        copy_file_if_changed(persistent_metadata, runtime_metadata);
     }
 
     return true;

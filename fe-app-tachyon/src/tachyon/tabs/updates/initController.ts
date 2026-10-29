@@ -2168,7 +2168,7 @@ function renderComponentCard(card: ComponentCard) {
       : null;
 
   if (detailsContainer) {
-    headerChildren.push(detailsContainer);
+    header.appendChild(detailsContainer);
   }
 
   const primaryActions: ComponentActionButton[] = [];
@@ -2565,7 +2565,7 @@ function renderEngineCard(): Node {
       : null;
 
   if (detailsContainer) {
-    headerChildren.push(detailsContainer);
+    header.appendChild(detailsContainer);
   }
 
   // ── Variant selector: tachyon-core + sing-box flavours in one dropdown ────────
@@ -2731,7 +2731,10 @@ function renderEngineCard(): Node {
     },
   });
 
-  const selectedCheckComponent: Tachyon.ComponentName = 'sing_box';
+  const isSelectedSingBox = true;
+  const selectedCheckComponent: Tachyon.ComponentName = isSelectedSingBox
+    ? 'sing_box'
+    : 'steer';
 
   // ── "Check update" button for selected/installed engine ────────────────────
   const checkUpdateAction: ComponentActionButton = {

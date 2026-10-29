@@ -61,6 +61,13 @@ move_file_source="$(sed -n '/^function move_file(/,/^}/p' "$CACHE_UC")"
 if grep -Fq 'unlink_path(target)' <<<"$move_file_source"; then
   fail "subscription cache replacement must keep the current file until atomic rename succeeds"
 fi
+persist_cache_source="$(sed -n '/^function persist_subscription_cache(/,/^}/p' "$CACHE_UC")"
+grep -Fq 'let runtime_metadata = runtime_metadata_path(cache_key);' <<<"$persist_cache_source" ||
+  fail "persist_subscription_cache must resolve runtime metadata path for the source cache key"
+grep -Fq 'copy_file_if_changed(metadata_path, runtime_metadata);' <<<"$persist_cache_source" ||
+  fail "persist_subscription_cache must refresh runtime metadata when headers are present"
+grep -Fq 'unlink_path(runtime_metadata);' <<<"$persist_cache_source" ||
+  fail "persist_subscription_cache must purge stale runtime metadata when headers are gone and URL changed"
 if grep -Fq 'remove-legacy-server-country-cache' "$CACHE_UC"; then
   fail "subscription/cache.uc must not expose the migrated legacy cache cleanup"
 fi
