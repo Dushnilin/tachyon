@@ -209,7 +209,7 @@ describe('diagnostic masking', () => {
       'hosts: example.com, next example.net',
       'url https://example.org/path and /example.net/path',
       'daemon.err sing-box[1]: host openwrt.org',
-      'embedded xexample.com should remain unchanged',
+      'embedded example.comx should remain unchanged',
     ].join('\n');
 
     const masked = maskLogText(raw);
@@ -217,7 +217,7 @@ describe('diagnostic masking', () => {
     expect(masked).toContain('hosts: *******, next *******');
     expect(masked).toContain('url ******* and /example.net/path');
     expect(masked).toContain('daemon.err sing-box[1]: host *******');
-    expect(masked).toContain('xexample.com');
+    expect(masked).toContain('example.comx');
     expect(masked).not.toContain('example.org');
     expect(masked).not.toContain('openwrt.org');
   });
