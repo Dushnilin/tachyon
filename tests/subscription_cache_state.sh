@@ -478,6 +478,44 @@ cat >"$WORK_DIR/persist-empty/empty.metadata.json" <<'JSON'
 {}
 JSON
 
+# A metadata-only refresh must update the runtime source as well as the
+# persistent fallback. Prepare prefers the runtime source, so leaving it stale
+# makes a later rebuild resurrect an old plan even after a successful refresh.
+cat >"$WORK_DIR/runtime/tmp-sing-box/subscriptions/proxy-subscription-1.metadata.json" <<'JSON'
+{"version":1,"title":"WolfPN","traffic":{"used":214748364800,"total":322122547200}}
+JSON
+cat >"$WORK_DIR/persist-fresh/fresh.metadata.json" <<'JSON'
+{"version":1,"title":"WolfPN","traffic":{"used":42949672960,"total":1073741824000}}
+JSON
+runtime_env cache_ucode persist-source-cache \
+  proxy-subscription-1 \
+  "$WORK_DIR/persist-runtime/proxy-subscription-1.json" \
+  'https://example.com/one.txt' \
+  'v2rayN' \
+  "$WORK_DIR/persist-fresh/fresh.metadata.json"
+cmp "$WORK_DIR/persist-fresh/fresh.metadata.json" \
+  "$WORK_DIR/runtime/tmp-sing-box/subscriptions/proxy-subscription-1.metadata.json" ||
+  fail "metadata-only refresh must replace the old runtime plan"
+cmp "$WORK_DIR/persist-fresh/fresh.metadata.json" \
+  "$WORK_DIR/runtime/persistent/proxy-subscription-1.metadata.json" ||
+  fail "metadata-only refresh must update the persistent fallback"
+
+# Reassemble section metadata from the runtime source, as prepare does, rather
+# than checking only the immediate metadata output of the download.
+cache_ucode append-metadata-file "$WORK_DIR/rebuilt-metadata.json" \
+  "$WORK_DIR/runtime/tmp-sing-box/subscriptions/proxy-subscription-1.metadata.json" \
+  1 proxy-subscription-1
+runtime_env cache_ucode write-subscription-metadata \
+  "$WORK_DIR/runtime/run/section-cache" 8 proxy "$WORK_DIR/rebuilt-metadata.json"
+node - "$WORK_DIR/runtime/run/section-cache/proxy.json" <<'JS'
+const fs = require('fs');
+const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).subscriptionMetadata[0];
+if (metadata.traffic.total !== 1073741824000 || metadata.traffic.used !== 42949672960) {
+  console.error('rebuilding the section resurrected old subscription traffic');
+  process.exit(1);
+}
+JS
+
 runtime_env cache_ucode persist-source-cache \
   proxy-subscription-1 \
   "$WORK_DIR/persist-runtime/proxy-subscription-1.json" \
@@ -494,6 +532,9 @@ if (value.title !== "WolfPN") {
   process.exit(1);
 }
 JS
+cmp "$WORK_DIR/runtime/persistent/proxy-subscription-1.metadata.json" \
+  "$WORK_DIR/runtime/tmp-sing-box/subscriptions/proxy-subscription-1.metadata.json" ||
+  fail "empty fresh metadata for the same source must preserve both current copies"
 
 runtime_env cache_ucode persist-source-cache \
   proxy-subscription-1 \
@@ -503,6 +544,8 @@ runtime_env cache_ucode persist-source-cache \
   "$WORK_DIR/persist-empty/empty.metadata.json"
 [ ! -e "$WORK_DIR/runtime/persistent/proxy-subscription-1.metadata.json" ] ||
   fail "changed subscription URL with empty metadata must drop stale metadata"
+[ ! -e "$WORK_DIR/runtime/tmp-sing-box/subscriptions/proxy-subscription-1.metadata.json" ] ||
+  fail "changed subscription URL with empty metadata must drop stale runtime metadata"
 
 # A cache fetched under other settings used to be deleted before the download,
 # so a failed download left the source with no nodes at all. It must stay on

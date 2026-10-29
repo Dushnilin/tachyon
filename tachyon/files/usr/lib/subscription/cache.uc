@@ -1591,6 +1591,18 @@ function persist_subscription_cache(source_section, subscription_json_path, subs
         unlink_path(persistent_metadata);
     }
 
+    // Prepare prefers runtime metadata. Keep it in sync even when only the
+    // traffic headers changed and the subscription outbounds stayed identical.
+    let runtime_metadata = runtime_metadata_path(source_section);
+    if (file_nonempty(persistent_metadata) && object_has_extra_keys(persistent_metadata)) {
+        ensure_dir(TMP_SUBSCRIPTION_FOLDER);
+        if (!copy_file_if_changed(persistent_metadata, runtime_metadata))
+            return false;
+    }
+    else {
+        unlink_path(runtime_metadata);
+    }
+
     return true;
 }
 
