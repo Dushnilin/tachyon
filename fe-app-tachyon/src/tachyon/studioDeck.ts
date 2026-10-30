@@ -3,6 +3,7 @@ import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
 import { openConnectionWizardModal } from './connectionWizard';
 import { tr } from './helpers/i18n';
+import { openServerInfoModalForSection } from './tabs/dashboard/inboundServers';
 
 const UCI_PACKAGE = 'tachyon';
 
@@ -2540,8 +2541,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       const triggerServerInfoModal = (ev: MouseEvent) => {
         ev.preventDefault();
         ev.stopPropagation();
+        if (openServerInfoModalForSection(sid)) {
+          return;
+        }
         const backingBtn = containerEl.querySelector(
-          `tr[data-sid="${sid}"] .cbi-button-action`,
+          `#cbi-${UCI_PACKAGE}-${sid} .fkp-server-icon-button, tr[data-sid="${sid}"] .fkp-server-icon-button, tr[data-sid="${sid}"] .cbi-button-action`,
         ) as HTMLElement | null;
         if (backingBtn) {
           backingBtn.click();

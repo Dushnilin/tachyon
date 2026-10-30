@@ -74,6 +74,10 @@ function createDummyElement(tag: string): any {
       if (!listeners[type]) listeners[type] = [];
       listeners[type].push(cb);
     },
+    click() {
+      const cbs = listeners.click || [];
+      cbs.forEach((fn) => fn({ preventDefault() {}, stopPropagation() {} }));
+    },
     appendChild(node: any) {
       if (node !== null && node !== undefined && node !== '') {
         if (typeof node === 'object') {
@@ -375,5 +379,56 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     expect(deck.textContent).toContain('VLESS');
     expect(deck.textContent).toContain('GRPC');
     expect(deck.textContent).toContain('XHTTP');
+  });
+
+  it('triggers showServerInfoModal when clicking QR / Client Link on server Studio Deck card', async () => {
+    const inboundServersMod = await import('../inboundServers');
+    const showServerInfoModalMock = vi.fn();
+    const containerEl = createDummyElement('div');
+    const mockServerSectionRef = {
+      sectiontype: 'server',
+      cfgsections: () => ['TewFai'],
+      renderMoreOptionsModal: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    inboundServersMod.registerServerSectionController(mockServerSectionRef, {
+      showServerInfoModal: showServerInfoModalMock,
+    });
+
+    (globalThis as any).uci.get = (
+      _pkg: string,
+      sec: string,
+      opt?: string,
+    ): any => {
+      const serverData: Record<string, any> = {
+        '.name': 'TewFai',
+        '.type': 'server',
+        enabled: '1',
+        name: 'TewFai',
+        protocol: 'tewfai',
+        listen_port: '8443',
+      };
+      if (sec === 'TewFai') {
+        return opt ? serverData[opt] : serverData;
+      }
+      return undefined;
+    };
+
+    studioDeckMod.mountTachyonStudioDeck({
+      type: 'server',
+      sectionRef: mockServerSectionRef,
+      containerEl,
+    });
+
+    const actionBtns = containerEl.querySelectorAll(
+      '.tachyon-studio-action-btn',
+    );
+    expect(actionBtns.length).toBeGreaterThanOrEqual(2);
+    const qrBtn = actionBtns[0];
+    qrBtn.click();
+
+    expect(showServerInfoModalMock).toHaveBeenCalledWith('TewFai');
+    expect(mockServerSectionRef.renderMoreOptionsModal).not.toHaveBeenCalled();
   });
 });

@@ -1724,18 +1724,21 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     store.subscribe((_next, _prev, diff) => {
       if (diff.servicesInfoWidget) {
         const srv = store.get().servicesInfoWidget;
-        const dot = sidebarEl.querySelector('.tachyon-sidebar__status-dot');
+        const dots = sidebarEl.querySelectorAll('.tachyon-sidebar__status-dot');
         const lbl = sidebarEl.querySelector('.tachyon-sidebar__status-label');
-        if (dot && lbl) {
-          const running = Boolean(srv?.data?.tachyonRunning);
-          const reloading = srv?.data?.tachyonStatus === 'reloading';
-          dot.className = `tachyon-sidebar__status-dot ${
-            reloading
-              ? 'tachyon-sidebar__status-dot--warn'
-              : running
-                ? 'tachyon-sidebar__status-dot--ok'
-                : 'tachyon-sidebar__status-dot--err'
-          }`;
+        const running = Boolean(srv?.data?.tachyonRunning);
+        const reloading = srv?.data?.tachyonStatus === 'reloading';
+        const dotClass = `tachyon-sidebar__status-dot ${
+          reloading
+            ? 'tachyon-sidebar__status-dot--warn'
+            : running
+              ? 'tachyon-sidebar__status-dot--ok'
+              : 'tachyon-sidebar__status-dot--err'
+        }`;
+        dots.forEach((dot) => {
+          dot.className = dotClass;
+        });
+        if (lbl) {
           lbl.textContent = reloading
             ? tr('Перезапуск...', 'Reloading...')
             : running

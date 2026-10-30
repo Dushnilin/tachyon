@@ -57,6 +57,7 @@ export {
 } from './tachyon/tabs/dashboard/dashboardLayout';
 export {
   navigateToServerInbound,
+  openServerInfoModalForSection,
   registerServerSectionController,
   renderInboundServersDashboardWidget,
   renderServerTabInboundsOverview,

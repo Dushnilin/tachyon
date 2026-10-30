@@ -1731,6 +1731,14 @@ function stopServerTabPolling() {
   serverTabPollTimer = null;
 }
 
+export function openServerInfoModalForSection(sectionId: string): boolean {
+  if (registeredServerController?.showServerInfoModal) {
+    registeredServerController.showServerInfoModal(sectionId);
+    return true;
+  }
+  return false;
+}
+
 export function registerServerSectionController(
   sectionRef: any,
   callbacks: Omit<IServerSectionControllerCallbacks, 'sectionRef'> = {},

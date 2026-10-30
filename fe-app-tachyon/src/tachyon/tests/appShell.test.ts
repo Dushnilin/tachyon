@@ -183,6 +183,7 @@ import {
   setUiMode,
 } from '../appShell';
 import { openConnectionWizardModal } from '../connectionWizard';
+import { store } from '../services/store.service';
 
 describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
   beforeEach(() => {
@@ -276,6 +277,24 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(workspaceBody).toBeTruthy();
     expect(workspaceBody.querySelector('.cbi-tabmenu')).toBeTruthy();
     expect(workspaceBody.querySelector('#cbi-tachyon-dashboard')).toBeTruthy();
+
+    // Verify both mobile and footer sidebar status dots update when servicesInfoWidget transitions to running
+    store.set({
+      servicesInfoWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          tachyonRunning: true,
+          tachyonStatus: 'running',
+        } as any,
+      },
+    });
+    const statusDots = mapEl.querySelectorAll('.tachyon-sidebar__status-dot');
+    expect(statusDots.length).toBe(2);
+    for (const dot of statusDots) {
+      expect(dot.className).toContain('tachyon-sidebar__status-dot--ok');
+      expect(dot.className).not.toContain('tachyon-sidebar__status-dot--err');
+    }
   });
 
   it('opens Connection Wizard modal and saves UCI entities via uci.save()', async () => {
