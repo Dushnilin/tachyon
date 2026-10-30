@@ -6739,6 +6739,20 @@ function getLinkedSectionConditionId(section_id) {
 }
 
 function getSectionOrLinkedConditionOption(section_id, key) {
+  if (LINKED_CONDITION_OPTION_KEYS.has(key)) {
+    const condId = getLinkedSectionConditionId(section_id);
+    if (condId) {
+      const condVal = uci.get(UCI_PACKAGE, condId, key);
+      if (
+        condVal !== null &&
+        condVal !== undefined &&
+        condVal !== "" &&
+        (!Array.isArray(condVal) || condVal.length > 0)
+      ) {
+        return condVal;
+      }
+    }
+  }
   const direct = uci.get(UCI_PACKAGE, section_id, key);
   if (
     direct !== null &&
@@ -6761,14 +6775,21 @@ function syncLinkedConditionOption(section_id, key, value) {
   if (!LINKED_CONDITION_OPTION_KEYS.has(key)) return;
   const condId = getLinkedSectionConditionId(section_id);
   if (!condId) return;
+  const existing = uci.get(UCI_PACKAGE, condId, key);
   if (
     value === null ||
     value === undefined ||
     value === "" ||
     (Array.isArray(value) && value.length === 0)
   ) {
-    uci.unset(UCI_PACKAGE, condId, key);
-  } else {
+    if (existing !== undefined && existing !== null) {
+      uci.unset(UCI_PACKAGE, condId, key);
+    }
+  } else if (Array.isArray(value)) {
+    if (!stringArraysEqual(normalizeOptionValues(existing), value)) {
+      uci.set(UCI_PACKAGE, condId, key, value);
+    }
+  } else if (String(existing ?? "") !== String(value)) {
     uci.set(UCI_PACKAGE, condId, key, value);
   }
 }
@@ -6793,18 +6814,21 @@ function writeListOption(section_id, key, values) {
   const normalized = normalizeOptionValues(values);
   syncLinkedConditionOption(section_id, key, normalized);
 
-  if (
-    stringArraysEqual(
-      normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key)),
-      normalized,
-    )
-  ) {
+  const existingRaw = uci.get(UCI_PACKAGE, section_id, key);
+  if (stringArraysEqual(normalizeOptionValues(existingRaw), normalized)) {
     return;
   }
 
   if (normalized.length) {
     uci.set(UCI_PACKAGE, section_id, key, normalized);
-  } else {
+  } else if (existingRaw !== undefined && existingRaw !== null) {
+    uci.unset(UCI_PACKAGE, section_id, key);
+  }
+}
+
+function unsetIfPresent(section_id, key) {
+  const cur = uci.get(UCI_PACKAGE, section_id, key);
+  if (cur !== undefined && cur !== null) {
     uci.unset(UCI_PACKAGE, section_id, key);
   }
 }
@@ -9445,16 +9469,16 @@ function addDynamicConditionField(section, config) {
 
   o.write = function (section_id, value) {
     writeListOption(section_id, config.key, value);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    unsetIfPresent(section_id, `${config.key}_text`);
+    unsetIfPresent(section_id, `${config.key}_text_mode`);
     syncLinkedConditionOption(section_id, `${config.key}_text`, null);
     syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
   };
 
   o.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, config.key);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    unsetIfPresent(section_id, config.key);
+    unsetIfPresent(section_id, `${config.key}_text`);
+    unsetIfPresent(section_id, `${config.key}_text_mode`);
     syncLinkedConditionOption(section_id, config.key, null);
     syncLinkedConditionOption(section_id, `${config.key}_text`, null);
     syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
@@ -9496,15 +9520,15 @@ function addLocalDeviceSubnetDynamicField(section, config) {
   };
   o.write = function (section_id, value) {
     writeListOption(section_id, config.key, value);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    unsetIfPresent(section_id, `${config.key}_text`);
+    unsetIfPresent(section_id, `${config.key}_text_mode`);
     syncLinkedConditionOption(section_id, `${config.key}_text`, null);
     syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
   };
   o.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, config.key);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    unsetIfPresent(section_id, config.key);
+    unsetIfPresent(section_id, `${config.key}_text`);
+    unsetIfPresent(section_id, `${config.key}_text_mode`);
     syncLinkedConditionOption(section_id, config.key, null);
     syncLinkedConditionOption(section_id, `${config.key}_text`, null);
     syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
@@ -9567,22 +9591,27 @@ function addTextConditionField(section, config) {
     const normalized = value ? `${value}`.trim() : "";
 
     if (normalized.length) {
-      uci.set(UCI_PACKAGE, section_id, optionName, normalized);
+      if (
+        String(uci.get(UCI_PACKAGE, section_id, optionName) ?? "") !==
+        normalized
+      ) {
+        uci.set(UCI_PACKAGE, section_id, optionName, normalized);
+      }
       syncLinkedConditionOption(section_id, optionName, normalized);
     } else {
-      uci.unset(UCI_PACKAGE, section_id, optionName);
+      unsetIfPresent(section_id, optionName);
       syncLinkedConditionOption(section_id, optionName, null);
     }
 
     if (config.key !== optionName) {
-      uci.unset(UCI_PACKAGE, section_id, config.key);
+      unsetIfPresent(section_id, config.key);
       syncLinkedConditionOption(section_id, config.key, null);
     }
     if (legacyTextOptionName !== optionName) {
-      uci.unset(UCI_PACKAGE, section_id, legacyTextOptionName);
+      unsetIfPresent(section_id, legacyTextOptionName);
       syncLinkedConditionOption(section_id, legacyTextOptionName, null);
     }
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    unsetIfPresent(section_id, `${config.key}_text_mode`);
     syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
 
     if (typeof config.afterWrite === "function") {
@@ -9591,17 +9620,17 @@ function addTextConditionField(section, config) {
   };
 
   o.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, optionName);
+    unsetIfPresent(section_id, optionName);
     syncLinkedConditionOption(section_id, optionName, null);
     if (config.key !== optionName) {
-      uci.unset(UCI_PACKAGE, section_id, config.key);
+      unsetIfPresent(section_id, config.key);
       syncLinkedConditionOption(section_id, config.key, null);
     }
     if (legacyTextOptionName !== optionName) {
-      uci.unset(UCI_PACKAGE, section_id, legacyTextOptionName);
+      unsetIfPresent(section_id, legacyTextOptionName);
       syncLinkedConditionOption(section_id, legacyTextOptionName, null);
     }
-    uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+    unsetIfPresent(section_id, `${config.key}_text_mode`);
     syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
     if (typeof config.afterWrite === "function") {
       config.afterWrite(section_id);
@@ -9621,7 +9650,7 @@ var DOMAIN_LIST_HINTS = {
   ru_blocked:
     "[Маршрут: В Прокси / VPN или Обход DPI] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РКН без мёртвых сайтов)",
   ru_blocked_all:
-    "[Маршрут: В Прокси / VPN или Обход DPI] Полная нефильтрованная выгрузка всех доменов, поддоменов и зеркал из реестра блокировок РФ и ТСПУ",
+    "[Маршрут: В Прокси / VPN или Обход DPI] Полная выгрузка доменов и зеркал из реестра блокировок РФ (1.3M+ доменов; на роутерах ≤ 512 МБ ОЗУ автоматически используется оптимизированный ru_blocked для защиты от OOM)",
   antifilter:
     "[Маршрут: В Прокси / VPN или Обход DPI] Народный список доменов и сервисов, заблокированных РКН или замедляемых на ТСПУ в России",
   refilter:
@@ -10109,14 +10138,14 @@ function writeCustomRulesetReferences(section_id, values) {
     refs.filter((value) => !subnetRefSet.has(value)),
   );
   writeListOption(section_id, "rule_set_with_subnets", subnetRefs);
-  uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
+  unsetIfPresent(section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
 function writeDnsRulesetReferences(section_id, values) {
   writeListOption(section_id, "rule_set", uniqueDynamicListItems(values));
-  uci.unset(UCI_PACKAGE, section_id, "rule_set_with_subnets");
+  unsetIfPresent(section_id, "rule_set_with_subnets");
   syncLinkedConditionOption(section_id, "rule_set_with_subnets", null);
-  uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
+  unsetIfPresent(section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
 function readDependentServerNotices() {
@@ -13209,6 +13238,7 @@ function createSectionContent(section) {
   o.value("timestamp", _("TCP Timestamp PAWS (Backdated TSval)"));
   o.value("badseq", _("Out-of-window TCP Sequence (badseq)"));
   o.value("badsum", _("Invalid TCP Checksum (badsum)"));
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
   o.depends({ action: "desync", desync_preset: "fake_split" });
   o.depends({ action: "desync", desync_preset: "fake_disorder" });
@@ -13225,7 +13255,10 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.default = "1";
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
+  o.depends({ action: "desync", desync_preset: "fake_split" });
+  o.depends({ action: "desync", desync_preset: "fake_disorder" });
 
   o = section.taboption(
     "settings",
@@ -13237,7 +13270,17 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = "midsld";
+  o.value("midsld", _("midsld (Middle of SLD domain)"));
+  o.value("sni", _("sni (Start of SNI extension)"));
+  o.value("1", _("1 (Byte 1 after header)"));
+  o.value("2", _("2 (Byte 2)"));
+  o.value("3", _("3 (Byte 3)"));
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
+  o.depends({ action: "desync", desync_preset: "fake_split" });
+  o.depends({ action: "desync", desync_preset: "fake_disorder" });
+  o.depends({ action: "desync", desync_preset: "split" });
+  o.depends({ action: "desync", desync_preset: "disorder" });
 
   o = section.taboption(
     "settings",
@@ -13250,19 +13293,46 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.datatype = "range(1,64)";
   o.placeholder = "4";
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
+  o.depends({ action: "desync", desync_preset: "fake_split" });
+  o.depends({ action: "desync", desync_preset: "fake_disorder" });
+  o.depends({ action: "desync", desync_preset: "fake" });
 
   o = section.taboption(
     "settings",
     form.Value,
     "desync_fake_sni",
-    _("Fake SNI"),
-    _("Decoy hostname injected into fake ClientHello (e.g. www.google.com)"),
+    _("Fake SNI (Белый список РФ / Custom)"),
+    _(
+      "Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)",
+    ),
   );
   o.modalonly = true;
   o.rmempty = true;
-  o.placeholder = "www.google.com";
+  o.placeholder = "ya.ru";
+  o.value("", _("Auto (Clone target SNI / www.google.com)"));
+  o.value("ya.ru", "ya.ru (Яндекс — Белый список РФ)");
+  o.value("vk.com", "vk.com (ВКонтакте — Белый список РФ)");
+  o.value("max.ru", "max.ru (MAX — Белый список РФ)");
+  o.value("gosuslugi.ru", "gosuslugi.ru (Госуслуги — Белый список РФ)");
+  o.value("sberbank.ru", "sberbank.ru (Сбербанк — Белый список РФ)");
+  o.value("tbank.ru", "tbank.ru (Т-Банк — Белый список РФ)");
+  o.value("ozon.ru", "ozon.ru (Ozon — Белый список РФ)");
+  o.value("wildberries.ru", "wildberries.ru (Wildberries — Белый список РФ)");
+  o.value("rutube.ru", "rutube.ru (Rutube — Белый список РФ)");
+  o.value("dzen.ru", "dzen.ru (Дзен — Белый список РФ)");
+  o.value("avito.ru", "avito.ru (Авито — Белый список РФ)");
+  o.value("rzd.ru", "rzd.ru (РЖД — Белый список РФ)");
+  o.value("pochta.ru", "pochta.ru (Почта России — Белый список РФ)");
+  o.value("2gis.ru", "2gis.ru (2ГИС — Белый список РФ)");
+  o.value("mail.ru", "mail.ru (Mail.ru — Белый список РФ)");
+  o.value("www.google.com", "www.google.com (Google Global)");
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
+  o.depends({ action: "desync", desync_preset: "fake_split" });
+  o.depends({ action: "desync", desync_preset: "fake_disorder" });
+  o.depends({ action: "desync", desync_preset: "fake" });
 
   o = section.taboption(
     "settings",
@@ -13275,7 +13345,11 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.datatype = "range(1,20)";
   o.placeholder = "2";
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
+  o.depends({ action: "desync", desync_preset: "fake_split" });
+  o.depends({ action: "desync", desync_preset: "fake_disorder" });
+  o.depends({ action: "desync", desync_preset: "fake" });
 
   o = section.taboption(
     "settings",
@@ -13288,6 +13362,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.datatype = "uinteger";
   o.placeholder = "2";
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
 
   o = section.taboption(
@@ -13299,7 +13374,9 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.default = "1";
+  o.depends({ action: "desync", desync_preset: "auto" });
   o.depends({ action: "desync", desync_preset: "custom" });
+  o.depends({ action: "desync", desync_preset: "discord" });
 
   o = section.taboption(
     "settings",
@@ -13313,7 +13390,17 @@ function createSectionContent(section) {
   o.placeholder = "4";
   o.depends({
     action: "desync",
+    desync_preset: "auto",
+    desync_udp_fake: "1",
+  });
+  o.depends({
+    action: "desync",
     desync_preset: "custom",
+    desync_udp_fake: "1",
+  });
+  o.depends({
+    action: "desync",
+    desync_preset: "discord",
     desync_udp_fake: "1",
   });
 
@@ -13329,7 +13416,17 @@ function createSectionContent(section) {
   o.placeholder = "3";
   o.depends({
     action: "desync",
+    desync_preset: "auto",
+    desync_udp_fake: "1",
+  });
+  o.depends({
+    action: "desync",
     desync_preset: "custom",
+    desync_udp_fake: "1",
+  });
+  o.depends({
+    action: "desync",
+    desync_preset: "discord",
     desync_udp_fake: "1",
   });
 
@@ -15520,7 +15617,7 @@ function createSectionContent(section) {
     writeListOption(section_id, "geoip_country", value);
   };
   o.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "geoip_country");
+    unsetIfPresent(section_id, "geoip_country");
     syncLinkedConditionOption(section_id, "geoip_country", null);
   };
   [
@@ -15630,7 +15727,7 @@ function createSectionContent(section) {
     writeBuiltInRulesetReferences(section_id, values);
   };
   builtInRulesetOption.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "community_lists");
+    unsetIfPresent(section_id, "community_lists");
     syncLinkedConditionOption(section_id, "community_lists", null);
   };
   if (typeof main.attachCommunityListPicker === "function") {
@@ -15709,9 +15806,9 @@ function createSectionContent(section) {
     writeCustomRulesetReferences(section_id, value);
   };
   ruleSetOption.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "rule_set");
-    uci.unset(UCI_PACKAGE, section_id, "rule_set_with_subnets");
-    uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
+    unsetIfPresent(section_id, "rule_set");
+    unsetIfPresent(section_id, "rule_set_with_subnets");
+    unsetIfPresent(section_id, RULE_SET_ITEM_SETTINGS_KEY);
     syncLinkedConditionOption(section_id, "rule_set", null);
     syncLinkedConditionOption(section_id, "rule_set_with_subnets", null);
   };
@@ -15761,7 +15858,7 @@ function createSectionContent(section) {
     writeListOption(section_id, "domain_ip_lists", value);
   };
   domainIpListsOption.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "domain_ip_lists");
+    unsetIfPresent(section_id, "domain_ip_lists");
     syncLinkedConditionOption(section_id, "domain_ip_lists", null);
   };
   domainIpListsOption.validate = function (_section_id, value) {
@@ -15787,7 +15884,7 @@ function createSectionContent(section) {
     writeListOption(section_id, "domain_ip_lists", value);
   };
   dnsDomainListsOption.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "domain_ip_lists");
+    unsetIfPresent(section_id, "domain_ip_lists");
     syncLinkedConditionOption(section_id, "domain_ip_lists", null);
   };
   dnsDomainListsOption.validate = function (_section_id, value) {
@@ -15972,7 +16069,7 @@ function createSectionContent(section) {
     }
   };
   globalRulesOption.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "global_rules");
+    unsetIfPresent(section_id, "global_rules");
   };
   configureLiveDynamicListChoices(globalRulesOption, (section_id) =>
     globalRuleChoices(section_id),
@@ -16089,11 +16186,14 @@ function createSectionContent(section) {
   excludedProtocolOption.load = function (section_id) {
     return getConfigListValues(section_id, "excluded_protocol");
   };
+  excludedProtocolOption.cfgvalue = function (section_id) {
+    return getConfigListValues(section_id, "excluded_protocol");
+  };
   excludedProtocolOption.write = function (section_id, value) {
     writeListOption(section_id, "excluded_protocol", value);
   };
   excludedProtocolOption.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "excluded_protocol");
+    unsetIfPresent(section_id, "excluded_protocol");
     syncLinkedConditionOption(section_id, "excluded_protocol", null);
   };
 
@@ -16121,11 +16221,14 @@ function createSectionContent(section) {
   protocolOption.load = function (section_id) {
     return getConfigListValues(section_id, "protocol");
   };
+  protocolOption.cfgvalue = function (section_id) {
+    return getConfigListValues(section_id, "protocol");
+  };
   protocolOption.write = function (section_id, value) {
     writeListOption(section_id, "protocol", value);
   };
   protocolOption.remove = function (section_id) {
-    uci.unset(UCI_PACKAGE, section_id, "protocol");
+    unsetIfPresent(section_id, "protocol");
     syncLinkedConditionOption(section_id, "protocol", null);
   };
 

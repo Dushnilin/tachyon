@@ -418,6 +418,11 @@ function module_exports() {
         // Timeout
         bounded_command,
         get_timeout_prefix,
+        sleep_ms: function(ms) {
+            let delay = int(ms || 0);
+            if (delay > 0)
+                sleep(delay);
+        },
 
         // Backwards-compatible aliases for callers that haven't migrated yet
         command_status: function(command) {

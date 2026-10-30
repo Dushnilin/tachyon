@@ -128,6 +128,7 @@ let command_status = common.command_status;
 let command_success = common.command_success;
 let command_success_from_args = common.command_success_from_args;
 let read_json_file = common.read_json_file;
+let read_file = components_helpers.read_file;
 let write_json = common.write_json;
 let write_json_file = common.write_json_file;
 let write_file = common.write_file;
@@ -2153,12 +2154,17 @@ function component_auto_update_apply() {
     }
 
     let checked_components = automatic_component_check_names();
+    let now = now_seconds();
     for (let component in checked_components) {
         if (!component_is_auto_update_target(settings, component))
             continue;
 
-        run_automatic_component_update_check(component);
         let cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
+        let cache_age = now - int(cached.updated_at || 0);
+        if (cached.status == null || cached.status == "" || cache_age < 0 || cache_age >= 900) {
+            run_automatic_component_update_check(component);
+            cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
+        }
         if (cached.status == "outdated" || cached.status == "outdated_same_release") {
             if (trigger_component_auto_update(component, cached.latest_version)) {
                 break;
@@ -2620,18 +2626,20 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
             if (download_to_file(trs_url, tmpfile, service_proxy_address(settings, "lists")) &&
                 file_nonempty(tmpfile) &&
                 singbox_rulesets_module().is_usable_trs_file(tmpfile)) {
-                ensure_dir(TMP_RULESET_FOLDER);
-                copy_file(tmpfile, cached_trs_file);
                 let st = fs.stat(tmpfile);
                 let sz = st != null ? int(st.size || 0) : 0;
+                ensure_dir(TMP_RULESET_FOLDER);
                 if (!skip_flash_persist && sz > 0 && sz <= 524288) {
                     ensure_dir("/etc/tachyon/rulesets");
                     copy_file(tmpfile, persistent_trs_file);
                 } else if (sz > 524288) {
                     remove_file(persistent_trs_file);
                 }
+                if (!fs.rename(tmpfile, cached_trs_file)) {
+                    common.copy_file_stream(tmpfile, cached_trs_file);
+                    remove_file(tmpfile);
+                }
                 log_message("Successfully cached preset ruleset " + service + " (.trs) from " + trs_url, "info");
-                remove_file(tmpfile);
                 return true;
             }
             remove_file(tmpfile);
@@ -2648,24 +2656,27 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
     for (let srs_url in srs_urls) {
         if (download_to_file(srs_url, tmpfile, service_proxy_address(settings, "lists")) &&
             file_nonempty(tmpfile) &&
-            helpers.file_is_usable(tmpfile, 100)) {
-            let raw = fs.readfile(tmpfile);
+            helpers.file_is_usable(tmpfile, 18)) {
+            let st_tmp = fs.stat(tmpfile);
+            let sz_tmp = st_tmp != null ? int(st_tmp.size || 0) : 0;
+            let raw = sz_tmp <= 524288 ? fs.readfile(tmpfile) : null;
             let unchanged_verified = raw != null &&
                 common.content_unchanged(cached_file, raw) &&
                 singbox_rulesets_module().srs_file_already_verified(cached_file);
             if (unchanged_verified || singbox_rulesets_module().is_usable_srs_file(tmpfile)) {
                 ensure_dir(TMP_RULESET_FOLDER);
-                copy_file(tmpfile, cached_file);
-                singbox_rulesets_module().remember_srs_file_verified(cached_file);
-                let st = fs.stat(tmpfile);
-                let sz = st != null ? int(st.size || 0) : 0;
-                if (!skip_flash_persist && sz > 0 && sz <= 524288) {
+                if (!skip_flash_persist && sz_tmp > 0 && sz_tmp <= 524288) {
                     ensure_dir("/etc/tachyon/rulesets");
                     copy_file(tmpfile, persistent_file);
                     singbox_rulesets_module().remember_srs_file_verified(persistent_file);
-                } else if (sz > 524288) {
+                } else if (sz_tmp > 524288) {
                     remove_file(persistent_file);
                 }
+                if (!fs.rename(tmpfile, cached_file)) {
+                    common.copy_file_stream(tmpfile, cached_file);
+                    remove_file(tmpfile);
+                }
+                singbox_rulesets_module().remember_srs_file_verified(cached_file);
                 log_message("Successfully cached preset ruleset " + service + (srs_url != url ? " via fallback " + srs_url : ""), "info");
                 downloaded = true;
                 break;
@@ -2684,7 +2695,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         copy_file(persistent_trs_file, cached_trs_file);
         log_message("Using persistent cached .trs ruleset for " + service + " after download failure", "warn");
     }
-    else if (singbox_rulesets_module().is_adoptable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 100)) {
+    else if (singbox_rulesets_module().is_adoptable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 18)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_file, cached_file);
         singbox_rulesets_module().remember_srs_file_verified(cached_file);

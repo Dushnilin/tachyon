@@ -808,6 +808,8 @@ function tachyon_core_arch_suffix(host_arch, distrib_arch) {
         print("mips-musl\n");
     else if (host_arch == "mipsel" || host_arch == "mipsle")
         print("mipsel-musl\n");
+    else if (host_arch == "riscv64")
+        print("riscv64-musl\n");
     else
         exit(1);
 }
@@ -1275,21 +1277,78 @@ function tachyon_core_release_tag() {
     print(highest_release_tag(candidates), "\n");
 }
 
-function tachyon_core_asset_url(arch_suffix) {
+function tachyon_core_asset_is_foreign_platform(name) {
+    let lowered = lc(as_string(name));
+    return str_contains(lowered, "android") ||
+        str_contains(lowered, "darwin") ||
+        str_contains(lowered, "apple") ||
+        str_contains(lowered, "macos") ||
+        str_contains(lowered, "windows") ||
+        str_contains(lowered, "freebsd") ||
+        str_contains(lowered, "-gnu") ||
+        str_contains(lowered, "_gnu") ||
+        str_contains(lowered, "glibc");
+}
+
+function tachyon_core_asset_url(arch_suffix, pkg_ext) {
     let release = object_or_empty(read_stdin_json());
 
     arch_suffix = as_string(arch_suffix);
     if (arch_suffix == "")
         exit(1);
 
-    let prefix = "tachyon-core-" + arch_suffix + "-";
-    let alt_prefix = "tachyon-core-" + replace(arch_suffix, "-musl", "") + "-";
+    pkg_ext = lc(trim(as_string(pkg_ext || "")));
+    let base_arch = replace(arch_suffix, "-musl", "");
+    let exact_prefixes = [
+        "tachyon-core-" + arch_suffix + "-",
+        "tachyon-core-" + base_arch + "-unknown-linux-musl-",
+        "tachyon-core-" + base_arch + "-linux-musl-"
+    ];
+    let fallback_prefix = "tachyon-core-" + base_arch + "-";
+
+    if (pkg_ext == "apk" || pkg_ext == "ipk") {
+        let dot_ext = "." + pkg_ext;
+        for (let asset in array_or_empty(release.assets)) {
+            if (type(asset) != "object")
+                continue;
+            let name = as_string(asset.name || "");
+            if (!str_endswith(name, dot_ext) || tachyon_core_asset_is_foreign_platform(name))
+                continue;
+            if (!str_startswith(name, "tachyon-core-") && !str_startswith(name, "tachyon-core_"))
+                continue;
+            if (str_contains(name, arch_suffix) ||
+                str_contains(name, base_arch + "-unknown-linux-musl") ||
+                str_contains(name, base_arch + "-linux-musl") ||
+                str_contains(name, "_" + base_arch + ".") ||
+                str_contains(name, "-" + base_arch + "-") ||
+                str_contains(name, "-" + base_arch + ".")) {
+                print(as_string(asset.browser_download_url || ""), "\n");
+                return;
+            }
+        }
+    }
 
     for (let asset in array_or_empty(release.assets)) {
         if (type(asset) != "object")
             continue;
         let name = as_string(asset.name || "");
-        if ((str_startswith(name, prefix) || str_startswith(name, alt_prefix)) && str_endswith(name, ".tar.gz")) {
+        if (!str_endswith(name, ".tar.gz") || tachyon_core_asset_is_foreign_platform(name))
+            continue;
+        for (let p in exact_prefixes) {
+            if (str_startswith(name, p)) {
+                print(as_string(asset.browser_download_url || ""), "\n");
+                return;
+            }
+        }
+    }
+
+    for (let asset in array_or_empty(release.assets)) {
+        if (type(asset) != "object")
+            continue;
+        let name = as_string(asset.name || "");
+        if (!str_endswith(name, ".tar.gz") || tachyon_core_asset_is_foreign_platform(name))
+            continue;
+        if (str_startswith(name, fallback_prefix)) {
             print(as_string(asset.browser_download_url || ""), "\n");
             return;
         }
@@ -1677,7 +1736,7 @@ else if (mode == "sing-box-extended-asset-url")
 else if (mode == "sing-box-lx-asset-url")
     sing_box_lx_asset_url(ARGV[1]);
 else if (mode == "tachyon-core-asset-url")
-    tachyon_core_asset_url(ARGV[1]);
+    tachyon_core_asset_url(ARGV[1], ARGV[2]);
 else if (mode == "tachyon-core-release-tag")
     tachyon_core_release_tag();
 else if (mode == "sing-box-extended-package-asset-url")

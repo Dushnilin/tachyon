@@ -3886,6 +3886,7 @@ function createOutboundsContent(section) {
   o.value('timestamp', _('TCP Timestamp PAWS (Backdated TSval)'));
   o.value('badseq', _('Out-of-window TCP Sequence (badseq)'));
   o.value('badsum', _('Invalid TCP Checksum (badsum)'));
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
@@ -3902,7 +3903,10 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = '1';
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
 
   o = section.taboption(
     'general',
@@ -3913,7 +3917,17 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.placeholder = 'midsld';
+  o.value('midsld', _('midsld (Middle of SLD domain)'));
+  o.value('sni', _('sni (Start of SNI extension)'));
+  o.value('1', _('1 (Byte 1 after header)'));
+  o.value('2', _('2 (Byte 2)'));
+  o.value('3', _('3 (Byte 3)'));
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'split' });
+  o.depends({ source_type: 'desync', desync_preset: 'disorder' });
 
   o = section.taboption(
     'general',
@@ -3923,17 +3937,45 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.placeholder = '4';
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake' });
 
   o = section.taboption(
     'general',
     form.Value,
     'desync_fake_sni',
-    _('Fake SNI'),
+    _('Fake SNI (Белый список РФ / Custom)'),
+    _(
+      'Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)',
+    ),
   );
   o.modalonly = true;
-  o.placeholder = 'www.google.com';
+  o.placeholder = 'ya.ru';
+  o.value('', _('Auto (Clone target SNI / www.google.com)'));
+  o.value('ya.ru', 'ya.ru (Яндекс — Белый список РФ)');
+  o.value('vk.com', 'vk.com (ВКонтакте — Белый список РФ)');
+  o.value('max.ru', 'max.ru (MAX — Белый список РФ)');
+  o.value('gosuslugi.ru', 'gosuslugi.ru (Госуслуги — Белый список РФ)');
+  o.value('sberbank.ru', 'sberbank.ru (Сбербанк — Белый список РФ)');
+  o.value('tbank.ru', 'tbank.ru (Т-Банк — Белый список РФ)');
+  o.value('ozon.ru', 'ozon.ru (Ozon — Белый список РФ)');
+  o.value('wildberries.ru', 'wildberries.ru (Wildberries — Белый список РФ)');
+  o.value('rutube.ru', 'rutube.ru (Rutube — Белый список РФ)');
+  o.value('dzen.ru', 'dzen.ru (Дзен — Белый список РФ)');
+  o.value('avito.ru', 'avito.ru (Авито — Белый список РФ)');
+  o.value('rzd.ru', 'rzd.ru (РЖД — Белый список РФ)');
+  o.value('pochta.ru', 'pochta.ru (Почта России — Белый список РФ)');
+  o.value('2gis.ru', '2gis.ru (2ГИС — Белый список РФ)');
+  o.value('mail.ru', 'mail.ru (Mail.ru — Белый список РФ)');
+  o.value('www.google.com', 'www.google.com (Google Global)');
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake' });
 
   o = section.taboption(
     'general',
@@ -3943,7 +3985,11 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.placeholder = '2';
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake' });
 
   o = section.taboption(
     'general',
@@ -3953,6 +3999,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.placeholder = '2';
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
 
   o = section.taboption(
@@ -3963,7 +4010,9 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = '1';
+  o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
+  o.depends({ source_type: 'desync', desync_preset: 'discord' });
 
   o = section.taboption(
     'general',
@@ -3975,7 +4024,17 @@ function createOutboundsContent(section) {
   o.placeholder = '4';
   o.depends({
     source_type: 'desync',
+    desync_preset: 'auto',
+    desync_udp_fake: '1',
+  });
+  o.depends({
+    source_type: 'desync',
     desync_preset: 'custom',
+    desync_udp_fake: '1',
+  });
+  o.depends({
+    source_type: 'desync',
+    desync_preset: 'discord',
     desync_udp_fake: '1',
   });
 
@@ -3989,7 +4048,17 @@ function createOutboundsContent(section) {
   o.placeholder = '3';
   o.depends({
     source_type: 'desync',
+    desync_preset: 'auto',
+    desync_udp_fake: '1',
+  });
+  o.depends({
+    source_type: 'desync',
     desync_preset: 'custom',
+    desync_udp_fake: '1',
+  });
+  o.depends({
+    source_type: 'desync',
+    desync_preset: 'discord',
     desync_udp_fake: '1',
   });
 

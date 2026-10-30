@@ -1339,7 +1339,9 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
 
     // Service live status in Sidebar Footer
     const srvState = store.get().servicesInfoWidget;
-    const isRunning = Boolean(srvState?.data?.tachyonRunning);
+    const isRunning = Boolean(
+      srvState?.data?.tachyonRunning || srvState?.data?.singbox,
+    );
     const isReloading = srvState?.data?.tachyonStatus === 'reloading';
     const isLiteMode = Boolean(srvState?.data?.liteMode);
     const statusText = isReloading

@@ -7,6 +7,7 @@ let connections = require("config.connections");
 let core_profile = require("tachyon_core.core_profile");
 
 let as_string = common.as_string;
+let option = common.option;
 let bool_option = common.bool_option;
 
 function read_stdin() {

@@ -1636,84 +1636,117 @@ export function openConnectionWizardModal(
             ),
           ]),
         );
-        if (desyncPresetKey === 'custom') {
+        if (desyncPresetKey === 'custom' || desyncPresetKey === 'auto') {
+          if (desyncPresetKey === 'custom') {
+            formFields.push(
+              E('div', { class: 'tachyon-wizard__row-2col' }, [
+                E('div', { class: 'tachyon-wizard__field' }, [
+                  E(
+                    'label',
+                    { class: 'tachyon-wizard__label' },
+                    tr('Базовый режим (Mode)', 'Desync Mode'),
+                  ),
+                  E(
+                    'select',
+                    {
+                      class: 'cbi-input-select tachyon-wizard__select',
+                      change: (ev: Event) => {
+                        desyncMode = (ev.target as HTMLSelectElement).value;
+                      },
+                    } as any,
+                    [
+                      ['fake_split', 'Fake + Split'],
+                      ['tlsrec', 'TLS Record Split'],
+                      ['disorder', 'Disorder'],
+                      ['split', 'TCP Split'],
+                      ['fake', 'Fake Only'],
+                      ['oob', 'Out-of-Band (URG)'],
+                    ].map(([val, lbl]) =>
+                      E(
+                        'option',
+                        {
+                          value: val,
+                          selected: val === desyncMode ? true : undefined,
+                        },
+                        lbl,
+                      ),
+                    ),
+                  ),
+                ]),
+                E('div', { class: 'tachyon-wizard__field' }, [
+                  E(
+                    'label',
+                    { class: 'tachyon-wizard__label' },
+                    tr('Позиция разбиения (Split Pos)', 'Split Position'),
+                  ),
+                  E(
+                    'select',
+                    {
+                      class: 'cbi-input-select tachyon-wizard__select',
+                      change: (ev: Event) => {
+                        desyncSplitPos = (ev.target as HTMLSelectElement).value;
+                      },
+                    } as any,
+                    [
+                      ['sni', 'SNI (середина домена)'],
+                      ['1', 'Байт 1'],
+                      ['2', 'Байт 2'],
+                      ['3', 'Байт 3'],
+                    ].map(([val, lbl]) =>
+                      E(
+                        'option',
+                        {
+                          value: val,
+                          selected: val === desyncSplitPos ? true : undefined,
+                        },
+                        lbl,
+                      ),
+                    ),
+                  ),
+                ]),
+              ]),
+            );
+          }
+          const whitelistSniOptions = [
+            [
+              '',
+              tr(
+                'Авто (клонировать SNI / www.google.com)',
+                'Auto (clone SNI / www.google.com)',
+              ),
+            ],
+            ['ya.ru', 'ya.ru (Яндекс — Белый список РФ)'],
+            ['vk.com', 'vk.com (ВКонтакте — Белый список РФ)'],
+            ['max.ru', 'max.ru (MAX — Белый список РФ)'],
+            ['gosuslugi.ru', 'gosuslugi.ru (Госуслуги — Белый список РФ)'],
+            ['sberbank.ru', 'sberbank.ru (Сбербанк — Белый список РФ)'],
+            ['tbank.ru', 'tbank.ru (Т-Банк — Белый список РФ)'],
+            ['ozon.ru', 'ozon.ru (Ozon — Белый список РФ)'],
+            [
+              'wildberries.ru',
+              'wildberries.ru (Wildberries — Белый список РФ)',
+            ],
+            ['rutube.ru', 'rutube.ru (Rutube — Белый список РФ)'],
+            ['dzen.ru', 'dzen.ru (Дзен — Белый список РФ)'],
+            ['avito.ru', 'avito.ru (Авито — Белый список РФ)'],
+            ['rzd.ru', 'rzd.ru (РЖД — Белый список РФ)'],
+            ['pochta.ru', 'pochta.ru (Почта России — Белый список РФ)'],
+            ['2gis.ru', '2gis.ru (2ГИС — Белый список РФ)'],
+            ['mail.ru', 'mail.ru (Mail.ru — Белый список РФ)'],
+            ['www.google.com', 'www.google.com (Google Global)'],
+          ];
           formFields.push(
             E('div', { class: 'tachyon-wizard__row-2col' }, [
               E('div', { class: 'tachyon-wizard__field' }, [
                 E(
                   'label',
                   { class: 'tachyon-wizard__label' },
-                  tr('Базовый режим (Mode)', 'Desync Mode'),
-                ),
-                E(
-                  'select',
-                  {
-                    class: 'cbi-input-select tachyon-wizard__select',
-                    change: (ev: Event) => {
-                      desyncMode = (ev.target as HTMLSelectElement).value;
-                    },
-                  } as any,
-                  [
-                    ['fake_split', 'Fake + Split'],
-                    ['tlsrec', 'TLS Record Split'],
-                    ['disorder', 'Disorder'],
-                    ['split', 'TCP Split'],
-                    ['fake', 'Fake Only'],
-                    ['oob', 'Out-of-Band (URG)'],
-                  ].map(([val, lbl]) =>
-                    E(
-                      'option',
-                      {
-                        value: val,
-                        selected: val === desyncMode ? true : undefined,
-                      },
-                      lbl,
-                    ),
-                  ),
-                ),
-              ]),
-              E('div', { class: 'tachyon-wizard__field' }, [
-                E(
-                  'label',
-                  { class: 'tachyon-wizard__label' },
-                  tr('Позиция разбиения (Split Pos)', 'Split Position'),
-                ),
-                E(
-                  'select',
-                  {
-                    class: 'cbi-input-select tachyon-wizard__select',
-                    change: (ev: Event) => {
-                      desyncSplitPos = (ev.target as HTMLSelectElement).value;
-                    },
-                  } as any,
-                  [
-                    ['sni', 'SNI (середина домена)'],
-                    ['1', 'Байт 1'],
-                    ['2', 'Байт 2'],
-                    ['3', 'Байт 3'],
-                  ].map(([val, lbl]) =>
-                    E(
-                      'option',
-                      {
-                        value: val,
-                        selected: val === desyncSplitPos ? true : undefined,
-                      },
-                      lbl,
-                    ),
-                  ),
-                ),
-              ]),
-            ]),
-            E('div', { class: 'tachyon-wizard__row-2col' }, [
-              E('div', { class: 'tachyon-wizard__field' }, [
-                E(
-                  'label',
-                  { class: 'tachyon-wizard__label' },
-                  tr('Fake TTL (1–15)', 'Fake Packet TTL'),
+                  tr('Fake TTL (1–64, пусто = авто)', 'Fake Packet TTL'),
                 ),
                 E('input', {
                   type: 'number',
                   class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: '4',
                   value: desyncFakeTtl,
                   input: (ev: Event) => {
                     desyncFakeTtl = (ev.target as HTMLInputElement).value;
@@ -1724,11 +1757,36 @@ export function openConnectionWizardModal(
                 E(
                   'label',
                   { class: 'tachyon-wizard__label' },
-                  tr('Fake SNI домен', 'Fake SNI Domain'),
+                  tr(
+                    'Fake SNI домен (Белый список РФ)',
+                    'Fake SNI Domain (Whitelist)',
+                  ),
+                ),
+                E(
+                  'select',
+                  {
+                    class: 'cbi-input-select tachyon-wizard__select',
+                    style: 'margin-bottom: 6px;',
+                    change: (ev: Event) => {
+                      desyncFakeSni = (ev.target as HTMLSelectElement).value;
+                      rerender();
+                    },
+                  } as any,
+                  whitelistSniOptions.map(([val, lbl]) =>
+                    E(
+                      'option',
+                      {
+                        value: val,
+                        selected: val === desyncFakeSni ? true : undefined,
+                      },
+                      lbl,
+                    ),
+                  ),
                 ),
                 E('input', {
                   type: 'text',
                   class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: 'ya.ru, vk.com, max.ru...',
                   value: desyncFakeSni,
                   input: (ev: Event) => {
                     desyncFakeSni = (ev.target as HTMLInputElement).value;
@@ -4806,14 +4864,16 @@ export function openConnectionWizardModal(
           'desync_preset',
           desyncPresetKey || 'fake_split',
         );
-        if (desyncPresetKey === 'custom') {
-          uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'desync_mode', desyncMode);
-          uciObj.set(
-            TACHYON_UCI_PACKAGE,
-            srcId,
-            'desync_split_pos',
-            desyncSplitPos,
-          );
+        if (desyncPresetKey === 'custom' || desyncPresetKey === 'auto') {
+          if (desyncPresetKey === 'custom') {
+            uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'desync_mode', desyncMode);
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'desync_split_pos',
+              desyncSplitPos,
+            );
+          }
           if (desyncFakeTtl.trim()) {
             uciObj.set(
               TACHYON_UCI_PACKAGE,

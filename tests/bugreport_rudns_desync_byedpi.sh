@@ -374,7 +374,8 @@ let ob_custom = desync_cfg.outbounds[1];
 assert(ob_custom != null && ob_custom.tag == "sec_custom-out" && ob_custom.mode == "fake_disorder" && ob_custom.fooling == "autottl" && ob_custom.auto_tune === false && ob_custom.split_pos == "sni" && ob_custom.fake_ttl == 4,
     "Custom fake_disorder mode with fooling=autottl and auto_tune=false must be preserved, got: " + sprintf("%J", ob_custom));
 
-// Verify non-custom preset (e.g. "auto") ignores leftover custom fuzzer fields (desync_opts, desync_mode, desync_split_pos)
+// Verify non-custom preset (e.g. "auto") ignores leftover custom fuzzer fields (desync_opts, desync_mode)
+// while preserving explicit Adaptive 2.0 overrides (fake_sni, split_pos, fake_ttl, repeats)
 // and that outbound_supports_udp treats preset="auto" / "fake_split" / "fake_disorder" / "fake" as UDP-capable
 outbounds_gen.add_desync_outbound(desync_cfg, {
     ".name": "sec_auto_dirty",
@@ -387,8 +388,8 @@ outbounds_gen.add_desync_outbound(desync_cfg, {
     desync_repeats: "8"
 });
 let ob_auto_dirty = desync_cfg.outbounds[2];
-assert(ob_auto_dirty != null && ob_auto_dirty.preset == "auto" && ob_auto_dirty.mode == null && ob_auto_dirty.split_pos == null && ob_auto_dirty.fake_sni == null,
-    "Non-custom preset='auto' must ignore leftover custom fuzzer fields, got: " + sprintf("%J", ob_auto_dirty));
+assert(ob_auto_dirty != null && ob_auto_dirty.preset == "auto" && ob_auto_dirty.mode == null && ob_auto_dirty.split_pos == 2 && ob_auto_dirty.fake_sni == "max.ru" && ob_auto_dirty.fake_ttl == 8 && ob_auto_dirty.repeats == 8,
+    "Preset='auto' must ignore leftover desync_mode/desync_opts while preserving explicit Adaptive 2.0 overrides, got: " + sprintf("%J", ob_auto_dirty));
 
 let src_desync_dirty = {
     ".name": "DesyncSrc",
@@ -417,8 +418,33 @@ connections.set_item_sections_from_data({
 let disc_links = connections.outbound_jsons(disc_sec);
 assert(length(disc_links) == 1, "expected 1 synthesized desync JSON link for Discord section");
 let disc_ob = json(disc_links[0]);
-assert(disc_ob.preset == "auto" && disc_ob.mode == null && disc_ob.split_pos == null && disc_ob.fake_sni == null,
-    "Synthesized outbound_source desync JSON with preset='auto' must ignore leftover custom fuzzer fields, got: " + disc_links[0]);
+assert(disc_ob.preset == "auto" && disc_ob.mode == null && disc_ob.split_pos == 2 && disc_ob.fake_sni == "max.ru",
+    "Synthesized outbound_source desync JSON with preset='auto' must ignore leftover desync_mode while preserving Adaptive 2.0 overrides, got: " + disc_links[0]);
+
+// Verify subscription parser filters out 127.0.0.1 traffic/quota banner nodes (e.g. socks://127.0.0.1:1080#tTest|📊2.00GB)
+let sub_parser = require("subscription.parser");
+let stub_node = sub_parser.parse_share_link("socks://127.0.0.1:1080#tTest%7C%F0%9F%93%8A2.00GB", "stub-tag");
+let real_node = sub_parser.parse_share_link("vless://11111111-2222-3333-4444-555555555555@example.com:443?security=tls&sni=example.com#RealNode", "real-tag");
+assert(sub_parser.outbound_is_unsupported_stub(stub_node) === true,
+    "outbound_is_unsupported_stub must recognize 127.0.0.1 quota/info banner node as a stub");
+assert(sub_parser.outbound_is_unsupported_stub(real_node) === false,
+    "outbound_is_unsupported_stub must not mark real node as a stub");
+
+// Verify rulesets.uc accepts TSRS magic header
+let fs_mod = require("fs");
+let rulesets_mod = require("tachyon_core.rulesets");
+let tsrs_path = "/tmp/test_faceit_tsrs_" + time() + ".trs";
+fs_mod.writefile(tsrs_path, "TSRS\x01\x00\x00\x00\x01\x00\x00\x00faceit.com");
+assert(rulesets_mod.is_valid_trs_file(tsrs_path) === true,
+    "is_valid_trs_file must accept TSRS magic header");
+fs_mod.unlink(tsrs_path);
+
+// Verify updater.uc tachyon_core_asset_is_foreign_platform rejects Android / macOS / Windows / gnu assets
+let updater_src = fs_mod.readfile(getenv("TACHYON_LIB") + "/components/updater.uc");
+assert(index(updater_src, "tachyon_core_asset_is_foreign_platform") >= 0 &&
+    index(updater_src, "android") >= 0 &&
+    index(updater_src, "unknown-linux-musl-") >= 0,
+    "updater.uc must filter out Android/foreign assets and prioritize musl builds");
 UCODE
 
 printf 'PASS: bugreport_rudns_desync_byedpi\n'

@@ -882,8 +882,7 @@ function prepare_community_rulesets() {
             if (runtime_rulesets_mod.is_referenceable_trs_file(tmp_trs_path))
                 continue;
             if (runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path)) {
-                let trs_content = fs.readfile(etc_trs_path);
-                if (trs_content && write_file(tmp_trs_path, trs_content))
+                if (common.copy_file_stream(etc_trs_path, tmp_trs_path))
                     continue;
             }
         }
@@ -906,8 +905,7 @@ function prepare_community_rulesets() {
         // is_referenceable, not is_usable: the placeholder is worth adopting, since
         // promoting it beats a pointless download attempt on a boot with no network.
         if (runtime_rulesets_mod.is_referenceable_srs_file(etc_path)) {
-            let content = fs.readfile(etc_path);
-            if (content && write_file(tmp_path, content)) {
+            if (common.copy_file_stream(etc_path, tmp_path)) {
                 if (runtime_rulesets_mod.is_populated_srs_file(tmp_path))
                     runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
                 continue;
@@ -930,11 +928,15 @@ function prepare_community_rulesets() {
                 let dl_tmp = tmp_dir + "/.fetch-" + service + ".trs.tmp";
                 let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", trs_candidate, "-o", dl_tmp ];
                 if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_trs_file(dl_tmp)) {
+                    let st_trs = fs.stat(dl_tmp);
+                    let sz_trs = st_trs != null ? int(st_trs.size || 0) : 0;
                     command_success_from_args([ "mv", "-f", dl_tmp, tmp_trs_path ]);
-                    command_success_from_args([ "mkdir", "-p", etc_dir ]);
-                    let cdata = fs.readfile(tmp_trs_path);
-                    if (cdata)
-                        write_file(etc_trs_path, cdata);
+                    if (sz_trs > 0 && sz_trs <= 524288) {
+                        command_success_from_args([ "mkdir", "-p", etc_dir ]);
+                        common.copy_file(tmp_trs_path, etc_trs_path);
+                    } else if (sz_trs > 524288) {
+                        remove_file(etc_trs_path);
+                    }
                     log_message("Pre-downloaded community ruleset " + service + " (.trs) from " + trs_candidate, "info");
                     fetched = true;
                     break;
@@ -953,14 +955,16 @@ function prepare_community_rulesets() {
                 let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", candidate, "-o", dl_tmp ];
                 if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_srs_file(dl_tmp)) {
                     let st = fs.stat(dl_tmp);
-                    if (st && st.size >= 100) {
+                    if (st && st.size > runtime_rulesets_mod.EMPTY_SRS_SIZE) {
+                        let sz = int(st.size || 0);
                         command_success_from_args([ "mv", "-f", dl_tmp, tmp_path ]);
                         runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
-                        command_success_from_args([ "mkdir", "-p", etc_dir ]);
-                        let cdata = fs.readfile(tmp_path);
-                        if (cdata) {
-                            write_file(etc_path, cdata);
-                            runtime_rulesets_mod.remember_srs_file_verified(etc_path);
+                        if (sz > 0 && sz <= 524288) {
+                            command_success_from_args([ "mkdir", "-p", etc_dir ]);
+                            if (common.copy_file(tmp_path, etc_path))
+                                runtime_rulesets_mod.remember_srs_file_verified(etc_path);
+                        } else if (sz > 524288) {
+                            remove_file(etc_path);
                         }
                         log_message("Pre-downloaded community ruleset " + service + " from " + candidate, "info");
                         fetched = true;
@@ -1217,6 +1221,7 @@ function start_main() {
 
 function start_impl() {
     fs.writefile("/var/run/tachyon/starting", as_string(time()));
+    try { fs.unlink("/var/run/tachyon/section-fail-state.json"); } catch (e) {}
     // (e.g. config generator killed during restart). 30-min threshold is safe since
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
@@ -1725,6 +1730,9 @@ function reload_steer(active_engine, reason, initial_fingerprint) {
 function reload(reason) {
     let status;
     let force_runtime_reload = as_string(reason || "") == "on_config_change" ? 0 : 1;
+    if (as_string(reason || "") != "section_fail_policy") {
+        try { fs.unlink("/var/run/tachyon/section-fail-state.json"); } catch (e) {}
+    }
     let reload_config_fingerprint = external_config_fingerprint();
     rule_condition_cache_enabled = force_runtime_reload;
 

@@ -122,6 +122,10 @@ function retry_resolve(description, fn) {
     for (let attempt = 1; attempt <= 3; attempt++) {
         if (fn())
             return true;
+        if (downloader.is_github_rate_limited()) {
+            helpers.updates_log(as_string(description) + " aborted (GitHub API rate limit active)", "warn");
+            break;
+        }
         helpers.updates_log(as_string(description) + " failed (" + attempt + "/3)", "warn");
         command_success_from_args([ "sleep", "2" ]);
     }

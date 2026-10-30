@@ -27,6 +27,24 @@ function asArray(val) {
   return out;
 }
 
+function unsetIfPresent(sectionId, key) {
+  const cur = uci.get(UCI_PACKAGE, sectionId, key);
+  if (cur !== undefined && cur !== null) {
+    uci.unset(UCI_PACKAGE, sectionId, key);
+  }
+}
+
+function setArrayIfChanged(sectionId, key, arr) {
+  const cur = asArray(uci.get(UCI_PACKAGE, sectionId, key));
+  const same = cur.length === arr.length && cur.every((v, i) => v === arr[i]);
+  if (same) return;
+  if (arr.length) {
+    uci.set(UCI_PACKAGE, sectionId, key, arr);
+  } else {
+    unsetIfPresent(sectionId, key);
+  }
+}
+
 function loadCombinedDomainText(sectionId) {
   const parts = [];
   const rawDom = uci.get(UCI_PACKAGE, sectionId, "domain");
@@ -710,6 +728,37 @@ function createConditionsContent(section) {
   if (typeof main.attachCommunityListPicker === "function") {
     main.attachCommunityListPicker(o);
   }
+  const origCommWrite = o.write;
+  o.write = function (sectionId, value) {
+    const arr = asArray(value);
+    if (typeof origCommWrite === "function") {
+      origCommWrite.call(this, sectionId, value);
+    } else {
+      setArrayIfChanged(sectionId, "community_lists", arr);
+    }
+    const cid = String(sectionId || "");
+    if (cid.startsWith("cond_")) {
+      const parentSec = cid.slice(5);
+      if (uci.get(UCI_PACKAGE, parentSec, ".type") === "section") {
+        setArrayIfChanged(parentSec, "community_lists", arr);
+      }
+    }
+  };
+  const origCommRemove = o.remove;
+  o.remove = function (sectionId) {
+    if (typeof origCommRemove === "function") {
+      origCommRemove.call(this, sectionId);
+    } else {
+      unsetIfPresent(sectionId, "community_lists");
+    }
+    const cid = String(sectionId || "");
+    if (cid.startsWith("cond_")) {
+      const parentSec = cid.slice(5);
+      if (uci.get(UCI_PACKAGE, parentSec, ".type") === "section") {
+        unsetIfPresent(parentSec, "community_lists");
+      }
+    }
+  };
 
   o = section.taboption(
     "domains",
@@ -773,23 +822,25 @@ function createConditionsContent(section) {
   o.write = function (sectionId, value) {
     const text = String(value || "").trim();
     if (text) {
-      uci.set(UCI_PACKAGE, sectionId, "domain", text);
+      if (String(uci.get(UCI_PACKAGE, sectionId, "domain") ?? "") !== text) {
+        uci.set(UCI_PACKAGE, sectionId, "domain", text);
+      }
     } else {
-      uci.unset(UCI_PACKAGE, sectionId, "domain");
+      unsetIfPresent(sectionId, "domain");
     }
-    uci.unset(UCI_PACKAGE, sectionId, "domain_suffix");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_suffix_text");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_text");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_keyword");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_regex");
+    unsetIfPresent(sectionId, "domain_suffix");
+    unsetIfPresent(sectionId, "domain_suffix_text");
+    unsetIfPresent(sectionId, "domain_text");
+    unsetIfPresent(sectionId, "domain_keyword");
+    unsetIfPresent(sectionId, "domain_regex");
   };
   o.remove = function (sectionId) {
-    uci.unset(UCI_PACKAGE, sectionId, "domain");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_suffix");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_suffix_text");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_text");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_keyword");
-    uci.unset(UCI_PACKAGE, sectionId, "domain_regex");
+    unsetIfPresent(sectionId, "domain");
+    unsetIfPresent(sectionId, "domain_suffix");
+    unsetIfPresent(sectionId, "domain_suffix_text");
+    unsetIfPresent(sectionId, "domain_text");
+    unsetIfPresent(sectionId, "domain_keyword");
+    unsetIfPresent(sectionId, "domain_regex");
   };
 
   o = section.taboption(
@@ -808,16 +859,12 @@ function createConditionsContent(section) {
   };
   o.write = function (sectionId, value) {
     const lines = asArray(value);
-    if (lines.length) {
-      uci.set(UCI_PACKAGE, sectionId, "user_domains", lines);
-    } else {
-      uci.unset(UCI_PACKAGE, sectionId, "user_domains");
-    }
-    uci.unset(UCI_PACKAGE, sectionId, "user_domains_text");
+    setArrayIfChanged(sectionId, "user_domains", lines);
+    unsetIfPresent(sectionId, "user_domains_text");
   };
   o.remove = function (sectionId) {
-    uci.unset(UCI_PACKAGE, sectionId, "user_domains");
-    uci.unset(UCI_PACKAGE, sectionId, "user_domains_text");
+    unsetIfPresent(sectionId, "user_domains");
+    unsetIfPresent(sectionId, "user_domains_text");
   };
 
   // Network tab
@@ -840,15 +887,17 @@ function createConditionsContent(section) {
   o.write = function (sectionId, value) {
     const text = String(value || "").trim();
     if (text) {
-      uci.set(UCI_PACKAGE, sectionId, "ip_cidr", text);
+      if (String(uci.get(UCI_PACKAGE, sectionId, "ip_cidr") ?? "") !== text) {
+        uci.set(UCI_PACKAGE, sectionId, "ip_cidr", text);
+      }
     } else {
-      uci.unset(UCI_PACKAGE, sectionId, "ip_cidr");
+      unsetIfPresent(sectionId, "ip_cidr");
     }
-    uci.unset(UCI_PACKAGE, sectionId, "ip_cidr_text");
+    unsetIfPresent(sectionId, "ip_cidr_text");
   };
   o.remove = function (sectionId) {
-    uci.unset(UCI_PACKAGE, sectionId, "ip_cidr");
-    uci.unset(UCI_PACKAGE, sectionId, "ip_cidr_text");
+    unsetIfPresent(sectionId, "ip_cidr");
+    unsetIfPresent(sectionId, "ip_cidr_text");
   };
 
   o = section.taboption(
@@ -955,6 +1004,27 @@ function createConditionsContent(section) {
     ["icmp", "ICMP"],
   ];
 
+  function syncConditionOptionToParentSection(condId, key, val) {
+    const cid = String(condId || "");
+    if (!cid.startsWith("cond_")) return;
+    const parentSec = cid.slice(5);
+    if (uci.get(UCI_PACKAGE, parentSec, ".type") !== "section") return;
+    if (
+      val === null ||
+      val === undefined ||
+      val === "" ||
+      (Array.isArray(val) && val.length === 0)
+    ) {
+      unsetIfPresent(parentSec, key);
+    } else if (Array.isArray(val)) {
+      setArrayIfChanged(parentSec, key, val);
+    } else if (
+      String(uci.get(UCI_PACKAGE, parentSec, key) ?? "") !== String(val)
+    ) {
+      uci.set(UCI_PACKAGE, parentSec, key, val);
+    }
+  }
+
   o = section.taboption(
     "network",
     form.MultiValue,
@@ -963,8 +1033,24 @@ function createConditionsContent(section) {
     _("Apply rules of this section only to selected protocols."),
   );
   o.modalonly = true;
+  o.rmempty = true;
   o.depends("condition_type", "atomic");
   TRAFFIC_PROTOCOL_CHOICES.forEach(([val, label]) => o.value(val, label));
+  o.load = function (sectionId) {
+    return asArray(uci.get(UCI_PACKAGE, sectionId, "protocol"));
+  };
+  o.cfgvalue = function (sectionId) {
+    return asArray(uci.get(UCI_PACKAGE, sectionId, "protocol"));
+  };
+  o.write = function (sectionId, value) {
+    const arr = asArray(value);
+    setArrayIfChanged(sectionId, "protocol", arr);
+    syncConditionOptionToParentSection(sectionId, "protocol", arr);
+  };
+  o.remove = function (sectionId) {
+    unsetIfPresent(sectionId, "protocol");
+    syncConditionOptionToParentSection(sectionId, "protocol", null);
+  };
 
   o = section.taboption(
     "network",
@@ -976,8 +1062,24 @@ function createConditionsContent(section) {
     ),
   );
   o.modalonly = true;
+  o.rmempty = true;
   o.depends("condition_type", "atomic");
   TRAFFIC_PROTOCOL_CHOICES.forEach(([val, label]) => o.value(val, label));
+  o.load = function (sectionId) {
+    return asArray(uci.get(UCI_PACKAGE, sectionId, "excluded_protocol"));
+  };
+  o.cfgvalue = function (sectionId) {
+    return asArray(uci.get(UCI_PACKAGE, sectionId, "excluded_protocol"));
+  };
+  o.write = function (sectionId, value) {
+    const arr = asArray(value);
+    setArrayIfChanged(sectionId, "excluded_protocol", arr);
+    syncConditionOptionToParentSection(sectionId, "excluded_protocol", arr);
+  };
+  o.remove = function (sectionId) {
+    unsetIfPresent(sectionId, "excluded_protocol");
+    syncConditionOptionToParentSection(sectionId, "excluded_protocol", null);
+  };
 
   o = section.taboption(
     "network",

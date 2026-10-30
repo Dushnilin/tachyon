@@ -91,6 +91,7 @@ function check_free_disk_space(target_dir, needed_bytes) { return cmp.check_free
 
 // Delegated to components/* modules (branch 4 god-module split).
 function str_startswith(value, prefix) { return cmp.str_startswith(value, prefix); }
+function str_endswith(value, suffix) { return cmp.str_endswith(value, suffix); }
 function command_env(assignments) { return cmp.command_env(assignments); }
 function command_output_lenient(command) { return cmp.command_output_lenient(command); }
 function command_exists(name) { return cmp.command_exists(name); }
@@ -1856,7 +1857,8 @@ function set_tachyon_core_release_from_json(release_json, allow_prerelease) {
     let arch_suffix = resolve_tachyon_core_arch_suffix();
     if (arch_suffix == "")
         return null;
-    let asset_url = trim(helper_output_input(release_json, "tachyon-core-asset-url", [ arch_suffix ]));
+    let pkg_ext = is_apk() ? "apk" : "ipk";
+    let asset_url = trim(helper_output_input(release_json, "tachyon-core-asset-url", [ arch_suffix, pkg_ext ]));
     if (asset_url == "")
         return null;
 
@@ -1881,14 +1883,27 @@ function resolve_tachyon_core_release(target_tag) {
         let arch_suffix = resolve_tachyon_core_arch_suffix();
         if (arch_suffix == "")
             return null;
-        // The tag goes in whole: the released assets are named
-        // tachyon-core-aarch64-musl-v0.0.1.tar.gz, so stripping the "v" here
-        // built a URL for a file the release does not have.
-        let asset_name = TACHYON_CORE_LABEL + "-" + arch_suffix + "-" + as_string(target_tag) + ".tar.gz";
+        let base_arch = replace(arch_suffix, "-musl", "");
+        let pkg_ext = is_apk() ? "apk" : "ipk";
+        let base_dl = "https://github.com/" + TACHYON_CORE_OWNER + "/" + TACHYON_CORE_REPO + "/releases/download/" + target_tag + "/";
+        let pkg_asset_name = TACHYON_CORE_LABEL + "-" + base_arch + "-" + as_string(target_tag) + "." + pkg_ext;
+        if (url_exists(base_dl + pkg_asset_name)) {
+            return {
+                tag: target_tag,
+                release_url: "https://github.com/" + TACHYON_CORE_OWNER + "/" + TACHYON_CORE_REPO + "/releases/tag/" + target_tag,
+                asset_url: base_dl + pkg_asset_name,
+                asset_name: pkg_asset_name
+            };
+        }
+        // Fallback to .tar.gz (either base_arch for v0.2.5+ or arch_suffix for older releases)
+        let tgz_short = TACHYON_CORE_LABEL + "-" + base_arch + "-" + as_string(target_tag) + ".tar.gz";
+        let asset_name = url_exists(base_dl + tgz_short)
+            ? tgz_short
+            : (TACHYON_CORE_LABEL + "-" + arch_suffix + "-" + as_string(target_tag) + ".tar.gz");
         return {
             tag: target_tag,
             release_url: "https://github.com/" + TACHYON_CORE_OWNER + "/" + TACHYON_CORE_REPO + "/releases/tag/" + target_tag,
-            asset_url: "https://github.com/" + TACHYON_CORE_OWNER + "/" + TACHYON_CORE_REPO + "/releases/download/" + target_tag + "/" + asset_name,
+            asset_url: base_dl + asset_name,
             asset_name
         };
     }
@@ -1902,6 +1917,10 @@ function resolve_tachyon_core_release(target_tag) {
     let tag = trim(helper_output_input(releases_json, "tachyon-core-release-tag", []));
     if (tag == "")
         return null;
+    release_json = helper_output_input(releases_json, "release-by-tag", [ tag ]);
+    resolved = set_tachyon_core_release_from_json(release_json, false);
+    if (resolved != null)
+        return resolved;
     return resolve_tachyon_core_release(tag);
 }
 
@@ -2522,6 +2541,86 @@ function install_tachyon_core(action, target_tag) {
     let archive_file = cmp.tmp_dir_path() + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download " + label, current_version, latest_version);
+
+    let is_pkg_asset = str_endswith(release.asset_name, ".apk") || str_endswith(release.asset_name, ".ipk");
+    if (is_pkg_asset) {
+        stop_tachyon_before_sing_box_change();
+
+        let backup_binary = "";
+        if (file_exists("/usr/bin/tachyon-core") && !is_symlink_path("/usr/bin/tachyon-core")) {
+            let candidate_backup = cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid();
+            if (copy_file_stream("/usr/bin/tachyon-core", candidate_backup))
+                backup_binary = candidate_backup;
+        } else if (file_exists("/usr/bin/sing-box")) {
+            let backed = backup_existing_sing_box_binary(cmp.tmp_dir_path() + "/sing-box.backup." + owner_pid());
+            if (backed != null)
+                backup_binary = backed;
+        }
+
+        // Preserve Tachyon's generated /etc/tachyon-core/config.json across package install
+        let backup_cfg = cmp.tmp_dir_path() + "/tachyon-core-config.backup." + owner_pid();
+        let had_cfg = file_exists("/etc/tachyon-core/config.json") && copy_file_stream("/etc/tachyon-core/config.json", backup_cfg);
+
+        for (let item in [
+            [ "sing-box-extended", "Removing sing-box-extended package before " + label + " installation" ],
+            [ "sing-box-tiny", "Removing sing-box-tiny package before " + label + " installation" ],
+            [ "sing-box", "Removing sing-box package before " + label + " installation" ]
+        ]) {
+            if (pkg_is_installed(item[0]))
+                run_logged_pkg_remove_sing_box_conflict(item[0], item[1]);
+        }
+
+        let pkg_ok = run_logged_pkg_install_files("Installing " + label + " package", [ archive_file ], 180);
+        remove_file(archive_file);
+        if (had_cfg && file_exists(backup_cfg)) {
+            install_staged_file(backup_cfg, "/etc/tachyon-core/config.json", "0644");
+            remove_file(backup_cfg);
+        }
+
+        if (!pkg_ok) {
+            if (backup_binary != "" && file_exists(backup_binary))
+                install_staged_file(backup_binary, "/usr/bin/tachyon-core", "0755");
+            remove_file(backup_binary);
+            install_legacy_sing_box_symlink();
+            install_managed_sing_box_service_script();
+            restart_tachyon_after_successful_change();
+            action_fail("sing_box", action, "Failed to install " + label + " package", current_version, latest_version);
+        }
+
+        let new_version = validate_tachyon_core_binary("/usr/bin/tachyon-core", "/usr/lib");
+        if (new_version == "") {
+            if (backup_binary != "" && file_exists(backup_binary))
+                install_staged_file(backup_binary, "/usr/bin/tachyon-core", "0755");
+            remove_file(backup_binary);
+            install_legacy_sing_box_symlink();
+            install_managed_sing_box_service_script();
+            restart_tachyon_after_successful_change();
+            action_fail("sing_box", action, "Installed " + label + " package failed binary validation", current_version, latest_version);
+        }
+
+        let config_check = check_sing_box_config_with_binary("/usr/bin/tachyon-core", "/etc/tachyon-core/config.json", cmp.tmp_dir_path(), "tachyon-core");
+        if (!config_check.ok) {
+            if (backup_binary != "" && file_exists(backup_binary))
+                install_staged_file(backup_binary, "/usr/bin/tachyon-core", "0755");
+            remove_file(backup_binary);
+            install_legacy_sing_box_symlink();
+            install_managed_sing_box_service_script();
+            restart_tachyon_after_successful_change();
+            action_fail("sing_box", action, "Installed " + label + " is incompatible with current configuration: " + config_check.reason, current_version, latest_version);
+        }
+
+        install_legacy_sing_box_symlink();
+        write_sing_box_variant_state(label, new_version);
+        if (target_tag != null && target_tag != "" && new_version != "")
+            write_file("/etc/tachyon/tachyon-core-version", normalize_sing_box_version(new_version) + "\n");
+        install_managed_sing_box_service_script();
+        clear_sing_box_cache_if_needed(current_variant, label);
+        restart_tachyon_after_successful_change();
+        remove_file(backup_binary);
+        clear_version_caches();
+        updates_log("Installed " + label + " " + (new_version != "" ? new_version : "unknown"));
+        action_success("sing_box", action, label + " has been installed", new_version, latest_version, 1, "latest", release.release_url);
+    }
 
     // The member is named after the build, not "sing-box", so it is found by
     // prefix. Anything with a dot in the name is skipped: that is the .sha256

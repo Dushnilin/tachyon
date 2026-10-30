@@ -7,6 +7,21 @@ let runtime_dns = require("tachyon_core.dns");
 let verifier = require("components.verifier");
 let core_profile = require("tachyon_core.core_profile");
 
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_status_from_args = common.command_status_from_args;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+let option = common.option;
+let bool_option = common.bool_option;
+let file_exists = common.file_exists;
+let remove_file = common.remove_file;
+
 function core_process_or_null() {
     try {
         return require("core.process");
@@ -175,21 +190,6 @@ const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/t
 const SB_LEGACY_VARIANT_STATE_FILE = "/etc/tachyon/sing-box-variant";
 const SB_LEGACY_VERSION_STATE_FILE = "/etc/tachyon/sing-box-version";
 const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || "Tachyon managed sing-box service for binary variants";
-
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
-let command_from_args = common.command_from_args;
-let command_output = common.command_output;
-let command_output_from_args = common.command_output_from_args;
-let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
-let command_status_from_args = common.command_status_from_args;
-let object_or_empty = common.object_or_empty;
-let array_or_empty = common.array_or_empty;
-let option = common.option;
-let bool_option = common.bool_option;
-let file_exists = common.file_exists;
-let remove_file = common.remove_file;
 
 function command_env(assignments) {
     let parts = [];

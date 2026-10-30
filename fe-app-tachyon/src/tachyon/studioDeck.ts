@@ -218,9 +218,11 @@ function resolveSectionTelemetry(sid: string): {
       count: comm.length + doms.length,
     };
   });
-  asArray(raw.community_lists).forEach((tag) => {
-    if (!serviceTags.includes(tag)) serviceTags.push(tag);
-  });
+  if (condRefs.length === 0) {
+    asArray(raw.community_lists).forEach((tag) => {
+      if (!serviceTags.includes(tag)) serviceTags.push(tag);
+    });
+  }
 
   const balRefs = asArray(raw.balancer_refs);
   const balancers = balRefs.map((bid) => {
@@ -337,17 +339,31 @@ function resolveSectionTelemetry(sid: string): {
   let iconText = '🌐';
   const iconBg = 'rgba(255, 255, 255, 0.04)';
   const iconColor = 'var(--text-color-high, #e2e8f0)';
-  let faviconDomain = String(raw.icon_domain || '').trim();
+  let customIconDomain = '';
+  try {
+    if (typeof localStorage !== 'undefined' && sid) {
+      customIconDomain = localStorage.getItem(`tachyon_sec_icon_${sid}`) || '';
+    }
+  } catch {
+    // ignore
+  }
+  if (!customIconDomain) {
+    customIconDomain = String(raw.icon_domain || '').trim();
+  }
+  const forceDefaultSvg =
+    customIconDomain.toLowerCase() === 'svg' ||
+    customIconDomain.toLowerCase() === 'none';
+  let faviconDomain = forceDefaultSvg ? '' : customIconDomain;
 
   if (keyLower.includes('youtube') || keyLower.includes('yt')) {
     iconText = '▶';
-    if (!faviconDomain) faviconDomain = 'youtube.com';
+    if (!faviconDomain && !forceDefaultSvg) faviconDomain = 'youtube.com';
   } else if (keyLower.includes('discord')) {
     iconText = '🎮';
-    if (!faviconDomain) faviconDomain = 'discord.com';
+    if (!faviconDomain && !forceDefaultSvg) faviconDomain = 'discord.com';
   } else if (keyLower.includes('tele') || keyLower.includes('tg')) {
     iconText = '✈️';
-    if (!faviconDomain) faviconDomain = 'telegram.org';
+    if (!faviconDomain && !forceDefaultSvg) faviconDomain = 'telegram.org';
   } else if (actionTone === 'block' || keyLower.includes('block')) {
     iconText = '🚫';
   } else if (actionTone === 'bypass' || keyLower.includes('bypass')) {

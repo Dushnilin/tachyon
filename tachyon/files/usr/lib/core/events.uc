@@ -530,10 +530,19 @@ function bus(opts) {
 // Module Exports
 // ---------------------------------------------------------------------------
 
+function publish(event_type, data, meta) {
+    try {
+        return journal().record(event_type, data, meta);
+    } catch (e) {
+        return null;
+    }
+}
+
 function module_exports() {
     return {
         bus,
         journal,
+        publish,
         redact,
         redact_string,
         is_sensitive_key,

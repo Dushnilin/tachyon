@@ -377,4 +377,76 @@ describe('runSectionsCheck', () => {
       }),
     );
   });
+
+  it('marks block, bypass, dns, and desync sections as active without probing Clash API latency', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: false,
+          code: 'block-out',
+          sectionName: 'block',
+          displayName: 'block',
+          action: 'block',
+          outbounds: [],
+        },
+        {
+          withTagSelect: false,
+          code: 'bypass-out',
+          sectionName: 'bypass',
+          displayName: 'bypass',
+          action: 'bypass',
+          outbounds: [],
+        },
+        {
+          withTagSelect: false,
+          code: 'dns-out',
+          sectionName: 'dns',
+          displayName: 'DNS',
+          action: 'dns',
+          outbounds: [],
+        },
+        {
+          withTagSelect: false,
+          code: 'youtube-out',
+          sectionName: 'youtube',
+          displayName: 'YouTube',
+          action: 'desync',
+          outbounds: [],
+        },
+      ],
+    });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.getClashApiProxyLatency).not.toHaveBeenCalled();
+    expect(mocks.getClashApiGroupLatency).not.toHaveBeenCalled();
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'block',
+            value: 'Active (Block)',
+          },
+          {
+            state: 'success',
+            key: 'bypass',
+            value: 'Active (Direct)',
+          },
+          {
+            state: 'success',
+            key: 'DNS',
+            value: 'Active (DNS)',
+          },
+          {
+            state: 'success',
+            key: 'YouTube',
+            value: 'Active (DPI)',
+          },
+        ],
+      }),
+    );
+  });
 });

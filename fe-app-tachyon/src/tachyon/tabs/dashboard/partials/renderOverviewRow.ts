@@ -1113,24 +1113,27 @@ export function resolveSectionFaviconDomain(
     secName.toLowerCase() === 'main';
   if (!isMainLike && uciObj && typeof uciObj.get === 'function' && secName) {
     try {
-      const secLists = toStringArray(
-        uciObj.get('tachyon', secName, 'community_lists'),
-      );
       const condRefs = toStringArray(
         uciObj.get('tachyon', secName, 'condition_refs'),
-      );
-      const allLists = [...secLists];
+      ).map((r) => r.replace(/^!\s*/, '').trim());
+      const allLists: string[] = [];
       const condDomains: string[] = [];
 
-      for (const cid of condRefs) {
+      if (condRefs.length > 0) {
+        for (const cid of condRefs) {
+          allLists.push(
+            ...toStringArray(uciObj.get('tachyon', cid, 'community_lists')),
+            ...toStringArray(uciObj.get('tachyon', cid, 'domain_lists')),
+          );
+          condDomains.push(
+            ...toStringArray(uciObj.get('tachyon', cid, 'user_domains')),
+            ...toStringArray(uciObj.get('tachyon', cid, 'domain_suffix')),
+            ...toStringArray(uciObj.get('tachyon', cid, 'domains')),
+          );
+        }
+      } else {
         allLists.push(
-          ...toStringArray(uciObj.get('tachyon', cid, 'community_lists')),
-          ...toStringArray(uciObj.get('tachyon', cid, 'domain_lists')),
-        );
-        condDomains.push(
-          ...toStringArray(uciObj.get('tachyon', cid, 'user_domains')),
-          ...toStringArray(uciObj.get('tachyon', cid, 'domain_suffix')),
-          ...toStringArray(uciObj.get('tachyon', cid, 'domains')),
+          ...toStringArray(uciObj.get('tachyon', secName, 'community_lists')),
         );
       }
 
@@ -1228,7 +1231,27 @@ export function openSectionIconPickerModal(
 
   const secName = section.sectionName || section.code || '';
   const visual = getSectionVisualMeta(section);
-  let currentDomain = resolveSectionFaviconDomain(section) || '';
+  let explicitSaved = '';
+  try {
+    if (typeof localStorage !== 'undefined' && secName) {
+      explicitSaved = localStorage.getItem(`tachyon_sec_icon_${secName}`) || '';
+    }
+  } catch {
+    // ignore
+  }
+  if (!explicitSaved && uciObj && typeof uciObj.get === 'function' && secName) {
+    try {
+      explicitSaved = String(
+        uciObj.get('tachyon', secName, 'icon_domain') || '',
+      ).trim();
+    } catch {
+      // ignore
+    }
+  }
+  let currentDomain =
+    explicitSaved === 'svg'
+      ? 'svg'
+      : explicitSaved || resolveSectionFaviconDomain(section) || '';
 
   const previewBox = E(
     'div',
@@ -1236,13 +1259,19 @@ export function openSectionIconPickerModal(
       class: 'tachyon-routing-row__icon tachyon-icon-picker__preview-icon',
       style: `background: ${visual.bg}; color: ${visual.color}; width: 42px; height: 42px; border-radius: 10px;`,
     },
-    [createSectionIconContent(section, visual, currentDomain || null)],
+    [
+      createSectionIconContent(
+        section,
+        visual,
+        currentDomain === 'svg' || !currentDomain ? null : currentDomain,
+      ),
+    ],
   );
 
   const previewDomainLabel = E(
     'div',
     { class: 'tachyon-icon-picker__preview-domain' },
-    currentDomain
+    currentDomain && currentDomain !== 'svg'
       ? `${tr('Источник иконки:', 'Icon source:')} ${currentDomain}`
       : tr('Стандартная векторная иконка (SVG)', 'Default vector icon (SVG)'),
   );
@@ -1268,10 +1297,10 @@ export function openSectionIconPickerModal(
     class: 'cbi-input-text',
     style: 'width: 100%;',
     placeholder: tr(
-      'Например: youtube.com, discord.com, chatgpt.com, rutracker.org',
-      'e.g. youtube.com, discord.com, chatgpt.com, rutracker.org',
+      'Например: youtube.com, discord.com, chatgpt.com, rutracker.org (или пусто для авто)',
+      'e.g. youtube.com, discord.com, chatgpt.com, rutracker.org (or empty for auto)',
     ),
-    value: currentDomain,
+    value: currentDomain === 'svg' ? 'svg' : currentDomain,
     input: (ev: Event) => {
       updatePreview((ev.target as HTMLInputElement).value);
     },
@@ -1343,6 +1372,18 @@ export function openSectionIconPickerModal(
             type: 'button',
             class: 'tachyon-icon-picker__chip',
             click: () => {
+              domainInput.value = '';
+              updatePreview('');
+            },
+          },
+          [E('span', {}, tr('🔄 Авто (по правилам)', '🔄 Auto (by rules)'))],
+        ),
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-icon-picker__chip',
+            click: () => {
               domainInput.value = 'svg';
               updatePreview('svg');
             },
@@ -1388,19 +1429,43 @@ export function openSectionIconPickerModal(
               } catch {
                 // ignore localStorage error
               }
-              if (uciObj && typeof uciObj.set === 'function' && secName) {
+              if (uciObj && secName) {
+                const applyUciIcon = () => {
+                  try {
+                    if (savedNorm) {
+                      if (typeof uciObj.set === 'function') {
+                        uciObj.set(
+                          'tachyon',
+                          secName,
+                          'icon_domain',
+                          savedNorm,
+                        );
+                      }
+                    } else if (typeof uciObj.unset === 'function') {
+                      uciObj.unset('tachyon', secName, 'icon_domain');
+                    } else if (typeof uciObj.set === 'function') {
+                      uciObj.set('tachyon', secName, 'icon_domain', '');
+                    }
+                    if (typeof uciObj.save === 'function') {
+                      void Promise.resolve(uciObj.save());
+                    }
+                  } catch {
+                    // ignore uci error
+                  }
+                };
                 try {
-                  uciObj.set(
-                    'tachyon',
-                    secName,
-                    'icon_domain',
-                    savedNorm || '',
-                  );
-                  if (typeof uciObj.save === 'function') {
-                    void Promise.resolve(uciObj.save());
+                  const hasLoaded =
+                    typeof uciObj.get === 'function' &&
+                    uciObj.get('tachyon', secName) != null;
+                  if (!hasLoaded && typeof uciObj.load === 'function') {
+                    void Promise.resolve(uciObj.load('tachyon')).then(
+                      applyUciIcon,
+                    );
+                  } else {
+                    applyUciIcon();
                   }
                 } catch {
-                  // ignore uci error
+                  applyUciIcon();
                 }
               }
               document
@@ -1413,6 +1478,11 @@ export function openSectionIconPickerModal(
                     createSectionIconContent(section, visual, effDom),
                   );
                 });
+              try {
+                window.dispatchEvent(new CustomEvent('tachyon-uci-changed'));
+              } catch {
+                // ignore
+              }
               uiObj.hideModal();
               onSaved?.(savedNorm);
             },

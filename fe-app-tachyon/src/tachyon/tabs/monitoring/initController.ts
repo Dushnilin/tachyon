@@ -277,6 +277,14 @@ function renderRouteFilterOptions() {
   Object.values(getRouteDisplayNames()).forEach((name) => {
     if (name) uniqueRoutes.add(name);
   });
+  activeConnections.forEach((conn) => {
+    const r = getRoute(conn);
+    if (r && r !== '-') uniqueRoutes.add(r);
+  });
+  closedConnections.forEach((conn) => {
+    const r = getRoute(conn);
+    if (r && r !== '-') uniqueRoutes.add(r);
+  });
 
   const routes = Array.from(uniqueRoutes).sort();
 
@@ -1205,7 +1213,9 @@ function watchServiceState() {
       getServiceAvailability({
         loading: false,
         failed: false,
-        running: uiState.service.tachyon.running,
+        running: Boolean(
+          uiState.service.tachyon.running || uiState.service.sing_box?.running,
+        ),
       }),
     );
   });

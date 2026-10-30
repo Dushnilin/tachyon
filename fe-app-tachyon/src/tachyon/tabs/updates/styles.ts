@@ -17,7 +17,7 @@ export const styles = `
 .tachyon_updates-page__components {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
+    align-items: stretch;
     gap: 12px;
     width: 100%;
 }
@@ -34,13 +34,13 @@ export const styles = `
         grid-template-columns: 1fr;
     }
 
-.tachyon_updates-page__engine-card {
-    flex: 1 1 100%;
-    width: 100%;
-    margin-bottom: 10px;
-}
+    .tachyon_updates-page__engine-card {
+        flex: 1 1 100%;
+        width: 100%;
+        margin-bottom: 10px;
+    }
 
-.tachyon_updates-page__components-column {
+    .tachyon_updates-page__components-column {
         width: 100%;
         min-width: 0;
     }
@@ -55,90 +55,141 @@ export const styles = `
 .tachyon_updates-page__component {
     border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.22));
     border-radius: 12px;
-    padding: 12px 16px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    justify-content: flex-start;
+    gap: 10px;
     min-width: 0;
+    height: 100%;
     box-sizing: border-box;
+    transition: border-color 0.15s ease;
 }
 
 .tachyon_updates-page__component__header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.14));
+    padding-bottom: 10px;
+    margin-bottom: 0;
+    min-height: 28px;
+}
+
+.tachyon_updates-page__component__header-main {
+    display: flex;
+    align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.14));
-    padding-bottom: 8px;
-    margin-bottom: 0;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.tachyon_updates-page__component__header-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.tachyon_updates-page__component__header-main .tachyon-badge {
+    margin-left: 0 !important;
 }
 
 .tachyon_updates-page__component__title {
     color: var(--text-color-high);
-    font-size: 14.5px;
+    font-size: 14px;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.25;
+    white-space: nowrap;
 }
 
 .tachyon_updates-page__component__header-version {
     color: var(--text-color-medium, #888);
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 500;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(128, 128, 128, 0.1);
+    border: 1px solid rgba(128, 128, 128, 0.16);
+    line-height: 1.35;
 }
 
 .tachyon_updates-page__component__repo-link {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 26px;
+    height: 26px;
     padding: 0;
-    border: none;
-    background: transparent;
-    border-radius: 3px;
+    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.16));
+    background: rgba(128, 128, 128, 0.06);
+    border-radius: 6px;
     color: var(--text-color-medium, #888);
     text-decoration: none;
     cursor: pointer;
-    transition: color 0.15s, background-color 0.15s;
+    transition: color 0.15s, background-color 0.15s, border-color 0.15s;
     flex-shrink: 0;
 }
 
 .tachyon_updates-page__component__repo-link:hover {
     color: var(--link-color, #3498db);
-    background-color: var(--background-color-low, rgba(0, 0, 0, 0.05));
+    background-color: var(--background-color-low, rgba(128, 128, 128, 0.14));
+    border-color: var(--border-color-medium, rgba(128, 128, 128, 0.3));
 }
 
 .tachyon_updates-page__component__details {
-    margin-left: auto;
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
+    width: 100%;
 }
 
 .tachyon_updates-page__component__info-row {
     display: inline-flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     align-items: center;
-    min-height: 22px;
+    flex-wrap: wrap;
+    min-height: 26px;
     gap: 6px;
-    white-space: nowrap;
-    padding: 2px 8px;
-    border-radius: 999px;
+    padding: 4px 10px;
+    border-radius: 8px;
     background: rgba(148, 163, 184, 0.08);
-    border: 1px solid rgba(148, 163, 184, 0.16);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tachyon_updates-page__component__info-row--outdated {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.28);
+}
+
+.tachyon_updates-page__component__info-row--latest {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.22);
 }
 
 .tachyon_updates-page__component__info-label {
     color: var(--text-color-medium, #888);
     font-size: 12px;
+    line-height: 1.3;
 }
 
 .tachyon_updates-page__component__info-value {
     color: var(--text-color-high, #000);
-    font-weight: 500;
-    font-size: 13px;
+    font-weight: 600;
+    font-size: 12px;
     text-align: left;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
@@ -153,7 +204,7 @@ export const styles = `
 .tachyon_updates-page__component__release-version-link {
     color: var(--link-color, #3498db) !important;
     text-decoration: underline;
-    font-weight: bold;
+    font-weight: 700;
 }
 
 .tachyon_updates-page__component__release-version-link:hover {
@@ -161,20 +212,56 @@ export const styles = `
 }
 
 .tachyon_updates-page__component__sha-info {
-    font-family: monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     color: var(--text-color-medium, #888);
     background: var(--background-color-low, rgba(0,0,0,0.06));
-    border-radius: 3px;
-    padding: 1px 5px;
+    border-radius: 4px;
+    padding: 1px 6px;
     letter-spacing: 0.02em;
+}
+
+.tachyon_updates-page__engine-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    flex-wrap: nowrap;
+}
+
+.tachyon_updates-page__engine-bar > select.cbi-input-select {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    border-radius: 8px !important;
+    margin: 0 !important;
+}
+
+.tachyon_updates-page__engine-bar > .btn,
+.tachyon_updates-page__engine-bar > .cbi-button,
+.tachyon_updates-page__engine-bar > .tachyon-partial-button {
+    flex-shrink: 0 !important;
+    padding: 5px 12px !important;
+    min-height: 32px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
 }
 
 .tachyon_updates-page__component__actions {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     margin-top: auto;
+    padding-top: 2px;
 }
 
 .tachyon_updates-page__component__actions--with-details {
@@ -193,18 +280,19 @@ export const styles = `
 .tachyon_updates-page__component__actions-main > .btn,
 .tachyon_updates-page__component__actions-main > .cbi-button,
 .tachyon_updates-page__component__actions-main > .tachyon-partial-button {
-    padding: 5px 10px !important;
-    min-height: 30px !important;
+    padding: 5px 11px !important;
+    min-height: 32px !important;
     font-size: 12px !important;
     font-weight: 600 !important;
     border-radius: 8px !important;
     margin: 0 !important;
+    white-space: nowrap !important;
 }
 
 .tachyon_updates-page__component__actions-main > select.cbi-input-select {
-    height: 30px !important;
-    min-height: 30px !important;
-    padding: 3px 8px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 4px 8px !important;
     font-size: 12px !important;
     border-radius: 8px !important;
     margin: 0 !important;

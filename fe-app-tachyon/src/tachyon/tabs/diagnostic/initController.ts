@@ -33,6 +33,7 @@ import {
 } from '../../services';
 import { ensureSystemInfo } from '../../services/systemInfo.service';
 import {
+  clearExpandedCheckCards,
   renderAvailableActions,
   renderCheckSection,
   renderRunAction,
@@ -69,6 +70,7 @@ import {
   shouldShowStopAction,
 } from './serviceTransition';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
+import { tr } from '../../helpers/i18n';
 import {
   formatSingBoxVersion,
   normalizeSingBoxVariantFields,
@@ -95,6 +97,7 @@ let diagnosticControllerInitialized = false;
 let diagnosticMounted = false;
 let diagnosticMountId = 0;
 let diagnosticCompletedWhileHidden = false;
+let diagnosticsDetailsExpanded = false;
 let servicesInfoStateUnsubscribe: (() => void) | null = null;
 let servicesInfoRefreshPromise: Promise<void> | null = null;
 const followedServiceActionJobs = new Set<string>();
@@ -152,6 +155,8 @@ function resetDiagnosticsChecks() {
     return;
   }
 
+  diagnosticsDetailsExpanded = false;
+  clearExpandedCheckCards();
   store.set({
     diagnosticsChecks: getNotRunningDiagnosticsChecks(),
   });
@@ -553,13 +558,132 @@ function renderDiagnosticsChecks() {
     (a, b) => a.order - b.order,
   );
   const container = document.getElementById('tachyon_diagnostic-page-checks');
+  if (!container) {
+    return;
+  }
 
-  const renderedDiagnosticsChecks = diagnosticsChecks.map((check) =>
-    renderCheckSection(check),
+  const isRunning = Boolean(store.get().diagnosticsRunAction.loading);
+  const hasFinishedAny = diagnosticsChecks.some(
+    (check) => check.state !== 'skipped' && check.state !== 'loading',
   );
 
+  // Initially hide check cards before diagnostics have been run
+  if (!isRunning && !hasFinishedAny) {
+    return preserveScrollForPage(() => {
+      container.style.display = 'none';
+      container.replaceChildren();
+    });
+  }
+
+  container.style.display = '';
+
+  const totalCount = diagnosticsChecks.length;
+  const completedCount = diagnosticsChecks.filter(
+    (check) => check.state !== 'skipped' && check.state !== 'loading',
+  ).length;
+  const passedCount = diagnosticsChecks.filter(
+    (check) => check.state === 'success',
+  ).length;
+  const warnCount = diagnosticsChecks.filter(
+    (check) => check.state === 'warning',
+  ).length;
+  const errorCount = diagnosticsChecks.filter(
+    (check) => check.state === 'error',
+  ).length;
+
+  let bannerState: 'loading' | 'success' | 'warning' | 'error' = 'success';
+  if (isRunning) {
+    bannerState = 'loading';
+  } else if (errorCount > 0) {
+    bannerState = 'error';
+  } else if (warnCount > 0) {
+    bannerState = 'warning';
+  }
+
+  const summaryTitleText = isRunning
+    ? `⏳ ${tr('Выполняется диагностика', 'Diagnostics in progress')}: ${completedCount} / ${totalCount}`
+    : `${
+        bannerState === 'success' ? '✓' : bannerState === 'warning' ? '⚠' : '✗'
+      } ${tr('Проверки пройдены', 'Checks passed')}: ${passedCount} ${tr('из', 'of')} ${totalCount}`;
+
+  const summarySubParts: string[] = [];
+  if (!isRunning) {
+    if (warnCount > 0) {
+      summarySubParts.push(`${tr('Предупреждений', 'Warnings')}: ${warnCount}`);
+    }
+    if (errorCount > 0) {
+      summarySubParts.push(`${tr('Ошибок', 'Errors')}: ${errorCount}`);
+    }
+    if (warnCount === 0 && errorCount === 0) {
+      summarySubParts.push(
+        tr('Все подсистемы работают исправно', 'All subsystems are healthy'),
+      );
+    }
+  } else {
+    summarySubParts.push(
+      tr(
+        'Проверка подсистем, пожалуйста подождите...',
+        'Checking subsystems, please wait...',
+      ),
+    );
+  }
+
+  const summaryBanner = E(
+    'div',
+    {
+      class: `tachyon_diagnostic-summary-banner tachyon_diagnostic-summary-banner--${bannerState}${
+        !isRunning ? ' tachyon_diagnostic-summary-banner--clickable' : ''
+      }`,
+      click: () => {
+        if (isRunning) {
+          return;
+        }
+        diagnosticsDetailsExpanded = !diagnosticsDetailsExpanded;
+        renderDiagnosticsChecks();
+      },
+    },
+    [
+      E('div', { class: 'tachyon_diagnostic-summary-banner__main' }, [
+        E(
+          'b',
+          { class: 'tachyon_diagnostic-summary-banner__title' },
+          summaryTitleText,
+        ),
+        E(
+          'span',
+          { class: 'tachyon_diagnostic-summary-banner__subtitle' },
+          summarySubParts.join(' · '),
+        ),
+      ]),
+      !isRunning
+        ? E(
+            'span',
+            { class: 'tachyon_diagnostic-summary-banner__toggle' },
+            diagnosticsDetailsExpanded
+              ? `${tr('Скрыть подробности', 'Hide details')} ▴`
+              : `${tr('Показать подробности', 'Show details')} ▾`,
+          )
+        : E('span'),
+    ],
+  );
+
+  const children: HTMLElement[] = [summaryBanner];
+
+  if (isRunning || diagnosticsDetailsExpanded) {
+    const renderedDiagnosticsChecks = diagnosticsChecks.map((check) =>
+      renderCheckSection(check),
+    );
+    children.push(
+      E(
+        'div',
+        { class: 'tachyon_diagnostic-page__checks-grid' },
+        renderedDiagnosticsChecks,
+      ),
+    );
+  }
+
   return preserveScrollForPage(() => {
-    container!.replaceChildren(...renderedDiagnosticsChecks);
+    container.replaceChildren(...children);
   });
 }
 
@@ -1494,6 +1618,7 @@ async function onStoreUpdate(
 
   if (diff.diagnosticsRunAction) {
     renderDiagnosticRunActionWidget();
+    renderDiagnosticsChecks();
   }
 
   if (

@@ -2268,13 +2268,8 @@ function createSettingsContent(section, capabilities) {
     );
     return el ? JSON.stringify(el._vis) : '';
   };
-  compVisOpt.write = function (section_id) {
-    const el = document.getElementById(
-      'components-visibility-widget-' + section_id,
-    );
-    if (el && typeof el._syncToUci === 'function') {
-      el._syncToUci();
-    }
+  compVisOpt.write = function (_section_id) {
+    // UCI is written directly by syncToUci() inside the widget on every interaction.
   };
   compVisOpt.remove = function () {};
 
@@ -3234,7 +3229,13 @@ function createSettingsContent(section, capabilities) {
   o.cfgvalue = function (section_id) {
     const value = uci.get(UCI_PACKAGE, section_id, 'disable_quic');
     // legacy flag values keep their meaning across the mode split
-    if (value === '1' || value === 'true' || value === 'yes' || value === 'on')
+    if (
+      value === 'tunneled' ||
+      value === '1' ||
+      value === 'true' ||
+      value === 'yes' ||
+      value === 'on'
+    )
       return 'tunneled';
     return value === 'all' ? 'all' : 'off';
   };

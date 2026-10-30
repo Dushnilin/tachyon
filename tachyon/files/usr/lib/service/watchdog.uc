@@ -1402,8 +1402,8 @@ function heal_uncached_rulesets_detour() {
     let preferred_proxy_section_name = "";
     let conn_mod = get_connections();
     
-    uci_core.foreach(CONFIG_NAME, "section", function(s) {
-        if (!common.bool_option(s, "enabled", true)) return;
+    for (let s in uci_core.section_objects(CONFIG_NAME, "section")) {
+        if (!common.bool_option(s, "enabled", true)) continue;
         let act = common.option(s, "action", "");
         if (act != "bypass" && act != "block" && act != "dns" && act != "hosts" && act != "" &&
             !conn_mod.is_dpi_or_desync_only_section(s)) {
@@ -1420,7 +1420,7 @@ function heal_uncached_rulesets_detour() {
         let custom_rulesets = conn_mod.rule_sets(s);
         if (length(lists) > 0 || length(custom_rulesets) > 0)
             has_rulesets = true;
-    });
+    }
     if (preferred_proxy_section_name != "")
         proxy_section_name = preferred_proxy_section_name;
 

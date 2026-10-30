@@ -438,12 +438,25 @@ function outbound_is_unsupported_stub(outbound) {
         index(tag, "⚠️") >= 0 ||
         index(tag, "❗") >= 0 ||
         index(tag, "❌") >= 0 ||
+        index(tag, "📊") >= 0 ||
+        index(tag, "📈") >= 0 ||
+        index(tag, "📉") >= 0 ||
+        index(tag, "📅") >= 0 ||
+        index(tag, "⏳") >= 0 ||
+        index(tag, "⏰") >= 0 ||
+        index(tag, "|") >= 0 ||
         index(tag, "warning") >= 0 ||
         index(tag, "error") >= 0 ||
         index(tag, "notice") >= 0 ||
         index(tag, "attention") >= 0 ||
         index(tag, "внимание") >= 0 ||
-        index(tag, "ошибка") >= 0
+        index(tag, "ошибка") >= 0 ||
+        index(tag, "traffic") >= 0 ||
+        index(tag, "трафик") >= 0 ||
+        index(tag, "expire") >= 0 ||
+        index(tag, "истекает") >= 0 ||
+        index(tag, "осталось") >= 0 ||
+        match(tag, /[0-9]+(\.[0-9]+)?[ \t]*(gb|mb|tb|гб|мб|тб)/) != null
     ))
         return true;
 

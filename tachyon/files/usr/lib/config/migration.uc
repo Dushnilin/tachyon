@@ -1973,7 +1973,8 @@ function cleanup_modular_entities_v1(ctx) {
                 add_list_unique(ctx, section, "outbound_source_refs", fptn_src_id);
             }
         } else {
-            let eff_proto = index(single_proto_actions, sec_action) >= 0 ? sec_action : "";
+            let dpi_inline_actions = [ "desync", "zapret2", "zapret", "byedpi", "wdtt", "olcrtc" ];
+            let eff_proto = (index(single_proto_actions, sec_action) >= 0 && index(dpi_inline_actions, sec_action) < 0) ? sec_action : "";
             if (eff_proto == "" && sec_action == "connection" &&
                 length(list_option(section, "outbound_source_refs")) == 0 &&
                 length(list_option(section, "outbound_group_refs")) == 0 &&
@@ -2633,7 +2634,11 @@ function migrate_modular_entities_v1(ctx) {
             add_list_unique(ctx, section, "balancer_refs", bal_id);
         }
 
-        if (sec_action != "" && sec_action != "connection" && sec_action != "bypass" && sec_action != "block" && sec_action != "dns" && sec_action != "hosts") {
+        let preserve_actions = [
+            "connection", "bypass", "block", "dns", "hosts",
+            "desync", "zapret", "zapret2", "byedpi", "wdtt", "olcrtc"
+        ];
+        if (sec_action != "" && index(preserve_actions, sec_action) < 0) {
             set_option(ctx, section, "action", "connection");
         }
     }

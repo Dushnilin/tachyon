@@ -70,7 +70,46 @@ if node "$LINTER_DIR/ucode_forward_refs.js" "$tmp_dir/top_level_object.uc" >/dev
   fail "linter skipped functions after a top-level object literal (self-test)"
 fi
 
+# Regression: forbidden JavaScript prototype methods (.forEach, .indexOf, etc.)
+# must be statically rejected before runtime.
+cat >"$tmp_dir/js_method.uc" <<'EOF'
+function bad_js(arr) { arr.forEach(function(x) { print(x); }); }
+bad_js([1, 2]);
+EOF
+
+if node "$LINTER_DIR/ucode_forward_refs.js" "$tmp_dir/js_method.uc" >/dev/null 2>&1; then
+  fail "linter failed to reject forbidden JS prototype method .forEach() (self-test)"
+fi
+
+# Regression: cross-module call to a non-existent export must be rejected.
+mkdir -p "$tmp_dir/pkg/core"
+cat >"$tmp_dir/pkg/core/mod_a.uc" <<'EOF'
+function real_fn() { return 1; }
+return { real_fn: real_fn };
+EOF
+cat >"$tmp_dir/pkg/core/mod_b.uc" <<'EOF'
+let mod_a = require("core.mod_a");
+export function run() { return mod_a.missing_fn(); };
+EOF
+
+if node "$LINTER_DIR/ucode_forward_refs.js" "$tmp_dir/pkg" >/dev/null 2>&1; then
+  fail "linter failed to reject cross-module call to non-existent export (self-test)"
+fi
+
+# Regression: calling an undeclared bare function (e.g. str_endswith() when
+# never declared or imported) must be statically rejected.
+cat >"$tmp_dir/undeclared_call.uc" <<'EOF'
+function do_install(name) {
+    return str_endswith(name, ".apk");
+}
+do_install("pkg.apk");
+EOF
+
+if node "$LINTER_DIR/ucode_forward_refs.js" "$tmp_dir/undeclared_call.uc" >/dev/null 2>&1; then
+  fail "linter failed to reject undeclared bare function call (self-test)"
+fi
+
 node "$LINTER_DIR/ucode_forward_refs.js" "$LIB_DIR" ||
-  fail "forward references found in backend ucode"
+  fail "forward references or invalid module calls found in backend ucode"
 
 printf 'PASS: ucode forward reference lint\n'

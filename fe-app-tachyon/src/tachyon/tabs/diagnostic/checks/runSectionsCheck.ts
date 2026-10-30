@@ -3,6 +3,7 @@ import { TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
 import { getDashboardSections } from '../../../methods/custom/getDashboardSections';
+import { tr } from '../../../helpers/i18n';
 import { IDiagnosticsChecksItem } from '../../../services';
 
 type SectionCheckState = IDiagnosticsChecksItem['state'];
@@ -174,10 +175,43 @@ export async function runSectionsCheck() {
         };
       }
 
+      const actionLower = (section.action || '').toLowerCase();
+      if (actionLower === 'block' || actionLower === 'reject') {
+        return {
+          state: 'success',
+          latency: tr('Активно (Блокировка)', 'Active (Block)'),
+        };
+      }
+      if (actionLower === 'bypass' || actionLower === 'direct') {
+        return {
+          state: 'success',
+          latency: tr('Активно (Напрямую)', 'Active (Direct)'),
+        };
+      }
+      if (actionLower === 'dns') {
+        return {
+          state: 'success',
+          latency: tr('Активно (DNS)', 'Active (DNS)'),
+        };
+      }
+      if (['desync', 'wdtt', 'olcrtc'].includes(actionLower)) {
+        const selectedOut = section.outbounds?.[0];
+        if (selectedOut && selectedOut.runtimeAvailable === false) {
+          return {
+            state: 'error',
+            latency: tr('Не настроено', 'Not configured'),
+          };
+        }
+        return {
+          state: 'success',
+          latency: tr('Активно (DPI)', 'Active (DPI)'),
+        };
+      }
+
       // Service sections (zapret/zapret2/byedpi) don't have Clash API proxies.
       // Use the serviceStatus that was already fetched in getDashboardSections.
       const isService =
-        ['zapret', 'zapret2', 'byedpi'].includes(section.action || '') ||
+        ['zapret', 'zapret2', 'byedpi'].includes(actionLower) ||
         Boolean(section.serviceStatus);
 
       if (isService) {

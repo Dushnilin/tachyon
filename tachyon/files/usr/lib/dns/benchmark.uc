@@ -17,7 +17,6 @@ let object_or_empty = common.object_or_empty;
 let array_or_empty = common.array_or_empty;
 let option = common.option;
 let list_option = common.list_option;
-let normalize_status = common.normalize_status;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";

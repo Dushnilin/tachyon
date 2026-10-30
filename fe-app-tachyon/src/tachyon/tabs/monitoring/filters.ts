@@ -132,7 +132,21 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
 } {
   const map: Record<string, string> = {
     'bypass-out': 'Bypass',
+    bypass: 'Bypass',
     'direct-out': 'direct',
+    direct: 'direct',
+    'lo-direct-out': 'direct',
+    'lan-direct-out': 'direct',
+    'block-out': 'block',
+    block: 'block',
+    reject: 'block',
+    'dns-out': 'DNS',
+    dns: 'DNS',
+    'hijack-dns': 'DNS',
+    'main-dns-server': 'DNS',
+    'bootstrap-dns-server': 'DNS',
+    'fallback-dns-server': 'DNS',
+    'fakeip-dns-server': 'DNS',
     'tachyon-failover': 'Failover',
   };
   const serverMap: Record<string, string> = {};
@@ -168,6 +182,8 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
 
       routeSectionItems.push({ sectionName, displayName });
       map[getOutboundTagBySection(sectionName)] = displayName;
+      map[`${sectionName}-dns-server`] = displayName;
+      map[`dns-${sectionName}`] = displayName;
       const urltestIds =
         urltestsBySection.get(sectionName) || getUrlTestIds(section);
       urltestIds.forEach((id) => {
@@ -212,18 +228,44 @@ export function getRouteDisplayNameByTag(tag: string): string {
   }
 
   const manualSection = routeSections.find(({ sectionName }) => {
-    if (tag === sectionName) {
+    if (
+      tag === sectionName ||
+      tag === `${sectionName}-dns-server` ||
+      tag === `dns-${sectionName}`
+    ) {
       return true;
     }
     return tag.startsWith(`${sectionName}-`) && tag.endsWith('-out');
   });
 
-  return manualSection?.displayName || '';
+  if (manualSection?.displayName) {
+    return manualSection.displayName;
+  }
+
+  if (tag.endsWith('-dns-server') || tag.startsWith('dns-')) {
+    return 'DNS';
+  }
+
+  return '';
 }
 
 export function getRouteTagFromRule(rule?: string): string {
-  const match = normalizeString(rule).match(/=>\s*route\(([^)]+)\)/);
-  return normalizeString(match?.[1]).replace(/^['"]|['"]$/g, '');
+  const norm = normalizeString(rule);
+  const match = norm.match(/=>\s*route\(([^)]+)\)/);
+  if (match?.[1]) {
+    return normalizeString(match[1]).replace(/^['"]|['"]$/g, '');
+  }
+  const directMatch = norm.match(
+    /=>\s*(hijack-dns|reject|direct-out|bypass-out|block-out|dns-out|direct|bypass|block|dns)\b/i,
+  );
+  if (directMatch?.[1]) {
+    return directMatch[1].toLowerCase();
+  }
+  const outboundMatch = norm.match(/\boutbound=([^\s,)]+)/i);
+  if (outboundMatch?.[1]) {
+    return normalizeString(outboundMatch[1]).replace(/^['"]|['"]$/g, '');
+  }
+  return '';
 }
 
 export function formatConnectionDuration(

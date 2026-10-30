@@ -70,10 +70,89 @@ export const styles = `
 }
 
 .tachyon_diagnostic-page__checks {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tachyon_diagnostic-page__checks-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(265px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
     align-items: stretch;
+}
+
+.tachyon_diagnostic-summary-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.24));
+    background: var(--tachyon-bg-surface-alt, rgba(148, 163, 184, 0.06));
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tachyon_diagnostic-summary-banner--clickable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.tachyon_diagnostic-summary-banner--clickable:hover {
+    border-color: rgba(148, 130, 224, 0.42);
+}
+
+.tachyon_diagnostic-summary-banner--loading {
+    border-color: rgba(99, 102, 241, 0.38);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.tachyon_diagnostic-summary-banner--success {
+    border-color: var(--tachyon-success-border, rgba(16, 185, 129, 0.42));
+    background: var(--tachyon-success-soft, rgba(16, 185, 129, 0.09));
+}
+
+.tachyon_diagnostic-summary-banner--warning {
+    border-color: var(--tachyon-warning-border, rgba(245, 158, 11, 0.42));
+    background: var(--tachyon-warning-soft, rgba(245, 158, 11, 0.09));
+}
+
+.tachyon_diagnostic-summary-banner--error {
+    border-color: var(--tachyon-danger-border, rgba(239, 68, 68, 0.42));
+    background: var(--tachyon-danger-soft, rgba(239, 68, 68, 0.09));
+}
+
+.tachyon_diagnostic-summary-banner__main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.tachyon_diagnostic-summary-banner__title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--tachyon-text-main, inherit);
+    line-height: 1.3;
+}
+
+.tachyon_diagnostic-summary-banner__subtitle {
+    font-size: 11.5px;
+    color: var(--tachyon-text-muted, #94a3b8);
+    line-height: 1.35;
+}
+
+.tachyon_diagnostic-summary-banner__toggle {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #b4a5f0;
+    padding: 4px 10px;
+    border-radius: 7px;
+    background: rgba(148, 130, 224, 0.14);
+    border: 1px solid rgba(148, 130, 224, 0.28);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .tachyon_diagnostic-page__run_check_wrapper button {
@@ -409,14 +488,30 @@ export const styles = `
     line-height: 1.35;
 }
 
+.tachyon_diagnostic_alert--collapsible {
+    cursor: pointer;
+    user-select: none;
+}
+
+.tachyon_diagnostic_alert__toggle-hint {
+    font-size: 11px;
+    font-weight: 600;
+    color: #b4a5f0;
+    margin-top: 2px;
+}
+
 .tachyon_diagnostic_alert__summary {
     grid-column: 1 / -1;
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 5px;
     margin-top: 2px;
     padding-top: 8px;
     border-top: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.16));
+}
+
+.tachyon_diagnostic_alert__summary--expanded {
+    display: flex;
 }
 
 .tachyon_diagnostic_alert__summary:empty {

@@ -3225,34 +3225,33 @@ function add_desync_outbound(config, section) {
         outbound.auto_tune = bool_option(section, "desync_auto_tune", false);
     if (lc(raw_preset) == "discord" && !bool_option(section, "desync_udp_fake", false))
         outbound.udp_fake = true;
-    if (is_custom) {
-        let split_pos = normalize_desync_split_pos_value(option(section, "desync_split_pos", ""));
-        if (split_pos != null)
-            outbound.split_pos = split_pos;
-        let fake_ttl = int_option(section, "desync_fake_ttl", "0");
-        if (fake_ttl > 0)
-            outbound.fake_ttl = fake_ttl;
-        let fake_sni = option(section, "desync_fake_sni", "");
-        if (fake_sni != "")
-            outbound.fake_sni = fake_sni;
-        let repeats = int_option(section, "desync_repeats", "0");
-        if (repeats > 0)
-            outbound.repeats = repeats;
-        let delay_raw = option(section, "desync_split_delay_ms", "");
-        if (delay_raw != "" && match(delay_raw, /^[0-9]+$/))
-            outbound.split_delay_ms = int(delay_raw, 10);
-        let udp_fake_raw = trim(option(section, "desync_udp_fake", ""));
-        if (udp_fake_raw != "")
-            outbound.udp_fake = bool_option(section, "desync_udp_fake", false);
-        let udp_repeats = int_option(section, "desync_udp_repeats", "0");
-        if (udp_repeats > 0)
-            outbound.udp_repeats = udp_repeats;
-        let udp_fake_ttl = int_option(section, "desync_udp_fake_ttl", "0");
-        if (udp_fake_ttl > 0)
-            outbound.udp_fake_ttl = udp_fake_ttl;
+    let split_pos = normalize_desync_split_pos_value(option(section, "desync_split_pos", ""));
+    if (split_pos != null)
+        outbound.split_pos = split_pos;
+    let fake_ttl = int_option(section, "desync_fake_ttl", "0");
+    if (fake_ttl > 0)
+        outbound.fake_ttl = fake_ttl;
+    let fake_sni = trim(option(section, "desync_fake_sni", ""));
+    if (fake_sni != "")
+        outbound.fake_sni = fake_sni;
+    let repeats = int_option(section, "desync_repeats", "0");
+    if (repeats > 0)
+        outbound.repeats = repeats;
+    let delay_raw = option(section, "desync_split_delay_ms", "");
+    if (delay_raw != "" && match(delay_raw, /^[0-9]+$/))
+        outbound.split_delay_ms = int(delay_raw, 10);
+    let udp_fake_raw = trim(option(section, "desync_udp_fake", ""));
+    if (udp_fake_raw != "")
+        outbound.udp_fake = bool_option(section, "desync_udp_fake", false);
+    let udp_repeats = int_option(section, "desync_udp_repeats", "0");
+    if (udp_repeats > 0)
+        outbound.udp_repeats = udp_repeats;
+    let udp_fake_ttl = int_option(section, "desync_udp_fake_ttl", "0");
+    if (udp_fake_ttl > 0)
+        outbound.udp_fake_ttl = udp_fake_ttl;
 
+    if (is_custom)
         apply_desync_opts_string(outbound, option(section, "desync_opts", ""));
-    }
 
     if (outbound.preset == null && outbound.mode == null)
         outbound.preset = "auto";

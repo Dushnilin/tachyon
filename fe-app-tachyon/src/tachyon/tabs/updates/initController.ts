@@ -150,11 +150,7 @@ function isNotInstalled(version: string | undefined) {
 function shouldShowInstallAfterCheck(component: Tachyon.ComponentName) {
   const status = getVisibleCheckResult(component)?.status;
 
-  return (
-    status === 'outdated' ||
-    status === 'dev' ||
-    status === 'outdated_same_release'
-  );
+  return status === 'outdated' || status === 'outdated_same_release';
 }
 
 function getVisibleCheckResult(component: Tachyon.ComponentName) {
@@ -2045,21 +2041,26 @@ function renderComponentCard(card: ComponentCard) {
     card.supportsVersions || (card.repoUrl && card.component !== 'tailscale'),
   );
 
-  const headerChildren: Node[] = [
+  const headerMainChildren: Node[] = [
     E('b', { class: 'tachyon_updates-page__component__title' }, card.title),
   ];
   if (card.badgeNode) {
-    headerChildren.push(card.badgeNode);
+    headerMainChildren.push(card.badgeNode);
   }
-  headerChildren.push(
+  headerMainChildren.push(
     E(
       'span',
-      { class: 'tachyon_updates-page__component__header-version' },
+      {
+        class: 'tachyon_updates-page__component__header-version',
+        title: card.version,
+      },
       card.version,
     ),
   );
+
+  const headerToolsChildren: Node[] = [];
   if (card.repoUrl) {
-    headerChildren.push(
+    headerToolsChildren.push(
       E(
         'a',
         {
@@ -2074,7 +2075,7 @@ function renderComponentCard(card: ComponentCard) {
     );
   }
   if (canShowWhatsNew) {
-    headerChildren.push(
+    headerToolsChildren.push(
       renderWhatsNewIconButton({
         component: card.component,
         title: card.title,
@@ -2083,6 +2084,23 @@ function renderComponentCard(card: ComponentCard) {
         notes: checkResult?.release_notes,
         releaseUrl: checkResult?.release_url,
       }),
+    );
+  }
+
+  const headerChildren: Node[] = [
+    E(
+      'div',
+      { class: 'tachyon_updates-page__component__header-main' },
+      headerMainChildren,
+    ),
+  ];
+  if (headerToolsChildren.length > 0) {
+    headerChildren.push(
+      E(
+        'div',
+        { class: 'tachyon_updates-page__component__header-tools' },
+        headerToolsChildren,
+      ),
     );
   }
   const header = E(
@@ -2166,7 +2184,7 @@ function renderComponentCard(card: ComponentCard) {
     } else if (checkResult.status === 'latest') {
       labelText = _('Latest version is installed');
     } else if (checkResult.status === 'dev') {
-      labelText = `${_('Installed version is newer than release')}. ${_('Latest version:')}`;
+      labelText = _('Installed version is newer than release');
       const versionToShow = checkResult.latest_version || card.latestVersion;
 
       if (versionToShow || checkResult.release_url) {
@@ -2216,10 +2234,20 @@ function renderComponentCard(card: ComponentCard) {
         );
       }
 
+      const rowStatusMod =
+        checkResult.status === 'outdated' ||
+        checkResult.status === 'outdated_same_release'
+          ? ' tachyon_updates-page__component__info-row--outdated'
+          : checkResult.status === 'latest'
+            ? ' tachyon_updates-page__component__info-row--latest'
+            : '';
+
       detailsChildren.push(
         E(
           'div',
-          { class: 'tachyon_updates-page__component__info-row' },
+          {
+            class: `tachyon_updates-page__component__info-row${rowStatusMod}`,
+          },
           rowChildren,
         ),
       );
@@ -2234,10 +2262,6 @@ function renderComponentCard(card: ComponentCard) {
           detailsChildren,
         )
       : null;
-
-  if (detailsContainer) {
-    header.appendChild(detailsContainer);
-  }
 
   const primaryActions: ComponentActionButton[] = [];
   const dangerActions: ComponentActionButton[] = [];
@@ -2361,7 +2385,11 @@ function renderComponentCard(card: ComponentCard) {
     actionElements,
   );
 
-  const cardChildren: Node[] = [header, actionsContainer];
+  const cardChildren: Node[] = [header];
+  if (detailsContainer) {
+    cardChildren.push(detailsContainer);
+  }
+  cardChildren.push(actionsContainer);
 
   return E('div', { class: 'tachyon_updates-page__component' }, cardChildren);
 }
@@ -2484,28 +2512,33 @@ function renderEngineCard(): Node {
           : COMPONENT_REPO_URLS.sing_box);
 
   // Header
-  const headerChildren: Node[] = [
+  const engineTitleLabel = isSingBoxActive
+    ? tachyonCore
+      ? 'tachyon-core'
+      : 'sing-box'
+    : engineLabel(active);
+  const headerMainChildren: Node[] = [
     E(
       'b',
       { class: 'tachyon_updates-page__component__title' },
       _('Routing Engine'),
     ),
   ];
-  if (engineBadgeNode) headerChildren.push(engineBadgeNode);
-  const engineTitleLabel = isSingBoxActive
-    ? tachyonCore
-      ? 'tachyon-core'
-      : 'sing-box'
-    : engineLabel(active);
-  headerChildren.push(
+  if (engineBadgeNode) headerMainChildren.push(engineBadgeNode);
+  headerMainChildren.push(
     E(
       'span',
-      { class: 'tachyon_updates-page__component__header-version' },
-      `${engineTitleLabel} ${engineVersion}`,
+      {
+        class: 'tachyon_updates-page__component__header-version',
+        title: `${engineTitleLabel} ${engineVersion}`,
+      },
+      engineBadgeNode ? engineVersion : `${engineTitleLabel} ${engineVersion}`,
     ),
   );
+
+  const headerToolsChildren: Node[] = [];
   if (engineRepoUrl) {
-    headerChildren.push(
+    headerToolsChildren.push(
       E(
         'a',
         {
@@ -2519,7 +2552,7 @@ function renderEngineCard(): Node {
       ),
     );
   }
-  headerChildren.push(
+  headerToolsChildren.push(
     renderWhatsNewIconButton({
       component: checkComponent,
       title: engineTitleLabel,
@@ -2528,10 +2561,22 @@ function renderEngineCard(): Node {
       releaseUrl: checkResult?.release_url,
     }),
   );
+
   const header = E(
     'div',
     { class: 'tachyon_updates-page__component__header' },
-    headerChildren,
+    [
+      E(
+        'div',
+        { class: 'tachyon_updates-page__component__header-main' },
+        headerMainChildren,
+      ),
+      E(
+        'div',
+        { class: 'tachyon_updates-page__component__header-tools' },
+        headerToolsChildren,
+      ),
+    ],
   );
 
   // ── Details block: check result (same pattern as renderComponentCard) ──────
@@ -2607,7 +2652,7 @@ function renderEngineCard(): Node {
     } else if (checkResult.status === 'latest') {
       labelText = _('Latest version is installed');
     } else if (checkResult.status === 'dev') {
-      labelText = `${_('Installed version is newer than release')}. ${_('Latest version:')}`;
+      labelText = _('Installed version is newer than release');
       const v = checkResult.latest_version || getLatestVersion(checkComponent);
       if (v || checkResult.release_url) {
         latestValueNodes.push(
@@ -2655,10 +2700,20 @@ function renderEngineCard(): Node {
           ),
         );
       }
+      const rowStatusMod =
+        checkResult.status === 'outdated' ||
+        checkResult.status === 'outdated_same_release'
+          ? ' tachyon_updates-page__component__info-row--outdated'
+          : checkResult.status === 'latest'
+            ? ' tachyon_updates-page__component__info-row--latest'
+            : '';
+
       detailsChildren.push(
         E(
           'div',
-          { class: 'tachyon_updates-page__component__info-row' },
+          {
+            class: `tachyon_updates-page__component__info-row${rowStatusMod}`,
+          },
           rowChildren,
         ),
       );
@@ -2673,10 +2728,6 @@ function renderEngineCard(): Node {
           detailsChildren,
         )
       : null;
-
-  if (detailsContainer) {
-    header.appendChild(detailsContainer);
-  }
 
   // ── Variant selector: tachyon-core + sing-box flavours in one dropdown ────────
   interface SelectableVariant {
@@ -2751,7 +2802,6 @@ function renderEngineCard(): Node {
 
   const picker = E('select', {
     class: 'cbi-input-select',
-    style: 'width: auto; max-width: 195px; min-width: 140px;',
   }) as HTMLSelectElement;
   const tcGroup = E('optgroup', {
     label: 'Tachyon Core',
@@ -2919,8 +2969,14 @@ function renderEngineCard(): Node {
   const isPickerOpen =
     pickerHonoursTag && activeVersionPickerComponent === pickerComponent;
 
-  // Row 1: picker + Apply + Check update [+ Update] [+ Versions]
-  const primaryRow: Node[] = [picker, applyButton, checkUpdateButton];
+  // Row 1: engine variant picker + Apply/Active
+  const engineBarRow = E('div', { class: 'tachyon_updates-page__engine-bar' }, [
+    picker,
+    applyButton,
+  ]);
+
+  // Row 2: Check update [+ Update] [+ Versions]
+  const primaryRow: Node[] = [checkUpdateButton];
   if (updateButton) primaryRow.push(updateButton);
   if (pickerHonoursTag) {
     primaryRow.push(
@@ -2936,11 +2992,11 @@ function renderEngineCard(): Node {
     picker.title = featureHint.textContent;
   }
   actionElements.push(
+    engineBarRow,
     E(
       'div',
       {
         class: 'tachyon_updates-page__component__actions-main',
-        style: 'gap:6px;align-items:center;flex-wrap:wrap;',
       },
       primaryRow,
     ),
@@ -2959,7 +3015,11 @@ function renderEngineCard(): Node {
     actionElements,
   );
 
-  const cardChildren: Node[] = [header, actionsContainer];
+  const cardChildren: Node[] = [header];
+  if (detailsContainer) {
+    cardChildren.push(detailsContainer);
+  }
+  cardChildren.push(actionsContainer);
 
   return E('div', { class: 'tachyon_updates-page__component' }, cardChildren);
 }
@@ -3254,11 +3314,6 @@ function renderUpdatesComponents() {
     }
   });
 
-  const columns: Node[][] = [[], []];
-  allCards.forEach((node, idx) => {
-    columns[idx % 2]?.push(node);
-  });
-
   return preserveScrollForPage(() => {
     const activeEl =
       typeof document !== 'undefined' &&
@@ -3272,15 +3327,7 @@ function renderUpdatesComponents() {
     const selectionEnd =
       activeEl instanceof HTMLInputElement ? activeEl.selectionEnd : null;
 
-    container.replaceChildren(
-      ...columns.map((columnNodes) =>
-        E(
-          'div',
-          { class: 'tachyon_updates-page__components-column' },
-          columnNodes,
-        ),
-      ),
-    );
+    container.replaceChildren(...allCards);
 
     if (activeId) {
       const nextFocusEl = document.getElementById(activeId);

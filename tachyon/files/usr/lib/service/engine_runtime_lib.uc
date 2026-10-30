@@ -644,7 +644,7 @@ function main() {
 
     if (mode == "engine-status") {
         let active = engine.get_active();
-        if (active == engine.ENGINE_SING_BOX) {
+        if (active == engine.ENGINE_TACHYON_CORE) {
             print_json({ engine: active, note: "sing-box status is exposed through get_sing_box_status" });
             return 0;
         }
@@ -658,7 +658,7 @@ function main() {
 
     if (mode == "engine-apply") {
         let active = engine.get_active();
-        if (active == engine.ENGINE_SING_BOX) {
+        if (active == engine.ENGINE_TACHYON_CORE) {
             // sing-box regeneration goes through the normal lifecycle reload.
             print_json(reload_active("engine-apply"));
             return 0;

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-30 08:34+0300\n"
-"PO-Revision-Date: 2026-10-30 08:34+0300\n"
+"POT-Creation-Date: 2026-10-30 18:26+0300\n"
+"PO-Revision-Date: 2026-10-30 18:26+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -83,6 +83,9 @@ msgstr "Списки .lst"
 msgid "0 servers cached"
 msgstr "0 серверов в кэше"
 
+msgid "1 (Byte 1 after header)"
+msgstr ""
+
 msgid "1. Dashboard Presets (5 layouts)"
 msgstr "1. Готовые пресеты дашборда (5 вариантов)"
 
@@ -101,6 +104,9 @@ msgstr "1/2 колонки (50%)"
 msgid "15 min — Quick"
 msgstr "15 мин — быстрый"
 
+msgid "2 (Byte 2)"
+msgstr ""
+
 msgid "2-Mode Rule & Condition Tracer"
 msgstr "Двухрежимный трассировщик правил и условий"
 
@@ -118,6 +124,9 @@ msgstr "2. Визуальная раскладка дашборда (2-коло�
 
 msgid "2. Which rule is strictly satisfied? (Exact Boolean Match)"
 msgstr "2. Какое правило точно удовлетворяется? (Точное булево совпадение)"
+
+msgid "3 (Byte 3)"
+msgstr ""
 
 msgid "3 comma-separated integers or Base64 client_id."
 msgstr "3 целых числа через запятую или client_id в формате Base64."
@@ -278,8 +287,20 @@ msgstr "Активные"
 msgid "Active (Allowed)"
 msgstr "Активно (Разрешено)"
 
+msgid "Active (Block)"
+msgstr "Активно (Блокировка)"
+
 msgid "Active (Blocking)"
 msgstr "Активно (Блокирует)"
+
+msgid "Active (DNS)"
+msgstr "Активно (DNS)"
+
+msgid "Active (DPI)"
+msgstr "Активно (DPI)"
+
+msgid "Active (Direct)"
+msgstr "Активно (Напрямую)"
 
 msgid "Active Bootstrap DNS"
 msgstr "Активный Bootstrap DNS"
@@ -551,6 +572,9 @@ msgstr "Все серверы"
 msgid "All services"
 msgstr "Все сервисы"
 
+msgid "All subsystems are healthy"
+msgstr "Все подсистемы работают исправно"
+
 msgid "All system invariants satisfied. No flaps, memory leaks, or crashes detected."
 msgstr "Все инварианты системы соблюдены. Обрывов, утечек памяти и сбоев не обнаружено."
 
@@ -809,11 +833,17 @@ msgstr "Область авторизации (Realm)"
 msgid "Auto"
 msgstr "Авто"
 
+msgid "Auto (Clone target SNI / www.google.com)"
+msgstr ""
+
 msgid "Auto (Default)"
 msgstr "Авто (по умолчанию)"
 
 msgid "Auto (TCP/UDP)"
 msgstr "Auto (TCP/UDP)"
+
+msgid "Auto (clone SNI / www.google.com)"
+msgstr "Авто (клонировать SNI / www.google.com)"
 
 msgid "Auto (cooperative with SQM/CAKE)"
 msgstr "Авто (кооперация с SQM/CAKE)"
@@ -1393,6 +1423,9 @@ msgstr "Проверка соединения..."
 
 msgid "Checking for updates..."
 msgstr "Проверка обновлений..."
+
+msgid "Checking subsystems, please wait..."
+msgstr "Проверка подсистем, пожалуйста подождите..."
 
 msgid "Checking, please wait"
 msgstr "Проверяем, пожалуйста подождите"
@@ -2309,8 +2342,8 @@ msgstr "Дни недели"
 msgid "Decision & Details"
 msgstr "Решение и подробности"
 
-msgid "Decoy hostname injected into fake ClientHello (e.g. www.google.com)"
-msgstr "Подставное имя хоста (SNI) в фейковом пакете ClientHello (например, www.google.com)"
+msgid "Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)"
+msgstr ""
 
 msgid "Dedicated cgroup unavailable"
 msgstr "Выделенная cgroup недоступна"
@@ -2452,6 +2485,9 @@ msgstr "Не удалось завершить диагностическую п
 
 msgid "Diagnostics"
 msgstr "Диагностика"
+
+msgid "Diagnostics in progress"
+msgstr "Выполняется диагностика"
 
 msgid "Diff"
 msgstr "Сравнить"
@@ -3011,6 +3047,9 @@ msgstr "Ошибка запуска автоподбора DNS"
 msgid "Error updating lists:"
 msgstr "Ошибка обновления списков:"
 
+msgid "Errors"
+msgstr "Ошибок"
+
 msgid "Estimated RAM usage (max):"
 msgstr "Ориентировочный объём RAM (макс.):"
 
@@ -3491,11 +3530,11 @@ msgstr "Повторы фейковых пакетов"
 msgid "Fake Repeats (--repeats)"
 msgstr "Повторы фейков (--repeats)"
 
-msgid "Fake SNI"
-msgstr "Фейковый SNI"
+msgid "Fake SNI (Белый список РФ / Custom)"
+msgstr ""
 
-msgid "Fake SNI Domain"
-msgstr "Fake SNI домен"
+msgid "Fake SNI Domain (Whitelist)"
+msgstr "Fake SNI домен (Белый список РФ)"
 
 msgid "Fake SNI Hosts (--fake-sni)"
 msgstr "Фейковые хосты SNI (--fake-sni)"
@@ -3934,6 +3973,9 @@ msgstr "Скрыть узлы групп URLTest"
 
 msgid "Hide cascade connection nodes"
 msgstr "Скрыть узлы каскадных подключений"
+
+msgid "Hide details"
+msgstr "Скрыть подробности"
 
 msgid "Hide individual nodes that are already included in imported subscription URLTest groups"
 msgstr "Скрыть отдельные узлы, уже включённые в импортированные группы URLTest подписки"
@@ -4888,9 +4930,6 @@ msgstr "Последний релиз"
 
 msgid "Latest version is installed"
 msgstr "Установлена последняя версия"
-
-msgid "Latest version:"
-msgstr "Последняя версия:"
 
 msgid "Launch Settings"
 msgstr "Параметры запуска"
@@ -7916,6 +7955,9 @@ msgstr "Показать Tachyon Core конфигурацию"
 msgid "Show Tachyon Core config failed"
 msgstr "Не удалось показать конфигурацию Tachyon Core"
 
+msgid "Show details"
+msgstr "Показать подробности"
+
 msgid "Show metadata on dashboard"
 msgstr "Показывать метаданные на дашборде"
 
@@ -9782,6 +9824,9 @@ msgstr "Ожидание перезапуска служб роутера..."
 msgid "Warning: current filter excludes all servers!"
 msgstr "Внимание: текущий фильтр исключает все серверы!"
 
+msgid "Warnings"
+msgstr "Предупреждений"
+
 msgid "Watchdog Status"
 msgstr "Статус Watchdog"
 
@@ -10103,8 +10148,8 @@ msgstr "например, wg0, awg0, tun0, tailscale0"
 msgid "e.g. ws, grpc"
 msgstr "например: ws, grpc"
 
-msgid "e.g. youtube.com, discord.com, chatgpt.com, rutracker.org"
-msgstr "Например: youtube.com, discord.com, chatgpt.com, rutracker.org"
+msgid "e.g. youtube.com, discord.com, chatgpt.com, rutracker.org (or empty for auto)"
+msgstr "Например: youtube.com, discord.com, chatgpt.com, rutracker.org (или пусто для авто)"
 
 msgid "endpoints OK"
 msgstr "эндпоинтов доступно"
@@ -10126,6 +10171,9 @@ msgstr "недоступно"
 
 msgid "lx"
 msgstr "lx"
+
+msgid "midsld (Middle of SLD domain)"
+msgstr ""
 
 msgid "midsld, sni, or byte offset (1..1400)"
 msgstr "midsld, sni или смещение в байтах (1..1400)"
@@ -10151,6 +10199,9 @@ msgstr "нет устройств"
 msgid "not installed"
 msgstr "не установлен"
 
+msgid "of"
+msgstr "из"
+
 msgid "online"
 msgstr "в сети"
 
@@ -10174,6 +10225,9 @@ msgstr "Endpoint в sing-box (userspace, по умолчанию)"
 
 msgid "sites"
 msgstr "сайтов"
+
+msgid "sni (Start of SNI extension)"
+msgstr ""
 
 msgid "srv"
 msgstr "серв."
@@ -10526,6 +10580,9 @@ msgstr "📜 Инциденты и хронология"
 msgid "📸 Instagram / Meta (Web + CDN)"
 msgstr "📸 Instagram / Meta (Веб + CDN)"
 
+msgid "🔄 Auto (by rules)"
+msgstr "🔄 Авто (по правилам)"
+
 msgid "🔄 Re-test"
 msgstr "🔄 Замерить"
 
@@ -10579,6 +10636,21 @@ msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"
+
+msgid "Latest version:"
+msgstr "Последняя версия:"
+
+msgid "Decoy hostname injected into fake ClientHello (e.g. www.google.com)"
+msgstr "Подставное имя хоста (SNI) в фейковом пакете ClientHello (например, www.google.com)"
+
+msgid "Fake SNI"
+msgstr "Фейковый SNI"
+
+msgid "Fake SNI Domain"
+msgstr "Fake SNI домен"
+
+msgid "e.g. youtube.com, discord.com, chatgpt.com, rutracker.org"
+msgstr "Например: youtube.com, discord.com, chatgpt.com, rutracker.org"
 
 msgid "1. Router Global DNS & DNS Protection"
 msgstr "1. Основной DNS роутера и защита DNS-запросов"

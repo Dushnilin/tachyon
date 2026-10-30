@@ -1537,37 +1537,37 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (fooling != "")
             ds_obj.fooling = fooling;
         let auto_tune_raw = trim(option(src, "desync_auto_tune", ""));
-        if (is_custom && auto_tune_raw != "")
+        if (auto_tune_raw != "")
             ds_obj.auto_tune = bool_option(src, "desync_auto_tune", false);
         if (lc(raw_preset) == "discord" && !bool_option(src, "desync_udp_fake", false))
             ds_obj.udp_fake = true;
         if (ds_obj.preset == null && ds_obj.mode == null)
             ds_obj.preset = "auto";
+        let sp = norm_split_pos(option(src, "desync_split_pos", ""));
+        if (sp != null)
+            ds_obj.split_pos = sp;
+        let fttl = int(option(src, "desync_fake_ttl", "0") || 0);
+        if (fttl > 0)
+            ds_obj.fake_ttl = fttl;
+        let fsni = trim(option(src, "desync_fake_sni", ""));
+        if (fsni != "")
+            ds_obj.fake_sni = fsni;
+        let reps = int(option(src, "desync_repeats", "0") || 0);
+        if (reps > 0)
+            ds_obj.repeats = reps;
+        let sdelay = trim(option(src, "desync_split_delay_ms", ""));
+        if (sdelay != "" && match(sdelay, /^[0-9]+$/))
+            ds_obj.split_delay_ms = int(sdelay, 10);
+        let udp_fake_raw = trim(option(src, "desync_udp_fake", ""));
+        if (udp_fake_raw != "")
+            ds_obj.udp_fake = bool_option(src, "desync_udp_fake", false);
+        let ureps = int(option(src, "desync_udp_repeats", "0") || 0);
+        if (ureps > 0)
+            ds_obj.udp_repeats = ureps;
+        let uttl = int(option(src, "desync_udp_fake_ttl", "0") || 0);
+        if (uttl > 0)
+            ds_obj.udp_fake_ttl = uttl;
         if (is_custom) {
-            let sp = norm_split_pos(option(src, "desync_split_pos", ""));
-            if (sp != null)
-                ds_obj.split_pos = sp;
-            let fttl = int(option(src, "desync_fake_ttl", "0") || 0);
-            if (fttl > 0)
-                ds_obj.fake_ttl = fttl;
-            let fsni = trim(option(src, "desync_fake_sni", ""));
-            if (fsni != "")
-                ds_obj.fake_sni = fsni;
-            let reps = int(option(src, "desync_repeats", "0") || 0);
-            if (reps > 0)
-                ds_obj.repeats = reps;
-            let sdelay = trim(option(src, "desync_split_delay_ms", ""));
-            if (sdelay != "" && match(sdelay, /^[0-9]+$/))
-                ds_obj.split_delay_ms = int(sdelay, 10);
-            let udp_fake_raw = trim(option(src, "desync_udp_fake", ""));
-            if (udp_fake_raw != "")
-                ds_obj.udp_fake = bool_option(src, "desync_udp_fake", false);
-            let ureps = int(option(src, "desync_udp_repeats", "0") || 0);
-            if (ureps > 0)
-                ds_obj.udp_repeats = ureps;
-            let uttl = int(option(src, "desync_udp_fake_ttl", "0") || 0);
-            if (uttl > 0)
-                ds_obj.udp_fake_ttl = uttl;
             let opts_str = trim(option(src, "desync_opts", ""));
             if (opts_str != "") {
                 for (let token in split(opts_str, /\s+/)) {

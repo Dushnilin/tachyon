@@ -213,7 +213,10 @@ function check_notified_updates(token, admin_ids) {
                     let title = component_display_title(comp);
                     let cur = trim(as_string(comp.current_version || ""));
                     if (cur == "" || cur == "?") {
-                        if (sys_info == null) sys_info = api.get_system_info();
+                        if (sys_info == null) {
+                            let raw_sys = common.command_output_from_args([ BIN_PATH, "get_system_info" ]);
+                            try { sys_info = json(raw_sys || "{}"); } catch (e) { sys_info = {}; }
+                        }
                         cur = resolve_component_installed_version(name, sys_info);
                     }
                     if (cur == "") cur = "?";

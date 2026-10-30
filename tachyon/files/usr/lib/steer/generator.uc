@@ -758,7 +758,7 @@ function build_spec_v2(sections, settings, catalog) {
         : true;
     if (steer_vless_override == null) {
         try {
-            let engine_mod = require("engine");
+            let engine_mod = require("core.engine");
             if (engine_mod && type(engine_mod.steer_has_extended_build) == "function")
                 steer_vless_supported = engine_mod.steer_has_extended_build();
         }

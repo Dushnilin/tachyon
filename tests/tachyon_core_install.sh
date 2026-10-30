@@ -106,4 +106,35 @@ asset() {
 [ -z "$(asset mips64-musl "")" ] ||
   fail "an architecture with no artifact must resolve to nothing, not to another arch"
 
+# When only .tar.gz exists (< v0.2.5), requesting apk or ipk must fall back to .tar.gz.
+[ "$(asset aarch64-musl apk)" = "https://x/full-a64.tgz" ] ||
+  fail "pre-0.2.5 release without .apk must fall back to .tar.gz, got '$(asset aarch64-musl apk)'"
+[ "$(asset aarch64-musl ipk)" = "https://x/full-a64.tgz" ] ||
+  fail "pre-0.2.5 release without .ipk must fall back to .tar.gz, got '$(asset aarch64-musl ipk)'"
+
+# ─── v0.2.5+ release with .apk, .ipk, and .tar.gz ────────────────────────────
+RELEASE_025='{"tag_name":"v0.2.5","assets":[
+  {"name":"tachyon-core_0.2.5-r1_aarch64-musl.apk","browser_download_url":"https://x/core-a64.apk"},
+  {"name":"tachyon-core_0.2.5-r1_aarch64-musl.ipk","browser_download_url":"https://x/core-a64.ipk"},
+  {"name":"tachyon-core-aarch64-musl-v0.2.5.tar.gz","browser_download_url":"https://x/core-a64.tgz"},
+  {"name":"tachyon-core_0.2.5-r1_x86_64-musl.apk","browser_download_url":"https://x/core-x64.apk"},
+  {"name":"tachyon-core_0.2.5-r1_x86_64-musl.ipk","browser_download_url":"https://x/core-x64.ipk"},
+  {"name":"tachyon-core-x86_64-musl-v0.2.5.tar.gz","browser_download_url":"https://x/core-x64.tgz"},
+  {"name":"SHA256SUMS","browser_download_url":"https://x/sums"}]}'
+printf '%s' "$RELEASE_025" >"$WORK_DIR/release_025.json"
+
+asset_025() {
+  ucode -L "$TACHYON_LIB" "$UPDATER" tachyon-core-asset-url "$1" "$2" \
+    <"$WORK_DIR/release_025.json" 2>/dev/null
+}
+
+[ "$(asset_025 aarch64-musl apk)" = "https://x/core-a64.apk" ] ||
+  fail "v0.2.5 apk asset was not selected, got '$(asset_025 aarch64-musl apk)'"
+[ "$(asset_025 aarch64-musl ipk)" = "https://x/core-a64.ipk" ] ||
+  fail "v0.2.5 ipk asset was not selected, got '$(asset_025 aarch64-musl ipk)'"
+[ "$(asset_025 aarch64-musl "")" = "https://x/core-a64.tgz" ] ||
+  fail "v0.2.5 empty pkg_ext must select .tar.gz, got '$(asset_025 aarch64-musl "")'"
+[ "$(asset_025 x86_64-musl apk)" = "https://x/core-x64.apk" ] ||
+  fail "v0.2.5 x86_64 apk asset was not selected, got '$(asset_025 x86_64-musl apk)'"
+
 printf 'tachyon-core asset and archive lookup checks passed\n'

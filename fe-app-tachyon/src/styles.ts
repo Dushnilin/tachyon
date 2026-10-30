@@ -27,6 +27,73 @@ ${PartialStyles}
     --primary-color-high: #9482e0;
     --primary-color-medium: #816ed4;
     --focus-color-rgb: 148, 130, 224;
+    --tachyon-bg-card: var(--background-color-high, rgba(255, 255, 255, 0.94));
+    --tachyon-bg-card-elevated: var(--background-color-low, rgba(248, 250, 252, 0.92));
+}
+
+@media (prefers-color-scheme: dark) {
+    [id^="cbi-${TACHYON_CBI_PREFIX}"],
+    .tachyon-view,
+    #modal_overlay,
+    .cbi-modal,
+    .tachyon-wizard {
+        --tachyon-bg-card: var(--background-color-high, rgba(22, 27, 38, 0.94));
+        --tachyon-bg-card-elevated: var(--background-color-low, rgba(30, 38, 52, 0.92));
+    }
+}
+
+[data-darkmode="true"] [id^="cbi-${TACHYON_CBI_PREFIX}"],
+[data-darkmode="true"] .tachyon-view,
+[data-darkmode="true"] #modal_overlay,
+[data-darkmode="true"] .cbi-modal,
+[data-darkmode="true"] .tachyon-wizard,
+body.dark [id^="cbi-${TACHYON_CBI_PREFIX}"],
+body.dark .tachyon-view,
+body.dark #modal_overlay,
+body.dark .cbi-modal,
+body.dark .tachyon-wizard {
+    --tachyon-bg-card: var(--background-color-high, rgba(22, 27, 38, 0.94));
+    --tachyon-bg-card-elevated: var(--background-color-low, rgba(30, 38, 52, 0.92));
+}
+
+[data-darkmode="false"] [id^="cbi-${TACHYON_CBI_PREFIX}"],
+[data-darkmode="false"] .tachyon-view,
+[data-darkmode="false"] #modal_overlay,
+[data-darkmode="false"] .cbi-modal,
+[data-darkmode="false"] .tachyon-wizard {
+    --tachyon-bg-card: var(--background-color-high, rgba(255, 255, 255, 0.94));
+    --tachyon-bg-card-elevated: var(--background-color-low, rgba(248, 250, 252, 0.92));
+}
+
+/* Solid / frosted card backing so custom LuCI body background patterns (e.g. footstrap) do not bleed through cards */
+.tachyon-sidebar,
+.tachyon-topbar,
+.tachyon_updates-page__component,
+.tachyon_diagnostic-page__left-bar,
+.tachyon_diagnostic-action-group,
+.tachyon_diagnostic-system-strip > *,
+.tachyon_monitoring-page__panel,
+.tachyon_dashboard-page__widgets-section__item,
+.tachyon_dashboard-page__outbound-section,
+.tachyon-kpi-card,
+.tachyon-kpi-strip,
+.tachyon-kpi-minimal-counters,
+.tachyon-traffic-chart-card,
+.tachyon-routing-sections-block,
+.tachyon-nodes-block,
+.tachyon-router-services-bar,
+.tachyon-router-services-cards-wrap,
+.tachyon-system-tiles-card,
+.tachyon-system-hud-card,
+.tachyon-system-banner-card,
+.tachyon-studio-toolbar,
+.tachyon-studio-panel,
+.tachyon-studio-card,
+.tachyon-settings-list-card,
+.tachyon-workspace-body .cbi-section:not(#cbi-tachyon-dashboard):not(#cbi-tachyon-diagnostic):not(#cbi-tachyon-monitoring):not(#cbi-tachyon-updates):not(#cbi-tachyon-section) {
+    background-color: var(--tachyon-bg-card) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
 /* Unified calm native button styling across Tachyon (eliminates bright cyan/green/orange/red LuCI button fills) */
@@ -348,11 +415,11 @@ ${PartialStyles}
 
 /* Tachyon modal sizing by content type */
 
-/* Compact modals: UrlTest details, priority info */
+/* Compact modals: UrlTest details, priority info, icon picker */
 .modal:has(.tachyon_dashboard-page__urltest-details),
 .cbi-modal:has(.tachyon_dashboard-page__urltest-details) {
-    width: min(94vw, 680px) !important;
-    max-width: min(94vw, 680px) !important;
+    width: min(94vw, 600px) !important;
+    max-width: min(94vw, 600px) !important;
     box-sizing: border-box;
     margin: 10px auto;
 }
@@ -372,8 +439,8 @@ ${PartialStyles}
 .cbi-modal.fkp-server-info-dialog,
 .modal:has(.fkp-server-info-modal),
 .cbi-modal:has(.fkp-server-info-modal) {
-    width: min(94vw, 880px) !important;
-    max-width: min(94vw, 880px) !important;
+    width: min(94vw, 720px) !important;
+    max-width: min(94vw, 720px) !important;
     box-sizing: border-box;
     margin: 10px auto;
 }
@@ -391,17 +458,17 @@ ${PartialStyles}
 .cbi-modal:has(.tachyon-strategy-fuzzer-modal),
 .modal:has(.tachyon-leak-check-modal),
 .cbi-modal:has(.tachyon-leak-check-modal) {
-    width: min(96vw, 1200px) !important;
-    max-width: min(96vw, 1200px) !important;
+    width: min(96vw, 960px) !important;
+    max-width: min(96vw, 960px) !important;
     box-sizing: border-box;
     margin: 10px auto;
 }
 
-/* General Tachyon modals: comfortable width on desktop, full-width on mobile */
+/* General Tachyon modals: crisp compact width on desktop, full-width on mobile */
 .modal:has([class*="tachyon"]),
 .cbi-modal:has([class*="tachyon"]) {
-    width: min(94vw, 820px) !important;
-    max-width: min(94vw, 820px) !important;
+    width: min(94vw, 680px) !important;
+    max-width: min(94vw, 680px) !important;
     box-sizing: border-box;
     margin: 10px auto;
 }
@@ -3252,13 +3319,15 @@ header .dropdown-menu {
 /* Segmented Pill Sub-Navigation for Edit Modals & Section Inspector Modal */
 .modal .cbi-tabmenu,
 .cbi-modal .cbi-tabmenu {
-    display: flex !important;
+    display: inline-flex !important;
     flex-wrap: wrap;
     gap: 4px;
     padding: 4px !important;
-    margin: 0 0 14px 0 !important;
+    margin: 0 0 10px 0 !important;
+    width: fit-content !important;
+    max-width: 100% !important;
     list-style: none !important;
-    border-radius: 11px !important;
+    border-radius: 10px !important;
     background: var(--background-color-low, rgba(128, 128, 128, 0.1)) !important;
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.2)) !important;
 }
@@ -3654,27 +3723,27 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     background: rgba(8, 13, 24, 0.62) !important;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
-    padding: 68px 16px 32px 16px !important;
+    padding: 36px 14px 24px 14px !important;
     box-sizing: border-box;
 }
 
 @media (max-width: 680px) {
     #modal_overlay {
-        padding: 54px 10px 24px 10px !important;
+        padding: 20px 8px 16px 8px !important;
     }
 }
 
 #modal_overlay > .modal,
 .modal.cbi-modal,
 .cbi-modal {
-    background: var(--background-color-high, #ffffff) !important;
+    background: var(--tachyon-bg-card, var(--background-color-high, #ffffff)) !important;
     color: var(--text-color-high, inherit) !important;
-    border: 1px solid var(--border-color-medium, rgba(139, 92, 246, 0.26)) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 22px 56px rgba(0, 0, 0, 0.34), 0 4px 18px rgba(139, 92, 246, 0.14) !important;
-    padding: 18px 20px !important;
-    margin-top: 12px !important;
-    max-width: min(920px, 95vw) !important;
+    border: 1px solid var(--border-color-medium, rgba(139, 92, 246, 0.24)) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.34), 0 4px 14px rgba(139, 92, 246, 0.12) !important;
+    padding: 14px 16px !important;
+    margin-top: 8px !important;
+    max-width: min(680px, 94vw) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
@@ -3682,9 +3751,9 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
 #modal_overlay > .modal > h4,
 .modal.cbi-modal > h4,
 .cbi-modal > h4 {
-    margin: 0 0 14px 0 !important;
-    padding: 0 0 11px 0 !important;
-    font-size: 16px !important;
+    margin: 0 0 10px 0 !important;
+    padding: 0 0 8px 0 !important;
+    font-size: 15px !important;
     font-weight: 800 !important;
     letter-spacing: -0.015em;
     color: var(--text-color-high, inherit) !important;
@@ -3698,24 +3767,33 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     display: none !important;
 }
 
-/* Segmented Pill Tabmenu inside Modals */
+/* Segmented Pill Tabmenu inside Modals & Workspace Settings */
 #modal_overlay > .modal .cbi-tabmenu,
 .modal.cbi-modal .cbi-tabmenu,
 .cbi-modal .cbi-tabmenu {
-    display: flex !important;
+    display: inline-flex !important;
     flex-wrap: wrap !important;
-    gap: 5px !important;
-    padding: 5px !important;
-    margin: 0 0 14px 0 !important;
+    gap: 4px !important;
+    padding: 4px !important;
+    margin: 0 0 10px 0 !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     list-style: none !important;
     background: var(--background-color-low, rgba(128, 128, 128, 0.08)) !important;
     border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.18)) !important;
-    border-radius: 11px !important;
+    border-radius: 10px !important;
 }
 
 #modal_overlay > .modal .cbi-tabmenu > li,
 .modal.cbi-modal .cbi-tabmenu > li,
 .cbi-modal .cbi-tabmenu > li {
+    flex: 0 1 auto !important;
+    max-width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
@@ -3729,11 +3807,16 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    padding: 6px 13px !important;
+    padding: 5px 11px !important;
     margin: 0 !important;
+    max-width: 100% !important;
+    height: auto !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     line-height: 1.25 !important;
-    border-radius: 8px !important;
-    font-size: 12.5px !important;
+    border-radius: 7px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
     text-decoration: none !important;
     color: var(--text-color-medium, #64748b) !important;
@@ -3777,47 +3860,148 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     margin: 0 !important;
 }
 
+/* Clean strict list layout for form fields: no left column gap, stacked labels */
 #modal_overlay > .modal .cbi-value:not(.hidden),
 .cbi-modal .cbi-value:not(.hidden),
 .tachyon-workspace-body .cbi-section-node > .cbi-value:not(.hidden):not([id$="-_mount_node"]),
 .tachyon-workspace-body .cbi-tabcontainer > [data-tab] > .cbi-value:not(.hidden):not([id$="-_mount_node"]) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 8px 16px;
-    padding: 10px 14px !important;
-    margin: 0 0 8px 0 !important;
-    border-radius: 11px !important;
-    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.14)) !important;
-    background: var(--background-color-low, rgba(128, 128, 128, 0.025)) !important;
-    box-sizing: border-box;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: 5px !important;
+    padding: 8px 6px !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    border: none !important;
+    border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.13)) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+}
+
+#modal_overlay > .modal .cbi-value:not(.hidden)::before,
+#modal_overlay > .modal .cbi-value:not(.hidden)::after,
+.cbi-modal .cbi-value:not(.hidden)::before,
+.cbi-modal .cbi-value:not(.hidden)::after,
+.tachyon-workspace-body .cbi-value:not(.hidden)::before,
+.tachyon-workspace-body .cbi-value:not(.hidden)::after {
+    display: none !important;
+    content: none !important;
+}
+
+#modal_overlay > .modal .cbi-value:not(.hidden):has(> .cbi-value-field > .cbi-checkbox),
+.cbi-modal .cbi-value:not(.hidden):has(> .cbi-value-field > .cbi-checkbox),
+.tachyon-workspace-body .cbi-value:not(.hidden):has(> .cbi-value-field > .cbi-checkbox),
+#modal_overlay > .modal .cbi-value[data-widget="CBI.Flag"]:not(.hidden),
+.cbi-modal .cbi-value[data-widget="CBI.Flag"]:not(.hidden),
+.tachyon-workspace-body .cbi-value[data-widget="CBI.Flag"]:not(.hidden) {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: 2px !important;
+}
+
+#modal_overlay > .modal .cbi-value-field:has(> .cbi-checkbox),
+.cbi-modal .cbi-value-field:has(> .cbi-checkbox),
+.tachyon-workspace-body .cbi-value-field:has(> .cbi-checkbox),
+#modal_overlay > .modal .cbi-value[data-widget="CBI.Flag"] > .cbi-value-field,
+.cbi-modal .cbi-value[data-widget="CBI.Flag"] > .cbi-value-field,
+.tachyon-workspace-body .cbi-value[data-widget="CBI.Flag"] > .cbi-value-field {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    width: 100% !important;
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+}
+
+#modal_overlay > .modal .cbi-value-field > .cbi-checkbox,
+.cbi-modal .cbi-value-field > .cbi-checkbox,
+.tachyon-workspace-body .cbi-value-field > .cbi-checkbox {
+    display: inline-flex !important;
+    align-items: center !important;
+    height: auto !important;
+    margin: 0 !important;
+    flex: 0 0 auto !important;
+}
+
+#modal_overlay > .modal .cbi-value-field > .cbi-checkbox ~ .cbi-value-description,
+.cbi-modal .cbi-value-field > .cbi-checkbox ~ .cbi-value-description,
+.tachyon-workspace-body .cbi-value-field > .cbi-checkbox ~ .cbi-value-description {
+    margin: 0 0 0 1.35em !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    line-height: 1.3 !important;
+}
+
+#modal_overlay > .modal .cbi-value:not(.hidden):last-of-type,
+.cbi-modal .cbi-value:not(.hidden):last-of-type,
+.tachyon-workspace-body .cbi-section-node > .cbi-value:not(.hidden):not([id$="-_mount_node"]):last-of-type,
+.tachyon-workspace-body .cbi-tabcontainer > [data-tab] > .cbi-value:not(.hidden):not([id$="-_mount_node"]):last-of-type {
+    border-bottom: none !important;
 }
 
 #modal_overlay > .modal .cbi-value-field,
-.cbi-modal .cbi-value-field {
-    flex: 1 1 280px;
-    min-width: 0;
-    margin-left: 0 !important;
+.cbi-modal .cbi-value-field,
+.tachyon-workspace-body .cbi-value-field {
+    float: none !important;
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-align: left !important;
 }
 
 #modal_overlay > .modal .cbi-value-field > input[type="text"],
 #modal_overlay > .modal .cbi-value-field > input[type="password"],
+#modal_overlay > .modal .cbi-value-field > input[type="number"],
 #modal_overlay > .modal .cbi-value-field > select,
 #modal_overlay > .modal .cbi-value-field > div > input[type="text"],
 #modal_overlay > .modal .cbi-value-field > div > input[type="password"],
+#modal_overlay > .modal .cbi-value-field > div > input[type="number"],
 #modal_overlay > .modal .cbi-value-field > div > select,
 .cbi-modal .cbi-value-field > input[type="text"],
 .cbi-modal .cbi-value-field > input[type="password"],
+.cbi-modal .cbi-value-field > input[type="number"],
 .cbi-modal .cbi-value-field > select,
 .cbi-modal .cbi-value-field > div > input[type="text"],
 .cbi-modal .cbi-value-field > div > input[type="password"],
-.cbi-modal .cbi-value-field > div > select {
-    width: 100%;
-    max-width: 480px;
+.cbi-modal .cbi-value-field > div > input[type="number"],
+.cbi-modal .cbi-value-field > div > select,
+.tachyon-workspace-body .cbi-value-field > input[type="text"],
+.tachyon-workspace-body .cbi-value-field > input[type="password"],
+.tachyon-workspace-body .cbi-value-field > input[type="number"],
+.tachyon-workspace-body .cbi-value-field > select,
+.tachyon-workspace-body .cbi-value-field > div > input[type="text"],
+.tachyon-workspace-body .cbi-value-field > div > input[type="password"],
+.tachyon-workspace-body .cbi-value-field > div > input[type="number"],
+.tachyon-workspace-body .cbi-value-field > div > select {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+#modal_overlay > .modal .cbi-value-field .cbi-dynlist,
+.cbi-modal .cbi-value-field .cbi-dynlist,
+.tachyon-workspace-body .cbi-value-field .cbi-dynlist,
+#modal_overlay > .modal .cbi-value-field .cbi-dropdown,
+.cbi-modal .cbi-value-field .cbi-dropdown,
+.tachyon-workspace-body .cbi-value-field .cbi-dropdown {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box;
 }
 
 #modal_overlay > .modal .cbi-value-field textarea,
-.cbi-modal .cbi-value-field textarea {
+.cbi-modal .cbi-value-field textarea,
+.tachyon-workspace-body .cbi-value-field textarea {
     width: 100% !important;
     max-width: 100% !important;
 }
@@ -3825,19 +4009,31 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
 #modal_overlay > .modal .cbi-value-title,
 .cbi-modal .cbi-value-title,
 .tachyon-workspace-body .cbi-value-title {
-    font-size: 13px !important;
-    font-weight: 700 !important;
+    float: none !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    text-align: left !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
     color: var(--text-color-high, inherit) !important;
-    line-height: 1.35;
+    line-height: 1.35 !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
 }
 
 #modal_overlay > .modal .cbi-value-description,
 .cbi-modal .cbi-value-description,
 .tachyon-workspace-body .cbi-value-description {
-    font-size: 11.5px !important;
-    line-height: 1.4 !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
     color: var(--text-color-medium, #64748b) !important;
-    margin-top: 4px !important;
+    margin-top: 3px !important;
+    opacity: 0.86;
 }
 
 /* Inputs, Selects, Textareas across Workspace and Modals */
@@ -3983,10 +4179,6 @@ body[data-tachyon-ui-mode="simple"] [data-name="urltest_testing_url"],
 body[data-tachyon-ui-mode="simple"] [data-name="passive_check"],
 body[data-tachyon-ui-mode="simple"] [data-name="sticky_hash"],
 body[data-tachyon-ui-mode="simple"] [data-name="custom_json"],
-body[data-tachyon-ui-mode="simple"] [data-name="desync_fooling"],
-body[data-tachyon-ui-mode="simple"] [data-name="desync_ttl"],
-body[data-tachyon-ui-mode="simple"] [data-name="desync_split_pos"],
-body[data-tachyon-ui-mode="simple"] [data-name="desync_repeats"],
 /* Settings -> DNS expert knobs */
 body[data-tachyon-ui-mode="simple"] [data-name="_dns_speed_test"],
 body[data-tachyon-ui-mode="simple"] [data-name="dns_upstream_mode"],
@@ -6784,10 +6976,88 @@ button.tachyon-studio-chip:hover {
 .tachyon-ruleset-picker__cats-block {
     display: flex;
     flex-direction: column;
+    gap: 7px;
     padding: 8px 10px;
     border-radius: 9px;
     background: var(--background-color-high, rgba(128, 128, 128, 0.04));
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.20));
+    box-sizing: border-box;
+}
+
+.tachyon-ruleset-picker__top-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tachyon-ruleset-picker__presets-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tachyon-ruleset-picker__presets-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.tachyon-ruleset-picker__presets-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-color-medium, #888);
+    margin-right: 2px;
+}
+
+.tachyon-ruleset-picker__preset-btn {
+    padding: 5px 9px;
+    border-radius: 7px;
+    border: 1px solid rgba(148, 130, 224, 0.28) !important;
+    background: rgba(148, 130, 224, 0.08);
+    color: var(--text-color-high, inherit);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.tachyon-ruleset-picker__preset-btn:hover {
+    border-color: rgba(148, 130, 224, 0.48) !important;
+    background: rgba(148, 130, 224, 0.15);
+}
+
+.tachyon-ruleset-picker__preset-btn.is-clear {
+    border-color: var(--border-color-low, rgba(128, 128, 128, 0.24)) !important;
+    background: transparent;
+    color: var(--text-color-medium, #888);
+}
+
+.tachyon-ruleset-picker__preset-btn.is-clear:hover {
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.tachyon-ruleset-picker__floating-tooltip {
+    position: fixed;
+    z-index: 100000;
+    pointer-events: none;
+    max-width: min(340px, calc(100vw - 24px));
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 11px;
+    border-radius: 9px;
+    background: var(--background-color-high, #1e293b);
+    color: var(--text-color-high, #f8fafc);
+    border: 1px solid rgba(148, 130, 224, 0.38);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
     box-sizing: border-box;
 }
 
@@ -6874,16 +7144,16 @@ button.tachyon-studio-chip:hover {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 4px;
 }
 
 .tachyon-ruleset-picker__cat-btn {
-    padding: 4px 10px;
-    border-radius: 999px;
+    padding: 3px 9px;
+    border-radius: 7px;
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.22)) !important;
     background: var(--background-color-low, rgba(128, 128, 128, 0.05));
     color: inherit;
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
@@ -6905,36 +7175,63 @@ button.tachyon-studio-chip:hover {
 }
 
 .tachyon-ruleset-picker__search {
-    width: 100% !important;
+    flex: 1 1 200px !important;
+    min-width: 160px !important;
+    width: auto !important;
     max-width: 100% !important;
     padding: 5px 10px !important;
     font-size: 12px !important;
-    border-radius: 8px !important;
+    border-radius: 7px !important;
     box-sizing: border-box !important;
 }
 
 .tachyon-ruleset-picker__grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    max-height: 175px;
-    overflow-y: auto;
-    padding: 2px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 6px;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+}
+
+@media (max-width: 520px) {
+    .tachyon-ruleset-picker__grid {
+        grid-template-columns: 1fr;
+    }
+    .tachyon-ruleset-picker__cats {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        -webkit-overflow-scrolling: touch;
+    }
 }
 
 .tachyon-ruleset-picker__chip {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 8px;
-    border-radius: 7px;
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+    padding: 6px 9px;
+    border-radius: 8px;
     border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.22)) !important;
     background: var(--background-color-low, rgba(128, 128, 128, 0.05));
     color: inherit;
     font-size: 11.5px;
     font-weight: 600;
+    text-align: left;
     cursor: pointer;
+    box-sizing: border-box;
     transition: border-color 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+}
+
+.tachyon-ruleset-picker__chip-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tachyon-ruleset-picker__chip:hover {

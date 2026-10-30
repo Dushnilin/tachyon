@@ -256,6 +256,10 @@ normalize_package_root_modes() {
 build_backend_root() {
   local output_root="$1"
 
+  if command -v node >/dev/null 2>&1 && [[ -f "$ROOT_DIR/tests/lib/ucode_forward_refs.js" ]]; then
+    node "$ROOT_DIR/tests/lib/ucode_forward_refs.js" "$ROOT_DIR/tachyon/files/usr/lib"
+  fi
+
   rm -rf "$output_root"
   make_dir "$output_root/etc/init.d"
   make_dir "$output_root/etc/config"

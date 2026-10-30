@@ -429,14 +429,12 @@ function download_detour_tag(settings, purpose) {
 // 198.18.0.0/15 address, and sing-box then dialled the FakeIP and timed out.
 // The list is rebuilt from the generated config on every run, so it follows
 // endpoint changes in the subscription without a manual exclusion.
-function collect_proxy_endpoint_domains(config) {
+function collect_proxy_endpoint_domains(config, sections) {
     let seen = {};
     let domains = [];
 
-    let collect = function(item) {
-        if (type(item) != "object")
-            return;
-        let server = trim(as_string(item.server || ""));
+    let add_domain = function(raw_host) {
+        let server = trim(as_string(raw_host || ""));
         if (server == "" || !match(server, /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9-]+)+$/))
             return;
         let key = lc(server);
@@ -446,19 +444,41 @@ function collect_proxy_endpoint_domains(config) {
         push(domains, key);
     };
 
+    let collect = function(item) {
+        if (type(item) != "object")
+            return;
+        add_domain(item.server);
+        if (type(item.peers) == "array") {
+            for (let peer in item.peers)
+                if (type(peer) == "object")
+                    add_domain(peer.address || peer.server);
+        }
+    };
+
     for (let item in array_or_empty(config.outbounds))
         collect(item);
     for (let item in array_or_empty(config.endpoints))
         collect(item);
 
+    for (let sec in array_or_empty(sections)) {
+        for (let entry in connections.subscription_urls(sec)) {
+            let sub_url = trim(as_string(entry || ""));
+            let delim_idx = index(sub_url, " | ");
+            if (delim_idx >= 0)
+                sub_url = trim(substr(sub_url, 0, delim_idx));
+            if (sub_url != "")
+                add_domain(url_host(sub_url));
+        }
+    }
+
     return domains;
 }
 
-function add_proxy_endpoint_dns_rule(config) {
+function add_proxy_endpoint_dns_rule(config, sections) {
     if (config.__proxy_endpoint_dns_rule == true)
         return;
 
-    let domains = collect_proxy_endpoint_domains(config);
+    let domains = collect_proxy_endpoint_domains(config, sections);
     if (length(domains) == 0)
         return;
     if (config.dns == null)
@@ -2303,7 +2323,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     add_server_routes(config, servers, sections);
     delete config.__lan_interface_cidrs;
-    add_proxy_endpoint_dns_rule(config);
+    add_proxy_endpoint_dns_rule(config, sections);
     add_source_aware_dns_fallback(config, source_aware_dns);
     add_excluded_clients_dns_rule(config, settings);
     add_excluded_clients_route_rule(config, settings);

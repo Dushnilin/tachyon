@@ -100,6 +100,8 @@ function gomemlimit_env_map(opts) {
 
 function module_exports() {
     return {
+        mem_total_kb,
+        oom_scale_pct,
         gomemlimit_mb,
         gomemlimit_env,
         gomemlimit_env_map

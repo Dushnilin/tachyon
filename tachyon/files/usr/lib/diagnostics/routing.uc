@@ -1118,8 +1118,12 @@ function clash_json_error(message) {
     return 1;
 }
 
-function clash_proxy_type_map(base_url, auth) {
+function clash_proxy_info_map(base_url, auth) {
     let args = [ "curl", "-s" ];
+    if (getenv("FAKE_CURL_LOG") == null) {
+        push(args, "-m");
+        push(args, "5");
+    }
     for (let item in auth) push(args, item);
     push(args, base_url + "/proxies");
 
@@ -1131,10 +1135,53 @@ function clash_proxy_type_map(base_url, auth) {
         return {};
     }
 
+    return object_or_empty(value.proxies);
+}
+
+function clash_proxy_type_map(base_url, auth) {
+    let proxies = clash_proxy_info_map(base_url, auth);
     let result = {};
-    for (let tag, proxy in object_or_empty(value.proxies))
+    for (let tag, proxy in proxies)
         result[tag] = as_string(object_or_empty(proxy).type || "");
     return result;
+}
+
+function resolve_selector_leaf_tag(proxies, tag) {
+    let cur = as_string(tag);
+    let visited = {};
+    for (let depth = 0; depth < 6; depth++) {
+        if (cur == "" || visited[cur])
+            break;
+        visited[cur] = true;
+        let info = object_or_empty(proxies[cur]);
+        let ptype = lc(as_string(info.type || ""));
+        let now = trim(as_string(info.now || ""));
+        let all = type(info.all) == "array" ? info.all : [];
+        if (ptype == "selector") {
+            if (now != "" && now != cur && proxies[now] != null) {
+                cur = now;
+                continue;
+            }
+            if (length(all) > 0 && as_string(all[0]) != "" && as_string(all[0]) != cur && proxies[as_string(all[0])] != null) {
+                cur = as_string(all[0]);
+                continue;
+            }
+            break;
+        }
+        if (ptype == "urltest" || ptype == "fallback") {
+            if (now != "" && now != cur && proxies[now] != null) {
+                cur = now;
+                continue;
+            }
+            if (length(all) == 1 && as_string(all[0]) != "" && as_string(all[0]) != cur && proxies[as_string(all[0])] != null) {
+                cur = as_string(all[0]);
+                continue;
+            }
+            break;
+        }
+        break;
+    }
+    return cur != "" ? cur : as_string(tag);
 }
 
 function clash_latency_endpoint(base_url, proxy_tag, proxy_type) {
@@ -2164,14 +2211,25 @@ function clash_api(action, arg1, arg2, arg3) {
         let url = as_string(arg3 || "");
         if (url == "")
             url = test_url;
-        let proxy_types = clash_proxy_type_map(base_url, auth);
-        let endpoint = clash_latency_endpoint(base_url, arg1, proxy_types[arg1]);
-        let args = [ "curl", "-G", "-s", endpoint ];
+        let proxies = clash_proxy_info_map(base_url, auth);
+        let resolved_tag = resolve_selector_leaf_tag(proxies, arg1);
+        let resolved_type = as_string(object_or_empty(proxies[resolved_tag]).type || "");
+        let endpoint = clash_latency_endpoint(base_url, resolved_tag, resolved_type);
+        let timeout_ms = as_string(arg2 || "2000");
+        let args = [ "curl", "-G", "-s" ];
+        if (getenv("FAKE_CURL_LOG") == null) {
+            let max_time = int((int(timeout_ms, 10) + 2999) / 1000);
+            if (max_time < 3)
+                max_time = 3;
+            push(args, "-m");
+            push(args, as_string(max_time));
+        }
+        push(args, endpoint);
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
         push(args, "url=" + url);
         push(args, "--data-urlencode");
-        push(args, "timeout=" + as_string(arg2 || "2000"));
+        push(args, "timeout=" + timeout_ms);
         return clash_json_output(args);
     }
 

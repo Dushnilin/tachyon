@@ -944,6 +944,23 @@ function get_presets_info() { return strategies.get_presets_info(); }
 
 function update_presets() { return strategies.update_presets(); }
 
+function slim_fuzzer_item(r) {
+    if (!r || type(r) != "object") return null;
+    let copy = {};
+    for (let k, v in r) {
+        if (k == "sub_probes" || k == "description" || k == "rationale" || k == "tags")
+            continue;
+        copy[k] = v;
+    }
+    if (type(r.sub_probes) == "array" && length(r.sub_probes) > 1) {
+        let sp_slim = [];
+        for (let sp in r.sub_probes)
+            push(sp_slim, { success: (sp && sp.success) ? true : false });
+        copy.sub_probes = sp_slim;
+    }
+    return copy;
+}
+
 // CLI Dispatcher
 let op = ARGV[0] || "status";
 
@@ -957,25 +974,9 @@ if (op == "start") {
     // exceeds 65536 bytes (64 KB). Slim every item's sub_probes to {success:bool}
     // and cap total serialized results to keep stdout well below 35 KB.
     if (st && type(st.results) == "array") {
-        let slim_item = function(r) {
-            if (!r || type(r) != "object") return null;
-            let copy = {};
-            for (let k, v in r) {
-                if (k == "sub_probes" || k == "description" || k == "rationale" || k == "tags")
-                    continue;
-                copy[k] = v;
-            }
-            if (type(r.sub_probes) == "array" && length(r.sub_probes) > 1) {
-                let sp_slim = [];
-                for (let sp in r.sub_probes)
-                    push(sp_slim, { success: (sp && sp.success) ? true : false });
-                copy.sub_probes = sp_slim;
-            }
-            return copy;
-        };
         let all_slim = [];
         for (let r in st.results) {
-            let s = slim_item(r);
+            let s = slim_fuzzer_item(r);
             if (s != null) push(all_slim, s);
         }
         if (length(all_slim) > 100) {
@@ -1000,7 +1001,7 @@ if (op == "start") {
         }
         st.results = all_slim;
         if (st.best_strategy && type(st.best_strategy) == "object")
-            st.best_strategy = slim_item(st.best_strategy);
+            st.best_strategy = slim_fuzzer_item(st.best_strategy);
     }
     print(sprintf("%J\n", st));
 } else if (op == "stop") {

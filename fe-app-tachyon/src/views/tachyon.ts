@@ -719,27 +719,16 @@ const EntryPoint = {
             const dispName = sec.name || sec.label || sname;
             const sAct = (sec.action || 'connection').toLowerCase();
 
-            if (
-              !alreadyMigrated
-                ? sec.access_token || sAct === 'fptn'
-                : sAct === 'fptn'
-            ) {
+            if (!alreadyMigrated && sec.access_token) {
               const fid = `src_fptn_${safeSname}`;
-              if (
-                !uci.get(self.config, fid) &&
-                (sec.access_token || sAct === 'fptn')
-              ) {
+              if (!uci.get(self.config, fid)) {
                 uci.add(self.config, 'outbound_source', fid);
                 uci.set(self.config, fid, 'enabled', '1');
                 uci.set(self.config, fid, 'name', dispName);
                 uci.set(self.config, fid, 'source_type', 'fptn');
+                uci.set(self.config, fid, 'access_token', sec.access_token);
               }
-              if (uci.get(self.config, fid)) {
-                if (sec.access_token) {
-                  uci.set(self.config, fid, 'access_token', sec.access_token);
-                }
-                ensureSourceRef(sname, fid);
-              }
+              ensureSourceRef(sname, fid);
             }
 
             if (!alreadyMigrated) {
@@ -769,25 +758,23 @@ const EntryPoint = {
             const amn = toRawArr(
               sec.selector_amnezia_configs || sec.amnezia_configs,
             );
-            if (
-              (!alreadyMigrated || sAct === 'awg') &&
-              (amn.length || sec.amnezia_conf_text)
-            ) {
+            if (!alreadyMigrated && (amn.length || sec.amnezia_conf_text)) {
               const aid = `src_amnezia_${safeSname}`;
               if (!uci.get(self.config, aid)) {
                 uci.add(self.config, 'outbound_source', aid);
                 uci.set(self.config, aid, 'enabled', '1');
                 uci.set(self.config, aid, 'name', `${dispName} (Amnezia)`);
                 uci.set(self.config, aid, 'source_type', 'amnezia_config');
-              }
-              if (amn.length) uci.set(self.config, aid, 'amnezia_configs', amn);
-              if (sec.amnezia_conf_text) {
-                uci.set(
-                  self.config,
-                  aid,
-                  'amnezia_conf_text',
-                  sec.amnezia_conf_text,
-                );
+                if (amn.length)
+                  uci.set(self.config, aid, 'amnezia_configs', amn);
+                if (sec.amnezia_conf_text) {
+                  uci.set(
+                    self.config,
+                    aid,
+                    'amnezia_conf_text',
+                    sec.amnezia_conf_text,
+                  );
+                }
               }
               ensureSourceRef(sname, aid);
             }
@@ -795,35 +782,21 @@ const EntryPoint = {
             const hasAwgInline = Boolean(
               sec.awg_private_key && sec.awg_server_address,
             );
-            const hasAmnInline = Boolean(amn.length || sec.amnezia_conf_text);
-            if (
-              !alreadyMigrated
-                ? sAct === 'awg' || hasAwgInline
-                : sAct === 'awg' && (hasAwgInline || !hasAmnInline)
-            ) {
+            if (!alreadyMigrated && hasAwgInline) {
               const wid = `src_awg_${safeSname}`;
               if (!uci.get(self.config, wid)) {
                 uci.add(self.config, 'outbound_source', wid);
                 uci.set(self.config, wid, 'enabled', '1');
                 uci.set(self.config, wid, 'name', `${dispName} (AWG)`);
                 uci.set(self.config, wid, 'source_type', 'awg');
+                awgFieldKeys.forEach((k) => {
+                  if (sec[k]) uci.set(self.config, wid, k, sec[k]);
+                });
               }
-              awgFieldKeys.forEach((k) => {
-                if (sec[k]) uci.set(self.config, wid, k, sec[k]);
-              });
               ensureSourceRef(sname, wid);
-            } else if (sAct === 'awg' && hasAmnInline && !hasAwgInline) {
-              const wid = `src_awg_${safeSname}`;
-              if (
-                uci.get(self.config, wid) &&
-                !uci.get(self.config, wid, 'awg_private_key') &&
-                !uci.get(self.config, wid, 'awg_server_address')
-              ) {
-                uci.remove(self.config, wid);
-              }
             }
 
-            if (singleProtoActions.includes(sAct)) {
+            if (!alreadyMigrated && singleProtoActions.includes(sAct)) {
               const pid = `src_${sAct}_${safeSname}`;
               if (!uci.get(self.config, pid)) {
                 uci.add(self.config, 'outbound_source', pid);
@@ -932,18 +905,6 @@ const EntryPoint = {
             pruneList(sid, 'outbound_source_refs', validSources, false, false);
             pruneList(sid, 'outbound_group_refs', validGroups, false, false);
             pruneList(sid, 'balancer_refs', validBalancers, false, false);
-            const curAction = String(
-              uci.get(self.config, sid, 'action') || '',
-            ).toLowerCase();
-            const curSrcs = toArr(
-              uci.get(self.config, sid, 'outbound_source_refs'),
-            );
-            if (
-              curSrcs.length > 0 &&
-              ['desync', 'zapret', 'zapret2', 'byedpi'].includes(curAction)
-            ) {
-              uci.set(self.config, sid, 'action', 'connection');
-            }
           });
           const validGroupsAndSources = new Set([
             ...validGroups,

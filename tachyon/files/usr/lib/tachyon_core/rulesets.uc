@@ -267,8 +267,24 @@ const TACHYON_LISTS_ALIAS_MAP = {
     ru_available_only_inside: "ru_only_inside"
 };
 
+function should_compact_huge_ruleset(name) {
+    name = as_string(name);
+    if (name != "ru_blocked_all" && name != "runetfreedom_blocked_all")
+        return false;
+    if (getenv("TACHYON_FORCE_FULL_RULESETS") == "1")
+        return false;
+    if (getenv("TACHYON_COMPACT_HUGE_RULESETS") == "1")
+        return true;
+    let total_kb = gomemlimit.mem_total_kb();
+    if (total_kb > 0 && total_kb < 786432)
+        return true;
+    return false;
+}
+
 function tachyon_lists_srs_url(name) {
     name = as_string(name);
+    if (should_compact_huge_ruleset(name))
+        name = "ru_blocked";
     let canonical = TACHYON_LISTS_ALIAS_MAP[name] || name;
     let custom_base = as_string(getenv("TACHYON_LISTS_SRS_URL") || "");
     if (custom_base != "")
@@ -278,6 +294,8 @@ function tachyon_lists_srs_url(name) {
 
 function tachyon_lists_trs_url(name) {
     name = as_string(name);
+    if (should_compact_huge_ruleset(name))
+        name = "ru_blocked";
     let canonical = TACHYON_LISTS_ALIAS_MAP[name] || name;
     let custom_base = as_string(getenv("TACHYON_LISTS_TRS_URL") || "");
     if (custom_base != "")
@@ -299,6 +317,8 @@ function community_trs_urls(name) {
     name = as_string(name);
     if (COMMUNITY_SERVICES[name] !== true)
         return [];
+    if (should_compact_huge_ruleset(name))
+        name = "ru_blocked";
     let canonical = TACHYON_LISTS_ALIAS_MAP[name] || name;
     let custom_trs = as_string(getenv("TACHYON_LISTS_TRS_URL") || "");
     if (custom_trs != "")
@@ -325,6 +345,8 @@ function supports_trs() {
 
 function fallback_community_url(name) {
     name = as_string(name);
+    if (should_compact_huge_ruleset(name))
+        name = "ru_blocked";
     if (name == "ads_hagezi_pro")
         return SRS_ADS_HAGEZI_PRO_URL;
     if (name == "supercell")
@@ -451,7 +473,7 @@ function is_valid_trs_file(path) {
     if (!magic || length(magic) < 3)
         return false;
     let m3 = substr(magic, 0, 3);
-    return m3 == "TRS" || magic == "TCRS";
+    return m3 == "TRS" || magic == "TSRS" || magic == "TCRS";
 }
 
 function is_usable_trs_file(path) {
@@ -491,6 +513,13 @@ function srs_file_parses(path) {
     let p = as_string(path);
     if (!is_valid_srs_file(p))
         return false;
+
+    let st = fs.stat(p);
+    if (st && int(st.size || 0) > 2097152) {
+        let total_kb = gomemlimit.mem_total_kb();
+        if (total_kb > 0 && total_kb < 786432)
+            return true;
+    }
 
     let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
     if (fs.stat(bin) == null)
@@ -623,6 +652,7 @@ function module_exports() {
         COMMUNITY_DOMAIN_SERVICES,
         COMMUNITY_INFRASTRUCTURE_SERVICES,
         is_community,
+        should_compact_huge_ruleset,
         tachyon_lists_srs_url,
         tachyon_lists_trs_url,
         community_trs_url,

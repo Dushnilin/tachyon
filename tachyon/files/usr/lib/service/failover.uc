@@ -126,7 +126,17 @@ function clash_delay_ok_url(tag, timeout_ms, probe_url, expected_status) {
     } catch (e) {
         return false;
     }
-    if (object_or_empty(parsed)["delay"] == null)
+    let obj = object_or_empty(parsed);
+    let has_delay = obj["delay"] != null && int(obj["delay"]) > 0;
+    if (!has_delay && obj["error"] == null) {
+        for (let k, v in obj) {
+            if (k != "status" && type(v) == "int" && v > 0) {
+                has_delay = true;
+                break;
+            }
+        }
+    }
+    if (!has_delay)
         return false;
     if (expected_status && expected_status != "") {
         let allowed = split(expected_status, /[[:space:],]+/);

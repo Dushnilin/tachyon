@@ -884,6 +884,12 @@ function section_name(section) {
     return as_string(object_or_empty(section)[".name"]);
 }
 
+function contains(arr, val) {
+    if (type(arr) != "array")
+        return false;
+    return index(arr, val) >= 0;
+}
+
 function log_message(message, level, tag) {
     // Delegate to unified structured logging module.
     // Maintains backward-compatible signature: log_message(message, level, tag)
@@ -906,6 +912,7 @@ return {
     parse_sing_box_version,
     print_file_first_line,
     section_name,
+    contains,
     log_message,
     read_json_file,
     read_stdin,

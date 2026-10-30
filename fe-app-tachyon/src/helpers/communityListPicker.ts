@@ -134,8 +134,8 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'blocked',
-    titleRu: '🛡️ Реестры и Геоблок',
-    titleEn: '🛡️ Registries & Geoblock',
+    titleRu: '🛡️ Реестры',
+    titleEn: '🛡️ Registries',
     keys: [
       'russia_inside',
       'geoblock',
@@ -148,14 +148,14 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'ai',
-    titleRu: '🤖 ИИ и Нейросети',
-    titleEn: '🤖 AI Services',
+    titleRu: '🤖 ИИ',
+    titleEn: '🤖 AI',
     keys: ['ai_all', 'openai', 'anthropic', 'google_ai', 'xai'],
   },
   {
     id: 'media',
-    titleRu: '🎬 Видео, Музыка и Соцсети',
-    titleEn: '🎬 Video, Music & Social',
+    titleRu: '🎬 Медиа и Соцсети',
+    titleEn: '🎬 Media & Social',
     keys: [
       'youtube',
       'discord',
@@ -174,8 +174,8 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'games',
-    titleRu: '🎮 Игры и Лаунчеры',
-    titleEn: '🎮 Games & Launchers',
+    titleRu: '🎮 Игры',
+    titleEn: '🎮 Games',
     keys: [
       'steam',
       'epicgames',
@@ -189,8 +189,8 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'infra',
-    titleRu: '☁️ CDN, Облака и IT',
-    titleEn: '☁️ CDN, Cloud & IT',
+    titleRu: '☁️ CDN и IT',
+    titleEn: '☁️ CDN & IT',
     keys: [
       'cloudflare',
       'cloudfront',
@@ -208,8 +208,8 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'direct',
-    titleRu: '🏠 Прямой доступ (РФ / Push)',
-    titleEn: '🏠 Direct Route (RU / Push)',
+    titleRu: '🏠 Прямой РФ',
+    titleEn: '🏠 Direct RU',
     keys: [
       'ru_whitelist',
       'ru_domains',
@@ -220,8 +220,8 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'other',
-    titleRu: '🔒 Прочее и Реклама',
-    titleEn: '🔒 Other & Adblock',
+    titleRu: '🔒 Реклама и Прочее',
+    titleEn: '🔒 Adblock & Other',
     keys: ['news', 'torrent', 'tor', 'porn', 'ads_hagezi_pro', 'win_spy'],
   },
 ];
@@ -237,39 +237,91 @@ function isRussianLocale(): boolean {
   }
 }
 
-export function createInteractiveHintBanner(): {
-  element: HTMLElement;
-  showHint: (key: string, subsumedParents?: string[]) => void;
-} {
-  const ru = isRussianLocale();
-  const titleEl = E(
-    'span',
-    { class: 'tachyon-ruleset-picker__hint-title' },
-    ru
-      ? '💡 Наведите курсор на список (или нажмите ⓘ на телефоне), чтобы увидеть состав и рекомендуемый маршрут'
-      : '💡 Hover over any service list (or tap ⓘ on mobile) to inspect included domains and recommended routing',
-  );
-  const badgeEl = E('span', {
+let floatingTooltipEl: HTMLElement | null = null;
+let floatingTooltipTitleEl: HTMLElement | null = null;
+let floatingTooltipBadgeEl: HTMLElement | null = null;
+let floatingTooltipDescEl: HTMLElement | null = null;
+
+function ensureFloatingTooltip(): HTMLElement {
+  if (floatingTooltipEl && document.body.contains(floatingTooltipEl)) {
+    return floatingTooltipEl;
+  }
+  floatingTooltipTitleEl = E('span', {
+    class: 'tachyon-ruleset-picker__hint-title',
+  });
+  floatingTooltipBadgeEl = E('span', {
     class: 'tachyon-ruleset-picker__hint-badge',
     style: 'display:none;',
   });
-  const descEl = E(
+  floatingTooltipDescEl = E('div', {
+    class: 'tachyon-ruleset-picker__hint-desc',
+  });
+  floatingTooltipEl = E(
     'div',
-    { class: 'tachyon-ruleset-picker__hint-desc' },
-    ru
-      ? 'Нажимайте на плашки сервисов ниже для быстрого выбора в один клик.'
-      : 'Click any service chip below to toggle it with a single click.',
+    {
+      class: 'tachyon-ruleset-picker__floating-tooltip',
+      style: 'display:none;',
+    },
+    [
+      E('div', { class: 'tachyon-ruleset-picker__hint-head' }, [
+        floatingTooltipTitleEl,
+        floatingTooltipBadgeEl,
+      ]),
+      floatingTooltipDescEl,
+    ],
   );
+  document.body.appendChild(floatingTooltipEl);
+  return floatingTooltipEl;
+}
 
-  const bannerEl = E('div', { class: 'tachyon-ruleset-picker__hint-bar' }, [
-    E('div', { class: 'tachyon-ruleset-picker__hint-head' }, [
-      titleEl,
-      badgeEl,
-    ]),
-    descEl,
-  ]);
+function positionFloatingTooltip(anchorEl?: HTMLElement | null) {
+  if (!floatingTooltipEl || floatingTooltipEl.style.display === 'none') return;
+  if (!anchorEl) return;
+  const rect = anchorEl.getBoundingClientRect();
+  const tooltipWidth = 340;
+  let left = rect.left;
+  if (left + tooltipWidth > window.innerWidth - 12) {
+    left = Math.max(12, window.innerWidth - tooltipWidth - 12);
+  }
+  const spaceBelow = window.innerHeight - rect.bottom;
+  if (spaceBelow < 110 && rect.top > 110) {
+    floatingTooltipEl.style.top = `${Math.max(8, rect.top - 8)}px`;
+    floatingTooltipEl.style.transform = 'translateY(-100%)';
+  } else {
+    floatingTooltipEl.style.top = `${rect.bottom + 6}px`;
+    floatingTooltipEl.style.transform = 'none';
+  }
+  floatingTooltipEl.style.left = `${left}px`;
+}
 
-  function showHint(key: string, subsumedParents?: string[]) {
+function hideFloatingTooltip() {
+  if (floatingTooltipEl) {
+    floatingTooltipEl.style.display = 'none';
+  }
+}
+
+export function createInteractiveHintBanner(): {
+  element: HTMLElement;
+  showHint: (
+    key: string,
+    subsumedParents?: string[],
+    anchorEl?: HTMLElement | null,
+  ) => void;
+  hideHint: () => void;
+} {
+  const ru = isRussianLocale();
+  const placeholderEl = E('div', {
+    class: 'tachyon-ruleset-picker__hint-bar',
+    style: 'display:none;',
+  });
+
+  function showHint(
+    key: string,
+    subsumedParents?: string[],
+    anchorEl?: HTMLElement | null,
+  ) {
+    if (typeof document === 'undefined' || !document.body) return;
+    const tip = ensureFloatingTooltip();
     const label =
       (DOMAIN_LIST_OPTIONS as Record<string, string>)[key] || String(key || '');
     const rawHint = DOMAIN_LIST_HINTS[key] || '';
@@ -283,32 +335,41 @@ export function createInteractiveHintBanner(): {
           : `🔒 100% included in selected list "${parentLabels.join('", "')}" (already covered). `
         : '';
 
-    if (!rawHint) {
-      titleEl.textContent = label;
-      badgeEl.style.display = 'none';
-      descEl.textContent = subsumedPrefix;
+    if (!rawHint && !subsumedPrefix) {
+      hideFloatingTooltip();
       return;
     }
+
     const parsed = parseCommunityHint(rawHint);
-    titleEl.textContent = `${label} (${key})`;
-    if (parentLabels.length > 0) {
-      badgeEl.textContent = ru
-        ? `Входит в: ${parentLabels.join(', ')}`
-        : `Included in: ${parentLabels.join(', ')}`;
-      badgeEl.className = 'tachyon-ruleset-picker__hint-badge is-subsumed';
-      badgeEl.style.display = 'inline-flex';
-    } else if (parsed.routeBadge) {
-      badgeEl.textContent = parsed.routeBadge;
-      badgeEl.className = `tachyon-ruleset-picker__hint-badge is-${parsed.routeKind}`;
-      badgeEl.style.display = 'inline-flex';
-    } else {
-      badgeEl.style.display = 'none';
+    if (floatingTooltipTitleEl) {
+      floatingTooltipTitleEl.textContent = `${label} (${key})`;
     }
-    descEl.textContent = `${subsumedPrefix}${parsed.description}`;
-    bannerEl.classList.add('is-highlighted');
+    if (floatingTooltipBadgeEl) {
+      if (parentLabels.length > 0) {
+        floatingTooltipBadgeEl.textContent = ru
+          ? `Входит в: ${parentLabels.join(', ')}`
+          : `Included in: ${parentLabels.join(', ')}`;
+        floatingTooltipBadgeEl.className =
+          'tachyon-ruleset-picker__hint-badge is-subsumed';
+        floatingTooltipBadgeEl.style.display = 'inline-flex';
+      } else if (parsed.routeBadge) {
+        floatingTooltipBadgeEl.textContent = parsed.routeBadge;
+        floatingTooltipBadgeEl.className = `tachyon-ruleset-picker__hint-badge is-${parsed.routeKind}`;
+        floatingTooltipBadgeEl.style.display = 'inline-flex';
+      } else {
+        floatingTooltipBadgeEl.style.display = 'none';
+      }
+    }
+    if (floatingTooltipDescEl) {
+      floatingTooltipDescEl.textContent = `${subsumedPrefix}${parsed.description}`;
+    }
+    tip.style.display = 'flex';
+    if (anchorEl) {
+      positionFloatingTooltip(anchorEl);
+    }
   }
 
-  return { element: bannerEl, showHint };
+  return { element: placeholderEl, showHint, hideHint: hideFloatingTooltip };
 }
 
 export function attachCommunityListPicker(
@@ -347,7 +408,7 @@ export function attachCommunityListPicker(
 
       let activeCategory = 'popular';
 
-      const { element: hintBanner, showHint } = createInteractiveHintBanner();
+      const { showHint, hideHint } = createInteractiveHintBanner();
 
       const getValues = (): string[] => {
         try {
@@ -369,10 +430,10 @@ export function attachCommunityListPicker(
         return [];
       };
 
-      const setValues = (nextValues: string[], changedKey?: string) => {
+      const setValues = (nextValues: string[]) => {
         try {
           const uiEl = this.getUIElement(section_id);
-          if (uiEl && typeof uiEl.setValue === 'function') {
+          if (uiEl && typeof uiEl.getValue === 'function') {
             uiEl.setValue(nextValues);
             if (uiEl.node) {
               uiEl.node.dispatchEvent(
@@ -386,20 +447,17 @@ export function attachCommunityListPicker(
         } catch (_e) {
           /* ignore */
         }
-        if (changedKey) {
-          showHint(changedKey);
-        }
         syncChipStates();
         decorateNativeDynamicListItems();
       };
 
       let searchQuery = '';
 
-      const toggleKey = (key: string) => {
+      const toggleKey = (key: string, anchorEl?: HTMLElement | null) => {
         const current = getValues();
         const subsumedMap = getSubsumedCommunityLists(current);
         if (subsumedMap.has(key) && !current.includes(key)) {
-          showHint(key, subsumedMap.get(key));
+          showHint(key, subsumedMap.get(key), anchorEl);
           return;
         }
         const exists = current.includes(key);
@@ -411,7 +469,19 @@ export function attachCommunityListPicker(
         if (nextSubsumed.size > 0) {
           next = next.filter((k) => !nextSubsumed.has(k));
         }
-        setValues(next, key);
+        setValues(next);
+      };
+
+      const applyPreset = (presetKeys: string[]) => {
+        const current = getValues();
+        const validKeys = presetKeys.filter((k) => !blocked.has(k));
+        const merged = Array.from(new Set([...current, ...validKeys]));
+        const nextSubsumed = getSubsumedCommunityLists(merged);
+        const pruned =
+          nextSubsumed.size > 0
+            ? merged.filter((k) => !nextSubsumed.has(k))
+            : merged;
+        setValues(pruned);
       };
 
       const chipsContainer = E('div', {
@@ -424,13 +494,88 @@ export function attachCommunityListPicker(
         type: 'search',
         class: 'cbi-input-text tachyon-ruleset-picker__search',
         placeholder: ru
-          ? '🔍 Быстрый поиск списка по названию, сервису или домену (например: youtube, openai, игра, геоблок)...'
-          : '🔍 Filter lists by name, service, or domain (e.g. youtube, openai, game, geoblock)...',
+          ? '🔍 Поиск сервиса или домена (youtube, openai, steam, реклама)...'
+          : '🔍 Search service or domain (youtube, openai, steam, ads)...',
         input: (ev: Event) => {
           searchQuery = (ev.target as HTMLInputElement).value || '';
+          renderCategoryTabs();
           renderChips();
         },
       } as any) as HTMLInputElement;
+
+      const presetsRow = E(
+        'div',
+        { class: 'tachyon-ruleset-picker__presets-group' },
+        [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon-ruleset-picker__preset-btn',
+              title: ru
+                ? 'Добавить базовый набор (Russia Inside + Геоблок + YouTube + Discord + Telegram + AI)'
+                : 'Add base bundle (Russia Inside + Geoblock + YouTube + Discord + Telegram + AI)',
+              click: () =>
+                applyPreset([
+                  'russia_inside',
+                  'youtube',
+                  'discord',
+                  'telegram',
+                  'ai_all',
+                ]),
+            } as any,
+            ru ? '+ Базовый РФ' : '+ Base RU',
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon-ruleset-picker__preset-btn',
+              title: ru
+                ? 'Добавить все нейросети (OpenAI, Claude, Gemini, Grok и др.)'
+                : 'Add all AI services (OpenAI, Claude, Gemini, Grok, etc.)',
+              click: () => applyPreset(['ai_all', 'google_ai']),
+            } as any,
+            ru ? '+ Весь ИИ' : '+ All AI',
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon-ruleset-picker__preset-btn',
+              title: ru
+                ? 'Добавить популярные соцсети и медиа (YouTube, Discord, Telegram, Meta, X, Spotify)'
+                : 'Add popular media & social (YouTube, Discord, Telegram, Meta, X, Spotify)',
+              click: () =>
+                applyPreset([
+                  'youtube',
+                  'discord',
+                  'telegram',
+                  'meta',
+                  'twitter',
+                  'spotify',
+                ]),
+            } as any,
+            ru ? '+ Медиа' : '+ Media',
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon-ruleset-picker__preset-btn is-clear',
+              title: ru ? 'Очистить выбранные списки' : 'Clear selected lists',
+              click: () => setValues([]),
+            } as any,
+            ru ? '✕ Сброс' : '✕ Clear',
+          ),
+        ],
+      );
+
+      const topControlsRow = E(
+        'div',
+        { class: 'tachyon-ruleset-picker__top-row' },
+        [searchInput, presetsRow],
+      );
 
       function syncChipStates() {
         const currentVals = getValues();
@@ -451,19 +596,6 @@ export function attachCommunityListPicker(
           btn.disabled = isSubsumed;
           btn.setAttribute('aria-disabled', isSubsumed ? 'true' : 'false');
 
-          const rawHint = DOMAIN_LIST_HINTS[key] || '';
-          if (isSubsumed && subsumedParents) {
-            const parentLabels = subsumedParents.map(
-              (p) => (DOMAIN_LIST_OPTIONS as Record<string, string>)[p] || p,
-            );
-            const subNote = ru
-              ? `[Уже входит в: ${parentLabels.join(', ')}] `
-              : `[Already included in: ${parentLabels.join(', ')}] `;
-            btn.title = subNote + rawHint;
-          } else {
-            btn.title = rawHint;
-          }
-
           const checkEl = btn.querySelector(
             '.tachyon-ruleset-picker__chip-check',
           );
@@ -482,7 +614,7 @@ export function attachCommunityListPicker(
           })),
           {
             id: 'all',
-            label: ru ? '📋 Все списки (50+)' : '📋 All Lists (50+)',
+            label: ru ? '📋 Все (50+)' : '📋 All (50+)',
           },
         ];
 
@@ -567,27 +699,21 @@ export function attachCommunityListPicker(
             subsumedParents && subsumedParents.length > 0,
           );
           const isSel = selectedSet.has(key) && !isSubsumed;
-          const parentLabels = (subsumedParents || []).map(
-            (p) => (DOMAIN_LIST_OPTIONS as Record<string, string>)[p] || p,
-          );
-          const chipTitle = isSubsumed
-            ? (ru
-                ? `[Уже входит в: ${parentLabels.join(', ')}] `
-                : `[Already included in: ${parentLabels.join(', ')}] `) +
-              rawHint
-            : rawHint;
 
           const infoBtn = E(
             'span',
             {
               class: 'tachyon-ruleset-picker__chip-info',
-              title: chipTitle,
               role: 'button',
               tabindex: '0',
               click: (ev: Event) => {
                 ev.preventDefault();
                 ev.stopPropagation();
-                showHint(key, subsumedMap.get(key));
+                showHint(
+                  key,
+                  subsumedMap.get(key),
+                  ev.currentTarget as HTMLElement,
+                );
               },
             } as any,
             'ⓘ',
@@ -601,10 +727,22 @@ export function attachCommunityListPicker(
               'data-key': key,
               disabled: isSubsumed ? true : undefined,
               'aria-disabled': isSubsumed ? 'true' : 'false',
-              title: chipTitle,
-              mouseenter: () => showHint(key, subsumedMap.get(key)),
-              focus: () => showHint(key, subsumedMap.get(key)),
-              click: () => toggleKey(key),
+              mouseenter: (ev: Event) =>
+                showHint(
+                  key,
+                  subsumedMap.get(key),
+                  ev.currentTarget as HTMLElement,
+                ),
+              mouseleave: () => hideHint(),
+              focus: (ev: Event) =>
+                showHint(
+                  key,
+                  subsumedMap.get(key),
+                  ev.currentTarget as HTMLElement,
+                ),
+              blur: () => hideHint(),
+              click: (ev: Event) =>
+                toggleKey(key, ev.currentTarget as HTMLElement),
             } as any,
             [
               E(
@@ -654,35 +792,23 @@ export function attachCommunityListPicker(
             itemEl.getAttribute('data-value') || hiddenInput?.value || '';
           const rawHint = DOMAIN_LIST_HINTS[key];
           if (!rawHint) return;
-          itemEl.setAttribute('title', rawHint);
           if (!itemEl.dataset.tachyonHintBound) {
             itemEl.dataset.tachyonHintBound = '1';
-            itemEl.addEventListener('mouseenter', () => showHint(key));
+            itemEl.addEventListener('mouseenter', () =>
+              showHint(key, undefined, itemEl),
+            );
+            itemEl.addEventListener('mouseleave', () => hideHint());
           }
         });
-
-        const selectEl = widgetNode.querySelector<HTMLSelectElement>('select');
-        if (selectEl && !selectEl.dataset.tachyonHintBound) {
-          selectEl.dataset.tachyonHintBound = '1';
-          selectEl.addEventListener('change', () => {
-            const v = selectEl.value;
-            if (v && DOMAIN_LIST_HINTS[v]) {
-              showHint(v);
-            }
-          });
-        }
       }
 
       renderCategoryTabs();
       renderChips();
 
       const pickerWrapper = E('div', { class: 'tachyon-ruleset-picker' }, [
-        hintBanner,
         E('div', { class: 'tachyon-ruleset-picker__cats-block' }, [
-          E('div', { class: 'tachyon-ruleset-picker__toolbar' }, [
-            searchInput,
-            catTabsContainer,
-          ]),
+          topControlsRow,
+          catTabsContainer,
         ]),
         E('div', { class: 'tachyon-ruleset-picker__list-block' }, [
           chipsContainer,

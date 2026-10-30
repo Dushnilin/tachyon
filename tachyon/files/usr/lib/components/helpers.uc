@@ -47,6 +47,15 @@ function str_startswith(value, prefix) {
     return length(value) >= length(prefix) && substr(value, 0, length(prefix)) == prefix;
 }
 
+function str_endswith(value, suffix) {
+    value = as_string(value);
+    suffix = as_string(suffix);
+    if (length(suffix) == 0)
+        return true;
+    return length(value) >= length(suffix) &&
+        substr(value, length(value) - length(suffix), length(suffix)) == suffix;
+}
+
 function command_env(assignments) {
     let parts = [];
     for (let name, value in assignments)
@@ -514,6 +523,7 @@ function sanitize_apk_world() {
     if (!is_apk() || !file_exists("/etc/apk/world"))
         return;
     let removable_if_uninstalled = [
+        "tachyon-core",
         "sing-box-extended", "sing-box", "sing-box-tiny", "sing-box-lx",
         "steer-extended", "steer", "steer-core",
         "steer-obfs", "steer-tgws", "steer-vless", "steer-xsteer", "steer-proxy", "steer-hysteria2",
@@ -527,7 +537,7 @@ function sanitize_apk_world() {
     }
     // Strip pinned version/hash constraints (e.g. pkg><HASH= or pkg=ver)
     // from /etc/apk/world for all managed packages so local .apk upgrades succeed
-    let pattern = "^(tachyon|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|steer-core|steer-(obfs|tgws|vless|xsteer|proxy|hysteria2)|zapret|zapret2|byedpi|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
+    let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|steer-core|steer-(obfs|tgws|vless|xsteer|proxy|hysteria2)|zapret|zapret2|byedpi|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
     command_success("sed -i -E " + shell_quote("s/" + pattern + "/\\1/") + " /etc/apk/world 2>/dev/null");
 }
 
@@ -700,6 +710,7 @@ function module_exports() {
         LIB_DIR,
         SING_BOX_BIN,
         str_startswith,
+        str_endswith,
         command_env,
         command_output_lenient,
         command_exists,
