@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-30 04:08+0300\n"
-"PO-Revision-Date: 2026-10-30 04:08+0300\n"
+"POT-Creation-Date: 2026-10-30 04:21+0300\n"
+"PO-Revision-Date: 2026-10-30 04:21+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -478,7 +478,7 @@ msgstr ""
 msgid "Adaptive 2.0 Auto-Learning (auto_tune)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1491
+#: src/tachyon/appShell.ts:1610
 msgid "Add Connection (Setup Wizard)"
 msgstr ""
 
@@ -641,7 +641,7 @@ msgstr ""
 msgid "Adult content"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1411
+#: src/tachyon/appShell.ts:1530
 msgid "Advanced"
 msgstr ""
 
@@ -653,16 +653,16 @@ msgstr ""
 msgid "Advanced Boolean Expression"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1290
+#: src/tachyon/appShell.ts:1409
 msgid "Advanced Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1562
+#: src/tachyon/appShell.ts:1697
 #: src/views/settings.ts:2178
 msgid "Advanced System"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1401
+#: src/tachyon/appShell.ts:1520
 msgid "Advanced mode: all tabs, conditions, balancers and expert settings"
 msgstr ""
 
@@ -2289,6 +2289,8 @@ msgid "Clone Section"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:277
+#: src/tachyon/appShell.ts:755
+#: src/tachyon/appShell.ts:756
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1162
 #: src/tachyon/tabs/dashboard/initController.ts:1686
 #: src/tachyon/tabs/dashboard/initController.ts:2466
@@ -2360,8 +2362,12 @@ msgstr ""
 msgid "Cloudflare account / device ID"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1324
+#: src/tachyon/appShell.ts:1443
 msgid "Collapse menu to icons"
+msgstr ""
+
+#: src/tachyon/appShell.ts:1664
+msgid "Collapse top toolbar"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:623
@@ -4245,7 +4251,7 @@ msgstr ""
 msgid "Engine crashes:"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1356
+#: src/tachyon/appShell.ts:1475
 msgid "Engine: Tachyon Core"
 msgstr ""
 
@@ -4523,12 +4529,16 @@ msgstr ""
 msgid "Expand detected subdomains to root domain"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1323
+#: src/tachyon/appShell.ts:1442
 msgid "Expand menu"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1268
+#: src/tachyon/appShell.ts:1387
 msgid "Expand sidebar"
+msgstr ""
+
+#: src/tachyon/appShell.ts:1663
+msgid "Expand top toolbar"
 msgstr ""
 
 #: src/views/section.ts:15147
@@ -4960,8 +4970,8 @@ msgstr ""
 msgid "Failed to synthesize AI strategies"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1459
-#: src/tachyon/appShell.ts:1469
+#: src/tachyon/appShell.ts:1578
+#: src/tachyon/appShell.ts:1588
 msgid "Failed to toggle Eco Mode"
 msgstr ""
 
@@ -6325,7 +6335,7 @@ msgstr ""
 msgid "Interface IPv4/IPv6 addresses (e.g. 10.8.1.2/32)."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1376
+#: src/tachyon/appShell.ts:1495
 msgid "Interface Mode"
 msgstr ""
 
@@ -7683,11 +7693,11 @@ msgstr ""
 msgid "Move right / down in grid"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1525
+#: src/tachyon/appShell.ts:1644
 msgid "Move sidebar to the left"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1521
+#: src/tachyon/appShell.ts:1640
 msgid "Move sidebar to the right"
 msgstr ""
 
@@ -7818,7 +7828,7 @@ msgstr ""
 msgid "Native tailscaled (tailnet reachable from LAN without client)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1617
+#: src/tachyon/appShell.ts:1752
 msgid "Need expert knobs? Advanced Mode →"
 msgstr ""
 
@@ -8517,7 +8527,7 @@ msgstr ""
 msgid "Open inbound settings"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1298
+#: src/tachyon/appShell.ts:1417
 msgid "Open navigation menu"
 msgstr ""
 
@@ -9883,8 +9893,8 @@ msgstr ""
 msgid "Reload now"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1227
-#: src/tachyon/appShell.ts:1743
+#: src/tachyon/appShell.ts:1346
+#: src/tachyon/appShell.ts:1878
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:447
 msgid "Reloading..."
 msgstr ""
@@ -11336,8 +11346,8 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1230
-#: src/tachyon/appShell.ts:1746
+#: src/tachyon/appShell.ts:1349
+#: src/tachyon/appShell.ts:1881
 msgid "Service stopped"
 msgstr ""
 
@@ -11502,15 +11512,15 @@ msgstr ""
 msgid "Show widget on dashboard"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1394
+#: src/tachyon/appShell.ts:1513
 msgid "Simple"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1289
+#: src/tachyon/appShell.ts:1408
 msgid "Simple Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1384
+#: src/tachyon/appShell.ts:1503
 msgid "Simple mode: basic settings and quick connection wizard"
 msgstr ""
 
@@ -12193,7 +12203,7 @@ msgstr ""
 msgid "Synthesize with AI"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1560
+#: src/tachyon/appShell.ts:1695
 msgid "System & Backup"
 msgstr ""
 
@@ -12221,8 +12231,8 @@ msgstr ""
 msgid "System information"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1229
-#: src/tachyon/appShell.ts:1745
+#: src/tachyon/appShell.ts:1348
+#: src/tachyon/appShell.ts:1880
 msgid "System running"
 msgstr ""
 
@@ -12472,12 +12482,12 @@ msgstr ""
 msgid "Tachyon Lite"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1450
+#: src/tachyon/appShell.ts:1569
 #: src/tachyon/tabs/dashboard/initController.ts:3631
 msgid "Tachyon Lite eco mode disabled"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1446
+#: src/tachyon/appShell.ts:1565
 msgid "Tachyon Lite eco mode enabled"
 msgstr ""
 
@@ -12485,7 +12495,7 @@ msgstr ""
 msgid "Tachyon Lite eco mode enabled (nice 15 + ct mark Short-Circuit)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1363
+#: src/tachyon/appShell.ts:1482
 msgid "Tachyon Lite eco mode for low-power routers: lower proxy priority (nice 15), ct mark Short-Circuit + connlimit and background check hibernation under load"
 msgstr ""
 
@@ -15079,11 +15089,11 @@ msgstr ""
 msgid "⚠️ Server received fakes"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1512
+#: src/tachyon/appShell.ts:1631
 msgid "⚡ + Connection"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1429
+#: src/tachyon/appShell.ts:1548
 msgid "⚡ ..."
 msgstr ""
 
@@ -15107,13 +15117,13 @@ msgstr ""
 msgid "⚡ DNS Auto-Tune completed! Optimal stack selected."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1482
-#: src/tachyon/appShell.ts:1756
+#: src/tachyon/appShell.ts:1601
+#: src/tachyon/appShell.ts:1891
 msgid "⚡ Eco Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1481
-#: src/tachyon/appShell.ts:1755
+#: src/tachyon/appShell.ts:1600
+#: src/tachyon/appShell.ts:1890
 msgid "⚡ Eco Mode: On"
 msgstr ""
 
@@ -15137,7 +15147,7 @@ msgstr ""
 msgid "⚡ Quick Benchmark (Presets ~30+)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1651
+#: src/tachyon/appShell.ts:1786
 msgid "⚡ Quick Setup Wizard"
 msgstr ""
 

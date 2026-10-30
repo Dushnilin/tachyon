@@ -2296,7 +2296,7 @@ function download_to_file(url, filepath, proxy_address) {
     function download_one(target_url, proxy_addr) {
         remove_file(filepath);
         if (command_exists("curl")) {
-            let curl_args = [ "curl", "--connect-timeout", "5", "-m", "15", "-y", "6", "-Y", "32768", "-fsSL" ];
+            let curl_args = [ "curl", "--connect-timeout", "3", "-m", "10", "-y", "5", "-Y", "32768", "-fsSL" ];
             if (as_string(proxy_addr) != "") {
                 push(curl_args, "-x", "http://" + as_string(proxy_addr));
             } else {
@@ -2616,16 +2616,8 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
 
     if (use_trs && type(singbox_rulesets_module().community_trs_urls) == "function") {
         let trs_base_urls = singbox_rulesets_module().community_trs_urls(service);
-        let trs_candidates = [];
-        for (let tu in trs_base_urls) {
-            let expanded = core_url_mod && type(core_url_mod.download_candidates) == "function" ?
-                core_url_mod.download_candidates(tu) : [ tu ];
-            for (let ex in expanded)
-                if (!(ex in trs_candidates))
-                    push(trs_candidates, ex);
-        }
-        for (let trs_candidate in trs_candidates) {
-            if (download_to_file(trs_candidate, tmpfile, service_proxy_address(settings, "lists")) &&
+        for (let trs_url in trs_base_urls) {
+            if (download_to_file(trs_url, tmpfile, service_proxy_address(settings, "lists")) &&
                 file_nonempty(tmpfile) &&
                 singbox_rulesets_module().is_usable_trs_file(tmpfile)) {
                 ensure_dir(TMP_RULESET_FOLDER);
@@ -2638,7 +2630,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                 } else if (sz > 524288) {
                     remove_file(persistent_trs_file);
                 }
-                log_message("Successfully cached preset ruleset " + service + " (.trs) from " + trs_candidate, "info");
+                log_message("Successfully cached preset ruleset " + service + " (.trs) from " + trs_url, "info");
                 remove_file(tmpfile);
                 return true;
             }
@@ -2646,21 +2638,15 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         }
     }
 
-    let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ?
-        core_url_mod.download_candidates(url) : [ url ];
+    let srs_urls = [ url ];
     let fallback_url = type(singbox_rulesets_module().fallback_community_url) == "function" ?
         singbox_rulesets_module().fallback_community_url(service) : "";
-    if (fallback_url != "" && fallback_url != url) {
-        let fb_candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ?
-            core_url_mod.download_candidates(fallback_url) : [ fallback_url ];
-        for (let fb in fb_candidates)
-            if (!(fb in candidates))
-                push(candidates, fb);
-    }
+    if (fallback_url != "" && fallback_url != url)
+        push(srs_urls, fallback_url);
     let downloaded = false;
 
-    for (let candidate in candidates) {
-        if (download_to_file(candidate, tmpfile, service_proxy_address(settings, "lists")) &&
+    for (let srs_url in srs_urls) {
+        if (download_to_file(srs_url, tmpfile, service_proxy_address(settings, "lists")) &&
             file_nonempty(tmpfile) &&
             helpers.file_is_usable(tmpfile, 100)) {
             let raw = fs.readfile(tmpfile);
@@ -2680,7 +2666,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                 } else if (sz > 524288) {
                     remove_file(persistent_file);
                 }
-                log_message("Successfully cached preset ruleset " + service + (candidate != url ? " via mirror " + candidate : ""), "info");
+                log_message("Successfully cached preset ruleset " + service + (srs_url != url ? " via fallback " + srs_url : ""), "info");
                 downloaded = true;
                 break;
             }

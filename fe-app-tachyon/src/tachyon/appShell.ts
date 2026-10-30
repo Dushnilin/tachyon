@@ -17,6 +17,7 @@ export type TachyonSidebarPos = 'left' | 'right';
 const UI_MODE_STORAGE_KEY = 'tachyon_ui_mode_v1';
 const SIDEBAR_POS_STORAGE_KEY = 'tachyon_sidebar_pos_v1';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'tachyon_sidebar_collapsed_v1';
+const TOPBAR_COLLAPSED_STORAGE_KEY = 'tachyon_topbar_collapsed_v1';
 const SIDEBAR_EXPANDED_MENUS_KEY = 'tachyon_sidebar_menus_v1';
 
 export function getUiMode(): TachyonUiMode {
@@ -76,6 +77,28 @@ export function setSidebarCollapsed(collapsed: boolean): void {
     try {
       localStorage.setItem(
         SIDEBAR_COLLAPSED_STORAGE_KEY,
+        collapsed ? 'true' : 'false',
+      );
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function getTopbarCollapsed(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    return localStorage.getItem(TOPBAR_COLLAPSED_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setTopbarCollapsed(collapsed: boolean): void {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(
+        TOPBAR_COLLAPSED_STORAGE_KEY,
         collapsed ? 'true' : 'false',
       );
     } catch {
@@ -688,6 +711,95 @@ export interface MountAppShellOptions {
   getTabOrder?: () => string[];
 }
 
+let modalEnhancementsInstalled = false;
+
+export function installModalHeaderCloseEnhancements(): void {
+  if (typeof document === 'undefined' || modalEnhancementsInstalled) return;
+  modalEnhancementsInstalled = true;
+
+  const hideActiveModal = () => {
+    const g = globalThis as any;
+    if (
+      typeof ui !== 'undefined' &&
+      typeof (ui as any)?.hideModal === 'function'
+    ) {
+      (ui as any).hideModal();
+      return;
+    }
+    if (g.ui && typeof g.ui.hideModal === 'function') {
+      g.ui.hideModal();
+      return;
+    }
+    if (g.L?.hideModal && typeof g.L.hideModal === 'function') {
+      g.L.hideModal();
+      return;
+    }
+    document.body?.classList.remove('modal-overlay-active');
+  };
+
+  const injectHeaderCloseButton = (modalEl: HTMLElement | null) => {
+    if (!modalEl) return;
+    if (modalEl.querySelector('.tachyon-modal__header-close')) return;
+    const headingEl = modalEl.querySelector<HTMLElement>(
+      ':scope > h4, :scope > h3, :scope > .tachyon-wizard > .tachyon-wizard__header',
+    );
+    if (!headingEl || headingEl.classList.contains('tachyon-wizard__header')) {
+      return;
+    }
+    headingEl.classList.add('tachyon-modal__sticky-header');
+    const closeBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'tachyon-modal__header-close',
+        title: `${tr('Закрыть', 'Close')} (Esc)`,
+        'aria-label': tr('Закрыть', 'Close'),
+        click: (ev: MouseEvent) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          hideActiveModal();
+        },
+      } as any,
+      '✕',
+    );
+    headingEl.appendChild(closeBtn);
+  };
+
+  const scanOverlay = () => {
+    if (typeof document.querySelectorAll !== 'function') return;
+    const modals = document.querySelectorAll<HTMLElement>(
+      '#modal_overlay > .modal, .cbi-modal, .modal',
+    );
+    modals.forEach((m) => injectHeaderCloseButton(m));
+  };
+
+  scanOverlay();
+
+  if (typeof MutationObserver === 'function' && document.body) {
+    const observer = new MutationObserver(() => {
+      if (document.body.classList.contains('modal-overlay-active')) {
+        scanOverlay();
+      }
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class'],
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  document.addEventListener('keydown', (ev: KeyboardEvent) => {
+    if (
+      ev.key === 'Escape' &&
+      document.body?.classList.contains('modal-overlay-active')
+    ) {
+      ev.preventDefault();
+      hideActiveModal();
+    }
+  });
+}
+
 const activeShellState: {
   activeNavKey: string;
   initialized?: boolean;
@@ -744,6 +856,7 @@ function switchSettingsInternalSubTab(
 
 export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   if (typeof document === 'undefined') return;
+  installModalHeaderCloseEnhancements();
   activeShellState.options = options;
 
   const mapEl =
@@ -755,6 +868,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   let uiMode = getUiMode();
   let sidebarPos = getSidebarPos();
   let sidebarCollapsed = getSidebarCollapsed();
+  let topbarCollapsed = getTopbarCollapsed();
   const expandedMenus = getExpandedMenus();
 
   setUiMode(uiMode);
@@ -812,12 +926,17 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
 
   const syncShellAttributes = () => {
     const collapsedStr = sidebarCollapsed ? 'true' : 'false';
+    const topbarCollapsedStr = topbarCollapsed ? 'true' : 'false';
     mapEl.setAttribute('data-ui-mode', uiMode);
     mapEl.setAttribute('data-sidebar-pos', sidebarPos);
     mapEl.setAttribute('data-sidebar-collapsed', collapsedStr);
+    mapEl.setAttribute('data-topbar-collapsed', topbarCollapsedStr);
     shellLayout!.setAttribute('data-ui-mode', uiMode);
     shellLayout!.setAttribute('data-sidebar-pos', sidebarPos);
     shellLayout!.setAttribute('data-sidebar-collapsed', collapsedStr);
+    shellLayout!.setAttribute('data-topbar-collapsed', topbarCollapsedStr);
+    topbarEl.setAttribute('data-collapsed', topbarCollapsedStr);
+    topbarEl.classList.toggle('is-collapsed', topbarCollapsed);
     setUiMode(uiMode);
   };
 
@@ -1515,7 +1634,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           'button',
           {
             type: 'button',
-            class: 'tachyon-topbar__icon-btn',
+            class: 'tachyon-topbar__icon-btn tachyon-topbar__sidebar-pos-btn',
             title:
               sidebarPos === 'left'
                 ? tr(
@@ -1535,6 +1654,22 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           sidebarPos === 'left' ? '◧ ⇄ ◨' : '◨ ⇄ ◧',
         ),
         langSlot,
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-topbar__icon-btn tachyon-topbar__collapse-btn',
+            title: topbarCollapsed
+              ? tr('Развернуть панель инструментов', 'Expand top toolbar')
+              : tr('Свернуть панель инструментов', 'Collapse top toolbar'),
+            click: () => {
+              topbarCollapsed = !topbarCollapsed;
+              setTopbarCollapsed(topbarCollapsed);
+              renderSidebarAndTopbar();
+            },
+          },
+          topbarCollapsed ? '▾' : '▴',
+        ),
       ]),
     );
 

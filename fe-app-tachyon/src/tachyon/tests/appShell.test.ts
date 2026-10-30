@@ -176,10 +176,12 @@ import { renderTachyonDuckMascotSvg } from '../../icons/duckMascot';
 import {
   getSidebarCollapsed,
   getSidebarPos,
+  getTopbarCollapsed,
   getUiMode,
   mountTachyonAppShell,
   setSidebarCollapsed,
   setSidebarPos,
+  setTopbarCollapsed,
   setUiMode,
 } from '../appShell';
 import { openConnectionWizardModal } from '../connectionWizard';
@@ -214,6 +216,10 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(getSidebarCollapsed()).toBe(false);
     setSidebarCollapsed(true);
     expect(getSidebarCollapsed()).toBe(true);
+
+    expect(getTopbarCollapsed()).toBe(false);
+    setTopbarCollapsed(true);
+    expect(getTopbarCollapsed()).toBe(true);
   });
 
   it('mounts sidebar + topbar shell and switches between simple and advanced navigation', () => {
@@ -295,6 +301,16 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
       expect(dot.className).toContain('tachyon-sidebar__status-dot--ok');
       expect(dot.className).not.toContain('tachyon-sidebar__status-dot--err');
     }
+
+    // Verify topbar collapse button toggles topbar collapsed state
+    const topbarCollapseBtn = mapEl.querySelector(
+      '.tachyon-topbar__collapse-btn',
+    );
+    expect(topbarCollapseBtn).toBeTruthy();
+    expect(getTopbarCollapsed()).toBe(false);
+    topbarCollapseBtn.click();
+    expect(getTopbarCollapsed()).toBe(true);
+    expect(mapEl.getAttribute('data-topbar-collapsed')).toBe('true');
   });
 
   it('opens Connection Wizard modal and saves UCI entities via uci.save()', async () => {

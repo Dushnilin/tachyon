@@ -73,12 +73,15 @@ export {
 export {
   mountTachyonAppShell,
   refreshTachyonAppShell,
+  installModalHeaderCloseEnhancements,
   getUiMode,
   setUiMode,
   getSidebarPos,
   setSidebarPos,
   getSidebarCollapsed,
   setSidebarCollapsed,
+  getTopbarCollapsed,
+  setTopbarCollapsed,
 } from './tachyon/appShell';
 export { openConnectionWizardModal } from './tachyon/connectionWizard';
 export { mountTachyonStudioDeck } from './tachyon/studioDeck';

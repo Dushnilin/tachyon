@@ -18,8 +18,7 @@ ${PartialStyles}
 .tachyon-view,
 #modal_overlay,
 .cbi-modal,
-.tachyon-wizard,
-#view > .cbi-page-actions {
+.tachyon-wizard {
     overflow-anchor: none !important;
     --tachyon-violet: #9482e0;
     --tachyon-violet-strong: #816ed4;
@@ -38,9 +37,7 @@ ${PartialStyles}
 #modal_overlay .btn,
 #modal_overlay .cbi-button,
 .cbi-modal .btn,
-.cbi-modal .cbi-button,
-#view > .cbi-page-actions .btn,
-#view > .cbi-page-actions .cbi-button {
+.cbi-modal .cbi-button {
     background: var(--background-color-low, rgba(148, 163, 184, 0.08)) !important;
     border: 1px solid var(--border-color-medium, rgba(148, 163, 184, 0.24)) !important;
     color: var(--text-color-high, inherit) !important;
@@ -57,9 +54,7 @@ ${PartialStyles}
 #modal_overlay .btn:hover:not(:disabled),
 #modal_overlay .cbi-button:hover:not(:disabled),
 .cbi-modal .btn:hover:not(:disabled),
-.cbi-modal .cbi-button:hover:not(:disabled),
-#view > .cbi-page-actions .btn:hover:not(:disabled),
-#view > .cbi-page-actions .cbi-button:hover:not(:disabled) {
+.cbi-modal .cbi-button:hover:not(:disabled) {
     background: rgba(148, 130, 224, 0.10) !important;
     border-color: rgba(148, 130, 224, 0.38) !important;
     color: var(--text-color-high, inherit) !important;
@@ -78,11 +73,7 @@ ${PartialStyles}
 .cbi-modal .cbi-button-apply,
 .cbi-modal .cbi-button-save,
 .cbi-modal .cbi-button-positive,
-.cbi-modal .cbi-button-action.important,
-#view > .cbi-page-actions .cbi-button-apply,
-#view > .cbi-page-actions .cbi-button-save,
-#view > .cbi-page-actions .cbi-button-positive,
-#view > .cbi-page-actions .cbi-button-action.important {
+.cbi-modal .cbi-button-action.important {
     background: rgba(148, 130, 224, 0.14) !important;
     border-color: rgba(148, 130, 224, 0.38) !important;
     color: #b4a5f0 !important;
@@ -99,11 +90,7 @@ ${PartialStyles}
 .cbi-modal .cbi-button-apply:hover:not(:disabled),
 .cbi-modal .cbi-button-save:hover:not(:disabled),
 .cbi-modal .cbi-button-positive:hover:not(:disabled),
-.cbi-modal .cbi-button-action.important:hover:not(:disabled),
-#view > .cbi-page-actions .cbi-button-apply:hover:not(:disabled),
-#view > .cbi-page-actions .cbi-button-save:hover:not(:disabled),
-#view > .cbi-page-actions .cbi-button-positive:hover:not(:disabled),
-#view > .cbi-page-actions .cbi-button-action.important:hover:not(:disabled) {
+.cbi-modal .cbi-button-action.important:hover:not(:disabled) {
     background: rgba(148, 130, 224, 0.22) !important;
     border-color: rgba(148, 130, 224, 0.52) !important;
     color: #d8cff8 !important;
@@ -116,9 +103,7 @@ ${PartialStyles}
 #modal_overlay .cbi-button-remove:hover:not(:disabled),
 #modal_overlay .cbi-button-negative:hover:not(:disabled),
 .cbi-modal .cbi-button-remove:hover:not(:disabled),
-.cbi-modal .cbi-button-negative:hover:not(:disabled),
-#view > .cbi-page-actions .cbi-button-reset:hover:not(:disabled),
-#view > .cbi-page-actions .cbi-button-negative:hover:not(:disabled) {
+.cbi-modal .cbi-button-negative:hover:not(:disabled) {
     background: rgba(239, 68, 68, 0.12) !important;
     border-color: rgba(239, 68, 68, 0.42) !important;
     color: #fca5a5 !important;
@@ -723,33 +708,8 @@ header .dropdown-menu {
 
 #view > .cbi-page-actions,
 #cbi-tachyon ~ .cbi-page-actions {
-    position: sticky;
-    bottom: 10px;
-    z-index: 40;
-    display: flex !important;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 8px;
     margin: 12px 0 8px 228px;
-    padding: 10px 14px !important;
-    border-radius: 12px;
-    background: var(--background-color-high, rgba(255, 255, 255, 0.94)) !important;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.24)) !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    box-sizing: border-box;
-    text-align: right;
     transition: margin 0.18s ease;
-}
-
-#view > .cbi-page-actions::before,
-#view > .cbi-page-actions::after,
-#cbi-tachyon ~ .cbi-page-actions::before,
-#cbi-tachyon ~ .cbi-page-actions::after {
-    display: none !important;
-    content: none !important;
 }
 
 #cbi-tachyon[data-sidebar-collapsed="true"] ~ .cbi-page-actions {
@@ -764,18 +724,6 @@ header .dropdown-menu {
 #cbi-tachyon[data-sidebar-pos="right"][data-sidebar-collapsed="true"] ~ .cbi-page-actions {
     margin-left: 0;
     margin-right: 82px;
-}
-
-#view > .cbi-page-actions .cbi-button,
-#view > .cbi-page-actions .btn,
-#cbi-tachyon ~ .cbi-page-actions .cbi-button,
-#cbi-tachyon ~ .cbi-page-actions .btn {
-    margin: 0 !important;
-    border-radius: 8px !important;
-    font-weight: 700 !important;
-    font-size: 12.5px !important;
-    padding: 6px 14px !important;
-    word-break: normal !important;
 }
 
 .tachyon-shell-layout[data-sidebar-pos="right"],
@@ -1415,6 +1363,93 @@ header .dropdown-menu {
 
 .tachyon-topbar__lang-slot .tachyon-lang-switcher {
     margin-left: 0;
+}
+
+.tachyon-topbar__collapse-btn {
+    min-width: 28px;
+    padding: 4px 8px;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.tachyon-topbar.is-collapsed,
+.tachyon-shell-layout[data-topbar-collapsed="true"] .tachyon-topbar,
+#cbi-tachyon[data-topbar-collapsed="true"] .tachyon-topbar {
+    padding: 4px 10px;
+}
+
+.tachyon-topbar.is-collapsed .tachyon-topbar__left,
+.tachyon-topbar.is-collapsed .tachyon-topbar__wizard-btn,
+.tachyon-topbar.is-collapsed .tachyon-topbar__sidebar-pos-btn,
+.tachyon-shell-layout[data-topbar-collapsed="true"] .tachyon-topbar__left,
+.tachyon-shell-layout[data-topbar-collapsed="true"] .tachyon-topbar__wizard-btn,
+.tachyon-shell-layout[data-topbar-collapsed="true"] .tachyon-topbar__sidebar-pos-btn,
+#cbi-tachyon[data-topbar-collapsed="true"] .tachyon-topbar__left,
+#cbi-tachyon[data-topbar-collapsed="true"] .tachyon-topbar__wizard-btn,
+#cbi-tachyon[data-topbar-collapsed="true"] .tachyon-topbar__sidebar-pos-btn {
+    display: none !important;
+}
+
+.tachyon-topbar.is-collapsed .tachyon-topbar__right,
+.tachyon-shell-layout[data-topbar-collapsed="true"] .tachyon-topbar__right,
+#cbi-tachyon[data-topbar-collapsed="true"] .tachyon-topbar__right {
+    margin-left: auto;
+}
+
+/* Sticky top-right Close (✕) button and sticky footer for all Tachyon modals */
+#modal_overlay > .modal > h4.tachyon-modal__sticky-header,
+#modal_overlay > .modal > h3.tachyon-modal__sticky-header,
+.cbi-modal > h4.tachyon-modal__sticky-header,
+.cbi-modal > h3.tachyon-modal__sticky-header,
+.modal > h4.tachyon-modal__sticky-header,
+.modal > h3.tachyon-modal__sticky-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    background: var(--background-color-high, #1e293b) !important;
+    padding-top: 6px !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 10px !important;
+    border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.18)) !important;
+}
+
+.tachyon-modal__header-close {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
+    border-radius: 7px !important;
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.28)) !important;
+    background: var(--background-color-low, rgba(128, 128, 128, 0.1)) !important;
+    color: var(--text-color-high, inherit) !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease !important;
+}
+
+.tachyon-modal__header-close:hover {
+    background: rgba(239, 68, 68, 0.14) !important;
+    border-color: rgba(239, 68, 68, 0.42) !important;
+    color: #fca5a5 !important;
+}
+
+.tachyon-sec-modal__footer,
+.tachyon-partial-modal__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 25;
+    background: var(--background-color-high, #1e293b);
+    padding-bottom: 4px;
 }
 
 /* ==========================================================================
@@ -4089,7 +4124,14 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
         max-height: none !important;
         padding: 8px 12px !important;
         overflow: visible !important;
-        z-index: 900;
+        z-index: 1050;
+    }
+    .tachyon-topbar {
+        position: relative;
+        z-index: 10;
+    }
+    .tachyon-topbar__sidebar-pos-btn {
+        display: none !important;
     }
     .tachyon-sidebar__brand,
     .tachyon-shell-layout[data-sidebar-collapsed="true"] .tachyon-sidebar__brand,
@@ -4140,12 +4182,15 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
         top: calc(100% + 6px);
         left: 0;
         right: 0;
-        z-index: 950;
+        z-index: 1100;
         padding: 10px;
         border-radius: 14px;
+        background: #1e293b;
         background: var(--background-color-high, #1e293b);
-        border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.32));
-        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.36));
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.56);
         max-height: 72vh;
         overflow-y: auto;
         box-sizing: border-box;

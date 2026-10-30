@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-30 07:08+0300\n"
-"PO-Revision-Date: 2026-10-30 07:08+0300\n"
+"POT-Creation-Date: 2026-10-30 07:21+0300\n"
+"PO-Revision-Date: 2026-10-30 07:21+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1622,6 +1622,9 @@ msgstr "Аккаунт / ID устройства Cloudflare"
 msgid "Collapse menu to icons"
 msgstr "Свернуть меню в значки"
 
+msgid "Collapse top toolbar"
+msgstr "Свернуть панель инструментов"
+
 msgid "Combine multiple atomic conditions with boolean logic expressions"
 msgstr "Объединение нескольких условий с помощью булевой логики"
 
@@ -3121,6 +3124,9 @@ msgstr "Развернуть меню"
 
 msgid "Expand sidebar"
 msgstr "Развернуть боковое меню"
+
+msgid "Expand top toolbar"
+msgstr "Развернуть панель инструментов"
 
 msgid "Expected HTTP status code(s) for probe success (e.g. 200, 204). Leave empty for any completed request."
 msgstr "Ожидаемые HTTP-коды ответа для успешной проверки (например, 200, 204). Оставьте пустым для любого завершённого запроса."
