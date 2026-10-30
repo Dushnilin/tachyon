@@ -912,6 +912,258 @@ const EntryPoint = {
             });
           }
 
+          {
+            const existingBalancers =
+              uci.sections(self.config, 'balancer') || [];
+            (uci.sections(self.config, 'priority_group') || []).forEach(
+              (pg, idx) => {
+                if (!pg) return;
+                const parentSec = pg.section;
+                const pgName = pg.name || pg['.name'] || `priority_${idx + 1}`;
+                if (!parentSec) return;
+                const sanitizeUci = (val) =>
+                  String(val || '')
+                    .replace(/[^A-Za-z0-9_]/g, '_')
+                    .replace(/_+/g, '_')
+                    .replace(/^_+|_+$/g, '');
+                const safeParent = sanitizeUci(parentSec) || 'sec';
+                const safeSuffix =
+                  sanitizeUci(pgName) ||
+                  sanitizeUci(pg['.name']) ||
+                  `${idx + 1}`;
+                const balId = `bal_${safeParent}_${safeSuffix}`;
+                const balFound = existingBalancers.find(
+                  (b) =>
+                    b &&
+                    (b['.name'] === balId ||
+                      (b.name === pgName &&
+                        String(b.balancer_type || 'urltest').toLowerCase() ===
+                          'priority' &&
+                        toArr(
+                          uci.get(self.config, parentSec, 'balancer_refs'),
+                        ).includes(b['.name']))),
+                );
+                if (
+                  !alreadyMigrated &&
+                  !balFound &&
+                  !uci.get(self.config, balId)
+                ) {
+                  uci.add(self.config, 'balancer', balId);
+                  uci.set(self.config, balId, 'enabled', '1');
+                  uci.set(self.config, balId, 'balancer_type', 'priority');
+                  uci.set(self.config, balId, 'name', pgName);
+                  [
+                    'health_url',
+                    'active_check_interval',
+                    'check_timeout',
+                    'recovery_check_interval',
+                    'pick_fastest',
+                    'switch_to_faster_same_priority',
+                    'fastest_check_interval',
+                    'interrupt_exist_connections',
+                    'pin_dashboard',
+                  ].forEach((k) => {
+                    if (pg[k] !== undefined && pg[k] !== null && pg[k] !== '') {
+                      uci.set(self.config, balId, k, pg[k]);
+                    }
+                  });
+                  const arr = toArr(
+                    uci.get(self.config, parentSec, 'balancer_refs'),
+                  );
+                  if (!arr.includes(balId)) {
+                    uci.set(self.config, parentSec, 'balancer_refs', [
+                      ...arr,
+                      balId,
+                    ]);
+                  }
+                }
+                const activeBalId = balFound ? balFound['.name'] : balId;
+                if (!uci.get(self.config, activeBalId)) return;
+                const curBalLevels = toArr(
+                  uci.get(self.config, activeBalId, 'outbound_group_levels'),
+                );
+                if (alreadyMigrated && curBalLevels.length > 0) return;
+
+                const pgId = pg['.name'];
+                const matchedLevels = (
+                  uci.sections(self.config, 'priority_level') || []
+                ).filter(
+                  (pl) =>
+                    pl &&
+                    (pl.group === pgId ||
+                      (!pl.group && pl.section === parentSec)),
+                );
+                if (matchedLevels.length) {
+                  matchedLevels.sort((a, b) => {
+                    const oa = parseInt(a.order || '0', 10);
+                    const ob = parseInt(b.order || '0', 10);
+                    return oa - ob;
+                  });
+                  const balLevels = [...curBalLevels];
+                  const secSources = toArr(
+                    uci.get(self.config, parentSec, 'outbound_source_refs'),
+                  );
+                  matchedLevels.forEach((pl, lIdx) => {
+                    if (String(pl.direct || '0') === '1') {
+                      if (!balLevels.includes('direct'))
+                        balLevels.push('direct');
+                      return;
+                    }
+                    const plName = pl.name || `Level ${lIdx + 1}`;
+                    const plId = String(pl['.name'] || '');
+                    let grpSlug = sanitizeUci(plName);
+                    if (!grpSlug) {
+                      const idSlug = plId.startsWith('cfg')
+                        ? ''
+                        : sanitizeUci(plId);
+                      grpSlug = idSlug || `lvl_${lIdx + 1}`;
+                    }
+                    const baseGrpId = `grp_${safeParent}_${grpSlug}`;
+                    let targetGrpId = baseGrpId;
+                    let sfx = 1;
+                    while (uci.get(self.config, targetGrpId)) {
+                      if (
+                        uci.get(self.config, targetGrpId, 'name') === plName
+                      ) {
+                        break;
+                      }
+                      sfx++;
+                      targetGrpId = `${baseGrpId}_${sfx}`;
+                    }
+                    if (!uci.get(self.config, targetGrpId)) {
+                      uci.add(self.config, 'outbound_group', targetGrpId);
+                      uci.set(self.config, targetGrpId, 'enabled', '1');
+                      uci.set(self.config, targetGrpId, 'name', plName);
+                      uci.set(
+                        self.config,
+                        targetGrpId,
+                        'filter_mode',
+                        pl.filter_mode || 'include',
+                      );
+                      uci.set(
+                        self.config,
+                        targetGrpId,
+                        'detect_server_country',
+                        pl.detect_server_country || 'flag_emoji',
+                      );
+                      if (secSources.length) {
+                        uci.set(
+                          self.config,
+                          targetGrpId,
+                          'source_refs',
+                          secSources,
+                        );
+                      }
+                      [
+                        'include_prefixes',
+                        'exclude_prefixes',
+                        'include_countries',
+                        'exclude_countries',
+                        'include_outbounds',
+                        'exclude_outbounds',
+                        'include_regex',
+                        'exclude_regex',
+                        'include_protocols',
+                        'exclude_protocols',
+                        'include_transports',
+                        'exclude_transports',
+                        'include_securities',
+                        'exclude_securities',
+                        'include_ports',
+                        'exclude_ports',
+                      ].forEach((lk) => {
+                        const vals = toArr(pl[lk]);
+                        if (vals.length)
+                          uci.set(self.config, targetGrpId, lk, vals);
+                      });
+                      const legCountries = toArr(pl.country);
+                      if (
+                        legCountries.length &&
+                        !toArr(
+                          uci.get(
+                            self.config,
+                            targetGrpId,
+                            'include_countries',
+                          ),
+                        ).length
+                      ) {
+                        uci.set(
+                          self.config,
+                          targetGrpId,
+                          'include_countries',
+                          legCountries,
+                        );
+                      }
+                      const legServers = toArr(pl.server_name);
+                      if (
+                        legServers.length &&
+                        !toArr(
+                          uci.get(
+                            self.config,
+                            targetGrpId,
+                            'include_outbounds',
+                          ),
+                        ).length
+                      ) {
+                        uci.set(
+                          self.config,
+                          targetGrpId,
+                          'include_outbounds',
+                          legServers,
+                        );
+                      }
+                      const legRegex = toArr(pl.regex);
+                      if (
+                        legRegex.length &&
+                        !toArr(
+                          uci.get(self.config, targetGrpId, 'include_regex'),
+                        ).length
+                      ) {
+                        uci.set(
+                          self.config,
+                          targetGrpId,
+                          'include_regex',
+                          legRegex,
+                        );
+                      }
+                      [
+                        'include_proxy_parameters',
+                        'exclude_proxy_parameters',
+                      ].forEach((pk) => {
+                        if (
+                          pl[pk] !== undefined &&
+                          pl[pk] !== null &&
+                          pl[pk] !== ''
+                        ) {
+                          uci.set(self.config, targetGrpId, pk, pl[pk]);
+                        }
+                      });
+                    }
+                    if (!balLevels.includes(targetGrpId))
+                      balLevels.push(targetGrpId);
+                    const secGroups = toArr(
+                      uci.get(self.config, parentSec, 'outbound_group_refs'),
+                    );
+                    if (!secGroups.includes(targetGrpId)) {
+                      uci.set(self.config, parentSec, 'outbound_group_refs', [
+                        ...secGroups,
+                        targetGrpId,
+                      ]);
+                    }
+                  });
+                  if (balLevels.length) {
+                    uci.set(
+                      self.config,
+                      activeBalId,
+                      'outbound_group_levels',
+                      balLevels,
+                    );
+                  }
+                }
+              },
+            );
+          }
+
           // Prune dangling references across sections, balancers, outbound_groups, and conditions
           const validSources = new Set(
             (uci.sections(self.config, 'outbound_source') || [])

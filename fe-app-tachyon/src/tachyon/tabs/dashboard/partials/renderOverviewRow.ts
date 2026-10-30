@@ -2200,7 +2200,7 @@ function resolveSectionActiveInfo(
     return {
       serverName,
       selectorLabel,
-      latencyMs,
+      latencyMs: undefined,
       selectedOutbound,
       activeMemberCode,
       isInteractiveSelector: false,
@@ -2325,7 +2325,8 @@ export function renderDashboardSectionsAndNodes(
       s.outbounds &&
       s.outbounds.length > 0 &&
       !nonProxyActions.has((s.action || '').toLowerCase()) &&
-      !s.serviceStatus,
+      !s.serviceStatus &&
+      !resolveSectionEngineMeta(s).isDpiOnly,
   );
 
   const sectionItems = sections.map((section) => {
@@ -2363,11 +2364,7 @@ export function renderDashboardSectionsAndNodes(
     const totalSectionTraffic = (stats.download || 0) + (stats.upload || 0);
     const latencyMs = activeInfo.latencyMs;
 
-    const showStatusLedOnly =
-      !isLatencyFetching &&
-      !(latencyMs && latencyMs > 0) &&
-      latencyMs !== -1 &&
-      isServiceNode;
+    const showStatusLedOnly = isServiceNode;
 
     const latencyPillClass = showStatusLedOnly
       ? `tachyon-routing-row__ping tachyon-routing-row__ping--led ${

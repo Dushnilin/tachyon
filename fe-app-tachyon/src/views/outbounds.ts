@@ -2048,9 +2048,14 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.depends('source_type', 'proxy_links');
+  o.cfgvalue = function (sectionId) {
+    const all = asArray(uci.get(UCI_PACKAGE, sectionId, 'proxy_links'));
+    return all.length > 50 ? [] : all;
+  };
   o.formvalue = function (sectionId) {
     const base = form.DynamicList.prototype.formvalue.apply(this, arguments);
     const list = Array.isArray(base) ? [...base] : base ? [String(base)] : [];
+    const seen = new Set(list);
     try {
       const fieldId = this.cbid(sectionId);
       const wrap =
@@ -2062,7 +2067,8 @@ function createOutboundsContent(section) {
         const textInputs = wrap.querySelectorAll('input[type="text"]');
         textInputs.forEach((inp) => {
           const val = String(inp.value || '').trim();
-          if (val && !list.includes(val)) {
+          if (val && !seen.has(val)) {
+            seen.add(val);
             list.push(val);
           }
         });
@@ -2102,7 +2108,7 @@ function createOutboundsContent(section) {
     ),
   );
   o.modalonly = true;
-  o.rows = 5;
+  o.rows = 8;
   o.depends('source_type', 'proxy_links');
   o.cfgvalue = function (sectionId) {
     return asArray(uci.get(UCI_PACKAGE, sectionId, 'proxy_links')).join('\n');
@@ -2114,7 +2120,10 @@ function createOutboundsContent(section) {
       .filter(Boolean);
     if (lines.length) {
       const existing = asArray(uci.get(UCI_PACKAGE, sectionId, 'proxy_links'));
-      const merged = Array.from(new Set([...existing, ...lines]));
+      const merged =
+        existing.length > 50
+          ? Array.from(new Set(lines))
+          : Array.from(new Set([...existing, ...lines]));
       uci.set(UCI_PACKAGE, sectionId, 'proxy_links', merged);
     }
   };

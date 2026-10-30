@@ -533,6 +533,18 @@ function latency_progress_value(completed, total, failed) {
 }
 
 function proxy_list_total(tag) {
+    tag = as_string(tag);
+    if (substr(tag, 0, 9) == "@section:") {
+        let sec_name = substr(tag, 9);
+        let cache_dir = getenv("TACHYON_SECTION_CACHE_DIR") || "/var/run/tachyon/section-cache";
+        let sec_cache = read_json_file(cache_dir + "/" + sec_name + ".json");
+        if (type(sec_cache) == "object") {
+            let cands = type(sec_cache.urltestCandidateTags) == "array" ? length(sec_cache.urltestCandidateTags) : 0;
+            let grps = type(sec_cache.urltestGroups) == "object" ? length(keys(sec_cache.urltestGroups)) : 0;
+            return cands + grps;
+        }
+        return 0;
+    }
     let value = parse_json_or_null(tag);
     if (type(value) != "array")
         return 0;
@@ -1839,15 +1851,30 @@ function service_action_status(job_id_value) {
 function latency_clash_method(latency_type) {
     latency_type = as_string(latency_type);
     if (latency_type == "group")
-        return { method: "get_group_latency", timeout: "10000" };
+        return { method: "get_group_latency", timeout: "5000" };
     if (latency_type == "proxy_list")
-        return { method: "get_proxy_latencies", timeout: "5000" };
-    return { method: "get_proxy_latency", timeout: "5000" };
+        return { method: "get_proxy_latencies", timeout: "2500" };
+    return { method: "get_proxy_latency", timeout: "3000" };
 }
 
 function latency_worker(path, latency_type, tag, timeout) {
     let method = latency_clash_method(latency_type).method;
-    let status = command_status(command_from_args([ BIN_PATH, "clash_api", method, tag, timeout, path ]) + " >/dev/null 2>&1");
+    let effective_tag = as_string(tag);
+    if (substr(effective_tag, 0, 1) == "@" && substr(effective_tag, 0, 9) != "@section:") {
+        let from_file = fs.readfile(substr(effective_tag, 1));
+        if (from_file != null)
+            effective_tag = as_string(from_file);
+    }
+    let tags_file = "";
+    if (latency_type == "proxy_list" && substr(effective_tag, 0, 9) != "@section:" && length(effective_tag) > 2048 && as_string(path) != "") {
+        tags_file = as_string(path) + ".tags";
+        fs.writefile(tags_file, effective_tag);
+        effective_tag = "@" + tags_file;
+    }
+    let status = command_status(command_from_args([ BIN_PATH, "clash_api", method, effective_tag, timeout, path ]) + " >/dev/null 2>&1");
+    if (tags_file != "") {
+        try { fs.unlink(tags_file); } catch (e) {}
+    }
     if (status == 0)
         write_finished_action_state(path, true, "Latency test completed", status);
     else
@@ -1876,7 +1903,13 @@ function latency_test_async(latency_type, section, tag, requested_timeout) {
 
     let plan = latency_clash_method(latency_type);
     let timeout = as_string(requested_timeout) != "" ? as_string(requested_timeout) : plan.timeout;
-    let pid = launch_worker([ "latency-worker", path, latency_type, tag, timeout ]);
+    let worker_tag = tag;
+    if (latency_type == "proxy_list" && length(tag) > 2048) {
+        let tags_file = path + ".tags";
+        if (fs.writefile(tags_file, tag) != null)
+            worker_tag = "@" + tags_file;
+    }
+    let pid = launch_worker([ "latency-worker", path, latency_type, worker_tag, timeout ]);
     if (pid == "" || !set_running_job_pid_file(path, pid)) {
         if (pid != "")
             command_success_from_args([ "kill", pid ]);

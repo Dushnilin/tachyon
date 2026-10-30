@@ -403,6 +403,42 @@ cat >"$WORK_DIR/legacy_monolithic.json" <<'JSON'
       "tolerance": "50",
       "testing_url": "https://www.gstatic.com/generate_204"
     }
+  ],
+  "priority_group": [
+    {
+      ".name": "pg1",
+      ".type": "priority_group",
+      "section": "sec_two",
+      "name": "Cascade",
+      "health_url": "https://www.gstatic.com/generate_204",
+      "active_check_interval": "5s"
+    }
+  ],
+  "priority_level": [
+    {
+      ".name": "cfg01_pl",
+      ".type": "priority_level",
+      "group": "pg1",
+      "name": "⭐️Лучшие",
+      "order": "0",
+      "country": [ "NL", "DE" ]
+    },
+    {
+      ".name": "cfg02_pl",
+      ".type": "priority_level",
+      "group": "pg1",
+      "name": "📦Резервные",
+      "order": "1",
+      "country": [ "FI" ]
+    },
+    {
+      ".name": "pl3",
+      ".type": "priority_level",
+      "group": "pg1",
+      "name": "Level 3 Fallback",
+      "order": "2",
+      "direct": "1"
+    }
   ]
 }
 JSON
@@ -424,7 +460,8 @@ function assert(cond, msg) {
 assert(Array.isArray(cfg.condition) && cfg.condition.length === 2, 'Expected 2 extracted condition entities');
 assert(Array.isArray(cfg.outbound_source) && cfg.outbound_source.length === 1, 'Expected shared subscription URL to be deduplicated into 1 outbound_source');
 assert(cfg.outbound_source[0].url === 'https://provider.example/shared-sub', 'Expected deduplicated subscription URL to match');
-assert(Array.isArray(cfg.balancer) && cfg.balancer.length === 1, 'Expected 1 extracted balancer entity');
+assert(Array.isArray(cfg.balancer) && cfg.balancer.length === 2, 'Expected 2 extracted balancer entities');
+assert(Array.isArray(cfg.outbound_group) && cfg.outbound_group.length === 2, 'Expected 2 extracted outbound_group entities from priority_level');
 
 const secOne = cfg.section.find(s => s['.name'] === 'sec_one');
 const secTwo = cfg.section.find(s => s['.name'] === 'sec_two');
@@ -433,6 +470,17 @@ assert(JSON.stringify(secTwo.condition_refs) === JSON.stringify(['cond_sec_two']
 assert(JSON.stringify(secOne.outbound_source_refs) === JSON.stringify(['src_sub_1']), 'sec_one should reference src_sub_1');
 assert(JSON.stringify(secTwo.outbound_source_refs) === JSON.stringify(['src_sub_1']), 'sec_two should share reference src_sub_1');
 assert(JSON.stringify(secOne.balancer_refs) === JSON.stringify(['bal_sec_one_Fastest']), 'sec_one should reference bal_sec_one_Fastest');
+assert(JSON.stringify(secTwo.balancer_refs) === JSON.stringify(['bal_sec_two_Cascade']), 'sec_two should reference bal_sec_two_Cascade');
+assert(JSON.stringify(secTwo.outbound_group_refs) === JSON.stringify(['grp_sec_two_lvl_1', 'grp_sec_two_lvl_2']), 'sec_two should reference both non-ASCII extracted outbound_groups');
+
+const balCascade = cfg.balancer.find(b => b['.name'] === 'bal_sec_two_Cascade');
+assert(balCascade && balCascade.balancer_type === 'priority', 'bal_sec_two_Cascade should be a priority balancer');
+assert(JSON.stringify(balCascade.outbound_group_levels) === JSON.stringify(['grp_sec_two_lvl_1', 'grp_sec_two_lvl_2', 'direct']), 'bal_sec_two_Cascade should have outbound_group_levels set');
+
+const grpFast = cfg.outbound_group.find(g => g['.name'] === 'grp_sec_two_lvl_1');
+assert(grpFast && JSON.stringify(grpFast.include_countries) === JSON.stringify(['NL', 'DE']), 'grp_sec_two_lvl_1 should preserve include_countries');
+const grpReserve = cfg.outbound_group.find(g => g['.name'] === 'grp_sec_two_lvl_2');
+assert(grpReserve && JSON.stringify(grpReserve.include_countries) === JSON.stringify(['FI']), 'grp_sec_two_lvl_2 should preserve include_countries');
 NODE
 
 # 4. Test that deleting modular entities after migration does NOT resurrect them on subsequent reloads

@@ -1,5 +1,6 @@
 import { Tachyon } from '../../types';
 import { tr } from '../../helpers/i18n';
+import { resolveSectionEngineMeta } from './partials/renderOverviewRow';
 
 export interface ActiveRouteInfo {
   sectionName?: string;
@@ -23,16 +24,25 @@ const SERVICE_ACTIONS = new Set([
   'direct',
   'dns',
 ]);
-const SERVICE_OUTBOUND_TYPES = new Set([
+export const SERVICE_OUTBOUND_TYPES = new Set([
   'SING_BOX',
   'ZAPRET',
   'ZAPRET2',
   'BYEDPI',
   'DESYNC',
+  'WDTT',
+  'OLCRTC',
   'BLOCK',
+  'REJECT',
+  'BYPASS',
   'DIRECT',
   'DNS',
 ]);
+
+export function isNonTestableOutboundType(type?: string): boolean {
+  if (!type) return false;
+  return SERVICE_OUTBOUND_TYPES.has(String(type).trim().toUpperCase());
+}
 
 export function isServiceGroup(group: Tachyon.OutboundGroup): boolean {
   if (group.serviceStatus) return true;
@@ -41,9 +51,16 @@ export function isServiceGroup(group: Tachyon.OutboundGroup): boolean {
   }
   if (
     group.outbounds?.length > 0 &&
-    group.outbounds.every((o) => SERVICE_OUTBOUND_TYPES.has(o.type))
+    group.outbounds.every((o) => isNonTestableOutboundType(o.type))
   ) {
     return true;
+  }
+  try {
+    if (resolveSectionEngineMeta(group).isDpiOnly) {
+      return true;
+    }
+  } catch {
+    // ignore engine meta lookup error
   }
   return false;
 }

@@ -1940,10 +1940,18 @@ function clash_api(action, arg1, arg2, arg3) {
         }
 
         if (action == "get_proxy_latencies") {
-            if (as_string(arg1) == "")
+            let raw_arg = as_string(arg1);
+            if (substr(raw_arg, 0, 9) == "@section:") {
+                let sec_name = substr(raw_arg, 9);
+                let cache_dir = getenv("TACHYON_SECTION_CACHE_DIR") || ((getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/section-cache");
+                let sec_cache = common.read_json_file(cache_dir + "/" + sec_name + ".json");
+                if (type(sec_cache) == "object" && type(sec_cache.urltestCandidateTags) == "array")
+                    raw_arg = sprintf("%J", sec_cache.urltestCandidateTags);
+            }
+            if (raw_arg == "")
                 return clash_json_error("proxy_tags_json required");
             let tags_list = [];
-            let parsed = json(as_string(arg1));
+            let parsed = json(raw_arg);
             if (type(parsed) == "array") {
                 tags_list = parsed;
             } else {
@@ -2234,16 +2242,48 @@ function clash_api(action, arg1, arg2, arg3) {
     }
 
     if (action == "get_proxy_latencies") {
-        if (as_string(arg1) == "")
+        let raw_tags = as_string(arg1);
+        if (substr(raw_tags, 0, 1) == "@") {
+            let tag_target = substr(raw_tags, 1);
+            if (substr(tag_target, 0, 8) == "section:") {
+                let sec_name = substr(tag_target, 8);
+                let cache_dir = getenv("TACHYON_SECTION_CACHE_DIR") || ((getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/section-cache");
+                let sec_cache = common.read_json_file(cache_dir + "/" + sec_name + ".json");
+                if (type(sec_cache) == "object") {
+                    let sec_tags = [];
+                    let seen_tags = {};
+                    for (let ct in (type(sec_cache.urltestCandidateTags) == "array" ? sec_cache.urltestCandidateTags : [])) {
+                        ct = as_string(ct);
+                        if (ct != "" && !seen_tags[ct]) {
+                            seen_tags[ct] = true;
+                            push(sec_tags, ct);
+                        }
+                    }
+                    for (let gt in keys(object_or_empty(sec_cache.urltestGroups))) {
+                        gt = as_string(gt);
+                        if (gt != "" && !seen_tags[gt]) {
+                            seen_tags[gt] = true;
+                            push(sec_tags, gt);
+                        }
+                    }
+                    raw_tags = sprintf("%J", sec_tags);
+                }
+            } else {
+                let file_content = fs.readfile(tag_target);
+                if (file_content != null)
+                    raw_tags = as_string(file_content);
+            }
+        }
+        if (raw_tags == "")
             return clash_json_error("proxy_tags_json required");
-        let tags = status_capture([ "clash-proxy-tags-lines", arg1 ], null);
-        if (tags.status != 0)
+        let parsed_tags = parse_json_or_null(raw_tags);
+        if (type(parsed_tags) != "array")
             return clash_json_error("proxy_tags_json must be a JSON array of non-empty strings");
         let proxy_tags = [];
-        for (let proxy_tag in split(tags.output, "\n")) {
-            proxy_tag = as_string(proxy_tag);
-            if (proxy_tag != "")
-                push(proxy_tags, proxy_tag);
+        for (let proxy_tag in parsed_tags) {
+            if (type(proxy_tag) != "string" || proxy_tag == "")
+                return clash_json_error("proxy_tags_json must be a JSON array of non-empty strings");
+            push(proxy_tags, proxy_tag);
         }
 
         let count = 0;
@@ -2262,8 +2302,8 @@ function clash_api(action, arg1, arg2, arg3) {
             if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
                 push(ordered_proxy_tags, proxy_tag);
 
-        let timeout_ms = as_string(arg2 || "2000");
-        let max_time = as_string(int((int(timeout_ms, 10) + 2999) / 1000));
+        let timeout_ms = as_string(arg2 || "2500");
+        let max_time = as_string(int((int(timeout_ms, 10) + 1999) / 1000));
         if (int(max_time, 10) < 3)
             max_time = "3";
 
@@ -2300,40 +2340,143 @@ function clash_api(action, arg1, arg2, arg3) {
                 }
             }
             else {
-                let batch_size = 12;
-                for (let i = 0; i < length(ordered_proxy_tags); i += batch_size) {
-                    let cmds = [];
-                    let batch_tags = [];
-                    for (let j = i; j < i + batch_size && j < length(ordered_proxy_tags); j++) {
-                        let proxy_tag = ordered_proxy_tags[j];
-                        push(batch_tags, { tag: proxy_tag, index: j });
-                        let out_file = tmp_dir + "/" + j + ".json";
-                        let args = [ "curl", "-G", "-s", "-m", max_time, clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
-                        for (let item in auth) push(args, item);
-                        push(args, "--data-urlencode");
-                        push(args, "url=" + test_url);
-                        push(args, "--data-urlencode");
-                        push(args, "timeout=" + timeout_ms);
-                        push(cmds, command_from_args(args) + " > " + shell_quote(out_file) + " 2>/dev/null &");
+                let batch_supported = false;
+                let probe_chunk_size = 64;
+                let parallel_chunks = 4;
+                let wave_tags = slice(ordered_proxy_tags, 0, probe_chunk_size * parallel_chunks);
+                if (length(wave_tags) > 0) {
+                    let wave_cmds = [];
+                    let wave_chunks = [];
+                    for (let c = 0; c < length(wave_tags); c += probe_chunk_size) {
+                        let c_tags = slice(wave_tags, c, c + probe_chunk_size);
+                        let chunk_idx = int(c / probe_chunk_size);
+                        let req_file = tmp_dir + "/batch_req_" + chunk_idx + ".json";
+                        let res_file = tmp_dir + "/batch_res_" + chunk_idx + ".json";
+                        common.write_json_file(req_file, {
+                            names: c_tags,
+                            url: test_url,
+                            timeout: int(timeout_ms, 10)
+                        });
+                        let b_args = [ "curl", "-s", "-m", as_string(int(max_time, 10) + 5), "-X", "POST", "-H", "Content-Type: application/json" ];
+                        for (let item in auth) push(b_args, item);
+                        push(b_args, "-d", "@" + req_file, base_url + "/tachyon/delay-batch", "-o", res_file);
+                        push(wave_cmds, command_from_args(b_args));
+                        push(wave_chunks, { tags: c_tags, req: req_file, res: res_file });
                     }
-                    if (length(cmds) > 0) {
-                        system("{ " + join(" ", cmds) + " wait; }");
-                        for (let item in batch_tags) {
-                            let out_file = tmp_dir + "/" + item.index + ".json";
-                            let content = fs.readfile(out_file);
-                            try { fs.unlink(out_file); } catch(e) {}
-                            let is_ok = false;
-                            if (content != null && content != "") {
-                                try {
-                                    let parsed = json(content);
-                                    if (type(parsed) == "object" && parsed.message == null && parsed.error == null)
-                                        is_ok = true;
-                                }
-                                catch (e) {}
+                    if (length(wave_cmds) > 0) {
+                        common.command_status("{ " + join(" & ", wave_cmds) + " & wait; }");
+                        let wave_results = {};
+                        let wave_valid = true;
+                        for (let ch in wave_chunks) {
+                            let content = fs.readfile(ch.res);
+                            try { fs.unlink(ch.req); } catch(e) {}
+                            try { fs.unlink(ch.res); } catch(e) {}
+                            let parsed = parse_json_or_null(content);
+                            if (type(parsed) == "object" && type(parsed.results) == "object") {
+                                for (let k, v in parsed.results)
+                                    wave_results[k] = v;
+                            } else {
+                                wave_valid = false;
                             }
-                            if (!is_ok)
-                                failed++;
-                            count++;
+                        }
+                        if (wave_valid) {
+                            batch_supported = true;
+                            for (let t in wave_tags) {
+                                let entry = wave_results[t];
+                                let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
+                                if (!is_ok)
+                                    failed++;
+                                count++;
+                            }
+                            if (progress_path != "")
+                                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+                        }
+                    }
+                }
+
+                if (batch_supported) {
+                    let wave_step = probe_chunk_size * parallel_chunks;
+                    for (let w = wave_step; w < length(ordered_proxy_tags); w += wave_step) {
+                        let w_tags = slice(ordered_proxy_tags, w, w + wave_step);
+                        let wave_cmds = [];
+                        let wave_chunks = [];
+                        for (let c = 0; c < length(w_tags); c += probe_chunk_size) {
+                            let c_tags = slice(w_tags, c, c + probe_chunk_size);
+                            let chunk_idx = int((w + c) / probe_chunk_size);
+                            let req_file = tmp_dir + "/batch_req_" + chunk_idx + ".json";
+                            let res_file = tmp_dir + "/batch_res_" + chunk_idx + ".json";
+                            common.write_json_file(req_file, {
+                                names: c_tags,
+                                url: test_url,
+                                timeout: int(timeout_ms, 10)
+                            });
+                            let b_args = [ "curl", "-s", "-m", as_string(int(max_time, 10) + 5), "-X", "POST", "-H", "Content-Type: application/json" ];
+                            for (let item in auth) push(b_args, item);
+                            push(b_args, "-d", "@" + req_file, base_url + "/tachyon/delay-batch", "-o", res_file);
+                            push(wave_cmds, command_from_args(b_args));
+                            push(wave_chunks, { tags: c_tags, req: req_file, res: res_file });
+                        }
+                        if (length(wave_cmds) > 0) {
+                            common.command_status("{ " + join(" & ", wave_cmds) + " & wait; }");
+                            let wave_results = {};
+                            for (let ch in wave_chunks) {
+                                let content = fs.readfile(ch.res);
+                                try { fs.unlink(ch.req); } catch(e) {}
+                                try { fs.unlink(ch.res); } catch(e) {}
+                                let parsed = parse_json_or_null(content);
+                                if (type(parsed) == "object" && type(parsed.results) == "object") {
+                                    for (let k, v in parsed.results)
+                                        wave_results[k] = v;
+                                }
+                            }
+                            for (let t in w_tags) {
+                                let entry = wave_results[t];
+                                let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
+                                if (!is_ok)
+                                    failed++;
+                                count++;
+                            }
+                            if (progress_path != "")
+                                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+                        }
+                    }
+                }
+                else {
+                    let batch_size = 64;
+                    for (let i = 0; i < length(ordered_proxy_tags); i += batch_size) {
+                        let cmds = [];
+                        let batch_tags = [];
+                        for (let j = i; j < i + batch_size && j < length(ordered_proxy_tags); j++) {
+                            let proxy_tag = ordered_proxy_tags[j];
+                            push(batch_tags, { tag: proxy_tag, index: j });
+                            let out_file = tmp_dir + "/" + j + ".json";
+                            let args = [ "curl", "-G", "-s", "-m", max_time, clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
+                            for (let item in auth) push(args, item);
+                            push(args, "--data-urlencode");
+                            push(args, "url=" + test_url);
+                            push(args, "--data-urlencode");
+                            push(args, "timeout=" + timeout_ms);
+                            push(cmds, command_from_args(args) + " > " + shell_quote(out_file) + " 2>/dev/null &");
+                        }
+                        if (length(cmds) > 0) {
+                            system("{ " + join(" ", cmds) + " wait; }");
+                            for (let item in batch_tags) {
+                                let out_file = tmp_dir + "/" + item.index + ".json";
+                                let content = fs.readfile(out_file);
+                                try { fs.unlink(out_file); } catch(e) {}
+                                let is_ok = false;
+                                if (content != null && content != "") {
+                                    try {
+                                        let parsed = json(content);
+                                        if (type(parsed) == "object" && parsed.message == null && parsed.error == null)
+                                            is_ok = true;
+                                    }
+                                    catch (e) {}
+                                }
+                                if (!is_ok)
+                                    failed++;
+                                count++;
+                            }
                             if (progress_path != "")
                                 module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
                         }
@@ -2351,6 +2494,88 @@ function clash_api(action, arg1, arg2, arg3) {
     if (action == "get_group_latency") {
         if (as_string(arg1) == "")
             return clash_json_error("group_tag required");
+        let group_tag = as_string(arg1);
+        let timeout_ms = as_string(arg2 || "2500");
+        if (getenv("FAKE_CURL_LOG") == null && getenv("TACHYON_SEQUENTIAL_LATENCY") != "1") {
+            let proxies = clash_proxy_info_map(base_url, auth);
+            let grp = object_or_empty(proxies[group_tag]);
+            let members = type(grp.all) == "array" ? grp.all : [];
+            if (length(members) > 12) {
+                let tmp_dir = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-glat.XXXXXX" ]));
+                if (tmp_dir != "") {
+                    let probe_tags = [];
+                    for (let m in members) {
+                        let mt = as_string(m);
+                        if (mt != "" && mt != group_tag)
+                            push(probe_tags, mt);
+                    }
+                    push(probe_tags, group_tag);
+                    let probe_chunk_size = 64;
+                    let parallel_chunks = 4;
+                    let wave_step = probe_chunk_size * parallel_chunks;
+                    let max_time = int((int(timeout_ms, 10) + 1999) / 1000) + 5;
+                    if (max_time < 8) max_time = 8;
+                    let batch_ok = true;
+                    let out_map = {};
+                    let count = 0;
+                    let failed = 0;
+                    let total = length(probe_tags);
+                    let progress_path = as_string(arg3 || "");
+                    if (progress_path != "")
+                        module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+                    for (let w = 0; w < length(probe_tags); w += wave_step) {
+                        let w_tags = slice(probe_tags, w, w + wave_step);
+                        let wave_cmds = [];
+                        let wave_chunks = [];
+                        for (let c = 0; c < length(w_tags); c += probe_chunk_size) {
+                            let c_tags = slice(w_tags, c, c + probe_chunk_size);
+                            let chunk_idx = int((w + c) / probe_chunk_size);
+                            let req_file = tmp_dir + "/greq_" + chunk_idx + ".json";
+                            let res_file = tmp_dir + "/gres_" + chunk_idx + ".json";
+                            common.write_json_file(req_file, {
+                                names: c_tags,
+                                url: test_url,
+                                timeout: int(timeout_ms, 10)
+                            });
+                            let b_args = [ "curl", "-s", "-m", as_string(max_time), "-X", "POST", "-H", "Content-Type: application/json" ];
+                            for (let item in auth) push(b_args, item);
+                            push(b_args, "-d", "@" + req_file, base_url + "/tachyon/delay-batch", "-o", res_file);
+                            push(wave_cmds, command_from_args(b_args));
+                            push(wave_chunks, { req: req_file, res: res_file });
+                        }
+                        if (length(wave_cmds) > 0) {
+                            common.command_status("{ " + join(" & ", wave_cmds) + " & wait; }");
+                            for (let ch in wave_chunks) {
+                                let content = fs.readfile(ch.res);
+                                try { fs.unlink(ch.req); } catch(e) {}
+                                try { fs.unlink(ch.res); } catch(e) {}
+                                let parsed = parse_json_or_null(content);
+                                if (type(parsed) == "object" && type(parsed.results) == "object") {
+                                    for (let k, v in parsed.results) {
+                                        count++;
+                                        if (type(v) == "object" && v.message == null && v.error == null && int(v.delay || 0) > 0)
+                                            out_map[k] = int(v.delay);
+                                        else
+                                            failed++;
+                                    }
+                                } else {
+                                    batch_ok = false;
+                                }
+                            }
+                            if (!batch_ok)
+                                break;
+                            if (progress_path != "")
+                                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+                        }
+                    }
+                    common.command_status("rm -rf " + shell_quote(tmp_dir) + " >/dev/null 2>&1 || true");
+                    if (batch_ok) {
+                        print(sprintf("%J\n", out_map));
+                        return 0;
+                    }
+                }
+            }
+        }
         let args = [ "curl", "-G", "-s", base_url + "/group/" + clash_urlencode(arg1) + "/delay" ];
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");

@@ -54,6 +54,7 @@ import {
 import {
   getAllActiveRoutes,
   isServiceGroup,
+  isNonTestableOutboundType,
   ActiveRouteInfo,
 } from './activeRoute';
 import { ensureOutboundDisplayFlag } from '../../helpers/country';
@@ -883,9 +884,20 @@ async function handleChooseOutbound(
 function getInitialLatencyProgress(
   latencyType: Tachyon.LatencyActionState['latency_type'],
   tag: string,
+  sectionName?: string,
 ): Tachyon.LatencyActionProgress | undefined {
   if (latencyType !== 'proxy_list') {
     return undefined;
+  }
+
+  if (tag.startsWith('@section:')) {
+    const secName = sectionName || tag.slice(9);
+    const section = store
+      .get()
+      .sectionsWidget.data.find((s) => s.sectionName === secName);
+    const total =
+      section?.latencyTestCodes?.length || section?.outbounds?.length || 0;
+    return total > 0 ? { completed: 0, total, failed: 0 } : undefined;
   }
 
   try {
@@ -910,6 +922,24 @@ export function extractTestedTags(
   tag: string,
 ): string[] {
   if (latencyType === 'proxy_list') {
+    if (tag.startsWith('@section:')) {
+      const secName = sectionName || tag.slice(9);
+      const section = store
+        .get()
+        .sectionsWidget.data.find((s) => s.sectionName === secName);
+      if (section && isServiceGroup(section)) {
+        return [];
+      }
+      if (section?.latencyTestCodes?.length) {
+        return [...section.latencyTestCodes];
+      }
+      if (section?.outbounds) {
+        return section.outbounds
+          .filter((o) => !isNonTestableOutboundType(o.type))
+          .map((o) => o.code);
+      }
+      return [];
+    }
     try {
       const parsed = JSON.parse(tag);
       if (Array.isArray(parsed)) {
@@ -926,11 +956,12 @@ export function extractTestedTags(
     const section = store
       .get()
       .sectionsWidget.data.find((s) => s.sectionName === sectionName);
+    if (section && isServiceGroup(section)) {
+      return [];
+    }
     if (section?.outbounds) {
       return section.outbounds
-        .filter(
-          (o) => !['SING_BOX', 'ZAPRET', 'ZAPRET2', 'BYEDPI'].includes(o.type),
-        )
+        .filter((o) => !isNonTestableOutboundType(o.type))
         .map((o) => o.code);
     }
     return [];
@@ -1012,7 +1043,7 @@ async function handleTestLatency(
     sectionName,
     true,
     true,
-    getInitialLatencyProgress(latencyType, tag),
+    getInitialLatencyProgress(latencyType, tag, sectionName),
   );
   let jobId = '';
   let ownsJobFollow = false;
@@ -1020,23 +1051,29 @@ async function handleTestLatency(
   const testedTags = extractTestedTags(latencyType, sectionName, tag);
   const testStartedAt = Date.now();
   const beforeTimes = new Map<string, string>();
-
-  if (testedTags.length > 0 && latencyType !== 'proxy') {
-    try {
-      const beforeProxiesRes = await TachyonShellMethods.getClashApiProxies();
-      if (beforeProxiesRes.success && beforeProxiesRes.data) {
-        const proxies = (beforeProxiesRes.data as any)?.proxies || {};
-        for (const t of testedTags) {
-          const time = (proxies[t] || proxies[t.trim()])?.history?.[0]?.time;
-          if (typeof time === 'string') {
-            beforeTimes.set(t, time);
-          }
-        }
-      }
-    } catch (e) {
-      logger.debug('[DASHBOARD]', 'snapshot proxies before test failed', e);
-    }
-  }
+  const snapshotBeforePromise =
+    testedTags.length > 0 && latencyType !== 'proxy'
+      ? TachyonShellMethods.getClashApiProxies()
+          .then((beforeProxiesRes) => {
+            if (beforeProxiesRes.success && beforeProxiesRes.data) {
+              const proxies = (beforeProxiesRes.data as any)?.proxies || {};
+              for (const t of testedTags) {
+                const time = (proxies[t] || proxies[t.trim()])?.history?.[0]
+                  ?.time;
+                if (typeof time === 'string') {
+                  beforeTimes.set(t, time);
+                }
+              }
+            }
+          })
+          .catch((e) => {
+            logger.debug(
+              '[DASHBOARD]',
+              'snapshot proxies before test failed',
+              e,
+            );
+          })
+      : Promise.resolve();
 
   try {
     if (latencyType === 'proxy') {
@@ -1086,7 +1123,14 @@ async function handleTestLatency(
 
       followedLatencyJobs.add(jobId);
       ownsJobFollow = true;
-      await TachyonShellMethods.waitLatencyTestJob(jobId);
+      await Promise.all([
+        TachyonShellMethods.waitLatencyTestJob(jobId, Date.now(), (state) => {
+          if (state.running && state.progress) {
+            setLatencyFetching(sectionName, true, true, state.progress);
+          }
+        }),
+        snapshotBeforePromise,
+      ]);
       await applyTestedLatenciesResults(testedTags, testStartedAt, beforeTimes);
       await completeLatencyTestJob(jobId, sectionName);
       completed = true;
@@ -1155,16 +1199,18 @@ async function handleTestAllSections() {
 
   try {
     const sectionsWidget = store.get().sectionsWidget;
-    const SERVICE_TYPES = new Set(['SING_BOX', 'ZAPRET', 'ZAPRET2', 'BYEDPI']);
     for (const section of sectionsWidget.data) {
       if (!section.outbounds || section.outbounds.length === 0) {
+        continue;
+      }
+      if (isServiceGroup(section)) {
         continue;
       }
       if (sectionsWidget.latencyFetchingSections[section.sectionName]) {
         continue;
       }
       const testable = section.outbounds.filter(
-        (o) => !SERVICE_TYPES.has(o.type),
+        (o) => !isNonTestableOutboundType(o.type),
       );
       if (testable.length === 0) {
         continue;
@@ -1175,10 +1221,14 @@ async function handleTestAllSections() {
           ? section.latencyTestCodes
           : section.latencyTestCode || section.code;
         if (Array.isArray(tag)) {
+          const serializedTag =
+            tag.length > 40
+              ? `@section:${section.sectionName}`
+              : JSON.stringify(tag);
           await handleTestLatency(
             'proxy_list',
             section.sectionName,
-            JSON.stringify(tag),
+            serializedTag,
             section.latencyTestTimeout,
           );
         } else {
@@ -2156,49 +2206,55 @@ function scheduleSectionsWidgetRender() {
 
 function getSectionsWithCustomLatencies(): Tachyon.OutboundGroup[] {
   const sectionsWidget = store.get().sectionsWidget;
-  const SERVICE_TYPES = new Set(['SING_BOX', 'ZAPRET', 'ZAPRET2', 'BYEDPI']);
 
-  return sectionsWidget.data.map((section) => ({
-    ...section,
-    outbounds: section.outbounds.map((outbound) => {
-      const customLatency = customProxyLatencies.get(outbound.code);
-      const latency =
-        SERVICE_TYPES.has(outbound.type) || customLatency == null
-          ? outbound.latency
-          : customLatency;
+  return sectionsWidget.data.map((section) => {
+    const skipSectionLatency = isServiceGroup(section);
+    return {
+      ...section,
+      outbounds: section.outbounds.map((outbound) => {
+        if (skipSectionLatency || isNonTestableOutboundType(outbound.type)) {
+          return {
+            ...outbound,
+            latency: 0,
+          };
+        }
+        const customLatency = customProxyLatencies.get(outbound.code);
+        const latency =
+          customLatency == null ? outbound.latency : customLatency;
 
-      const urlTestInfo = outbound.urlTestInfo
-        ? {
-            ...outbound.urlTestInfo,
-            outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
-              ...member,
-              latency: customProxyLatencies.has(member.code)
-                ? customProxyLatencies.get(member.code)!
-                : member.latency,
-            })),
-          }
-        : undefined;
+        const urlTestInfo = outbound.urlTestInfo
+          ? {
+              ...outbound.urlTestInfo,
+              outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
+                ...member,
+                latency: customProxyLatencies.has(member.code)
+                  ? customProxyLatencies.get(member.code)!
+                  : member.latency,
+              })),
+            }
+          : undefined;
 
-      const priorityInfo = outbound.priorityInfo
-        ? {
-            ...outbound.priorityInfo,
-            outbounds: outbound.priorityInfo.outbounds.map((member) => ({
-              ...member,
-              latency: customProxyLatencies.has(member.code)
-                ? customProxyLatencies.get(member.code)!
-                : member.latency,
-            })),
-          }
-        : undefined;
+        const priorityInfo = outbound.priorityInfo
+          ? {
+              ...outbound.priorityInfo,
+              outbounds: outbound.priorityInfo.outbounds.map((member) => ({
+                ...member,
+                latency: customProxyLatencies.has(member.code)
+                  ? customProxyLatencies.get(member.code)!
+                  : member.latency,
+              })),
+            }
+          : undefined;
 
-      return {
-        ...outbound,
-        latency,
-        urlTestInfo,
-        priorityInfo,
-      };
-    }),
-  }));
+        return {
+          ...outbound,
+          latency,
+          urlTestInfo,
+          priorityInfo,
+        };
+      }),
+    };
+  });
 }
 
 function renderSectionInspectorModalContent(
@@ -2597,26 +2653,36 @@ async function renderSectionsWidget() {
       void renderSectionsWidget();
     },
     onTestSectionLatency: (section) => {
+      if (isServiceGroup(section)) {
+        return;
+      }
       if (section.withTagSelect) {
         const tag = section.latencyTestCodes?.length
           ? section.latencyTestCodes
           : section.latencyTestCode || section.code;
         if (Array.isArray(tag)) {
+          const serializedTag =
+            tag.length > 40
+              ? `@section:${section.sectionName}`
+              : JSON.stringify(tag);
           void handleTestLatency(
             'proxy_list',
             section.sectionName,
-            JSON.stringify(tag),
+            serializedTag,
           );
           return;
         }
         void handleTestLatency('group', section.sectionName, tag);
         return;
       }
-      if (section.outbounds.length) {
+      const testable = section.outbounds.filter(
+        (o) => !isNonTestableOutboundType(o.type),
+      );
+      if (testable.length) {
         void handleTestLatency(
           'proxy',
           section.sectionName,
-          section.outbounds[0].code,
+          testable[0].code,
           section.latencyTestTimeout,
         );
       }
@@ -3049,36 +3115,7 @@ export async function renderSectionDashboardWidgets() {
   if (!container && !kpiContainer && !chartContainer) return;
 
   const sectionsWidget = store.get().sectionsWidget;
-  const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
-    ...section,
-    outbounds: section.outbounds.map((outbound) => {
-      const customLatency = customProxyLatencies.get(outbound.code);
-      return {
-        ...outbound,
-        latency: customLatency ?? outbound.latency,
-        urlTestInfo: outbound.urlTestInfo
-          ? {
-              ...outbound.urlTestInfo,
-              outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
-                ...member,
-                latency:
-                  customProxyLatencies.get(member.code) ?? member.latency,
-              })),
-            }
-          : undefined,
-        priorityInfo: outbound.priorityInfo
-          ? {
-              ...outbound.priorityInfo,
-              outbounds: outbound.priorityInfo.outbounds.map((member) => ({
-                ...member,
-                latency:
-                  customProxyLatencies.get(member.code) ?? member.latency,
-              })),
-            }
-          : undefined,
-      };
-    }),
-  }));
+  const sectionsWithCustomLatencies = getSectionsWithCustomLatencies();
 
   const activeRoutes = getAllActiveRoutes(sectionsWithCustomLatencies);
   const isCheckingLatency =

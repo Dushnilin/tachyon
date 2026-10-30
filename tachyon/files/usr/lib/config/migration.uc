@@ -2256,6 +2256,127 @@ function cleanup_modular_entities_v1(ctx) {
     }
 }
 
+function migrate_priority_group_levels_for_balancer(ctx, section, pg, bal) {
+    let sname = section_name(section);
+    let pg_id = section_name(pg);
+    let bal_id = section_name(bal);
+    if (sname == "" || pg_id == "" || bal_id == "")
+        return;
+
+    let matched_levels = [];
+    for (let pl in (ctx.model.priority_level || [])) {
+        let pl_grp = option(pl, "group", "");
+        let pl_sec = option(pl, "section", "");
+        if (pl_grp == pg_id || (pl_grp == "" && pl_sec == sname))
+            push(matched_levels, pl);
+    }
+    if (length(matched_levels) == 0)
+        return;
+
+    sort(matched_levels, function(left, right) {
+        let lo = int(option(left, "order", "0"), 10);
+        let ro = int(option(right, "order", "0"), 10);
+        return lo < ro ? -1 : (lo > ro ? 1 : 0);
+    });
+
+    let bal_levels = list_option(bal, "outbound_group_levels");
+    let sec_sources = list_option(section, "outbound_source_refs");
+    for (let li = 0; li < length(matched_levels); li++) {
+        let pl = matched_levels[li];
+        let is_direct = option(pl, "direct", "0") == "1";
+        if (is_direct) {
+            if (index(bal_levels, "direct") < 0)
+                push(bal_levels, "direct");
+            continue;
+        }
+        let pl_id = section_name(pl);
+        let pl_name = option(pl, "name", "Level " + (li + 1));
+        let grp_slug = sanitize_uci_id(pl_name);
+        if (grp_slug == "item" && pl_name != "item") {
+            let id_slug = substr(pl_id, 0, 3) == "cfg" ? "item" : sanitize_uci_id(pl_id);
+            grp_slug = (id_slug != "item" && id_slug != "") ? id_slug : ("lvl_" + (li + 1));
+        }
+        let base_grp_id = "grp_" + sanitize_uci_id(sname + "_" + grp_slug);
+        if (base_grp_id == "grp_" + sanitize_uci_id(sname + "_") || base_grp_id == "grp_")
+            base_grp_id = "grp_" + sanitize_uci_id(sname + "_lvl_" + (li + 1));
+
+        let existing_grp = null;
+        for (let g in (ctx.model.outbound_group || [])) {
+            let gid = section_name(g);
+            if (option(g, "name", "") == pl_name && index(bal_levels, gid) >= 0) {
+                existing_grp = g;
+                break;
+            }
+        }
+        let target_grp_id = base_grp_id;
+        if (existing_grp == null) {
+            let suffix = 1;
+            while (true) {
+                let collision = null;
+                for (let g in (ctx.model.outbound_group || [])) {
+                    if (section_name(g) == target_grp_id) {
+                        collision = g;
+                        break;
+                    }
+                }
+                if (collision == null)
+                    break;
+                if (option(collision, "name", "") == pl_name) {
+                    existing_grp = collision;
+                    break;
+                }
+                suffix++;
+                target_grp_id = base_grp_id + "_" + suffix;
+            }
+        }
+        let grp_id = existing_grp != null ? section_name(existing_grp) : target_grp_id;
+        let grp = existing_grp != null ? existing_grp : create_named_section(ctx, "outbound_group", grp_id);
+        set_option_if_missing(ctx, grp, "enabled", "1");
+        set_option_if_missing(ctx, grp, "name", pl_name);
+        set_option_if_missing(ctx, grp, "filter_mode", option(pl, "filter_mode", "include"));
+        set_option_if_missing(ctx, grp, "detect_server_country", option(pl, "detect_server_country", "flag_emoji"));
+
+        if (length(sec_sources) > 0 && length(list_option(grp, "source_refs")) == 0)
+            set_list_option(ctx, grp, "source_refs", sec_sources);
+
+        for (let lk in [
+            "include_prefixes", "exclude_prefixes",
+            "include_countries", "exclude_countries",
+            "include_outbounds", "exclude_outbounds",
+            "include_regex", "exclude_regex",
+            "include_protocols", "exclude_protocols",
+            "include_transports", "exclude_transports",
+            "include_securities", "exclude_securities",
+            "include_ports", "exclude_ports"
+        ]) {
+            let lvals = list_option(pl, lk);
+            if (length(lvals) > 0 && !option_exists(grp, lk))
+                set_list_option(ctx, grp, lk, lvals);
+        }
+        let leg_countries = list_option(pl, "country");
+        if (length(leg_countries) > 0 && length(list_option(grp, "include_countries")) == 0)
+            set_list_option(ctx, grp, "include_countries", leg_countries);
+        let leg_servers = list_option(pl, "server_name");
+        if (length(leg_servers) > 0 && length(list_option(grp, "include_outbounds")) == 0)
+            set_list_option(ctx, grp, "include_outbounds", leg_servers);
+        let leg_regex = list_option(pl, "regex");
+        if (length(leg_regex) > 0 && length(list_option(grp, "include_regex")) == 0)
+            set_list_option(ctx, grp, "include_regex", leg_regex);
+
+        for (let pk in [ "include_proxy_parameters", "exclude_proxy_parameters" ]) {
+            let pval = option(pl, pk, "");
+            if (pval != "")
+                set_option_if_missing(ctx, grp, pk, pval);
+        }
+
+        if (index(bal_levels, grp_id) < 0)
+            push(bal_levels, grp_id);
+        add_list_unique(ctx, section, "outbound_group_refs", grp_id);
+    }
+    if (length(bal_levels) > 0)
+        set_list_option(ctx, bal, "outbound_group_levels", bal_levels);
+}
+
 function migrate_modular_entities_v1(ctx) {
     let condition_list_keys = [
         "community_lists",
@@ -2635,6 +2756,7 @@ function migrate_modular_entities_v1(ctx) {
                     set_option_if_missing(ctx, bal, bk, bval);
             }
             add_list_unique(ctx, section, "balancer_refs", bal_id);
+            migrate_priority_group_levels_for_balancer(ctx, section, pg, bal);
         }
 
         let preserve_actions = [
@@ -2649,6 +2771,38 @@ function migrate_modular_entities_v1(ctx) {
     cleanup_modular_entities_v1(ctx);
 }
 
+function migrate_priority_levels_to_outbound_groups(ctx) {
+    for (let section in (ctx.model.sections || [])) {
+        let sname = section_name(section);
+        if (sname == "")
+            continue;
+        let sec_bal_refs = list_option(section, "balancer_refs");
+        for (let pg in (ctx.model.priority_group || [])) {
+            if (option(pg, "section", "") != sname)
+                continue;
+            let pg_id = section_name(pg);
+            let pg_name = option(pg, "name", pg_id);
+            let name_slug = sanitize_uci_id(pg_name);
+            if (name_slug == "item" && pg_name != "item")
+                name_slug = sanitize_uci_id(pg_id);
+            let target_bal_id = "bal_" + sanitize_uci_id(sname + "_" + name_slug);
+            let existing_bal = null;
+            for (let b in (ctx.model.balancer || [])) {
+                let bid = section_name(b);
+                if (bid == target_bal_id || (index(sec_bal_refs, bid) >= 0 && option(b, "name", "") == pg_name && lc(option(b, "balancer_type", "urltest")) == "priority")) {
+                    existing_bal = b;
+                    break;
+                }
+            }
+            if (existing_bal == null)
+                continue;
+            if (length(list_option(existing_bal, "outbound_group_levels")) > 0)
+                continue;
+            migrate_priority_group_levels_for_balancer(ctx, section, pg, existing_bal);
+        }
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -2659,7 +2813,8 @@ const MIGRATIONS = [
     { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces },
     { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults },
     { id: "engine_identity_tachyon_core", run: migrate_engine_identity },
-    { id: "modular_entities_v1", run: migrate_modular_entities_v1 }
+    { id: "modular_entities_v1", run: migrate_modular_entities_v1 },
+    { id: "priority_levels_to_outbound_groups", run: migrate_priority_levels_to_outbound_groups }
 ];
 
 

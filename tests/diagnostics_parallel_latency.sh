@@ -67,4 +67,72 @@ if (value.progress.failed !== 1) {
 }
 NODE
 
+# Also verify engine-native /tachyon/delay-batch path when supported by the backend
+batch_bin="$WORK_DIR/bin-batch"
+mkdir -p "$batch_bin"
+batch_calls="$WORK_DIR/batch-calls.log"
+cat >"$batch_bin/curl" <<'SH'
+#!/usr/bin/env sh
+out_file=""
+req_file=""
+url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out_file="$2"; shift 2 ;;
+    -d) req_file="${2#@}"; shift 2 ;;
+    *'/proxies'*) url="$1"; shift ;;
+    *'/tachyon/delay-batch'*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$url" in
+  */proxies)
+    printf '%s\n' '{"proxies":{"urltest":{"type":"URLTest"},"node-fail":{"type":"VLESS"}}}'
+    ;;
+  */tachyon/delay-batch)
+    printf 'batch\n' >> "$BATCH_CALLS_LOG"
+    REQ_FILE="$req_file" OUT_FILE="$out_file" node - <<'EOF'
+const fs = require("fs");
+const req = JSON.parse(fs.readFileSync(process.env.REQ_FILE, "utf8"));
+const results = {};
+for (const name of req.names || []) {
+  results[name] = name === "node-fail" ? { message: "timeout" } : { delay: 35 };
+}
+fs.writeFileSync(process.env.OUT_FILE, JSON.stringify({ results }));
+EOF
+    ;;
+  *)
+    printf 'individual:%s\n' "$url" >> "$BATCH_CALLS_LOG"
+    printf '%s\n' '{"delay":42}'
+    ;;
+esac
+SH
+chmod +x "$batch_bin/curl"
+
+latency_batch_state="$latency_action_dir/latency-batch.json"
+printf '%s\n' '{"success":true,"running":true,"kind":"latency","latency_type":"proxy_list","section":"main","tag":"[]","started_at":100}' >"$latency_batch_state"
+: > "$batch_calls"
+
+BATCH_CALLS_LOG="$batch_calls" \
+TACHYON_UCI_STATE_FILE="$uci_state" \
+TACHYON_LIB="$TACHYON_LIB" \
+TACHYON_UI_LATENCY_ACTION_DIR="$latency_action_dir" \
+PATH="$batch_bin:$PATH" \
+  ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" clash-api get_proxy_latencies "$tags_json" 2000 "$latency_batch_state" >/dev/null ||
+  true
+
+if grep -q '^individual:' "$batch_calls"; then
+  fail "get_proxy_latencies should not fall back to individual curl calls when /tachyon/delay-batch succeeds"
+fi
+grep -q '^batch$' "$batch_calls" || fail "get_proxy_latencies should invoke /tachyon/delay-batch"
+
+JOB_STATE="$latency_batch_state" node - <<'NODE'
+const fs = require("fs");
+const value = JSON.parse(fs.readFileSync(process.env.JOB_STATE, "utf8"));
+if (!value.progress || value.progress.completed !== 20 || value.progress.total !== 20 || value.progress.failed !== 1) {
+  console.error("batch progress mismatch:", value.progress);
+  process.exit(1);
+}
+NODE
+
 printf 'Parallel latency test passed\n'

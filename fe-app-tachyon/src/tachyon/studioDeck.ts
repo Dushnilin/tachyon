@@ -192,7 +192,8 @@ function extractLinkProtocolsAndTransports(links: string[]): {
 } {
   const protoSet = new Set<string>();
   const transSet = new Set<string>();
-  links.forEach((link) => {
+  const sample = links.length > 100 ? links.slice(0, 100) : links;
+  sample.forEach((link) => {
     const schemeMatch = String(link || '')
       .trim()
       .match(/^([a-zA-Z0-9+.-]+):\/\//);

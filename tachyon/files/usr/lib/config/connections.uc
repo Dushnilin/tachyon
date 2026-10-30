@@ -5119,11 +5119,11 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
         try {
             common.write_json_file(batch_req_file, {
                 names: candidate_tags,
-                url: test_url,
-                timeout: timeout
+                url: target_url,
+                timeout: timeout_ms
             });
             try { fs.unlink(batch_res_file); } catch (e) {}
-            let batch_sec = int((timeout / 1000) * (int(length(candidate_tags) / 64) + 2)) + 5;
+            let batch_sec = int((timeout_ms / 1000) * (int(length(candidate_tags) / 64) + 2)) + 5;
             if (batch_sec < max_sec)
                 batch_sec = max_sec;
             let batch_args = [

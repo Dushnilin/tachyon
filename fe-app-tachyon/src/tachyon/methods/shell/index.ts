@@ -9,8 +9,8 @@ const UI_ACTION_RPC_TIMEOUT_MS = 15000;
 const UI_ACTION_TRANSIENT_RPC_GRACE_MS = 30000;
 const SERVICE_ACTION_TIMEOUT_MS = 2 * 60 * 1000;
 const SERVICE_ACTION_POLL_INTERVAL_MS = 1000;
-const LATENCY_TEST_TIMEOUT_MS = 30 * 1000;
-const LATENCY_TEST_POLL_INTERVAL_MS = 1000;
+const LATENCY_TEST_TIMEOUT_MS = 60 * 1000;
+const LATENCY_TEST_POLL_INTERVAL_MS = 500;
 const COMPONENT_ACTION_RPC_TIMEOUT_MS = 45000;
 const COMPONENT_ACTION_POLL_INTERVAL_MS = 1000;
 const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 2000;
@@ -650,7 +650,11 @@ export const TachyonShellMethods = {
       data: parsedResponse,
     } as Tachyon.MethodSuccessResponse<Tachyon.LatencyActionState>;
   },
-  waitLatencyTestJob: async (jobId: string, startedAt = Date.now()) => {
+  waitLatencyTestJob: async (
+    jobId: string,
+    startedAt = Date.now(),
+    onProgress?: (state: Tachyon.LatencyActionState) => void,
+  ) => {
     const transientRpc = createTransientRpcGraceTracker(
       UI_ACTION_TRANSIENT_RPC_GRACE_MS,
     );
@@ -669,6 +673,9 @@ export const TachyonShellMethods = {
       }
 
       transientRpc.reset();
+      if (onProgress) {
+        onProgress(response.data);
+      }
       if (response.data.running) {
         continue;
       }
