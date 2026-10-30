@@ -2632,6 +2632,95 @@ function migrate_modular_entities_v1(ctx) {
                     set_option_if_missing(ctx, bal, bk, bval);
             }
             add_list_unique(ctx, section, "balancer_refs", bal_id);
+
+            // Migrate child priority_level items into reusable outbound_group entities and wire them to bal.outbound_group_levels
+            let matched_levels = [];
+            for (let pl in (ctx.model.priority_level || [])) {
+                let pl_grp = option(pl, "group", "");
+                let pl_sec = option(pl, "section", "");
+                if (pl_grp == pg_id || (pl_grp == "" && pl_sec == sname))
+                    push(matched_levels, pl);
+            }
+            if (length(matched_levels) > 0) {
+                sort(matched_levels, function(left, right) {
+                    let lo = int(option(left, "order", "0"), 10);
+                    let ro = int(option(right, "order", "0"), 10);
+                    return lo < ro ? -1 : (lo > ro ? 1 : 0);
+                });
+                let bal_levels = list_option(bal, "outbound_group_levels");
+                let sec_sources = list_option(section, "outbound_source_refs");
+                for (let li = 0; li < length(matched_levels); li++) {
+                    let pl = matched_levels[li];
+                    let is_direct = option(pl, "direct", "0") == "1";
+                    if (is_direct) {
+                        if (index(bal_levels, "direct") < 0)
+                            push(bal_levels, "direct");
+                        continue;
+                    }
+                    let pl_id = section_name(pl);
+                    let pl_name = option(pl, "name", "Level " + (li + 1));
+                    let grp_slug = sanitize_uci_id(pl_name);
+                    if (grp_slug == "item" && pl_name != "item")
+                        grp_slug = sanitize_uci_id(pl_id);
+                    let target_grp_id = "grp_" + sanitize_uci_id(sname + "_" + grp_slug);
+                    if (target_grp_id == "grp_" + sanitize_uci_id(sname + "_") || target_grp_id == "grp_")
+                        target_grp_id = "grp_" + sanitize_uci_id(sname + "_lvl_" + (li + 1));
+
+                    let existing_grp = null;
+                    for (let g in (ctx.model.outbound_group || [])) {
+                        let gid = section_name(g);
+                        if (gid == target_grp_id || (option(g, "name", "") == pl_name && index(bal_levels, gid) >= 0)) {
+                            existing_grp = g;
+                            break;
+                        }
+                    }
+                    let grp_id = existing_grp != null ? section_name(existing_grp) : target_grp_id;
+                    let grp = existing_grp != null ? existing_grp : create_named_section(ctx, "outbound_group", grp_id);
+                    set_option_if_missing(ctx, grp, "enabled", "1");
+                    set_option_if_missing(ctx, grp, "name", pl_name);
+                    set_option_if_missing(ctx, grp, "filter_mode", option(pl, "filter_mode", "include"));
+                    set_option_if_missing(ctx, grp, "detect_server_country", option(pl, "detect_server_country", "flag_emoji"));
+
+                    if (length(sec_sources) > 0 && length(list_option(grp, "source_refs")) == 0)
+                        set_list_option(ctx, grp, "source_refs", sec_sources);
+
+                    for (let lk in [
+                        "include_prefixes", "exclude_prefixes",
+                        "include_countries", "exclude_countries",
+                        "include_outbounds", "exclude_outbounds",
+                        "include_regex", "exclude_regex",
+                        "include_protocols", "exclude_protocols",
+                        "include_transports", "exclude_transports",
+                        "include_securities", "exclude_securities",
+                        "include_ports", "exclude_ports"
+                    ]) {
+                        let lvals = list_option(pl, lk);
+                        if (length(lvals) > 0 && !option_exists(grp, lk))
+                            set_list_option(ctx, grp, lk, lvals);
+                    }
+                    let leg_countries = list_option(pl, "country");
+                    if (length(leg_countries) > 0 && length(list_option(grp, "include_countries")) == 0)
+                        set_list_option(ctx, grp, "include_countries", leg_countries);
+                    let leg_servers = list_option(pl, "server_name");
+                    if (length(leg_servers) > 0 && length(list_option(grp, "include_outbounds")) == 0)
+                        set_list_option(ctx, grp, "include_outbounds", leg_servers);
+                    let leg_regex = list_option(pl, "regex");
+                    if (length(leg_regex) > 0 && length(list_option(grp, "include_regex")) == 0)
+                        set_list_option(ctx, grp, "include_regex", leg_regex);
+
+                    for (let pk in [ "include_proxy_parameters", "exclude_proxy_parameters" ]) {
+                        let pval = option(pl, pk, "");
+                        if (pval != "")
+                            set_option_if_missing(ctx, grp, pk, pval);
+                    }
+
+                    if (index(bal_levels, grp_id) < 0)
+                        push(bal_levels, grp_id);
+                    add_list_unique(ctx, section, "outbound_group_refs", grp_id);
+                }
+                if (length(bal_levels) > 0)
+                    set_list_option(ctx, bal, "outbound_group_levels", bal_levels);
+            }
         }
 
         let preserve_actions = [
