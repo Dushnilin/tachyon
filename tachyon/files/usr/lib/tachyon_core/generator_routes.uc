@@ -3343,11 +3343,17 @@ function add_combined_route_for_clause(config, section) {
             push(dns_response_rule_set_tags, ensured.tag);
 
         if (include_community_subnets) {
-            for (let cidr in load_community_subnet_cidrs(community, "exclude_cloudflare"))
-                push(ip_cidr, cidr);
             if (service == "discord") {
+                for (let cidr in load_community_subnet_cidrs(community, "exclude_cloudflare"))
+                    push(ip_cidr, cidr);
                 for (let cidr in load_community_subnet_cidrs(community, "only_cloudflare"))
                     push(discord_cf_subnets, cidr);
+            } else if (service == "telegram") {
+                for (let cidr in load_community_subnet_cidrs(community, null))
+                    push(ip_cidr, cidr);
+            } else if (ensured == null || !ensured.tag) {
+                for (let cidr in load_community_subnet_cidrs(community, "exclude_cloudflare"))
+                    push(ip_cidr, cidr);
             }
         }
     }

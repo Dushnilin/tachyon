@@ -2383,11 +2383,17 @@ function renderSectionInspectorModalContent(
                   'proxy_list',
                   section.sectionName,
                   JSON.stringify(tag),
+                  section.latencyTestTimeout,
                 );
                 return;
               }
               if (section.withTagSelect) {
-                void handleTestLatency('group', section.sectionName, tag);
+                void handleTestLatency(
+                  'group',
+                  section.sectionName,
+                  tag,
+                  section.latencyTestTimeout,
+                );
                 return;
               }
               void handleTestLatency(

@@ -87,21 +87,7 @@ const BUILTIN_SUBNET_URLS = {
     hetzner: getenv("SUBNETS_HETZNER6") ? [ getenv("SUBNETS_HETZNER") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/hetzner.lst", getenv("SUBNETS_HETZNER6") ] : [ getenv("SUBNETS_HETZNER") || TACHYON_LISTS_SUBNETS_BASE + "/hetzner.lst" ],
     ovh: getenv("SUBNETS_OVH6") ? [ getenv("SUBNETS_OVH") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/ovh.lst", getenv("SUBNETS_OVH6") ] : [ getenv("SUBNETS_OVH") || TACHYON_LISTS_SUBNETS_BASE + "/ovh.lst" ],
     digitalocean: getenv("SUBNETS_DIGITALOCEAN6") ? [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/digitalocean.lst", getenv("SUBNETS_DIGITALOCEAN6") ] : [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/digitalocean.lst" ],
-    cloudfront: getenv("SUBNETS_CLOUDFRONT6") ? [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") ] : [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/cloudfront.lst" ],
-    ru_whitelist: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_whitelist.lst" ],
-    ru_domains: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_domains.lst" ],
-    ru_blocked: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked.lst" ],
-    ru_blocked_all: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked_all.lst" ],
-    antifilter: [ TACHYON_LISTS_SUBNETS_BASE + "/antifilter.lst" ],
-    roscomvpn_whitelist: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_whitelist.lst" ],
-    roscomvpn_ru: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_domains.lst" ],
-    runetfreedom_blocked: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked.lst" ],
-    runetfreedom_blocked_all: [ TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked_all.lst" ],
-    antifilter_community: [ TACHYON_LISTS_SUBNETS_BASE + "/antifilter.lst" ],
-    refilter: [ TACHYON_LISTS_SUBNETS_BASE + "/refilter.lst" ],
-    netflix: [ TACHYON_LISTS_SUBNETS_BASE + "/netflix.lst" ],
-    tor: [ TACHYON_LISTS_SUBNETS_BASE + "/tor.lst" ],
-    fastly: [ TACHYON_LISTS_SUBNETS_BASE + "/fastly.lst" ]
+    cloudfront: getenv("SUBNETS_CLOUDFRONT6") ? [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") ] : [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/cloudfront.lst" ]
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;

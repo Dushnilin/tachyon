@@ -2302,7 +2302,7 @@ function clash_api(action, arg1, arg2, arg3) {
             if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
                 push(ordered_proxy_tags, proxy_tag);
 
-        let timeout_ms = as_string(arg2 || "2500");
+        let timeout_ms = as_string(arg2 || "3500");
         let max_time = as_string(int((int(timeout_ms) + 1999) / 1000));
         if (int(max_time) < 3)
             max_time = "3";
@@ -2341,19 +2341,20 @@ function clash_api(action, arg1, arg2, arg3) {
             }
             else {
                 let batch_supported = false;
-                let probe_chunk_size = 32;
-                let parallel_chunks = 2;
+                let probe_chunk_size = 12;
+                let parallel_chunks = 1;
                 let retry_failed_batch = function(failed_tags, wave_results, wave_id) {
-                    if (length(failed_tags) == 0 || length(failed_tags) > 24)
+                    if (length(failed_tags) == 0)
                         return;
                     let r_req = tmp_dir + "/retry_req_" + wave_id + ".json";
                     let r_res = tmp_dir + "/retry_res_" + wave_id + ".json";
+                    let retry_timeout = int(timeout_ms) + 1500;
                     common.write_json_file(r_req, {
                         names: failed_tags,
                         url: test_url,
-                        timeout: int(timeout_ms)
+                        timeout: retry_timeout
                     });
-                    let r_args = [ "curl", "-s", "-m", as_string(int(max_time) + 4), "-X", "POST", "-H", "Content-Type: application/json" ];
+                    let r_args = [ "curl", "-s", "-m", as_string(int((retry_timeout + 1999) / 1000) + 5), "-X", "POST", "-H", "Content-Type: application/json" ];
                     for (let item in auth) push(r_args, item);
                     push(r_args, "-d", "@" + r_req, base_url + "/tachyon/delay-batch", "-o", r_res);
                     common.command_status(command_from_args(r_args));
@@ -2538,7 +2539,7 @@ function clash_api(action, arg1, arg2, arg3) {
         if (as_string(arg1) == "")
             return clash_json_error("group_tag required");
         let group_tag = as_string(arg1);
-        let timeout_ms = as_string(arg2 || "2500");
+        let timeout_ms = as_string(arg2 || "3500");
         if (getenv("FAKE_CURL_LOG") == null && getenv("TACHYON_SEQUENTIAL_LATENCY") != "1") {
             let proxies = clash_proxy_info_map(base_url, auth);
             let grp = object_or_empty(proxies[group_tag]);
@@ -2553,8 +2554,35 @@ function clash_api(action, arg1, arg2, arg3) {
                             push(probe_tags, mt);
                     }
                     push(probe_tags, group_tag);
-                    let probe_chunk_size = 32;
-                    let parallel_chunks = 2;
+                    let probe_chunk_size = 12;
+                    let parallel_chunks = 1;
+                    let retry_failed_group_batch = function(failed_tags, target_out_map, wave_id) {
+                        if (length(failed_tags) == 0)
+                            return;
+                        let r_req = tmp_dir + "/gretry_req_" + wave_id + ".json";
+                        let r_res = tmp_dir + "/gretry_res_" + wave_id + ".json";
+                        let retry_timeout = int(timeout_ms) + 1500;
+                        common.write_json_file(r_req, {
+                            names: failed_tags,
+                            url: test_url,
+                            timeout: retry_timeout
+                        });
+                        let r_args = [ "curl", "-s", "-m", as_string(int((retry_timeout + 1999) / 1000) + 5), "-X", "POST", "-H", "Content-Type: application/json" ];
+                        for (let item in auth) push(r_args, item);
+                        push(r_args, "-d", "@" + r_req, base_url + "/tachyon/delay-batch", "-o", r_res);
+                        common.command_status(command_from_args(r_args));
+                        let r_content = fs.readfile(r_res);
+                        try { fs.unlink(r_req); } catch(e) {}
+                        try { fs.unlink(r_res); } catch(e) {}
+                        let r_parsed = parse_json_or_null(r_content);
+                        if (type(r_parsed) == "object" && type(r_parsed.results) == "object") {
+                            for (let k, v in r_parsed.results) {
+                                if (type(v) == "object" && v.message == null && v.error == null && int(v.delay || 0) > 0) {
+                                    target_out_map[k] = int(v.delay);
+                                }
+                            }
+                        }
+                    };
                     let wave_step = probe_chunk_size * parallel_chunks;
                     let max_time = int((int(timeout_ms) + 1999) / 1000) + 5;
                     if (max_time < 8) max_time = 8;
@@ -2588,21 +2616,35 @@ function clash_api(action, arg1, arg2, arg3) {
                         }
                         if (length(wave_cmds) > 0) {
                             common.command_status("{ " + join(" & ", wave_cmds) + " & wait; }");
+                            let wave_results = {};
                             for (let ch in wave_chunks) {
                                 let content = fs.readfile(ch.res);
                                 try { fs.unlink(ch.req); } catch(e) {}
                                 try { fs.unlink(ch.res); } catch(e) {}
                                 let parsed = parse_json_or_null(content);
                                 if (type(parsed) == "object" && type(parsed.results) == "object") {
-                                    for (let k, v in parsed.results) {
-                                        count++;
-                                        if (type(v) == "object" && v.message == null && v.error == null && int(v.delay || 0) > 0)
-                                            out_map[k] = int(v.delay);
-                                        else
-                                            failed++;
-                                    }
+                                    for (let k, v in parsed.results)
+                                        wave_results[k] = v;
                                 } else {
                                     batch_ok = false;
+                                }
+                            }
+                            if (batch_ok) {
+                                let retry_tags = [];
+                                for (let t in w_tags) {
+                                    let entry = wave_results[t];
+                                    let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
+                                    if (is_ok)
+                                        out_map[t] = int(entry.delay);
+                                    else
+                                        push(retry_tags, t);
+                                }
+                                if (length(retry_tags) > 0)
+                                    retry_failed_group_batch(retry_tags, out_map, w);
+                                for (let t in w_tags) {
+                                    count++;
+                                    if (out_map[t] == null || out_map[t] <= 0)
+                                        failed++;
                                 }
                             }
                             if (!batch_ok)
