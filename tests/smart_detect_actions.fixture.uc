@@ -88,6 +88,7 @@ let i18n = require("service.i18n");
 let t = i18n.bind("ru");
 let BIN_PATH = "/fixture/tachyon";
 let OFFSET_FILE = STATE_DIR + "/offset";
+let OFFSET_BOT_FILE = STATE_DIR + "/offset_bot";
 let batch = [];
 let calls = [];
 let messages = [];
@@ -123,9 +124,10 @@ let entries = [{section:"vpn",domain:"site.co.uk",source_domain:"api.site.co.uk"
 check(send_api("🔍 Smart Detect fixture",entries) == 0 && length(messages) == 1, "notification delivered once");
 check(messages[0].keyboard[0][0].text == "В исключение" && messages[0].keyboard[0][1].text == "Отменить", "localized buttons attached by send_api");
 let callback = messages[0].keyboard[0][0].callback_data;
+let update_seq = 100;
 function poll(sender, chat, message, data) {
     calls = [];
-    batch = [{update_id:100,callback_query:{id:"fixture-callback",from:{id:sender},message:{message_id:message,chat:{id:chat}},data}}];
+    batch = [{update_id:update_seq++,callback_query:{id:"fixture-callback",from:{id:sender},message:{message_id:message,chat:{id:chat}},data}}];
     check(process_updates("fixture","42,-100"), "poll handled");
 }
 let initial_commits = commits;

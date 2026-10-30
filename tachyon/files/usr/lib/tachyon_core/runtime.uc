@@ -1658,7 +1658,7 @@ function section_from_check_reason(reason, config_path) {
     }
 
     if (tag == null) {
-        let rs = match(reason, /rule_set\[(\d+)\]/);
+        let rs = match(reason, /rule[-_]set\[(\d+)\]/);
         if (rs) {
             let cfg = common.read_json_file(config_path);
             let list = type(cfg) == "object" && type(cfg.route) == "object" ? cfg.route.rule_set : null;
@@ -2125,6 +2125,34 @@ function check_with_field_repairs(temp_config, runtime_log) {
                 if (found) {
                     write_file(temp_config, sprintf("%J", cfg));
                     stripped = true;
+                }
+            }
+            else if (match(check_result.reason, /rule[-_]set\[(\d+)\]: .*(invalid sing-box rule-set file|unexpected EOF)/)) {
+                let rs_m = match(check_result.reason, /rule[-_]set\[(\d+)\]/);
+                let rs_idx = rs_m ? int(rs_m[1]) : -1;
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object" && type(cfg.route) == "object" && type(cfg.route.rule_set) == "array" &&
+                    rs_idx >= 0 && rs_idx < length(cfg.route.rule_set)) {
+                    let rs_entry = cfg.route.rule_set[rs_idx];
+                    if (type(rs_entry) == "object" && rs_entry.type == "local" && as_string(rs_entry.path || "") != "") {
+                        let bad_path = as_string(rs_entry.path);
+                        log_message("Installed " + (sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box") +
+                            " rejected local rule-set at index " + rs_idx + " (" + bad_path + "); replacing with fallback .srs and retrying", "warn");
+                        remove_file(bad_path);
+                        let fallback_srs = replace(bad_path, /\.trs$/, ".srs");
+                        if (fallback_srs != bad_path) {
+                            let etc_bad_trs = replace(bad_path, /^.*\/(community-[^\/]+\.trs)$/, "/etc/tachyon/rulesets/$1");
+                            if (index(etc_bad_trs, "/etc/tachyon/rulesets/") == 0)
+                                remove_file(etc_bad_trs);
+                            rs_entry.path = fallback_srs;
+                        }
+                        let srs_st = fs.stat(rs_entry.path);
+                        if (!srs_st || srs_st.size < 17)
+                            fs.writefile(rs_entry.path, EMPTY_SRS_BINARY);
+                        write_file(temp_config, sprintf("%J", cfg));
+                        stripped = true;
+                    }
                 }
             }
             else if (match(check_result.reason, /json: unknown field/)) {

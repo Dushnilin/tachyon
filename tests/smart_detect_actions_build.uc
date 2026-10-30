@@ -4,7 +4,9 @@ source = replace(source, 'let uci_core = require("core.uci");', 'let uci_core = 
 source = replace(source, 'return { create, bind_message, keyboard, apply };', 'let actions = { create, bind_message, keyboard, apply };');
 let fixture = replace(fs.readfile(ARGV[1]), "/* IMPLEMENTATION */", source);
 let runtime = fs.readfile(ARGV[3]);
-let start = index(runtime, "function persist_offset(");
+let start = index(runtime, "function extract_bot_id(");
+if (start < 0)
+    start = index(runtime, "function persist_offset(");
 let end = index(runtime, "function worker(", start);
 if (start < 0 || end < start) die("Telegram runtime boundaries missing\n");
 let functions = substr(runtime, start, end - start);

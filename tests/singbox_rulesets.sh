@@ -90,5 +90,29 @@ assert_eq unknown \
   "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" community-kind unknown_service)" \
   "unknown_service community kind"
 
+# Verify supports_trs() and is_referenceable_trs_file() return false on sing-box variants
+# (even when /usr/bin/tachyon-core exists as a symlink or binary) and true on tachyon-core.
+TRS_TEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$TRS_TEST_DIR"' EXIT
+printf 'TSRS\x01\x00\x00\x00\x01\x00\x00\x00faceit.com' > "$TRS_TEST_DIR/sample.trs"
+
+printf 'extended\n' > "$TRS_TEST_DIR/variant"
+printf '1.14.1-extended-2.7.2\n' > "$TRS_TEST_DIR/version"
+TRS_SAMPLE="$TRS_TEST_DIR/sample.trs" SB_VARIANT_STATE_FILE="$TRS_TEST_DIR/variant" SB_VERSION_STATE_FILE="$TRS_TEST_DIR/version" \
+  ucode -L "$TACHYON_LIB" -e '
+    let rulesets = require("tachyon_core.rulesets");
+    if (rulesets.supports_trs()) exit(1);
+    if (rulesets.is_referenceable_trs_file(getenv("TRS_SAMPLE"))) exit(1);
+  ' || fail "sing-box-extended must not support or reference .trs files"
+
+printf 'tachyon-core\n' > "$TRS_TEST_DIR/variant"
+printf '0.2.0\n' > "$TRS_TEST_DIR/version"
+TRS_SAMPLE="$TRS_TEST_DIR/sample.trs" SB_VARIANT_STATE_FILE="$TRS_TEST_DIR/variant" SB_VERSION_STATE_FILE="$TRS_TEST_DIR/version" \
+  ucode -L "$TACHYON_LIB" -e '
+    let rulesets = require("tachyon_core.rulesets");
+    if (!rulesets.supports_trs()) exit(1);
+    if (!rulesets.is_referenceable_trs_file(getenv("TRS_SAMPLE"))) exit(1);
+  ' || fail "tachyon-core must support and reference valid .trs files"
+
 printf 'singbox rulesets checks passed\n'
 

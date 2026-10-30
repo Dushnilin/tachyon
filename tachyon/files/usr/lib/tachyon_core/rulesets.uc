@@ -3,6 +3,7 @@
 let common = require("core.common");
 let fs = require("fs");
 let gomemlimit = require("core.gomemlimit");
+let variant_state = require("tachyon_core.variant_state");
 let command_from_args = common.command_from_args;
 
 const EMPTY_SRS_B64 = "U1JTAXjaYgAEAAD//wABAAE=";
@@ -336,11 +337,7 @@ function supports_trs() {
         return false;
     if (getenv("TACHYON_ALLOW_TRS") == "1")
         return true;
-    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
-    if (fs.stat(bin) != null)
-        return true;
-    let variant = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant")));
-    return variant == "tachyon-core";
+    return variant_state.is_tachyon_core();
 }
 
 function fallback_community_url(name) {
@@ -485,7 +482,7 @@ function is_usable_trs_file(path) {
 }
 
 function is_referenceable_trs_file(path) {
-    return is_usable_trs_file(path);
+    return supports_trs() && is_usable_trs_file(path);
 }
 
 // The placeholder this module writes when a list cannot be fetched is itself a
