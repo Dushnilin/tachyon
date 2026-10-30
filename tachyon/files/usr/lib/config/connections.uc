@@ -3466,12 +3466,14 @@ function subscription_include_urltest_groups(section, value) {
         let legacy_child = child[".type"] == "outbound_source"
             ? child_item_by_value(section, "subscription_url", "url", value)
             : null;
-        if (legacy_child != null && raw_option(legacy_child, "include_urltest_groups") != null)
+        if (legacy_child != null)
             return child_bool(legacy_child, "include_urltest_groups", true);
         let settings = item_settings(section, "subscription_url_settings", value);
         if (raw_option(settings, "include_urltest_groups") != null)
             return item_bool(section, "subscription_url_settings", value, "include_urltest_groups", true);
-        return false;
+        if (child[".type"] == "outbound_source")
+            return false;
+        return true;
     }
     return item_bool(section, "subscription_url_settings", value, "include_urltest_groups", true);
 }
@@ -3484,12 +3486,14 @@ function subscription_hide_urltest_group_outbounds(section, value) {
         let legacy_child = child[".type"] == "outbound_source"
             ? child_item_by_value(section, "subscription_url", "url", value)
             : null;
-        if (legacy_child != null && raw_option(legacy_child, "hide_urltest_group_outbounds") != null)
+        if (legacy_child != null)
             return child_bool(legacy_child, "hide_urltest_group_outbounds", true);
         let settings = item_settings(section, "subscription_url_settings", value);
         if (raw_option(settings, "hide_urltest_group_outbounds") != null)
             return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", true);
-        return false;
+        if (child[".type"] == "outbound_source")
+            return false;
+        return true;
     }
     return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", true);
 }

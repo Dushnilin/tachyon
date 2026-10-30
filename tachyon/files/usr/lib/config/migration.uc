@@ -2041,7 +2041,7 @@ function cleanup_modular_entities_v1(ctx) {
             }
         }
 
-        // Sync any newly added or unmigrated subscription_url child sections into outbound_source
+        // Sync options from legacy subscription_url child sections onto matching existing outbound_source
         for (let sub in (ctx.model.subscription_url || [])) {
             if (option(sub, "section", "") != sname)
                 continue;
@@ -2055,15 +2055,8 @@ function cleanup_modular_entities_v1(ctx) {
                     break;
                 }
             }
-            if (existing_src_obj == null) {
-                let next_idx = length(ctx.model.outbound_source || []) + 1;
-                let src_id = "src_sub_" + safe_sname + "_" + next_idx;
-                existing_src_obj = create_named_section(ctx, "outbound_source", src_id);
-                set_option_if_missing(ctx, existing_src_obj, "enabled", "1");
-                set_option_if_missing(ctx, existing_src_obj, "name", option(sub, "node_prefix", "") != "" ? option(sub, "node_prefix", "") : (sec_display_name + " Subscription"));
-                set_option_if_missing(ctx, existing_src_obj, "source_type", "subscription");
-                set_option_if_missing(ctx, existing_src_obj, "url", url);
-            }
+            if (existing_src_obj == null)
+                continue;
             for (let sk in [
                 "user_agent", "auto_user_agent", "hwid", "auto_hwid",
                 "prefix_nodes", "node_prefix", "hide_detour_outbounds",
@@ -2075,7 +2068,6 @@ function cleanup_modular_entities_v1(ctx) {
                 if (sval != "")
                     set_option_if_missing(ctx, existing_src_obj, sk, sval);
             }
-            add_list_unique(ctx, section, "outbound_source_refs", section_name(existing_src_obj));
         }
     }
 
