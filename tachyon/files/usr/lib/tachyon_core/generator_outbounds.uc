@@ -1073,6 +1073,12 @@ function add_imported_wireguard_endpoint(config, endpoint) {
             }
             delete endpoint.amnezia;
         }
+        if (ctx.is_tachyon_core != null && ctx.is_tachyon_core(null)) {
+            delete endpoint.fake_packets;
+            delete endpoint.fake_packets_size;
+            delete endpoint.fake_packets_delay;
+            delete endpoint.fake_packets_mode;
+        }
         if (endpoint.address != null)
             endpoint.address = core_ip.normalize_to_cidrs(endpoint.address);
         if (type(endpoint.peers) == "array") {

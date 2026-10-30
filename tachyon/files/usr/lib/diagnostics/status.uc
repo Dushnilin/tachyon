@@ -2000,13 +2000,17 @@ function clash_proxy_tags_lines(proxy_tags_json) {
 }
 
 function clash_proxy_latencies_result(count, failed) {
-    let has_failed = as_string(failed) != "0";
+    let total_count = int(as_string(count || "0")) || 0;
+    let failed_count = int(as_string(failed || "0")) || 0;
+    let has_failed = failed_count > 0;
+    let ok = total_count > 0 || !has_failed;
     write_json({
-        success: !has_failed,
-        count: int(as_string(count || "0"), 10) || 0,
-        failed: has_failed
+        success: ok,
+        count: total_count,
+        failed: has_failed,
+        failed_count: failed_count
     });
-    if (has_failed)
+    if (!ok)
         exit(1);
 }
 

@@ -1008,7 +1008,7 @@ export async function applyTestedLatenciesResults(
 
       const isNewMeasurement =
         Boolean(currentTime) &&
-        (prevTime != null ? currentTime !== prevTime : isFreshTimestamp);
+        (isFreshTimestamp || (prevTime != null && currentTime !== prevTime));
 
       if (isNewMeasurement && delay > 0) {
         customProxyLatencies.set(tag, delay);
@@ -1103,6 +1103,7 @@ async function handleTestLatency(
       completed = true;
       void fetchDashboardSections({ force: true });
     } else {
+      await snapshotBeforePromise;
       const startResponse = await TachyonShellMethods.latencyTestStart(
         latencyType,
         sectionName,
@@ -1123,14 +1124,15 @@ async function handleTestLatency(
 
       followedLatencyJobs.add(jobId);
       ownsJobFollow = true;
-      await Promise.all([
-        TachyonShellMethods.waitLatencyTestJob(jobId, Date.now(), (state) => {
+      await TachyonShellMethods.waitLatencyTestJob(
+        jobId,
+        Date.now(),
+        (state) => {
           if (state.running && state.progress) {
             setLatencyFetching(sectionName, true, true, state.progress);
           }
-        }),
-        snapshotBeforePromise,
-      ]);
+        },
+      );
       await applyTestedLatenciesResults(testedTags, testStartedAt, beforeTimes);
       await completeLatencyTestJob(jobId, sectionName);
       completed = true;
@@ -2669,10 +2671,16 @@ async function renderSectionsWidget() {
             'proxy_list',
             section.sectionName,
             serializedTag,
+            section.latencyTestTimeout,
           );
           return;
         }
-        void handleTestLatency('group', section.sectionName, tag);
+        void handleTestLatency(
+          'group',
+          section.sectionName,
+          tag,
+          section.latencyTestTimeout,
+        );
         return;
       }
       const testable = section.outbounds.filter(

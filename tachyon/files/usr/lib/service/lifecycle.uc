@@ -800,6 +800,8 @@ function prepare_subscription_caches(mode) {
 
 function restore_rulesets_from_cache() {
     let runtime_rulesets_mod = require("tachyon_core.rulesets");
+    let use_trs = type(runtime_rulesets_mod.supports_trs) == "function" &&
+        runtime_rulesets_mod.supports_trs();
     let etc_dir = "/etc/tachyon/rulesets";
     let tmp_dir = TMP_RULESET_FOLDER;
 
@@ -810,6 +812,10 @@ function restore_rulesets_from_cache() {
     let entry;
     while ((entry = dir.read()) != null) {
         if (!match(entry, /\.(trs|srs|lst|json)$/)) continue;
+        if (use_trs && match(entry, /^community-.*\.srs$/)) {
+            remove_file(tmp_dir + "/" + entry);
+            continue;
+        }
         let tmp_path = tmp_dir + "/" + entry;
         let etc_path = etc_dir + "/" + entry;
         let tmp_st = fs.stat(tmp_path);
@@ -900,12 +906,44 @@ function prepare_community_rulesets() {
         let etc_path = etc_dir + "/community-" + service + ".srs";
 
         if (use_trs && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function") {
+            remove_file(tmp_path);
             if (runtime_rulesets_mod.is_referenceable_trs_file(tmp_trs_path))
                 continue;
             if (runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path)) {
                 if (common.copy_file_stream(etc_trs_path, tmp_trs_path))
                     continue;
             }
+            if (has_curl && type(runtime_rulesets_mod.community_trs_urls) == "function") {
+                let trs_urls = runtime_rulesets_mod.community_trs_urls(service);
+                let trs_candidates = [];
+                for (let tu in trs_urls) {
+                    let expanded = type(core_url_mod.download_candidates) == "function" ?
+                        core_url_mod.download_candidates(tu) : [ tu ];
+                    for (let ex in expanded)
+                        if (!(ex in trs_candidates))
+                            push(trs_candidates, ex);
+                }
+                for (let trs_candidate in trs_candidates) {
+                    let dl_tmp = tmp_dir + "/.fetch-" + service + ".trs.tmp";
+                    let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", trs_candidate, "-o", dl_tmp ];
+                    if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_trs_file(dl_tmp)) {
+                        let st_trs = fs.stat(dl_tmp);
+                        let sz_trs = st_trs != null ? int(st_trs.size || 0) : 0;
+                        command_success_from_args([ "mv", "-f", dl_tmp, tmp_trs_path ]);
+                        if (sz_trs > 0 && sz_trs <= 524288) {
+                            command_success_from_args([ "mkdir", "-p", etc_dir ]);
+                            common.copy_file(tmp_trs_path, etc_trs_path);
+                        } else if (sz_trs > 524288) {
+                            remove_file(etc_trs_path);
+                        }
+                        remove_file(etc_path);
+                        log_message("Pre-downloaded community ruleset " + service + " (.trs) from " + trs_candidate, "info");
+                        break;
+                    }
+                    remove_file(dl_tmp);
+                }
+            }
+            continue;
         }
 
         // The /tmp copy used to be trusted outright, which is what left the reported
@@ -934,38 +972,6 @@ function prepare_community_rulesets() {
         }
 
         let fetched = false;
-
-        if (has_curl && use_trs && type(runtime_rulesets_mod.community_trs_urls) == "function") {
-            let trs_urls = runtime_rulesets_mod.community_trs_urls(service);
-            let trs_candidates = [];
-            for (let tu in trs_urls) {
-                let expanded = type(core_url_mod.download_candidates) == "function" ?
-                    core_url_mod.download_candidates(tu) : [ tu ];
-                for (let ex in expanded)
-                    if (!(ex in trs_candidates))
-                        push(trs_candidates, ex);
-            }
-            for (let trs_candidate in trs_candidates) {
-                let dl_tmp = tmp_dir + "/.fetch-" + service + ".trs.tmp";
-                let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", trs_candidate, "-o", dl_tmp ];
-                if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_trs_file(dl_tmp)) {
-                    let st_trs = fs.stat(dl_tmp);
-                    let sz_trs = st_trs != null ? int(st_trs.size || 0) : 0;
-                    command_success_from_args([ "mv", "-f", dl_tmp, tmp_trs_path ]);
-                    if (sz_trs > 0 && sz_trs <= 524288) {
-                        command_success_from_args([ "mkdir", "-p", etc_dir ]);
-                        common.copy_file(tmp_trs_path, etc_trs_path);
-                    } else if (sz_trs > 524288) {
-                        remove_file(etc_trs_path);
-                    }
-                    log_message("Pre-downloaded community ruleset " + service + " (.trs) from " + trs_candidate, "info");
-                    fetched = true;
-                    break;
-                }
-                remove_file(dl_tmp);
-            }
-        }
-
         let url = runtime_rulesets_mod.community_url(service);
         let candidates = type(core_url_mod.download_candidates) == "function" ?
             core_url_mod.download_candidates(url) : [ url ];

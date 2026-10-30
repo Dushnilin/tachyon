@@ -849,6 +849,20 @@ const EntryPoint = {
                 uci.set(self.config, pid, "enabled", "1");
                 uci.set(self.config, pid, "name", dispName);
                 uci.set(self.config, pid, "source_type", sAct);
+                Object.keys(sec).forEach((k) => {
+                  if (
+                    k.startsWith(`${sAct}_`) ||
+                    (sAct === "warp" && k.startsWith("awg_"))
+                  ) {
+                    if (
+                      sec[k] !== undefined &&
+                      sec[k] !== null &&
+                      sec[k] !== ""
+                    ) {
+                      uci.set(self.config, pid, k, sec[k]);
+                    }
+                  }
+                });
               }
               ensureSourceRef(sname, pid);
             }

@@ -2834,6 +2834,34 @@ function createOutboundsContent(section) {
         if (data.mtu) {
           setModalFieldValue(section, sectionId, "warp_mtu", String(data.mtu));
         }
+        const awgKeys = [
+          "awg_version",
+          "awg_jc",
+          "awg_jmin",
+          "awg_jmax",
+          "awg_s1",
+          "awg_s2",
+          "awg_s3",
+          "awg_s4",
+          "awg_h1",
+          "awg_h2",
+          "awg_h3",
+          "awg_h4",
+          "awg_i1",
+          "awg_i2",
+          "awg_i3",
+          "awg_i4",
+          "awg_i5",
+        ];
+        awgKeys.forEach((k) => {
+          if (
+            data[k] !== undefined &&
+            data[k] !== null &&
+            String(data[k]) !== ""
+          ) {
+            uci.set("tachyon", sectionId, k, String(data[k]));
+          }
+        });
         ui.addNotification(
           null,
           E("p", _("WARP configuration generated and filled.")),

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-30 19:58+0300\n"
-"PO-Revision-Date: 2026-10-30 19:58+0300\n"
+"POT-Creation-Date: 2026-10-30 21:31+0300\n"
+"PO-Revision-Date: 2026-10-30 21:31+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -61,7 +61,7 @@ msgstr ""
 msgid "+ Add priority"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3779
+#: src/tachyon/connectionWizard.ts:3817
 msgid "+ Create new routing section"
 msgstr ""
 
@@ -119,7 +119,7 @@ msgstr ""
 msgid "0 servers cached"
 msgstr ""
 
-#: src/views/outbounds.ts:3977
+#: src/views/outbounds.ts:4005
 #: src/views/section.ts:13277
 msgid "1 (Byte 1 after header)"
 msgstr ""
@@ -128,7 +128,7 @@ msgstr ""
 msgid "1. Dashboard Presets (5 layouts)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4051
+#: src/tachyon/connectionWizard.ts:4089
 msgid "1. Router Primary DNS"
 msgstr ""
 
@@ -136,7 +136,7 @@ msgstr ""
 msgid "1. Where is the argument present? (Presence Search)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3746
+#: src/tachyon/connectionWizard.ts:3784
 msgid "1. Where should this connection be used?"
 msgstr ""
 
@@ -148,7 +148,7 @@ msgstr ""
 msgid "15 min — Quick"
 msgstr ""
 
-#: src/views/outbounds.ts:3978
+#: src/views/outbounds.ts:4006
 #: src/views/section.ts:13278
 msgid "2 (Byte 2)"
 msgstr ""
@@ -165,7 +165,7 @@ msgstr ""
 msgid "2-letter ISO country codes (e.g. ru, us, de, nl). Automatically downloads and caches the corresponding GeoIP rule-sets."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4209
+#: src/tachyon/connectionWizard.ts:4247
 msgid "2. Direct ISP Route for Games & RU Services + Yandex DNS"
 msgstr ""
 
@@ -177,12 +177,12 @@ msgstr ""
 msgid "2. Which rule is strictly satisfied? (Exact Boolean Match)"
 msgstr ""
 
-#: src/views/outbounds.ts:3979
+#: src/views/outbounds.ts:4007
 #: src/views/section.ts:13279
 msgid "3 (Byte 3)"
 msgstr ""
 
-#: src/views/outbounds.ts:2912
+#: src/views/outbounds.ts:2940
 msgid "3 comma-separated integers or Base64 client_id."
 msgstr ""
 
@@ -218,8 +218,8 @@ msgstr ""
 msgid "ACTIVE"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2627
-#: src/views/outbounds.ts:3531
+#: src/tachyon/connectionWizard.ts:2665
+#: src/views/outbounds.ts:3559
 msgid "AEAD Cipher"
 msgstr ""
 
@@ -314,7 +314,7 @@ msgstr ""
 msgid "ALPN"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2165
+#: src/tachyon/connectionWizard.ts:2203
 msgid "ALPN Protocols (comma-separated)"
 msgstr ""
 
@@ -327,7 +327,7 @@ msgstr ""
 msgid "API Key for OpenAI (sk-...), Anthropic, DeepSeek, OpenRouter, or Gemini (optional for Ollama / LM Studio)"
 msgstr ""
 
-#: src/views/outbounds.ts:3540
+#: src/views/outbounds.ts:3568
 msgid "ASCII Mode"
 msgstr ""
 
@@ -347,11 +347,11 @@ msgstr ""
 msgid "AWG 3.1 (Random Trailers & Cookie Control)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1481
+#: src/tachyon/connectionWizard.ts:1519
 msgid "AWG Fake Packets / MTU"
 msgstr ""
 
-#: src/views/tachyon.ts:1831
+#: src/views/tachyon.ts:1845
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr ""
 
@@ -396,11 +396,11 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1592
-#: src/tachyon/tabs/dashboard/initController.ts:3559
-#: src/tachyon/tabs/dashboard/initController.ts:4009
-#: src/tachyon/tabs/dashboard/initController.ts:4232
-#: src/tachyon/tabs/dashboard/initController.ts:4476
+#: src/tachyon/tabs/dashboard/initController.ts:1594
+#: src/tachyon/tabs/dashboard/initController.ts:3567
+#: src/tachyon/tabs/dashboard/initController.ts:4017
+#: src/tachyon/tabs/dashboard/initController.ts:4240
+#: src/tachyon/tabs/dashboard/initController.ts:4484
 #: src/tachyon/tabs/monitoring/initController.ts:386
 #: src/tachyon/tabs/monitoring/render.ts:20
 #: src/tachyon/tabs/updates/initController.ts:2867
@@ -443,13 +443,13 @@ msgstr ""
 msgid "Active Check Interval"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3728
+#: src/tachyon/tabs/dashboard/initController.ts:3736
 #: src/tachyon/tabs/dashboard/partials/renderConnections.ts:103
 #: src/tachyon/tabs/dashboard/partials/renderConnections.ts:300
 msgid "Active Clients"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3712
+#: src/tachyon/tabs/dashboard/initController.ts:3720
 msgid "Active Connections"
 msgstr ""
 
@@ -465,7 +465,7 @@ msgstr ""
 msgid "Active Only"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3565
+#: src/tachyon/tabs/dashboard/initController.ts:3573
 msgid "Active Route"
 msgstr ""
 
@@ -490,8 +490,8 @@ msgstr ""
 msgid "Ad & unwanted traffic blocking"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:5436
-#: src/tachyon/connectionWizard.ts:5442
+#: src/tachyon/connectionWizard.ts:5502
+#: src/tachyon/connectionWizard.ts:5508
 msgid "Ad Blocker"
 msgstr ""
 
@@ -499,12 +499,12 @@ msgstr ""
 msgid "Adaptive"
 msgstr ""
 
-#: src/views/outbounds.ts:3891
+#: src/views/outbounds.ts:3919
 #: src/views/section.ts:13187
 msgid "Adaptive 2.0 (Auto-learning: ClientHello clone + RAW inject + cache.db) — Recommended"
 msgstr ""
 
-#: src/views/outbounds.ts:3954
+#: src/views/outbounds.ts:3982
 #: src/views/section.ts:13253
 msgid "Adaptive 2.0 Auto-Learning (auto_tune)"
 msgstr ""
@@ -557,35 +557,35 @@ msgstr ""
 msgid "Add URLs or local paths to .srs / .json / .lst / .txt lists. Subnets are ignored by default."
 msgstr ""
 
-#: src/views/tachyon.ts:1816
+#: src/views/tachyon.ts:1830
 msgid "Add a balancer"
 msgstr ""
 
-#: src/views/tachyon.ts:1780
+#: src/views/tachyon.ts:1794
 msgid "Add a condition"
 msgstr ""
 
-#: src/views/tachyon.ts:1861
+#: src/views/tachyon.ts:1875
 msgid "Add a family profile"
 msgstr ""
 
-#: src/views/tachyon.ts:1880
+#: src/views/tachyon.ts:1894
 msgid "Add a schedule rule"
 msgstr ""
 
-#: src/views/tachyon.ts:1761
+#: src/views/tachyon.ts:1775
 msgid "Add a section"
 msgstr ""
 
-#: src/views/tachyon.ts:1837
+#: src/views/tachyon.ts:1851
 msgid "Add a server inbound"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1100
+#: src/tachyon/connectionWizard.ts:1157
 msgid "Add a subscription URL, VLESS / Hysteria2 / TUIC / SS share links, AmneziaWG / WireGuard config, Cloudflare WARP, or built-in Tachyon Core Desync."
 msgstr ""
 
-#: src/views/tachyon.ts:1798
+#: src/views/tachyon.ts:1812
 msgid "Add an outbound source"
 msgstr ""
 
@@ -608,7 +608,7 @@ msgstr ""
 msgid "Add prefix to nodes"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3794
+#: src/tachyon/connectionWizard.ts:3832
 msgid "Add to Connections Pool only"
 msgstr ""
 
@@ -616,7 +616,7 @@ msgstr ""
 msgid "Additional Individual Devices (IP / MAC)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3717
+#: src/tachyon/connectionWizard.ts:3755
 msgid "Additional custom domains (optional, comma or newline separated)"
 msgstr ""
 
@@ -664,7 +664,7 @@ msgstr ""
 msgid "Administrator Chat IDs"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:5421
+#: src/tachyon/connectionWizard.ts:5487
 msgid "Ads & Telemetry"
 msgstr ""
 
@@ -888,11 +888,11 @@ msgstr ""
 msgid "Allows access to YACD from the WAN. Make sure to open the appropriate port in your firewall."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3864
+#: src/tachyon/connectionWizard.ts:3902
 msgid "Allows attaching selected service lists and custom domains to the existing section right away"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4659
+#: src/tachyon/connectionWizard.ts:4697
 msgid "Allows inbound WAN connections to the selected server port"
 msgstr ""
 
@@ -1072,7 +1072,7 @@ msgstr ""
 msgid "Anti-Bypass: Block Private DNS / DoH / DoT"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2132
+#: src/tachyon/connectionWizard.ts:2170
 msgid "AnyTLS Password"
 msgstr ""
 
@@ -1120,7 +1120,7 @@ msgstr ""
 msgid "Applying rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3646
+#: src/tachyon/tabs/dashboard/initController.ts:3654
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:348
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:389
 msgid "Applying..."
@@ -1158,7 +1158,7 @@ msgstr ""
 msgid "Atomic conditions match traffic properties directly. Composite conditions combine other conditions with AND, OR, and NOT."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3763
+#: src/tachyon/connectionWizard.ts:3801
 msgid "Attach to existing routing section"
 msgstr ""
 
@@ -1166,16 +1166,16 @@ msgstr ""
 msgid "Attached to Sections"
 msgstr ""
 
-#: src/views/outbounds.ts:3163
+#: src/views/outbounds.ts:3191
 #: src/views/section.ts:14227
 msgid "Auth Digest"
 msgstr ""
 
-#: src/views/outbounds.ts:3631
+#: src/views/outbounds.ts:3659
 msgid "Auth Group"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3176
+#: src/tachyon/connectionWizard.ts:3214
 msgid "Auth Group (optional)"
 msgstr ""
 
@@ -1183,19 +1183,19 @@ msgstr ""
 msgid "Auth Realm"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1393
-#: src/tachyon/tabs/dashboard/initController.ts:1824
+#: src/tachyon/tabs/dashboard/initController.ts:1395
+#: src/tachyon/tabs/dashboard/initController.ts:1826
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1471
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:35
 msgid "Auto"
 msgstr ""
 
-#: src/views/outbounds.ts:4012
+#: src/views/outbounds.ts:4040
 #: src/views/section.ts:13316
 msgid "Auto (Clone target SNI / www.google.com)"
 msgstr ""
 
-#: src/views/outbounds.ts:3715
+#: src/views/outbounds.ts:3743
 #: src/views/section.ts:13665
 msgid "Auto (Default)"
 msgstr ""
@@ -1204,7 +1204,7 @@ msgstr ""
 msgid "Auto (TCP/UDP)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1735
+#: src/tachyon/connectionWizard.ts:1773
 msgid "Auto (clone SNI / www.google.com)"
 msgstr ""
 
@@ -1232,7 +1232,7 @@ msgstr ""
 msgid "Auto update"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1619
+#: src/tachyon/connectionWizard.ts:1657
 msgid "Auto — automatic strategy fallback"
 msgstr ""
 
@@ -1240,7 +1240,7 @@ msgstr ""
 msgid "Auto-Heal Network Stack"
 msgstr ""
 
-#: src/views/outbounds.ts:2987
+#: src/views/outbounds.ts:3015
 msgid "Auto-SNI"
 msgstr ""
 
@@ -1248,7 +1248,7 @@ msgstr ""
 msgid "Auto-Select"
 msgstr ""
 
-#: src/views/outbounds.ts:3940
+#: src/views/outbounds.ts:3968
 #: src/views/section.ts:13239
 msgid "Auto-TTL (Calculated from kernel RTT hops)"
 msgstr ""
@@ -1300,7 +1300,7 @@ msgstr ""
 msgid "Auto-generate HWID"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2030
+#: src/tachyon/connectionWizard.ts:2068
 msgid "Auto-select fastest node from token"
 msgstr ""
 
@@ -1308,7 +1308,7 @@ msgstr ""
 msgid "Auto-update Hosts Lists"
 msgstr ""
 
-#: src/views/outbounds.ts:4134
+#: src/views/outbounds.ts:4162
 msgid "Auto-update Subscription"
 msgstr ""
 
@@ -1328,11 +1328,11 @@ msgstr ""
 msgid "Automatic (Priority Failover when mixing connections / DPI + VPN)"
 msgstr ""
 
-#: src/views/outbounds.ts:4228
+#: src/views/outbounds.ts:4256
 msgid "Automatic HWID Header (x-hwid)"
 msgstr ""
 
-#: src/views/outbounds.ts:4193
+#: src/views/outbounds.ts:4221
 msgid "Automatic User-Agent"
 msgstr ""
 
@@ -1388,7 +1388,7 @@ msgstr ""
 msgid "Automatically register a free Cloudflare WARP account and fill all fields below."
 msgstr ""
 
-#: src/views/outbounds.ts:3955
+#: src/views/outbounds.ts:3983
 #: src/views/section.ts:13254
 msgid "Automatically rotate strategies on RST/cutoff/throttling (<20 KiB/s) and persist working profile per SNI in cache.db."
 msgstr ""
@@ -1397,7 +1397,7 @@ msgstr ""
 msgid "Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom bypass strategies tailored to your ISP."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1949
+#: src/tachyon/tabs/dashboard/initController.ts:1951
 #: src/views/section.ts:4871
 msgid "Automatically select the fastest node in the current level"
 msgstr ""
@@ -1453,7 +1453,7 @@ msgstr ""
 msgid "Background color presets:"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2909
+#: src/tachyon/connectionWizard.ts:2947
 msgid "Background tunnel health check"
 msgstr ""
 
@@ -1461,7 +1461,7 @@ msgstr ""
 msgid "Background:"
 msgstr ""
 
-#: src/views/tachyon.ts:1815
+#: src/views/tachyon.ts:1829
 msgid "Balancer"
 msgstr ""
 
@@ -1473,8 +1473,8 @@ msgstr ""
 msgid "Balancer Type"
 msgstr ""
 
-#: src/views/tachyon.ts:1591
-#: src/views/tachyon.ts:1807
+#: src/views/tachyon.ts:1605
+#: src/views/tachyon.ts:1821
 msgid "Balancers"
 msgstr ""
 
@@ -1528,7 +1528,7 @@ msgstr ""
 msgid "Benchmark stopped"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4014
+#: src/tachyon/connectionWizard.ts:4052
 msgid "Benchmarking DNS..."
 msgstr ""
 
@@ -1536,7 +1536,7 @@ msgstr ""
 msgid "Benchmarking in progress..."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4063
+#: src/tachyon/connectionWizard.ts:4101
 msgid "Benchmarking..."
 msgstr ""
 
@@ -1607,7 +1607,7 @@ msgstr ""
 msgid "Block in interval"
 msgstr ""
 
-#: src/views/tachyon.ts:1872
+#: src/views/tachyon.ts:1886
 msgid "Block internet access or specific proxy sections for family profiles or individual devices based on time and days."
 msgstr ""
 
@@ -1731,7 +1731,7 @@ msgstr ""
 msgid "ByeDPI (ciadpi SOCKS5 Desync)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1536
+#: src/tachyon/connectionWizard.ts:1574
 msgid "ByeDPI (ciadpi — local SOCKS5 desync)"
 msgstr ""
 
@@ -1741,11 +1741,11 @@ msgstr ""
 msgid "ByeDPI (ciadpi)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1927
+#: src/tachyon/connectionWizard.ts:1965
 msgid "ByeDPI (ciadpi) Command Arguments"
 msgstr ""
 
-#: src/views/outbounds.ts:3865
+#: src/views/outbounds.ts:3893
 #: src/views/section.ts:10733
 msgid "ByeDPI Strategy"
 msgstr ""
@@ -1833,7 +1833,7 @@ msgstr ""
 msgid "CA Certificate"
 msgstr ""
 
-#: src/views/outbounds.ts:3178
+#: src/views/outbounds.ts:3206
 msgid "CA Certificate (<ca>)"
 msgstr ""
 
@@ -1845,7 +1845,7 @@ msgstr ""
 msgid "COMPOSITE"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3921
+#: src/tachyon/tabs/dashboard/initController.ts:3929
 msgid "CORE ONLINE"
 msgstr ""
 
@@ -1869,12 +1869,12 @@ msgstr ""
 msgid "Camou"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2002
+#: src/tachyon/connectionWizard.ts:2040
 msgid "Camouflage SNI Domain (optional)"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:327
-#: src/tachyon/connectionWizard.ts:6343
+#: src/tachyon/connectionWizard.ts:6437
 #: src/tachyon/studioDeck.ts:1064
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1409
 #: src/tachyon/tabs/diagnostic/initController.ts:1168
@@ -1932,7 +1932,7 @@ msgstr ""
 msgid "Cascade connection"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1970
+#: src/tachyon/connectionWizard.ts:2008
 msgid "Censorship Bypass Method"
 msgstr ""
 
@@ -1952,7 +1952,7 @@ msgstr ""
 msgid "Certificate pin is unavailable. Apply or restart the server to generate the default certificate, then open this dialog again."
 msgstr ""
 
-#: src/views/outbounds.ts:4434
+#: src/views/outbounds.ts:4462
 msgid "Chain via Another Section (Detour)"
 msgstr ""
 
@@ -1984,7 +1984,7 @@ msgstr ""
 msgid "Check Timeout"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1934
+#: src/tachyon/tabs/dashboard/initController.ts:1936
 #: src/views/section.ts:4342
 #: src/views/section.ts:4809
 msgid "Check URL"
@@ -2016,7 +2016,7 @@ msgstr ""
 msgid "Check domain"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1936
+#: src/tachyon/tabs/dashboard/initController.ts:1938
 #: src/views/section.ts:10515
 #: src/views/section.ts:4316
 #: src/views/section.ts:4822
@@ -2036,7 +2036,7 @@ msgstr ""
 msgid "Check update"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2179
+#: src/tachyon/tabs/dashboard/initController.ts:2181
 msgid "Checking Connection..."
 msgstr ""
 
@@ -2062,8 +2062,8 @@ msgstr ""
 msgid "Checking, please wait"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3372
-#: src/tachyon/tabs/dashboard/initController.ts:3446
+#: src/tachyon/tabs/dashboard/initController.ts:3380
+#: src/tachyon/tabs/dashboard/initController.ts:3454
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2393
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1313
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1358
@@ -2124,7 +2124,7 @@ msgstr ""
 msgid "Choose between 1 and 32 test domains."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1070
+#: src/tachyon/connectionWizard.ts:1127
 msgid "Choose what kind of connection to add. The wizard will automatically configure all required entities with optimal defaults."
 msgstr ""
 
@@ -2148,7 +2148,7 @@ msgstr ""
 msgid "Choose which routing sections to apply this schedule to."
 msgstr ""
 
-#: src/views/outbounds.ts:4397
+#: src/views/outbounds.ts:4425
 msgid "Chrome (Recommended for REALITY + ML-KEM)"
 msgstr ""
 
@@ -2200,8 +2200,8 @@ msgstr ""
 msgid "Click to choose website for section icon (favicon.ico)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1354
-#: src/tachyon/tabs/dashboard/initController.ts:1903
+#: src/tachyon/tabs/dashboard/initController.ts:1356
+#: src/tachyon/tabs/dashboard/initController.ts:1905
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1529
 msgid "Click to customize prefix colors"
 msgstr ""
@@ -2240,7 +2240,7 @@ msgstr ""
 msgid "Client Certificate"
 msgstr ""
 
-#: src/views/outbounds.ts:3188
+#: src/views/outbounds.ts:3216
 msgid "Client Certificate (<cert>)"
 msgstr ""
 
@@ -2269,11 +2269,11 @@ msgstr ""
 msgid "Client Private Key"
 msgstr ""
 
-#: src/views/outbounds.ts:3198
+#: src/views/outbounds.ts:3226
 msgid "Client Private Key (<key>)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1389
+#: src/tachyon/connectionWizard.ts:1427
 msgid "Client Private Key (Base64)"
 msgstr ""
 
@@ -2281,20 +2281,20 @@ msgstr ""
 msgid "Client Public Key"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4581
+#: src/tachyon/connectionWizard.ts:4619
 msgid "Client Traffic Routing"
 msgstr ""
 
 #: src/views/outbounds.ts:2600
-#: src/views/outbounds.ts:2861
+#: src/views/outbounds.ts:2889
 msgid "Client Tunnel IP / CIDR"
 msgstr ""
 
-#: src/views/outbounds.ts:3583
+#: src/views/outbounds.ts:3611
 msgid "Client Tunnel IPv4 / CIDR"
 msgstr ""
 
-#: src/views/outbounds.ts:3593
+#: src/views/outbounds.ts:3621
 msgid "Client Tunnel IPv6 / CIDR"
 msgstr ""
 
@@ -2341,8 +2341,8 @@ msgstr ""
 #: src/tachyon/appShell.ts:755
 #: src/tachyon/appShell.ts:756
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1162
-#: src/tachyon/tabs/dashboard/initController.ts:1736
-#: src/tachyon/tabs/dashboard/initController.ts:2522
+#: src/tachyon/tabs/dashboard/initController.ts:1738
+#: src/tachyon/tabs/dashboard/initController.ts:2524
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:233
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:722
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:290
@@ -2386,7 +2386,7 @@ msgstr ""
 msgid "Cloudflare API access token"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1411
+#: src/tachyon/connectionWizard.ts:1449
 msgid "Cloudflare Peer Public Key"
 msgstr ""
 
@@ -2403,7 +2403,7 @@ msgstr ""
 msgid "Cloudflare WARP account / device ID"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1345
+#: src/tachyon/connectionWizard.ts:1383
 msgid "Cloudflare WARP keys registered!"
 msgstr ""
 
@@ -2435,15 +2435,15 @@ msgstr ""
 msgid "Command-line arguments string..."
 msgstr ""
 
-#: src/views/outbounds.ts:3866
+#: src/views/outbounds.ts:3894
 msgid "Command-line strategy arguments for ciadpi (ByeDPI)."
 msgstr ""
 
-#: src/views/outbounds.ts:3832
+#: src/views/outbounds.ts:3860
 msgid "Command-line strategy arguments for nfqws (zapret)."
 msgstr ""
 
-#: src/views/outbounds.ts:3809
+#: src/views/outbounds.ts:3837
 msgid "Command-line strategy arguments for nfqws2 (zapret2 / wdtt / olcrtc)."
 msgstr ""
 
@@ -2471,7 +2471,7 @@ msgstr ""
 msgid "Component update check interval"
 msgstr ""
 
-#: src/views/tachyon.ts:1935
+#: src/views/tachyon.ts:1949
 msgid "Components"
 msgstr ""
 
@@ -2480,7 +2480,7 @@ msgstr ""
 msgid "Composite Boolean Rule (AND / OR / NOT)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3608
+#: src/tachyon/tabs/dashboard/initController.ts:3616
 msgid "Comprehensive eco mode for low-power MIPS/MIPSEL routers (QCA9531 / MT7628): lower proxy priority (nice 15), nftables ct mark Short-Circuit + connlimit, tighter conntrack limits (600s / 256KB), and Control Plane hibernation under heavy load"
 msgstr ""
 
@@ -2488,7 +2488,7 @@ msgstr ""
 msgid "Concurrency"
 msgstr ""
 
-#: src/views/tachyon.ts:1779
+#: src/views/tachyon.ts:1793
 msgid "Condition"
 msgstr ""
 
@@ -2518,12 +2518,12 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:1901
 #: src/views/section.ts:10305
-#: src/views/tachyon.ts:1589
-#: src/views/tachyon.ts:1771
+#: src/views/tachyon.ts:1603
+#: src/views/tachyon.ts:1785
 msgid "Conditions"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2337
+#: src/tachyon/tabs/dashboard/initController.ts:2339
 msgid "Conditions & Rules"
 msgstr ""
 
@@ -2575,7 +2575,7 @@ msgstr ""
 msgid "Configure User-Agent in the item settings"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2508
+#: src/tachyon/tabs/dashboard/initController.ts:2510
 msgid "Configure section & rules →"
 msgstr ""
 
@@ -2624,7 +2624,7 @@ msgstr ""
 msgid "Connected clients and active connections"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1022
+#: src/tachyon/connectionWizard.ts:1079
 #: src/tachyon/studioDeck.ts:308
 #: src/tachyon/tabs/diagnostic/initController.ts:1123
 #: src/views/section.ts:10346
@@ -2639,7 +2639,7 @@ msgstr ""
 msgid "Connection / Source Type"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1177
+#: src/tachyon/connectionWizard.ts:1234
 #: src/views/outbounds.ts:1792
 msgid "Connection Name"
 msgstr ""
@@ -2669,7 +2669,7 @@ msgid "Connection links (text)"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1123
-#: src/tachyon/tabs/dashboard/initController.ts:3543
+#: src/tachyon/tabs/dashboard/initController.ts:3551
 msgid "Connections"
 msgstr ""
 
@@ -2769,13 +2769,13 @@ msgstr ""
 msgid "Copy log"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1657
+#: src/tachyon/tabs/dashboard/initController.ts:1659
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1565
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1566
 msgid "Copy proxy link"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3910
+#: src/tachyon/tabs/dashboard/initController.ts:3918
 msgid "Core Telemetry HUD"
 msgstr ""
 
@@ -2800,7 +2800,7 @@ msgstr ""
 msgid "Country"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4622
+#: src/tachyon/connectionWizard.ts:4660
 msgid "Country Flag Code"
 msgstr ""
 
@@ -2848,11 +2848,11 @@ msgstr ""
 msgid "Create a new configuration entry and open its settings modal"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4464
+#: src/tachyon/connectionWizard.ts:4502
 msgid "Creates a router-level Block section using ads_hagezi_pro and win_spy lists from tachyon-lists"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4237
+#: src/tachyon/connectionWizard.ts:4275
 msgid "Creates a top-priority direct bypass section with Russian DNS resolution (Yandex 77.88.8.8) so games and local services get minimal latency and connect to the nearest ISP CDN servers."
 msgstr ""
 
@@ -2908,11 +2908,11 @@ msgstr ""
 msgid "Custom DNS Route"
 msgstr ""
 
-#: src/views/outbounds.ts:4274
+#: src/views/outbounds.ts:4302
 msgid "Custom Device Metadata Headers"
 msgstr ""
 
-#: src/views/outbounds.ts:3763
+#: src/views/outbounds.ts:3791
 msgid "Custom Domain Resolver for Interface"
 msgstr ""
 
@@ -2924,7 +2924,7 @@ msgstr ""
 msgid "Custom Domains, Subnets & Devices"
 msgstr ""
 
-#: src/views/outbounds.ts:4239
+#: src/views/outbounds.ts:4267
 msgid "Custom HWID (x-hwid)"
 msgstr ""
 
@@ -2940,7 +2940,7 @@ msgstr ""
 msgid "Custom OpenAI-compatible API endpoint or base URL (e.g. http://192.168.1.100:1234 or http://192.168.1.100:11434/v1/chat/completions). Leave empty to use official provider URL."
 msgstr ""
 
-#: src/views/outbounds.ts:3906
+#: src/views/outbounds.ts:3934
 #: src/views/section.ts:13202
 msgid "Custom Parameters"
 msgstr ""
@@ -2949,7 +2949,7 @@ msgstr ""
 msgid "Custom Raw JSON Outbound (sing-box / tachyon-core)"
 msgstr ""
 
-#: src/views/outbounds.ts:4206
+#: src/views/outbounds.ts:4234
 msgid "Custom User-Agent / Client Profile"
 msgstr ""
 
@@ -2957,7 +2957,7 @@ msgstr ""
 msgid "Custom device headers"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4401
+#: src/tachyon/connectionWizard.ts:4439
 msgid "Custom direct domains/games (optional)"
 msgstr ""
 
@@ -2985,7 +2985,7 @@ msgstr ""
 msgid "Custom outbound configurations in JSON format"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1626
+#: src/tachyon/connectionWizard.ts:1664
 msgid "Custom parameters (Manual)"
 msgstr ""
 
@@ -3035,7 +3035,7 @@ msgstr ""
 msgid "DNS"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1024
+#: src/tachyon/connectionWizard.ts:1081
 msgid "DNS & Games / Direct"
 msgstr ""
 
@@ -3063,7 +3063,7 @@ msgstr ""
 msgid "DNS Failures Before Switching"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4124
+#: src/tachyon/connectionWizard.ts:4162
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:213
 msgid "DNS Protocol"
 msgstr ""
@@ -3076,7 +3076,7 @@ msgstr ""
 msgid "DNS Resolution"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4252
+#: src/tachyon/connectionWizard.ts:4290
 msgid "DNS Resolver for Direct Games & RU Route"
 msgstr ""
 
@@ -3088,7 +3088,7 @@ msgstr ""
 msgid "DNS Server"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4156
+#: src/tachyon/connectionWizard.ts:4194
 msgid "DNS Server Address"
 msgstr ""
 
@@ -3128,8 +3128,8 @@ msgstr ""
 msgid "DNS failovers:"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:5553
-#: src/tachyon/connectionWizard.ts:5559
+#: src/tachyon/connectionWizard.ts:5619
+#: src/tachyon/connectionWizard.ts:5625
 msgid "DNS for Games & RU"
 msgstr ""
 
@@ -3259,7 +3259,7 @@ msgstr ""
 msgid "DPI Bypass (Desync / Zapret2)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1548
+#: src/tachyon/connectionWizard.ts:1586
 msgid "DPI Bypass Engine"
 msgstr ""
 
@@ -3348,7 +3348,7 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
-#: src/views/tachyon.ts:1742
+#: src/views/tachyon.ts:1756
 msgid "Dashboard"
 msgstr ""
 
@@ -3360,7 +3360,7 @@ msgstr ""
 msgid "Dashboard view:"
 msgstr ""
 
-#: src/views/outbounds.ts:3153
+#: src/views/outbounds.ts:3181
 msgid "Data Cipher"
 msgstr ""
 
@@ -3380,7 +3380,7 @@ msgstr ""
 msgid "Decision & Details"
 msgstr ""
 
-#: src/views/outbounds.ts:4006
+#: src/views/outbounds.ts:4034
 #: src/views/section.ts:13309
 msgid "Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)"
 msgstr ""
@@ -3389,14 +3389,14 @@ msgstr ""
 msgid "Dedicated cgroup unavailable"
 msgstr ""
 
-#: src/views/outbounds.ts:3451
-#: src/views/outbounds.ts:3465
+#: src/views/outbounds.ts:3479
+#: src/views/outbounds.ts:3493
 #: src/views/section.ts:10786
 #: src/views/section.ts:10869
 msgid "Default"
 msgstr ""
 
-#: src/views/outbounds.ts:3488
+#: src/views/outbounds.ts:3516
 msgid "Default (BBR)"
 msgstr ""
 
@@ -3405,7 +3405,7 @@ msgstr ""
 msgid "Default (Direct WAN / Default mixed proxy)"
 msgstr ""
 
-#: src/views/outbounds.ts:3938
+#: src/views/outbounds.ts:3966
 #: src/views/section.ts:13237
 msgid "Default (TCP MD5 / Auto)"
 msgstr ""
@@ -3418,7 +3418,7 @@ msgstr ""
 msgid "Default (upstream)"
 msgstr ""
 
-#: src/views/outbounds.ts:3231
+#: src/views/outbounds.ts:3259
 msgid "Default / Bi-directional"
 msgstr ""
 
@@ -3492,8 +3492,8 @@ msgstr ""
 msgid "Desync (Built-in TCP/UDP DPI Fragmentation)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1669
-#: src/views/outbounds.ts:3913
+#: src/tachyon/connectionWizard.ts:1707
+#: src/views/outbounds.ts:3941
 #: src/views/section.ts:13210
 msgid "Desync Mode"
 msgstr ""
@@ -3502,13 +3502,13 @@ msgstr ""
 msgid "Desync Modes (--mode)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1637
-#: src/views/outbounds.ts:3884
+#: src/tachyon/connectionWizard.ts:1675
+#: src/views/outbounds.ts:3912
 #: src/views/section.ts:13180
 msgid "Desync Preset"
 msgstr ""
 
-#: src/views/outbounds.ts:4124
+#: src/views/outbounds.ts:4152
 #: src/views/section.ts:13439
 msgid "Desync Strategy String (Fuzzer / CLI)"
 msgstr ""
@@ -3533,7 +3533,7 @@ msgstr ""
 msgid "Detects and drops STUN/TURN packets in nftables to prevent real IP leaks via WebRTC."
 msgstr ""
 
-#: src/views/outbounds.ts:4446
+#: src/views/outbounds.ts:4474
 msgid "Detour Target Section"
 msgstr ""
 
@@ -3589,7 +3589,7 @@ msgstr ""
 msgid "Diagnostic check failed to complete"
 msgstr ""
 
-#: src/views/tachyon.ts:1921
+#: src/views/tachyon.ts:1935
 msgid "Diagnostics"
 msgstr ""
 
@@ -3630,7 +3630,7 @@ msgstr ""
 msgid "Direct Connection (Fallback)"
 msgstr ""
 
-#: src/views/outbounds.ts:3849
+#: src/views/outbounds.ts:3877
 msgid "Direct NFQUEUE Mode (Bypass Proxy Core)"
 msgstr ""
 
@@ -3671,11 +3671,11 @@ msgstr ""
 msgid "Direct connection via ISP"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1914
+#: src/tachyon/connectionWizard.ts:1952
 msgid "Direct nfqws binary launch (isolated instance)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1873
+#: src/tachyon/connectionWizard.ts:1911
 msgid "Direct nfqws2 binary launch (isolated per-section instance)"
 msgstr ""
 
@@ -3683,7 +3683,7 @@ msgstr ""
 msgid "Direct routing bypassing proxy (WAN)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4610
+#: src/tachyon/connectionWizard.ts:4648
 msgid "Direct via router WAN"
 msgstr ""
 
@@ -3695,7 +3695,7 @@ msgstr ""
 msgid "Disable Cookies"
 msgstr ""
 
-#: src/views/outbounds.ts:3649
+#: src/views/outbounds.ts:3677
 msgid "Disable DTLS (TCP/TLS Only)"
 msgstr ""
 
@@ -3707,7 +3707,7 @@ msgstr ""
 msgid "Disable QUIC"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3254
+#: src/tachyon/connectionWizard.ts:3292
 msgid "Disable UDP DTLS (force TCP TLS only)"
 msgstr ""
 
@@ -3723,7 +3723,7 @@ msgstr ""
 msgid "DisableCookies (AWG 3.1)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3045
+#: src/tachyon/connectionWizard.ts:3083
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1337
 #: src/tachyon/tabs/updates/initController.ts:1303
 #: src/tachyon/tabs/updates/initController.ts:1327
@@ -3756,12 +3756,12 @@ msgstr ""
 msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
 msgstr ""
 
-#: src/views/outbounds.ts:3902
+#: src/views/outbounds.ts:3930
 #: src/views/section.ts:13198
 msgid "Disorder (Out-of-order TCP Split)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1591
+#: src/tachyon/connectionWizard.ts:1629
 msgid "Disorder (out-of-order TCP segments with fake)"
 msgstr ""
 
@@ -3925,7 +3925,7 @@ msgstr ""
 msgid "Dont Touch My DHCP!"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3497
+#: src/tachyon/tabs/dashboard/initController.ts:3505
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:427
 msgid "Downlink"
 msgstr ""
@@ -3942,7 +3942,7 @@ msgstr ""
 msgid "Download .conf"
 msgstr ""
 
-#: src/views/outbounds.ts:4160
+#: src/views/outbounds.ts:4188
 msgid "Download Subscription via Proxy Section"
 msgstr ""
 
@@ -3974,12 +3974,12 @@ msgstr ""
 msgid "Download subscription through a section"
 msgstr ""
 
-#: src/views/outbounds.ts:4161
+#: src/views/outbounds.ts:4189
 #: src/views/section.ts:3801
 msgid "Download subscriptions via the selected section"
 msgstr ""
 
-#: src/views/outbounds.ts:4377
+#: src/views/outbounds.ts:4405
 #: src/views/section.ts:4244
 msgid "Download this subscription without TLS certificate verification (for panels with self-signed or mismatched certificates)"
 msgstr ""
@@ -4006,7 +4006,7 @@ msgstr ""
 msgid "Drag blocks with mouse (⠿) or ◀▲ / ▼▶ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns"
 msgstr ""
 
-#: src/views/tachyon.ts:1757
+#: src/views/tachyon.ts:1771
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr ""
 
@@ -4128,15 +4128,15 @@ msgstr ""
 msgid "Enable Guest Mode"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2712
+#: src/tachyon/connectionWizard.ts:2750
 msgid "Enable HTTP Header Masking"
 msgstr ""
 
-#: src/views/outbounds.ts:3549
+#: src/views/outbounds.ts:3577
 msgid "Enable HTTP Mask"
 msgstr ""
 
-#: src/views/outbounds.ts:3684
+#: src/views/outbounds.ts:3712
 msgid "Enable Health Check"
 msgstr ""
 
@@ -4176,12 +4176,12 @@ msgstr ""
 msgid "Enable Telegram Bot"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2358
-#: src/tachyon/connectionWizard.ts:2600
+#: src/tachyon/connectionWizard.ts:2396
+#: src/tachyon/connectionWizard.ts:2638
 msgid "Enable UDP over TCP (UoT)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2819
+#: src/tachyon/connectionWizard.ts:2857
 msgid "Enable Virtual HTTP/3 Wrapper (vHTTP)"
 msgstr ""
 
@@ -4280,7 +4280,7 @@ msgstr ""
 msgid "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1447
+#: src/tachyon/connectionWizard.ts:1485
 msgid "Endpoint UDP Port"
 msgstr ""
 
@@ -4393,7 +4393,7 @@ msgstr ""
 msgid "Enter the API token obtained from @BotFather."
 msgstr ""
 
-#: src/views/outbounds.ts:4240
+#: src/views/outbounds.ts:4268
 #: src/views/section.ts:3872
 msgid "Enter the HWID sent with subscription requests"
 msgstr ""
@@ -4434,7 +4434,7 @@ msgstr ""
 msgid "Error running trace:"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4041
+#: src/tachyon/connectionWizard.ts:4079
 msgid "Error starting DNS benchmark"
 msgstr ""
 
@@ -4496,7 +4496,7 @@ msgstr ""
 msgid "Exclude Security Types"
 msgstr ""
 
-#: src/views/outbounds.ts:4423
+#: src/views/outbounds.ts:4451
 msgid "Exclude Server Keywords"
 msgstr ""
 
@@ -4676,11 +4676,11 @@ msgstr ""
 msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1823
+#: src/tachyon/connectionWizard.ts:1861
 msgid "Extra CLI Strategy String (optional)"
 msgstr ""
 
-#: src/views/outbounds.ts:3519
+#: src/views/outbounds.ts:3547
 msgid "Extra HTTP Headers"
 msgstr ""
 
@@ -4700,12 +4700,12 @@ msgstr ""
 msgid "FDs"
 msgstr ""
 
-#: src/views/outbounds.ts:2968
+#: src/views/outbounds.ts:2996
 #: src/views/section.ts:10989
 msgid "FPTN Access Token"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1950
+#: src/tachyon/connectionWizard.ts:1988
 msgid "FPTN Access Token (fptn:// or fptnb://)"
 msgstr ""
 
@@ -4713,7 +4713,7 @@ msgstr ""
 msgid "FPTN Bypass Method"
 msgstr ""
 
-#: src/views/outbounds.ts:2980
+#: src/views/outbounds.ts:3008
 msgid "FPTN DPI Bypass Method"
 msgstr ""
 
@@ -4997,7 +4997,7 @@ msgstr ""
 msgid "Failed to save snapshot"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4028
+#: src/tachyon/connectionWizard.ts:4066
 #: src/tachyon/methods/shell/index.ts:1762
 msgid "Failed to start DNS benchmark"
 msgstr ""
@@ -5055,8 +5055,8 @@ msgstr ""
 msgid "Failed to toggle Eco Mode"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3682
-#: src/tachyon/tabs/dashboard/initController.ts:3693
+#: src/tachyon/tabs/dashboard/initController.ts:3690
+#: src/tachyon/tabs/dashboard/initController.ts:3701
 msgid "Failed to toggle Tachyon Lite"
 msgstr ""
 
@@ -5068,8 +5068,8 @@ msgstr ""
 msgid "Failed to update device"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2072
-#: src/tachyon/tabs/dashboard/initController.ts:2076
+#: src/tachyon/tabs/dashboard/initController.ts:2074
+#: src/tachyon/tabs/dashboard/initController.ts:2078
 #: src/tachyon/tabs/dashboard/initController.ts:430
 #: src/tachyon/tabs/dashboard/initController.ts:431
 #: src/tachyon/tabs/dashboard/initController.ts:451
@@ -5090,57 +5090,57 @@ msgstr ""
 msgid "Failovers & Restarts"
 msgstr ""
 
-#: src/views/outbounds.ts:3898
+#: src/views/outbounds.ts:3926
 #: src/views/section.ts:13194
 msgid "Fake + Disorder (RAW Fake + Out-of-order MidSLD)"
 msgstr ""
 
-#: src/views/outbounds.ts:3895
+#: src/views/outbounds.ts:3923
 #: src/views/section.ts:13191
 msgid "Fake + Split (RAW Fake + MidSLD Split)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1577
+#: src/tachyon/connectionWizard.ts:1615
 msgid "Fake + Split at SNI (recommended for most ISPs)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1605
+#: src/tachyon/connectionWizard.ts:1643
 msgid "Fake ClientHello with low TTL"
 msgstr ""
 
-#: src/views/outbounds.ts:3931
+#: src/views/outbounds.ts:3959
 #: src/views/section.ts:13229
 msgid "Fake Packet Fooling"
 msgstr ""
 
-#: src/views/outbounds.ts:3904
+#: src/views/outbounds.ts:3932
 #: src/views/section.ts:13200
 msgid "Fake Packet Injection Only (RAW/TTL)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1766
-#: src/views/outbounds.ts:3991
+#: src/tachyon/connectionWizard.ts:1804
+#: src/views/outbounds.ts:4019
 #: src/views/section.ts:13291
 msgid "Fake Packet TTL"
 msgstr ""
 
-#: src/views/outbounds.ts:2927
+#: src/views/outbounds.ts:2955
 msgid "Fake Packets Count Range"
 msgstr ""
 
-#: src/views/outbounds.ts:2947
+#: src/views/outbounds.ts:2975
 msgid "Fake Packets Delay Range (ms)"
 msgstr ""
 
-#: src/views/outbounds.ts:2957
+#: src/views/outbounds.ts:2985
 msgid "Fake Packets Mode"
 msgstr ""
 
-#: src/views/outbounds.ts:2937
+#: src/views/outbounds.ts:2965
 msgid "Fake Packets Size Range"
 msgstr ""
 
-#: src/views/outbounds.ts:4039
+#: src/views/outbounds.ts:4067
 #: src/views/section.ts:13343
 msgid "Fake Repeats"
 msgstr ""
@@ -5149,12 +5149,12 @@ msgstr ""
 msgid "Fake Repeats (--repeats)"
 msgstr ""
 
-#: src/views/outbounds.ts:4005
+#: src/views/outbounds.ts:4033
 #: src/views/section.ts:13308
 msgid "Fake SNI (Белый список РФ / Custom)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1782
+#: src/tachyon/connectionWizard.ts:1820
 msgid "Fake SNI Domain (Whitelist)"
 msgstr ""
 
@@ -5222,11 +5222,11 @@ msgstr ""
 msgid "Family (🏠)"
 msgstr ""
 
-#: src/views/tachyon.ts:1860
+#: src/views/tachyon.ts:1874
 msgid "Family Profile"
 msgstr ""
 
-#: src/views/tachyon.ts:1852
+#: src/views/tachyon.ts:1866
 msgid "Family Profiles"
 msgstr ""
 
@@ -5234,7 +5234,7 @@ msgstr ""
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1955
+#: src/tachyon/tabs/dashboard/initController.ts:1957
 #: src/views/balancers.ts:634
 #: src/views/section.ts:4882
 msgid "Faster server search interval"
@@ -5457,12 +5457,12 @@ msgstr ""
 msgid "Gamer (🎮)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:5602
-#: src/tachyon/connectionWizard.ts:5608
+#: src/tachyon/connectionWizard.ts:5668
+#: src/tachyon/connectionWizard.ts:5674
 msgid "Games & RU Direct"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:5475
+#: src/tachyon/connectionWizard.ts:5541
 msgid "Games & RU Services (Direct)"
 msgstr ""
 
@@ -5474,18 +5474,18 @@ msgstr ""
 msgid "General & Logic"
 msgstr ""
 
-#: src/views/outbounds.ts:4254
+#: src/views/outbounds.ts:4282
 #: src/views/section.ts:3886
 #: src/views/section.ts:3891
 msgid "Generate HWID"
 msgstr ""
 
-#: src/views/outbounds.ts:4229
+#: src/views/outbounds.ts:4257
 #: src/views/section.ts:3863
 msgid "Generate HWID from router hardware information for this subscription"
 msgstr ""
 
-#: src/views/outbounds.ts:4250
+#: src/views/outbounds.ts:4278
 msgid "Generate Random HWID"
 msgstr ""
 
@@ -5497,7 +5497,7 @@ msgstr ""
 msgid "Generate WARP Config"
 msgstr ""
 
-#: src/views/outbounds.ts:4251
+#: src/views/outbounds.ts:4279
 #: src/views/section.ts:3887
 msgid "Generate a random 16-character hexadecimal HWID"
 msgstr ""
@@ -5611,7 +5611,7 @@ msgstr ""
 msgid "Group ID (UCI)"
 msgstr ""
 
-#: src/views/tachyon.ts:1853
+#: src/views/tachyon.ts:1867
 msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
 msgstr ""
 
@@ -5635,11 +5635,11 @@ msgstr ""
 msgid "Guest Devices (MAC / IP)"
 msgstr ""
 
-#: src/views/tachyon.ts:1890
+#: src/views/tachyon.ts:1904
 msgid "Guest Mode"
 msgstr ""
 
-#: src/views/tachyon.ts:1891
+#: src/views/tachyon.ts:1905
 msgid "Guest mode isolates guest devices from local LAN and router administration, while allowing internet access with daily quotas and schedules."
 msgstr ""
 
@@ -5649,8 +5649,8 @@ msgstr ""
 msgid "HTTP"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2688
-#: src/views/outbounds.ts:3559
+#: src/tachyon/connectionWizard.ts:2726
+#: src/views/outbounds.ts:3587
 msgid "HTTP Mask Host"
 msgstr ""
 
@@ -5674,7 +5674,7 @@ msgstr ""
 msgid "HTTP/HTTPS subscription link imported into the global connection pool."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2830
+#: src/tachyon/connectionWizard.ts:2868
 msgid "HTTPS / QUIC Port"
 msgstr ""
 
@@ -5686,7 +5686,7 @@ msgstr ""
 msgid "Half width (50% — pairs side-by-side with adjacent 50% widget)"
 msgstr ""
 
-#: src/views/outbounds.ts:3462
+#: src/views/outbounds.ts:3490
 msgid "Handshake Mode"
 msgstr ""
 
@@ -5756,11 +5756,11 @@ msgstr ""
 msgid "Hidden widgets (click \"+\" to restore to dashboard)"
 msgstr ""
 
-#: src/views/outbounds.ts:4331
+#: src/views/outbounds.ts:4359
 msgid "Hide Individual Servers Inside Imported Groups"
 msgstr ""
 
-#: src/views/outbounds.ts:4364
+#: src/views/outbounds.ts:4392
 msgid "Hide Intermediate Detour Outbounds"
 msgstr ""
 
@@ -5782,12 +5782,12 @@ msgstr ""
 msgid "Hide details"
 msgstr ""
 
-#: src/views/outbounds.ts:4332
+#: src/views/outbounds.ts:4360
 #: src/views/section.ts:4207
 msgid "Hide individual nodes that are already included in imported subscription URLTest groups"
 msgstr ""
 
-#: src/views/outbounds.ts:4365
+#: src/views/outbounds.ts:4393
 #: src/views/section.ts:4235
 msgid "Hide intermediate nodes used as detours by other subscription nodes"
 msgstr ""
@@ -5849,7 +5849,7 @@ msgstr ""
 msgid "High-throughput QUIC proxy ideal for congested or lossy mobile networks"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1941
+#: src/tachyon/tabs/dashboard/initController.ts:1943
 #: src/views/section.ts:4846
 msgid "Higher-level check interval"
 msgstr ""
@@ -5881,7 +5881,7 @@ msgstr ""
 msgid "Host your own VLESS Reality, Hysteria2, TUIC, AmneziaWG, or SOCKS5 server for remote access."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1131
+#: src/tachyon/connectionWizard.ts:1188
 msgid "Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS, etc.) with 1-click key generation and QR codes."
 msgstr ""
 
@@ -6019,7 +6019,7 @@ msgstr ""
 msgid "ISP DNS"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4285
+#: src/tachyon/connectionWizard.ts:4323
 msgid "ISP DNS IP address (comma separated)"
 msgstr ""
 
@@ -6032,11 +6032,11 @@ msgstr ""
 msgid "Idle"
 msgstr ""
 
-#: src/views/outbounds.ts:3359
+#: src/views/outbounds.ts:3387
 msgid "Idle Session Check Interval"
 msgstr ""
 
-#: src/views/outbounds.ts:3369
+#: src/views/outbounds.ts:3397
 msgid "Idle Session Timeout"
 msgstr ""
 
@@ -6044,7 +6044,7 @@ msgstr ""
 msgid "Idle Timeout"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1764
+#: src/tachyon/tabs/dashboard/initController.ts:1766
 #: src/views/section.ts:10564
 #: src/views/section.ts:4355
 #: src/views/server.ts:6215
@@ -6086,7 +6086,7 @@ msgstr ""
 msgid "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core."
 msgstr ""
 
-#: src/views/outbounds.ts:3006
+#: src/views/outbounds.ts:3034
 msgid "Import .ovpn File"
 msgstr ""
 
@@ -6111,11 +6111,11 @@ msgstr ""
 msgid "Import Snapshot Profile"
 msgstr ""
 
-#: src/views/outbounds.ts:4319
+#: src/views/outbounds.ts:4347
 msgid "Import URLTest / Selector Groups from Subscription"
 msgstr ""
 
-#: src/views/outbounds.ts:4320
+#: src/views/outbounds.ts:4348
 #: src/views/section.ts:4198
 msgid "Import URLTest groups returned by this subscription provider"
 msgstr ""
@@ -6128,7 +6128,7 @@ msgstr ""
 msgid "Import subscription URLTest groups"
 msgstr ""
 
-#: src/views/outbounds.ts:4348
+#: src/views/outbounds.ts:4376
 msgid "Imported URLTest Idle Timeout"
 msgstr ""
 
@@ -6144,7 +6144,7 @@ msgstr ""
 msgid "Inbound JSON must be an object with a type field"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1123
+#: src/tachyon/connectionWizard.ts:1180
 msgid "Inbound Server on Router (Host)"
 msgstr ""
 
@@ -6198,7 +6198,7 @@ msgstr ""
 msgid "Include Security Types"
 msgstr ""
 
-#: src/views/outbounds.ts:4411
+#: src/views/outbounds.ts:4439
 msgid "Include Server Keywords"
 msgstr ""
 
@@ -6278,7 +6278,7 @@ msgstr ""
 msgid "Indigo"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3586
+#: src/tachyon/connectionWizard.ts:3624
 msgid "Individual Lists from tachyon-lists Catalog"
 msgstr ""
 
@@ -6346,12 +6346,12 @@ msgstr ""
 msgid "Inline tls-crypt key (mutually exclusive with tls-auth)"
 msgstr ""
 
-#: src/views/outbounds.ts:3712
+#: src/views/outbounds.ts:3740
 #: src/views/section.ts:13661
 msgid "Inner Cipher"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2997
+#: src/tachyon/connectionWizard.ts:3035
 msgid "Inner PQC Cipher"
 msgstr ""
 
@@ -6359,7 +6359,7 @@ msgstr ""
 msgid "Inner cipher"
 msgstr ""
 
-#: src/views/outbounds.ts:3499
+#: src/views/outbounds.ts:3527
 msgid "Insecure Concurrency"
 msgstr ""
 
@@ -6445,8 +6445,8 @@ msgstr ""
 msgid "Interrupt Existing Connections on Switch"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1766
-#: src/tachyon/tabs/dashboard/initController.ts:1961
+#: src/tachyon/tabs/dashboard/initController.ts:1768
+#: src/tachyon/tabs/dashboard/initController.ts:1963
 #: src/views/section.ts:10501
 #: src/views/section.ts:4369
 #: src/views/section.ts:4898
@@ -6466,7 +6466,7 @@ msgid "Interrupt existing connections when group URLTest switches the active ser
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:2445
-#: src/tachyon/tabs/dashboard/initController.ts:1762
+#: src/tachyon/tabs/dashboard/initController.ts:1764
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3152
 #: src/views/balancers.ts:293
 msgid "Interval"
@@ -6702,7 +6702,7 @@ msgstr ""
 msgid "Invalid Shadowsocks URL: must start with ss://"
 msgstr ""
 
-#: src/views/outbounds.ts:3943
+#: src/views/outbounds.ts:3971
 #: src/views/section.ts:13242
 msgid "Invalid TCP Checksum (badsum)"
 msgstr ""
@@ -7010,7 +7010,7 @@ msgstr ""
 msgid "Keep Priority before latency-sorted servers"
 msgstr ""
 
-#: src/views/outbounds.ts:4396
+#: src/views/outbounds.ts:4424
 msgid "Keep Provider Default"
 msgstr ""
 
@@ -7043,7 +7043,7 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: src/views/outbounds.ts:3228
+#: src/views/outbounds.ts:3256
 msgid "Key Direction"
 msgstr ""
 
@@ -7063,7 +7063,7 @@ msgstr ""
 msgid "LAN Clients"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4423
+#: src/tachyon/connectionWizard.ts:4461
 msgid "LAN Device IPs for direct bypass (optional)"
 msgstr ""
 
@@ -7104,7 +7104,7 @@ msgstr ""
 msgid "Laptop / PC (💻)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3476
+#: src/tachyon/tabs/dashboard/initController.ts:3484
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:163
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:46
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:855
@@ -7146,11 +7146,11 @@ msgstr ""
 msgid "Latest version is installed"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1029
+#: src/tachyon/connectionWizard.ts:1086
 msgid "Launch Settings"
 msgstr ""
 
-#: src/views/tachyon.ts:1790
+#: src/views/tachyon.ts:1804
 msgid "Layer 1: Global Server Pool (subscriptions, proxy share links, network interfaces, JSON outbounds) imported once and shared across all groups and sections."
 msgstr ""
 
@@ -7158,11 +7158,11 @@ msgstr ""
 msgid "Layer 2: Reusable Outbound Server Groups"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1397
+#: src/tachyon/connectionWizard.ts:1435
 msgid "Leave blank to auto-generate on start or click button above"
 msgstr ""
 
-#: src/views/outbounds.ts:4296
+#: src/views/outbounds.ts:4324
 #: src/views/section.ts:3943
 msgid "Leave empty to omit this header"
 msgstr ""
@@ -7211,7 +7211,7 @@ msgstr ""
 msgid "List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4542
+#: src/tachyon/connectionWizard.ts:4580
 msgid "Listen Port"
 msgstr ""
 
@@ -7267,7 +7267,7 @@ msgstr ""
 msgid "Load .conf config"
 msgstr ""
 
-#: src/views/outbounds.ts:3012
+#: src/views/outbounds.ts:3040
 #: src/views/section.ts:14004
 #: src/views/section.ts:14019
 msgid "Load .ovpn"
@@ -7369,19 +7369,19 @@ msgstr ""
 msgid "Local DNS caching disabled (0 entries)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3445
+#: src/tachyon/connectionWizard.ts:3483
 msgid "Local Tor Daemon SOCKS5 Port (127.0.0.1)"
 msgstr ""
 
-#: src/views/outbounds.ts:3740
+#: src/views/outbounds.ts:3768
 msgid "Local Tor SOCKS5 port on router (default: 9050)."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1465
+#: src/tachyon/connectionWizard.ts:1503
 msgid "Local Tunnel IPv4 CIDR"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2746
+#: src/tachyon/connectionWizard.ts:2784
 msgid "Local Tunnel IPv4 CIDR / MTU"
 msgstr ""
 
@@ -7425,7 +7425,7 @@ msgstr ""
 msgid "MASQUE Account ID"
 msgstr ""
 
-#: src/views/outbounds.ts:3604
+#: src/views/outbounds.ts:3632
 msgid "MASQUE MTU"
 msgstr ""
 
@@ -7433,15 +7433,15 @@ msgstr ""
 msgid "MASQUE Private Key"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2727
+#: src/tachyon/connectionWizard.ts:2765
 msgid "MASQUE Server Public Key (Base64)"
 msgstr ""
 
-#: src/views/outbounds.ts:3598
+#: src/views/outbounds.ts:3626
 msgid "MASQUE URI"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2794
+#: src/tachyon/connectionWizard.ts:2832
 msgid "MASQUE URI Template"
 msgstr ""
 
@@ -7449,7 +7449,7 @@ msgstr ""
 msgid "MTProto is not implemented in tachyon-core yet"
 msgstr ""
 
-#: src/views/outbounds.ts:2918
+#: src/views/outbounds.ts:2946
 #: src/views/section.ts:12600
 #: src/views/section.ts:13727
 #: src/views/section.ts:13878
@@ -7476,8 +7476,8 @@ msgstr ""
 msgid "Managed Daemons Status"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1384
-#: src/tachyon/tabs/dashboard/initController.ts:1815
+#: src/tachyon/tabs/dashboard/initController.ts:1386
+#: src/tachyon/tabs/dashboard/initController.ts:1817
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2192
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2266
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1469
@@ -7636,7 +7636,7 @@ msgstr ""
 msgid "Method"
 msgstr ""
 
-#: src/views/outbounds.ts:3932
+#: src/views/outbounds.ts:3960
 #: src/views/section.ts:13230
 msgid "Method used to ensure injected fake ClientHello is inspected by DPI but dropped by the destination server."
 msgstr ""
@@ -7645,16 +7645,16 @@ msgstr ""
 msgid "Metrics Retention (hours)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2365
+#: src/tachyon/connectionWizard.ts:2403
 msgid "Mieru Server Address"
 msgstr ""
 
-#: src/views/outbounds.ts:3436
+#: src/views/outbounds.ts:3464
 #: src/views/server.ts:5769
 msgid "Mieru Transport"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2184
+#: src/tachyon/connectionWizard.ts:2222
 msgid "Min Idle Sessions / Timeout"
 msgstr ""
 
@@ -7666,7 +7666,7 @@ msgstr ""
 msgid "Minimum"
 msgstr ""
 
-#: src/views/outbounds.ts:3379
+#: src/views/outbounds.ts:3407
 msgid "Minimum Idle Sessions"
 msgstr ""
 
@@ -7702,7 +7702,7 @@ msgstr ""
 msgid "Mixed Proxy Username"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3620
+#: src/tachyon/tabs/dashboard/initController.ts:3628
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1942
 #: src/views/parental.ts:854
 msgid "Mode"
@@ -7728,7 +7728,7 @@ msgstr ""
 msgid "Monitored Interfaces"
 msgstr ""
 
-#: src/views/tachyon.ts:1907
+#: src/views/tachyon.ts:1921
 msgid "Monitoring"
 msgstr ""
 
@@ -7740,7 +7740,7 @@ msgstr ""
 msgid "More details"
 msgstr ""
 
-#: src/views/outbounds.ts:3724
+#: src/views/outbounds.ts:3752
 #: src/views/section.ts:13674
 msgid "Morph Profile"
 msgstr ""
@@ -7781,7 +7781,7 @@ msgstr ""
 msgid "Multi-Connection Selection Mode"
 msgstr ""
 
-#: src/views/outbounds.ts:3900
+#: src/views/outbounds.ts:3928
 #: src/views/section.ts:13196
 msgid "Multi-Split (3-way TLS Record + SNI + MidSLD)"
 msgstr ""
@@ -7790,11 +7790,11 @@ msgstr ""
 msgid "Multiplex"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2432
+#: src/tachyon/connectionWizard.ts:2470
 msgid "Multiplexing & Handshake Mode"
 msgstr ""
 
-#: src/views/outbounds.ts:3448
+#: src/views/outbounds.ts:3476
 msgid "Multiplexing Level"
 msgstr ""
 
@@ -7825,7 +7825,7 @@ msgstr ""
 msgid "NFQUEUE range overlaps with another rule"
 msgstr ""
 
-#: src/views/outbounds.ts:3831
+#: src/views/outbounds.ts:3859
 #: src/views/section.ts:10674
 msgid "NFQWS Strategy"
 msgstr ""
@@ -7838,7 +7838,7 @@ msgstr ""
 msgid "NFQWS strategy cannot be empty"
 msgstr ""
 
-#: src/views/outbounds.ts:3808
+#: src/views/outbounds.ts:3836
 #: src/views/section.ts:10707
 msgid "NFQWS2 Strategy"
 msgstr ""
@@ -7935,11 +7935,11 @@ msgstr ""
 msgid "Network Interface (WireGuard / OpenVPN / TUN)"
 msgstr ""
 
-#: src/views/outbounds.ts:3751
+#: src/views/outbounds.ts:3779
 msgid "Network Interface Name"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3467
+#: src/tachyon/connectionWizard.ts:3505
 msgid "Network Interface Name (wg0, awg0, tun0)"
 msgstr ""
 
@@ -7971,7 +7971,7 @@ msgstr ""
 msgid "New Section"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3879
+#: src/tachyon/connectionWizard.ts:3917
 msgid "New Section Name"
 msgstr ""
 
@@ -7987,14 +7987,14 @@ msgstr ""
 msgid "Next"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6424
+#: src/tachyon/connectionWizard.ts:6518
 msgid "Next →"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1269
-#: src/tachyon/tabs/dashboard/initController.ts:1273
-#: src/tachyon/tabs/dashboard/initController.ts:1372
-#: src/tachyon/tabs/dashboard/initController.ts:1803
+#: src/tachyon/tabs/dashboard/initController.ts:1271
+#: src/tachyon/tabs/dashboard/initController.ts:1275
+#: src/tachyon/tabs/dashboard/initController.ts:1374
+#: src/tachyon/tabs/dashboard/initController.ts:1805
 #: src/views/settings.ts:3224
 msgid "No"
 msgstr ""
@@ -8216,15 +8216,15 @@ msgstr ""
 msgid "No working strategy to apply"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1676
+#: src/tachyon/tabs/dashboard/initController.ts:1678
 msgid "Node list is empty"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1479
+#: src/tachyon/tabs/dashboard/initController.ts:1481
 msgid "Nodes"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2314
+#: src/tachyon/tabs/dashboard/initController.ts:2316
 msgid "Nodes & Balancers"
 msgstr ""
 
@@ -8236,14 +8236,14 @@ msgstr ""
 msgid "Non-empty include categories (Prefix, Country Flag, Servers, Regex, Protocol) are combined via logical AND (intersection)."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2559
+#: src/tachyon/connectionWizard.ts:2597
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:232
 #: src/views/balancers.ts:74
 #: src/views/conditions.ts:376
 #: src/views/conditions.ts:386
-#: src/views/outbounds.ts:3407
-#: src/views/outbounds.ts:3537
-#: src/views/outbounds.ts:3717
+#: src/views/outbounds.ts:3435
+#: src/views/outbounds.ts:3565
+#: src/views/outbounds.ts:3745
 #: src/views/parental.ts:1004
 #: src/views/parental.ts:932
 #: src/views/parental.ts:957
@@ -8256,7 +8256,7 @@ msgstr ""
 msgid "None"
 msgstr ""
 
-#: src/views/outbounds.ts:3727
+#: src/views/outbounds.ts:3755
 #: src/views/section.ts:13678
 msgid "None (Default)"
 msgstr ""
@@ -8274,7 +8274,7 @@ msgstr ""
 msgid "Not attached to any section yet"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1308
+#: src/tachyon/connectionWizard.ts:1365
 msgid "Not available in demo mode — enter WARP private key manually"
 msgstr ""
 
@@ -8434,7 +8434,7 @@ msgstr ""
 msgid "OS"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2576
+#: src/tachyon/connectionWizard.ts:2614
 msgid "Obfs Host Domain"
 msgstr ""
 
@@ -8442,12 +8442,12 @@ msgstr ""
 msgid "Obfuscation"
 msgstr ""
 
-#: src/views/outbounds.ts:3416
+#: src/views/outbounds.ts:3444
 msgid "Obfuscation Host"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2545
-#: src/views/outbounds.ts:3404
+#: src/tachyon/connectionWizard.ts:2583
+#: src/views/outbounds.ts:3432
 msgid "Obfuscation Mode"
 msgstr ""
 
@@ -8463,7 +8463,7 @@ msgstr ""
 msgid "Observed test queries"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3705
+#: src/tachyon/tabs/dashboard/initController.ts:3713
 #: src/views/server.ts:5869
 msgid "Off"
 msgstr ""
@@ -8528,7 +8528,7 @@ msgstr ""
 msgid "One domain per line. These settings are saved in this browser and do not change DNS routing."
 msgstr ""
 
-#: src/views/outbounds.ts:3520
+#: src/views/outbounds.ts:3548
 msgid "One header per line (Header: Value)."
 msgstr ""
 
@@ -8552,7 +8552,7 @@ msgstr ""
 msgid "Only from the specified countries."
 msgstr ""
 
-#: src/views/outbounds.ts:4412
+#: src/views/outbounds.ts:4440
 msgid "Only import subscription servers whose name matches at least one keyword."
 msgstr ""
 
@@ -8616,11 +8616,11 @@ msgstr ""
 msgid "Open priority settings and enter a display name"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3141
+#: src/tachyon/connectionWizard.ts:3179
 msgid "OpenConnect Gateway Protocol"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3318
+#: src/tachyon/connectionWizard.ts:3356
 msgid "OpenVPN Configuration Profile (.ovpn)"
 msgstr ""
 
@@ -8628,19 +8628,19 @@ msgstr ""
 msgid "OpenVPN Credentials Required"
 msgstr ""
 
-#: src/views/outbounds.ts:3122
+#: src/views/outbounds.ts:3150
 msgid "OpenVPN Protocol"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3339
+#: src/tachyon/connectionWizard.ts:3377
 msgid "OpenVPN Remote Server"
 msgstr ""
 
-#: src/views/outbounds.ts:3102
+#: src/views/outbounds.ts:3130
 msgid "OpenVPN Server Host / IP"
 msgstr ""
 
-#: src/views/outbounds.ts:3111
+#: src/views/outbounds.ts:3139
 msgid "OpenVPN Server Port"
 msgstr ""
 
@@ -8648,7 +8648,7 @@ msgstr ""
 msgid "OpenVPN config loaded. Please enter your username and password below."
 msgstr ""
 
-#: src/views/outbounds.ts:3088
+#: src/views/outbounds.ts:3116
 msgid "OpenVPN configuration loaded from %s."
 msgstr ""
 
@@ -8728,7 +8728,7 @@ msgstr ""
 msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
 msgstr ""
 
-#: src/views/outbounds.ts:2996
+#: src/views/outbounds.ts:3024
 msgid "Optional server name or IP from the token to prefer."
 msgstr ""
 
@@ -8793,24 +8793,24 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4609
+#: src/tachyon/tabs/dashboard/initController.ts:4617
 msgid "Other peers"
 msgstr ""
 
-#: src/views/outbounds.ts:3942
+#: src/views/outbounds.ts:3970
 #: src/views/section.ts:13241
 msgid "Out-of-window TCP Sequence (badseq)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1092
+#: src/tachyon/connectionWizard.ts:1149
 msgid "Outbound Connection (Client / DPI)"
 msgstr ""
 
-#: src/views/outbounds.ts:3797
+#: src/views/outbounds.ts:3825
 msgid "Outbound JSON Objects"
 msgstr ""
 
-#: src/views/tachyon.ts:1797
+#: src/views/tachyon.ts:1811
 msgid "Outbound Source"
 msgstr ""
 
@@ -8818,8 +8818,8 @@ msgstr ""
 msgid "Outbound Sources, Subscriptions & Tunnels"
 msgstr ""
 
-#: src/views/tachyon.ts:1590
-#: src/views/tachyon.ts:1789
+#: src/views/tachyon.ts:1604
+#: src/views/tachyon.ts:1803
 msgid "Outbounds"
 msgstr ""
 
@@ -8831,7 +8831,7 @@ msgstr ""
 msgid "Override the default OpenWrt device headers for this subscription"
 msgstr ""
 
-#: src/views/outbounds.ts:4390
+#: src/views/outbounds.ts:4418
 msgid "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes. Useful when Firefox + REALITY + ML-KEM (support-x25519mlkem768) fails verification on sing-box-extended; switching to Chrome resolves it."
 msgstr ""
 
@@ -8904,7 +8904,7 @@ msgstr ""
 msgid "Parallel (fast failover, ≤3 s)"
 msgstr ""
 
-#: src/views/tachyon.ts:1871
+#: src/views/tachyon.ts:1885
 msgid "Parental Control"
 msgstr ""
 
@@ -8920,11 +8920,11 @@ msgstr ""
 msgid "Partial presence match — other AND conditions not supplied"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2254
-#: src/tachyon/connectionWizard.ts:2388
-#: src/tachyon/connectionWizard.ts:2852
-#: src/tachyon/connectionWizard.ts:3212
-#: src/tachyon/connectionWizard.ts:3407
+#: src/tachyon/connectionWizard.ts:2292
+#: src/tachyon/connectionWizard.ts:2426
+#: src/tachyon/connectionWizard.ts:2890
+#: src/tachyon/connectionWizard.ts:3250
+#: src/tachyon/connectionWizard.ts:3445
 #: src/views/section.ts:12868
 #: src/views/section.ts:13031
 #: src/views/section.ts:13078
@@ -8936,7 +8936,7 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
-#: src/views/outbounds.ts:3143
+#: src/views/outbounds.ts:3171
 msgid "Password (Optional)"
 msgstr ""
 
@@ -8945,7 +8945,7 @@ msgstr ""
 msgid "Password (optional second PSK)"
 msgstr ""
 
-#: src/views/outbounds.ts:3309
+#: src/views/outbounds.ts:3337
 msgid "Password / Key / PSK"
 msgstr ""
 
@@ -8962,7 +8962,7 @@ msgstr ""
 msgid "Paste content or upload a file to preview imported DNS records."
 msgstr ""
 
-#: src/views/outbounds.ts:2969
+#: src/views/outbounds.ts:2997
 msgid "Paste fptn://, fptn:..., or fptnb:... access token."
 msgstr ""
 
@@ -9122,7 +9122,7 @@ msgstr ""
 msgid "Plain Domain/IP Lists (.lst / .txt)"
 msgstr ""
 
-#: src/views/outbounds.ts:2986
+#: src/views/outbounds.ts:3014
 msgid "Plain TLS"
 msgstr ""
 
@@ -9130,8 +9130,8 @@ msgstr ""
 msgid "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4757
-#: src/tachyon/connectionWizard.ts:6375
+#: src/tachyon/connectionWizard.ts:4795
+#: src/tachyon/connectionWizard.ts:6469
 msgid "Please enter Subscription URL"
 msgstr ""
 
@@ -9147,17 +9147,17 @@ msgstr ""
 msgid "Please enter a valid Group ID."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6411
+#: src/tachyon/connectionWizard.ts:6505
 msgid "Please paste FPTN access token"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4774
-#: src/tachyon/connectionWizard.ts:6401
+#: src/tachyon/connectionWizard.ts:4812
+#: src/tachyon/connectionWizard.ts:6495
 msgid "Please paste a vpn:// link or upload a .conf file"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4764
-#: src/tachyon/connectionWizard.ts:6388
+#: src/tachyon/connectionWizard.ts:4802
+#: src/tachyon/connectionWizard.ts:6482
 msgid "Please paste at least one share link"
 msgstr ""
 
@@ -9214,15 +9214,15 @@ msgstr ""
 msgid "Polling interval must be at least 1 second"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2659
+#: src/tachyon/connectionWizard.ts:2697
 msgid "Polymorphic Entropy Mode"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:433
-#: src/tachyon/connectionWizard.ts:2094
-#: src/tachyon/connectionWizard.ts:2920
-#: src/tachyon/connectionWizard.ts:3134
-#: src/tachyon/connectionWizard.ts:3340
+#: src/tachyon/connectionWizard.ts:2132
+#: src/tachyon/connectionWizard.ts:2958
+#: src/tachyon/connectionWizard.ts:3172
+#: src/tachyon/connectionWizard.ts:3378
 #: src/tachyon/studioDeck.ts:2711
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:586
 #: src/views/section.ts:3039
@@ -9246,7 +9246,7 @@ msgstr ""
 msgid "Port for the local mixed proxy of this section"
 msgstr ""
 
-#: src/views/outbounds.ts:3277
+#: src/views/outbounds.ts:3305
 #: src/views/section.ts:12986
 #: src/views/section.ts:7971
 #: src/views/server.ts:3278
@@ -9256,7 +9256,7 @@ msgstr ""
 msgid "Port must be between 1 and 65535"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2366
+#: src/tachyon/connectionWizard.ts:2404
 msgid "Port or Range"
 msgstr ""
 
@@ -9297,7 +9297,7 @@ msgstr ""
 msgid "Pre-configured DPI bypass profile for tachyon-core native desync"
 msgstr ""
 
-#: src/views/outbounds.ts:3885
+#: src/views/outbounds.ts:3913
 msgid "Pre-configured DPI bypass profile for tachyon-core native desync."
 msgstr ""
 
@@ -9325,11 +9325,11 @@ msgstr ""
 msgid "Prefer IPv6"
 msgstr ""
 
-#: src/views/outbounds.ts:2995
+#: src/views/outbounds.ts:3023
 msgid "Preferred FPTN Server (Optional)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2022
+#: src/tachyon/connectionWizard.ts:2060
 msgid "Preferred FPTN Server Host/IP (optional)"
 msgstr ""
 
@@ -9399,7 +9399,7 @@ msgstr ""
 msgid "Prevent guest devices from accessing router management services (LuCI Web UI, SSH, Clash API). DHCP and DNS remain accessible."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4193
+#: src/tachyon/connectionWizard.ts:4231
 msgid "Prevents ISP DNS spoofing or blocking when using foreign resolvers like Cloudflare or Google"
 msgstr ""
 
@@ -9456,13 +9456,13 @@ msgstr ""
 msgid "Priority Tiers (Outbound Groups)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1988
+#: src/tachyon/tabs/dashboard/initController.ts:1990
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1603
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1604
 msgid "Priority details"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1922
+#: src/tachyon/tabs/dashboard/initController.ts:1924
 msgid "Priority details are unavailable"
 msgstr ""
 
@@ -9549,7 +9549,7 @@ msgid "Proto"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:383
-#: src/tachyon/tabs/dashboard/initController.ts:3480
+#: src/tachyon/tabs/dashboard/initController.ts:3488
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1949
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:44
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:597
@@ -9569,7 +9569,7 @@ msgstr ""
 msgid "Protocol for the routed DNS resolver."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2047
+#: src/tachyon/connectionWizard.ts:2085
 msgid "Protocol or Source"
 msgstr ""
 
@@ -9626,7 +9626,7 @@ msgstr ""
 msgid "Proxy Links"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4744
+#: src/tachyon/connectionWizard.ts:4782
 msgid "Proxy Nodes"
 msgstr ""
 
@@ -9638,7 +9638,7 @@ msgstr ""
 msgid "Proxy Section for Bot"
 msgstr ""
 
-#: src/views/outbounds.ts:4171
+#: src/views/outbounds.ts:4199
 msgid "Proxy Section for Download"
 msgstr ""
 
@@ -9651,7 +9651,7 @@ msgstr ""
 msgid "Proxy Share Links (vless://, hysteria2://, ss://, etc.)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1264
+#: src/tachyon/tabs/dashboard/initController.ts:1266
 msgid "Proxy link is unavailable"
 msgstr ""
 
@@ -9712,11 +9712,11 @@ msgstr ""
 msgid "QUIC (HTTP/3)"
 msgstr ""
 
-#: src/views/outbounds.ts:3485
+#: src/views/outbounds.ts:3513
 msgid "QUIC Congestion Control"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2287
+#: src/tachyon/connectionWizard.ts:2325
 msgid "QUIC Congestion Control & Concurrency"
 msgstr ""
 
@@ -9729,7 +9729,7 @@ msgstr ""
 msgid "Querying direct connection and proxy outbound..."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3539
+#: src/tachyon/connectionWizard.ts:3577
 msgid "Quick Routing Presets (tachyon-lists)"
 msgstr ""
 
@@ -9745,11 +9745,11 @@ msgstr ""
 msgid "Quick presets:"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6307
+#: src/tachyon/connectionWizard.ts:6401
 msgid "Quick setup for hosting your own VPN / Proxy server"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6303
+#: src/tachyon/connectionWizard.ts:6397
 msgid "Quick setup for outbound routing & anti-censorship"
 msgstr ""
 
@@ -9775,7 +9775,7 @@ msgstr ""
 msgid "RDP"
 msgstr ""
 
-#: src/views/outbounds.ts:2988
+#: src/views/outbounds.ts:3016
 msgid "REALITY Handshake"
 msgstr ""
 
@@ -9795,15 +9795,15 @@ msgstr ""
 msgid "Rating"
 msgstr ""
 
-#: src/views/outbounds.ts:3240
+#: src/views/outbounds.ts:3268
 msgid "Raw OpenVPN Configuration (.ovpn)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3489
+#: src/tachyon/connectionWizard.ts:3527
 msgid "Raw Outbound JSON Object (sing-box / tachyon-core)"
 msgstr ""
 
-#: src/views/outbounds.ts:3798
+#: src/views/outbounds.ts:3826
 msgid "Raw sing-box outbound JSON objects."
 msgstr ""
 
@@ -9828,7 +9828,7 @@ msgstr ""
 msgid "Ready to benchmark DNS providers"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4560
+#: src/tachyon/connectionWizard.ts:4598
 msgid "Reality Camouflage Domain (SNI)"
 msgstr ""
 
@@ -9937,6 +9937,10 @@ msgstr ""
 #: src/views/outbounds.ts:544
 #: src/views/outbounds.ts:546
 msgid "Regex"
+msgstr ""
+
+#: src/tachyon/connectionWizard.ts:4864
+msgid "Registering Cloudflare WARP keys..."
 msgstr ""
 
 #: src/views/section.ts:12827
@@ -10086,7 +10090,7 @@ msgstr ""
 msgid "Resolve specific domains via a dedicated DoH / DoT / UDP DNS server"
 msgstr ""
 
-#: src/views/outbounds.ts:3787
+#: src/views/outbounds.ts:3815
 msgid "Resolver DNS Server"
 msgstr ""
 
@@ -10094,7 +10098,7 @@ msgstr ""
 msgid "Resolver IP"
 msgstr ""
 
-#: src/views/outbounds.ts:3773
+#: src/views/outbounds.ts:3801
 msgid "Resolver Protocol"
 msgstr ""
 
@@ -10224,11 +10228,11 @@ msgstr ""
 msgid "Reusable Outbound Server Groups"
 msgstr ""
 
-#: src/views/tachyon.ts:1808
+#: src/views/tachyon.ts:1822
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
 msgstr ""
 
-#: src/views/tachyon.ts:1772
+#: src/views/tachyon.ts:1786
 msgid "Reusable atomic traffic conditions and composite boolean rules (AND / OR / NOT) with 2-mode Rule Tracer."
 msgstr ""
 
@@ -10316,7 +10320,7 @@ msgstr ""
 msgid "Route main DNS requests through the selected section."
 msgstr ""
 
-#: src/views/outbounds.ts:3850
+#: src/views/outbounds.ts:3878
 msgid "Route matched traffic directly into kernel NFQUEUE via nftables without passing through sing-box/tachyon-core."
 msgstr ""
 
@@ -10328,7 +10332,7 @@ msgstr ""
 msgid "Route selected services or domains through subscriptions, VLESS, AWG, or balancers"
 msgstr ""
 
-#: src/views/outbounds.ts:4435
+#: src/views/outbounds.ts:4463
 msgid "Route this connection's upstream traffic through another routing Section."
 msgstr ""
 
@@ -10373,13 +10377,13 @@ msgstr ""
 msgid "Router Network Interface (wg0 / awg0 / tun0)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4043
-#: src/tachyon/tabs/dashboard/initController.ts:4191
-#: src/tachyon/tabs/dashboard/initController.ts:4242
+#: src/tachyon/tabs/dashboard/initController.ts:4051
+#: src/tachyon/tabs/dashboard/initController.ts:4199
+#: src/tachyon/tabs/dashboard/initController.ts:4250
 msgid "Router Services"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4089
+#: src/tachyon/tabs/dashboard/initController.ts:4097
 msgid "Router Services Resources (RAM)"
 msgstr ""
 
@@ -10391,7 +10395,7 @@ msgstr ""
 msgid "Router address"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3919
+#: src/tachyon/connectionWizard.ts:3957
 msgid "Router automatically measures latency and switches to the fastest alive server seamlessly"
 msgstr ""
 
@@ -10399,20 +10403,20 @@ msgstr ""
 msgid "Routes"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3973
+#: src/tachyon/tabs/dashboard/initController.ts:3981
 msgid "Routing"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1023
+#: src/tachyon/connectionWizard.ts:1080
 msgid "Routing & Lists"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4007
-#: src/tachyon/tabs/dashboard/initController.ts:4238
+#: src/tachyon/tabs/dashboard/initController.ts:4015
+#: src/tachyon/tabs/dashboard/initController.ts:4246
 msgid "Routing & Rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3857
+#: src/tachyon/tabs/dashboard/initController.ts:3865
 msgid "Routing & System"
 msgstr ""
 
@@ -10434,7 +10438,7 @@ msgstr ""
 msgid "Routing Section Icon"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3720
+#: src/tachyon/tabs/dashboard/initController.ts:3728
 msgid "Routing Sections"
 msgstr ""
 
@@ -10563,9 +10567,9 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:2638
 #: src/tachyon/methods/custom/getDashboardSections.ts:2655
 #: src/tachyon/methods/custom/getDashboardSections.ts:2928
-#: src/tachyon/tabs/dashboard/initController.ts:3864
-#: src/tachyon/tabs/dashboard/initController.ts:3967
-#: src/tachyon/tabs/dashboard/initController.ts:4585
+#: src/tachyon/tabs/dashboard/initController.ts:3872
+#: src/tachyon/tabs/dashboard/initController.ts:3975
+#: src/tachyon/tabs/dashboard/initController.ts:4593
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2404
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2412
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2461
@@ -10629,7 +10633,7 @@ msgstr ""
 msgid "STATIC HOSTS → DIRECT"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3922
+#: src/tachyon/tabs/dashboard/initController.ts:3930
 msgid "STOPPED"
 msgstr ""
 
@@ -10698,7 +10702,7 @@ msgstr ""
 msgid "Schedule"
 msgstr ""
 
-#: src/views/tachyon.ts:1879
+#: src/views/tachyon.ts:1893
 msgid "Schedule Rule"
 msgstr ""
 
@@ -10760,11 +10764,11 @@ msgid "Secrets and credentials are masked as ***. Added lines (+):"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:399
-#: src/tachyon/tabs/dashboard/initController.ts:2537
-#: src/tachyon/tabs/dashboard/initController.ts:3558
+#: src/tachyon/tabs/dashboard/initController.ts:2539
+#: src/tachyon/tabs/dashboard/initController.ts:3566
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:853
 #: src/views/settings.ts:4171
-#: src/views/tachyon.ts:1761
+#: src/views/tachyon.ts:1775
 msgid "Section"
 msgstr ""
 
@@ -10836,7 +10840,7 @@ msgstr ""
 msgid "Section rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3522
+#: src/tachyon/tabs/dashboard/initController.ts:3530
 msgid "Section traffic"
 msgstr ""
 
@@ -10849,8 +10853,8 @@ msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Clo
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:2520
-#: src/views/tachyon.ts:1588
-#: src/views/tachyon.ts:1756
+#: src/views/tachyon.ts:1602
+#: src/views/tachyon.ts:1770
 msgid "Sections"
 msgstr ""
 
@@ -10870,7 +10874,7 @@ msgstr ""
 msgid "Security"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1650
+#: src/tachyon/tabs/dashboard/initController.ts:1652
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3107
 msgid "Select"
 msgstr ""
@@ -10887,7 +10891,7 @@ msgstr ""
 msgid "Select LAN devices to assign to this profile, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes via DHCP."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3816
+#: src/tachyon/connectionWizard.ts:3854
 msgid "Select Section"
 msgstr ""
 
@@ -10895,7 +10899,7 @@ msgstr ""
 msgid "Select Sections"
 msgstr ""
 
-#: src/views/outbounds.ts:4207
+#: src/views/outbounds.ts:4235
 #: src/views/section.ts:3843
 msgid "Select a common client profile or enter a custom User-Agent"
 msgstr ""
@@ -10926,7 +10930,7 @@ msgstr ""
 msgid "Select a section"
 msgstr ""
 
-#: src/views/outbounds.ts:4172
+#: src/views/outbounds.ts:4200
 #: src/views/section.ts:3823
 msgid "Select a section for downloading this subscription"
 msgstr ""
@@ -11052,7 +11056,7 @@ msgstr ""
 msgid "Select the WAN interfaces to be monitored"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1945
+#: src/tachyon/tabs/dashboard/initController.ts:1947
 #: src/views/balancers.ts:608
 #: src/views/section.ts:4860
 msgid "Select the fastest node"
@@ -11070,11 +11074,11 @@ msgstr ""
 msgid "Select the network interface to which the traffic will originate"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4481
+#: src/tachyon/connectionWizard.ts:4519
 msgid "Select the protocol for your router inbound server. Encryption keys, UUIDs, and certificates will be generated automatically."
 msgstr ""
 
-#: src/views/outbounds.ts:4447
+#: src/views/outbounds.ts:4475
 msgid "Select the routing Section through which this connection will establish its upstream tunnel."
 msgstr ""
 
@@ -11098,8 +11102,8 @@ msgstr ""
 msgid "Select which routing Sections use this Condition (automatically updates the section's Attached Conditions)."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1758
-#: src/tachyon/tabs/dashboard/initController.ts:1931
+#: src/tachyon/tabs/dashboard/initController.ts:1760
+#: src/tachyon/tabs/dashboard/initController.ts:1933
 msgid "Selected"
 msgstr ""
 
@@ -11127,7 +11131,7 @@ msgstr ""
 msgid "Selection & Filter Parameters"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3465
+#: src/tachyon/tabs/dashboard/initController.ts:3473
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1874
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2695
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2823
@@ -11178,7 +11182,7 @@ msgstr ""
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr ""
 
-#: src/views/outbounds.ts:4275
+#: src/views/outbounds.ts:4303
 msgid "Send custom x-device-os, x-ver-os, x-device-model, and x-device-locale headers."
 msgstr ""
 
@@ -11202,13 +11206,13 @@ msgstr ""
 msgid "Sequential: failover to the next server after N failures. Parallel: aggressive failover — switches in seconds (1 failure = switch), best if your ISP blocks DoH/DoT."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3451
+#: src/tachyon/tabs/dashboard/initController.ts:3459
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1873
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2677
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2803
 #: src/views/outbounds.ts:1468
 #: src/views/section.ts:10871
-#: src/views/tachyon.ts:1836
+#: src/views/tachyon.ts:1850
 msgid "Server"
 msgstr ""
 
@@ -11227,15 +11231,15 @@ msgstr ""
 msgid "Server Address"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2090
+#: src/tachyon/connectionWizard.ts:2128
 msgid "Server Address (Host / IP)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3228
+#: src/tachyon/connectionWizard.ts:3266
 msgid "Server Certificate Fingerprint (pin-sha256:..., optional)"
 msgstr ""
 
-#: src/views/outbounds.ts:3640
+#: src/views/outbounds.ts:3668
 msgid "Server Certificate PIN (pin-sha256:...)"
 msgstr ""
 
@@ -11251,11 +11255,11 @@ msgstr ""
 msgid "Server Endpoint Port"
 msgstr ""
 
-#: src/views/outbounds.ts:3259
+#: src/views/outbounds.ts:3287
 msgid "Server Host / IP"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4527
+#: src/tachyon/connectionWizard.ts:4565
 msgid "Server Label"
 msgstr ""
 
@@ -11275,7 +11279,7 @@ msgstr ""
 msgid "Server Pool & Filters"
 msgstr ""
 
-#: src/views/outbounds.ts:3264
+#: src/views/outbounds.ts:3292
 #: src/views/section.ts:12582
 #: src/views/section.ts:12857
 #: src/views/section.ts:12915
@@ -11294,7 +11298,7 @@ msgstr ""
 msgid "Server Private Key"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1028
+#: src/tachyon/connectionWizard.ts:1085
 msgid "Server Protocol"
 msgstr ""
 
@@ -11303,7 +11307,7 @@ msgstr ""
 msgid "Server Public Key"
 msgstr ""
 
-#: src/views/outbounds.ts:3574
+#: src/views/outbounds.ts:3602
 msgid "Server Public Key (Base64 / PEM)"
 msgstr ""
 
@@ -11361,7 +11365,7 @@ msgstr ""
 msgid "Server probe failed"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1219
+#: src/tachyon/connectionWizard.ts:1276
 msgid "Server share links (one per line)"
 msgstr ""
 
@@ -11376,7 +11380,7 @@ msgstr ""
 #: src/views/outbounds.ts:540
 #: src/views/outbounds.ts:542
 #: src/views/section.ts:10306
-#: src/views/tachyon.ts:1830
+#: src/views/tachyon.ts:1844
 msgid "Servers"
 msgstr ""
 
@@ -11432,7 +11436,7 @@ msgstr ""
 msgid "Service stopped"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4152
+#: src/tachyon/tabs/dashboard/initController.ts:4160
 #: src/views/conditions.ts:128
 msgid "Services"
 msgstr ""
@@ -11464,7 +11468,7 @@ msgstr ""
 msgid "Session peak"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3521
+#: src/tachyon/tabs/dashboard/initController.ts:3529
 msgid "Session total"
 msgstr ""
 
@@ -11472,7 +11476,7 @@ msgstr ""
 #: src/tachyon/languageSelector.ts:66
 #: src/views/section.ts:10304
 #: src/views/section.ts:1820
-#: src/views/tachyon.ts:1949
+#: src/views/tachyon.ts:1963
 msgid "Settings"
 msgstr ""
 
@@ -11488,12 +11492,12 @@ msgstr ""
 msgid "Severity"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3068
+#: src/tachyon/connectionWizard.ts:3106
 msgid "ShadowTLS Password"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3083
-#: src/views/outbounds.ts:3660
+#: src/tachyon/connectionWizard.ts:3121
+#: src/views/outbounds.ts:3688
 #: src/views/section.ts:13489
 msgid "ShadowTLS Version"
 msgstr ""
@@ -11518,7 +11522,7 @@ msgstr ""
 msgid "Show QR code & client share links"
 msgstr ""
 
-#: src/views/outbounds.ts:4307
+#: src/views/outbounds.ts:4335
 msgid "Show Subscription Quota on Dashboard"
 msgstr ""
 
@@ -11590,7 +11594,7 @@ msgstr ""
 msgid "Show sing-box config failed"
 msgstr ""
 
-#: src/views/outbounds.ts:4308
+#: src/views/outbounds.ts:4336
 #: src/views/section.ts:3954
 msgid "Show subscription metadata for this source on the dashboard"
 msgstr ""
@@ -11652,15 +11656,15 @@ msgstr ""
 msgid "Single ports or ranges (e.g. 80, 443, 1000-2000)."
 msgstr ""
 
-#: src/views/outbounds.ts:3336
+#: src/views/outbounds.ts:3364
 msgid "Skip TLS Certificate Verification (Insecure)"
 msgstr ""
 
-#: src/views/outbounds.ts:4376
+#: src/views/outbounds.ts:4404
 msgid "Skip TLS Verification for Imported Nodes (insecure)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2224
+#: src/tachyon/connectionWizard.ts:2262
 msgid "Skip TLS certificate verification (Allow Insecure)"
 msgstr ""
 
@@ -11672,7 +11676,7 @@ msgstr ""
 msgid "Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)"
 msgstr ""
 
-#: src/views/outbounds.ts:4424
+#: src/views/outbounds.ts:4452
 msgid "Skip subscription servers whose name matches any of these keywords."
 msgstr ""
 
@@ -11700,12 +11704,12 @@ msgstr ""
 msgid "Snapshot restored. The service restarts and the page will reload."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2497
+#: src/tachyon/connectionWizard.ts:2535
 msgid "Snell PSK"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2512
-#: src/views/outbounds.ts:3390
+#: src/tachyon/connectionWizard.ts:2550
+#: src/views/outbounds.ts:3418
 msgid "Snell Protocol Version"
 msgstr ""
 
@@ -11784,7 +11788,7 @@ msgstr ""
 msgid "Specify a file path"
 msgstr ""
 
-#: src/views/outbounds.ts:3289
+#: src/views/outbounds.ts:3317
 #: src/views/section.ts:12998
 #: src/views/server.ts:3308
 msgid "Specify a port (1-65535) or port range (e.g. 2000-2010)"
@@ -11803,7 +11807,7 @@ msgstr ""
 msgid "Speed"
 msgstr ""
 
-#: src/views/outbounds.ts:4053
+#: src/views/outbounds.ts:4081
 #: src/views/section.ts:13360
 msgid "Split Delay (ms)"
 msgstr ""
@@ -11816,8 +11820,8 @@ msgstr ""
 msgid "Split Modes (dpi-desync)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1702
-#: src/views/outbounds.ts:3970
+#: src/tachyon/connectionWizard.ts:1740
+#: src/views/outbounds.ts:3998
 #: src/views/section.ts:13269
 msgid "Split Position"
 msgstr ""
@@ -11927,7 +11931,7 @@ msgstr ""
 msgid "Standby"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3255
+#: src/tachyon/tabs/dashboard/initController.ts:3263
 msgid "Standby / Direct"
 msgstr ""
 
@@ -11981,7 +11985,7 @@ msgstr ""
 msgid "Starting…"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4582
+#: src/tachyon/tabs/dashboard/initController.ts:4590
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:430
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:516
 msgid "State"
@@ -12038,7 +12042,7 @@ msgstr ""
 msgid "Stop bot"
 msgstr ""
 
-#: src/views/outbounds.ts:4349
+#: src/views/outbounds.ts:4377
 #: src/views/section.ts:3909
 #: src/views/section.ts:4219
 msgid "Stop checking imported URLTest groups when not used (e.g. 30m, 12h, 1d). Leave empty to use provider or default value."
@@ -12053,10 +12057,10 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:2932
 #: src/tachyon/studioDeck.ts:2711
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1338
-#: src/tachyon/tabs/dashboard/initController.ts:3865
-#: src/tachyon/tabs/dashboard/initController.ts:3968
-#: src/tachyon/tabs/dashboard/initController.ts:4010
-#: src/tachyon/tabs/dashboard/initController.ts:4485
+#: src/tachyon/tabs/dashboard/initController.ts:3873
+#: src/tachyon/tabs/dashboard/initController.ts:3976
+#: src/tachyon/tabs/dashboard/initController.ts:4018
+#: src/tachyon/tabs/dashboard/initController.ts:4493
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2462
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1128
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1685
@@ -12136,7 +12140,7 @@ msgstr ""
 msgid "Subnets from the list will be extracted and added to nftables"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4742
+#: src/tachyon/connectionWizard.ts:4780
 #: src/tachyon/studioDeck.ts:319
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1940
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1941
@@ -12158,7 +12162,7 @@ msgstr ""
 msgid "Subscription URL"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1200
+#: src/tachyon/connectionWizard.ts:1257
 msgid "Subscription URL (HTTPS)"
 msgstr ""
 
@@ -12232,7 +12236,7 @@ msgstr ""
 msgid "Sudoku (не реализован)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2612
+#: src/tachyon/connectionWizard.ts:2650
 msgid "Sudoku Key / Password"
 msgstr ""
 
@@ -12274,7 +12278,7 @@ msgstr ""
 msgid "Switch DNS to DoH"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1719
+#: src/tachyon/tabs/dashboard/initController.ts:1721
 msgid "Switch to auto-selection"
 msgstr ""
 
@@ -12294,7 +12298,7 @@ msgstr ""
 msgid "System & Backup"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4231
+#: src/tachyon/tabs/dashboard/initController.ts:4239
 msgid "System & Services"
 msgstr ""
 
@@ -12332,16 +12336,16 @@ msgstr ""
 msgid "TCP"
 msgstr ""
 
-#: src/views/outbounds.ts:2985
+#: src/views/outbounds.ts:3013
 msgid "TCP Fragmentation (Split)"
 msgstr ""
 
-#: src/views/outbounds.ts:3939
+#: src/views/outbounds.ts:3967
 #: src/views/section.ts:13238
 msgid "TCP MD5 Signature (Option 19 via TCP_REPAIR)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1612
+#: src/tachyon/connectionWizard.ts:1650
 msgid "TCP Out-of-Band (URG byte at SNI)"
 msgstr ""
 
@@ -12353,21 +12357,21 @@ msgstr ""
 msgid "TCP Reset Injection"
 msgstr ""
 
-#: src/views/outbounds.ts:3903
+#: src/views/outbounds.ts:3931
 #: src/views/section.ts:13199
 msgid "TCP Split Only (midsld)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1598
+#: src/tachyon/connectionWizard.ts:1636
 msgid "TCP Split at SNI (pure segmentation without fake)"
 msgstr ""
 
-#: src/views/outbounds.ts:3941
+#: src/views/outbounds.ts:3969
 #: src/views/section.ts:13240
 msgid "TCP Timestamp PAWS (Backdated TSval)"
 msgstr ""
 
-#: src/views/outbounds.ts:3905
+#: src/views/outbounds.ts:3933
 #: src/views/section.ts:13201
 msgid "TCP Urgent OOB Desync (midsld)"
 msgstr ""
@@ -12386,7 +12390,7 @@ msgstr ""
 msgid "TLS / HTTPS"
 msgstr ""
 
-#: src/views/outbounds.ts:3349
+#: src/views/outbounds.ts:3377
 msgid "TLS ALPN"
 msgstr ""
 
@@ -12402,11 +12406,11 @@ msgstr ""
 msgid "TLS Crypt Key"
 msgstr ""
 
-#: src/views/outbounds.ts:4389
+#: src/views/outbounds.ts:4417
 msgid "TLS Fingerprint Override (uTLS)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3114
+#: src/tachyon/connectionWizard.ts:3152
 msgid "TLS Handshake Camouflage Domain (SNI)"
 msgstr ""
 
@@ -12414,16 +12418,16 @@ msgstr ""
 msgid "TLS Handshake SNI"
 msgstr ""
 
-#: src/views/outbounds.ts:2984
+#: src/views/outbounds.ts:3012
 msgid "TLS Obfuscation (Default)"
 msgstr ""
 
-#: src/views/outbounds.ts:3901
+#: src/views/outbounds.ts:3929
 #: src/views/section.ts:13197
 msgid "TLS Record Fragmentation (tlsrec, midsld)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1584
+#: src/tachyon/connectionWizard.ts:1622
 msgid "TLS Record Split before SNI (clean, no fake packets)"
 msgstr ""
 
@@ -12434,15 +12438,15 @@ msgstr ""
 msgid "TLS SNI"
 msgstr ""
 
-#: src/views/outbounds.ts:3319
+#: src/views/outbounds.ts:3347
 msgid "TLS SNI (Server Name)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2147
-#: src/tachyon/connectionWizard.ts:2271
-#: src/tachyon/connectionWizard.ts:2778
-#: src/tachyon/connectionWizard.ts:2868
-#: src/tachyon/connectionWizard.ts:2960
+#: src/tachyon/connectionWizard.ts:2185
+#: src/tachyon/connectionWizard.ts:2309
+#: src/tachyon/connectionWizard.ts:2816
+#: src/tachyon/connectionWizard.ts:2906
+#: src/tachyon/connectionWizard.ts:2998
 msgid "TLS SNI Domain"
 msgstr ""
 
@@ -12462,11 +12466,11 @@ msgstr ""
 msgid "TLS verification is disabled in the router DNS configuration. The independent probe does not change this setting."
 msgstr ""
 
-#: src/views/outbounds.ts:3208
+#: src/views/outbounds.ts:3236
 msgid "TLS-Auth Key (<tls-auth>)"
 msgstr ""
 
-#: src/views/outbounds.ts:3218
+#: src/views/outbounds.ts:3246
 msgid "TLS-Crypt Key (<tls-crypt>)"
 msgstr ""
 
@@ -12517,7 +12521,7 @@ msgstr ""
 msgid "Tachyon"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6297
+#: src/tachyon/connectionWizard.ts:6391
 msgid "Tachyon Connection Wizard"
 msgstr ""
 
@@ -12525,7 +12529,7 @@ msgstr ""
 msgid "Tachyon Core"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1515
+#: src/tachyon/connectionWizard.ts:1553
 msgid "Tachyon Core Desync (Built-in Native Engine)"
 msgstr ""
 
@@ -12565,12 +12569,12 @@ msgstr ""
 msgid "Tachyon IP & DNS Leak Detection"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3628
+#: src/tachyon/tabs/dashboard/initController.ts:3636
 msgid "Tachyon Lite"
 msgstr ""
 
 #: src/tachyon/appShell.ts:1614
-#: src/tachyon/tabs/dashboard/initController.ts:3668
+#: src/tachyon/tabs/dashboard/initController.ts:3676
 msgid "Tachyon Lite eco mode disabled"
 msgstr ""
 
@@ -12578,7 +12582,7 @@ msgstr ""
 msgid "Tachyon Lite eco mode enabled"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3664
+#: src/tachyon/tabs/dashboard/initController.ts:3672
 msgid "Tachyon Lite eco mode enabled (nice 15 + ct mark Short-Circuit)"
 msgstr ""
 
@@ -12683,7 +12687,7 @@ msgstr ""
 msgid "Tailscale"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3423
+#: src/tachyon/connectionWizard.ts:3461
 msgid "Tailscale Interface Name on Router"
 msgstr ""
 
@@ -12773,7 +12777,7 @@ msgstr ""
 msgid "Telegram Alerts"
 msgstr ""
 
-#: src/views/tachyon.ts:1963
+#: src/views/tachyon.ts:1977
 msgid "Telegram Bot"
 msgstr ""
 
@@ -12872,7 +12876,7 @@ msgstr ""
 msgid "Testing"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1761
+#: src/tachyon/tabs/dashboard/initController.ts:1763
 #: src/views/balancers.ts:483
 #: src/views/section.ts:10548
 msgid "Testing URL"
@@ -12909,11 +12913,11 @@ msgstr ""
 msgid "Testing…"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2943
+#: src/tachyon/connectionWizard.ts:2981
 msgid "TewFai Key / Password"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2919
+#: src/tachyon/connectionWizard.ts:2957
 msgid "TewFai Server Host"
 msgstr ""
 
@@ -12934,7 +12938,7 @@ msgstr ""
 msgid "The TLS certificate or DNS answer could not be verified."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3805
+#: src/tachyon/connectionWizard.ts:3843
 msgid "The connection will be added to Outbound Connections without creating or modifying routing sections."
 msgstr ""
 
@@ -13038,7 +13042,7 @@ msgstr ""
 msgid "This protocol is not implemented in tachyon-core yet"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4597
+#: src/tachyon/tabs/dashboard/initController.ts:4605
 msgid "This router"
 msgstr ""
 
@@ -13062,7 +13066,7 @@ msgstr ""
 msgid "Throttling / Deep Inspection"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4598
+#: src/tachyon/connectionWizard.ts:4636
 msgid "Through Tachyon Routing Rules"
 msgstr ""
 
@@ -13119,7 +13123,7 @@ msgid "Token is required when the bot is enabled"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:2453
-#: src/tachyon/tabs/dashboard/initController.ts:1763
+#: src/tachyon/tabs/dashboard/initController.ts:1765
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3162
 #: src/views/balancers.ts:293
 #: src/views/section.ts:4328
@@ -13142,7 +13146,7 @@ msgstr ""
 msgid "Tor Network (SOCKS5)"
 msgstr ""
 
-#: src/views/outbounds.ts:3739
+#: src/views/outbounds.ts:3767
 msgid "Tor SOCKS5 Port"
 msgstr ""
 
@@ -13211,7 +13215,7 @@ msgstr ""
 msgid "Traffic"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3569
+#: src/tachyon/tabs/dashboard/initController.ts:3577
 msgid "Traffic & Speed"
 msgstr ""
 
@@ -13223,7 +13227,7 @@ msgstr ""
 msgid "Traffic Graph"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3027
+#: src/tachyon/connectionWizard.ts:3065
 msgid "Traffic Morphing Profile"
 msgstr ""
 
@@ -13278,19 +13282,19 @@ msgstr ""
 msgid "Transport"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3348
+#: src/tachyon/connectionWizard.ts:3386
 msgid "Transport & Cipher"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2976
+#: src/tachyon/connectionWizard.ts:3014
 msgid "Transport Fallback Chain"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2405
+#: src/tachyon/connectionWizard.ts:2443
 msgid "Transport Protocol"
 msgstr ""
 
-#: src/views/outbounds.ts:3695
+#: src/views/outbounds.ts:3723
 #: src/views/section.ts:13643
 msgid "Transport Race List"
 msgstr ""
@@ -13319,7 +13323,7 @@ msgstr ""
 msgid "Transports to race (e.g. tcp, quic)"
 msgstr ""
 
-#: src/views/outbounds.ts:3696
+#: src/views/outbounds.ts:3724
 msgid "Transports to race (e.g. tcp, quic, h3_datagram, h2, ws)"
 msgstr ""
 
@@ -13327,7 +13331,7 @@ msgstr ""
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2829
+#: src/tachyon/connectionWizard.ts:2867
 msgid "TrustTunnel Endpoint Host"
 msgstr ""
 
@@ -13339,7 +13343,7 @@ msgstr ""
 msgid "Try clearing the filter or click the create button above to add a new entry."
 msgstr ""
 
-#: src/views/outbounds.ts:4194
+#: src/views/outbounds.ts:4222
 #: src/views/section.ts:3832
 msgid "Try compatible User-Agent profiles automatically when downloading this subscription"
 msgstr ""
@@ -13353,7 +13357,7 @@ msgid "Tuesday"
 msgstr ""
 
 #: src/views/outbounds.ts:2658
-#: src/views/outbounds.ts:3169
+#: src/views/outbounds.ts:3197
 #: src/views/section.ts:14315
 msgid "Tunnel MTU"
 msgstr ""
@@ -13371,8 +13375,8 @@ msgstr ""
 msgid "Two-letter ISO country code (e.g. RU, NL, DE) advertised as a flag emoji in client links and subscriptions."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1021
-#: src/tachyon/connectionWizard.ts:1027
+#: src/tachyon/connectionWizard.ts:1078
+#: src/tachyon/connectionWizard.ts:1084
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:854
 #: src/tachyon/tabs/monitoring/initController.ts:541
 #: src/tachyon/tabs/monitoring/initController.ts:606
@@ -13393,22 +13397,22 @@ msgstr ""
 msgid "UDP / QUIC protocols"
 msgstr ""
 
-#: src/views/outbounds.ts:4064
+#: src/views/outbounds.ts:4092
 #: src/views/section.ts:13374
 msgid "UDP Fake (QUIC / Voice)"
 msgstr ""
 
-#: src/views/outbounds.ts:4076
+#: src/views/outbounds.ts:4104
 #: src/views/section.ts:13387
 msgid "UDP Fake Repeats"
 msgstr ""
 
-#: src/views/outbounds.ts:4100
+#: src/views/outbounds.ts:4128
 #: src/views/section.ts:13413
 msgid "UDP Fake TTL"
 msgstr ""
 
-#: src/views/outbounds.ts:3509
+#: src/views/outbounds.ts:3537
 msgid "UDP over TCP"
 msgstr ""
 
@@ -13416,7 +13420,7 @@ msgstr ""
 msgid "UDP over TCP (Packet Encoding)"
 msgstr ""
 
-#: src/views/outbounds.ts:3425
+#: src/views/outbounds.ts:3453
 msgid "UDP over TCP (UoT)"
 msgstr ""
 
@@ -13476,13 +13480,13 @@ msgstr ""
 msgid "URLTest check interval"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1790
+#: src/tachyon/tabs/dashboard/initController.ts:1792
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1584
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1585
 msgid "URLTest details"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1749
+#: src/tachyon/tabs/dashboard/initController.ts:1751
 msgid "URLTest details are unavailable"
 msgstr ""
 
@@ -13548,7 +13552,7 @@ msgstr ""
 msgid "Unable to validate the NFQWS2 strategy through the backend parser."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1939
+#: src/tachyon/tabs/dashboard/initController.ts:1941
 #: src/views/section.ts:4834
 msgid "Unavailability timeout"
 msgstr ""
@@ -13710,7 +13714,7 @@ msgstr ""
 msgid "Update"
 msgstr ""
 
-#: src/views/outbounds.ts:4145
+#: src/views/outbounds.ts:4173
 msgid "Update Interval"
 msgstr ""
 
@@ -13756,7 +13760,7 @@ msgstr ""
 msgid "Update subscriptions"
 msgstr ""
 
-#: src/views/outbounds.ts:4135
+#: src/views/outbounds.ts:4163
 #: src/views/section.ts:3778
 msgid "Update this subscription automatically"
 msgstr ""
@@ -13785,7 +13789,7 @@ msgstr ""
 msgid "Updating…"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3508
+#: src/tachyon/tabs/dashboard/initController.ts:3516
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:438
 msgid "Uplink"
 msgstr ""
@@ -13798,7 +13802,7 @@ msgstr ""
 msgid "Upload WireGuard / AmneziaWG .conf Files"
 msgstr ""
 
-#: src/views/outbounds.ts:3007
+#: src/views/outbounds.ts:3035
 msgid "Upload an OpenVPN .ovpn file from your computer to populate all settings and certificates."
 msgstr ""
 
@@ -13817,7 +13821,7 @@ msgstr ""
 msgid "Upstream Provider / ASN"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4382
+#: src/tachyon/tabs/dashboard/initController.ts:4390
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:526
 msgid "Uptime"
 msgstr ""
@@ -13846,16 +13850,16 @@ msgstr ""
 msgid "Use ESP (needs IP mode)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2891
+#: src/tachyon/connectionWizard.ts:2929
 msgid "Use HTTP/3 QUIC transport instead of HTTP/2"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2341
+#: src/tachyon/connectionWizard.ts:2379
 msgid "Use HTTP/3 QUIC transport instead of HTTP/2 TLS"
 msgstr ""
 
-#: src/views/outbounds.ts:3475
-#: src/views/outbounds.ts:3674
+#: src/views/outbounds.ts:3503
+#: src/views/outbounds.ts:3702
 #: src/views/section.ts:13570
 #: src/views/server.ts:5776
 msgid "Use QUIC (HTTP/3)"
@@ -13914,7 +13918,7 @@ msgid "Use sing-box duration format like 10s, 1m or 2m30s"
 msgstr ""
 
 #: src/views/balancers.ts:635
-#: src/views/outbounds.ts:4146
+#: src/views/outbounds.ts:4174
 #: src/views/section.ts:3787
 #: src/views/section.ts:4317
 #: src/views/section.ts:4883
@@ -13962,7 +13966,7 @@ msgstr ""
 msgid "Used in Sections"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2928
+#: src/tachyon/connectionWizard.ts:2966
 msgid "User ID / UUID"
 msgstr ""
 
@@ -13979,11 +13983,11 @@ msgstr ""
 msgid "User-Agent"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:2239
-#: src/tachyon/connectionWizard.ts:2373
-#: src/tachyon/connectionWizard.ts:2837
-#: src/tachyon/connectionWizard.ts:3197
-#: src/tachyon/connectionWizard.ts:3398
+#: src/tachyon/connectionWizard.ts:2277
+#: src/tachyon/connectionWizard.ts:2411
+#: src/tachyon/connectionWizard.ts:2875
+#: src/tachyon/connectionWizard.ts:3235
+#: src/tachyon/connectionWizard.ts:3436
 #: src/views/section.ts:13020
 #: src/views/section.ts:13067
 #: src/views/section.ts:13539
@@ -13993,15 +13997,15 @@ msgstr ""
 msgid "Username"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3389
+#: src/tachyon/connectionWizard.ts:3427
 msgid "Username & Password (optional)"
 msgstr ""
 
-#: src/views/outbounds.ts:3134
+#: src/views/outbounds.ts:3162
 msgid "Username (Optional)"
 msgstr ""
 
-#: src/views/outbounds.ts:3298
+#: src/views/outbounds.ts:3326
 msgid "Username / UUID"
 msgstr ""
 
@@ -14021,11 +14025,11 @@ msgstr ""
 msgid "VPN Flavor"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3133
+#: src/tachyon/connectionWizard.ts:3171
 msgid "VPN Gateway Host / IP"
 msgstr ""
 
-#: src/views/outbounds.ts:3614
+#: src/views/outbounds.ts:3642
 msgid "VPN Protocol"
 msgstr ""
 
@@ -14171,20 +14175,20 @@ msgstr ""
 msgid "WARP Account ID"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1431
+#: src/tachyon/connectionWizard.ts:1469
 msgid "WARP Endpoint Host"
 msgstr ""
 
-#: src/views/outbounds.ts:2901
+#: src/views/outbounds.ts:2929
 msgid "WARP Endpoint Port"
 msgstr ""
 
-#: src/views/outbounds.ts:2891
+#: src/views/outbounds.ts:2919
 msgid "WARP Endpoint Server"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1355
-#: src/tachyon/connectionWizard.ts:1364
+#: src/tachyon/connectionWizard.ts:1393
+#: src/tachyon/connectionWizard.ts:1402
 msgid "WARP Generation Error"
 msgstr ""
 
@@ -14192,26 +14196,26 @@ msgstr ""
 msgid "WARP Generator Proxy Section"
 msgstr ""
 
-#: src/views/outbounds.ts:2881
+#: src/views/outbounds.ts:2909
 msgid "WARP Peer Public Key"
 msgstr ""
 
-#: src/views/outbounds.ts:2871
+#: src/views/outbounds.ts:2899
 #: src/views/section.ts:12792
 msgid "WARP Private Key"
 msgstr ""
 
-#: src/views/outbounds.ts:2911
+#: src/views/outbounds.ts:2939
 msgid "WARP Reserved Bytes"
 msgstr ""
 
 #: src/views/outbounds.ts:2388
-#: src/views/outbounds.ts:2841
+#: src/views/outbounds.ts:2869
 msgid "WARP configuration generated and filled."
 msgstr ""
 
 #: src/views/outbounds.ts:2395
-#: src/views/outbounds.ts:2848
+#: src/views/outbounds.ts:2876
 msgid "WARP generation failed: %s"
 msgstr ""
 
@@ -14374,7 +14378,7 @@ msgstr ""
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4313
+#: src/tachyon/connectionWizard.ts:4351
 msgid "Which games & services should go directly through your ISP?"
 msgstr ""
 
@@ -14426,7 +14430,7 @@ msgstr ""
 msgid "YACD Secret Key"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1269
+#: src/tachyon/tabs/dashboard/initController.ts:1271
 msgid "Yes"
 msgstr ""
 
@@ -14446,11 +14450,11 @@ msgstr ""
 msgid "Zapret (nfqws DPI Desync)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1529
+#: src/tachyon/connectionWizard.ts:1567
 msgid "Zapret (nfqws — classic NFQUEUE)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1886
+#: src/tachyon/connectionWizard.ts:1924
 msgid "Zapret Strategy (nfqws arguments)"
 msgstr ""
 
@@ -14518,11 +14522,11 @@ msgstr ""
 msgid "Zapret2 (nfqws2 DPI Desync)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1522
+#: src/tachyon/connectionWizard.ts:1560
 msgid "Zapret2 (nfqws2 — Lua strategies & NFQUEUE)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1845
+#: src/tachyon/connectionWizard.ts:1883
 msgid "Zapret2 Strategy (nfqws2 / Lua arguments)"
 msgstr ""
 
@@ -14674,7 +14678,7 @@ msgstr ""
 msgid "e.g. Kids Phone (Night YouTube)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3884
+#: src/tachyon/connectionWizard.ts:3922
 msgid "e.g. Main Route, Streaming, Work"
 msgstr ""
 
@@ -14682,7 +14686,7 @@ msgstr ""
 msgid "e.g. Main Subscription, EU VLESS, YouTube Desync"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1182
+#: src/tachyon/connectionWizard.ts:1239
 msgid "e.g. Main Subscription, Germany VLESS, My AWG"
 msgstr ""
 
@@ -14760,7 +14764,7 @@ msgstr ""
 msgid "e.g. vless, hysteria2, amneziawg"
 msgstr ""
 
-#: src/views/outbounds.ts:3752
+#: src/views/outbounds.ts:3780
 msgid "e.g. wg0, awg0, tun0, tailscale0"
 msgstr ""
 
@@ -14803,12 +14807,12 @@ msgstr ""
 msgid "lx"
 msgstr ""
 
-#: src/views/outbounds.ts:3975
+#: src/views/outbounds.ts:4003
 #: src/views/section.ts:13275
 msgid "midsld (Middle of SLD domain)"
 msgstr ""
 
-#: src/views/outbounds.ts:3971
+#: src/views/outbounds.ts:3999
 msgid "midsld, sni, or byte offset (1..1400)"
 msgstr ""
 
@@ -14884,7 +14888,7 @@ msgstr ""
 msgid "sites"
 msgstr ""
 
-#: src/views/outbounds.ts:3976
+#: src/views/outbounds.ts:4004
 #: src/views/section.ts:13276
 msgid "sni (Start of SNI extension)"
 msgstr ""
@@ -14937,7 +14941,7 @@ msgstr ""
 msgid "unknown"
 msgstr ""
 
-#: src/views/outbounds.ts:3565
+#: src/views/outbounds.ts:3593
 msgid "vHTTP Mode"
 msgstr ""
 
@@ -14961,7 +14965,7 @@ msgstr ""
 msgid "vpn:// is available only with Tachyon Core or sing-box LX"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1274
+#: src/tachyon/connectionWizard.ts:1331
 msgid "vpn:// link or .conf file content"
 msgstr ""
 
@@ -15149,11 +15153,11 @@ msgstr ""
 msgid "ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6359
+#: src/tachyon/connectionWizard.ts:6453
 msgid "← Back"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1372
+#: src/tachyon/connectionWizard.ts:1410
 msgid "⏳ Registering Cloudflare WARP account..."
 msgstr ""
 
@@ -15161,7 +15165,7 @@ msgstr ""
 msgid "⏳ Stopping..."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3603
+#: src/tachyon/connectionWizard.ts:3641
 msgid "▲ Hide full catalog"
 msgstr ""
 
@@ -15205,23 +15209,23 @@ msgstr ""
 msgid "⚡ ..."
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1376
+#: src/tachyon/connectionWizard.ts:1414
 msgid "⚡ Auto-generate Cloudflare WARP keys in 1 click"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3911
+#: src/tachyon/connectionWizard.ts:3949
 msgid "⚡ Auto-select fastest server (URLTest)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6460
+#: src/tachyon/connectionWizard.ts:6554
 msgid "⚡ Create & Apply"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6461
+#: src/tachyon/connectionWizard.ts:6555
 msgid "⚡ Create & Start"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3982
+#: src/tachyon/connectionWizard.ts:4020
 msgid "⚡ DNS Auto-Tune completed! Optimal stack selected."
 msgstr ""
 
@@ -15235,7 +15239,7 @@ msgstr ""
 msgid "⚡ Eco Mode: On"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3704
+#: src/tachyon/tabs/dashboard/initController.ts:3712
 msgid "⚡ Enabled (MIPS Eco)"
 msgstr ""
 
@@ -15288,15 +15292,15 @@ msgstr ""
 msgid "✓ Active"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6443
+#: src/tachyon/connectionWizard.ts:6537
 msgid "✓ Create (Draft)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:6444
+#: src/tachyon/connectionWizard.ts:6538
 msgid "✓ Create Server (Draft)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4543
+#: src/tachyon/tabs/dashboard/initController.ts:4551
 msgid "✔ Online"
 msgstr ""
 
@@ -15304,7 +15308,7 @@ msgstr ""
 msgid "✗ Throttled at 16KB"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4544
+#: src/tachyon/tabs/dashboard/initController.ts:4552
 msgid "✘ Offline"
 msgstr ""
 
@@ -15332,7 +15336,7 @@ msgstr ""
 msgid "🎛 Dashboard Widgets & Presets Setup"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2478
+#: src/tachyon/tabs/dashboard/initController.ts:2480
 msgid "🎨 Website Icon (favicon)"
 msgstr ""
 
@@ -15340,7 +15344,7 @@ msgstr ""
 msgid "🎬 YouTube Full Suite (Web + 4K Stream + CDN)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4229
+#: src/tachyon/connectionWizard.ts:4267
 msgid "🎮 Route games & Russian services directly via ISP with Yandex DNS (77.88.8.8)"
 msgstr ""
 
@@ -15360,15 +15364,15 @@ msgstr ""
 msgid "💬 Discord Suite (Gateway + Voice + CDN)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:1266
+#: src/tachyon/connectionWizard.ts:1323
 msgid "📁 Upload .conf file"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3310
+#: src/tachyon/connectionWizard.ts:3348
 msgid "📁 Upload .ovpn profile"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:3856
+#: src/tachyon/connectionWizard.ts:3894
 msgid "📋 Also add tachyon-lists rules to the selected section"
 msgstr ""
 
@@ -15384,7 +15388,7 @@ msgstr ""
 msgid "🔄 Auto (by rules)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4104
+#: src/tachyon/connectionWizard.ts:4142
 msgid "🔄 Re-test"
 msgstr ""
 
@@ -15396,7 +15400,7 @@ msgstr ""
 msgid "🔍 Combinatorial Deep Fuzzing (~150-300+)"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4185
+#: src/tachyon/connectionWizard.ts:4223
 msgid "🔒 Route DNS queries through this tunnel (DNS Detour)"
 msgstr ""
 
@@ -15409,7 +15413,7 @@ msgstr ""
 msgid "🚀 Start Benchmark"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4456
+#: src/tachyon/connectionWizard.ts:4494
 msgid "🚫 Block Ads, Trackers & Windows Telemetry (Hagezi PRO + WinSpy)"
 msgstr ""
 
@@ -15427,7 +15431,7 @@ msgstr ""
 msgid "🛠️ My Custom Strategies Only"
 msgstr ""
 
-#: src/tachyon/connectionWizard.ts:4651
+#: src/tachyon/connectionWizard.ts:4689
 msgid "🛡️ Automatically open port in router firewall (nftables)"
 msgstr ""
 

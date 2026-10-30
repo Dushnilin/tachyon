@@ -839,12 +839,69 @@ export function openConnectionWizardModal(
   let warpPeerPublicKey = 'bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=';
   let warpLocalAddress = '172.16.0.2/32';
   let warpIpv6 = '';
-  let warpServer = 'engage.cloudflareclient.com';
+  let warpServer = '162.159.192.1';
   let warpServerPort = '2408';
   let warpReserved = '';
   let warpMtu = '1280';
   let warpFakePackets = '5-10';
+  const warpAwgOptions: Record<string, string> = {};
   let isGeneratingWarp = false;
+
+  const applyGeneratedWarpPayload = (data: Record<string, any>) => {
+    if (!data || typeof data !== 'object') return;
+    if (data.private_key) warpPrivateKey = String(data.private_key);
+    if (data.public_key || data.peer_public_key) {
+      warpPeerPublicKey = String(data.public_key || data.peer_public_key);
+    }
+    if (data.v4 || data.local_address) {
+      warpLocalAddress = String(data.v4 || data.local_address);
+    }
+    if (data.v6 || data.ipv6_address) {
+      warpIpv6 = String(data.v6 || data.ipv6_address);
+    }
+    if (data.reserved) {
+      warpReserved = Array.isArray(data.reserved)
+        ? data.reserved.join(',')
+        : String(data.reserved);
+    }
+    if (data.server_address || data.server) {
+      warpServer = String(data.server_address || data.server);
+    }
+    if (data.server_port) {
+      warpServerPort = String(data.server_port);
+    }
+    if (data.endpoint) {
+      const m = String(data.endpoint).match(/^([^:]+):(\d+)$/);
+      if (m) {
+        warpServer = m[1];
+        warpServerPort = m[2];
+      }
+    }
+    const awgKeys = [
+      'awg_version',
+      'awg_jc',
+      'awg_jmin',
+      'awg_jmax',
+      'awg_s1',
+      'awg_s2',
+      'awg_s3',
+      'awg_s4',
+      'awg_h1',
+      'awg_h2',
+      'awg_h3',
+      'awg_h4',
+      'awg_i1',
+      'awg_i2',
+      'awg_i3',
+      'awg_i4',
+      'awg_i5',
+    ];
+    for (const k of awgKeys) {
+      if (data[k] !== undefined && data[k] !== null && String(data[k]) !== '') {
+        warpAwgOptions[k] = String(data[k]);
+      }
+    }
+  };
 
   // FPTN state
   let fptnToken = '';
@@ -1321,26 +1378,7 @@ export function openConnectionWizardModal(
                 isGeneratingWarp = false;
                 if (res && res.code === 0 && res.stdout) {
                   const data = JSON.parse(String(res.stdout).trim());
-                  if (data.private_key) warpPrivateKey = data.private_key;
-                  if (data.public_key || data.peer_public_key) {
-                    warpPeerPublicKey = data.public_key || data.peer_public_key;
-                  }
-                  if (data.v4 || data.local_address) {
-                    warpLocalAddress = data.v4 || data.local_address;
-                  }
-                  if (data.v6) warpIpv6 = data.v6;
-                  if (data.reserved) {
-                    warpReserved = Array.isArray(data.reserved)
-                      ? JSON.stringify(data.reserved)
-                      : String(data.reserved);
-                  }
-                  if (data.endpoint) {
-                    const m = String(data.endpoint).match(/^([^:]+):(\d+)$/);
-                    if (m) {
-                      warpServer = m[1];
-                      warpServerPort = m[2];
-                    }
-                  }
+                  applyGeneratedWarpPayload(data);
                   showToast(
                     tr(
                       'Ключи Cloudflare WARP успешно зарегистрированы!',
@@ -4732,7 +4770,7 @@ export function openConnectionWizardModal(
     options.onComplete?.({ direction: dir, sectionId });
   }
 
-  function finishOutboundWizard(applyImmediately = false) {
+  async function finishOutboundWizard(applyImmediately = false) {
     const finalName =
       connName.trim() ||
       (targetMode === 'new' && newSectionName.trim()
@@ -4816,6 +4854,29 @@ export function openConnectionWizardModal(
         ]);
       }
     } else if (outboundMethod === 'warp') {
+      if (!warpPrivateKey.trim()) {
+        const g = globalThis as any;
+        const fsObj =
+          (typeof fs !== 'undefined' && fs) || g.fs || g.L?.fs || null;
+        if (fsObj && typeof fsObj.exec === 'function') {
+          try {
+            showToast(
+              tr(
+                'Регистрация ключей Cloudflare WARP...',
+                'Registering Cloudflare WARP keys...',
+              ),
+              'success',
+            );
+            const res = await fsObj.exec('/usr/bin/tachyon', ['generate_warp']);
+            if (res && res.code === 0 && res.stdout) {
+              const data = JSON.parse(String(res.stdout).trim());
+              applyGeneratedWarpPayload(data);
+            }
+          } catch {
+            // Ignore; fallback check below handles empty key
+          }
+        }
+      }
       if (warpPrivateKey.trim()) {
         uciObj.set(
           TACHYON_UCI_PACKAGE,
@@ -4877,6 +4938,11 @@ export function openConnectionWizardModal(
           'warp_fake_packets',
           warpFakePackets.trim(),
         );
+      }
+      for (const [ak, av] of Object.entries(warpAwgOptions)) {
+        if (av) {
+          uciObj.set(TACHYON_UCI_PACKAGE, srcId, ak, av);
+        }
       }
     } else if (outboundMethod === 'desync') {
       if (dpiEngineType === 'desync') {
@@ -5867,7 +5933,6 @@ export function openConnectionWizardModal(
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'check_interval', '3m');
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'tolerance', '50');
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'idle_timeout', '30m');
-        uciObj.set(TACHYON_UCI_PACKAGE, balId, 'source_refs', [srcId]);
         uciObj.set(TACHYON_UCI_PACKAGE, secId, 'balancer_refs', [balId]);
       } else {
         for (const existingBalId of curBals) {
@@ -5887,6 +5952,35 @@ export function openConnectionWizardModal(
               srcId,
             ]);
           }
+        }
+      }
+    } else if (outboundMethod !== 'desync') {
+      const curBalsRaw = uciObj.get(
+        TACHYON_UCI_PACKAGE,
+        secId,
+        'balancer_refs',
+      );
+      const curBals = Array.isArray(curBalsRaw)
+        ? curBalsRaw
+        : curBalsRaw
+          ? String(curBalsRaw).split(/\s+/).filter(Boolean)
+          : [];
+      for (const existingBalId of curBals) {
+        const balSrcRefsRaw = uciObj.get(
+          TACHYON_UCI_PACKAGE,
+          existingBalId,
+          'source_refs',
+        );
+        const balSrcRefs = Array.isArray(balSrcRefsRaw)
+          ? balSrcRefsRaw
+          : balSrcRefsRaw
+            ? String(balSrcRefsRaw).split(/\s+/).filter(Boolean)
+            : [];
+        if (balSrcRefs.length > 0 && !balSrcRefs.includes(srcId)) {
+          uciObj.set(TACHYON_UCI_PACKAGE, existingBalId, 'source_refs', [
+            ...balSrcRefs,
+            srcId,
+          ]);
         }
       }
     }
@@ -6433,7 +6527,7 @@ export function openConnectionWizardModal(
             class: 'btn cbi-button cbi-button-action',
             click: () => {
               if (direction === 'outbound') {
-                finishOutboundWizard(false);
+                void finishOutboundWizard(false);
               } else {
                 void finishInboundWizard(false);
               }
@@ -6450,7 +6544,7 @@ export function openConnectionWizardModal(
             class: 'btn cbi-button cbi-button-positive important',
             click: () => {
               if (direction === 'outbound') {
-                finishOutboundWizard(true);
+                void finishOutboundWizard(true);
               } else {
                 void finishInboundWizard(true);
               }

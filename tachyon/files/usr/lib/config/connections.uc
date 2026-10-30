@@ -1381,11 +1381,12 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         return sprintf("%J", obj);
     }
     if (stype == "warp") {
-        let pk = trim(option(src, "warp_private_key", ""));
+        let pk = trim(option(src, "warp_private_key", option(src, "awg_private_key", "")));
         if (pk == "") return "";
         let acc = trim(option(src, "warp_account_id", ""));
         let tok = trim(option(src, "warp_access_token", ""));
-        if (acc != "" || tok != "") {
+        let explicit_wg_srv = trim(option(src, "warp_server", option(src, "warp_endpoint_host", option(src, "awg_server_address", ""))));
+        if ((acc != "" || tok != "") && explicit_wg_srv == "") {
             let m_obj = {
                 type: "masque",
                 tag: tag_name,
@@ -1398,18 +1399,23 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             if (tok != "") m_obj.auth_token = tok;
             return sprintf("%J", m_obj);
         }
-        let w_srv = trim(option(src, "warp_server", option(src, "warp_endpoint_host", "engage.cloudflareclient.com"))) || "engage.cloudflareclient.com";
-        let w_port = int(option(src, "warp_server_port", option(src, "warp_endpoint_port", "2408")) || 2408);
-        let w_pub = trim(option(src, "warp_peer_public_key", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=")) || "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
+        let w_srv = explicit_wg_srv != "" ? explicit_wg_srv : "162.159.192.1";
+        let w_port = int(option(src, "warp_server_port", option(src, "warp_endpoint_port", option(src, "awg_server_port", "2408"))) || 2408);
+        let w_pub = trim(option(src, "warp_peer_public_key", option(src, "awg_peer_public_key", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="))) || "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
         let raw_w_addrs = list_value(src, "warp_local_address");
+        if (length(raw_w_addrs) == 0)
+            raw_w_addrs = list_value(src, "awg_local_address");
         let w_addrs = [];
         for (let entry in raw_w_addrs) {
             for (let part in split(as_string(entry), /[,\s]+/)) {
                 part = trim(part);
-                if (part != "")
+                if (part != "" && !(part in w_addrs))
                     push(w_addrs, part);
             }
         }
+        let w_v6 = trim(option(src, "warp_ipv6", ""));
+        if (w_v6 != "" && !(w_v6 in w_addrs))
+            push(w_addrs, w_v6);
         if (length(w_addrs) == 0) {
             let v4 = trim(option(src, "warp_local_v4", "172.16.0.2/32")) || "172.16.0.2/32";
             push(w_addrs, v4);
@@ -1418,38 +1424,66 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             address: w_srv,
             port: w_port,
             public_key: w_pub,
-            allowed_ips: [ "0.0.0.0/0", "::/0" ]
+            allowed_ips: [ "0.0.0.0/0", "::/0" ],
+            persistent_keepalive_interval: int(option(src, "warp_keepalive", option(src, "awg_keepalive", "25")) || 25)
         };
         let raw_res = trim(option(src, "warp_reserved", ""));
         if (raw_res != "") {
             let res_arr = [];
             for (let part in split(raw_res, /[,\s\[\]]+/)) {
                 if (part != "" && match(part, /^[0-9]+$/))
-                    push(res_arr, int(part, 10));
+                    push(res_arr, int(part));
             }
             if (length(res_arr) == 3)
                 peer_obj.reserved = res_arr;
             else
                 peer_obj.reserved = raw_res;
         }
+        let w_mtu = int(option(src, "warp_mtu", option(src, "awg_mtu", "1280")) || 1280);
+        if (w_mtu <= 0)
+            w_mtu = 1280;
         let wg_obj = {
             type: "wireguard",
             tag: tag_name,
             address: w_addrs,
             private_key: pk,
-            peers: [ peer_obj ]
+            mtu: w_mtu,
+            peers: [ peer_obj ],
+            jc: int(option(src, "awg_jc", "5") || 5),
+            jmin: int(option(src, "awg_jmin", "40") || 40),
+            jmax: int(option(src, "awg_jmax", "70") || 70),
+            s1: int(option(src, "awg_s1", "0") || 0),
+            s2: int(option(src, "awg_s2", "0") || 0),
+            s3: int(option(src, "awg_s3", "0") || 0),
+            s4: int(option(src, "awg_s4", "0") || 0),
+            h1: int(option(src, "awg_h1", "1") || 1),
+            h2: int(option(src, "awg_h2", "2") || 2),
+            h3: int(option(src, "awg_h3", "3") || 3),
+            h4: int(option(src, "awg_h4", "4") || 4)
         };
-        let w_mtu = int(option(src, "warp_mtu", "0") || 0);
-        if (w_mtu > 0)
-            wg_obj.mtu = w_mtu;
-        let fp = trim(option(src, "warp_fake_packets", ""));
-        if (fp != "") wg_obj.fake_packets = fp;
-        let fps = trim(option(src, "warp_fake_packets_size", ""));
-        if (fps != "") wg_obj.fake_packets_size = fps;
-        let fpd = trim(option(src, "warp_fake_packets_delay", ""));
-        if (fpd != "") wg_obj.fake_packets_delay = fpd;
-        let fpm = trim(option(src, "warp_fake_packets_mode", ""));
-        if (fpm != "") wg_obj.fake_packets_mode = fpm;
+        let default_i1 = "<b 0xc70000000108f3b1a8927c5e142000dc928f1a4b3d7e2011a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7>";
+        let raw_i1 = trim(option(src, "awg_i1", default_i1)) || default_i1;
+        wg_obj.i1 = type(common.awg_tag_chain) == "function" ? common.awg_tag_chain(raw_i1) : raw_i1;
+        for (let ik in [ "i2", "i3", "i4", "i5" ]) {
+            let iv = trim(option(src, "awg_" + ik, ""));
+            if (iv != "")
+                wg_obj[ik] = type(common.awg_tag_chain) == "function" ? common.awg_tag_chain(iv) : iv;
+        }
+        let is_tcore = false;
+        try {
+            let vs = require("tachyon_core.variant_state");
+            is_tcore = type(vs.is_tachyon_core) == "function" && vs.is_tachyon_core();
+        } catch (e) {}
+        if (!is_tcore) {
+            let fp = trim(option(src, "warp_fake_packets", ""));
+            if (fp != "") wg_obj.fake_packets = fp;
+            let fps = trim(option(src, "warp_fake_packets_size", ""));
+            if (fps != "") wg_obj.fake_packets_size = fps;
+            let fpd = trim(option(src, "warp_fake_packets_delay", ""));
+            if (fpd != "") wg_obj.fake_packets_delay = fpd;
+            let fpm = trim(option(src, "warp_fake_packets_mode", ""));
+            if (fpm != "") wg_obj.fake_packets_mode = fpm;
+        }
         return sprintf("%J", wg_obj);
     }
     if (stype == "desync") {
@@ -1925,6 +1959,8 @@ function child_effective_include_prefixes(child, section, keep_all_source_prefix
     }
     let srefs = whitespace_list_value(child, "source_refs");
     if (length(srefs) == 0 || srefs[0] == "*")
+        return [];
+    if (child[".type"] == "balancer" && index(section_name(child), "bal_auto_") == 0 && raw_mode == "" && !keep_all_source_prefixes)
         return [];
     if (type(section) == "object" && !keep_all_source_prefixes) {
         let eff_srcs = section_effective_outbound_sources(section);

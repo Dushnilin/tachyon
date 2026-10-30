@@ -121,7 +121,18 @@ function collect_domains(rules) {
 
 function prepare_list(name, source) {
     let path = cache_path(name);
-    if (path == null || !presets.is_populated_srs_file(source)) return false;
+    if (path == null) return false;
+    let is_trs = match(common.as_string(source), /\.trs$/) != null;
+    if (is_trs) {
+        if (type(presets.is_usable_trs_file) == "function" && !presets.is_usable_trs_file(source))
+            return false;
+    } else if (!presets.is_populated_srs_file(source)) {
+        let alt_trs = replace(common.as_string(source), /\.srs$/, ".trs");
+        if (alt_trs != source && type(presets.is_usable_trs_file) == "function" && presets.is_usable_trs_file(alt_trs))
+            source = alt_trs;
+        else
+            return false;
+    }
     if (!common.command_success_from_args(["mkdir", "-p", cache_dir])) return false;
     let stamp = clock();
     let temporary = sprintf("%s.%d.%d.decode", path, stamp[0], stamp[1]);

@@ -2639,11 +2639,28 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                     common.copy_file_stream(tmpfile, cached_trs_file);
                     remove_file(tmpfile);
                 }
+                remove_file(cached_file);
+                remove_file(persistent_file);
                 log_message("Successfully cached preset ruleset " + service + " (.trs) from " + trs_url, "info");
                 return true;
             }
             remove_file(tmpfile);
         }
+        if (type(singbox_rulesets_module().is_referenceable_trs_file) == "function" &&
+            singbox_rulesets_module().is_referenceable_trs_file(persistent_trs_file)) {
+            ensure_dir(TMP_RULESET_FOLDER);
+            copy_file(persistent_trs_file, cached_trs_file);
+            remove_file(cached_file);
+            log_message("Using persistent cached .trs ruleset for " + service + " after download failure", "warn");
+            return true;
+        }
+        if (type(singbox_rulesets_module().is_referenceable_trs_file) == "function" &&
+            singbox_rulesets_module().is_referenceable_trs_file(cached_trs_file)) {
+            log_message("Keeping existing .trs ruleset in /tmp for " + service + " after download failure", "warn");
+            return true;
+        }
+        log_message("Failed to download .trs preset ruleset " + service, "warn");
+        return false;
     }
 
     let srs_urls = [ url ];

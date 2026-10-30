@@ -2137,19 +2137,31 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     let rs_entry = cfg.route.rule_set[rs_idx];
                     if (type(rs_entry) == "object" && rs_entry.type == "local" && as_string(rs_entry.path || "") != "") {
                         let bad_path = as_string(rs_entry.path);
-                        log_message("Installed " + (sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box") +
-                            " rejected local rule-set at index " + rs_idx + " (" + bad_path + "); replacing with fallback .srs and retrying", "warn");
+                        let is_tcore = sing_box_version_is_tachyon_core("");
+                        log_message("Installed " + (is_tcore ? "tachyon-core" : "sing-box") +
+                            " rejected local rule-set at index " + rs_idx + " (" + bad_path + "); removing broken rule-set and retrying", "warn");
                         remove_file(bad_path);
                         let fallback_srs = replace(bad_path, /\.trs$/, ".srs");
                         if (fallback_srs != bad_path) {
                             let etc_bad_trs = replace(bad_path, /^.*\/(community-[^\/]+\.trs)$/, "/etc/tachyon/rulesets/$1");
                             if (index(etc_bad_trs, "/etc/tachyon/rulesets/") == 0)
                                 remove_file(etc_bad_trs);
-                            rs_entry.path = fallback_srs;
+                            if (!is_tcore) {
+                                rs_entry.path = fallback_srs;
+                                let srs_st = fs.stat(rs_entry.path);
+                                if (!srs_st || srs_st.size < 17)
+                                    fs.writefile(rs_entry.path, EMPTY_SRS_BINARY);
+                            } else {
+                                let empty_json_path = replace(bad_path, /\.trs$/, ".empty.json");
+                                write_file(empty_json_path, "{\"version\":1,\"rules\":[]}");
+                                rs_entry.path = empty_json_path;
+                                rs_entry.format = "source";
+                            }
+                        } else {
+                            let srs_st = fs.stat(rs_entry.path);
+                            if (!srs_st || srs_st.size < 17)
+                                fs.writefile(rs_entry.path, EMPTY_SRS_BINARY);
                         }
-                        let srs_st = fs.stat(rs_entry.path);
-                        if (!srs_st || srs_st.size < 17)
-                            fs.writefile(rs_entry.path, EMPTY_SRS_BINARY);
                         write_file(temp_config, sprintf("%J", cfg));
                         stripped = true;
                     }

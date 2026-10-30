@@ -1226,6 +1226,20 @@ function get_process_pids(process_name) {
     return pids;
 }
 
+function pid_memory_rss_mb(pid) {
+    let spid = trim(as_string(pid || ""));
+    if (!spid || match(spid, /^[0-9]+$/) == null)
+        return 0;
+    let status = fs.readfile("/proc/" + spid + "/status");
+    if (!status)
+        return 0;
+    let m = match(status, /VmRSS:[ \t]+([0-9]+)/);
+    if (!m)
+        return 0;
+    let kb = int(m[1]);
+    return kb > 0 ? int(kb / 1024) : 0;
+}
+
 function process_memory_rss_mb(process_name) {
     let pids = get_process_pids(process_name);
     let total_kb = 0;
@@ -1402,18 +1416,26 @@ function current_ui_state_json() {
     let sing_box_is_running = 0;
     let sing_box_is_enabled = 0;
     let sing_box_rss = 0;
+    let sing_box_pid = null;
 
     if (is_steer) {
         let engine_runtime = require("service.engine_runtime");
         sing_box_is_running = engine_runtime.run_init(active_engine, "status").ok ? 1 : 0;
         sing_box_is_enabled = tachyon_is_enabled;
-        sing_box_rss = sing_box_is_running ? process_memory_rss_mb("steer") : 0;
+        if (sing_box_is_running)
+            sing_box_pid = get_service_primary_pid("steer", false);
+        sing_box_rss = sing_box_is_running ? (sing_box_pid ? pid_memory_rss_mb(sing_box_pid) : process_memory_rss_mb("steer")) : 0;
     } else {
         sing_box_is_running = tachyon_is_running ? 1 : (sing_box_running() ? 1 : 0);
         sing_box_is_enabled = sing_box_enabled() ? 1 : 0;
-        // Движок называется tachyon-core, лэйаут sing-box остался на старых
-        // роутерах - память ядра есть где-то под одним из двух имён.
-        sing_box_rss = sing_box_is_running ? process_memory_rss_mb("tachyon-core") + process_memory_rss_mb("sing-box") : 0;
+        if (sing_box_is_running) {
+            sing_box_pid = get_service_primary_pid("tachyon-core", true);
+            if (!sing_box_pid)
+                sing_box_pid = get_service_primary_pid("sing-box", true);
+        }
+        // Считываем RSS именно основного демон-процесса ядра (по sing_box_pid),
+        // чтобы дочерние/форкнутые процессы не умножали показатель памяти в 2-3 раза.
+        sing_box_rss = sing_box_is_running ? (sing_box_pid ? pid_memory_rss_mb(sing_box_pid) : (process_memory_rss_mb("tachyon-core") || process_memory_rss_mb("sing-box"))) : 0;
     }
 
     let tachyon_status = service_status_text(tachyon_is_running, tachyon_is_enabled);
@@ -1474,16 +1496,6 @@ function current_ui_state_json() {
             engine_variant = "Sing-box";
     }
 
-    let sing_box_pid = null;
-    if (sing_box_is_running) {
-        if (is_steer) {
-            sing_box_pid = get_service_primary_pid("steer", false);
-        } else {
-            sing_box_pid = get_service_primary_pid("tachyon-core", true);
-            if (!sing_box_pid)
-                sing_box_pid = get_service_primary_pid("sing-box", true);
-        }
-    }
     let sing_box_uptime = sing_box_pid ? get_process_uptime(sing_box_pid) : null;
     let sing_box_uptime_pretty = format_uptime_pretty(sing_box_uptime);
 

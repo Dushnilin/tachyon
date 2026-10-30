@@ -2005,7 +2005,9 @@ function cleanup_modular_entities_v1(ctx) {
                 set_option_if_missing(ctx, proto_src, "name", sec_display_name);
                 set_option_if_missing(ctx, proto_src, "source_type", eff_proto);
                 for (let pk, pval in section) {
-                    if (index(pk, eff_proto + "_") != 0 && pk != "nfqws_opt" && pk != "nfqws2_opt" && pk != "byedpi_opts" && pk != "byedpi_cmd_opts")
+                    if (index(pk, eff_proto + "_") != 0 &&
+                        !(eff_proto == "warp" && index(pk, "awg_") == 0) &&
+                        pk != "nfqws_opt" && pk != "nfqws2_opt" && pk != "byedpi_opts" && pk != "byedpi_cmd_opts")
                         continue;
                     if (type(pval) == "array") {
                         if (length(pval) > 0)
