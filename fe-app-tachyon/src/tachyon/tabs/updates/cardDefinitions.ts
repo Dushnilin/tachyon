@@ -195,10 +195,27 @@ export function getInstallAction(
   component: Tachyon.ComponentName,
   key: UpdatesActionKey,
   installed: boolean,
+  currentVersion?: string,
+  latestVersion?: string,
 ): ComponentActionButton {
+  let text = installed ? _('Update') : _('Install');
+  if (installed && latestVersion) {
+    const cleanCurrent =
+      currentVersion &&
+      currentVersion !== 'not installed' &&
+      currentVersion !== _('Not installed') &&
+      currentVersion !== _('Loading...')
+        ? currentVersion
+        : '';
+    if (cleanCurrent && cleanCurrent !== latestVersion) {
+      text = `${_('Update')} (${cleanCurrent} → ${latestVersion})`;
+    } else {
+      text = `${_('Update')} (${latestVersion})`;
+    }
+  }
   return {
     key,
-    text: installed ? _('Update') : _('Install'),
+    text,
     icon: installed ? renderRotateCcwIcon24 : renderDownloadIcon24,
     component,
     action: 'install',

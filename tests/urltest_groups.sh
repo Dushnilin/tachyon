@@ -695,4 +695,116 @@ if (!urltest || length(urltest.outbounds || []) != 1 || urltest.outbounds[0] != 
     die("cached country.is metadata was not applied to URLTest filtering\n");
 ' "$country_is_config" || fail "URLTest country.is cached filtering"
 
+cat >"$WORK_DIR/xray-mixed-sub.json" <<'JSON'
+[
+  {
+    "remarks": "Fastest Pool",
+    "routing": {
+      "balancers": [
+        {
+          "tag": "auto",
+          "selector": [ "🇩🇪", "🇫🇮" ]
+        }
+      ]
+    },
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "tag": "🇩🇪 Germany-1",
+        "settings": {
+          "vnext": [
+            {
+              "address": "de1.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000011", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "de1.example" } }
+      },
+      {
+        "protocol": "vless",
+        "tag": "🇫🇮 Finland-1",
+        "settings": {
+          "vnext": [
+            {
+              "address": "fi1.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000012", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "fi1.example" } }
+      }
+    ]
+  },
+  {
+    "remarks": "🇷🇺 Россия Без РКН-1",
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "tag": "proxy",
+        "settings": {
+          "vnext": [
+            {
+              "address": "ru1.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000013", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "ru1.example" } }
+      }
+    ]
+  }
+]
+JSON
+
+xray_mixed_normalized="$WORK_DIR/xray-mixed-normalized.json"
+normalize_subscription "$WORK_DIR/xray-mixed-sub.json" "$xray_mixed_normalized"
+prepare_subscription_cache MAIN 1 "https://mixed.example/sub" "$xray_mixed_normalized"
+
+cat >"$WORK_DIR/xray-mixed-outbound-source-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "MAIN",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_source_refs": [ "src_sub_1" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ],
+  "outbound_source": [
+    {
+      ".name": "src_sub_1",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "source_type": "subscription",
+      "url": "https://mixed.example/sub"
+    }
+  ]
+}
+JSON
+
+xray_mixed_config="$WORK_DIR/xray-mixed-config.json"
+generate_config "$WORK_DIR/xray-mixed-outbound-source-fixture.json" "$xray_mixed_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let selector = null;
+for (let ob in config.outbounds || [])
+    if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
+        selector = ob;
+if (!selector)
+    die("missing MAIN-out selector\n");
+let members = {};
+for (let m in selector.outbounds || [])
+    members[m] = true;
+if (!members["🇩🇪 Germany-1"] || !members["🇫🇮 Finland-1"] || !members["🇷🇺 Россия Без РКН-1"])
+    die("expected all Xray balancer members and standalone nodes in MAIN-out when include_urltest_groups defaults to 0 on outbound_source\n");
+' "$xray_mixed_config" || fail "Xray mixed balancer + standalone subscription preserves all servers on outbound_source"
+
 printf 'URLTest group checks passed\n'

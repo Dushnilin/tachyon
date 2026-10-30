@@ -92,6 +92,137 @@ function process_running_by_pidfile(pidfile) {
            command_success_from_args(["kill", "-0", pid]);
 }
 
+function country_code_to_flag(cc) {
+    cc = uc(trim(as_string(cc || "")));
+    if (length(cc) != 2)
+        return "";
+    let c0 = ord(cc, 0);
+    let c1 = ord(cc, 1);
+    if (c0 < 65 || c0 > 90 || c1 < 65 || c1 > 90)
+        return "";
+    // UTF-8 Regional Indicator Symbols: U+1F1E6 ('A') .. U+1F1FF ('Z')
+    // U+1F1E6 in UTF-8 is 0xF0 0x9F 0x87 (0xA6 + offset)
+    return chr(0xF0, 0x9F, 0x87, 0xA6 + (c0 - 65), 0xF0, 0x9F, 0x87, 0xA6 + (c1 - 65));
+}
+
+function get_outbound_display_metadata() {
+    let meta = {
+        names: {},
+        countries: {},
+        protocols: {},
+        details: {},
+        section_labels: {},
+        group_labels: {}
+    };
+
+    try {
+        let c = uci_core.cursor();
+        if (c) {
+            c.load(CONFIG_NAME);
+            c.foreach(CONFIG_NAME, "section", function(s) {
+                let sname = as_string(s[".name"] || "");
+                if (sname == "") return;
+                let slabel = trim(as_string(s.label || s.name || sname));
+                meta.section_labels[sname] = slabel;
+                meta.group_labels[sname + "-out"] = slabel;
+                meta.group_labels[uc(sname) + "-out"] = slabel;
+            });
+            c.foreach(CONFIG_NAME, "balancer", function(b) {
+                let bname = as_string(b[".name"] || "");
+                if (bname == "") return;
+                let blabel = trim(as_string(b.label || b.name || bname));
+                meta.group_labels[bname] = blabel;
+                meta.group_labels[bname + "-out"] = blabel;
+            });
+        }
+    } catch (e) {}
+
+    let cache_dir = getenv("TACHYON_SECTION_CACHE_DIR") || "/var/run/tachyon/section-cache";
+    for (let path in (fs.glob(cache_dir + "/*.json") || [])) {
+        let cache = common.read_json_file(path);
+        if (type(cache) != "object")
+            continue;
+        let sec_name = as_string(cache.section || "");
+        let om = common.object_or_empty(cache.outboundMetadata);
+        let names = common.object_or_empty(om.names);
+        let countries = common.object_or_empty(om.countries);
+        let protocols = common.object_or_empty(om.protocols);
+        let details = common.object_or_empty(om.details);
+        for (let tag, dname in names) {
+            if (as_string(dname) != "")
+                meta.names[tag] = as_string(dname);
+        }
+        for (let tag, cc in countries) {
+            if (as_string(cc) != "")
+                meta.countries[tag] = as_string(cc);
+        }
+        for (let tag, proto in protocols) {
+            if (as_string(proto) != "")
+                meta.protocols[tag] = as_string(proto);
+        }
+        for (let tag, det in details) {
+            if (as_string(det) != "")
+                meta.details[tag] = as_string(det);
+        }
+        let ug = common.object_or_empty(cache.urltestGroups);
+        for (let gtag, ginfo in ug) {
+            if (type(ginfo) == "object" && as_string(ginfo.displayName || "") != "")
+                meta.group_labels[gtag] = as_string(ginfo.displayName);
+        }
+        if (sec_name != "" && meta.section_labels[sec_name]) {
+            meta.group_labels[sec_name + "-out"] = meta.section_labels[sec_name];
+        }
+    }
+
+    return meta;
+}
+
+function format_outbound_display_name(tag, meta) {
+    tag = as_string(tag || "");
+    if (tag == "")
+        return "";
+    if (!meta)
+        meta = get_outbound_display_metadata();
+    let dname = as_string((meta.names && meta.names[tag]) || (meta.group_labels && meta.group_labels[tag]) || tag);
+    let cc = as_string((meta.countries && meta.countries[tag]) || "");
+    let flag = country_code_to_flag(cc);
+    if (flag != "" && index(dname, flag) < 0)
+        dname = flag + " " + dname;
+    return dname;
+}
+
+function format_group_display_name(group_tag, meta) {
+    group_tag = as_string(group_tag || "");
+    if (group_tag == "")
+        return "";
+    if (!meta)
+        meta = get_outbound_display_metadata();
+    let base = replace(group_tag, /-out$/, "");
+    let label = (meta.group_labels && (meta.group_labels[group_tag] || meta.group_labels[base])) ||
+                (meta.section_labels && meta.section_labels[base]) || "";
+    if (label != "" && label != group_tag && label != base)
+        return label + " (" + group_tag + ")";
+    return group_tag;
+}
+
+function url_encode_component(str) {
+    str = as_string(str || "");
+    let out = "";
+    for (let i = 0; i < length(str); i++) {
+        let ch = substr(str, i, 1);
+        let code = ord(ch, 0);
+        if ((code >= 48 && code <= 57) ||
+            (code >= 65 && code <= 90) ||
+            (code >= 97 && code <= 122) ||
+            ch == "-" || ch == "_" || ch == "." || ch == "~") {
+            out += ch;
+        } else {
+            out += sprintf("%%%02X", code);
+        }
+    }
+    return out;
+}
+
 function get_clash_proxies_data() {
     let args = [ "curl", "-s", "-m", "5", "--connect-timeout", "3" ];
     for (let h in get_clash_auth_args()) push(args, h);
@@ -105,6 +236,41 @@ function get_clash_proxies_data() {
         }
     }
     return null;
+}
+
+function probe_group_delay(group_name, timeout_ms) {
+    group_name = as_string(group_name || "");
+    if (group_name == "")
+        return null;
+    timeout_ms = int(timeout_ms || 3000);
+    if (timeout_ms < 500) timeout_ms = 3000;
+    let encoded_group = url_encode_component(group_name);
+    let endpoint = "group/" + encoded_group + "/delay?url=" +
+        url_encode_component("https://www.gstatic.com/generate_204") +
+        "&timeout=" + as_string(timeout_ms);
+    let args = [ "curl", "-s", "-m", "8", "--connect-timeout", "3" ];
+    for (let h in get_clash_auth_args()) push(args, h);
+    push(args, get_clash_url(endpoint));
+    let res = command_capture(command_from_args(args));
+    if (res && res.status == 0 && res.output != "") {
+        try { return json(res.output); } catch (e) {}
+    }
+    return null;
+}
+
+function probe_all_groups_delay(timeout_ms) {
+    let data = get_clash_proxies_data();
+    if (!data || !data.proxies)
+        return false;
+    let probed = 0;
+    for (let gname in keys(data.proxies)) {
+        let p = data.proxies[gname];
+        if (p && (p.type == "Selector" || p.type == "URLTest" || p.type == "Fallback")) {
+            probe_group_delay(gname, timeout_ms);
+            probed++;
+        }
+    }
+    return probed > 0;
 }
 
 function get_system_status() {
@@ -149,7 +315,7 @@ function get_system_status() {
             status_obj.singbox_variant = sb_variant;
     }
 
-    // zapret2 status
+    // zapret2 / zapret / byedpi / wdtt / olcrtc status
     let z2_installed = fs.stat("/opt/zapret2/nfq2/nfqws2") != null ||
                        fs.stat("/opt/zapret2/nfq/nfqws2") != null ||
                        fs.stat("/opt/zapret2/nfqws2") != null ||
@@ -161,10 +327,62 @@ function get_system_status() {
         status_obj.zapret2 = z2_running ? "🟢 running" : "🔴 stopped";
     }
 
+    let z1_installed = fs.stat("/opt/zapret/nfq/nfqws") != null ||
+                       fs.stat("/usr/bin/nfqws") != null;
+    status_obj.zapret_installed = z1_installed;
+    if (z1_installed) {
+        let z1_running = command_success_from_args(["pidof", "nfqws"]);
+        status_obj.zapret_running = z1_running;
+        status_obj.zapret = z1_running ? "🟢 running" : "🔴 stopped";
+    }
+
+    let bd_installed = fs.stat("/usr/bin/ciadpi") != null || fs.stat("/usr/sbin/ciadpi") != null;
+    status_obj.byedpi_installed = bd_installed;
+    if (bd_installed) {
+        let bd_running = command_success_from_args(["pidof", "ciadpi"]);
+        status_obj.byedpi_running = bd_running;
+        status_obj.byedpi = bd_running ? "🟢 running" : "🔴 stopped";
+    }
+
+    let wdtt_installed = fs.stat("/usr/bin/wdtt") != null || fs.stat("/usr/sbin/wdtt") != null;
+    status_obj.wdtt_installed = wdtt_installed;
+    if (wdtt_installed) {
+        let wdtt_running = command_success_from_args(["pidof", "wdtt"]);
+        status_obj.wdtt_running = wdtt_running;
+        status_obj.wdtt = wdtt_running ? "🟢 running" : "🔴 stopped";
+    }
+
+    let olc_installed = fs.stat("/usr/bin/olcrtc") != null || fs.stat("/usr/sbin/olcrtc") != null;
+    status_obj.olcrtc_installed = olc_installed;
+    if (olc_installed) {
+        let olc_running = command_success_from_args(["pidof", "olcrtc"]);
+        status_obj.olcrtc_running = olc_running;
+        status_obj.olcrtc = olc_running ? "🟢 running" : "🔴 stopped";
+    }
+
+    // Eco / Lite mode
+    let eco_mode = uci_core.get(CONFIG_NAME, "settings", "eco_mode") == "1" ||
+                   uci_core.get(CONFIG_NAME, "settings", "lite_mode") == "1";
+    status_obj.eco_mode = eco_mode;
+
+    // Count available component updates in cache
+    let updates_available_count = 0;
+    try {
+        for (let upath in (fs.glob("/var/run/tachyon/component-update-checks/*.json") || [])) {
+            let uc_obj = common.read_json_file(upath);
+            if (type(uc_obj) == "object" && uc_obj.success === true &&
+                (uc_obj.status == "outdated" || uc_obj.status == "outdated_same_release")) {
+                updates_available_count++;
+            }
+        }
+    } catch (e) {}
+    status_obj.updates_available_count = updates_available_count;
+
     status_obj.tachyon_running = command_success_from_args(["/etc/init.d/tachyon", "status"]);
 
     // Active servers for all Selector groups
     status_obj.active_servers = {};
+    let meta = get_outbound_display_metadata();
     
     let pdata = get_clash_proxies_data();
     if (pdata && pdata.proxies) {
@@ -178,8 +396,21 @@ function get_system_status() {
                     if (srv && type(srv.history) == "array" && length(srv.history) > 0) {
                         let last = srv.history[length(srv.history) - 1];
                         if (last && last.delay) latency = last.delay;
+                    } else if (srv && (srv.type == "URLTest" || srv.type == "Selector" || srv.type == "Fallback") && srv.now) {
+                        let inner_srv = pdata.proxies[srv.now];
+                        if (inner_srv && type(inner_srv.history) == "array" && length(inner_srv.history) > 0) {
+                            let last = inner_srv.history[length(inner_srv.history) - 1];
+                            if (last && last.delay) latency = last.delay;
+                        }
                     }
-                    status_obj.active_servers[gname] = { server: srv_name, latency: latency };
+                    let total_nodes = type(p.all) == "array" ? length(p.all) : 0;
+                    status_obj.active_servers[gname] = {
+                        server: srv_name,
+                        display_name: format_outbound_display_name(srv_name, meta),
+                        group_label: format_group_display_name(gname, meta),
+                        latency: latency,
+                        total_nodes: total_nodes
+                    };
                 }
             }
         }
@@ -535,6 +766,12 @@ return {
     get_pause_remaining,
     process_running_by_pidfile,
     get_system_status,
+    country_code_to_flag,
+    get_outbound_display_metadata,
+    format_outbound_display_name,
+    format_group_display_name,
+    probe_group_delay,
+    probe_all_groups_delay,
     get_clash_proxies_data,
     clash_request,
     get_clash_connections,

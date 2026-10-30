@@ -3946,7 +3946,7 @@ function xray_add_converted_outbound(result, item, tag_map, visible, display_nam
     if (!converted)
         return;
 
-    if (visible && display_name != "")
+    if (display_name != "")
         converted.remark = display_name;
     if (!visible)
         converted.__tachyon_hidden = true;

@@ -108,9 +108,14 @@ let exec_backup = commands.exec_backup;
 let exec_support_bundle = commands.exec_support_bundle;
 let exec_close_connections = commands.exec_close_connections;
 let exec_check_updates = commands.exec_check_updates;
+let exec_run_check_updates = commands.exec_run_check_updates;
 let view_instances = commands.view_instances;
 let exec_speedtest = commands.exec_speedtest;
 let view_ping = commands.view_ping;
+let exec_ping_group = commands.exec_ping_group;
+let exec_ping_all_groups = commands.exec_ping_all_groups;
+let exec_update_subs = commands.exec_update_subs;
+let exec_update_lists = commands.exec_update_lists;
 let view_quick_test = commands.view_quick_test;
 let view_logs = commands.view_logs;
 let view_system_info = commands.view_system_info;
@@ -616,7 +621,8 @@ function handle_sec_sub_add(token, chat_id, msg_id, sec_name, url) {
     }
     c.commit(CONFIG_NAME);
     set_tg_state(chat_id, null);
-    send_message(token, chat_id, "✅ " + t("sub_added") + " <code>" + sec_name + "</code>!", "HTML");
+    send_message(token, chat_id, "✅ " + t("sub_added") + " <code>" + sec_name + "</code>!\n" + t("updating_subs_wait"), "HTML");
+    command_status(command_from_args(["/usr/bin/tachyon", "subscription_update", sec_name]));
     view_sec_subs(token, chat_id, null, sec_name);
 }
 
@@ -821,6 +827,25 @@ function dispatch_command(token, chat_id, text, msg_id) {
 
     if (cmd == "/speed") return exec_speedtest(token, chat_id, msg_id);
     if (cmd == "/ping") return view_ping(token, chat_id, msg_id);
+    if (cmd == "/ping_all") return exec_ping_all_groups(token, chat_id, msg_id, "ping");
+    if (cmd == "/ping_all_groups") return exec_ping_all_groups(token, chat_id, msg_id, "outbounds");
+    if (match(cmd, /^\/ping_group /)) {
+        let parts = split(cmd, " ");
+        let rest = slice(parts, 1);
+        let page = 0;
+        if (length(rest) > 1 && match(trim(rest[0]), /^[0-9]+$/) != null) {
+            page = int(trim(rest[0]));
+            rest = slice(rest, 1);
+        }
+        let grp = trim(join(" ", rest));
+        return exec_ping_group(token, chat_id, msg_id, page, grp);
+    }
+    if (cmd == "/update_subs") return exec_update_subs(token, chat_id, msg_id, null);
+    if (match(cmd, /^\/update_subs /)) {
+        let grp = trim(substr(cmd, 13));
+        return exec_update_subs(token, chat_id, msg_id, grp);
+    }
+    if (cmd == "/update_lists") return exec_update_lists(token, chat_id, msg_id);
     if (cmd == "/test") return view_quick_test(token, chat_id, msg_id);
     if (cmd == "/info") return view_system_info(token, chat_id, msg_id);
     if (cmd == "/help") return view_help(token, chat_id, msg_id);
@@ -929,6 +954,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/close_connections") return exec_close_connections(token, chat_id);
     if (cmd == "/instances") return view_instances(token, chat_id, msg_id);
     if (cmd == "/check_updates") return exec_check_updates(token, chat_id, msg_id);
+    if (cmd == "/run_check_updates") return exec_run_check_updates(token, chat_id, msg_id);
     
     if (match(cmd, /^\/update_component /)) {
         let comp = trim(substr(cmd, 17));

@@ -413,6 +413,8 @@ function register_bot_commands(token) {
         { command: "connections", description: t("cmd_connections") },
         { command: "test_rule", description: t("cmd_test_rule") },
         { command: "help",      description: t("cmd_help") },
+        { command: "update_subs", description: t("cmd_update_subs") },
+        { command: "update_lists", description: t("cmd_update_lists") },
         { command: "check_updates", description: t("cmd_check_updates") },
         { command: "close_connections", description: t("cmd_close_connections") },
         { command: "doctor",    description: t("cmd_doctor") },

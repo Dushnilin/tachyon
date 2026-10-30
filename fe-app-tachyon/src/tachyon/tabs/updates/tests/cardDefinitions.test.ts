@@ -102,6 +102,15 @@ describe('updates cardDefinitions helpers', () => {
 
     const installExisting = getInstallAction('zapret2', 'zapret2Install', true);
     expect(installExisting.text).toBe('Update');
+
+    const installWithVersions = getInstallAction(
+      'tachyon',
+      'tachyonInstall',
+      true,
+      '1.6.2',
+      '1.7.0',
+    );
+    expect(installWithVersions.text).toBe('Update (1.6.2 → 1.7.0)');
   });
 
   it('creates rollback action with or without backup version label', () => {

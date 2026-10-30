@@ -78,6 +78,29 @@ let tc_title = r.component_display_title({
 });
 check(tc_title == "tachyon-core", "sing_box component with tachyon-core release must display as tachyon-core, got: " + tc_title);
 
+// Verify api.uc outbound display helpers (country flag + remark + group display)
+let api = require("service.api");
+check(type(api.country_code_to_flag) == "function", "country_code_to_flag is missing");
+check(api.country_code_to_flag("NL") == "🇳🇱", "country_code_to_flag(NL) must be 🇳🇱");
+check(type(api.format_outbound_display_name) == "function", "format_outbound_display_name is missing");
+let fake_meta = {
+    names: { "sub-node-1": "Amsterdam #1" },
+    countries: { "sub-node-1": "NL" },
+    group_labels: { "MAIN-out": "Main" }
+};
+let fmt_node = api.format_outbound_display_name("sub-node-1", fake_meta);
+check(fmt_node == "🇳🇱 Amsterdam #1", "format_outbound_display_name must format flag + remark, got: " + fmt_node);
+let fmt_grp = api.format_group_display_name("MAIN-out", fake_meta);
+check(fmt_grp == "Main (MAIN-out)", "format_group_display_name must format section label + tag, got: " + fmt_grp);
+
+// Verify commands.resolve_component_installed_version fallback
+let cmds = require("service.telegram.commands");
+check(type(cmds.resolve_component_installed_version) == "function", "resolve_component_installed_version is missing");
+let resolved_ver = cmds.resolve_component_installed_version("tachyon", { tachyon_version: "1.6.2" });
+check(resolved_ver == "1.6.2", "resolve_component_installed_version must resolve tachyon_version, got: " + resolved_ver);
+check(r.valid_updatable_component("wdtt") == true, "wdtt must be a valid updatable component");
+check(r.valid_updatable_component("olcrtc") == true, "olcrtc must be a valid updatable component");
+
 let cleaned_notes = r.clean_release_notes(
     "[![GitHub Release](https://img.shields.io/github/v/release/Dushnilin/tachyon-core?style=flat-square)](https://github.com/Dushnilin/tachyon-core/releases)\n" +
     "# Tachyon Core — высокопроизводительное сетевое ядро\n" +

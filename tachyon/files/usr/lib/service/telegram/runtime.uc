@@ -29,7 +29,8 @@ let commands = {
     view_quiet_hours: function(...args) { return get_commands().view_quiet_hours(...args); },
     view_set_arr: function(...args) { return get_commands().view_set_arr(...args); },
     view_section_editor: function(...args) { return get_commands().view_section_editor(...args); },
-    view_sec_conds: function(...args) { return get_commands().view_sec_conds(...args); }
+    view_sec_conds: function(...args) { return get_commands().view_sec_conds(...args); },
+    resolve_component_installed_version: function(...args) { return get_commands().resolve_component_installed_version(...args); }
 };
 let callbacks = {
     handle_fptn_token_update: function(...args) { return get_callbacks().handle_fptn_token_update(...args); },
@@ -77,6 +78,7 @@ let view_sec_list = commands.view_sec_list;
 let view_test_rule = commands.view_test_rule;
 let view_quiet_hours = commands.view_quiet_hours;
 let view_sec_conds = commands.view_sec_conds;
+let resolve_component_installed_version = commands.resolve_component_installed_version;
 let handle_fptn_token_update = callbacks.handle_fptn_token_update;
 let handle_sec_sub_add = callbacks.handle_sec_sub_add;
 let handle_router_name_set = callbacks.handle_router_name_set;
@@ -194,6 +196,7 @@ function check_notified_updates(token, admin_ids) {
         
         let changed = false;
         let results = data.results || [];
+        let sys_info = null;
         for (let comp in results) {
             let name = comp.component || "";
             if (name == "") continue;
@@ -208,7 +211,12 @@ function check_notified_updates(token, admin_ids) {
                 let key = as_string(latest) + (identity != "" ? ":" + identity : "");
                 if (notified[name] != key) {
                     let title = component_display_title(comp);
-                    let cur = comp.current_version || "?";
+                    let cur = trim(as_string(comp.current_version || ""));
+                    if (cur == "" || cur == "?") {
+                        if (sys_info == null) sys_info = api.get_system_info();
+                        cur = resolve_component_installed_version(name, sys_info);
+                    }
+                    if (cur == "") cur = "?";
                     let msg;
                     if (comp.status == "outdated_same_release") {
                         let transition = build_transition(comp);

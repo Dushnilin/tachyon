@@ -491,9 +491,15 @@ function valid_updatable_component(name) {
         sing_box: 1,
         "sing-box": 1,
         steer: 1,
+        "steer-extended": 1,
         zapret: 1,
         zapret2: 1,
-        byedpi: 1
+        byedpi: 1,
+        wdtt: 1,
+        olcrtc: 1,
+        fptn: 1,
+        tailscale: 1,
+        torrserver_direct: 1
     };
     return allowed[name];
 }

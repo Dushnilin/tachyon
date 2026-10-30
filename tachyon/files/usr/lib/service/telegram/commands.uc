@@ -235,9 +235,16 @@ function view_set_arr(token, chat_id, msg_id, stype, sname, key) {
 
 function view_menu(token, chat_id, msg_id) {
     let sys = api.get_system_status();
+    let engine_label = (sys && sys.engine_name) ? sys.engine_name : "tachyon-core";
     let text = "🏠 <b>Tachyon Control Panel</b>\n\n" +
-               t("menu_version") + ": <code>" + sys.tachyon_version + "</code>\n" +
-               t("menu_cpu") + ": <code>" + sys.cpu + "</code>\n\n";
+               t("menu_version") + ": <code>" + sys.tachyon_version + "</code>" +
+               (sys.updates_available_count > 0 ? " ⚠️ <i>(+" + sys.updates_available_count + " upd)</i>" : "") + "\n" +
+               escape_html(engine_label) + ": <code>" + sys.singbox + "</code>\n" +
+               t("menu_cpu") + ": <code>" + sys.cpu + "</code> | RAM: <code>" + sys.ram_avail + "/" + sys.ram_total + " MB</code>\n";
+    if (sys.eco_mode) {
+        text += "🌿 " + t("status_eco_mode") + ": <code>🟢 ON</code>\n";
+    }
+    text += "\n";
                
     let keys_servers = keys(sys.active_servers || {});
     if (length(keys_servers) > 0) {
@@ -245,7 +252,10 @@ function view_menu(token, chat_id, msg_id) {
         for (let i = 0; i < length(keys_servers); i++) {
             let gname = keys_servers[i];
             let srv = sys.active_servers[gname];
-            text += "└ " + escape_html(gname) + ": <code>" + escape_html(srv.server) + "</code>\n";
+            let glabel = srv.group_label || gname;
+            let dname = srv.display_name || srv.server;
+            let lat = (srv.latency && srv.latency != "N/A") ? " (" + srv.latency + " ms)" : "";
+            text += "└ <b>" + escape_html(glabel) + "</b>: <code>" + escape_html(dname) + escape_html(lat) + "</code>\n";
         }
         text += "\n";
     } else {
@@ -254,6 +264,7 @@ function view_menu(token, chat_id, msg_id) {
 
     text += t("choose_section");
                
+    let upd_badge = sys.updates_available_count > 0 ? (" (" + sys.updates_available_count + " ⚠️)") : "";
     let keyboard = [
         [
             { text: t("menu_status"), callback_data: "/status" },
@@ -262,6 +273,10 @@ function view_menu(token, chat_id, msg_id) {
         [
             { text: t("menu_outbounds"), callback_data: "/outbounds" },
             { text: t("menu_sections"), callback_data: "/sections" }
+        ],
+        [
+            { text: t("btn_update_subs"), callback_data: "/update_subs" },
+            { text: t("btn_updates_menu") + upd_badge, callback_data: "/check_updates" }
         ],
         [
             { text: t("menu_devices"), callback_data: "/devices" },
@@ -312,12 +327,18 @@ function view_status(token, chat_id, msg_id) {
     let conn = api.check_connection();
     let engine_label = (sys && sys.engine_name) ? sys.engine_name : "tachyon-core";
     let text = "📊 <b>" + t("menu_status") + "</b>\n\n" +
-               t("status_version") + ": <code>" + (sys.tachyon_version || "?") + "</code>\n" +
+               t("status_version") + ": <code>" + (sys.tachyon_version || "?") + "</code>" +
+               (sys.updates_available_count > 0 ? " ⚠️ <i>(+" + sys.updates_available_count + " upd)</i>" : "") + "\n" +
                t("status_uptime") + ": <code>" + sys.uptime + "</code>\n" +
                t("status_cpu") + ": <code>" + sys.cpu + "</code>\n" +
-               "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n\n" +
+               "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n" +
+               (sys.eco_mode ? "🌿 " + t("status_eco_mode") + ": <code>🟢 ON</code>\n" : "") + "\n" +
                escape_html(engine_label) + ": <code>" + sys.singbox + (sys.singbox_variant && sys.singbox_variant != engine_label ? " [" + sys.singbox_variant + "]" : "") + "</code>\n" +
                (sys.zapret2_installed ? "zapret2: <code>" + sys.zapret2 + "</code>\n" : "") +
+               (sys.zapret_installed ? "zapret: <code>" + sys.zapret + "</code>\n" : "") +
+               (sys.byedpi_installed ? "byedpi: <code>" + sys.byedpi + "</code>\n" : "") +
+               (sys.wdtt_installed ? "wdtt: <code>" + sys.wdtt + "</code>\n" : "") +
+               (sys.olcrtc_installed ? "olcrtc: <code>" + sys.olcrtc + "</code>\n" : "") +
                "Watchdog: <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>\n\n" +
                "WAN: <code>" + (sys.wan_ip || "?") + "</code> " +
                (conn && conn.direct ? "✅" : "❌") + "\n" +
@@ -334,15 +355,27 @@ function view_status(token, chat_id, msg_id) {
         for (let i = 0; i < length(keys_servers); i++) {
             let gname = keys_servers[i];
             let srv = sys.active_servers[gname];
+            let glabel = srv.group_label || gname;
+            let dname = srv.display_name || srv.server;
             let lat = srv.latency != "N/A" ? " (" + srv.latency + " ms)" : "";
-            text += "└ " + escape_html(gname) + ": <code>" + escape_html(srv.server) + lat + "</code>\n";
+            let nodes_str = srv.total_nodes > 0 ? " [" + srv.total_nodes + "]" : "";
+            text += "└ <b>" + escape_html(glabel) + "</b>" + escape_html(nodes_str) + ": <code>" + escape_html(dname) + escape_html(lat) + "</code>\n";
         }
     }
 
+    let upd_badge = sys.updates_available_count > 0 ? (" (" + sys.updates_available_count + " ⚠️)") : "";
     let keyboard = [
+        [
+            { text: t("menu_outbounds"), callback_data: "/outbounds" },
+            { text: t("btn_update_subs"), callback_data: "/update_subs" }
+        ],
         [
             { text: t("menu_speed"), callback_data: "/speed" },
             { text: t("menu_ping"), callback_data: "/ping" }
+        ],
+        [
+            { text: t("btn_updates_menu") + upd_badge, callback_data: "/check_updates" },
+            { text: t("btn_update_lists"), callback_data: "/update_lists" }
         ],
         [
             { text: t("btn_refresh"), callback_data: "/status" },
@@ -382,8 +415,12 @@ function view_outbounds(token, chat_id, msg_id, group_name, page) {
     let data = api.get_clash_proxies_data();
     if (!data || !data.proxies) {
         let err = t("err_servers_list");
-        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
-        else send_message(token, chat_id, err, "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
+        let kb = [
+            [{ text: t("btn_update_subs"), callback_data: "/update_subs" }],
+            [{ text: t("nav_back"), callback_data: "/menu" }]
+        ];
+        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", kb);
+        else send_message(token, chat_id, err, "HTML", kb);
         return;
     }
     
@@ -397,8 +434,12 @@ function view_outbounds(token, chat_id, msg_id, group_name, page) {
     
     if (length(groups) == 0) {
         let err = "❌ " + t("outbound_groups_not_found");
-        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", [[{text:"⬅️ " + t("nav_back"), callback_data:"/menu"}]]);
-        else send_message(token, chat_id, err, "HTML", [[{text:"⬅️ " + t("nav_back"), callback_data:"/menu"}]]);
+        let kb = [
+            [{ text: t("btn_update_subs"), callback_data: "/update_subs" }],
+            [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]
+        ];
+        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", kb);
+        else send_message(token, chat_id, err, "HTML", kb);
         return;
     }
     
@@ -406,6 +447,7 @@ function view_outbounds(token, chat_id, msg_id, group_name, page) {
         group_name = groups[0];
     }
     
+    let meta = api.get_outbound_display_metadata ? api.get_outbound_display_metadata() : null;
     let text = "🌐 <b>" + t("menu_outbounds") + "</b>\n\n";
     let keyboard = [];
     
@@ -413,25 +455,34 @@ function view_outbounds(token, chat_id, msg_id, group_name, page) {
         text += t("section_choose_group");
         for (let i = 0; i < length(groups); i++) {
             let gname = groups[i];
-            let active = data.proxies[gname].now || "none";
-            text += "• <b>" + escape_html(gname) + "</b>: <code>" + escape_html(active) + "</code>\n";
-            push(keyboard, [{ text: "🌐 " + gname, callback_data: "/outbounds " + gname }]);
+            let gobj = data.proxies[gname] || {};
+            let active = gobj.now || "none";
+            let glabel = api.format_group_display_name ? api.format_group_display_name(gname, meta) : gname;
+            let active_label = api.format_outbound_display_name ? api.format_outbound_display_name(active, meta) : active;
+            let cnt = type(gobj.all) == "array" ? length(gobj.all) : 0;
+            text += "• <b>" + escape_html(glabel) + "</b> [" + cnt + "]: <code>" + escape_html(active_label) + "</code>\n";
+            push(keyboard, [{ text: "🌐 " + glabel + " (" + cnt + ")", callback_data: "/outbounds " + gname }]);
         }
+        push(keyboard, [
+            { text: t("btn_ping_all"), callback_data: "/ping_all_groups" },
+            { text: t("btn_update_subs"), callback_data: "/update_subs" }
+        ]);
         push(keyboard, [{ text: t("btn_refresh"), callback_data: "/outbounds" }]);
         push(keyboard, [{ text: t("nav_back"), callback_data: "/menu" }]);
     } else {
         let group_data = data.proxies[group_name];
         if (!group_data) return view_outbounds(token, chat_id, msg_id);
 
-        text += t("section_group") + ": <b>" + escape_html(group_name) + "</b>\n\n";
+        let glabel = api.format_group_display_name ? api.format_group_display_name(group_name, meta) : group_name;
+        let servers = group_data.all || [];
+        let total = length(servers);
+        text += t("section_group") + ": <b>" + escape_html(glabel) + "</b> (" + t("outbounds_total_nodes") + ": <code>" + total + "</code>)\n\n";
         let active_server = group_data.now || "";
 
         let row = [];
-        let servers = group_data.all || [];
         // A group can hold hundreds of nodes, and Telegram truncates a message
         // well before the list ends. Paginate instead: the text and the keyboard
         // must show the same window, or the tail is unreachable.
-        let total = length(servers);
         let per_page = 16;
         let total_pages = int((total + per_page - 1) / per_page);
         if (total_pages < 1) total_pages = 1;
@@ -448,12 +499,24 @@ function view_outbounds(token, chat_id, msg_id, group_name, page) {
                 if (type(proxy.history) == "array" && length(proxy.history) > 0) {
                     let last = proxy.history[length(proxy.history) - 1];
                     if (last && last.delay) delay = last.delay + " ms";
+                } else if ((proxy.type == "URLTest" || proxy.type == "Selector" || proxy.type == "Fallback") && proxy.now) {
+                    let inner = data.proxies[proxy.now];
+                    if (inner && type(inner.history) == "array" && length(inner.history) > 0) {
+                        let last = inner.history[length(inner.history) - 1];
+                        if (last && last.delay) delay = last.delay + " ms";
+                    }
                 }
             }
+            let dname = api.format_outbound_display_name ? api.format_outbound_display_name(name, meta) : name;
+            let proto = (meta && meta.protocols && meta.protocols[name]) ? meta.protocols[name] : "";
+            let proto_suffix = (proto != "" && proto != "urltest" && proto != "selector" && index(lc(dname), lc(proto)) < 0) ? (" [" + proto + "]") : "";
             let marker = (name == active_server) ? "🔵" : "•";
-            text += marker + " <code>" + escape_html(name) + "</code>: <code>" + delay + "</code>\n";
+            text += marker + " <code>" + escape_html(dname) + escape_html(proto_suffix) + "</code>: <code>" + delay + "</code>\n";
 
-            push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: cb_data([ "/sw", group_name, name ]) });
+            let btn_label = dname;
+            if (length(btn_label) > 26) btn_label = substr(btn_label, 0, 26) + "…";
+            if (delay != "N/A") btn_label += " (" + replace(delay, " ms", "") + "ms)";
+            push(row, { text: (name == active_server ? "🔵 " : "") + btn_label, callback_data: cb_data([ "/sw", group_name, name ]) });
             if (length(row) == 2) {
                 push(keyboard, row);
                 row = [];
@@ -472,6 +535,10 @@ function view_outbounds(token, chat_id, msg_id, group_name, page) {
             push(keyboard, nav);
         }
 
+        push(keyboard, [
+            { text: t("btn_ping_group"), callback_data: "/ping_group " + as_string(page) + " " + group_name },
+            { text: t("btn_update_subs"), callback_data: "/update_subs " + group_name }
+        ]);
         push(keyboard, [{ text: t("btn_refresh"), callback_data: "/outbounds " + as_string(page) + " " + group_name }]);
         if (length(groups) > 1) {
             push(keyboard, [{ text: t("btn_back_to_groups"), callback_data: "/outbounds" }]);
@@ -1009,8 +1076,43 @@ function exec_close_connections(token, chat_id) {
         send_message(token, chat_id, "❌ <b>" + t("conn_close_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
 }
 
+function resolve_component_installed_version(comp_name, sys_info) {
+    if (type(sys_info) != "object") return "";
+    comp_name = as_string(comp_name || "");
+    if (comp_name == "tachyon")
+        return as_string(sys_info.tachyon_version || "");
+    if (comp_name == "sing_box" || comp_name == "sing-box" || comp_name == "tachyon-core" || comp_name == "tachyon_core")
+        return as_string(sys_info.tachyon_core_version || sys_info.sing_box_version || "");
+    if (comp_name == "steer" || comp_name == "steer-extended")
+        return as_string(sys_info.steer_version || "");
+    if (comp_name == "zapret")
+        return as_string(sys_info.zapret_version || "");
+    if (comp_name == "zapret2")
+        return as_string(sys_info.zapret2_version || "");
+    if (comp_name == "byedpi")
+        return as_string(sys_info.byedpi_version || "");
+    if (comp_name == "wdtt")
+        return as_string(sys_info.wdtt_version || "");
+    if (comp_name == "olcrtc")
+        return as_string(sys_info.olcrtc_version || "");
+    if (comp_name == "fptn")
+        return as_string(sys_info.fptn_version || "");
+    if (comp_name == "tailscale")
+        return as_string(sys_info.tailscale_version || "");
+    if (comp_name == "torrserver_direct")
+        return as_string(sys_info.torrserver_version || "");
+    return "";
+}
+
 function exec_check_updates(token, chat_id, msg_id) {
     let out = command_output_from_args(["/usr/bin/tachyon", "component_update_check_cache"]);
+    let sys_info = {};
+    try {
+        let info_out = command_output_from_args([BIN_PATH, "get_system_info"]);
+        if (info_out && info_out != "")
+            sys_info = json(info_out) || {};
+    } catch (e) {}
+
     let text = "📦 <b>" + t("updates_title") + "</b>\n\n";
     let keyboard = [];
     if (out && out != "") {
@@ -1018,7 +1120,7 @@ function exec_check_updates(token, chat_id, msg_id) {
             let data = json(out);
             let results = data.results || [];
             let has_updates = false;
-            if (!data.enabled) {
+            if (!data.enabled && length(results) == 0) {
                 text += t("updates_disabled");
             } else if (length(results) == 0) {
                 text += t("updates_cache_empty");
@@ -1026,13 +1128,16 @@ function exec_check_updates(token, chat_id, msg_id) {
                 for (let comp in results) {
                     let name = comp.component || "";
                     let title = rendering.component_display_title(comp);
-                    let cur = comp.current_version || "?";
-                    let lat = comp.latest_version || "?";
+                    let cur = as_string(comp.current_version || "");
+                    if (cur == "" || cur == "?")
+                        cur = resolve_component_installed_version(name, sys_info) || "?";
+                    let lat = as_string(comp.latest_version || "");
+                    if (lat == "") lat = "?";
                     if (!comp.success) {
-                        text += "• <b>" + title + "</b>: ❌ Ошибка проверки\n";
+                        text += "• <b>" + escape_html(title) + "</b> (<code>" + escape_html(cur) + "</code>): ❌ " + t("update_check_error") + "\n";
                     } else if (comp.status == "outdated_same_release") {
                         let transition = build_transition(comp);
-                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> — " + t("update_new_release_build") +
+                        text += "• <b>" + escape_html(title) + "</b>: <code>" + escape_html(cur) + "</code> — " + t("update_new_release_build") +
                             (transition != "" ? " " + transition : "") + " ⚠️\n";
                         let notes = rendering.clean_release_notes(comp.release_notes);
                         if (notes != "") {
@@ -1040,22 +1145,22 @@ function exec_check_updates(token, chat_id, msg_id) {
                                 notes = substr(notes, 0, 400) + "...";
                             text += "  📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>\n";
                         }
-                        push(keyboard, [{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]);
+                        push(keyboard, [{text: "⬆️ " + t("btn_update_component") + " " + title + " (" + cur + ")", callback_data: "/update_component " + name}]);
                         has_updates = true;
                     } else if (comp.status == "outdated") {
-                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> ➡️ <code>" + lat + "</code> ⚠️\n";
+                        text += "• <b>" + escape_html(title) + "</b>: <code>" + escape_html(cur) + "</code> ➡️ <code>" + escape_html(lat) + "</code> ⚠️\n";
                         let notes = rendering.clean_release_notes(comp.release_notes);
                         if (notes != "") {
                             if (length(notes) > 400)
                                 notes = substr(notes, 0, 400) + "...";
                             text += "  📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>\n";
                         }
-                        push(keyboard, [{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]);
+                        push(keyboard, [{text: "⬆️ " + t("btn_update_component") + " " + title + " (" + cur + " → " + lat + ")", callback_data: "/update_component " + name}]);
                         has_updates = true;
                     } else if (comp.status == "dev") {
-                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> 🧪 " + t("update_dev_build") + "\n";
+                        text += "• <b>" + escape_html(title) + "</b>: <code>" + escape_html(cur) + "</code> 🧪 " + t("update_dev_build") + "\n";
                     } else {
-                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> ✅\n";
+                        text += "• <b>" + escape_html(title) + "</b>: <code>" + escape_html(cur) + "</code> ✅\n";
                     }
                 }
                 if (!has_updates) text += "\n✅ " + t("update_all_current");
@@ -1067,15 +1172,201 @@ function exec_check_updates(token, chat_id, msg_id) {
         text += t("update_cache_unavailable");
     }
     
-    push(keyboard, [{ text: t("btn_refresh_cache"), callback_data: "/check_updates" }]);
+    push(keyboard, [
+        { text: t("btn_check_updates_now"), callback_data: "/run_check_updates" },
+        { text: "🔄 " + t("btn_refresh_cache"), callback_data: "/check_updates" }
+    ]);
     push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
+function exec_run_check_updates(token, chat_id, msg_id) {
+    let wait_text = "⏳ <b>" + t("checking_updates_wait") + "</b>";
+    if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
+    else send_message(token, chat_id, wait_text, "HTML");
+
+    let components = [ "tachyon", "sing_box" ];
+    try {
+        let info_out = command_output_from_args([BIN_PATH, "get_system_info"]);
+        let info = (info_out && info_out != "") ? (json(info_out) || {}) : {};
+        if (info.zapret2_installed == "1") push(components, "zapret2");
+        if (info.zapret_installed == "1") push(components, "zapret");
+        if (info.byedpi_installed == "1") push(components, "byedpi");
+        if (info.wdtt_installed == "1") push(components, "wdtt");
+        if (info.olcrtc_installed == "1") push(components, "olcrtc");
+        if (info.fptn_installed == "1") push(components, "fptn");
+    } catch (e) {}
+
+    let cache_dir = "/var/run/tachyon/component-update-checks";
+    command_status(command_from_args([ "mkdir", "-p", cache_dir ]));
+    for (let comp in components) {
+        let res = command_capture(command_from_args([ BIN_PATH, "component_action", comp, "check_update" ]));
+        if (res && res.status == 0 && res.output != "") {
+            try {
+                let parsed = json(res.output);
+                if (type(parsed) == "object" && parsed.success === true) {
+                    parsed.updated_at = time();
+                    common.write_json_file(cache_dir + "/" + comp + ".json", parsed, 2);
+                }
+            } catch (e) {}
+        }
+    }
+    return exec_check_updates(token, chat_id, msg_id);
+}
+
+function view_ping(token, chat_id, msg_id) {
+    let text = "📍 <b>" + t("menu_ping") + "</b>\n\n";
+    let data = api.get_clash_proxies_data();
+    if (!data || !data.proxies) {
+        text += t("ping_api_error");
+        let keyboard = [[{ text: t("btn_refresh"), callback_data: "/ping" }, { text: t("nav_back"), callback_data: "/status" }]];
+        if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+        else send_message(token, chat_id, text, "HTML", keyboard);
+        return;
+    }
+
+    let meta = api.get_outbound_display_metadata ? api.get_outbound_display_metadata() : null;
+    let shown = 0;
+
+    // 1. Show active server latency per group
+    for (let gname in keys(data.proxies)) {
+        let p = data.proxies[gname];
+        if (!p || (p.type != "Selector" && p.type != "URLTest" && p.type != "Fallback"))
+            continue;
+        let delay = 0;
+        if (type(p.history) == "array" && length(p.history) > 0) {
+            let last = p.history[length(p.history) - 1];
+            if (last && last.delay) delay = int(last.delay);
+        }
+        let active_tag = p.now || "";
+        if (delay <= 0 && active_tag != "" && data.proxies[active_tag]) {
+            let ap = data.proxies[active_tag];
+            if (type(ap.history) == "array" && length(ap.history) > 0) {
+                let last = ap.history[length(ap.history) - 1];
+                if (last && last.delay) delay = int(last.delay);
+            } else if ((ap.type == "URLTest" || ap.type == "Selector") && ap.now && data.proxies[ap.now]) {
+                let inner = data.proxies[ap.now];
+                if (type(inner.history) == "array" && length(inner.history) > 0) {
+                    let last = inner.history[length(inner.history) - 1];
+                    if (last && last.delay) delay = int(last.delay);
+                }
+            }
+        }
+        let glabel = api.format_group_display_name ? api.format_group_display_name(gname, meta) : gname;
+        let srv_label = active_tag != "" ? (api.format_outbound_display_name ? api.format_outbound_display_name(active_tag, meta) : active_tag) : "none";
+        if (delay > 0) {
+            let icon = delay < 120 ? "🟢" : (delay < 300 ? "🟡" : "🔴");
+            text += icon + " <b>" + escape_html(glabel) + "</b> → <code>" + escape_html(srv_label) + "</code>: <b>" + delay + " ms</b>\n";
+            shown++;
+        } else if (active_tag != "") {
+            text += "⚪ <b>" + escape_html(glabel) + "</b> → <code>" + escape_html(srv_label) + "</code>: <i>N/A</i>\n";
+            shown++;
+        }
+    }
+
+    // 2. Show individual leaf server latencies
+    let leaf_lines = [];
+    for (let name in keys(data.proxies)) {
+        let p = data.proxies[name];
+        if (!p || p.type == "Selector" || p.type == "URLTest" || p.type == "Fallback" || p.type == "Direct" || p.type == "Reject" || p.type == "Compatible" || p.type == "Pass")
+            continue;
+        if (type(p.history) != "array" || length(p.history) == 0)
+            continue;
+        let last = p.history[length(p.history) - 1];
+        if (!last || !last.delay || int(last.delay) <= 0)
+            continue;
+        let delay = int(last.delay);
+        let icon = delay < 120 ? "🟢" : (delay < 300 ? "🟡" : "🔴");
+        let dname = api.format_outbound_display_name ? api.format_outbound_display_name(name, meta) : name;
+        push(leaf_lines, icon + " <code>" + escape_html(dname) + "</code>: <code>" + delay + " ms</code>");
+    }
+
+    if (length(leaf_lines) > 0) {
+        text += "\n<b>" + t("outbounds_total_nodes") + ":</b>\n";
+        let max_leaves = 25;
+        for (let i = 0; i < length(leaf_lines) && i < max_leaves; i++) {
+            text += leaf_lines[i] + "\n";
+            shown++;
+        }
+        if (length(leaf_lines) > max_leaves)
+            text += "<i>... (+" + (length(leaf_lines) - max_leaves) + ")</i>\n";
+    }
+
+    if (shown == 0) text += t("latency_no_data");
+
+    let keyboard = [
+        [
+            { text: t("btn_ping_all"), callback_data: "/ping_all" },
+            { text: "🔄 " + t("btn_refresh"), callback_data: "/ping" }
+        ],
+        [{ text: "⬅️ " + t("nav_back"), callback_data: "/status" }]
+    ];
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function exec_ping_group(token, chat_id, msg_id, page, group_name) {
+    let wait_text = "⏳ <b>" + t("ping_probing") + "</b>\n<code>" + escape_html(group_name) + "</code>";
+    if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
+    if (api.probe_group_delay)
+        api.probe_group_delay(group_name, 3000);
+    return view_outbounds(token, chat_id, msg_id, group_name, page);
+}
+
+function exec_ping_all_groups(token, chat_id, msg_id, return_view) {
+    let wait_text = "⏳ <b>" + t("ping_probing") + "</b>";
+    if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
+    if (api.probe_all_groups_delay)
+        api.probe_all_groups_delay(3000);
+    if (return_view == "outbounds")
+        return view_outbounds(token, chat_id, msg_id);
+    return view_ping(token, chat_id, msg_id);
+}
+
+function exec_update_subs(token, chat_id, msg_id, group_name) {
+    let wait_text = "⏳ <b>" + t("updating_subs_wait") + "</b>";
+    if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
+    else send_message(token, chat_id, wait_text, "HTML");
+
+    let target_sec = "";
+    if (group_name && group_name != "") {
+        let c = uci_core.cursor();
+        if (c) {
+            c.load(CONFIG_NAME);
+            let candidate = replace(as_string(group_name), /-out$/, "");
+            if (c.get_all(CONFIG_NAME, candidate))
+                target_sec = candidate;
+            else if (c.get_all(CONFIG_NAME, lc(candidate)))
+                target_sec = lc(candidate);
+        }
+    }
+
+    let args = [ BIN_PATH, "subscription_update" ];
+    if (target_sec != "")
+        push(args, target_sec);
+    let st = command_status(command_from_args(args));
+    let done_msg = (st == 0) ? ("<b>" + t("updating_subs_done") + "</b>") : ("<b>" + t("updating_subs_failed") + "</b>");
+    send_message(token, chat_id, done_msg, "HTML");
+    if (group_name && group_name != "")
+        return view_outbounds(token, chat_id, null, group_name, 0);
+    return view_outbounds(token, chat_id, null);
+}
+
+function exec_update_lists(token, chat_id, msg_id) {
+    let wait_text = "⏳ <b>" + t("updating_lists_wait") + "</b>";
+    if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
+    command_status(command_from_args([ BIN_PATH, "list_update_async" ]));
+    let done_text = "📋 <b>" + t("updating_lists_started") + "</b>";
+    let kb = [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]];
+    if (msg_id) return edit_message(token, chat_id, msg_id, done_text, "HTML", kb);
+    return send_message(token, chat_id, done_text, "HTML", kb);
+}
+
 function view_instances(token, chat_id, msg_id) {
     let data = api.get_clash_proxies_data();
+    let meta = api.get_outbound_display_metadata ? api.get_outbound_display_metadata() : null;
     let text = "🖧 <b>Live Server Instances</b>\n\n";
     if (data && data.proxies) {
         try {
@@ -1083,15 +1374,20 @@ function view_instances(token, chat_id, msg_id) {
             let count = 0;
             for (let name in proxies) {
                 let p = proxies[name];
-                if (p.type == "Selector" || p.type == "URLTest" || p.type == "Direct" || p.type == "Reject" || p.type == "Compatible") continue;
+                if (p.type == "Selector" || p.type == "URLTest" || p.type == "Fallback" || p.type == "Direct" || p.type == "Reject" || p.type == "Compatible" || p.type == "Pass") continue;
                 let delay = "➖";
                 if (p.history && length(p.history) > 0) {
                     let last = p.history[length(p.history) - 1];
                     if (last.delay > 0) delay = last.delay + " ms";
                     else delay = "❌ Timeout";
                 }
-                text += "• <code>" + escape_html(name) + "</code> (" + p.type + "): <b>" + delay + "</b>\n";
+                let dname = api.format_outbound_display_name ? api.format_outbound_display_name(name, meta) : name;
+                text += "• <code>" + escape_html(dname) + "</code> (" + escape_html(p.type) + "): <b>" + delay + "</b>\n";
                 count++;
+                if (count >= 45) {
+                    text += "<i>...</i>\n";
+                    break;
+                }
             }
             if (count == 0) text += t("servers_none");
         } catch(e) {
@@ -1101,10 +1397,15 @@ function view_instances(token, chat_id, msg_id) {
         text += "❌ " + t("api_connect_failed");
     }
     
-    let kb = [[
-        {text: "🔄 " + t("btn_refresh"), callback_data: "/instances"},
-        {text: "⬅️ " + t("nav_back"), callback_data: "/status"}
-    ]];
+    let kb = [
+        [
+            {text: t("btn_ping_all"), callback_data: "/ping_all_groups"},
+            {text: "🔄 " + t("btn_refresh"), callback_data: "/instances"}
+        ],
+        [
+            {text: "⬅️ " + t("nav_back"), callback_data: "/status"}
+        ]
+    ];
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", kb);
     else send_message(token, chat_id, text, "HTML", kb);
@@ -1135,39 +1436,6 @@ function exec_speedtest(token, chat_id, msg_id) {
     let keyboard = [
         [{ text: t("btn_speed_again"), callback_data: "/speed" }],
         [{ text: t("nav_back"), callback_data: "/status" }]
-    ];
-    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
-    else send_message(token, chat_id, text, "HTML", keyboard);
-}
-
-function view_ping(token, chat_id, msg_id) {
-    let text = "📍 <b>" + t("menu_ping") + "</b>\n\n";
-    let data = api.get_clash_proxies_data();
-    if (!data || !data.proxies) {
-        text += t("ping_api_error");
-        let keyboard = [[{ text: t("btn_refresh"), callback_data: "/ping" }, { text: t("nav_back"), callback_data: "/status" }]];
-        if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
-        else send_message(token, chat_id, text, "HTML", keyboard);
-        return;
-    }
-
-    let shown = 0;
-    for (let name in data.proxies) {
-        let p = data.proxies[name];
-        if (p.type != "Selector" && p.type != "URLTest") continue;
-        if (!p.history || length(p.history) == 0) continue;
-        let last = p.history[length(p.history) - 1];
-        if (!last || !last.delay) continue;
-        let delay = int(last.delay);
-        let icon = delay < 100 ? "🟢" : (delay < 300 ? "🟡" : "🔴");
-        text += icon + " <code>" + escape_html(name) + "</code>: <code>" + delay + " ms</code>\n";
-        shown++;
-    }
-    if (shown == 0) text += t("latency_no_data");
-
-    let keyboard = [
-        [{ text: "🔄 " + t("btn_refresh"), callback_data: "/ping" }],
-        [{ text: "⬅️ " + t("nav_back"), callback_data: "/status" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1433,6 +1701,7 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
             push(keyboard, avail[i]);
     }
 
+    push(keyboard, [{ text: t("btn_update_subs"), callback_data: "/update_subs " + sec_name }]);
     push(keyboard, [{ text: "➕ " + t("btn_add_subscription"), callback_data: "/sec_sub_add " + sec_name }]);
     push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/sec_view " + sec_name }]);
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
@@ -1458,6 +1727,8 @@ function view_help(token, chat_id, msg_id) {
         "/connections — Активные подключения\n\n" +
         "<b>" + t("help_manage_section") + "</b>\n" +
         "/restart — Перезапуск служб Tachyon\n" +
+        "/update_subs — Обновить подписки\n" +
+        "/update_lists — Обновить списки доменов/IP\n" +
         "/backup — Бэкап конфига\n" +
         "/close_connections — Закрыть все соединения\n" +
         "/check_updates — Проверить обновления\n\n" +
@@ -1871,10 +2142,16 @@ return {
     exec_backup,
     exec_support_bundle,
     exec_close_connections,
+    resolve_component_installed_version,
     exec_check_updates,
+    exec_run_check_updates,
     view_instances,
     exec_speedtest,
     view_ping,
+    exec_ping_group,
+    exec_ping_all_groups,
+    exec_update_subs,
+    exec_update_lists,
     view_quick_test,
     view_logs,
     view_system_info,

@@ -2040,6 +2040,43 @@ function cleanup_modular_entities_v1(ctx) {
                 set_list_option(ctx, section, "outbound_source_refs", kept_refs);
             }
         }
+
+        // Sync any newly added or unmigrated subscription_url child sections into outbound_source
+        for (let sub in (ctx.model.subscription_url || [])) {
+            if (option(sub, "section", "") != sname)
+                continue;
+            let url = trim(option(sub, "url", ""));
+            if (url == "")
+                continue;
+            let existing_src_obj = null;
+            for (let s in (ctx.model.outbound_source || [])) {
+                if (trim(option(s, "url", "")) == url) {
+                    existing_src_obj = s;
+                    break;
+                }
+            }
+            if (existing_src_obj == null) {
+                let next_idx = length(ctx.model.outbound_source || []) + 1;
+                let src_id = "src_sub_" + safe_sname + "_" + next_idx;
+                existing_src_obj = create_named_section(ctx, "outbound_source", src_id);
+                set_option_if_missing(ctx, existing_src_obj, "enabled", "1");
+                set_option_if_missing(ctx, existing_src_obj, "name", option(sub, "node_prefix", "") != "" ? option(sub, "node_prefix", "") : (sec_display_name + " Subscription"));
+                set_option_if_missing(ctx, existing_src_obj, "source_type", "subscription");
+                set_option_if_missing(ctx, existing_src_obj, "url", url);
+            }
+            for (let sk in [
+                "user_agent", "auto_user_agent", "hwid", "auto_hwid",
+                "prefix_nodes", "node_prefix", "hide_detour_outbounds",
+                "include_urltest_groups", "hide_urltest_group_outbounds",
+                "subscription_update_enabled", "subscription_update_interval",
+                "download_via_proxy_enabled", "download_via_proxy_section"
+            ]) {
+                let sval = option(sub, sk, "");
+                if (sval != "")
+                    set_option_if_missing(ctx, existing_src_obj, sk, sval);
+            }
+            add_list_unique(ctx, section, "outbound_source_refs", section_name(existing_src_obj));
+        }
     }
 
     // 2. Deduplicate identical Desync outbound_source entries so multiple sections
@@ -2327,6 +2364,7 @@ function migrate_modular_entities_v1(ctx) {
                 for (let sk in [
                     "user_agent", "auto_user_agent", "hwid", "auto_hwid",
                     "prefix_nodes", "node_prefix", "hide_detour_outbounds",
+                    "include_urltest_groups", "hide_urltest_group_outbounds",
                     "subscription_update_enabled", "subscription_update_interval",
                     "download_via_proxy_enabled", "download_via_proxy_section"
                 ]) {

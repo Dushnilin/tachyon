@@ -23,8 +23,25 @@ export function isComponentActionAlreadyRunningError(
   );
 }
 
-export function getCheckToastMessage(status: UpdateStatus): string {
+export function getCheckToastMessage(
+  status: UpdateStatus,
+  currentVersion?: string,
+  latestVersion?: string,
+): string {
   if (status === 'outdated' || status === 'outdated_same_release') {
+    const cleanCurrent =
+      currentVersion &&
+      currentVersion !== 'not installed' &&
+      currentVersion !== _('Not installed') &&
+      currentVersion !== _('Loading...')
+        ? currentVersion
+        : '';
+    if (cleanCurrent && latestVersion && cleanCurrent !== latestVersion) {
+      return `${_('Update is available')}: ${cleanCurrent} → ${latestVersion}`;
+    }
+    if (latestVersion) {
+      return `${_('Update is available')}: ${latestVersion}`;
+    }
     return _('Update is available');
   }
 
@@ -44,10 +61,7 @@ export function getExpectedLatestVersionForAction(
   if (button.targetVersion) {
     return button.targetVersion;
   }
-  if (
-    button.component !== 'tachyon' ||
-    (button.action !== 'install' && button.action !== 'reinstall')
-  ) {
+  if (button.action !== 'install' && button.action !== 'reinstall') {
     return undefined;
   }
 

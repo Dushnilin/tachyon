@@ -89,10 +89,18 @@ import {
 function getComponentCurrentVersion(
   component: Tachyon.ComponentName,
 ): string | undefined {
-  return getComponentCurrentVersionHelper(
+  const fromSys = getComponentCurrentVersionHelper(
     component,
     store.get().diagnosticsSystemInfo,
   );
+  if (fromSys && fromSys !== 'not installed') {
+    return fromSys;
+  }
+  const cachedCurr = store.get().updatesChecks[component]?.current_version;
+  if (cachedCurr && cachedCurr !== 'not installed') {
+    return cachedCurr;
+  }
+  return fromSys;
 }
 
 let updatesLifecycleRegistered = false;
@@ -231,8 +239,10 @@ function setCheckResult(
   currentSha: string = '',
   latestSha: string = '',
   releaseNotes: string = '',
+  currentVersion: string = '',
 ) {
   const updatesChecks = store.get().updatesChecks;
+  const existingCurrent = updatesChecks[component]?.current_version || '';
 
   store.set({
     updatesChecks: {
@@ -240,6 +250,9 @@ function setCheckResult(
       [component]: {
         status,
         latest_version: latestVersion,
+        ...(currentVersion || existingCurrent
+          ? { current_version: currentVersion || existingCurrent }
+          : {}),
         release_url: releaseUrl,
         ...(releaseNotes ? { release_notes: releaseNotes } : {}),
         ...(currentSha ? { current_sha: currentSha } : {}),
@@ -271,6 +284,7 @@ function applyCachedCheckResults(results: Tachyon.ComponentActionResult[]) {
         result.current_sha || '',
         result.latest_sha || '',
         result.release_notes || '',
+        result.current_version || '',
       );
     }
   });
@@ -452,22 +466,33 @@ async function applyCompletedComponentAction({
         result.current_sha || '',
         result.latest_sha || '',
         result.release_notes || '',
+        result.current_version || '',
       );
       modalController?.updateVersions({
-        currentVersion: getComponentCurrentVersion(result.component),
+        currentVersion:
+          result.current_version ||
+          getComponentCurrentVersion(result.component),
         targetVersion: result.latest_version || '',
         currentSha: result.current_sha || '',
         targetSha: result.latest_sha || '',
       });
     }
 
+    const currVerForToast =
+      result.current_version || getComponentCurrentVersion(result.component);
+    const toastMsg = getCheckToastMessage(
+      status,
+      currVerForToast,
+      result.latest_version || '',
+    );
+
     if (notify) {
-      showToast(getCheckToastMessage(status), 'success');
+      showToast(toastMsg, 'success');
     }
 
     if (hasUpdate) {
       const installButton = getComponentInstallAction(result.component);
-      modalController?.completeSuccess(getCheckToastMessage(status), {
+      modalController?.completeSuccess(toastMsg, {
         autoCloseMs: 0,
         installText: installButton.text,
         onInstall: () => {
@@ -475,7 +500,7 @@ async function applyCompletedComponentAction({
         },
       });
     } else {
-      modalController?.completeSuccess(getCheckToastMessage(status));
+      modalController?.completeSuccess(toastMsg);
     }
     return;
   }
@@ -877,9 +902,11 @@ async function handleComponentAction(button: ComponentActionButton) {
 function getComponentInstallAction(
   component: Tachyon.ComponentName,
 ): ComponentActionButton {
-  const isInstalled = !isNotInstalled(getComponentCurrentVersion(component));
+  const currVer = getComponentCurrentVersion(component);
+  const isInstalled = !isNotInstalled(currVer);
   const key = getComponentInstallKey(component);
-  return getInstallAction(component, key, isInstalled);
+  const latestVer = getLatestVersion(component);
+  return getInstallAction(component, key, isInstalled, currVer, latestVer);
 }
 
 function getInstalledUpdateActions(
@@ -894,7 +921,11 @@ function getInstalledUpdateActions(
 
   const actions = [getCheckAction(component, checkKey)];
   if (shouldShowInstallAfterCheck(component)) {
-    actions.push(getInstallAction(component, installKey, true));
+    const currVer = getComponentCurrentVersion(component);
+    const latestVer = getLatestVersion(component);
+    actions.push(
+      getInstallAction(component, installKey, true, currVer, latestVer),
+    );
   }
   return actions;
 }
@@ -1186,6 +1217,8 @@ function getComponentCards(): ComponentCard[] {
                 'torrserver_direct',
                 'torrserverDirectInstall',
                 true,
+                getComponentCurrentVersion('torrserver_direct'),
+                getLatestVersion('torrserver_direct'),
               ),
             ]
           : []),
@@ -1213,13 +1246,21 @@ function getComponentCards(): ComponentCard[] {
         },
       ];
 
+  const cachedVersionOrLoading = (component: Tachyon.ComponentName) => {
+    const check = getVisibleCheckResult(component);
+    if (check?.current_version && check.current_version !== 'not installed') {
+      return check.current_version;
+    }
+    return _('Loading...');
+  };
+
   return [
     {
       component: 'tachyon',
       column: 0,
       title: 'Tachyon',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('tachyon')
         : normalizeCompiledVersion(
             systemInfo.tachyon_version,
             systemInfo.tachyon_commit_sha,
@@ -1235,7 +1276,7 @@ function getComponentCards(): ComponentCard[] {
       column: 0,
       title: systemInfo.sing_box_tachyon_core ? 'Tachyon Core' : 'Sing-box',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('sing_box')
         : formatSingBoxVersion(systemInfo),
       badgeNode: systemInfoLoading
         ? null
@@ -1275,7 +1316,7 @@ function getComponentCards(): ComponentCard[] {
       column: 0,
       title: _('TorrServer Direct'),
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('torrserver_direct')
         : !torrserverInstalled
           ? _('Not installed')
           : `${torrserverVersion || 'TorrServer'} · ${
@@ -1300,7 +1341,7 @@ function getComponentCards(): ComponentCard[] {
       column: 1,
       title: 'Zapret',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('zapret')
         : zapretInstalled
           ? systemInfo.zapret_version
           : _('Not installed'),
@@ -1315,7 +1356,7 @@ function getComponentCards(): ComponentCard[] {
       column: 1,
       title: 'Zapret2',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('zapret2')
         : zapret2Installed
           ? systemInfo.zapret2_version
           : _('Not installed'),
@@ -1330,7 +1371,7 @@ function getComponentCards(): ComponentCard[] {
       column: 1,
       title: 'ByeDPI',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('byedpi')
         : byedpiInstalled
           ? systemInfo.byedpi_version
           : _('Not installed'),
@@ -1344,7 +1385,7 @@ function getComponentCards(): ComponentCard[] {
       column: 2,
       title: 'WDTT',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('wdtt')
         : wdttInstalled
           ? systemInfo.wdtt_version
           : _('Not installed'),
@@ -1359,7 +1400,7 @@ function getComponentCards(): ComponentCard[] {
       column: 2,
       title: 'OlcRTC',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('olcrtc')
         : olcrtcInstalled
           ? systemInfo.olcrtc_version
           : _('Not installed'),
@@ -1374,7 +1415,7 @@ function getComponentCards(): ComponentCard[] {
       column: 2,
       title: 'FPTN',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('fptn')
         : fptnInstalled
           ? fptnModeChoiceAvailable
             ? `${systemInfo.fptn_version} · ${
@@ -1395,7 +1436,7 @@ function getComponentCards(): ComponentCard[] {
       column: 2,
       title: 'Tailscale',
       version: systemInfoLoading
-        ? _('Loading...')
+        ? cachedVersionOrLoading('tailscale')
         : tailscaleInstalled
           ? systemInfo.tailscale_version
           : _('Not installed'),
@@ -2060,6 +2101,21 @@ function renderComponentCard(card: ComponentCard) {
       labelText = _('Update is available:');
       const versionToShow =
         checkResult.latest_version || card.latestVersion || card.version;
+      const rawCurrent =
+        checkResult.current_version ||
+        getComponentCurrentVersion(card.component) ||
+        card.version;
+      const cleanCurrent =
+        rawCurrent &&
+        rawCurrent !== 'not installed' &&
+        rawCurrent !== _('Not installed') &&
+        rawCurrent !== _('Loading...')
+          ? rawCurrent
+          : '';
+      const transitionLabel =
+        cleanCurrent && versionToShow && cleanCurrent !== versionToShow
+          ? `${cleanCurrent} → ${versionToShow}`
+          : versionToShow || _("What's new?");
 
       if (versionToShow || checkResult.release_url) {
         latestValueNodes.push(
@@ -2079,7 +2135,7 @@ function renderComponentCard(card: ComponentCard) {
                 });
               },
             },
-            versionToShow || _("What's new?"),
+            transitionLabel,
           ),
         );
       }
@@ -2090,6 +2146,13 @@ function renderComponentCard(card: ComponentCard) {
         currentSha: checkResult.current_sha,
         latestSha: checkResult.latest_sha,
       });
+      const sameVer =
+        checkResult.latest_version ||
+        checkResult.current_version ||
+        getComponentCurrentVersion(card.component) ||
+        '';
+      const buildLabel =
+        build.kind === 'sha' ? build.text : _('Rebuilt release');
       latestValueNodes.push(
         E(
           'span',
@@ -2097,7 +2160,7 @@ function renderComponentCard(card: ComponentCard) {
             class: 'tachyon_updates-page__component__sha-info',
             title: _('Installed build → Available build'),
           },
-          build.kind === 'sha' ? build.text : _('Rebuilt release'),
+          sameVer ? `${sameVer} (${buildLabel})` : buildLabel,
         ),
       );
     } else if (checkResult.status === 'latest') {
@@ -2394,8 +2457,14 @@ function renderEngineCard(): Node {
 
   const isSingBoxActive = true;
 
+  const checkComponent: Tachyon.ComponentName = 'sing_box';
+  const checkResult = getVisibleCheckResult(checkComponent);
+
   const engineVersion = singBoxLoading
-    ? _('Loading...')
+    ? checkResult?.current_version &&
+      checkResult.current_version !== 'not installed'
+      ? checkResult.current_version
+      : _('Loading...')
     : formatSingBoxVersion(systemInfo);
 
   // Badge
@@ -2413,9 +2482,6 @@ function renderEngineCard(): Node {
         : singBoxExtended || singBoxExtendedCompressed
           ? 'https://github.com/shtorm-7/sing-box-extended'
           : COMPONENT_REPO_URLS.sing_box);
-
-  const checkComponent: Tachyon.ComponentName = 'sing_box';
-  const checkResult = getVisibleCheckResult(checkComponent);
 
   // Header
   const headerChildren: Node[] = [
@@ -2478,6 +2544,21 @@ function renderEngineCard(): Node {
     if (checkResult.status === 'outdated') {
       labelText = _('Update is available:');
       const v = checkResult.latest_version || engineVersion;
+      const rawCurrent =
+        checkResult.current_version ||
+        getComponentCurrentVersion(checkComponent) ||
+        engineVersion;
+      const cleanCurrent =
+        rawCurrent &&
+        rawCurrent !== 'not installed' &&
+        rawCurrent !== _('Not installed') &&
+        rawCurrent !== _('Loading...')
+          ? rawCurrent
+          : '';
+      const transitionLabel =
+        cleanCurrent && v && cleanCurrent !== v
+          ? `${cleanCurrent} → ${v}`
+          : v || _("What's new?");
       if (v || checkResult.release_url) {
         latestValueNodes.push(
           E(
@@ -2496,7 +2577,7 @@ function renderEngineCard(): Node {
                 });
               },
             },
-            v || _("What's new?"),
+            transitionLabel,
           ),
         );
       }
@@ -2506,6 +2587,13 @@ function renderEngineCard(): Node {
         currentSha: checkResult.current_sha,
         latestSha: checkResult.latest_sha,
       });
+      const sameVer =
+        checkResult.latest_version ||
+        checkResult.current_version ||
+        getComponentCurrentVersion(checkComponent) ||
+        '';
+      const buildLabel =
+        build.kind === 'sha' ? build.text : _('Rebuilt release');
       latestValueNodes.push(
         E(
           'span',
@@ -2513,7 +2601,7 @@ function renderEngineCard(): Node {
             class: 'tachyon_updates-page__component__sha-info',
             title: _('Installed build → Available build'),
           },
-          build.kind === 'sha' ? build.text : _('Rebuilt release'),
+          sameVer ? `${sameVer} (${buildLabel})` : buildLabel,
         ),
       );
     } else if (checkResult.status === 'latest') {
@@ -2786,13 +2874,13 @@ function renderEngineCard(): Node {
     isSelectedInstalled && shouldShowInstallAfterCheck(selectedCheckComponent);
   const updateButton = showUpdateBtn
     ? (() => {
-        const ua: ComponentActionButton = {
-          key: 'singBoxInstall',
-          text: _('Update'),
-          icon: renderRotateCcwIcon24,
-          component: selectedCheckComponent,
-          action: 'install',
-        };
+        const ua = getInstallAction(
+          selectedCheckComponent,
+          'singBoxInstall',
+          true,
+          getComponentCurrentVersion(selectedCheckComponent),
+          getLatestVersion(selectedCheckComponent),
+        );
         const loading = Boolean(updatesActions[ua.key]?.loading);
         return renderButton({
           classNames: ['cbi-button-save'],
@@ -3271,6 +3359,9 @@ async function onPageMount() {
     applyComponentUpdateCheckCache(prefetchedComponentUpdateCheckCache);
   }
 
+  store.subscribe(onStoreUpdate);
+  startComponentActionStateWatcher();
+  void ensureSystemInfo();
   renderUpdatesComponents();
 
   void refreshEngineInfo().then(() => {
@@ -3299,10 +3390,7 @@ async function onPageMount() {
     }
   }
 
-  store.subscribe(onStoreUpdate);
-  startComponentActionStateWatcher();
   renderUpdatesComponents();
-  void ensureSystemInfo();
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
   }

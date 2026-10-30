@@ -69,12 +69,25 @@ describe('updates notifications helpers', () => {
       ),
     ).toBe('2.5.0');
 
-    // Other components without targetVersion return undefined
+    // Other components without targetVersion also pull from updatesChecks on install
     expect(
       getExpectedLatestVersionForAction(
         {
           component: 'zapret',
           action: 'install',
+        },
+        {
+          zapret: { latest_version: '69.0' },
+        },
+      ),
+    ).toBe('69.0');
+
+    // Non-install actions without targetVersion return undefined
+    expect(
+      getExpectedLatestVersionForAction(
+        {
+          component: 'zapret',
+          action: 'check_update',
         },
         {
           zapret: { latest_version: '69.0' },

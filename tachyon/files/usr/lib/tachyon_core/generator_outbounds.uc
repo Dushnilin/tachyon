@@ -1622,8 +1622,9 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         hide_urltest_group_outbounds = false;
     // Decide before the loop whether the members can be dropped at all: only
     // when at least one outbound that is neither a group nor a member of one
-    // survives. This keeps a section whose rules name the members working, and
-    // still declutters large subscriptions.
+    // survives. Never drop leaf servers that came from Xray balancer/multi-config
+    // conversion (those carry a share_link and represent the subscription's real
+    // proxy servers rather than internal sing-box urltest helper outbounds).
     let urltest_member_tags = include_urltest_groups === false
         ? (visibility_refs.urltest || {})
         : {};
@@ -1651,13 +1652,15 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         let outbound = outbounds[i];
         if (include_urltest_groups === false && subscription_urltest_group_outbound(outbound))
             continue;
-        // A node that only a disabled urltest group pointed at is unreachable
-        // and only clutters the selector, so it is dropped. But "unreachable
-        // through a group" is not "unused": a section whose rules name these
-        // nodes has them as its only outbounds, and dropping them leaves the
-        // section with none, which generation reports as a terminal error. The
-        // filter is therefore applied only while something else survives.
-        if (drop_urltest_members && (as_string(outbound.tag || "") in urltest_member_tags))
+        // A node that only a disabled native sing-box urltest group pointed at is
+        // unreachable and only clutters the selector, so it is dropped. Leaf
+        // servers with a remark/share_link (such as Xray balancer members) are real
+        // selectable proxy servers and must remain visible when urltest group
+        // import is disabled.
+        if (drop_urltest_members &&
+            (as_string(outbound.tag || "") in urltest_member_tags) &&
+            as_string(outbound.remark || "") == "" &&
+            as_string(outbound.share_link || "") == "")
             continue;
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
         if (keyword_filter != null && subscription_group_outbound(outbound) && !subscription_keyword_name_passes({ include: [], exclude: keyword_filter.exclude }, display_name))
