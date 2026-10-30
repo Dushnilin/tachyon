@@ -274,21 +274,31 @@ function first_line_last_field(value) {
 
 let parse_sing_box_version = common.parse_sing_box_version;
 
+function sing_box_variant_marker() {
+    let marker = file_first_line(SB_VARIANT_STATE_FILE);
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = file_first_line(SB_LEGACY_VARIANT_STATE_FILE);
+    return marker;
+}
+
 function find_core_binary() {
+    let marker = sing_box_variant_marker();
+    let prefer_sing_box = (marker == "extended" || marker == "tiny" || marker == "stable");
+    let order = prefer_sing_box ? [ "sing-box", "tachyon-core" ] : [ "tachyon-core", "sing-box" ];
     let path_env = as_string(getenv("PATH") || "/usr/sbin:/usr/bin:/sbin:/bin");
     for (let dir in split(path_env, ":")) {
         if (dir == "")
             continue;
-        for (let name in [ "tachyon-core", "sing-box" ]) {
+        for (let name in order) {
             let candidate = dir + "/" + name;
             if (fs.access(candidate, "x"))
                 return candidate;
         }
     }
-    if (command_exists("tachyon-core"))
-        return "tachyon-core";
-    if (command_exists("sing-box"))
-        return "sing-box";
+    for (let name in order) {
+        if (command_exists(name))
+            return name;
+    }
     return "";
 }
 
@@ -326,13 +336,6 @@ function sing_box_banner_identity() {
             sing_box_banner_identity_cache = as_string(parts[0]);
     }
     return sing_box_banner_identity_cache;
-}
-
-function sing_box_variant_marker() {
-    let marker = file_first_line(SB_VARIANT_STATE_FILE);
-    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        marker = file_first_line(SB_LEGACY_VARIANT_STATE_FILE);
-    return marker;
 }
 
 function sing_box_marker_is(value) {
@@ -949,12 +952,15 @@ function prepare_service_disabled() {
 
 function configure_service() {
     let settings = uci_settings();
+    let variant_marker = sing_box_variant_marker();
+    let prefer_sing_box = (variant_marker == "extended" || variant_marker == "tiny" || variant_marker == "stable");
 
-    if (fs.stat("/usr/bin/sing-box") != null && fs.stat("/usr/bin/tachyon-core") == null) {
+    if (fs.stat("/usr/bin/sing-box") != null && (fs.stat("/usr/bin/tachyon-core") == null || prefer_sing_box)) {
         try { fs.unlink("/usr/bin/tachyon-core"); } catch (e) {}
         try { fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core"); } catch (e) {}
         if (fs.stat("/usr/bin/tachyon-core") == null)
             command_success_from_args([ "ln", "-sf", "/usr/bin/sing-box", "/usr/bin/tachyon-core" ]);
+        sing_box_banner_identity_cache = null;
     }
 
     if ((!managed_service_installed() || managed_service_script_stale()) && !install_managed_service_script()) {
@@ -1299,14 +1305,18 @@ function prepare_subscription_caches(prepared, no_refresh) {
     return trim(result.output);
 }
 
-function has_listening_endpoint(cfg) {
-    if (type(cfg) != "object" || type(cfg.endpoints) != "array")
-        return false;
-    for (let ep in cfg.endpoints) {
-        if (type(ep) == "object" && (int(ep.listen_port || 0) > 0 || ep.system === true))
-            return true;
-    }
-    return false;
+function listening_endpoints_changed(old_cfg, new_cfg) {
+    let collect = function(cfg) {
+        let out = [];
+        if (type(cfg) != "object" || type(cfg.endpoints) != "array")
+            return out;
+        for (let ep in cfg.endpoints) {
+            if (type(ep) == "object" && (int(ep.listen_port || 0) > 0 || ep.system === true))
+                push(out, sprintf("%J", ep));
+        }
+        return out;
+    };
+    return sprintf("%J", collect(old_cfg)) != sprintf("%J", collect(new_cfg));
 }
 
 function enrich_reload_preview(parsed, current_path, candidate_path, old_exists) {
@@ -1328,9 +1338,10 @@ function enrich_reload_preview(parsed, current_path, candidate_path, old_exists)
     if (!old_exists) {
         parsed.in_place = false;
         parsed.current_digest = "";
-    } else if (has_listening_endpoint(old_cfg) || has_listening_endpoint(new_cfg)) {
-        // Endpoints with a bound UDP listen_port or kernel interface cannot bind
-        // a second time while the old instance still holds the socket/interface.
+    } else if (listening_endpoints_changed(old_cfg, new_cfg)) {
+        // Modified endpoints with a bound UDP listen_port or kernel interface cannot
+        // bind a second time while the old instance still holds the socket/interface;
+        // unchanged endpoints are inherited in-place by tachyon-core.
         parsed.in_place = false;
     }
     return parsed;

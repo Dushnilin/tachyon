@@ -854,6 +854,49 @@ function switchSettingsInternalSubTab(
     });
 }
 
+function formatSidebarEngineLabel(): string {
+  const state = store.get();
+  const sys = state.diagnosticsSystemInfo;
+  const srvVariant = (
+    state.servicesInfoWidget?.data?.engineVariant || ''
+  ).toLowerCase();
+  if (
+    state.activeEngine === 'steer' ||
+    state.activeEngine === 'steer-extended'
+  ) {
+    return tr('Ядро: Steer', 'Engine: Steer');
+  }
+  if (srvVariant === 'lx' || sys?.sing_box_lx) {
+    return tr('Ядро: sing-box-lx', 'Engine: sing-box-lx');
+  }
+  if (
+    srvVariant === 'extended' ||
+    srvVariant === 'extended-compressed' ||
+    sys?.sing_box_extended ||
+    sys?.sing_box_compressed
+  ) {
+    return tr('Ядро: sing-box-extended', 'Engine: sing-box-extended');
+  }
+  if (srvVariant === 'tiny' || sys?.sing_box_tiny) {
+    return tr('Ядро: sing-box-tiny', 'Engine: sing-box-tiny');
+  }
+  if (srvVariant === 'stable') {
+    return tr('Ядро: sing-box', 'Engine: sing-box');
+  }
+  if (srvVariant === 'tachyon-core' || sys?.sing_box_tachyon_core) {
+    return tr('Ядро: Tachyon Core', 'Engine: Tachyon Core');
+  }
+  const ver = (
+    state.servicesInfoWidget?.data?.engineVersion ||
+    sys?.sing_box_version ||
+    ''
+  ).trim();
+  if (ver && ver !== 'unknown' && !/^v?0\./i.test(ver)) {
+    return tr('Ядро: sing-box', 'Engine: sing-box');
+  }
+  return tr('Ядро: Tachyon Core', 'Engine: Tachyon Core');
+}
+
 export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   if (typeof document === 'undefined') return;
   installModalHeaderCloseEnhancements();
@@ -884,7 +927,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
 
   if (!shellLayout) {
     sidebarEl = E('aside', { class: 'tachyon-sidebar' }, []);
-    topbarEl = E('header', { class: 'tachyon-topbar' }, []);
+    topbarEl = E('div', { class: 'tachyon-topbar', role: 'region' }, []);
     workspaceBodyEl = E('div', { class: 'tachyon-workspace-body' }, []);
 
     const mainColumn = E(
@@ -1474,7 +1517,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           E(
             'div',
             { class: 'tachyon-sidebar__status-meta' },
-            tr('Ядро: Tachyon Core', 'Engine: Tachyon Core'),
+            formatSidebarEngineLabel(),
           ),
         ]),
       ]),
@@ -1891,6 +1934,12 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           ecoBtn.textContent = isLite
             ? tr('⚡ Эко-режим: Вкл', '⚡ Eco Mode: On')
             : tr('⚡ Эко-режим', '⚡ Eco Mode');
+        }
+      }
+      if (diff.diagnosticsSystemInfo || diff.servicesInfoWidget) {
+        const metaEl = sidebarEl.querySelector('.tachyon-sidebar__status-meta');
+        if (metaEl) {
+          metaEl.textContent = formatSidebarEngineLabel();
         }
       }
     });

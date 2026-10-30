@@ -2193,7 +2193,7 @@ function enabled_action_index(sections, target_section, action_name) {
 }
 
 function add_openvpn_endpoint(config, section) {
-    let tag = outbound_tag(section[".name"]);
+    let tag = option(section, ".tag", "") || outbound_tag(section[".name"]);
     let server = option(section, "openvpn_server", "");
     if (server == "")
         ctx.runtime_generate_unsupported("OpenVPN section '" + section[".name"] + "' missing openvpn_server");
@@ -2405,6 +2405,7 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             for (let k, v in src)
                 ovpn_sec[k] = v;
             ovpn_sec[".name"] = tag_name;
+            ovpn_sec[".tag"] = tag_name;
             add_openvpn_endpoint(config, ovpn_sec);
             push(selector_tags, tag_name);
             push(urltest_candidate_tags, tag_name);

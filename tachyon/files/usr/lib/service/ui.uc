@@ -1730,7 +1730,6 @@ function run_pending_reload_after_service_action(action, success) {
     if (!consume_pending_reload())
         return;
 
-    command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Applying pending Tachyon reload" ]);
     let started = start_service_action("reload", "initd", "pending");
     if (!started.success)
         mark_pending_reload("pending");

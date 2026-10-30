@@ -602,15 +602,7 @@ function command_args_with(base, extra) {
     return result;
 }
 
-function command_status_from_args(args) {
-    let status = int(system(command_from_args(args)));
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
+let command_status_from_args = common.command_status_from_args;
 
 // curl --dns-servers requires libcurl built with c-ares (not available on all OpenWrt builds).
 // Fall back to --doh-url https://1.1.1.1/dns-query if --dns-servers is unsupported.

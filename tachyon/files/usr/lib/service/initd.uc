@@ -52,15 +52,7 @@ function background_command(command) {
         as_string(command) + "; } </dev/null >/dev/null 2>&1 &";
 }
 
-function normalize_status(status) {
-    status = int(status);
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
+let normalize_status = common.normalize_status;
 
 let command_status = common.command_status;
 
@@ -334,7 +326,6 @@ function run_pending_reload_if_requested(path, init_script) {
     // One launch site for both outcomes, so this file does not grow a second
     // background invocation.
     let apply_in_place = reason == PENDING_RELOAD_SOFT_APPLY_REASON;
-    let message = apply_in_place ? "Applying pending subscription recovery in place" : "Applying pending Tachyon reload";
     let command = apply_in_place
         ? command_from_args([
             "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",
@@ -342,7 +333,8 @@ function run_pending_reload_if_requested(path, init_script) {
         ])
         : shell_quote(init_script) + " reload pending";
 
-    command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] " + message ]);
+    if (apply_in_place)
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Applying pending subscription recovery in place" ]);
     system(background_command(command));
 }
 
@@ -773,6 +765,7 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
             return { action: "skip", job_id: "" };
         }
 
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Applying pending Tachyon reload" ]);
         unlink_file(SERVICE_TRIGGER_SYNC_FILE);
         let job_id = begin_external_service_action("reload", "initd", owner_pid);
         return { action: "run", job_id };

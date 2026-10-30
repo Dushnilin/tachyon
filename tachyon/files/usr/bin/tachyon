@@ -24,8 +24,10 @@ function command_from_args(args) {
 
 function normalize_status(status) {
     status = int(status);
-    if (status == -1)
-        return 255;
+    if (status < 0)
+        return status == -1 ? 255 : 128 + (-status);
+    if (status <= 255)
+        return status;
     let signal = status & 127;
     if (signal != 0)
         return 128 + signal;

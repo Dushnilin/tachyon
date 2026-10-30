@@ -134,11 +134,11 @@ function configureGridSection(sectionRef, type, title, addTitle) {
   sectionRef.nodescriptions = true;
   sectionRef.cfgsections = function () {
     return (uci.sections(this.map.config, this.sectiontype) || [])
-      .map((s) => s[".name"])
+      .map((s) => (s ? s[".name"] : null))
       .filter(Boolean);
   };
   const getDisplayLabel = (sid) =>
-    type === "section"
+    type === "section" || type === "profile"
       ? uci.get(UCI_PACKAGE, sid, "label") ||
         uci.get(UCI_PACKAGE, sid, "name") ||
         sid
@@ -163,6 +163,53 @@ function configureGridSection(sectionRef, type, title, addTitle) {
           this,
           arguments,
         );
+    return Promise.resolve(res).finally(() => {
+      if (typeof sectionRef._refreshStudioDeck === "function") {
+        window.setTimeout(() => sectionRef._refreshStudioDeck(), 80);
+      }
+    });
+  };
+
+  const origModalSave = sectionRef.handleModalSave;
+  sectionRef.handleModalSave = function () {
+    const res = origModalSave
+      ? origModalSave.apply(this, arguments)
+      : form.GridSection.prototype.handleModalSave.apply(this, arguments);
+    return Promise.resolve(res).finally(() => {
+      try {
+        if (typeof uci !== "undefined" && typeof uci.save === "function") {
+          Promise.resolve(uci.save())
+            .then(() => {
+              if (
+                typeof ui !== "undefined" &&
+                ui.changes &&
+                typeof ui.changes.init === "function"
+              ) {
+                return ui.changes.init();
+              }
+              return null;
+            })
+            .finally(() => {
+              if (typeof sectionRef._refreshStudioDeck === "function") {
+                sectionRef._refreshStudioDeck();
+              }
+            });
+        } else if (typeof sectionRef._refreshStudioDeck === "function") {
+          sectionRef._refreshStudioDeck();
+        }
+      } catch (_e) {
+        if (typeof sectionRef._refreshStudioDeck === "function") {
+          sectionRef._refreshStudioDeck();
+        }
+      }
+    });
+  };
+
+  const origModalCancel = sectionRef.handleModalCancel;
+  sectionRef.handleModalCancel = function () {
+    const res = origModalCancel
+      ? origModalCancel.apply(this, arguments)
+      : form.GridSection.prototype.handleModalCancel.apply(this, arguments);
     return Promise.resolve(res).finally(() => {
       if (typeof sectionRef._refreshStudioDeck === "function") {
         window.setTimeout(() => sectionRef._refreshStudioDeck(), 80);
@@ -711,6 +758,7 @@ const EntryPoint = {
           ];
 
           (uci.sections(self.config, "section") || []).forEach((sec) => {
+            if (!sec) return;
             const sname = sec[".name"];
             if (!sname) return;
             const safeSname = String(sname).replace(/[^A-Za-z0-9_]/g, "_");
@@ -810,6 +858,7 @@ const EntryPoint = {
             const existingBalancers =
               uci.sections(self.config, "balancer") || [];
             (uci.sections(self.config, "urltest") || []).forEach((ut, idx) => {
+              if (!ut) return;
               const parentSec = ut.section;
               const utName = ut.name || ut[".name"] || `urltest_${idx + 1}`;
               if (!parentSec) return;
@@ -817,11 +866,12 @@ const EntryPoint = {
               const balId = `bal_${parentSec}_${safeSuffix || idx + 1}`;
               const found = existingBalancers.find(
                 (b) =>
-                  b[".name"] === balId ||
-                  (b.name === utName &&
-                    toArr(
-                      uci.get(self.config, parentSec, "balancer_refs"),
-                    ).includes(b[".name"])),
+                  b &&
+                  (b[".name"] === balId ||
+                    (b.name === utName &&
+                      toArr(
+                        uci.get(self.config, parentSec, "balancer_refs"),
+                      ).includes(b[".name"]))),
               );
               if (!found && !uci.get(self.config, balId)) {
                 uci.add(self.config, "balancer", balId);
@@ -863,22 +913,22 @@ const EntryPoint = {
           // Prune dangling references across sections, balancers, outbound_groups, and conditions
           const validSources = new Set(
             (uci.sections(self.config, "outbound_source") || [])
-              .map((s) => s[".name"])
+              .map((s) => (s ? s[".name"] : null))
               .filter(Boolean),
           );
           const validGroups = new Set(
             (uci.sections(self.config, "outbound_group") || [])
-              .map((g) => g[".name"])
+              .map((g) => (g ? g[".name"] : null))
               .filter(Boolean),
           );
           const validBalancers = new Set(
             (uci.sections(self.config, "balancer") || [])
-              .map((b) => b[".name"])
+              .map((b) => (b ? b[".name"] : null))
               .filter(Boolean),
           );
           const validConditions = new Set(
             (uci.sections(self.config, "condition") || [])
-              .map((c) => c[".name"])
+              .map((c) => (c ? c[".name"] : null))
               .filter(Boolean),
           );
 
@@ -897,7 +947,7 @@ const EntryPoint = {
           };
 
           (uci.sections(self.config, "section") || []).forEach((sec) => {
-            const sid = sec[".name"];
+            const sid = sec ? sec[".name"] : null;
             if (!sid) return;
             pruneList(sid, "condition_refs", validConditions, true, false);
             pruneList(sid, "outbound_source_refs", validSources, false, false);
@@ -909,7 +959,7 @@ const EntryPoint = {
             ...validSources,
           ]);
           (uci.sections(self.config, "balancer") || []).forEach((bal) => {
-            const bid = bal[".name"];
+            const bid = bal ? bal[".name"] : null;
             if (!bid) return;
             pruneList(bid, "source_refs", validSources, false, false);
             pruneList(bid, "group_refs", validGroups, false, false);
@@ -922,19 +972,19 @@ const EntryPoint = {
             );
           });
           (uci.sections(self.config, "outbound_group") || []).forEach((grp) => {
-            const gid = grp[".name"];
+            const gid = grp ? grp[".name"] : null;
             if (!gid) return;
             pruneList(gid, "source_refs", validSources, false, false);
             pruneList(gid, "outbound_sources", validSources, false, false);
           });
           (uci.sections(self.config, "condition") || []).forEach((cond) => {
-            const cid = cond[".name"];
+            const cid = cond ? cond[".name"] : null;
             if (!cid) return;
             pruneList(cid, "members", validConditions, true, false);
           });
           const validSectionIds = new Set(
             (uci.sections(self.config, "section") || [])
-              .map((s) => s[".name"])
+              .map((s) => (s ? s[".name"] : null))
               .filter(Boolean),
           );
           [
@@ -945,6 +995,7 @@ const EntryPoint = {
             "section_interface",
           ].forEach((childType) => {
             (uci.sections(self.config, childType) || []).forEach((child) => {
+              if (!child) return;
               const cid = child[".name"];
               const parentSec = String(child.section || "").trim();
               if (cid && parentSec && !validSectionIds.has(parentSec)) {

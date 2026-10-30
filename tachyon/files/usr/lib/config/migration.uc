@@ -1862,7 +1862,10 @@ function migrate_engine_identity(ctx) {
     }
 
     // create compatibility symlink if sing-box exists and tachyon-core does not
-    if (fs.stat("/usr/bin/sing-box") != null && fs.stat("/usr/bin/tachyon-core") == null) {
+    // (or when the active variant marker explicitly points to a package-installed sing-box variant)
+    let active_variant = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || ""));
+    let prefer_sing_box = (active_variant == "extended" || active_variant == "tiny" || active_variant == "stable");
+    if (fs.stat("/usr/bin/sing-box") != null && (fs.stat("/usr/bin/tachyon-core") == null || prefer_sing_box)) {
         try { fs.unlink("/usr/bin/tachyon-core"); } catch (e) {}
         try { fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core"); } catch (e) {}
         if (fs.stat("/usr/bin/tachyon-core") == null)

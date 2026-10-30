@@ -439,11 +439,11 @@ function createController() {
           {},
           `
           .tachyon-dns-speed-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
-          .tachyon-dns-speed-enabled{max-width:calc(100% - 112px)}
-          @media(max-width:600px){.tachyon-dns-speed-enabled{min-width:0}.tachyon-dns-speed-enabled .add-item .cbi-dropdown{min-width:0;max-width:100%}}
+          .tachyon-dns-speed-enabled,.tachyon-workspace-body .cbi-value-field .cbi-dynlist.tachyon-dns-speed-enabled,.cbi-modal .cbi-value-field .cbi-dynlist.tachyon-dns-speed-enabled,#modal_overlay > .modal .cbi-value-field .cbi-dynlist.tachyon-dns-speed-enabled{max-width:calc(100% - 112px)!important;width:calc(100% - 112px)!important;box-sizing:border-box}
+          @media(max-width:600px){.tachyon-dns-speed-enabled,.tachyon-workspace-body .cbi-value-field .cbi-dynlist.tachyon-dns-speed-enabled{min-width:0;max-width:calc(100% - 98px)!important;width:calc(100% - 98px)!important}.tachyon-dns-speed-enabled .add-item .cbi-dropdown{min-width:0;max-width:100%}}
           .tachyon-dns-speed-list .item{position:relative;overflow:visible}
           .tachyon-dns-speed-value{display:none!important}
-          .tachyon-dns-speed-enabled .tachyon-dns-speed-value{display:block!important;position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);min-width:96px;max-width:102px;font-size:.85rem;white-space:nowrap}
+          .tachyon-dns-speed-enabled .tachyon-dns-speed-value{display:block!important;position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);min-width:90px;max-width:102px;font-size:.82rem;padding:4px 8px;white-space:nowrap;box-sizing:border-box}
           .tachyon-dns-speed-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:1rem;margin:1rem 0}
           .tachyon-dns-speed-results{width:100%;table-layout:fixed;margin:1rem 0;border:1px solid var(--border-color-medium,#666)}
           .tachyon-dns-speed-results th,.tachyon-dns-speed-results td{padding:9px 12px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--border-color-low,#555)}

@@ -86,6 +86,60 @@ replies="$(grep -c '^reply$' "$CALLS" || true)"
 
 [ "$(cat "$OFFSET_FILE")" = "501" ] ||
   fail "offset ended at $(cat "$OFFSET_FILE"), expected 501"
+[ "$(cat "$OFFSET_FILE.bot")" = "123456" ] ||
+  fail "bot id ended at $(cat "$OFFSET_FILE.bot" 2>/dev/null || true), expected 123456"
+
+# Stale batch with update_id < offset must resynchronize offset and skip execution
+: >"$CALLS"
+cat >"$WORK_DIR/bin/curl" <<STUB
+#!/usr/bin/env bash
+set -eo pipefail
+url="\${!#}"
+method="\${url##*/}"
+if [ "\$method" = "getUpdates" ]; then
+  printf 'poll\n' >> "$CALLS"
+  printf '{"ok":true,"result":[{"update_id":100,"message":{"message_id":1,"chat":{"id":42},"text":"/menu"}},{"update_id":105,"message":{"message_id":2,"chat":{"id":42},"text":"/menu"}}]}'
+  exit 0
+fi
+if [ "\$method" = "sendMessage" ] || [ "\$method" = "editMessageText" ]; then
+  printf 'reply\n' >> "$CALLS"
+fi
+printf '{"ok":true,"result":{}}'
+STUB
+chmod 0755 "$WORK_DIR/bin/curl"
+
+PATH="$WORK_DIR/bin:$PATH" \
+TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
+TACHYON_TELEGRAM_OFFSET_FILE="$OFFSET_FILE" \
+  ucode -S -L "$LIB_DIR" "$WORK_DIR/poll.uc" >"$WORK_DIR/run_stale.log" 2>&1 || {
+    cat "$WORK_DIR/run_stale.log" >&2
+    fail "process_updates stale resync failed"
+  }
+
+stale_replies="$(grep -c '^reply$' "$CALLS" || true)"
+[ "$stale_replies" -eq 0 ] ||
+  fail "stale batch must not execute commands (got $stale_replies replies)"
+[ "$(cat "$OFFSET_FILE")" = "106" ] ||
+  fail "stale batch must resynchronize offset to 106, got $(cat "$OFFSET_FILE")"
+
+# Bot token change must reset offset before polling
+cat >"$WORK_DIR/poll_new_bot.uc" <<'UCODE'
+let runtime = require("service.telegram.runtime");
+runtime.process_updates("999999:new-token", "42");
+UCODE
+
+PATH="$WORK_DIR/bin:$PATH" \
+TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
+TACHYON_TELEGRAM_OFFSET_FILE="$OFFSET_FILE" \
+  ucode -S -L "$LIB_DIR" "$WORK_DIR/poll_new_bot.uc" >"$WORK_DIR/run_new_bot.log" 2>&1 || {
+    cat "$WORK_DIR/run_new_bot.log" >&2
+    fail "process_updates new bot failed"
+  }
+
+[ "$(cat "$OFFSET_FILE.bot")" = "999999" ] ||
+  fail "bot id must update to 999999 on token change, got $(cat "$OFFSET_FILE.bot" 2>/dev/null || true)"
+[ "$(cat "$OFFSET_FILE")" = "106" ] ||
+  fail "new bot must advance offset from 0 to 106, got $(cat "$OFFSET_FILE")"
 
 printf 'telegram update offset: acknowledged before answering, %s reply\n' "$replies"
 printf 'PASS: telegram_update_offset\n'

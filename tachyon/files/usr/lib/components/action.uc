@@ -619,7 +619,7 @@ function restart_tachyon_after_successful_change() {
     // Perform a soft reload (`reload force`) via BIN_PATH. This bypasses rc.common flock,
     // reloads provider state and nftables without tearing down sing-box or dropping active connections.
     if (!tachyon_stopped_for_sing_box_change && file_exists(BIN_PATH) && tachyon_status_running_with_timeout()) {
-        let reloaded = run_logged("Reloading Tachyon after successful component change", command_from_args([ BIN_PATH, "reload", "force" ]), 45);
+        let reloaded = run_logged("Reloading Tachyon after successful component change", command_from_args([ BIN_PATH, "reload", "force" ]), 300);
         if (reloaded)
             return;
         updates_log("Tachyon reload returned non-zero; falling back to full restart", "warn");
@@ -630,7 +630,7 @@ function restart_tachyon_after_successful_change() {
         return;
 
     let action_name = tachyon_status_running_with_timeout() ? "restart" : "start";
-    run_logged("Restarting Tachyon after successful component change", command_from_args([ target_bin, action_name ]), 90);
+    run_logged("Restarting Tachyon after successful component change", command_from_args([ target_bin, action_name ]), 300);
 }
 
 function stop_tachyon_before_sing_box_change() {

@@ -55,6 +55,11 @@ check(exclusions.collect_domains([{invert:true,domain_suffix:["example.com"]}]) 
 check(exclusions.collect_domains([{domain_regex:[".*"]}]) == null, "unsupported regex is not silently omitted");
 check(exclusions.collect_domains([{domain_suffix:["example.com"],port:443}]) == null, "compound matcher not widened");
 check(exclusions.collect_domains([{domain_suffix:["bad/name"]}]) == null, "invalid domain invalidates snapshot");
+common.write_json_file(fixture, {version: 3, rules: [{domain_suffix:["google.com"], domain_keyword:["gvt1"], domain_regex:["^play[0-9]+\\.google\\.com$"]}]});
+check(exclusions.prepare_list("google_play", srs), "preset with domain_keyword and domain_regex prepares cleanly");
+check(exclusions.excluded("r1.gvt1.com", {smart_detect_exclude_lists:["google_play"]}), "domain_keyword excludes matching host");
+check(exclusions.excluded("play42.google.com", {smart_detect_exclude_lists:["google_play"]}), "domain_regex excludes matching host");
+check(!exclusions.excluded("unrelated.example.org", {smart_detect_exclude_lists:["google_play"]}), "domain_keyword and domain_regex do not exclude unrelated host");
 fs.writefile(exclusions.cache_path("discord"), "broken");
 check(!exclusions.state({smart_detect_exclude_lists:["discord"]}).ready, "corrupt cache cannot be interpreted as an empty exclusion list");
 print(sprintf("PASS: %d Smart Detect exclusion cache/matching checks\n", checks));

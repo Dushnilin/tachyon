@@ -72,14 +72,20 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
-function command_status_from_args(args) {
-    let status = int(system(command_from_args(args)));
-    if (status == -1)
-        return 255;
+function normalize_status(status) {
+    status = int(status);
+    if (status < 0)
+        return status == -1 ? 255 : 128 + (-status);
+    if (status <= 255)
+        return status;
     let signal = status & 127;
     if (signal != 0)
         return 128 + signal;
     return (status >> 8) & 255;
+}
+
+function command_status_from_args(args) {
+    return normalize_status(system(command_from_args(args)));
 }
 
 function command_success_from_args(args) {
@@ -156,24 +162,14 @@ function run(opts) {
 
         let output = as_string(pipe.read("all") || "");
         let raw_status = pipe.close();
-
-        let status;
-        if (raw_status == -1)
-            status = 255;
-        else {
-            let signal = raw_status & 127;
-            status = signal != 0 ? 128 + signal : (raw_status >> 8) & 255;
-        }
-        let timed_out = timeout_s > 0 && (raw_status == 124 || raw_status == 137 || raw_status == 143 || status == 124 || status == 252);
+        let status = normalize_status(raw_status);
+        let timed_out = timeout_s > 0 && (raw_status == 124 || raw_status == 137 || raw_status == 143 || status == 124 || status == 137 || status == 143 || status == 252);
         return { status: status, output: trim(output), timed_out: timed_out };
     }
 
     let raw_status = int(system(cmd));
-    if (raw_status == -1)
-        return { status: 255, output: "", timed_out: false };
-    let signal = raw_status & 127;
-    let status = signal != 0 ? 128 + signal : (raw_status >> 8) & 255;
-    let timed_out = timeout_s > 0 && (raw_status == 124 || raw_status == 137 || raw_status == 143 || status == 124 || status == 252);
+    let status = normalize_status(raw_status);
+    let timed_out = timeout_s > 0 && (raw_status == 124 || raw_status == 137 || raw_status == 143 || status == 124 || status == 137 || status == 143 || status == 252);
     return { status: status, output: "", timed_out: timed_out };
 }
 

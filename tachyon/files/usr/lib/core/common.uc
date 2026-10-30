@@ -489,14 +489,20 @@ function background_pipeline_with_pid(command, pid_sink) {
         "; } </dev/null >/dev/null 2>&1 & echo $!" + (sink != "" ? " " + sink : "");
 }
 
-function command_status(command) {
-    let status = int(system(command));
-    if (status == -1)
-        return 255;
+function normalize_status(status) {
+    status = int(status);
+    if (status < 0)
+        return status == -1 ? 255 : 128 + (-status);
+    if (status <= 255)
+        return status;
     let signal = status & 127;
     if (signal != 0)
         return 128 + signal;
     return (status >> 8) & 255;
+}
+
+function command_status(command) {
+    return normalize_status(system(command));
 }
 
 function command_success(command) {
@@ -524,16 +530,7 @@ function command_capture(command) {
     let p = fs.popen(command, "r");
     if (!p) return null;
     let output = as_string(p.read("all") || "");
-    let status = p.close();
-    if (status == -1)
-        status = 255;
-    else {
-        let signal = status & 127;
-        if (signal != 0)
-            status = 128 + signal;
-        else
-            status = (status >> 8) & 255;
-    }
+    let status = normalize_status(p.close());
     return { status: status, output: output };
 }
 
@@ -944,6 +941,7 @@ return {
     background_command,
     background_command_with_pid,
     background_pipeline_with_pid,
+    normalize_status,
     command_status,
     command_success,
     command_status_from_args,

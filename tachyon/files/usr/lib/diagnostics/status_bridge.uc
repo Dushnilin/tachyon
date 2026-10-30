@@ -11,15 +11,7 @@ let command_from_args = common.command_from_args;
 let command_capture = common.command_capture;
 let command_status = common.command_status;
 
-function normalize_status(status) {
-    status = int(status);
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
+let normalize_status = common.normalize_status;
 
 function status_command(args) {
     let full = [ "ucode", "-L", LIB_DIR, STATUS_UC ];

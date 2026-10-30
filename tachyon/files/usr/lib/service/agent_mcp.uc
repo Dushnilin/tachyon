@@ -48,12 +48,7 @@ function command_capture(command) {
     let pipe = fs.popen(command, "r");
     if (!pipe) return { status: 1, output: "" };
     let data = pipe.read("all");
-    let status = pipe.close();
-    status = int(status);
-    if (status == -1) status = 255;
-    let sig = status & 127;
-    if (sig != 0) status = 128 + sig;
-    else status = (status >> 8) & 255;
+    let status = common.normalize_status(pipe.close());
     return { status: status, output: data == null ? "" : as_string(data) };
 }
 

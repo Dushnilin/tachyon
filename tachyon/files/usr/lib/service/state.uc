@@ -251,7 +251,6 @@ function run_pending_reload_if_requested(path, init_script) {
     // One launch site for both outcomes, so this file does not grow a second
     // background invocation.
     let apply_in_place = reason == PENDING_RELOAD_SOFT_APPLY_REASON;
-    let message = apply_in_place ? "Applying pending subscription recovery in place" : "Applying pending Tachyon reload";
     let command = apply_in_place
         ? command_from_args([
             "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",
@@ -259,7 +258,8 @@ function run_pending_reload_if_requested(path, init_script) {
         ])
         : shell_quote(init_script) + " reload pending";
 
-    command_success_from_args([ "logger", "-t", "tachyon", "[info] " + message ]);
+    if (apply_in_place)
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying pending subscription recovery in place" ]);
     system(background_command(command));
 }
 
@@ -817,9 +817,10 @@ function finalize_sighup_success(clash_info, has_state_probe) {
 // structural compatibility before SIGHUP, /tachyon/config-state confirms the new
 // config revision/digest is ready, and /tachyon/route-recheck re-evaluates live
 // TCP/UDP sessions against the updated routing table.
-function try_sighup_reload(pid) {
+function try_sighup_reload(pid, preview) {
     pid = int(pid || 0);
-    let preview = consume_reload_preview();
+    if (preview == null)
+        preview = consume_reload_preview();
     if (pid <= 0 || !pid_is_tachyon_core(pid))
         return false;
     if (type(preview) == "object" && preview.in_place === false)
@@ -1045,12 +1046,17 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
     // config in-place without terminating the process, preserving active sessions.
     let active_pid = sing_box_service_pid_runtime();
     if (active_pid > 0 && as_string(force) != "restart" && pid_is_tachyon_core(active_pid)) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading tachyon-core runtime via SIGHUP (graceful)" ]);
-        if (try_sighup_reload(active_pid)) {
-            command_success_from_args([ "logger", "-t", "tachyon", "[info] tachyon-core graceful reload succeeded" ]);
-            return;
+        let preview = consume_reload_preview();
+        if (type(preview) == "object" && preview.in_place === false) {
+            command_success_from_args([ "logger", "-t", "tachyon", "[info] In-place reload not applicable for current config change; restarting tachyon-core runtime" ]);
+        } else {
+            command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading tachyon-core runtime via SIGHUP (graceful)" ]);
+            if (try_sighup_reload(active_pid, preview)) {
+                command_success_from_args([ "logger", "-t", "tachyon", "[info] tachyon-core graceful reload succeeded" ]);
+                return;
+            }
+            command_success_from_args([ "logger", "-t", "tachyon", "[warn] tachyon-core SIGHUP reload failed; falling back to full restart" ]);
         }
-        command_success_from_args([ "logger", "-t", "tachyon", "[warn] tachyon-core SIGHUP reload failed; falling back to full restart" ]);
     }
 
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Restarting tachyon-core runtime" ]);

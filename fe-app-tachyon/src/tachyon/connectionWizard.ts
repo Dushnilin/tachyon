@@ -11,6 +11,7 @@ import {
   DOMAIN_LIST_OPTIONS,
   TACHYON_UCI_PACKAGE,
 } from '../constants';
+import { executeShellCommand } from '../helpers/executeShellCommand';
 import { TachyonShellMethods } from './methods/shell';
 import { applyUiStateToStore } from './services/uiState.service';
 import type { Tachyon } from './types';
@@ -789,6 +790,27 @@ function generateUuidV4(): string {
   }
   const hex = generateRandomHex(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+function generateBase64Key(bytes = 32): string {
+  const arr = new Uint8Array(bytes);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(arr);
+  } else {
+    for (let i = 0; i < bytes; i++) arr[i] = Math.floor(Math.random() * 256);
+  }
+  let binary = '';
+  for (let i = 0; i < arr.length; i++) {
+    binary += String.fromCharCode(arr[i]);
+  }
+  if (typeof btoa === 'function') {
+    return btoa(binary);
+  }
+  return generateRandomHex(bytes);
+}
+
+function randomIntInRange(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 export function openConnectionWizardModal(
@@ -5383,10 +5405,232 @@ export function openConnectionWizardModal(
       return;
     }
 
+    // Create AdBlock section BEFORE main proxy section so it has higher priority in UCI order
+    if (enableAdBlockSection) {
+      const adLists = ['ads_hagezi_pro', 'win_spy'];
+      const adSecId = 'AdBlock_Tachyon';
+      const adCondId = 'cond_AdBlock_Tachyon';
+      if (!uciObj.get(TACHYON_UCI_PACKAGE, adCondId)) {
+        uciObj.add(TACHYON_UCI_PACKAGE, 'condition', adCondId);
+      }
+      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'enabled', '1');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        adCondId,
+        'name',
+        tr('Реклама и телеметрия', 'Ads & Telemetry'),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'condition_type', 'atomic');
+      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'type', 'atomic');
+      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'community_lists', adLists);
+      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'domain_lists', adLists);
+
+      if (!uciObj.get(TACHYON_UCI_PACKAGE, adSecId)) {
+        uciObj.add(TACHYON_UCI_PACKAGE, 'section', adSecId);
+      }
+      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'enabled', '1');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        adSecId,
+        'name',
+        tr('Блокировка рекламы', 'Ad Blocker'),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        adSecId,
+        'label',
+        tr('Блокировка рекламы', 'Ad Blocker'),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'action', 'block');
+      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'community_lists', adLists);
+      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'condition_refs', [adCondId]);
+    }
+
+    // Create Direct Bypass + DNS sections for Games & RU services BEFORE main proxy section
+    const customDirectDoms = directBypassCustomDomains
+      .split(/[\s,]+/)
+      .map((d) => d.trim())
+      .filter(Boolean);
+    const customDirectIps = directBypassSourceIps
+      .split(/[\s,]+/)
+      .map((d) => d.trim())
+      .filter(Boolean);
+    if (
+      enableDirectGamesBypass &&
+      (selectedDirectBypassLists.size > 0 ||
+        customDirectDoms.length > 0 ||
+        customDirectIps.length > 0)
+    ) {
+      const directLists = Array.from(selectedDirectBypassLists);
+      const bypassSecId = 'Direct_Games_RU';
+      const bypassCondId = 'cond_Direct_Games_RU';
+      if (!uciObj.get(TACHYON_UCI_PACKAGE, bypassCondId)) {
+        uciObj.add(TACHYON_UCI_PACKAGE, 'condition', bypassCondId);
+      }
+      uciObj.set(TACHYON_UCI_PACKAGE, bypassCondId, 'enabled', '1');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        bypassCondId,
+        'name',
+        tr('Игры и сервисы РФ (Прямой)', 'Games & RU Services (Direct)'),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, bypassCondId, 'condition_type', 'atomic');
+      uciObj.set(TACHYON_UCI_PACKAGE, bypassCondId, 'type', 'atomic');
+      if (directLists.length > 0) {
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          bypassCondId,
+          'community_lists',
+          directLists,
+        );
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          bypassCondId,
+          'domain_lists',
+          directLists,
+        );
+      }
+      if (customDirectDoms.length > 0) {
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          bypassCondId,
+          'domain_suffix',
+          customDirectDoms,
+        );
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          bypassCondId,
+          'domain_suffix_text',
+          customDirectDoms.join('\n'),
+        );
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          bypassCondId,
+          'domains',
+          customDirectDoms,
+        );
+      }
+      if (customDirectIps.length > 0) {
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          bypassCondId,
+          'source_ip_cidr',
+          customDirectIps,
+        );
+      }
+
+      const dnsResolver = DIRECT_BYPASS_DNS_PRESETS.find(
+        (r) => r.id === directBypassDnsPreset,
+      );
+      const resolvedDnsType = dnsResolver?.dnsType || 'udp';
+      const customDirectDnsList = customDirectBypassDnsServer
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const resolvedDnsServer =
+        directBypassDnsPreset === 'custom'
+          ? customDirectDnsList.length > 1
+            ? customDirectDnsList
+            : customDirectDnsList[0] || '77.88.8.8'
+          : dnsResolver?.servers && dnsResolver.servers.length > 1
+            ? dnsResolver.servers
+            : dnsResolver?.servers?.[0] || '77.88.8.8';
+
+      if (
+        directLists.length > 0 ||
+        customDirectDoms.length > 0 ||
+        customDirectIps.length > 0
+      ) {
+        const dnsSecId = 'Direct_Games_DNS';
+        if (!uciObj.get(TACHYON_UCI_PACKAGE, dnsSecId)) {
+          uciObj.add(TACHYON_UCI_PACKAGE, 'section', dnsSecId);
+        }
+        uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'enabled', '1');
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          dnsSecId,
+          'name',
+          tr('DNS для Игр и РФ', 'DNS for Games & RU'),
+        );
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          dnsSecId,
+          'label',
+          tr('DNS для Игр и РФ', 'DNS for Games & RU'),
+        );
+        uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'action', 'dns');
+        uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'dns_type', resolvedDnsType);
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          dnsSecId,
+          'dns_server',
+          resolvedDnsServer,
+        );
+        if (directLists.length > 0) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            dnsSecId,
+            'community_lists',
+            directLists,
+          );
+        }
+        if (
+          customDirectIps.length > 0 &&
+          directLists.length === 0 &&
+          customDirectDoms.length === 0
+        ) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            dnsSecId,
+            'fully_routed_ips',
+            customDirectIps,
+          );
+        }
+        uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'condition_refs', [
+          bypassCondId,
+        ]);
+      }
+
+      if (!uciObj.get(TACHYON_UCI_PACKAGE, bypassSecId)) {
+        uciObj.add(TACHYON_UCI_PACKAGE, 'section', bypassSecId);
+      }
+      uciObj.set(TACHYON_UCI_PACKAGE, bypassSecId, 'enabled', '1');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        bypassSecId,
+        'name',
+        tr('Игры и РФ напрямую', 'Games & RU Direct'),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        bypassSecId,
+        'label',
+        tr('Игры и РФ напрямую', 'Games & RU Direct'),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, bypassSecId, 'action', 'bypass');
+      if (directLists.length > 0) {
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          bypassSecId,
+          'community_lists',
+          directLists,
+        );
+      }
+      uciObj.set(TACHYON_UCI_PACKAGE, bypassSecId, 'condition_refs', [
+        bypassCondId,
+      ]);
+    }
+
     // Determine target section
     let secId = targetExistingSection;
-    if (targetMode === 'new' || !secId) {
-      const rawSecTitle = newSectionName.trim() || finalName || 'Main';
+    const isCreatingNewSection = targetMode === 'new' || !secId;
+    const rawSecTitle = isCreatingNewSection
+      ? newSectionName.trim() || finalName || 'Main'
+      : uciObj.get(TACHYON_UCI_PACKAGE, secId, 'name') ||
+        uciObj.get(TACHYON_UCI_PACKAGE, secId, 'label') ||
+        secId;
+
+    if (isCreatingNewSection) {
       secId = sanitizeId(rawSecTitle, 'sec').replace(/^sec_/, '');
       if (uciObj.get(TACHYON_UCI_PACKAGE, secId)) {
         secId = sanitizeId(rawSecTitle, 'sec');
@@ -5396,8 +5640,10 @@ export function openConnectionWizardModal(
       uciObj.set(TACHYON_UCI_PACKAGE, secId, 'name', rawSecTitle);
       uciObj.set(TACHYON_UCI_PACKAGE, secId, 'label', rawSecTitle);
       uciObj.set(TACHYON_UCI_PACKAGE, secId, 'action', 'connection');
+    }
 
-      // Create condition if traffic presets, individual lists, or custom domains are chosen
+    // Create condition if creating a new section OR appending rules to an existing section
+    if (isCreatingNewSection || appendPresetsToExisting) {
       const domainLists: string[] = [];
       for (const preset of TRAFFIC_PRESETS) {
         if (selectedPresets.has(preset.id)) {
@@ -5418,6 +5664,7 @@ export function openConnectionWizardModal(
         const condId = sanitizeId(rawSecTitle, 'cond');
         const uniqueLists = Array.from(new Set(domainLists));
         uciObj.add(TACHYON_UCI_PACKAGE, 'condition', condId);
+        uciObj.set(TACHYON_UCI_PACKAGE, condId, 'enabled', '1');
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'name', `${rawSecTitle} Rules`);
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'condition_type', 'atomic');
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'type', 'atomic');
@@ -5440,7 +5687,22 @@ export function openConnectionWizardModal(
           );
           uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domains', customDoms);
         }
-        uciObj.set(TACHYON_UCI_PACKAGE, secId, 'condition_refs', [condId]);
+        const curCondsRaw = uciObj.get(
+          TACHYON_UCI_PACKAGE,
+          secId,
+          'condition_refs',
+        );
+        const curConds = Array.isArray(curCondsRaw)
+          ? curCondsRaw
+          : curCondsRaw
+            ? String(curCondsRaw).split(/\s+/).filter(Boolean)
+            : [];
+        if (!curConds.includes(condId)) {
+          uciObj.set(TACHYON_UCI_PACKAGE, secId, 'condition_refs', [
+            ...curConds,
+            condId,
+          ]);
+        }
       }
     }
 
@@ -5501,11 +5763,17 @@ export function openConnectionWizardModal(
           'dns_type',
           customGlobalDnsType,
         );
+        const customGlobalServers = customGlobalDnsServer
+          .split(/[\s,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
         uciObj.set(
           TACHYON_UCI_PACKAGE,
           'settings',
           'dns_server',
-          customGlobalDnsServer.trim() || '77.88.8.8',
+          customGlobalServers.length > 1
+            ? customGlobalServers
+            : customGlobalServers[0] || '77.88.8.8',
         );
       } else {
         const preset = WIZARD_GLOBAL_DNS_PRESETS.find(
@@ -5535,6 +5803,7 @@ export function openConnectionWizardModal(
         }
       }
       if (enableDnsDetour && secId) {
+        uciObj.set(TACHYON_UCI_PACKAGE, 'settings', 'dns_detour_enabled', '1');
         uciObj.set(
           TACHYON_UCI_PACKAGE,
           'settings',
@@ -5542,159 +5811,6 @@ export function openConnectionWizardModal(
           secId,
         );
       }
-    }
-
-    // Create Direct Bypass + Yandex DNS sections for Games & RU services if enabled
-    if (enableDirectGamesBypass && selectedDirectBypassLists.size > 0) {
-      const directLists = Array.from(selectedDirectBypassLists);
-      const bypassSecId = 'Direct_Games_RU';
-      const bypassCondId = 'cond_Direct_Games_RU';
-      if (!uciObj.get(TACHYON_UCI_PACKAGE, bypassCondId)) {
-        uciObj.add(TACHYON_UCI_PACKAGE, 'condition', bypassCondId);
-      }
-      uciObj.set(TACHYON_UCI_PACKAGE, bypassCondId, 'enabled', '1');
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        bypassCondId,
-        'name',
-        tr('Игры и сервисы РФ (Прямой)', 'Games & RU Services (Direct)'),
-      );
-      uciObj.set(TACHYON_UCI_PACKAGE, bypassCondId, 'condition_type', 'atomic');
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        bypassCondId,
-        'community_lists',
-        directLists,
-      );
-      const customDirectDoms = directBypassCustomDomains
-        .split(/[\s,]+/)
-        .map((d) => d.trim())
-        .filter(Boolean);
-      if (customDirectDoms.length > 0) {
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          bypassCondId,
-          'domain_suffix',
-          customDirectDoms,
-        );
-      }
-      const customDirectIps = directBypassSourceIps
-        .split(/[\s,]+/)
-        .map((d) => d.trim())
-        .filter(Boolean);
-      if (customDirectIps.length > 0) {
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          bypassCondId,
-          'source_ip_cidr',
-          customDirectIps,
-        );
-      }
-
-      if (!uciObj.get(TACHYON_UCI_PACKAGE, bypassSecId)) {
-        uciObj.add(TACHYON_UCI_PACKAGE, 'section', bypassSecId);
-      }
-      uciObj.set(TACHYON_UCI_PACKAGE, bypassSecId, 'enabled', '1');
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        bypassSecId,
-        'name',
-        tr('Игры и РФ напрямую', 'Games & RU Direct'),
-      );
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        bypassSecId,
-        'label',
-        tr('Игры и РФ напрямую', 'Games & RU Direct'),
-      );
-      uciObj.set(TACHYON_UCI_PACKAGE, bypassSecId, 'action', 'bypass');
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        bypassSecId,
-        'community_lists',
-        directLists,
-      );
-      uciObj.set(TACHYON_UCI_PACKAGE, bypassSecId, 'condition_refs', [
-        bypassCondId,
-      ]);
-
-      const dnsResolver = DIRECT_BYPASS_DNS_PRESETS.find(
-        (r) => r.id === directBypassDnsPreset,
-      );
-      const resolvedDnsType = dnsResolver?.dnsType || 'udp';
-      const resolvedDnsServer =
-        directBypassDnsPreset === 'custom'
-          ? customDirectBypassDnsServer.trim() || '77.88.8.8'
-          : dnsResolver?.servers?.[0] || '77.88.8.8';
-
-      const dnsSecId = 'Direct_Games_DNS';
-      if (!uciObj.get(TACHYON_UCI_PACKAGE, dnsSecId)) {
-        uciObj.add(TACHYON_UCI_PACKAGE, 'section', dnsSecId);
-      }
-      uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'enabled', '1');
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        dnsSecId,
-        'name',
-        tr('DNS для Игр и РФ', 'DNS for Games & RU'),
-      );
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        dnsSecId,
-        'label',
-        tr('DNS для Игр и РФ', 'DNS for Games & RU'),
-      );
-      uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'action', 'dns');
-      uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'dns_type', resolvedDnsType);
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        dnsSecId,
-        'dns_server',
-        resolvedDnsServer,
-      );
-      uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'community_lists', directLists);
-      uciObj.set(TACHYON_UCI_PACKAGE, dnsSecId, 'condition_refs', [
-        bypassCondId,
-      ]);
-    }
-
-    // Create AdBlock section if enabled
-    if (enableAdBlockSection) {
-      const adLists = ['category_ads_all', 'adblock_ru', 'win_spy'];
-      const adSecId = 'AdBlock_Tachyon';
-      const adCondId = 'cond_AdBlock_Tachyon';
-      if (!uciObj.get(TACHYON_UCI_PACKAGE, adCondId)) {
-        uciObj.add(TACHYON_UCI_PACKAGE, 'condition', adCondId);
-      }
-      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'enabled', '1');
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        adCondId,
-        'name',
-        tr('Реклама и телеметрия', 'Ads & Telemetry'),
-      );
-      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'condition_type', 'atomic');
-      uciObj.set(TACHYON_UCI_PACKAGE, adCondId, 'community_lists', adLists);
-
-      if (!uciObj.get(TACHYON_UCI_PACKAGE, adSecId)) {
-        uciObj.add(TACHYON_UCI_PACKAGE, 'section', adSecId);
-      }
-      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'enabled', '1');
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        adSecId,
-        'name',
-        tr('Блокировка рекламы', 'Ad Blocker'),
-      );
-      uciObj.set(
-        TACHYON_UCI_PACKAGE,
-        adSecId,
-        'label',
-        tr('Блокировка рекламы', 'Ad Blocker'),
-      );
-      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'action', 'block');
-      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'community_lists', adLists);
-      uciObj.set(TACHYON_UCI_PACKAGE, adSecId, 'condition_refs', [adCondId]);
     }
 
     // Link outbound_source to target section
@@ -5751,16 +5867,45 @@ export function openConnectionWizardModal(
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'check_interval', '3m');
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'tolerance', '50');
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'idle_timeout', '30m');
+        uciObj.set(TACHYON_UCI_PACKAGE, balId, 'source_refs', [srcId]);
         uciObj.set(TACHYON_UCI_PACKAGE, secId, 'balancer_refs', [balId]);
+      } else {
+        for (const existingBalId of curBals) {
+          const balSrcRefsRaw = uciObj.get(
+            TACHYON_UCI_PACKAGE,
+            existingBalId,
+            'source_refs',
+          );
+          const balSrcRefs = Array.isArray(balSrcRefsRaw)
+            ? balSrcRefsRaw
+            : balSrcRefsRaw
+              ? String(balSrcRefsRaw).split(/\s+/).filter(Boolean)
+              : [];
+          if (balSrcRefs.length > 0 && !balSrcRefs.includes(srcId)) {
+            uciObj.set(TACHYON_UCI_PACKAGE, existingBalId, 'source_refs', [
+              ...balSrcRefs,
+              srcId,
+            ]);
+          }
+        }
       }
     }
 
     void persistAndFinish('outbound', secId, finalName, applyImmediately);
   }
 
-  function finishInboundWizard(applyImmediately = false) {
+  async function finishInboundWizard(applyImmediately = false) {
     const label = inboundName.trim() || `Tachyon ${inboundProto.toUpperCase()}`;
     const srvId = sanitizeId(label, 'srv');
+    const certPath = `/etc/tachyon/server-certs/${srvId}.crt`;
+    const keyPath = `/etc/tachyon/server-certs/${srvId}.key`;
+    const defaultTlsSni =
+      (typeof window !== 'undefined' &&
+      window.location?.hostname &&
+      !/^[0-9.]+$/.test(window.location.hostname) &&
+      window.location.hostname !== 'localhost'
+        ? window.location.hostname
+        : '') || 'tachyon.lan';
 
     uciObj.add(TACHYON_UCI_PACKAGE, 'server', srvId);
     uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'enabled', '1');
@@ -5787,6 +5932,8 @@ export function openConnectionWizardModal(
     );
     uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'routing_mode', inboundRoutingMode);
 
+    let needsTlsCert = false;
+
     if (inboundProto === 'vless') {
       const sni = inboundSni.trim() || 'www.microsoft.com';
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'reality');
@@ -5807,8 +5954,202 @@ export function openConnectionWizardModal(
         'reality_short_id',
         generateRandomHex(4),
       );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'reality_max_time_difference',
+        '1m',
+      );
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'client_fingerprint', 'chrome');
-    } else if (inboundProto === 'vmess' || inboundProto === 'tuic') {
+      try {
+        const res = await executeShellCommand({
+          command: '/usr/bin/tachyon',
+          args: ['generate_reality_keypair'],
+        });
+        if (res.stdout) {
+          const parsed = JSON.parse(res.stdout);
+          if (parsed?.private_key && parsed?.public_key) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srvId,
+              'reality_private_key',
+              parsed.private_key,
+            );
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srvId,
+              'reality_public_key',
+              parsed.public_key,
+            );
+          }
+        }
+      } catch {
+        // Fallback if shell is unavailable in test environment
+      }
+    } else if (inboundProto === 'awg') {
+      const serverSections =
+        uciObj.sections(TACHYON_UCI_PACKAGE, 'server') || [];
+      const usedSubnets = new Set<string>();
+      for (const s of serverSections) {
+        if (s['.name'] === srvId) continue;
+        const la = uciObj.get(
+          TACHYON_UCI_PACKAGE,
+          s['.name'],
+          'awg_local_address',
+        );
+        if (la) usedSubnets.add(String(la));
+      }
+      let localAddr = '10.8.0.1/24';
+      let cliAddr = '10.8.0.2/32';
+      let dnsAddr = '10.8.0.1';
+      if (usedSubnets.has(localAddr)) {
+        for (let idx = 1; idx < 100; idx++) {
+          const candidate = `10.8.${idx}.1/24`;
+          if (!usedSubnets.has(candidate)) {
+            localAddr = candidate;
+            cliAddr = `10.8.${idx}.2/32`;
+            dnsAddr = `10.8.${idx}.1`;
+            break;
+          }
+        }
+      }
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_local_address', localAddr);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_client_address', cliAddr);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_dns', dnsAddr);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_mtu', '1280');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_keepalive', '25');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_version', '2.0');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_preshared_key',
+        generateBase64Key(32),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_jc',
+        String(randomIntInRange(4, 7)),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_jmin', '40');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_jmax', '70');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_s1',
+        String(randomIntInRange(15, 45)),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_s2',
+        String(randomIntInRange(15, 45)),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_s3', '0');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'awg_s4', '0');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_h1',
+        String(randomIntInRange(100000000, 500000000)),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_h2',
+        String(randomIntInRange(500000001, 900000000)),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_h3',
+        String(randomIntInRange(900000001, 1400000000)),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'awg_h4',
+        String(randomIntInRange(1400000001, 2000000000)),
+      );
+      const parseWgKeypair = (stdout: string) => {
+        const matchPriv = stdout.match(/PrivateKey:\s*([^\s]+)/);
+        const matchPub = stdout.match(/PublicKey:\s*([^\s]+)/);
+        if (matchPriv && matchPub) {
+          return { private_key: matchPriv[1], public_key: matchPub[1] };
+        }
+        return null;
+      };
+      try {
+        const [srvRes, cliRes] = await Promise.all([
+          executeShellCommand({
+            command: '/usr/bin/tachyon',
+            args: ['generate_wg_keypair'],
+          }),
+          executeShellCommand({
+            command: '/usr/bin/tachyon',
+            args: ['generate_wg_keypair'],
+          }),
+        ]);
+        const srvPair = parseWgKeypair(srvRes.stdout || '');
+        const cliPair = parseWgKeypair(cliRes.stdout || '');
+        if (srvPair) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srvId,
+            'awg_private_key',
+            srvPair.private_key,
+          );
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srvId,
+            'awg_server_public_key',
+            srvPair.public_key,
+          );
+        }
+        if (cliPair) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srvId,
+            'awg_client_private_key',
+            cliPair.private_key,
+          );
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srvId,
+            'awg_peer_public_key',
+            cliPair.public_key,
+          );
+        }
+      } catch {
+        // Fallback if shell is unavailable in test environment
+      }
+    } else if (inboundProto === 'hysteria2') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'tls');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'server_password',
+        generateRandomHex(12),
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'hysteria2_obfs_type',
+        'salamander',
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'hysteria2_obfs_password',
+        generateRandomHex(12),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_server_name', defaultTlsSni);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_alpn', ['h3']);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_certificate_path', certPath);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_key_path', keyPath);
+      needsTlsCert = true;
+    } else if (inboundProto === 'tuic') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'tls');
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'server_uuid', generateUuidV4());
       uciObj.set(
         TACHYON_UCI_PACKAGE,
@@ -5816,6 +6157,112 @@ export function openConnectionWizardModal(
         'server_password',
         generateRandomHex(12),
       );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tuic_congestion_control', 'bbr');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_server_name', defaultTlsSni);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_alpn', ['h3']);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_certificate_path', certPath);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_key_path', keyPath);
+      needsTlsCert = true;
+    } else if (inboundProto === 'tewfai') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'tls');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_uuid', generateUuidV4());
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'tewfai_password',
+        generateRandomHex(12),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_inbound_transport', 'tcp');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'tewfai_inner_cipher',
+        'aes-256-gcm',
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_pqc_enabled', '1');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_handover_enabled', '1');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_fec_enabled', '0');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_shaper_enabled', '1');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'tewfai_shaper_profile',
+        'adaptive',
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_mtu', '1400');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_server_name', defaultTlsSni);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_alpn', ['h2', 'http/1.1']);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_certificate_path', certPath);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_key_path', keyPath);
+      needsTlsCert = true;
+    } else if (inboundProto === 'anytls') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'tls');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'server_password',
+        generateRandomHex(12),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_server_name', defaultTlsSni);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_certificate_path', certPath);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_key_path', keyPath);
+      needsTlsCert = true;
+    } else if (inboundProto === 'trusttunnel') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'tls');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'server_username', 'tachyon');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'server_password',
+        generateRandomHex(12),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'trusttunnel_quic', '0');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_server_name', defaultTlsSni);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_alpn', ['h2', 'http/1.1']);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_certificate_path', certPath);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_key_path', keyPath);
+      needsTlsCert = true;
+    } else if (inboundProto === 'trojan') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'tls');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'transport', 'tcp');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'server_password',
+        generateRandomHex(12),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_server_name', defaultTlsSni);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_alpn', ['h2', 'http/1.1']);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_certificate_path', certPath);
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_key_path', keyPath);
+      needsTlsCert = true;
+    } else if (inboundProto === 'shadowsocks') {
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'shadowsocks_method',
+        'aes-128-gcm',
+      );
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'server_password',
+        generateBase64Key(16),
+      );
+    } else if (inboundProto === 'socks') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'socks_auth_enabled', '1');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'server_username', 'tachyon');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'server_password',
+        generateRandomHex(12),
+      );
+    } else if (inboundProto === 'vmess') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'none');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'transport', 'tcp');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'server_uuid', generateUuidV4());
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'vmess_alter_id', '0');
     } else {
       uciObj.set(
         TACHYON_UCI_PACKAGE,
@@ -5825,7 +6272,18 @@ export function openConnectionWizardModal(
       );
     }
 
-    void persistAndFinish('inbound', srvId, label, applyImmediately);
+    if (needsTlsCert) {
+      try {
+        await executeShellCommand({
+          command: '/usr/bin/tachyon',
+          args: ['generate_tls_keypair', srvId],
+        });
+      } catch {
+        // Fallback if shell is unavailable in test environment
+      }
+    }
+
+    await persistAndFinish('inbound', srvId, label, applyImmediately);
   }
 
   function rerender() {
@@ -5977,7 +6435,7 @@ export function openConnectionWizardModal(
               if (direction === 'outbound') {
                 finishOutboundWizard(false);
               } else {
-                finishInboundWizard(false);
+                void finishInboundWizard(false);
               }
             },
           },
@@ -5994,7 +6452,7 @@ export function openConnectionWizardModal(
               if (direction === 'outbound') {
                 finishOutboundWizard(true);
               } else {
-                finishInboundWizard(true);
+                void finishInboundWizard(true);
               }
             },
           },

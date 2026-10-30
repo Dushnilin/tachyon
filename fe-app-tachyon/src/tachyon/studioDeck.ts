@@ -64,24 +64,70 @@ function setStudioViewMode(type: StudioEntityType, mode: StudioViewMode): void {
   }
 }
 
-function notifyUciChanged(): void {
+function sanitizeStaleUciDeletes(targetSectionId?: string): void {
   try {
-    if (typeof uci !== 'undefined' && typeof uci.save === 'function') {
-      Promise.resolve(uci.save())
-        .then(() => {
-          if (
-            typeof ui !== 'undefined' &&
-            (ui as any).changes &&
-            typeof (ui as any).changes.init === 'function'
-          ) {
-            (ui as any).changes.init();
+    const state = (typeof uci !== 'undefined' && (uci as any).state) || null;
+    if (!state || !state.deletes?.[UCI_PACKAGE]) return;
+    const creates = state.creates?.[UCI_PACKAGE] || {};
+    const values = state.values?.[UCI_PACKAGE] || {};
+    const deletes = state.deletes[UCI_PACKAGE];
+    for (const sid in deletes) {
+      if (creates[sid] || !values[sid]) {
+        delete deletes[sid];
+        continue;
+      }
+      if (deletes[sid] !== true && typeof deletes[sid] === 'object') {
+        for (const opt in deletes[sid]) {
+          if (!Object.prototype.hasOwnProperty.call(values[sid], opt)) {
+            delete deletes[sid][opt];
           }
-        })
-        .catch(() => null);
+        }
+        if (Object.keys(deletes[sid]).length === 0) {
+          delete deletes[sid];
+        }
+      }
+    }
+    if (
+      targetSectionId &&
+      (creates[targetSectionId] || !values[targetSectionId])
+    ) {
+      delete deletes[targetSectionId];
+    }
+    if (Object.keys(state.deletes[UCI_PACKAGE]).length === 0) {
+      delete state.deletes[UCI_PACKAGE];
     }
   } catch {
     // ignore
   }
+}
+
+let pendingUciSaveChain: Promise<unknown> = Promise.resolve(null);
+
+function notifyUciChanged(): Promise<unknown> {
+  const runSave = () => {
+    try {
+      sanitizeStaleUciDeletes();
+      if (typeof uci !== 'undefined' && typeof uci.save === 'function') {
+        return Promise.resolve(uci.save())
+          .then(() => {
+            if (
+              typeof ui !== 'undefined' &&
+              (ui as any).changes &&
+              typeof (ui as any).changes.init === 'function'
+            ) {
+              return (ui as any).changes.init();
+            }
+            return null;
+          })
+          .catch(() => null);
+      }
+    } catch {
+      // ignore
+    }
+    return Promise.resolve(null);
+  };
+  pendingUciSaveChain = pendingUciSaveChain.then(runSave, runSave);
+  return pendingUciSaveChain;
 }
 
 function sanitizeUciId(raw: string, fallbackPrefix: string): string {
@@ -877,7 +923,9 @@ function openStudioCreateModal(
 
   renderTemplateCards();
 
+  let isConfirming = false;
   const handleConfirm = () => {
+    if (isConfirming) return;
     const rawName = nameInput.value.trim();
     if (!rawName) {
       errorEl.textContent = tr('Введите название.', 'Please enter a name.');
@@ -886,6 +934,7 @@ function openStudioCreateModal(
       return;
     }
 
+    isConfirming = true;
     const prefixMap: Record<StudioEntityType, string> = {
       section: 'sec',
       outbound_source: 'src',
@@ -895,37 +944,69 @@ function openStudioCreateModal(
       profile: 'prof',
       schedule: 'sched',
     };
-    let uciId = /^[A-Za-z0-9_]+$/.test(rawName)
-      ? rawName
-      : sanitizeUciId(rawName, prefixMap[type] || 'item');
 
-    let suffix = 1;
-    const baseId = uciId;
-    while (uci.get(UCI_PACKAGE, uciId)) {
-      suffix += 1;
-      uciId = `${baseId}_${suffix}`;
-    }
+    pendingUciSaveChain.finally(() => {
+      let uciId = /^[A-Za-z0-9_]+$/.test(rawName)
+        ? rawName
+        : sanitizeUciId(rawName, prefixMap[type] || 'item');
 
-    uci.add(UCI_PACKAGE, sectionRef.sectiontype || type, uciId);
-    if (type === 'section') {
-      uci.set(UCI_PACKAGE, uciId, 'label', rawName);
-    } else {
-      uci.set(UCI_PACKAGE, uciId, 'name', rawName);
-    }
+      let suffix = 1;
+      const baseId = uciId;
+      while (uci.get(UCI_PACKAGE, uciId)) {
+        suffix += 1;
+        uciId = `${baseId}_${suffix}`;
+      }
 
-    Object.entries(selectedTemplate.defaults || {}).forEach(([k, v]) => {
-      uci.set(UCI_PACKAGE, uciId, k, v);
+      const dataStore = sectionRef?.map?.data || uci;
+      if (typeof dataStore.add === 'function') {
+        dataStore.add(UCI_PACKAGE, sectionRef.sectiontype || type, uciId);
+      } else {
+        uci.add(UCI_PACKAGE, sectionRef.sectiontype || type, uciId);
+      }
+      sanitizeStaleUciDeletes(uciId);
+      if (type === 'section' || type === 'profile') {
+        uci.set(UCI_PACKAGE, uciId, 'label', rawName);
+      } else {
+        uci.set(UCI_PACKAGE, uciId, 'name', rawName);
+      }
+
+      Object.entries(selectedTemplate.defaults || {}).forEach(([k, v]) => {
+        uci.set(UCI_PACKAGE, uciId, k, v);
+      });
+
+      ui.hideModal();
+
+      try {
+        const mapNode =
+          typeof sectionRef.getPreviousModalMap === 'function'
+            ? sectionRef.getPreviousModalMap()
+            : null;
+        const prevMap =
+          mapNode &&
+          typeof (globalThis as any).L !== 'undefined' &&
+          (globalThis as any).L.dom &&
+          typeof (globalThis as any).L.dom.findClassInstance === 'function'
+            ? (globalThis as any).L.dom.findClassInstance(mapNode)
+            : sectionRef.map;
+        if (prevMap) {
+          prevMap.addedSection = uciId;
+        }
+      } catch {
+        if (sectionRef.map) {
+          sectionRef.map.addedSection = uciId;
+        }
+      }
+
+      onCreated();
+
+      if (typeof sectionRef.renderMoreOptionsModal === 'function') {
+        window.setTimeout(() => {
+          sectionRef.renderMoreOptionsModal(uciId);
+        }, 40);
+      } else {
+        notifyUciChanged().finally(() => onCreated());
+      }
     });
-
-    ui.hideModal();
-    notifyUciChanged();
-    onCreated();
-
-    if (typeof sectionRef.renderMoreOptionsModal === 'function') {
-      window.setTimeout(() => {
-        sectionRef.renderMoreOptionsModal(uciId);
-      }, 60);
-    }
   };
 
   nameInput.addEventListener('keydown', (ev: KeyboardEvent) => {
@@ -1591,7 +1672,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         ev.stopPropagation();
       }
       if (typeof sectionRef.renderMoreOptionsModal === 'function') {
-        sectionRef.renderMoreOptionsModal(sid);
+        pendingUciSaveChain.finally(() => {
+          sanitizeStaleUciDeletes(sid);
+          sectionRef.renderMoreOptionsModal(sid);
+        });
       }
     };
 

@@ -644,6 +644,8 @@ function section_effective_outbound_sources(section) {
             inferred_stype = "wdtt";
         else if (trim(option(section, "olcrtc_stun_host", "")) != "")
             inferred_stype = "olcrtc";
+        else if (trim(option(section, "openvpn_server", "")) != "")
+            inferred_stype = "openvpn";
         if (inferred_stype != "") {
             let sname = section_name(section);
             let safe_sname = replace(as_string(sname || "inline"), /[^a-zA-Z0-9_]/g, "_");
@@ -995,21 +997,6 @@ function subscription_urls(section) {
 function interfaces(section) {
     let result = [];
     let seen = {};
-    if (length(outbound_source_sections()) == 0) {
-        let items = child_values(section, "section_interface", "name", "");
-        if (length(items) > 0) {
-            for (let it in items)
-                push_unique_str(result, seen, it);
-        } else {
-            for (let it in list_value(section, "interfaces"))
-                push_unique_str(result, seen, it);
-            if (length(result) == 0) {
-                let value = option(section, "interface", "");
-                if (value != "")
-                    push_unique_str(result, seen, value);
-            }
-        }
-    }
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "interface") {
@@ -1021,6 +1008,17 @@ function interfaces(section) {
             let ts_iface = trim(option(src, "interface_name", "tailscale0")) || "tailscale0";
             push_unique_str(result, seen, ts_iface);
         }
+    }
+    let items = child_values(section, "section_interface", "name", "");
+    if (length(items) > 0) {
+        for (let it in items)
+            push_unique_str(result, seen, it);
+    } else {
+        for (let it in list_value(section, "interfaces"))
+            push_unique_str(result, seen, it);
+        let value = option(section, "interface", "");
+        if (value != "")
+            push_unique_str(result, seen, value);
     }
     return result;
 }

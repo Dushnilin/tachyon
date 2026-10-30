@@ -141,15 +141,7 @@ let shell_quote = common.shell_quote;
 
 let command_from_args = common.command_from_args;
 
-function normalize_status(status) {
-    status = int(status);
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
+let normalize_status = common.normalize_status;
 
 let command_status = common.command_status;
 
@@ -601,7 +593,36 @@ function discover_awg_mtu() {
     return 0;
 }
 
+// Whether the active routing engine is steer or steer-extended. Used to skip
+// the sing-box-only start work (config validation, dnsmasq pointing at the
+// sing-box DNS inbound) that must never run on a steer device.
+function active_engine_is_steer() {
+    let active_engine = "tachyon-core";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "tachyon-core";
+    }
+    return active_engine != "tachyon-core";
+}
+
+function ensure_core_binary_installed() {
+    if (getenv("TACHYON_PACKAGE_TEST_MODE") != null || getenv("TACHYON_UCI_STATE_FILE") != null)
+        return true;
+    if (active_engine_is_steer())
+        return true;
+    if (command_success("command -v tachyon-core") || command_success("command -v sing-box"))
+        return true;
+    let action_uc = LIB_DIR + "/components/action.uc";
+    if (fs.stat(action_uc) == null)
+        return false;
+    log_message("Core binary is missing (e.g. after sysupgrade); auto-installing tachyon-core...", "info");
+    return module_status(action_uc, [ "component-action", "tachyon-core", "install" ]) == 0;
+}
+
 function validate_start_config() {
+    ensure_core_binary_installed();
     // The two validator checks share the expensive context_from_runtime() assembly
     // (sing-box version, installed packages, compression markers). Running both in
     // one ucode process cuts two forks (context_from_runtime twice + one extra
@@ -983,20 +1004,6 @@ function prepare_community_rulesets() {
     for (let name in exclusion_lists)
         if (!exclusions.prepare_list(name, tmp_dir + "/community-" + name + ".srs"))
             log_message("Smart Detect: exclusion preset " + name + " is unavailable; keeping the previous cache", "warn");
-}
-
-// Whether the active routing engine is steer or steer-extended. Used to skip
-// the sing-box-only start work (config validation, dnsmasq pointing at the
-// sing-box DNS inbound) that must never run on a steer device.
-function active_engine_is_steer() {
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "tachyon-core";
-    }
-    return active_engine != "tachyon-core";
 }
 
 // Start the steer engine. Tachyon's job here is to make sure sing-box is not

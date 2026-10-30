@@ -2347,6 +2347,13 @@ export function renderDashboardSectionsAndNodes(
         section.serviceStatus ||
         nonProxyActions.has((section.action || '').toLowerCase()),
     );
+    const hideTrafficAndConns =
+      ['block', 'reject', 'bypass', 'direct', 'dns'].includes(
+        engineMeta.primaryEngine,
+      ) ||
+      ['block', 'reject', 'bypass', 'direct', 'dns'].includes(
+        (section.action || '').toLowerCase(),
+      );
     const isHealthy = isServiceNode
       ? section.serviceStatus
         ? Boolean(section.serviceStatus.ready)
@@ -2521,24 +2528,28 @@ export function renderDashboardSectionsAndNodes(
             ]),
           ]),
           E('div', { class: 'tachyon-routing-matrix-card__right' }, [
-            E('div', { class: 'tachyon-routing-matrix-card__stats' }, [
-              E(
-                'strong',
-                {
-                  class: 'tachyon-routing-matrix-card__traffic',
-                  'data-row-metric': 'session-total',
-                } as any,
-                prettyBytes(totalSectionTraffic),
-              ),
-              E('span', { class: 'tachyon-routing-matrix-card__conns' }, [
-                E(
-                  'span',
-                  { 'data-row-metric': 'conns' } as any,
-                  String(stats.conns),
-                ),
-                ` ${tr('соед.', 'conns')}`,
-              ]),
-            ]),
+            ...(hideTrafficAndConns
+              ? []
+              : [
+                  E('div', { class: 'tachyon-routing-matrix-card__stats' }, [
+                    E(
+                      'strong',
+                      {
+                        class: 'tachyon-routing-matrix-card__traffic',
+                        'data-row-metric': 'session-total',
+                      } as any,
+                      prettyBytes(totalSectionTraffic),
+                    ),
+                    E('span', { class: 'tachyon-routing-matrix-card__conns' }, [
+                      E(
+                        'span',
+                        { 'data-row-metric': 'conns' } as any,
+                        String(stats.conns),
+                      ),
+                      ` ${tr('соед.', 'conns')}`,
+                    ]),
+                  ]),
+                ]),
             latencyBtnNode,
           ]),
         ],
@@ -2597,14 +2608,18 @@ export function renderDashboardSectionsAndNodes(
               },
               renderFlagEmojis(activeInfo.serverName),
             ),
-            E(
-              'span',
-              {
-                class: 'tachyon-routing-compact-tile__stat',
-                'data-row-metric': 'session-total',
-              } as any,
-              prettyBytes(totalSectionTraffic),
-            ),
+            ...(hideTrafficAndConns
+              ? []
+              : [
+                  E(
+                    'span',
+                    {
+                      class: 'tachyon-routing-compact-tile__stat',
+                      'data-row-metric': 'session-total',
+                    } as any,
+                    prettyBytes(totalSectionTraffic),
+                  ),
+                ]),
           ]),
         ],
       );
@@ -2692,28 +2707,32 @@ export function renderDashboardSectionsAndNodes(
               ),
             ]),
           ]),
-          E('div', { class: 'tachyon-routing-bento-card__foot' }, [
-            E('span', { class: 'tachyon-routing-bento-card__metric' }, [
-              E('span', { class: 'tachyon-routing-row__col-label' }, [
-                `${tr('Трафик', 'Traffic')}: `,
+          ...(hideTrafficAndConns
+            ? []
+            : [
+                E('div', { class: 'tachyon-routing-bento-card__foot' }, [
+                  E('span', { class: 'tachyon-routing-bento-card__metric' }, [
+                    E('span', { class: 'tachyon-routing-row__col-label' }, [
+                      `${tr('Трафик', 'Traffic')}: `,
+                    ]),
+                    E(
+                      'strong',
+                      { 'data-row-metric': 'session-total' } as any,
+                      prettyBytes(totalSectionTraffic),
+                    ),
+                  ]),
+                  E('span', { class: 'tachyon-routing-bento-card__metric' }, [
+                    E('span', { class: 'tachyon-routing-row__col-label' }, [
+                      `${tr('Соед.', 'Conns')}: `,
+                    ]),
+                    E(
+                      'strong',
+                      { 'data-row-metric': 'conns' } as any,
+                      String(stats.conns),
+                    ),
+                  ]),
+                ]),
               ]),
-              E(
-                'strong',
-                { 'data-row-metric': 'session-total' } as any,
-                prettyBytes(totalSectionTraffic),
-              ),
-            ]),
-            E('span', { class: 'tachyon-routing-bento-card__metric' }, [
-              E('span', { class: 'tachyon-routing-row__col-label' }, [
-                `${tr('Соед.', 'Conns')}: `,
-              ]),
-              E(
-                'strong',
-                { 'data-row-metric': 'conns' } as any,
-                String(stats.conns),
-              ),
-            ]),
-          ]),
         ],
       );
     }
@@ -2723,6 +2742,7 @@ export function renderDashboardSectionsAndNodes(
       {
         class: [
           'tachyon-routing-row',
+          hideTrafficAndConns ? 'tachyon-routing-row--no-traffic' : '',
           isRowSelected ? 'is-selected' : '',
           section.configError ? 'has-error' : '',
         ]
@@ -2838,66 +2858,81 @@ export function renderDashboardSectionsAndNodes(
           ),
         ]),
 
-        // Col 4: Трафик за сессию
-        E(
-          'div',
-          {
-            class: 'tachyon-routing-row__col tachyon-routing-row__col--num',
-            title: `↓ ${prettyBytes(stats.download || 0)} • ↑ ${prettyBytes(stats.upload || 0)}`,
-          },
-          [
-            E(
-              'span',
-              { class: 'tachyon-routing-row__col-label' },
-              tr('Трафик', 'Traffic'),
-            ),
-            E(
-              'span',
-              {
-                class: 'tachyon-routing-row__col-value',
-                'data-row-metric': 'session-total',
-              } as any,
-              prettyBytes(totalSectionTraffic),
-            ),
-            E(
-              'span',
-              {
-                style: 'display:none;',
-                'data-row-metric': 'session-down',
-              } as any,
-              `↓ ${prettyBytes(stats.download || 0)}`,
-            ),
-            E(
-              'span',
-              {
-                style: 'display:none;',
-                'data-row-metric': 'session-up',
-              } as any,
-              `↑ ${prettyBytes(stats.upload || 0)}`,
-            ),
-          ],
-        ),
-
-        // Col 5: Соединения
-        E(
-          'div',
-          { class: 'tachyon-routing-row__col tachyon-routing-row__col--num' },
-          [
-            E(
-              'span',
-              { class: 'tachyon-routing-row__col-label' },
-              tr('Соед.', 'Conns'),
-            ),
-            E(
-              'span',
-              {
-                class: 'tachyon-routing-row__col-value',
-                'data-row-metric': 'conns',
-              } as any,
-              String(stats.conns),
-            ),
-          ],
-        ),
+        // Col 4 & Col 5: Трафик за сессию и Соединения (скрываются для block / bypass / dns)
+        ...(hideTrafficAndConns
+          ? [
+              E('div', {
+                class:
+                  'tachyon-routing-row__col tachyon-routing-row__col--empty',
+              }),
+              E('div', {
+                class:
+                  'tachyon-routing-row__col tachyon-routing-row__col--empty',
+              }),
+            ]
+          : [
+              E(
+                'div',
+                {
+                  class:
+                    'tachyon-routing-row__col tachyon-routing-row__col--num',
+                  title: `↓ ${prettyBytes(stats.download || 0)} • ↑ ${prettyBytes(stats.upload || 0)}`,
+                },
+                [
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-row__col-label' },
+                    tr('Трафик', 'Traffic'),
+                  ),
+                  E(
+                    'span',
+                    {
+                      class: 'tachyon-routing-row__col-value',
+                      'data-row-metric': 'session-total',
+                    } as any,
+                    prettyBytes(totalSectionTraffic),
+                  ),
+                  E(
+                    'span',
+                    {
+                      style: 'display:none;',
+                      'data-row-metric': 'session-down',
+                    } as any,
+                    `↓ ${prettyBytes(stats.download || 0)}`,
+                  ),
+                  E(
+                    'span',
+                    {
+                      style: 'display:none;',
+                      'data-row-metric': 'session-up',
+                    } as any,
+                    `↑ ${prettyBytes(stats.upload || 0)}`,
+                  ),
+                ],
+              ),
+              E(
+                'div',
+                {
+                  class:
+                    'tachyon-routing-row__col tachyon-routing-row__col--num',
+                },
+                [
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-row__col-label' },
+                    tr('Соед.', 'Conns'),
+                  ),
+                  E(
+                    'span',
+                    {
+                      class: 'tachyon-routing-row__col-value',
+                      'data-row-metric': 'conns',
+                    } as any,
+                    String(stats.conns),
+                  ),
+                ],
+              ),
+            ]),
 
         // Col 6: Latency Pill or Green Status Dot + Chevron
         E('div', { class: 'tachyon-routing-row__right' }, [

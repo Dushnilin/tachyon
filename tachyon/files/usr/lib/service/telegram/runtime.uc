@@ -46,6 +46,7 @@ const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "TachyonTable";
 const PID_FILE = "/var/run/tachyon_telegram.pid";
 const OFFSET_FILE = getenv("TACHYON_TELEGRAM_OFFSET_FILE") || "/var/run/tachyon_telegram_offset";
+const OFFSET_BOT_FILE = OFFSET_FILE + ".bot";
 const COMPONENT_UPDATE_CHECK_TIMESTAMP = "/var/run/tachyon/component-update-check.timestamp";
 // Carried over from the monolithic service/telegram.uc by the split in
 // 57c7e2b0. Left behind, the reference below resolved to nothing and ucode
@@ -348,6 +349,16 @@ function check_blocked_activity(cfg) {
 // can duplicate an update is the handling itself and not the rest of the batch.
 // At-most-once is the right trade for a status bot: losing one reply beats sending
 // fifteen.
+function extract_bot_id(token) {
+    let raw = trim(as_string(token));
+    if (raw == "")
+        return "";
+    let colon = index(raw, ":");
+    if (colon <= 0)
+        return raw;
+    return substr(raw, 0, colon);
+}
+
 function persist_offset(offset) {
     if (fs.writefile(OFFSET_FILE, as_string(offset)) != null)
         return true;
@@ -358,8 +369,31 @@ function persist_offset(offset) {
     return false;
 }
 
-function process_updates(token, admin_ids) {
+function sync_offset_for_bot(token) {
+    let bot_id = extract_bot_id(token);
+    let saved_bot_id = trim(fs.readfile(OFFSET_BOT_FILE) || "");
     let offset = int(trim(fs.readfile(OFFSET_FILE) || "0"));
+    if (offset < 0)
+        offset = 0;
+
+    if (bot_id != "" && saved_bot_id != "" && saved_bot_id != bot_id) {
+        offset = 0;
+        persist_offset(0);
+        try { fs.writefile(OFFSET_BOT_FILE, bot_id); } catch (e) {}
+        command_success_from_args(["logger", "-t", "tachyon-telegram",
+            "[info] Bot token changed; reset Telegram update offset"]);
+        return 0;
+    }
+
+    if (bot_id != "" && saved_bot_id == "") {
+        try { fs.writefile(OFFSET_BOT_FILE, bot_id); } catch (e) {}
+    }
+
+    return offset;
+}
+
+function process_updates(token, admin_ids) {
+    let offset = sync_offset_for_bot(token);
     let res = tg_request(token, "getUpdates", { offset: offset, timeout: 50 });
     
     // A Telegram answer with ok:false is the API talking, not a broken
@@ -383,15 +417,40 @@ function process_updates(token, admin_ids) {
         return true;
     }
     if (length(res.result) == 0) return true;
-    
+
+    let stale_batch = false;
+    let batch_max = -1;
     for (let upd in res.result) {
-        let update_id = upd.update_id;
+        let uid = int(upd.update_id || 0);
+        if (uid > batch_max)
+            batch_max = uid;
+        if (offset > 0 && uid < offset)
+            stale_batch = true;
+    }
+    if (stale_batch && batch_max >= 0) {
+        offset = batch_max + 1;
+        if (!persist_offset(offset))
+            return false;
+        command_success_from_args(["logger", "-t", "tachyon-telegram",
+            "[warn] Resynchronized stale Telegram update offset to " + as_string(offset) + "; skipping stale batch"]);
+        return true;
+    }
+
+    let seen_updates = {};
+    for (let upd in res.result) {
+        let update_id = int(upd.update_id || 0);
+        let update_key = as_string(update_id);
+        if (seen_updates[update_key])
+            continue;
+        seen_updates[update_key] = true;
+
         if (update_id >= offset) {
             offset = update_id + 1;
         }
 
         // Acknowledge first, answer second. See persist_offset().
-        persist_offset(offset);
+        if (!persist_offset(offset))
+            return false;
 
         try {
         let cb = upd.callback_query;

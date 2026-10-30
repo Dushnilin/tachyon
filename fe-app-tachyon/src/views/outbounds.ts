@@ -2048,6 +2048,49 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.depends('source_type', 'proxy_links');
+  o.formvalue = function (sectionId) {
+    const base = form.DynamicList.prototype.formvalue.apply(this, arguments);
+    const list = Array.isArray(base) ? [...base] : base ? [String(base)] : [];
+    try {
+      const fieldId = this.cbid(sectionId);
+      const wrap =
+        typeof document !== 'undefined'
+          ? document.getElementById(fieldId) ||
+            document.querySelector(`[data-field="${fieldId}"]`)
+          : null;
+      if (wrap) {
+        const textInputs = wrap.querySelectorAll('input[type="text"]');
+        textInputs.forEach((inp) => {
+          const val = String(inp.value || '').trim();
+          if (val && !list.includes(val)) {
+            list.push(val);
+          }
+        });
+      }
+    } catch (_e) {}
+    return list;
+  };
+  o.write = function (sectionId, value) {
+    const list = asArray(value);
+    if (list.length) {
+      uci.set(UCI_PACKAGE, sectionId, 'proxy_links', list);
+    }
+  };
+  o.remove = function (sectionId) {
+    try {
+      const bulkId = `cbid.${UCI_PACKAGE}.${sectionId}._proxy_links_bulk`;
+      const bulkEl =
+        typeof document !== 'undefined'
+          ? document.getElementById(`widget.${bulkId}`) ||
+            document.querySelector(`textarea[name="${bulkId}"]`) ||
+            document.querySelector(`[data-field="${bulkId}"] textarea`)
+          : null;
+      if (bulkEl && String(bulkEl.value || '').trim()) {
+        return;
+      }
+    } catch (_e) {}
+    uci.unset(UCI_PACKAGE, sectionId, 'proxy_links');
+  };
 
   o = section.taboption(
     'general',
@@ -2074,6 +2117,9 @@ function createOutboundsContent(section) {
       const merged = Array.from(new Set([...existing, ...lines]));
       uci.set(UCI_PACKAGE, sectionId, 'proxy_links', merged);
     }
+  };
+  o.remove = function () {
+    // Never remove proxy_links when bulk textarea is cleared; DynamicList manages removal.
   };
 
   // ── 3. Amnezia / AmneziaWG Multi-Config (vpn:// or .conf files) ───────────

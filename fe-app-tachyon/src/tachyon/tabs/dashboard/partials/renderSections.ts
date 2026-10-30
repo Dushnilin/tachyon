@@ -206,13 +206,30 @@ function renderSubscriptionMetadata(
   const rows = [
     traffic
       ? {
+          kind: 'traffic' as const,
           label: _('Traffic'),
           value: `${used} / ${total}`,
+          percent:
+            !traffic.isUnlimited &&
+            typeof traffic.used === 'number' &&
+            typeof traffic.total === 'number' &&
+            traffic.total > 0
+              ? Math.min(100, Math.max(0, (traffic.used / traffic.total) * 100))
+              : undefined,
         }
       : undefined,
-    expire ? { label: _('Expires'), value: expire } : undefined,
-    refillDate ? { label: _('Refill'), value: refillDate } : undefined,
-  ].filter(Boolean) as { label: string; value: string }[];
+    expire
+      ? { kind: 'expire' as const, label: _('Expires'), value: expire }
+      : undefined,
+    refillDate
+      ? { kind: 'refill' as const, label: _('Refill'), value: refillDate }
+      : undefined,
+  ].filter(Boolean) as {
+    kind: 'traffic' | 'expire' | 'refill';
+    label: string;
+    value: string;
+    percent?: number;
+  }[];
 
   const isRu =
     typeof document !== 'undefined' &&
@@ -267,55 +284,84 @@ function renderSubscriptionMetadata(
     },
     [
       E('div', { class: 'tachyon_dashboard-page__subscription-meta__main' }, [
-        ...(isToggleable
-          ? [
-              svgEl(
-                'svg',
-                {
-                  width: '15',
-                  height: '15',
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  'stroke-width': '2',
-                  'stroke-linecap': 'round',
-                  'stroke-linejoin': 'round',
-                  style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? '-90deg' : '0deg'})`,
-                },
-                [svgEl('polyline', { points: '6 9 12 15 18 9' })],
-              ),
-            ]
-          : []),
         E(
           'div',
-          { class: 'tachyon_dashboard-page__subscription-meta__heading' },
-          _('Subscription info:'),
-        ),
-        title
-          ? E(
+          { class: 'tachyon_dashboard-page__subscription-meta__header-row' },
+          [
+            E(
               'div',
-              { class: 'tachyon_dashboard-page__subscription-meta__title' },
-              title,
-            )
-          : '',
-        typeof options?.groupCount === 'number'
-          ? E(
-              'span',
               {
-                class: 'tachyon_dashboard-page__source-group__count',
+                class: 'tachyon_dashboard-page__subscription-meta__title-group',
               },
-              `${options.groupCount}`,
-            )
-          : '',
-        isGroupCollapsed && options?.selectedOutbound
-          ? E(
-              'span',
-              {
-                class: 'tachyon_dashboard-page__source-group__active-badge',
-              },
-              `● ${options.selectedOutbound.displayName}`,
-            )
-          : '',
+              [
+                ...(isToggleable
+                  ? [
+                      svgEl(
+                        'svg',
+                        {
+                          width: '15',
+                          height: '15',
+                          viewBox: '0 0 24 24',
+                          fill: 'none',
+                          stroke: 'currentColor',
+                          'stroke-width': '2',
+                          'stroke-linecap': 'round',
+                          'stroke-linejoin': 'round',
+                          style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? '-90deg' : '0deg'})`,
+                        },
+                        [svgEl('polyline', { points: '6 9 12 15 18 9' })],
+                      ),
+                    ]
+                  : []),
+                E(
+                  'div',
+                  {
+                    class: 'tachyon_dashboard-page__subscription-meta__heading',
+                  },
+                  _('Subscription info:'),
+                ),
+                title
+                  ? E(
+                      'div',
+                      {
+                        class:
+                          'tachyon_dashboard-page__subscription-meta__title',
+                      },
+                      renderFlagEmojis(title),
+                    )
+                  : '',
+                typeof options?.groupCount === 'number'
+                  ? E(
+                      'span',
+                      {
+                        class: 'tachyon_dashboard-page__source-group__count',
+                      },
+                      `${options.groupCount}`,
+                    )
+                  : '',
+                isGroupCollapsed && options?.selectedOutbound
+                  ? E(
+                      'span',
+                      {
+                        class:
+                          'tachyon_dashboard-page__source-group__active-badge',
+                      },
+                      `● ${options.selectedOutbound.displayName}`,
+                    )
+                  : '',
+              ],
+            ),
+            actions.length
+              ? E(
+                  'div',
+                  {
+                    class: 'tachyon_dashboard-page__subscription-meta__actions',
+                  },
+                  actions,
+                )
+              : '',
+          ],
+        ),
         rows.length
           ? E(
               'div',
@@ -323,34 +369,56 @@ function renderSubscriptionMetadata(
               rows.map((row) =>
                 E(
                   'div',
-                  { class: 'tachyon_dashboard-page__subscription-meta__fact' },
+                  {
+                    class: `tachyon_dashboard-page__subscription-meta__fact tachyon_dashboard-page__subscription-meta__fact--${row.kind}`,
+                  },
                   [
                     E(
-                      'span',
+                      'div',
                       {
                         class:
-                          'tachyon_dashboard-page__subscription-meta__fact-key',
+                          'tachyon_dashboard-page__subscription-meta__fact-top',
                       },
-                      row.label,
+                      [
+                        E(
+                          'span',
+                          {
+                            class:
+                              'tachyon_dashboard-page__subscription-meta__fact-key',
+                          },
+                          row.label,
+                        ),
+                        E(
+                          'span',
+                          {
+                            class:
+                              'tachyon_dashboard-page__subscription-meta__fact-value',
+                          },
+                          row.value,
+                        ),
+                      ],
                     ),
-                    E(
-                      'span',
-                      {
-                        class:
-                          'tachyon_dashboard-page__subscription-meta__fact-value',
-                      },
-                      row.value,
-                    ),
+                    ...(typeof row.percent === 'number'
+                      ? [
+                          E(
+                            'div',
+                            {
+                              class:
+                                'tachyon_dashboard-page__subscription-meta__progress',
+                            },
+                            [
+                              E('div', {
+                                class:
+                                  'tachyon_dashboard-page__subscription-meta__progress-bar',
+                                style: `width: ${row.percent.toFixed(1)}%;`,
+                              }),
+                            ],
+                          ),
+                        ]
+                      : []),
                   ],
                 ),
               ),
-            )
-          : '',
-        actions.length
-          ? E(
-              'div',
-              { class: 'tachyon_dashboard-page__subscription-meta__actions' },
-              actions,
             )
           : '',
       ]),

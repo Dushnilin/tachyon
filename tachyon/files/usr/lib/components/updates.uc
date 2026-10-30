@@ -2935,6 +2935,8 @@ function import_all_preset_lists(settings) {
 // restart - while this update was holding the very lock that is supposed to
 // serialise them.
 let builtin_subnets_need_reload = false;
+let list_update_seen_community_srs = null;
+let list_update_seen_builtin_subnets = null;
 
 function import_builtin_subnets_from_rule(section, settings) {
     if (!bool_option(section, "enabled", true))
@@ -2944,17 +2946,45 @@ function import_builtin_subnets_from_rule(section, settings) {
 
     let ok = true;
     for (let service in connections.community_lists(section)) {
+        service = as_string(service);
         if (!singbox_rulesets_module().is_community(service))
             continue;
 
-        import_community_srs_file(service, settings);
+        if (type(list_update_seen_community_srs) != "object" || list_update_seen_community_srs[service] !== true) {
+            import_community_srs_file(service, settings);
+            if (type(list_update_seen_community_srs) == "object")
+                list_update_seen_community_srs[service] = true;
+        }
 
-        let urls = BUILTIN_SUBNET_URLS[as_string(service)];
+        let urls = BUILTIN_SUBNET_URLS[service];
         if (type(urls) != "array")
             continue;
 
-        let cached_file = TMP_RULESET_FOLDER + "/community-subnets-" + as_string(service) + ".lst";
-        let persistent_file = "/etc/tachyon/rulesets/community-subnets-" + as_string(service) + ".lst";
+        let cached_file = TMP_RULESET_FOLDER + "/community-subnets-" + service + ".lst";
+        let persistent_file = "/etc/tachyon/rulesets/community-subnets-" + service + ".lst";
+
+        if (type(list_update_seen_builtin_subnets) == "object" && list_update_seen_builtin_subnets[service] === true) {
+            if (file_exists_value(cached_file)) {
+                nft_module_success([
+                    "nft-add-community-subnet-file-for-uci-section",
+                    section_name(section),
+                    service,
+                    cached_file,
+                    NFT_TABLE_NAME,
+                    NFT_COMMON_SET_NAME,
+                    NFT_IP_PORT_SET_NAME,
+                    NFT_INTERFACE_SET_NAME,
+                    NFT_DISCORD_SET_NAME,
+                    NFT_FAKEIP_MARK,
+                    "5000",
+                    NFT_COMMON6_SET_NAME,
+                    NFT_IP_PORT6_SET_NAME,
+                    NFT_DISCORD6_SET_NAME
+                ]);
+            }
+            continue;
+        }
+
         let combined_lines = [];
         for (let url in urls) {
             let tmpfile = temp_path();
@@ -3036,6 +3066,8 @@ function import_builtin_subnets_from_rule(section, settings) {
             write_file(cached_file, data);
             ensure_dir("/etc/tachyon/rulesets");
             write_file(persistent_file, data);
+            if (type(list_update_seen_builtin_subnets) == "object")
+                list_update_seen_builtin_subnets[service] = true;
             if (changed)
                 builtin_subnets_need_reload = true;
         }
@@ -3650,9 +3682,13 @@ function list_update() {
         exit(1);
     }
 
+    list_update_seen_community_srs = {};
+    list_update_seen_builtin_subnets = {};
     for (let section in sections)
         if (!import_builtin_subnets_from_rule(section, settings))
             ok = false;
+    list_update_seen_community_srs = null;
+    list_update_seen_builtin_subnets = null;
     for (let section in sections)
         if (!import_subnets_from_remote_subnet_lists(section, settings))
             ok = false;
@@ -3664,13 +3700,17 @@ function list_update() {
         if (!apply_domain_ip_list_subnets_to_nft_from_rule(section))
             ok = false;
 
-    // Exactly one reload for the whole update, and only if something on disk
-    // actually changed. It used to sit inside the per-community loop above, so
-    // it fired S*N times - concurrently, while this update still held the
-    // reload lock - and a run whose lists came back identical reloaded anyway.
+    // Reload the core runtime once after all list updates complete: if ok is true,
+    // reload_singbox_after_list_update() regenerates the config and reloads the core
+    // synchronously below. Only spawn a background reload here when a non-fatal error
+    // set ok=false while built-in subnet files still changed on disk.
+    let triggered_bg_reload = false;
     if (builtin_subnets_need_reload) {
         builtin_subnets_need_reload = false;
-        system(common.background_command("/etc/init.d/tachyon reload"));
+        if (!ok) {
+            system(common.background_command("/etc/init.d/tachyon reload"));
+            triggered_bg_reload = true;
+        }
     }
 
     release_runtime_lock(RELOAD_LOCK_DIR);
@@ -3678,7 +3718,8 @@ function list_update() {
     if (ok) {
         write_list_update_timestamp(now_seconds());
         log_message("Lists update completed successfully", "info");
-        reload_singbox_after_list_update();
+        if (!triggered_bg_reload)
+            reload_singbox_after_list_update();
         update_list_status(false, true, "done", "Lists and rule sets successfully updated");
     }
     else {

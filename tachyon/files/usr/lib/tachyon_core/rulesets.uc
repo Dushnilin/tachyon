@@ -339,7 +339,7 @@ function supports_trs() {
     let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
     if (fs.stat(bin) != null)
         return true;
-    let variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant")));
+    let variant = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant")));
     return variant == "tachyon-core";
 }
 

@@ -359,6 +359,13 @@ cat >"$WORK_DIR/priority-rules.json" <<'JSON'
       "enabled": "1",
       "action": "proxy",
       "source_ip_cidr": [ "192.168.1.60/32" ]
+    },
+    {
+      ".name": "block_ip",
+      ".type": "section",
+      "enabled": "1",
+      "action": "block",
+      "ip_cidr": [ "66.254.114.249/32" ]
     }
   ]
 }
@@ -375,6 +382,7 @@ assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tsaddr\t@tachyon_rule_source_bypass_sources\tip\tdaddr\t!=\t@localv4\tcounter\taccept' "source-only bypass priority rule"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tsaddr\t@tachyon_rule_source_proxy_sources\tip\tdaddr\t!=\t@localv4\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter\taccept' "source-only proxy tcp priority rule"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tsaddr\t@tachyon_rule_source_proxy_sources\tip\tdaddr\t!=\t@localv4\tmeta\tl4proto\tudp\tmeta\tmark\tset\t0x00100000\tcounter\taccept' "source-only proxy udp priority rule"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_block_ip_subnets\tcounter\tdrop' "block priority drop rule"
 assert_line_before "$NFT_LOG" \
   $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_bypass_first_subnets\tcounter\taccept' \
   $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_wide_proxy_subnets\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter\taccept' \

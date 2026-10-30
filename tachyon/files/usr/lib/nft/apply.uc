@@ -21,6 +21,7 @@ let common_read_json_file = common.read_json_file;
 let list_option = common.list_option;
 let bool_option = common.bool_option;
 let as_string = common.as_string;
+let array_or_empty = common.array_or_empty;
 let object_or_empty = common.object_or_empty;
 let option = common.option;
 let disable_quic_mode = common.disable_quic_mode;
@@ -752,10 +753,26 @@ function section_is_failed_in_runtime(section_name) {
     return false;
 }
 
+function section_has_singbox_only_block_filters(section) {
+    if (length(section_leaf_list_option(section, "protocol")) > 0 ||
+        length(section_leaf_list_option(section, "excluded_protocol")) > 0 ||
+        length(connections.geoip_country_list(section)) > 0)
+        return true;
+    for (let cond in array_or_empty(section.__inverted_conditions))
+        if (type(cond) == "object")
+            return true;
+    for (let ref in list_option(section, "condition_refs"))
+        if (substr(trim(as_string(ref)), 0, 1) == "!")
+            return true;
+    return false;
+}
+
 function section_priority_action(section) {
     let action = section_action(section);
     if (action == "bypass")
         return "bypass";
+    if (action == "block" && !section_has_singbox_only_block_filters(section))
+        return "block";
     if (action_captures_traffic(action)) {
         let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
         if ((fail_policy == "block" || fail_policy == "direct") && section_is_failed_in_runtime(section[".name"]))
@@ -3733,10 +3750,10 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
                     let voice_ports = core_ip.DISCORD_VOICE_PORTS_NFT || "5000-5020, 3478, 19294-19344, 50000-65535";
                     nft_add_values_to_family_sets(cf_voice, table, udp_ports_v4, udp_ports_v6, "ip-port-from-ip", voice_ports, "5000");
                 }
-                if (ip_ports_v4) {
+                if (ports_v4) {
                     let cf_media = nft_community_subnet_lines("", service, "only_cloudflare");
                     let media_ports = core_ip.DISCORD_MEDIA_PORTS_NFT || "2053, 2083, 2087, 2096, 8443";
-                    nft_add_values_to_family_sets(cf_media, table, ip_ports_v4, ip_ports_v6, "ip-port-from-ip", media_ports, "5000");
+                    nft_add_values_to_family_sets(cf_media, table, ports_v4, ports_v6, "ip-port-from-ip", media_ports, "5000");
                 }
                 loaded = true;
             }

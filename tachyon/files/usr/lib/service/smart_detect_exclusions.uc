@@ -46,18 +46,40 @@ function normalize(value, suffix) {
     return smart_plus.normalize_domain(domain);
 }
 
-function collect_domains(rules) {
+function normalize_keyword(value) {
+    let kw = lc(trim(common.as_string(value)));
+    if (kw == "" || length(kw) > 253 || match(kw, /^[a-z0-9.-]+$/) == null)
+        return null;
+    return kw;
+}
+
+function normalize_regex(value) {
+    let rx = trim(common.as_string(value));
+    if (rx == "" || rx == ".*" || rx == "^.*$" || rx == ".+" || rx == "^.+$")
+        return null;
+    try {
+        if (regexp(rx) == null)
+            return null;
+    } catch (e) {
+        return null;
+    }
+    return rx;
+}
+
+function collect_rule_patterns(rules) {
     if (type(rules) != "array") return null;
     let domains = {};
+    let keywords = {};
+    let regexes = {};
     for (let rule in rules) {
-        if (type(rule) != "object" || rule.invert || rule.rules ||
-            rule.domain_regex || rule.domain_keyword) return null;
-        let has_domains = rule.domain != null || rule.domain_suffix != null;
+        if (type(rule) != "object" || rule.invert || rule.rules) return null;
+        let has_domains = rule.domain != null || rule.domain_suffix != null ||
+            rule.domain_keyword != null || rule.domain_regex != null;
         // Destination domain and IP criteria are alternatives in SRS. Ignore
         // the IP part of mixed presets, but reject other compound conditions.
         if (has_domains) {
             for (let key in keys(rule))
-                if (index(["domain", "domain_suffix", "ip_cidr", "invert", "type"], key) < 0) return null;
+                if (index(["domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr", "invert", "type"], key) < 0) return null;
         }
         for (let key in ["domain", "domain_suffix"])
             for (let value in values(rule[key])) {
@@ -65,10 +87,36 @@ function collect_domains(rules) {
                 if (domain == null) return null;
                 domains[domain] = true;
             }
+        for (let value in values(rule.domain_keyword)) {
+            let kw = normalize_keyword(value);
+            if (kw == null) return null;
+            keywords[kw] = true;
+        }
+        for (let value in values(rule.domain_regex)) {
+            let rx = normalize_regex(value);
+            if (rx == null) return null;
+            regexes[rx] = true;
+        }
     }
-    let result = keys(domains);
-    sort(result);
-    return length(result) ? result : null;
+    let dom_list = keys(domains);
+    let kw_list = keys(keywords);
+    let rx_list = keys(regexes);
+    sort(dom_list);
+    sort(kw_list);
+    sort(rx_list);
+    if (!length(dom_list) && !length(kw_list) && !length(rx_list))
+        return null;
+    return { domains: dom_list, keywords: kw_list, regexes: rx_list };
+}
+
+function collect_domains(rules) {
+    let parsed = collect_rule_patterns(rules);
+    if (parsed == null) return null;
+    if (length(parsed.domains)) return parsed.domains;
+    let fallback = [];
+    for (let kw in parsed.keywords) push(fallback, "keyword:" + kw);
+    for (let rx in parsed.regexes) push(fallback, "regex:" + rx);
+    return length(fallback) ? fallback : null;
 }
 
 function prepare_list(name, source) {
@@ -81,10 +129,13 @@ function prepare_list(name, source) {
     let ok = common.command_success_from_args([bin, "rule-set", "decompile", "--output", temporary, source]);
     let data = ok ? common.read_json_file(temporary) : null;
     try { fs.unlink(temporary); } catch (e) {}
-    let domains = data ? collect_domains(data.rules) : null;
+    let parsed = data ? collect_rule_patterns(data.rules) : null;
     // A failed download/decode never replaces the previous good exclusions.
-    if (domains == null) return false;
-    return common.write_json_file(path, { version: 1, service: name, domains });
+    if (parsed == null) return false;
+    let payload = { version: 1, service: name, domains: parsed.domains };
+    if (length(parsed.keywords)) payload.keywords = parsed.keywords;
+    if (length(parsed.regexes)) payload.regexes = parsed.regexes;
+    return common.write_json_file(path, payload);
 }
 
 function add_domain(indexes, domain) {
@@ -93,6 +144,25 @@ function add_domain(indexes, domain) {
     while (length(labels) > 2) {
         shift(labels);
         indexes.parents[join(".", labels)] = true;
+    }
+}
+
+function add_keyword(indexes, kw) {
+    if (!indexes.keywords_seen[kw]) {
+        indexes.keywords_seen[kw] = true;
+        push(indexes.keywords, kw);
+    }
+}
+
+function add_regex(indexes, rx) {
+    if (!indexes.regexes_seen[rx]) {
+        try {
+            let compiled = regexp(rx);
+            if (compiled != null) {
+                indexes.regexes_seen[rx] = true;
+                push(indexes.regexes, compiled);
+            }
+        } catch (e) {}
     }
 }
 
@@ -106,7 +176,16 @@ function state(cfg) {
     }
     let signature = sprintf("%J", {manual: cfg?.smart_detect_exclude, stamps});
     if (signature == memo_signature) return memo;
-    let result = {suffixes: {}, parents: {}, missing: [], ready: true};
+    let result = {
+        suffixes: {},
+        parents: {},
+        keywords: [],
+        keywords_seen: {},
+        regexes: [],
+        regexes_seen: {},
+        missing: [],
+        ready: true
+    };
     for (let value in values(cfg?.smart_detect_exclude)) {
         let domain = normalize(value, true);
         if (domain != null) add_domain(result, domain);
@@ -114,15 +193,34 @@ function state(cfg) {
     for (let name in names) {
         let path = cache_path(name);
         let data = path ? common.read_json_file(path) : null;
-        if (data?.version != 1 || data?.service != name || type(data?.domains) != "array" || !length(data.domains)) {
+        let has_domains = type(data?.domains) == "array" && length(data.domains) > 0;
+        let has_keywords = type(data?.keywords) == "array" && length(data.keywords) > 0;
+        let has_regexes = type(data?.regexes) == "array" && length(data.regexes) > 0;
+        if (data?.version != 1 || data?.service != name || (!has_domains && !has_keywords && !has_regexes)) {
             push(result.missing, name);
             continue;
         }
         let valid = true;
-        for (let value in data.domains) {
-            let domain = normalize(value, true);
-            if (domain == null) { valid = false; break; }
-            add_domain(result, domain);
+        if (type(data.domains) == "array") {
+            for (let value in data.domains) {
+                let domain = normalize(value, true);
+                if (domain == null) { valid = false; break; }
+                add_domain(result, domain);
+            }
+        }
+        if (valid && type(data.keywords) == "array") {
+            for (let value in data.keywords) {
+                let kw = normalize_keyword(value);
+                if (kw == null) { valid = false; break; }
+                add_keyword(result, kw);
+            }
+        }
+        if (valid && type(data.regexes) == "array") {
+            for (let value in data.regexes) {
+                let rx = normalize_regex(value);
+                if (rx == null) { valid = false; break; }
+                add_regex(result, rx);
+            }
         }
         if (!valid) push(result.missing, name);
     }
@@ -140,6 +238,12 @@ function excluded(domain, cfg) {
     while (length(labels)) {
         if (indexes.suffixes[join(".", labels)]) return true;
         shift(labels);
+    }
+    for (let kw in indexes.keywords) {
+        if (index(domain, kw) >= 0) return true;
+    }
+    for (let rx in indexes.regexes) {
+        if (match(domain, rx) != null) return true;
     }
     return false;
 }

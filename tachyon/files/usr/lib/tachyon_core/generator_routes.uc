@@ -38,6 +38,69 @@ let section_leaf_tags = {};
 let section_group_map = {};
 let section_state_map = {};
 let active_group_tags = {};
+let active_remote_custom_rulesets = {};
+let remote_custom_rulesets_state = null;
+
+function remote_custom_rulesets_state_path() {
+    let custom = getenv("TACHYON_REMOTE_RULESETS_STATE_FILE");
+    if (custom != null && trim(custom) != "")
+        return trim(custom);
+    let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
+    return folder + "/.remote-custom-rulesets-state.json";
+}
+
+function load_remote_custom_rulesets_state() {
+    if (remote_custom_rulesets_state != null)
+        return remote_custom_rulesets_state;
+    let raw = read_json_file(remote_custom_rulesets_state_path());
+    if (type(raw) != "object" || type(raw.entries) != "object")
+        remote_custom_rulesets_state = { entries: {} };
+    else
+        remote_custom_rulesets_state = raw;
+    return remote_custom_rulesets_state;
+}
+
+function remote_custom_ruleset_tag(reference) {
+    let base_hash = runtime_rulesets.hash12(reference);
+    let state_obj = load_remote_custom_rulesets_state();
+    let entry = object_or_empty(state_obj.entries[reference]);
+    let gen = int(entry.gen || 1);
+    if (gen < 1)
+        gen = 1;
+    if (entry.active === false) {
+        gen = gen + 1;
+        state_obj.entries[reference] = { active: true, gen: gen };
+    }
+    active_remote_custom_rulesets[reference] = gen;
+    if (gen <= 1)
+        return "inline-custom-" + base_hash + "-ruleset";
+    return "inline-custom-" + base_hash + "-r" + as_string(gen) + "-ruleset";
+}
+
+function finalize_remote_custom_rulesets_state() {
+    let state_obj = load_remote_custom_rulesets_state();
+    let next_entries = {};
+    for (let url in keys(state_obj.entries)) {
+        let prev = object_or_empty(state_obj.entries[url]);
+        let gen = int(prev.gen || 1);
+        if (gen < 1)
+            gen = 1;
+        if (active_remote_custom_rulesets[url] != null)
+            next_entries[url] = { active: true, gen: int(active_remote_custom_rulesets[url]) };
+        else
+            next_entries[url] = { active: false, gen: gen };
+    }
+    for (let url in keys(active_remote_custom_rulesets)) {
+        if (next_entries[url] == null)
+            next_entries[url] = { active: true, gen: int(active_remote_custom_rulesets[url]) };
+    }
+    remote_custom_rulesets_state = { entries: next_entries };
+    if (length(keys(next_entries)) > 0 || fs.stat(remote_custom_rulesets_state_path()) != null) {
+        let path = remote_custom_rulesets_state_path();
+        common.ensure_dir(common.parent_dir(path));
+        common.write_json_file(path, remote_custom_rulesets_state);
+    }
+}
 
 function settings_update_interval() {
     let settings = ctx.runtime_settings();
@@ -59,6 +122,8 @@ function init(c) {
     section_group_map = {};
     section_state_map = {};
     active_group_tags = {};
+    active_remote_custom_rulesets = {};
+    remote_custom_rulesets_state = null;
 }
 
 function valid_section_name(name) {
@@ -1866,7 +1931,11 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
         return { tag: tag_name, kind };
     }
 
-    tag_name = "inline-custom-" + runtime_rulesets.hash12(reference) + "-ruleset";
+    let is_remote_non_plain = (substr(reference, 0, 7) == "http://" || substr(reference, 0, 8) == "https://") &&
+        !runtime_rulesets.is_plain_list_reference(reference);
+    tag_name = is_remote_non_plain
+        ? remote_custom_ruleset_tag(reference)
+        : "inline-custom-" + runtime_rulesets.hash12(reference) + "-ruleset";
     let extension = runtime_rulesets.file_extension(reference);
     let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
     if (ruleset_registered(config, tag_name)) {
@@ -4226,5 +4295,6 @@ return {
     section_excluded_candidate_tags,
     urltest_exclude_outbounds,
     urltest_filtered_outbounds,
-    urltest_idle_timeout
+    urltest_idle_timeout,
+    finalize_remote_custom_rulesets_state
 };

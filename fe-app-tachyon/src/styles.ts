@@ -1311,6 +1311,11 @@ header .dropdown-menu {
 }
 
 .tachyon-topbar {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3988,14 +3993,22 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     max-width: 100% !important;
 }
 
-#modal_overlay > .modal .cbi-value-field .cbi-dynlist,
-.cbi-modal .cbi-value-field .cbi-dynlist,
-.tachyon-workspace-body .cbi-value-field .cbi-dynlist,
+#modal_overlay > .modal .cbi-value-field .cbi-dynlist:not(.tachyon-dns-speed-enabled),
+.cbi-modal .cbi-value-field .cbi-dynlist:not(.tachyon-dns-speed-enabled),
+.tachyon-workspace-body .cbi-value-field .cbi-dynlist:not(.tachyon-dns-speed-enabled),
 #modal_overlay > .modal .cbi-value-field .cbi-dropdown,
 .cbi-modal .cbi-value-field .cbi-dropdown,
 .tachyon-workspace-body .cbi-value-field .cbi-dropdown {
     max-width: 100% !important;
     width: 100% !important;
+    box-sizing: border-box;
+}
+
+#modal_overlay > .modal .cbi-value-field .cbi-dynlist.tachyon-dns-speed-enabled,
+.cbi-modal .cbi-value-field .cbi-dynlist.tachyon-dns-speed-enabled,
+.tachyon-workspace-body .cbi-value-field .cbi-dynlist.tachyon-dns-speed-enabled {
+    max-width: calc(100% - 112px) !important;
+    width: calc(100% - 112px) !important;
     box-sizing: border-box;
 }
 
@@ -4301,6 +4314,9 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 }
 
 @media (max-width: 780px) {
+    #cbi-tachyon {
+        padding-bottom: 56px;
+    }
     .tachyon-shell-layout,
     .tachyon-shell-layout[data-sidebar-pos="right"],
     #cbi-tachyon[data-sidebar-pos="right"] > .tachyon-shell-layout {
@@ -4316,11 +4332,12 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
         max-height: none !important;
         padding: 8px 12px !important;
         overflow: visible !important;
-        z-index: 1050;
+        z-index: 1200 !important;
     }
     .tachyon-topbar {
-        position: relative;
-        z-index: 10;
+        position: relative !important;
+        top: auto !important;
+        z-index: 1 !important;
     }
     .tachyon-topbar__sidebar-pos-btn {
         display: none !important;
@@ -4370,20 +4387,13 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     }
     .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav {
         display: flex !important;
-        position: absolute;
-        top: calc(100% + 6px);
-        left: 0;
-        right: 0;
-        z-index: 1100;
-        padding: 10px;
-        border-radius: 14px;
-        background: #1e293b;
-        background: var(--background-color-high, #1e293b);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.36));
-        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.56);
-        max-height: 72vh;
+        position: static !important;
+        margin-top: 8px;
+        padding: 8px 4px 2px;
+        border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.22));
+        background: transparent;
+        box-shadow: none;
+        max-height: min(68dvh, 480px);
         overflow-y: auto;
         box-sizing: border-box;
     }
@@ -4394,6 +4404,23 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     #cbi-tachyon ~ .cbi-page-actions {
         margin-left: 0 !important;
         margin-right: 0 !important;
+        padding: 6px 8px !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #view > .cbi-page-actions .cbi-button,
+    #view > .cbi-page-actions .btn,
+    #cbi-tachyon ~ .cbi-page-actions .cbi-button,
+    #cbi-tachyon ~ .cbi-page-actions .btn {
+        padding: 5px 10px !important;
+        font-size: 12px !important;
+        min-height: 30px !important;
+        margin: 0 !important;
+        flex: 1 1 auto !important;
+        max-width: 100% !important;
     }
     .tachyon-kpi-grid,
     .tachyon-wizard__cards-2col,
@@ -4406,6 +4433,18 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     }
     .tachyon_dashboard-page__content > .tachyon-dashboard-widget-slot--half {
         grid-column: 1 / -1;
+    }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+    .tachyon-sidebar {
+        position: relative !important;
+        top: 0 !important;
+        max-height: none !important;
+    }
+    .tachyon-topbar {
+        position: relative !important;
+        top: auto !important;
     }
 }
 

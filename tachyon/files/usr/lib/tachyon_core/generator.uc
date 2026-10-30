@@ -2367,6 +2367,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     prune_dangling_group_members(config);
     assert_unique_outbound_tags(config);
+    generator_routes.finalize_remote_custom_rulesets_state();
     strip_internal_fields(config);
     strip_certificate_pins_if_unsupported(config);
     normalize_wireguard_addresses(config);
