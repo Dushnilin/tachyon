@@ -277,7 +277,7 @@ describe('TachyonShellMethods.componentAction', () => {
     expect(mocks.executeShellCommand).toHaveBeenCalledWith({
       command: '/usr/bin/tachyon',
       args: ['get_ui_state'],
-      timeout: 3000,
+      timeout: 15000,
     });
   });
 

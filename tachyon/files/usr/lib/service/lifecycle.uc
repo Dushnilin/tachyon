@@ -2124,18 +2124,13 @@ function uninstall() {
 }
 
 function enable_service() {
-    let res = command_status_from_args([ SERVICE_INIT, "enable" ]);
-    uci_core.set(CONFIG_NAME, "settings", "enabled", "1");
-    uci_core.commit(CONFIG_NAME);
-    return res;
+    return command_status_from_args([ SERVICE_INIT, "enable" ]);
 }
 
 function disable_service() {
-    let res = command_status_from_args([ SERVICE_INIT, "disable" ]);
-    uci_core.set(CONFIG_NAME, "settings", "enabled", "0");
-    uci_core.commit(CONFIG_NAME);
-    stop();
-    return res;
+    // Autostart controls boot links only. Keep the live runtime and its desired
+    // configuration intact; stopping the service is a separate explicit action.
+    return command_status_from_args([ SERVICE_INIT, "disable" ]);
 }
 
 let mode = ARGV[0] || "";

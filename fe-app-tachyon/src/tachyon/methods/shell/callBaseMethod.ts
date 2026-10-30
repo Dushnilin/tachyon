@@ -3,6 +3,7 @@ import { Tachyon } from '../../types';
 
 interface CallBaseMethodOptions {
   allowNonZeroWithStdout?: boolean;
+  allowEmptyStdout?: boolean;
   timeout?: number;
 }
 
@@ -95,6 +96,10 @@ export async function callBaseMethod<T>(
           data: response.stdout as T,
         };
       }
+    }
+
+    if (options.allowEmptyStdout && exitCode === 0) {
+      return { success: true, data: undefined as T };
     }
 
     return {
