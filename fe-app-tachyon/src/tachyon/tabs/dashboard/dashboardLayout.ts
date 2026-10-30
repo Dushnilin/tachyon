@@ -1,6 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { svgEl } from '../../../helpers';
 import { tr } from '../../helpers/i18n';
+import {
+  renderBarChart2Icon,
+  renderCompassIcon,
+  renderLayersIcon,
+  renderLayoutGridIcon,
+  renderScaleIcon,
+  renderServerIcon,
+  renderShieldIcon,
+  renderSlidersIcon,
+  renderSparklesIcon,
+  renderTargetIcon,
+  renderTrendingUpIcon,
+  renderUsersIcon,
+} from '../../../icons';
 
 export type DashboardWidgetId =
   | 'kpi'
@@ -75,11 +89,57 @@ const LEGACY_STORAGE_KEYS = [
 ];
 const LAYOUT_CHANGE_EVENT = 'tachyon:dashboard-layout-changed';
 
+export function getWidgetIconEl(
+  widgetId: string,
+  size: number = 16,
+): SVGElement {
+  switch (widgetId) {
+    case 'kpi':
+      return renderTrendingUpIcon(size);
+    case 'routing_sections':
+      return renderCompassIcon(size);
+    case 'traffic_chart':
+      return renderBarChart2Icon(size);
+    case 'system_status':
+      return renderSlidersIcon(size);
+    case 'router_services':
+      return renderServerIcon(size);
+    case 'active_clients':
+      return renderUsersIcon(size);
+    case 'inbounds':
+      return renderShieldIcon(size);
+    default:
+      return renderLayersIcon(size);
+  }
+}
+
+export function getPresetIconEl(
+  presetId: string,
+  size: number = 16,
+): SVGElement {
+  switch (presetId) {
+    case 'standard':
+      return renderScaleIcon(size);
+    case 'command_center':
+      return renderTargetIcon(size);
+    case 'noc_analytics':
+      return renderBarChart2Icon(size);
+    case 'bento_cards':
+      return renderLayoutGridIcon(size);
+    case 'minimal_zen':
+      return renderSparklesIcon(size);
+    case 'custom':
+      return renderSlidersIcon(size);
+    default:
+      return renderLayersIcon(size);
+  }
+}
+
 export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   {
     id: 'kpi',
     slotId: 'dashboard-kpi-row',
-    icon: '📈',
+    icon: '',
     titleRu: 'Сводные метрики (KPI)',
     titleEn: 'Summary Metrics (KPI)',
     descRu: 'Клиенты, активные секции, общий трафик и средняя задержка',
@@ -127,7 +187,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   {
     id: 'routing_sections',
     slotId: 'dashboard-sections-grid',
-    icon: '🧭',
+    icon: '',
     titleRu: 'Секции маршрутизации',
     titleEn: 'Routing Sections',
     descRu: 'Секции правил, протоколы (VLESS/GRPC/XHTTP), серверы и пинг',
@@ -170,7 +230,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   {
     id: 'traffic_chart',
     slotId: 'dashboard-traffic-chart-card',
-    icon: '🌊',
+    icon: '',
     titleRu: 'Монитор трафика реального времени',
     titleEn: 'Real-Time Traffic Monitor',
     descRu: 'Динамика скорости входящего и исходящего потока',
@@ -211,7 +271,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   {
     id: 'system_status',
     slotId: 'dashboard-widget-system-services',
-    icon: '⚙️',
+    icon: '',
     titleRu: 'Маршрутизация и система',
     titleEn: 'Routing & System Status',
     descRu:
@@ -255,7 +315,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   {
     id: 'router_services',
     slotId: 'dashboard-router-services-strip',
-    icon: '🟢',
+    icon: '',
     titleRu: 'Службы роутера',
     titleEn: 'Router Services',
     descRu: 'Статус процессов Tachyon, Sing-box, Dnsmasq и Zapret2',
@@ -297,7 +357,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   {
     id: 'active_clients',
     slotId: 'dashboard-connections-grid',
-    icon: '💻',
+    icon: '',
     titleRu: 'Активные клиенты и домены',
     titleEn: 'Active Clients & Domains',
     descRu: 'Локальные устройства в сети, их соединения, трафик и топ доменов',
@@ -339,7 +399,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   {
     id: 'inbounds',
     slotId: 'dashboard-widget-inbounds',
-    icon: '🛰️',
+    icon: '',
     titleRu: 'Входящие серверы (Inbounds)',
     titleEn: 'Inbound Servers',
     descRu: 'Собственные VPN/прокси-серверы, запущенные на роутере',
@@ -383,7 +443,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
 export const DASHBOARD_PRESETS: DashboardPresetDefinition[] = [
   {
     id: 'standard',
-    icon: '⚖️',
+    icon: '',
     badgeRu: 'По умолчанию',
     badgeEn: 'Default',
     titleRu: 'Классический (Стандартный)',
@@ -409,7 +469,7 @@ export const DASHBOARD_PRESETS: DashboardPresetDefinition[] = [
   },
   {
     id: 'command_center',
-    icon: '🎯',
+    icon: '',
     badgeRu: 'Маршруты',
     badgeEn: 'Routing',
     titleRu: 'Центр управления',
@@ -435,7 +495,7 @@ export const DASHBOARD_PRESETS: DashboardPresetDefinition[] = [
   },
   {
     id: 'noc_analytics',
-    icon: '📊',
+    icon: '',
     badgeRu: 'Трафик и NOC',
     badgeEn: 'NOC Monitor',
     titleRu: 'Аналитика и Трафик',
@@ -476,7 +536,7 @@ export const DASHBOARD_PRESETS: DashboardPresetDefinition[] = [
   },
   {
     id: 'bento_cards',
-    icon: '🧩',
+    icon: '',
     badgeRu: 'Модульный',
     badgeEn: 'Bento Grid',
     titleRu: 'Плиточный Bento',
@@ -512,7 +572,7 @@ export const DASHBOARD_PRESETS: DashboardPresetDefinition[] = [
   },
   {
     id: 'minimal_zen',
-    icon: '✨',
+    icon: '',
     badgeRu: 'Лаконичный',
     badgeEn: 'Minimal',
     titleRu: 'Минимализм (Дзен)',
@@ -996,7 +1056,9 @@ export function renderDashboardPresetToolbar(
         },
       } as any,
       [
-        E('span', { class: 'tachyon-dash-preset-pill__icon' }, preset.icon),
+        E('span', { class: 'tachyon-dash-preset-pill__icon' }, [
+          getPresetIconEl(preset.id, 14),
+        ]),
         E(
           'span',
           { class: 'tachyon-dash-preset-pill__label' },
@@ -1221,7 +1283,7 @@ export function buildDashboardLayoutEditorDom(options?: {
               E(
                 'span',
                 { class: 'tachyon-dash-preset-card__icon' },
-                preset.icon,
+                [getPresetIconEl(preset.id, 20)],
               ),
               E('div', { class: 'tachyon-dash-preset-card__titles' }, [
                 E(
@@ -1454,7 +1516,9 @@ export function buildDashboardLayoutEditorDom(options?: {
               '⠿',
             ),
             toggleBtn,
-            E('span', { class: 'tachyon-dash-widget-row__icon' }, cat.icon),
+            E('span', { class: 'tachyon-dash-widget-row__icon' }, [
+              getWidgetIconEl(cat.id, 16),
+            ]),
             E('div', { class: 'tachyon-dash-widget-row__info' }, [
               E('div', { class: 'tachyon-visual-slot-card__title-row' }, [
                 E(
@@ -1694,8 +1758,8 @@ export function openDashboardCustomizeModal(
 
   uiObj.showModal(
     tr(
-      '🎛 Настройка виджетов и пресетов дашборда',
-      '🎛 Dashboard Widgets & Presets Setup',
+      'Настройка виджетов и пресетов дашборда',
+      'Dashboard Widgets & Presets Setup',
     ),
     [E('div', { class: 'tachyon-dash-customize-modal' }, [editor, footer])],
   );

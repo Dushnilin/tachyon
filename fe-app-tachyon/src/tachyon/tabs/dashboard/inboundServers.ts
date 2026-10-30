@@ -19,6 +19,7 @@ import {
   createInitialTrafficRatesState,
   TrafficRatesState,
 } from './metrics';
+import { renderUsersIcon } from '../../../icons';
 
 const UCI_PACKAGE = 'tachyon';
 const RECENT_CLIENT_TTL_MS = 45_000;
@@ -993,7 +994,9 @@ export function showInboundClientsModal(
 
   if (clients.length === 0) {
     contentBody = E('div', { class: 'tachyon-inbound-clients-modal__empty' }, [
-      E('div', { style: 'font-size: 32px; margin-bottom: 8px;' }, '💤'),
+      E('div', { style: 'margin-bottom: 8px; opacity: 0.5;' }, [
+        renderUsersIcon(36),
+      ]),
       E(
         'div',
         { style: 'font-weight: 600; font-size: 13.5px; margin-bottom: 4px;' },
@@ -1165,7 +1168,7 @@ export function showInboundClientsModal(
   ]);
 
   uiObj.showModal(
-    `👥 ${tr('Подключённые клиенты', 'Connected clients')}: «${server.label}» (${server.protocolFull}${server.security ? ' • ' + server.security : ''})`,
+    `${tr('Подключённые клиенты', 'Connected clients')}: «${server.label}» (${server.protocolFull}${server.security ? ' • ' + server.security : ''})`,
     modalContainer,
   );
 }

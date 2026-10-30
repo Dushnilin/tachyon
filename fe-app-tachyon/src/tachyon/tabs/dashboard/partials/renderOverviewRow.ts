@@ -1,7 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
-import { renderInfoIcon24, renderLoaderCircleIcon24 } from '../../../../icons';
+import {
+  renderCheckIcon,
+  renderCloudIcon,
+  renderCompassIcon,
+  renderInfoIcon24,
+  renderLoaderCircleIcon24,
+  renderLockIcon,
+  renderSettingsIcon,
+  renderShieldIcon,
+  renderSparklesIcon,
+  renderZapIcon,
+} from '../../../../icons';
 import { tr } from '../../../helpers/i18n';
 import { Tachyon } from '../../../types';
 import { getProxyUrlTransport } from '../../../../helpers/getProxyUrlTransport';
@@ -129,7 +140,7 @@ export function renderKpiRow(
       title: tr('Маршруты', 'Routes'),
       value: String(metrics.activeSections),
       sub: metrics.isLiteMode
-        ? tr('⚡ Эко-режим Lite', '⚡ Lite Eco Mode')
+        ? tr('Эко-режим Lite', 'Lite Eco Mode')
         : tr('— стабильно (TProxy)', '— stable (TProxy)'),
       color: '#9482e0',
       history: metrics.sectionsHistory,
@@ -830,6 +841,7 @@ export interface SectionEngineMeta {
     label: string;
     kind: 'dpi' | 'proxy' | 'transport';
     title?: string;
+    icon?: () => SVGElement;
   }>;
   dpiServerLabel?: string;
   dpiSelectorLabel?: string;
@@ -1376,7 +1388,7 @@ export function openSectionIconPickerModal(
               updatePreview('');
             },
           },
-          [E('span', {}, tr('🔄 Авто (по правилам)', '🔄 Auto (by rules)'))],
+          [renderCompassIcon(12), E('span', {}, tr('Авто (по правилам)', 'Auto (by rules)'))],
         ),
         E(
           'button',
@@ -1388,7 +1400,7 @@ export function openSectionIconPickerModal(
               updatePreview('svg');
             },
           },
-          [E('span', {}, tr('✨ Стандартная SVG', '✨ Default SVG'))],
+          [renderSparklesIcon(12), E('span', {}, tr('Стандартная SVG', 'Default SVG'))],
         ),
       ]),
     ]),
@@ -1634,56 +1646,61 @@ export function resolveSectionEngineMeta(
     label: string,
     kind: 'dpi' | 'proxy' | 'transport',
     title?: string,
+    icon?: () => SVGElement,
   ) => {
     if (!label || addedBadges.has(label)) return;
     addedBadges.add(label);
-    engineBadges.push({ label, kind, title });
+    engineBadges.push({ label, kind, title, icon });
   };
 
   const addDpiBadgeFor = (eng: string) => {
     switch (eng.toLowerCase()) {
       case 'desync':
         pushBadge(
-          '⚡ Core Desync',
+          'Core Desync',
           'dpi',
           tr(
             'Нативная десинхронизация пакетов в ядре Tachyon Core (без прокси)',
             'Native packet desynchronization inside Tachyon Core',
           ),
+          () => renderZapIcon(11),
         );
         break;
       case 'zapret2':
         pushBadge(
-          '⚡ Zapret2',
+          'Zapret2',
           'dpi',
           tr(
             'Обход DPI через Zapret2 (nfqws2 + Lua-стратегии)',
             'DPI bypass via Zapret2 (nfqws2 + Lua strategies)',
           ),
+          () => renderZapIcon(11),
         );
         break;
       case 'zapret':
         pushBadge(
-          '⚡ Zapret',
+          'Zapret',
           'dpi',
           tr('Обход DPI через Zapret (nfqws)', 'DPI bypass via Zapret (nfqws)'),
+          () => renderZapIcon(11),
         );
         break;
       case 'byedpi':
         pushBadge(
-          '⚡ ByeDPI',
+          'ByeDPI',
           'dpi',
           tr(
             'Обход DPI через ByeDPI (ciadpi SOCKS5)',
             'DPI bypass via ByeDPI (ciadpi SOCKS5)',
           ),
+          () => renderZapIcon(11),
         );
         break;
       case 'wdtt':
-        pushBadge('⚡ WDTT', 'dpi', 'WDTT Anti-DPI');
+        pushBadge('WDTT', 'dpi', 'WDTT Anti-DPI', () => renderZapIcon(11));
         break;
       case 'olcrtc':
-        pushBadge('⚡ OLCRTC', 'dpi', 'OLCRTC WebRTC Bypass');
+        pushBadge('OLCRTC', 'dpi', 'OLCRTC WebRTC Bypass', () => renderZapIcon(11));
         break;
       case 'block':
       case 'reject':
@@ -1744,13 +1761,13 @@ export function resolveSectionEngineMeta(
       sourceTypes.includes('fptn') ||
       selectedTypeUpper.includes('FPTN')
     ) {
-      pushBadge('🛡️ FPTN', 'proxy', 'FPTN VPN');
+      pushBadge('FPTN', 'proxy', 'FPTN VPN', () => renderShieldIcon(11));
     } else if (
       rawAction === 'warp' ||
       sourceTypes.includes('warp') ||
       selectedTypeUpper.includes('WARP')
     ) {
-      pushBadge('☁️ WARP', 'proxy', 'Cloudflare WARP');
+      pushBadge('WARP', 'proxy', 'Cloudflare WARP', () => renderCloudIcon(11));
     } else if (
       rawAction === 'awg' ||
       sourceTypes.includes('amnezia_config') ||
@@ -1758,7 +1775,7 @@ export function resolveSectionEngineMeta(
       selectedTypeUpper.includes('AWG') ||
       selectedTypeUpper.includes('WIREGUARD')
     ) {
-      pushBadge('🔒 AWG / WG', 'proxy', 'AmneziaWG / WireGuard');
+      pushBadge('AWG / WG', 'proxy', 'AmneziaWG / WireGuard', () => renderLockIcon(11));
     } else if (selectedOutbound || (section.outbounds || []).length > 0) {
       const info =
         selectedOutbound?.urlTestInfo || selectedOutbound?.priorityInfo;
@@ -2427,7 +2444,7 @@ export function renderDashboardSectionsAndNodes(
           class: `tachyon-routing-row__engine-badge tachyon-routing-row__engine-badge--${b.kind}`,
           title: b.title || b.label,
         },
-        b.label,
+        b.icon ? [b.icon(), E('span', {}, b.label)] : b.label,
       ),
     );
 
@@ -3070,7 +3087,9 @@ export function renderSectionConditionsAndBalancersView(
                 E(
                   'span',
                   { class: 'tachyon-sec-modal__badge-type' },
-                  isUrlTest ? '⚡ URLTest' : '🛡 Priority',
+                  isUrlTest
+                    ? [renderZapIcon(11), E('span', {}, 'URLTest')]
+                    : [renderShieldIcon(11), E('span', {}, 'Priority')],
                 ),
                 E(
                   'strong',
@@ -3082,7 +3101,7 @@ export function renderSectionConditionsAndBalancersView(
                       E(
                         'span',
                         { class: 'tachyon-sec-modal__badge-active' },
-                        tr('✓ Активен', '✓ Active'),
+                        [renderCheckIcon(12), E('span', {}, tr('Активен', 'Active'))],
                       ),
                     ]
                   : []),
@@ -3197,7 +3216,7 @@ export function renderSectionConditionsAndBalancersView(
                     }
                   },
                 } as any,
-                `⚙️ ${tr('Изменить', 'Edit')} →`,
+                [renderSettingsIcon(12), E('span', {}, `${tr('Изменить', 'Edit')} →`)],
               ),
             ]),
           ]),
@@ -3223,7 +3242,7 @@ export function renderSectionConditionsAndBalancersView(
       new Set([
         ...toStringArray(
           cond?.community_lists || cond?.domain_list || cond?.domain_lists,
-        ).map((v) => `📦 ${v}`),
+        ).map((v) => `List:${v}`),
         ...toStringArray(
           cond?.domain_suffix ||
             cond?.domain ||
@@ -3237,17 +3256,17 @@ export function renderSectionConditionsAndBalancersView(
           cond?.geoip_country || cond?.geoip || cond?.geoip_countries,
         ).map((v) => `GeoIP:${v}`),
         ...toStringArray(cond?.rule_set || cond?.domain_ip_lists).map(
-          (v) => `📋 ${v}`,
+          (v) => `RuleSet:${v}`,
         ),
         ...toStringArray(cond?.ip_cidr || cond?.subnets || cond?.user_subnets),
         ...toStringArray(
           cond?.source_ip_cidr || cond?.local_ips || cond?.clients,
-        ).map((v) => `🖥 ${v}`),
+        ).map((v) => `Client:${v}`),
         ...toStringArray(cond?.source_macs).map((v) => `MAC:${v}`),
         ...toStringArray(cond?.dest_ports || cond?.ports).map(
           (v) => `Port:${v}`,
         ),
-        ...toStringArray(cond?.members).map((v) => `🔗 ${v}`),
+        ...toStringArray(cond?.members).map((v) => `Member:${v}`),
       ]),
     );
 
@@ -3286,7 +3305,7 @@ export function renderSectionConditionsAndBalancersView(
                   }
                 },
               } as any,
-              `⚙️ ${tr('Открыть условие', 'Open Condition')} →`,
+              [renderSettingsIcon(12), E('span', {}, `${tr('Открыть условие', 'Open Condition')} →`)],
             ),
           ]),
         ]),
@@ -3409,8 +3428,8 @@ export function renderSectionConditionsAndBalancersView(
               'div',
               { class: 'tachyon-sec-modal__card' },
               tr(
-                '🌐 Для этой секции не заданы отдельные фильтры доменов — правило применяется ко всему подходящему трафику по приоритету секции.',
-                '🌐 No specific domain filters are attached to this section — matches traffic by section priority.',
+                'Для этой секции не заданы отдельные фильтры доменов — правило применяется ко всему подходящему трафику по приоритету секции.',
+                'No specific domain filters are attached to this section — matches traffic by section priority.',
               ),
             ),
           ]),

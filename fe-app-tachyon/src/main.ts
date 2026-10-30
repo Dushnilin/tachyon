@@ -89,6 +89,7 @@ export {
   renderTachyonLogoSvg,
   renderTachyonDuckMascotSvg,
 } from './icons/duckMascot';
+export * from './icons';
 export {
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,

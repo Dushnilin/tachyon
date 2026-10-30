@@ -4,6 +4,41 @@ import { formatOutboundType } from '../helpers/formatOutboundType';
 import { openConnectionWizardModal } from './connectionWizard';
 import { tr } from './helpers/i18n';
 import { openServerInfoModalForSection } from './tabs/dashboard/inboundServers';
+import {
+  renderZapIcon,
+  renderShieldIcon,
+  renderFileTextIcon,
+  renderTrashIcon,
+  renderCopyIcon,
+  renderSettingsIcon,
+  renderTargetIcon,
+  renderRadioIcon,
+  renderScaleIcon,
+  renderFolderIcon,
+  renderPinIcon,
+  renderSubRouteIcon,
+  renderClockIcon,
+  renderBanIcon,
+  renderGlobeIcon,
+  renderWandIcon,
+  renderRocketIcon,
+  renderPlusIcon,
+  renderArrowUpRightIcon,
+  renderCompassIcon,
+  renderQrCodeIcon,
+  renderPuzzleIcon,
+  renderUsersIcon,
+  renderTagIcon,
+  renderLockIcon,
+  renderCloudIcon,
+  renderSparklesIcon,
+  renderLayoutGridIcon,
+  renderListIcon,
+  renderPlaneIcon,
+  renderPlayIcon,
+  renderGamepad2Icon,
+  renderLinkIcon,
+} from '../icons';
 
 const UCI_PACKAGE = 'tachyon';
 
@@ -383,7 +418,7 @@ function resolveSectionTelemetry(sid: string): {
   }
 
   const keyLower = `${sid} ${name}`.toLowerCase();
-  let iconText = '🌐';
+  let iconText = '';
   const iconBg = 'rgba(255, 255, 255, 0.04)';
   const iconColor = 'var(--text-color-high, #e2e8f0)';
   let customIconDomain = '';
@@ -403,24 +438,11 @@ function resolveSectionTelemetry(sid: string): {
   let faviconDomain = forceDefaultSvg ? '' : customIconDomain;
 
   if (keyLower.includes('youtube') || keyLower.includes('yt')) {
-    iconText = '▶';
     if (!faviconDomain && !forceDefaultSvg) faviconDomain = 'youtube.com';
   } else if (keyLower.includes('discord')) {
-    iconText = '🎮';
     if (!faviconDomain && !forceDefaultSvg) faviconDomain = 'discord.com';
   } else if (keyLower.includes('tele') || keyLower.includes('tg')) {
-    iconText = '✈️';
     if (!faviconDomain && !forceDefaultSvg) faviconDomain = 'telegram.org';
-  } else if (actionTone === 'block' || keyLower.includes('block')) {
-    iconText = '🚫';
-  } else if (actionTone === 'bypass' || keyLower.includes('bypass')) {
-    iconText = '🟢';
-  } else if (actionTone === 'dns' || keyLower.includes('dns')) {
-    iconText = '🧭';
-  } else if (keyLower.includes('main') || keyLower.includes('основн')) {
-    iconText = '⚡';
-  } else if (keyLower.includes('fptn')) {
-    iconText = '🛡️';
   }
 
   return {
@@ -511,7 +533,7 @@ function moveUciSectionOrder(
 
 interface QuickCreateTemplate {
   id: string;
-  icon: string;
+  icon: string | (() => SVGElement);
   title: string;
   desc: string;
   defaults: Record<string, any>;
@@ -524,7 +546,7 @@ function getQuickCreateTemplates(
     return [
       {
         id: 'proxy',
-        icon: '⚡',
+        icon: () => renderZapIcon(20),
         title: tr('Прокси / VPN секция', 'Proxy / VPN Section'),
         desc: tr(
           'Маршрутизация выбранных сервисов или доменов через подписки, VLESS, AWG или балансировщики',
@@ -534,7 +556,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'dpi',
-        icon: '🛡️',
+        icon: () => renderShieldIcon(20),
         title: tr(
           'Обход DPI (Desync / Zapret2)',
           'DPI Bypass (Desync / Zapret2)',
@@ -547,7 +569,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'bypass',
-        icon: '🟢',
+        icon: () => renderArrowUpRightIcon(20),
         title: tr('Прямой маршрут (Bypass)', 'Direct Route (Bypass)'),
         desc: tr(
           'Отправка российских сайтов, банков или подсетей напрямую в обход всех туннелей',
@@ -557,7 +579,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'block',
-        icon: '🚫',
+        icon: () => renderBanIcon(20),
         title: tr(
           'Блокировка рекламы (Block)',
           'Ad & Telemetry Blocker (Block)',
@@ -570,7 +592,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'dns',
-        icon: '🧭',
+        icon: () => renderCompassIcon(20),
         title: tr('Специальный DNS-маршрут', 'Custom DNS Route'),
         desc: tr(
           'Разрешение выбранных доменов через выделенный DoH / DoT / UDP DNS-сервер',
@@ -584,7 +606,7 @@ function getQuickCreateTemplates(
     return [
       {
         id: 'subscription',
-        icon: '📡',
+        icon: () => renderRadioIcon(20),
         title: tr('Подписка по URL', 'Subscription URL'),
         desc: tr(
           'Автообновляемая HTTP/HTTPS подписка (VLESS, Hysteria2, Trojan, SS)',
@@ -594,7 +616,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'proxy_links',
-        icon: '🔗',
+        icon: () => renderLinkIcon(20),
         title: tr('Прокси-ссылки (Share Links)', 'Proxy Share Links'),
         desc: tr(
           'Одна или несколько ссылок vless://, hysteria2://, tuic://, trojan://, ss://',
@@ -604,7 +626,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'desync',
-        icon: '🛡️',
+        icon: () => renderShieldIcon(20),
         title: tr(
           'Стратегия DPI Desync / Zapret2',
           'DPI Desync / Zapret2 Strategy',
@@ -621,7 +643,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'awg',
-        icon: '🔐',
+        icon: () => renderLockIcon(20),
         title: tr('AmneziaWG / WireGuard', 'AmneziaWG / WireGuard'),
         desc: tr(
           'Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)',
@@ -631,7 +653,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'warp',
-        icon: '☁️',
+        icon: () => renderCloudIcon(20),
         title: 'Cloudflare WARP',
         desc: tr(
           'Встроенный туннель Cloudflare WARP с обфускацией заголовков Amnezia',
@@ -641,7 +663,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'fptn',
-        icon: '🚀',
+        icon: () => renderRocketIcon(20),
         title: 'FPTN VPN',
         desc: tr(
           'Антицензурный VPN FPTN по токену доступа fptn://',
@@ -655,7 +677,7 @@ function getQuickCreateTemplates(
     return [
       {
         id: 'services',
-        icon: '🎯',
+        icon: () => renderTargetIcon(20),
         title: tr('Списки сервисов и платформ', 'Service & Geo Lists'),
         desc: tr(
           'Готовые списки сервисов (YouTube, Discord, Telegram, ИИ, Meta, реклама)',
@@ -665,7 +687,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'domains_ips',
-        icon: '🌐',
+        icon: () => renderGlobeIcon(20),
         title: tr(
           'Свои домены, подсети и устройства',
           'Custom Domains, Subnets & Devices',
@@ -678,7 +700,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'composite',
-        icon: '🧩',
+        icon: () => renderPuzzleIcon(20),
         title: tr(
           'Составное логическое правило (AND / OR / NOT)',
           'Composite Boolean Rule (AND / OR / NOT)',
@@ -699,7 +721,7 @@ function getQuickCreateTemplates(
     return [
       {
         id: 'urltest',
-        icon: '⚡',
+        icon: () => renderZapIcon(20),
         title: tr(
           'URLTest (Автовыбор самого быстрого)',
           'URLTest (Fastest Ping Auto-Select)',
@@ -718,7 +740,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'priority',
-        icon: '🛡️',
+        icon: () => renderShieldIcon(20),
         title: tr(
           'Priority (Каскадный резерв по уровням)',
           'Priority Cascade (Tiered Failover)',
@@ -740,7 +762,7 @@ function getQuickCreateTemplates(
     return [
       {
         id: 'vless_reality',
-        icon: '⚡',
+        icon: () => renderZapIcon(20),
         title: 'VLESS + REALITY (TCP / XHTTP / gRPC)',
         desc: tr(
           'Невидимый для DPI сервер VLESS TLS 1.3 REALITY без необходимости покупать домен',
@@ -756,7 +778,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'hysteria2',
-        icon: '🚀',
+        icon: () => renderRocketIcon(20),
         title: 'Hysteria2 (QUIC / UDP)',
         desc: tr(
           'Скоростной QUIC-сервер для мобильных сетей и каналов с потерями пакетов',
@@ -770,7 +792,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'awg',
-        icon: '🛡️',
+        icon: () => renderLockIcon(20),
         title: 'AmneziaWG 2.0 VPN',
         desc: tr(
           'Полноценный VPN-сервер с защитой от DPI (мусорные пакеты и обфускация заголовков)',
@@ -785,7 +807,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'mieru',
-        icon: '🎭',
+        icon: () => renderShieldIcon(20),
         title: 'Mieru (TCP / UDP Multi-Port)',
         desc: tr(
           'Антицензурный мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием',
@@ -801,7 +823,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'tuic',
-        icon: '💎',
+        icon: () => renderZapIcon(20),
         title: 'TUIC v5 / AnyTLS / ShadowTLS',
         desc: tr(
           'Современный мультиплексированный QUIC или TLS-padding сервер',
@@ -815,7 +837,7 @@ function getQuickCreateTemplates(
       },
       {
         id: 'socks_mixed',
-        icon: '🔌',
+        icon: () => renderRadioIcon(20),
         title: 'Mixed SOCKS5 / HTTP Proxy',
         desc: tr(
           'Локальный или внешний прокси-сервер для устройств и Telegram',
@@ -832,7 +854,7 @@ function getQuickCreateTemplates(
   return [
     {
       id: 'default',
-      icon: '✨',
+      icon: () => renderSparklesIcon(20),
       title: tr('Стандартная запись', 'Standard Item'),
       desc: tr(
         'Создать новую запись и перейти к её детальной настройке',
@@ -911,7 +933,9 @@ function openStudioCreateModal(
           },
         },
         [
-          E('span', { class: 'tachyon-studio-create__tpl-icon' }, tpl.icon),
+          E('span', { class: 'tachyon-studio-create__tpl-icon' }, [
+            typeof tpl.icon === 'function' ? tpl.icon() : tpl.icon,
+          ]),
           E('div', { class: 'tachyon-studio-create__tpl-body' }, [
             E('div', { class: 'tachyon-studio-create__tpl-title' }, tpl.title),
             E('div', { class: 'tachyon-studio-create__tpl-desc' }, tpl.desc),
@@ -1195,8 +1219,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       addLabel: `+ ${tr('Новый балансировщик', 'New Balancer')}`,
       filters: [
         { id: 'all', label: tr('Все политики', 'All Policies') },
-        { id: 'urltest', label: '⚡ URLTest' },
-        { id: 'priority', label: '🛡️ Priority' },
+        { id: 'urltest', label: 'URLTest' },
+        { id: 'priority', label: 'Priority' },
       ],
     },
     server: {
@@ -1312,7 +1336,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               openConnectionWizardModal();
             },
           },
-          `⚡ ${tr('Быстрый мастер настройки', 'Setup Wizard')}`,
+          [
+            renderWandIcon(14),
+            E('span', {}, tr('Быстрый мастер настройки', 'Setup Wizard')),
+          ],
         ),
       );
     }
@@ -1345,7 +1372,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   renderDeck();
                 },
               },
-              `▦ ${tr('Карточки', 'Cards')}`,
+              [
+                renderLayoutGridIcon(13),
+                E('span', {}, tr('Карточки', 'Cards')),
+              ],
             ),
             E(
               'button',
@@ -1359,7 +1389,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   renderDeck();
                 },
               },
-              `☰ ${tr('Конвейер', 'Pipeline')}`,
+              [
+                renderListIcon(13),
+                E('span', {}, tr('Конвейер', 'Pipeline')),
+              ],
             ),
           ]),
           E(
@@ -1720,6 +1753,28 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     // ── CASE 1: ROUTING SECTION ─────────────────────────────────────────────
     if (type === 'section') {
       const tel = resolveSectionTelemetry(sid);
+      const renderSectionFallbackIcon = () => {
+        const keyLower = `${sid} ${tel.name}`.toLowerCase();
+        if (keyLower.includes('youtube') || keyLower.includes('yt')) {
+          return renderPlayIcon(20);
+        } else if (keyLower.includes('discord')) {
+          return renderGamepad2Icon(20);
+        } else if (keyLower.includes('tele') || keyLower.includes('tg')) {
+          return renderPlaneIcon(20);
+        } else if (tel.actionTone === 'block' || keyLower.includes('block')) {
+          return renderBanIcon(20);
+        } else if (tel.actionTone === 'bypass' || keyLower.includes('bypass')) {
+          return renderArrowUpRightIcon(20);
+        } else if (tel.actionTone === 'dns' || keyLower.includes('dns')) {
+          return renderCompassIcon(20);
+        } else if (keyLower.includes('main') || keyLower.includes('основн')) {
+          return renderZapIcon(20);
+        } else if (keyLower.includes('fptn')) {
+          return renderShieldIcon(20);
+        }
+        return renderGlobeIcon(20);
+      };
+
       const iconContent = tel.faviconDomain
         ? E('img', {
             src: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(tel.faviconDomain)}&sz=64`,
@@ -1728,11 +1783,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             error: (ev: Event) => {
               const img = ev.currentTarget as HTMLElement;
               if (img && img.parentElement) {
-                img.parentElement.textContent = tel.iconText;
+                img.parentElement.replaceChildren(renderSectionFallbackIcon());
               }
             },
           })
-        : tel.iconText;
+        : renderSectionFallbackIcon();
 
       const badgeEls: HTMLElement[] = [
         E(
@@ -1780,7 +1835,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                     if (onNavigateSubTab) onNavigateSubTab('conditions', c.id);
                   },
                 },
-                `🎯 ${c.name}`,
+                [renderTargetIcon(11), E('span', {}, c.name)],
               ),
             )
           : tel.serviceTags.length > 0
@@ -1788,7 +1843,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 E(
                   'span',
                   { class: 'tachyon-studio-chip tachyon-studio-chip--cond' },
-                  `🎯 ${t}`,
+                  [renderTargetIcon(11), E('span', {}, t)],
                 ),
               )
             : [
@@ -1817,7 +1872,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 if (onNavigateSubTab) onNavigateSubTab('outbounds', s.id);
               },
             },
-            `📡 ${s.name}`,
+            [renderRadioIcon(11), E('span', {}, s.name)],
           ),
         );
       });
@@ -1838,22 +1893,34 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 if (onNavigateSubTab) onNavigateSubTab('balancers', b.id);
               },
             },
-            `⚖️ ${b.name} (${b.type})`,
+            [renderScaleIcon(11), E('span', {}, `${b.name} (${b.type})`)],
           ),
         );
       });
       if (!outChips.length) {
+        const fallbackContent =
+          tel.actionTone === 'block'
+            ? [
+                renderBanIcon(11),
+                E('span', {}, tr('Блокировка (Reject)', 'Block (Reject)')),
+              ]
+            : tel.actionTone === 'bypass'
+              ? [
+                  renderArrowUpRightIcon(11),
+                  E('span', {}, tr('Прямой выход (WAN)', 'Direct (WAN)')),
+                ]
+              : tel.actionTone === 'dns'
+                ? [
+                    renderCompassIcon(11),
+                    E('span', {}, raw.routed_dns_server || 'DNS'),
+                  ]
+                : [E('span', {}, tr('Встроенный выход', 'Built-in output'))];
+
         outChips.push(
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--muted' },
-            tel.actionTone === 'block'
-              ? '🚫 Блокировка (Reject)'
-              : tel.actionTone === 'bypass'
-                ? '🟢 Прямой выход (WAN)'
-                : tel.actionTone === 'dns'
-                  ? `🧭 ${raw.routed_dns_server || 'DNS'}`
-                  : tr('Встроенный выход', 'Built-in output'),
+            fallbackContent,
           ),
         );
       }
@@ -1924,7 +1991,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   if (onShowSectionRules) onShowSectionRules(sid);
                 },
               },
-              `📜 ${tr('Правила', 'Rules')}`,
+              [
+                renderFileTextIcon(13),
+                E('span', {}, tr('Правила', 'Rules')),
+              ],
             ),
             E(
               'button',
@@ -1944,7 +2014,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   }
                 },
               },
-              `⧉ ${tr('Клон', 'Clone')}`,
+              [
+                renderCopyIcon(13),
+                E('span', {}, tr('Клон', 'Clone')),
+              ],
             ),
             E(
               'button',
@@ -1954,7 +2027,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
                 click: openEditModal,
               },
-              `⚙️ ${tr('Изменить', 'Configure')}`,
+              [
+                renderSettingsIcon(13),
+                E('span', {}, tr('Изменить', 'Configure')),
+              ],
             ),
             E(
               'button',
@@ -1962,9 +2038,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 type: 'button',
                 class:
                   'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+                title: tr('Удалить', 'Delete'),
                 click: handleDelete,
               },
-              `🗑`,
+              [renderTrashIcon(13)],
             ),
           ]),
         ],
@@ -1988,10 +2065,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       const parsedLinks = extractLinkProtocolsAndTransports(links);
 
       const typeBadges: HTMLElement[] = [];
-      let icon = '📡';
+      let iconEl: SVGElement = renderRadioIcon(20);
       let tone: 'proxy' | 'dpi' | 'bypass' = 'proxy';
       if (stype === 'subscription') {
-        icon = '📡';
+        iconEl = renderRadioIcon(20);
         typeBadges.push(
           E(
             'span',
@@ -2000,7 +2077,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           ),
         );
       } else if (stype === 'proxy_links') {
-        icon = '🔗';
+        iconEl = renderLinkIcon(20);
         typeBadges.push(
           E(
             'span',
@@ -2031,7 +2108,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           stype,
         )
       ) {
-        icon = '🛡️';
+        iconEl = renderShieldIcon(20);
         tone = 'dpi';
         const preset = raw.desync_preset || 'auto';
         typeBadges.push(
@@ -2042,7 +2119,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           ),
         );
       } else {
-        icon = '🚀';
+        iconEl = renderRocketIcon(20);
         tone = 'bypass';
         typeBadges.push(
           E(
@@ -2058,7 +2135,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
-            `🏷 ${raw.node_prefix}`,
+            [renderTagIcon(10), E('span', {}, raw.node_prefix)],
           ),
         );
       }
@@ -2097,7 +2174,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 {
                   class: `tachyon-studio-card__icon tachyon-studio-card__icon--${tone}`,
                 },
-                icon,
+                [iconEl],
               ),
               E('div', { class: 'tachyon-studio-card__title-wrap' }, [
                 E('div', { class: 'tachyon-studio-card__title-row' }, [
@@ -2141,7 +2218,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                             }
                           },
                         },
-                        `📍 ${u.name}`,
+                        [renderSubRouteIcon(11), E('span', {}, u.name)],
                       ),
                     )
                   : [
@@ -2169,7 +2246,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
                 click: openEditModal,
               },
-              `⚙️ ${tr('Изменить', 'Configure')}`,
+              [
+                renderSettingsIcon(13),
+                E('span', {}, tr('Изменить', 'Configure')),
+              ],
             ),
             E(
               'button',
@@ -2177,9 +2257,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 type: 'button',
                 class:
                   'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+                title: tr('Удалить', 'Delete'),
                 click: handleDelete,
               },
-              `🗑`,
+              [renderTrashIcon(13)],
             ),
           ]),
         ],
@@ -2218,7 +2299,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--cond' },
-            `🎯 ${srv}`,
+            [renderTargetIcon(11), E('span', {}, srv)],
           ),
         );
       });
@@ -2227,7 +2308,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--source' },
-            `🌐 ${d}`,
+            [renderGlobeIcon(11), E('span', {}, d)],
           ),
         );
       });
@@ -2245,7 +2326,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--balancer' },
-            `📌 ${ip}`,
+            [renderPinIcon(11), E('span', {}, ip)],
           ),
         );
       });
@@ -2254,7 +2335,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--balancer' },
-            `🌍 GeoIP: ${g.toUpperCase()}`,
+            [renderGlobeIcon(11), E('span', {}, `GeoIP: ${g.toUpperCase()}`)],
           ),
         );
       });
@@ -2298,7 +2379,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   class:
                     'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
                 },
-                ctype === 'composite' ? '🧩' : '🎯',
+                [ctype === 'composite' ? renderPuzzleIcon(20) : renderTargetIcon(20)],
               ),
               E('div', { class: 'tachyon-studio-card__title-wrap' }, [
                 E('div', { class: 'tachyon-studio-card__title-row' }, [
@@ -2382,7 +2463,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                               }
                             },
                           },
-                          `📍 ${u.name}`,
+                          [renderSubRouteIcon(11), E('span', {}, u.name)],
                         ),
                       ),
                     ),
@@ -2399,7 +2480,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
                 click: openEditModal,
               },
-              `⚙️ ${tr('Изменить', 'Configure')}`,
+              [
+                renderSettingsIcon(13),
+                E('span', {}, tr('Изменить', 'Configure')),
+              ],
             ),
             E(
               'button',
@@ -2407,9 +2491,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 type: 'button',
                 class:
                   'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+                title: tr('Удалить', 'Delete'),
                 click: handleDelete,
               },
-              `🗑`,
+              [renderTrashIcon(13)],
             ),
           ]),
         ],
@@ -2442,7 +2527,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         E(
           'span',
           { class: 'tachyon-studio-chip tachyon-studio-chip--source' },
-          `⏱ ${tr('Интервал', 'Interval')}: ${interval}`,
+          [
+            renderClockIcon(11),
+            E('span', {}, `${tr('Интервал', 'Interval')}: ${interval}`),
+          ],
         ),
       ];
       if (btype === 'urltest') {
@@ -2450,7 +2538,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--cond' },
-            `🎯 ${tr('Допуск', 'Tolerance')}: ${tolerance} ms`,
+            [
+              renderTargetIcon(11),
+              E('span', {}, `${tr('Допуск', 'Tolerance')}: ${tolerance} ms`),
+            ],
           ),
         );
       }
@@ -2468,7 +2559,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--balancer' },
-            `🚫 -${excCountries.join(', -')}`,
+            [
+              renderBanIcon(11),
+              E('span', {}, `-${excCountries.join(', -')}`),
+            ],
           ),
         );
       }
@@ -2499,7 +2593,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   class:
                     'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
                 },
-                btype === 'priority' ? '🛡️' : '⚡',
+                [btype === 'priority' ? renderShieldIcon(20) : renderZapIcon(20)],
               ),
               E('div', { class: 'tachyon-studio-card__title-wrap' }, [
                 E('div', { class: 'tachyon-studio-card__title-row' }, [
@@ -2568,7 +2662,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                               }
                             },
                           },
-                          `📍 ${u.name}`,
+                          [renderSubRouteIcon(11), E('span', {}, u.name)],
                         ),
                       ),
                     ),
@@ -2585,7 +2679,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
                 click: openEditModal,
               },
-              `⚙️ ${tr('Изменить', 'Configure Policy')}`,
+              [
+                renderSettingsIcon(13),
+                E('span', {}, tr('Изменить', 'Configure Policy')),
+              ],
             ),
             E(
               'button',
@@ -2593,9 +2690,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 type: 'button',
                 class:
                   'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+                title: tr('Удалить', 'Delete'),
                 click: handleDelete,
               },
-              `🗑`,
+              [renderTrashIcon(13)],
             ),
           ]),
         ],
@@ -2670,11 +2768,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 {
                   class: `tachyon-studio-card__icon ${enabled ? 'tachyon-studio-card__icon--bypass' : 'tachyon-studio-card__icon--proxy'}`,
                 },
-                proto === 'awg'
-                  ? '🛡️'
-                  : proto === 'hysteria2' || proto === 'tuic'
-                    ? '🚀'
-                    : '⚡',
+                [
+                  proto === 'awg'
+                    ? renderShieldIcon(20)
+                    : proto === 'hysteria2' || proto === 'tuic'
+                      ? renderRocketIcon(20)
+                      : renderZapIcon(20),
+                ],
               ),
               E('div', { class: 'tachyon-studio-card__title-wrap' }, [
                 E('div', { class: 'tachyon-studio-card__title-row' }, [
@@ -2728,7 +2828,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 ),
                 click: triggerServerInfoModal,
               },
-              `📱 ${tr('QR / Подключение', 'QR / Client Link')}`,
+              [
+                renderQrCodeIcon(13),
+                E('span', {}, tr('QR / Подключение', 'QR / Client Link')),
+              ],
             ),
             E(
               'button',
@@ -2738,7 +2841,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
                 click: openEditModal,
               },
-              `⚙️ ${tr('Изменить', 'Configure')}`,
+              [
+                renderSettingsIcon(13),
+                E('span', {}, tr('Изменить', 'Configure')),
+              ],
             ),
             E(
               'button',
@@ -2746,9 +2852,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 type: 'button',
                 class:
                   'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+                title: tr('Удалить', 'Delete'),
                 click: handleDelete,
               },
-              `🗑`,
+              [renderTrashIcon(13)],
             ),
           ]),
         ],
@@ -2775,7 +2882,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 class:
                   'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
               },
-              type === 'profile' ? '👨‍👩‍👧' : '⏰',
+              [type === 'profile' ? renderUsersIcon(20) : renderClockIcon(20)],
             ),
             E('div', { class: 'tachyon-studio-card__title-wrap' }, [
               E('div', { class: 'tachyon-studio-card__title-row' }, [
@@ -2797,7 +2904,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
               click: openEditModal,
             },
-            `⚙️ ${tr('Изменить', 'Configure')}`,
+            [
+              renderSettingsIcon(13),
+              E('span', {}, tr('Изменить', 'Configure')),
+            ],
           ),
           E(
             'button',
@@ -2805,9 +2915,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               type: 'button',
               class:
                 'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+              title: tr('Удалить', 'Delete'),
               click: handleDelete,
             },
-            `🗑`,
+            [renderTrashIcon(13)],
           ),
         ]),
       ],

@@ -1417,6 +1417,9 @@ header .dropdown-menu {
 }
 
 .tachyon-topbar__wizard-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 5px 11px;
     border-radius: 8px;
     border: 1px solid rgba(148, 130, 224, 0.36);
@@ -7357,5 +7360,68 @@ button.tachyon-studio-chip:hover {
     font-size: 12px;
     opacity: 0.68;
     padding: 8px 4px;
+}
+
+/* Lucide SVG Icons Integration across UI components */
+.tachyon-studio-chip svg,
+.tachyon-studio-action-btn svg,
+.tachyon-studio-btn svg,
+.tachyon-studio-view-btn svg,
+.tachyon-topbar__wizard-btn svg,
+.tachyon-topbar__eco-btn svg,
+.tachyon-routing-row__engine-badge svg,
+.tachyon-ruleset-picker__cat-btn svg,
+.tachyon-sec-modal__badge-active svg,
+.tachyon-sec-modal__badge-type svg,
+.tachyon-dash-widget-row__icon svg,
+.tachyon-dash-preset-card__icon svg,
+.tachyon-dash-preset-pill__icon svg,
+.tachyon-icon-picker__chip svg {
+    flex-shrink: 0;
+    stroke: currentColor;
+    vertical-align: middle;
+}
+
+.tachyon-routing-row__engine-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tachyon-sec-modal__badge-active,
+.tachyon-sec-modal__badge-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tachyon-ruleset-picker__cat-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.tachyon-dash-preset-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon-dash-preset-pill__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tachyon-dash-widget-row__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tachyon-dash-preset-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 `;

@@ -1197,7 +1197,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                     class:
                       'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
                   },
-                  '🗂️',
+                  [main.renderFolderIcon(20)],
                 ),
                 E('div', { class: 'tachyon-studio-card__title-wrap' }, [
                   E('div', { class: 'tachyon-studio-card__title-row' }, [
@@ -1235,7 +1235,12 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                         refreshProberGroupOptions();
                       }),
                   },
-                  `⚙️ ${_('Edit')}`,
+                  [
+                    typeof main.renderSettingsIcon === 'function'
+                      ? main.renderSettingsIcon(13)
+                      : null,
+                    E('span', {}, _('Edit')),
+                  ].filter(Boolean),
                 ),
                 E(
                   'button',
@@ -1243,6 +1248,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                     type: 'button',
                     class:
                       'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+                    title: _('Delete'),
                     click: () => {
                       updateSectionsRef('outbound_group_refs', gid, []);
                       updateBalancersRef('group_refs', gid, []);
@@ -1262,7 +1268,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                         .catch(() => {});
                     },
                   },
-                  '🗑',
+                  [main.renderTrashIcon(13)],
                 ),
               ]),
             ]),

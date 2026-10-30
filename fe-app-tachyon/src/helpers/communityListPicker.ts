@@ -1,5 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DOMAIN_LIST_HINTS, DOMAIN_LIST_OPTIONS } from '../constants';
+import {
+  renderArrowUpRightIcon,
+  renderBotIcon,
+  renderCloudIcon,
+  renderGamepad2Icon,
+  renderListIcon,
+  renderLockIcon,
+  renderShieldIcon,
+  renderTvIcon,
+  renderZapIcon,
+} from '../icons';
 
 export interface ParsedCommunityHint {
   routeBadge: string;
@@ -51,6 +62,7 @@ export interface CommunityListCategory {
   id: string;
   titleRu: string;
   titleEn: string;
+  icon?: () => SVGElement;
   keys: Array<keyof typeof DOMAIN_LIST_OPTIONS>;
 }
 
@@ -114,8 +126,9 @@ export function getSubsumedCommunityLists(
 export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   {
     id: 'popular',
-    titleRu: '⚡ Популярные',
-    titleEn: '⚡ Popular',
+    titleRu: 'Популярные',
+    titleEn: 'Popular',
+    icon: () => renderZapIcon(12),
     keys: [
       'russia_inside',
       'geoblock',
@@ -134,8 +147,9 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'blocked',
-    titleRu: '🛡️ Реестры',
-    titleEn: '🛡️ Registries',
+    titleRu: 'Реестры',
+    titleEn: 'Registries',
+    icon: () => renderShieldIcon(12),
     keys: [
       'russia_inside',
       'geoblock',
@@ -148,14 +162,16 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'ai',
-    titleRu: '🤖 ИИ',
-    titleEn: '🤖 AI',
+    titleRu: 'ИИ',
+    titleEn: 'AI',
+    icon: () => renderBotIcon(12),
     keys: ['ai_all', 'openai', 'anthropic', 'google_ai', 'xai'],
   },
   {
     id: 'media',
-    titleRu: '🎬 Медиа и Соцсети',
-    titleEn: '🎬 Media & Social',
+    titleRu: 'Медиа и Соцсети',
+    titleEn: 'Media & Social',
+    icon: () => renderTvIcon(12),
     keys: [
       'youtube',
       'discord',
@@ -174,8 +190,9 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'games',
-    titleRu: '🎮 Игры',
-    titleEn: '🎮 Games',
+    titleRu: 'Игры',
+    titleEn: 'Games',
+    icon: () => renderGamepad2Icon(12),
     keys: [
       'steam',
       'epicgames',
@@ -189,8 +206,9 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'infra',
-    titleRu: '☁️ CDN и IT',
-    titleEn: '☁️ CDN & IT',
+    titleRu: 'CDN и IT',
+    titleEn: 'CDN & IT',
+    icon: () => renderCloudIcon(12),
     keys: [
       'cloudflare',
       'cloudfront',
@@ -208,8 +226,9 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'direct',
-    titleRu: '🏠 Прямой РФ',
-    titleEn: '🏠 Direct RU',
+    titleRu: 'Прямой РФ',
+    titleEn: 'Direct RU',
+    icon: () => renderArrowUpRightIcon(12),
     keys: [
       'ru_whitelist',
       'ru_domains',
@@ -220,8 +239,9 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
   },
   {
     id: 'other',
-    titleRu: '🔒 Реклама и Прочее',
-    titleEn: '🔒 Adblock & Other',
+    titleRu: 'Реклама и Прочее',
+    titleEn: 'Adblock & Other',
+    icon: () => renderLockIcon(12),
     keys: ['news', 'torrent', 'tor', 'porn', 'ads_hagezi_pro', 'win_spy'],
   },
 ];
@@ -331,8 +351,8 @@ export function createInteractiveHintBanner(): {
     const subsumedPrefix =
       parentLabels.length > 0
         ? ru
-          ? `🔒 Полностью входит в выбранный список «${parentLabels.join('», «')}» (выбор не требуется). `
-          : `🔒 100% included in selected list "${parentLabels.join('", "')}" (already covered). `
+          ? `Полностью входит в выбранный список «${parentLabels.join('», «')}» (выбор не требуется). `
+          : `100% included in selected list "${parentLabels.join('", "')}" (already covered). `
         : '';
 
     if (!rawHint && !subsumedPrefix) {
@@ -494,8 +514,8 @@ export function attachCommunityListPicker(
         type: 'search',
         class: 'cbi-input-text tachyon-ruleset-picker__search',
         placeholder: ru
-          ? '🔍 Поиск сервиса или домена (youtube, openai, steam, реклама)...'
-          : '🔍 Search service or domain (youtube, openai, steam, ads)...',
+          ? 'Поиск сервиса или домена (youtube, openai, steam, реклама)...'
+          : 'Search service or domain (youtube, openai, steam, ads)...',
         input: (ev: Event) => {
           searchQuery = (ev.target as HTMLInputElement).value || '';
           renderCategoryTabs();
@@ -607,14 +627,20 @@ export function attachCommunityListPicker(
 
       function renderCategoryTabs() {
         catTabsContainer.innerHTML = '';
-        const allCats: Array<{ id: string; label: string }> = [
+        const allCats: Array<{
+          id: string;
+          label: string;
+          icon?: () => SVGElement;
+        }> = [
           ...COMMUNITY_LIST_CATEGORIES.map((c) => ({
             id: c.id,
             label: ru ? c.titleRu : c.titleEn,
+            icon: c.icon,
           })),
           {
             id: 'all',
-            label: ru ? '📋 Все (50+)' : '📋 All (50+)',
+            label: ru ? 'Все (50+)' : 'All (50+)',
+            icon: () => renderListIcon(12),
           },
         ];
 
@@ -636,7 +662,9 @@ export function attachCommunityListPicker(
                   renderChips();
                 },
               },
-              cat.label,
+              cat.icon
+                ? [cat.icon(), E('span', {}, cat.label)]
+                : cat.label,
             ),
           );
         });
