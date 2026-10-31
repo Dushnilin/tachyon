@@ -16642,17 +16642,21 @@ async function readRulesetFile(path) {
   return null;
 }
 
-async function findCachedSrsFile(secName, community) {
+async function findCachedRulesetFile(secName, community, skipped = []) {
   const candidates = [
+    `/tmp/tachyon-core/rulesets/community-${community}.trs`,
+    `/tmp/sing-box/rulesets/community-${community}.trs`,
+    `/etc/tachyon/rulesets/community-${community}.trs`,
     `/tmp/tachyon-core/rulesets/community-${community}.srs`,
     `/tmp/sing-box/rulesets/community-${community}.srs`,
     `/etc/tachyon/rulesets/community-${community}.srs`,
   ];
 
-  for (const srsPath of candidates) {
-    const st = await fs.stat(srsPath).catch(() => null);
+  for (const rulesetPath of candidates) {
+    if (skipped.includes(rulesetPath)) continue;
+    const st = await fs.stat(rulesetPath).catch(() => null);
     if (st && st.type === "file") {
-      return srsPath;
+      return rulesetPath;
     }
   }
 
@@ -16660,9 +16664,10 @@ async function findCachedSrsFile(secName, community) {
 }
 
 async function matchCommunityList(secName, community, query, type) {
-  const srsPath = await findCachedSrsFile(secName, community);
+  const skipped = [];
+  let rulesetPath = await findCachedRulesetFile(secName, community, skipped);
 
-  if (srsPath) {
+  while (rulesetPath) {
     const checkMatch = (res) => {
       if (!res || res.code !== 0) return false;
       const output = (res.stdout || "") + (res.stderr || "");
@@ -16675,20 +16680,27 @@ async function matchCommunityList(secName, community, query, type) {
     const matchArgs = [
       "rule-set",
       "match",
-      srsPath,
+      rulesetPath,
       ...(type === "ip"
         ? ["--ip", query]
         : ["--domain", (query || "").toLowerCase()]),
     ];
 
+    let checked = false;
     for (const bin of [
       "/usr/bin/tachyon-core",
       "/usr/bin/sing-box",
       "/usr/sbin/sing-box",
     ]) {
       const res = await fs.exec(bin, matchArgs).catch(() => null);
+      if (res && res.code === 0) checked = true;
       if (checkMatch(res)) return true;
     }
+    // A valid negative result belongs to the current cache. Only try another
+    // format when no installed binary could read this one (e.g. TRS on sing-box).
+    if (checked) break;
+    skipped.push(rulesetPath);
+    rulesetPath = await findCachedRulesetFile(secName, community, skipped);
   }
 
   // Steer fallback: when steer is active engine, sing-box may not be installed.
@@ -16722,6 +16734,64 @@ async function matchCommunityList(secName, community, query, type) {
   }
 
   return false;
+}
+
+async function matchConfiguredRulesets(secName, query, type, snapshots) {
+  const references = [
+    ...new Set([
+      ...getSectionEffectiveOptionValues(secName, "rule_set"),
+      ...getSectionEffectiveOptionValues(secName, "rule_set_with_subnets"),
+    ]),
+  ];
+  for (const reference of references) {
+    // Community aliases in rule_set use the same caches as community_lists.
+    if (!/^https?:\/\//.test(reference) && !reference.startsWith("/")) {
+      if (await matchCommunityList(secName, reference, query, type))
+        return reference;
+      continue;
+    }
+    if (!snapshots.has(reference)) {
+      const result = await fs
+        .exec("/usr/bin/tachyon-read", ["extract_ruleset", reference])
+        .catch(() => null);
+      const path = result?.code === 0 ? (result.stdout || "").trim() : "";
+      if (!path.startsWith("/") || /[\r\n]/.test(path))
+        throw new Error(
+          _("Cannot read the loaded rule-set: %s").format(reference) +
+            (result?.stderr ? ` (${result.stderr.trim().slice(0, 512)})` : ""),
+        );
+      if (result.stderr?.trim()) snapshots.warnings.push(result.stderr.trim());
+      snapshots.set(reference, path);
+    }
+    const args = [
+      "rule-set",
+      "match",
+      snapshots.get(reference),
+      ...(type === "ip" ? ["--ip", query] : ["--domain", query.toLowerCase()]),
+    ];
+    let checked = false;
+    for (const bin of [
+      "/usr/bin/tachyon-core",
+      "/usr/bin/sing-box",
+      "/usr/sbin/sing-box",
+    ]) {
+      const result = await fs.exec(bin, args).catch(() => null);
+      if (!result || result.code !== 0) continue;
+      const output = (result.stdout || "") + (result.stderr || "");
+      if (
+        /\[\d+\]\s*match/.test(output) ||
+        (/\bmatch\b/.test(output) && !output.includes("no match"))
+      )
+        return reference;
+      checked = true;
+      break;
+    }
+    if (!checked)
+      throw new Error(
+        _("Cannot match the loaded rule-set: %s").format(reference),
+      );
+  }
+  return null;
 }
 
 function isSyntheticFakeIp(ip) {
@@ -16983,6 +17053,13 @@ async function matchesGeoCountrySet(secName, countries, domain, ips) {
 }
 
 async function performTrace(query) {
+  const snapshots = new Map();
+  snapshots.warnings = [];
+  const result = await performTraceRules(query, snapshots);
+  return { ...result, rulesetWarnings: [...new Set(snapshots.warnings)] };
+}
+
+async function performTraceRules(query, rulesetSnapshots) {
   query = (query || "").trim();
   if (!query) return { matched: false };
 
@@ -17405,6 +17482,25 @@ async function performTrace(query) {
         }
       }
     }
+    const configuredMatch = await matchConfiguredRulesets(
+      secName,
+      queryForMatching,
+      type,
+      rulesetSnapshots,
+    );
+    if (configuredMatch) {
+      return {
+        matched: true,
+        sectionName: secName,
+        label,
+        action,
+        ruleType: "Rule Set",
+        pattern: queryForMatching,
+        sourceUrls: [configuredMatch],
+        priority: i + 1,
+        totalSections,
+      };
+    }
   }
 
   if (type === "domain") {
@@ -17436,6 +17532,30 @@ async function performTrace(query) {
           : [];
 
         for (const ip of resolvedIps) {
+          const configuredMatch = await matchConfiguredRulesets(
+            secName,
+            ip,
+            "ip",
+            rulesetSnapshots,
+          );
+          if (configuredMatch) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label,
+              action,
+              ruleType: "Resolved IP -> Rule Set",
+              pattern: `${ip} (resolved: ${ip})`,
+              sourceUrls: [configuredMatch],
+              resolvedDomain: queryForMatching,
+              resolvedIps,
+              matchedIp: ip,
+              priority: i + 1,
+              totalSections,
+              sharedCdnWarning: getSharedCdnWarning(ip),
+            };
+          }
+
           const matchedCidr = matchIpInCidrs(ip, ipCidr);
           if (matchedCidr) {
             return {
@@ -17848,6 +17968,18 @@ function createTracerSearchWidget(sectionRef) {
           ],
         );
         resultsEl.appendChild(noMatchDiv);
+      }
+      if (result?.rulesetWarnings?.length) {
+        resultsEl.appendChild(
+          E(
+            "div",
+            {
+              style:
+                "margin-top: 4px; color: var(--warning-color, #d35400); font-size: 85%;",
+            },
+            result.rulesetWarnings.join(" "),
+          ),
+        );
       }
     } catch (e) {
       console.error(e);
