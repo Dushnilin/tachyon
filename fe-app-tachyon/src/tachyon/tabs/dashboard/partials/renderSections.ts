@@ -3,6 +3,7 @@ import {
   renderCopyIcon24,
   renderLinkIcon24,
   renderInfoIcon24,
+  renderZapIcon,
 } from '../../../../icons';
 import {
   isCopyableProxyLink,
@@ -2420,7 +2421,7 @@ function renderDefaultState({
                         E(
                           'span',
                           { class: 'tachyon-section-row__selector-dot' },
-                          '⚡',
+                          [renderZapIcon(12)],
                         ),
                         E('span', {}, selectorLabel),
                         ...(isInteractiveSelector ? [renderInfoIcon24()] : []),

@@ -136,11 +136,13 @@ describe('renderAiDoctorModal helpers', () => {
   });
 
   it('maps device icon based on hostname', () => {
-    expect(getDeviceIcon('Samsung-TV-LivingRoom')).toBe('📺');
-    expect(getDeviceIcon('iPhone-15-Pro')).toBe('📱');
-    expect(getDeviceIcon('MacBook-Pro')).toBe('💻');
-    expect(getDeviceIcon('Playstation-5')).toBe('🎮');
-    expect(getDeviceIcon('SmartPlug-102')).toBe('📟');
+    expect((getDeviceIcon('Samsung-TV-LivingRoom') as any)?.tagName).toBe(
+      'SVG',
+    );
+    expect((getDeviceIcon('iPhone-15-Pro') as any)?.tagName).toBe('SVG');
+    expect((getDeviceIcon('MacBook-Pro') as any)?.tagName).toBe('SVG');
+    expect((getDeviceIcon('Playstation-5') as any)?.tagName).toBe('SVG');
+    expect((getDeviceIcon('SmartPlug-102') as any)?.tagName).toBe('SVG');
   });
 
   it('has readable labels for common fixes', () => {

@@ -9,6 +9,10 @@ import {
   renderRotateCcwIcon24,
   renderSquareChartGanttIcon24,
   renderDownloadIcon24,
+  renderZapIcon,
+  renderGlobeIcon,
+  renderBotIcon,
+  renderWrenchIcon,
 } from '../../../../icons';
 import { insertIf } from '../../../../helpers';
 
@@ -42,7 +46,7 @@ interface IRenderAvailableActionsProps {
 }
 
 function renderActionBentoGroup(
-  title: string,
+  title: string | (string | Node)[],
   subtitle: string,
   buttons: HTMLElement[],
 ) {
@@ -51,7 +55,14 @@ function renderActionBentoGroup(
   }
   return E('div', { class: 'tachyon_diagnostic-action-group' }, [
     E('div', { class: 'tachyon_diagnostic-action-group__header' }, [
-      E('b', { class: 'tachyon_diagnostic-action-group__title' }, title),
+      E(
+        'b',
+        {
+          class: 'tachyon_diagnostic-action-group__title',
+          style: 'display:inline-flex;align-items:center;gap:7px;',
+        },
+        title,
+      ),
       E(
         'span',
         { class: 'tachyon_diagnostic-action-group__subtitle' },
@@ -275,22 +286,22 @@ export function renderAvailableActions({
 
   const groups = [
     renderActionBentoGroup(
-      '⚡ ' + _('Service Control'),
+      [renderZapIcon(14), _('Service Control')],
       _('Manage Tachyon daemon lifecycle and emergency bypass'),
       serviceButtons,
     ),
     renderActionBentoGroup(
-      '🌐 ' + _('Network & Route Verification'),
+      [renderGlobeIcon(14), _('Network & Route Verification')],
       _('Test service reachability, leaks, routing rules and node stability'),
       networkButtons,
     ),
     renderActionBentoGroup(
-      '🤖 ' + _('AI & Automated Repair'),
+      [renderBotIcon(14), _('AI & Automated Repair')],
       _('Diagnose issues automatically or fuzz DPI bypass strategies'),
       aiAndRepairButtons,
     ),
     renderActionBentoGroup(
-      '🛠 ' + _('Logs, Config & Reports'),
+      [renderWrenchIcon(14), _('Logs, Config & Reports')],
       _('Inspect live logs, generated engine config and export reports'),
       debugButtons,
     ),

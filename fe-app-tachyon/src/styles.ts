@@ -1417,6 +1417,9 @@ header .dropdown-menu {
 }
 
 .tachyon-topbar__wizard-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 5px 11px;
     border-radius: 8px;
     border: 1px solid rgba(148, 130, 224, 0.36);
@@ -6106,24 +6109,30 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     align-items: center;
     flex-wrap: wrap;
     padding: 10px 14px;
-    gap: 10px 16px;
+    gap: 10px 18px;
 }
 
 .tachyon-studio-body--pipeline .tachyon-studio-card__head {
-    flex: 1 1 280px;
-    min-width: 0;
+    flex: 1 1 290px;
+    min-width: 240px;
+    max-width: 380px;
 }
 
 .tachyon-studio-body--pipeline .tachyon-studio-card__pipeline {
-    flex: 2 1 320px;
+    flex: 2 1 340px;
+    min-width: 260px;
     border-top: none;
     padding-top: 0;
+    margin-right: 8px;
 }
 
 .tachyon-studio-body--pipeline .tachyon-studio-card__footer {
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
     border-top: none;
     padding-top: 0;
     margin-left: auto;
+    white-space: nowrap;
 }
 
 .tachyon-studio-card:hover {
@@ -6144,7 +6153,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 12px;
     min-width: 0;
 }
 
@@ -6153,7 +6162,16 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     align-items: center;
     gap: 10px;
     min-width: 0;
-    flex: 1;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+.tachyon-studio-card__head-right {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    margin-left: 8px;
 }
 
 .tachyon-studio-card__order {
@@ -6302,6 +6320,9 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     font-weight: 700;
     letter-spacing: 0.02em;
     white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tachyon-studio-badge--proxy {
@@ -6395,6 +6416,16 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.2));
     background: var(--background-color-low, rgba(128, 128, 128, 0.08));
     color: inherit;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+.tachyon-studio-chip > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
@@ -7357,5 +7388,68 @@ button.tachyon-studio-chip:hover {
     font-size: 12px;
     opacity: 0.68;
     padding: 8px 4px;
+}
+
+/* Lucide SVG Icons Integration across UI components */
+.tachyon-studio-chip svg,
+.tachyon-studio-action-btn svg,
+.tachyon-studio-btn svg,
+.tachyon-studio-view-btn svg,
+.tachyon-topbar__wizard-btn svg,
+.tachyon-topbar__eco-btn svg,
+.tachyon-routing-row__engine-badge svg,
+.tachyon-ruleset-picker__cat-btn svg,
+.tachyon-sec-modal__badge-active svg,
+.tachyon-sec-modal__badge-type svg,
+.tachyon-dash-widget-row__icon svg,
+.tachyon-dash-preset-card__icon svg,
+.tachyon-dash-preset-pill__icon svg,
+.tachyon-icon-picker__chip svg {
+    flex-shrink: 0;
+    stroke: currentColor;
+    vertical-align: middle;
+}
+
+.tachyon-routing-row__engine-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tachyon-sec-modal__badge-active,
+.tachyon-sec-modal__badge-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tachyon-ruleset-picker__cat-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.tachyon-dash-preset-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon-dash-preset-pill__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tachyon-dash-widget-row__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tachyon-dash-preset-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 `;

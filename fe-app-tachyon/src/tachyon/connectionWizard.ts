@@ -7,6 +7,16 @@ import {
 } from '../helpers/communityListPicker';
 import { renderTachyonDuckMascotSvg } from '../icons/duckMascot';
 import {
+  renderZapIcon,
+  renderShieldIcon,
+  renderFolderIcon,
+  renderCheckIcon,
+  renderCommunityListServiceIcon,
+  renderLockIcon,
+  renderGamepad2Icon,
+  renderBanIcon,
+} from '../icons';
+import {
   DOMAIN_LIST_HINTS,
   DOMAIN_LIST_OPTIONS,
   TACHYON_UCI_PACKAGE,
@@ -305,66 +315,62 @@ const TRAFFIC_PRESETS: Array<{
 }> = [
   {
     id: 'youtube',
-    labelRu: '▶️ YouTube и Google Video',
-    labelEn: '▶️ YouTube & Google Video',
+    labelRu: 'YouTube и Google Video',
+    labelEn: 'YouTube & Google Video',
     domains: ['youtube'],
   },
   {
     id: 'discord',
-    labelRu: '💬 Discord (текст, голос и CDN)',
-    labelEn: '💬 Discord (text, voice & CDN)',
+    labelRu: 'Discord (текст, голос и CDN)',
+    labelEn: 'Discord (text, voice & CDN)',
     domains: ['discord'],
   },
   {
     id: 'telegram',
-    labelRu: '✈️ Telegram (чаты, медиа и DC1–DC5)',
-    labelEn: '✈️ Telegram (chats, media & DC1–DC5)',
+    labelRu: 'Telegram (чаты, медиа и DC1–DC5)',
+    labelEn: 'Telegram (chats, media & DC1–DC5)',
     domains: ['telegram'],
   },
   {
     id: 'rkn_geoblock',
-    labelRu: '🛡️ Базовый обход РФ + Геоблок 150+ сервисов + SSL CA',
-    labelEn: '🛡️ Base Russia Bypass + GeoBlock 150+ + SSL CA',
+    labelRu: 'Базовый обход РФ + Геоблок 150+ сервисов + SSL CA',
+    labelEn: 'Base Russia Bypass + GeoBlock 150+ + SSL CA',
     domains: ['russia_inside', 'hodca'],
   },
   {
     id: 'antifilter_refilter',
-    labelRu: '📚 Расширенный реестр РКН, Антизапрет и Re:filter',
-    labelEn: '📚 Extended RKN Registry, Antizapret & Re:filter',
+    labelRu: 'Расширенный реестр РКН, Антизапрет и Re:filter',
+    labelEn: 'Extended RKN Registry, Antizapret & Re:filter',
     domains: ['ru_blocked', 'refilter', 'antifilter'],
   },
   {
     id: 'ai',
-    labelRu: '🤖 Нейросети и ИИ (ChatGPT, Claude, Gemini, Grok, Cursor)',
-    labelEn: '🤖 AI Services (ChatGPT, Claude, Gemini, Grok, Cursor)',
+    labelRu: 'Нейросети и ИИ (ChatGPT, Claude, Gemini, Grok, Cursor)',
+    labelEn: 'AI Services (ChatGPT, Claude, Gemini, Grok, Cursor)',
     domains: ['ai_all', 'google_ai'],
   },
   {
     id: 'social',
-    labelRu: '🌐 Соцсети (Instagram/Meta, X/Twitter, TikTok, Pinterest)',
-    labelEn: '🌐 Social Media (Meta, X/Twitter, TikTok, Pinterest)',
+    labelRu: 'Соцсети (Instagram/Meta, X/Twitter, TikTok, Pinterest)',
+    labelEn: 'Social Media (Meta, X/Twitter, TikTok, Pinterest)',
     domains: ['meta', 'twitter', 'tiktok', 'pinterest'],
   },
   {
     id: 'streaming',
-    labelRu:
-      '🎬 Кино, музыка и стримы (Spotify, Netflix, Twitch, HDRezka, Аниме)',
-    labelEn: '🎬 Streaming & Music (Spotify, Netflix, Twitch, HDRezka, Anime)',
+    labelRu: 'Кино, музыка и стримы (Spotify, Netflix, Twitch, HDRezka, Аниме)',
+    labelEn: 'Streaming & Music (Spotify, Netflix, Twitch, HDRezka, Anime)',
     domains: ['spotify', 'netflix', 'twitch', 'hdrezka', 'anime'],
   },
   {
     id: 'gaming',
-    labelRu:
-      '🎮 Заблокированные игры (Roblox, Brawl Stars/Supercell, EA, FACEIT)',
-    labelEn: '🎮 Blocked Games (Roblox, Supercell, EA/Origin, FACEIT)',
+    labelRu: 'Заблокированные игры (Roblox, Brawl Stars/Supercell, EA, FACEIT)',
+    labelEn: 'Blocked Games (Roblox, Supercell, EA/Origin, FACEIT)',
     domains: ['roblox', 'supercell', 'origin', 'faceit'],
   },
   {
     id: 'dev_cloud',
-    labelRu:
-      '☁️ Разработка и CDN (GitHub, Docker, Cloudflare, Hetzner, OVH, DO)',
-    labelEn:
-      '☁️ Dev & Cloud CDN (GitHub, Docker, Cloudflare, Hetzner, OVH, DO)',
+    labelRu: 'Разработка и CDN (GitHub, Docker, Cloudflare, Hetzner, OVH, DO)',
+    labelEn: 'Dev & Cloud CDN (GitHub, Docker, Cloudflare, Hetzner, OVH, DO)',
     domains: [
       'github',
       'docker',
@@ -378,14 +384,14 @@ const TRAFFIC_PRESETS: Array<{
   },
   {
     id: 'ecosystems',
-    labelRu: '🍎 Экосистемы (Apple, Microsoft/Xbox, Google Play)',
-    labelEn: '🍎 Ecosystems (Apple, Microsoft/Xbox, Google Play)',
+    labelRu: 'Экосистемы (Apple, Microsoft/Xbox, Google Play)',
+    labelEn: 'Ecosystems (Apple, Microsoft/Xbox, Google Play)',
     domains: ['apple', 'microsoft', 'google_play'],
   },
   {
     id: 'media_extra',
-    labelRu: '📰 СМИ, Торренты и Tor (Meduza/BBC, RuTracker, Tor)',
-    labelEn: '📰 News, Torrents & Tor',
+    labelRu: 'СМИ, Торренты и Tor (Meduza/BBC, RuTracker, Tor)',
+    labelEn: 'News, Torrents & Tor',
     domains: ['news', 'torrent', 'tor'],
   },
 ];
@@ -398,8 +404,8 @@ const TACHYON_LIST_CATEGORIES: Array<{
 }> = [
   {
     id: 'rkn',
-    titleRu: '🛡️ Реестры блокировок и Геоблок',
-    titleEn: '🛡️ Censorship & GeoBlock Registries',
+    titleRu: 'Реестры блокировок и Геоблок',
+    titleEn: 'Censorship & GeoBlock Registries',
     keys: [
       'russia_inside',
       'geoblock',
@@ -412,14 +418,14 @@ const TACHYON_LIST_CATEGORIES: Array<{
   },
   {
     id: 'ai',
-    titleRu: '🤖 Нейросети и ИИ',
-    titleEn: '🤖 AI & LLMs',
+    titleRu: 'Нейросети и ИИ',
+    titleEn: 'AI & LLMs',
     keys: ['ai_all', 'openai', 'anthropic', 'google_ai', 'xai'],
   },
   {
     id: 'media',
-    titleRu: '🎬 Видео, Стримы и Музыка',
-    titleEn: '🎬 Video, Streams & Music',
+    titleRu: 'Видео, Стримы и Музыка',
+    titleEn: 'Video, Streams & Music',
     keys: [
       'youtube',
       'twitch',
@@ -434,14 +440,14 @@ const TACHYON_LIST_CATEGORIES: Array<{
   },
   {
     id: 'social',
-    titleRu: '💬 Мессенджеры и Соцсети',
-    titleEn: '💬 Messengers & Social Networks',
+    titleRu: 'Мессенджеры и Соцсети',
+    titleEn: 'Messengers & Social Networks',
     keys: ['discord', 'telegram', 'meta', 'twitter'],
   },
   {
     id: 'games',
-    titleRu: '🎮 Игры и Лаунчеры',
-    titleEn: '🎮 Games & Launchers',
+    titleRu: 'Игры и Лаунчеры',
+    titleEn: 'Games & Launchers',
     keys: [
       'steam',
       'epicgames',
@@ -455,8 +461,8 @@ const TACHYON_LIST_CATEGORIES: Array<{
   },
   {
     id: 'cloud',
-    titleRu: '☁️ Платформы, Разработка и CDN',
-    titleEn: '☁️ Platforms, Dev & Cloud CDN',
+    titleRu: 'Платформы, Разработка и CDN',
+    titleEn: 'Platforms, Dev & Cloud CDN',
     keys: [
       'apple',
       'microsoft',
@@ -474,8 +480,8 @@ const TACHYON_LIST_CATEGORIES: Array<{
   },
   {
     id: 'extra',
-    titleRu: '📰 Медиа, Торренты и 18+',
-    titleEn: '📰 News, Torrents & Adult',
+    titleRu: 'Медиа, Торренты и 18+',
+    titleEn: 'News, Torrents & Adult',
     keys: ['news', 'torrent', 'tor', 'porn'],
   },
 ];
@@ -487,74 +493,74 @@ const DIRECT_BYPASS_PRESETS: Array<{
 }> = [
   {
     key: 'steam',
-    labelRu: '🎮 Steam (магазин и быстрая загрузка игр Valve)',
-    labelEn: '🎮 Steam (Valve store & fast CDN downloads)',
+    labelRu: 'Steam (магазин и быстрая загрузка игр Valve)',
+    labelEn: 'Steam (Valve store & fast CDN downloads)',
   },
   {
     key: 'riot',
-    labelRu: '🔫 Riot Games (Valorant / LoL — низкий пинг без VPN)',
-    labelEn: '🔫 Riot Games (Valorant / LoL — low ping direct)',
+    labelRu: 'Riot Games (Valorant / LoL — низкий пинг без VPN)',
+    labelEn: 'Riot Games (Valorant / LoL — low ping direct)',
   },
   {
     key: 'epicgames',
-    labelRu: '🕹️ Epic Games (Fortnite / Rocket League / EasyAntiCheat)',
-    labelEn: '🕹️ Epic Games (Fortnite / Rocket League / EasyAntiCheat)',
+    labelRu: 'Epic Games (Fortnite / Rocket League / EasyAntiCheat)',
+    labelEn: 'Epic Games (Fortnite / Rocket League / EasyAntiCheat)',
   },
   {
     key: 'escapefromtarkov',
-    labelRu: '🪖 Escape from Tarkov (серверы Battlestate Games)',
-    labelEn: '🪖 Escape from Tarkov (Battlestate Games servers)',
+    labelRu: 'Escape from Tarkov (серверы Battlestate Games)',
+    labelEn: 'Escape from Tarkov (Battlestate Games servers)',
   },
   {
     key: 'origin',
-    labelRu: '⚽ EA / Origin (Apex Legends, Battlefield, EA FC)',
-    labelEn: '⚽ EA / Origin (Apex Legends, Battlefield, EA FC)',
+    labelRu: 'EA / Origin (Apex Legends, Battlefield, EA FC)',
+    labelEn: 'EA / Origin (Apex Legends, Battlefield, EA FC)',
   },
   {
     key: 'faceit',
-    labelRu: '🏆 FACEIT (CS2 серверы и античит)',
-    labelEn: '🏆 FACEIT (CS2 servers & anti-cheat)',
+    labelRu: 'FACEIT (CS2 серверы и античит)',
+    labelEn: 'FACEIT (CS2 servers & anti-cheat)',
   },
   {
     key: 'microsoft',
-    labelRu: '🟢 Microsoft и Xbox Live (загрузки Windows / Xbox)',
-    labelEn: '🟢 Microsoft & Xbox Live (Windows / Xbox CDN)',
+    labelRu: 'Microsoft и Xbox Live (загрузки Windows / Xbox)',
+    labelEn: 'Microsoft & Xbox Live (Windows / Xbox CDN)',
   },
   {
     key: 'apple',
-    labelRu: '🍎 Apple, App Store и iCloud (высокая скорость CDN)',
-    labelEn: '🍎 Apple, App Store & iCloud (fast CDN)',
+    labelRu: 'Apple, App Store и iCloud (высокая скорость CDN)',
+    labelEn: 'Apple, App Store & iCloud (fast CDN)',
   },
   {
     key: 'google_play',
-    labelRu: '▶️ Google Play (скачивание приложений Android)',
-    labelEn: '▶️ Google Play (Android APK downloads)',
+    labelRu: 'Google Play (скачивание приложений Android)',
+    labelEn: 'Google Play (Android APK downloads)',
   },
   {
     key: 'ru_whitelist',
     labelRu:
-      '🇷🇺 Белый список РФ (Госуслуги, Сбер, Т-Банк, Альфа, Ozon, WB, Яндекс, VK, РЖД)',
-    labelEn: '🇷🇺 RU Whitelist (Gosuslugi, Banks, Ozon, WB, Yandex, VK)',
+      'Белый список РФ (Госуслуги, Сбер, Т-Банк, Альфа, Ozon, WB, Яндекс, VK, РЖД)',
+    labelEn: 'RU Whitelist (Gosuslugi, Banks, Ozon, WB, Yandex, VK)',
   },
   {
     key: 'ru_only_inside',
-    labelRu: '🏛️ Строго из РФ (Госпорталы, суды, ЕМИАС, ЖКХ — блок с VPN)',
-    labelEn: '🏛️ Strictly Inside RU (Gov portals, courts, EMIAS)',
+    labelRu: 'Строго из РФ (Госпорталы, суды, ЕМИАС, ЖКХ — блок с VPN)',
+    labelEn: 'Strictly Inside RU (Gov portals, courts, EMIAS)',
   },
   {
     key: 'ru_domains',
-    labelRu: '🌐 Доменные зоны Рунета (.ru, .рф, .su, .by, .kz)',
-    labelEn: '🌐 Runet & CIS TLDs (.ru, .рф, .su, .by, .kz)',
+    labelRu: 'Доменные зоны Рунета (.ru, .рф, .su, .by, .kz)',
+    labelEn: 'Runet & CIS TLDs (.ru, .рф, .su, .by, .kz)',
   },
   {
     key: 'russia_outside',
-    labelRu: '🎬 Кинотеатры и сервисы РФ (Кинопоиск, Иви, Wink, Ozon, WB)',
-    labelEn: '🎬 Russian Streaming & Services (Kinopoisk, Ivi, Wink)',
+    labelRu: 'Кинотеатры и сервисы РФ (Кинопоиск, Иви, Wink, Ozon, WB)',
+    labelEn: 'Russian Streaming & Services (Kinopoisk, Ivi, Wink)',
   },
   {
     key: 'push',
-    labelRu: '🔔 Push-уведомления (Apple APNs, Google FCM, Xiaomi, Huawei)',
-    labelEn: '🔔 Push Notifications (Apple APNs, Google FCM, Xiaomi, Huawei)',
+    labelRu: 'Push-уведомления (Apple APNs, Google FCM, Xiaomi, Huawei)',
+    labelEn: 'Push Notifications (Apple APNs, Google FCM, Xiaomi, Huawei)',
   },
 ];
 
@@ -573,10 +579,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
 }> = [
   {
     id: 'autotune',
-    labelRu: '⚡ Автоподбор лучшего DNS (Smart Auto-Tune & Benchmark)',
-    labelEn: '⚡ Smart DNS Auto-Tune (Benchmark Best Stack)',
-    shortRu: '⚡ Автоподбор DNS',
-    shortEn: '⚡ Auto-Tune DNS',
+    labelRu: 'Автоподбор лучшего DNS (Smart Auto-Tune & Benchmark)',
+    labelEn: 'Smart DNS Auto-Tune (Benchmark Best Stack)',
+    shortRu: 'Автоподбор DNS',
+    shortEn: 'Auto-Tune DNS',
     badge: 'AUTO BEST',
     descRu:
       'Основной DoH + быстрый Bootstrap + Fallback по реальному замеру на вашем провайдере',
@@ -590,8 +596,8 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
     id: 'keep',
     labelRu: 'Оставить текущие настройки DNS роутера без изменений',
     labelEn: 'Keep current router DNS settings unchanged',
-    shortRu: '🔒 Текущий DNS',
-    shortEn: '🔒 Keep Current',
+    shortRu: 'Текущий DNS',
+    shortEn: 'Keep Current',
     badge: 'UNCHANGED',
     descRu: 'Не менять глобальные настройки DNS роутера на этом шаге',
     descEn: 'Keep existing router DNS settings untouched',
@@ -602,10 +608,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   {
     id: 'yandex_udp',
     labelRu:
-      '🇷🇺 Яндекс DNS (77.88.8.8 / 77.88.8.1, UDP) — быстрый отклик и российские CDN',
-    labelEn: '🇷🇺 Yandex DNS (77.88.8.8 / 77.88.8.1, UDP) — fast for RU & games',
-    shortRu: '🇷🇺 Яндекс DNS (UDP)',
-    shortEn: '🇷🇺 Yandex DNS (UDP)',
+      'Яндекс DNS (77.88.8.8 / 77.88.8.1, UDP) — быстрый отклик и российские CDN',
+    labelEn: 'Yandex DNS (77.88.8.8 / 77.88.8.1, UDP) — fast for RU & games',
+    shortRu: 'Яндекс DNS (UDP)',
+    shortEn: 'Yandex DNS (UDP)',
     badge: '77.88.8.8',
     descRu: 'Минимальный пинг (5–15 мс) в РФ и точная маршрутизация на RU CDN',
     descEn: 'Lowest latency in RU and accurate local CDN resolution',
@@ -615,10 +621,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   },
   {
     id: 'yandex_doh',
-    labelRu: '🇷🇺 Яндекс DNS (DoH HTTPS — common.dot.dns.yandex.net)',
-    labelEn: '🇷🇺 Yandex DNS (DoH HTTPS — common.dot.dns.yandex.net)',
-    shortRu: '🇷🇺 Яндекс DoH',
-    shortEn: '🇷🇺 Yandex DoH',
+    labelRu: 'Яндекс DNS (DoH HTTPS — common.dot.dns.yandex.net)',
+    labelEn: 'Yandex DNS (DoH HTTPS — common.dot.dns.yandex.net)',
+    shortRu: 'Яндекс DoH',
+    shortEn: 'Yandex DoH',
     badge: 'HTTPS RU',
     descRu: 'Шифрованный российский DNS поверх HTTPS (защита от перехвата)',
     descEn: 'Encrypted Russian DNS over HTTPS with local CDN accuracy',
@@ -628,10 +634,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   },
   {
     id: 'cloudflare_doh',
-    labelRu: '🌐 Cloudflare DNS (1.1.1.1, DoH HTTPS — быстрый зарубежный)',
-    labelEn: '🌐 Cloudflare DNS (1.1.1.1, DoH HTTPS)',
-    shortRu: '☁️ Cloudflare DoH',
-    shortEn: '☁️ Cloudflare DoH',
+    labelRu: 'Cloudflare DNS (1.1.1.1, DoH HTTPS — быстрый зарубежный)',
+    labelEn: 'Cloudflare DNS (1.1.1.1, DoH HTTPS)',
+    shortRu: 'Cloudflare DoH',
+    shortEn: 'Cloudflare DoH',
     badge: '1.1.1.1 HTTPS',
     descRu: 'Быстрый глобальный шифрованный резолвер без фильтрации',
     descEn: 'Fast global encrypted DNS resolver (cloudflare-dns.com)',
@@ -641,10 +647,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   },
   {
     id: 'cloudflare_udp',
-    labelRu: '🌐 Cloudflare DNS (1.1.1.1 / 1.0.0.1, UDP)',
-    labelEn: '🌐 Cloudflare DNS (1.1.1.1 / 1.0.0.1, UDP)',
-    shortRu: '☁️ Cloudflare UDP',
-    shortEn: '☁️ Cloudflare UDP',
+    labelRu: 'Cloudflare DNS (1.1.1.1 / 1.0.0.1, UDP)',
+    labelEn: 'Cloudflare DNS (1.1.1.1 / 1.0.0.1, UDP)',
+    shortRu: 'Cloudflare UDP',
+    shortEn: 'Cloudflare UDP',
     badge: '1.1.1.1 UDP',
     descRu: 'Классический быстрый DNS Cloudflare по протоколу UDP 53',
     descEn: 'Classic Cloudflare UDP 53 resolver (1.1.1.1 / 1.0.0.1)',
@@ -654,10 +660,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   },
   {
     id: 'google_doh',
-    labelRu: '🌐 Google DNS (8.8.8.8, DoH HTTPS — dns.google)',
-    labelEn: '🌐 Google DNS (8.8.8.8, DoH HTTPS — dns.google)',
-    shortRu: '🌐 Google DoH',
-    shortEn: '🌐 Google DoH',
+    labelRu: 'Google DNS (8.8.8.8, DoH HTTPS — dns.google)',
+    labelEn: 'Google DNS (8.8.8.8, DoH HTTPS — dns.google)',
+    shortRu: 'Google DoH',
+    shortEn: 'Google DoH',
     badge: '8.8.8.8 HTTPS',
     descRu: 'Надёжный шифрованный глобальный DNS от Google (dns.google)',
     descEn: 'Reliable global encrypted DNS over HTTPS by Google',
@@ -667,10 +673,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   },
   {
     id: 'adguard_doh',
-    labelRu: '🛡️ AdGuard DNS (94.140.14.14, DoH HTTPS — фильтрация рекламы)',
-    labelEn: '🛡️ AdGuard DNS (94.140.14.14, DoH HTTPS — ad blocking)',
-    shortRu: '🛡️ AdGuard DoH',
-    shortEn: '🛡️ AdGuard DoH',
+    labelRu: 'AdGuard DNS (94.140.14.14, DoH HTTPS — фильтрация рекламы)',
+    labelEn: 'AdGuard DNS (94.140.14.14, DoH HTTPS — ad blocking)',
+    shortRu: 'AdGuard DoH',
+    shortEn: 'AdGuard DoH',
     badge: 'ADBLOCK HTTPS',
     descRu: 'Шифрованный DoH с блокировкой рекламы, трекеров и фишинга',
     descEn: 'Encrypted DoH with built-in ad, tracker, and phishing blocker',
@@ -680,10 +686,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   },
   {
     id: 'quad9_doh',
-    labelRu: '🔒 Quad9 DNS (9.9.9.9, DoH HTTPS — защита и приватность)',
-    labelEn: '🔒 Quad9 DNS (9.9.9.9, DoH HTTPS — security & privacy)',
-    shortRu: '🔐 Quad9 DoH',
-    shortEn: '🔐 Quad9 DoH',
+    labelRu: 'Quad9 DNS (9.9.9.9, DoH HTTPS — защита и приватность)',
+    labelEn: 'Quad9 DNS (9.9.9.9, DoH HTTPS — security & privacy)',
+    shortRu: 'Quad9 DoH',
+    shortEn: 'Quad9 DoH',
     badge: '9.9.9.9 HTTPS',
     descRu: 'Швейцарский шифрованный DNS с защитой от вредоносных доменов',
     descEn: 'Swiss privacy-focused encrypted DNS with malware protection',
@@ -693,10 +699,10 @@ const WIZARD_GLOBAL_DNS_PRESETS: Array<{
   },
   {
     id: 'custom',
-    labelRu: '⚙️ Свой DNS-сервер (указать вручную)',
-    labelEn: '⚙️ Custom DNS Server (enter manually)',
-    shortRu: '⚙️ Свой DNS',
-    shortEn: '⚙️ Custom DNS',
+    labelRu: 'Свой DNS-сервер (указать вручную)',
+    labelEn: 'Custom DNS Server (enter manually)',
+    shortRu: 'Свой DNS',
+    shortEn: 'Custom DNS',
     badge: 'MANUAL',
     descRu: 'Указать собственный UDP / DoH / DoT сервер вручную',
     descEn: 'Specify your own UDP, DoH, or DoT resolver address',
@@ -715,36 +721,36 @@ const DIRECT_BYPASS_DNS_PRESETS: Array<{
 }> = [
   {
     id: 'yandex_udp',
-    labelRu: '🇷🇺 Яндекс DNS (UDP 77.88.8.8, 77.88.8.1) — Рекомендуется для игр',
-    labelEn: '🇷🇺 Yandex DNS (UDP 77.88.8.8, 77.88.8.1) — Recommended for games',
+    labelRu: 'Яндекс DNS (UDP 77.88.8.8, 77.88.8.1) — Рекомендуется для игр',
+    labelEn: 'Yandex DNS (UDP 77.88.8.8, 77.88.8.1) — Recommended for games',
     dnsType: 'udp',
     servers: ['77.88.8.8', '77.88.8.1'],
   },
   {
     id: 'yandex_dot',
-    labelRu: '🇷🇺 Яндекс DNS (DoT TLS — common.dot.dns.yandex.net)',
-    labelEn: '🇷🇺 Yandex DNS (DoT TLS — common.dot.dns.yandex.net)',
+    labelRu: 'Яндекс DNS (DoT TLS — common.dot.dns.yandex.net)',
+    labelEn: 'Yandex DNS (DoT TLS — common.dot.dns.yandex.net)',
     dnsType: 'dot',
     servers: ['common.dot.dns.yandex.net'],
   },
   {
     id: 'yandex_doh',
-    labelRu: '🇷🇺 Яндекс DNS (DoH HTTPS — common.dot.dns.yandex.net/dns-query)',
-    labelEn: '🇷🇺 Yandex DNS (DoH HTTPS — common.dot.dns.yandex.net/dns-query)',
+    labelRu: 'Яндекс DNS (DoH HTTPS — common.dot.dns.yandex.net/dns-query)',
+    labelEn: 'Yandex DNS (DoH HTTPS — common.dot.dns.yandex.net/dns-query)',
     dnsType: 'doh',
     servers: ['https://common.dot.dns.yandex.net/dns-query'],
   },
   {
     id: 'adguard_udp',
-    labelRu: '🛡️ AdGuard DNS (UDP 94.140.14.14, 94.140.15.15)',
-    labelEn: '🛡️ AdGuard DNS (UDP 94.140.14.14, 94.140.15.15)',
+    labelRu: 'AdGuard DNS (UDP 94.140.14.14, 94.140.15.15)',
+    labelEn: 'AdGuard DNS (UDP 94.140.14.14, 94.140.15.15)',
     dnsType: 'udp',
     servers: ['94.140.14.14', '94.140.15.15'],
   },
   {
     id: 'custom',
-    labelRu: '⚙️ Свой DNS провайдера (ISP / локальный роутер)',
-    labelEn: '⚙️ Custom ISP / Local DNS Server',
+    labelRu: 'Свой DNS провайдера (ISP / локальный роутер)',
+    labelEn: 'Custom ISP / Local DNS Server',
     dnsType: 'udp',
     servers: [],
   },
@@ -1110,7 +1116,7 @@ export function openConnectionWizardModal(
             E(
               'span',
               { class: 'tachyon-wizard__step-num' },
-              step > s.num ? '✓' : String(s.num),
+              step > s.num ? renderCheckIcon(12) : String(s.num),
             ),
             E('span', { class: 'tachyon-wizard__step-label' }, s.label),
           ],
@@ -1320,7 +1326,10 @@ export function openConnectionWizardModal(
             inp.click();
           },
         },
-        tr('📁 Загрузить файл .conf', '📁 Upload .conf file'),
+        [
+          renderFolderIcon(14),
+          E('span', {}, tr('Загрузить файл .conf', 'Upload .conf file')),
+        ],
       );
 
       formFields.push(
@@ -1407,14 +1416,27 @@ export function openConnectionWizardModal(
           },
         } as any,
         isGeneratingWarp
-          ? tr(
-              '⏳ Регистрация аккаунта Cloudflare WARP...',
-              '⏳ Registering Cloudflare WARP account...',
-            )
-          : tr(
-              '⚡ Сгенерировать ключи Cloudflare WARP в 1 клик',
-              '⚡ Auto-generate Cloudflare WARP keys in 1 click',
-            ),
+          ? [
+              E(
+                'span',
+                {},
+                tr(
+                  'Регистрация аккаунта Cloudflare WARP...',
+                  'Registering Cloudflare WARP account...',
+                ),
+              ),
+            ]
+          : [
+              renderZapIcon(14),
+              E(
+                'span',
+                {},
+                tr(
+                  'Сгенерировать ключи Cloudflare WARP в 1 клик',
+                  'Auto-generate Cloudflare WARP keys in 1 click',
+                ),
+              ),
+            ],
       );
 
       formFields.push(
@@ -3345,7 +3367,14 @@ export function openConnectionWizardModal(
               inp.click();
             },
           },
-          tr('📁 Загрузить профиль .ovpn', '📁 Upload .ovpn profile'),
+          [
+            renderFolderIcon(14),
+            E(
+              'span',
+              {},
+              tr('Загрузить профиль .ovpn', 'Upload .ovpn profile'),
+            ),
+          ],
         );
 
         formFields.push(
@@ -3604,7 +3633,12 @@ export function openConnectionWizardModal(
                   rerender();
                 },
               } as any,
-              `${active ? '✓ ' : ''}${tr(preset.labelRu, preset.labelEn)}`,
+              [
+                active
+                  ? renderCheckIcon(12)
+                  : renderCommunityListServiceIcon(preset.id, 12),
+                E('span', {}, tr(preset.labelRu, preset.labelEn)),
+              ],
             );
           }),
         ),
@@ -3659,9 +3693,12 @@ export function openConnectionWizardModal(
                     'div',
                     {
                       style:
-                        'font-size:12px;font-weight:700;margin-bottom:6px;opacity:0.85;',
+                        'font-size:12px;font-weight:700;margin-bottom:6px;opacity:0.85;display:flex;align-items:center;gap:6px;',
                     },
-                    tr(cat.titleRu, cat.titleEn),
+                    [
+                      renderCommunityListServiceIcon(cat.id, 13),
+                      E('span', {}, tr(cat.titleRu, cat.titleEn)),
+                    ],
                   ),
                   E(
                     'div',
@@ -3721,11 +3758,10 @@ export function openConnectionWizardModal(
                           },
                         } as any,
                         [
-                          E(
-                            'span',
-                            {},
-                            `${isSubsumed ? '⊂ ' : active ? '✓ ' : ''}${label}`,
-                          ),
+                          active
+                            ? renderCheckIcon(11)
+                            : renderCommunityListServiceIcon(key, 11),
+                          E('span', {}, `${isSubsumed ? '⊂ ' : ''}${label}`),
                           E(
                             'span',
                             {
@@ -3892,8 +3928,8 @@ export function openConnectionWizardModal(
                         'div',
                         { class: 'tachyon-wizard__checkbox-title' },
                         tr(
-                          '📋 Дополнить выбранную секцию новыми списками tachyon-lists',
-                          '📋 Also add tachyon-lists rules to the selected section',
+                          'Дополнить выбранную секцию новыми списками tachyon-lists',
+                          'Also add tachyon-lists rules to the selected section',
                         ),
                       ),
                       E(
@@ -3947,8 +3983,8 @@ export function openConnectionWizardModal(
                     'div',
                     { class: 'tachyon-wizard__checkbox-title' },
                     tr(
-                      '⚡ Автовыбор самого быстрого сервера (URLTest)',
-                      '⚡ Auto-select fastest server (URLTest)',
+                      'Автовыбор самого быстрого сервера (URLTest)',
+                      'Auto-select fastest server (URLTest)',
                     ),
                   ),
                   E(
@@ -4018,8 +4054,8 @@ export function openConnectionWizardModal(
             if (wasRunning) {
               showToast(
                 tr(
-                  '⚡ Автоподбор DNS завершён! Оптимальная связка выбрана.',
-                  '⚡ DNS Auto-Tune completed! Optimal stack selected.',
+                  'Автоподбор DNS завершён! Оптимальная связка выбрана.',
+                  'DNS Auto-Tune completed! Optimal stack selected.',
                 ),
                 'success',
               );
@@ -4098,9 +4134,9 @@ export function openConnectionWizardModal(
               let dynamicDesc = tr(p.descRu, p.descEn);
               if (isAuto) {
                 if (dnsBenchRunning) {
-                  dynamicDesc = `⏳ ${dnsBenchCurrentServer || tr('Замер скорости...', 'Benchmarking...')} (${dnsBenchProgress}%)`;
+                  dynamicDesc = `${dnsBenchCurrentServer || tr('Замер скорости...', 'Benchmarking...')} (${dnsBenchProgress}%)`;
                 } else if (dnsBenchError) {
-                  dynamicDesc = `⚠️ ${dnsBenchError}`;
+                  dynamicDesc = String(dnsBenchError);
                 } else if (dnsBenchRecommendation) {
                   const primaryStr = (
                     dnsBenchRecommendation.dns_server || []
@@ -4108,7 +4144,7 @@ export function openConnectionWizardModal(
                   const bootStr = (
                     dnsBenchRecommendation.bootstrap_dns_server || []
                   ).join(', ');
-                  dynamicDesc = `✓ ${(dnsBenchRecommendation.dns_type || 'doh').toUpperCase()}: ${primaryStr}${bootStr ? ` · Bootstrap: ${bootStr}` : ''}`;
+                  dynamicDesc = `${(dnsBenchRecommendation.dns_type || 'doh').toUpperCase()}: ${primaryStr}${bootStr ? ` · Bootstrap: ${bootStr}` : ''}`;
                 }
               }
 
@@ -4130,8 +4166,14 @@ export function openConnectionWizardModal(
                   E('div', { class: 'tachyon-wizard__dns-preset-top' }, [
                     E(
                       'span',
-                      { class: 'tachyon-wizard__dns-preset-title' },
-                      tr(p.shortRu, p.shortEn),
+                      {
+                        class: 'tachyon-wizard__dns-preset-title',
+                        style: 'display:flex;align-items:center;gap:6px;',
+                      },
+                      [
+                        renderCommunityListServiceIcon(p.id, 13),
+                        E('span', {}, tr(p.shortRu, p.shortEn)),
+                      ],
                     ),
                     E(
                       'span',
@@ -4139,7 +4181,7 @@ export function openConnectionWizardModal(
                       isAuto && dnsBenchRunning
                         ? `${dnsBenchProgress}%`
                         : isAuto && dnsBenchRecommendation
-                          ? tr('🔄 Замерить', '🔄 Re-test')
+                          ? tr('Замерить', 'Re-test')
                           : p.badge,
                     ),
                   ]),
@@ -4219,11 +4261,17 @@ export function openConnectionWizardModal(
                 E('div', {}, [
                   E(
                     'div',
-                    { class: 'tachyon-wizard__checkbox-title' },
-                    tr(
-                      '🔒 Направлять DNS-запросы через этот туннель (DNS Detour)',
-                      '🔒 Route DNS queries through this tunnel (DNS Detour)',
-                    ),
+                    {
+                      class: 'tachyon-wizard__checkbox-title',
+                      style: 'display:inline-flex;align-items:center;gap:6px;',
+                    },
+                    [
+                      renderLockIcon(14),
+                      tr(
+                        'Направлять DNS-запросы через этот туннель (DNS Detour)',
+                        'Route DNS queries through this tunnel (DNS Detour)',
+                      ),
+                    ],
                   ),
                   E(
                     'div',
@@ -4263,11 +4311,17 @@ export function openConnectionWizardModal(
             E('div', {}, [
               E(
                 'div',
-                { class: 'tachyon-wizard__checkbox-title' },
-                tr(
-                  '🎮 Прокинуть игры и сервисы РФ напрямую через провайдера с Яндекс DNS (77.88.8.8)',
-                  '🎮 Route games & Russian services directly via ISP with Yandex DNS (77.88.8.8)',
-                ),
+                {
+                  class: 'tachyon-wizard__checkbox-title',
+                  style: 'display:inline-flex;align-items:center;gap:6px;',
+                },
+                [
+                  renderGamepad2Icon(14),
+                  tr(
+                    'Прокинуть игры и сервисы РФ напрямую через провайдера с Яндекс DNS (77.88.8.8)',
+                    'Route games & Russian services directly via ISP with Yandex DNS (77.88.8.8)',
+                  ),
+                ],
               ),
               E(
                 'div',
@@ -4407,10 +4461,21 @@ export function openConnectionWizardModal(
                           },
                         } as any,
                         [
+                          renderCommunityListServiceIcon(item.key, 12),
                           E(
                             'span',
-                            {},
-                            `${isSubsumed ? '⊂ ' : active ? '✓ ' : ''}${tr(item.labelRu, item.labelEn)}`,
+                            {
+                              style:
+                                'display:inline-flex;align-items:center;gap:4px;',
+                            },
+                            [
+                              active
+                                ? renderCheckIcon(11)
+                                : isSubsumed
+                                  ? '⊂ '
+                                  : '',
+                              tr(item.labelRu, item.labelEn),
+                            ],
                           ),
                           E(
                             'span',
@@ -4423,7 +4488,7 @@ export function openConnectionWizardModal(
                                 showStep4Hint(item.key, subsumedParents);
                               },
                             } as any,
-                            'ⓘ',
+                            'i',
                           ),
                         ],
                       );
@@ -4490,11 +4555,17 @@ export function openConnectionWizardModal(
             E('div', {}, [
               E(
                 'div',
-                { class: 'tachyon-wizard__checkbox-title' },
-                tr(
-                  '🚫 Блокировать рекламу, трекеры и телеметрию Windows (Hagezi PRO + WinSpy)',
-                  '🚫 Block Ads, Trackers & Windows Telemetry (Hagezi PRO + WinSpy)',
-                ),
+                {
+                  class: 'tachyon-wizard__checkbox-title',
+                  style: 'display:inline-flex;align-items:center;gap:6px;',
+                },
+                [
+                  renderBanIcon(14),
+                  tr(
+                    'Блокировать рекламу, трекеры и телеметрию Windows (Hagezi PRO + WinSpy)',
+                    'Block Ads, Trackers & Windows Telemetry (Hagezi PRO + WinSpy)',
+                  ),
+                ],
               ),
               E(
                 'div',
@@ -4685,11 +4756,17 @@ export function openConnectionWizardModal(
             E('div', {}, [
               E(
                 'div',
-                { class: 'tachyon-wizard__checkbox-title' },
-                tr(
-                  '🛡️ Автоматически открыть порт в межсетевом экране (nftables)',
-                  '🛡️ Automatically open port in router firewall (nftables)',
-                ),
+                {
+                  class: 'tachyon-wizard__checkbox-title',
+                  style: 'display:inline-flex;align-items:center;gap:6px;',
+                },
+                [
+                  renderShieldIcon(14),
+                  tr(
+                    'Автоматически открыть порт в межсетевом экране (nftables)',
+                    'Automatically open port in router firewall (nftables)',
+                  ),
+                ],
               ),
               E(
                 'div',
@@ -6533,9 +6610,13 @@ export function openConnectionWizardModal(
               }
             },
           },
-          direction === 'outbound'
-            ? tr('✓ Создать (в черновик)', '✓ Create (Draft)')
-            : tr('✓ Создать сервер (в черновик)', '✓ Create Server (Draft)'),
+          [
+            renderCheckIcon(14),
+            ' ',
+            direction === 'outbound'
+              ? tr('Создать (в черновик)', 'Create (Draft)')
+              : tr('Создать сервер (в черновик)', 'Create Server (Draft)'),
+          ],
         ),
         E(
           'button',
@@ -6550,9 +6631,13 @@ export function openConnectionWizardModal(
               }
             },
           },
-          direction === 'outbound'
-            ? tr('⚡ Создать и применить', '⚡ Create & Apply')
-            : tr('⚡ Создать и запустить', '⚡ Create & Start'),
+          [
+            renderZapIcon(14),
+            ' ',
+            direction === 'outbound'
+              ? tr('Создать и применить', 'Create & Apply')
+              : tr('Создать и запустить', 'Create & Start'),
+          ],
         ),
       );
     }

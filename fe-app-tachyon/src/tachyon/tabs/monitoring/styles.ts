@@ -221,24 +221,29 @@ export const styles = `
 }
 
 .tachyon_monitoring-page__filters {
-    display: grid;
-    grid-template-columns: minmax(135px, 185px) minmax(135px, 185px) minmax(180px, 1fr);
-    flex: 1 1 460px;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
-.tachyon_monitoring-page__device-filter {
-    width: 100% !important;
-    max-width: none !important;
-    min-width: 0;
+.tachyon_monitoring-page__device-filter,
+.tachyon_monitoring-page__route-filter {
+    flex: 1 1 140px;
+    min-width: 130px !important;
+    max-width: 220px !important;
+    width: auto !important;
     height: var(--tachyon-monitoring-control-height) !important;
     min-height: var(--tachyon-monitoring-control-height) !important;
-    padding: 0 10px !important;
+    padding: 0 28px 0 10px !important;
     margin: 0 !important;
     border-radius: 9px !important;
-    box-sizing: border-box;
+    box-sizing: border-box !important;
+    background-color: var(--tachyon-bg-surface-alt, rgba(148, 163, 184, 0.08)) !important;
+    border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.2)) !important;
+    color: var(--text-color-high, inherit) !important;
     line-height: calc(var(--tachyon-monitoring-control-height) - 2px) !important;
 }
 
@@ -467,6 +472,30 @@ export const styles = `
     font-weight: 600;
 }
 
+.tachyon_monitoring-page__route--proxy {
+    background: rgba(168, 85, 247, 0.14) !important;
+    border-color: rgba(168, 85, 247, 0.32) !important;
+    color: #c084fc !important;
+}
+
+.tachyon_monitoring-page__route--dpi {
+    background: rgba(245, 158, 11, 0.14) !important;
+    border-color: rgba(245, 158, 11, 0.32) !important;
+    color: #fbbf24 !important;
+}
+
+.tachyon_monitoring-page__route--direct {
+    background: rgba(34, 197, 94, 0.14) !important;
+    border-color: rgba(34, 197, 94, 0.32) !important;
+    color: #4ade80 !important;
+}
+
+.tachyon_monitoring-page__route--block {
+    background: rgba(244, 63, 94, 0.14) !important;
+    border-color: rgba(244, 63, 94, 0.32) !important;
+    color: #fb7185 !important;
+}
+
 .tachyon_monitoring-page__network {
     display: inline-block;
     width: auto;
@@ -479,6 +508,18 @@ export const styles = `
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
+}
+
+.tachyon_monitoring-page__network--tcp {
+    background: rgba(56, 189, 248, 0.12) !important;
+    border-color: rgba(56, 189, 248, 0.3) !important;
+    color: #38bdf8 !important;
+}
+
+.tachyon_monitoring-page__network--udp {
+    background: rgba(52, 211, 153, 0.12) !important;
+    border-color: rgba(52, 211, 153, 0.3) !important;
+    color: #34d399 !important;
 }
 
 .tachyon_monitoring-page__table td:nth-child(4) .tachyon_monitoring-page__value,

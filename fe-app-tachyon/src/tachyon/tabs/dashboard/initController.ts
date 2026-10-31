@@ -2483,7 +2483,7 @@ function renderSectionInspectorModalContent(
               });
             },
           },
-          tr('🎨 Иконка сайта (favicon)', '🎨 Website Icon (favicon)'),
+          tr('Иконка сайта (favicon)', 'Website Icon (favicon)'),
         ),
         E(
           'button',
@@ -3715,7 +3715,7 @@ export async function renderSystemServicesWidget() {
           },
         } as any,
         isLiteMode
-          ? tr('⚡ Включён (MIPS Eco)', '⚡ Enabled (MIPS Eco)')
+          ? tr('Включён (MIPS Eco)', 'Enabled (MIPS Eco)')
           : tr('Выключен', 'Off'),
       ),
       attributes: {

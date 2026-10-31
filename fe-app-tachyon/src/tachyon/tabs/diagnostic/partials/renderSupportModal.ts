@@ -372,5 +372,5 @@ export function renderSupportModal(): void {
     [introBlock, primaryBentoRow, cryptoSection, footer],
   );
 
-  ui.showModal(`💖 ${_('Support Development')}`, modalContent);
+  ui.showModal(_('Support Development'), modalContent);
 }

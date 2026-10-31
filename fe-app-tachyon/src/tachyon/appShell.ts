@@ -3,6 +3,7 @@ import { svgEl } from '../helpers';
 import { showToast } from '../helpers/showToast';
 import { tr } from './helpers/i18n';
 import { renderTachyonDuckMascotSvg } from '../icons/duckMascot';
+import { renderZapIcon, renderPlusIcon, renderWandIcon } from '../icons';
 import { TachyonShellMethods } from './methods/shell';
 import { store } from './services/store.service';
 import { openConnectionWizardModal } from './connectionWizard';
@@ -1590,7 +1591,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               const nextEnabled = !curLite;
               if (btn) {
                 btn.disabled = true;
-                btn.textContent = tr('⚡ ...', '⚡ ...');
+                btn.replaceChildren(renderZapIcon(14), E('span', {}, ' ...'));
               }
               try {
                 const res = await TachyonShellMethods.setLiteMode(nextEnabled);
@@ -1641,9 +1642,16 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               }
             },
           } as any,
-          isLiteMode
-            ? tr('⚡ Эко-режим: Вкл', '⚡ Eco Mode: On')
-            : tr('⚡ Эко-режим', '⚡ Eco Mode'),
+          [
+            renderZapIcon(14),
+            E(
+              'span',
+              {},
+              isLiteMode
+                ? tr('Эко-режим: Вкл', 'Eco Mode: On')
+                : tr('Эко-режим', 'Eco Mode'),
+            ),
+          ],
         ),
       ]),
       E('div', { class: 'tachyon-topbar__right' }, [
@@ -1673,7 +1681,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               });
             },
           },
-          tr('⚡ + Подключение', '⚡ + Connection'),
+          [renderPlusIcon(14), E('span', {}, tr('Подключение', 'Connection'))],
         ),
         E(
           'button',
@@ -1828,7 +1836,14 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                       });
                     },
                   },
-                  tr('⚡ Быстрый мастер настройки', '⚡ Quick Setup Wizard'),
+                  [
+                    renderWandIcon(14),
+                    E(
+                      'span',
+                      {},
+                      tr('Быстрый мастер настройки', 'Quick Setup Wizard'),
+                    ),
+                  ],
                 ),
               ]
             : []),
@@ -1930,10 +1945,16 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         );
         if (ecoBtn && !ecoBtn.disabled) {
           const isLite = Boolean(srv?.data?.liteMode);
-          ecoBtn.classList.toggle('is-active', isLite);
-          ecoBtn.textContent = isLite
-            ? tr('⚡ Эко-режим: Вкл', '⚡ Eco Mode: On')
-            : tr('⚡ Эко-режим', '⚡ Eco Mode');
+          ecoBtn.replaceChildren(
+            renderZapIcon(14),
+            E(
+              'span',
+              {},
+              isLite
+                ? tr('Эко-режим: Вкл', 'Eco Mode: On')
+                : tr('Эко-режим', 'Eco Mode'),
+            ),
+          );
         }
       }
       if (diff.diagnosticsSystemInfo || diff.servicesInfoWidget) {

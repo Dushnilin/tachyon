@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-30 02:06+0300\n"
-"PO-Revision-Date: 2026-10-30 02:06+0300\n"
+"POT-Creation-Date: 2026-10-31 09:06+0300\n"
+"PO-Revision-Date: 2026-10-31 09:06+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -353,6 +353,9 @@ msgstr "Adaptive 2.0 (Автоподбор: клон ClientHello + RAW-инъе�
 msgid "Adaptive 2.0 Auto-Learning (auto_tune)"
 msgstr "Автоподбор Adaptive 2.0 (auto_tune)"
 
+msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
+msgstr ""
+
 msgid "Add Connection (Setup Wizard)"
 msgstr "Добавить подключение (Мастер настройки)"
 
@@ -632,6 +635,9 @@ msgstr "Разрешает входящие подключения из WAN на
 msgid "Allows limiting the list of servers for URLTest"
 msgstr "Позволяет ограничить список серверов для URLTest"
 
+msgid "Also add tachyon-lists rules to the selected section"
+msgstr "Дополнить выбранную секцию новыми списками tachyon-lists"
+
 msgid "Also route IP/CIDR subnets included in the selected community lists (in addition to domains)."
 msgstr "Также маршрутизировать подсети IP/CIDR из выбранных списков сообщества (помимо доменов)."
 
@@ -842,6 +848,9 @@ msgstr "Авто (по умолчанию)"
 msgid "Auto (TCP/UDP)"
 msgstr "Auto (TCP/UDP)"
 
+msgid "Auto (by rules)"
+msgstr "Авто (по правилам)"
+
 msgid "Auto (clone SNI / www.google.com)"
 msgstr "Авто (клонировать SNI / www.google.com)"
 
@@ -908,11 +917,17 @@ msgstr "Автоматически определяет заблокирован
 msgid "Auto-failover of proxy sections"
 msgstr "Авто-failover прокси-секций"
 
+msgid "Auto-generate Cloudflare WARP keys in 1 click"
+msgstr "Сгенерировать ключи Cloudflare WARP в 1 клик"
+
 msgid "Auto-generate HWID"
 msgstr "Авто-генерация HWID"
 
 msgid "Auto-select fastest node from token"
 msgstr "Автовыбор самого быстрого узла из токена"
+
+msgid "Auto-select fastest server (URLTest)"
+msgstr "Автовыбор самого быстрого сервера (URLTest)"
 
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
@@ -970,6 +985,9 @@ msgstr "Автоматически создать аккаунт Cloudflare WARP
 
 msgid "Automatically increase check intervals when healthy (to 5 min) and decrease on problems (to 120s)."
 msgstr "Автоматически увеличивать интервалы проверки при нормальном состоянии (до 5 мин) и уменьшать при проблемах (до 120с)."
+
+msgid "Automatically open port in router firewall (nftables)"
+msgstr "Автоматически открыть порт в межсетевом экране (nftables)"
 
 msgid "Automatically register a free Cloudflare WARP account and fill AmneziaWG parameters."
 msgstr "Автоматически зарегистрировать бесплатный аккаунт Cloudflare WARP и заполнить параметры AmneziaWG."
@@ -1108,6 +1126,9 @@ msgstr "Блокировка (Reject)"
 
 msgid "Block / Disable in scheduled hours (Standard)"
 msgstr "Блокировать / Отключать в указанные часы (Стандарт)"
+
+msgid "Block Ads, Trackers & Windows Telemetry (Hagezi PRO + WinSpy)"
+msgstr "Блокировать рекламу, трекеры и телеметрию Windows (Hagezi PRO + WinSpy)"
 
 msgid "Block BitTorrent Traffic"
 msgstr "Блокировать трафик BitTorrent"
@@ -1369,6 +1390,9 @@ msgstr "Сменить язык интерфейса"
 
 msgid "Change subscription URL"
 msgstr "Сменить ссылку подписки"
+
+msgid "ChatGPT / OpenAI Suite"
+msgstr ""
 
 msgid "Check"
 msgstr "Проверка"
@@ -1658,6 +1682,9 @@ msgstr "Свернуть меню в значки"
 msgid "Collapse top toolbar"
 msgstr "Свернуть панель инструментов"
 
+msgid "Combinatorial Deep Fuzzing (~150-300+)"
+msgstr ""
+
 msgid "Combine multiple atomic conditions with boolean logic expressions"
 msgstr "Объединение нескольких условий с помощью булевой логики"
 
@@ -1931,8 +1958,17 @@ msgstr "Код страны (напр. ru, us, de)"
 msgid "Country filter"
 msgstr "Фильтр по странам"
 
+msgid "Create & Apply"
+msgstr "Создать и применить"
+
 msgid "Create & Configure"
 msgstr "Создать и настроить"
+
+msgid "Create & Start"
+msgstr "Создать и запустить"
+
+msgid "Create (Draft)"
+msgstr "Создать (в черновик)"
 
 msgid "Create Balancer Policy"
 msgstr "Новый балансировщик"
@@ -1951,6 +1987,9 @@ msgstr "Новая секция маршрутизации"
 
 msgid "Create Schedule Rule"
 msgstr "Новое правило расписания"
+
+msgid "Create Server (Draft)"
+msgstr "Создать сервер (в черновик)"
 
 msgid "Create Traffic Condition"
 msgstr "Новое условие трафика"
@@ -2033,6 +2072,9 @@ msgstr "Пользовательские параметры"
 msgid "Custom Raw JSON Outbound (sing-box / tachyon-core)"
 msgstr "Собственный JSON-аутбаунд (sing-box / tachyon-core)"
 
+msgid "Custom Target URL(s)..."
+msgstr ""
+
 msgid "Custom User-Agent / Client Profile"
 msgstr "Пользовательский User-Agent / Профиль клиента"
 
@@ -2098,6 +2140,9 @@ msgstr "DNS"
 
 msgid "DNS & Games / Direct"
 msgstr "DNS и Игры / РФ"
+
+msgid "DNS Auto-Tune completed! Optimal stack selected."
+msgstr "Автоподбор DNS завершён! Оптимальная связка выбрана."
 
 msgid "DNS Auto-Tuner & Benchmark"
 msgstr "Автоподбор и бенчмарк DNS"
@@ -2321,6 +2366,9 @@ msgstr "Тёмный"
 msgid "Dashboard"
 msgstr "Дашборд"
 
+msgid "Dashboard Widgets & Presets Setup"
+msgstr "Настройка виджетов и пресетов дашборда"
+
 msgid "Dashboard currently unavailable"
 msgstr "Дашборд сейчас недоступен"
 
@@ -2368,6 +2416,9 @@ msgstr "Default (штатный)"
 
 msgid "Default / Bi-directional"
 msgstr "По умолчанию / Двунаправленный"
+
+msgid "Default SVG"
+msgstr "Стандартная SVG"
 
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
@@ -2536,6 +2587,9 @@ msgstr "Напрямую (мимо прокси)"
 
 msgid "Direct connection"
 msgstr "Прямое подключение"
+
+msgid "Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
+msgstr ""
 
 msgid "Direct connection via ISP"
 msgstr "Прямое подключение через провайдера"
@@ -2801,6 +2855,12 @@ msgstr "ИСКЛЮЧЁН"
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
 msgstr "Каждая запись должна быть \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp), например: tcp:6881,udp:6881-6889"
 
+msgid "Eco Mode"
+msgstr "Эко-режим"
+
+msgid "Eco Mode: On"
+msgstr "Эко-режим: Вкл"
+
 msgid "Edit"
 msgstr "Изменить"
 
@@ -2929,6 +2989,9 @@ msgstr "Включить подписку"
 
 msgid "Enabled"
 msgstr "Включено"
+
+msgid "Enabled (MIPS Eco)"
+msgstr "Включён (MIPS Eco)"
 
 msgid "Enabled (always prioritize)"
 msgstr "Включено (всегда повышать приоритет)"
@@ -4259,6 +4322,9 @@ msgstr "Входящие серверы"
 msgid "Inbound VPN & Proxy Servers on Router"
 msgstr "Входящие VPN и прокси-серверы на роутере (Inbound)"
 
+msgid "Incidents & Timeline"
+msgstr ""
+
 msgid "Include + Exclude (Intersection AND)"
 msgstr "Включение + Исключение (пересечение И / AND)"
 
@@ -4402,6 +4468,9 @@ msgstr "Параллельные соединения (Insecure Concurrency)"
 
 msgid "Inspect live logs, generated engine config and export reports"
 msgstr "Просмотр живых логов, сгенерированного конфига ядра и экспорт отчётов"
+
+msgid "Instagram / Meta (Web + CDN)"
+msgstr ""
 
 msgid "Install"
 msgstr "Установить"
@@ -5021,6 +5090,9 @@ msgstr "Обновление списков продолжается в фоно
 msgid "Lists update is still running in background. You can check system logs."
 msgstr "Обновление списков всё ещё выполняется в фоне. Вы можете проверить системный журнал."
 
+msgid "Lite Eco Mode"
+msgstr "Эко-режим Lite"
+
 msgid "Live filter preview"
 msgstr "Предпросмотр фильтра в реальном времени"
 
@@ -5414,6 +5486,9 @@ msgstr "Должно быть числом в диапазоне 0 - 10000"
 msgid "Must be a port (1 - 65535) or port range (e.g. 1000-2000)"
 msgstr "Укажите порт (1 - 65535) или диапазон портов (напр., 1000-2000)"
 
+msgid "My Custom Strategies Only"
+msgstr ""
+
 msgid "My Strategies"
 msgstr "Мои стратегии"
 
@@ -5683,6 +5758,9 @@ msgstr "Нет подходящих серверов."
 
 msgid "No snapshots yet"
 msgstr "Снапшотов пока нет"
+
+msgid "No specific domain filters are attached to this section — matches traffic by section priority."
+msgstr "Для этой секции не заданы отдельные фильтры доменов — правило применяется ко всему подходящему трафику по приоритету секции."
 
 msgid "No strategies match the active filter."
 msgstr "Нет стратегий, соответствующих выбранному фильтру."
@@ -6713,6 +6791,9 @@ msgstr "QR: Токен"
 msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
 
+msgid "QUIC / HTTP/3 (UDP 443)"
+msgstr ""
+
 msgid "QUIC Congestion Control"
 msgstr "Алгоритм управления перегрузкой QUIC"
 
@@ -6725,8 +6806,14 @@ msgstr "Движок приоритета QoS (DSCP)"
 msgid "Querying direct connection and proxy outbound..."
 msgstr "Опрос прямого подключения и исходящего прокси..."
 
+msgid "Quick Benchmark (Presets ~30+)"
+msgstr ""
+
 msgid "Quick Routing Presets (tachyon-lists)"
 msgstr "Быстрые пакеты маршрутизации (tachyon-lists)"
+
+msgid "Quick Setup Wizard"
+msgstr "Быстрый мастер настройки"
 
 msgid "Quick donation via Russian bank cards or SBP"
 msgstr "Быстрый перевод картами РФ или через СБП"
@@ -6787,6 +6874,9 @@ msgstr "Повторить проверку утечек"
 
 msgid "Re-run Trace"
 msgstr "Повторить трассировку"
+
+msgid "Re-test"
+msgstr "Замерить"
 
 msgid "Reachable servers: %d / %d for %s"
 msgstr "Доступно серверов: %d из %d для %s"
@@ -6877,6 +6967,9 @@ msgstr "Обновление индекса пакетов"
 
 msgid "Regex"
 msgstr "Регулярное выражение"
+
+msgid "Registering Cloudflare WARP account..."
+msgstr "Регистрация аккаунта Cloudflare WARP..."
 
 msgid "Registering Cloudflare WARP keys..."
 msgstr "Регистрация ключей Cloudflare WARP..."
@@ -7109,6 +7202,9 @@ msgstr "Маршрут"
 msgid "Route / Target"
 msgstr "Маршрут / Цель"
 
+msgid "Route DNS queries through this tunnel (DNS Detour)"
+msgstr "Направлять DNS-запросы через этот туннель (DNS Detour)"
+
 msgid "Route Decision Explainer"
 msgstr "Анализатор решений маршрутизации"
 
@@ -7141,6 +7237,9 @@ msgstr "Трассировка решения маршрутизации зав�
 
 msgid "Route explanation failed."
 msgstr "Не удалось выполнить анализ маршрута."
+
+msgid "Route games & Russian services directly via ISP with Yandex DNS (77.88.8.8)"
+msgstr "Прокинуть игры и сервисы РФ напрямую через провайдера с Яндекс DNS (77.88.8.8)"
 
 msgid "Route local traffic originating directly from the router (e.g. wget, curl, opkg, torrent clients on the router) through Tachyon."
 msgstr "Направлять локальный трафик, исходящий непосредственно с роутера (например, wget, curl, opkg, торрент-клиент на роутере), через Tachyon."
@@ -7256,6 +7355,9 @@ msgstr "Секция маршрутизации «%s» отключена. Ис�
 msgid "Routing sections"
 msgstr "Секции маршрутизации"
 
+msgid "RuTracker Suite"
+msgstr ""
+
 msgid "Rule"
 msgstr "Правило"
 
@@ -7339,6 +7441,9 @@ msgstr "БЕЗОПАСНО"
 
 msgid "SECURE"
 msgstr "ЗАЩИЩЕНО"
+
+msgid "SECURE: Public IP is concealed behind the proxy outbound."
+msgstr ""
 
 msgid "SLOW"
 msgstr "МЕДЛЕННО"
@@ -7786,6 +7891,9 @@ msgstr "Адрес сервера (Endpoint Host / IP)"
 
 msgid "Server Endpoint Port"
 msgstr "Порт сервера (Endpoint Port)"
+
+msgid "Server Fleet & Rankings"
+msgstr ""
 
 msgid "Server Host / IP"
 msgstr "Хост / IP сервера"
@@ -8348,6 +8456,9 @@ msgstr "Стратегия"
 msgid "Strategy & Parameters"
 msgstr "Стратегия и параметры"
 
+msgid "Strategy Fuzzer & Auto-Tuner"
+msgstr ""
+
 msgid "Strategy Name"
 msgstr "Имя стратегии"
 
@@ -8497,6 +8608,9 @@ msgstr "Система и сервисы"
 
 msgid "System FDs allocated:"
 msgstr "Выделено системных FD:"
+
+msgid "System Health & Daemons"
+msgstr ""
 
 msgid "System Health & Subsystems"
 msgstr "Состояние системы и подсистем"
@@ -8842,6 +8956,9 @@ msgstr "Токен Telegram-бота"
 
 msgid "Telegram Channel"
 msgstr "Telegram канал"
+
+msgid "Telegram Suite (Web + Bot API)"
+msgstr ""
 
 msgid "Test Connection"
 msgstr "Проверить подключение"
@@ -9515,6 +9632,12 @@ msgstr "Исходящий"
 msgid "Uplink Stream"
 msgstr "Исходящий поток (Uplink)"
 
+msgid "Upload .conf file"
+msgstr "Загрузить файл .conf"
+
+msgid "Upload .ovpn profile"
+msgstr "Загрузить профиль .ovpn"
+
 msgid "Upload WireGuard / AmneziaWG .conf Files"
 msgstr "Загрузить файлы .conf (WireGuard / AmneziaWG)"
 
@@ -9857,6 +9980,9 @@ msgstr "Восстановлений watchdog:"
 msgid "WebRTC Leak Protection"
 msgstr "Защита от утечек WebRTC"
 
+msgid "Website Icon (favicon)"
+msgstr "Иконка сайта (favicon)"
+
 msgid "Website Icon Domain (favicon.ico)"
 msgstr "Домен иконки сайта (favicon.ico)"
 
@@ -9916,6 +10042,9 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 
 msgid "Working"
 msgstr "Рабочих"
+
+msgid "X / Twitter Suite (API + Media CDN)"
+msgstr ""
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -10424,14 +10553,8 @@ msgstr "Amber"
 msgid "— stable (TProxy)"
 msgstr "— стабильно (TProxy)"
 
-msgid "ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
-msgstr "ℹ️ Прямое подключение (WAN): Публичный IP совпадает с провайдером. При выборочной маршрутизации (по доменам или спискам блокировок) незаблокированные ресурсы идут напрямую — это штатный режим работы."
-
 msgid "← Back"
 msgstr "← Назад"
-
-msgid "⏳ Registering Cloudflare WARP account..."
-msgstr "⏳ Регистрация аккаунта Cloudflare WARP..."
 
 msgid "⏳ Stopping..."
 msgstr "⏳ Остановка…"
@@ -10463,6 +10586,75 @@ msgstr "⚠️ Если все основные DNS завершатся с ош
 msgid "⚠️ Server received fakes"
 msgstr "⚠️ Сервер получил фейки"
 
+msgid "⚡ Fast (>1MB/s)"
+msgstr "⚡ Быстрые (>1 МБ/с)"
+
+msgid "✅ Auto-applied best strategy"
+msgstr "✅ Лучшая стратегия применена автоматически"
+
+msgid "✅ Benchmark completed! Optimal strategy identified."
+msgstr "✅ Бенчмарк завершен! Оптимальная стратегия определена."
+
+msgid "✅ Working only"
+msgstr "✅ Только рабочие"
+
+msgid "✓ 32KB Streamed"
+msgstr "✓ 32KB Прокачано"
+
+msgid "✓ Active"
+msgstr "✓ Активна"
+
+msgid "✔ Online"
+msgstr "✔ В сети"
+
+msgid "✗ Throttled at 16KB"
+msgstr "✗ Задушено на 16KB"
+
+msgid "✘ Offline"
+msgstr "✘ Не в сети"
+
+msgid "✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
+msgstr "✨ Включает пиннинг TLS-сертификатов (pcs / certificate_sha256), XHTTP и AWG 3.x"
+
+msgid "🎬 YouTube Full Suite (Web + 4K Stream + CDN)"
+msgstr "🎬 YouTube (Веб + 4K видеопоток + CDN)"
+
+msgid "💬 Discord Suite (Gateway + Voice + CDN)"
+msgstr "💬 Discord (Шлюз + Голос + CDN)"
+
+msgid "🔍 Analyzing DPI blocking patterns..."
+msgstr "🔍 Анализ паттернов блокировки DPI..."
+
+msgid "🚀 Initializing benchmark in sandbox..."
+msgstr "🚀 Инициализация бенчмарка в песочнице..."
+
+msgid "🚀 Start Benchmark"
+msgstr "🚀 Начать бенчмарк"
+
+msgid "🛑 Benchmark stopped"
+msgstr "🛑 Бенчмарк остановлен"
+
+msgid "🛑 Stop Benchmark"
+msgstr "🛑 Остановить бенчмарк"
+
+msgid "🛡️ Stage 2: Stability Verification"
+msgstr "🛡️ Этап 2: Проверка стабильности"
+
+msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
+msgstr "🟣 Twitch (Прямой эфир + HLS CDN)"
+
+msgid "🧠 Synthesize with AI"
+msgstr "🧠 Сгенерировать через ИИ"
+
+msgid "🧠 Synthesizing..."
+msgstr "🧠 Генерация..."
+
+msgid "ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
+msgstr "ℹ️ Прямое подключение (WAN): Публичный IP совпадает с провайдером. При выборочной маршрутизации (по доменам или спискам блокировок) незаблокированные ресурсы идут напрямую — это штатный режим работы."
+
+msgid "⏳ Registering Cloudflare WARP account..."
+msgstr "⏳ Регистрация аккаунта Cloudflare WARP..."
+
 msgid "⚡ + Connection"
 msgstr "⚡ + Подключение"
 
@@ -10493,9 +10685,6 @@ msgstr "⚡ Эко-режим: Вкл"
 msgid "⚡ Enabled (MIPS Eco)"
 msgstr "⚡ Включён (MIPS Eco)"
 
-msgid "⚡ Fast (>1MB/s)"
-msgstr "⚡ Быстрые (>1 МБ/с)"
-
 msgid "⚡ Lite Eco Mode"
 msgstr "⚡ Эко-режим Lite"
 
@@ -10511,23 +10700,8 @@ msgstr "⚡ Быстрый мастер настройки"
 msgid "⚡ Strategy Fuzzer & Auto-Tuner"
 msgstr "⚡ Подборщик стратегий и авто-тюнер"
 
-msgid "✅ Auto-applied best strategy"
-msgstr "✅ Лучшая стратегия применена автоматически"
-
-msgid "✅ Benchmark completed! Optimal strategy identified."
-msgstr "✅ Бенчмарк завершен! Оптимальная стратегия определена."
-
-msgid "✅ Working only"
-msgstr "✅ Только рабочие"
-
 msgid "✈️ Telegram Suite (Web + Bot API)"
 msgstr "✈️ Telegram (Веб + Bot API)"
-
-msgid "✓ 32KB Streamed"
-msgstr "✓ 32KB Прокачано"
-
-msgid "✓ Active"
-msgstr "✓ Активна"
 
 msgid "✓ Create (Draft)"
 msgstr "✓ Создать (в черновик)"
@@ -10535,20 +10709,8 @@ msgstr "✓ Создать (в черновик)"
 msgid "✓ Create Server (Draft)"
 msgstr "✓ Создать сервер (в черновик)"
 
-msgid "✔ Online"
-msgstr "✔ В сети"
-
-msgid "✗ Throttled at 16KB"
-msgstr "✗ Задушено на 16KB"
-
-msgid "✘ Offline"
-msgstr "✘ Не в сети"
-
 msgid "✨ Default SVG"
 msgstr "✨ Стандартная SVG"
-
-msgid "✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
-msgstr "✨ Включает пиннинг TLS-сертификатов (pcs / certificate_sha256), XHTTP и AWG 3.x"
 
 msgid "🌐 Custom Target URL(s)..."
 msgstr "🌐 Произвольный URL (несколько через запятую)..."
@@ -10565,9 +10727,6 @@ msgstr "🎛 Настройка виджетов и пресетов дашбо�
 msgid "🎨 Website Icon (favicon)"
 msgstr "🎨 Иконка сайта (favicon)"
 
-msgid "🎬 YouTube Full Suite (Web + 4K Stream + CDN)"
-msgstr "🎬 YouTube (Веб + 4K видеопоток + CDN)"
-
 msgid "🎮 Route games & Russian services directly via ISP with Yandex DNS (77.88.8.8)"
 msgstr "🎮 Прокинуть игры и сервисы РФ напрямую через провайдера с Яндекс DNS (77.88.8.8)"
 
@@ -10579,9 +10738,6 @@ msgstr "🏴‍☠️ RuTracker (HTTP + HTTPS)"
 
 msgid "🐦 X / Twitter Suite (API + Media CDN)"
 msgstr "🐦 X / Twitter (API + Медиа CDN)"
-
-msgid "💬 Discord Suite (Gateway + Voice + CDN)"
-msgstr "💬 Discord (Шлюз + Голос + CDN)"
 
 msgid "📁 Upload .conf file"
 msgstr "📁 Загрузить файл .conf"
@@ -10604,29 +10760,14 @@ msgstr "🔄 Авто (по правилам)"
 msgid "🔄 Re-test"
 msgstr "🔄 Замерить"
 
-msgid "🔍 Analyzing DPI blocking patterns..."
-msgstr "🔍 Анализ паттернов блокировки DPI..."
-
 msgid "🔍 Combinatorial Deep Fuzzing (~150-300+)"
 msgstr "🔍 Комбинаторный глубокий фаззинг (~150-300+)"
 
 msgid "🔒 Route DNS queries through this tunnel (DNS Detour)"
 msgstr "🔒 Направлять DNS-запросы через этот туннель (DNS Detour)"
 
-msgid "🚀 Initializing benchmark in sandbox..."
-msgstr "🚀 Инициализация бенчмарка в песочнице..."
-
-msgid "🚀 Start Benchmark"
-msgstr "🚀 Начать бенчмарк"
-
 msgid "🚫 Block Ads, Trackers & Windows Telemetry (Hagezi PRO + WinSpy)"
 msgstr "🚫 Блокировать рекламу, трекеры и телеметрию Windows (Hagezi PRO + WinSpy)"
-
-msgid "🛑 Benchmark stopped"
-msgstr "🛑 Бенчмарк остановлен"
-
-msgid "🛑 Stop Benchmark"
-msgstr "🛑 Остановить бенчмарк"
 
 msgid "🛠️ My Custom Strategies Only"
 msgstr "🛠️ Только мои стратегии"
@@ -10637,20 +10778,8 @@ msgstr "🛡️ Автоматически открыть порт в межсе
 msgid "🛡️ SECURE: Public IP is concealed behind the proxy outbound."
 msgstr "🛡️ ЗАЩИЩЕНО: Публичный IP-адрес скрыт за исходящим прокси."
 
-msgid "🛡️ Stage 2: Stability Verification"
-msgstr "🛡️ Этап 2: Проверка стабильности"
-
-msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
-msgstr "🟣 Twitch (Прямой эфир + HLS CDN)"
-
 msgid "🤖 ChatGPT / OpenAI Suite"
 msgstr "🤖 ChatGPT / OpenAI (Веб + API)"
-
-msgid "🧠 Synthesize with AI"
-msgstr "🧠 Сгенерировать через ИИ"
-
-msgid "🧠 Synthesizing..."
-msgstr "🧠 Генерация..."
 
 msgid "🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "🧬 Адаптивный умный фаззинг (генетический / по базовым шаблонам)"

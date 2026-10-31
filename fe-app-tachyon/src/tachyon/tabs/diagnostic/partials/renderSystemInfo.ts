@@ -1,4 +1,5 @@
 import { insertIf } from '../../../../helpers';
+import { renderServerIcon } from '../../../../icons';
 
 interface IRenderSystemInfoRow {
   key: string;
@@ -21,7 +22,7 @@ export function renderSystemInfo({ items }: IRenderSystemInfoProps) {
       E(
         'b',
         { class: 'tachyon_diagnostic-page__right-bar__system-info__title' },
-        _('System information'),
+        [renderServerIcon(14), _('System information')],
       ),
       ...items.map((item) => {
         const tagClass = [

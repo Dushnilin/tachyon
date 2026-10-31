@@ -1,6 +1,10 @@
 import { TachyonShellMethods } from '../../../methods/shell';
 import { renderButton } from '../../../../partials';
-import { renderRotateCcwIcon24 } from '../../../../icons';
+import {
+  renderRotateCcwIcon24,
+  renderGlobeIcon,
+  renderSearchIcon24,
+} from '../../../../icons';
 import { Tachyon } from '../../../types';
 
 export function renderLeakCheckModal() {
@@ -158,9 +162,9 @@ export function renderLeakCheckModal() {
       ? _('Proxy outbound is inactive or not configured for local testing.')
       : isDirectRouting
         ? _(
-            'ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation.',
+            'Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation.',
           )
-        : _('🛡️ SECURE: Public IP is concealed behind the proxy outbound.');
+        : _('SECURE: Public IP is concealed behind the proxy outbound.');
 
     const ipTable = E(
       'table',
@@ -277,10 +281,14 @@ export function renderLeakCheckModal() {
           'margin-bottom: 20px; border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px;',
       },
       [
-        E('h4', { style: 'margin-top: 0; margin-bottom: 8px;' }, [
-          '🌐 ',
-          _('Public IP Address Isolation'),
-        ]),
+        E(
+          'h4',
+          {
+            style:
+              'margin-top: 0; margin-bottom: 8px; display: inline-flex; align-items: center; gap: 6px;',
+          },
+          [renderGlobeIcon(14), _('Public IP Address Isolation')],
+        ),
         E('div', { class: ipAlertClass, style: 'margin-bottom: 12px;' }, [
           ipAlertText,
         ]),
@@ -427,10 +435,14 @@ export function renderLeakCheckModal() {
           'border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px;',
       },
       [
-        E('h4', { style: 'margin-top: 0; margin-bottom: 8px;' }, [
-          '🔍 ',
-          _('DNS Upstream Resolver Analysis'),
-        ]),
+        E(
+          'h4',
+          {
+            style:
+              'margin-top: 0; margin-bottom: 8px; display: inline-flex; align-items: center; gap: 6px;',
+          },
+          [renderSearchIcon24(), _('DNS Upstream Resolver Analysis')],
+        ),
         E('div', { class: dnsAlertClass, style: 'margin-bottom: 12px;' }, [
           dnsAlertText,
         ]),
@@ -644,7 +656,7 @@ export function renderLeakCheckModal() {
     ),
   ]);
 
-  ui.showModal(`🛡️ ${_('Tachyon IP & DNS Leak Detection')}`, modalContent);
+  ui.showModal(_('Tachyon IP & DNS Leak Detection'), modalContent);
 
   // Auto-run test on open
   startTest();

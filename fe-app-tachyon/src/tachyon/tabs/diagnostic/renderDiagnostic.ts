@@ -1,3 +1,5 @@
+import { renderActivityIcon } from '../../../icons';
+
 export function render() {
   return E(
     'div',
@@ -19,8 +21,11 @@ export function render() {
               [
                 E(
                   'b',
-                  { class: 'tachyon_diagnostic-page__left-bar__title' },
-                  '🩺 ' + _('System Health & Subsystems'),
+                  {
+                    class: 'tachyon_diagnostic-page__left-bar__title',
+                    style: 'display:inline-flex;align-items:center;gap:7px;',
+                  },
+                  [renderActivityIcon(16), _('System Health & Subsystems')],
                 ),
                 E(
                   'span',
