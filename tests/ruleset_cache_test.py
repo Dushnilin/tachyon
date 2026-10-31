@@ -20,14 +20,14 @@ def leaf(entries):
     return page + values
 
 
-def record(payload, version=2):
+def record(payload, version=2, updated=0):
     size = len(payload)
     varint = bytearray()
     while size >= 128:
         varint.append((size & 127) | 128)
         size >>= 7
     varint.append(size)
-    return bytes([version]) + varint + payload + bytes(8)
+    return bytes([version]) + varint + payload + struct.pack('>Q', updated)
 
 
 class CacheTest(unittest.TestCase):
@@ -39,6 +39,7 @@ class CacheTest(unittest.TestCase):
         self.config = self.root / 'config.json'
         self.url = 'https://example.test/zapret.srs?rev=2'
         self.payload = b'SRS\x02' + b'current-list' * 500
+        self.saved_at = 0
         self.settings = {
             'route': {'rule_set': [{'type': 'remote', 'tag': 'custom-r2-ruleset',
                                     'url': self.url, 'format': 'binary'}]},
@@ -53,7 +54,7 @@ class CacheTest(unittest.TestCase):
         # A stale duplicate occurs first in the physical file, outside the live tree.
         store(2, leaf([(1, b'rule_set', bucket(3))]))
         store(3, leaf([(0, b'custom-r2-ruleset', record(b'SRS\x02old-list'))]))
-        live = leaf([(0, b'custom-r2-ruleset', record(self.payload))])
+        live = leaf([(0, b'custom-r2-ruleset', record(self.payload, updated=self.saved_at))])
         store(5, live)
         rules_bucket = bucket(0) + live if inline else bucket(5)
         if branch:
@@ -182,6 +183,14 @@ class CacheTest(unittest.TestCase):
 
     def test_missing_native_cache_can_use_current_source(self):
         payload = self.provider(modified=None)
+        self.assertEqual(self.extract(), payload)
+
+    def test_304_timestamp_newer_than_live_provider_does_not_validate_old_content(self):
+        # A manual refresh can leave old content on disk; a later 304 touches
+        # that record's date without changing its payload (core 0.2.6/0.2.7).
+        self.saved_at = 1793447040  # 2026-10-31 11:44:00 UTC
+        self.database()
+        payload = self.provider()
         self.assertEqual(self.extract(), payload)
 
     def test_remote_publication_newer_than_loaded_provider_requires_update(self):

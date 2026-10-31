@@ -51,7 +51,9 @@ function current_payload(config, selected, cached) {
         let updated = iso_timestamp(provider?.updatedAt);
         if (provider != null && updated == null)
             die("core API did not report the loaded rule-set timestamp");
-        if (cached != null && (updated == null || cached.updated >= updated)) {
+        // A 304 after a manual API refresh can touch an older payload's date.
+        // A timestamp newer than the live provider does not validate its content.
+        if (cached != null && (updated == null || cached.updated == updated)) {
             if (updated == null)
                 warn("Loaded rule-set revision could not be verified against the core API.\n");
             fs.rmdir(folder);
