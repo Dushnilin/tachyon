@@ -53,6 +53,7 @@ const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
 const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/tachyon_core/priority.uc";
 const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/tachyon_core/dns_failover.uc";
 const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("TACHYON_UI_COMPONENT_ACTION_DIR") || "/var/run/tachyon/component-actions";
+const AUTO_UPDATE_PENDING_FILE = COMPONENT_JOB_DIR + "/.auto-update-pending";
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = getenv("TACHYON_COMPONENT_UPDATE_CHECK_CACHE_DIR") || RUNTIME_STATE_DIR + "/component-update-checks";
 const COMPONENT_UPDATE_CHECK_STATE_FILE = getenv("TACHYON_COMPONENT_UPDATE_CHECK_STATE_FILE") || RUNTIME_STATE_DIR + "/component-update-check.timestamp";
 const COMPONENT_UPDATE_CHECK_LOCK_DIR = getenv("TACHYON_COMPONENT_UPDATE_CHECK_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-update-check.lock";
@@ -611,7 +612,7 @@ function settings_component_update_check_interval(settings) {
 
 function normalize_component_name(component) {
     component = as_string(component);
-    if (component == "sing-box" || component == "singbox")
+    if (component == "sing-box" || component == "singbox" || component == "tachyon-core" || component == "tachyon_core" || component == "tachyoncore")
         return "sing_box";
     if (component == "tachyon")
         return "tachyon";
@@ -1873,46 +1874,7 @@ function component_fallback_job_state(component, action, message, exit_code, upd
     };
 }
 
-function finish_component_job(path, component, action, exit_code, output_file) {
-    let updated_at = now_seconds();
-    let value = output_json_object(output_file);
-    let ok;
 
-    if (type(value) == "object") {
-        value.running = false;
-        value.kind = "component";
-        value.exit_code = arg_number(exit_code);
-        value.updated_at = updated_at;
-        update_component_check_cache_from_action(value);
-        ok = write_state_file(path, value);
-    }
-    else {
-        // No JSON at all means the worker really did die before printing its
-        // result. Its stderr, kept out of the result channel above, holds the
-        // reason; fall back to the result file only if stderr is empty.
-        let raw_output = file_last_nonblank_line_value(output_file + ".stderr", "", 240);
-        if (raw_output == "")
-            raw_output = file_last_nonblank_line_value(output_file, "", 240);
-        let log_file = substr(output_file, 0, length(output_file) - 4) + ".log";
-        if (raw_output == "" && file_exists_value(log_file))
-            raw_output = file_last_nonblank_line_value(log_file, "", 240);
-        let is_success = arg_number(exit_code) == 0;
-        if (raw_output == "")
-            raw_output = is_success ? sprintf("%s %s completed successfully", component, action) : "Failed to execute";
-        let state = component_fallback_job_state(component, action, raw_output, exit_code, updated_at);
-        if (is_success) {
-            state.success = true;
-            state.status = "latest";
-            state.changed = 1;
-        }
-        ok = write_state_file(path, state);
-    }
-
-    remove_file(output_file);
-    remove_file(output_file + ".stderr");
-    remove_file(output_file + ".json");
-    return ok;
-}
 
 function component_worker_env() {
     let env = {
@@ -1952,32 +1914,7 @@ function launch_component_worker(args) {
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 
-function component_action_worker(state_file, output_file, component, action, extra) {
-    component = normalize_component_name(component);
-    // stderr gets its own file instead of being merged into the result channel.
-    // Merging put apk/opkg warnings and init-script chatter into the same file as
-    // the JSON result - the whole-file parse then failed, the line scan found no
-    // object, and a successful action was reported to the UI as "Failed to
-    // execute" with the tail of a log as its message.
-    let worker_env = component_worker_env();
-    worker_env.UPDATES_JOB_LOG = substr(output_file, 0, length(output_file) - 4) + ".log";
-    worker_env.UPDATES_JOB_STATE_FILE = state_file;
-    let action_args = [
-        "ucode",
-        "-L", LIB_DIR,
-        LIB_DIR + "/components/action.uc",
-        "component-action",
-        as_string(component),
-        as_string(action)
-    ];
-    if (as_string(extra || "") != "")
-        push(action_args, as_string(extra));
-    let command = command_env(worker_env) + " " +
-        command_from_args(action_args) + " >" + shell_quote(output_file) + " 2>" + shell_quote(output_file + ".stderr");
-    let status = command_status(command);
 
-    finish_component_job(state_file, component, action, status, output_file);
-}
 
 function component_action_async_job(component, action, extra) {
     component = normalize_component_name(component);
@@ -2118,6 +2055,27 @@ function run_automatic_component_update_check(component) {
     return cache_component_update_check_result(value, true);
 }
 
+function mark_job_as_auto_update(job_id, component, target_version, prev_version) {
+    let pending_data = {
+        job_id: as_string(job_id),
+        component: as_string(component),
+        previous_version: as_string(prev_version || ""),
+        target_version: as_string(target_version || ""),
+        timestamp: now_seconds()
+    };
+    write_file(AUTO_UPDATE_PENDING_FILE, sprintf("%J\n", pending_data));
+
+    let state_file = component_job_state_path_value(job_id);
+    if (state_file != "") {
+        let st = object_or_empty(read_json_file(state_file));
+        st.is_auto_update = true;
+        st.previous_version = as_string(prev_version || "");
+        if (as_string(target_version || "") != "")
+            st.target_version = as_string(target_version);
+        write_state_file(state_file, st);
+    }
+}
+
 function trigger_component_auto_update(component, target_version) {
     component = normalize_component_name(component);
     if (component_has_running_job()) {
@@ -2126,12 +2084,163 @@ function trigger_component_auto_update(component, target_version) {
     }
 
     log_message("[auto-update] Initiating automatic update for " + component + (target_version != "" ? " to version " + target_version : ""), "info");
+    let cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
+    let prev_version = cached.current_version || "";
     let res = component_action_async_job(component, "install");
     if (!res.success) {
         log_message("[auto-update] Failed to start auto-update for " + component + ": " + res.message, "error");
         return false;
     }
+    mark_job_as_auto_update(res.job_id, component, target_version, prev_version);
     return true;
+}
+
+function notify_component_auto_updated(component, prev_version, new_version) {
+    let cmd = command_from_args([
+        BIN_PATH,
+        "telegram",
+        "notify-auto-update",
+        as_string(component),
+        as_string(prev_version || ""),
+        as_string(new_version || "")
+    ]);
+    command_status(common.background_command(cmd));
+}
+
+function continue_component_auto_update(completed_component) {
+    let settings = uci_settings();
+    if (!settings_component_auto_update_enabled(settings))
+        return;
+
+    let norm_completed = normalize_component_name(completed_component);
+    let checked_components = automatic_component_check_names();
+    let start_idx = 0;
+    for (let i = 0; i < length(checked_components); i++) {
+        if (normalize_component_name(checked_components[i]) == norm_completed) {
+            start_idx = i + 1;
+            break;
+        }
+    }
+
+    for (let i = start_idx; i < length(checked_components); i++) {
+        let comp = checked_components[i];
+        if (!component_is_auto_update_target(settings, comp))
+            continue;
+
+        let ok = run_automatic_component_update_check(comp);
+        if (!ok) {
+            log_message("[auto-update] Fresh update check failed for " + comp + ", skipping", "warn");
+            continue;
+        }
+        let cached = object_or_empty(read_json_file(component_update_check_cache_path(comp)));
+        if (cached.status == "outdated" || cached.status == "outdated_same_release") {
+            log_message("[auto-update] Continuing auto-update cycle for next component: " + comp, "info");
+            if (trigger_component_auto_update(comp, cached.latest_version)) {
+                break;
+            }
+        }
+    }
+}
+
+function finish_component_job(path, component, action, exit_code, output_file) {
+    let updated_at = now_seconds();
+    let value = output_json_object(output_file);
+    let ok;
+
+    let prior_state = object_or_empty(read_json_file(path));
+    let pending = object_or_empty(read_json_file(AUTO_UPDATE_PENDING_FILE));
+    let is_auto_update = (prior_state.is_auto_update === true) || (pending.component == component);
+    let prev_version = prior_state.previous_version || pending.previous_version || "";
+    if (pending.component == component)
+        remove_file(AUTO_UPDATE_PENDING_FILE);
+
+    if (type(value) == "object") {
+        value.running = false;
+        value.kind = "component";
+        value.exit_code = arg_number(exit_code);
+        value.updated_at = updated_at;
+        if (is_auto_update) {
+            value.is_auto_update = true;
+            if (prev_version != "")
+                value.previous_version = prev_version;
+        }
+        update_component_check_cache_from_action(value);
+        ok = write_state_file(path, value);
+    }
+    else {
+        // No JSON at all means the worker really did die before printing its
+        // result. Its stderr, kept out of the result channel above, holds the
+        // reason; fall back to the result file only if stderr is empty.
+        let raw_output = file_last_nonblank_line_value(output_file + ".stderr", "", 240);
+        if (raw_output == "")
+            raw_output = file_last_nonblank_line_value(output_file, "", 240);
+        let log_file = substr(output_file, 0, length(output_file) - 4) + ".log";
+        if (raw_output == "" && file_exists_value(log_file))
+            raw_output = file_last_nonblank_line_value(log_file, "", 240);
+        let is_success = arg_number(exit_code) == 0;
+        if (raw_output == "")
+            raw_output = is_success ? sprintf("%s %s completed successfully", component, action) : "Failed to execute";
+        let state = component_fallback_job_state(component, action, raw_output, exit_code, updated_at);
+        if (is_success) {
+            state.success = true;
+            state.status = "latest";
+            state.changed = 1;
+        }
+        if (is_auto_update) {
+            state.is_auto_update = true;
+            if (prev_version != "")
+                state.previous_version = prev_version;
+        }
+        ok = write_state_file(path, state);
+    }
+
+    remove_file(output_file);
+    remove_file(output_file + ".stderr");
+    remove_file(output_file + ".json");
+
+    let is_job_success = (type(value) == "object" && value.success === true && arg_number(exit_code) == 0) ||
+        (type(value) != "object" && arg_number(exit_code) == 0);
+
+    if (is_auto_update && is_job_success) {
+        let new_ver = "";
+        if (type(value) == "object")
+            new_ver = as_string(value.current_version || value.latest_version || "");
+        if (new_ver == "") {
+            let cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
+            new_ver = as_string(cached.current_version || cached.latest_version || "");
+        }
+        notify_component_auto_updated(component, prev_version, new_ver);
+        continue_component_auto_update(component);
+    }
+
+    return ok;
+}
+
+function component_action_worker(state_file, output_file, component, action, extra) {
+    component = normalize_component_name(component);
+    // stderr gets its own file instead of being merged into the result channel.
+    // Merging put apk/opkg warnings and init-script chatter into the same file as
+    // the JSON result - the whole-file parse then failed, the line scan found no
+    // object, and a successful action was reported to the UI as "Failed to
+    // execute" with the tail of a log as its message.
+    let worker_env = component_worker_env();
+    worker_env.UPDATES_JOB_LOG = substr(output_file, 0, length(output_file) - 4) + ".log";
+    worker_env.UPDATES_JOB_STATE_FILE = state_file;
+    let action_args = [
+        "ucode",
+        "-L", LIB_DIR,
+        LIB_DIR + "/components/action.uc",
+        "component-action",
+        as_string(component),
+        as_string(action)
+    ];
+    if (as_string(extra || "") != "")
+        push(action_args, as_string(extra));
+    let command = command_env(worker_env) + " " +
+        command_from_args(action_args) + " >" + shell_quote(output_file) + " 2>" + shell_quote(output_file + ".stderr");
+    let status = command_status(command);
+
+    finish_component_job(state_file, component, action, status, output_file);
 }
 
 function component_auto_update_apply() {

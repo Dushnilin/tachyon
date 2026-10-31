@@ -266,6 +266,60 @@ function notify_updates_cli() {
     return 0;
 }
 
+function notify_auto_update_cli(component, old_ver, new_ver) {
+    let cfg = settings();
+    if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 0;
+    if (cfg.notify_auto_update == "0") return 0;
+
+    component = as_string(component || "");
+    old_ver = as_string(old_ver || "");
+    new_ver = as_string(new_ver || "");
+
+    let title = component;
+    if (component == "sing_box" || component == "sing-box" || component == "singbox") {
+        let sb_variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || ""));
+        if (sb_variant == "tachyon-core" || index(sb_variant, "tachyon") >= 0) {
+            title = "tachyon-core";
+        } else if (sb_variant != "") {
+            title = sb_variant;
+        } else {
+            title = "sing-box";
+        }
+    } else if (component == "tachyon-core" || component == "tachyon_core") {
+        title = "tachyon-core";
+    }
+
+    let lang = cfg.language;
+    if (!lang || lang == "") {
+        try {
+            let luci_lang = uci_core.get("luci", "main", "lang");
+            if (luci_lang == "ru" || match(luci_lang, /^ru/))
+                lang = "ru";
+        } catch(e) {}
+    }
+    let local_t = i18n.bind(lang || "ru");
+
+    let msg = "🚀 <b>" + local_t("auto_update_header") + "</b>\n" +
+        local_t("component_label") + ": <code>" + escape_html(title) + "</code>\n";
+
+    if (old_ver != "" && new_ver != "" && old_ver != new_ver) {
+        msg += local_t("auto_update_from_to", "<code>" + escape_html(old_ver) + "</code>", "<code>" + escape_html(new_ver) + "</code>");
+    } else if (new_ver != "" && old_ver == new_ver) {
+        msg += local_t("auto_update_rebuild", "<code>" + escape_html(new_ver) + "</code>");
+    } else if (new_ver != "") {
+        msg += local_t("auto_update_to", "<code>" + escape_html(new_ver) + "</code>");
+    } else if (old_ver != "") {
+        msg += local_t("version_label") + ": <code>" + escape_html(old_ver) + "</code>";
+    }
+
+    let admins = split(cfg.admin_ids, /,/);
+    for (let admin in admins) {
+        let cid = trim(admin);
+        if (cid != "") send_message(cfg.bot_token, cid, msg, "HTML", null);
+    }
+    return 0;
+}
+
 function block_schedules_with_notify() {
     let result = [];
     for (let s in uci_core.sections(CONFIG_NAME, "schedule")) {
@@ -1071,6 +1125,7 @@ return {
     send_daily_digest,
     check_notified_updates,
     notify_updates_cli,
+    notify_auto_update_cli,
     block_schedules_with_notify,
     load_blocked_counts,
     save_blocked_counts,

@@ -96,6 +96,7 @@ let setting_schema = {
         notify_subscription: "notify_subscription",
         notify_cert: "notify_cert",
         notify_dns_leak: "notify_dns_leak",
+        notify_auto_update: "notify_auto_update",
         daily_report_enabled: "daily_report_enabled",
         daily_report_hour: "daily_report_hour",
         quiet_hours_enabled: "quiet_hours_enabled",
@@ -233,6 +234,7 @@ function is_boolean_key(key) {
              "download_lists_via_proxy", "download_components_via_proxy", "dont_touch_dhcp",
              "isolate_p2p", "exclude_ntp", "route_router_traffic", "shutdown_correctly", "smart_detect",
              "notify_crash", "notify_restart", "notify_server_switch", "notify_subscription", "notify_cert", "notify_dns_leak",
+             "notify_auto_update",
              "daily_report_enabled", "quiet_hours_enabled", "match_all"];
     for (let x in b) if (x == key) return true;
     return false;

@@ -3789,7 +3789,8 @@ function createSettingsContent(section, capabilities) {
   );
   o.depends('component_auto_update_enabled', '1');
   o.value('all', _('All components'));
-  o.value('tachyon', _('Tachyon Core'));
+  o.value('tachyon', _('Tachyon'));
+  o.value('tachyon-core', _('Tachyon Core'));
   o.value('luci_app_tachyon', _('LuCI Web UI'));
   o.value('sing_box', _('sing-box'));
   o.value('zapret', _('Zapret'));
@@ -5075,6 +5076,19 @@ function createTelegramContent(section) {
     'notify_dns_leak',
     _('Notify on DNS Leaks'),
     _('Send a Telegram notification if a potential DNS leak is detected.'),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_auto_update',
+    _('Notify on Automatic Updates'),
+    _(
+      'Send a Telegram notification when components are automatically updated.',
+    ),
   );
   o.depends('enabled', '1');
   o.retain = true;
