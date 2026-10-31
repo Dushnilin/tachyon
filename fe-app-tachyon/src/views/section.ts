@@ -16644,17 +16644,21 @@ async function readRulesetFile(path) {
   return null;
 }
 
-async function findCachedSrsFile(secName, community) {
+async function findCachedRulesetFile(secName, community, skipped = []) {
   const candidates = [
+    `/tmp/tachyon-core/rulesets/community-${community}.trs`,
+    `/tmp/sing-box/rulesets/community-${community}.trs`,
+    `/etc/tachyon/rulesets/community-${community}.trs`,
     `/tmp/tachyon-core/rulesets/community-${community}.srs`,
     `/tmp/sing-box/rulesets/community-${community}.srs`,
     `/etc/tachyon/rulesets/community-${community}.srs`,
   ];
 
-  for (const srsPath of candidates) {
-    const st = await fs.stat(srsPath).catch(() => null);
+  for (const rulesetPath of candidates) {
+    if (skipped.includes(rulesetPath)) continue;
+    const st = await fs.stat(rulesetPath).catch(() => null);
     if (st && st.type === 'file') {
-      return srsPath;
+      return rulesetPath;
     }
   }
 
@@ -16662,9 +16666,10 @@ async function findCachedSrsFile(secName, community) {
 }
 
 async function matchCommunityList(secName, community, query, type) {
-  const srsPath = await findCachedSrsFile(secName, community);
+  const skipped = [];
+  let rulesetPath = await findCachedRulesetFile(secName, community, skipped);
 
-  if (srsPath) {
+  while (rulesetPath) {
     const checkMatch = (res) => {
       if (!res || res.code !== 0) return false;
       const output = (res.stdout || '') + (res.stderr || '');
@@ -16677,20 +16682,27 @@ async function matchCommunityList(secName, community, query, type) {
     const matchArgs = [
       'rule-set',
       'match',
-      srsPath,
+      rulesetPath,
       ...(type === 'ip'
         ? ['--ip', query]
         : ['--domain', (query || '').toLowerCase()]),
     ];
 
+    let checked = false;
     for (const bin of [
       '/usr/bin/tachyon-core',
       '/usr/bin/sing-box',
       '/usr/sbin/sing-box',
     ]) {
       const res = await fs.exec(bin, matchArgs).catch(() => null);
+      if (res && res.code === 0) checked = true;
       if (checkMatch(res)) return true;
     }
+    // A valid negative result belongs to the current cache. Only try another
+    // format when no installed binary could read this one (e.g. TRS on sing-box).
+    if (checked) break;
+    skipped.push(rulesetPath);
+    rulesetPath = await findCachedRulesetFile(secName, community, skipped);
   }
 
   // Steer fallback: when steer is active engine, sing-box may not be installed.
