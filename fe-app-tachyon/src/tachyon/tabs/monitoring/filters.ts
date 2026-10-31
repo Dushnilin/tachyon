@@ -174,6 +174,7 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
     'reject',
     'bypass',
     'direct',
+    'dns',
   ]);
 
   sections
@@ -183,12 +184,26 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
       const sectionName = section['.name'];
       const displayName = getDisplayName(section);
       const action = normalizeString(section.action).toLowerCase();
+      const lowerName = normalizeString(sectionName).toLowerCase();
+      const lowerDisplayName = normalizeString(displayName).toLowerCase();
 
       if (!sectionName || !displayName) {
         return;
       }
 
-      if (!NON_MONITORED_ACTIONS.has(action)) {
+      const isNonMonitored =
+        NON_MONITORED_ACTIONS.has(action) ||
+        lowerName === 'block' ||
+        lowerName === 'bypass' ||
+        lowerName === 'direct' ||
+        lowerName === 'reject' ||
+        lowerName === 'dns' ||
+        lowerDisplayName === 'block' ||
+        lowerDisplayName === 'bypass' ||
+        lowerDisplayName === 'direct' ||
+        lowerDisplayName === 'dns';
+
+      if (!isNonMonitored) {
         routeSectionItems.push({ sectionName, displayName });
       }
       map[getOutboundTagBySection(sectionName)] = displayName;

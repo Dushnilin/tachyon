@@ -280,25 +280,6 @@ function renderRouteFilterOptions() {
     if (displayName) uniqueRoutes.add(displayName);
   });
 
-  const isIgnoredRoute = (name: string): boolean => {
-    const lower = name.trim().toLowerCase();
-    return (
-      lower === 'block' ||
-      lower === 'bypass' ||
-      lower === 'reject' ||
-      lower === '-'
-    );
-  };
-
-  activeConnections.forEach((conn) => {
-    const r = getRoute(conn);
-    if (r && !isIgnoredRoute(r)) uniqueRoutes.add(r);
-  });
-  closedConnections.forEach((conn) => {
-    const r = getRoute(conn);
-    if (r && !isIgnoredRoute(r)) uniqueRoutes.add(r);
-  });
-
   const routes = Array.from(uniqueRoutes).sort();
 
   if (

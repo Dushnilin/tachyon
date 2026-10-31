@@ -137,7 +137,7 @@ describe('monitoring initController', () => {
     ).toBe('Failover');
   });
 
-  it('should exclude non-monitored actions (block, bypass) from routeSections to avoid duplicates', async () => {
+  it('should exclude non-monitored actions (block, bypass, dns) from routeSections to avoid duplicates', async () => {
     const { buildRouteDisplayNames, getRouteSections } = await import(
       '../filters'
     );
@@ -151,17 +151,24 @@ describe('monitoring initController', () => {
         enabled: '1',
       } as any,
       {
-        '.name': 'block_rkn',
+        '.name': 'block',
         '.type': 'section',
-        label: 'Block RKN',
+        label: 'block',
         action: 'block',
         enabled: '1',
       } as any,
       {
-        '.name': 'bypass_ru',
+        '.name': 'ByPass',
         '.type': 'section',
-        label: 'Bypass RU',
+        label: 'ByPass',
         action: 'bypass',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'YandexDns',
+        '.type': 'section',
+        label: 'YandexDns',
+        action: 'dns',
         enabled: '1',
       } as any,
       {
