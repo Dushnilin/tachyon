@@ -280,7 +280,20 @@ function renderRouteFilterOptions() {
     if (displayName) uniqueRoutes.add(displayName);
   });
 
-  const routes = Array.from(uniqueRoutes).sort();
+  const routes = Array.from(uniqueRoutes)
+    .filter((name) => {
+      const lower = name.toLowerCase().trim();
+      return (
+        !lower.includes('block') &&
+        !lower.includes('bypass') &&
+        !lower.includes('direct') &&
+        !lower.includes('dns') &&
+        !lower.includes('failover') &&
+        lower !== 'reject' &&
+        lower !== '-'
+      );
+    })
+    .sort();
 
   if (
     selectedRouteFilter !== ALL_FILTER_VALUE &&

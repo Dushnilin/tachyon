@@ -355,6 +355,88 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     expect(onlineDots.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('excludes block, bypass, and dns sections from routing sections block on dashboard', () => {
+    const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections: [
+        {
+          code: 'block',
+          sectionName: 'block',
+          displayName: 'block',
+          action: 'block',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'ByPass',
+          sectionName: 'ByPass',
+          displayName: 'ByPass',
+          action: 'bypass',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'YandexDns',
+          sectionName: 'YandexDns',
+          displayName: 'YandexDns',
+          action: 'dns',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'dns-ai',
+          sectionName: 'dns-ai',
+          displayName: 'dns-ai',
+          action: 'dns',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'Youtube',
+          sectionName: 'Youtube',
+          displayName: 'Youtube',
+          action: 'desync',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'Discord',
+          sectionName: 'Discord',
+          displayName: 'Discord',
+          action: 'desync',
+          outbounds: [],
+          configError: false,
+        },
+      ],
+      selectedSectionCode: 'Youtube',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+    });
+
+    const wrap = createDummyElement('div');
+    blocks.forEach((b: any) => wrap.appendChild(b));
+
+    const sectionNames = wrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((el: any) => el.textContent);
+
+    expect(sectionNames).toEqual(['Youtube', 'Discord']);
+    expect(sectionNames).not.toContain('block');
+    expect(sectionNames).not.toContain('ByPass');
+    expect(sectionNames).not.toContain('YandexDns');
+    expect(sectionNames).not.toContain('dns-ai');
+  });
+
   it('mounts Tachyon Studio Deck on GridSection containers and hides legacy Forkop tables', () => {
     const containerEl = createDummyElement('div');
     const mockSectionRef = {

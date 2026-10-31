@@ -2331,6 +2331,54 @@ export function renderDashboardSectionsAndNodes(
     return [];
   }
 
+  // Исключаем block / bypass / direct / dns из блока «Секции маршрутизации» на Дашборде
+  const routingSections = sections.filter((s) => {
+    const action = (s.action || '').toLowerCase().trim();
+    const name = (s.sectionName || s.code || '').toLowerCase().trim();
+    const displayName = (s.displayName || '').toLowerCase().trim();
+    const primaryEngine = (resolveSectionEngineMeta(s).primaryEngine || '')
+      .toLowerCase()
+      .trim();
+
+    if (
+      action === 'block' ||
+      action === 'reject' ||
+      action === 'bypass' ||
+      action === 'direct' ||
+      action === 'dns'
+    ) {
+      return false;
+    }
+
+    if (
+      name.includes('block') ||
+      displayName.includes('block') ||
+      name.includes('bypass') ||
+      displayName.includes('bypass') ||
+      name.includes('direct') ||
+      displayName.includes('direct') ||
+      name === 'reject' ||
+      name === 'dns' ||
+      name.startsWith('dns-') ||
+      name.endsWith('-dns-server') ||
+      displayName === 'dns' ||
+      displayName.includes('dns') ||
+      primaryEngine === 'block' ||
+      primaryEngine === 'reject' ||
+      primaryEngine === 'bypass' ||
+      primaryEngine === 'direct' ||
+      primaryEngine === 'dns'
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (!routingSections || routingSections.length === 0) {
+    return [];
+  }
+
   const sectionsViewMode = getWidgetViewMode('routing_sections') || 'rows';
 
   // Separate proxy sections (which have selectable outbounds) and service-only sections
@@ -2347,7 +2395,7 @@ export function renderDashboardSectionsAndNodes(
     'direct',
     'dns',
   ]);
-  const proxySections = sections.filter(
+  const proxySections = routingSections.filter(
     (s) =>
       s.outbounds &&
       s.outbounds.length > 0 &&
@@ -2356,7 +2404,7 @@ export function renderDashboardSectionsAndNodes(
       !resolveSectionEngineMeta(s).isDpiOnly,
   );
 
-  const sectionItems = sections.map((section) => {
+  const sectionItems = routingSections.map((section) => {
     const visual = getSectionVisualMeta(section);
     const engineMeta = resolveSectionEngineMeta(section);
     const stats = getSectionStats(section);

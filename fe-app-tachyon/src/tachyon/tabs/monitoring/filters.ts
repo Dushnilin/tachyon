@@ -193,15 +193,18 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
 
       const isNonMonitored =
         NON_MONITORED_ACTIONS.has(action) ||
-        lowerName === 'block' ||
-        lowerName === 'bypass' ||
-        lowerName === 'direct' ||
+        lowerName.includes('block') ||
+        lowerDisplayName.includes('block') ||
+        lowerName.includes('bypass') ||
+        lowerDisplayName.includes('bypass') ||
+        lowerName.includes('direct') ||
+        lowerDisplayName.includes('direct') ||
+        lowerName.includes('dns') ||
+        lowerDisplayName.includes('dns') ||
+        lowerName.includes('failover') ||
+        lowerDisplayName.includes('failover') ||
         lowerName === 'reject' ||
-        lowerName === 'dns' ||
-        lowerDisplayName === 'block' ||
-        lowerDisplayName === 'bypass' ||
-        lowerDisplayName === 'direct' ||
-        lowerDisplayName === 'dns';
+        lowerDisplayName === 'reject';
 
       if (!isNonMonitored) {
         routeSectionItems.push({ sectionName, displayName });
