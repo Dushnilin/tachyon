@@ -2110,8 +2110,10 @@ function run_automatic_component_update_check(component) {
     let value = output_json_object(output_file);
     remove_file(output_file);
 
-    if (status != 0 || !component_update_check_result_cacheable(value))
+    if (status != 0 || !component_update_check_result_cacheable(value)) {
+        remove_file(component_update_check_cache_path(component));
         return false;
+    }
 
     return cache_component_update_check_result(value, true);
 }
@@ -2148,7 +2150,11 @@ function component_auto_update_apply() {
         let cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
         let cache_age = now - int(cached.updated_at || 0);
         if (cached.status == null || cached.status == "" || cache_age < 0 || cache_age >= 900) {
-            run_automatic_component_update_check(component);
+            let ok = run_automatic_component_update_check(component);
+            if (!ok) {
+                log_message("[auto-update] Fresh update check failed for " + component + ", skipping", "warn");
+                continue;
+            }
             cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
         }
         if (cached.status == "outdated" || cached.status == "outdated_same_release") {

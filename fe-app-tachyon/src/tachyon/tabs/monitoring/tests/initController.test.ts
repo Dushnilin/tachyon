@@ -136,4 +136,47 @@ describe('monitoring initController', () => {
       } as any),
     ).toBe('Failover');
   });
+
+  it('should exclude non-monitored actions (block, bypass) from routeSections to avoid duplicates', async () => {
+    const { buildRouteDisplayNames, getRouteSections } = await import(
+      '../filters'
+    );
+
+    buildRouteDisplayNames([
+      {
+        '.name': 'my_vpn',
+        '.type': 'section',
+        label: 'My VPN',
+        action: 'connection',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'block_rkn',
+        '.type': 'section',
+        label: 'Block RKN',
+        action: 'block',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'bypass_ru',
+        '.type': 'section',
+        label: 'Bypass RU',
+        action: 'bypass',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'zapret_yt',
+        '.type': 'section',
+        label: 'Zapret YouTube',
+        action: 'zapret2',
+        enabled: '1',
+      } as any,
+    ]);
+
+    const sections = getRouteSections();
+    expect(sections.map((s) => s.displayName)).toEqual([
+      'Zapret YouTube',
+      'My VPN',
+    ]);
+  });
 });

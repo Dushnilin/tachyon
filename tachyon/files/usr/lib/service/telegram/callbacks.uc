@@ -963,9 +963,21 @@ function dispatch_command(token, chat_id, text, msg_id) {
             return;
         }
         let comp_title = rendering.component_display_title(comp);
-        if (msg_id) edit_message(token, chat_id, msg_id, "⏳ <b>" + t("update_component_title") + " " + escape_html(comp_title) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
-        else send_message(token, chat_id, "⏳ <b>" + t("update_component_title") + " " + escape_html(comp_title) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
-        command_status(command_from_args(["/usr/bin/tachyon", "component_action_async", comp, "install"]));
+        let res = command_capture(command_from_args(["/usr/bin/tachyon", "component_action_async", comp, "install"]));
+        let parsed = null;
+        if (res && res.output != "") {
+            try { parsed = json(res.output); } catch (e) {}
+        }
+        if (res && res.status == 0 && parsed && parsed.success === true) {
+            let ok_text = "⏳ <b>" + t("update_component_title") + " " + escape_html(comp_title) + "...</b>\n" + t("update_bg_hint");
+            if (msg_id) edit_message(token, chat_id, msg_id, ok_text, "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
+            else send_message(token, chat_id, ok_text, "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
+            return;
+        }
+        let err_msg = (parsed && parsed.message) ? parsed.message : "Failed to start update job";
+        let fail_text = "❌ <b>" + t("update_component_title") + " " + escape_html(comp_title) + ": " + t("action_failed") + "</b>\n" + escape_html(err_msg);
+        if (msg_id) edit_message(token, chat_id, msg_id, fail_text, "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
+        else send_message(token, chat_id, fail_text, "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         return;
     }
     

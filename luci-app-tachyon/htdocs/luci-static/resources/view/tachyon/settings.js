@@ -1783,6 +1783,8 @@ function createMenuTabsOrderWidget(option, section_id) {
         else if (t.id === "profile") optKey = "show_tab_profiles";
         else if (t.id === "schedule") optKey = "show_tab_parental";
         const next = visibility[t.id] ? "1" : "0";
+        // uci.get returns undefined for an option that was never set, which is
+        // not the same as "0" and must not be read as a match.
         const prev = uci.get(UCI_PACKAGE, section_id, optKey);
         if (prev !== next) {
           uci.set(UCI_PACKAGE, section_id, optKey, next);

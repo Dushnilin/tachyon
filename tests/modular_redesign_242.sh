@@ -664,6 +664,61 @@ if (length(leaked_srcs) != 0) {
     warn("Expected 0 effective outbound sources on section with empty balancer, got: " + sprintf("%J", leaked_srcs) + "\n");
     exit(1);
 }
+
+// Issue #277: URLTest balancer referencing outbound_group must keep group candidate tags
+connections.set_item_sections_from_data({
+    outbound_source: [
+        {
+            ".name": "src_pool_277",
+            ".type": "outbound_source",
+            enabled: "1",
+            source_type: "manual",
+            proxy_links: [
+                "vless://11111111-1111-1111-1111-111111111111@198.51.100.1:443?security=none#ServerA",
+                "vless://22222222-2222-2222-2222-222222222222@198.51.100.2:443?security=none#ServerB"
+            ]
+        }
+    ],
+    outbound_group: [
+        {
+            ".name": "grp_all_277",
+            ".type": "outbound_group",
+            enabled: "1",
+            group_type: "auto",
+            filter_mode: "disabled"
+        }
+    ],
+    balancer: [
+        {
+            ".name": "bal_grp_urltest_277",
+            ".type": "balancer",
+            enabled: "1",
+            balancer_type: "urltest",
+            group_refs: [ "grp_all_277" ]
+        }
+    ],
+    section: [
+        {
+            ".name": "SecGroupBal277",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            outbound_source_refs: [ "src_pool_277" ],
+            balancer_refs: [ "bal_grp_urltest_277" ]
+        }
+    ]
+});
+let gen_routes = require("tachyon_core.generator_routes");
+let filtered_277 = gen_routes.urltest_filtered_outbounds(
+    { ".name": "SecGroupBal277", ".type": "section", action: "connection" },
+    "bal_grp_urltest_277",
+    [ "ServerA", "ServerB" ],
+    { outboundMetadata: { names: { ServerA: "ServerA", ServerB: "ServerB" } } }
+);
+if (length(filtered_277) != 2) {
+    warn("Issue #277: Expected 2 candidate outbounds in urltest_filtered_outbounds with group_refs, got: " + sprintf("%J", filtered_277) + "\n");
+    exit(1);
+}
 UCODE
 
 cat >"$WORK_DIR/all_disabled_sections.json" <<'JSON'

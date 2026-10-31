@@ -602,7 +602,7 @@ function restart_tachyon_after_successful_change() {
     if (!tachyon_was_running) {
         updates_log("Tachyon was not running before component change; restart skipped");
         prepare_sing_box_service_disabled();
-        return;
+        return true;
     }
 
     // Clear any stuck flock holders or pending rc.common waits
@@ -621,16 +621,16 @@ function restart_tachyon_after_successful_change() {
     if (!tachyon_stopped_for_sing_box_change && file_exists(BIN_PATH) && tachyon_status_running_with_timeout()) {
         let reloaded = run_logged("Reloading Tachyon after successful component change", command_from_args([ BIN_PATH, "reload", "force" ]), 300);
         if (reloaded)
-            return;
+            return true;
         updates_log("Tachyon reload returned non-zero; falling back to full restart", "warn");
     }
 
     let target_bin = file_exists(BIN_PATH) ? BIN_PATH : SERVICE_INIT;
     if (!file_exists(target_bin))
-        return;
+        return false;
 
     let action_name = tachyon_status_running_with_timeout() ? "restart" : "start";
-    run_logged("Restarting Tachyon after successful component change", command_from_args([ target_bin, action_name ]), 300);
+    return run_logged("Restarting Tachyon after successful component change", command_from_args([ target_bin, action_name ]), 300);
 }
 
 function stop_tachyon_before_sing_box_change() {
@@ -2615,11 +2615,16 @@ function install_tachyon_core(action, target_tag) {
             write_file("/etc/tachyon/tachyon-core-version", normalize_sing_box_version(new_version) + "\n");
         install_managed_sing_box_service_script();
         clear_sing_box_cache_if_needed(current_variant, label);
-        restart_tachyon_after_successful_change();
+        let restart_ok = restart_tachyon_after_successful_change();
         remove_file(backup_binary);
         clear_version_caches();
         updates_log("Installed " + label + " " + (new_version != "" ? new_version : "unknown"));
-        action_success("sing_box", action, label + " has been installed", new_version, latest_version, 1, "latest", release.release_url);
+        if (!restart_ok && tachyon_was_running) {
+            updates_log("Installed " + label + " " + new_version + ", but Tachyon failed to restart", "warn");
+            action_fail("sing_box", action, label + " installed, but service restart failed", new_version, latest_version);
+        } else {
+            action_success("sing_box", action, label + " has been installed", new_version, latest_version, 1, "latest", release.release_url);
+        }
     }
 
     // The member is named after the build, not "sing-box", so it is found by

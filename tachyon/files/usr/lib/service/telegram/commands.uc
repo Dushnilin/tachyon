@@ -1120,6 +1120,7 @@ function exec_check_updates(token, chat_id, msg_id) {
             let data = json(out);
             let results = data.results || [];
             let has_updates = false;
+            let has_errors = false;
             if (!data.enabled && length(results) == 0) {
                 text += t("updates_disabled");
             } else if (length(results) == 0) {
@@ -1135,6 +1136,7 @@ function exec_check_updates(token, chat_id, msg_id) {
                     if (lat == "") lat = "?";
                     if (!comp.success) {
                         text += "• <b>" + escape_html(title) + "</b> (<code>" + escape_html(cur) + "</code>): ❌ " + t("update_check_error") + "\n";
+                        has_errors = true;
                     } else if (comp.status == "outdated_same_release") {
                         let transition = build_transition(comp);
                         text += "• <b>" + escape_html(title) + "</b>: <code>" + escape_html(cur) + "</code> — " + t("update_new_release_build") +
@@ -1163,7 +1165,8 @@ function exec_check_updates(token, chat_id, msg_id) {
                         text += "• <b>" + escape_html(title) + "</b>: <code>" + escape_html(cur) + "</code> ✅\n";
                     }
                 }
-                if (!has_updates) text += "\n✅ " + t("update_all_current");
+                if (!has_updates && !has_errors) text += "\n✅ " + t("update_all_current");
+                else if (!has_updates && has_errors) text += "\n⚠️ " + t("update_some_checks_failed");
             }
         } catch(e) {
             text += "❌ " + t("update_cache_parse_error") + " " + e;
@@ -1203,14 +1206,24 @@ function exec_run_check_updates(token, chat_id, msg_id) {
     command_status(command_from_args([ "mkdir", "-p", cache_dir ]));
     for (let comp in components) {
         let res = command_capture(command_from_args([ BIN_PATH, "component_action", comp, "check_update" ]));
+        let written = false;
         if (res && res.status == 0 && res.output != "") {
             try {
                 let parsed = json(res.output);
-                if (type(parsed) == "object" && parsed.success === true) {
+                if (type(parsed) == "object") {
                     parsed.updated_at = time();
                     common.write_json_file(cache_dir + "/" + comp + ".json", parsed, 2);
+                    written = true;
                 }
             } catch (e) {}
+        }
+        if (!written) {
+            common.write_json_file(cache_dir + "/" + comp + ".json", {
+                success: false,
+                component: comp,
+                error: (res && res.output != "") ? trim(res.output) : "Check failed",
+                updated_at: time()
+            }, 2);
         }
     }
     return exec_check_updates(token, chat_id, msg_id);

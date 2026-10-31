@@ -784,58 +784,105 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
             for (let t in filter_tags_by_group_spec(urltest_candidate_tags, gspec, state))
                 push(union_cand, t);
         }
-        if (length(union_cand) > 0)
-            urltest_candidate_tags = unique_string_array(union_cand);
+        urltest_candidate_tags = unique_string_array(union_cand);
+        if (length(urltest_candidate_tags) == 0)
+            return [];
     }
     let inc_prefixes = connections.urltest_include_prefixes(section, urltest_id);
     let exc_prefixes = connections.urltest_exclude_prefixes(section, urltest_id);
+    let inc_countries = connections.urltest_include_countries(section, urltest_id);
+    let inc_outbounds = connections.urltest_include_outbounds(section, urltest_id);
+    let inc_regex = connections.urltest_include_regex(section, urltest_id);
+    let inc_proxy_parameters = connections.urltest_include_proxy_parameters(section, urltest_id);
+    let inc_protocols = connections.urltest_include_protocols(section, urltest_id);
+    let inc_transports = connections.urltest_include_transports(section, urltest_id);
+    let inc_securities = connections.urltest_include_securities(section, urltest_id);
+    let inc_ports = connections.urltest_include_ports(section, urltest_id);
+
+    let has_own_includes = length(inc_prefixes) > 0 ||
+        length(inc_countries) > 0 ||
+        length(inc_outbounds) > 0 ||
+        length(inc_regex) > 0 ||
+        inc_proxy_parameters ||
+        length(inc_protocols) > 0 ||
+        length(inc_transports) > 0 ||
+        length(inc_securities) > 0 ||
+        length(inc_ports) > 0;
+
+    let exc_countries = connections.urltest_exclude_countries(section, urltest_id);
+    let exc_outbounds = connections.urltest_exclude_outbounds(section, urltest_id);
+    let exc_regex = connections.urltest_exclude_regex(section, urltest_id);
+    let exc_proxy_parameters = connections.urltest_exclude_proxy_parameters(section, urltest_id);
+    let exc_protocols = connections.urltest_exclude_protocols(section, urltest_id);
+    let exc_transports = connections.urltest_exclude_transports(section, urltest_id);
+    let exc_securities = connections.urltest_exclude_securities(section, urltest_id);
+    let exc_ports = connections.urltest_exclude_ports(section, urltest_id);
+
+    let has_own_excludes = length(exc_prefixes) > 0 ||
+        length(exc_countries) > 0 ||
+        length(exc_outbounds) > 0 ||
+        length(exc_regex) > 0 ||
+        exc_proxy_parameters ||
+        length(exc_protocols) > 0 ||
+        length(exc_transports) > 0 ||
+        length(exc_securities) > 0 ||
+        length(exc_ports) > 0;
+
+    let eff_mode = connections.urltest_filter_mode(section, urltest_id);
+    if (length(grefs) > 0 && !has_own_includes) {
+        if (has_own_excludes)
+            eff_mode = "exclude";
+        else
+            eff_mode = "disabled";
+    }
+
     if (length(inc_prefixes) > 0 || length(exc_prefixes) > 0) {
         return filter_tags_by_group_spec(urltest_candidate_tags, {
-            mode: connections.urltest_filter_mode(section, urltest_id),
+            mode: eff_mode,
             country_mode: connections.urltest_detect_server_country(section, urltest_id),
             include_prefixes: inc_prefixes,
-            include_countries: connections.urltest_include_countries(section, urltest_id),
-            include_outbounds: connections.urltest_include_outbounds(section, urltest_id),
-            include_regex: connections.urltest_include_regex(section, urltest_id),
-            include_proxy_parameters: connections.urltest_include_proxy_parameters(section, urltest_id),
-            include_protocols: connections.urltest_include_protocols(section, urltest_id),
-            include_transports: connections.urltest_include_transports(section, urltest_id),
-            include_securities: connections.urltest_include_securities(section, urltest_id),
-            include_ports: connections.urltest_include_ports(section, urltest_id),
+            include_countries: inc_countries,
+            include_outbounds: inc_outbounds,
+            include_regex: inc_regex,
+            include_proxy_parameters: inc_proxy_parameters,
+            include_protocols: inc_protocols,
+            include_transports: inc_transports,
+            include_securities: inc_securities,
+            include_ports: inc_ports,
             exclude_prefixes: exc_prefixes,
-            exclude_countries: connections.urltest_exclude_countries(section, urltest_id),
-            exclude_outbounds: connections.urltest_exclude_outbounds(section, urltest_id),
-            exclude_regex: connections.urltest_exclude_regex(section, urltest_id),
-            exclude_proxy_parameters: connections.urltest_exclude_proxy_parameters(section, urltest_id),
-            exclude_protocols: connections.urltest_exclude_protocols(section, urltest_id),
-            exclude_transports: connections.urltest_exclude_transports(section, urltest_id),
-            exclude_securities: connections.urltest_exclude_securities(section, urltest_id),
-            exclude_ports: connections.urltest_exclude_ports(section, urltest_id)
+            exclude_countries: exc_countries,
+            exclude_outbounds: exc_outbounds,
+            exclude_regex: exc_regex,
+            exclude_proxy_parameters: exc_proxy_parameters,
+            exclude_protocols: exc_protocols,
+            exclude_transports: exc_transports,
+            exclude_securities: exc_securities,
+            exclude_ports: exc_ports
         }, state);
     }
 
     return filter_candidate_outbounds(
-        connections.urltest_filter_mode(section, urltest_id),
+        eff_mode,
         urltest_candidate_tags,
         object_or_empty(object_or_empty(state.outboundMetadata).names),
         urltest_country_metadata(section, urltest_id, state),
         object_or_empty(state.outboundMetadata),
-        connections.urltest_include_outbounds(section, urltest_id),
-        connections.urltest_include_regex(section, urltest_id),
-        connections.urltest_include_countries(section, urltest_id),
-        connections.urltest_include_proxy_parameters(section, urltest_id),
-        connections.urltest_include_protocols(section, urltest_id),
-        connections.urltest_include_transports(section, urltest_id),
-        connections.urltest_include_securities(section, urltest_id),
-        connections.urltest_include_ports(section, urltest_id),
-        connections.urltest_exclude_outbounds(section, urltest_id),
-        connections.urltest_exclude_regex(section, urltest_id),
-        connections.urltest_exclude_countries(section, urltest_id),
-        connections.urltest_exclude_proxy_parameters(section, urltest_id),
-        connections.urltest_exclude_protocols(section, urltest_id),
-        connections.urltest_exclude_transports(section, urltest_id),
-        connections.urltest_exclude_securities(section, urltest_id),
-        connections.urltest_exclude_ports(section, urltest_id),
+        inc_outbounds,
+        inc_regex,
+        inc_countries,
+        inc_proxy_parameters,
+        inc_protocols,
+        inc_transports,
+        inc_securities,
+        inc_ports,
+        exc_outbounds,
+        exc_regex,
+        exc_countries,
+        exc_proxy_parameters,
+        exc_protocols,
+        exc_transports,
+        exc_securities,
+        exc_ports,
         null,
         null,
         state ? state.hiddenOutboundTags : null

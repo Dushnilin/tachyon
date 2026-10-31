@@ -169,18 +169,28 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
       ]);
     });
 
+  const NON_MONITORED_ACTIONS = new Set([
+    'block',
+    'reject',
+    'bypass',
+    'direct',
+  ]);
+
   sections
     .filter((section) => section['.type'] === 'section')
     .filter((section) => section.enabled !== '0')
     .forEach((section) => {
       const sectionName = section['.name'];
       const displayName = getDisplayName(section);
+      const action = normalizeString(section.action).toLowerCase();
 
       if (!sectionName || !displayName) {
         return;
       }
 
-      routeSectionItems.push({ sectionName, displayName });
+      if (!NON_MONITORED_ACTIONS.has(action)) {
+        routeSectionItems.push({ sectionName, displayName });
+      }
       map[getOutboundTagBySection(sectionName)] = displayName;
       map[`${sectionName}-dns-server`] = displayName;
       map[`dns-${sectionName}`] = displayName;

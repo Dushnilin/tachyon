@@ -27,7 +27,7 @@ import {
   normalizeConnectionsPayload,
   buildRouteDisplayNames,
   getRouteDisplayNameByTag,
-  getRouteDisplayNames,
+  getRouteSections,
   getRoute,
   getNetwork,
   getTargetCellParts,
@@ -274,16 +274,29 @@ function renderRouteFilterOptions() {
   if (!select) return;
 
   const uniqueRoutes = new Set<string>();
-  Object.values(getRouteDisplayNames()).forEach((name) => {
-    if (name) uniqueRoutes.add(name);
+
+  // Оставляем только наши секции маршрутизации
+  getRouteSections().forEach(({ displayName }) => {
+    if (displayName) uniqueRoutes.add(displayName);
   });
+
+  const isIgnoredRoute = (name: string): boolean => {
+    const lower = name.trim().toLowerCase();
+    return (
+      lower === 'block' ||
+      lower === 'bypass' ||
+      lower === 'reject' ||
+      lower === '-'
+    );
+  };
+
   activeConnections.forEach((conn) => {
     const r = getRoute(conn);
-    if (r && r !== '-') uniqueRoutes.add(r);
+    if (r && !isIgnoredRoute(r)) uniqueRoutes.add(r);
   });
   closedConnections.forEach((conn) => {
     const r = getRoute(conn);
-    if (r && r !== '-') uniqueRoutes.add(r);
+    if (r && !isIgnoredRoute(r)) uniqueRoutes.add(r);
   });
 
   const routes = Array.from(uniqueRoutes).sort();

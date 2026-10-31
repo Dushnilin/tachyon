@@ -3404,15 +3404,6 @@ function urltest_child(section, value) {
                 break;
             }
         }
-        let grefs = whitespace_list_value(bal, "group_refs");
-        if (length(grefs) > 0 && option(bal, "filter_mode", "") == "") {
-            let grp = outbound_group_section(grefs[0]);
-            if (grp != null) {
-                for (let k, v in grp)
-                    merged[k] = v;
-                has_base = true;
-            }
-        }
         if (has_base) {
             for (let k, v in bal)
                 merged[k] = v;
