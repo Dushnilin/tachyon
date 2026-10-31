@@ -23,6 +23,9 @@ at Direct; traffic assigned to the selected Zapret section starts at Zapret.
 Manual block, bypass and VPN rules retain their existing precedence. The generic
 fallback follows all explicit section rules. Only TCP ports 80/443 participate;
 UDP, QUIC/HTTP3, other ports and unselected Zapret sections retain their routes.
+Connector rules preserve the selected section's complete condition, including
+protocol and inverted filters. Destination-IP and rule-set conditions keep their
+original DNS resolution step; only DNS-independent conditions can run earlier.
 The additional LAN interception uses the existing Smart Detect Plus nft capture,
 after client/local/priority exclusions. Router-originated traffic is not added
 to this capture.
@@ -31,6 +34,9 @@ The connector accepts domain-form SOCKS destinations. When the core passes an
 IP instead, it buffers a bounded original HTTP header or TLS ClientHello to
 recover Host/SNI. Those bytes are forwarded unchanged to the eventual winner.
 This does not decrypt the user's TLS connection or replace its certificate.
+The sniffed name is used for selection, while excluded names and failed searches
+retain the client's original destination IP. Only a verified choice replaces it
+with a pinned address or a name resolved through the selected VPN.
 Names unavailable through sniffing, excluded domains, and local destinations
 use their original route. Root-domain expansion is intentionally not performed:
 `api.example.com` and `www.example.com` can need different paths.

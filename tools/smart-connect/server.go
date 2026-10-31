@@ -180,27 +180,32 @@ func handle(root context.Context, client net.Conn, s *selector, start string) {
 		defer stop()
 		return dialSOCKS(leg, proxyFor(s.config(), route), address, port)
 	}
-	v := choice{Route: start, Reason: "original route"}
-	if (port == 80 || port == 443) && webHost(host) && !s.excluded(host) {
-		if candidate, e := s.choose(ctx, host, port, start); e == nil {
-			v = candidate
-		}
+	eligible := func() bool {
+		return (port == 80 || port == 443) && webHost(host) && !s.excluded(host)
 	}
-	address := host
-	if v.IP != "" {
-		address = v.IP
-	}
-	upstream, err := dial(v.Route, address)
-	if err != nil && (port == 80 || port == 443) && webHost(host) && !s.excluded(host) {
-		s.invalidate(host, port, start, v)
-		if replacement, e := s.choose(ctx, host, port, start); e == nil {
-			v = replacement
-			address = host
-			if v.IP != "" {
-				address = v.IP
+	choose := func() (choice, string) {
+		v := choice{Route: start, Reason: "original route"}
+		address := original
+		if eligible() {
+			if candidate, e := s.choose(ctx, host, port, start); e == nil {
+				v = candidate
+				// Probes/cache use the sniffed name. Preserve the actual client
+				// destination on exclusion or failed selection; only a verified
+				// choice may replace it with a pinned IP or VPN-resolved name.
+				address = host
+				if v.IP != "" {
+					address = v.IP
+				}
 			}
-			upstream, err = dial(v.Route, address)
 		}
+		return v, address
+	}
+	v, address := choose()
+	upstream, err := dial(v.Route, address)
+	if err != nil && eligible() {
+		s.invalidate(host, port, start, v)
+		v, address = choose()
+		upstream, err = dial(v.Route, address)
 	}
 	if err != nil {
 		s.invalidate(host, port, start, v)

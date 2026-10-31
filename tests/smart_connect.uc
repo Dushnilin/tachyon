@@ -34,6 +34,26 @@ for(let i,r in core.route.rules){
 }
 assert(override>=0&&override<resolve,"connector selected before the original IP is resolved");
 assert(manual<override,"manual VPN rules retain precedence");
+let restricted=base();restricted.route.rules[-1].protocol="http";
+module.configure(restricted,cfg,sections);
+for(let r in restricted.route.rules)if(r.outbound=="smart-connect-zapret-out")
+    assert(r.rules[0].protocol=="http","early terminal rule must keep the complete route protocol restriction");
+let dependent=base();dependent.route.rules[-1]={type:"logical",mode:"and",rules:[
+    {inbound:["tproxy-in"],domain_suffix:["example.com"],protocol:"tls"},
+    {rule_set:"geoip-private-fixture",invert:true},
+    {source_ip_cidr:["192.168.1.0/24"],invert:true}
+],action:"route",outbound:"zapret-out"};
+let full=dependent.route.rules[-1];module.configure(dependent,cfg,sections);
+let dependentResolve=-1,dependentOverride=-1;
+for(let i,r in dependent.route.rules){
+    if(r.action=="resolve"&&r.server=="zapret-routed-dns-server")dependentResolve=i;
+    if(r.outbound=="smart-connect-zapret-out"){
+        if(dependentOverride<0)dependentOverride=i;
+        let expected=json(sprintf("%J",full));delete expected.action;delete expected.outbound;
+        assert(sprintf("%J",r.rules[0])==sprintf("%J",expected),"GeoIP and inverse conditions must be preserved verbatim");
+    }
+}
+assert(dependentOverride>dependentResolve,"destination-dependent filters must keep their preceding DNS resolution");
 let fallback=core.route.rules[-1];assert(fallback.outbound=="smart-connect-auto-out"&&fallback.network=="tcp"&&length(fallback.port)==2,"only LAN web TCP enters fallback");
 let bad={...cfg,smart_detect_chain_vpn:"zapret"};assert(module.configure(base(),bad,sections).error,"identical sections rejected");
 bad={...cfg,smart_detect_chain_vpn:"missing"};assert(module.configure(base(),bad,sections).error,"missing section rejected");

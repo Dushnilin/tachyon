@@ -61,7 +61,7 @@ if [ -n "${TACHYON_TEST_CONNECTOR:-}" ]; then
   "$TACHYON_TEST_CONNECTOR" -check -config "$WORK_DIR/helper.json"
 fi
 cat > "$WORK_DIR/fixture.json" <<'JSON'
-{"settings":{".name":"settings",".type":"settings","smart_detect":"1","smart_detect_chain":"1","smart_detect_chain_zapret":"zapret","smart_detect_chain_vpn":"proxy","dns_type":"udp","dns_server":"1.1.1.1","service_listen_address":"127.0.0.1"},"section":[{".name":"manual",".type":"section","enabled":"1","action":"bypass","domain_suffix":["manual.example"]},{".name":"proxy",".type":"section","enabled":"1","action":"connection","selector_proxy_links":["socks5://127.0.0.1:19999"],"domain_suffix":["vpn.example"]},{".name":"zapret",".type":"section","enabled":"1","action":"zapret2","domain_suffix":["zapret.example"],"routed_dns_enabled":"1","routed_dns_type":"doh","routed_dns_server":"https://1.1.1.1/dns-query"}]}
+{"settings":{".name":"settings",".type":"settings","smart_detect":"1","smart_detect_chain":"1","smart_detect_chain_zapret":"zapret","smart_detect_chain_vpn":"proxy","dns_type":"udp","dns_server":"1.1.1.1","service_listen_address":"127.0.0.1"},"section":[{".name":"manual",".type":"section","enabled":"1","action":"bypass","domain_suffix":["manual.example"]},{".name":"zapret",".type":"section","enabled":"1","action":"zapret2","domain_suffix":["zapret.example"],"protocol":["http"],"routed_dns_enabled":"1","routed_dns_type":"doh","routed_dns_server":"https://1.1.1.1/dns-query"},{".name":"proxy",".type":"section","enabled":"1","action":"connection","selector_proxy_links":["socks5://127.0.0.1:19999"],"domain_suffix":["vpn.example","zapret.example"]}]}
 JSON
 printf '%s\n' 1.14.1 > "$WORK_DIR/version"
 output="$WORK_DIR/generated.json"
@@ -69,6 +69,7 @@ mkdir -p "$output.section-cache" "$output.rulesets"
 SB_VERSION_STATE_FILE="$WORK_DIR/version" ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture "$WORK_DIR/fixture.json" "$output" 127.0.0.1 0 1
 if [ -n "${TACHYON_TEST_CORE:-}" ]; then
   "$TACHYON_TEST_CORE" check -c "$output"
+  python3 "$ROOT_DIR/tests/lib/smart_connect_precedence.py" "$TACHYON_TEST_CORE" "$output"
 fi
 ucode -e '
  let fs=require("fs"),c=json(fs.readfile(ARGV[0]));let tags={};for(let o in c.outbounds)tags[o.tag]=o;
@@ -77,6 +78,11 @@ ucode -e '
  let manual=-1,automatic=-1;
  for(let i,r in c.route.rules){if(r.outbound=="bypass-out")manual=i;if(r.outbound=="smart-connect-auto-out")automatic=i;}
  assert(manual>=0&&automatic>manual,"manual bypass retained before automatic routing");
+ let constrained=0;
+ for(let r in c.route.rules)if(r.outbound=="smart-connect-zapret-out"&&r.rules?.[0]?.domain_suffix?.[0]=="zapret.example"){
+   assert(r.rules[0].protocol=="http","complete generated section condition retained");constrained++;
+ }
+ assert(constrained>0,"generated restricted Zapret connector present");
  print("PASS: full generator fixture\n");
 ' "$output"
 for key in smart_detect_chain smart_detect_chain_zapret smart_detect_chain_vpn smart_detect_chain_budget_ms smart_detect_exclude; do

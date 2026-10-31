@@ -71,6 +71,22 @@ function web_rule(rule, outbound) {
     return {type:"logical",mode:"and",rules:[matcher(rule),{network:"tcp",port:[80,443]}],action:"route",outbound};
 }
 
+function can_match_before_resolve(rule) {
+    // Only conditions independent of the resolved destination can safely run
+    // early. Rule sets may contain IP/GeoIP predicates, including inversions;
+    // unknown future matchers retain the original DNS ordering as well.
+    let independent=["type","mode","invert","inbound","network","protocol",
+        "domain","domain_suffix","domain_keyword","domain_regex",
+        "source_ip_cidr","source_port","source_port_range","port","port_range"];
+    for(let key,value in matcher(rule)) {
+        if(key=="rules") {
+            for(let child in value)if(!can_match_before_resolve(child))return false;
+        }
+        else if(index(independent,key)<0)return false;
+    }
+    return true;
+}
+
 function configure(config, settings, sections, sources) {
     let p=plan(config,settings,sections,sources);
     if (!p || p.error) return p;
@@ -97,13 +113,17 @@ function configure(config, settings, sections, sources) {
     push(config.outbounds,{type:"socks",tag:auto_tag,server:"127.0.0.1",server_port:PORTS.auto,version:"5"});
     push(config.outbounds,{type:"socks",tag:zapret_tag,server:"127.0.0.1",server_port:PORTS.zapret,version:"5"});
     let rules=[];
-    // Insert before the selected section's resolve step, so a stale/broken
-    // resolved IP cannot preempt the connector's independent DNS/IP selection.
+    // An early terminal rule must use the complete route condition, never the
+    // deliberately broader resolve matcher. Destination-dependent predicates
+    // keep their original resolution step before selecting the connector.
     let original=config.route.rules || [];
     let index_map={};
     for (let i=0;i<length(original);i++) {
         let rule=original[i];
-        if ((rule.action=="resolve" && original[i+1]?.outbound==p.ztag) || rule.outbound==p.ztag) {
+        let next=original[i+1];
+        if(rule.action=="resolve" && next?.outbound==p.ztag && can_match_before_resolve(next))
+            push(rules,web_rule(next,zapret_tag));
+        if (rule.outbound==p.ztag) {
             push(rules,web_rule(rule,zapret_tag));
         }
         index_map[i]=length(pinned)+length(rules);
