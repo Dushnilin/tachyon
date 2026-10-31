@@ -1469,9 +1469,18 @@ function createSmartDetectSectionsWidget(section_id) {
 }
 
 function createMenuTabsOrderWidget(option, section_id) {
+  const MENU_GROUPS = [
+    { key: 'overview', title: _tr('Обзор', 'Overview') },
+    { key: 'routing', title: _tr('Маршруты', 'Routing') },
+    { key: 'clients', title: _tr('Клиенты и сеть', 'Clients & Network') },
+    { key: 'analytics', title: _tr('Аналитика', 'Analytics') },
+    { key: 'settings', title: _tr('Настройки', 'Settings') },
+  ];
+
   const ALL_MENU_TABS = [
     {
       id: 'dashboard',
+      groupKey: 'overview',
       group: _tr('Обзор', 'Overview'),
       label: _tr('Обзор (Дашборд)', 'Overview (Dashboard)'),
       desc: _tr(
@@ -1483,6 +1492,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'section',
+      groupKey: 'routing',
       group: _tr('Маршруты', 'Routing'),
       label: _tr('Секции маршрутов', 'Routing Sections'),
       desc: _tr(
@@ -1494,6 +1504,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'outbounds',
+      groupKey: 'routing',
       group: _tr('Маршруты', 'Routing'),
       label: _tr('Узлы и подписки', 'Nodes & Subscriptions'),
       desc: _tr(
@@ -1505,6 +1516,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'conditions',
+      groupKey: 'routing',
       group: _tr('Маршруты', 'Routing'),
       label: _tr('Условия трафика', 'Traffic Conditions'),
       desc: _tr(
@@ -1516,6 +1528,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'balancers',
+      groupKey: 'routing',
       group: _tr('Маршруты', 'Routing'),
       label: _tr('Балансировщики', 'Balancers'),
       desc: _tr(
@@ -1527,6 +1540,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'server',
+      groupKey: 'clients',
       group: _tr('Клиенты и сеть', 'Clients & Network'),
       label: _tr('Серверы (Inbound)', 'Inbound Servers'),
       desc: _tr(
@@ -1538,6 +1552,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'profile',
+      groupKey: 'clients',
       group: _tr('Клиенты и сеть', 'Clients & Network'),
       label: _tr('Семейные профили', 'Family Profiles'),
       desc: _tr(
@@ -1549,6 +1564,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'schedule',
+      groupKey: 'clients',
       group: _tr('Клиенты и сеть', 'Clients & Network'),
       label: _tr('Родительский контроль', 'Parental Control'),
       desc: _tr(
@@ -1560,6 +1576,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'guest_mode',
+      groupKey: 'clients',
       group: _tr('Клиенты и сеть', 'Clients & Network'),
       label: _tr('Гостевой режим', 'Guest Mode'),
       desc: _tr(
@@ -1571,6 +1588,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'diagnostic',
+      groupKey: 'analytics',
       group: _tr('Аналитика', 'Analytics'),
       label: _tr('Диагностика', 'Diagnostics'),
       desc: _tr(
@@ -1582,6 +1600,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'monitoring',
+      groupKey: 'analytics',
       group: _tr('Аналитика', 'Analytics'),
       label: _tr('Мониторинг сессий', 'Live Monitoring'),
       desc: _tr(
@@ -1593,6 +1612,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'settings_dns',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('DNS и защита', 'DNS & Protection'),
       desc: _tr(
@@ -1604,6 +1624,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'settings_network',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('Сеть и TUN', 'Network & TUN'),
       desc: _tr(
@@ -1615,6 +1636,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'settings_services',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('Сервисы и порты', 'Services & Ports'),
       desc: _tr(
@@ -1626,6 +1648,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'settings_advanced',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('Система и бэкап', 'System & Backup'),
       desc: _tr(
@@ -1637,6 +1660,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'updates',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('Компоненты и ядро', 'Components & Core'),
       desc: _tr(
@@ -1648,6 +1672,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'telegram',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('Телеграм-бот', 'Telegram Bot'),
       desc: _tr(
@@ -1659,6 +1684,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'settings_ai',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('ИИ и самоисцеление', 'AI & Self-Healing'),
       desc: _tr(
@@ -1670,6 +1696,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'settings_updates',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('Обновления списков', 'Lists & Presets'),
       desc: _tr(
@@ -1681,6 +1708,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     },
     {
       id: 'settings',
+      groupKey: 'settings',
       group: _tr('Настройки', 'Settings'),
       label: _tr('Интерфейс и меню', 'Menu & Navigation'),
       desc: _tr(
@@ -1737,16 +1765,10 @@ function createMenuTabsOrderWidget(option, section_id) {
 
   const wrapper = E('div', { id: 'menu-tabs-order-widget-' + section_id });
   const listEl = E('div', {
-    class: 'tachyon-settings-list-card',
+    class: 'tachyon-settings-tabs-groups',
   });
 
   function syncToUci() {
-    // Only write what actually differs. This ran unconditionally at the end of
-    // every widget render, so simply opening the settings page rewrote the whole
-    // tab_order list plus one show_tab_* option per tab into the UCI session -
-    // a burst of add_list operations on /etc/config/tachyon for a value that had
-    // not changed. That is flash wear for nothing, and it is what showed up in a
-    // Telegram ticket as a config change list with nothing actually changed.
     const sameOrder =
       Array.isArray(savedOrder) &&
       savedOrder.length === ordered.length &&
@@ -1763,8 +1785,6 @@ function createMenuTabsOrderWidget(option, section_id) {
         else if (t.id === 'profile') optKey = 'show_tab_profiles';
         else if (t.id === 'schedule') optKey = 'show_tab_parental';
         const next = visibility[t.id] ? '1' : '0';
-        // uci.get returns undefined for an option that was never set, which is
-        // not the same as "0" and must not be read as a match.
         const prev = uci.get(UCI_PACKAGE, section_id, optKey);
         if (prev !== next) {
           uci.set(UCI_PACKAGE, section_id, optKey, next);
@@ -1773,9 +1793,10 @@ function createMenuTabsOrderWidget(option, section_id) {
     });
   }
 
-  function renderTabRow(id, idx, totalLen) {
+  function renderTabRow(id, idxInGroup, groupLen, groupTabs) {
     const tabMeta = tabMap[id] || {
       id: id,
+      groupKey: 'routing',
       group: '',
       label: id,
       desc: '',
@@ -1783,6 +1804,7 @@ function createMenuTabsOrderWidget(option, section_id) {
     };
     const isVisible = Boolean(visibility[id]);
     const isFixed = Boolean(tabMeta.fixed);
+    const isOverview = tabMeta.groupKey === 'overview';
 
     const row = E('div', {
       class: 'tachyon-settings-list-row' + (isVisible ? '' : ' is-hidden'),
@@ -1794,11 +1816,9 @@ function createMenuTabsOrderWidget(option, section_id) {
         style:
           'font-size:0.75rem;font-weight:bold;color:var(--text-color-medium,#888);min-width:22px;text-align:center;',
       },
-      String(idx + 1),
+      String(idxInGroup + 1),
     );
 
-    // Use a <button> toggle instead of <input type="checkbox"> to avoid LuCI
-    // theme pointer-events overrides that swallow checkbox click events.
     const toggleBtn = E('button', {
       type: 'button',
       title: isFixed
@@ -1840,13 +1860,6 @@ function createMenuTabsOrderWidget(option, section_id) {
       [
         E('span', { style: 'font-weight:700;font-size:0.88rem;' }, [
           tabMeta.label,
-          tabMeta.group
-            ? E(
-                'span',
-                { class: 'tachyon-settings-group-badge' },
-                tabMeta.group,
-              )
-            : '',
           isFixed
             ? E(
                 'em',
@@ -1876,22 +1889,28 @@ function createMenuTabsOrderWidget(option, section_id) {
         class: 'btn cbi-button',
         type: 'button',
         title: _('Move Up'),
-        style:
+        style: [
           'padding:3px 9px;font-size:0.78rem;line-height:1.2;border-radius:7px;cursor:pointer;',
+          isOverview ? 'visibility:hidden;' : '',
+        ].join(''),
       },
       '▲',
     );
-    upBtn.disabled = idx === 0;
+    upBtn.disabled = isOverview || idxInGroup === 0;
     upBtn.addEventListener('click', function (ev) {
       ev.preventDefault();
-      if (idx > 0) {
-        const tmp = ordered[idx - 1];
-        ordered[idx - 1] = ordered[idx];
-        ordered[idx] = tmp;
-        syncToUci();
-        renderList();
-        if (main && typeof main.refreshTachyonAppShell === 'function') {
-          main.refreshTachyonAppShell();
+      if (!isOverview && idxInGroup > 0) {
+        const prevTabId = groupTabs[idxInGroup - 1].id;
+        const curIdx = ordered.indexOf(id);
+        const prevIdx = ordered.indexOf(prevTabId);
+        if (curIdx >= 0 && prevIdx >= 0) {
+          ordered[curIdx] = prevTabId;
+          ordered[prevIdx] = id;
+          syncToUci();
+          renderList();
+          if (main && typeof main.refreshTachyonAppShell === 'function') {
+            main.refreshTachyonAppShell();
+          }
         }
       }
     });
@@ -1902,22 +1921,28 @@ function createMenuTabsOrderWidget(option, section_id) {
         class: 'btn cbi-button',
         type: 'button',
         title: _('Move Down'),
-        style:
+        style: [
           'padding:3px 9px;font-size:0.78rem;line-height:1.2;border-radius:7px;cursor:pointer;',
+          isOverview ? 'visibility:hidden;' : '',
+        ].join(''),
       },
       '▼',
     );
-    downBtn.disabled = idx === totalLen - 1;
+    downBtn.disabled = isOverview || idxInGroup >= groupLen - 1;
     downBtn.addEventListener('click', function (ev) {
       ev.preventDefault();
-      if (idx < ordered.length - 1) {
-        const tmp = ordered[idx + 1];
-        ordered[idx + 1] = ordered[idx];
-        ordered[idx] = tmp;
-        syncToUci();
-        renderList();
-        if (main && typeof main.refreshTachyonAppShell === 'function') {
-          main.refreshTachyonAppShell();
+      if (!isOverview && idxInGroup < groupLen - 1) {
+        const nextTabId = groupTabs[idxInGroup + 1].id;
+        const curIdx = ordered.indexOf(id);
+        const nextIdx = ordered.indexOf(nextTabId);
+        if (curIdx >= 0 && nextIdx >= 0) {
+          ordered[curIdx] = nextTabId;
+          ordered[nextIdx] = id;
+          syncToUci();
+          renderList();
+          if (main && typeof main.refreshTachyonAppShell === 'function') {
+            main.refreshTachyonAppShell();
+          }
         }
       }
     });
@@ -1932,8 +1957,33 @@ function createMenuTabsOrderWidget(option, section_id) {
 
   function renderList() {
     while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
-    ordered.forEach(function (id, idx) {
-      listEl.appendChild(renderTabRow(id, idx, ordered.length));
+    MENU_GROUPS.forEach(function (group) {
+      const groupTabs = ordered
+        .map((id) => tabMap[id])
+        .filter((t) => t && t.groupKey === group.key);
+      if (groupTabs.length === 0) return;
+
+      const groupCard = E('div', {
+        class: 'tachyon-settings-list-card',
+        style: 'margin-bottom: 12px;',
+      });
+      const groupHead = E(
+        'div',
+        {
+          style:
+            'padding: 7px 12px; font-weight: 700; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-color-medium, #888); background: rgba(128, 128, 128, 0.06); border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.13));',
+        },
+        group.title,
+      );
+      groupCard.appendChild(groupHead);
+
+      groupTabs.forEach((tabMeta, idxInGroup) => {
+        groupCard.appendChild(
+          renderTabRow(tabMeta.id, idxInGroup, groupTabs.length, groupTabs),
+        );
+      });
+
+      listEl.appendChild(groupCard);
     });
   }
 
@@ -2272,143 +2322,6 @@ function createSettingsContent(section, capabilities) {
     // UCI is written directly by syncToUci() inside the widget on every interaction.
   };
   compVisOpt.remove = function () {};
-
-  // ── Dashboard Outbound Display & Navigation ──────────────────────────────
-
-  o = section.taboption(
-    'navigation',
-    form.ListValue,
-    'dashboard_country_grouping',
-    _tr('Группировка серверов по странам', 'Server Grouping by Country'),
-    _tr(
-      'Выберите способ группировки и навигации по серверам на дашборде.',
-      'Choose how servers are grouped and navigated on the Dashboard.',
-    ),
-  );
-  o.value(
-    'chips',
-    _tr('Кнопки фильтра по странам (Чипсы)', 'Country filter buttons (Chips)'),
-  );
-  o.value(
-    'accordion',
-    _tr('Группы по странам (Аккордеоны)', 'Country groups (Accordions)'),
-  );
-  o.value('none', _tr('Отключено (Общий список)', 'Disabled (Flat list)'));
-  o.default = 'chips';
-  o.rmempty = false;
-
-  o = section.taboption(
-    'navigation',
-    form.ListValue,
-    'dashboard_chips_grouping',
-    _tr('Организация чипсов стран', 'Country Chips Grouping'),
-    _tr(
-      'Выберите порядок и способ отображения чипсов стран на дашборде.',
-      'Select how country chips are organized and displayed on the Dashboard.',
-    ),
-  );
-  o.value(
-    'regions',
-    _tr(
-      'По частям света (Регионы: Европа, Азия, Америка...)',
-      'By world regions (Europe, Asia, Americas...)',
-    ),
-  );
-  o.value(
-    'smart_top',
-    _tr(
-      'Умный топ (Активная и популярные страны впереди)',
-      'Smart top (Active and popular countries first)',
-    ),
-  );
-  o.value(
-    'latency',
-    _tr('По качеству связи (Пинг первыми)', 'By latency (Best ping first)'),
-  );
-  o.value('alphabetical', _tr('По алфавиту (А–Я)', 'Alphabetical (A–Z)'));
-  o.default = 'regions';
-  o.depends('dashboard_country_grouping', 'chips');
-  o.rmempty = false;
-
-  o = section.taboption(
-    'navigation',
-    form.ListValue,
-    'dashboard_country_chips_latency_mode',
-    _tr('Отображение пинга на чипсах стран', 'Country Chips Ping Display'),
-    _tr(
-      'Выберите, какой пинг отображать на кнопках-чипсах стран при наличии нескольких серверов.',
-      'Choose which ping to display on country chip buttons when multiple servers exist in a country.',
-    ),
-  );
-  o.value(
-    'min',
-    _tr('Минимальный пинг (По умолчанию)', 'Minimum ping (Default)'),
-  );
-  o.value('max', _tr('Максимальный пинг', 'Maximum ping'));
-  o.default = 'min';
-  o.depends('dashboard_country_grouping', 'chips');
-  o.rmempty = false;
-
-  o = section.taboption(
-    'navigation',
-    form.ListValue,
-    'dashboard_sort_mode',
-    _tr('Сортировка серверов на дашборде', 'Dashboard Server Sorting'),
-    _tr(
-      'Выберите порядок сортировки серверов на дашборде.',
-      'Select the server sorting order on the Dashboard.',
-    ),
-  );
-  o.value(
-    'latency',
-    _tr('По задержке (Пинг - По умолчанию)', 'By latency (Ping - Default)'),
-  );
-  o.value(
-    'country_latency',
-    _tr('По странам, затем по задержке', 'By country, then by latency'),
-  );
-  o.value(
-    'country_alpha',
-    _tr('По алфавиту (Страна и имя)', 'Alphabetical (Country and name)'),
-  );
-  o.value(
-    'default',
-    _tr('Исходный порядок из подписки', 'Original subscription order'),
-  );
-  o.default = 'latency';
-  o.rmempty = false;
-
-  o = section.taboption(
-    'navigation',
-    form.Flag,
-    'dashboard_hover_freeze',
-    _tr(
-      'Защита от случайных кликов (Hover Freeze)',
-      'Prevent Misclicks (Hover Freeze)',
-    ),
-    _tr(
-      'Временно фиксирует позиции карточек серверов, пока курсор мыши находится над списком, предотвращая случайные клики при обновлении пинга.',
-      'Temporarily lock server card positions while the mouse cursor is over the server grid to prevent misclicks when latencies update.',
-    ),
-  );
-  o.default = '1';
-  o.rmempty = false;
-
-  o = section.taboption(
-    'navigation',
-    form.Flag,
-    'dashboard_show_subscription_metadata',
-    _tr(
-      'Показывать информацию о подписках на дашборде',
-      'Show Subscription Info on Dashboard',
-    ),
-    _tr(
-      'Отображать шапки с информацией о трафике, сроке действия и объявлениями подписок над списками серверов на дашборде.',
-      'Display subscription info headers (traffic usage, expiration date, announcements) above server lists on the Dashboard.',
-    ),
-  );
-  o.default = '1';
-  o.rmempty = false;
 
   // ── DNS Settings ────────────────────────────────────────────────────────
 

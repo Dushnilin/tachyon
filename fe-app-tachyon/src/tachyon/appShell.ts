@@ -703,6 +703,7 @@ function renderNavIcon(
 
 export interface MountAppShellOptions {
   mapEl?: HTMLElement;
+  defaultNavKey?: string;
   capabilities?: UiLanguageCapabilities;
   uiCapabilities?: UiLanguageCapabilities;
   onSelectSectionSubTab?: (subKey: string) => void;
@@ -1028,14 +1029,42 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     return activeShellState.activeNavKey || 'dashboard';
   };
 
+  const resolveDefaultNavKey = (key?: string): string => {
+    if (!key || key === 'dashboard') return 'dashboard';
+    if (key === 'section' || key === 'sections') {
+      const sub = options.getActiveSectionSubTab?.() || 'sections';
+      return `section:${sub}`;
+    }
+    if (key.startsWith('settings:')) return key;
+    if (key === 'settings') return 'settings:dns';
+    const found = NAV_ITEMS.find(
+      (i) => i.key === key || i.luciTab === key || i.uciTabId === key,
+    );
+    return found ? found.key : 'dashboard';
+  };
+
   const wasInitialized = Boolean(activeShellState.initialized);
   const hasExplicitHash =
     typeof window !== 'undefined' &&
     Boolean(window.location?.hash && window.location.hash !== '#');
-  if (!wasInitialized || !activeShellState.activeNavKey) {
+  if (!hasExplicitHash && options.defaultNavKey) {
+    const targetNavKey = resolveDefaultNavKey(options.defaultNavKey);
+    activeShellState.activeNavKey = targetNavKey;
+    const targetItem = NAV_ITEMS.find((i) => i.key === targetNavKey);
+    if (targetItem?.parentMenu) {
+      expandedMenus.add(targetItem.parentMenu);
+    }
+    saveExpandedMenus(expandedMenus);
+    activeShellState.initialized = true;
+  } else if (!wasInitialized || !activeShellState.activeNavKey) {
     if (!hasExplicitHash) {
-      activeShellState.activeNavKey = 'dashboard';
+      const targetNavKey = resolveDefaultNavKey(options.defaultNavKey);
+      activeShellState.activeNavKey = targetNavKey;
       expandedMenus.clear();
+      const targetItem = NAV_ITEMS.find((i) => i.key === targetNavKey);
+      if (targetItem?.parentMenu) {
+        expandedMenus.add(targetItem.parentMenu);
+      }
       saveExpandedMenus(expandedMenus);
     } else {
       activeShellState.activeNavKey = detectCurrentNavKey();

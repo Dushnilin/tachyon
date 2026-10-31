@@ -313,6 +313,36 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(mapEl.getAttribute('data-topbar-collapsed')).toBe('true');
   });
 
+  it('activates custom defaultNavKey and expands parent menu on initial mount', () => {
+    setUiMode('advanced');
+    const E = (globalThis as any).E;
+    const mapEl = E('div', { id: 'cbi-tachyon' }, [
+      E('ul', { class: 'cbi-tabmenu' }, [
+        E('li', { class: 'cbi-tab-disabled', 'data-tab': 'dashboard' }, [
+          E('a', { href: '#' }, 'Dashboard'),
+        ]),
+        E('li', { class: 'cbi-tab-disabled', 'data-tab': 'monitoring' }, [
+          E('a', { href: '#' }, 'Monitoring'),
+        ]),
+      ]),
+      E('div', { id: 'cbi-tachyon-dashboard', class: 'cbi-tab-disabled' }),
+      E('div', { id: 'cbi-tachyon-monitoring', class: 'cbi-tab-disabled' }),
+    ]);
+    (globalThis as any).document.body.appendChild(mapEl);
+
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'monitoring',
+    });
+
+    const subItems = mapEl.querySelectorAll('.tachyon-sidebar__subitem');
+    const monitoringItem = subItems.find(
+      (el: any) => el.getAttribute('data-nav-key') === 'monitoring',
+    );
+    expect(monitoringItem).toBeTruthy();
+    expect(monitoringItem.className).toContain('is-active');
+  });
+
   it('opens Connection Wizard modal and saves UCI entities via uci.save()', async () => {
     let modalRoot: any = null;
     const uciStore: Record<string, Record<string, any>> = {};

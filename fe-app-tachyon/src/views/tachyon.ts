@@ -1530,6 +1530,7 @@ const EntryPoint = {
       if (typeof main.mountTachyonAppShell === 'function') {
         main.mountTachyonAppShell({
           mapEl: mapEl || document.getElementById('cbi-tachyon'),
+          defaultNavKey: defaultTab,
           uiCapabilities,
           onSelectSectionSubTab: selectSectionSubTabExternal,
           getActiveSectionSubTab: () => activeSectionSubTab,
@@ -2029,6 +2030,8 @@ const EntryPoint = {
         const tabLink = document.querySelector(
           `.cbi-tab[data-tab="cbi-tachyon-${targetTabKey}"] a, ` +
             `.cbi-tab[data-tab="${targetTabKey}"] a, ` +
+            `.cbi-tab-disabled[data-tab="cbi-tachyon-${targetTabKey}"] a, ` +
+            `.cbi-tab-disabled[data-tab="${targetTabKey}"] a, ` +
             `[data-tab="cbi-tachyon-${targetTabKey}"] > a, ` +
             `[data-tab="${targetTabKey}"] > a, ` +
             `li[data-tab="cbi-tachyon-${targetTabKey}"] a, ` +
