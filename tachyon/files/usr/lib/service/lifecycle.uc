@@ -621,7 +621,17 @@ function ensure_core_binary_installed() {
     return module_status(action_uc, [ "component-action", "tachyon-core", "install" ]) == 0;
 }
 
+function ensure_smart_connect_helper() {
+    let cfg = uci_core.get_all(CONFIG_NAME, "settings") || {};
+    if (cfg.smart_detect != "1" || cfg.smart_detect_chain != "1")
+        return true;
+    return module_success(LIB_DIR + "/components/smart_connect.uc", [ "ensure" ]);
+}
+
 function validate_start_config() {
+    // Downloads happen while the previous core, DNS and VPN still work.
+    if (!ensure_smart_connect_helper())
+        return 1;
     ensure_core_binary_installed();
     // The two validator checks share the expensive context_from_runtime() assembly
     // (sing-box version, installed packages, compression markers). Running both in
@@ -1435,6 +1445,9 @@ function abort_reload(status, runtime_changed) {
 }
 
 function start() {
+    // A failed dependency download must not enter cleanup_failed_runtime().
+    if (!ensure_smart_connect_helper())
+        return 1;
     let status = start_impl();
     release_start_subscription_update_lock();
     invalidate_reload_hash();
@@ -2032,6 +2045,9 @@ function reload_tracked(reason) {
 
 function restart() {
     log_message("Restarting Tachyon", "info");
+
+    if (!ensure_smart_connect_helper())
+        return 1;
 
     let selector_state = capture_selector_state();
     invalidate_reload_hash();

@@ -2355,7 +2355,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     let smart_connect = require("tachyon_core.smart_connect");
     if (smart_connect.enabled(settings)) {
         if (fixture_uci_data == null && fs.stat(getenv("TACHYON_SMART_CONNECT_BIN") || "/usr/bin/tachyon-smart-connect") == null)
-            runtime_generate_unsupported("Install tachyon-smart-connect before enabling the Smart Detect route chain");
+            runtime_generate_unsupported("Smart Connect helper is not ready; apply settings again to retry automatic installation");
         let chain_sources=[];
         cursor.foreach(CONFIG_NAME,"outbound_source",function(source){push(chain_sources,source);});
         let chain = smart_connect.configure(config, settings, sections, chain_sources);

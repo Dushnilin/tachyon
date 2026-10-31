@@ -12383,8 +12383,8 @@ msgstr "Лимит времени на DNS и проверку IP через Zap
 msgid "Select an enabled routing section"
 msgstr "Выберите включённую секцию маршрутизации"
 
-msgid "Selects a working IP through Zapret before using the backup VPN. Decisions are cached without creating routing sections. Requires the tachyon-smart-connect helper. Applies to LAN HTTP/HTTPS over TCP; existing manual routes keep priority."
-msgstr "Выбирает рабочий IP через Zapret, затем при необходимости использует резервный VPN. Запоминает решения без создания секций. Требуется tachyon-smart-connect. Работает для HTTP/HTTPS по TCP из локальной сети; ручные маршруты сохраняют приоритет."
+msgid "Selects a working IP through Zapret before using the backup VPN. Decisions are cached without creating routing sections. The matching helper is installed automatically when settings are applied. The first download may take a few minutes. Applies to LAN HTTP/HTTPS over TCP; existing manual routes keep priority."
+msgstr "Выбирает рабочий IP через Zapret, затем при необходимости использует резервный VPN. Запоминает решения без создания секций. Помощник нужной архитектуры устанавливается автоматически при применении настроек. Первая загрузка может занять несколько минут. Работает для HTTP/HTTPS по TCP из локальной сети; ручные маршруты сохраняют приоритет."
 
 msgid "Zapret IP search budget (ms)"
 msgstr "Время поиска рабочего IP через Zapret (мс)"

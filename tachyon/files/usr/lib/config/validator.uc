@@ -2674,7 +2674,7 @@ function validate_runtime_config(context) {
         if (!match(as_string(budget),/^[0-9]+$/) || int(budget)<100 || int(budget)>10000)
             fail_requirement("Smart Detect Zapret budget must be 100..10000 milliseconds. Aborted.", "fatal");
         if (context?.smart_connect_installed === false)
-            fail_requirement("Install the architecture-specific tachyon-smart-connect helper before enabling the route chain. Aborted.", "fatal");
+            fail_requirement("Smart Connect helper is not ready. Apply settings again to retry automatic installation. Aborted.", "fatal");
     }
 
     validate_runtime_mark_ranges_context(context);

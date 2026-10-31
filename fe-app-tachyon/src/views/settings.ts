@@ -4591,7 +4591,7 @@ function createSettingsContent(section, capabilities) {
     'smart_detect_chain',
     _('Automatic Direct → Zapret → VPN'),
     _(
-      'Selects a working IP through Zapret before using the backup VPN. Decisions are cached without creating routing sections. Requires the tachyon-smart-connect helper. Applies to LAN HTTP/HTTPS over TCP; existing manual routes keep priority.',
+      'Selects a working IP through Zapret before using the backup VPN. Decisions are cached without creating routing sections. The matching helper is installed automatically when settings are applied. The first download may take a few minutes. Applies to LAN HTTP/HTTPS over TCP; existing manual routes keep priority.',
     ),
   );
   chainOpt.default = '0';

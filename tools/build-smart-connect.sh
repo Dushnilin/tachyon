@@ -11,7 +11,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 cd "$root/tools/smart-connect"
 while read -r target arch variant; do
-  env CGO_ENABLED=0 GOOS=linux GOARCH="$arch" GOMIPS=softfloat GOMIPS64=softfloat GOARM="${variant:-7}" \
+  env CGO_ENABLED=0 GOOS=linux GOARCH="$arch" GO386=softfloat GOMIPS=softfloat GOMIPS64=softfloat GOARM="${variant:-7}" \
     go build -trimpath -ldflags='-s -w' -o "$stage/tachyon-smart-connect" .
   tar -czf "$output/tachyon-smart-connect-${target}-${version}.tar.gz" -C "$stage" tachyon-smart-connect
   printf 'Built Smart Connect: %s\n' "$target"

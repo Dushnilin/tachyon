@@ -31,6 +31,7 @@ vm.runInNewContext(block,{
 });
 const get=name=>options.find(o=>o.name===name);
 assert.equal(get('smart_detect_chain').default,'0');
+assert.ok(get('smart_detect_chain').description.includes('installed automatically when settings are applied'));
 for(const name of ['smart_detect_chain_zapret','smart_detect_chain_vpn']){
   const field=get(name);assert.equal(field.retain,true);
   assert.equal(field.validate('settings','missing'),'Select an enabled routing section');

@@ -101,10 +101,26 @@ mips/mipsel, mips64/mips64el and riscv64. Release CI publishes these separately
 alongside the backend packages. Cross-compilation does not establish performance
 or memory usage on physical routers.
 
-When deployment is authorized, install the archive's executable as
-`/usr/bin/tachyon-smart-connect` (0755), together with the updated backend and
-LuCI packages. Service lifecycle is owned by Tachyon; do not enable or run the
-helper independently. Enabling the feature without the binary is rejected.
+Users only need the updated backend and LuCI packages. On applying the enabled
+chain, Tachyon automatically installs a missing helper for the router's userspace
+architecture, before changing the running core, DNS or firewall. The first
+download can take several minutes. The existing component downloader uses the
+current VPN and direct/mirror fallbacks, so the old network remains available
+during installation. A download error aborts activation and is reported in the
+service action log; the previously running network remains active. Saved UCI
+settings still describe the requested change, and applying them again retries.
+
+The helper and SHA-256 manifest must come from the installed backend's matching
+release in the configured Tachyon release repository. A newer unrelated release
+is never substituted. Installation verifies the archive hash, its single regular
+file, and the helper's configuration-check command before an atomic rename into
+`/usr/bin/tachyon-smart-connect` (0755). Unsupported architectures, missing assets,
+bad checksums, incompatible executables and insufficient storage fail before
+activation. Existing executable helpers are reused without downloading.
+
+Development checkouts without a published matching release require building and
+installing the helper manually. Service lifecycle remains owned by Tachyon; do
+not enable or run the helper independently.
 
 In Settings → Services and access, enable Smart Detect and **Automatic
 Direct → Zapret → VPN**, then choose the existing Zapret and backup VPN sections.

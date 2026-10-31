@@ -21,7 +21,7 @@ function sync(prepare) {
     let p=engine.plan(core,cfg,uci.section_objects(CONFIG,"section") || [],uci.section_objects(CONFIG,"outbound_source") || []);
     if (!p || p.error) {warn(p?.error || "Smart Connect unavailable","\n");return false;}
     if (!fs.stat("/usr/bin/tachyon-smart-connect") || !fs.stat(INIT)) {
-        warn("Install the architecture-specific tachyon-smart-connect helper before enabling the chain\n");return false;
+        warn("Smart Connect helper is not ready; apply settings again to retry automatic installation\n");return false;
     }
     if (!common.command_success_from_args(["mkdir","-p",DIR])) return false;
     fs.chmod(DIR,0700);
