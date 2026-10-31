@@ -17814,9 +17814,14 @@ function createTracerSearchWidget(sectionRef) {
                 'strong',
                 {
                   style:
-                    'color: var(--warning-color, #d35400); display: block; margin-bottom: 2px;',
+                    'color: var(--warning-color, #d35400); display: flex; align-items: center; gap: 6px; margin-bottom: 2px;',
                 },
-                ['⚠️ ', _('Shared CDN / Anycast Warning')],
+                [
+                  typeof main.renderAlertTriangleIcon === 'function'
+                    ? main.renderAlertTriangleIcon(14)
+                    : null,
+                  _('Shared CDN / Anycast Warning'),
+                ].filter(Boolean),
               ),
               E('span', {}, result.sharedCdnWarning),
             ],

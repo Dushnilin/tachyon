@@ -22,6 +22,19 @@ const AVATAR_PRESETS = {
   '🐾': _('Pets / IoT (🐾)'),
 };
 
+function renderSvgIconHtml(rendererName, size = 12) {
+  try {
+    if (
+      typeof main !== 'undefined' &&
+      typeof main[rendererName] === 'function'
+    ) {
+      const el = main[rendererName](size);
+      if (el && el.outerHTML) return el.outerHTML;
+    }
+  } catch (e) {}
+  return '';
+}
+
 const DAY_LABELS = {
   monday: _('Monday'),
   tuesday: _('Tuesday'),
@@ -55,7 +68,7 @@ const DAY_INDEX_MAP = {
 const DOMAIN_PRESETS = {
   social: {
     label: _('Social media'),
-    icon: '📱',
+    iconRenderer: 'renderSmartphoneIcon',
     domains: [
       'facebook.com',
       'instagram.com',
@@ -80,7 +93,7 @@ const DOMAIN_PRESETS = {
   },
   video: {
     label: _('Video streaming'),
-    icon: '🎬',
+    iconRenderer: 'renderTvIcon',
     domains: [
       'youtube.com',
       'youtu.be',
@@ -102,7 +115,7 @@ const DOMAIN_PRESETS = {
   },
   gaming: {
     label: _('Gaming'),
-    icon: '🎮',
+    iconRenderer: 'renderGamepad2Icon',
     domains: [
       'steampowered.com',
       'steamcommunity.com',
@@ -123,7 +136,7 @@ const DOMAIN_PRESETS = {
   },
   adult: {
     label: _('Adult content'),
-    icon: '🔞',
+    iconRenderer: 'renderAlertTriangleIcon',
     domains: [
       'pornhub.com',
       'xvideos.com',
@@ -145,7 +158,7 @@ const DOMAIN_PRESETS = {
   },
   messengers: {
     label: _('Messengers'),
-    icon: '💬',
+    iconRenderer: 'renderPlugIcon',
     domains: [
       'telegram.org',
       't.me',
@@ -166,7 +179,7 @@ const DOMAIN_PRESETS = {
   },
   shopping: {
     label: _('Shopping'),
-    icon: '🛒',
+    iconRenderer: 'renderCreditCardIcon',
     domains: [
       'amazon.com',
       'ebay.com',
@@ -378,8 +391,10 @@ function createProfileContent(section) {
     if (raw <= 0) {
       return '<span style="opacity:0.5;">' + _('Unlimited') + '</span>';
     }
+    const icon = renderSvgIconHtml('renderHourglassIcon', 12);
     return (
-      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:600;">⏳ ' +
+      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:600;display:inline-flex;align-items:center;gap:4px;">' +
+      (icon || '') +
       raw +
       ' ' +
       _('min/day') +
@@ -405,22 +420,28 @@ function createProfileContent(section) {
 
     let badges = [];
     if (safeSearch) {
+      const icon = renderSvgIconHtml('renderShieldIcon', 11);
       badges.push(
-        '<span class="badge" style="background:rgba(79,209,197,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(79,209,197,0.3);">🛡️ ' +
+        '<span class="badge" style="background:rgba(79,209,197,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(79,209,197,0.3);display:inline-flex;align-items:center;gap:3px;">' +
+          icon +
           _('SafeSearch') +
           '</span>',
       );
     }
     if (blockDoh) {
+      const icon = renderSvgIconHtml('renderLockIcon', 11);
       badges.push(
-        '<span class="badge" style="background:rgba(183,148,244,0.15);color:var(--purple-color, #805ad5);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(183,148,244,0.3);">🔒 ' +
+        '<span class="badge" style="background:rgba(183,148,244,0.15);color:var(--purple-color, #805ad5);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(183,148,244,0.3);display:inline-flex;align-items:center;gap:3px;">' +
+          icon +
           _('Anti-Bypass (DoH)') +
           '</span>',
       );
     }
     if (domainCount > 0) {
+      const icon = renderSvgIconHtml('renderXIcon', 11);
       badges.push(
-        '<span class="badge" style="background:rgba(229,62,62,0.15);color:var(--error-color-medium, #e53e3e);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(229,62,62,0.3);">🚫 ' +
+        '<span class="badge" style="background:rgba(229,62,62,0.15);color:var(--error-color-medium, #e53e3e);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(229,62,62,0.3);display:inline-flex;align-items:center;gap:3px;">' +
+          icon +
           domainCount +
           ' ' +
           _('sites') +
@@ -428,8 +449,10 @@ function createProfileContent(section) {
       );
     }
     if (notify) {
+      const icon = renderSvgIconHtml('renderBellIcon', 11);
       badges.push(
-        '<span class="badge" style="background:rgba(49,130,206,0.15);color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(49,130,206,0.3);">🔔 ' +
+        '<span class="badge" style="background:rgba(49,130,206,0.15);color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(49,130,206,0.3);display:inline-flex;align-items:center;gap:3px;">' +
+          icon +
           _('Telegram') +
           '</span>',
       );
@@ -646,15 +669,21 @@ function createProfileContent(section) {
       style: 'margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;',
     });
     Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
+      const iconEl =
+        typeof main !== 'undefined' &&
+        typeof main[preset.iconRenderer] === 'function'
+          ? main[preset.iconRenderer](12)
+          : null;
       const btn = E(
         'button',
         {
           class: 'cbi-button cbi-button-neutral',
           type: 'button',
-          style: 'padding:2px 8px;font-size:11px;',
+          style:
+            'padding:2px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;',
           title: preset.domains.join(', '),
         },
-        preset.icon + ' ' + preset.label,
+        [iconEl, E('span', {}, preset.label)].filter(Boolean),
       );
       btn.addEventListener('click', function () {
         const textarea = container.querySelector('textarea');
@@ -790,8 +819,10 @@ function createParentalContent(section) {
   o.cfgvalue = function (sectionId) {
     const target = uci.get(UCI_PACKAGE, sectionId, 'target') || 'domains';
     if (target === 'all') {
+      const icon = renderSvgIconHtml('renderXIcon', 12);
       return (
-        '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' +
+        '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;display:inline-flex;align-items:center;gap:4px;">' +
+        icon +
         _('All Internet') +
         '</span>'
       );
@@ -801,8 +832,10 @@ function createParentalContent(section) {
         uci.get(UCI_PACKAGE, sectionId, 'blocked_domains'),
       );
       const count = rawDomains.length;
+      const icon = renderSvgIconHtml('renderGlobeIcon', 11);
       return (
-        '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;margin-bottom:2px;">🌐 ' +
+        '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;gap:3px;margin-bottom:2px;">' +
+        icon +
         _('Blocked Sites') +
         (count > 0 ? ' (' + count + ')' : '') +
         '</span>'
@@ -819,8 +852,10 @@ function createParentalContent(section) {
       .map((name) => {
         const sec = uci.get(UCI_PACKAGE, name);
         const label = (sec && (sec.label || sec['.name'])) || name;
+        const icon = renderSvgIconHtml('renderLockIcon', 11);
         return (
-          '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;margin-bottom:2px;max-width:100%;word-break:break-all;">🔒 ' +
+          '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;gap:3px;margin-bottom:2px;max-width:100%;word-break:break-all;">' +
+          icon +
           label +
           '</span>'
         );
@@ -860,14 +895,18 @@ function createParentalContent(section) {
     const e = uci.get(UCI_PACKAGE, sectionId, 'end_time');
     const is247 = !s && !e;
     if (action === 'allow') {
+      const icon = renderSvgIconHtml('renderCheckIcon', 12);
       return (
-        '<span style="color:var(--success-color-medium, #38a169);font-weight:500;">✅ ' +
+        '<span style="color:var(--success-color-medium, #38a169);font-weight:500;display:inline-flex;align-items:center;gap:4px;">' +
+        icon +
         (is247 ? _('Allow always') : _('Allow in interval')) +
         '</span>'
       );
     }
+    const icon = renderSvgIconHtml('renderXIcon', 12);
     return (
-      '<span style="color:var(--error-color-medium, #e53e3e);font-weight:500;">🚫 ' +
+      '<span style="color:var(--error-color-medium, #e53e3e);font-weight:500;display:inline-flex;align-items:center;gap:4px;">' +
+      icon +
       (is247 ? _('Block always') : _('Block in interval')) +
       '</span>'
     );
@@ -892,8 +931,10 @@ function createParentalContent(section) {
     const e = uci.get(UCI_PACKAGE, sectionId, 'end_time');
     const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, 'days'));
     if (!s && !e) {
+      const icon = renderSvgIconHtml('renderZapIcon', 12);
       return (
-        '<div style="line-height:1.3;"><strong style="color:var(--success-color, #38a169);">⚡ ' +
+        '<div style="line-height:1.3;"><strong style="color:var(--success-color, #38a169);display:inline-flex;align-items:center;gap:4px;">' +
+        icon +
         _('Always Active (24/7)') +
         '</strong><br><small style="opacity:0.75;">' +
         days +
@@ -932,18 +973,22 @@ function createParentalContent(section) {
       return '<span style="opacity:0.5;">' + _('None') + '</span>';
     }
     if (target !== 'all') {
+      const icon = renderSvgIconHtml('renderAlertTriangleIcon', 11);
       return (
-        '<span style="color:var(--warning-color-medium, #d69e2e);font-size:11px;" title="' +
+        '<span style="color:var(--warning-color-medium, #d69e2e);font-size:11px;display:inline-flex;align-items:center;gap:3px;" title="' +
         _('Daily quota applies only when Target Scope is All Internet') +
-        '">⚠️ ' +
+        '">' +
+        icon +
         raw +
         ' ' +
         _('min/day') +
         '</span>'
       );
     }
+    const icon = renderSvgIconHtml('renderHourglassIcon', 11);
     return (
-      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:500;">⏳ ' +
+      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:500;display:inline-flex;align-items:center;gap:3px;">' +
+      icon +
       raw +
       ' ' +
       _('min/day') +
@@ -972,12 +1017,18 @@ function createParentalContent(section) {
     if (domains.length === 0) {
       return '<span style="opacity:0.5;">' + _('None') + '</span>';
     }
+    const modeIcon =
+      mode === 'allow'
+        ? renderSvgIconHtml('renderCheckIcon', 11)
+        : renderSvgIconHtml('renderXIcon', 11);
     const modeBadge =
       mode === 'allow'
-        ? '<span style="color:var(--success-color-medium, #38a169);font-weight:600;">🟢 ' +
+        ? '<span style="color:var(--success-color-medium, #38a169);font-weight:600;display:inline-flex;align-items:center;gap:3px;">' +
+          modeIcon +
           _('Allow only') +
           '</span>'
-        : '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' +
+        : '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;display:inline-flex;align-items:center;gap:3px;">' +
+          modeIcon +
           _('Block') +
           '</span>';
     const badges = domains
@@ -1335,15 +1386,21 @@ function createParentalContent(section) {
       style: 'margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;',
     });
     Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
+      const iconEl =
+        typeof main !== 'undefined' &&
+        typeof main[preset.iconRenderer] === 'function'
+          ? main[preset.iconRenderer](12)
+          : null;
       const btn = E(
         'button',
         {
           class: 'cbi-button cbi-button-neutral',
           type: 'button',
-          style: 'padding:2px 8px;font-size:11px;',
+          style:
+            'padding:2px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;',
           title: preset.domains.join(', '),
         },
-        preset.icon + ' ' + preset.label,
+        [iconEl, E('span', {}, preset.label)].filter(Boolean),
       );
       btn.addEventListener('click', function () {
         const textarea = container.querySelector('textarea');

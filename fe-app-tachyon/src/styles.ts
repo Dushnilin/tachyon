@@ -624,6 +624,9 @@ body.dark .tachyon-wizard {
 }
 
 .tachyon-lang-option__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 11px;
     font-weight: 600;
     padding: 2px 6px;
@@ -7085,6 +7088,9 @@ button.tachyon-studio-chip:hover {
 }
 
 .tachyon-ruleset-picker__preset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     padding: 5px 9px;
     border-radius: 7px;
     border: 1px solid rgba(148, 130, 224, 0.28) !important;
@@ -7330,6 +7336,9 @@ button.tachyon-studio-chip:hover {
 }
 
 .tachyon-ruleset-picker__chip-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 11px;
     font-weight: 800;
     opacity: 0.85;

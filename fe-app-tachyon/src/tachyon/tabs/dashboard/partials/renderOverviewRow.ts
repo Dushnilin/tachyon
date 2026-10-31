@@ -2331,43 +2331,75 @@ export function renderDashboardSectionsAndNodes(
     return [];
   }
 
-  // Исключаем block / bypass / direct / dns из блока «Секции маршрутизации» на Дашборде
+  // Исключаем системные block / bypass / direct / dns из блока «Секции маршрутизации» на Дашборде
+  const DPI_ENGINES = new Set([
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'desync',
+    'wdtt',
+    'olcrtc',
+  ]);
+
+  const SYSTEM_NON_PROXY_ENGINES = new Set([
+    'block',
+    'reject',
+    'bypass',
+    'direct',
+    'dns',
+  ]);
+
   const routingSections = sections.filter((s) => {
     const action = (s.action || '').toLowerCase().trim();
-    const name = (s.sectionName || s.code || '').toLowerCase().trim();
-    const displayName = (s.displayName || '').toLowerCase().trim();
-    const primaryEngine = (resolveSectionEngineMeta(s).primaryEngine || '')
-      .toLowerCase()
-      .trim();
+    const engineMeta = resolveSectionEngineMeta(s);
+    const primaryEngine = (engineMeta.primaryEngine || '').toLowerCase().trim();
 
+    // Секции обхода DPI (Zapret2, Zapret, ByeDPI, Core Desync и т.д.) всегда отображаются
     if (
-      action === 'block' ||
-      action === 'reject' ||
-      action === 'bypass' ||
-      action === 'direct' ||
-      action === 'dns'
+      DPI_ENGINES.has(action) ||
+      DPI_ENGINES.has(primaryEngine) ||
+      Boolean(s.serviceStatus) ||
+      Boolean(
+        engineMeta.isDpiOnly &&
+          DPI_ENGINES.has(engineMeta.primaryEngine?.toLowerCase() || ''),
+      )
+    ) {
+      return true;
+    }
+
+    // Прокси-секции с активными серверами/аутбаундами всегда отображаются
+    if (s.outbounds && s.outbounds.length > 0) {
+      return true;
+    }
+
+    // Исключаем системные не-прокси действия
+    if (
+      SYSTEM_NON_PROXY_ENGINES.has(action) ||
+      SYSTEM_NON_PROXY_ENGINES.has(primaryEngine)
     ) {
       return false;
     }
 
+    const name = (s.sectionName || s.code || '').toLowerCase().trim();
+    const displayName = (s.displayName || '').toLowerCase().trim();
+
     if (
-      name.includes('block') ||
-      displayName.includes('block') ||
-      name.includes('bypass') ||
-      displayName.includes('bypass') ||
-      name.includes('direct') ||
-      displayName.includes('direct') ||
+      name === 'block' ||
+      displayName === 'block' ||
+      name === 'bypass' ||
+      displayName === 'bypass' ||
+      name === 'direct' ||
+      displayName === 'direct' ||
       name === 'reject' ||
+      displayName === 'reject' ||
       name === 'dns' ||
+      displayName === 'dns' ||
       name.startsWith('dns-') ||
       name.endsWith('-dns-server') ||
-      displayName === 'dns' ||
-      displayName.includes('dns') ||
-      primaryEngine === 'block' ||
-      primaryEngine === 'reject' ||
-      primaryEngine === 'bypass' ||
-      primaryEngine === 'direct' ||
-      primaryEngine === 'dns'
+      displayName.startsWith('dns-') ||
+      displayName.endsWith('-dns-server') ||
+      name.includes('block') ||
+      displayName.includes('block')
     ) {
       return false;
     }

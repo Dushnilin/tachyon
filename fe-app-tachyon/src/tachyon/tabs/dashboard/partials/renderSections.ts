@@ -4,6 +4,9 @@ import {
   renderLinkIcon24,
   renderInfoIcon24,
   renderZapIcon,
+  renderAlertTriangleIcon,
+  renderCheckIcon,
+  renderGlobeIcon,
 } from '../../../../icons';
 import {
   isCopyableProxyLink,
@@ -670,8 +673,9 @@ function renderCountryChips(
         {
           class:
             'tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji',
+          style: 'display: inline-flex; align-items: center;',
         },
-        '🌐',
+        [renderGlobeIcon(12)],
       ),
       E(
         'span',
@@ -728,8 +732,11 @@ function renderCountryChips(
           {
             class:
               'tachyon_dashboard-page__country-chip__flag tachyon_dashboard-page__flag-emoji',
+            style: group.countryFlag
+              ? undefined
+              : 'display: inline-flex; align-items: center;',
           },
-          group.countryFlag || '🌐',
+          group.countryFlag || [renderGlobeIcon(12)],
         ),
         E(
           'span',
@@ -1542,14 +1549,17 @@ function renderDefaultState({
                           class:
                             'tachyon_dashboard-page__outbound-grid__item__selected-badge',
                         },
-                        typeof document !== 'undefined' &&
+                        [
+                          renderCheckIcon(10),
+                          typeof document !== 'undefined' &&
                           (document.documentElement?.lang || '')
                             .toLowerCase()
                             .startsWith('ru')
-                          ? '✓ Активен'
-                          : typeof _ === 'function'
-                            ? _('✓ Active')
-                            : '✓ Active',
+                            ? 'Активен'
+                            : typeof _ === 'function'
+                              ? _('Active')
+                              : 'Active',
+                        ],
                       ),
                     ]
                   : []),
@@ -2605,8 +2615,18 @@ function renderConfigErrorBanner(section: Tachyon.OutboundGroup) {
         {
           class:
             'tachyon_dashboard-page__outbound-section__error-banner__title',
+          style: 'display: flex; align-items: center; gap: 6px;',
         },
-        `⚠️ ${_('Section quarantined due to error (other sections continue working):')}`,
+        [
+          renderAlertTriangleIcon(14),
+          E(
+            'span',
+            {},
+            _(
+              'Section quarantined due to error (other sections continue working):',
+            ),
+          ),
+        ],
       ),
       E(
         'div',

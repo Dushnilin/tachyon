@@ -10,6 +10,9 @@ import {
   renderServerIcon,
   renderGlobeIcon,
   renderShieldIcon,
+  renderHourglassIcon,
+  renderAlertTriangleIcon,
+  renderXIcon,
 } from '../../../../icons';
 import { showToast } from '../../../../helpers/showToast';
 import { TachyonShellMethods } from '../../../methods';
@@ -296,16 +299,29 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
             : node.status === 'WARN'
               ? 'label-warning'
               : 'label-danger';
-        const icon =
-          node.status === 'OK' ? '✓' : node.status === 'WARN' ? '⚠' : '✕';
+        const iconEl =
+          node.status === 'OK'
+            ? renderCheckIcon(12)
+            : node.status === 'WARN'
+              ? renderAlertTriangleIcon(12)
+              : renderXIcon(12);
         return E(
           'span',
           {
             class: `label ${labelClass}`,
             style:
-              'font-size: 11px; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: bold;',
+              'font-size: 11px; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; font-weight: bold;',
           },
-          [E('span', {}, node.name), E('span', {}, `${icon} ${node.status}`)],
+          [
+            E('span', {}, node.name),
+            E(
+              'span',
+              {
+                style: 'display: inline-flex; align-items: center; gap: 3px;',
+              },
+              [iconEl, node.status],
+            ),
+          ],
         );
       }),
     );
@@ -421,9 +437,10 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
         'div',
         {
           class: 'cbi-section-node',
-          style: 'padding: 20px; text-align: center; font-size: 13px;',
+          style:
+            'padding: 20px; text-align: center; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px;',
         },
-        '⏳ ' + _('Loading connected LAN devices...'),
+        [renderHourglassIcon(14), _('Loading connected LAN devices...')],
       );
     }
 

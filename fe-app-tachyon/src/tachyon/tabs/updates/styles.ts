@@ -359,6 +359,9 @@ export const styles = `
 }
 
 .tachyon-update-modal__timer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 13px;
     font-family: monospace;
     color: var(--text-color-medium, #6c757d);
