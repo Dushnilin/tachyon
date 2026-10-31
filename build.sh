@@ -328,6 +328,7 @@ build_backend_root() {
     "$output_root/usr/bin/tachyon-read" \
     "$output_root/etc/init.d/tachyon-torrserver-direct" \
     "$output_root/etc/init.d/tachyon-steer-zapret" \
+    "$output_root/etc/init.d/tachyon-smart-connect" \
     "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
     "$output_root/usr/share/tachyon/steer-nfqws" \
     "$output_root/usr/lib/cgi-bin/tachyon-agent" \
