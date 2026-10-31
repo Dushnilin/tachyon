@@ -178,12 +178,87 @@ describe('monitoring initController', () => {
         action: 'zapret2',
         enabled: '1',
       } as any,
+      {
+        '.name': 'media_dpi',
+        '.type': 'section',
+        label: 'Zapret2 (Direct DPI Bypass)',
+        action: 'zapret2',
+        enabled: '1',
+      } as any,
     ]);
 
     const sections = getRouteSections();
     expect(sections.map((s) => s.displayName)).toEqual([
       'Zapret YouTube',
+      'Zapret2 (Direct DPI Bypass)',
       'My VPN',
     ]);
+  });
+
+  it('should retain DPI bypass sections including Zapret2 (Direct DPI Bypass) in routes filter', async () => {
+    const { buildRouteDisplayNames, getRouteSections } = await import(
+      '../filters'
+    );
+    buildRouteDisplayNames([
+      {
+        '.name': 'media_dpi',
+        '.type': 'section',
+        label: 'Zapret2 (Direct DPI Bypass)',
+        action: 'zapret2',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'block',
+        '.type': 'section',
+        label: 'block',
+        action: 'block',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'ByPass',
+        '.type': 'section',
+        label: 'ByPass',
+        action: 'bypass',
+        enabled: '1',
+      } as any,
+    ]);
+
+    const uniqueRoutes = new Set<string>();
+    getRouteSections().forEach(({ displayName }) => {
+      if (displayName) uniqueRoutes.add(displayName);
+    });
+
+    const routes = Array.from(uniqueRoutes).filter((name) => {
+      const lower = name.toLowerCase().trim();
+      if (
+        lower.includes('zapret') ||
+        lower.includes('byedpi') ||
+        lower.includes('desync') ||
+        lower.includes('wdtt') ||
+        lower.includes('olcrtc')
+      ) {
+        return true;
+      }
+      return (
+        lower !== 'block' &&
+        lower !== 'bypass' &&
+        lower !== 'direct' &&
+        lower !== 'dns' &&
+        lower !== 'failover' &&
+        lower !== 'reject' &&
+        lower !== '-' &&
+        !lower.startsWith('dns-') &&
+        !lower.endsWith('-dns-server') &&
+        !lower.includes('block-out') &&
+        !lower.includes('bypass-out') &&
+        !lower.includes('direct-out') &&
+        !lower.includes('dns-out') &&
+        !lower.includes('block')
+      );
+    });
+
+    expect(routes).toContain('Zapret2 (Direct DPI Bypass)');
+    expect(routes).not.toContain('block');
+    expect(routes).not.toContain('ByPass');
   });
 });

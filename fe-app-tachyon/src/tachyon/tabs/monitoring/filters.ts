@@ -177,6 +177,15 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
     'dns',
   ]);
 
+  const DPI_SECTION_ACTIONS = new Set([
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'desync',
+    'wdtt',
+    'olcrtc',
+  ]);
+
   sections
     .filter((section) => section['.type'] === 'section')
     .filter((section) => section.enabled !== '0')
@@ -191,20 +200,36 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
         return;
       }
 
+      const isDpiSection =
+        DPI_SECTION_ACTIONS.has(action) ||
+        lowerName.includes('zapret') ||
+        lowerDisplayName.includes('zapret') ||
+        lowerName.includes('byedpi') ||
+        lowerDisplayName.includes('byedpi') ||
+        lowerName.includes('desync') ||
+        lowerDisplayName.includes('desync');
+
       const isNonMonitored =
-        NON_MONITORED_ACTIONS.has(action) ||
-        lowerName.includes('block') ||
-        lowerDisplayName.includes('block') ||
-        lowerName.includes('bypass') ||
-        lowerDisplayName.includes('bypass') ||
-        lowerName.includes('direct') ||
-        lowerDisplayName.includes('direct') ||
-        lowerName.includes('dns') ||
-        lowerDisplayName.includes('dns') ||
-        lowerName.includes('failover') ||
-        lowerDisplayName.includes('failover') ||
-        lowerName === 'reject' ||
-        lowerDisplayName === 'reject';
+        !isDpiSection &&
+        (NON_MONITORED_ACTIONS.has(action) ||
+          lowerName === 'block' ||
+          lowerDisplayName === 'block' ||
+          lowerName === 'bypass' ||
+          lowerDisplayName === 'bypass' ||
+          lowerName === 'direct' ||
+          lowerDisplayName === 'direct' ||
+          lowerName === 'dns' ||
+          lowerDisplayName === 'dns' ||
+          lowerName.startsWith('dns-') ||
+          lowerDisplayName.startsWith('dns-') ||
+          lowerName.endsWith('-dns-server') ||
+          lowerDisplayName.endsWith('-dns-server') ||
+          lowerName === 'failover' ||
+          lowerDisplayName === 'failover' ||
+          lowerName === 'reject' ||
+          lowerDisplayName === 'reject' ||
+          lowerName.includes('block') ||
+          lowerDisplayName.includes('block'));
 
       if (!isNonMonitored) {
         routeSectionItems.push({ sectionName, displayName });
