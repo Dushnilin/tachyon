@@ -1,5 +1,10 @@
 # Smart Detect modes
 
+The opt-in [connection-time Direct → Zapret → VPN chain](SMART_CONNECT.md)
+selects working IPs without adding per-domain sections or UCI rules. It replaces
+the background additions described below while `smart_detect_chain=1` and
+requires the separate Smart Connect helper. It is disabled by default.
+
 Smart Detect is disabled by default. When enabled, **Settings → Services and access → Smart Detect mode** selects `default` or `plus`. An absent or unknown `smart_detect_mode` uses Default. The description next to the selector follows the selected mode immediately; Telegram notifications keep the **Smart Detect** name in either mode.
 
 ## Default

@@ -1545,7 +1545,7 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
     if (proxy_mode != "" && proxy_mode != "tproxy")
         body = signature_add_value(body, "settings.proxy_mode", proxy_mode);
-    if (bool_option(settings, "smart_detect", false) && option(settings, "smart_detect_mode", "default") == "plus")
+    if (bool_option(settings, "smart_detect", false) && (option(settings, "smart_detect_mode", "default") == "plus" || bool_option(settings, "smart_detect_chain", false)))
         body = signature_add_value(body, "settings.smart_detect_plus", "1");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
     body = signature_add_value(body, "settings.game_console_ips", option(settings, "game_console_ips", ""));
@@ -2316,6 +2316,11 @@ function append_sing_box_schedule_signature_body(body, schedule) {
 function sing_box_signature_body(settings, sections, servers, mwan3_active, schedules, profiles) {
     settings = object_or_empty(settings);
     let body = "";
+    if (bool_option(settings, "smart_detect", false) && bool_option(settings, "smart_detect_chain", false)) {
+        body = signature_add_value(body, "settings.smart_detect_chain", "1");
+        for (let key in ["smart_detect_chain_zapret","smart_detect_chain_vpn","smart_detect_chain_budget_ms","smart_detect_exclude","smart_detect_exclude_lists"])
+            body = signature_add_value(body, "settings." + key, sprintf("%J", settings[key]));
+    }
 
     body = signature_add_value(body, "settings.dns_type", option(settings, "dns_type", "doh"));
     body = signature_add_value(body, "settings.dns_strategy", option(settings, "dns_strategy", "prefer_ipv4"));

@@ -1,0 +1,25 @@
+name: Smart Connect
+on:
+  pull_request:
+    paths: ['tools/smart-connect/**', 'tools/build-smart-connect.sh', 'tests/smart_connect*', 'tachyon/files/usr/lib/tachyon_core/smart_connect.uc', 'tachyon/files/usr/lib/service/smart_connect.uc', '.github/workflows/smart-connect.yml']
+  push:
+    branches: [main]
+    paths: ['tools/smart-connect/**', 'tools/build-smart-connect.sh', 'tests/smart_connect*', 'tachyon/files/usr/lib/tachyon_core/smart_connect.uc', 'tachyon/files/usr/lib/service/smart_connect.uc', '.github/workflows/smart-connect.yml']
+permissions:
+  contents: read
+jobs:
+  connector:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Test concurrent selection and real SOCKS/TLS relay
+        working-directory: tools/smart-connect
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+      - name: Cross-compile all helper architectures
+        run: bash tools/build-smart-connect.sh 0.0.0 build-out/smart-connect

@@ -2352,6 +2352,29 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     add_content_blocking(config);
 
+    let smart_connect = require("tachyon_core.smart_connect");
+    if (smart_connect.enabled(settings)) {
+        if (fixture_uci_data == null && fs.stat(getenv("TACHYON_SMART_CONNECT_BIN") || "/usr/bin/tachyon-smart-connect") == null)
+            runtime_generate_unsupported("Install tachyon-smart-connect before enabling the Smart Detect route chain");
+        let chain_sources=[];
+        cursor.foreach(CONFIG_NAME,"outbound_source",function(source){push(chain_sources,source);});
+        let chain = smart_connect.configure(config, settings, sections, chain_sources);
+        if (chain?.error) runtime_generate_unsupported(chain.error);
+        let helper_bin = getenv("TACHYON_SMART_CONNECT_BIN") || "/usr/bin/tachyon-smart-connect";
+        if (fixture_uci_data == null || getenv("TACHYON_TEST_CONNECTOR")) {
+            if (getenv("TACHYON_TEST_CONNECTOR")) helper_bin=getenv("TACHYON_TEST_CONNECTOR");
+            let helper_check=output_path+".smart-connect-check.json";
+            if (!atomic_write_json_file(helper_check,chain.helper)) runtime_generate_unsupported("Cannot stage Smart Connect preflight");
+            fs.chmod(helper_check,0600);
+            let valid=command_success_from_args([helper_bin,"-check","-config",helper_check]);
+            fs.unlink(helper_check);
+            if (!valid) runtime_generate_unsupported("Smart Connect helper rejected its generated configuration");
+        }
+        let remapped={};
+        for (let index,owner in owners.route_rules) remapped[chain.route_index_map[index]]=owner;
+        owners.route_rules=remapped;
+    }
+
     // Only the shared `ruleset-http` client is wired here. Rule-sets that need
     // their own detour register a dedicated client while the route is built,
     // and assigning by index would overwrite that detour with the lists one.

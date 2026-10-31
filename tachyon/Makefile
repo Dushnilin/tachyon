@@ -216,6 +216,7 @@ endef
 define Package/tachyon/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/tachyon $(1)/etc/init.d/tachyon
+	$(INSTALL_BIN) ./files/etc/init.d/tachyon-smart-connect $(1)/etc/init.d/tachyon-smart-connect
 	$(INSTALL_BIN) ./files/etc/init.d/tachyon-torrserver-direct $(1)/etc/init.d/tachyon-torrserver-direct
 
 	$(INSTALL_DIR) $(1)/etc/config

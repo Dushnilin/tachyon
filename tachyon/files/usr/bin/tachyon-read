@@ -46,6 +46,7 @@ let commands = {
     show_sing_box_config: [ "diagnostics/runtime.uc", "show-sing-box-config", 1 ],
     show_sing_box_version: [ "diagnostics/runtime.uc", "show-sing-box-version", 0 ],
     get_status: [ "diagnostics/runtime.uc", "get-status", 0 ],
+    smart_connect_status: [ "service/smart_connect.uc", "status", 0 ],
     get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
     get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
     get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],

@@ -15464,3 +15464,42 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2225
 msgid "🧠 Synthesizing..."
 msgstr ""
+
+msgid "Automatic Direct → Zapret → VPN"
+msgstr ""
+
+msgid "Backup VPN section (required)"
+msgstr ""
+
+msgid "Maximum time for DNS and IP checks at the Zapret stage. Cached decisions do not wait for these checks. VPN connection time is additional."
+msgstr ""
+
+msgid "Select an enabled routing section"
+msgstr ""
+
+msgid "Selects a working IP through Zapret before using the backup VPN. Decisions are cached without creating routing sections. Requires the tachyon-smart-connect helper. Applies to LAN HTTP/HTTPS over TCP; existing manual routes keep priority."
+msgstr ""
+
+msgid "Zapret IP search budget (ms)"
+msgstr ""
+
+msgid "Zapret and backup VPN must use different sections"
+msgstr ""
+
+msgid "Zapret section (required)"
+msgstr ""
+
+msgid "Automatic route decisions"
+msgstr ""
+
+msgid "Press Refresh to inspect the current route and IP cache."
+msgstr ""
+
+msgid "Unable to read automatic route decisions"
+msgstr ""
+
+msgid "No cached automatic decisions yet."
+msgstr ""
+
+msgid "Domain / port"
+msgstr ""

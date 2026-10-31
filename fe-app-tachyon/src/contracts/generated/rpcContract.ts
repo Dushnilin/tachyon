@@ -217,6 +217,7 @@ export const TACHYON_RPC_METHODS = [
   'show_sing_box_config',
   'show_sing_box_version',
   'show_version',
+  'smart_connect_status',
   'snapshot_delete',
   'snapshot_diff',
   'snapshot_export',
@@ -1653,6 +1654,11 @@ export type ShowversionParams = Record<string, never>;
 
 export type ShowversionResult = Record<string, unknown>;
 
+/** status (service/smart_connect.uc) */
+export type SmartconnectstatusParams = Record<string, never>;
+
+export type SmartconnectstatusResult = Record<string, unknown>;
+
 /** snapshot-delete (service/snapshot.uc) */
 export interface SnapshotdeleteParams {
   /** positional argument 1 of snapshot_delete */
@@ -2708,6 +2714,10 @@ export interface TachyonRpcRegistry {
   show_version: {
     params: ShowversionParams;
     result: ShowversionResult;
+  };
+  smart_connect_status: {
+    params: SmartconnectstatusParams;
+    result: SmartconnectstatusResult;
   };
   snapshot_delete: {
     params: SnapshotdeleteParams;
@@ -5795,6 +5805,16 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'diagnostics',
       acl: 'read',
       description: 'show-version (diagnostics/runtime.uc)',
+      async: false,
+      timeout_ms: 5000,
+      params: [],
+    },
+    smart_connect_status: {
+      name: 'smart_connect_status',
+      cli_command: 'smart_connect_status',
+      category: 'system',
+      acl: 'read',
+      description: 'status (service/smart_connect.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],

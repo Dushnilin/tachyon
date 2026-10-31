@@ -80,6 +80,12 @@ config settings 'settings'
         option smart_detect '0'
         # default: upstream log/HEAD detector; plus: web stalls/GET/main domains
         option smart_detect_mode 'default'
+        # Optional connection-time Direct -> Zapret -> VPN selector. Requires
+        # the separately built, architecture-specific tachyon-smart-connect.
+        option smart_detect_chain '0'
+        # option smart_detect_chain_zapret 'zapret'
+        # option smart_detect_chain_vpn 'proxy'
+        option smart_detect_chain_budget_ms '3000'
         option game_console_optimizer '0'
         list game_console_ips ''
         # smart_detect: auto-detects blocked domains from logs and adds them to the first

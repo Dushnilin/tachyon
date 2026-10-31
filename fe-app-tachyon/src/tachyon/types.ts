@@ -279,6 +279,8 @@ export namespace Tachyon {
     SHOW_SING_BOX_CONFIG = 'show_sing_box_config',
     SHOW_SING_BOX_VERSION = 'show_sing_box_version',
     SHOW_VERSION = 'show_version',
+    // smart
+    SMART_CONNECT_STATUS = 'smart_connect_status',
     // snapshot
     SNAPSHOT_DELETE = 'snapshot_delete',
     SNAPSHOT_DIFF = 'snapshot_diff',
@@ -752,6 +754,10 @@ export namespace Tachyon {
     user_domains?: string | string[];
     smart_detect?: '0' | '1';
     smart_detect_mode?: 'default' | 'plus';
+    smart_detect_chain?: '0' | '1';
+    smart_detect_chain_zapret?: string;
+    smart_detect_chain_vpn?: string;
+    smart_detect_chain_budget_ms?: string;
     smart_detect_section?: string;
     smart_detect_sections?: string | string[];
     smart_detect_expand_to_root?: '0' | '1';

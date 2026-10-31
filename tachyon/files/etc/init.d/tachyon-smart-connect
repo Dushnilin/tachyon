@@ -1,0 +1,17 @@
+#!/bin/sh /etc/rc.common
+START=96
+STOP=9
+USE_PROCD=1
+
+start_service() {
+    local config=/var/run/tachyon/smart-connect/config.json
+    [ -x /usr/bin/tachyon-smart-connect ] && [ -r "$config" ] || return 1
+    /usr/bin/tachyon-smart-connect -check -config "$config" || return 1
+    procd_open_instance smart-connect
+    procd_set_param command /usr/bin/tachyon-smart-connect -config "$config"
+    procd_set_param env GOMEMLIMIT=24MiB GOGC=50
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}

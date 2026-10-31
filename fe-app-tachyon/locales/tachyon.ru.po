@@ -12370,3 +12370,42 @@ msgstr "По алфавиту (А–Я)"
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Bypass) before feeding servers into Balancers."
 msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции перед передачей в балансировщики (URLTest / Priority)."
+
+msgid "Automatic Direct → Zapret → VPN"
+msgstr "Автоматически: Direct → Zapret → VPN"
+
+msgid "Backup VPN section (required)"
+msgstr "Резервная секция VPN (обязательно)"
+
+msgid "Maximum time for DNS and IP checks at the Zapret stage. Cached decisions do not wait for these checks. VPN connection time is additional."
+msgstr "Лимит времени на DNS и проверку IP через Zapret. Сохранённые решения используются без ожидания проверок. Подключение к VPN занимает дополнительное время."
+
+msgid "Select an enabled routing section"
+msgstr "Выберите включённую секцию маршрутизации"
+
+msgid "Selects a working IP through Zapret before using the backup VPN. Decisions are cached without creating routing sections. Requires the tachyon-smart-connect helper. Applies to LAN HTTP/HTTPS over TCP; existing manual routes keep priority."
+msgstr "Выбирает рабочий IP через Zapret, затем при необходимости использует резервный VPN. Запоминает решения без создания секций. Требуется tachyon-smart-connect. Работает для HTTP/HTTPS по TCP из локальной сети; ручные маршруты сохраняют приоритет."
+
+msgid "Zapret IP search budget (ms)"
+msgstr "Время поиска рабочего IP через Zapret (мс)"
+
+msgid "Zapret and backup VPN must use different sections"
+msgstr "Для Zapret и резервного VPN нужны разные секции"
+
+msgid "Zapret section (required)"
+msgstr "Секция Zapret (обязательно)"
+
+msgid "Automatic route decisions"
+msgstr "Автоматический выбор маршрутов"
+
+msgid "Press Refresh to inspect the current route and IP cache."
+msgstr "Нажмите «Обновить», чтобы посмотреть сохранённые маршруты и IP."
+
+msgid "Unable to read automatic route decisions"
+msgstr "Не удалось прочитать выбранные маршруты"
+
+msgid "No cached automatic decisions yet."
+msgstr "Сохранённых автоматических решений пока нет."
+
+msgid "Domain / port"
+msgstr "Домен / порт"

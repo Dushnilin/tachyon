@@ -107,6 +107,7 @@ function show_help() {
     print("    show_sing_box_config    Show sing-box configuration\n");
     print("    show_sing_box_version   Show sing-box version\n");
     print("    get_status              Get Tachyon service status\n");
+    print("    smart_connect_status    Show automatic route/IP selection cache\n");
 
     print("    get_outbound_metadata   Get generated outbound display names and countries\n");
     print("    get_subscription_metadata\n");
@@ -284,6 +285,7 @@ function command_spec(command) {
         show_sing_box_config: [ "diagnostics/runtime.uc", "show-sing-box-config", 1 ],
         show_sing_box_version: [ "diagnostics/runtime.uc", "show-sing-box-version", 0 ],
         get_status: [ "diagnostics/runtime.uc", "get-status", 0 ],
+        smart_connect_status: [ "service/smart_connect.uc", "status", 0 ],
         get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
         get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
         get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],

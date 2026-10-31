@@ -1170,6 +1170,8 @@ function start_main() {
         }
     }
 
+    if (!module_success(LIB_DIR + "/service/smart_connect.uc", [ "prepare" ]))
+        return 1;
     let sb_start = command_success_from_args([ "/etc/init.d/tachyon-core", "start" ]);
     if (!sb_start) {
         log_message("Failed to start tachyon-core. Aborted.", "fatal");
@@ -1217,6 +1219,8 @@ function start_main() {
     release_start_subscription_update_lock();
     module_success(ZAPRET_UC, [ "start-runtime" ]);
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
+    if (!module_success(LIB_DIR + "/service/smart_connect.uc", [ "sync" ]))
+        return 1;
     module_success(WDTT_UC, [ "start-runtime" ]);
     module_success(OLCRTC_UC, [ "start-runtime" ]);
     module_success(FPTN_UC, [ "start-runtime" ]);
@@ -1314,6 +1318,7 @@ function stop_main() {
     let status = 0;
 
     log_message("Stopping Tachyon", "info");
+    module_success(LIB_DIR + "/service/smart_connect.uc", [ "stop" ]);
 
     // Stop the steer engine if present; its init script removes its own
     // nftables table and policy routing. Stopping it unconditionally ensures
@@ -1906,6 +1911,8 @@ function reload(reason) {
         if (status != 0)
             return abort_reload(status, true);
         nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
+        if (!module_success(LIB_DIR + "/service/smart_connect.uc", [ "prepare" ]))
+            return abort_reload(1, true);
         status = module_status(STATE_UC, [
             "reload-core-runtime",
             sing_box_pid_before,
@@ -1954,6 +1961,8 @@ function reload(reason) {
         module_success(ZAPRET_UC, [ "start-runtime" ]);
     if (plan.needs_zapret2_restart == 1)
         module_success(ZAPRET2_UC, [ "start-runtime" ]);
+    if (!module_success(LIB_DIR + "/service/smart_connect.uc", [ "sync" ]))
+        return abort_reload(1, true);
     if (plan.needs_wdtt_restart == 1)
         module_success(WDTT_UC, [ "start-runtime" ]);
     if (plan.needs_olcrtc_restart == 1)

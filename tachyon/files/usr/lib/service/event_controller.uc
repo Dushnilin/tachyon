@@ -668,7 +668,7 @@ function controller(bus, opts) {
 
     function probe_smart_detect_connections() {
         let ctx = current_tick_ctx || create_tick_context();
-        if (!smart_plus.capture_enabled(ctx.settings) || ctx.is_paused ||
+        if (!smart_plus.capture_enabled(ctx.settings) || ctx.settings?.smart_detect_chain == "1" || ctx.is_paused ||
             ctx.reload_in_progress || !ctx.singbox_running) {
             state.smart_detect_connections = {};
             state.smart_detect_silent_drops = {};

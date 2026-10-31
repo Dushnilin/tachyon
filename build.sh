@@ -273,6 +273,7 @@ build_backend_root() {
   make_dir "$output_root/usr/share/rpcd/acl.d"
 
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon" "$output_root/etc/init.d/tachyon"
+  install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon-smart-connect" "$output_root/etc/init.d/tachyon-smart-connect"
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon-torrserver-direct" \
     "$output_root/etc/init.d/tachyon-torrserver-direct"
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon-steer-zapret" \

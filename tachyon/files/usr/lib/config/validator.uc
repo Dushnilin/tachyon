@@ -2663,6 +2663,20 @@ function validate_runtime_config(context) {
     let profiles = sections_by_type("profile");
     let guest_modes = sections_by_type("guest_mode");
 
+    if (bool_option(settings, "smart_detect", false) && bool_option(settings, "smart_detect_chain", false)) {
+        if (index(["tachyon-core","sing-box"], option(settings,"engine","tachyon-core")) < 0)
+            fail_requirement("Smart Detect route chain requires tachyon-core or sing-box. Aborted.", "fatal");
+        let z=option(settings,"smart_detect_chain_zapret",""), v=option(settings,"smart_detect_chain_vpn","");
+        let found={};for (let section in sections) if (section.enabled != "0") found[section_name(section)]=section;
+        if (z=="" || v=="" || z==v || !found[z] || !found[v])
+            fail_requirement("Select distinct enabled Zapret and VPN sections for Smart Detect route chain. Aborted.", "fatal");
+        let budget=option(settings,"smart_detect_chain_budget_ms","3000");
+        if (!match(as_string(budget),/^[0-9]+$/) || int(budget)<100 || int(budget)>10000)
+            fail_requirement("Smart Detect Zapret budget must be 100..10000 milliseconds. Aborted.", "fatal");
+        if (context?.smart_connect_installed === false)
+            fail_requirement("Install the architecture-specific tachyon-smart-connect helper before enabling the route chain. Aborted.", "fatal");
+    }
+
     validate_runtime_mark_ranges_context(context);
     validate_modular_entities(sections, context);
 
@@ -2835,6 +2849,7 @@ function context_from_runtime() {
         wdtt_installed: file_executable(constant_value(constants, "WDTT_BIN")),
         olcrtc_installed: file_executable(constant_value(constants, "OLCRTC_BIN")),
         fptn_installed: file_executable("/usr/bin/fptn-client-cli") || file_executable("/usr/bin/fptn-client"),
+        smart_connect_installed: file_executable(getenv("TACHYON_SMART_CONNECT_BIN") || "/usr/bin/tachyon-smart-connect"),
         fptn_bin: file_executable("/usr/bin/fptn-client-cli") ? "/usr/bin/fptn-client-cli" : "/usr/bin/fptn-client",
         fptn_state_dir: "/var/run/tachyon/fptn",
         zapret_provider_nfqws_bin: constant_value(constants, "ZAPRET_PROVIDER_NFQWS_BIN"),

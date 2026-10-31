@@ -4,7 +4,7 @@ let common = require("core.common");
 let as_string = common.as_string;
 
 function mode(cfg) { return cfg?.smart_detect_mode == "plus" ? "plus" : "default"; }
-function capture_enabled(cfg) { return cfg?.smart_detect == "1" && mode(cfg) == "plus"; }
+function capture_enabled(cfg) { return cfg?.smart_detect == "1" && (mode(cfg) == "plus" || cfg?.smart_detect_chain == "1"); }
 
 function smart_detect_normalize_domain(value) {
     let domain = lc(trim(as_string(value)));

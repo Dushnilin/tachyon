@@ -3755,6 +3755,20 @@
       }
     },
     {
+      "name": "smart_connect_status",
+      "cli_command": "smart_connect_status",
+      "category": "system",
+      "acl": "read",
+      "description": "status (service/smart_connect.uc)",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
       "name": "snapshot_delete",
       "cli_command": "snapshot_delete",
       "category": "system",

@@ -62,6 +62,13 @@ jobs:
 
           ls -la "$PWD/filtered-bin/release"
 
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Build optional Smart Connect helpers
+        run: bash tools/build-smart-connect.sh '${{ needs.preparation.outputs.version }}' filtered-bin/release
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:

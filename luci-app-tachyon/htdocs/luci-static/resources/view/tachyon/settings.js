@@ -4583,6 +4583,139 @@ function createSettingsContent(section, capabilities) {
   };
 
   // Smart Detect sections (domain test order)
+  const chainOpt = section.taboption(
+    "services",
+    form.Flag,
+    "smart_detect_chain",
+    _("Automatic Direct → Zapret → VPN"),
+    _(
+      "Selects a working IP through Zapret before using the backup VPN. Decisions are cached without creating routing sections. Requires the tachyon-smart-connect helper. Applies to LAN HTTP/HTTPS over TCP; existing manual routes keep priority.",
+    ),
+  );
+  chainOpt.default = "0";
+  chainOpt.rmempty = false;
+  chainOpt.depends("smart_detect", "1");
+  const chainSections = (uci.sections(UCI_PACKAGE, "section") || []).filter(
+    (s) =>
+      s.enabled !== "0" &&
+      !["block", "bypass", "dns", "hosts"].includes(s.action),
+  );
+  for (const [key, title] of [
+    ["smart_detect_chain_zapret", _("Zapret section (required)")],
+    ["smart_detect_chain_vpn", _("Backup VPN section (required)")],
+  ]) {
+    const field = section.taboption("services", form.ListValue, key, title);
+    field.depends({ smart_detect: "1", smart_detect_chain: "1" });
+    field.rmempty = false;
+    field.retain = true;
+    field.value("", _("Select a section"));
+    chainSections.forEach((s) =>
+      field.value(s[".name"], s.label || s.name || s[".name"]),
+    );
+    field.validate = function (section_id, value) {
+      if (!value || !chainSections.some((s) => s[".name"] === value))
+        return _("Select an enabled routing section");
+      const other =
+        key === "smart_detect_chain_zapret"
+          ? "smart_detect_chain_vpn"
+          : "smart_detect_chain_zapret";
+      const otherField = this.map.lookupOption(other, section_id)?.[0];
+      const otherValue =
+        otherField?.formvalue(section_id) ??
+        uci.get(UCI_PACKAGE, section_id, other);
+      return (
+        value !== otherValue ||
+        _("Zapret and backup VPN must use different sections")
+      );
+    };
+  }
+  const chainBudget = section.taboption(
+    "services",
+    form.Value,
+    "smart_detect_chain_budget_ms",
+    _("Zapret IP search budget (ms)"),
+    _(
+      "Maximum time for DNS and IP checks at the Zapret stage. Cached decisions do not wait for these checks. VPN connection time is additional.",
+    ),
+  );
+  chainBudget.default = "3000";
+  chainBudget.datatype = "range(100,10000)";
+  chainBudget.rmempty = false;
+  chainBudget.retain = true;
+  chainBudget.depends({ smart_detect: "1", smart_detect_chain: "1" });
+
+  const chainStatus = section.taboption(
+    "services",
+    form.DummyValue,
+    "_smart_connect_status",
+    _("Automatic route decisions"),
+  );
+  chainStatus.depends({ smart_detect: "1", smart_detect_chain: "1" });
+  chainStatus.renderWidget = function () {
+    const content = E(
+      "div",
+      {},
+      _("Press Refresh to inspect the current route and IP cache."),
+    );
+    const button = E(
+      "button",
+      { type: "button", class: "cbi-button cbi-button-action" },
+      _("Refresh"),
+    );
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        const result = await fs.exec("/usr/bin/tachyon-read", [
+          "smart_connect_status",
+        ]);
+        if (result.code !== 0)
+          throw new Error(
+            result.stderr || _("Unable to read automatic route decisions"),
+          );
+        const state = JSON.parse(result.stdout || "{}");
+        const rows = Array.isArray(state.entries)
+          ? state.entries.slice(0, 100)
+          : [];
+        content.replaceChildren();
+        if (!rows.length)
+          content.appendChild(
+            E("p", {}, _("No cached automatic decisions yet.")),
+          );
+        else {
+          const table = E("table", { class: "table" }, [
+            E("tr", {}, [
+              E("th", {}, _("Domain / port")),
+              E("th", {}, _("Route")),
+              E("th", {}, _("IP address")),
+            ]),
+          ]);
+          rows.forEach((row) =>
+            table.appendChild(
+              E("tr", {}, [
+                E("td", {}, String(row.key || "").replace(/^[^|]*\|/, "")),
+                E(
+                  "td",
+                  {},
+                  { direct: _("Direct"), zapret: "Zapret", vpn: "VPN" }[
+                    row.route
+                  ] || "—",
+                ),
+                E("td", {}, String(row.ip || "—")),
+              ]),
+            ),
+          );
+          content.appendChild(table);
+        }
+      } catch (error) {
+        content.textContent = error.message || String(error);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    return E("div", {}, [button, content]);
+  };
+
+  // Legacy background detector destinations; unused by connection-time chain.
   const sdSectionsOpt = section.taboption(
     "services",
     form.Value,
@@ -4593,7 +4726,8 @@ function createSettingsContent(section, capabilities) {
     ),
   );
   sdSectionsOpt.rawhtml = true;
-  sdSectionsOpt.depends("smart_detect", "1");
+  sdSectionsOpt.retain = true;
+  sdSectionsOpt.depends({ smart_detect: "1", smart_detect_chain: "0" });
   sdSectionsOpt.renderWidget = function (section_id, option_index, cfgvalue) {
     return createSmartDetectSectionsWidget(section_id);
   };

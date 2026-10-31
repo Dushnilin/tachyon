@@ -2492,6 +2492,14 @@ function smart_detect_process_plus(cfg) {
 
 function smart_detect_process_pending() {
     let cfg = settings();
+    // The connection-time connector owns routing in chain mode. Never add
+    // per-domain UCI rules or restart the core behind its back.
+    if (cfg.smart_detect == "1" && cfg.smart_detect_chain == "1") {
+        if (smart_plus_job != null) { (smart_probe || get_smart_probe()).stop(smart_plus_job.task); smart_plus_job = null; }
+        pending_smart_domains = {};
+        pending_smart_plus = {};
+        return;
+    }
     if (cfg.smart_detect != "1") {
         if (smart_plus_job != null) { (smart_probe || get_smart_probe()).stop(smart_plus_job.task); smart_plus_job = null; }
         pending_smart_plus = {};
@@ -2742,6 +2750,7 @@ function heal_oom(ev) {
 // smart_detect_process_pending(): probing inside the log handler would block
 // the event loop on curl for every failing connection.
 function collect_smart_detect_candidate(ev) {
+    if (settings().smart_detect_chain == "1") return;
     if (smart_plus.mode(settings()) == "plus") {
         smart_plus.queue_candidate(pending_smart_plus, ev.payload, time(), PENDING_SMART_DOMAINS_MAX);
         return;

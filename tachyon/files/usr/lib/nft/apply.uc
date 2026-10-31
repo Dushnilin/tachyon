@@ -2190,7 +2190,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     // Keep this after exclusions, local/Tailscale bypass and priority rules, and
     // never intercept router output (including the independent Direct probes).
     if (bool_option(uci_settings(), "smart_detect", false) &&
-        option(uci_settings(), "smart_detect_mode", "default") == "plus") {
+        (option(uci_settings(), "smart_detect_mode", "default") == "plus" || bool_option(uci_settings(), "smart_detect_chain", false))) {
         if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]) ||
             !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "meta", "mark", "0", "tcp", "dport", "{ 80, 443 }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-smart-detect\"" ]))
             return false;
@@ -3531,7 +3531,7 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
     if (proxy_mode != "" && proxy_mode != "tproxy")
         body = signature_add_value(body, "settings.proxy_mode", proxy_mode);
-    if (bool_option(settings, "smart_detect", false) && option(settings, "smart_detect_mode", "default") == "plus")
+    if (bool_option(settings, "smart_detect", false) && (option(settings, "smart_detect_mode", "default") == "plus" || bool_option(settings, "smart_detect_chain", false)))
         body = signature_add_value(body, "settings.smart_detect_plus", "1");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
     body = signature_add_value(body, "settings.game_console_ips", option(settings, "game_console_ips", ""));

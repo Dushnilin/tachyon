@@ -12,6 +12,8 @@ on:
       - 'install.sh'
       - 'uninstall.sh'
       - 'tests/**'
+      - 'tools/smart-connect/**'
+      - 'tools/build-smart-connect.sh'
       - 'luci-app-tachyon/**'
       - 'fe-app-tachyon/locales/**'
       - '.github/workflows/build.yml'
@@ -26,6 +28,8 @@ on:
       - 'install.sh'
       - 'uninstall.sh'
       - 'tests/**'
+      - 'tools/smart-connect/**'
+      - 'tools/build-smart-connect.sh'
       - 'luci-app-tachyon/**'
       - 'fe-app-tachyon/locales/**'
       - '.github/workflows/build.yml'
@@ -63,6 +67,16 @@ jobs:
       - name: Static guards (no new raw shell / system / uci commit)
         shell: bash
         run: bash tests/ci_guards.sh
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Build connector for generated-config preflight
+        working-directory: tools/smart-connect
+        run: |
+          go build -o "$RUNNER_TEMP/tachyon-smart-connect" .
+          echo "TACHYON_TEST_CONNECTOR=$RUNNER_TEMP/tachyon-smart-connect" >> "$GITHUB_ENV"
 
       - name: Check ucode syntax
         shell: bash
