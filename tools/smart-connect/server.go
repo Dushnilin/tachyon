@@ -171,8 +171,15 @@ func handle(root context.Context, client net.Conn, s *selector, start string) {
 		}
 	}
 	client.SetDeadline(time.Time{})
-	ctx, cancel := context.WithTimeout(root, 12*time.Second)
+	// Allow the configured stages, one pre-forwarding reselection and both
+	// bounded final SOCKS dials. A fixed cap can expire before a valid VPN wins.
+	ctx, cancel := context.WithTimeout(root, 2*selectionBudget(s.config(), start)+10*time.Second)
 	defer cancel()
+	dial := func(route, address string) (net.Conn, error) {
+		leg, stop := context.WithTimeout(ctx, 5*time.Second)
+		defer stop()
+		return dialSOCKS(leg, proxyFor(s.config(), route), address, port)
+	}
 	v := choice{Route: start, Reason: "original route"}
 	if (port == 80 || port == 443) && webHost(host) && !s.excluded(host) {
 		if candidate, e := s.choose(ctx, host, port, start); e == nil {
@@ -183,7 +190,7 @@ func handle(root context.Context, client net.Conn, s *selector, start string) {
 	if v.IP != "" {
 		address = v.IP
 	}
-	upstream, err := dialSOCKS(ctx, proxyFor(s.config(), v.Route), address, port)
+	upstream, err := dial(v.Route, address)
 	if err != nil && (port == 80 || port == 443) && webHost(host) && !s.excluded(host) {
 		s.invalidate(host, port, start, v)
 		if replacement, e := s.choose(ctx, host, port, start); e == nil {
@@ -192,7 +199,7 @@ func handle(root context.Context, client net.Conn, s *selector, start string) {
 			if v.IP != "" {
 				address = v.IP
 			}
-			upstream, err = dialSOCKS(ctx, proxyFor(s.config(), v.Route), address, port)
+			upstream, err = dial(v.Route, address)
 		}
 	}
 	if err != nil {

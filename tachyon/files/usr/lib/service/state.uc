@@ -280,18 +280,21 @@ function lock_dir_write_owner(lock_dir, owner_pid) {
     return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
 }
 
-function release_runtime_dir_lock(lock_dir) {
+function release_runtime_dir_lock(lock_dir, expected_owner) {
     lock_dir = as_string(lock_dir);
     if (lock_dir == "")
+        return;
+    if (expected_owner != null && first_line_value(lock_dir + "/pid") != as_string(expected_owner))
         return;
 
     command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
     command_success_from_args([ "rmdir", lock_dir ]);
 }
 
-function acquire_runtime_dir_lock(lock_dir, owner_pid) {
+function acquire_runtime_dir_lock(lock_dir, owner_pid, max_age) {
     lock_dir = as_string(lock_dir);
     owner_pid = as_string(owner_pid);
+    max_age = max_age == null ? 300 : int(max_age);
     if (lock_dir == "" || owner_pid == "")
         return false;
 
@@ -306,7 +309,7 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
     let lock_age = (lock_stat && lock_stat.mtime) ? (int(clock()[0]) - lock_stat.mtime) : 9999;
     let recorded_pid = first_line_value(lock_dir + "/pid");
 
-    if (pid_alive(recorded_pid) && lock_age < 300)
+    if (pid_alive(recorded_pid) && (max_age == 0 || lock_age < max_age))
         return false;
 
     // pid file missing entirely: either another waiter is mid-takeover or a
@@ -337,12 +340,12 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
     return false;
 }
 
-function acquire_runtime_dir_lock_wait(lock_dir, owner_pid, timeout) {
+function acquire_runtime_dir_lock_wait(lock_dir, owner_pid, timeout, max_age) {
     let timeout_text = as_string(timeout == null ? "300" : timeout);
     timeout = numeric_text(timeout_text) ? int(timeout_text, 10) : 300;
     let start = int(current_epoch(), 10) || 0;
 
-    while (!acquire_runtime_dir_lock(lock_dir, owner_pid)) {
+    while (!acquire_runtime_dir_lock(lock_dir, owner_pid, max_age)) {
         let now = int(current_epoch(), 10) || start;
         if (now - start >= timeout)
             return false;
@@ -2905,11 +2908,11 @@ else if (mode == "consume-pending-reload")
 else if (mode == "run-pending-reload-if-requested")
     run_pending_reload_if_requested(ARGV[1], ARGV[2]);
 else if (mode == "acquire-runtime-dir-lock")
-    exit(acquire_runtime_dir_lock(ARGV[1], ARGV[2]) ? 0 : 1);
+    exit(acquire_runtime_dir_lock(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "acquire-runtime-dir-lock-wait")
-    exit(acquire_runtime_dir_lock_wait(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
+    exit(acquire_runtime_dir_lock_wait(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
 else if (mode == "release-runtime-dir-lock")
-    release_runtime_dir_lock(ARGV[1]);
+    release_runtime_dir_lock(ARGV[1], ARGV[2]);
 else if (mode == "reload-core-runtime")
     reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "sighup-core-runtime")

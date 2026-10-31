@@ -129,7 +129,7 @@ func (s *selector) runFlight(key, host string, port uint16, start string, f *fli
 	c := s.cfg
 	epoch := s.epoch
 	s.mu.Unlock()
-	ctx, cancel := context.WithTimeout(s.root, durationMS(c.DirectBudgetMS+c.ZapretBudgetMS)+5*time.Second)
+	ctx, cancel := context.WithTimeout(s.root, selectionBudget(c, start))
 	defer cancel()
 	v, err := s.selectRoute(ctx, c, host, port, start)
 	s.mu.Lock()
@@ -200,6 +200,88 @@ func proxyFor(c Config, route string) string {
 	return ""
 }
 
+func selectionBudget(c Config, start string) time.Duration {
+	budget := c.ZapretBudgetMS
+	if start != "zapret" {
+		budget += c.DirectBudgetMS
+	}
+	return durationMS(budget) + 5*time.Second // VPN check plus scheduling margin
+}
+
+type dnsProbeResult struct {
+	ip  string
+	ttl time.Duration
+	err error
+}
+
+// Probe usable answers immediately while the other DNS family is still pending.
+// Both batches share two local probe slots and the existing global limit.
+func (s *selector) probeDNSReplies(ctx context.Context, c Config, route, host string, port uint16, replies <-chan dnsResult) (string, time.Duration, bool, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan dnsProbeResult, 2)
+	slots := make(chan struct{}, 2)
+	pending, candidates := 0, 0
+	var dnsErr, uncertain error
+	resolved := false
+	for replies != nil || pending > 0 {
+		select {
+		case dns, ok := <-replies:
+			if !ok {
+				replies = nil
+				continue
+			}
+			if dns.err != nil {
+				dnsErr = dns.err
+			}
+			if len(dns.IPs) == 0 {
+				continue
+			}
+			resolved = true
+			// Leave room for a later answer from the other family.
+			limit := 16
+			if ipv6Available() {
+				limit = 8
+			}
+			if len(dns.IPs) > limit {
+				dns.IPs = dns.IPs[:limit]
+			}
+			if len(dns.IPs) > 16-candidates {
+				dns.IPs = dns.IPs[:16-candidates]
+			}
+			if len(dns.IPs) == 0 {
+				continue
+			}
+			candidates += len(dns.IPs)
+			pending++
+			go func(dns dnsResult) {
+				ip, err := s.raceWithSlots(ctx, c, route, host, port, dns.IPs, slots)
+				results <- dnsProbeResult{ip, dns.TTL, err}
+			}(dns)
+		case result := <-results:
+			pending--
+			if result.ip != "" {
+				return result.ip, result.ttl, true, nil
+			}
+			if result.err != nil {
+				uncertain = result.err
+			}
+		case <-ctx.Done():
+			if resolved {
+				return "", 0, true, uncertain
+			}
+			return "", 0, false, ctx.Err()
+		}
+	}
+	if resolved {
+		return "", 0, true, uncertain
+	}
+	if dnsErr == nil {
+		dnsErr = errors.New("no public DNS addresses")
+	}
+	return "", 0, false, dnsErr
+}
+
 func (s *selector) selectRoute(ctx context.Context, c Config, host string, port uint16, start string) (choice, error) {
 	stages := []string{"direct", "zapret"}
 	if start == "zapret" {
@@ -216,24 +298,22 @@ func (s *selector) selectRoute(ctx context.Context, c Config, host string, port 
 		// DNS and TLS share the stage budget. A small artificial DNS-only
 		// deadline can discard a valid slower A answer while only unusable AAAA
 		// records have arrived, incorrectly forcing healthy sites onto VPN.
-		dns := resolveForNetwork(leg, server, host)
-		if dns.err != nil {
-			dnsError = dns.err
+		ip, ttl, hasAddresses, probeErr := s.probeDNSReplies(leg, c, route, host, port, resolveForNetwork(leg, server, host))
+		if !hasAddresses {
+			dnsError = probeErr
 			cancel()
 			continue
 		}
 		resolved = true
-		ip, uncertain := s.race(leg, c, route, host, port, dns.IPs)
 		cancel()
 		if ip != "" {
-			ttl := dns.TTL
 			if max := time.Duration(c.CacheSeconds) * time.Second; ttl > max {
 				ttl = max
 			}
 			return choice{Route: route, IP: ip, Reason: "verified TLS/HTTP response", Checked: time.Now(), Expires: time.Now().Add(ttl)}, nil
 		}
-		if uncertain != nil {
-			return choice{}, uncertain
+		if probeErr != nil {
+			return choice{}, probeErr
 		}
 	}
 	if !resolved {
@@ -260,6 +340,10 @@ type probeResult struct {
 }
 
 func (s *selector) race(ctx context.Context, c Config, route, host string, port uint16, ips []net.IP) (string, error) {
+	return s.raceWithSlots(ctx, c, route, host, port, ips, nil)
+}
+
+func (s *selector) raceWithSlots(ctx context.Context, c Config, route, host string, port uint16, ips []net.IP, slots chan struct{}) (string, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// DNS order rotates, and IPv4/IPv6 records are interleaved so an unusable
@@ -296,6 +380,11 @@ func (s *selector) race(ctx context.Context, c Config, route, host string, port 
 	attempt := 1500 * time.Millisecond
 	if deadline, ok := ctx.Deadline(); ok {
 		share := time.Until(deadline) / time.Duration(max(1, (len(ordered)+1)/2))
+		// Another DNS family can arrive after this batch. Its candidates must
+		// get a turn even if both current workers are TLS blackholes.
+		if slots != nil && share > time.Until(deadline)/2 {
+			share = time.Until(deadline) / 2
+		}
 		if share < attempt {
 			attempt = share
 		}
@@ -313,15 +402,28 @@ func (s *selector) race(ctx context.Context, c Config, route, host string, port 
 	for worker := 0; worker < 2; worker++ {
 		go func() {
 			for ip := range jobs {
+				if slots != nil {
+					select {
+					case slots <- struct{}{}:
+					case <-ctx.Done():
+						return
+					}
+				}
 				select {
 				case s.probes <- struct{}{}:
 				case <-ctx.Done():
+					if slots != nil {
+						<-slots
+					}
 					return
 				}
 				leg, stop := context.WithTimeout(ctx, attempt)
 				err := s.probe(leg, c, route, ip, host, port)
 				stop()
 				<-s.probes
+				if slots != nil {
+					<-slots
+				}
 				results <- probeResult{ip: ip, err: err}
 				if ctx.Err() != nil {
 					return

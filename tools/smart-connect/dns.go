@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -18,11 +19,7 @@ type dnsResult struct {
 
 // Use the section's forced core DNS listener, never the system resolver (which
 // may return FakeIP). Keep the record TTL so a cached preference cannot pin an
-// address beyond its DNS lifetime. Both A and AAAA are queried.
-func resolve(ctx context.Context, server, host string) dnsResult {
-	return resolveTypes(ctx, server, host, []uint16{1, 28})
-}
-
+// address beyond its DNS lifetime. Answers are delivered as each family arrives.
 func ipv6Available() bool {
 	addresses, err := net.InterfaceAddrs()
 	if err != nil {
@@ -37,45 +34,23 @@ func ipv6Available() bool {
 	return false
 }
 
-func resolveForNetwork(ctx context.Context, server, host string) dnsResult {
+func resolveForNetwork(ctx context.Context, server, host string) <-chan dnsResult {
 	kinds := []uint16{1}
 	if ipv6Available() {
 		kinds = append(kinds, 28)
 	}
-	return resolveTypes(ctx, server, host, kinds)
+	return resolveReplies(ctx, server, host, kinds)
 }
 
-func resolveTypes(ctx context.Context, server, host string, kinds []uint16) dnsResult {
+func resolveReplies(ctx context.Context, server, host string, kinds []uint16) <-chan dnsResult {
 	ch := make(chan dnsResult, len(kinds))
+	var workers sync.WaitGroup
+	workers.Add(len(kinds))
 	for _, kind := range kinds {
-		go func(k uint16) { ch <- dnsQuery(ctx, server, host, k) }(kind)
+		go func(k uint16) { defer workers.Done(); ch <- dnsQuery(ctx, server, host, k) }(kind)
 	}
-	r := dnsResult{TTL: time.Hour}
-	for i := 0; i < len(kinds); i++ {
-		select {
-		case a := <-ch:
-			r.IPs = append(r.IPs, a.IPs...)
-			if len(a.IPs) > 0 && a.TTL < r.TTL {
-				r.TTL = a.TTL
-			}
-			if a.err != nil {
-				r.err = a.err
-			}
-		case <-ctx.Done():
-			if len(r.IPs) > 0 {
-				r.err = nil
-				return r
-			}
-			r.err = ctx.Err()
-			return r
-		}
-	}
-	if len(r.IPs) > 0 {
-		r.err = nil
-	} else if r.err == nil {
-		r.err = errors.New("no public DNS addresses")
-	}
-	return r
+	go func() { workers.Wait(); close(ch) }()
+	return ch
 }
 
 func dnsQuery(ctx context.Context, server, host string, kind uint16) dnsResult {

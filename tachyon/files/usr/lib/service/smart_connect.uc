@@ -20,6 +20,8 @@ function sync(prepare) {
     if (!core) return false;
     let p=engine.plan(core,cfg,uci.section_objects(CONFIG,"section") || [],uci.section_objects(CONFIG,"outbound_source") || []);
     if (!p || p.error) {warn(p?.error || "Smart Connect unavailable","\n");return false;}
+    // Discard observations from the old core/stopped Zapret activation window.
+    p.helper.generation += prepare ? ":preparing" : ":active";
     if (!fs.stat("/usr/bin/tachyon-smart-connect") || !fs.stat(INIT)) {
         warn("Smart Connect helper is not ready; apply settings again to retry automatic installation\n");return false;
     }

@@ -29,18 +29,21 @@ UC
 cat > "$TACHYON_LIB/components/downloader.uc" <<'UC'
 let f=require("fs"),c=require("core.common"),dir=getenv("TEST_SMART_FIXTURE");
 function log(line){let out=f.open(dir+"/requests","a");out.write(line+"\n");out.close();}
+function download(url,path,label){
+ log("download "+label+" "+url);
+ if(getenv("TEST_SMART_DOWNLOAD_FAIL")=="1")return false;
+ if(getenv("TEST_SMART_DELAY")=="1")c.command_success_from_args(["sleep","0.3"]);
+ let source=match(url,/\.tar\.gz$/)?"helper.tar.gz":"checksums";
+ return c.command_success_from_args(["cp",dir+"/"+source,path]);
+}
 return {
- fetch_github_release_by_tag_json:function(owner,repo,tag){
+ fetch_github_release_by_tag_json:function(owner,repo,tag,origin_only){
+  assert(origin_only===true,"bootstrap metadata must bypass mirrors and their cache");
   log("release "+owner+"/"+repo+" "+tag);
   return f.readfile(dir+"/release.json") || "";
  },
- download_with_retry:function(url,path){
-  log("download "+url);
-  if(getenv("TEST_SMART_DOWNLOAD_FAIL")=="1")return false;
-  if(getenv("TEST_SMART_DELAY")=="1")c.command_success_from_args(["sleep","0.3"]);
-  let source=match(url,/\.tar\.gz$/)?"helper.tar.gz":"checksums";
-  return c.command_success_from_args(["cp",dir+"/"+source,path]);
- }
+ download_file_once:function(url,path){assert(!match(url,/\.tar\.gz$/),"origin manifest");return download(url,path,"origin");},
+ download_with_retry:function(url,path){assert(match(url,/\.tar\.gz$/),"only verified archives may use mirrors");return download(url,path,"mirrors");}
 };
 UC
 
@@ -88,9 +91,11 @@ JSON
 }
 ensure() { ucode -L "$TACHYON_LIB" "$TACHYON_LIB/components/smart_connect.uc" ensure; }
 expect_failure() {
+ local before
+ before=$(sha256sum "$TACHYON_SMART_CONNECT_BIN" | awk '{print $1}')
  if ensure > "$WORK_DIR/failure.log" 2>&1; then fail "installation unexpectedly succeeded: $1"; fi
  grep -q "$1" "$WORK_DIR/failure.log" || { cat "$WORK_DIR/failure.log"; fail "missing failure reason: $1"; }
- [ "$(cat "$TACHYON_SMART_CONNECT_BIN")" = original ] || fail "failed install changed the previous file"
+ [ "$(sha256sum "$TACHYON_SMART_CONNECT_BIN" | awk '{print $1}')" = "$before" ] || fail "failed install changed the previous file"
  [ ! -d "$WORK_DIR/run/smart-connect-install.lock" ] || fail "installation lock leaked"
 }
 make_release
@@ -114,6 +119,13 @@ cp "$WORK_DIR/uci-before" "$TACHYON_UCI_STATE_FILE"
 printf original > "$TACHYON_SMART_CONNECT_BIN"
 chmod 0644 "$TACHYON_SMART_CONNECT_BIN"
 TEST_SMART_DOWNLOAD_FAIL=1 expect_failure 'download failed'
+printf '\177ELF' > "$TACHYON_SMART_CONNECT_BIN"
+chmod 0755 "$TACHYON_SMART_CONNECT_BIN"
+TEST_SMART_DOWNLOAD_FAIL=1 expect_failure 'download failed'
+ensure
+cmp "$TACHYON_SMART_CONNECT_BIN" "$TEST_SMART_FIXTURE/content/tachyon-smart-connect" || fail 'broken installed ELF was not repaired'
+printf original > "$TACHYON_SMART_CONNECT_BIN"
+chmod 0644 "$TACHYON_SMART_CONNECT_BIN"
 cp "$TEST_SMART_FIXTURE/checksums" "$WORK_DIR/sums-before"
 printf '%064d  tachyon-smart-connect-x86_64-1.9.0.tar.gz\n' 0 > "$TEST_SMART_FIXTURE/checksums"
 expect_failure 'checksum verification failed'

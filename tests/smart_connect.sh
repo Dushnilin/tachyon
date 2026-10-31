@@ -33,20 +33,22 @@ UC
 ucode "$WORK_DIR/controller.uc"
 cat > "$WORK_DIR/readiness.uc" <<'UC'
 let CONFIG="fixture",DIR="/fixture",INIT="/fixture/init";
-let active=true,readyAfter=3,polls=0,stops=0;
+let active=true,readyAfter=3,polls=0,stops=0,expectedGeneration="";
 let uci={get_all:function(){return {};},section_objects:function(){return [];}};
 let engine={enabled:function(){return active;},plan:function(){return {helper:{generation:"new"}};}};
 let fs={stat:function(){return true;},chmod:function(){},unlink:function(){},rename:function(){return true;},
     readlink:function(){return "/usr/bin/tachyon-smart-connect";}};
 let common={read_json_file:function(path){
-    if(path==DIR+"/status.json")return {pid:123,generation:++polls>=readyAfter?"new":"old"};
+    if(path==DIR+"/status.json")return {pid:123,generation:++polls>=readyAfter?expectedGeneration:"old"};
     return {};
-},write_json_file:function(){return true;},command_success_from_args:function(){return true;},command_status_from_args:function(){return 0;}};
+},write_json_file:function(path,cfg){expectedGeneration=cfg.generation;return true;},command_success_from_args:function(){return true;},command_status_from_args:function(){return 0;}};
 function stop(){stops++;}
 UC
 awk '/^function sync\(/{active=1} active{print} active && /^}/{exit}' "$TACHYON_LIB/service/smart_connect.uc" >> "$WORK_DIR/readiness.uc"
 cat >> "$WORK_DIR/readiness.uc" <<'UC'
 assert(sync(true)&&polls==3,"wait for current helper generation before activation");
+assert(expectedGeneration=="new:preparing","prepare uses temporary observations");
+assert(sync()&&expectedGeneration=="new:active","post-core commit clears temporary observations");
 active=false;assert(sync(true)&&stops==0,"prepare keeps helper for old core during disable");
 assert(sync()&&stops==1,"post-reload sync stops disabled helper");
 active=true;readyAfter=1000;polls=0;

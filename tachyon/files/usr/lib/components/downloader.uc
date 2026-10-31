@@ -436,12 +436,24 @@ function fetch_github_release_json(owner, repo) {
     return fetch_github_json(url, null);
 }
 
-function fetch_github_release_by_tag_json(owner, repo, tag) {
+// Executable bootstrap must not trust mirror-populated caches or metadata.
+function fetch_github_json_origin(url, timeout) {
+    let proxy = helpers.service_proxy_address();
+    for (let address in (proxy != "" ? [proxy, ""] : [""])) {
+        let response = http_get_with_body(url, timeout, address);
+        if (response.status == "200" && response.body != "" &&
+            helpers.helper_success_input(response.body, "github-response-ok", []))
+            return response.body;
+    }
+    return "";
+}
+
+function fetch_github_release_by_tag_json(owner, repo, tag, origin_only) {
     tag = trim(as_string(tag));
     if (tag == "")
         return "";
     let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/tags/" + tag;
-    return fetch_github_json(url, null);
+    return origin_only ? fetch_github_json_origin(url, null) : fetch_github_json(url, null);
 }
 
 function fetch_github_tag_commit_sha(owner, repo, tag) {

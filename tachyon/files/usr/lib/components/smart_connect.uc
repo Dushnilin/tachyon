@@ -63,9 +63,31 @@ function elf(path) {
     return header == "\x7fELF";
 }
 
-function installed() {
-    let st = fs.stat(BIN);
-    return st?.type == "file" && (st.mode & 0111) != 0 && elf(BIN);
+function usable_binary(path) {
+    let st = fs.stat(path);
+    if (st?.type != "file" || st.size <= 4 || (st.mode & 0111) == 0 || !elf(path)) return false;
+    let check = trim(common.command_output_from_args(["mktemp", "/tmp/tachyon-smart-connect-check.XXXXXX"]));
+    if (check == "") return false;
+    let result = false;
+    try {
+        let cfg = {listen_auto:"127.0.0.1:14700", listen_zapret:"127.0.0.1:14701",
+            direct_proxy:"127.0.0.1:14710", zapret_proxy:"127.0.0.1:14711", vpn_proxy:"127.0.0.1:14712",
+            direct_dns:"127.0.0.1:14720", zapret_dns:"127.0.0.1:14721"};
+        result = common.write_json_file(check, cfg) && common.command_success(common.bounded_command(
+            common.command_from_args([path, "-check", "-config", check]), 5));
+    } catch (e) {}
+    fs.unlink(check);
+    return result;
+}
+
+function installed() { return usable_binary(BIN); }
+
+function clock_ready() {
+    if (time() >= 1704067200) return true;
+    // Cold boot/sysupgrade may have lost the RTC along with the optional binary.
+    common.command_success(common.bounded_command(common.command_from_args([
+        "ucode", "-L", LIB, LIB + "/service/state.uc", "sync-time-if-needed"]), 20));
+    return time() >= 1704067200;
 }
 
 function failure(message) {
@@ -89,7 +111,7 @@ function install_binary() {
     let downloader = require("components.downloader");
     let parts = split(repo, "/"), asset = null;
     for (let tag in ["v" + version, version]) {
-        let response = downloader.fetch_github_release_by_tag_json(parts[0], parts[1], tag);
+        let response = downloader.fetch_github_release_by_tag_json(parts[0], parts[1], tag, true);
         try { asset = release_assets(json(response), repo, version, arch); } catch (e) {}
         if (asset) break;
     }
@@ -104,7 +126,7 @@ function install_binary() {
     let operation = function() {
         helpers.updates_log("Installing Smart Connect helper for " + arch + " from Tachyon " + version);
         let archive = work + "/helper.tar.gz", sums = work + "/SHA256SUMS";
-        if (!downloader.download_with_retry(asset.sums, sums, "Smart Connect checksums") ||
+        if (!downloader.download_file_once(asset.sums, sums) ||
             !downloader.download_with_retry(asset.archive, archive, "Smart Connect helper"))
             return failure("helper download failed; check Internet access and retry");
         let expected = checksum(fs.readfile(sums), asset.name);
@@ -122,11 +144,7 @@ function install_binary() {
         if (st?.type != "file" || st.size <= 4 || st.size > 32 * 1024 * 1024 || !elf(candidate))
             return failure("downloaded helper is not a supported executable");
         fs.chmod(candidate, 0700);
-        let check = {listen_auto:"127.0.0.1:14700", listen_zapret:"127.0.0.1:14701",
-            direct_proxy:"127.0.0.1:14710", zapret_proxy:"127.0.0.1:14711", vpn_proxy:"127.0.0.1:14712",
-            direct_dns:"127.0.0.1:14720", zapret_dns:"127.0.0.1:14721"};
-        if (!common.write_json_file(work + "/check.json", check) ||
-            !common.command_success(common.bounded_command(common.command_from_args([candidate, "-check", "-config", work + "/check.json"]), 5)))
+        if (!usable_binary(candidate))
             return failure("helper cannot run on this router");
         let parent = replace(BIN, /\/[^\/]+$/, "");
         if (!helpers.check_free_disk_space(parent, st.size)) return failure("insufficient storage for the helper");
@@ -153,19 +171,20 @@ function ensure() {
     if (installed()) return true;
     if (index(["tachyon-core", "sing-box"], cfg.engine || "tachyon-core") < 0)
         return failure("this routing engine does not support the automatic chain");
+    if (!clock_ready()) return failure("router clock is invalid; synchronize the time and apply settings again");
     if (!helpers.ensure_dir(replace(LOCK, /\/[^\/]+$/, "")))
         return failure("cannot create the runtime installation directory");
     let owner = split(fs.readfile("/proc/self/stat") || "", " ")[0];
     if (!match(owner, /^[0-9]+$/)) return failure("cannot identify the installer process");
     // Lifecycle and a second UI request may meet during first installation.
     if (!common.command_success_from_args(["ucode", "-L", LIB, LIB + "/service/state.uc",
-            "acquire-runtime-dir-lock-wait", LOCK, owner, "120"]))
+            "acquire-runtime-dir-lock-wait", LOCK, owner, "120", "0"]))
         return failure("another helper installation is in progress; retry shortly");
     let result = false;
     try { result = installed() || install_binary(); }
     catch (e) { failure("helper installation failed: " + e); }
     helpers.cleanup_tmp_dir();
-    common.command_success_from_args(["ucode", "-L", LIB, LIB + "/service/state.uc", "release-runtime-dir-lock", LOCK]);
+    common.command_success_from_args(["ucode", "-L", LIB, LIB + "/service/state.uc", "release-runtime-dir-lock", LOCK, owner]);
     return result;
 }
 

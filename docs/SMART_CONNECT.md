@@ -42,7 +42,9 @@ use their original route. Root-domain expansion is intentionally not performed:
    private, loopback, link-local and FakeIP destinations out of active probes.
    Without a public IPv6 interface address, query A only. DNS shares the full
    stage budget with probing; there is no shorter DNS-only deadline.
-3. Probe at most two candidates concurrently, interleaving address families.
+   Usable answers begin probing immediately while the other family is pending;
+   a blackholed AAAA lookup cannot consume the working A answer's probe time.
+3. Probe at most two candidates concurrently, sharing slots between address families.
    FIFO workers divide the remaining budget between candidate waves, so two
    TLS blackholes cannot occupy both workers for the entire stage. Normal
    budgets retain at least a one-second per-candidate allowance, subject to the
@@ -57,6 +59,9 @@ use their original route. Root-domain expansion is intentionally not performed:
    with an additional timeout of up to four seconds. These are search budgets,
    not a guarantee of total browser page-load time. DNS failure or certificate
    verification failure does not become a learned VPN decision.
+   The client search deadline accounts for configured stage budgets, VPN checks
+   and one pre-forwarding reselection. Each final SOCKS dial is bounded to five
+   seconds, so increasing the Zapret budget does not hit an unrelated 12 s cap.
 5. Cache decisions by exact hostname, port and starting stage. A pinned IP never
    outlives the minimum DNS/CNAME TTL or the five-minute cache ceiling. Failed
    selections are not permanently cached. Concurrent requests for the same key
@@ -75,6 +80,8 @@ them. No per-request writes are made to flash.
 System trust roots are loaded once before accepting connections. Lifecycle
 waits for both listener binds and the current configuration generation before
 activating core routes; a five-second readiness timeout aborts activation.
+The prepare and active phases use distinct generations: the final commit clears
+decisions made while the old core or a restarting Zapret worker was still active.
 
 Only probe traffic is sent to multiple addresses. The user's HTTP request, POST
 body and TLS early data go only to the winning connection. A TCP connection
@@ -112,11 +119,17 @@ settings still describe the requested change, and applying them again retries.
 
 The helper and SHA-256 manifest must come from the installed backend's matching
 release in the configured Tachyon release repository. A newer unrelated release
-is never substituted. Installation verifies the archive hash, its single regular
+is never substituted. Release metadata bypasses mirror-filled caches; metadata
+and the checksum manifest are fetched only from GitHub over the existing VPN or
+direct HTTPS. The archive may use mirrors after its trusted hash is available.
+Installation verifies the archive hash, its single regular
 file, and the helper's configuration-check command before an atomic rename into
 `/usr/bin/tachyon-smart-connect` (0755). Unsupported architectures, missing assets,
 bad checksums, incompatible executables and insufficient storage fail before
-activation. Existing executable helpers are reused without downloading.
+activation. Existing helpers are reused without downloading only after a bounded
+configuration self-check; a damaged executable is repaired during preflight.
+Cold-boot clock recovery runs before HTTPS downloads. Concurrent installs share
+a lock that cannot be taken from a live owner just because a mirror is slow.
 
 Development checkouts without a published matching release require building and
 installing the helper manually. Service lifecycle remains owned by Tachyon; do
@@ -161,7 +174,12 @@ bash tests/dpi_routed_dns.sh
 The Go tests use local SOCKS/DNS/TLS fixtures: multiple IPs, TCP-success/TLS
 blackholes, VPN fallback, recovery hysteresis, TTL, cache isolation/single-flight,
 certificate/DNS failures, SNI recovery, fragmented ClientHello, and forwarding a
-POST exactly once. Backend tests exercise the real generator, route precedence,
+POST exactly once. Dual-stack regressions cover a hanging and a late DNS family;
+an end-to-end maximum-budget case verifies that VPN remains reachable after a
+long Zapret search. Offline installer tests cover origin-only trust, release and
+architecture matching, hashes, archive members, damaged/foreign executables,
+storage failure, concurrency, owner-aware locks, clock recovery and preserving
+the running network. Backend tests exercise the real generator, route precedence,
 forced probe listeners, exclusions, port collisions and reload signatures.
 Set `TACHYON_TEST_CORE` to a local core binary to additionally preflight the full
 generated fixture.
@@ -203,3 +221,7 @@ The helper cache showed all three routes under real LAN traffic, with 11 Direct,
 22 Zapret and 13 VPN decisions at one snapshot. Helper RSS was about 10.6 MiB.
 No new core errors appeared during verification. The rollback deadline was
 disarmed after success; the backup and manual restore script were retained.
+
+These router measurements precede the automatic installer and subsequent review
+fixes. Those additions were verified with local fixtures and CI and were not
+reapplied to the router as part of PR preparation.
