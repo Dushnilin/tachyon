@@ -41,8 +41,11 @@ if (mode == "tachyon-core-service-runtime-pid") {
     exit(0);
 }
 if (mode == "reload-core-runtime" ||
-    mode == "write-current-reload-state-clean")
+    mode == "write-current-reload-state-clean") {
+    if (mode == "reload-core-runtime" && getenv("FAIL_CORE_RELOAD") == "1")
+        exit(1);
     exit(0);
+}
 exit(64);
 '
 
@@ -151,5 +154,105 @@ run_reload "0" "$LOCAL_RS_LOG"
 
 grep -Fq 'service/state:reload-core-runtime' "$LOCAL_RS_LOG" ||
   fail "reload_singbox_after_list_update must reload core when local rule_set is present even if config.json hash is unchanged"
+
+mkdir -p "$WORK_DIR/bin"
+cat > "$WORK_DIR/bin/curl" <<'SH'
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >> "$FAKE_CURL_ARGV_LOG"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --config)
+      shift
+      [ "$(stat -c %a "$1")" = 600 ] || exit 91
+      grep -Fq 'Authorization: Bearer fixture-secret' "$1" || exit 92
+      printf '%s\n' "$1" >> "$FAKE_CURL_CONFIG_LOG"
+      ;;
+    --url)
+      shift
+      printf 'refresh:%s\n' "$1" >> "$FAKE_CALL_LOG"
+      ;;
+  esac
+  shift
+done
+[ "${FAIL_REMOTE_REFRESH:-0}" != 1 ]
+SH
+chmod +x "$WORK_DIR/bin/curl"
+export PATH="$WORK_DIR/bin:$PATH"
+export FAKE_CURL_ARGV_LOG="$WORK_DIR/curl.args"
+export FAKE_CURL_CONFIG_LOG="$WORK_DIR/curl.configs"
+touch "$FAKE_CURL_ARGV_LOG" "$FAKE_CURL_CONFIG_LOG"
+
+# A cached remote list must be refreshed even if the core config did not change.
+# Local/inline lists are not HTTP providers; duplicate tags are refreshed once.
+cat > "$CONFIG_PATH" <<'EOF'
+{
+  "experimental": {"clash_api": {"external_controller": "0.0.0.0:9090", "secret": "fixture-secret"}},
+  "route": {"rule_set": [
+    {"type": "remote", "tag": "zapret /%", "url": "https://example.test/zapret.srs"},
+    {"type": "remote", "tag": "vpn", "url": "https://example.test/vpn.json"},
+    {"type": "remote", "tag": "vpn", "url": "https://example.test/vpn.json"},
+    {"type": "local", "tag": "local", "path": "/tmp/local.srs"},
+    {"type": "inline", "tag": "inline", "rules": []}
+  ]}
+}
+EOF
+REMOTE_LOG="$WORK_DIR/remote.log"
+run_reload "0" "$REMOTE_LOG"
+grep -Fxq 'refresh:http://127.0.0.1:9090/providers/rules/zapret%20%2F%25' "$REMOTE_LOG" ||
+  fail "remote tag must be URL encoded and wildcard controller mapped to loopback"
+[ "$(grep -c '^refresh:' "$REMOTE_LOG")" = 2 ] ||
+  fail "remote lists must be refreshed once per tag"
+reload_line=$(grep -n 'service/state:reload-core-runtime' "$REMOTE_LOG" | cut -d: -f1)
+refresh_line=$(grep -n '^refresh:' "$REMOTE_LOG" | head -1 | cut -d: -f1)
+[ "$reload_line" -lt "$refresh_line" ] || fail "remote refresh must run after core reload"
+
+# Without local files, remote refresh must not need a SIGHUP at all.
+sed -i '/"type": "local"/d' "$CONFIG_PATH"
+run_reload "0" "$REMOTE_LOG"
+grep -q '^refresh:' "$REMOTE_LOG" || fail "unchanged remote-only config must still refresh"
+if grep -q 'reload-core-runtime' "$REMOTE_LOG"; then
+  fail "remote-only refresh must not reload the core"
+fi
+
+# A failed provider refresh fails the update, while still trying the other lists.
+status=0
+FAIL_REMOTE_REFRESH=1 run_reload "0" "$REMOTE_LOG" || status=$?
+[ "$status" != 0 ] || fail "HTTP refresh failure must propagate to the update caller"
+[ "$(grep -c '^refresh:' "$REMOTE_LOG")" = 2 ] || fail "one failed list must not skip the others"
+
+# Do not refresh against the old runtime if applying its replacement failed.
+sed -i 's/"type": "inline"/"type": "local", "path": "\/tmp\/inline.srs"/' "$CONFIG_PATH"
+status=0
+FAIL_CORE_RELOAD=1 run_reload "0" "$REMOTE_LOG" || status=$?
+[ "$status" != 0 ] || fail "core reload failure must propagate"
+if grep -q '^refresh:' "$REMOTE_LOG"; then
+  fail "failed core reload must not refresh providers in the old runtime"
+fi
+
+# Use a compact fixture for the IPv6 controller and missing-controller cases.
+cat > "$CONFIG_PATH" <<'EOF'
+{
+  "experimental": {"clash_api": {"external_controller": "[::]:9090", "secret": "fixture-secret"}},
+  "route": {"rule_set": [{"type": "remote", "tag": "zapret", "url": "https://example.test/zapret.srs"}]}
+}
+EOF
+run_reload "0" "$REMOTE_LOG"
+grep -Fxq 'refresh:http://[::1]:9090/providers/rules/zapret' "$REMOTE_LOG" ||
+  fail "IPv6 wildcard controller must map to loopback"
+sed -i '/"experimental":/d' "$CONFIG_PATH"
+status=0
+run_reload "0" "$REMOTE_LOG" || status=$?
+[ "$status" != 0 ] || fail "remote lists without a controller must report refresh failure"
+if grep -q '^refresh:' "$REMOTE_LOG"; then
+  fail "missing controller must not issue HTTP requests"
+fi
+
+if grep -q 'fixture-secret' "$FAKE_CURL_ARGV_LOG"; then
+  fail "API secret must not appear in curl arguments"
+fi
+while IFS= read -r config; do
+  [ ! -e "$config" ] || fail "temporary curl config must be removed, including on failure"
+done < "$FAKE_CURL_CONFIG_LOG"
 
 printf 'list_update_reload_guard tests passed\n'
