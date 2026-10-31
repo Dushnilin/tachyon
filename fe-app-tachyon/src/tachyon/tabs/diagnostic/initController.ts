@@ -810,9 +810,12 @@ async function handleEnable() {
   setDiagnosticActionLoading('enable', true);
 
   try {
-    await TachyonShellMethods.enable();
+    const response = await TachyonShellMethods.enable();
+    if (!response.success) {
+      notifyActionFailure('handleEnable', response);
+    }
   } catch (e) {
-    logger.error('[DIAGNOSTIC]', 'handleEnable - e', e);
+    notifyActionFailure('handleEnable', e);
   } finally {
     await refreshDiagnosticServicesInfo({
       force: true,
@@ -826,9 +829,12 @@ async function handleDisable() {
   setDiagnosticActionLoading('disable', true);
 
   try {
-    await TachyonShellMethods.disable();
+    const response = await TachyonShellMethods.disable();
+    if (!response.success) {
+      notifyActionFailure('handleDisable', response);
+    }
   } catch (e) {
-    logger.error('[DIAGNOSTIC]', 'handleDisable - e', e);
+    notifyActionFailure('handleDisable', e);
   } finally {
     await refreshDiagnosticServicesInfo({
       force: true,

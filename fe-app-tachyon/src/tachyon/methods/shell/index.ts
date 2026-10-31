@@ -19,7 +19,9 @@ const COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 2000;
 const COMPONENT_ACTION_SELF_UPDATE_HARD_TIMEOUT_MS = 120000;
 const COMPONENT_ACTION_GENERAL_HARD_TIMEOUT_MS = 15 * 60 * 1000;
 const COMPONENT_ACTION_STATE_DIR = '/var/run/tachyon/component-actions';
-const GET_UI_STATE_RPC_TIMEOUT_MS = 3000;
+// Status collection can take several seconds on MIPS routers. A 3s deadline
+// discarded healthy responses and left the UI showing its initial stopped state.
+const GET_UI_STATE_RPC_TIMEOUT_MS = 15000;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -383,9 +385,13 @@ export const TachyonShellMethods = {
       Tachyon.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS,
     ]),
   enable: async () =>
-    callBaseMethod<unknown>(Tachyon.AvailableMethods.ENABLE, []),
+    callBaseMethod<void>(Tachyon.AvailableMethods.ENABLE, [], {
+      allowEmptyStdout: true,
+    }),
   disable: async () =>
-    callBaseMethod<unknown>(Tachyon.AvailableMethods.DISABLE, []),
+    callBaseMethod<void>(Tachyon.AvailableMethods.DISABLE, [], {
+      allowEmptyStdout: true,
+    }),
   globalCheck: async (masked = true) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.GLOBAL_CHECK, [
       masked ? 'masked' : 'raw',

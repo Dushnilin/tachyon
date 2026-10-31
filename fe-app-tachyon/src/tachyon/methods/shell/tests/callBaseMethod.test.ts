@@ -69,4 +69,39 @@ describe('callBaseMethod', () => {
       timeout: 60000,
     });
   });
+
+  it('accepts empty stdout only when explicitly allowed', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      stdout: '',
+      stderr: '',
+      code: 0,
+    });
+
+    await expect(
+      callBaseMethod(Tachyon.AvailableMethods.ENABLE, [], {
+        allowEmptyStdout: true,
+      }),
+    ).resolves.toEqual({ success: true, data: undefined });
+
+    await expect(
+      callBaseMethod(Tachyon.AvailableMethods.GET_UI_STATE),
+    ).resolves.toEqual({ success: false, error: '' });
+  });
+
+  it('does not hide a failed command when empty stdout is allowed', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      stdout: '',
+      stderr: 'Read-only file system',
+      code: 1,
+    });
+
+    await expect(
+      callBaseMethod(Tachyon.AvailableMethods.ENABLE, [], {
+        allowEmptyStdout: true,
+      }),
+    ).resolves.toEqual({
+      success: false,
+      error: 'Read-only file system',
+    });
+  });
 });
