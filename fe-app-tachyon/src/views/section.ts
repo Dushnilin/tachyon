@@ -16738,6 +16738,64 @@ async function matchCommunityList(secName, community, query, type) {
   return false;
 }
 
+async function matchConfiguredRulesets(secName, query, type, snapshots) {
+  const references = [
+    ...new Set([
+      ...getSectionEffectiveOptionValues(secName, 'rule_set'),
+      ...getSectionEffectiveOptionValues(secName, 'rule_set_with_subnets'),
+    ]),
+  ];
+  for (const reference of references) {
+    // Community aliases in rule_set use the same caches as community_lists.
+    if (!/^https?:\/\//.test(reference) && !reference.startsWith('/')) {
+      if (await matchCommunityList(secName, reference, query, type))
+        return reference;
+      continue;
+    }
+    if (!snapshots.has(reference)) {
+      const result = await fs
+        .exec('/usr/bin/tachyon-read', ['extract_ruleset', reference])
+        .catch(() => null);
+      const path = result?.code === 0 ? (result.stdout || '').trim() : '';
+      if (!path.startsWith('/') || /[\r\n]/.test(path))
+        throw new Error(
+          _('Cannot read the loaded rule-set: %s').format(reference) +
+            (result?.stderr ? ` (${result.stderr.trim().slice(0, 512)})` : ''),
+        );
+      if (result.stderr?.trim()) snapshots.warnings.push(result.stderr.trim());
+      snapshots.set(reference, path);
+    }
+    const args = [
+      'rule-set',
+      'match',
+      snapshots.get(reference),
+      ...(type === 'ip' ? ['--ip', query] : ['--domain', query.toLowerCase()]),
+    ];
+    let checked = false;
+    for (const bin of [
+      '/usr/bin/tachyon-core',
+      '/usr/bin/sing-box',
+      '/usr/sbin/sing-box',
+    ]) {
+      const result = await fs.exec(bin, args).catch(() => null);
+      if (!result || result.code !== 0) continue;
+      const output = (result.stdout || '') + (result.stderr || '');
+      if (
+        /\[\d+\]\s*match/.test(output) ||
+        (/\bmatch\b/.test(output) && !output.includes('no match'))
+      )
+        return reference;
+      checked = true;
+      break;
+    }
+    if (!checked)
+      throw new Error(
+        _('Cannot match the loaded rule-set: %s').format(reference),
+      );
+  }
+  return null;
+}
+
 function isSyntheticFakeIp(ip) {
   const s = (ip || '').trim().toLowerCase();
   return /^198\.(18|19)\./.test(s) || /^fc[0-3][0-9a-f]:/.test(s);
@@ -16997,6 +17055,13 @@ async function matchesGeoCountrySet(secName, countries, domain, ips) {
 }
 
 async function performTrace(query) {
+  const snapshots = new Map();
+  snapshots.warnings = [];
+  const result = await performTraceRules(query, snapshots);
+  return { ...result, rulesetWarnings: [...new Set(snapshots.warnings)] };
+}
+
+async function performTraceRules(query, rulesetSnapshots) {
   query = (query || '').trim();
   if (!query) return { matched: false };
 
@@ -17103,6 +17168,26 @@ async function performTrace(query) {
           totalSections: totalSections,
         };
       }
+    }
+
+    const configuredMatch = await matchConfiguredRulesets(
+      secName,
+      queryForMatching,
+      type,
+      rulesetSnapshots,
+    );
+    if (configuredMatch) {
+      return {
+        matched: true,
+        sectionName: secName,
+        label,
+        action,
+        ruleType: 'Rule Set',
+        pattern: queryForMatching,
+        sourceUrls: [configuredMatch],
+        priority: i + 1,
+        totalSections,
+      };
     }
 
     if (type === 'ip') {
@@ -17450,6 +17535,30 @@ async function performTrace(query) {
           : [];
 
         for (const ip of resolvedIps) {
+          const configuredMatch = await matchConfiguredRulesets(
+            secName,
+            ip,
+            'ip',
+            rulesetSnapshots,
+          );
+          if (configuredMatch) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label,
+              action,
+              ruleType: 'Resolved IP -> Rule Set',
+              pattern: `${ip} (resolved: ${ip})`,
+              sourceUrls: [configuredMatch],
+              resolvedDomain: queryForMatching,
+              resolvedIps,
+              matchedIp: ip,
+              priority: i + 1,
+              totalSections,
+              sharedCdnWarning: getSharedCdnWarning(ip),
+            };
+          }
+
           const matchedCidr = matchIpInCidrs(ip, ipCidr);
           if (matchedCidr) {
             return {
@@ -17862,6 +17971,18 @@ function createTracerSearchWidget(sectionRef) {
           ],
         );
         resultsEl.appendChild(noMatchDiv);
+      }
+      if (result?.rulesetWarnings?.length) {
+        resultsEl.appendChild(
+          E(
+            'div',
+            {
+              style:
+                'margin-top: 4px; color: var(--warning-color, #d35400); font-size: 85%;',
+            },
+            result.rulesetWarnings.join(' '),
+          ),
+        );
       }
     } catch (e) {
       console.error(e);
