@@ -1003,8 +1003,8 @@ describe('renderSections', () => {
     const selectedBadge = activeItem!.querySelector(
       '.tachyon_dashboard-page__outbound-grid__item__selected-badge',
     );
-    expect(selectedBadge).toBeTruthy();
-    expect(selectedBadge?.textContent).toMatch(/✓\s*(Активен|Active)/);
+    expect(selectedBadge?.querySelector('svg')).toBeTruthy();
+    expect(selectedBadge?.textContent).toMatch(/(Активен|Active)/);
   });
 
   it('renders region tabs bar when configured with regions mode', () => {

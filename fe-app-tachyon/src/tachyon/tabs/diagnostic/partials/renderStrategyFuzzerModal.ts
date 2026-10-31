@@ -1,5 +1,19 @@
 import { TachyonShellMethods } from '../../../methods';
 import { renderButton } from '../../../../partials';
+import {
+  renderZapIcon,
+  renderWrenchIcon,
+  renderPlusIcon,
+  renderBrainIcon,
+  renderFileTextIcon,
+  renderCheckIcon,
+  renderAlertTriangleIcon,
+  renderXIcon,
+  renderHourglassIcon,
+  renderCircleStopIcon,
+  renderShieldIcon,
+  renderGlobeIcon,
+} from '../../../../icons';
 import { showToast } from '../../../../helpers/showToast';
 import { Tachyon } from '../../../types';
 
@@ -90,7 +104,7 @@ export function renderStrategyFuzzerModal(
 
   const createTabButton = (
     id: 'benchmark' | 'patterns' | 'custom' | 'ai' | 'history',
-    icon: string,
+    iconRenderer: (size?: number) => SVGElement,
     label: string,
   ) => {
     const btn = E(
@@ -101,7 +115,7 @@ export function renderStrategyFuzzerModal(
         style:
           'display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;',
       },
-      [E('span', {}, label)],
+      [iconRenderer(14), E('span', {}, label)],
     );
     btn.addEventListener('click', () => {
       activeTab = id;
@@ -118,11 +132,11 @@ export function renderStrategyFuzzerModal(
         'display: flex; gap: 8px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.12)); padding-bottom: 10px; flex-wrap: wrap;',
     },
     [
-      createTabButton('benchmark', '⚡', _('Benchmark & Test')),
-      createTabButton('patterns', '🛠️', _('Pattern Builder')),
-      createTabButton('custom', '➕', _('My Strategies')),
-      createTabButton('ai', '🧠', _('AI Doctor RAG')),
-      createTabButton('history', '📋', _('History')),
+      createTabButton('benchmark', renderZapIcon, _('Benchmark & Test')),
+      createTabButton('patterns', renderWrenchIcon, _('Pattern Builder')),
+      createTabButton('custom', renderPlusIcon, _('My Strategies')),
+      createTabButton('ai', renderBrainIcon, _('AI Doctor RAG')),
+      createTabButton('history', renderFileTextIcon, _('History')),
     ],
   );
 
@@ -281,17 +295,17 @@ export function renderStrategyFuzzerModal(
       E(
         'option',
         { value: 'youtube_suite', selected: true },
-        _('🎬 YouTube Full Suite (Web + 4K Stream + CDN)'),
+        _('YouTube Full Suite (Web + 4K Stream + CDN)'),
       ),
       E(
         'option',
         { value: 'discord_suite' },
-        _('💬 Discord Suite (Gateway + Voice + CDN)'),
+        _('Discord Suite (Gateway + Voice + CDN)'),
       ),
       E(
         'option',
         { value: 'twitch_suite' },
-        _('🟣 Twitch Suite (Live Stream + HLS CDN)'),
+        _('Twitch Suite (Live Stream + HLS CDN)'),
       ),
       E(
         'option',
@@ -467,7 +481,10 @@ export function renderStrategyFuzzerModal(
         [
           E(
             'span',
-            { id: 'tachyon-fuzzer-status-text' },
+            {
+              id: 'tachyon-fuzzer-status-text',
+              style: 'display: inline-flex; align-items: center; gap: 6px;',
+            },
             _('Benchmarking in progress...'),
           ),
           E('span', { id: 'tachyon-fuzzer-progress-pct' }, '0%'),
@@ -535,18 +552,20 @@ export function renderStrategyFuzzerModal(
             {
               type: 'button',
               class: 'cbi-button cbi-button-neutral',
-              style: 'padding: 2px 10px; font-size: 11px;',
+              style:
+                'padding: 2px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;',
             },
-            _('✅ Working only'),
+            [renderCheckIcon(12), E('span', {}, _('Working only'))],
           );
           const bFast = E(
             'button',
             {
               type: 'button',
               class: 'cbi-button cbi-button-neutral',
-              style: 'padding: 2px 10px; font-size: 11px;',
+              style:
+                'padding: 2px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;',
             },
-            _('⚡ Fast (>1MB/s)'),
+            [renderZapIcon(12), E('span', {}, _('Fast (>1MB/s)'))],
           );
 
           const setFilter = (
@@ -686,6 +705,7 @@ export function renderStrategyFuzzerModal(
 
   // Footer Actions for Benchmark
   const startBtn = renderButton({
+    icon: () => renderZapIcon(14),
     text: _('Start Benchmark'),
     classNames: ['cbi-button-action'],
     onClick: () => handleToggleRun(),
@@ -826,8 +846,11 @@ export function renderStrategyFuzzerModal(
       [
         E(
           'div',
-          { style: 'font-size: 13px; font-weight: bold;' },
-          '⚡ Zapret v2 (nfqws2) Matrix Patterns',
+          {
+            style:
+              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+          },
+          [renderZapIcon(14), 'Zapret v2 (nfqws2) Matrix Patterns'],
         ),
         renderChipGroup(
           _('Split Positions (pos)'),
@@ -871,8 +894,11 @@ export function renderStrategyFuzzerModal(
       [
         E(
           'div',
-          { style: 'font-size: 13px; font-weight: bold;' },
-          '⚡ Zapret v1 (nfqws) Matrix Patterns',
+          {
+            style:
+              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+          },
+          [renderZapIcon(14), 'Zapret v1 (nfqws) Matrix Patterns'],
         ),
         renderChipGroup(
           _('Split Modes (dpi-desync)'),
@@ -910,8 +936,11 @@ export function renderStrategyFuzzerModal(
       [
         E(
           'div',
-          { style: 'font-size: 13px; font-weight: bold;' },
-          '⚡ ByeDPI (ciadpi) Matrix Patterns',
+          {
+            style:
+              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+          },
+          [renderZapIcon(14), 'ByeDPI (ciadpi) Matrix Patterns'],
         ),
         renderChipGroup(
           _('Split Values (-s)'),
@@ -961,8 +990,11 @@ export function renderStrategyFuzzerModal(
       [
         E(
           'div',
-          { style: 'font-size: 13px; font-weight: bold;' },
-          '⚡ Native Desync (tachyon-core) Matrix Patterns',
+          {
+            style:
+              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+          },
+          [renderZapIcon(14), 'Native Desync (tachyon-core) Matrix Patterns'],
         ),
         renderChipGroup(
           _('Desync Modes (--mode)'),
@@ -1252,6 +1284,7 @@ export function renderStrategyFuzzerModal(
   });
 
   const aiSynthesizeBtn = renderButton({
+    icon: () => renderBrainIcon(14),
     text: _('Synthesize with AI'),
     classNames: ['cbi-button-action'],
     onClick: () => handleAiSynthesize(),
@@ -1272,7 +1305,7 @@ export function renderStrategyFuzzerModal(
             'font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;',
         },
         [
-          E('span', {}, '🧠'),
+          renderBrainIcon(16),
           E('span', {}, _('AI Diagnostics & Strategy Rationale')),
         ],
       ),
@@ -1298,7 +1331,14 @@ export function renderStrategyFuzzerModal(
             'font-size: 13px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;',
         },
         [
-          E('span', {}, '🧠 ' + _('AI DPI Engineer & Strategy Synthesizer')),
+          E(
+            'span',
+            { style: 'display: inline-flex; align-items: center; gap: 6px;' },
+            [
+              renderBrainIcon(16),
+              E('span', {}, _('AI DPI Engineer & Strategy Synthesizer')),
+            ],
+          ),
           E(
             'span',
             { style: 'font-size: 11px; opacity: 0.6; font-weight: normal;' },
@@ -1339,8 +1379,11 @@ export function renderStrategyFuzzerModal(
       [
         E(
           'div',
-          { style: 'font-size: 13px; font-weight: bold;' },
-          '📋 ' + _('Benchmark History'),
+          {
+            style:
+              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+          },
+          [renderFileTextIcon(14), _('Benchmark History')],
         ),
         E('div', { style: 'display: flex; gap: 8px;' }, [
           renderButton({
@@ -1537,7 +1580,14 @@ export function renderStrategyFuzzerModal(
       const emptyMsg = state.running
         ? _('Running benchmarks...')
         : state.error
-          ? `⚠️ ${state.error}`
+          ? E(
+              'span',
+              {
+                style:
+                  'display: inline-flex; align-items: center; justify-content: center; gap: 6px;',
+              },
+              [renderAlertTriangleIcon(14), state.error],
+            )
           : _('No strategies match the active filter.');
       tbody.appendChild(
         E(
@@ -1606,12 +1656,12 @@ export function renderStrategyFuzzerModal(
             {
               class: 'badge badge-success',
               style:
-                'font-size: 9px; padding: 2px 5px; margin-left: 4px; display: inline-block; font-weight: 500;',
+                'font-size: 9px; padding: 2px 5px; margin-left: 4px; display: inline-flex; align-items: center; gap: 3px; font-weight: 500;',
               title: _(
                 'Data transfer verified: streamed >= 32KB without throttling or disconnect',
               ),
             },
-            _('✓ 32KB Streamed'),
+            [renderCheckIcon(10), _('32KB Streamed')],
           ),
         );
       } else if (item.dpi_verdict === 'throttled_16k') {
@@ -1621,12 +1671,12 @@ export function renderStrategyFuzzerModal(
             {
               class: 'badge badge-danger',
               style:
-                'font-size: 9px; padding: 2px 5px; margin-left: 4px; display: inline-block; font-weight: 500;',
+                'font-size: 9px; padding: 2px 5px; margin-left: 4px; display: inline-flex; align-items: center; gap: 3px; font-weight: 500;',
               title: _(
                 'DPI throttling: stream cut off after ~16KB payload transfer',
               ),
             },
-            _('✗ Throttled at 16KB'),
+            [renderXIcon(10), _('Throttled at 16KB')],
           ),
         );
       } else if (item.dpi_verdict === 'server_fakes') {
@@ -1636,12 +1686,12 @@ export function renderStrategyFuzzerModal(
             {
               class: 'badge badge-warning',
               style:
-                'font-size: 9px; padding: 2px 5px; margin-left: 4px; display: inline-block; font-weight: 500;',
+                'font-size: 9px; padding: 2px 5px; margin-left: 4px; display: inline-flex; align-items: center; gap: 3px; font-weight: 500;',
               title: _(
                 'Fake packets reached remote server (HTTP 400 Bad Request)',
               ),
             },
-            _('⚠️ Server received fakes'),
+            [renderAlertTriangleIcon(10), _('Server received fakes')],
           ),
         );
       }
@@ -1847,11 +1897,26 @@ export function renderStrategyFuzzerModal(
     if (statusText) {
       if (state.running) {
         if (state.phase === 'detecting_dpi') {
-          statusText.innerText = _('🔍 Analyzing DPI blocking patterns...');
+          statusText.replaceChildren(
+            renderHourglassIcon(14),
+            document.createTextNode(
+              ' ' + _('Analyzing DPI blocking patterns...'),
+            ),
+          );
         } else if (state.stage === 2 || state.phase === 'verification') {
-          statusText.innerText = `${_('🛡️ Stage 2: Stability Verification')} (${state.progress_pct}%)...`;
+          statusText.replaceChildren(
+            renderShieldIcon(14),
+            document.createTextNode(
+              ` ${_('Stage 2: Stability Verification')} (${state.progress_pct}%)...`,
+            ),
+          );
         } else {
-          statusText.innerText = `${_('Stage 1: Exploration Scan')} (${state.current_index} / ${state.total_strategies})...`;
+          statusText.replaceChildren(
+            renderZapIcon(14),
+            document.createTextNode(
+              ` ${_('Stage 1: Exploration Scan')} (${state.current_index} / ${state.total_strategies})...`,
+            ),
+          );
         }
       } else if (
         state.finished_at > 0 ||
@@ -1860,18 +1925,32 @@ export function renderStrategyFuzzerModal(
       ) {
         if (bestStrategy || workingResults.length > 0) {
           if (state.error) {
-            statusText.innerText = `${_('🛑 Benchmark stopped')}. ${_('Found')} ${workingResults.length} ${_('working strategies')}.`;
+            statusText.replaceChildren(
+              renderCircleStopIcon(14),
+              document.createTextNode(
+                ` ${_('Benchmark stopped')}. ${_('Found')} ${workingResults.length} ${_('working strategies')}.`,
+              ),
+            );
           } else {
-            statusText.innerText = _(
-              '✅ Benchmark completed! Optimal strategy identified.',
+            statusText.replaceChildren(
+              renderCheckIcon(14),
+              document.createTextNode(
+                ' ' + _('Benchmark completed! Optimal strategy identified.'),
+              ),
             );
           }
         } else {
-          statusText.innerText = state.error
-            ? `${_('⚠️ Benchmark stopped')}: ${state.error}`
-            : _(
-                '⚠️ Benchmark completed. No working bypass found for this target.',
-              );
+          statusText.replaceChildren(
+            renderAlertTriangleIcon(14),
+            document.createTextNode(
+              state.error
+                ? ` ${_('Benchmark stopped')}: ${state.error}`
+                : ' ' +
+                    _(
+                      'Benchmark completed. No working bypass found for this target.',
+                    ),
+            ),
+          );
         }
       }
     }
@@ -1938,14 +2017,22 @@ export function renderStrategyFuzzerModal(
         isRunning = res.data.running;
 
         if (isRunning) {
-          startBtn.innerText = _('🛑 Stop Benchmark');
+          startBtn.replaceChildren(
+            renderCircleStopIcon(14),
+            document.createTextNode(' ' + _('Stop Benchmark')),
+          );
+          startBtn.className = 'cbi-button cbi-button-reset';
           (startBtn as HTMLButtonElement).disabled = false;
           if (!pollingInterval) {
             pollingInterval = setInterval(pollStatus, 1200);
           }
         } else {
           stopPolling();
-          startBtn.innerText = _('🚀 Start Benchmark');
+          startBtn.replaceChildren(
+            renderZapIcon(14),
+            document.createTextNode(' ' + _('Start Benchmark')),
+          );
+          startBtn.className = 'cbi-button cbi-button-action';
           (startBtn as HTMLButtonElement).disabled = false;
         }
 
@@ -1991,7 +2078,7 @@ export function renderStrategyFuzzerModal(
                 );
               if (applyRes.success) {
                 showToast(
-                  `${_('✅ Auto-applied best strategy')}: ${currentState.best_strategy.name}`,
+                  `${_('Auto-applied best strategy')}: ${currentState.best_strategy.name}`,
                   'success',
                 );
               } else {
@@ -2036,13 +2123,34 @@ export function renderStrategyFuzzerModal(
       return;
     }
 
-    const typeMeta: Record<string, { alertClass: string; icon: string }> = {
-      rst: { alertClass: 'danger', icon: '🔴' },
-      throttle: { alertClass: 'warning', icon: '🟡' },
-      dns_block: { alertClass: 'info', icon: '🔵' },
-      ip_block: { alertClass: 'danger', icon: '🚫' },
-      unknown: { alertClass: 'notice', icon: '⚪' },
-      none: { alertClass: 'success', icon: '🟢' },
+    const typeMeta: Record<
+      string,
+      { alertClass: string; iconRenderer: (size?: number) => SVGElement }
+    > = {
+      rst: {
+        alertClass: 'danger',
+        iconRenderer: (s = 14) => renderAlertTriangleIcon(s),
+      },
+      throttle: {
+        alertClass: 'warning',
+        iconRenderer: (s = 14) => renderAlertTriangleIcon(s),
+      },
+      dns_block: {
+        alertClass: 'info',
+        iconRenderer: (s = 14) => renderGlobeIcon(s),
+      },
+      ip_block: {
+        alertClass: 'danger',
+        iconRenderer: (s = 14) => renderXIcon(s),
+      },
+      unknown: {
+        alertClass: 'notice',
+        iconRenderer: (s = 14) => renderAlertTriangleIcon(s),
+      },
+      none: {
+        alertClass: 'success',
+        iconRenderer: (s = 14) => renderCheckIcon(s),
+      },
     };
 
     const typeLabels: Record<string, string> = {
@@ -2085,26 +2193,76 @@ export function renderStrategyFuzzerModal(
     const meta = typeMeta[detection.type] || typeMeta.unknown;
     const label = typeLabels[detection.type] || detection.type;
 
-    const ipBlockNotice =
-      detection.type === 'ip_block'
-        ? `<div class="alert-message danger" style="margin-top: 8px;">
-             ⚠️ ${_('IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!')}
-           </div>`
-        : '';
-
     banner.className = `alert-message ${meta.alertClass}`;
     banner.style.display = 'block';
-    banner.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 6px;">
-        <div>
-          <span style="font-weight: bold;">${meta.icon} ${_('DPI Detected')}: ${label}</span>
-          <span style="opacity: 0.7; margin-left: 8px;">${detection.confidence}% ${_('confidence')}</span>
-        </div>
-        ${detection.recommended_engines.length > 0 ? `<div style="font-size: 11px; opacity: 0.8;">${_('Recommended')}: ${detection.recommended_engines.join(', ')}</div>` : ''}
-      </div>
-      <div style="margin-top: 4px; opacity: 0.9; font-size: 11px;">${getLocalizedDpiDetails(detection)}</div>
-      ${ipBlockNotice}
-    `;
+
+    const headerLeft = E(
+      'div',
+      { style: 'display: inline-flex; align-items: center; gap: 6px;' },
+      [
+        meta.iconRenderer(14),
+        E(
+          'span',
+          { style: 'font-weight: bold;' },
+          `${_('DPI Detected')}: ${label}`,
+        ),
+        E(
+          'span',
+          { style: 'opacity: 0.7; margin-left: 8px;' },
+          `${detection.confidence}% ${_('confidence')}`,
+        ),
+      ],
+    );
+
+    const headerRight =
+      detection.recommended_engines.length > 0
+        ? E(
+            'div',
+            { style: 'font-size: 11px; opacity: 0.8;' },
+            `${_('Recommended')}: ${detection.recommended_engines.join(', ')}`,
+          )
+        : null;
+
+    const topRow = E(
+      'div',
+      {
+        style:
+          'display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 6px;',
+      },
+      headerRight ? [headerLeft, headerRight] : [headerLeft],
+    );
+
+    const detailsEl = E(
+      'div',
+      { style: 'margin-top: 4px; opacity: 0.9; font-size: 11px;' },
+      getLocalizedDpiDetails(detection),
+    );
+
+    const bannerChildren: HTMLElement[] = [topRow, detailsEl];
+
+    if (detection.type === 'ip_block') {
+      const ipNotice = E(
+        'div',
+        {
+          class: 'alert-message danger',
+          style:
+            'margin-top: 8px; display: inline-flex; align-items: center; gap: 6px;',
+        },
+        [
+          renderAlertTriangleIcon(14),
+          E(
+            'span',
+            {},
+            _(
+              'IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!',
+            ),
+          ),
+        ],
+      );
+      bannerChildren.push(ipNotice);
+    }
+
+    banner.replaceChildren(...bannerChildren);
   };
 
   const handleToggleRun = async () => {
@@ -2114,7 +2272,10 @@ export function renderStrategyFuzzerModal(
       isPolling = false;
       stopPolling();
       (startBtn as HTMLButtonElement).disabled = true;
-      startBtn.innerText = _('⏳ Stopping...');
+      startBtn.replaceChildren(
+        renderHourglassIcon(14),
+        document.createTextNode(' ' + _('Stopping...')),
+      );
       await TachyonShellMethods.stopFuzzer();
       showToast(_('Benchmark stopped'), 'success');
       isRunning = false;
@@ -2128,7 +2289,11 @@ export function renderStrategyFuzzerModal(
     isPolling = false;
     stopPolling();
     (startBtn as HTMLButtonElement).disabled = true;
-    startBtn.innerText = _('🛑 Stop Benchmark');
+    startBtn.replaceChildren(
+      renderCircleStopIcon(14),
+      document.createTextNode(' ' + _('Stop Benchmark')),
+    );
+    startBtn.className = 'cbi-button cbi-button-reset';
 
     // Immediate visual feedback
     progressContainer.style.display = 'flex';
@@ -2140,7 +2305,12 @@ export function renderStrategyFuzzerModal(
       'tachyon-fuzzer-current-strategy',
     );
     if (statusTextEl)
-      statusTextEl.innerText = _('🚀 Initializing benchmark in sandbox...');
+      statusTextEl.replaceChildren(
+        renderZapIcon(14),
+        document.createTextNode(
+          ' ' + _('Initializing benchmark in sandbox...'),
+        ),
+      );
     if (progressBarEl) progressBarEl.style.width = '3%';
     if (currentStratEl)
       currentStratEl.innerText = _(
@@ -2160,10 +2330,10 @@ export function renderStrategyFuzzerModal(
               style: 'padding: 24px; text-align: center; opacity: 0.85;',
             },
             [
-              E('span', { style: 'margin-right: 8px;' }, '⏳'),
+              renderHourglassIcon(16),
               E(
                 'span',
-                {},
+                { style: 'margin-left: 8px;' },
                 _('Testing bypass strategies in isolated sandbox...'),
               ),
             ],
@@ -2214,7 +2384,11 @@ export function renderStrategyFuzzerModal(
       const errMsg = !res.success ? res.error : _('Unknown error');
       showToast(`${_('Failed to start benchmark')}: ${errMsg}`, 'error');
       (startBtn as HTMLButtonElement).disabled = false;
-      startBtn.innerText = _('🚀 Start Benchmark');
+      startBtn.replaceChildren(
+        renderZapIcon(14),
+        document.createTextNode(' ' + _('Start Benchmark')),
+      );
+      startBtn.className = 'cbi-button cbi-button-action';
       progressContainer.style.display = 'none';
     }
   };
@@ -2222,7 +2396,10 @@ export function renderStrategyFuzzerModal(
   const handleAiSynthesize = async () => {
     const userPrompt = (aiPromptInput as HTMLInputElement).value.trim();
     (aiSynthesizeBtn as HTMLButtonElement).disabled = true;
-    aiSynthesizeBtn.innerText = _('🧠 Synthesizing...');
+    aiSynthesizeBtn.replaceChildren(
+      renderHourglassIcon(14),
+      document.createTextNode(' ' + _('Synthesizing...')),
+    );
 
     const analysisBox = document.getElementById('tachyon-fuzzer-ai-analysis');
     const analysisText = document.getElementById(
@@ -2256,7 +2433,11 @@ export function renderStrategyFuzzerModal(
 
         stoppedManually = false;
         (startBtn as HTMLButtonElement).disabled = true;
-        startBtn.innerText = _('🛑 Stop Benchmark');
+        startBtn.replaceChildren(
+          renderCircleStopIcon(14),
+          document.createTextNode(' ' + _('Stop Benchmark')),
+        );
+        startBtn.className = 'cbi-button cbi-button-reset';
 
         const startRes = await TachyonShellMethods.startFuzzer(
           selectedEngine,
@@ -2286,7 +2467,10 @@ export function renderStrategyFuzzerModal(
       showToast(_('Failed to communicate with AI provider'), 'error');
     } finally {
       (aiSynthesizeBtn as HTMLButtonElement).disabled = false;
-      aiSynthesizeBtn.innerText = _('🧠 Synthesize with AI');
+      aiSynthesizeBtn.replaceChildren(
+        renderBrainIcon(14),
+        document.createTextNode(' ' + _('Synthesize with AI')),
+      );
     }
   };
 

@@ -1,5 +1,6 @@
 import { callBaseMethod } from '../../../methods/shell/callBaseMethod';
 import { renderButton } from '../../../../partials';
+import { renderZapIcon } from '../../../../icons';
 import { Tachyon } from '../../../types';
 
 interface ServiceCheckTarget {
@@ -157,9 +158,9 @@ export function renderServiceCheckModal() {
         {
           class: 'spinning',
           style:
-            'text-align: center; font-size: 24px; color: var(--border-color, #007bff);',
+            'text-align: center; color: var(--border-color, #007bff); display: flex; justify-content: center;',
         },
-        '⚡',
+        [renderZapIcon(24)],
       ),
     ],
   );

@@ -14,7 +14,7 @@ import {
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
-import { renderCopyIcon24 } from '../../../icons';
+import { renderCheckIcon, renderCopyIcon24, renderXIcon } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import { tr, isRussianLanguage } from '../../helpers/i18n';
 import {
@@ -4553,9 +4553,16 @@ async function fetchTailscalePeers() {
 function peerRow(name: string, online: boolean) {
   return {
     key: name,
-    value: online
-      ? tr('✔ В сети', '✔ Online')
-      : tr('✘ Не в сети', '✘ Offline'),
+    value: E(
+      'span',
+      {
+        style: 'display: inline-flex; align-items: center; gap: 4px;',
+      },
+      [
+        online ? renderCheckIcon(10) : renderXIcon(10),
+        online ? tr('В сети', 'Online') : tr('Не в сети', 'Offline'),
+      ],
+    ),
     attributes: {
       class: online
         ? 'tachyon_dashboard-page__widgets-section__item__row--success'

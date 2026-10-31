@@ -53,6 +53,57 @@ function validateLatencyTestUrl(value) {
   return validation.valid ? true : validation.message;
 }
 
+function renderFallbackCheckSvg(size = 12) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M20 6 9 17l-5-5");
+  svg.appendChild(path);
+  return svg;
+}
+
+function renderFallbackXSvg(size = 12) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M18 6 6 18M6 6l12 12");
+  svg.appendChild(path);
+  return svg;
+}
+
+function renderFallbackHourglassSvg(size = 12) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute(
+    "d",
+    "M5 22h14M5 2h14M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2",
+  );
+  svg.appendChild(path);
+  return svg;
+}
+
 function disablePasswordAutofill(option) {
   if (!option || typeof option.renderWidget !== "function") return;
   const origRenderWidget = option.renderWidget;
@@ -1837,7 +1888,11 @@ function createMenuTabsOrderWidget(option, section_id) {
           : "border-color:var(--border-color-medium,#94a3b8);background:transparent;color:transparent;",
       ].join(""),
     });
-    toggleBtn.textContent = "✓";
+    const checkIcon =
+      typeof main !== "undefined" && main.renderCheckIcon
+        ? main.renderCheckIcon(12)
+        : renderFallbackCheckSvg(12);
+    toggleBtn.appendChild(checkIcon);
     if (isFixed) toggleBtn.disabled = true;
 
     if (!isFixed) {
@@ -2169,7 +2224,11 @@ function createComponentsVisibilityWidget(option, section_id) {
             : "border-color:var(--border-color-medium,#94a3b8);background:transparent;color:transparent;",
         ].join(""),
       });
-      toggleBtn.textContent = "✓";
+      const checkIcon =
+        typeof main !== "undefined" && main.renderCheckIcon
+          ? main.renderCheckIcon(12)
+          : renderFallbackCheckSvg(12);
+      toggleBtn.appendChild(checkIcon);
       if (isFixed) toggleBtn.disabled = true;
 
       if (!isFixed) {
@@ -2516,7 +2575,7 @@ function createSettingsContent(section, capabilities) {
     "fallback_wan_main",
     _("Enable WAN DNS Fallback for Main DNS"),
     _(
-      "⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss.",
+      "If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss.",
     ),
   );
   o.default = o.disabled;
@@ -2527,7 +2586,7 @@ function createSettingsContent(section, capabilities) {
     "fallback_wan_bootstrap",
     _("Enable WAN DNS Fallback for Bootstrap DNS"),
     _(
-      "⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss.",
+      "If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss.",
     ),
   );
   o.default = o.disabled;
@@ -3413,30 +3472,47 @@ function createSettingsContent(section, capabilities) {
           "span",
           {
             style:
-              "color: var(--color-green-base, #2ecc71); font-weight: bold;",
+              "display: inline-flex; align-items: center; color: var(--color-green-base, #2ecc71); font-weight: bold;",
           },
-          "\u2713",
+          [
+            typeof main !== "undefined" && main.renderCheckIcon
+              ? main.renderCheckIcon(14)
+              : "\u2713",
+          ],
         );
       if (state === "error")
         return E(
           "span",
           {
-            style: "color: var(--color-red-base, #e74c3c); font-weight: bold;",
+            style:
+              "display: inline-flex; align-items: center; color: var(--color-red-base, #e74c3c); font-weight: bold;",
           },
-          "\u2717",
+          [
+            typeof main !== "undefined" && main.renderXIcon
+              ? main.renderXIcon(14)
+              : "\u2717",
+          ],
         );
       if (state === "active")
         return E(
           "span",
           {
             class: "spinning",
-            style: "color: var(--color-blue-base, #3498db);",
+            style:
+              "display: inline-flex; align-items: center; color: var(--color-blue-base, #3498db);",
           },
-          "\u25CB",
+          [
+            typeof main !== "undefined" && main.renderRotateCcwIcon24
+              ? main.renderRotateCcwIcon24()
+              : "\u25CB",
+          ],
         );
       return E(
         "span",
-        { style: "color: var(--text-color-medium, #999);" },
+        {
+          style:
+            "display: inline-flex; align-items: center; color: var(--text-color-medium, #999);",
+        },
         "\u25CB",
       );
     }
@@ -5128,29 +5204,52 @@ function createTelegramContent(section) {
   testOpt.rawhtml = true;
   testOpt.cfgvalue = function () {
     const wrapper = E("div", { style: "margin-top: 8px;" });
+    const createBtnContent = (isTesting) => {
+      const icon = isTesting
+        ? typeof main !== "undefined" && main.renderHourglassIcon
+          ? main.renderHourglassIcon(14)
+          : renderFallbackHourglassSvg(14)
+        : typeof main !== "undefined" && main.renderPlugIcon
+          ? main.renderPlugIcon(14)
+          : null;
+      const label = isTesting ? _("Testing…") : _("Test Connection");
+      return [icon, E("span", { style: "margin-left: 6px;" }, label)].filter(
+        Boolean,
+      );
+    };
+
     const btn = E(
       "button",
       {
         class: "btn cbi-button cbi-button-action",
         type: "button",
         id: "tachyon-telegram-test-btn",
+        style: "display: inline-flex; align-items: center;",
       },
-      "\uD83D\uDD0C " + _("Test Connection"),
+      createBtnContent(false),
     );
     const result = E("div", {
       id: "tachyon-telegram-test-result",
       style:
-        "margin-top: 8px; white-space: pre-wrap; font-family: monospace; font-size: 12px; display: none;",
+        "margin-top: 8px; font-family: monospace; font-size: 12px; display: none;",
     });
     wrapper.appendChild(btn);
     wrapper.appendChild(result);
 
+    const resetBtn = () => {
+      btn.disabled = false;
+      while (btn.firstChild) btn.removeChild(btn.firstChild);
+      createBtnContent(false).forEach((el) => btn.appendChild(el));
+    };
+
     btn.addEventListener("click", function () {
       btn.disabled = true;
-      btn.textContent = "\u23F3 " + _("Testing…");
+      while (btn.firstChild) btn.removeChild(btn.firstChild);
+      createBtnContent(true).forEach((el) => btn.appendChild(el));
+
       result.style.display = "block";
-      result.style.color = "";
-      result.textContent = _("Running diagnostics…");
+      while (result.firstChild) result.removeChild(result.firstChild);
+      result.appendChild(E("div", {}, _("Running diagnostics…")));
 
       fs.exec("/usr/bin/tachyon", ["telegram_diagnose"])
         .then(function (res) {
@@ -5161,38 +5260,110 @@ function createTelegramContent(section) {
             data = null;
           }
 
+          while (result.firstChild) result.removeChild(result.firstChild);
+
           if (!data || !data.checks) {
-            result.textContent =
-              "\u274C " +
-              _("Failed to run diagnostics — is the tachyon binary installed?");
-            btn.disabled = false;
-            btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
+            const failIcon =
+              typeof main !== "undefined" && main.renderXIcon
+                ? main.renderXIcon(14)
+                : renderFallbackXSvg(14);
+            result.appendChild(
+              E(
+                "div",
+                {
+                  style:
+                    "display: flex; align-items: center; gap: 6px; color: var(--error-color, #e53935);",
+                },
+                [
+                  failIcon,
+                  E(
+                    "span",
+                    {},
+                    _(
+                      "Failed to run diagnostics — is the tachyon binary installed?",
+                    ),
+                  ),
+                ],
+              ),
+            );
+            resetBtn();
             return;
           }
 
-          var lines = [];
-          for (var i = 0; i < data.checks.length; i++) {
-            var c = data.checks[i];
-            lines.push((c.ok ? "\u2705" : "\u274C") + " " + c.message);
-          }
+          data.checks.forEach(function (c) {
+            const icon = c.ok
+              ? typeof main !== "undefined" && main.renderCheckIcon
+                ? main.renderCheckIcon(14)
+                : renderFallbackCheckSvg(14)
+              : typeof main !== "undefined" && main.renderXIcon
+                ? main.renderXIcon(14)
+                : renderFallbackXSvg(14);
+            result.appendChild(
+              E(
+                "div",
+                {
+                  style: `display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: ${
+                    c.ok
+                      ? "var(--success-color, #28a745)"
+                      : "var(--error-color, #e53935)"
+                  };`,
+                },
+                [icon, E("span", {}, c.message)],
+              ),
+            );
+          });
+
           if (data.ok) {
-            lines.push("");
-            lines.push(
-              "\u2705 " +
-                _("All checks passed — Telegram bot should work correctly"),
+            const passIcon =
+              typeof main !== "undefined" && main.renderCheckIcon
+                ? main.renderCheckIcon(14)
+                : renderFallbackCheckSvg(14);
+            result.appendChild(
+              E(
+                "div",
+                {
+                  style:
+                    "display: flex; align-items: center; gap: 6px; margin-top: 6px; font-weight: 600; color: var(--success-color, #28a745);",
+                },
+                [
+                  passIcon,
+                  E(
+                    "span",
+                    {},
+                    _("All checks passed — Telegram bot should work correctly"),
+                  ),
+                ],
+              ),
             );
           }
-          result.textContent = lines.join("\n");
-          result.style.color = data.ok ? "" : "#e53935";
-          btn.disabled = false;
-          btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
+          resetBtn();
         })
         .catch(function () {
-          result.textContent =
-            "\u274C " +
-            _("Failed to run diagnostics — is the tachyon binary installed?");
-          btn.disabled = false;
-          btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
+          while (result.firstChild) result.removeChild(result.firstChild);
+          const failIcon =
+            typeof main !== "undefined" && main.renderXIcon
+              ? main.renderXIcon(14)
+              : renderFallbackXSvg(14);
+          result.appendChild(
+            E(
+              "div",
+              {
+                style:
+                  "display: flex; align-items: center; gap: 6px; color: var(--error-color, #e53935);",
+              },
+              [
+                failIcon,
+                E(
+                  "span",
+                  {},
+                  _(
+                    "Failed to run diagnostics — is the tachyon binary installed?",
+                  ),
+                ),
+              ],
+            ),
+          );
+          resetBtn();
         });
     });
 

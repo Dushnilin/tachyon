@@ -1076,3 +1076,143 @@ export function renderLaptopIcon(size = 14, className = '') {
     { width: size, height: size },
   );
 }
+
+export function renderPlugIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-plug-icon lucide-plug ${className}`.trim(),
+    [
+      svgEl('path', { d: 'M12 22v-5' }),
+      svgEl('path', { d: 'M9 8V2' }),
+      svgEl('path', { d: 'M15 8V2' }),
+      svgEl('path', { d: 'M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderHourglassIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-hourglass-icon lucide-hourglass ${className}`.trim(),
+    [
+      svgEl('path', { d: 'M5 22h14' }),
+      svgEl('path', { d: 'M5 2h14' }),
+      svgEl('path', {
+        d: 'M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22',
+      }),
+      svgEl('path', {
+        d: 'M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2',
+      }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderLightbulbIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-lightbulb-icon lucide-lightbulb ${className}`.trim(),
+    [
+      svgEl('path', {
+        d: 'M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5',
+      }),
+      svgEl('path', { d: 'M9 18h6' }),
+      svgEl('path', { d: 'M10 22h4' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderCreditCardIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-credit-card-icon lucide-credit-card ${className}`.trim(),
+    [
+      svgEl('rect', {
+        width: '20',
+        height: '14',
+        x: '2',
+        y: '5',
+        rx: '2',
+      }),
+      svgEl('line', { x1: '2', x2: '22', y1: '10', y2: '10' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderCoinsIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-coins-icon lucide-coins ${className}`.trim(),
+    [
+      svgEl('circle', { cx: '8', cy: '8', r: '6' }),
+      svgEl('path', { d: 'M18.09 10.37A6 6 0 1 1 10.34 18' }),
+      svgEl('path', { d: 'M7 6h1v4' }),
+      svgEl('path', { d: 'm16.71 13.88.7.71-2.82 2.82' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderBrainIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-brain-icon lucide-brain ${className}`.trim(),
+    [
+      svgEl('path', {
+        d: 'M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z',
+      }),
+      svgEl('path', {
+        d: 'M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z',
+      }),
+      svgEl('path', { d: 'M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4' }),
+      svgEl('path', { d: 'M12 18v4' }),
+      svgEl('path', { d: 'M12 5V2' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderCircleStopIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-circle-stop-icon lucide-circle-stop ${className}`.trim(),
+    [
+      svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+      svgEl('rect', { width: '6', height: '6', x: '9', y: '9' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderAlertTriangleIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-triangle-alert-icon lucide-triangle-alert ${className}`.trim(),
+    [
+      svgEl('path', {
+        d: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z',
+      }),
+      svgEl('line', { x1: '12', x2: '12', y1: '9', y2: '13' }),
+      svgEl('line', { x1: '12', x2: '12.01', y1: '17', y2: '17' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderBellIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-bell-icon lucide-bell ${className}`.trim(),
+    [
+      svgEl('path', { d: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9' }),
+      svgEl('path', { d: 'M10.3 21a1.94 1.94 0 0 0 3.4 0' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderGemIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-gem-icon lucide-gem ${className}`.trim(),
+    [
+      svgEl('path', { d: 'M6 3h12l4 6-10 13L2 9Z' }),
+      svgEl('path', { d: 'M11 3 8 9l4 13 4-13-3-6' }),
+      svgEl('path', { d: 'M2 9h20' }),
+    ],
+    { width: size, height: size },
+  );
+}
