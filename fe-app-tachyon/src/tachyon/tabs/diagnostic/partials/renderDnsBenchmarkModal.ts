@@ -1,5 +1,6 @@
 import { TachyonShellMethods } from '../../../methods/shell';
 import { renderButton } from '../../../../partials';
+import { renderZapIcon } from '../../../../icons';
 import { Tachyon } from '../../../types';
 
 export function renderDnsBenchmarkModal() {
@@ -197,10 +198,7 @@ export function renderDnsBenchmarkModal() {
           style:
             'font-size: 14px; font-weight: 600; color: #28a745; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;',
         },
-        [
-          E('span', {}, '⚡'),
-          E('span', {}, _('Recommended DNS Configuration')),
-        ],
+        [renderZapIcon(14), E('span', {}, _('Recommended DNS Configuration'))],
       ),
       E(
         'div',
@@ -455,7 +453,7 @@ export function renderDnsBenchmarkModal() {
     ),
   ]);
 
-  ui.showModal(`⚡ ${_('Tachyon DNS Benchmark & Auto-Tuning')}`, modalContent);
+  ui.showModal(_('Tachyon DNS Benchmark & Auto-Tuning'), modalContent);
 
   // Automatically start probe when modal opens
   startBenchmark();

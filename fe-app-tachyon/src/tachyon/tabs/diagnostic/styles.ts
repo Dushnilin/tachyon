@@ -260,11 +260,6 @@ export const styles = `
     gap: 8px;
 }
 
-.tachyon_diagnostic-page__right-bar__system-info__title::before {
-    content: "🖥️";
-    font-size: 14px;
-}
-
 .tachyon_diagnostic-page__right-bar__system-info__row {
     display: flex;
     flex-direction: column;

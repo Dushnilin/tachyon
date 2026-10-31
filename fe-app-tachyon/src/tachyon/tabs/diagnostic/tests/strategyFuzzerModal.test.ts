@@ -128,7 +128,7 @@ describe('renderStrategyFuzzerModal', () => {
 
     expect(mocks.showModal).toHaveBeenCalledTimes(1);
     expect(mocks.showModal).toHaveBeenCalledWith(
-      '⚡ Strategy Fuzzer & Auto-Tuner',
+      'Strategy Fuzzer & Auto-Tuner',
       expect.anything(),
     );
   });
@@ -178,7 +178,7 @@ describe('renderStrategyFuzzerModal', () => {
 
     expect(mocks.showModal).toHaveBeenCalledTimes(1);
     expect(mocks.showModal).toHaveBeenCalledWith(
-      '⚡ Strategy Fuzzer & Auto-Tuner',
+      'Strategy Fuzzer & Auto-Tuner',
       expect.anything(),
     );
   });

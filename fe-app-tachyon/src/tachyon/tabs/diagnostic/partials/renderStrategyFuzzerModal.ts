@@ -296,22 +296,22 @@ export function renderStrategyFuzzerModal(
       E(
         'option',
         { value: 'twitter_suite' },
-        _('🐦 X / Twitter Suite (API + Media CDN)'),
+        _('X / Twitter Suite (API + Media CDN)'),
       ),
-      E('option', { value: 'chatgpt_suite' }, _('🤖 ChatGPT / OpenAI Suite')),
+      E('option', { value: 'chatgpt_suite' }, _('ChatGPT / OpenAI Suite')),
       E(
         'option',
         { value: 'instagram_suite' },
-        _('📸 Instagram / Meta (Web + CDN)'),
+        _('Instagram / Meta (Web + CDN)'),
       ),
       E(
         'option',
         { value: 'telegram_suite' },
-        _('✈️ Telegram Suite (Web + Bot API)'),
+        _('Telegram Suite (Web + Bot API)'),
       ),
-      E('option', { value: 'rutracker_suite' }, _('🏴‍☠️ RuTracker Suite')),
-      E('option', { value: 'quic_http3' }, _('⚡ QUIC / HTTP/3 (UDP 443)')),
-      E('option', { value: 'custom' }, _('🌐 Custom Target URL(s)...')),
+      E('option', { value: 'rutracker_suite' }, _('RuTracker Suite')),
+      E('option', { value: 'quic_http3' }, _('QUIC / HTTP/3 (UDP 443)')),
+      E('option', { value: 'custom' }, _('Custom Target URL(s)...')),
     ],
   );
 
@@ -349,19 +349,19 @@ export function renderStrategyFuzzerModal(
       E(
         'option',
         { value: 'presets', selected: true },
-        _('⚡ Quick Benchmark (Presets ~30+)'),
+        _('Quick Benchmark (Presets ~30+)'),
       ),
       E(
         'option',
         { value: 'adaptive' },
-        _('🧬 Adaptive Smart Fuzzing (Genetic / Prior Seeds)'),
+        _('Adaptive Smart Fuzzing (Genetic / Prior Seeds)'),
       ),
       E(
         'option',
         { value: 'combinatorial' },
-        _('🔍 Combinatorial Deep Fuzzing (~150-300+)'),
+        _('Combinatorial Deep Fuzzing (~150-300+)'),
       ),
-      E('option', { value: 'custom' }, _('🛠️ My Custom Strategies Only')),
+      E('option', { value: 'custom' }, _('My Custom Strategies Only')),
     ],
   );
   modeSelect.addEventListener('change', () => {
@@ -2425,5 +2425,5 @@ export function renderStrategyFuzzerModal(
   // Check initial state
   pollStatus();
 
-  ui.showModal(_('⚡ Strategy Fuzzer & Auto-Tuner'), modalContainer);
+  ui.showModal(_('Strategy Fuzzer & Auto-Tuner'), modalContainer);
 }

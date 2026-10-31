@@ -579,10 +579,7 @@ export function renderRocketIcon(size = 14, className = '') {
 export function renderPlusIcon(size = 14, className = '') {
   return createIcon(
     `lucide lucide-plus-icon lucide-plus ${className}`.trim(),
-    [
-      svgEl('path', { d: 'M5 12h14' }),
-      svgEl('path', { d: 'M12 5v14' }),
-    ],
+    [svgEl('path', { d: 'M5 12h14' }), svgEl('path', { d: 'M12 5v14' })],
     { width: size, height: size },
   );
 }
@@ -590,10 +587,7 @@ export function renderPlusIcon(size = 14, className = '') {
 export function renderArrowUpRightIcon(size = 12, className = '') {
   return createIcon(
     `lucide lucide-arrow-up-right-icon lucide-arrow-up-right ${className}`.trim(),
-    [
-      svgEl('path', { d: 'M7 7h10v10' }),
-      svgEl('path', { d: 'M7 17 17 7' }),
-    ],
+    [svgEl('path', { d: 'M7 7h10v10' }), svgEl('path', { d: 'M7 17 17 7' })],
     { width: size, height: size },
   );
 }
@@ -615,8 +609,22 @@ export function renderServerIcon(size = 14, className = '') {
   return createIcon(
     `lucide lucide-server-icon lucide-server ${className}`.trim(),
     [
-      svgEl('rect', { width: '20', height: '8', x: '2', y: '2', rx: '2', ry: '2' }),
-      svgEl('rect', { width: '20', height: '8', x: '2', y: '14', rx: '2', ry: '2' }),
+      svgEl('rect', {
+        width: '20',
+        height: '8',
+        x: '2',
+        y: '2',
+        rx: '2',
+        ry: '2',
+      }),
+      svgEl('rect', {
+        width: '20',
+        height: '8',
+        x: '2',
+        y: '14',
+        rx: '2',
+        ry: '2',
+      }),
       svgEl('line', { x1: '6', x2: '6.01', y1: '6', y2: '6' }),
       svgEl('line', { x1: '6', x2: '6.01', y1: '18', y2: '18' }),
     ],
@@ -717,7 +725,14 @@ export function renderLockIcon(size = 14, className = '') {
   return createIcon(
     `lucide lucide-lock-icon lucide-lock ${className}`.trim(),
     [
-      svgEl('rect', { width: '18', height: '11', x: '3', y: '11', rx: '2', ry: '2' }),
+      svgEl('rect', {
+        width: '18',
+        height: '11',
+        x: '3',
+        y: '11',
+        rx: '2',
+        ry: '2',
+      }),
       svgEl('path', { d: 'M7 11V7a5 5 0 0 1 10 0v4' }),
     ],
     { width: size, height: size },
@@ -808,7 +823,14 @@ export function renderTvIcon(size = 14, className = '') {
   return createIcon(
     `lucide lucide-tv-icon lucide-tv ${className}`.trim(),
     [
-      svgEl('rect', { width: '20', height: '15', x: '2', y: '7', rx: '2', ry: '2' }),
+      svgEl('rect', {
+        width: '20',
+        height: '15',
+        x: '2',
+        y: '7',
+        rx: '2',
+        ry: '2',
+      }),
       svgEl('polyline', { points: '17 2 12 7 7 2' }),
     ],
     { width: size, height: size },
@@ -896,4 +918,161 @@ export function renderPlayIcon(size = 14, className = '') {
   );
 }
 
+export function renderActivityIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-activity-icon lucide-activity ${className}`.trim(),
+    [svgEl('path', { d: 'M22 12h-4l-3 9L9 3l-3 9H2' })],
+    { width: size, height: size },
+  );
+}
 
+export function renderWrenchIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-wrench-icon lucide-wrench ${className}`.trim(),
+    [
+      svgEl('path', {
+        d: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
+      }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderCommunityListServiceIcon(
+  key: string,
+  size = 11,
+): SVGElement {
+  const k = String(key || '')
+    .toLowerCase()
+    .replace(/^@\s*/, '')
+    .trim();
+  if (k === 'youtube' || k === 'google_play') return renderPlayIcon(size);
+  if (k === 'telegram') return renderPlaneIcon(size);
+  if (k === 'discord') return renderGamepad2Icon(size);
+  if (
+    k.startsWith('ai') ||
+    k.includes('openai') ||
+    k.includes('anthropic') ||
+    k.includes('google_ai') ||
+    k.includes('xai')
+  ) {
+    return renderBotIcon(size);
+  }
+  if (['meta', 'twitter', 'tiktok', 'pinterest', 'social'].includes(k)) {
+    return renderGlobeIcon(size);
+  }
+  if (
+    [
+      'spotify',
+      'netflix',
+      'twitch',
+      'twitch_ads',
+      'hdrezka',
+      'anime',
+      'streaming',
+      'media',
+    ].includes(k)
+  ) {
+    return renderTvIcon(size);
+  }
+  if (
+    [
+      'steam',
+      'epicgames',
+      'riot',
+      'origin',
+      'roblox',
+      'supercell',
+      'escapefromtarkov',
+      'faceit',
+      'gaming',
+      'games',
+    ].includes(k)
+  ) {
+    return renderGamepad2Icon(size);
+  }
+  if (
+    [
+      'github',
+      'docker',
+      'cloudflare',
+      'cloudfront',
+      'fastly',
+      'hetzner',
+      'ovh',
+      'digitalocean',
+      'cloud',
+      'dev_cloud',
+    ].includes(k)
+  ) {
+    return renderCloudIcon(size);
+  }
+  if (
+    [
+      'russia_inside',
+      'geoblock',
+      'block',
+      'ru_blocked',
+      'ru_blocked_all',
+      'antifilter',
+      'refilter',
+      'hodca',
+      'rkn',
+      'rkn_geoblock',
+      'antifilter_refilter',
+    ].includes(k)
+  ) {
+    return renderShieldIcon(size);
+  }
+  if (['ads_hagezi_pro', 'win_spy'].includes(k)) {
+    return renderBanIcon(size);
+  }
+  if (['apple', 'microsoft', 'ecosystems'].includes(k)) {
+    return renderSparklesIcon(size);
+  }
+  if (['news', 'torrent', 'tor', 'media_extra', 'extra', 'porn'].includes(k)) {
+    return renderLockIcon(size);
+  }
+  if (
+    [
+      'russia_outside',
+      'ru_whitelist',
+      'ru_domains',
+      'ru_only_inside',
+      'push',
+    ].includes(k)
+  ) {
+    return renderGlobeIcon(size);
+  }
+  return renderTargetIcon(size);
+}
+
+export function renderSmartphoneIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-smartphone-icon lucide-smartphone ${className}`.trim(),
+    [
+      svgEl('rect', {
+        width: '14',
+        height: '20',
+        x: '5',
+        y: '2',
+        rx: '2',
+        ry: '2',
+      }),
+      svgEl('path', { d: 'M12 18h.01' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderLaptopIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-laptop-icon lucide-laptop ${className}`.trim(),
+    [
+      svgEl('path', {
+        d: 'M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16',
+      }),
+    ],
+    { width: size, height: size },
+  );
+}

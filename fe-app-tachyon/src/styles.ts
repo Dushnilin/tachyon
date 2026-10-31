@@ -6109,24 +6109,30 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     align-items: center;
     flex-wrap: wrap;
     padding: 10px 14px;
-    gap: 10px 16px;
+    gap: 10px 18px;
 }
 
 .tachyon-studio-body--pipeline .tachyon-studio-card__head {
-    flex: 1 1 280px;
-    min-width: 0;
+    flex: 1 1 290px;
+    min-width: 240px;
+    max-width: 380px;
 }
 
 .tachyon-studio-body--pipeline .tachyon-studio-card__pipeline {
-    flex: 2 1 320px;
+    flex: 2 1 340px;
+    min-width: 260px;
     border-top: none;
     padding-top: 0;
+    margin-right: 8px;
 }
 
 .tachyon-studio-body--pipeline .tachyon-studio-card__footer {
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
     border-top: none;
     padding-top: 0;
     margin-left: auto;
+    white-space: nowrap;
 }
 
 .tachyon-studio-card:hover {
@@ -6147,7 +6153,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 12px;
     min-width: 0;
 }
 
@@ -6156,7 +6162,16 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     align-items: center;
     gap: 10px;
     min-width: 0;
-    flex: 1;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+.tachyon-studio-card__head-right {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    margin-left: 8px;
 }
 
 .tachyon-studio-card__order {
@@ -6305,6 +6320,9 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     font-weight: 700;
     letter-spacing: 0.02em;
     white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tachyon-studio-badge--proxy {
@@ -6398,6 +6416,16 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.2));
     background: var(--background-color-low, rgba(128, 128, 128, 0.08));
     color: inherit;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+.tachyon-studio-chip > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 

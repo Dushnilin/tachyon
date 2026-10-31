@@ -1,5 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { renderButton } from '../../../../partials';
+import {
+  renderCheckIcon,
+  renderWrenchIcon,
+  renderTvIcon,
+  renderSmartphoneIcon,
+  renderLaptopIcon,
+  renderGamepad2Icon,
+  renderServerIcon,
+  renderGlobeIcon,
+  renderShieldIcon,
+} from '../../../../icons';
 import { showToast } from '../../../../helpers/showToast';
 import { TachyonShellMethods } from '../../../methods';
 import { logger } from '../../../services';
@@ -86,7 +97,7 @@ function getUi(): any {
   return null;
 }
 
-export function getDeviceIcon(hostname: string): string {
+export function getDeviceIcon(hostname: string, size = 16): SVGElement {
   const h = hostname.toLowerCase();
   if (
     h.includes('tv') ||
@@ -96,7 +107,7 @@ export function getDeviceIcon(hostname: string): string {
     h.includes('roku') ||
     h.includes('appletv')
   )
-    return '📺';
+    return renderTvIcon(size);
   if (
     h.includes('phone') ||
     h.includes('iphone') ||
@@ -105,7 +116,7 @@ export function getDeviceIcon(hostname: string): string {
     h.includes('xiaomi') ||
     h.includes('galaxy')
   )
-    return '📱';
+    return renderSmartphoneIcon(size);
   if (
     h.includes('mac') ||
     h.includes('pc') ||
@@ -113,7 +124,7 @@ export function getDeviceIcon(hostname: string): string {
     h.includes('desktop') ||
     h.includes('thinkpad')
   )
-    return '💻';
+    return renderLaptopIcon(size);
   if (
     h.includes('playstation') ||
     h.includes('ps4') ||
@@ -122,8 +133,8 @@ export function getDeviceIcon(hostname: string): string {
     h.includes('switch') ||
     h.includes('nintendo')
   )
-    return '🎮';
-  return '📟';
+    return renderGamepad2Icon(size);
+  return renderServerIcon(size);
 }
 
 export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
@@ -325,9 +336,9 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                 'div',
                 {
                   style:
-                    'font-weight: bold; margin-bottom: 8px; font-size: 12px;',
+                    'font-weight: bold; margin-bottom: 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;',
                 },
-                '🛠️ ' + _('Recommended Quick Fixes:'),
+                [renderWrenchIcon(14), _('Recommended Quick Fixes:')],
               ),
               E(
                 'div',
@@ -387,16 +398,19 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                 style:
                   'margin-top: 12px; padding: 8px 12px; font-size: 12px; border-radius: 6px;',
               },
-              '⚠️ ' + _('Issues detected. Review the diagnosis above.'),
+              _('Issues detected. Review the diagnosis above.'),
             )
           : E(
               'div',
               {
                 class: 'alert-message success',
                 style:
-                  'margin-top: 12px; padding: 8px 12px; font-size: 12px; border-radius: 6px;',
+                  'margin-top: 12px; padding: 8px 12px; font-size: 12px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;',
               },
-              '✓ ' + _('No issues detected. System is running normally.'),
+              [
+                renderCheckIcon(14),
+                _('No issues detected. System is running normally.'),
+              ],
             ),
     ]);
   };
@@ -441,8 +455,14 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
         [
           E(
             'span',
-            { style: 'font-weight: bold; font-size: 12px;' },
-            `📱 ${_('Connected Devices')}: ${lanClients.length}`,
+            {
+              style:
+                'font-weight: bold; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;',
+            },
+            [
+              renderSmartphoneIcon(14),
+              `${_('Connected Devices')}: ${lanClients.length}`,
+            ],
           ),
           renderButton({
             classNames: ['cbi-button-neutral'],
@@ -474,7 +494,9 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                   style: 'display: flex; align-items: center; gap: 8px;',
                 },
                 [
-                  E('span', { style: 'font-size: 18px;' }, icon),
+                  E('span', { style: 'display: flex; align-items: center;' }, [
+                    icon,
+                  ]),
                   E('div', {}, [
                     E(
                       'div',
@@ -500,11 +522,11 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                     {
                       class: `label ${isDirect ? 'label-warning' : 'label-success'}`,
                       style:
-                        'font-size: 11px; padding: 3px 8px; border-radius: 4px;',
+                        'font-size: 11px; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;',
                     },
                     isDirect
-                      ? '🌐 ' + _('Direct WAN')
-                      : '🛡️ ' + _('Proxy / DPI'),
+                      ? [renderGlobeIcon(11), _('Direct WAN')]
+                      : [renderShieldIcon(11), _('Proxy / DPI')],
                   ),
                   renderButton({
                     classNames: [

@@ -1388,7 +1388,10 @@ export function openSectionIconPickerModal(
               updatePreview('');
             },
           },
-          [renderCompassIcon(12), E('span', {}, tr('Авто (по правилам)', 'Auto (by rules)'))],
+          [
+            renderCompassIcon(12),
+            E('span', {}, tr('Авто (по правилам)', 'Auto (by rules)')),
+          ],
         ),
         E(
           'button',
@@ -1400,7 +1403,10 @@ export function openSectionIconPickerModal(
               updatePreview('svg');
             },
           },
-          [renderSparklesIcon(12), E('span', {}, tr('Стандартная SVG', 'Default SVG'))],
+          [
+            renderSparklesIcon(12),
+            E('span', {}, tr('Стандартная SVG', 'Default SVG')),
+          ],
         ),
       ]),
     ]),
@@ -1700,7 +1706,9 @@ export function resolveSectionEngineMeta(
         pushBadge('WDTT', 'dpi', 'WDTT Anti-DPI', () => renderZapIcon(11));
         break;
       case 'olcrtc':
-        pushBadge('OLCRTC', 'dpi', 'OLCRTC WebRTC Bypass', () => renderZapIcon(11));
+        pushBadge('OLCRTC', 'dpi', 'OLCRTC WebRTC Bypass', () =>
+          renderZapIcon(11),
+        );
         break;
       case 'block':
       case 'reject':
@@ -1775,7 +1783,9 @@ export function resolveSectionEngineMeta(
       selectedTypeUpper.includes('AWG') ||
       selectedTypeUpper.includes('WIREGUARD')
     ) {
-      pushBadge('AWG / WG', 'proxy', 'AmneziaWG / WireGuard', () => renderLockIcon(11));
+      pushBadge('AWG / WG', 'proxy', 'AmneziaWG / WireGuard', () =>
+        renderLockIcon(11),
+      );
     } else if (selectedOutbound || (section.outbounds || []).length > 0) {
       const info =
         selectedOutbound?.urlTestInfo || selectedOutbound?.priorityInfo;
@@ -3098,11 +3108,10 @@ export function renderSectionConditionsAndBalancersView(
                 ),
                 ...(isSelected
                   ? [
-                      E(
-                        'span',
-                        { class: 'tachyon-sec-modal__badge-active' },
-                        [renderCheckIcon(12), E('span', {}, tr('Активен', 'Active'))],
-                      ),
+                      E('span', { class: 'tachyon-sec-modal__badge-active' }, [
+                        renderCheckIcon(12),
+                        E('span', {}, tr('Активен', 'Active')),
+                      ]),
                     ]
                   : []),
               ]),
@@ -3216,7 +3225,10 @@ export function renderSectionConditionsAndBalancersView(
                     }
                   },
                 } as any,
-                [renderSettingsIcon(12), E('span', {}, `${tr('Изменить', 'Edit')} →`)],
+                [
+                  renderSettingsIcon(12),
+                  E('span', {}, `${tr('Изменить', 'Edit')} →`),
+                ],
               ),
             ]),
           ]),
@@ -3305,7 +3317,10 @@ export function renderSectionConditionsAndBalancersView(
                   }
                 },
               } as any,
-              [renderSettingsIcon(12), E('span', {}, `${tr('Открыть условие', 'Open Condition')} →`)],
+              [
+                renderSettingsIcon(12),
+                E('span', {}, `${tr('Открыть условие', 'Open Condition')} →`),
+              ],
             ),
           ]),
         ]),

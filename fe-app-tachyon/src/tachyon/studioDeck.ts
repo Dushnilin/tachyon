@@ -14,7 +14,6 @@ import {
   renderTargetIcon,
   renderRadioIcon,
   renderScaleIcon,
-  renderFolderIcon,
   renderPinIcon,
   renderSubRouteIcon,
   renderClockIcon,
@@ -22,7 +21,6 @@ import {
   renderGlobeIcon,
   renderWandIcon,
   renderRocketIcon,
-  renderPlusIcon,
   renderArrowUpRightIcon,
   renderCompassIcon,
   renderQrCodeIcon,
@@ -38,6 +36,7 @@ import {
   renderPlayIcon,
   renderGamepad2Icon,
   renderLinkIcon,
+  renderCommunityListServiceIcon,
 } from '../icons';
 
 const UCI_PACKAGE = 'tachyon';
@@ -418,7 +417,7 @@ function resolveSectionTelemetry(sid: string): {
   }
 
   const keyLower = `${sid} ${name}`.toLowerCase();
-  let iconText = '';
+  const iconText = '';
   const iconBg = 'rgba(255, 255, 255, 0.04)';
   const iconColor = 'var(--text-color-high, #e2e8f0)';
   let customIconDomain = '';
@@ -1389,10 +1388,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   renderDeck();
                 },
               },
-              [
-                renderListIcon(13),
-                E('span', {}, tr('Конвейер', 'Pipeline')),
-              ],
+              [renderListIcon(13), E('span', {}, tr('Конвейер', 'Pipeline'))],
             ),
           ]),
           E(
@@ -1835,7 +1831,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                     if (onNavigateSubTab) onNavigateSubTab('conditions', c.id);
                   },
                 },
-                [renderTargetIcon(11), E('span', {}, c.name)],
+                [
+                  renderCommunityListServiceIcon(c.name, 11),
+                  E('span', {}, c.name),
+                ],
               ),
             )
           : tel.serviceTags.length > 0
@@ -1843,7 +1842,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 E(
                   'span',
                   { class: 'tachyon-studio-chip tachyon-studio-chip--cond' },
-                  [renderTargetIcon(11), E('span', {}, t)],
+                  [renderCommunityListServiceIcon(t, 11), E('span', {}, t)],
                 ),
               )
             : [
@@ -1991,10 +1990,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   if (onShowSectionRules) onShowSectionRules(sid);
                 },
               },
-              [
-                renderFileTextIcon(13),
-                E('span', {}, tr('Правила', 'Rules')),
-              ],
+              [renderFileTextIcon(13), E('span', {}, tr('Правила', 'Rules'))],
             ),
             E(
               'button',
@@ -2014,10 +2010,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   }
                 },
               },
-              [
-                renderCopyIcon(13),
-                E('span', {}, tr('Клон', 'Clone')),
-              ],
+              [renderCopyIcon(13), E('span', {}, tr('Клон', 'Clone'))],
             ),
             E(
               'button',
@@ -2299,7 +2292,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--cond' },
-            [renderTargetIcon(11), E('span', {}, srv)],
+            [renderCommunityListServiceIcon(srv, 11), E('span', {}, srv)],
           ),
         );
       });
@@ -2379,7 +2372,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   class:
                     'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
                 },
-                [ctype === 'composite' ? renderPuzzleIcon(20) : renderTargetIcon(20)],
+                [
+                  ctype === 'composite'
+                    ? renderPuzzleIcon(20)
+                    : renderTargetIcon(20),
+                ],
               ),
               E('div', { class: 'tachyon-studio-card__title-wrap' }, [
                 E('div', { class: 'tachyon-studio-card__title-row' }, [
@@ -2559,10 +2556,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--balancer' },
-            [
-              renderBanIcon(11),
-              E('span', {}, `-${excCountries.join(', -')}`),
-            ],
+            [renderBanIcon(11), E('span', {}, `-${excCountries.join(', -')}`)],
           ),
         );
       }
@@ -2593,7 +2587,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   class:
                     'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
                 },
-                [btype === 'priority' ? renderShieldIcon(20) : renderZapIcon(20)],
+                [
+                  btype === 'priority'
+                    ? renderShieldIcon(20)
+                    : renderZapIcon(20),
+                ],
               ),
               E('div', { class: 'tachyon-studio-card__title-wrap' }, [
                 E('div', { class: 'tachyon-studio-card__title-row' }, [

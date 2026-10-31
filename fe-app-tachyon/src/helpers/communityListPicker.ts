@@ -662,9 +662,7 @@ export function attachCommunityListPicker(
                   renderChips();
                 },
               },
-              cat.icon
-                ? [cat.icon(), E('span', {}, cat.label)]
-                : cat.label,
+              cat.icon ? [cat.icon(), E('span', {}, cat.label)] : cat.label,
             ),
           );
         });

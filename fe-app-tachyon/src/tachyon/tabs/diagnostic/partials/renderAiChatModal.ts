@@ -102,7 +102,7 @@ export function renderAiChatModal() {
 
     const typingMsg: ChatMessage = {
       sender: 'assistant',
-      text: '🤖 ' + _('Thinking...'),
+      text: _('Thinking...'),
       timestamp: new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -154,7 +154,7 @@ export function renderAiChatModal() {
       const errMsg = e instanceof Error ? e.message : _('Server unavailable');
       appendChatMessage({
         sender: 'assistant',
-        text: '❌ ' + _('AI service error') + ': ' + errMsg,
+        text: _('AI service error') + ': ' + errMsg,
         timestamp: new Date().toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit',
@@ -173,10 +173,10 @@ export function renderAiChatModal() {
   };
 
   const quickPrompts = [
-    { label: '🩺 ' + _('Check YouTube'), query: 'Check YouTube availability' },
-    { label: '🔍 ' + _('Why Discord fails?'), query: 'Why Discord fails?' },
+    { label: _('Check YouTube'), query: 'Check YouTube availability' },
+    { label: _('Why Discord fails?'), query: 'Why Discord fails?' },
     {
-      label: '🛠️ ' + _('Full System Diagnostic'),
+      label: _('Full System Diagnostic'),
       query: 'Run full system diagnostic',
     },
   ];

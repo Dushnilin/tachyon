@@ -3,6 +3,7 @@ import { renderButton } from '../../../../partials';
 import {
   renderCircleCheckBigIcon24,
   renderRotateCcwIcon24,
+  renderCheckIcon,
 } from '../../../../icons';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
 import { showToast } from '../../../../helpers/showToast';
@@ -241,7 +242,7 @@ export async function renderStabilityModal(): Promise<void> {
             'cbi-button',
             activeTab === 'overview' ? 'cbi-button-action' : '',
           ],
-          text: _('🏥 System Health & Daemons'),
+          text: _('System Health & Daemons'),
           onClick: () => {
             activeTab = 'overview';
             updateModalContent();
@@ -253,7 +254,7 @@ export async function renderStabilityModal(): Promise<void> {
             'cbi-button',
             activeTab === 'fleet' ? 'cbi-button-action' : '',
           ],
-          text: _('🌐 Server Fleet & Rankings'),
+          text: _('Server Fleet & Rankings'),
           onClick: () => {
             activeTab = 'fleet';
             updateModalContent();
@@ -265,7 +266,7 @@ export async function renderStabilityModal(): Promise<void> {
             'cbi-button',
             activeTab === 'incidents' ? 'cbi-button-action' : '',
           ],
-          text: _('📜 Incidents & Timeline'),
+          text: _('Incidents & Timeline'),
           onClick: () => {
             activeTab = 'incidents';
             updateModalContent();
@@ -361,11 +362,13 @@ export async function renderStabilityModal(): Promise<void> {
             [
               E(
                 'span',
-                {},
-                '✓ ' +
+                { style: 'display:inline-flex;align-items:center;gap:6px;' },
+                [
+                  renderCheckIcon(14),
                   _(
                     'All system invariants satisfied. No flaps, memory leaks, or crashes detected.',
                   ),
+                ],
               ),
             ],
           );
@@ -879,7 +882,9 @@ export async function renderStabilityModal(): Promise<void> {
           style: 'text-align: center; padding: 24px;',
         },
         [
-          E('div', { style: 'font-size: 16px; margin-bottom: 4px;' }, '✓'),
+          E('div', { style: 'margin-bottom: 6px;' }, [
+            renderCircleCheckBigIcon24(),
+          ]),
           E(
             'b',
             {},
@@ -979,7 +984,7 @@ export async function renderStabilityModal(): Promise<void> {
   const uiObj = getUi();
   if (uiObj?.showModal) {
     uiObj.showModal(
-      `📊 ${_('System Stability & Server Fleet Report')}`,
+      _('System Stability & Server Fleet Report'),
       modalContainer,
     );
   }

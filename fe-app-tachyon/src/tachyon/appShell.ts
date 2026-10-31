@@ -1681,10 +1681,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               });
             },
           },
-          [
-            renderPlusIcon(14),
-            E('span', {}, tr('Подключение', 'Connection')),
-          ],
+          [renderPlusIcon(14), E('span', {}, tr('Подключение', 'Connection'))],
         ),
         E(
           'button',
@@ -1844,10 +1841,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                     E(
                       'span',
                       {},
-                      tr(
-                        'Быстрый мастер настройки',
-                        'Quick Setup Wizard',
-                      ),
+                      tr('Быстрый мастер настройки', 'Quick Setup Wizard'),
                     ),
                   ],
                 ),

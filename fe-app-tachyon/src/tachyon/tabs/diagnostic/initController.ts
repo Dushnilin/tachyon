@@ -52,6 +52,7 @@ import { getConfigSections } from '../../methods/custom/getConfigSections';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { renderModal, renderButton } from '../../../partials';
+import { renderRotateCcwIcon24 } from '../../../icons';
 import { TACHYON_LUCI_APP_VERSION } from '../../../constants';
 import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
 import { runSectionsCheck } from './checks/runSectionsCheck';
@@ -1170,7 +1171,8 @@ function handleRestoreNativeInternet() {
           }),
           renderButton({
             classNames: ['cbi-button-reset'],
-            text: '🚨 ' + _('Restore Native Internet'),
+            icon: renderRotateCcwIcon24,
+            text: _('Restore Native Internet'),
             onClick: async () => {
               ui.hideModal();
               showToast(

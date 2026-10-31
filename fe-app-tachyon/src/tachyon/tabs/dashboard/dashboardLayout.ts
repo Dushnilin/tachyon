@@ -1280,11 +1280,9 @@ export function buildDashboardLayoutEditorDom(options?: {
           },
           [
             E('div', { class: 'tachyon-dash-preset-card__top' }, [
-              E(
-                'span',
-                { class: 'tachyon-dash-preset-card__icon' },
-                [getPresetIconEl(preset.id, 20)],
-              ),
+              E('span', { class: 'tachyon-dash-preset-card__icon' }, [
+                getPresetIconEl(preset.id, 20),
+              ]),
               E('div', { class: 'tachyon-dash-preset-card__titles' }, [
                 E(
                   'div',

@@ -531,6 +531,54 @@ function renderConnectionRow(connection: MonitoredConnection) {
         )
       : E('span', {}, '-');
 
+  const network = getNetwork(connection);
+  const networkLower = (network || '').toLowerCase();
+  const networkClass =
+    networkLower === 'tcp'
+      ? 'tachyon_monitoring-page__network tachyon_monitoring-page__network--tcp'
+      : networkLower === 'udp'
+        ? 'tachyon_monitoring-page__network tachyon_monitoring-page__network--udp'
+        : 'tachyon_monitoring-page__network';
+
+  const route = getRoute(connection);
+  const routeLower = (route || '').toLowerCase();
+  let routeModifier = '';
+  if (
+    routeLower.includes('block') ||
+    routeLower.includes('drop') ||
+    routeLower.includes('reject')
+  ) {
+    routeModifier = 'tachyon_monitoring-page__route--block';
+  } else if (
+    routeLower.includes('direct') ||
+    routeLower.includes('wan') ||
+    routeLower.includes('bypass')
+  ) {
+    routeModifier = 'tachyon_monitoring-page__route--direct';
+  } else if (
+    routeLower.includes('dpi') ||
+    routeLower.includes('zapret') ||
+    routeLower.includes('byedpi') ||
+    routeLower.includes('desync')
+  ) {
+    routeModifier = 'tachyon_monitoring-page__route--dpi';
+  } else if (
+    routeLower.includes('proxy') ||
+    routeLower.includes('vpn') ||
+    routeLower.includes('vless') ||
+    routeLower.includes('hysteria') ||
+    routeLower.includes('tuic') ||
+    routeLower.includes('shadowsocks') ||
+    routeLower.includes('trojan') ||
+    routeLower.includes('wireguard') ||
+    routeLower.includes('warp')
+  ) {
+    routeModifier = 'tachyon_monitoring-page__route--proxy';
+  }
+  const routeClass = ['tachyon_monitoring-page__route', routeModifier]
+    .filter(Boolean)
+    .join(' ');
+
   const row = E(
     'tr',
     {
@@ -538,12 +586,8 @@ function renderConnectionRow(connection: MonitoredConnection) {
     },
     [
       renderTableCell(_('Host'), [renderValue(target.primary)]),
-      renderTableCell(_('Type'), [
-        renderValue(getNetwork(connection), 'tachyon_monitoring-page__network'),
-      ]),
-      renderTableCell(_('Route'), [
-        renderValue(getRoute(connection), 'tachyon_monitoring-page__route'),
-      ]),
+      renderTableCell(_('Type'), [renderValue(network, networkClass)]),
+      renderTableCell(_('Route'), [renderValue(route, routeClass)]),
       renderTableCell(_('Time'), [
         renderValue(formatConnectionDuration(connection)),
       ]),
