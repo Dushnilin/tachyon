@@ -1123,7 +1123,9 @@ function migrate_combined_domain_conditions(ctx, section) {
         }
     }
 
-    add_domain_values_with_prefix(values, seen, section, "domain", "full:", "domains");
+    // Forkop 1.0.5 already stores combined bare/full/keyword/regex entries.
+    // Earlier formats use separate domain/domain_suffix fields.
+    add_domain_values_with_prefix(values, seen, section, "domain", ctx.combined_domain_conditions ? "" : "full:", "domains");
     add_domain_values_with_prefix(values, seen, section, "domain_keyword", "keyword:", "generic");
     add_domain_values_with_prefix(values, seen, section, "domain_regex", "regex:", "generic");
 
@@ -1694,7 +1696,9 @@ function migrate_orphan_section_interfaces(ctx) {
             ctx.model[type_name] = kept;
     }
 }
-function migrate_cleanup_accidental_full_domain_prefixes(ctx) {
+function migrate_normalize_domain_lists(ctx) {
+    // Explicit full: entries must survive normalization. Without provenance,
+    // they cannot be distinguished from prefixes added by a broken import.
     let targets = [];
     for (let s in ctx.model.sections) push(targets, s);
     for (let r in ctx.model.rules) push(targets, r);
@@ -1717,11 +1721,6 @@ function migrate_cleanup_accidental_full_domain_prefixes(ctx) {
                     for (let sub in text_list_values(line, "comma-space")) {
                         sub = trim(sub);
                         if (sub == "") continue;
-                        if (substr(sub, 0, 5) == "full:") {
-                            let rest = trim(substr(sub, 5));
-                            if (rest != "" && domain_config.suffix_to_ascii(rest) != null)
-                                sub = rest;
-                        }
                         if (!seen[sub]) {
                             seen[sub] = true;
                             push(new_lines, sub);
@@ -1729,13 +1728,6 @@ function migrate_cleanup_accidental_full_domain_prefixes(ctx) {
                         changed = true;
                     }
                     continue;
-                }
-                if (substr(line, 0, 5) == "full:") {
-                    let rest = trim(substr(line, 5));
-                    if (rest != "" && domain_config.suffix_to_ascii(rest) != null) {
-                        line = rest;
-                        changed = true;
-                    }
                 }
                 if (!seen[line]) {
                     seen[line] = true;
@@ -2351,7 +2343,8 @@ function migrate_priority_group_levels_for_balancer(ctx, section, pg, bal) {
             "include_securities", "exclude_securities",
             "include_ports", "exclude_ports"
         ]) {
-            let lvals = list_option(pl, lk);
+            let lvals = (lk == "include_regex" || lk == "exclude_regex")
+                ? raw_list_option(pl, lk) : list_option(pl, lk);
             if (length(lvals) > 0 && !option_exists(grp, lk))
                 set_list_option(ctx, grp, lk, lvals);
         }
@@ -2361,7 +2354,7 @@ function migrate_priority_group_levels_for_balancer(ctx, section, pg, bal) {
         let leg_servers = list_option(pl, "server_name");
         if (length(leg_servers) > 0 && length(list_option(grp, "include_outbounds")) == 0)
             set_list_option(ctx, grp, "include_outbounds", leg_servers);
-        let leg_regex = list_option(pl, "regex");
+        let leg_regex = raw_list_option(pl, "regex");
         if (length(leg_regex) > 0 && length(list_option(grp, "include_regex")) == 0)
             set_list_option(ctx, grp, "include_regex", leg_regex);
 
@@ -2723,7 +2716,8 @@ function migrate_modular_entities_v1(ctx) {
                 "include_securities", "exclude_securities",
                 "include_ports", "exclude_ports"
             ]) {
-                let lvals = list_option(ut, lk);
+                let lvals = (lk == "include_regex" || lk == "exclude_regex")
+                    ? raw_list_option(ut, lk) : list_option(ut, lk);
                 if (length(lvals) > 0 && !option_exists(bal, lk))
                     set_list_option(ctx, bal, lk, lvals);
             }
@@ -2859,6 +2853,7 @@ function apply_migrations(ctx) {
 
 function migrate_podkop_model(model, constants) {
     let ctx = migration_context(model);
+    ctx.combined_domain_conditions = compare_versions(option(model.settings, CONFIG_VERSION_OPTION, ""), "1.0.5") >= 0;
     constants = object_or_empty(constants);
 
     delete_option(ctx, model.settings, "routing_excluded_ips");
@@ -2919,7 +2914,7 @@ function migrate_tachyon_model(model) {
             converted_any_rules = true;
         }
     }
-    migrate_cleanup_accidental_full_domain_prefixes(ctx);
+    migrate_normalize_domain_lists(ctx);
     apply_migrations(ctx);
     if (converted_any_rules)
         migrate_modular_entities_v1(ctx);
