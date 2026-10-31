@@ -17170,26 +17170,6 @@ async function performTraceRules(query, rulesetSnapshots) {
       }
     }
 
-    const configuredMatch = await matchConfiguredRulesets(
-      secName,
-      queryForMatching,
-      type,
-      rulesetSnapshots,
-    );
-    if (configuredMatch) {
-      return {
-        matched: true,
-        sectionName: secName,
-        label,
-        action,
-        ruleType: 'Rule Set',
-        pattern: queryForMatching,
-        sourceUrls: [configuredMatch],
-        priority: i + 1,
-        totalSections,
-      };
-    }
-
     if (type === 'ip') {
       const ipCidr = getSectionEffectiveOptionValues(secName, 'ip_cidr');
       const matchedCidr = matchIpInCidrs(queryForMatching, ipCidr);
@@ -17503,6 +17483,25 @@ async function performTraceRules(query, rulesetSnapshots) {
           };
         }
       }
+    }
+    const configuredMatch = await matchConfiguredRulesets(
+      secName,
+      queryForMatching,
+      type,
+      rulesetSnapshots,
+    );
+    if (configuredMatch) {
+      return {
+        matched: true,
+        sectionName: secName,
+        label,
+        action,
+        ruleType: 'Rule Set',
+        pattern: queryForMatching,
+        sourceUrls: [configuredMatch],
+        priority: i + 1,
+        totalSections,
+      };
     }
   }
 

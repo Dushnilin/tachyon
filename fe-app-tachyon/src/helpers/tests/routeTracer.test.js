@@ -48,6 +48,7 @@ function setup(
       community_lists: ['youtube'],
       rule_set: options.references || [],
       rule_set_with_subnets: options.subnetReferences || [],
+      domain: options.domains || [],
     },
   ];
   const mockFs = {
@@ -67,6 +68,7 @@ function setup(
     fs: mockFs,
     _: (text) => ({ format: (value) => text.replace('%s', value) }),
     matchIpInCidrs: () => null,
+    readSubnetListFile: async () => [],
     matchIpInRuleset: () => null,
     getSharedCdnWarning: () => '',
     uci: { sections: () => sections, get },
@@ -325,6 +327,24 @@ describe('routing section tracer configured rule sets', () => {
       'Cannot read the loaded rule-set',
     );
     expect(tracer.resolve).not.toHaveBeenCalled();
+  });
+
+  it('keeps an explicit domain match when another list in the same section is unavailable', async () => {
+    const tracer = setup([], async () => ({ code: 1 }), {
+      references: [url],
+      domains: ['r2.cloudflarestorage.com'],
+    });
+    await expect(
+      tracer.performTrace('r2.cloudflarestorage.com'),
+    ).resolves.toMatchObject({
+      matched: true,
+      sectionName: 'zapret',
+      ruleType: 'Domains (UCI)',
+    });
+    expect(tracer.fs.exec).not.toHaveBeenCalledWith(
+      '/usr/bin/tachyon-read',
+      expect.anything(),
+    );
   });
 
   it('reports an unreadable binary instead of silently claiming Direct', async () => {
