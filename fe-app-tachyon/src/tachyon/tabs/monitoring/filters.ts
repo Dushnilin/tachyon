@@ -639,9 +639,7 @@ export function getSearchValues(
     net,
     net === 'quic' ? 'udp' : '',
     getRoute(connection),
-    formatMatchedRuleSummary(connection),
-    normalizeString(connection.rulePayload),
-    normalizeString(connection.rule),
+    // Rule expressions can list unrelated candidate rule sets for this route.
     formatConnectionDuration(connection, pausedAt),
     formatBytes(connection.download),
     formatBytes(connection.upload),

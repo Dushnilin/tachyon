@@ -307,6 +307,56 @@ describe('monitoring filters and resolution', () => {
     expect(searchFiltered[0].id).toBe('2');
   });
 
+  it.each(['active', 'closed'] as const)(
+    'searches session targets instead of candidate rule sets in the %s tab',
+    (tab) => {
+      const rule =
+        'rule_set=[zapret-community-rutracker_lampa-rs zapret-community-youtube-rs] => route(zapret-out)';
+      const connections: MonitoredConnection[] = [
+        {
+          id: 'dota',
+          lastSeenAt: 1000,
+          metadata: { host: 'cdn.dota2.net', network: 'tcp' },
+          rule,
+        },
+        {
+          id: 'image',
+          lastSeenAt: 1000,
+          metadata: { host: 'i.ytimg.com', network: 'udp' },
+          rulePayload: rule,
+        },
+        {
+          id: 'tracker',
+          lastSeenAt: 1000,
+          metadata: { host: 'rutracker.net', network: 'tcp' },
+          rule,
+          rulePayload: rule,
+        },
+      ];
+      const search = (searchQuery: string) =>
+        filterVisibleConnections({
+          deviceFilter: 'all',
+          routeFilter: 'all',
+          searchQuery,
+          tab,
+          activeConnections: tab === 'active' ? connections : [],
+          closedConnections: tab === 'closed' ? connections : [],
+        })
+          .map((connection) => connection.id)
+          .sort();
+
+      expect(search('rutracker')).toEqual(['tracker']);
+      expect(search('  RuTracker  ')).toEqual(['tracker']);
+      expect(search('rutracker.net')).toEqual(['tracker']);
+      expect(search('.net')).toEqual(['dota', 'tracker']);
+      expect(search('.com')).toEqual(['image']);
+      expect(search('rutracker_lampa')).toEqual([]);
+      expect(search('community:rutracker_lampa')).toEqual([]);
+      expect(search('youtube')).toEqual([]);
+      expect(search('')).toEqual(['dota', 'image', 'tracker']);
+    },
+  );
+
   it('distinguishes QUIC from plain UDP and builds matched rule tooltips', () => {
     const plainUdp: MonitoredConnection = {
       id: 'u1',
