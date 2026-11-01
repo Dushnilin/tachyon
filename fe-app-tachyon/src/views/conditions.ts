@@ -37,6 +37,13 @@ function asArray(val) {
   return out;
 }
 
+function asReferenceArray(val) {
+  if (!val) return [];
+  // References are opaque values: //, # and commas can all be part of a URL.
+  const values = Array.isArray(val) ? val : String(val).split(/\s+/);
+  return values.map((value) => String(value).trim()).filter(Boolean);
+}
+
 function unsetIfPresent(sectionId, key) {
   const cur = uci.get(UCI_PACKAGE, sectionId, key);
   if (cur !== undefined && cur !== null) {
@@ -45,7 +52,14 @@ function unsetIfPresent(sectionId, key) {
 }
 
 function setArrayIfChanged(sectionId, key, arr) {
-  const cur = asArray(uci.get(UCI_PACKAGE, sectionId, key));
+  const parse = [
+    'rule_set',
+    'rule_set_with_subnets',
+    'domain_ip_lists',
+  ].includes(key)
+    ? asReferenceArray
+    : asArray;
+  const cur = parse(uci.get(UCI_PACKAGE, sectionId, key));
   const same = cur.length === arr.length && cur.every((v, i) => v === arr[i]);
   if (same) return;
   if (arr.length) {
@@ -135,9 +149,11 @@ function summarizeCondition(sectionId) {
   const comm = asArray(uci.get(UCI_PACKAGE, sectionId, 'community_lists'));
   if (comm.length) parts.push(`${_('Services')}: ${comm.join(', ')}`);
   const rsets = [
-    ...asArray(uci.get(UCI_PACKAGE, sectionId, 'rule_set')),
-    ...asArray(uci.get(UCI_PACKAGE, sectionId, 'rule_set_with_subnets')),
-    ...asArray(uci.get(UCI_PACKAGE, sectionId, 'domain_ip_lists')),
+    ...asReferenceArray(uci.get(UCI_PACKAGE, sectionId, 'rule_set')),
+    ...asReferenceArray(
+      uci.get(UCI_PACKAGE, sectionId, 'rule_set_with_subnets'),
+    ),
+    ...asReferenceArray(uci.get(UCI_PACKAGE, sectionId, 'domain_ip_lists')),
   ];
   if (rsets.length) parts.push(`${_('Lists')}: ${rsets.length}`);
   const doms = [
@@ -1617,7 +1633,7 @@ function createConditionsContent(section) {
   o.depends('condition_type', 'atomic');
   o.validate = validateRuleSetOrUrlItem;
   o.write = function (sectionId, value) {
-    const arr = Array.from(new Set(asArray(value)));
+    const arr = Array.from(new Set(asReferenceArray(value)));
     setArrayIfChanged(sectionId, 'rule_set', arr);
     syncConditionOptionToParentSection(sectionId, 'rule_set', arr);
   };
@@ -1638,7 +1654,7 @@ function createConditionsContent(section) {
   o.depends('condition_type', 'atomic');
   o.validate = validateRuleSetOrUrlItem;
   o.write = function (sectionId, value) {
-    const arr = Array.from(new Set(asArray(value)));
+    const arr = Array.from(new Set(asReferenceArray(value)));
     setArrayIfChanged(sectionId, 'rule_set_with_subnets', arr);
     syncConditionOptionToParentSection(sectionId, 'rule_set_with_subnets', arr);
   };
@@ -1663,7 +1679,7 @@ function createConditionsContent(section) {
   o.depends('condition_type', 'atomic');
   o.validate = validateRuleSetOrUrlItem;
   o.write = function (sectionId, value) {
-    const arr = Array.from(new Set(asArray(value)));
+    const arr = Array.from(new Set(asReferenceArray(value)));
     setArrayIfChanged(sectionId, 'domain_ip_lists', arr);
     syncConditionOptionToParentSection(sectionId, 'domain_ip_lists', arr);
   };
