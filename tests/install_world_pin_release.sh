@@ -119,4 +119,14 @@ txn_line="$(grep -n 'install_core_transaction ||' "$INSTALL_SH" | head -n1 | cut
   fail "pinned world entries are released at line $release_line, after the transaction at line $txn_line; apk reads world before it selects, so releasing afterwards cannot help"
 ok
 
+# --- 6. conflicting ip-tiny is released before ip-full installation ---------
+printf 'apk-mbedtls\nip-tiny\nbusybox\n' >"$APK_WORLD_FILE"
+scrub_apk_world "ip-tiny"
+grep -qx "ip-tiny" "$APK_WORLD_FILE" &&
+  fail "conflicting ip-tiny entry must be removed from apk world"
+ok
+grep -q 'release_ip_tiny_conflict' "$INSTALL_SH" ||
+  fail "install.sh must release conflicting ip-tiny before installing ip-full"
+ok
+
 echo "install_world_pin_release: $pass_count checks passed"

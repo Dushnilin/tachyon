@@ -535,6 +535,8 @@ function sanitize_apk_world() {
         if (!pkg_is_installed(pkg))
             command_success("sed -i -E " + shell_quote("/^" + pkg + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
     }
+    if (pkg_is_installed("ip-full") || !pkg_is_installed("ip-tiny"))
+        command_success("sed -i -E " + shell_quote("/^ip-tiny([><=~ \t].*)?$/d") + " /etc/apk/world 2>/dev/null");
     // Strip pinned version/hash constraints (e.g. pkg><HASH= or pkg=ver)
     // from /etc/apk/world for all managed packages so local .apk upgrades succeed
     let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|steer-core|steer-(obfs|tgws|vless|xsteer|proxy|hysteria2)|zapret|zapret2|byedpi|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";

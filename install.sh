@@ -551,6 +551,9 @@ ensure_package() {
 }
 
 ensure_bootstrap_ucode_runtime() {
+    if [ "$DRY_RUN" -eq 0 ] && [ "$PKG_IS_APK" -eq 1 ] && grep -qE "^ip-tiny([ \t<>=~].*)?\$" "$APK_WORLD_FILE" 2>/dev/null; then
+        scrub_apk_world "ip-tiny"
+    fi
     if ! command_exists ucode; then
         pkg_update_index || return 1
         pkg_install_names ucode || return 1
@@ -580,7 +583,24 @@ kmod_is_available() {
     return 1
 }
 
+release_ip_tiny_conflict() {
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    if [ "$PKG_IS_APK" -eq 1 ]; then
+        if grep -qE "^ip-tiny([ \t<>=~].*)?\$" "$APK_WORLD_FILE" 2>/dev/null ||
+           grep -q "^P:ip-tiny\$" "$APK_INSTALLED_DB" 2>/dev/null ||
+           pkg_is_installed ip-tiny; then
+            msg "Releasing conflicting ip-tiny before installing ip-full"
+            scrub_apk_world "ip-tiny"
+            apk_run apk-del-ip-tiny "$PACKAGE_TIMEOUT_SECONDS" del --force-broken-world ip-tiny || true
+        fi
+    elif pkg_is_installed ip-tiny; then
+        msg "Removing conflicting ip-tiny before installing ip-full"
+        run_logged_timeout opkg-del-ip-tiny "$PACKAGE_TIMEOUT_SECONDS" opkg remove --force-depends ip-tiny || true
+    fi
+}
+
 ensure_runtime_dependencies() {
+    release_ip_tiny_conflict
     _missing=""
     for _pkg in ca-bundle curl coreutils-base64 coreutils-timeout bind-dig nftables ip-full; do
         pkg_is_installed "$_pkg" || _missing="$_missing $_pkg"
@@ -1139,6 +1159,10 @@ resolve_legacy_conflicts_before_install() {
     if [ -n "$_present" ]; then
         msg "Releasing legacy packages from apk world:$_present"
         scrub_apk_world "$LEGACY_PACKAGES"
+    fi
+    if grep -qE "^ip-tiny([ \t<>=~].*)?\$" "$APK_WORLD_FILE" 2>/dev/null; then
+        msg "Releasing conflicting ip-tiny from apk world"
+        scrub_apk_world "ip-tiny"
     fi
 
     # Release this installer's own pinned entries. Reinstalling over a Tachyon
