@@ -1103,8 +1103,27 @@ function process_vless(raw, url) {
         outbound.tls = tls_result[0];
 
     let transport = add_transport(url);
-    if (transport)
+    if (transport) {
+        if (outbound.tls == null && int(url.port) == 443 && transport.type == "xhttp" && type(transport.headers) == "object") {
+            let origin = as_string(transport.headers.Origin || transport.headers.origin || "");
+            if (starts_with(lc(origin), "https://")) {
+                let sni = as_string(transport.host || url.host);
+                let fp = lc(trim(as_string(transport.headers["User-Agent"] || transport.headers["user-agent"] || "")));
+                if (fp != "chrome" && fp != "firefox" && fp != "safari" && fp != "edge" && fp != "ios" && fp != "android")
+                    fp = "chrome";
+                outbound.tls = {
+                    enabled: true,
+                    server_name: sni,
+                    alpn: [ "h2", "http/1.1" ],
+                    utls: {
+                        enabled: true,
+                        fingerprint: fp
+                    }
+                };
+            }
+        }
         outbound.transport = transport;
+    }
     return outbound;
 }
 
@@ -1128,8 +1147,27 @@ function process_trojan(raw, url) {
         outbound.tls = tls_result[0];
 
     let transport = add_transport(url);
-    if (transport)
+    if (transport) {
+        if (outbound.tls == null && int(url.port) == 443 && transport.type == "xhttp" && type(transport.headers) == "object") {
+            let origin = as_string(transport.headers.Origin || transport.headers.origin || "");
+            if (starts_with(lc(origin), "https://")) {
+                let sni = as_string(transport.host || url.host);
+                let fp = lc(trim(as_string(transport.headers["User-Agent"] || transport.headers["user-agent"] || "")));
+                if (fp != "chrome" && fp != "firefox" && fp != "safari" && fp != "edge" && fp != "ios" && fp != "android")
+                    fp = "chrome";
+                outbound.tls = {
+                    enabled: true,
+                    server_name: sni,
+                    alpn: [ "h2", "http/1.1" ],
+                    utls: {
+                        enabled: true,
+                        fingerprint: fp
+                    }
+                };
+            }
+        }
         outbound.transport = transport;
+    }
     return outbound;
 }
 

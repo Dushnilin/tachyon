@@ -1576,7 +1576,7 @@ function persist_subscription_cache(source_section, subscription_json_path, subs
         !write_text_if_changed(persistent_device_headers, effective_device_headers_signature))
         return false;
 
-    let runtime_metadata = runtime_metadata_path(cache_key);
+    let runtime_metadata = runtime_metadata_path(source_section);
     if (metadata_path != null && metadata_path != "" && file_nonempty(metadata_path) && object_has_extra_keys(metadata_path)) {
         if (!copy_file_if_changed(metadata_path, persistent_metadata))
             return false;

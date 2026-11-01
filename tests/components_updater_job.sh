@@ -382,9 +382,7 @@ cp "$UPDATES_UC" "$fake_lib/components/updates.uc"
 # showed up as a job stuck at running:true rather than as a load error.
 cp "$TACHYON_LIB/components/helpers.uc" "$fake_lib/components/helpers.uc"
 cp "$TACHYON_LIB/config/connections.uc" "$fake_lib/config/connections.uc"
-cp "$TACHYON_LIB/core/uci.uc" "$fake_lib/core/uci.uc"
-cp "$TACHYON_LIB/core/common.uc" "$fake_lib/core/common.uc"
-cp "$TACHYON_LIB/core/helpers.uc" "$fake_lib/core/helpers.uc"
+cp "$TACHYON_LIB/core/"*.uc "$fake_lib/core/"
 cat >"$fake_lib/components/action.uc" <<'UCODE'
 #!/usr/bin/env ucode
 if ((ARGV[0] || "") == "component-action") {

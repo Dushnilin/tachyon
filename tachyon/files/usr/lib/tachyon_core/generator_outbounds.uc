@@ -335,6 +335,28 @@ function copy_subscription_outbound(outbound, new_tag) {
         }
         copy.tls = tls;
     }
+    if (copy.tls == null &&
+        int(copy.server_port || 0) == 443 &&
+        type(copy.transport) == "object" &&
+        as_string(copy.transport.type || "") == "xhttp" &&
+        type(copy.transport.headers) == "object") {
+        let origin = as_string(copy.transport.headers.Origin || copy.transport.headers.origin || "");
+        if (index(lc(origin), "https://") == 0) {
+            let sni = as_string(copy.transport.host || copy.server || "");
+            let fp = lc(trim(as_string(copy.transport.headers["User-Agent"] || copy.transport.headers["user-agent"] || "")));
+            if (fp != "chrome" && fp != "firefox" && fp != "safari" && fp != "edge" && fp != "ios" && fp != "android")
+                fp = "chrome";
+            copy.tls = {
+                enabled: true,
+                server_name: sni,
+                alpn: [ "h2", "http/1.1" ],
+                utls: {
+                    enabled: true,
+                    fingerprint: fp
+                }
+            };
+        }
+    }
     copy.tag = new_tag;
     return copy;
 }
@@ -842,6 +864,24 @@ function manual_vless_outbound(link, tag_name) {
         outbound.packet_encoding = packet_encoding;
     apply_link_tls(outbound, "vless", query);
     apply_link_transport(outbound, query);
+    if (outbound.tls == null && port == 443 && type(outbound.transport) == "object" && outbound.transport.type == "xhttp" && type(outbound.transport.headers) == "object") {
+        let origin = as_string(outbound.transport.headers.Origin || outbound.transport.headers.origin || "");
+        if (index(lc(origin), "https://") == 0) {
+            let sni = as_string(outbound.transport.host || host);
+            let fp = lc(trim(as_string(outbound.transport.headers["User-Agent"] || outbound.transport.headers["user-agent"] || "")));
+            if (fp != "chrome" && fp != "firefox" && fp != "safari" && fp != "edge" && fp != "ios" && fp != "android")
+                fp = "chrome";
+            outbound.tls = {
+                enabled: true,
+                server_name: sni,
+                alpn: [ "h2", "http/1.1" ],
+                utls: {
+                    enabled: true,
+                    fingerprint: fp
+                }
+            };
+        }
+    }
     return outbound;
 }
 

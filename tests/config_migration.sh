@@ -637,7 +637,7 @@ mkdir -p \
 printf '7\n' >"$WORK_DIR/cache-migration/runtime/cache-format"
 printf 'stale\n' >"$WORK_DIR/cache-migration/runtime/section-cache/stale.json"
 printf 'stale\n' >"$WORK_DIR/cache-migration/runtime/subscription-links/stale.json"
-printf '7\n' >"$WORK_DIR/cache-migration/persistent/cache-format"
+printf '8\n' >"$WORK_DIR/cache-migration/persistent/cache-format"
 cat >"$WORK_DIR/cache-migration/persistent/proxy-subscription-1.json" <<'JSON'
 {
   "version": 1,
@@ -663,7 +663,7 @@ TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/cache-migration/persistent"
 TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
 ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
 
-[ "$(sed -n '1p' "$WORK_DIR/cache-migration/runtime/cache-format")" = "8" ] ||
+[ "$(sed -n '1p' "$WORK_DIR/cache-migration/runtime/cache-format")" = "9" ] ||
   fail "package migration must advance the runtime cache format"
 [ ! -e "$WORK_DIR/cache-migration/runtime/section-cache/stale.json" ] ||
   fail "package migration must clear the legacy section cache"
