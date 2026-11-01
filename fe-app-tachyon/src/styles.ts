@@ -3554,39 +3554,44 @@ header .dropdown-menu {
     border-color: rgba(148, 130, 224, 0.48);
 }
 
-/* Segmented Pill Sub-Navigation for Edit Modals & Section Inspector Modal */
+/* Segmented Pill Sub-Navigation for Edit Modals, Section Inspector Modal & Accordion */
 .modal .cbi-tabmenu,
-.cbi-modal .cbi-tabmenu {
+.cbi-modal .cbi-tabmenu,
+.tachyon-sec-modal-tabs.cbi-tabmenu {
     display: inline-flex !important;
     flex-wrap: wrap;
-    gap: 4px;
-    padding: 4px !important;
+    gap: 3px;
+    padding: 3px !important;
     margin: 0 0 10px 0 !important;
     width: fit-content !important;
     max-width: 100% !important;
     list-style: none !important;
-    border-radius: 10px !important;
+    border-radius: 8px !important;
     background: var(--background-color-low, rgba(128, 128, 128, 0.1)) !important;
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.2)) !important;
+    box-sizing: border-box !important;
 }
 
 .modal .cbi-tabmenu > li,
-.cbi-modal .cbi-tabmenu > li {
+.cbi-modal .cbi-tabmenu > li,
+.tachyon-sec-modal-tabs.cbi-tabmenu > li {
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
     background: transparent !important;
-    border-radius: 8px !important;
+    border-radius: 6px !important;
 }
 
 .modal .cbi-tabmenu > li > a,
-.cbi-modal .cbi-tabmenu > li > a {
+.cbi-modal .cbi-tabmenu > li > a,
+.tachyon-sec-modal-tabs.cbi-tabmenu > li > a {
     display: inline-flex !important;
     align-items: center;
-    padding: 6px 13px !important;
-    border-radius: 8px !important;
-    font-size: 12.5px !important;
+    padding: 4px 11px !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
+    line-height: 1.2 !important;
     text-decoration: none !important;
     color: inherit !important;
     opacity: 0.72;
@@ -3596,19 +3601,21 @@ header .dropdown-menu {
 }
 
 .modal .cbi-tabmenu > li > a:hover,
-.cbi-modal .cbi-tabmenu > li > a:hover {
+.cbi-modal .cbi-tabmenu > li > a:hover,
+.tachyon-sec-modal-tabs.cbi-tabmenu > li > a:hover {
     opacity: 1;
     background: rgba(128, 128, 128, 0.08) !important;
 }
 
 .modal .cbi-tabmenu > li.cbi-tab:not(.cbi-tab-disabled) > a,
-.cbi-modal .cbi-tabmenu > li.cbi-tab:not(.cbi-tab-disabled) > a {
+.cbi-modal .cbi-tabmenu > li.cbi-tab:not(.cbi-tab-disabled) > a,
+.tachyon-sec-modal-tabs.cbi-tabmenu > li.cbi-tab:not(.cbi-tab-disabled) > a {
     opacity: 1;
     font-weight: 700 !important;
     color: #b4a5f0 !important;
-    background: rgba(148, 130, 224, 0.14) !important;
-    border-color: rgba(148, 130, 224, 0.28) !important;
-    box-shadow: none;
+    background: rgba(148, 130, 224, 0.16) !important;
+    border-color: rgba(148, 130, 224, 0.3) !important;
+    box-shadow: none !important;
 }
 
 /* ==========================================================================

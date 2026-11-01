@@ -16,9 +16,15 @@ import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import {
   renderAlertTriangleIcon,
+  renderArrowUpRightIcon,
   renderCheckIcon,
   renderCopyIcon24,
+  renderLayoutGridIcon,
+  renderListIcon,
+  renderLoaderCircleIcon24,
+  renderSettingsIcon,
   renderXIcon,
+  renderZapIcon,
 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import { tr, isRussianLanguage } from '../../helpers/i18n';
@@ -2542,7 +2548,7 @@ function renderSectionInspectorModalContent(
                 }
               },
             },
-            tr('Таблица', 'Table'),
+            [renderListIcon(12), E('span', {}, tr('Таблица', 'Table'))],
           ),
           E(
             'button',
@@ -2561,7 +2567,7 @@ function renderSectionInspectorModalContent(
                 }
               },
             },
-            tr('Плитки', 'Tiles'),
+            [renderLayoutGridIcon(12), E('span', {}, tr('Плитки', 'Tiles'))],
           ),
         ]),
       );
@@ -2581,7 +2587,9 @@ function renderSectionInspectorModalContent(
               }
             },
           },
-          isSubUpdating ? _('Updating...') : _('Update subscriptions'),
+          isSubUpdating
+            ? [renderLoaderCircleIcon24(), E('span', {}, _('Updating...'))]
+            : [E('span', {}, '↻'), E('span', {}, _('Update subscriptions'))],
         ),
       );
     }
@@ -2638,29 +2646,36 @@ function renderSectionInspectorModalContent(
               }
             },
           },
-          isLatFetching ? getLatencyTestLabel(latProgress) : _('Test latency'),
+          isLatFetching
+            ? [
+                renderLoaderCircleIcon24(),
+                E('span', {}, getLatencyTestLabel(latProgress)),
+              ]
+            : [renderZapIcon(12), E('span', {}, _('Test latency'))],
         ),
       );
     }
     return controls;
   };
 
+  const modalHeaderControls =
+    activeSectionModalTab === 'nodes' ? renderNodesHeaderControls(true) : [];
+  const modalHeaderBar = E('div', { class: 'tachyon-sec-accordion__header' }, [
+    tabsBar,
+    ...(modalHeaderControls.length > 0
+      ? [
+          E(
+            'div',
+            { class: 'tachyon-sec-accordion__actions' },
+            modalHeaderControls,
+          ),
+        ]
+      : []),
+  ]);
+
   const tabBody =
     activeSectionModalTab === 'nodes'
       ? E('div', { class: 'tachyon-sec-modal__nodes-pane' }, [
-          ...(hasServerNodes || (section.subscriptionSourceCount || 0) > 0
-            ? [
-                E(
-                  'div',
-                  {
-                    class: 'tachyon-sec-accordion__actions',
-                    style:
-                      'display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 10px;',
-                  },
-                  renderNodesHeaderControls(true),
-                ),
-              ]
-            : []),
           renderSections({
             loading: false,
             failed: false,
@@ -2788,14 +2803,15 @@ function renderSectionInspectorModalContent(
     },
     [
       ...(sectionSwitcher ? [sectionSwitcher] : []),
-      tabsBar,
+      modalHeaderBar,
       tabBody,
       E('div', { class: 'tachyon-sec-modal__footer' }, [
         E(
           'button',
           {
             type: 'button',
-            class: 'btn cbi-button',
+            class:
+              'btn cbi-button tachyon-sec-accordion__action-btn tachyon-sec-accordion__action-btn--primary',
             click: (e: MouseEvent) => {
               e.preventDefault();
               const targetSecId = section.sectionName || section.code;
@@ -2819,13 +2835,21 @@ function renderSectionInspectorModalContent(
               }
             },
           },
-          tr('Настроить секцию и правила →', 'Configure section & rules →'),
+          [
+            renderSettingsIcon(13),
+            E(
+              'span',
+              {},
+              tr('Настроить секцию и правила →', 'Configure section & rules →'),
+            ),
+          ],
         ),
         E(
           'button',
           {
             type: 'button',
-            class: 'btn cbi-button cbi-button-neutral',
+            class:
+              'btn cbi-button cbi-button-neutral tachyon-sec-accordion__action-btn',
             click: (e: MouseEvent) => {
               e.preventDefault();
               selectedDashboardSectionCode = '';
@@ -2864,6 +2888,127 @@ function renderSectionAccordionBody(
   );
   const latProgress =
     sectionsWidget.latencyProgressSections[section.sectionName];
+
+  const headerActions: HTMLElement[] = [
+    ...(currentTab === 'nodes' && hasServerNodes
+      ? [
+          E('div', { class: 'tachyon-nodes-view-switch' }, [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: `btn cbi-button tachyon-nodes-view-switch__btn ${
+                  currentNodesViewMode === 'table' ? 'is-active' : ''
+                }`,
+                click: (e: MouseEvent) => {
+                  e.preventDefault();
+                  setDashboardNodesViewMode('table');
+                  void renderSectionsWidget(true);
+                },
+              },
+              [renderListIcon(12), E('span', {}, tr('Таблица', 'Table'))],
+            ),
+            E(
+              'button',
+              {
+                type: 'button',
+                class: `btn cbi-button tachyon-nodes-view-switch__btn ${
+                  currentNodesViewMode === 'tiles' ? 'is-active' : ''
+                }`,
+                click: (e: MouseEvent) => {
+                  e.preventDefault();
+                  setDashboardNodesViewMode('tiles');
+                  void renderSectionsWidget(true);
+                },
+              },
+              [renderLayoutGridIcon(12), E('span', {}, tr('Плитки', 'Tiles'))],
+            ),
+          ]),
+        ]
+      : []),
+    ...(currentTab === 'nodes' && (section.subscriptionSourceCount || 0) > 0
+      ? [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+              disabled: isSubUpdating ? true : undefined,
+              click: (e: MouseEvent) => {
+                e.preventDefault();
+                if (!isSubUpdating) {
+                  void handleUpdateSubscription(section);
+                }
+              },
+            },
+            isSubUpdating
+              ? [renderLoaderCircleIcon24(), E('span', {}, _('Updating...'))]
+              : [E('span', {}, '↻'), E('span', {}, _('Update subscriptions'))],
+          ),
+        ]
+      : []),
+    ...(currentTab === 'nodes' &&
+    !isServiceGroup(section) &&
+    (section.withTagSelect ||
+      (section.outbounds && section.outbounds.length > 0))
+      ? [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+              disabled: isLatFetching ? true : undefined,
+              click: (e: MouseEvent) => {
+                e.preventDefault();
+                if (isLatFetching) return;
+                if (section.withTagSelect) {
+                  const tag = section.latencyTestCodes?.length
+                    ? section.latencyTestCodes
+                    : section.latencyTestCode || section.code;
+                  if (Array.isArray(tag)) {
+                    const serializedTag =
+                      tag.length > 40
+                        ? `@section:${section.sectionName}`
+                        : JSON.stringify(tag);
+                    void handleTestLatency(
+                      'proxy_list',
+                      section.sectionName,
+                      serializedTag,
+                      section.latencyTestTimeout,
+                    );
+                  } else {
+                    void handleTestLatency(
+                      'group',
+                      section.sectionName,
+                      tag,
+                      section.latencyTestTimeout,
+                    );
+                  }
+                } else {
+                  const testable = (section.outbounds || []).filter(
+                    (o) => !isNonTestableOutboundType(o.type),
+                  );
+                  if (testable.length) {
+                    void handleTestLatency(
+                      'proxy',
+                      section.sectionName,
+                      testable[0].code,
+                      section.latencyTestTimeout,
+                    );
+                  }
+                }
+              },
+            },
+            isLatFetching
+              ? [
+                  renderLoaderCircleIcon24(),
+                  E('span', {}, getLatencyTestLabel(latProgress)),
+                ]
+              : [renderZapIcon(12), E('span', {}, _('Test latency'))],
+          ),
+        ]
+      : []),
+  ];
 
   const tabsBar = E('div', { class: 'tachyon-sec-accordion__header' }, [
     E('ul', { class: 'cbi-tabmenu tachyon-sec-modal-tabs' }, [
@@ -2908,162 +3053,64 @@ function renderSectionAccordionBody(
         ],
       ),
     ]),
-    E('div', { class: 'tachyon-sec-accordion__actions' }, [
-      ...(currentTab === 'nodes' && hasServerNodes
-        ? [
-            E('div', { class: 'tachyon-nodes-view-switch' }, [
-              E(
-                'button',
-                {
-                  type: 'button',
-                  class: `btn cbi-button tachyon-nodes-view-switch__btn ${
-                    currentNodesViewMode === 'table' ? 'is-active' : ''
-                  }`,
-                  click: (e: MouseEvent) => {
-                    e.preventDefault();
-                    setDashboardNodesViewMode('table');
-                    void renderSectionsWidget(true);
-                  },
-                },
-                tr('Таблица', 'Table'),
-              ),
-              E(
-                'button',
-                {
-                  type: 'button',
-                  class: `btn cbi-button tachyon-nodes-view-switch__btn ${
-                    currentNodesViewMode === 'tiles' ? 'is-active' : ''
-                  }`,
-                  click: (e: MouseEvent) => {
-                    e.preventDefault();
-                    setDashboardNodesViewMode('tiles');
-                    void renderSectionsWidget(true);
-                  },
-                },
-                tr('Плитки', 'Tiles'),
-              ),
-            ]),
-          ]
-        : []),
-      ...(currentTab === 'nodes' && (section.subscriptionSourceCount || 0) > 0
-        ? [
-            E(
-              'button',
-              {
-                type: 'button',
-                class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-                disabled: isSubUpdating ? true : undefined,
-                click: (e: MouseEvent) => {
-                  e.preventDefault();
-                  if (!isSubUpdating) {
-                    void handleUpdateSubscription(section);
-                  }
-                },
-              },
-              isSubUpdating ? _('Updating...') : _('Update subscriptions'),
-            ),
-          ]
-        : []),
-      ...(currentTab === 'nodes' &&
-      !isServiceGroup(section) &&
-      (section.withTagSelect ||
-        (section.outbounds && section.outbounds.length > 0))
-        ? [
-            E(
-              'button',
-              {
-                type: 'button',
-                class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-                disabled: isLatFetching ? true : undefined,
-                click: (e: MouseEvent) => {
-                  e.preventDefault();
-                  if (isLatFetching) return;
-                  if (section.withTagSelect) {
-                    const tag = section.latencyTestCodes?.length
-                      ? section.latencyTestCodes
-                      : section.latencyTestCode || section.code;
-                    if (Array.isArray(tag)) {
-                      const serializedTag =
-                        tag.length > 40
-                          ? `@section:${section.sectionName}`
-                          : JSON.stringify(tag);
-                      void handleTestLatency(
-                        'proxy_list',
-                        section.sectionName,
-                        serializedTag,
-                        section.latencyTestTimeout,
-                      );
-                    } else {
-                      void handleTestLatency(
-                        'group',
-                        section.sectionName,
-                        tag,
-                        section.latencyTestTimeout,
-                      );
-                    }
-                  } else {
-                    const testable = (section.outbounds || []).filter(
-                      (o) => !isNonTestableOutboundType(o.type),
-                    );
-                    if (testable.length) {
-                      void handleTestLatency(
-                        'proxy',
-                        section.sectionName,
-                        testable[0].code,
-                        section.latencyTestTimeout,
-                      );
-                    }
-                  }
-                },
-              },
-              isLatFetching
-                ? getLatencyTestLabel(latProgress)
-                : _('Test latency'),
-            ),
-          ]
-        : []),
-      E(
-        'button',
-        {
-          type: 'button',
-          class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-          click: (e: MouseEvent) => {
-            e.preventDefault();
-            activeSectionModalTab = currentTab;
-            openSectionInspectorModal(section.code);
-          },
+    ...(headerActions.length > 0
+      ? [E('div', { class: 'tachyon-sec-accordion__actions' }, headerActions)]
+      : []),
+  ]);
+
+  const footerBar = E('div', { class: 'tachyon-sec-accordion__footer' }, [
+    E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+        click: (e: MouseEvent) => {
+          e.preventDefault();
+          activeSectionModalTab = currentTab;
+          openSectionInspectorModal(section.code);
         },
-        tr('Открыть в модальном окне', 'Open in modal'),
-      ),
-      E(
-        'button',
-        {
-          type: 'button',
-          class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-          click: (e: MouseEvent) => {
-            e.preventDefault();
-            const targetSecId = section.sectionName || section.code;
-            const openEntity = (globalThis as any).__tachyonOpenEntityModal;
-            if (typeof openEntity === 'function' && targetSecId) {
-              openEntity('section', targetSecId, 'sections');
-              return;
-            }
-            const navSub = document.querySelector<HTMLElement>(
-              '.tachyon-sidebar__subitem[data-nav-key="section:sections"]',
+      },
+      [
+        renderArrowUpRightIcon(13),
+        E('span', {}, tr('Открыть в модальном окне', 'Open in modal')),
+      ],
+    ),
+    E(
+      'button',
+      {
+        type: 'button',
+        class:
+          'btn cbi-button tachyon-sec-accordion__action-btn tachyon-sec-accordion__action-btn--primary',
+        click: (e: MouseEvent) => {
+          e.preventDefault();
+          const targetSecId = section.sectionName || section.code;
+          const openEntity = (globalThis as any).__tachyonOpenEntityModal;
+          if (typeof openEntity === 'function' && targetSecId) {
+            openEntity('section', targetSecId, 'sections');
+            return;
+          }
+          const navSub = document.querySelector<HTMLElement>(
+            '.tachyon-sidebar__subitem[data-nav-key="section:sections"]',
+          );
+          if (navSub) {
+            navSub.click();
+          } else {
+            const topTab = document.querySelector<HTMLElement>(
+              '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a',
             );
-            if (navSub) {
-              navSub.click();
-            } else {
-              const topTab = document.querySelector<HTMLElement>(
-                '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a',
-              );
-              topTab?.click();
-            }
-          },
+            topTab?.click();
+          }
         },
-        tr('Настроить секцию и правила →', 'Configure section & rules →'),
-      ),
-    ]),
+      },
+      [
+        renderSettingsIcon(13),
+        E(
+          'span',
+          {},
+          tr('Настроить секцию и правила →', 'Configure section & rules →'),
+        ),
+      ],
+    ),
   ]);
 
   const tabBody =
@@ -3191,6 +3238,7 @@ function renderSectionAccordionBody(
   return E('div', { class: 'tachyon-sec-accordion__inner' }, [
     tabsBar,
     tabBody,
+    footerBar,
   ]);
 }
 
